@@ -45,7 +45,7 @@ Access checks had been added route by route over time. Some routes checked that 
 | 4 | The password check issues a 12-hour token bound to the operating device; eight due-management update routes require it. The two leader-board due-date routes are unchanged by decision of the system owner. | #1733 | `eaee54f3` |
 | 5 | Role changes re-read the acting user inside the update transaction and proceed only for a current admin. | #1731 | `4f0d690a` |
 
-Not fixed yet: finding 6 (needs an administrator way to change a device's telemetry binding first), finding 7 (must be paired with privilege for the client backup that reads the file), and device credential rotation (`docs/plans/security-client-key-rotation-phase-b.md`).
+Done later on 2026-10-06: device credential rotation for every production device row (`docs/plans/security-client-key-rotation-phase-b.md`), and finding 7 for the Pi5 and the Pi3, whose status-agent file is now rendered root-only by the standard release (#1740, #1738). Not fixed yet: finding 6 (needs an administrator way to change a device's telemetry binding first).
 
 ## Prevention
 
@@ -62,7 +62,7 @@ Not fixed yet: finding 6 (needs an administrator way to change a device's teleme
 
 ## Open Items
 
-- Findings 6 and 7, and the Phase B device credential rotation.
+- Finding 6, and the closeout items of the Phase B plan (on-device checks, a second Pi3 rotation, documentation scrub).
 - Other responses that carry tag ids have not been reviewed in the same way; whether approval should require a physical scan at a kiosk is a design decision.
 - `scripts/deploy/verify-phase12-real.sh` calls one of the routes gated by #1733 without a token.
 - The seven unvalidated candidates from the scan have not been triaged.

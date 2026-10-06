@@ -19,7 +19,7 @@ related_docs:
   - docs/guides/deployment.md
   - docs/guides/api-key-policy.md
 validation: per-device evidence that the new credential authenticates and the previous credential is rejected, recorded in this plan without credential values
-open_items: Pi3 is rotated and the four unused rows are disabled. The development Mac, six Pi4 kiosks and the Pi5 remain. Production work needs explicit approval per device.
+open_items: Every device row now has a per-device random credential (2026-10-06). Left: a second rotation of the Pi3, on-device checks by the system owner, and the Milestone 4 closeout items.
 supersedes: none
 superseded_by: none
 ---
@@ -48,9 +48,10 @@ After this plan is executed, each device holds a credential that cannot be guess
 - [ ] Milestone 1, rest: Pi4 literals in `scripts/deploy/verify-phase12-real.sh`, power dispatcher check.
 - [x] (2026-10-06) Pi3 signage device rotated by the session that owns the Pi3. Evidence is in `Artifacts and Notes`.
 - [x] (2026-10-06) Milestone 2, part: the four unused rows are disabled. Evidence is in `Artifacts and Notes`.
-- [ ] Milestone 2, rest: the development Mac.
+- [x] (2026-10-06) Milestone 2, rest: the development Mac.
+- [x] (2026-10-06) Milestone 3: six Pi4 kiosks, one at a time, then the Pi5. Evidence is in `Artifacts and Notes`. The final read-only audit shows all fourteen device rows with a credential of the new form.
 - [ ] Milestone 3: remaining devices, one per window slot.
-- [ ] Milestone 4: closeout (rejected-credential evidence, documentation scrub, Phase C scanner suppression, runbook update).
+- [ ] Milestone 4: closeout. Done: runbook item C-4 updated. Open: a torque measurement on `raspi4-assembly-01` and a loan and return on each kiosk, seen by the system owner; the second Pi3 rotation; documentation scrub of credential literals; Pi4 literals in `scripts/deploy/verify-phase12-real.sh`; review of the seed and web defaults; the follow-ups listed in `Artifacts and Notes`.
 
 ## Surprises & Discoveries
 
@@ -70,6 +71,9 @@ After this plan is executed, each device holds a credential that cannot be guess
 - Observation: the first Pi3 release after the database switch failed before reaching the Pi3. The Pi5 checkout under `/opt/RaspberryPiSystem_002` could not create a new file in `scripts/security/` because that directory was not writable by the release user; earlier commits had added no file there. The Pi3 was without a valid credential until the ownership was corrected and the release re-run.
   Evidence: run `20261006-014830-0b169b` (failed at checkout), run `20261006-015022-f5eddd` (success).
 - Observation: a hand-written switch statement echoed the new value to the operator's terminal during the Pi3 step. The script from #1735 does not print values and is the only supported way from now on.
+- Observation: a commit that changes only a host's Vault file names no Pi4 agent in the release set, so a Pi4 release of that commit restarts the browser and delivers no credential file. The Pi4 pull request also carried an inventory comment because the inventory is a Pi4 release input. The classifier does not treat host Vault files as release inputs; that gap is a follow-up.
+  Evidence: `scripts/ci/classify_changes.py`, `PI4_KIOSK_RELEASE_FILES`; #1758.
+- Observation: a browser remembers the credential per address. The development Mac opens the kiosk at an address different from the one first used for the new value, so the page had no credential until the value was appended to the address actually used. Pi4 kiosks start from a rendered address and are not affected.
 - Observation: the first production dry run of the script failed before touching data. It passed a project directory to Compose, and the server compose file resolves its environment file next to itself. The tests had used a small compose file of their own, so the difference did not show. Fixed in #1743; a tool that is tested only against a stand-in for production has not been tested for production.
 
 ## Decision Log
@@ -88,6 +92,11 @@ After this plan is executed, each device holds a credential that cannot be guess
   Date/Author: 2026-10-06 / Claude. Open to revision if the shop floor cannot accept the interruption.
 - Decision: one device per Vault commit, merged and released before the next device's commit is merged.
   Rationale: Vault files are tracked, and the release checks out an exact pushed commit. If several devices' new values were on `main` at once, any unrelated release reaching one of those devices before its database transaction would fail its health check and roll back.
+  Date/Author: 2026-10-06 / Claude.
+- Decision (revises the previous one): the six Pi4 hosts shared one Vault commit, and the Pi5 had its own. Merges to `main` and every release that could reach a Pi4 were frozen by the single session that owns merges and releases from the Pi4 merge until the sixth host was done, and Pi5 releases were held from the Pi5 merge until its database switch.
+  Rationale: one commit means one Pi4 artifact build instead of six, and the freeze removes the risk the earlier decision guarded against. It needs one owner for all merges and releases.
+  Date/Author: 2026-10-06 / Claude and the release-owning session.
+- Decision: the new value for an in-use device is generated on the operator's machine, written to Vault and kept in a local store readable only by the operator until the device is done; the database step receives it over standard input and first checks that the value Vault held before matches the database row. The previous value is kept in the same store so that the row can be restored. The store is deleted when the device set is finished.
   Date/Author: 2026-10-06 / Claude.
 - Decision: per device the order is database transaction first, standard release second.
   Rationale: the reverse order fails the release health check by design.
@@ -162,9 +171,26 @@ Milestone 0 audit, 2026-10-06. The inventory has nine hosts and every host's cre
 
 Unused rows, 2026-10-06, run by the system owner on the Pi5 with the script from `main` (`47e68000`). Each of the four rows got a random value that is stored nowhere. Every row was dry-run first and then executed; all eight runs reported success. Three rows changed one device row and no references; the Android signage row changed one device row and two schedule entries. The read-only audit afterwards shows the four rows with a credential of the new form, the schedule references still attached to the signage row, and every other row unchanged. No release was involved.
 
+Development Mac, 2026-10-06 16:54 JST. Database row switched with the script (one row, no references); the Mac's status-agent file updated and restricted to its owner; the next heartbeat at 16:55 succeeded; the kiosk page loads after the new value was given to the browser at the address the operator uses. No release.
+
+Six Pi4 kiosks, 2026-10-06, Vault change #1758 (`aa24f812`). For each host the database row was switched (one row, no references, after a dry run and a match check) and the host was released at once with its own `--limit`. All six runs: `Result=success`, `failed=0 unreachable=0 rescued=0`. After each release the host's last-seen time advanced and the kiosk browser's rejected requests dropped to zero. Interruption per host was five to seven minutes.
+
+    raspi4-fjv60-80              run 20261006-094803-68dc20  done 18:53
+    raspi4-robodrill01           run 20261006-100202-bb58c9  done 19:07
+    raspi4-sessaku-01            run 20261006-101245-a531c3  done 19:18
+    raspberrypi4                 run 20261006-102117-3d83e0  done 19:25
+    raspi4-kensaku-stonebase01   run 20261006-103713-998aa0  done 19:44
+    raspi4-assembly-01           run 20261006-104802-e92896  done 19:54
+
+On the two hosts with a torque agent the release recreated the agent with the new file and its local health check passed. The torque agent calls the API only while a wrench is in use, so delivery with the new value is confirmed by a real measurement, which is an open on-device check.
+
+Pi5 (`raspberrypi5`), 2026-10-06, Vault change #1764 (`4c9e0df5`). Database row switched at 20:29 JST (one row, no references); release run `20261006-113032-20d958`, `Result=success`, recap `ok=268 changed=32 unreachable=0 failed=0 rescued=0`; the status-agent file was rendered at 20:41 with mode 600 and the agent succeeded at 20:42. Only the Pi5's own status heartbeat was interrupted, for about thirteen minutes.
+
+Final read-only audit, 2026-10-06 20:50 JST: all fourteen device rows have a credential of the new form; the signage references are attached to the same rows as before; every in-use device was seen within the last minute.
+
 Pi3 (`raspberrypi3`), 2026-10-06, by the session that owns the Pi3. Vault change #1736 (`ec82f19e`); status-agent rendering #1738 (`0d03337f`). Database switch at 10:48 JST: one device row, three preview targets, four schedule entries, zero remaining references to the previous value. Release run `20261006-015022-f5eddd`, success, recap `ok=53 changed=18 failed=0`. New value returns 200 and the previous value 401 on `/api/signage/current-image`; the status-agent file was re-rendered and the agent exits normally every minute. The secret-scanner suppression for the previous value was already in place (#1727). Because the new value was shown on the operator's terminal during the switch, the Pi3 is to be rotated once more with the script.
 
-Follow-ups that are out of scope for this plan and should be filed at closeout: sending the credential only in a header instead of in start URLs and query strings (runbook item C-9); removing the application's dependence on the credential's shape so that a fully random value can be used; binding device telemetry to the authenticated device, which first needs an administrator way to clear or change a device's `statusClientId`; restricting the status-agent configuration file's permissions together with privilege for the client backup that reads it; removing the credential from the power dispatcher's debug log and from queue file names; cleaning signage cache files left under retired credentials.
+Follow-ups that are out of scope for this plan and should be filed at closeout: treating host Vault files as Pi4 release inputs in `scripts/ci/classify_changes.py`; sending the credential only in a header instead of in start URLs and query strings (runbook item C-9); removing the application's dependence on the credential's shape so that a fully random value can be used; binding device telemetry to the authenticated device, which first needs an administrator way to clear or change a device's `statusClientId`; restricting the status-agent configuration file's permissions together with privilege for the client backup that reads it; removing the credential from the power dispatcher's debug log and from queue file names; cleaning signage cache files left under retired credentials.
 
 ## Interfaces and Dependencies
 
