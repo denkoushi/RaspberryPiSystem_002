@@ -11,7 +11,6 @@ related_code:
 validation:
   - apps/web/src/features/kiosk/grindingPlanningBoard/PlanningBoardResourceView.test.tsx
 open_items:
-  - Confirm on a real kiosk after deploy that 資源CD + 切削 opens.
   - AppErrorBoundary does not record the error anywhere; the cause was only visible in the browser console.
 ---
 
@@ -56,6 +55,12 @@ The second effect depends on `heights.normal` and `heights.expanded` (numbers) i
 - `pnpm exec vitest run src/features/kiosk/grindingPlanningBoard src/pages/kiosk/ProductionScheduleGrindingPlanningBoardPage.test.tsx`: 81 passed.
 - `pnpm exec tsc -b` and eslint on the changed files: no errors.
 - Real browser with the mock API: with the dependency change applied, 40 panes and 600 rows rendered without the error (one run, during investigation).
+
+## Deploy Result
+
+- PR #1597, merged to main as `ece57d16`.
+- Pi5 standard deploy run `20261001-034922-1a85d9` (`--limit raspberrypi5`): success, PLAY RECAP `ok=264 changed=30 failed=0 unreachable=0`, `/api/system/health` 200. Run by the owner and reported through the release-tracking session.
+- 2026-10-01: the owner confirmed on the real screen that 資源CD → 切削 renders.
 
 ## Open Items
 
