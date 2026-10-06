@@ -181,6 +181,7 @@ all:
           status_agent_client_id: raspberrypi5-server
           # Also set on every release by release_pi5/tasks/host-status-agent-storage.yml.
           status_agent_storage_health_enabled: "1"
+          status_agent_storage_health_write_warn_gb_per_day: "300"
           status_agent_location: "ラズパイ5 - サーバー"
           status_agent_tls_skip_verify: "1"
           status_agent_client_key: "{{ vault_status_agent_client_key }}"
