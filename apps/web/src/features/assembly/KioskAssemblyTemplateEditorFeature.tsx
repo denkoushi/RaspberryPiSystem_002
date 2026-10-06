@@ -37,8 +37,8 @@ export function KioskAssemblyTemplateEditorPage() {
   return (
     <AssemblyTemplateEditorProvider
       value={controller}
-      renderLink={({ children, className, to }) => (
-        <Link className={className} to={to}>
+      renderLink={({ children, className, to, ...attributes }) => (
+        <Link className={className} to={to} {...attributes}>
           {children}
         </Link>
       )}

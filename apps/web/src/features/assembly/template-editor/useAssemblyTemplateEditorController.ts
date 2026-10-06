@@ -49,7 +49,7 @@ export function useAssemblyTemplateEditorController(input: {
   const [procedurePattern, setProcedurePattern] = useState('');
   const [metadataInitialized, setMetadataInitialized] = useState(false);
   const [inspectorMode, setInspectorMode] = useState<'closed' | 'step' | 'markers'>('closed'), [stepSupplementOpen, setStepSupplementOpen] = useState(false);
-  const [machineNamePickerOpen, setMachineNamePickerOpen] = useState(false);
+  const [boltConditionPaneOpen, setBoltConditionPaneOpen] = useState(false), [machineNamePickerOpen, setMachineNamePickerOpen] = useState(false);
   const [expandedAreaDetails, setExpandedAreaDetails] = useState<Set<string>>(() => new Set());
   const data = useAssemblyTemplateEditorData({
     sourceTemplateId: input.query.sourceTemplateId,
@@ -62,7 +62,10 @@ export function useAssemblyTemplateEditorController(input: {
     loadedTemplate: data.loadedTemplate,
     loading: data.loading,
     onMessage: setMessage,
-    onStepFocused: () => { setInspectorMode('step'); setStepSupplementOpen(true); },
+    onStepFocused: () => {
+      setInspectorMode('step');
+      setStepSupplementOpen(true);
+    },
     templateId: input.templateId
   });
   const marker = useAssemblyTemplateMarkerDraft({
@@ -86,7 +89,7 @@ export function useAssemblyTemplateEditorController(input: {
       setBaselineSnapshot(null);
       setAccessPassword(null);
       setPasswordInput('');
-      setInspectorMode('closed');
+      setInspectorMode('closed'); setBoltConditionPaneOpen(false);
       setStepSupplementOpen(false);
       setMetadataInitialized(false);
       setExpandedAreaDetails(new Set());
@@ -267,7 +270,6 @@ export function useAssemblyTemplateEditorController(input: {
 
   const focusReadinessIssue = (issue: AssemblyTemplateReadinessIssue) => {
     if (issue.target.kind === 'basic') {
-      procedure.setProcedurePaneOpen(true);
       procedure.setLeftPaneTab('documents');
       const idByField: Record<string, string> = {
         modelCode: 'assembly-template-model-code',
@@ -278,7 +280,6 @@ export function useAssemblyTemplateEditorController(input: {
       return;
     }
     if (issue.target.kind === 'document') {
-      procedure.setProcedurePaneOpen(true);
       procedure.setLeftPaneTab('documents');
       const item = procedure.procedureItems.find((candidate) => candidate.localId === issue.target.id);
       if (item) procedure.focusItem(item);
@@ -288,7 +289,6 @@ export function useAssemblyTemplateEditorController(input: {
       return;
     }
     if (issue.target.kind === 'step') {
-      procedure.setProcedurePaneOpen(true);
       procedure.setLeftPaneTab('steps');
       const step = procedure.procedureSteps.find(
         (candidate) => candidate.localId === issue.target.id
@@ -297,7 +297,6 @@ export function useAssemblyTemplateEditorController(input: {
       return;
     }
     if (issue.target.kind === 'area') {
-      procedure.setProcedurePaneOpen(true);
       procedure.setLeftPaneTab('documents');
       if (issue.target.id) {
         marker.selectArea(issue.target.id);
@@ -350,7 +349,6 @@ export function useAssemblyTemplateEditorController(input: {
     const issue = readiness.issues.find((candidate) => candidate.stage === stage);
     if (issue) return focusReadinessIssue(issue);
     if (stage === 'basic' || stage === 'areas') {
-      procedure.setProcedurePaneOpen(true);
       procedure.setLeftPaneTab('documents');
       focusElementById(
         stage === 'basic'
@@ -361,7 +359,6 @@ export function useAssemblyTemplateEditorController(input: {
       );
       return;
     }
-    procedure.setProcedurePaneOpen(true);
     procedure.setLeftPaneTab('steps');
   };
 
@@ -497,10 +494,10 @@ export function useAssemblyTemplateEditorController(input: {
     selectedPageIndex: procedure.selectedPage
       ? procedure.pageOptions.findIndex((option) => option.key === procedure.selectedPage?.key)
       : -1,
-    setInspectorMode, setStepSupplementOpen, stepSupplementOpen,
+    setInspectorMode, setStepSupplementOpen, stepSupplementOpen, boltConditionPaneOpen, setBoltConditionPaneOpen,
     setMachineNamePickerOpen,
     setMessage, setPasswordInput,
-    settingsPaneOpen: inspectorMode !== 'closed',
+    settingsPaneOpen: inspectorMode !== 'closed' && (markerSettingsOpen || Boolean(procedure.selectedStep)),
     showSelectedCrop:
       procedure.selectedStep?.viewMode === 'crop' &&
       procedure.selectedStep.crop != null &&
