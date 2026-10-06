@@ -15,18 +15,18 @@
     ]
   },
   "summary": {
-    "documentCount": 639,
-    "totalLines": 174498,
-    "totalBytes": 13199875,
-    "withFrontmatter": 293,
-    "withStatus": 148,
-    "sourceOfTruthDeclared": 107,
-    "execPlanReferences": 64,
+    "documentCount": 701,
+    "totalLines": 183890,
+    "totalBytes": 14448466,
+    "withFrontmatter": 314,
+    "withStatus": 166,
+    "sourceOfTruthDeclared": 115,
+    "execPlanReferences": 62,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
-    "longLineDocuments": 26,
-    "localLinkCount": 5665,
-    "brokenLocalLinkCount": 88,
+    "longLineDocuments": 37,
+    "localLinkCount": 5779,
+    "brokenLocalLinkCount": 89,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
     "brokenLocalLinks": [
@@ -39,6 +39,11 @@
         "sourcePath": "EXEC_PLAN.md",
         "href": "../docs/knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-?15[question-mark-corruption]pi5[question-mark-corruption]",
         "targetPath": "../docs/knowledge-base/infrastructure/security.md"
+      },
+      {
+        "sourcePath": "docs/INDEX.md",
+        "href": "plans/hermes-source-semantics-pilot.md",
+        "targetPath": "docs/plans/hermes-source-semantics-pilot.md"
       },
       {
         "sourcePath": "docs/api/overview.md",
@@ -475,8 +480,8 @@
   "documents": [
     {
       "path": ".agent/PLANS.md",
-      "lineCount": 168,
-      "byteSize": 17336,
+      "lineCount": 155,
+      "byteSize": 15092,
       "hasFrontmatter": false,
       "title": "Codex Execution Plans (ExecPlans):",
       "status": null,
@@ -490,10 +495,10 @@
     },
     {
       "path": ".cursor/rules/00-core-safety.mdc",
-      "lineCount": 29,
-      "byteSize": 1377,
+      "lineCount": 24,
+      "byteSize": 1151,
       "hasFrontmatter": true,
-      "title": "コア安全ルール（Always）",
+      "title": "コア安全ルール",
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
@@ -505,25 +510,36 @@
     },
     {
       "path": ".cursor/rules/01-core-docs-and-knowledge.mdc",
-      "lineCount": 80,
-      "byteSize": 3762,
+      "lineCount": 38,
+      "byteSize": 1976,
       "hasFrontmatter": true,
-      "title": "コア: ドキュメント/ナレッジ（Always）",
+      "title": "コア: ドキュメント/ナレッジ",
       "status": null,
       "source_of_truth": null,
-      "localLinks": [],
+      "localLinks": [
+        {
+          "href": "../../docs/decisions/_template.md",
+          "targetPath": "docs/decisions/_template.md",
+          "exists": true
+        },
+        {
+          "href": "../../docs/knowledge-base/_template.md",
+          "targetPath": "docs/knowledge-base/_template.md",
+          "exists": true
+        }
+      ],
       "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
-      "referencesExecPlan": true
+      "referencesExecPlan": false
     },
     {
       "path": ".cursor/rules/02-core-architecture.mdc",
-      "lineCount": 35,
-      "byteSize": 1746,
+      "lineCount": 19,
+      "byteSize": 942,
       "hasFrontmatter": true,
-      "title": "コア: アーキテクチャ（Always）",
+      "title": "コア: アーキテクチャ",
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
@@ -536,7 +552,7 @@
     {
       "path": ".cursor/rules/10-quality-ci-and-tests.mdc",
       "lineCount": 55,
-      "byteSize": 3876,
+      "byteSize": 3868,
       "hasFrontmatter": true,
       "title": "品質: 上限のある検証",
       "status": null,
@@ -550,8 +566,8 @@
     },
     {
       "path": ".cursor/rules/11-debugging-playbook.mdc",
-      "lineCount": 29,
-      "byteSize": 1942,
+      "lineCount": 13,
+      "byteSize": 1028,
       "hasFrontmatter": true,
       "title": "デバッグ: 証拠と停止条件",
       "status": null,
@@ -565,8 +581,8 @@
     },
     {
       "path": ".cursor/rules/20-git-workflow.mdc",
-      "lineCount": 58,
-      "byteSize": 4560,
+      "lineCount": 59,
+      "byteSize": 4819,
       "hasFrontmatter": true,
       "title": "Gitワークフロー（Agent Requested）",
       "status": null,
@@ -576,12 +592,12 @@
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
-      "referencesExecPlan": true
+      "referencesExecPlan": false
     },
     {
       "path": ".cursor/rules/30-docs-maintenance.mdc",
       "lineCount": 43,
-      "byteSize": 1655,
+      "byteSize": 1718,
       "hasFrontmatter": true,
       "title": "ドキュメントメンテナンス（Auto Attached）",
       "status": null,
@@ -595,8 +611,8 @@
     },
     {
       "path": ".cursor/rules/33-frontend-ui-quality.mdc",
-      "lineCount": 47,
-      "byteSize": 1871,
+      "lineCount": 52,
+      "byteSize": 2349,
       "hasFrontmatter": true,
       "title": "フロントエンド: UI品質（Auto Attached）",
       "status": null,
@@ -610,14 +626,14 @@
     },
     {
       "path": "AGENTS.md",
-      "lineCount": 56,
-      "byteSize": 5414,
+      "lineCount": 67,
+      "byteSize": 6531,
       "hasFrontmatter": false,
       "title": "AI Agent Entry Point",
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
-      "inboundCount": 5,
+      "inboundCount": 6,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -5882,23 +5898,29 @@
     },
     {
       "path": "docs/AI_START_HERE.md",
-      "lineCount": 53,
-      "byteSize": 2928,
+      "lineCount": 37,
+      "byteSize": 1785,
       "hasFrontmatter": true,
       "title": "AI Start Here",
       "status": null,
       "source_of_truth": null,
-      "localLinks": [],
+      "localLinks": [
+        {
+          "href": "../AGENTS.md",
+          "targetPath": "AGENTS.md",
+          "exists": true
+        }
+      ],
       "inboundCount": 4,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
-      "referencesExecPlan": true
+      "referencesExecPlan": false
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 2022,
-      "byteSize": 350666,
+      "lineCount": 2069,
+      "byteSize": 357108,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6907,6 +6929,36 @@
         {
           "href": "./decisions/ADR-20260826-torque-training-one-touch-wrench-preparation.md",
           "targetPath": "docs/decisions/ADR-20260826-torque-training-one-touch-wrench-preparation.md",
+          "exists": true
+        },
+        {
+          "href": "./decisions/ADR-20260827-torque-wrench-optional-settings.md",
+          "targetPath": "docs/decisions/ADR-20260827-torque-wrench-optional-settings.md",
+          "exists": true
+        },
+        {
+          "href": "./decisions/ADR-20260907-hermes-business-butler-design-policy-v1.md",
+          "targetPath": "docs/decisions/ADR-20260907-hermes-business-butler-design-policy-v1.md",
+          "exists": true
+        },
+        {
+          "href": "./decisions/ADR-20260923-hermes-cross-source-retrieval.md",
+          "targetPath": "docs/decisions/ADR-20260923-hermes-cross-source-retrieval.md",
+          "exists": true
+        },
+        {
+          "href": "./decisions/ADR-20260924-ai-agent-rules-context-slimming.md",
+          "targetPath": "docs/decisions/ADR-20260924-ai-agent-rules-context-slimming.md",
+          "exists": true
+        },
+        {
+          "href": "./decisions/ADR-20260924-hermes-retrieval-hybrid-enrichment.md",
+          "targetPath": "docs/decisions/ADR-20260924-hermes-retrieval-hybrid-enrichment.md",
+          "exists": true
+        },
+        {
+          "href": "./decisions/ADR-20260930-pi4-sd-card-backup.md",
+          "targetPath": "docs/decisions/ADR-20260930-pi4-sd-card-backup.md",
           "exists": true
         },
         {
@@ -10310,6 +10362,21 @@
           "exists": true
         },
         {
+          "href": "./plans/business-hermes-butler-gate-execplan.md",
+          "targetPath": "docs/plans/business-hermes-butler-gate-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/business-hermes-butler-phase1-execplan.md",
+          "targetPath": "docs/plans/business-hermes-butler-phase1-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/business-hermes-signage-live-data.md",
+          "targetPath": "docs/plans/business-hermes-signage-live-data.md",
+          "exists": true
+        },
+        {
           "href": "./plans/deploy-artifact-timeout-canary-handoff-execplan.md",
           "targetPath": "docs/plans/deploy-artifact-timeout-canary-handoff-execplan.md",
           "exists": true
@@ -10355,6 +10422,11 @@
           "exists": true
         },
         {
+          "href": "./plans/dgx-night-preparation-execplan.md",
+          "targetPath": "docs/plans/dgx-night-preparation-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/dgx-resource-dashboard-ui-phase8.md",
           "targetPath": "docs/plans/dgx-resource-dashboard-ui-phase8.md",
           "exists": true
@@ -10372,6 +10444,11 @@
         {
           "href": "./plans/dgx-spark-photo-label-validation-plan.md",
           "targetPath": "docs/plans/dgx-spark-photo-label-validation-plan.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/explicit-site-scope-execplan.md",
+          "targetPath": "docs/plans/explicit-site-scope-execplan.md",
           "exists": true
         },
         {
@@ -10395,8 +10472,93 @@
           "exists": true
         },
         {
+          "href": "plans/hermes-answer-cache.md",
+          "targetPath": "docs/plans/hermes-answer-cache.md",
+          "exists": true
+        },
+        {
+          "href": "plans/hermes-background-admission.md",
+          "targetPath": "docs/plans/hermes-background-admission.md",
+          "exists": true
+        },
+        {
+          "href": "plans/hermes-background-worker.md",
+          "targetPath": "docs/plans/hermes-background-worker.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/hermes-cross-source-foundation-execplan.md",
+          "targetPath": "docs/plans/hermes-cross-source-foundation-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/hermes-cross-source-retrieval-execplan.md",
+          "targetPath": "docs/plans/hermes-cross-source-retrieval-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/hermes-dgx-retrieval-enrichment.md",
+          "targetPath": "docs/plans/hermes-dgx-retrieval-enrichment.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/hermes-jev-search-handoff-20260923.md",
+          "targetPath": "docs/plans/hermes-jev-search-handoff-20260923.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/hermes-knowledge-procedures-execplan.md",
+          "targetPath": "docs/plans/hermes-knowledge-procedures-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "plans/hermes-knowledge.md",
+          "targetPath": "docs/plans/hermes-knowledge.md",
+          "exists": true
+        },
+        {
+          "href": "plans/hermes-learning-evaluation.md",
+          "targetPath": "docs/plans/hermes-learning-evaluation.md",
+          "exists": true
+        },
+        {
+          "href": "plans/hermes-nightly-doc2query.md",
+          "targetPath": "docs/plans/hermes-nightly-doc2query.md",
+          "exists": true
+        },
+        {
+          "href": "plans/hermes-pi5-search-spark-inference.md",
+          "targetPath": "docs/plans/hermes-pi5-search-spark-inference.md",
+          "exists": true
+        },
+        {
+          "href": "plans/hermes-question-prefetch.md",
+          "targetPath": "docs/plans/hermes-question-prefetch.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/hermes-retrieval-accuracy-log.md",
+          "targetPath": "docs/plans/hermes-retrieval-accuracy-log.md",
+          "exists": true
+        },
+        {
+          "href": "plans/hermes-source-fact-adoption.md",
+          "targetPath": "docs/plans/hermes-source-fact-adoption.md",
+          "exists": true
+        },
+        {
+          "href": "plans/hermes-source-semantics-pilot.md",
+          "targetPath": "docs/plans/hermes-source-semantics-pilot.md",
+          "exists": false
+        },
+        {
           "href": "./plans/inspection-drawing-create-layout-and-return-nav.md",
           "targetPath": "docs/plans/inspection-drawing-create-layout-and-return-nav.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/inspection-drawing-dgx-dimension-map-execplan.md",
+          "targetPath": "docs/plans/inspection-drawing-dgx-dimension-map-execplan.md",
           "exists": true
         },
         {
@@ -10490,6 +10652,11 @@
           "exists": true
         },
         {
+          "href": "plans/kiosk-inventory-ux-execplan.md",
+          "targetPath": "docs/plans/kiosk-inventory-ux-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/kiosk-leaderboard-gantt-mode.md",
           "targetPath": "docs/plans/kiosk-leaderboard-gantt-mode.md",
           "exists": true
@@ -10520,6 +10687,11 @@
           "exists": true
         },
         {
+          "href": "plans/kiosk-tag-desk-execplan.md",
+          "targetPath": "docs/plans/kiosk-tag-desk-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/leaderboard-defer-totals-performance-recovery.md",
           "targetPath": "docs/plans/leaderboard-defer-totals-performance-recovery.md",
           "exists": true
@@ -10537,6 +10709,11 @@
         {
           "href": "./plans/location-scope-phase1-audit.md",
           "targetPath": "docs/plans/location-scope-phase1-audit.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/machine-signal-uptime-execplan.md",
+          "targetPath": "docs/plans/machine-signal-uptime-execplan.md",
           "exists": true
         },
         {
@@ -10585,6 +10762,11 @@
           "exists": true
         },
         {
+          "href": "./plans/pi4-sd-card-backup-execplan.md",
+          "targetPath": "docs/plans/pi4-sd-card-backup-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/pi5-api-image-local-storage-scalability-execplan.md",
           "targetPath": "docs/plans/pi5-api-image-local-storage-scalability-execplan.md",
           "exists": true
@@ -10592,6 +10774,11 @@
         {
           "href": "./plans/pi5-blue-green-phase3.md",
           "targetPath": "docs/plans/pi5-blue-green-phase3.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/planning-board-background-writes.md",
+          "targetPath": "docs/plans/planning-board-background-writes.md",
           "exists": true
         },
         {
@@ -10640,6 +10827,11 @@
           "exists": true
         },
         {
+          "href": "./plans/procedure-manuals-execplan.md",
+          "targetPath": "docs/plans/procedure-manuals-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/production-deployment-management-plan.md",
           "targetPath": "docs/plans/production-deployment-management-plan.md",
           "exists": true
@@ -10670,6 +10862,16 @@
           "exists": true
         },
         {
+          "href": "./plans/production-schedule-lookup-boundary-execplan.md",
+          "targetPath": "docs/plans/production-schedule-lookup-boundary-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/production-schedule-snapshot-boundary-execplan.md",
+          "targetPath": "docs/plans/production-schedule-snapshot-boundary-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/production-schedule-split-orders.md",
           "targetPath": "docs/plans/production-schedule-split-orders.md",
           "exists": true
@@ -10695,6 +10897,11 @@
           "exists": true
         },
         {
+          "href": "./plans/scaw-nonconformity-self-inspection-execplan.md",
+          "targetPath": "docs/plans/scaw-nonconformity-self-inspection-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/security-hardening-execplan.md",
           "targetPath": "docs/plans/security-hardening-execplan.md",
           "exists": true
@@ -10707,6 +10914,26 @@
         {
           "href": "./plans/self-inspection-confirm-guard-wip-draft.md",
           "targetPath": "docs/plans/self-inspection-confirm-guard-wip-draft.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/self-inspection-reduction-insights-execplan.md",
+          "targetPath": "docs/plans/self-inspection-reduction-insights-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/self-inspection-work-instruction-uiux.md",
+          "targetPath": "docs/plans/self-inspection-work-instruction-uiux.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/sharepoint-work-instructions-execplan.md",
+          "targetPath": "docs/plans/sharepoint-work-instructions-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/signage-admin-unification-execplan.md",
+          "targetPath": "docs/plans/signage-admin-unification-execplan.md",
           "exists": true
         },
         {
@@ -10772,6 +10999,11 @@
         {
           "href": "./plans/torque-wrench-global-ownership-execplan.md",
           "targetPath": "docs/plans/torque-wrench-global-ownership-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/torque-wrench-optional-settings-execplan.md",
+          "targetPath": "docs/plans/torque-wrench-optional-settings-execplan.md",
           "exists": true
         },
         {
@@ -11045,6 +11277,11 @@
           "exists": true
         },
         {
+          "href": "./runbooks/pi4-sd-card-backup.md",
+          "targetPath": "docs/runbooks/pi4-sd-card-backup.md",
+          "exists": true
+        },
+        {
           "href": "./runbooks/pi5-blue-green-deploy.md",
           "targetPath": "docs/runbooks/pi5-blue-green-deploy.md",
           "exists": true
@@ -11117,6 +11354,11 @@
         {
           "href": "./runbooks/private-pi5-stackchan-bridge-deploy.md",
           "targetPath": "docs/runbooks/private-pi5-stackchan-bridge-deploy.md",
+          "exists": true
+        },
+        {
+          "href": "./runbooks/scaw-nonconformity-self-inspection.md",
+          "targetPath": "docs/runbooks/scaw-nonconformity-self-inspection.md",
           "exists": true
         },
         {
@@ -11305,95 +11547,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 302,
+          "line": 331,
           "length": 1132
         },
         {
-          "line": 318,
+          "line": 347,
           "length": 1242
         },
         {
-          "line": 322,
+          "line": 351,
           "length": 1022
         },
         {
-          "line": 336,
+          "line": 366,
           "length": 1065
         },
         {
-          "line": 384,
+          "line": 414,
           "length": 1165
         },
         {
-          "line": 390,
+          "line": 420,
           "length": 1458
         },
         {
-          "line": 402,
+          "line": 432,
           "length": 1083
         },
         {
-          "line": 416,
+          "line": 446,
           "length": 1398
         },
         {
-          "line": 418,
+          "line": 448,
           "length": 1133
         },
         {
-          "line": 422,
+          "line": 452,
           "length": 1399
         },
         {
-          "line": 424,
+          "line": 454,
           "length": 1008
         },
         {
-          "line": 430,
+          "line": 460,
           "length": 1059
         },
         {
-          "line": 438,
+          "line": 468,
           "length": 1129
         },
         {
-          "line": 442,
+          "line": 472,
           "length": 1135
         },
         {
-          "line": 446,
+          "line": 476,
           "length": 1117
         },
         {
-          "line": 561,
+          "line": 591,
           "length": 1013
         },
         {
-          "line": 747,
+          "line": 777,
           "length": 2038
         },
         {
-          "line": 763,
+          "line": 793,
           "length": 1496
         },
         {
-          "line": 769,
+          "line": 799,
           "length": 1177
         },
         {
-          "line": 1111,
+          "line": 1141,
           "length": 1449
         },
         {
-          "line": 1147,
+          "line": 1177,
           "length": 1136
         },
         {
-          "line": 1149,
+          "line": 1179,
           "length": 1239
         },
         {
-          "line": 1185,
+          "line": 1215,
           "length": 1004
         }
       ],
@@ -11652,7 +11894,7 @@
     {
       "path": "docs/api/backup.md",
       "lineCount": 1161,
-      "byteSize": 36165,
+      "byteSize": 36172,
       "hasFrontmatter": false,
       "title": "バックアップAPI",
       "status": null,
@@ -11769,7 +12011,7 @@
     {
       "path": "docs/api/overview.md",
       "lineCount": 147,
-      "byteSize": 5683,
+      "byteSize": 5707,
       "hasFrontmatter": false,
       "title": "API概要",
       "status": null,
@@ -15637,8 +15879,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260502-dgx-resource-control-targets.md",
-      "lineCount": 54,
-      "byteSize": 3139,
+      "lineCount": 75,
+      "byteSize": 4572,
       "hasFrontmatter": true,
       "title": "ADR-20260502: DGX リソース管理に Control Target レジストリを導入する",
       "status": null,
@@ -16398,8 +16640,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md",
-      "lineCount": 83,
-      "byteSize": 12372,
+      "lineCount": 90,
+      "byteSize": 19270,
       "hasFrontmatter": false,
       "title": "ADR-20260707: Assembly Kiosk Record Approval Workflow and Home UI Consistency",
       "status": null,
@@ -16412,6 +16654,14 @@
         {
           "line": 47,
           "length": 1010
+        },
+        {
+          "line": 48,
+          "length": 1002
+        },
+        {
+          "line": 53,
+          "length": 1214
         }
       ],
       "referencesExecPlan": false
@@ -16781,13 +17031,19 @@
     {
       "path": "docs/decisions/ADR-20260723-assembly-torque-cross-work-id-confirmation-reuse.md",
       "lineCount": 56,
-      "byteSize": 5562,
+      "byteSize": 5768,
       "hasFrontmatter": true,
       "title": "ADR-20260723: Cross-Work-ID Torque Wrench Confirmation Reuse",
       "status": "accepted",
       "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 2,
+      "localLinks": [
+        {
+          "href": "ADR-20260827-torque-wrench-optional-settings.md",
+          "targetPath": "docs/decisions/ADR-20260827-torque-wrench-optional-settings.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 3,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -16927,8 +17183,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260727-assembly-template-guided-creation.md",
-      "lineCount": 45,
-      "byteSize": 4213,
+      "lineCount": 55,
+      "byteSize": 6194,
       "hasFrontmatter": true,
       "title": "組立テンプレート新規作成を表示手順基準の1画面ガイドにする",
       "status": "accepted",
@@ -17234,7 +17490,7 @@
       "status": "accepted",
       "source_of_truth": null,
       "localLinks": [],
-      "inboundCount": 1,
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -17270,7 +17526,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 1,
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -17308,11 +17564,114 @@
     },
     {
       "path": "docs/decisions/ADR-20260826-torque-training-one-touch-wrench-preparation.md",
-      "lineCount": 32,
-      "byteSize": 5743,
+      "lineCount": 37,
+      "byteSize": 7225,
       "hasFrontmatter": false,
       "title": "ADR-20260826 Torque training one-touch wrench preparation",
       "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "ADR-20260827-torque-wrench-optional-settings.md",
+          "targetPath": "docs/decisions/ADR-20260827-torque-wrench-optional-settings.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 4,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/decisions/ADR-20260827-torque-wrench-optional-settings.md",
+      "lineCount": 68,
+      "byteSize": 9366,
+      "hasFrontmatter": false,
+      "title": "ADR-20260827 トルクレンチ登録設定の任意照合",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "ADR-20260723-assembly-torque-cross-work-id-confirmation-reuse.md",
+          "targetPath": "docs/decisions/ADR-20260723-assembly-torque-cross-work-id-confirmation-reuse.md",
+          "exists": true
+        },
+        {
+          "href": "ADR-20260818-torque-wrench-global-ownership.md",
+          "targetPath": "docs/decisions/ADR-20260818-torque-wrench-global-ownership.md",
+          "exists": true
+        },
+        {
+          "href": "ADR-20260826-torque-training-one-touch-wrench-preparation.md",
+          "targetPath": "docs/decisions/ADR-20260826-torque-training-one-touch-wrench-preparation.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/torque-wrench-optional-settings-execplan.md",
+          "targetPath": "docs/plans/torque-wrench-optional-settings-execplan.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 5,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/decisions/ADR-20260907-hermes-business-butler-design-policy-v1.md",
+      "lineCount": 193,
+      "byteSize": 10706,
+      "hasFrontmatter": true,
+      "title": "ADR-20260907: Hermes business butler design policy v1",
+      "status": "accepted",
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "../../apps/api/src/routes/assembly/business-hermes.ts",
+          "targetPath": "apps/api/src/routes/assembly/business-hermes.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/src/services/assembly/business-hermes-chat.service.ts",
+          "targetPath": "apps/api/src/services/assembly/business-hermes-chat.service.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/src/services/assembly/business-hermes.service.ts",
+          "targetPath": "apps/api/src/services/assembly/business-hermes.service.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/src/services/work-instructions/domain/manifest.ts",
+          "targetPath": "apps/api/src/services/work-instructions/domain/manifest.ts",
+          "exists": true
+        },
+        {
+          "href": "../plans/business-hermes-butler-gate-execplan.md",
+          "targetPath": "docs/plans/business-hermes-butler-gate-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/business-hermes-butler-phase1-execplan.md",
+          "targetPath": "docs/plans/business-hermes-butler-phase1-execplan.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 4,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/decisions/ADR-20260923-hermes-cross-source-retrieval.md",
+      "lineCount": 146,
+      "byteSize": 8491,
+      "hasFrontmatter": true,
+      "title": "ADR-20260923: Hermes cross-source record retrieval architecture",
+      "status": "accepted",
       "source_of_truth": null,
       "localLinks": [],
       "inboundCount": 3,
@@ -17322,9 +17681,74 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/decisions/ADR-20260924-ai-agent-rules-context-slimming.md",
+      "lineCount": 49,
+      "byteSize": 2761,
+      "hasFrontmatter": true,
+      "title": "ADR-20260924: Slim always-loaded AI agent rules",
+      "status": "accepted",
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": true
+    },
+    {
+      "path": "docs/decisions/ADR-20260924-hermes-retrieval-hybrid-enrichment.md",
+      "lineCount": 58,
+      "byteSize": 3539,
+      "hasFrontmatter": true,
+      "title": "ADR-20260924: Hermes retrieval hybrid ranking and enrichment aliases",
+      "status": "accepted",
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/decisions/ADR-20260930-pi4-sd-card-backup.md",
+      "lineCount": 42,
+      "byteSize": 7486,
+      "hasFrontmatter": true,
+      "title": "ADR-20260930: Weekly encrypted Pi4 SD-card backup on the Pi5 with a Google Drive copy",
+      "status": "accepted",
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [
+        {
+          "line": 20,
+          "length": 1251
+        }
+      ],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/decisions/_template.md",
+      "lineCount": 9,
+      "byteSize": 310,
+      "hasFrontmatter": false,
+      "title": null,
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/design-previews/README.md",
-      "lineCount": 103,
-      "byteSize": 21696,
+      "lineCount": 106,
+      "byteSize": 23143,
       "hasFrontmatter": false,
       "title": "デザインプレビュー（静的 HTML）",
       "status": null,
@@ -17368,6 +17792,11 @@
         {
           "href": "./assembly-torque-wrench-traceability-preview.html",
           "targetPath": "docs/design-previews/assembly-torque-wrench-traceability-preview.html",
+          "exists": true
+        },
+        {
+          "href": "./kiosk-analytics-action-first-preview.html",
+          "targetPath": "docs/design-previews/kiosk-analytics-action-first-preview.html",
           "exists": true
         },
         {
@@ -17453,6 +17882,11 @@
         {
           "href": "./kiosk-self-inspection-record-approval-dense-preview.html",
           "targetPath": "docs/design-previews/kiosk-self-inspection-record-approval-dense-preview.html",
+          "exists": true
+        },
+        {
+          "href": "./kiosk-self-inspection-work-instruction-viewer-preview.html",
+          "targetPath": "docs/design-previews/kiosk-self-inspection-work-instruction-viewer-preview.html",
           "exists": true
         },
         {
@@ -17606,6 +18040,41 @@
           "exists": true
         },
         {
+          "href": "./signage-admin-unification/Boards.html",
+          "targetPath": "docs/design-previews/signage-admin-unification/Boards.html",
+          "exists": true
+        },
+        {
+          "href": "./signage-admin-unification/BoardsCsv.html",
+          "targetPath": "docs/design-previews/signage-admin-unification/BoardsCsv.html",
+          "exists": true
+        },
+        {
+          "href": "./signage-admin-unification/BoardsNew.html",
+          "targetPath": "docs/design-previews/signage-admin-unification/BoardsNew.html",
+          "exists": true
+        },
+        {
+          "href": "./signage-admin-unification/Emergency.html",
+          "targetPath": "docs/design-previews/signage-admin-unification/Emergency.html",
+          "exists": true
+        },
+        {
+          "href": "./signage-admin-unification/Main.html",
+          "targetPath": "docs/design-previews/signage-admin-unification/Main.html",
+          "exists": true
+        },
+        {
+          "href": "./signage-admin-unification/ScheduleEdit.html",
+          "targetPath": "docs/design-previews/signage-admin-unification/ScheduleEdit.html",
+          "exists": true
+        },
+        {
+          "href": "./signage-admin-unification/WebCapture.html",
+          "targetPath": "docs/design-previews/signage-admin-unification/WebCapture.html",
+          "exists": true
+        },
+        {
           "href": "./signage-leader-order-cards-kiosk-aligned-preview.html",
           "targetPath": "docs/design-previews/signage-leader-order-cards-kiosk-aligned-preview.html",
           "exists": true
@@ -17663,6 +18132,11 @@
         {
           "href": "../plans/mobile-placement-main-page-preview-parity.md",
           "targetPath": "docs/plans/mobile-placement-main-page-preview-parity.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/signage-admin-unification-execplan.md",
+          "targetPath": "docs/plans/signage-admin-unification-execplan.md",
           "exists": true
         }
       ],
@@ -17751,8 +18225,8 @@
     },
     {
       "path": "docs/guides/ai-handoff.md",
-      "lineCount": 64,
-      "byteSize": 2996,
+      "lineCount": 62,
+      "byteSize": 3153,
       "hasFrontmatter": true,
       "title": "AI引き継ぎガイド - 現行AI入口と正本ルール",
       "status": null,
@@ -18151,13 +18625,18 @@
     },
     {
       "path": "docs/guides/backup-configuration.md",
-      "lineCount": 798,
-      "byteSize": 31767,
+      "lineCount": 805,
+      "byteSize": 33227,
       "hasFrontmatter": true,
       "title": "バックアップ設定ガイド",
       "status": null,
       "source_of_truth": null,
       "localLinks": [
+        {
+          "href": "../decisions/ADR-20260820-google-drive-disaster-recovery.md",
+          "targetPath": "docs/decisions/ADR-20260820-google-drive-disaster-recovery.md",
+          "exists": true
+        },
         {
           "href": "./backup-and-restore.md",
           "targetPath": "docs/guides/backup-and-restore.md",
@@ -18506,8 +18985,8 @@
     },
     {
       "path": "docs/guides/backup-verification-checklist.md",
-      "lineCount": 104,
-      "byteSize": 3159,
+      "lineCount": 108,
+      "byteSize": 3641,
       "hasFrontmatter": false,
       "title": "バックアップ検証チェックリスト",
       "status": null,
@@ -18557,8 +19036,8 @@
     },
     {
       "path": "docs/guides/ci-branch-protection.md",
-      "lineCount": 88,
-      "byteSize": 8313,
+      "lineCount": 89,
+      "byteSize": 9084,
       "hasFrontmatter": false,
       "title": "段階型CIと`main` rulesetガイド",
       "status": null,
@@ -18594,7 +19073,7 @@
     {
       "path": "docs/guides/ci-troubleshooting.md",
       "lineCount": 436,
-      "byteSize": 23002,
+      "byteSize": 23108,
       "hasFrontmatter": true,
       "title": "CIテスト失敗のトラブルシューティングガイド",
       "status": null,
@@ -18674,8 +19153,8 @@
     },
     {
       "path": "docs/guides/client-initial-setup.md",
-      "lineCount": 674,
-      "byteSize": 24377,
+      "lineCount": 675,
+      "byteSize": 24518,
       "hasFrontmatter": true,
       "title": "新規クライアント端末の初期設定手順",
       "status": null,
@@ -18796,8 +19275,8 @@
     },
     {
       "path": "docs/guides/csv-import-export.md",
-      "lineCount": 1081,
-      "byteSize": 74227,
+      "lineCount": 1082,
+      "byteSize": 75399,
       "hasFrontmatter": false,
       "title": "CSVインポート・エクスポート仕様",
       "status": null,
@@ -19029,7 +19508,7 @@
     {
       "path": "docs/guides/deployment.md",
       "lineCount": 157,
-      "byteSize": 17876,
+      "byteSize": 18363,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -19041,7 +19520,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 196,
+      "inboundCount": 197,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -19396,7 +19875,7 @@
     {
       "path": "docs/guides/external-integration-ledger.md",
       "lineCount": 338,
-      "byteSize": 13530,
+      "byteSize": 13537,
       "hasFrontmatter": true,
       "title": "外部連携運用台帳",
       "status": null,
@@ -19563,8 +20042,8 @@
     },
     {
       "path": "docs/guides/gmail-setup-guide.md",
-      "lineCount": 486,
-      "byteSize": 26730,
+      "lineCount": 487,
+      "byteSize": 26990,
       "hasFrontmatter": true,
       "title": "Gmail連携セットアップガイド",
       "status": null,
@@ -19609,8 +20088,8 @@
     },
     {
       "path": "docs/guides/kiosk-production-schedule-load-balancing.md",
-      "lineCount": 265,
-      "byteSize": 22205,
+      "lineCount": 307,
+      "byteSize": 27499,
       "hasFrontmatter": false,
       "title": "キオスク 生産スケジュール 負荷調整（山崩し支援）",
       "status": null,
@@ -20064,7 +20543,7 @@
     {
       "path": "docs/guides/monitoring.md",
       "lineCount": 241,
-      "byteSize": 7563,
+      "byteSize": 8794,
       "hasFrontmatter": true,
       "title": "監視・アラートガイド",
       "status": null,
@@ -20073,6 +20552,11 @@
         {
           "href": "./local-alerts.md",
           "targetPath": "docs/guides/local-alerts.md",
+          "exists": true
+        },
+        {
+          "href": "../runbooks/pi5-blue-green-deploy.md#pi5-docker旧リリースイメージ整理",
+          "targetPath": "docs/runbooks/pi5-blue-green-deploy.md",
           "exists": true
         }
       ],
@@ -21304,8 +21788,8 @@
     },
     {
       "path": "docs/guides/status-agent.md",
-      "lineCount": 223,
-      "byteSize": 9784,
+      "lineCount": 242,
+      "byteSize": 12970,
       "hasFrontmatter": false,
       "title": "🛰️ status-agent セットアップガイド",
       "status": null,
@@ -21317,7 +21801,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 7,
+      "inboundCount": 8,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -22154,8 +22638,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-297-kiosk-due-management-workflow.md",
-      "lineCount": 3195,
-      "byteSize": 433874,
+      "lineCount": 3221,
+      "byteSize": 440272,
       "hasFrontmatter": true,
       "title": "KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装",
       "status": null,
@@ -22494,7 +22978,7 @@
           "length": 1224
         },
         {
-          "line": 649,
+          "line": 675,
           "length": 1803
         }
       ],
@@ -22856,8 +23340,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-320-kiosk-part-measurement.md",
-      "lineCount": 1949,
-      "byteSize": 215363,
+      "lineCount": 1951,
+      "byteSize": 217024,
       "hasFrontmatter": false,
       "title": "KB-320: キオスク部品測定（テンプレ不一致・候補・スキャン）",
       "status": null,
@@ -23259,11 +23743,11 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 1806,
+          "line": 1808,
           "length": 1045
         },
         {
-          "line": 1813,
+          "line": 1815,
           "length": 1213
         }
       ],
@@ -24594,8 +25078,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md",
-      "lineCount": 379,
-      "byteSize": 59586,
+      "lineCount": 388,
+      "byteSize": 63996,
       "hasFrontmatter": true,
       "title": "KB-369 キオスク順位ボード API の内部レイテンシ（COUNT + 行取得）",
       "status": null,
@@ -24721,15 +25205,19 @@
           "length": 1164
         },
         {
-          "line": 295,
+          "line": 79,
+          "length": 1101
+        },
+        {
+          "line": 304,
           "length": 1220
         },
         {
-          "line": 297,
+          "line": 306,
           "length": 1290
         },
         {
-          "line": 299,
+          "line": 308,
           "length": 1426
         }
       ],
@@ -25795,8 +26283,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-391-gmail-csv-import-reliability.md",
-      "lineCount": 282,
-      "byteSize": 21958,
+      "lineCount": 288,
+      "byteSize": 22762,
       "hasFrontmatter": false,
       "title": "KB-391: Gmail CSV import reliability (FKOJUNST advisory lock + schedule collision warnings)",
       "status": null,
@@ -25882,8 +26370,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-393-security-hardening-audit-2026-07.md",
-      "lineCount": 79,
-      "byteSize": 8159,
+      "lineCount": 109,
+      "byteSize": 15569,
       "hasFrontmatter": false,
       "title": "KB-393: Security hardening audit (2026-07) — API authz, path traversal, secrets, infra",
       "status": null,
@@ -25910,7 +26398,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 3,
+      "inboundCount": 4,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -26248,6 +26736,151 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/knowledge-base/KB-409-kiosk-inventory-daily-and-setup-screens.md",
+      "lineCount": 92,
+      "byteSize": 8689,
+      "hasFrontmatter": true,
+      "title": "Kiosk inventory split into a daily NFC screen and a touch setup screen",
+      "status": "accepted",
+      "source_of_truth": "false",
+      "localLinks": [
+        {
+          "href": "../plans/kiosk-inventory-ux-execplan.md",
+          "targetPath": "docs/plans/kiosk-inventory-ux-execplan.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-410-pi5-nonroot-cutover-root-owned-storage-files.md",
+      "lineCount": 114,
+      "byteSize": 6094,
+      "hasFrontmatter": true,
+      "title": "Pi5 non-root cutover left root-owned storage files (inspection drawing not shown)",
+      "status": "active",
+      "source_of_truth": "true",
+      "localLinks": [
+        {
+          "href": "../plans/production-secrets-and-runtime-execplan.md",
+          "targetPath": "docs/plans/production-secrets-and-runtime-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/standard-release-production-path-audit-execplan.md",
+          "targetPath": "docs/plans/standard-release-production-path-audit-execplan.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-411-planning-board-resource-view-update-loop.md",
+      "lineCount": 62,
+      "byteSize": 4186,
+      "hasFrontmatter": true,
+      "title": "Kiosk planning board (製番ボード) resource view crashed with a React update loop on 切削",
+      "status": "active",
+      "source_of_truth": "false",
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-412-kiosk-firefox-focus-testmode-blocks-ime.md",
+      "lineCount": 72,
+      "byteSize": 5805,
+      "hasFrontmatter": true,
+      "title": "Kiosk Firefox stopped passing keys to IBus (日本語入力不可) because focusmanager.testmode was left in the profile",
+      "status": "active",
+      "source_of_truth": "true",
+      "localLinks": [
+        {
+          "href": "./frontend.md#kb-276-pi4キオスクの日本語入力モード切替問題とibus設定改善",
+          "targetPath": "docs/knowledge-base/frontend.md",
+          "exists": true
+        },
+        {
+          "href": "../runbooks/kiosk-ime-diagnosis.md",
+          "targetPath": "docs/runbooks/kiosk-ime-diagnosis.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-413-kiosk-chromium-canary-stonebase01.md",
+      "lineCount": 88,
+      "byteSize": 9008,
+      "hasFrontmatter": true,
+      "title": "Kiosk browser canary on StoneBase01 — Firefox to Chromium for faster screens",
+      "status": "active",
+      "source_of_truth": "true",
+      "localLinks": [
+        {
+          "href": "./KB-investigation-kiosk-ime-and-power-regression.md",
+          "targetPath": "docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-414-pi4-agent-image-armv7-build-one-hour.md",
+      "lineCount": 64,
+      "byteSize": 4175,
+      "hasFrontmatter": false,
+      "title": "KB-414: Pi4 agent image builds took about one hour on linux/arm/v7",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-415-ai-security-scan-2026-10.md",
+      "lineCount": 76,
+      "byteSize": 6560,
+      "hasFrontmatter": false,
+      "title": "KB-415: AI security scan of the whole repository (2026-10) and the access-control fixes it led to",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "./KB-393-security-hardening-audit-2026-07.md",
+          "targetPath": "docs/knowledge-base/KB-393-security-hardening-audit-2026-07.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md",
       "lineCount": 203,
       "byteSize": 12918,
@@ -26287,7 +26920,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 3,
+      "inboundCount": 4,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -27101,9 +27734,24 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/knowledge-base/_template.md",
+      "lineCount": 12,
+      "byteSize": 494,
+      "hasFrontmatter": false,
+      "title": null,
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/knowledge-base/api.md",
-      "lineCount": 4881,
-      "byteSize": 354637,
+      "lineCount": 4899,
+      "byteSize": 356482,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - API関連",
       "status": null,
@@ -27773,7 +28421,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 246,
+      "inboundCount": 247,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -27781,8 +28429,8 @@
     },
     {
       "path": "docs/knowledge-base/index.md",
-      "lineCount": 872,
-      "byteSize": 263424,
+      "lineCount": 879,
+      "byteSize": 265634,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - 索引",
       "status": null,
@@ -30364,6 +31012,41 @@
           "exists": true
         },
         {
+          "href": "./KB-409-kiosk-inventory-daily-and-setup-screens.md",
+          "targetPath": "docs/knowledge-base/KB-409-kiosk-inventory-daily-and-setup-screens.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-410-pi5-nonroot-cutover-root-owned-storage-files.md",
+          "targetPath": "docs/knowledge-base/KB-410-pi5-nonroot-cutover-root-owned-storage-files.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-411-planning-board-resource-view-update-loop.md",
+          "targetPath": "docs/knowledge-base/KB-411-planning-board-resource-view-update-loop.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-412-kiosk-firefox-focus-testmode-blocks-ime.md",
+          "targetPath": "docs/knowledge-base/KB-412-kiosk-firefox-focus-testmode-blocks-ime.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-413-kiosk-chromium-canary-stonebase01.md",
+          "targetPath": "docs/knowledge-base/KB-413-kiosk-chromium-canary-stonebase01.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-414-pi4-agent-image-armv7-build-one-hour.md",
+          "targetPath": "docs/knowledge-base/KB-414-pi4-agent-image-armv7-build-one-hour.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-415-ai-security-scan-2026-10.md",
+          "targetPath": "docs/knowledge-base/KB-415-ai-security-scan-2026-10.md",
+          "exists": true
+        },
+        {
           "href": "./KB-investigation-kiosk-ime-and-power-regression.md",
           "targetPath": "docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md",
           "exists": true
@@ -31881,8 +32564,8 @@
     },
     {
       "path": "docs/modules/measuring-instruments/api.md",
-      "lineCount": 175,
-      "byteSize": 7944,
+      "lineCount": 185,
+      "byteSize": 10189,
       "hasFrontmatter": false,
       "title": "計測機器管理モジュール API仕様書",
       "status": null,
@@ -31891,6 +32574,11 @@
         {
           "href": "../../decisions/ADR-20260826-torque-training-one-touch-wrench-preparation.md",
           "targetPath": "docs/decisions/ADR-20260826-torque-training-one-touch-wrench-preparation.md",
+          "exists": true
+        },
+        {
+          "href": "../../decisions/ADR-20260827-torque-wrench-optional-settings.md",
+          "targetPath": "docs/decisions/ADR-20260827-torque-wrench-optional-settings.md",
           "exists": true
         }
       ],
@@ -31902,8 +32590,8 @@
     },
     {
       "path": "docs/modules/measuring-instruments/ui.md",
-      "lineCount": 167,
-      "byteSize": 17056,
+      "lineCount": 180,
+      "byteSize": 20105,
       "hasFrontmatter": false,
       "title": "計測機器管理 UI設計メモ",
       "status": null,
@@ -31912,6 +32600,11 @@
         {
           "href": "../../decisions/ADR-20260826-torque-training-one-touch-wrench-preparation.md",
           "targetPath": "docs/decisions/ADR-20260826-torque-training-one-touch-wrench-preparation.md",
+          "exists": true
+        },
+        {
+          "href": "../../decisions/ADR-20260827-torque-wrench-optional-settings.md",
+          "targetPath": "docs/decisions/ADR-20260827-torque-wrench-optional-settings.md",
           "exists": true
         },
         {
@@ -31955,6 +32648,11 @@
           "exists": true
         },
         {
+          "href": "../../plans/kiosk-tag-desk-execplan.md",
+          "targetPath": "docs/plans/kiosk-tag-desk-execplan.md",
+          "exists": true
+        },
+        {
           "href": "../../plans/nfc-stream-isolation-plan.md",
           "targetPath": "docs/plans/nfc-stream-isolation-plan.md",
           "exists": true
@@ -31973,8 +32671,8 @@
     },
     {
       "path": "docs/modules/signage/README.md",
-      "lineCount": 617,
-      "byteSize": 36494,
+      "lineCount": 647,
+      "byteSize": 42819,
       "hasFrontmatter": false,
       "title": "デジタルサイネージモジュール",
       "status": null,
@@ -32110,8 +32808,8 @@
     },
     {
       "path": "docs/modules/tools/README.md",
-      "lineCount": 282,
-      "byteSize": 12362,
+      "lineCount": 284,
+      "byteSize": 12846,
       "hasFrontmatter": false,
       "title": "工具管理モジュール",
       "status": null,
@@ -32155,6 +32853,11 @@
         {
           "href": "./services.md",
           "targetPath": "docs/modules/tools/services.md",
+          "exists": true
+        },
+        {
+          "href": "../../plans/kiosk-tag-desk-execplan.md",
+          "targetPath": "docs/plans/kiosk-tag-desk-execplan.md",
           "exists": true
         },
         {
@@ -32729,6 +33432,98 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/business-hermes-assembly-guide.md",
+      "lineCount": 79,
+      "byteSize": 12996,
+      "hasFrontmatter": false,
+      "title": "業務Hermesによる組立作業案内の最小縦断",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/business-hermes-butler-gate-execplan.md",
+      "lineCount": 120,
+      "byteSize": 18053,
+      "hasFrontmatter": false,
+      "title": "Business Hermes Butler: design policy and technical gate",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "../decisions/ADR-20260907-hermes-business-butler-design-policy-v1.md",
+          "targetPath": "docs/decisions/ADR-20260907-hermes-business-butler-design-policy-v1.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 3,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/business-hermes-butler-phase1-execplan.md",
+      "lineCount": 529,
+      "byteSize": 34709,
+      "hasFrontmatter": false,
+      "title": "Hermes business butler v1: gated phase 1 implementation",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "../decisions/ADR-20260907-hermes-business-butler-design-policy-v1.md",
+          "targetPath": "docs/decisions/ADR-20260907-hermes-business-butler-design-policy-v1.md",
+          "exists": true
+        },
+        {
+          "href": "./business-hermes-butler-gate-execplan.md",
+          "targetPath": "docs/plans/business-hermes-butler-gate-execplan.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 5,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/business-hermes-consultation-boundaries-execplan.md",
+      "lineCount": 101,
+      "byteSize": 14561,
+      "hasFrontmatter": false,
+      "title": "Separate Hermes response parsing from evidence projection",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/business-hermes-signage-live-data.md",
+      "lineCount": 105,
+      "byteSize": 9862,
+      "hasFrontmatter": false,
+      "title": "Business Hermes signage live data",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/ci-security-baseline-execplan.md",
       "lineCount": 162,
       "byteSize": 16935,
@@ -32986,6 +33781,26 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/dgx-night-preparation-execplan.md",
+      "lineCount": 137,
+      "byteSize": 16520,
+      "hasFrontmatter": false,
+      "title": "DGX Spark as the night preparation worker for business Hermes",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [
+        {
+          "line": 91,
+          "length": 1086
+        }
+      ],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/dgx-resource-dashboard-ui-phase8.md",
       "lineCount": 87,
       "byteSize": 5287,
@@ -33179,6 +33994,34 @@
       "referencesExecPlan": true
     },
     {
+      "path": "docs/plans/explicit-site-scope-execplan.md",
+      "lineCount": 148,
+      "byteSize": 30711,
+      "hasFrontmatter": true,
+      "title": "Give every kiosk device an explicit site, safely and in small steps",
+      "status": "completed",
+      "source_of_truth": "true",
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [
+        {
+          "line": 53,
+          "length": 1024
+        },
+        {
+          "line": 90,
+          "length": 1114
+        },
+        {
+          "line": 98,
+          "length": 1282
+        }
+      ],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/fail-closed-production-config-and-terminal-health-execplan.md",
       "lineCount": 463,
       "byteSize": 24447,
@@ -33310,6 +34153,346 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/grinding-planning-board-due-scope-execplan.md",
+      "lineCount": 85,
+      "byteSize": 11566,
+      "hasFrontmatter": false,
+      "title": "Add planning-board due scopes",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/hermes-answer-cache.md",
+      "lineCount": 153,
+      "byteSize": 28258,
+      "hasFrontmatter": false,
+      "title": "Hermes reviewed answer reuse",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "hermes-learning-evaluation.md",
+          "targetPath": "docs/plans/hermes-learning-evaluation.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/hermes-background-admission.md",
+      "lineCount": 57,
+      "byteSize": 6207,
+      "hasFrontmatter": false,
+      "title": "Run Hermes preparation whenever DGX capacity is available",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/hermes-background-worker.md",
+      "lineCount": 188,
+      "byteSize": 31634,
+      "hasFrontmatter": true,
+      "title": "Delegate bounded Hermes preparation to DGX",
+      "status": "in-progress",
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [
+        {
+          "line": 28,
+          "length": 1085
+        }
+      ],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/hermes-cross-source-foundation-execplan.md",
+      "lineCount": 234,
+      "byteSize": 44432,
+      "hasFrontmatter": true,
+      "title": "Hermes横断検索の土台（ソース追加の共通口・DB索引・ページ文脈）",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [
+        {
+          "line": 152,
+          "length": 1029
+        },
+        {
+          "line": 158,
+          "length": 1019
+        }
+      ],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/hermes-cross-source-retrieval-execplan.md",
+      "lineCount": 233,
+      "byteSize": 33488,
+      "hasFrontmatter": true,
+      "title": "Hermes cross-source record retrieval (source catalog, query plan, offline evaluation)",
+      "status": "in-progress",
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 3,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/hermes-dgx-retrieval-enrichment.md",
+      "lineCount": 59,
+      "byteSize": 6838,
+      "hasFrontmatter": false,
+      "title": "Hermes DGX retrieval enrichment",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/hermes-jev-search-handoff-20260923.md",
+      "lineCount": 167,
+      "byteSize": 11307,
+      "hasFrontmatter": true,
+      "title": "Hermes/JEV record-search handoff and completion boundary",
+      "status": "in-progress",
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "../decisions/ADR-20260907-hermes-business-butler-design-policy-v1.md",
+          "targetPath": "docs/decisions/ADR-20260907-hermes-business-butler-design-policy-v1.md",
+          "exists": true
+        },
+        {
+          "href": "../decisions/ADR-20260923-hermes-cross-source-retrieval.md",
+          "targetPath": "docs/decisions/ADR-20260923-hermes-cross-source-retrieval.md",
+          "exists": true
+        },
+        {
+          "href": "./business-hermes-butler-phase1-execplan.md",
+          "targetPath": "docs/plans/business-hermes-butler-phase1-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "./hermes-background-worker.md",
+          "targetPath": "docs/plans/hermes-background-worker.md",
+          "exists": true
+        },
+        {
+          "href": "./hermes-cross-source-retrieval-execplan.md",
+          "targetPath": "docs/plans/hermes-cross-source-retrieval-execplan.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/hermes-knowledge-procedures-execplan.md",
+      "lineCount": 286,
+      "byteSize": 56331,
+      "hasFrontmatter": false,
+      "title": "Chatに投げ込んだ素材をAIが手順書に仕立て、Chatで閲覧できるようにする",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "../decisions/ADR-20260923-hermes-cross-source-retrieval.md",
+          "targetPath": "docs/decisions/ADR-20260923-hermes-cross-source-retrieval.md",
+          "exists": true
+        },
+        {
+          "href": "./business-hermes-butler-phase1-execplan.md",
+          "targetPath": "docs/plans/business-hermes-butler-phase1-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "./hermes-cross-source-retrieval-execplan.md",
+          "targetPath": "docs/plans/hermes-cross-source-retrieval-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "./hermes-knowledge.md",
+          "targetPath": "docs/plans/hermes-knowledge.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [
+        {
+          "line": 277,
+          "length": 1070
+        }
+      ],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/hermes-knowledge.md",
+      "lineCount": 91,
+      "byteSize": 13557,
+      "hasFrontmatter": false,
+      "title": "Hermes knowledge: Markdown, photographs, PDFs and reports",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/hermes-learning-evaluation.md",
+      "lineCount": 150,
+      "byteSize": 22893,
+      "hasFrontmatter": false,
+      "title": "Hermes measured Skill improvement",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/hermes-nightly-doc2query.md",
+      "lineCount": 111,
+      "byteSize": 12283,
+      "hasFrontmatter": false,
+      "title": "Hermes nightly document questions and independent evaluation",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/hermes-pi5-search-spark-inference.md",
+      "lineCount": 165,
+      "byteSize": 9719,
+      "hasFrontmatter": false,
+      "title": "Run the Hermes search trial on Pi5 with Spark inference",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/hermes-question-prefetch.md",
+      "lineCount": 127,
+      "byteSize": 15685,
+      "hasFrontmatter": false,
+      "title": "Hermes question recipes and one-candidate prefetch",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/hermes-retrieval-accuracy-log.md",
+      "lineCount": 383,
+      "byteSize": 46110,
+      "hasFrontmatter": false,
+      "title": "Hermes retrieval accuracy log",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/hermes-source-fact-adoption.md",
+      "lineCount": 67,
+      "byteSize": 9263,
+      "hasFrontmatter": false,
+      "title": "Hermes source-fact adoption",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/hermes-synthetic-question-flywheel-execplan.md",
+      "lineCount": 152,
+      "byteSize": 29459,
+      "hasFrontmatter": false,
+      "title": "Hermes synthetic question flywheel for nonconformity retrieval",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [
+        {
+          "line": 116,
+          "length": 1248
+        },
+        {
+          "line": 126,
+          "length": 1162
+        },
+        {
+          "line": 128,
+          "length": 1021
+        }
+      ],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/imports-ts-refactoring-plan.md",
       "lineCount": 293,
       "byteSize": 11475,
@@ -33361,6 +34544,21 @@
         }
       ],
       "inboundCount": 7,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/inspection-drawing-dgx-dimension-map-execplan.md",
+      "lineCount": 382,
+      "byteSize": 52023,
+      "hasFrontmatter": true,
+      "title": "検査図面の夜間寸法解析（DGX）と丸数字の先回り配置",
+      "status": "active",
+      "source_of_truth": "true",
+      "localLinks": [],
+      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -33507,8 +34705,8 @@
     },
     {
       "path": "docs/plans/kiosk-analytics-bi-dashboard-execplan.md",
-      "lineCount": 45,
-      "byteSize": 2788,
+      "lineCount": 55,
+      "byteSize": 3882,
       "hasFrontmatter": false,
       "title": "ExecPlan: キオスク集計 BI レイアウト（非スクロール・Top N）",
       "status": null,
@@ -33738,6 +34936,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/kiosk-grinding-planning-board.md",
+      "lineCount": 169,
+      "byteSize": 30473,
+      "hasFrontmatter": false,
+      "title": "Kiosk grinding planning board",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/kiosk-html-gmail-ingest-verification.md",
       "lineCount": 75,
       "byteSize": 7122,
@@ -33937,6 +35150,21 @@
       "source_of_truth": "this file",
       "localLinks": [],
       "inboundCount": 4,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/kiosk-inventory-ux-execplan.md",
+      "lineCount": 340,
+      "byteSize": 41292,
+      "hasFrontmatter": false,
+      "title": "Kiosk inventory screens: one daily NFC screen and a separate setup screen",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -34165,6 +35393,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/kiosk-tag-desk-execplan.md",
+      "lineCount": 107,
+      "byteSize": 13291,
+      "hasFrontmatter": false,
+      "title": "キオスク「タグ管理」デスク：NFCタグの紐づけ・切り離しとマスター編集の移設",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 3,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/kiosk-tiff-wip-cards.md",
       "lineCount": 112,
       "byteSize": 6246,
@@ -34211,6 +35454,21 @@
       "byteSize": 18819,
       "hasFrontmatter": false,
       "title": "Prevent intermittent kiosk white screens from stale lazy chunks",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/kiosk-work-instruction-viewer-execplan.md",
+      "lineCount": 144,
+      "byteSize": 18385,
+      "hasFrontmatter": false,
+      "title": "自主検査画面から作業要領書を閲覧できるようにする",
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
@@ -34409,6 +35667,21 @@
         }
       ],
       "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/machine-signal-uptime-execplan.md",
+      "lineCount": 219,
+      "byteSize": 29519,
+      "hasFrontmatter": false,
+      "title": "設備稼働：信号灯センサーの日報から、機械を長く止めずに動かす手がかりを出す",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -34694,6 +35967,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/pi4-sd-card-backup-execplan.md",
+      "lineCount": 52,
+      "byteSize": 5129,
+      "hasFrontmatter": true,
+      "title": "Pi4 SD-card backup and card replacement ExecPlan",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/pi4-sd-recovery-bootstrap.md",
       "lineCount": 143,
       "byteSize": 8173,
@@ -34831,6 +36119,21 @@
           "length": 1083
         }
       ],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/planning-board-background-writes.md",
+      "lineCount": 71,
+      "byteSize": 9532,
+      "hasFrontmatter": false,
+      "title": "Make planning-board edits immediate with ordered background saves",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
       "referencesExecPlan": false
     },
     {
@@ -35421,6 +36724,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/procedure-manuals-execplan.md",
+      "lineCount": 522,
+      "byteSize": 104414,
+      "hasFrontmatter": false,
+      "title": "機種×工程ごとの要領書を、組立手順書を正本にして閲覧・作成できるようにする",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/production-deployment-management-plan.md",
       "lineCount": 1232,
       "byteSize": 49093,
@@ -35678,6 +36996,36 @@
       "referencesExecPlan": true
     },
     {
+      "path": "docs/plans/production-schedule-lookup-boundary-execplan.md",
+      "lineCount": 136,
+      "byteSize": 17571,
+      "hasFrontmatter": true,
+      "title": "Production schedule lookup ownership boundary",
+      "status": "completed",
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/production-schedule-snapshot-boundary-execplan.md",
+      "lineCount": 125,
+      "byteSize": 19015,
+      "hasFrontmatter": true,
+      "title": "Production schedule snapshot ownership boundary",
+      "status": "completed",
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/production-schedule-split-orders.md",
       "lineCount": 878,
       "byteSize": 58957,
@@ -35707,6 +37055,21 @@
           "exists": true
         }
       ],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/raspi-item-inventory-execplan.md",
+      "lineCount": 133,
+      "byteSize": 12441,
+      "hasFrontmatter": false,
+      "title": "Raspberry Pi Item Inventory",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
       "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
@@ -35790,9 +37153,24 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/scaw-nonconformity-self-inspection-execplan.md",
+      "lineCount": 114,
+      "byteSize": 15928,
+      "hasFrontmatter": false,
+      "title": "SCAW nonconformity import and self-inspection display",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/security-client-key-rotation-phase-a.md",
-      "lineCount": 170,
-      "byteSize": 20511,
+      "lineCount": 172,
+      "byteSize": 21934,
       "hasFrontmatter": true,
       "title": "Phase A: Externalize client credentials and remove signage renderer coupling",
       "status": "completed",
@@ -35801,7 +37179,36 @@
       "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
-      "longLines": [],
+      "longLines": [
+        {
+          "line": 172,
+          "length": 1334
+        }
+      ],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/security-client-key-rotation-phase-b.md",
+      "lineCount": 155,
+      "byteSize": 21351,
+      "hasFrontmatter": true,
+      "title": "Phase B: Rotate every device credential to a per-device random value",
+      "status": "draft",
+      "source_of_truth": "this plan",
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [
+        {
+          "line": 104,
+          "length": 1296
+        },
+        {
+          "line": 106,
+          "length": 1449
+        }
+      ],
       "referencesExecPlan": false
     },
     {
@@ -35923,6 +37330,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/self-inspection-reduction-insights-execplan.md",
+      "lineCount": 94,
+      "byteSize": 9058,
+      "hasFrontmatter": false,
+      "title": "Self-inspection reduction insights (減らせる検査) ExecPlan",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/self-inspection-use-case-boundaries-execplan.md",
       "lineCount": 199,
       "byteSize": 19233,
@@ -35935,6 +37357,61 @@
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/self-inspection-work-instruction-uiux.md",
+      "lineCount": 52,
+      "byteSize": 6018,
+      "hasFrontmatter": false,
+      "title": "Self-inspection work-instruction UI/UX",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [
+        {
+          "line": 52,
+          "length": 1057
+        }
+      ],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/sharepoint-work-instructions-execplan.md",
+      "lineCount": 142,
+      "byteSize": 21201,
+      "hasFrontmatter": false,
+      "title": "SharePoint work-instruction ingestion and Raspberry Pi grouping",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/signage-admin-unification-execplan.md",
+      "lineCount": 305,
+      "byteSize": 54707,
+      "hasFrontmatter": false,
+      "title": "Signage Admin Unification, Web Page Capture Content, and Data Boards（サイネージ管理の1画面統合・ページ撮影・データボード統合）",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [
+        {
+          "line": 135,
+          "length": 1070
+        }
+      ],
       "referencesExecPlan": false
     },
     {
@@ -36257,7 +37734,7 @@
       "status": "in-progress",
       "source_of_truth": "docs/plans/standard-release-production-path-audit-execplan.md",
       "localLinks": [],
-      "inboundCount": 1,
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -36360,6 +37837,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/torque-wrench-optional-settings-execplan.md",
+      "lineCount": 186,
+      "byteSize": 28277,
+      "hasFrontmatter": false,
+      "title": "トルクレンチ設定登録の任意化・接続操作統一",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/ts100-integration-plan.md",
       "lineCount": 51,
       "byteSize": 4261,
@@ -36369,6 +37861,21 @@
       "source_of_truth": null,
       "localLinks": [],
       "inboundCount": 3,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/work-instruction-overlay-editing-execplan.md",
+      "lineCount": 131,
+      "byteSize": 9387,
+      "hasFrontmatter": false,
+      "title": "Work Instruction Overlay Editing and Versioned Publication",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -36884,6 +38391,32 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/runbooks/business-hermes.md",
+      "lineCount": 134,
+      "byteSize": 13977,
+      "hasFrontmatter": false,
+      "title": "業務Hermesの独立運用",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "../plans/business-hermes-butler-phase1-execplan.md",
+          "targetPath": "docs/plans/business-hermes-butler-phase1-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/hermes-question-prefetch.md",
+          "targetPath": "docs/plans/hermes-question-prefetch.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/runbooks/client-agent-addition.md",
       "lineCount": 51,
       "byteSize": 4594,
@@ -36986,8 +38519,8 @@
     },
     {
       "path": "docs/runbooks/dgx-system-prod-local-llm.md",
-      "lineCount": 1217,
-      "byteSize": 137268,
+      "lineCount": 1286,
+      "byteSize": 143081,
       "hasFrontmatter": false,
       "title": "Runbook: DGX Spark system-prod LocalLLM 段階切替",
       "status": null,
@@ -37383,7 +38916,7 @@
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
-      "inboundCount": 3,
+      "inboundCount": 4,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -37391,8 +38924,8 @@
     },
     {
       "path": "docs/runbooks/kiosk-device-initial-route.md",
-      "lineCount": 259,
-      "byteSize": 10563,
+      "lineCount": 260,
+      "byteSize": 10629,
       "hasFrontmatter": true,
       "title": "Runbook: Kiosk Device Initial Route",
       "status": "active",
@@ -37528,8 +39061,8 @@
     },
     {
       "path": "docs/runbooks/kiosk-ime-diagnosis.md",
-      "lineCount": 106,
-      "byteSize": 5679,
+      "lineCount": 108,
+      "byteSize": 6072,
       "hasFrontmatter": true,
       "title": "Runbook: キオスク備考欄 日本語入力不具合の診断",
       "status": null,
@@ -37546,6 +39079,11 @@
           "exists": true
         },
         {
+          "href": "../knowledge-base/KB-412-kiosk-firefox-focus-testmode-blocks-ime.md",
+          "targetPath": "docs/knowledge-base/KB-412-kiosk-firefox-focus-testmode-blocks-ime.md",
+          "exists": true
+        },
+        {
           "href": "../knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md",
           "targetPath": "docs/knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md",
           "exists": true
@@ -37556,7 +39094,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 1,
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -37579,8 +39117,8 @@
     },
     {
       "path": "docs/runbooks/kiosk-part-measurement.md",
-      "lineCount": 1523,
-      "byteSize": 128624,
+      "lineCount": 1529,
+      "byteSize": 129685,
       "hasFrontmatter": false,
       "title": "キオスク: 部品測定記録（part-measurement）",
       "status": null,
@@ -38366,15 +39904,46 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/runbooks/pi4-sd-card-backup.md",
+      "lineCount": 60,
+      "byteSize": 5229,
+      "hasFrontmatter": true,
+      "title": "Pi4 SD-card backup and card replacement Runbook",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "../decisions/ADR-20260930-pi4-sd-card-backup.md",
+          "targetPath": "docs/decisions/ADR-20260930-pi4-sd-card-backup.md",
+          "exists": true
+        },
+        {
+          "href": "../guides/deployment.md",
+          "targetPath": "docs/guides/deployment.md",
+          "exists": true
+        },
+        {
+          "href": "../guides/status-agent.md",
+          "targetPath": "docs/guides/status-agent.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/runbooks/pi5-blue-green-deploy.md",
-      "lineCount": 48,
-      "byteSize": 2494,
+      "lineCount": 106,
+      "byteSize": 7095,
       "hasFrontmatter": true,
       "title": "Pi5標準Ansible診断Runbook",
       "status": "active",
       "source_of_truth": "docs/runbooks/pi5-blue-green-deploy.md",
       "localLinks": [],
-      "inboundCount": 4,
+      "inboundCount": 5,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -38775,9 +40344,45 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/runbooks/scaw-nonconformity-self-inspection.md",
+      "lineCount": 155,
+      "byteSize": 13729,
+      "hasFrontmatter": false,
+      "title": "SCAW Nonconformity Self-Inspection Operations Runbook",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "../plans/scaw-nonconformity-self-inspection-execplan.md",
+          "targetPath": "docs/plans/scaw-nonconformity-self-inspection-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "./google-drive-disaster-recovery.md",
+          "targetPath": "docs/runbooks/google-drive-disaster-recovery.md",
+          "exists": true
+        },
+        {
+          "href": "../../scripts/deploy/validate-candidate-migrations.sh",
+          "targetPath": "scripts/deploy/validate-candidate-migrations.sh",
+          "exists": true
+        },
+        {
+          "href": "../../scripts/test/work-instructions-validation.sh",
+          "targetPath": "scripts/test/work-instructions-validation.sh",
+          "exists": true
+        }
+      ],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/runbooks/security-hardening-remediation.md",
-      "lineCount": 99,
-      "byteSize": 7324,
+      "lineCount": 107,
+      "byteSize": 7908,
       "hasFrontmatter": false,
       "title": "Runbook: Security hardening remediation (Batch C — operator actions)",
       "status": null,
@@ -38806,6 +40411,16 @@
         {
           "href": "../knowledge-base/KB-403-production-config-contract-and-nfc-health.md",
           "targetPath": "docs/knowledge-base/KB-403-production-config-contract-and-nfc-health.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/security-client-key-rotation-phase-b.md",
+          "targetPath": "docs/plans/security-client-key-rotation-phase-b.md",
+          "exists": true
+        },
+        {
+          "href": "../security/phase9-10-specifications.md",
+          "targetPath": "docs/security/phase9-10-specifications.md",
           "exists": true
         }
       ],
@@ -39849,8 +41464,8 @@
     },
     {
       "path": "docs/security/phase9-10-specifications.md",
-      "lineCount": 656,
-      "byteSize": 25262,
+      "lineCount": 663,
+      "byteSize": 26452,
       "hasFrontmatter": false,
       "title": "Phase 9/10 セキュリティ機能詳細仕様書",
       "status": null,
@@ -39882,7 +41497,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 11,
+      "inboundCount": 12,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],

@@ -11,18 +11,18 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 
 | Metric | Count |
 |--------|------:|
-| Documents | 639 |
-| Total lines | 174498 |
-| Total bytes | 13199875 |
-| With frontmatter | 293 |
-| With status | 148 |
-| source_of_truth declared | 107 |
-| References to EXEC_PLAN.md | 64 |
+| Documents | 701 |
+| Total lines | 183890 |
+| Total bytes | 14448466 |
+| With frontmatter | 314 |
+| With status | 166 |
+| source_of_truth declared | 115 |
+| References to EXEC_PLAN.md | 62 |
 | Question-mark corruption documents | 1 |
 | Replacement-character documents | 1 |
-| Long-line documents | 26 |
-| Local links | 5665 |
-| Broken local links | 88 |
+| Long-line documents | 37 |
+| Local links | 5779 |
+| Broken local links | 89 |
 | Documents over 1,000 lines | 29 |
 | Documents over 3,000 lines | 6 |
 
@@ -31,32 +31,29 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Path | Lines | Bytes |
 |------|------:|------:|
 | `docs/plans/docs-canonicalization-roadmap.md` | 5580 | 232496 |
-| `docs/knowledge-base/api.md` | 4881 | 354637 |
+| `docs/knowledge-base/api.md` | 4899 | 356482 |
 | `EXEC_PLAN.md` | 4660 | 976722 |
 | `docs/knowledge-base/frontend.md` | 4643 | 277726 |
 | `docs/knowledge-base/infrastructure/ansible-deployment.md` | 4368 | 281621 |
-| `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` | 3195 | 433874 |
+| `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` | 3221 | 440272 |
 | `docs/archive/deployments/2026-05.md` | 2571 | 499357 |
 | `docs/archive/architecture/deployment-modules-legacy-through-2026-07.md` | 2522 | 128149 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2208 | 137917 |
 | `docs/knowledge-base/infrastructure/signage.md` | 2208 | 190029 |
-| `docs/INDEX.md` | 2022 | 350666 |
-| `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1949 | 215363 |
+| `docs/INDEX.md` | 2069 | 357108 |
+| `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1951 | 217024 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153539 |
 | `docs/archive/deployments/legacy-operator-guide-through-2026-07.md` | 1600 | 108031 |
-| `docs/runbooks/kiosk-part-measurement.md` | 1523 | 128624 |
+| `docs/runbooks/kiosk-part-measurement.md` | 1529 | 129685 |
 
 ## EXEC_PLAN References
 
-- `.cursor/rules/01-core-docs-and-knowledge.mdc`
-- `.cursor/rules/20-git-workflow.mdc`
 - `.cursor/rules/30-docs-maintenance.mdc`
 - `AGENTS.md`
 - `AI_HANDOFF_PROMPT.txt`
 - `EXEC_PLAN.md`
 - `README.md`
 - `docs/AI_HANDOFF_PROMPT.md`
-- `docs/AI_START_HERE.md`
 - `docs/INDEX.md`
 - `docs/REFACTORING_PLAN.md`
 - `docs/_meta/document-migration-ledger.md`
@@ -67,35 +64,39 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/decisions/ADR-20260306-lowlevel-observability.md`
 - `docs/decisions/ADR-20260502-dgx-resource-control-targets.md`
 - `docs/decisions/ADR-20260508-leaderboard-board-aggregate-api.md`
+- `docs/decisions/ADR-20260924-ai-agent-rules-context-slimming.md`
 - `docs/guides/ai-handoff.md`
+- `docs/guides/ci-troubleshooting.md`
+- `docs/guides/development.md`
 
 ## Long-Line Documents
 
 - `EXEC_PLAN.md` (23:1093, 31:1026, 44:1017)
-- `docs/INDEX.md` (302:1132, 318:1242, 322:1022)
+- `docs/INDEX.md` (331:1132, 347:1242, 351:1022)
 - `docs/archive/deployments/2026-04.md` (83:1066)
 - `docs/archive/deployments/2026-05.md` (815:25090, 1642:1257, 2471:1119)
-- `docs/decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md` (47:1010)
+- `docs/decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md` (47:1010, 48:1002, 53:1214)
+- `docs/decisions/ADR-20260930-pi4-sd-card-backup.md` (20:1251)
 - `docs/guides/phase3-token-refresh-test-results.md` (94:1437)
 - `docs/guides/verification-checklist.md` (623:1641)
 - `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` (214:1414, 216:1048, 225:1224)
 - `docs/knowledge-base/KB-313-kiosk-documents.md` (137:1274, 157:1178)
-- `docs/knowledge-base/KB-320-kiosk-part-measurement.md` (1806:1045, 1813:1213)
-- `docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md` (13:1164, 295:1220, 297:1290)
+- `docs/knowledge-base/KB-320-kiosk-part-measurement.md` (1808:1045, 1815:1213)
+- `docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md` (13:1164, 79:1101, 304:1220)
 - `docs/knowledge-base/infrastructure/signage.md` (23:1023, 29:1221, 361:1060)
 - `docs/plans/assembly-torque-wrench-traceability-execplan.md` (10:1434, 447:1055)
 - `docs/plans/deployment-foundation-refactor-execplan.md` (99:1226, 893:1025, 899:1002)
+- `docs/plans/dgx-night-preparation-execplan.md` (91:1086)
 - `docs/plans/dgx-spark-local-llm-migration-execplan.md` (38:1075)
-- `docs/plans/kiosk-assembly-torque-management-mvp.md` (135:1006)
-- `docs/plans/pi3-staged-source-transfer-execplan.md` (146:1108, 148:1132)
-- `docs/plans/pi5-minimal-downtime-phase2.md` (130:1083)
-- `docs/plans/solid-refactor-phase3-execplan-202607.md` (28:1154, 30:1151)
-- `docs/plans/solid-refactor-phase4-execplan-202607.md` (30:1179, 31:1213, 32:1328)
+- `docs/plans/explicit-site-scope-execplan.md` (53:1024, 90:1114, 98:1282)
+- `docs/plans/hermes-background-worker.md` (28:1085)
+- `docs/plans/hermes-cross-source-foundation-execplan.md` (152:1029, 158:1019)
 
 ## Broken Local Links
 
 - `EXEC_PLAN.md` -> `../docs/guides/ssd-migration.md` (../docs/guides/ssd-migration.md)
 - `EXEC_PLAN.md` -> `../docs/knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-?15[question-mark-corruption]pi5[question-mark-corruption]` (../docs/knowledge-base/infrastructure/security.md)
+- `docs/INDEX.md` -> `plans/hermes-source-semantics-pilot.md` (docs/plans/hermes-source-semantics-pilot.md)
 - `docs/api/overview.md` -> `./kiosk.md` (docs/api/kiosk.md)
 - `docs/api/overview.md` -> `./tools.md` (docs/api/tools.md)
 - `docs/architecture/overview.md` -> `./client-device-integration.md` (docs/architecture/client-device-integration.md)
@@ -143,4 +144,3 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/knowledge-base/infrastructure/ansible-deployment.md` -> `../runbooks/deploy-status-recovery.md` (docs/knowledge-base/runbooks/deploy-status-recovery.md)
 - `docs/knowledge-base/infrastructure/backup-restore.md` -> `../api/backup.md` (docs/knowledge-base/api/backup.md)
 - `docs/knowledge-base/infrastructure/backup-restore.md` -> `../guides/ansible-ssh-architecture.md` (docs/knowledge-base/guides/ansible-ssh-architecture.md)
-- `docs/knowledge-base/infrastructure/backup-restore.md` -> `../guides/backup-and-restore.md` (docs/knowledge-base/guides/backup-and-restore.md)
