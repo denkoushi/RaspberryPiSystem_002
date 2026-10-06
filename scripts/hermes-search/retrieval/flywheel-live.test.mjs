@@ -48,6 +48,9 @@ test('live scoring sends candidate query maps to lexical ranking and loads activ
   assert.equal(candidate.candidates.length, 4);
   assert.equal(candidate.candidates[0], 'rec-gamma');
   assert.equal(candidate.outcome, 'answer');
+  assert.equal(candidate.plan.semanticQuery, query);
+  assert.equal(candidate.plan.limit, 5);
+  assert.ok(Array.isArray(candidate.plan.filters));
   assert.deepEqual(learned, snapshot);
   const empty = await (await createLiveScorer({ ...options, learned: [] }))(row);
   assert.deepEqual(empty.candidates, baseline.candidates);
@@ -56,4 +59,22 @@ test('live scoring sends candidate query maps to lexical ranking and loads activ
   await writeLearned(file, [{ ...learned[0], state: 'active' }, { ...learned[0], recordId: 'rec-beta' }]);
   const active = await (await createLiveScorer({ ...options, env: { HERMES_FLYWHEEL_LEARNED_PATH: file } }))(row);
   assert.deepEqual(active.candidates, candidate.candidates);
+});
+
+test('live scoring returns the compact recent plan for a filter-only answer', async () => {
+  const catalog = loadNonconformityCatalog();
+  const evaluate = async ({ questions }) => ({ answers: Object.fromEntries(Object.keys(questions).map((key) => [key,
+    key === 'content' ? { type: 'noul', noul: 0.05 }
+      : { type: 'choice', choice: key === 'scope' ? 'nonconformity' : key === 'sort' ? 'recent' : key === 'limit' ? '2'
+        : Object.entries(questions[key].criteria ?? {}).find(([, description]) => description === 'North Shop')?.[0] ?? 'none' },
+  ])) });
+  const corpus = records.map((record) => ({ ...record, originDepartmentName: 'North Shop' }));
+  const score = await createLiveScorer({ records: corpus, catalog, evaluate, env: { HERMES_RETRIEVAL_DENSE_PROVIDER: 'off', HERMES_FLYWHEEL_LEARNED_ENABLED: 'false' } });
+  const live = await score({ question: 'North Shopの不適合を２件' });
+  assert.equal(live.outcome, 'answer');
+  assert.equal(live.plan.semanticQuery, '');
+  assert.deepEqual(live.plan.sort, { field: 'discoveredOn', direction: 'desc' });
+  assert.equal(live.plan.limit, 2);
+  assert.equal(live.shown.length, 2);
+  assert.equal(live.vectorStatus, 'not_requested');
 });

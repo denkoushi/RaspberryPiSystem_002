@@ -38,14 +38,19 @@ export function questionSet(rows) {
   const byAnchor = new Map();
   for (const row of rows) {
     if (row?.source === 'real') {
-      if (typeof row.question !== 'string' || !row.question || !row.id || !row.relevant?.length || byAnchor.has(row.id)) continue;
-      byAnchor.set(row.id, { id: row.id, question: row.question, split: row.split, relevant: row.relevant, seed: null, source: 'real' });
+      if (typeof row.question !== 'string' || !row.question || !row.id || byAnchor.has(row.id)) continue;
+      if (row.kind === 'filter') {
+        if (row.filterCheck?.supported !== true) continue;
+        byAnchor.set(row.id, { id: row.id, question: row.question, split: row.split, relevant: [], seed: null, source: 'real', kind: 'filter', plan: row.live?.plan });
+      } else if (row.relevant?.length) {
+        byAnchor.set(row.id, { id: row.id, question: row.question, split: row.split, relevant: row.relevant, seed: null, source: 'real', kind: 'content' });
+      }
       continue;
     }
     if (row?.kept !== true || typeof row.question !== 'string' || !row.question) continue;
     const id = bareId(row.a);
     if (byAnchor.has(id)) continue;
-    byAnchor.set(id, { id, question: row.question, split: splitOf(id), relevant: relevantIds(row), seed: row.seed ?? null, source: 'synthetic' });
+    byAnchor.set(id, { id, question: row.question, split: splitOf(id), relevant: relevantIds(row), seed: row.seed ?? null, source: 'synthetic', kind: 'content' });
   }
   return [...byAnchor.values()];
 }
@@ -75,6 +80,11 @@ function relevantShown(entry, relevant) {
   return (entry.shown ?? []).map(bareId).some((id) => wanted.has(id));
 }
 
+function filterCorrect(entry) {
+  if (entry?.filterCheck?.ok == null) return null;
+  return entry.filterCheck.ok === true;
+}
+
 /** Per split: how many questions each run answered with a relevant record, and the paired changes. */
 export function compareRuns({ questions, baseline, candidate, labels = null }) {
   const base = casesById(baseline);
@@ -87,9 +97,9 @@ export function compareRuns({ questions, baseline, candidate, labels = null }) {
   for (const question of questions) {
     const result = splits[question.split];
     const results = question.source === 'real' ? [result, splits.real] : [result];
-    const relevant = labels == null ? question.relevant : relevantWithLabels(question, labels);
-    const before = relevantShown(base.get(question.id), relevant);
-    const after = relevantShown(cand.get(question.id), relevant);
+    const relevant = labels == null || question.kind === 'filter' ? question.relevant : relevantWithLabels(question, labels);
+    const before = question.kind === 'filter' ? filterCorrect(base.get(question.id)) : relevantShown(base.get(question.id), relevant);
+    const after = question.kind === 'filter' ? filterCorrect(cand.get(question.id)) : relevantShown(cand.get(question.id), relevant);
     if (before == null || after == null) {
       for (const entry of results) entry.skipped += 1;
       continue;

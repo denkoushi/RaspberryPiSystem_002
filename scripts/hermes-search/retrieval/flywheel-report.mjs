@@ -106,12 +106,20 @@ function counts(record) {
 }
 
 export function summarizeReal(rows) {
-  const summary = { questions: 0, withRelevant: 0, shown: 0, lossStages: {}, dayOutcomes: {} };
+  const summary = { questions: 0, withRelevant: 0, shown: 0, lossStages: {}, dayOutcomes: {}, filter: { questions: 0, supported: 0, ok: 0, mismatch: 0 } };
   for (const row of rows) {
     if (row?.source !== 'real') continue;
     summary.questions += 1;
     const outcome = row.dayOutcome;
     summary.dayOutcomes[outcome] = (summary.dayOutcomes[outcome] ?? 0) + 1;
+    if (row.kind === 'filter') {
+      summary.filter.questions += 1;
+      if (row.filterCheck?.supported === true) {
+        summary.filter.supported += 1;
+        if (row.filterCheck.ok === true) summary.filter.ok += 1;
+        else if (row.filterCheck.ok === false) summary.filter.mismatch += 1;
+      }
+    }
     if (!row.relevant?.length) continue;
     summary.withRelevant += 1;
     if (row.live && row.live.loss == null) summary.shown += 1;
@@ -130,7 +138,8 @@ export function formatRealReport(night, summary) {
     + ` (outside judged candidates ${losses.not_in_pool ?? 0}, rejected by judge ${losses.judge_rejected ?? 0}, asked back or out of scope ${losses.status ?? 0})`
     + (losses.other_shown ? `, other records shown ${losses.other_shown}` : '')
     + (losses.failed ? `, failed ${losses.failed}` : '')
-    + `, day outcomes ${Object.keys(summary.dayOutcomes).length ? counts(summary.dayOutcomes) : 'none'}`;
+    + `, day outcomes ${Object.keys(summary.dayOutcomes).length ? counts(summary.dayOutcomes) : 'none'}`
+    + `\n  filter questions ${summary.filter.questions}, correct ${summary.filter.ok}, mismatch ${summary.filter.mismatch}, unsupported ${summary.filter.questions - summary.filter.supported}`;
 }
 
 export function formatReport(night, summary) {

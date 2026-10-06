@@ -9,6 +9,53 @@ import { parseRunArgs, runCases, scorerEnv } from './flywheel-run.mjs';
 
 const kept = (a, b, extra = {}) => ({ a, b, seed: { style: 'terse' }, question: `q ${a}`, kept: true, reason: null, grades: { dgx: { a: 3, b: 1 }, jev: { a: 3, b: 1 } }, ...extra });
 
+test('question sets include supported real filters and retain legacy content questions', () => {
+  const plan = { filters: [], semanticQuery: '', sort: 'recent', limit: 2 };
+  const filter = { source: 'real', kind: 'filter', id: 'r-filter', question: 'recent two', split: 'dev', relevant: [], live: { plan }, filterCheck: { supported: true, ok: false } };
+  const questions = questionSet([filter, filter,
+    { ...filter, id: 'unsupported', relevant: ['a'], filterCheck: { supported: false } },
+    { ...filter, id: 'unchecked', filterCheck: undefined },
+    { ...filter, id: 'empty', question: '' },
+    { source: 'real', id: 'r-content', question: 'scratch', split: 'heldout', relevant: ['a'] },
+    kept('a', 'b'),
+  ]);
+  assert.deepEqual(questions[0], { id: 'r-filter', question: 'recent two', split: 'dev', relevant: [], seed: null, source: 'real', kind: 'filter', plan });
+  assert.deepEqual(questions.map((row) => [row.id, row.kind]), [['r-filter', 'filter'], ['r-content', 'content'], ['a', 'content']]);
+});
+
+test('filter comparisons use checks across real and both splits, skipping old or unsupported cases', () => {
+  const questions = ['d', 'h', 'old', 'unsupported', 'missing'].map((id) => ({ id, source: 'real', kind: 'filter', split: id === 'd' ? 'dev' : 'heldout', relevant: [] }));
+  const baseline = { cases: [
+    { id: 'd', shown: ['a'], filterCheck: { supported: true, ok: false } },
+    { id: 'h', shown: [], filterCheck: { supported: true, ok: true } },
+    { id: 'old', shown: ['a'] },
+    { id: 'unsupported', filterCheck: { supported: false, ok: null } },
+  ] };
+  const candidate = { cases: questions.map(({ id }) => ({ id, shown: [], filterCheck: { supported: true, ok: id !== 'h' } })) };
+  const comparison = compareRuns({ questions, baseline, candidate, labels: { d: { a: { g: 3 } } } });
+  assert.deepEqual(comparison.real, { n: 2, skipped: 3, baselineShown: 1, candidateShown: 1, gained: 1, lost: 1, p: 1 });
+  assert.equal(comparison.dev.gained, 1);
+  assert.equal(comparison.heldout.lost, 1);
+  assert.equal(comparison.heldout.skipped, 3);
+  assert.deepEqual(comparison.dev.gainedIds, ['d']);
+  assert.deepEqual(comparison.heldout.lostIds, []);
+});
+
+test('offline filter checks use each run plan and shown ids with the supplied corpus and catalog', async () => {
+  const catalog = { id: 'nonconformity', fields: [{ key: 'date', role: 'date' }] };
+  const records = [{ id: 'a', department: 'North', date: '2026-10-06' }, { id: 'b', department: 'South', date: '2026-10-07' }];
+  const plan = { filters: [{ field: 'department', op: 'eq', values: ['North'] }], semanticQuery: '', sort: { field: 'date', direction: 'desc' }, limit: 2 };
+  const questions = [{ id: 'r-filter', kind: 'filter', source: 'real', split: 'dev', question: 'North records', relevant: [], plan: { ...plan, filters: [] } }];
+  const score = async () => ({ plan, shown: ['nonconformity:a'], outcome: 'answer', loss: 'other_shown', candidates: ['a'], vectorStatus: 'not_requested', ms: 1 });
+  const run = await runCases({ questions, records, catalog, score });
+  assert.equal(run.skipped, 0);
+  assert.deepEqual(run.cases[0].filterCheck, { supported: true, filtersOk: true, orderOk: true, countOk: true, ok: true, expectedIds: ['a'], shown: ['a'], matchedCount: 1 });
+  const wrong = await runCases({ questions, records, catalog, score: async () => ({ ...await score(), shown: ['b'] }) });
+  assert.equal(wrong.cases[0].filterCheck.ok, false);
+  const unsupported = await runCases({ questions, records, catalog, score: async () => ({ ...await score(), plan: null }) });
+  assert.equal(unsupported.cases[0].filterCheck.ok, null);
+});
+
 test('the split is fixed by the anchor id and lands near the development share', () => {
   assert.equal(splitOf('nonconformity:x1'), splitOf('x1'));
   const ids = Array.from({ length: 2000 }, (_, index) => `r${index}`);
@@ -198,7 +245,7 @@ test('real questions join synthetic rows, preserve stored splits, and exclude un
   const questions = questionSet([kept('a1', 'b1'), real, { ...real, question: 'duplicate' }, { ...real, id: 'r-empty', relevant: [] }]);
   assert.equal(questions.length, 2);
   assert.equal(questions[0].source, 'synthetic');
-  assert.deepEqual(questions[1], { id: 'r-abc', question: '現場の質問', split: 'heldout', relevant: ['a1'], seed: null, source: 'real' });
+  assert.deepEqual(questions[1], { id: 'r-abc', question: '現場の質問', split: 'heldout', relevant: ['a1'], seed: null, source: 'real', kind: 'content' });
 });
 
 test('real comparison combines splits, counts skips, uses labels, and reports no held-out ids', () => {
