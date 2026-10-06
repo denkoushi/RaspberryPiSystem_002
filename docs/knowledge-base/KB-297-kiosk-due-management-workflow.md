@@ -201,6 +201,10 @@ category: knowledge-base
 - **挙動（本システム）**: 最小コンテンツでは **必須列が解決できず** **`CSV_HEADER_MISMATCH`**（`ApiError`）→ エラー分類 **`NON_RETRIABLE`**。ポリシーどおり **Gmail 側でゴミ箱へ移動**し、**再試行の対象にしない**。
 - **Fix（2026-05-06）**: `CsvDashboardImportService.ingestTargets` で **NON_RETRIABLE を廃棄（`trashMessage`）できたメッセージ**は、ループ終了時の **`failedMessageIdSuffixes` 集計から除外**する。これにより **同一ダッシュボード・同一バッチ内に正常なメールが続く場合**、全体が **最後の `lastError` で例外終了しない**。**実装**: [`csv-dashboard-import.service.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-import.service.ts)。**単体**: [`csv-dashboard-import.service.ingest-behavior.test.ts`](../../apps/api/src/services/csv-dashboard/__tests__/csv-dashboard-import.service.ingest-behavior.test.ts)。
 - **PR / マージ（済）**: [PR #259](https://github.com/denkoushi/RaspberryPiSystem_002/pull/259)（**`main` squash**・**`e47ad84c`**）。**本番反映**: **Pi5 API のみ** [deployment.md](../guides/deployment.md) 標準（`./scripts/update-all-clients.sh main … --limit raspberrypi5`・**デプロイ実績は別記**）。
+- **2026-10-06 追記（空の CSV はエラーにしない）**: 計測機器持出（週末 129 通すべて）と吊具点検（平日 51 通中 17 通）でも BOM のみの添付が続き、level 50 のログが本当の異常を埋もれさせていた。`ingestTargets` は保存と取込の前に空を判定し（[`csv-empty-content.ts`](../../apps/api/src/services/csv-dashboard/csv-empty-content.ts)）、空なら列の照合へ進まない。
+  - **空の定義**: BOM と空白・改行を除くと何も残らないもの（0 バイトを含む）。ヘッダー行だけの CSV は空ではなく、列を照合して 0 件の取込になる。ヘッダーが合わない CSV は今までどおり `CSV_HEADER_MISMATCH`。
+  - **記録**: info ログ 1 行（`Empty CSV skipped`）、`CsvDashboardIngestRun` 1 件（`COMPLETED`・0 件・`csvFilePath` なし・`errorMessage` に `[ingest-audit] postProcessState=skipped_empty`）、実行結果の `debug.skippedEmptyMessageIdSuffixes`。raw フォルダには保存しない（中身が無く、履歴で事実を追えるため）。メールは既読にしてゴミ箱へ移す。
+  - **対象外**: 手動アップロードの空ファイルは今までどおり 400 を返す。
 - **トラブルシュート**: **「添付はあるのに取れない」**→ 管理実行の **`debug`**（`downloadedMessageIdSuffixes` / `disposedMessageIdSuffixes` 等）と **保存された raw CSV サイズ**を確認。**開発用 localhost への計測 POST** は **本番に含めない**（調査後はコードから除去する）。
 
 ## FKOBAINO purchase order lookup from Gmail CSV (2026-04-20) {#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20}
