@@ -10,11 +10,12 @@ const ASSEMBLY_LIBRARY_LIMIT = 200;
 type Options = {
   refreshToken?: number;
   enabled?: boolean;
+  initialSearchQuery?: string;
 };
 
-export function useAssemblyProcedureLibrary({ refreshToken = 0, enabled = true }: Options = {}) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
+export function useAssemblyProcedureLibrary({ refreshToken = 0, enabled = true, initialSearchQuery = '' }: Options = {}) {
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
+  const [debouncedQuery, setDebouncedQuery] = useState(initialSearchQuery.trim());
   const [includeInactive, setIncludeInactive] = useState(false);
   const [documents, setDocuments] = useState<AssemblyProcedureDocumentSummaryDto[]>([]);
   const [loading, setLoading] = useState(false);

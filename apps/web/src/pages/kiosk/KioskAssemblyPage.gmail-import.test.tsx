@@ -43,6 +43,7 @@ vi.mock('../../features/assembly', () => ({
   AssemblyTemplateHistoryDialog: () => null,
   AssemblyTemplateLibraryTable: () => null,
   KIOSK_ASSEMBLY_HOME_PATH: '/kiosk/assembly',
+  kioskAssemblyLibraryPath: ({ focus }: { focus: string }) => `/kiosk/assembly/library?focus=${focus}`,
   kioskAssemblyTemplateNewPath: () => '/kiosk/assembly/templates/new',
   parseAssemblyLibrarySearch: () => ({}),
   readAssemblyApiErrorMessage: (error: unknown, fallback: string) => {

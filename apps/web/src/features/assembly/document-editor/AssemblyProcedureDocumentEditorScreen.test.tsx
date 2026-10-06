@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AssemblyProcedureDocumentEditorProvider } from './AssemblyProcedureDocumentEditorContext';
@@ -145,6 +145,10 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     render(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen context={{ modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', processName: '組立 › 組立', mode }} /></AssemblyProcedureDocumentEditorProvider>);
     expect(screen.getByText('DFD1 › 組立 › 組立 › 組立手順書')).toBeInTheDocument();
     expect(screen.getByText(label)).toHaveClass(color);
+    const actions = within(screen.getByRole('navigation', { name: 'エディタ操作' })).getAllByRole('button');
+    expect(actions[0]).toHaveAttribute('aria-label', '保存');
+    expect(actions.at(-1)).toHaveAttribute('aria-label', '工房へ戻る');
+    expect(actions.at(-2)).toHaveAttribute('aria-label', supersedesDocumentId ? '改版を破棄' : '削除');
   });
 
   it.each([401, 403])('connects video link save failure %s to controller revocation', async status => {
@@ -289,7 +293,14 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
   it('exposes the rail actions, selected tools and floating inspector close action', () => {
     const c = makeController({ canSave: true, canUndo: true, canRedo: true, selectionMode: true, selectedElement: { id: 'text', kind: 'TEXT', pageIndex: 0, text: '文字', zIndex: 0, bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.2, heightRatio: 0.2 } } });
     renderScreen(c);
-    for (const label of ['一覧へ', '保存', '公開', '素材', '動画', '文字', '図形', '範囲', '元に戻す', 'やり直す', '削除']) expect(screen.getByRole('button', { name: label })).toHaveAttribute('aria-label', label);
+    const rail = screen.getByRole('navigation', { name: 'エディタ操作' });
+    expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['保存', '公開', '素材', '動画', '文字', '図形', '範囲', '元に戻す', 'やり直す', '削除', '一覧へ']);
+    expect(rail).toHaveClass('pb-[84px]');
+    expect(screen.getByRole('button', { name: '一覧へ' })).toHaveClass('!border-transparent', '!text-[#9fadb9]');
+    expect(screen.getByRole('button', { name: '削除' })).toHaveClass('!border-transparent', '!text-[#e5484d]');
+    expect(screen.getByRole('button', { name: '保存' })).toHaveAttribute('data-kiosk-sop-target', 'assembly-document-editor-save');
+    expect(screen.getByRole('button', { name: '公開' })).toHaveAttribute('data-kiosk-sop-target', 'assembly-document-editor-publish');
+    expect(screen.getByRole('button', { name: '範囲' })).toHaveAttribute('data-kiosk-sop-target', 'assembly-document-editor-range-add');
     expect(screen.getByRole('button', { name: '範囲' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByRole('button', { name: '文字' }));
     expect(c.addOverlay).toHaveBeenCalledWith('TEXT');
@@ -300,6 +311,16 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     expect(c.undo).toHaveBeenCalledOnce(); expect(c.redo).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole('button', { name: '属性を閉じる' }));
     expect(c.setSelectedOverlayId).toHaveBeenCalledWith(null);
+  });
+  it('keeps the return action last and the chat clearance for published documents', () => {
+    renderScreen(makeController({ document: { ...editorDocument, status: 'published' }, readOnly: true }));
+    const rail = screen.getByRole('navigation', { name: 'エディタ操作' });
+    const actions = within(rail).getAllByRole('button');
+    expect(actions[0]).toHaveAttribute('aria-label', '保存');
+    expect(actions.at(-1)).toHaveAttribute('aria-label', '一覧へ');
+    expect(actions.at(-1)).toBeEnabled();
+    expect(rail).toHaveClass('pb-[84px]');
+    expect(within(rail).queryByRole('button', { name: '削除' })).not.toBeInTheDocument();
   });
   it.each([false, true])('expires success notifications but keeps errors (error=%s)', (messageIsError) => {
     vi.useFakeTimers();
