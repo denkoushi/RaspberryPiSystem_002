@@ -4,6 +4,8 @@ const STORAGE_KEY = 'procedure-editor-access';
 const CHANGE_EVENT = 'procedure-editor-access-change';
 export const PROCEDURE_EDITOR_ACCESS_HOURS = 8;
 export type ProcedureEditorAccess = { pin: string; expiresAt: number; clientKey: string };
+// Only the expiry marker is persisted; the PIN itself stays in memory for this tab (CodeQL js/clear-text-storage-of-sensitive-data).
+type StoredMarker = { expiresAt: number; clientKey: string };
 let memoryOnly = false;
 let memoryAccess: ProcedureEditorAccess | null = null;
 let expiryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -24,7 +26,8 @@ export function saveProcedureEditorAccess(pin: string, now = Date.now()): void {
   if (pin.length < 1 || pin.length > 128) { clearProcedureEditorAccess(); return; }
   memoryOnly = false;
   memoryAccess = { pin, expiresAt: now + PROCEDURE_EDITOR_ACCESS_HOURS * 60 * 60 * 1000, clientKey: clientIdentity() };
-  try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(memoryAccess)); } catch { memoryOnly = true; }
+  const marker: StoredMarker = { expiresAt: memoryAccess.expiresAt, clientKey: memoryAccess.clientKey };
+  try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(marker)); } catch { memoryOnly = true; }
   scheduleExpiry(memoryAccess);
   window.dispatchEvent(new Event(CHANGE_EVENT));
 }
@@ -43,16 +46,17 @@ export function clearProcedureEditorAccess(): void {
 }
 
 export function readProcedureEditorAccess(now = Date.now()): ProcedureEditorAccess | null {
-  let access: ProcedureEditorAccess | null;
-  try { access = memoryOnly ? memoryAccess : JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? 'null') as ProcedureEditorAccess | null; }
-  catch { access = memoryAccess; }
-  if (!access || typeof access.pin !== 'string' || access.pin.length < 1 || access.pin.length > 128 || !Number.isFinite(access.expiresAt) || access.expiresAt <= now || access.clientKey !== clientIdentity()) {
+  let marker: StoredMarker | null = null;
+  try { marker = memoryOnly ? memoryAccess : JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? 'null') as StoredMarker | null; }
+  catch { marker = memoryAccess; }
+  const pin = memoryAccess?.pin;
+  if (!marker || !pin || pin.length < 1 || pin.length > 128 || !Number.isFinite(marker.expiresAt) || marker.expiresAt <= now
+    || marker.clientKey !== clientIdentity() || memoryAccess?.expiresAt !== marker.expiresAt) {
     clearProcedureEditorAccess();
     return null;
   }
-  memoryAccess = access;
-  scheduleExpiry(access);
-  return access;
+  scheduleExpiry(memoryAccess!);
+  return memoryAccess;
 }
 
 export function subscribeProcedureEditorAccess(onChange: () => void): () => void {

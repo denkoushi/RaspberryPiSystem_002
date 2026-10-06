@@ -7,7 +7,8 @@ afterEach(() => { vi.restoreAllMocks(); clearProcedureEditorAccess(); vi.useReal
 describe('procedureEditorAccess', () => {
   it('stores access only in sessionStorage for exactly eight hours', () => {
     saveProcedureEditorAccess('2520', 1000);
-    expect(JSON.parse(sessionStorage.getItem('procedure-editor-access')!)).toEqual({ pin: '2520', expiresAt: 28801000, clientKey: expect.any(String) });
+    expect(JSON.parse(sessionStorage.getItem('procedure-editor-access')!)).toEqual({ expiresAt: 28801000, clientKey: expect.any(String) });
+    expect(sessionStorage.getItem('procedure-editor-access')).not.toContain('2520');
     expect(localStorage.getItem('procedure-editor-access')).toBeNull();
     expect(readProcedureEditorAccess(28800999)?.pin).toBe('2520');
     expect(readProcedureEditorAccess(28801000)).toBeNull();
@@ -16,7 +17,7 @@ describe('procedureEditorAccess', () => {
   it('discards access', () => {
     saveProcedureEditorAccess('2520'); clearProcedureEditorAccess(); expect(readProcedureEditorAccess()).toBeNull();
   });
-  it.each(['bad', '{}', '{"pin":"2520","expiresAt":"bad"}'])('ignores invalid storage %s', value => {
+  it.each(['bad', '{}', '{"expiresAt":"bad"}', '{"expiresAt":99999999999999,"clientKey":"x"}'])('ignores storage without an in-memory PIN or with invalid data %s', value => {
     sessionStorage.setItem('procedure-editor-access', value); expect(readProcedureEditorAccess()).toBeNull();
   });
   it.each(['a', '123456', 'x'.repeat(128)])('accepts one through 128 characters (%s)', pin => {
