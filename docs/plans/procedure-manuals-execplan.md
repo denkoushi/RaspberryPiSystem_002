@@ -12,6 +12,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Progress
 
+- [x] (2026-10-06) ブラッシュアップ(D): 記録確認の56px上辺・460px一覧/即時検索・並列実績表・承認札をWebのみ実装（NFC承認処理維持）。Web lint / 指定vitest 76ファイル526件（対象15件、ワーカー2）/ build成功。目視はChromium起動失敗で未実施。 レビュー 3 件を反映（再読込・一覧内の再試行、トルク列見出し、承認札横のNFC照合通知）。 修正後の指定検証: Web lint / `vitest run KioskAssemblyRecordApproval` 1ファイル20件（5件追加）/ build成功。
 - [x] (2026-10-06) 実機確認午後 (a): 共通テンキー・8時間アクセス、エディタ全高配置・記号列・浮遊属性・通知をWebのみ実装。Web lint / 255ファイル1569件(ワーカー2、最終対象79件再確認) / build、capture adapter 1件成功。取説生成はClaude担当、実画面確認はlisten EPERMで未実施。レビュー 8 件を反映(Web lint、255 ファイル 1599 件、build、capture adapter 1 件成功)。
 - [x] (2026-10-06) 実機確認 (b) 3・4: 工房を56pxの表形式・状態/名前の即時絞り込み・44px記号操作へ変更し、組立ホーム上辺を文字だけの6項目へ整理。レビュー 3 件を反映（サムネイルの可視範囲での遅延取得、概要APIの公開版承認情報の一括取得と表示、sr-only列見出しとページ数の読み上げ）。Web lint / 指定vitest 76ファイル478件 / build成功、件数バッジ追加確認はホーム17件成功。目視確認は環境の起動権限制限で未実施。Git操作・本番反映は未実施。 レビュー修正後の指定検証: API lint / vitest 4ファイル42件 / tsc、Web lint / vitest 76ファイル482件 / buildすべて成功。
 - [x] (2026-10-05) 既存 5 系統(組立手順書、作業要領 `WorkInstruction`、キオスク文書 `KioskDocument`、ナレッジ `Knowledge`、kiosk-sop)を Codex(`gpt-6.1-sol`/`high`、read-only)で比較分析し、Claude が根拠行を確認した。結論は「組立手順書を正本に、分類を薄く追加」。
@@ -388,6 +389,11 @@ V3の指定検証は `cd apps/api && pnpm lint && pnpm exec vitest run procedure
 5. 記録確認のブラウザ標準の入力窓(`window.prompt`)を 1 と同じテンキー式に置き換える。キャンセルは同じページに留まり「組立へ戻る」を出す。
 
 PR は 2 本: (a) エディタの全高レイアウト + 工房入口の暗証番号 + 記録確認のテンキー化、(b) 工房の高密度一覧 + 組立ホーム上辺の整理。
+
+
+## 組立画面のブラッシュアップ(2026-10-06 夕、承認済みモック `docs/design-previews/assembly-screens-mock.html`)
+
+オーナーの実機確認で出た追加要望。PR は 4 本: (A) エディタの記号列の「戻る」を最下段へ + 工房のテンキー半幅(工程一覧を横に置き 2 列化)、(B) 組立テンプレート新規の全高レイアウト(上辺の帯を無くし、左ペインに段階・名前・工程・ページ、右端の記号列、紙は全高)、(C) 手順書/テンプレート管理の切替表示と高密度の表、(D) 記録確認の一覧 + 詳細 + 小さな承認札。いずれも機能は変えず配置だけ変える。
 
 
 ## Concrete Steps (Phase 1)
