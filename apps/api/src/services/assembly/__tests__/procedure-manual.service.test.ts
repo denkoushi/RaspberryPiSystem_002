@@ -81,6 +81,66 @@ describe('procedure-manual service', () => {
     expect(result.sequence.documents[0].kioskDocumentId).toBe(pdfId);
   });
 
+  it('returns all child processes and batches published, draft, revision, unavailable and PDF overview items', async () => {
+    vi.spyOn(prisma.procedureManualProcess, 'findMany').mockResolvedValue([
+      { id: 'parent', parentId: null, sortOrder: 0 },
+      { id: 'assembly', parentId: 'parent', sortOrder: 0 },
+      { id: 'empty', parentId: 'parent', sortOrder: 1 }
+    ] as never);
+    vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([
+      assignment('revision'), assignment('initial', 'draft-root', 1), assignment('missing', 'disabled', 2),
+      { ...assignment('pdf', null, 3), kioskDocumentId: pdfId, kioskDocument: { id: pdfId, title: 'PDF', displayTitle: 'キオスクPDF', enabled: true, pageCount: 2 } },
+      { ...assignment('disabled-pdf', null, 4), kioskDocumentId: 'off', kioskDocument: { title: 'OFF', enabled: false, pageCount: 1 } },
+      assignment('legacy', 'legacy', 5)
+    ] as never);
+    const revision = (revisionNumber: number, supersedesDocumentId: string | null, isRevisionHead = false) => ({ revisionRootId: rootId, revisionNumber, supersedesDocumentId, isRevisionHead });
+    const query = vi.spyOn(prisma.assemblyProcedureDocument, 'findMany').mockResolvedValue([
+      { ...document(), revisionMetadata: revision(1, null) },
+      { ...document('v2'), revisionMetadata: revision(2, rootId) },
+      { ...document('v3'), status: 'DRAFT', revisionMetadata: revision(3, 'v2', true), editLease: { holderLabel: '佐藤', acquiredAt: now, expiresAt: new Date('2099-01-01') } },
+      { ...document('draft-root'), status: 'DRAFT', revisionMetadata: { revisionRootId: 'draft-root', revisionNumber: 1, supersedesDocumentId: null } },
+      { ...document('disabled'), isActive: false }, document('legacy')
+    ] as never);
+    const single = vi.spyOn(prisma.assemblyProcedureDocumentRevision, 'findFirst');
+    const result = await new ProcedureManualService().getModelOverview('ｄｆｄ１');
+    expect(result).toMatchObject({ modelCode: 'ｄｆｄ１', modelCodeKey: 'DFD1' });
+    expect(result.processes.map(p => [p.processId, p.count])).toEqual([['assembly', 6], ['empty', 0]]);
+    expect(result.processes[1].items).toEqual([]);
+    const items = result.processes[0].items;
+    expect(items[0]).toEqual({ assignmentId: 'revision', sortOrder: 0, label: null, kind: 'assembly_procedure_document', documentId: 'v2', title: '公開手順', status: 'published', publishedRevisionNumber: 2,
+      draftRevision: { documentId: 'v3', revisionNumber: 3, editLease: { holderLabel: '佐藤', acquiredAt: now.toISOString() } }, unavailableReason: null, pageCount: 1, thumbnailPageUrl: document().imageRelativePath });
+    expect(items[1]).toMatchObject({ status: 'draft', publishedRevisionNumber: null, draftRevision: null, documentId: 'draft-root' });
+    expect(items[2]).toMatchObject({ title: '公開手順', status: 'unavailable', unavailableReason: 'no_published_revision', pageCount: null, thumbnailPageUrl: null });
+    expect(items[3]).toMatchObject({ kind: 'kiosk_document', title: 'キオスクPDF', status: 'published', publishedRevisionNumber: null, pageCount: 2, thumbnailPageUrl: null });
+    expect(items[4]).toMatchObject({ status: 'unavailable', unavailableReason: 'disabled' });
+    expect(items[5]).toMatchObject({ status: 'published', publishedRevisionNumber: 1 });
+    expect(query).toHaveBeenCalledOnce();
+    expect(query).toHaveBeenCalledWith(expect.objectContaining({ where: { OR: [
+      { id: { in: [rootId, 'draft-root', 'disabled', 'legacy'] } },
+      { revisionMetadata: { is: { revisionRootId: { in: [rootId, 'draft-root', 'disabled', 'legacy'] } } } }
+    ] } }));
+    expect(single).not.toHaveBeenCalled();
+  });
+
+  it('omits expired leases and keeps revision drafts separate from initial drafts', async () => {
+    vi.spyOn(prisma.procedureManualProcess, 'findMany').mockResolvedValue([{ id: 'assembly', parentId: 'parent' }] as never);
+    vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([assignment('one')] as never);
+    vi.spyOn(prisma.assemblyProcedureDocument, 'findMany').mockResolvedValue([
+      { ...document(), status: 'DRAFT', revisionMetadata: { revisionRootId: rootId, revisionNumber: 2, supersedesDocumentId: 'old', isRevisionHead: true }, editLease: { holderLabel: '期限切れ', acquiredAt: now, expiresAt: now } }
+    ] as never);
+    const item = (await new ProcedureManualService().getModelOverview('DFD1')).processes[0].items[0];
+    expect(item.status).toBe('unavailable');
+    expect(item.draftRevision).toEqual({ documentId: rootId, revisionNumber: 2, editLease: null });
+  });
+
+  it('returns zero counts without querying documents for an unassigned model', async () => {
+    vi.spyOn(prisma.procedureManualProcess, 'findMany').mockResolvedValue([{ id: 'assembly', parentId: 'parent' }] as never);
+    vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([]);
+    const query = vi.spyOn(prisma.assemblyProcedureDocument, 'findMany');
+    expect(await new ProcedureManualService().getModelOverview('new')).toEqual({ modelCode: 'NEW', modelCodeKey: 'NEW', processes: [{ processId: 'assembly', count: 0, items: [] }] });
+    expect(query).not.toHaveBeenCalled();
+  });
+
   it('rejects empty normalized models, duplicate order values and invalid document choices before writing', async () => {
     const transaction = vi.spyOn(prisma, '$transaction');
     const service = new ProcedureManualService();
@@ -114,6 +174,33 @@ describe('procedure-manual service', () => {
     remove.mockClear(); create.mockClear();
     await expect(service.replaceAssignments('DFD1', 'assembly', [{ assemblyProcedureDocumentId: 'unassigned-draft', sortOrder: 0 }])).rejects.toThrow('公開版がありません');
     expect(remove).not.toHaveBeenCalled(); expect(create).not.toHaveBeenCalled();
+  });
+
+  it.each(['retained', 'new-model', 'new-process'])('only retains an already assigned disabled PDF while removing another item (%s)', async scope => {
+    vi.spyOn(prisma, '$transaction').mockImplementation((async (work: (tx: Prisma.TransactionClient) => Promise<unknown>) => work(prisma)) as never);
+    vi.spyOn(prisma, '$queryRaw').mockResolvedValue([{ id: 'assembly' }]);
+    vi.spyOn(prisma.procedureManualProcess, 'findFirst').mockResolvedValue({ id: 'assembly' } as never);
+    const assignments = vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockImplementation(async args =>
+      args?.where?.modelCodeKey === 'DFD1' && args.where.processId === 'assembly'
+        ? [assignment('other'), { ...assignment('disabled-pdf', null, 1), kioskDocumentId: pdfId }] as never : []);
+    const pdf = vi.spyOn(prisma.kioskDocument, 'findFirst').mockImplementation(async args =>
+      args?.where?.enabled === true ? null : { id: pdfId, enabled: false } as never);
+    const remove = vi.spyOn(prisma.procedureManualAssignment, 'deleteMany').mockResolvedValue({ count: 2 });
+    const create = vi.spyOn(prisma.procedureManualAssignment, 'createMany').mockResolvedValue({ count: 1 });
+    const model = scope === 'new-model' ? 'DFD2' : 'ｄｆｄ１';
+    const process = scope === 'new-process' ? 'inspection' : 'assembly';
+    const save = new ProcedureManualService().replaceAssignments(model, process, [{ kioskDocumentId: pdfId, sortOrder: 0, label: 'PDF' }]);
+    if (scope === 'retained') {
+      await save;
+      expect(pdf).toHaveBeenCalledWith({ where: { id: pdfId } });
+      expect(remove).toHaveBeenCalledWith({ where: { modelCodeKey: 'DFD1', processId: 'assembly' } });
+      expect(create).toHaveBeenCalledWith({ data: [expect.objectContaining({ kioskDocumentId: pdfId, assemblyProcedureDocumentId: null, sortOrder: 0, label: 'PDF' })] });
+    } else {
+      await expect(save).rejects.toThrow('キオスク文書が見つかりません');
+      expect(pdf).toHaveBeenCalledWith({ where: { id: pdfId, enabled: true } });
+      expect(remove).not.toHaveBeenCalled(); expect(create).not.toHaveBeenCalled();
+    }
+    expect(assignments).toHaveBeenCalledWith({ where: { modelCodeKey: scope === 'new-model' ? 'DFD2' : 'DFD1', processId: process }, select: { assemblyProcedureDocumentId: true, kioskDocumentId: true } });
   });
 
   it('replaces one normalized model/process atomically, canonicalizing a selected revision to its root', async () => {

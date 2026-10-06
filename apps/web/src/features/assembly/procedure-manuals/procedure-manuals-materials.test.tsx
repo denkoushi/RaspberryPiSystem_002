@@ -3,11 +3,12 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 
-import { ProcedureManualBrowser } from './ProcedureManualBrowser';
+import { ProcedureManualWorkshop } from './ProcedureManualWorkshop';
 import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
 
 const mocks = vi.hoisted(() => ({ count: vi.fn(), list: vi.fn(), ingest: vi.fn(), file: vi.fn(), discard: vi.fn(), restore: vi.fn(), unplace: vi.fn(), knowledge: vi.fn(), knowledgeImage: vi.fn(), importKnowledge: vi.fn() }));
 vi.mock('../../../api/client', () => ({
+  listProcedureVideos: async () => [],
   listProcedureManualModels: async () => [], listProcedureManualProcesses: async () => [],
   getProcedureManualAssignments: vi.fn(), listAssemblyProcedureDocumentSummaries: vi.fn(),
   getAssemblyProcedureDocumentRevisions: vi.fn(), getKioskDocuments: vi.fn(), replaceProcedureManualAssignments: vi.fn(),
@@ -30,8 +31,8 @@ describe('procedure-manuals material shelf', () => {
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:photo'); vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
   });
   afterEach(() => { vi.unstubAllGlobals(); });
-  it('opens the shelf from the browser, shows text/photo metadata, filters hints, and manually ingests/reloads', async () => {
-    localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
+  it('opens the shelf from the workshop, shows text/photo metadata, filters hints, and manually ingests/reloads', async () => {
+    localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualWorkshop /></MemoryRouter>);
     fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
     expect(screen.getByRole('dialog', { name: '素材' })).toBeInTheDocument();
     expect(await screen.findByText(/締付手順/)).toHaveClass('line-clamp-6');
@@ -57,7 +58,7 @@ describe('procedure-manuals material shelf', () => {
       }
     });
     mocks.list.mockResolvedValue([photo, { ...photo, id: 'offscreen', originalFileName: '範囲外.png' }]);
-    localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>); fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
+    localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualWorkshop /></MemoryRouter>); fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
     await waitFor(() => expect(observers).toHaveLength(2));
     expect(observers[0]!.observe).toHaveBeenCalledOnce();
     expect(mocks.file).not.toHaveBeenCalled();
@@ -74,7 +75,7 @@ describe('procedure-manuals material shelf', () => {
     let resolve: (blob: Blob) => void = () => undefined;
     mocks.file.mockReturnValue(new Promise<Blob>((done) => { resolve = done; }));
     mocks.list.mockResolvedValue([photo]);
-    localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>); fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
+    localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualWorkshop /></MemoryRouter>); fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
     await waitFor(() => expect(mocks.file).toHaveBeenCalledOnce());
     fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
     await act(async () => { resolve(new Blob(['photo'])); });
@@ -82,7 +83,7 @@ describe('procedure-manuals material shelf', () => {
   });
   it('discards then lists discarded materials and restores them', async () => {
     mocks.list.mockResolvedValueOnce([text]).mockResolvedValueOnce([]).mockResolvedValueOnce([{ ...text, discardedAt: '2026-10-05T04:00:00Z' }]).mockResolvedValueOnce([]);
-    localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>); fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
+    localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualWorkshop /></MemoryRouter>); fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
     fireEvent.click(await screen.findByRole('checkbox', { name: 'DFD1 組立' }));
     fireEvent.click(screen.getByRole('button', { name: '捨てる' }));
     fireEvent.click(within(screen.getByRole('dialog', { name: '素材を捨てる' })).getByRole('button', { name: '捨てる' }));
@@ -109,7 +110,7 @@ describe('procedure-manuals material shelf', () => {
   });
   it('returns placed materials to the shelf through the placed tab', async () => {
     mocks.list.mockResolvedValueOnce([]).mockResolvedValueOnce([{ ...text, documentId: 'document', placedAt: '2026-10-05T04:00:00Z' }]).mockResolvedValueOnce([]);
-    localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
+    localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualWorkshop /></MemoryRouter>);
     fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
     await screen.findByText('素材がありません');
     fireEvent.click(screen.getByRole('tab', { name: /^配置済み/ }));
@@ -238,7 +239,7 @@ describe('procedure-manuals material shelf', () => {
   });
   it('shows write permission errors near the action controls', async () => {
     mocks.ingest.mockRejectedValue({ isAxiosError: true, response: { status: 403 } });
-    localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>); fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
+    localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualWorkshop /></MemoryRouter>); fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
     await screen.findByRole('button', { name: '今すぐ取り込む' });
     fireEvent.click(screen.getByRole('button', { name: '今すぐ取り込む' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('権限がありません');

@@ -1125,3 +1125,10 @@ export async function replaceProcedureVideoComments(id: string, comments: import
   const { data } = await api.put<{ comments: import('../../features/assembly/procedure-manuals/procedure-video-types').ProcedureVideoCommentDto[] }>(`/assembly/procedure-videos/${encodeURIComponent(id)}/comments`, { comments: comments.map(({ atSeconds, text }) => ({ atSeconds, text })) });
   return data.comments;
 }
+
+export async function getProcedureManualModelOverview(modelCodeKey: string) {
+  const { data } = await api.get<import('../../features/assembly/types').ProcedureManualModelOverviewDto>(
+    `/assembly/procedure-manuals/models/${encodeURIComponent(modelCodeKey)}/overview`
+  );
+  return data;
+}

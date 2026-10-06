@@ -21,6 +21,7 @@ describe('procedure-manual routes', () => {
     const service = {
       listProcesses: vi.fn().mockResolvedValue([{ id: 'assembly' }]),
       listModels: vi.fn().mockResolvedValue([{ modelCode: 'ｄｆｄ１', modelCodeKey: 'DFD1' }]),
+      getModelOverview: vi.fn(),
       getAssignments: vi.fn().mockResolvedValue({ assignments: [{ unavailableReason: 'no_published_revision' }], sequence: {
         mode: 'configured', source: 'primary_fallback', machineName: 'ｄｆｄ１', machineNameKey: 'DFD1',
         documents: [], steps: [], stepSource: 'document_expansion', fallbackProcedureDocument: null
@@ -48,6 +49,22 @@ describe('procedure-manual routes', () => {
     expect(response.json().assignments[0].unavailableReason).toBe('no_published_revision');
     expect(service.getAssignments).toHaveBeenCalledWith('DFD1', 'assembly');
     expect(view).toHaveBeenCalledTimes(3);
+  });
+
+  it('returns the overview contract through allowView without changing existing responses', async () => {
+    const { service, view } = harness();
+    const overview = { modelCode: 'DFD1', modelCodeKey: 'DFD1', processes: [{ processId: 'assembly', count: 1, items: [{
+      assignmentId: 'one', sortOrder: 0, label: null, kind: 'assembly_procedure_document', documentId,
+      title: '組立', status: 'published', publishedRevisionNumber: 2,
+      draftRevision: { documentId: 'draft', revisionNumber: 3, editLease: { holderLabel: '佐藤', acquiredAt: '2026-10-06T00:00:00.000Z' } },
+      unavailableReason: null, pageCount: 1, thumbnailPageUrl: '/api/storage/page.png'
+    }] }] };
+    service.getModelOverview.mockResolvedValue(overview);
+    const response = await app.inject({ method: 'GET', url: '/assembly/procedure-manuals/models/DFD1/overview' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(overview);
+    expect(service.getModelOverview).toHaveBeenCalledWith('DFD1');
+    expect(view).toHaveBeenCalledOnce();
   });
 
   it('saves the complete list and rejects a model key mismatch or invalid document choice', async () => {

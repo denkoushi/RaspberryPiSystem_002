@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { createBlankAssemblyProcedureDocument, listAssemblyMachineNameCandidates } from '../../../api/client';
 import { Dialog } from '../../../components/ui/Dialog';
 import { Input } from '../../../components/ui/Input';
+import { kioskAssemblyManualsWorkshopPath, kioskAssemblyProcedureDocumentEditPath } from '../assemblyRoutes';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
 import { procedureManualModelKey } from './ProcedureManualAssignmentDialog';
@@ -72,7 +73,12 @@ export function ProcedureManualBlankDialog({ processes, modelCode, processId, on
     try {
       const assignment = selectedModel && child ? { modelCode: selectedModel, processId: child.id } : undefined;
       const document = await createBlankAssemblyProcedureDocument(name, assignment);
-      navigate(`/kiosk/assembly/procedure-documents/${document.id}/edit`, { state: { procedureManualAssignmentError: document.assignmentError } });
+      navigate(kioskAssemblyProcedureDocumentEditPath(document.id), { state: {
+        procedureManualAssignmentError: document.assignmentError,
+        returnTo: kioskAssemblyManualsWorkshopPath({ model: selectedModel, process: child?.id }),
+        context: { modelCode: selectedModel, modelCodeKey: selectedModel, processId: child?.id ?? '',
+          processName: [shortName(parent), shortName(child)].filter(Boolean).join(' › '), mode: 'make' }
+      } });
     } catch (e) { setError(readAssemblyApiErrorMessage(e, '白紙の要領書を作成できません')); }
     finally { setBusy(false); }
   };
