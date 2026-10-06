@@ -1,3 +1,5 @@
+import { isAxiosError } from 'axios';
+
 import { api } from '../http';
 
 import type { SelfInspectionStatus } from '../../features/part-measurement/types';
@@ -17,6 +19,28 @@ import type {
   GrindingPlanningBoardDueScopeSnapshot,
   GrindingPlanningBoardSeibanCandidatesResponse
 } from '@raspi-system/shared-types';
+
+export const DUE_MANAGEMENT_AUTH_SESSION_KEY = 'kiosk-due-management-authenticated';
+export const DUE_MANAGEMENT_TOKEN_SESSION_KEY = 'kiosk-due-management-token';
+
+async function dueManagementMutation<T>(url: string, payload: unknown) {
+  const token = typeof window !== 'undefined' ? window.sessionStorage.getItem(DUE_MANAGEMENT_TOKEN_SESSION_KEY) : null;
+  try {
+    return await api.put<T>(url, payload, { headers: token ? { 'x-due-management-token': token } : {} });
+  } catch (error) {
+    if (
+      isAxiosError(error) && error.response?.status === 403 &&
+      ['DUE_MANAGEMENT_TOKEN_REQUIRED', 'DUE_MANAGEMENT_TOKEN_INVALID', 'DUE_MANAGEMENT_TOKEN_EXPIRED',
+        'DUE_MANAGEMENT_TOKEN_DEVICE_MISMATCH'].includes(error.response.data?.code) &&
+      typeof window !== 'undefined'
+    ) {
+      window.sessionStorage.removeItem(DUE_MANAGEMENT_AUTH_SESSION_KEY);
+      window.sessionStorage.removeItem(DUE_MANAGEMENT_TOKEN_SESSION_KEY);
+    }
+    throw error;
+  }
+}
+
 export interface ProductionScheduleRow {
   id: string;
   /** `ProductionScheduleProgressOverviewSeibanItem.seibanJoinKey` と突合する専用キー。 */
@@ -912,7 +936,7 @@ export async function getKioskProductionScheduleDueManagementDailyPlan(context?:
 export async function updateKioskProductionScheduleDueManagementDailyPlan(payload: {
   orderedFseibans: string[];
 }) {
-  const { data } = await api.put<
+  const { data } = await dueManagementMutation<
     { success: boolean } & ProductionScheduleDueManagementDailyPlanResult
   >('/kiosk/production-schedule/due-management/daily-plan', payload);
   return data;
@@ -994,7 +1018,7 @@ export async function updateKioskProductionScheduleDueManagementGlobalRank(paylo
   targetLocation?: string;
   rankingScope?: 'globalShared' | 'locationScoped' | 'localTemporary';
 }) {
-  const { data } = await api.put<
+  const { data } = await dueManagementMutation<
     { success: boolean } & ProductionScheduleDueManagementGlobalRankResult
   >('/kiosk/production-schedule/due-management/global-rank', payload);
   return data;
@@ -1017,7 +1041,7 @@ export async function autoGenerateKioskProductionScheduleDueManagementGlobalRank
   targetLocation?: string;
   rankingScope?: 'globalShared' | 'locationScoped' | 'localTemporary';
 }) {
-  const { data } = await api.put<ProductionScheduleDueManagementGlobalRankAutoGenerateResult>(
+  const { data } = await dueManagementMutation<ProductionScheduleDueManagementGlobalRankAutoGenerateResult>(
     '/kiosk/production-schedule/due-management/global-rank/auto-generate',
     payload ?? {}
   );
@@ -1105,7 +1129,7 @@ export async function updateKioskProductionScheduleDueManagementPartPriorities(
   fseiban: string,
   payload: { orderedFhincds: string[] }
 ) {
-  const { data } = await api.put<{
+  const { data } = await dueManagementMutation<{
     success: boolean;
     priorities: Array<{ fhincd: string; priorityRank: number }>;
   }>(`/kiosk/production-schedule/due-management/seiban/${encodeURIComponent(fseiban)}/part-priorities`, payload);
@@ -1117,7 +1141,7 @@ export async function updateKioskProductionScheduleDueManagementPartProcessingTy
   fhincd: string,
   payload: { processingType: string }
 ) {
-  const { data } = await api.put<{ success: boolean; fhincd: string; processingType: string | null }>(
+  const { data } = await dueManagementMutation<{ success: boolean; fhincd: string; processingType: string | null }>(
     `/kiosk/production-schedule/due-management/seiban/${encodeURIComponent(fseiban)}/parts/${encodeURIComponent(
       fhincd
     )}/processing`,
@@ -1131,7 +1155,7 @@ export async function updateKioskProductionScheduleDueManagementPartNote(
   fhincd: string,
   payload: { note: string }
 ) {
-  const { data } = await api.put<{ success: boolean; fseiban: string; fhincd: string; note: string | null }>(
+  const { data } = await dueManagementMutation<{ success: boolean; fseiban: string; fhincd: string; note: string | null }>(
     `/kiosk/production-schedule/due-management/seiban/${encodeURIComponent(fseiban)}/parts/${encodeURIComponent(
       fhincd
     )}/note`,
@@ -1143,7 +1167,7 @@ export async function updateKioskProductionScheduleDueManagementPartNote(
 export async function updateKioskProductionScheduleDueManagementTriageSelection(payload: {
   selectedFseibans: string[];
 }) {
-  const { data } = await api.put<{ success: boolean; selectedFseibans: string[] }>(
+  const { data } = await dueManagementMutation<{ success: boolean; selectedFseibans: string[] }>(
     '/kiosk/production-schedule/due-management/triage/selection',
     payload
   );
@@ -1411,7 +1435,7 @@ export async function putKioskProductionScheduleLoadBalancingCapacityBase(payloa
 }
 
 export async function verifyKioskDueManagementAccessPassword(payload: { password: string }) {
-  const { data } = await api.post<{ success: boolean }>(
+  const { data } = await api.post<{ success: boolean; token?: string }>(
     '/kiosk/production-schedule/due-management/verify-access-password',
     payload
   );

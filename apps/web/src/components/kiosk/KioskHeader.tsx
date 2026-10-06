@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { postKioskPower } from '../../api/client';
+import { DUE_MANAGEMENT_AUTH_SESSION_KEY, DUE_MANAGEMENT_TOKEN_SESSION_KEY } from '../../api/domains/production-schedule';
 import { useVerifyKioskDueManagementAccessPassword } from '../../api/hooks';
 import { renderKioskReorderableHeaderTab } from '../../features/kiosk/kioskHeaderTabs/kioskHeaderReorderableTabRenderer';
 import { resolveClientKeyForPower } from '../../lib/client-key';
@@ -30,8 +31,6 @@ type KioskHeaderProps = {
   pathname: string;
   navTabOrder: readonly KioskReorderableHeaderTabId[];
 };
-
-const DUE_MANAGEMENT_AUTH_SESSION_KEY = 'kiosk-due-management-authenticated';
 
 const GearIcon = () => (
   <svg
@@ -118,12 +117,9 @@ export function KioskHeader({
   };
 
   const handleDueManagementNavigate = useCallback(async () => {
-    if (pathname.startsWith('/kiosk/production-schedule/due-management')) {
-      navigate('/kiosk/production-schedule/due-management');
-      return;
-    }
     const isAuthenticated =
-      typeof window !== 'undefined' && window.sessionStorage.getItem(DUE_MANAGEMENT_AUTH_SESSION_KEY) === '1';
+      typeof window !== 'undefined' && window.sessionStorage.getItem(DUE_MANAGEMENT_AUTH_SESSION_KEY) === '1' &&
+      Boolean(window.sessionStorage.getItem(DUE_MANAGEMENT_TOKEN_SESSION_KEY));
     if (isAuthenticated) {
       navigate('/kiosk/production-schedule/due-management');
       return;
@@ -132,16 +128,17 @@ export function KioskHeader({
     if (!password) return;
     try {
       const result = await verifyDueManagementAccessPasswordMutation.mutateAsync({ password });
-      if (!result.success) {
+      if (!result.success || !result.token) {
         window.alert('パスワードが違います');
         return;
       }
+      window.sessionStorage.setItem(DUE_MANAGEMENT_TOKEN_SESSION_KEY, result.token);
       window.sessionStorage.setItem(DUE_MANAGEMENT_AUTH_SESSION_KEY, '1');
       navigate('/kiosk/production-schedule/due-management');
     } catch {
       window.alert('認証に失敗しました。ネットワーク接続を確認してください。');
     }
-  }, [navigate, pathname, verifyDueManagementAccessPasswordMutation]);
+  }, [navigate, verifyDueManagementAccessPasswordMutation]);
 
   const reorderableTabContext = useMemo(
     () => ({

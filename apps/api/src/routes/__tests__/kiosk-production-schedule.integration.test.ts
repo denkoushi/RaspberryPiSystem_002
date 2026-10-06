@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { Prisma } from '@prisma/client';
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
+import { signDueManagementToken } from '../../lib/auth.js';
 import {
   PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
   SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL
@@ -53,6 +54,8 @@ async function seedDefaultVisibleFkojunstMailStatusForAllDashboardRows(): Promis
 describe('Kiosk Production Schedule API', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
   let closeServer: (() => Promise<void>) | null = null;
+  let dueManagementToken: string;
+  let dueManagementToken2: string;
 
   beforeAll(async () => {
     app = await buildServer();
@@ -138,16 +141,18 @@ describe('Kiosk Production Schedule API', () => {
     // 拠点は明示設定だけで決まる（Milestone 5）。以前 location から推測していた拠点を明示する。
     await prisma.site.upsert({ where: { key: 'Test' }, update: {}, create: { key: 'Test', displayName: 'Test' } });
     await prisma.site.upsert({ where: { key: 'Other' }, update: {}, create: { key: 'Other', displayName: 'Other' } });
-    await prisma.clientDevice.upsert({
+    const clientDevice = await prisma.clientDevice.upsert({
       where: { apiKey: CLIENT_KEY },
       update: { name: 'Test Client', location: 'Test', defaultMode: 'TAG', siteKey: 'Test' },
       create: { apiKey: CLIENT_KEY, name: 'Test Client', location: 'Test', defaultMode: 'TAG', siteKey: 'Test' }
     });
-    await prisma.clientDevice.upsert({
+    const clientDevice2 = await prisma.clientDevice.upsert({
       where: { apiKey: CLIENT_KEY_2 },
       update: { name: 'Test Client 2', location: 'Other', defaultMode: 'TAG', siteKey: 'Other' },
       create: { apiKey: CLIENT_KEY_2, name: 'Test Client 2', location: 'Other', defaultMode: 'TAG', siteKey: 'Other' }
     });
+    dueManagementToken = signDueManagementToken(clientDevice.id);
+    dueManagementToken2 = signDueManagementToken(clientDevice2.id);
 
     await prisma.csvDashboard.create({
       data: {
@@ -2645,7 +2650,7 @@ describe('Kiosk Production Schedule API', () => {
     const processingRes = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/seiban/A/parts/X/processing',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'x-due-management-token': dueManagementToken },
       payload: { processingType: 'LSLH' }
     });
     expect(processingRes.statusCode).toBe(200);
@@ -2870,7 +2875,7 @@ describe('Kiosk Production Schedule API', () => {
     const putRes = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/seiban/A/part-priorities',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'x-due-management-token': dueManagementToken },
       payload: { orderedFhincds: ['Z', 'X'] }
     });
     expect(putRes.statusCode).toBe(200);
@@ -2926,7 +2931,7 @@ describe('Kiosk Production Schedule API', () => {
     await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/seiban/A/parts/X/processing',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'x-due-management-token': dueManagementToken },
       payload: { processingType: 'LSLH' }
     });
 
@@ -2972,7 +2977,7 @@ describe('Kiosk Production Schedule API', () => {
     const saveSelectionRes = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/triage/selection',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'x-due-management-token': dueManagementToken },
       payload: { selectedFseibans: ['A', 'B'] }
     });
     expect(saveSelectionRes.statusCode).toBe(200);
@@ -2980,7 +2985,7 @@ describe('Kiosk Production Schedule API', () => {
     const savePlanRes = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/daily-plan',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'x-due-management-token': dueManagementToken },
       payload: { orderedFseibans: ['A', 'B'] }
     });
     expect(savePlanRes.statusCode).toBe(200);
@@ -2988,7 +2993,7 @@ describe('Kiosk Production Schedule API', () => {
     const saveRankRes = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/global-rank',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'x-due-management-token': dueManagementToken },
       payload: { orderedFseibans: ['A', 'B'] }
     });
     expect(saveRankRes.statusCode).toBe(200);
@@ -3060,7 +3065,7 @@ describe('Kiosk Production Schedule API', () => {
     const updateRes = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/triage/selection',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'x-due-management-token': dueManagementToken },
       payload: { selectedFseibans: ['B'] }
     });
     expect(updateRes.statusCode).toBe(200);
@@ -3092,7 +3097,7 @@ describe('Kiosk Production Schedule API', () => {
     const selectionRes = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/triage/selection',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'x-due-management-token': dueManagementToken },
       payload: { selectedFseibans: ['B', 'A'] }
     });
     expect(selectionRes.statusCode).toBe(200);
@@ -3108,7 +3113,7 @@ describe('Kiosk Production Schedule API', () => {
     const saveRes = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/daily-plan',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'x-due-management-token': dueManagementToken },
       payload: { orderedFseibans: ['A', 'B'] }
     });
     expect(saveRes.statusCode).toBe(200);
@@ -3138,14 +3143,14 @@ describe('Kiosk Production Schedule API', () => {
     await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/daily-plan',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'x-due-management-token': dueManagementToken },
       payload: { orderedFseibans: ['A', 'B'] }
     });
 
     await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/triage/selection',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'x-due-management-token': dueManagementToken },
       payload: { selectedFseibans: ['A'] }
     });
 
@@ -3170,7 +3175,7 @@ describe('Kiosk Production Schedule API', () => {
     const saveRes = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/daily-plan',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'x-due-management-token': dueManagementToken },
       payload: { orderedFseibans: ['B', 'A'] }
     });
     expect(saveRes.statusCode).toBe(200);
@@ -3186,7 +3191,7 @@ describe('Kiosk Production Schedule API', () => {
     const putRank = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/global-rank',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'x-due-management-token': dueManagementToken },
       payload: { orderedFseibans: ['A', 'B'] }
     });
     expect(putRank.statusCode).toBe(200);
@@ -3205,7 +3210,7 @@ describe('Kiosk Production Schedule API', () => {
     const putRank = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/global-rank',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'x-due-management-token': dueManagementToken },
       payload: {
         orderedFseibans: ['B', 'A'],
         targetLocation: '第2工場',
@@ -3227,7 +3232,7 @@ describe('Kiosk Production Schedule API', () => {
     await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/global-rank',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'x-due-management-token': dueManagementToken },
       payload: {
         orderedFseibans: ['A', 'B'],
         targetLocation: '第2工場',
@@ -3238,7 +3243,7 @@ describe('Kiosk Production Schedule API', () => {
     const tempPut = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/global-rank',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'x-due-management-token': dueManagementToken },
       payload: {
         orderedFseibans: ['B', 'A'],
         targetLocation: '第2工場',
@@ -3311,7 +3316,7 @@ describe('Kiosk Production Schedule API', () => {
     const autoRes = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/global-rank/auto-generate',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'x-due-management-token': dueManagementToken },
       payload: {
         minCandidateCount: 1,
         maxReorderDeltaRatio: 1,
@@ -3351,7 +3356,7 @@ describe('Kiosk Production Schedule API', () => {
     const autoRes = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/global-rank/auto-generate',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'x-due-management-token': dueManagementToken },
       payload: {
         minCandidateCount: 1,
         maxReorderDeltaRatio: 1,
@@ -3448,7 +3453,7 @@ describe('Kiosk Production Schedule API', () => {
     const autoRes = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/global-rank/auto-generate',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'x-due-management-token': dueManagementToken },
       payload: {
         minCandidateCount: 1,
         maxReorderDeltaRatio: 1,
@@ -3472,7 +3477,7 @@ describe('Kiosk Production Schedule API', () => {
     const saveTest = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/daily-plan',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'x-due-management-token': dueManagementToken },
       payload: { orderedFseibans: ['A'] }
     });
     expect(saveTest.statusCode).toBe(200);
@@ -3480,7 +3485,7 @@ describe('Kiosk Production Schedule API', () => {
     const saveOther = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/daily-plan',
-      headers: { 'x-client-key': CLIENT_KEY_2 },
+      headers: { 'x-client-key': CLIENT_KEY_2, 'x-due-management-token': dueManagementToken2 },
       payload: { orderedFseibans: ['B'] }
     });
     expect(saveOther.statusCode).toBe(200);
@@ -3674,7 +3679,7 @@ describe('Kiosk Production Schedule API', () => {
     const putRes = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/seiban/A/parts/X/note',
-      headers: { 'x-client-key': CLIENT_KEY },
+      headers: { 'x-client-key': CLIENT_KEY, 'x-due-management-token': dueManagementToken },
       payload: { note: '部品備考同期テスト' }
     });
     expect(putRes.statusCode).toBe(200);
@@ -3714,7 +3719,7 @@ describe('Kiosk Production Schedule API', () => {
     const partNoteRes = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/seiban/A/parts/X/note',
-      headers: { 'x-client-key': CLIENT_KEY_2 },
+      headers: { 'x-client-key': CLIENT_KEY_2, 'x-due-management-token': dueManagementToken2 },
       payload: { note: '共有部品備考' }
     });
     expect(partNoteRes.statusCode).toBe(200);
@@ -3722,7 +3727,7 @@ describe('Kiosk Production Schedule API', () => {
     const partProcessingRes = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/production-schedule/due-management/seiban/A/parts/X/processing',
-      headers: { 'x-client-key': CLIENT_KEY_2 },
+      headers: { 'x-client-key': CLIENT_KEY_2, 'x-due-management-token': dueManagementToken2 },
       payload: { processingType: 'LSLH' }
     });
     expect(partProcessingRes.statusCode).toBe(200);
@@ -3760,6 +3765,7 @@ describe('Kiosk Production Schedule API', () => {
     });
     expect(okRes.statusCode).toBe(200);
     expect((okRes.json() as { success: boolean }).success).toBe(true);
+    expect(okRes.json().token).toEqual(expect.any(String));
 
     const ngRes = await app.inject({
       method: 'POST',
