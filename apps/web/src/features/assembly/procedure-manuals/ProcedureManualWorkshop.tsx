@@ -199,29 +199,31 @@ export function ProcedureManualWorkshop() {
         <Link to="/kiosk/assembly" className={`${action} !min-h-11 gap-2 text-[19px]`}>組立へ戻る</Link>
       </div>
     </header>
-    <div className="grid min-h-0 grid-cols-[440px_300px_minmax(0,1fr)]">
+    <div className="grid min-h-0 grid-cols-[460px_minmax(0,1fr)]">
       <section aria-label="機種一覧" className="flex min-h-0 flex-col gap-2.5 overflow-auto border-r border-[#27313b] bg-[#161c22] p-4">
         <h2 className="text-base font-bold tracking-widest text-[#9fadb9]">機種</h2>
         <Input type="search" aria-label="機種検索" placeholder="型番で検索" maxLength={120} value={search} onChange={event => setSearch(event.target.value)} className="h-12 shrink-0 text-[21px]" />
         <output aria-label="数字検索" className="text-xl">{digitQuery}</output>
-        <ProcedureManualModelTenkey value={digitQuery} onChange={setDigitQuery} />
+        <div className="grid shrink-0 grid-cols-[200px_minmax(0,1fr)] items-start gap-3">
+          <ProcedureManualModelTenkey value={digitQuery} onChange={setDigitQuery} />
+          <section aria-label="工程一覧" className="flex min-w-0 flex-col gap-1">
+            <h2 className="text-base font-bold tracking-widest text-[#9fadb9]">工程</h2>
+            {overview?.processes.map(row => {
+              const child = processes.find(p => p.id === row.processId);
+              return <button key={row.processId} aria-current={processId === row.processId ? 'true' : undefined} className={`flex min-h-[46px] shrink-0 items-center rounded-lg px-3 text-left text-[19px] font-bold ${processId === row.processId ? 'bg-[#27313b]' : 'hover:bg-[#27313b]'}`} onClick={() => select(modelCodeKey, row.processId)}>
+                {shortName(processes.find(p => p.id === child?.parentId))} › {shortName(child)}<span className="ml-auto pl-2 font-mono text-[17px] font-normal text-[#9fadb9]">{row.count || '—'}</span>
+              </button>;
+            })}
+          </section>
+        </div>
         {searchLoading ? <p role="status">検索中…</p> : searchError ? <p role="alert" className="text-red-400">{searchError}</p> : candidates.length === 0 ? <p className="text-[#9fadb9]">該当する機種がありません</p> : null}
-        {candidates.map(row => <button key={row.modelCodeKey} aria-label={row.modelCodeKey} aria-current={row.modelCodeKey === modelCodeKey ? 'true' : undefined} className={`min-h-12 shrink-0 rounded-lg px-3 text-left font-mono text-xl font-bold break-all ${row.modelCodeKey === modelCodeKey ? 'bg-[#27313b]' : 'hover:bg-[#27313b]'}`} onClick={() => select(row.modelCodeKey)}><ProcedureManualModelMatch code={row.modelCodeKey} search={digitQuery || procedureManualModelKey(search)} /></button>)}
+        {candidates.map(row => <button key={row.modelCodeKey} aria-label={row.modelCodeKey} aria-current={row.modelCodeKey === modelCodeKey ? 'true' : undefined} className={`min-h-12 shrink-0 rounded-lg px-3 text-left font-mono text-[18px] font-bold break-all ${row.modelCodeKey === modelCodeKey ? 'bg-[#27313b]' : 'hover:bg-[#27313b]'}`} onClick={() => select(row.modelCodeKey)}><ProcedureManualModelMatch code={row.modelCodeKey} search={digitQuery || procedureManualModelKey(search)} /></button>)}
         {hasMore ? <p className="text-[#9fadb9]">数字を追加</p> : null}
-      </section>
-      <section aria-label="工程一覧" className="flex min-h-0 flex-col gap-2.5 overflow-auto border-r border-[#27313b] bg-[#161c22] p-4">
-        <h2 className="text-base font-bold tracking-widest text-[#9fadb9]">工程</h2>
-        {overview?.processes.map(row => {
-          const child = processes.find(p => p.id === row.processId);
-          return <button key={row.processId} aria-current={processId === row.processId ? 'true' : undefined} className={`flex min-h-12 shrink-0 items-center rounded-lg px-3 text-left text-[21px] font-bold ${processId === row.processId ? 'bg-[#27313b]' : 'hover:bg-[#27313b]'}`} onClick={() => select(modelCodeKey, row.processId)}>
-            {shortName(processes.find(p => p.id === child?.parentId))} › {shortName(child)}<span className="ml-auto pl-2 font-mono text-[17px] font-normal text-[#9fadb9]">{row.count || '—'}</span>
-          </button>;
-        })}
       </section>
       <section aria-label="要領書一覧" className="grid min-h-0 min-w-0 content-start overflow-auto px-4 py-3">
         {!modelCodeKey ? <p className="text-[#9fadb9]">機種を選択</p> : !process ? <p className="text-[#9fadb9]">工程を選択</p> : <>
           <div className="mb-1.5 flex min-h-[52px] min-w-max items-center gap-3">
-            <h2 className="text-[22px] font-black">{processName}</h2>
+            <h2 className="text-[22px] font-black">{modelCodeKey} › {processName}</h2>
             <span className="font-mono text-lg text-[#9fadb9]">{filteredItems.length} 件</span>
             <div className="ml-3 flex gap-1.5" role="group" aria-label="状態で絞り込み">
               {statusFilters.map(filter => <button key={filter} aria-pressed={statusFilter === filter} className={`h-11 rounded-full border border-[#344252] px-3 text-[17px] font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7cc4ff] ${statusFilter === filter ? 'bg-[#27313b] text-[#eef3f6]' : 'text-[#9fadb9]'}`} onClick={() => setStatusFilter(filter)}>{filter}</button>)}

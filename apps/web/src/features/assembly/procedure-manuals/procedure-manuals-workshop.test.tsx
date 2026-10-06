@@ -180,11 +180,26 @@ describe('procedure-manuals workshop', () => {
   it('uses dense accessible rows, status colors, thumbnails and valid symbol actions', async () => {
     show();
     expect(screen.getByTestId('procedure-manuals-workshop')).toHaveClass('grid-rows-[64px_minmax(0,1fr)]');
-    expect(screen.getByRole('region', { name: '機種一覧' }).parentElement).toHaveClass('grid-cols-[440px_300px_minmax(0,1fr)]');
+    const modelColumn = screen.getByRole('region', { name: '機種一覧' });
+    const split = modelColumn.parentElement;
+    expect(split).toHaveClass('grid-cols-[460px_minmax(0,1fr)]');
+    expect(split?.children).toHaveLength(2);
+    expect(split?.lastElementChild).toBe(screen.getByRole('region', { name: '要領書一覧' }));
+    const processList = within(modelColumn).getByRole('region', { name: '工程一覧' });
+    const tenkey = within(modelColumn).getByRole('group', { name: '機種テンキー' });
+    expect(tenkey.parentElement).toBe(processList.parentElement);
+    expect(tenkey.parentElement).toHaveClass('grid-cols-[200px_minmax(0,1fr)]');
+    for (const key of within(tenkey).getAllByRole('button')) expect(key).toHaveClass('h-[52px]');
     expect(await screen.findByRole('button', { name: 'DFD1' })).toHaveAttribute('aria-current', 'true');
+    const model = within(modelColumn).getByRole('button', { name: 'DFD1' });
+    expect(model).toHaveClass('font-mono', 'text-[18px]');
+    expect(model.parentElement).toBe(modelColumn);
+    expect(tenkey.parentElement?.nextElementSibling).toBe(model);
+    expect(screen.getByRole('heading', { name: 'DFD1 › 組立 › 組立' })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'DFD1' })).toHaveLength(1);
     expect(mocks.candidates).not.toHaveBeenCalled();
     expect(await screen.findByRole('button', { name: '組立 › 組立 4' })).toHaveAttribute('aria-current', 'true');
+    for (const process of within(processList).getAllByRole('button')) expect(process).toHaveClass('min-h-[46px]');
     expect(screen.getByRole('button', { name: '組立 › 検査 —' })).toBeInTheDocument();
     const pub = screen.getByRole('row', { name: '公開手順' });
     expect(pub).toHaveClass('h-14');
@@ -320,7 +335,7 @@ describe('procedure-manuals workshop', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'DFD1' }));
     expect(screen.getByText('工程を選択')).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: '組立 › 検査 —' }));
-    expect(await screen.findByRole('heading', { name: '組立 › 検査' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'DFD1 › 組立 › 検査' })).toBeInTheDocument();
     expect(screen.queryByRole('cell')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '作る' })).toBeEnabled();
   });
