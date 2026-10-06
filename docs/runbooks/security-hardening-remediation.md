@@ -50,6 +50,7 @@ The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #9
 - Files: `apps/api/prisma/seed.ts` (`admin`/`admin1234`, `client-*-key`), `apps/web/src/lib/client-key/config.ts` (fallback key), `infrastructure/ansible/inventory.yml` (plaintext keys), `scripts/register-clients.sh` (default admin pw), `docs/guides/api-key-policy.md` (real keys in docs).
 - Action: per-device high-entropy `x-client-key` stored in vault and rotated; make `VITE_DEFAULT_CLIENT_KEY` required in production web build; production seed must not create `admin1234` (force first-run random + change); scrub real keys from docs.
 - Risk: rotating a client key breaks that kiosk until its config/URL is updated. Rotate one device at a time.
+- Plan: production rotation is tracked in [security-client-key-rotation-phase-b.md](../plans/security-client-key-rotation-phase-b.md).
 - Verify: old key returns 401; new key works on the target kiosk.
 
 ## C-5. Legacy due-management PIN `2520` (High)
