@@ -1,6 +1,6 @@
 ---
 id: security-client-key-rotation-phase-b
-status: draft
+status: in_progress
 scope: Replace every production device credential (`ClientDevice.apiKey`, sent as `x-client-key`) with a per-device random value, one device at a time, through the standard release route.
 date: 2026-10-06
 source_of_truth: this plan
@@ -19,7 +19,7 @@ related_docs:
   - docs/guides/deployment.md
   - docs/guides/api-key-policy.md
 validation: per-device evidence that the new credential authenticates and the previous credential is rejected, recorded in this plan without credential values
-open_items: Milestones 0 to 4 are not started. Production work needs a separate explicit approval and a maintenance window for each device.
+open_items: Pi3 is rotated. Unused rows, the development Mac, six Pi4 kiosks and the Pi5 remain. Production work needs explicit approval per device.
 supersedes: none
 superseded_by: none
 ---
@@ -40,9 +40,12 @@ After this plan is executed, each device holds a credential that cannot be guess
 
 - [x] (2026-10-06) Read-only repository survey of where the credential is rendered, stored, looked up and changed. Findings are in `Context and Orientation`.
 - [x] (2026-10-06) Read-only production count confirming that item C-4 applies. Counts are intentionally not recorded here.
-- [ ] Milestone 0: read-only production audit (device list, shared Vault variables, references in other rows, delivery path per device).
-- [ ] Milestone 1: repository preparation (rotation transaction script, verification script inputs, delivery path for the Pi5 and Pi3 status-agent files, literal checks).
-- [ ] Milestone 2: pilot rotation of one device.
+- [x] (2026-10-06) Milestone 0: read-only production audit, run by the system owner with commands that print no values. Results are in `Artifacts and Notes`.
+- [x] (2026-10-06) Milestone 1, part: `scripts/security/rotate-client-key.sh` with dry-run and restore modes, tested against PostgreSQL in the `db-infra` job (#1735, `11ba0e0b`).
+- [x] (2026-10-06) Milestone 1, part: the standard Pi3 release renders the status-agent file (#1738, `0d03337f`, by the session that owns the Pi3).
+- [ ] Milestone 1, rest: the same rendering for the Pi5 (#1740, open), Pi4 literals in `scripts/deploy/verify-phase12-real.sh`, power dispatcher check.
+- [x] (2026-10-06) Pi3 signage device rotated by the session that owns the Pi3. Evidence is in `Artifacts and Notes`.
+- [ ] Milestone 2: unused rows first (no shop-floor impact; first production use of the script), then the development Mac.
 - [ ] Milestone 3: remaining devices, one per window slot.
 - [ ] Milestone 4: closeout (rejected-credential evidence, documentation scrub, Phase C scanner suppression, runbook update).
 
@@ -61,6 +64,9 @@ After this plan is executed, each device holds a credential that cannot be guess
 - Observation: the Pi5 power dispatcher matches a queued power request to a host by comparing the credential in the request with inventory values, and writes the credential to a debug log.
   Evidence: `infrastructure/ansible/templates/pi5-power-dispatcher.sh.j2`, `apps/api/src/routes/kiosk/power.ts`.
 - Observation: `scripts/deploy/verify-phase12-real.sh` carries Pi4 credentials as literals and calls production with them, so it stops working for each device as that device is rotated.
+- Observation: the first Pi3 release after the database switch failed before reaching the Pi3. The Pi5 checkout under `/opt/RaspberryPiSystem_002` could not create a new file in `scripts/security/` because that directory was not writable by the release user; earlier commits had added no file there. The Pi3 was without a valid credential until the ownership was corrected and the release re-run.
+  Evidence: run `20261006-014830-0b169b` (failed at checkout), run `20261006-015022-f5eddd` (success).
+- Observation: a hand-written switch statement echoed the new value to the operator's terminal during the Pi3 step. The script from #1735 does not print values and is the only supported way from now on.
 
 ## Decision Log
 
@@ -82,6 +88,14 @@ After this plan is executed, each device holds a credential that cannot be guess
 - Decision: per device the order is database transaction first, standard release second.
   Rationale: the reverse order fails the release health check by design.
   Date/Author: 2026-10-06 / Claude.
+- Decision: before the database transaction for any device, prove that the release can start: print the release plan for that device, confirm the required artifacts exist for the head commit, and confirm the Pi5 checkout is clean and can be updated to that commit. Only then switch the database.
+  Rationale: the Pi3 step switched the database first and then lost several minutes to a checkout failure unrelated to the device.
+  Date/Author: 2026-10-06 / Claude.
+- Decision: unused device rows are not deleted. Their credential is replaced with a random value that is stored nowhere, which disables the old value and keeps the row and its history.
+  Rationale: deletion can fail on or cascade into history rows; replacement is reversible by issuing a new value. Approved by the system owner on 2026-10-06.
+  Date/Author: 2026-10-06 / Claude.
+- Decision: the system owner runs every production command (Vault edit, database step); the agent prepares the commands and judges the results. The Pi3 belongs to the session that started it; all other rows belong to this plan's session.
+  Date/Author: 2026-10-06 / system owner and Claude.
 
 ## Outcomes & Retrospective
 
@@ -139,6 +153,10 @@ The rotation script changes nothing when the previous value does not match, so r
 ## Artifacts and Notes
 
 Evidence is added here per device as it is produced: device name, date, merge commit, run id, and the pass/fail list. No values.
+
+Milestone 0 audit, 2026-10-06. The inventory has nine hosts and every host's credential differs from every other host's. Within a host all credential variables hold one value: status agent and NFC on every Pi4, plus the torque agent on `raspi4-kensaku-stonebase01` and `raspi4-assembly-01`, plus signage on the Pi3. One Pi4 already has a credential of the new form and is out of scope. Besides the inventory hosts, the database has one development machine that is in use and four rows that have not been seen for months. Only two rows are referenced from signage schedules or preview targets, and the script updates those references.
+
+Pi3 (`raspberrypi3`), 2026-10-06, by the session that owns the Pi3. Vault change #1736 (`ec82f19e`); status-agent rendering #1738 (`0d03337f`). Database switch at 10:48 JST: one device row, three preview targets, four schedule entries, zero remaining references to the previous value. Release run `20261006-015022-f5eddd`, success, recap `ok=53 changed=18 failed=0`. New value returns 200 and the previous value 401 on `/api/signage/current-image`; the status-agent file was re-rendered and the agent exits normally every minute. The secret-scanner suppression for the previous value was already in place (#1727). Because the new value was shown on the operator's terminal during the switch, the Pi3 is to be rotated once more with the script.
 
 Follow-ups that are out of scope for this plan and should be filed at closeout: sending the credential only in a header instead of in start URLs and query strings (runbook item C-9); removing the application's dependence on the credential's shape so that a fully random value can be used; binding device telemetry to the authenticated device, which first needs an administrator way to clear or change a device's `statusClientId`; restricting the status-agent configuration file's permissions together with privilege for the client backup that reads it; removing the credential from the power dispatcher's debug log and from queue file names; cleaning signage cache files left under retired credentials.
 

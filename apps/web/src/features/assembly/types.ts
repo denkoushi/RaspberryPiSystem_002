@@ -722,6 +722,7 @@ export type ProcedureManualOverviewItemDto = {
   title: string;
   status: 'published' | 'draft' | 'unavailable';
   publishedRevisionNumber: number | null;
+  approval: ProcedureManualLastApprovalDto | null;
   draftRevision: { documentId: string; revisionNumber: number; editLease: { holderLabel: string; acquiredAt: string } | null } | null;
   unavailableReason: string | null;
   pageCount: number | null;

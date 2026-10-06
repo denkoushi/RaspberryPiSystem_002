@@ -776,8 +776,14 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
   // 材料の入荷状況は購買CSVの取込で変わるため、スナップショットや itemRevision に含めず応答のたびに付ける。
   const materialArrivalByPart = await perf.measure('materialArrival', () => findMaterialArrivalStatusByPart(page));
   const pageWithMaterialArrival = page.map((item) => {
-    const materialArrivalStatus = materialArrivalByPart.get(materialArrivalLookupKey(item.fseiban, item.fhincd));
-    return materialArrivalStatus ? { ...item, materialArrivalStatus } : item;
+    const arrival = materialArrivalByPart.get(materialArrivalLookupKey(item.fseiban, item.fhincd));
+    return arrival
+      ? {
+          ...item,
+          materialArrivalStatus: arrival.status,
+          ...(arrival.basis === 'part' ? { materialArrivalBasis: arrival.basis } : {})
+        }
+      : item;
   });
   perf.flush({ snapshotReused: Boolean(params.snapshotId), itemCount: orderedItems.length, fseibanCount: selected.length });
   return {

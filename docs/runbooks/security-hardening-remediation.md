@@ -77,8 +77,8 @@ The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #9
   (confirmed on the live gateway Caddyfile). The gateway now denies `/admin*`
   outside the allowlist; see
   [phase9-10-specifications.md](../security/phase9-10-specifications.md) for the
-  mechanism. Remove the `pre-admin-allowlist` legacy route fixture after the
-  first verified production release.
+  mechanism. Verified in production on 2026-10-01 (allowed source 200, Docker
+  network source 403); the temporary legacy route fixture has been removed.
 - Operational action still gated: run the separately approved
   `prepare-pi5-admin-network-policy.yml` once before deploying the new contract.
 - Risk: wrong CIDR locks admins out of `/admin`; the preparer rejects a list that

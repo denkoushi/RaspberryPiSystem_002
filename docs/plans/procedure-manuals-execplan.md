@@ -13,7 +13,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 ## Progress
 
 - [x] (2026-10-06) 実機確認午後 (a): 共通テンキー・8時間アクセス、エディタ全高配置・記号列・浮遊属性・通知をWebのみ実装。Web lint / 255ファイル1569件(ワーカー2、最終対象79件再確認) / build、capture adapter 1件成功。取説生成はClaude担当、実画面確認はlisten EPERMで未実施。レビュー 8 件を反映(Web lint、255 ファイル 1599 件、build、capture adapter 1 件成功)。
-
+- [x] (2026-10-06) 実機確認 (b) 3・4: 工房を56pxの表形式・状態/名前の即時絞り込み・44px記号操作へ変更し、組立ホーム上辺を文字だけの6項目へ整理。レビュー 3 件を反映（サムネイルの可視範囲での遅延取得、概要APIの公開版承認情報の一括取得と表示、sr-only列見出しとページ数の読み上げ）。Web lint / 指定vitest 76ファイル478件 / build成功、件数バッジ追加確認はホーム17件成功。目視確認は環境の起動権限制限で未実施。Git操作・本番反映は未実施。 レビュー修正後の指定検証: API lint / vitest 4ファイル42件 / tsc、Web lint / vitest 76ファイル482件 / buildすべて成功。
 - [x] (2026-10-05) 既存 5 系統(組立手順書、作業要領 `WorkInstruction`、キオスク文書 `KioskDocument`、ナレッジ `Knowledge`、kiosk-sop)を Codex(`gpt-6.1-sol`/`high`、read-only)で比較分析し、Claude が根拠行を確認した。結論は「組立手順書を正本に、分類を薄く追加」。
 - [x] (2026-10-05) オーナーが設計判断 5 点を決めた(Decision Log 参照)。
 - [x] (2026-10-05) feature branch `feat/procedure-manuals-phase1` と worktree を `scripts.git_lifecycle.cli start` で作成(起点 `origin/main` = `e001c7fa`)。

@@ -415,34 +415,33 @@ export function KioskAssemblyHomePage() {
     setInvalidationError(null);
   };
   const navLinkClassName =
-    'inline-flex min-h-9 items-center gap-1.5 rounded-md px-2.5 text-sm font-bold text-[#9fadb9] hover:bg-[#1f2730] hover:text-[#eef3f6]';
+    'inline-flex h-11 items-center gap-1.5 rounded-lg border border-[#344252] px-4 text-[19px] font-bold hover:bg-[#1f2730] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7cc4ff]';
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[#0f1317] text-[#eef3f6]">
-      <div className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#27313b] bg-[#161c22] px-3.5">
-        <h1 className="text-lg font-black tracking-widest">組立</h1>
-        <nav className="flex flex-wrap items-center gap-1" aria-label="組立メニュー">
-          <Link to={kioskAssemblyManualsPath()} className={navLinkClassName}><svg aria-hidden="true" className="mr-2 h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12" /><circle cx="12" cy="12" r="3" /></svg>見る</Link>
-          <Link to={kioskAssemblyManualsWorkshopPath()} className={navLinkClassName}><svg aria-hidden="true" className="mr-2 h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>作る・直す</Link>
-          <Link to={KIOSK_ASSEMBLY_TRAINING_PATH} className={navLinkClassName}>
-            訓練
-          </Link>
-          <Link to={kioskAssemblyLibraryPath({ focus: 'procedures' })} className={navLinkClassName}>
-            手順書
-          </Link>
+      <div className="flex min-h-16 shrink-0 flex-wrap items-center gap-4 border-b border-[#27313b] bg-[#161c22] px-5">
+        <h1 className="text-[26px] font-black tracking-widest">組立</h1>
+        <nav className="ml-4 flex flex-wrap items-center gap-1.5" aria-label="組立メニュー">
+          <Link to={kioskAssemblyManualsPath()} className={navLinkClassName}>見る</Link>
+          <Link to={kioskAssemblyManualsWorkshopPath()} className={navLinkClassName}>作る・直す</Link>
+          <span aria-hidden="true" className="mx-2 h-7 w-px bg-[#344252]" />
           <Link to={kioskAssemblyLibraryPath({ focus: 'templates' })} className={navLinkClassName}>
-            手順を作る
+            使う
           </Link>
           <Link to={kioskAssemblyRecordApprovalPath()} className={navLinkClassName} aria-label="記録確認">
             記録確認
             {pendingApprovalCount > 0 ? (
-              <span className="rounded-full bg-[#ff7d61] px-1.5 font-mono text-xs font-semibold text-[#2a0a02]" aria-hidden="true">
+              <span className="inline-grid h-6 min-w-6 place-items-center rounded-full bg-[#f6b93b] px-1.5 font-mono text-sm font-semibold text-[#0b1a12]" aria-hidden="true">
                 {pendingApprovalCount}
               </span>
             ) : null}
           </Link>
+          <span aria-hidden="true" className="mx-2 h-7 w-px bg-[#344252]" />
           <Link to={kioskAssemblyTraceabilityPath()} className={navLinkClassName}>
             製品構成
+          </Link>
+          <Link to={KIOSK_ASSEMBLY_TRAINING_PATH} className={navLinkClassName}>
+            訓練
           </Link>
         </nav>
       </div>

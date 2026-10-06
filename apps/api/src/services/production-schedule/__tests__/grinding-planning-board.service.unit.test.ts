@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => {
   };
   return {
     prisma,
+    findMaterialArrivalStatusByPart: vi.fn(),
     sourceRow,
     state,
     getResourceCategoryPolicy: vi.fn(),
@@ -48,6 +49,11 @@ const mocks = vi.hoisted(() => {
     readGrindingPlanningBoardSnapshotGenerationToken: vi.fn()
   };
 });
+
+vi.mock('../../purchase-order-lookup/material-arrival-status.service.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../purchase-order-lookup/material-arrival-status.service.js')>(),
+  findMaterialArrivalStatusByPart: mocks.findMaterialArrivalStatusByPart
+}));
 
 vi.mock('../../../lib/prisma.js', () => ({ prisma: mocks.prisma }));
 vi.mock('../policies/resource-category-policy.service.js', () => ({
@@ -164,8 +170,27 @@ describe('grinding planning board service orchestration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     configurePersistence();
+    mocks.findMaterialArrivalStatusByPart.mockResolvedValue(new Map());
   });
 
+
+  it.each(['material', 'part'] as const)('keeps the status value and supplies only a substitute basis (%s)', async (basis) => {
+    const projection = mocks.projectGrindingPlanningBoard.getMockImplementation()!();
+    mocks.projectGrindingPlanningBoard.mockReturnValue({
+      ...projection,
+      items: projection.items.map((item: object) => ({ ...item, fhincd: 'PART-A' }))
+    });
+    mocks.findMaterialArrivalStatusByPart.mockResolvedValue(new Map([
+      ['ORDER-A\tPART-A', { status: 'ordered', basis }]
+    ]));
+    const response = await getGrindingPlanningBoard({
+      siteKey: 'site-a', category: 'grinding', view: 'seiban',
+      snapshotStore: createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 })
+    });
+    expect(response.items[0]?.materialArrivalStatus).toBe('ordered');
+    expect(response.items[0]?.materialArrivalBasis).toBe(basis === 'part' ? 'part' : undefined);
+    expect(response.items[0]?.itemRevision).toBe('item-revision-a');
+  });
 
   it('reuses a first page without a snapshot ID and keeps both generation checks', async () => {
     const snapshotStore = createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 });

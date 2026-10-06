@@ -87,7 +87,7 @@ export class ProcedureManualService {
     const rootIds = [...new Set(rows.flatMap(row => row.assemblyProcedureDocumentId ? [row.assemblyProcedureDocumentId] : []))];
     const documents = rootIds.length ? await prisma.assemblyProcedureDocument.findMany({
       where: { OR: [{ id: { in: rootIds } }, { revisionMetadata: { is: { revisionRootId: { in: rootIds } } } }] },
-      include: { revisionMetadata: true, editLease: true, pages: { orderBy: { pageIndex: 'asc' } } }
+      include: { revisionMetadata: true, editLease: true, pages: { orderBy: { pageIndex: 'asc' } }, procedureManualApprovals: procedureManualApprovalInclude }
     }) : [];
     const families = new Map<string, typeof documents>();
     for (const document of documents) {
@@ -117,6 +117,7 @@ export class ProcedureManualService {
         title: isPdf ? pdf?.displayTitle || pdf?.title || row.label || '文書' : display?.name ?? allRevisions[0]?.name ?? row.label ?? '文書',
         status: !available ? 'unavailable' as const : isPdf || published ? 'published' as const : 'draft' as const,
         publishedRevisionNumber: published ? published.revisionMetadata?.revisionNumber ?? 1 : null,
+        approval: isPdf ? null : serializeLastProcedureManualApproval(published?.procedureManualApprovals),
         draftRevision: draft ? {
           documentId: draft.id, revisionNumber: draft.revisionMetadata!.revisionNumber,
           editLease: draft.editLease && draft.editLease.expiresAt > now ? {

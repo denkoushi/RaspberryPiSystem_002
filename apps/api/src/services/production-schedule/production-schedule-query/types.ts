@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import {
+  type MaterialArrivalBasis,
   type MaterialArrivalStatus,
   type ProductionScheduleResourceCategory
 } from '@raspi-system/shared-types';
@@ -100,6 +101,7 @@ export type ProductionScheduleListResult = {
   leaderboardFooterChipsByPartKey?: Record<string, LeaderboardPartFooterProcessItem[]>;
   /** `responseProfile=leaderboard` のときのみ。部品キー → 材料の入荷状況。 */
   leaderboardMaterialArrivalByPartKey?: Record<string, MaterialArrivalStatus>;
+  leaderboardMaterialArrivalBasisByPartKey?: Record<string, MaterialArrivalBasis>;
   /** `selfInspectionEligibleOnly` のとき。さらに候補がありうる（走査上限または未走査の日程が残る） */
   hasMore?: boolean;
 };
