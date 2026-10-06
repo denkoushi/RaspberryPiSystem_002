@@ -337,6 +337,11 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
+      - name: Test client key rotation with isolated PostgreSQL
+        run: |
+          python3 scripts/deploy/tests/test_rotate_client_key_transport.py
+          bash scripts/deploy/tests/test-rotate-client-key-postgres.sh
+
       - name: Generate isolated production-mode database credentials
         run: |
           CI_APP_DB_PASSWORD="$(openssl rand -hex 24)"
