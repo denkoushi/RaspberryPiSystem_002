@@ -78,10 +78,7 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
   );
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [selectedPageKey, setSelectedPageKey] = useState('');
-  const [leftPaneTab, setLeftPaneTab] = useState<'steps' | 'documents'>(
-    input.templateId ? 'steps' : 'documents'
-  );
-  const [procedurePaneOpen, setProcedurePaneOpen] = useState(true);
+  const [leftPaneTab, setLeftPaneTab] = useState<'areas' | 'steps' | 'documents'>('areas');
   const [documentLibraryOpen, setDocumentLibraryOpen] = useState(false);
   const [documentSearch, setDocumentSearch] = useState('');
   const [showFullPage, setShowFullPage] = useState(false);
@@ -114,14 +111,7 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
       dispatchProcedureItems({ type: 'replace', items: nextItems });
       dispatchProcedureSteps({ type: 'replace', steps: nextSteps });
       setSelectedStepId(nextSteps[0]?.localId ?? null);
-      setProcedurePaneOpen(!input.templateId || nextItems.length > 1);
-      setLeftPaneTab(
-        !input.templateId
-          ? 'documents'
-          : typeof window !== 'undefined' && window.innerWidth >= 1280
-            ? 'steps'
-            : 'documents'
-      );
+      setLeftPaneTab('areas');
       setInitialized(true);
       return;
     }
@@ -140,8 +130,7 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
     });
     dispatchProcedureSteps({ type: 'replace', steps: [] });
     setSelectedStepId(null);
-    setProcedurePaneOpen(true);
-    setLeftPaneTab('documents');
+    setLeftPaneTab('areas');
     setInitialized(true);
   }, [
     input.documents,
@@ -273,7 +262,6 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
     pendingDocumentAddRef.current = { documentId: document.id, mode };
     setAddingDocumentId(document.id);
     dispatchProcedureItems({ type: 'append_assembly_document', document });
-    setProcedurePaneOpen(true);
     if (mode === 'all_pages') {
       dispatchProcedureSteps({ type: 'append_pages', pages });
       setLeftPaneTab('steps');
@@ -456,7 +444,6 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
     pageOptions,
     patchStep,
     procedureItems,
-    procedurePaneOpen,
     procedureSteps,
     removeDocument,
     removeStep,
@@ -469,7 +456,6 @@ export function useAssemblyTemplateProcedureDraft(input: ProcedureDraftInput) {
     setDocumentLibraryOpen,
     setDocumentSearch,
     setLeftPaneTab,
-    setProcedurePaneOpen,
     setSelectedDocumentId,
     setSelectedPageKey,
     setShowFullPage,
