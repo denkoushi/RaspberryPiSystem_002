@@ -146,6 +146,16 @@ describe('AssemblyProcedureMarkerLayer bolt dragging', () => {
     } else Reflect.deleteProperty(window, 'cancelAnimationFrame');
   });
 
+  it('lets taps pass through the empty layer while markers stay interactive', () => {
+    render(
+      <div className="relative h-[200px] w-[400px]">
+        <AssemblyProcedureMarkerLayer bolts={[bolt]} onSelectBolt={vi.fn()} />
+      </div>
+    );
+    expect(screen.getByTestId('assembly-procedure-marker-layer-default')).toHaveClass('pointer-events-none');
+    expect(screen.getByRole('button', { name: '締付点1' })).toHaveClass('pointer-events-auto');
+  });
+
   it('keeps normal click selection and disables drag affordance without a move handler', () => {
     const onSelectBolt = vi.fn();
     render(
