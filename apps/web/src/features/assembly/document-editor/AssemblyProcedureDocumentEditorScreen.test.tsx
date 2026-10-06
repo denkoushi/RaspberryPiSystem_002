@@ -127,6 +127,22 @@ function renderScreen(controller: AssemblyProcedureDocumentEditorController) {
 
 describe('AssemblyProcedureDocumentEditorScreen', () => {
   beforeEach(() => { approvalMocks.read = null; approvalMocks.resolve.mockReset(); });
+  it.each([['make', 1, null, '作る · 下書き 第1版', 'text-[#3ba776]'], ['fix', 3, 'root', '直す · 改版の下書き 第3版', 'text-[#f6b93b]'], ['fix', 1, null, '直す · 下書き 第1版', 'text-[#f6b93b]']] as const)('shows workshop context for %s', (mode, revisionNumber, supersedesDocumentId, label, color) => {
+    const controller = makeController({ document: { ...editorDocument, revisionNumber, supersedesDocumentId } });
+    render(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen context={{ modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', processName: '組立 › 組立', mode }} /></AssemblyProcedureDocumentEditorProvider>);
+    expect(screen.getByText('DFD1 › 組立 › 組立 › 組立手順書')).toBeInTheDocument();
+    expect(screen.getByText(label)).toHaveClass(color);
+  });
+
+  it('keeps workshop context and the return action before editor authentication', () => {
+    const navigateBack = vi.fn();
+    const controller = makeController({ accessGranted: false, navigateBack });
+    render(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen context={{ modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', processName: '組立 › 組立', mode: 'fix' }} /></AssemblyProcedureDocumentEditorProvider>);
+    expect(screen.getByRole('heading', { name: 'DFD1 › 組立 › 組立 › 組立手順書' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '戻る' }));
+    expect(navigateBack).toHaveBeenCalledOnce();
+  });
+
   it('shows deletion only for DRAFT and requires irreversible deletion confirmation', () => {
     const deleteDocument = vi.fn(async () => undefined);
     const view = renderScreen(makeController({ deleteDocument }));

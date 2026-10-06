@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useEffect } from 'react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ProcedureManualAssignmentDialog } from './ProcedureManualAssignmentDialog';
@@ -27,6 +27,11 @@ vi.mock('../AssemblyProcedureSequenceViewer', () => ({
     return <div data-testid="sequence-viewer" data-layout={layout}><ProcedureManualPageRail listOpen={listOpen} onToggleList={onToggleList} twoPages={twoPages} onToggleTwoPages={onToggleTwoPages} total={2} />{sequence.documents.map((d) => <span key={d.orderItemId}>{d.title}</span>)}{showCurrentMarkerButton !== false ? <button>現在の丸数字へ</button> : null}</div>;
   }
 }));
+
+function EditorLocation() {
+  const location = useLocation();
+  return <><p>新規エディタ</p><output data-testid="editor-state">{JSON.stringify(location.state)}</output></>;
+}
 
 const processes: ProcedureManualProcessDto[] = [
   { id: 'parent', parentId: null, name: '組立工程', sortOrder: 0, active: true, resourceCd: null },
@@ -240,24 +245,22 @@ describe('procedure-manuals', () => {
     expect(screen.getByRole('button', { name: '名前の組み立てに戻る' })).toHaveClass('text-[#eef3f6]', 'border-[#6b7c8d]');
   });
 
-  it('uses two panes with all actions in the left header and a headerless manuals viewer', async () => {
+  it('keeps only viewing navigation in the left header and a headerless manuals viewer', async () => {
     render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
     const split = screen.getByTestId('procedure-manuals-split');
     expect(split).toHaveClass('grid-cols-[760px_minmax(0,1fr)]');
     const left = screen.getByTestId('procedure-manuals-left');
     expect(within(left).getByRole('heading', { name: '要領書' })).toBeInTheDocument();
-    expect(within(left).getByRole('button', { name: '白紙から作る' })).toHaveClass('h-11');
-    expect(within(left).getByRole('button', { name: '素材 0' })).toBeInTheDocument();
-    expect(within(left).getByRole('button', { name: '動画' })).toBeInTheDocument();
+    expect(within(left).getByRole('link', { name: '作る・直す' })).toHaveAttribute('href', '/kiosk/assembly/manuals/workshop');
     expect(within(left).getByRole('link', { name: '組立へ戻る' })).toHaveAttribute('href', '/kiosk/assembly');
-    await waitFor(() => expect(within(left).getByRole('button', { name: '割り当て' })).toBeEnabled());
+    for (const name of ['白紙から作る', '素材 0', '動画', '割り当て']) expect(within(left).queryByRole('button', { name })).not.toBeInTheDocument();
+    await screen.findByRole('button', { name: 'DFD1' });
     expect(screen.getByRole('region', { name: '要領書' })).not.toContainElement(screen.getByRole('heading', { name: '要領書' }));
   });
 
   it('creates a named blank document and navigates to its editor', async () => {
     mocks.blank.mockResolvedValue({ id: 'new-document' });
-    render(<MemoryRouter><Routes><Route path="/" element={<ProcedureManualBrowser />} /><Route path="/kiosk/assembly/procedure-documents/:id/edit" element={<p>新規エディタ</p>} /></Routes></MemoryRouter>);
-    fireEvent.click(screen.getByRole('button', { name: '白紙から作る' }));
+    render(<MemoryRouter><Routes><Route path="/" element={<ProcedureManualBlankDialog models={[]} processes={processes} modelCode="" processId="" onClose={vi.fn()} />} /><Route path="/kiosk/assembly/procedure-documents/:id/edit" element={<EditorLocation />} /></Routes></MemoryRouter>);
     expect(screen.getByRole('button', { name: '作成してエディタへ' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '名前を直接入力' }));
     fireEvent.change(screen.getByLabelText('要領書名'), { target: { value: '  新規要領書  ' } });
@@ -267,15 +270,13 @@ describe('procedure-manuals', () => {
   });
 
   it('builds the name from normalized model, master process and supplement, then assigns and opens the editor', async () => {
-    mocks.processes.mockResolvedValue([...processes,
+    const allProcesses = [...processes,
       { id: 'machining', parentId: null, name: '加工', sortOrder: 2 },
       { id: 'cutting', parentId: 'machining', name: '切削', sortOrder: 0 },
       { id: 'grinding', parentId: 'machining', name: '研削', sortOrder: 1 }
-    ]);
+    ];
     mocks.blank.mockResolvedValue({ id: 'new-document' });
-    render(<MemoryRouter><Routes><Route path="/" element={<ProcedureManualBrowser />} /><Route path="/kiosk/assembly/procedure-documents/:id/edit" element={<p>新規エディタ</p>} /></Routes></MemoryRouter>);
-    await screen.findByRole('button', { name: 'DFD1' });
-    fireEvent.click(screen.getByRole('button', { name: '白紙から作る' }));
+    render(<MemoryRouter><Routes><Route path="/" element={<ProcedureManualBlankDialog models={[]} processes={allProcesses} modelCode="" processId="" onClose={vi.fn()} />} /><Route path="/kiosk/assembly/procedure-documents/:id/edit" element={<EditorLocation />} /></Routes></MemoryRouter>);
     const dialog = screen.getByRole('dialog', { name: '白紙から作る' });
     fireEvent.change(within(dialog).getByLabelText('型番で検索'), { target: { value: 'ｄｆｄ９' } });
     fireEvent.click(await within(dialog).findByRole('button', { name: /DFD\s*9/ }));
@@ -291,6 +292,7 @@ describe('procedure-manuals', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: '作成してエディタへ' }));
     expect(await screen.findByText('新規エディタ')).toBeInTheDocument();
     expect(mocks.blank).toHaveBeenCalledExactlyOnceWith('DFD9_加工_研削_圧入', { modelCode: 'DFD9', processId: 'grinding' });
+    expect(JSON.parse(screen.getByTestId('editor-state').textContent!)).toMatchObject({ returnTo: '/kiosk/assembly/manuals/workshop?model=DFD9&process=grinding', context: { modelCode: 'DFD9', modelCodeKey: 'DFD9', processId: 'grinding', processName: '加工 › 研削', mode: 'make' } });
   });
 
   it('shows model search, then processes, then the assigned sequence and missing-publication notice', async () => {
@@ -316,11 +318,17 @@ describe('procedure-manuals', () => {
     expect(await screen.findByText(/承認: 承認太郎\(班長\)/)).toBeInTheDocument();
   });
 
-  it('shows an empty model list and keeps the creation entry available', async () => {
+  it('shows an empty model list and keeps the workshop link available', async () => {
     mocks.models.mockResolvedValue([]);
     render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
     expect(await screen.findByText('機種がありません')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '割り当て' })).toBeEnabled();
+    expect(screen.getByRole('link', { name: '作る・直す' })).toBeInTheDocument();
+  });
+
+  it('inherits the model and process query and links to the same workshop context', async () => {
+    render(<MemoryRouter initialEntries={['/kiosk/assembly/manuals?model=DFD1&process=inspection']}><ProcedureManualBrowser /></MemoryRouter>);
+    await waitFor(() => expect(mocks.detail).toHaveBeenCalledWith('DFD1', 'inspection'));
+    expect(screen.getByRole('link', { name: '作る・直す' })).toHaveAttribute('href', '/kiosk/assembly/manuals/workshop?model=DFD1&process=inspection');
   });
 
   it('offers document choices before a model is entered but waits to add until model and process are ready', async () => {

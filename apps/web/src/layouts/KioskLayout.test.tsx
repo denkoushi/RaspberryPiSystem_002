@@ -52,7 +52,7 @@ vi.mock('../hooks/useKioskBottomRightHeaderReveal', () => ({
 }));
 
 describe('KioskLayout deploy status handling', () => {
-  it.each([['/kiosk/assembly/manuals', false], ['/kiosk/assembly', true]])('reserves the full height only for manuals (%s)', (path, padded) => {
+  it.each([['/kiosk/assembly/manuals', false], ['/kiosk/assembly/manuals/workshop', false], ['/kiosk/assembly', true]])('reserves the full height only for manuals (%s)', (path, padded) => {
     deployStatus = { isMaintenance: false };
     render(<MemoryRouter initialEntries={[path]}><KioskLayout /></MemoryRouter>);
     const main = screen.getByRole('main');

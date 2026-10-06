@@ -26,6 +26,10 @@ export function registerProcedureManualRoutes(app: FastifyInstance, options: {
   const service = options.service ?? new ProcedureManualService();
   app.get('/assembly/procedure-manuals/processes', { preHandler: options.allowView }, async () => ({ processes: await service.listProcesses() }));
   app.get('/assembly/procedure-manuals/models', { preHandler: options.allowView }, async () => ({ models: await service.listModels() }));
+  app.get('/assembly/procedure-manuals/models/:modelCodeKey/overview', { preHandler: options.allowView }, async (request) => {
+    const params = paramsSchema.pick({ modelCodeKey: true }).parse(request.params);
+    return service.getModelOverview(params.modelCodeKey);
+  });
   const path = '/assembly/procedure-manuals/models/:modelCodeKey/processes/:processId';
   app.get(path, { preHandler: options.allowView }, async (request) => {
     const params = paramsSchema.parse(request.params);

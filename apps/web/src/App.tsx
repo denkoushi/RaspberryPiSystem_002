@@ -8,6 +8,7 @@ import { RequireAuth } from './components/RequireAuth';
 import { RouteLoadingScreen } from './components/RouteLoadingScreen';
 import { readProductionBuildConfig } from './config/productionBuildConfig';
 import { kioskAssemblyLibraryPath, parseAssemblyProcedureOrderSettingsSearch } from './features/assembly';
+import { KIOSK_ASSEMBLY_MANUALS_PATH, KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH } from './features/assembly/assemblyRoutes';
 import { INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED } from './features/part-measurement/inspection-drawing/inspectionDrawingPrintConstants';
 import { CallAutoSwitchLayout } from './features/webrtc/components/CallAutoSwitchLayout';
 import { AdminLayout } from './layouts/AdminLayout';
@@ -39,6 +40,7 @@ import { SelfInspectionOutOfToleranceReviewsPage } from './pages/admin/SelfInspe
 import { SignageHubPage } from './pages/admin/SignageHubPage';
 import { KioskAssemblyHomePage } from './pages/kiosk/KioskAssemblyHomePage';
 import { KioskAssemblyManualsPage } from './pages/kiosk/KioskAssemblyManualsPage';
+import { KioskAssemblyManualsWorkshopPage } from './pages/kiosk/KioskAssemblyManualsWorkshopPage';
 import { KioskAssemblyPage } from './pages/kiosk/KioskAssemblyPage';
 import { KioskAssemblyRecordApprovalPage } from './pages/kiosk/KioskAssemblyRecordApprovalPage';
 import { KioskAssemblyTraceabilityPage } from './pages/kiosk/KioskAssemblyTraceabilityPage';
@@ -221,7 +223,8 @@ function App() {
           <Route path="/kiosk/pallet-visualization" element={<KioskPalletVisualizationPage />} />
           <Route path="/kiosk/documents" element={<KioskDocumentsPage />} />
           <Route path="/kiosk/assembly" element={<KioskAssemblyHomePage />} />
-          <Route path="/kiosk/assembly/manuals" element={<KioskAssemblyManualsPage />} />
+          <Route path={KIOSK_ASSEMBLY_MANUALS_PATH} element={<KioskAssemblyManualsPage />} />
+          <Route path={KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH} element={<KioskAssemblyManualsWorkshopPage />} />
           <Route path="/kiosk/assembly/training" element={lazyRouteElement(<KioskAssemblyTrainingPage />)} />
           <Route path="/kiosk/assembly/library" element={<KioskAssemblyPage />} />
           <Route

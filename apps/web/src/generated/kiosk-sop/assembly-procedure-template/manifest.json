@@ -1,9 +1,9 @@
 {
   "artifacts": {
-    "manual.html": "1d50c4d42dc8a28830c08155555b86777bb8ba372f93c405e78d8d6f2217a01d",
+    "manual.html": "9ffd1564a7eedd644a57cd4a135a83efce9c785bb0f00684a385357b12d4ddc6",
     "screens/assembly-document-editor-auth.png": "1599025d64b19e66dd5404ddd34d4caaeba4ecd386bbe58b01392b9d648972dc",
     "screens/assembly-document-editor-conflict.png": "c176b9dca560b5677d3b5d9c0b5b49143a70b2dd23548aa814c4f241227046ba",
-    "screens/assembly-document-editor-image-properties.png": "ac31afcc1734de9f713aa649c50a643f07662ff25b95c0499bc7569b0c4269fd",
+    "screens/assembly-document-editor-image-properties.png": "8457f3634936d8edd7cff39ccfdf393eade873ef8859855278ecaf89bbbfae7a",
     "screens/assembly-document-editor-publish.png": "3f3e26079e0d64d2ea95952833e8ad73cd483c207f86a7016edf22d025670335",
     "screens/assembly-document-editor-range.png": "c7fd8e3c765750bf0325493aefd17f7a01cf614cb2263e0175686efd966da186",
     "screens/assembly-document-editor-shape-properties.png": "d40462904e7e17e6e367582e3a2551a78453a6aeaac70b34a4d843e7c6d3aea6",
@@ -20,7 +20,7 @@
     "screens/assembly-template-save.png": "80d29c2a1a2f9b0b310ca30c93344ccfadb3aeaae251ccca52fd3a79ee6fe806",
     "sheets/assembly-document-editor-auth.png": "fc6e1ebc188c414eb82d9f667b6b67e72f5bfb3cfb5cead5855ecee0978c414f",
     "sheets/assembly-document-editor-conflict.png": "b51e0df43b778924e069c9414d6975ed6d31b6e386b70e561e87166f78412e58",
-    "sheets/assembly-document-editor-image-properties.png": "14e2f8c77a850dce5645df91828dd68ba21a21f38ae6ae56a337becdfe058a9a",
+    "sheets/assembly-document-editor-image-properties.png": "4b3fe2c9d4c195f80a4d00cfd5788d55088d2ee292bdf3e943d00f6f7705c20b",
     "sheets/assembly-document-editor-publish.png": "7a2f96a8c2edd1aab11864c9940a7b08ee249d339c7f1ad9ef611f73bb5bad23",
     "sheets/assembly-document-editor-range.png": "34a69163dd6a6904ce27dbdec3cc7d35f87d0f3b051aae7437e8fef5e3c3b6d7",
     "sheets/assembly-document-editor-shape-properties.png": "033efc8ed48e1831c1fbdd89e4dcd0ff0a23ede453bce7fe1595cca2b267087f",
@@ -495,7 +495,7 @@
       }
     ]
   },
-  "htmlSha256": "1d50c4d42dc8a28830c08155555b86777bb8ba372f93c405e78d8d6f2217a01d",
+  "htmlSha256": "9ffd1564a7eedd644a57cd4a135a83efce9c785bb0f00684a385357b12d4ddc6",
   "schemaVersion": 1,
-  "sourceSha256": "4f2b026586f4802c0856d4656b319cde1c308c3dfed4c2b1befd927887b779c6"
+  "sourceSha256": "489292d4e49cb31515778c1b277f783521df20923ad72b1db0897e7f31c47bf2"
 }

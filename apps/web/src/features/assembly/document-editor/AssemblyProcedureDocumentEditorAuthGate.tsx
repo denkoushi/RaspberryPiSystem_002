@@ -6,7 +6,7 @@ import { KIOSK_ASSEMBLY_LIBRARY_PATH } from '../assemblyRoutes';
 
 import { useAssemblyProcedureDocumentEditor } from './AssemblyProcedureDocumentEditorContext';
 
-export function AssemblyProcedureDocumentEditorAuthGate() {
+export function AssemblyProcedureDocumentEditorAuthGate({ context }: { context?: import('../types').ProcedureManualEditorContext }) {
   const {
     accessGranted,
     busy,
@@ -15,6 +15,7 @@ export function AssemblyProcedureDocumentEditorAuthGate() {
     passwordInput,
     setPasswordInput,
     verifyEditorPassword,
+    navigateBack,
     document
   } = useAssemblyProcedureDocumentEditor();
 
@@ -28,14 +29,14 @@ export function AssemblyProcedureDocumentEditorAuthGate() {
       <section className="rounded border border-white/15 bg-slate-900/75 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="truncate text-xl font-bold">手順書オーバーレイ編集</h1>
+            <h1 className="truncate text-xl font-bold">{context ? [context.modelCode, context.processName, document?.name ?? '要領書'].filter(Boolean).join(' › ') : '手順書オーバーレイ編集'}</h1>
             <p className="mt-1 text-sm font-semibold text-white/65">
               {document?.name ?? '手順書'}を編集する前に管理パスワードを入力してください。
             </p>
           </div>
-          <Link to={KIOSK_ASSEMBLY_LIBRARY_PATH} className="inline-flex min-h-11 items-center rounded bg-transparent px-4 py-2 font-semibold text-white/90 ring-1 ring-white/20 hover:bg-white/10">
+          {context ? <Button type="button" variant="ghostOnDark" className="min-h-11" onClick={navigateBack}>戻る</Button> : <Link to={KIOSK_ASSEMBLY_LIBRARY_PATH} className="inline-flex min-h-11 items-center rounded bg-transparent px-4 py-2 font-semibold text-white/90 ring-1 ring-white/20 hover:bg-white/10">
             一覧へ
-          </Link>
+          </Link>}
         </div>
         <div className="mt-4 grid max-w-md grid-cols-[1fr_auto] gap-2">
           <Input
