@@ -12,6 +12,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Progress
 
+- [x] (2026-10-06) 夜 本番反映の記録: 追加要望 4 本と右ペイン修正をすべて Pi5 へ反映。#1759 fa6ac722(run 20261006-110604-c1c17f)、#1760 473df6f5(#1764 と同じ run 20261006-113032-20d958、releaseSha 4c9e0df5)、#1762 0c2d2331(run 20261006-115306-10a989、20:58 success)、#1763 42d78881(run 20261006-121854-706567、21:24 success)、#1766 c4dfbbdc(run 20261006-124604-64ebfc、21:51 success、recap ok=268 changed=31 failed=0)。いずれも /・/admin・/kiosk・/api/system/health 200、API エラーログ 0 件。#1763 の最初の head は CI の kiosk-sop で視覚差 10.7%(ローカル撮影の描画不足)となり、該当 1 枚を撮り直して通過。実機確認(5 項目)はユーザー待ち。
 - [x] (2026-10-06) 夜 実機指摘: 直す・下書き画面の右ペイン(属性)の入力欄が白地に白文字で見えない(共通Inputの既定色をTailwindの定義順で上書きできていなかった)、文字が小さい、比率の桁数が多い、を修正。白背景・濃い文字に統一、入力18px・ラベル14px、比率は小数1桁の%表示(内部は比率のまま)。Codex(gpt-6.1-sol/medium)実装、Web lint / 指定vitest 35ファイル387件 / build成功。取説の説明文を%に更新し再生成。
 - [x] (2026-10-06) (B) テンプレート新規/改版の全高配置・左の段階/工程/ページ・64px記号列・重なる設定をWebのみ実装し、取説撮影手順を更新。Web lint / 77ファイル526件(ワーカー2) / build、capture adapter 1件成功。目視確認はlisten EPERMで未実施。既存WIPを保持し、commit等は未実施。 レビュー 4 件と e2e を反映（Web 78ファイル531件・build、adapter 1件、e2e構文33件成功。e2e実行はClaude担当、生成済み取説は未更新）。 左ペインの切替方式に変更（工程・文書・手順、文書ライブラリを1段にし、手順の高さを有界化）。 指定検証: Web lint / Vitest 78ファイル531件 / build、adapter 1件、Playwright一覧取得33件成功。e2e実行はClaude担当。
 - [x] (2026-10-06) 夕 (A): Webの記号列の戻るを最下段へ移動し、工房を460pxの機種列＋一覧の2列、テンキー200px＋工程一覧の横並びへ変更。Web lint / 指定vitest 17ファイル219件 / build成功。Git操作・取説digest更新・本番反映は未実施。
