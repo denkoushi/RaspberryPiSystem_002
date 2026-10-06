@@ -24,6 +24,8 @@ describe('backup-recommended-targets.catalog', () => {
     expect(catalog.some((c) => c.id === 'server-directory-work-instruction-assets')).toBe(true);
     expect(catalog.some((c) => c.id === 'server-directory-measuring-instrument-genres')).toBe(true);
     expect(catalog.some((c) => c.id === 'server-directory-pallet-machine-illustrations')).toBe(true);
+    expect(catalog.some((c) => c.id === 'server-directory-procedure-materials')).toBe(true);
+    expect(catalog.some((c) => c.id === 'server-directory-procedure-videos')).toBe(true);
     expect(catalog.some((c) => c.id === 'server-directory-pdfs')).toBe(false);
     expect(catalog.some((c) => c.target.source.includes('/.ssh'))).toBe(false);
     // キオスクの .env・Tailscale 状態・status-agent 設定は秘密情報なので推奨しない
