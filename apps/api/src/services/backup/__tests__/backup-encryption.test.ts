@@ -95,7 +95,10 @@ describe('backup encryption', () => {
         })
       };
 
-      await new EncryptedStorageProvider(inner, key, dir).uploadFromFile(source, 'database/x/borrow_return.sql.gz');
+      const tempDir = path.join(dir, 'missing-temp');
+      await new EncryptedStorageProvider(inner, key, tempDir).uploadFromFile(source, 'database/x/borrow_return.sql.gz');
+
+      expect(await fs.readdir(tempDir)).toEqual([]);
 
       expect(uploaded).toHaveLength(1);
       expect(uploaded[0].path).toBe('database/x/borrow_return.sql.gz');
