@@ -12,6 +12,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Progress
 
+- [x] (2026-10-06) 夜 実機指摘: 直す・下書き画面の右ペイン(属性)の入力欄が白地に白文字で見えない(共通Inputの既定色をTailwindの定義順で上書きできていなかった)、文字が小さい、比率の桁数が多い、を修正。白背景・濃い文字に統一、入力18px・ラベル14px、比率は小数1桁の%表示(内部は比率のまま)。Codex(gpt-6.1-sol/medium)実装、Web lint / 指定vitest 35ファイル387件 / build成功。取説の説明文を%に更新し再生成。
 - [x] (2026-10-06) (B) テンプレート新規/改版の全高配置・左の段階/工程/ページ・64px記号列・重なる設定をWebのみ実装し、取説撮影手順を更新。Web lint / 77ファイル526件(ワーカー2) / build、capture adapter 1件成功。目視確認はlisten EPERMで未実施。既存WIPを保持し、commit等は未実施。 レビュー 4 件と e2e を反映（Web 78ファイル531件・build、adapter 1件、e2e構文33件成功。e2e実行はClaude担当、生成済み取説は未更新）。 左ペインの切替方式に変更（工程・文書・手順、文書ライブラリを1段にし、手順の高さを有界化）。 指定検証: Web lint / Vitest 78ファイル531件 / build、adapter 1件、Playwright一覧取得33件成功。e2e実行はClaude担当。
 - [x] (2026-10-06) 夕 (A): Webの記号列の戻るを最下段へ移動し、工房を460pxの機種列＋一覧の2列、テンキー200px＋工程一覧の横並びへ変更。Web lint / 指定vitest 17ファイル219件 / build成功。Git操作・取説digest更新・本番反映は未実施。
 - [x] (2026-10-06) ブラッシュアップ(D): 記録確認の56px上辺・460px一覧/即時検索・並列実績表・承認札をWebのみ実装（NFC承認処理維持）。Web lint / 指定vitest 76ファイル526件（対象15件、ワーカー2）/ build成功。目視はChromium起動失敗で未実施。 レビュー 3 件を反映（再読込・一覧内の再試行、トルク列見出し、承認札横のNFC照合通知）。 修正後の指定検証: Web lint / `vitest run KioskAssemblyRecordApproval` 1ファイル20件（5件追加）/ build成功。

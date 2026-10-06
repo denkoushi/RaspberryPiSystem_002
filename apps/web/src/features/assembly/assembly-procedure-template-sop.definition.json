@@ -121,7 +121,7 @@
           "summary": "文章本文、文字サイズ・色・太さ・揃え、位置と大きさを確認・編集します。",
           "steps": [
             { "id": "document-editor-text-value", "targetId": "assembly-document-editor-text-value", "necessity": "required", "title": "文章を編集", "description": "右側の文章欄へ表示する文言を入力し、必要に応じて文字スタイルを調整します。" },
-            { "id": "document-editor-position-x", "targetId": "assembly-document-editor-position-x", "necessity": "optional", "title": "位置と大きさを調整", "description": "位置と大きさは元ページ比率で入力します。" },
+            { "id": "document-editor-position-x", "targetId": "assembly-document-editor-position-x", "necessity": "optional", "title": "位置と大きさを調整", "description": "位置と大きさは元ページに対する割合(%)で入力します。" },
             { "id": "document-editor-save-text", "targetId": "assembly-document-editor-save", "necessity": "required", "title": "変更を保存", "description": "入力内容を確認したら「保存」を押して改版へ確定します。" }
           ]
         },
