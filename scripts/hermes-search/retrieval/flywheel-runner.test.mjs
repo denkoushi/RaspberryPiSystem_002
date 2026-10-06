@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { DEFAULT_MAX_QUESTIONS, MAX_QUESTIONS_CAP, REAL_LABEL_DEPTH, flywheelSettings, nightOf, questionsPath, runFlywheelNight, usedAnchors } from './flywheel-runner.mjs';
+import { DEFAULT_MAX_QUESTIONS, MAX_QUESTIONS_CAP, REAL_LABEL_DEPTH, acquireRunnerLock, flywheelSettings, nightOf, questionsPath, runFlywheelNight, usedAnchors } from './flywheel-runner.mjs';
 import { readRealRows, realId, realPath } from './flywheel-real.mjs';
 import { splitOf } from './flywheel-gate.mjs';
 import { learnedPath, readLearned, writeLearned, LEARNED_SCHEMA } from './flywheel-learn.mjs';
@@ -654,4 +654,25 @@ test('stage five leaves candidates pending when the window expires and resumes w
   assert.equal(resumed.learned.candidates, 2);
   assert.equal(resumed.learned.decision, 'active');
   assert.equal((await readLearned(learnedPath(dir)))[0].extra, 'preserved');
+});
+
+test('the runner lock admits one holder, takes over dead or stale holders, and releases', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-lock-'));
+  const alive = (pid) => pid === 111;
+  const t0 = new Date('2026-10-06T13:00:00Z');
+  const first = await acquireRunnerLock(dir, { pid: 111, now: () => t0, alive });
+  assert.ok(first);
+  // A second live holder is refused.
+  assert.equal(await acquireRunnerLock(dir, { pid: 222, now: () => new Date(t0.getTime() + 60_000), alive }), null);
+  // A dead holder is taken over.
+  const dead = await acquireRunnerLock(dir, { pid: 333, now: () => new Date(t0.getTime() + 60_000), alive: () => false });
+  assert.ok(dead);
+  assert.equal(JSON.parse(readFileSync(path.join(dir, 'runner.lock'), 'utf8')).pid, 333);
+  // A stale holder is taken over even when its process looks alive.
+  const stale = await acquireRunnerLock(dir, { pid: 444, now: () => new Date(t0.getTime() + 3 * 3600 * 1000), alive: () => true });
+  assert.ok(stale);
+  await stale.release();
+  const again = await acquireRunnerLock(dir, { pid: 555, now: () => t0, alive });
+  assert.ok(again);
+  await again.release();
 });

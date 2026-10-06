@@ -31,6 +31,8 @@ To see it working: after the night window, `retrieval/flywheel-report.mjs` on th
 
 ## Surprises & Discoveries
 
+- (2026-10-07) The runner now holds `runtime/flywheel/runner.lock` (pid and time) for the whole start; a second start logs `already_running` and exits; a lock whose process is gone or older than two hours is taken over. This follows the overlap of 2026-10-06.
+
 - (2026-10-07) First full night: 73 kept synthetic questions, 65 answered with a relevant record (89%), dense retrieval available on 72 of 73; 8 real questions, the 5 content ones all answered, the 2 切粉 failures of 2026-10-05 among them; 14 learned queries activated after a 0/0 held-out check. Two runner processes overlapped during the evening API swap (learn phase at 22:08 while generation ran until 22:22); a lock in the runner is the next small fix.
 
 - (2026-10-06) The gate rejected both candidate changes of the day: the content-span lexical query (loses 3 development questions per night) and the enrichment text in the BM25 corpus (loses 2 to 3; production had never included it because of a stale corpus in `applyEnrichment`, and the offline harness had). Learned queries (Milestone 7) therefore attach to the lexical corpus as a short per-record list, separate from the enrichment text, and to the dense text through the enrichment queries.
