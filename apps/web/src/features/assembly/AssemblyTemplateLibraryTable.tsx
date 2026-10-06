@@ -1,15 +1,13 @@
-import { Fragment } from 'react';
 import { Link } from 'react-router-dom';
 
 import { Button, buttonClassName } from '../../components/ui/Button';
 
+import { AssemblyLibraryActionIcon } from './AssemblyLibraryActionIcon';
 import { kioskAssemblyTemplateEditPath, kioskAssemblyTemplateNewPath } from './assemblyRoutes';
 import { formatAssemblyMachineName } from './assemblyTemplateGuidePresentation';
 import { formatAssemblyTimestamp } from './assemblyUiHelpers';
 
 import type { AssemblyTemplateSummaryDto } from './types';
-
-const TEMPLATE_TABLE_SPLIT_MIN_ROWS = 2;
 
 type Props = {
   templates: AssemblyTemplateSummaryDto[];
@@ -21,122 +19,7 @@ type Props = {
   highlightedTemplateId?: string | null;
 };
 
-type PaneProps = Props & {
-  label: string;
-  startIndex: number;
-};
-
-function rangeLabel(startIndex: number, rowCount: number): string {
-  if (rowCount <= 0) return '';
-  return `${startIndex + 1} - ${startIndex + rowCount}`;
-}
-
-function TemplateTablePane({
-  label,
-  templates,
-  startIndex,
-  onHistoryClick,
-  lineageGroupKey,
-  onRetireClick,
-  highlightedTemplateId
-}: PaneProps) {
-  return (
-    <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded border border-white/10 bg-slate-950/35">
-      <div className="min-h-0 flex-1 overflow-auto p-1">
-        <table
-          className="w-full table-fixed border-collapse text-left text-[0.82rem]"
-          aria-label={`組立テンプレート ${label} ${rangeLabel(startIndex, templates.length)}`}
-        >
-          <colgroup>
-            <col className="w-[28%]" />
-            <col className="w-[24%]" />
-            <col className="w-[48%]" />
-          </colgroup>
-          <thead className="sticky top-0 bg-slate-900 text-[0.72rem] text-white/70">
-            <tr className="border-b border-white/10">
-              <th className="px-2 py-1.5 font-bold">機種名</th>
-              <th className="px-2 py-1.5 font-bold">手順</th>
-              <th className="px-2 py-1.5 font-bold">手順書</th>
-            </tr>
-          </thead>
-          <tbody>
-            {templates.map((template) => (
-              <Fragment key={template.id}>
-                <tr
-                  className={`border-t border-white/10 first:border-t-0 ${highlightedTemplateId === template.id ? 'bg-emerald-500/15' : ''}`}
-                  data-template-id={template.id}
-                >
-                  <td className="px-2 pb-0.5 pt-1.5 font-bold text-white" title={template.modelCode}>
-                    <span className="block line-clamp-2 break-all">{formatAssemblyMachineName(template.modelCode)}</span>
-                  </td>
-                  <td className="truncate px-2 pb-0.5 pt-1.5 text-white/85" title={template.procedurePattern}>
-                    {template.procedurePattern}
-                  </td>
-                  <td className="truncate px-2 pb-0.5 pt-1.5 font-semibold text-white/90" title={template.procedureDocumentName}>
-                    {template.procedureDocumentName}
-                  </td>
-                </tr>
-                <tr className={`border-b border-white/10 last:border-b-0 ${highlightedTemplateId === template.id ? 'bg-emerald-500/15 ring-1 ring-inset ring-emerald-300/70' : ''}`}>
-                  <td colSpan={3} className="px-2 pb-1 pt-0 text-[0.68rem] text-white/55">
-                    <div className="flex min-w-0 items-center gap-1 overflow-hidden">
-                      <span className="min-w-0 truncate font-semibold text-white/75" title={template.name}>{template.name}</span>
-                      <span className="shrink-0 font-semibold">v{template.version}</span>
-                      <span className={template.isActive ? 'shrink-0 text-emerald-200' : 'shrink-0 text-amber-200'}>
-                        {template.isActive ? '有効' : '旧版'}
-                      </span>
-                      <span className="shrink-0">工程 {template.areaCount}</span>
-                      <span className="shrink-0">締付 {template.boltCount}</span>
-                      <span className="shrink-0">更新 {formatAssemblyTimestamp(template.updatedAt)}</span>
-                      <div className="ml-auto flex max-w-[22rem] shrink-0 flex-wrap justify-end gap-1">
-                        <Link
-                          to={kioskAssemblyTemplateEditPath(template.id)}
-                          data-kiosk-sop-target="assembly-template-revise"
-                          className={buttonClassName(
-                            'secondary',
-                            'inline-flex min-h-11 shrink-0 items-center rounded !px-2 !py-0 text-[0.75rem] leading-tight'
-                          )}
-                        >
-                          {template.isActive ? '改版' : '表示'}
-                        </Link>
-                        <Link
-                          to={kioskAssemblyTemplateNewPath({ sourceTemplateId: template.id })}
-                          data-kiosk-sop-target="assembly-template-duplicate"
-                          className={buttonClassName(
-                            'ghostOnDark',
-                            'inline-flex min-h-11 shrink-0 items-center rounded !px-2 !py-0 text-[0.75rem] leading-tight'
-                          )}
-                        >
-                          複製して新規
-                        </Link>
-                        <Button
-                          type="button"
-                          variant="ghostOnDark"
-                          className="min-h-11 shrink-0 rounded !px-2 !py-0 text-[0.75rem] leading-tight"
-                          onClick={() => onHistoryClick(lineageGroupKey(template))}
-                        >
-                          履歴
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghostOnDark"
-                          className="min-h-11 shrink-0 rounded !px-2 !py-0 text-[0.75rem] leading-tight"
-                          disabled={!template.isActive}
-                          onClick={() => onRetireClick(template)}
-                        >
-                          無効
-                        </Button>
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              </Fragment>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
+const symbolClassName = 'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded !p-0';
 
 export function AssemblyTemplateLibraryTable({
   templates,
@@ -148,44 +31,51 @@ export function AssemblyTemplateLibraryTable({
   highlightedTemplateId
 }: Props) {
   if (templates.length === 0) {
-    return (
-      <div className="flex min-h-[4rem] w-full items-center justify-center rounded border border-dashed border-white/15 px-2 py-4 text-[0.92rem] text-white/60">
-        {busy ? '読込中…' : emptyMessage}
-      </div>
-    );
+    return <div className="py-4 text-center text-white/60">{busy ? '読込中…' : emptyMessage}</div>;
   }
 
-  const shouldSplit = templates.length >= TEMPLATE_TABLE_SPLIT_MIN_ROWS;
-  const splitIndex = shouldSplit ? Math.ceil(templates.length / 2) : templates.length;
-  const firstTemplates = templates.slice(0, splitIndex);
-  const secondTemplates = shouldSplit ? templates.slice(splitIndex) : [];
-
   return (
-    <div className="grid h-full min-h-0 w-full grid-cols-1 gap-2 2xl:grid-cols-2">
-      <TemplateTablePane
-        label={shouldSplit ? '上段' : '一覧'}
-        templates={firstTemplates}
-        startIndex={0}
-        busy={busy}
-        emptyMessage={emptyMessage}
-        onHistoryClick={onHistoryClick}
-        lineageGroupKey={lineageGroupKey}
-        onRetireClick={onRetireClick}
-        highlightedTemplateId={highlightedTemplateId}
-      />
-      {secondTemplates.length > 0 ? (
-        <TemplateTablePane
-          label="下段"
-          templates={secondTemplates}
-          startIndex={splitIndex}
-          busy={busy}
-          emptyMessage={emptyMessage}
-          onHistoryClick={onHistoryClick}
-        lineageGroupKey={lineageGroupKey}
-        onRetireClick={onRetireClick}
-        highlightedTemplateId={highlightedTemplateId}
-        />
-      ) : null}
+    <div className="h-full min-h-0 w-full overflow-auto">
+      <table className="w-full min-w-[1080px] table-fixed border-collapse text-left text-base" aria-label="組立テンプレート">
+        <colgroup>
+          <col /><col className="w-[18%]" /><col className="w-[26%]" /><col className="w-[70px]" />
+          <col className="w-[90px]" /><col className="w-[140px]" /><col className="w-[204px]" />
+        </colgroup>
+        <thead className="sr-only"><tr>
+          {['機種', '手順', '手順書', '版', '有効', '更新', '操作'].map(label => <th key={label} scope="col">{label}</th>)}
+        </tr></thead>
+        <tbody>
+          {templates.map(template => (
+            <tr key={template.id} data-template-id={template.id}
+              className={`h-14 border-b border-white/10 ${highlightedTemplateId === template.id ? 'bg-emerald-500/15 ring-1 ring-inset ring-emerald-300/70' : ''}`}>
+              <td className="truncate px-2 text-xl font-bold" title={template.modelCode}>{formatAssemblyMachineName(template.modelCode)}<span className="sr-only"> {template.name} 工程 {template.areaCount} 締付 {template.boltCount}</span></td>
+              <td className="truncate px-2 text-lg text-white/60" title={template.procedurePattern}>{template.procedurePattern}</td>
+              <td className="truncate px-2 text-lg text-white/60" title={template.procedureDocumentName}>{template.procedureDocumentName}</td>
+              <td className="px-2 text-right font-mono text-white/60">v{template.version}</td>
+              <td className="px-2"><span className={`inline-flex whitespace-nowrap rounded-full border px-2 py-1 text-sm font-semibold ${template.isActive ? 'border-emerald-400 text-emerald-100' : 'border-red-400 text-red-200'}`}>{template.isActive ? '有効' : '無効'}</span></td>
+              <td className="whitespace-nowrap px-2 text-right font-mono text-white/60">{formatAssemblyTimestamp(template.updatedAt)}</td>
+              <td className="px-2"><div className="flex justify-end gap-1">
+                <Link to={kioskAssemblyTemplateEditPath(template.id)} data-kiosk-sop-target="assembly-template-revise"
+                  aria-label={template.isActive ? '改版' : '表示'} title={template.isActive ? '改版' : '表示'}
+                  className={buttonClassName('ghostOnDark', `${symbolClassName} !border-amber-400 !text-amber-200`)}>
+                  <AssemblyLibraryActionIcon action="edit" />
+                </Link>
+                <Link to={kioskAssemblyTemplateNewPath({ sourceTemplateId: template.id })} data-kiosk-sop-target="assembly-template-duplicate"
+                  aria-label="複製して新規" title="複製して新規" className={buttonClassName('ghostOnDark', symbolClassName)}>
+                  <AssemblyLibraryActionIcon action="duplicate" />
+                </Link>
+                <Button type="button" variant="ghostOnDark" aria-label="履歴" title="履歴" className={symbolClassName} onClick={() => onHistoryClick(lineageGroupKey(template))}>
+                  <AssemblyLibraryActionIcon action="history" />
+                </Button>
+                <Button type="button" variant="ghostOnDark" aria-label="無効" title="無効" className={`${symbolClassName} !border-red-400 !text-red-300`}
+                  disabled={!template.isActive} onClick={() => onRetireClick(template)}>
+                  <AssemblyLibraryActionIcon action="retire" />
+                </Button>
+              </div></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

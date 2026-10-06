@@ -1038,15 +1038,16 @@ for (const viewport of viewports) {
     expect(pageErrors).toEqual([]);
   });
 
-  test(`assembly library is two-row and deploy notice stays movable/non-blocking at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+  test(`assembly library is dense and deploy notice stays movable/non-blocking at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await mockKioskApis(page, true);
     await page.goto('/dev/kiosk-assembly-library', { waitUntil: 'networkidle' });
 
     const procedureTable = page.getByRole('table', { name: '手順書ライブラリ' });
     await expect(procedureTable).toBeVisible();
-    await expect(procedureTable.locator('tbody tr')).toHaveCount(4);
-    await expect(page.locator('th', { hasText: '機種名' }).first()).toBeVisible();
+    // Dense layout: one 56px row per document; column headers are visually hidden.
+    await expect(procedureTable.locator('tbody tr')).toHaveCount(2);
+    await expect(procedureTable.locator('th', { hasText: '名前' })).toHaveCount(1);
 
     const combo = page.getByRole('combobox', { name: '手順書名で検索' });
     await combo.click();
