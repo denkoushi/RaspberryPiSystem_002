@@ -1,6 +1,8 @@
 {
   "schema": "hermes-source-definition/v1",
   "id": "torque_training_session",
+  "label": "訓練セッション",
+  "numericFields": ["targetTorque", "attemptCount", "passRate", "meanAbsoluteErrorPercent", "meanDeviationPercent"],
   "visibility": [
     "kiosk",
     "viewer",

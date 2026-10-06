@@ -45,3 +45,22 @@ test('training catalogs derive identifiers, employee facets, completion dates an
   assert.equal(entries[1].fields.find(field => field.key === 'employeeCode').role, 'identifier');
   assert.equal(entries[2].fields.find(field => field.key === 'teamName').role, 'identifier');
 });
+
+test('declared training numbers are never enumerated as value choices', async () => {
+  const { sourceDefinitions } = await import('../hermes-source-definition.mjs');
+  const { buildValueIndex } = await import('./value-index.mjs');
+  const entries = loadCatalog(['torque_training_session', 'torque_training_operator', 'torque_training_team']);
+  const records = entries.map(entry => ({ id: 'synthetic', sourceId: entry.id,
+    ...Object.fromEntries(entry.fields.map(field => [field.key, '83.33333333333334'])),
+  }));
+  const index = buildValueIndex(records, entries);
+  for (const entry of entries) {
+    assert.ok(sourceDefinitions[entry.id].numericFields.length > 0);
+    for (const key of sourceDefinitions[entry.id].numericFields) {
+      assert.deepEqual(entry.fields.find(field => field.key === key), {
+        key, label: sourceDefinitions[entry.id].metadataFields[key], role: 'number', filterable: false, enumerated: false,
+      });
+      assert.equal(Object.hasOwn(index.values[entry.id], key), false);
+    }
+  }
+});

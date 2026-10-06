@@ -1,6 +1,8 @@
 {
   "schema": "hermes-source-definition/v1",
   "id": "torque_training_team",
+  "label": "チームの訓練集計",
+  "numericFields": ["sessionCount", "operatorCount", "attemptCount", "passRate", "meanAbsoluteErrorPercent", "meanDeviationPercent", "recentSessionCount", "recentAttemptCount", "recentPassRate", "recentMeanAbsoluteErrorPercent", "recentMeanDeviationPercent", "recentOperatorCount"],
   "visibility": [
     "kiosk",
     "viewer",

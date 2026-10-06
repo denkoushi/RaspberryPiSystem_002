@@ -1,6 +1,8 @@
 {
   "schema": "hermes-source-definition/v1",
   "id": "torque_training_operator",
+  "label": "従業員の訓練集計",
+  "numericFields": ["sessionCount", "attemptCount", "passRate", "meanAbsoluteErrorPercent", "meanDeviationPercent", "recentSessionCount", "recentAttemptCount", "recentPassRate", "recentMeanAbsoluteErrorPercent", "recentMeanDeviationPercent", "passRateRank", "rankingPopulation"],
   "visibility": [
     "kiosk",
     "viewer",

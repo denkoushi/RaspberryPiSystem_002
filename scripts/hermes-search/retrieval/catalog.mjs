@@ -1,10 +1,13 @@
 // Derive a source-neutral catalog entry from a hermes-source-definition/v1
-// document. Role rules are structural (key and label shape). Source-specific
+// document. Explicit numeric roles precede structural key/label rules. Source-specific
 // names stay in the definition data, not in the planner or executor.
-import { readFileSync } from 'node:fs';
 import { sourceDefinitions } from '../hermes-source-definition.mjs';
 
-const sourceLabels = JSON.parse(readFileSync(new URL('./source-labels.json', import.meta.url), 'utf8'));
+// Runtime policy must not add properties to the catalog sent to JEV.
+const definitionsByCatalog = new WeakMap();
+export function definitionForCatalog(entry) {
+  return definitionsByCatalog.get(entry) ?? sourceDefinitions[entry.id] ?? {};
+}
 
 const DATE_KEY = /(?:On|Date|At)$/u;
 const ORGANIZATION_KEY = /department|organization|orgunit/iu;
@@ -19,8 +22,9 @@ function freeze(value) {
   return value;
 }
 
-function traitsFor(key, label, kind, isIdentifier) {
+function traitsFor(key, label, kind, isIdentifier, isNumeric) {
   if (kind === 'body') return { role: 'body', filterable: false, enumerated: false };
+  if (isNumeric) return { role: 'number', filterable: false, enumerated: false };
   if (isIdentifier) return { role: 'identifier', filterable: true, enumerated: true };
   if (DATE_KEY.test(key) || DATE_LABEL.test(label)) return { role: 'date', filterable: true, enumerated: false };
   if (ORGANIZATION_KEY.test(key) || ORGANIZATION_LABEL.test(label)) {
@@ -41,19 +45,19 @@ export function deriveCatalog(definition) {
   const add = (key, label, kind) => {
     if (!key || typeof label !== 'string' || !label || seen.has(key)) return;
     seen.add(key);
-    const traits = traitsFor(key, label, kind, key === identifierKey);
+    const traits = traitsFor(key, label, kind, key === identifierKey, definition.numericFields?.includes(key));
     fields.push({ key, label, role: traits.role, filterable: traits.filterable, enumerated: traits.enumerated });
   };
   for (const [key, label] of Object.entries(metadata)) add(key, label, 'metadata');
   for (const [key, label] of Object.entries(body)) add(key, label, 'body');
-  const labeled = typeof definition.label === 'string' && definition.label ? definition.label : sourceLabels[definition.id];
+  const labeled = typeof definition.label === 'string' && definition.label ? definition.label : definition.id;
   const description = typeof definition.description === 'string' && definition.description.trim()
     ? definition.description.trim()
     : (typeof labeled === 'string' && labeled ? labeled : definition.id);
   const valueChoiceCap = Number.isInteger(definition.valueChoiceCap) && definition.valueChoiceCap > 0
     ? definition.valueChoiceCap
     : 300;
-  return freeze({
+  const entry = freeze({
     schema: 'hermes-source-catalog/v1',
     id: definition.id,
     visibility: [...(definition.visibility ?? [])],
@@ -62,16 +66,18 @@ export function deriveCatalog(definition) {
     valueChoiceCap,
     fields,
   });
+  definitionsByCatalog.set(entry, definition);
+  return entry;
 }
 
 export function loadNonconformityCatalog() {
   return loadCatalog(['nonconformity'])[0];
 }
 
-export function loadCatalog(sourceIds) {
+export function loadCatalog(sourceIds, definitions = sourceDefinitions) {
   return sourceIds.map((id) => {
-    if (!Object.hasOwn(sourceDefinitions, id)) throw new Error(`unknown retrieval source: ${id}`);
-    return deriveCatalog(sourceDefinitions[id]);
+    if (!Object.hasOwn(definitions, id)) throw new Error(`unknown retrieval source: ${id}`);
+    return deriveCatalog(definitions[id]);
   });
 }
 

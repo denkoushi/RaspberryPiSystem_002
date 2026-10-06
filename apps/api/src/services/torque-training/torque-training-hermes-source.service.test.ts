@@ -45,7 +45,7 @@ describe('torque training Hermes session rows', () => {
       session('running', { status: 'IN_PROGRESS' })
     ]);
     expect(rows.map(row => row.id)).toEqual(['valid']);
-    expect(rows[0]).toMatchObject({ attemptCount: '1', passRate: '100', overallJudgement: '全回合格' });
+    expect(rows[0]).toMatchObject({ attemptCount: '1', passRate: '100.0', overallJudgement: '全回合格' });
     expect(rows[0]!.attemptsText).not.toMatch(/2回目|3回目|4回目/);
     const operators = torqueTrainingOperatorRows([valid, session('excluded', { excludedAt: new Date() }), session('cancelled', { status: 'CANCELLED' })]);
     expect(operators).toHaveLength(1);
@@ -60,8 +60,8 @@ describe('torque training Hermes session rows', () => {
       kind: 'torque_training_session', sessionId: 's1', employeeName: '合成作業者A', employeeCode: 'SYNTH-A',
       trainingName: '合成締付訓練', targetBolt: 'M10', material: '合成鋼', targetTorque: '10 N·m',
       terminalName: '合成端末', completedOn: '2026-10-04', wrench: '合成メーカー SYNTH-WRENCH SYNTH-001', overallJudgement: '不合格あり',
-      attemptCount: String(expected.attemptCount), passRate: String(expected.passRate * 100),
-      meanAbsoluteErrorPercent: String(expected.meanAbsoluteErrorPercent), meanDeviationPercent: String(expected.meanDeviationPercent)
+      attemptCount: String(expected.attemptCount), passRate: (expected.passRate * 100).toFixed(1),
+      meanAbsoluteErrorPercent: expected.meanAbsoluteErrorPercent.toFixed(1), meanDeviationPercent: expected.meanDeviationPercent.toFixed(1)
     });
     expect(row.summaryText).toContain('3回中1回合格');
     expect(row.summaryText).toContain('最大偏差 -7.0%');
@@ -113,11 +113,11 @@ describe('torque training Hermes operator rows', () => {
     const expected = summarizeTrainingAttempts(sessions.flatMap(s => s.attempts));
     const expectedRecent = summarizeTrainingAttempts(sessions.slice(2).flatMap(s => s.attempts));
     expect(row).toMatchObject({
-      sessionCount: '12', attemptCount: String(expected.attemptCount), passRate: String(expected.passRate * 100),
-      meanAbsoluteErrorPercent: String(expected.meanAbsoluteErrorPercent), meanDeviationPercent: String(expected.meanDeviationPercent),
+      sessionCount: '12', attemptCount: String(expected.attemptCount), passRate: (expected.passRate * 100).toFixed(1),
+      meanAbsoluteErrorPercent: expected.meanAbsoluteErrorPercent.toFixed(1), meanDeviationPercent: expected.meanDeviationPercent.toFixed(1),
       recentSessionCount: String(TEAM_RECENT_SESSION_LIMIT), recentAttemptCount: String(expectedRecent.attemptCount),
-      recentPassRate: String(expectedRecent.passRate * 100), recentMeanAbsoluteErrorPercent: String(expectedRecent.meanAbsoluteErrorPercent),
-      recentMeanDeviationPercent: String(expectedRecent.meanDeviationPercent), employeeName: '合成作業者A改名', lastTrainingOn: '2026-09-12'
+      recentPassRate: (expectedRecent.passRate * 100).toFixed(1), recentMeanAbsoluteErrorPercent: expectedRecent.meanAbsoluteErrorPercent.toFixed(1),
+      recentMeanDeviationPercent: expectedRecent.meanDeviationPercent.toFixed(1), employeeName: '合成作業者A改名', lastTrainingOn: '2026-09-12'
     });
     expect(row.comparisonText).toContain('上達傾向');
     expect(row.conditionsText).toContain('治具SYNTH-JIG: 全期間2セッション');
@@ -149,7 +149,7 @@ describe('torque training Hermes database readers and team row', () => {
     const summary = await new TorqueTrainingTeamSummaryService().summary();
     const [row] = await createTorqueTrainingSourceReaders().torque_training_team();
     expect(row).toEqual(torqueTrainingTeamRow(summary));
-    expect(row).toMatchObject({ sessionCount: '12', operatorCount: '3', attemptCount: '60', passRate: String(summary.allTime.passRate! * 100), meanAbsoluteErrorPercent: '3.25', meanDeviationPercent: '-1.75', recentAttemptCount: '3' });
+    expect(row).toMatchObject({ sessionCount: '12', operatorCount: '3', attemptCount: '60', passRate: (summary.allTime.passRate! * 100).toFixed(1), meanAbsoluteErrorPercent: (3.25).toFixed(1), meanDeviationPercent: (-1.75).toFixed(1), recentAttemptCount: '3' });
     expect(row!.summaryText).toContain('全期間');
     expect(row!.recentText).toContain('直近1セッション');
     expect(findMany.mock.calls.every(([args]) => args.take === TEAM_RECENT_SESSION_LIMIT)).toBe(true);

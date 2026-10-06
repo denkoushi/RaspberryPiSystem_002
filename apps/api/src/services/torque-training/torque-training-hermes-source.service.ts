@@ -53,18 +53,20 @@ function countedAttempts(sessions: TrainingSearchSession[]) {
 function metrics(sessions: TrainingSearchSession[]): Metrics {
   return summarizeTrainingAttempts(countedAttempts(sessions));
 }
+// One decimal everywhere, so a metadata value never disagrees with the sentence beside it.
+const percent = (value: number) => value.toFixed(1);
 function metricFields(metric: Metrics | TorqueTrainingTeamSummary): SearchRow {
   const hasAttempts = metric.attemptCount > 0;
   return {
     attemptCount: String(metric.attemptCount),
-    passRate: hasAttempts && metric.passRate !== null ? String(metric.passRate * 100) : '',
-    meanAbsoluteErrorPercent: hasAttempts ? String(metric.meanAbsoluteErrorPercent) : '',
-    meanDeviationPercent: hasAttempts ? String(metric.meanDeviationPercent) : ''
+    passRate: hasAttempts && metric.passRate !== null ? percent(metric.passRate * 100) : '',
+    meanAbsoluteErrorPercent: hasAttempts ? percent(metric.meanAbsoluteErrorPercent!) : '',
+    meanDeviationPercent: hasAttempts ? percent(metric.meanDeviationPercent!) : ''
   };
 }
 function metricText(metric: Metrics | TorqueTrainingTeamSummary): string {
   if (!metric.attemptCount) return '締付0回。集計対象の締付実績なし。';
-  return `締付${metric.attemptCount}回。合格率 ${(metric.passRate! * 100).toFixed(1)}%。平均絶対誤差 ${metric.meanAbsoluteErrorPercent!.toFixed(1)}%。平均偏差 ${metric.meanDeviationPercent!.toFixed(1)}%。`;
+  return `締付${metric.attemptCount}回。合格率 ${percent(metric.passRate! * 100)}%。平均絶対誤差 ${percent(metric.meanAbsoluteErrorPercent!)}%。平均偏差 ${percent(metric.meanDeviationPercent!)}%。`;
 }
 function tendency(metric: Metrics): string {
   if (!metric.attemptCount) return '強め・弱めの傾向は判定できません。';
@@ -137,9 +139,9 @@ export function torqueTrainingOperatorRows(sessions: TrainingSearchSession[]): S
       kind: 'torque_training_operator', id, employeeName: latest.employeeNameSnapshot, employeeCode: latest.employeeCodeSnapshot,
       sessionCount: String(rows.length), ...metricFields(allTime),
       recentSessionCount: String(recentSessions.length), recentAttemptCount: String(recent.attemptCount),
-      recentPassRate: recent.attemptCount ? String(recent.passRate * 100) : '',
-      recentMeanAbsoluteErrorPercent: recent.attemptCount ? String(recent.meanAbsoluteErrorPercent) : '',
-      recentMeanDeviationPercent: recent.attemptCount ? String(recent.meanDeviationPercent) : '',
+      recentPassRate: recent.attemptCount ? percent(recent.passRate * 100) : '',
+      recentMeanAbsoluteErrorPercent: recent.attemptCount ? percent(recent.meanAbsoluteErrorPercent) : '',
+      recentMeanDeviationPercent: recent.attemptCount ? percent(recent.meanDeviationPercent) : '',
       lastTrainingOn: completedOn(latest.completedAt), passRateRank: rank === null ? '' : String(rank), rankingPopulation: String(ranked.length),
       summaryText: `全期間: 訓練${rows.length}セッション。${metricText(allTime)}${tendency(allTime)}${rank === null ? '締付実績なしのため順位なし。' : `合格率順位 ${rank}位 / 締付実績のある従業員${ranked.length}人中（同率は同順位）。`}`,
       comparisonText: `直近${recentSessions.length}セッション（最大${TEAM_RECENT_SESSION_LIMIT}）: ${metricText(recent)}${tendency(recent)}${comparison(recent, allTime)}`,

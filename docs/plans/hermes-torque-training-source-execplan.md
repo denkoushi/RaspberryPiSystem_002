@@ -25,6 +25,8 @@ Kiosk Chat's JEV record search will expose completed torque wrench training sess
 - [x] (2026-10-06 09:28Z) Add three structured source definitions, labels, registration, and database readers.
 - [x] (2026-10-06 09:30Z) Verify API transformations and reader registration: 30 unit tests passed.
 - [x] (2026-10-06 09:33Z) Finish bounded local checks: 88 existing focused retrieval regressions, two final training retrieval tests, API lint/build and final no-emit typecheck passed.
+- [x] (2026-10-06) Unify source discovery/API reader registration, move worker/planner policy into definitions, add non-enumerated numeric roles, and document source addition.
+- [x] (2026-10-06) Training numeric display rounding: metadata values and sentences both use one decimal.
 - [ ] Full retrieval suite completion: sandbox localhost denial and Node native abort stopped the requested directory run.
 - [ ] integrationPending: reviewer checks, explicitly authorized commit/PR, required CI and main integration.
 - [ ] Explicitly authorized production deployment and source enablement; live JEV latency and kiosk checks.
@@ -52,7 +54,7 @@ Decision (2026-10-06, implementation): make two small source-neutral planner cha
 
 `scripts/hermes-search/hermes-source-definition.mjs` registers source JSONs under `scripts/hermes-search/hermes-sources/`. `retrieval/catalog.mjs` derives identifier, date, facet, and body roles from their field names/labels. `completedOn` and `lastTrainingOn` become dates. The worker receives authorized API rows, selects a source using JEV, filters local records, and displays the original row text.
 
-`apps/api/src/services/assembly/hermes-search-sources.ts` maintains the API source allowlist. `hermes-search-trial.service.ts` registers readers for enabled sources. New row transformations live in `apps/api/src/services/torque-training/torque-training-hermes-source.service.ts`. One refresh shares one Prisma session query between session and operator readers. Only COMPLETED sessions with `excludedAt: null` are read; defensive transformation filters preserve that boundary too. The team reader calls the existing summary service and reads no unbounded attempt corpus. Dates use Asia/Tokyo. This changes no schema, training API, UI, business-consultation route, infrastructure, or CI configuration.
+`apps/api/src/services/assembly/hermes-search-sources.ts` owns the API reader registry and derives its source IDs. `hermes-search-trial.service.ts` supplies authorized reader dependencies for enabled sources. New row transformations live in `apps/api/src/services/torque-training/torque-training-hermes-source.service.ts`. One refresh shares one Prisma session query between session and operator readers. Only COMPLETED sessions with `excludedAt: null` are read; defensive transformation filters preserve that boundary too. The team reader calls the existing summary service and reads no unbounded attempt corpus. Dates use Asia/Tokyo. This changes no schema, training API, UI, business-consultation route, infrastructure, or CI configuration.
 
 ## Plan of Work
 
@@ -117,3 +119,25 @@ Use existing Prisma and `summarizeTrainingAttempts`; add no dependencies. The ne
 Three opt-in sources and synthetic coverage are implemented locally. API unit tests, definition validation, focused retrieval evidence, lint, build, and final typecheck are successful. The requested full retrieval suite remains incomplete because of the reported environment/runtime failures. Main integration, production source enablement, real-data totals, kiosk live behavior, and measured external-JEV latency remain unperformed.
 
 Revision note (2026-10-06): created the plan, recorded shared-name and date-free-source planner decisions, completed local evidence, and left full-suite completion, integration, and source enablement open.
+
+
+## Source Registration Refactor (2026-10-06)
+
+Source definitions are discovered from `hermes-sources/*.json`. Filenames map hyphens to underscores (for example, `torque-training-session.json` declares `torque_training_session`). Duplicate IDs, mismatched filenames, and invalid definitions fail at startup; other JSON contracts are ignored. Existing named definition exports remain available. Each definition owns its `label`; the separate label file is removed.
+
+Optional v1 attributes are `numericFields` (metadata keys with the non-filterable, non-enumerated `number` role), `retrieval.semanticSearch`, `retrieval.enrichment`, and `retrieval.learnedQueries` (opt-in execution capabilities), `pageContextAttributes` (screen identifier to metadata field; `null` selects the source without adding a filter), and `outOfScopeAnswer` (single-source wording). `retrieval.denseStoreSuffix` isolates dense stores; the empty suffix on nonconformity preserves the existing store path. Runtime policy is associated with catalog entries without adding serialized properties, preserving the existing two sources' catalog and JEV input bytes. Legacy untagged record identity is handled by `recordSourceId`.
+
+All numeric training metadata is excluded from choice enumeration. Percent values are formatted to one decimal by one helper in the training reader, so a metadata value and the sentence beside it never disagree.
+
+Incremental refresh remains unchanged. `mergeRecords` only inserts and replaces by source/record ID; it has no deletion contract. Full refresh is necessary to remove unpublished procedures and excluded sessions and replace operator/team aggregates. Safe generalization requires source-scoped authoritative snapshots or explicit deleted IDs, atomic replacement with indexes, and tests for publication removal, exclusions, disappearing operators, and failed reads. Preserve the existing nonconformity-only merge until that contract is implemented separately.
+
+### Adding a Source
+
+1. Place one `hermes-source-definition/v1` JSON in `scripts/hermes-search/hermes-sources/`, with a matching filename/ID, `label`, explicit `visibility`, metadata/body fields, and search/projection attributes. Declare numeric metadata in `numericFields`. Omit optional execution capabilities unless their backing data/indexes are available.
+2. Implement the authorized read function and add one factory entry to `RETRIEVAL_SOURCE_READERS` in `apps/api/src/services/assembly/hermes-search-sources.ts`. Import the reader in that registry, or inject its code-owned dependencies there when needed. Do not add an ID to a second list or change planner/executor/worker code.
+3. Add reader tests for authorization, original text, update/removal behavior, and empty data. Extend synthetic retrieval coverage for source visibility, catalog roles, and a multi-source QueryPlan. `hermes-search-sources.test.ts` automatically compares API registry IDs to the shipped definition directory. `source-registration.test.mjs` registers temporary definitions without adding permanent synthetic source files; `source-compatibility.test.mjs` fixes existing catalog, JEV input, plan, candidate, and answer hashes captured before this refactor.
+4. Run definition tests, affected API tests, retrieval tests, API lint, and the no-emit API typecheck. Existing two-source expectations must remain unchanged.
+5. At a separately authorized production rollout, deploy a reviewed immutable target with successful CI using the standard deployment guide, print the plan, and specify the exact Pi5 limit. Preserve the confirmed current source list and append the new ID to `HERMES_RETRIEVAL_SOURCES`. After worker restart and full corpus refresh, verify the source's visibility, counts, original text, representative searches, and kiosk behavior. Source JSON and read registration alone do not enable a source in production.
+
+
+Refactor validation (run outside the worker sandbox): `node --test retrieval/` 239 passed, root `scripts/hermes-search/*.test.mjs` 61 passed, API source/trial/training tests 32 passed, API no-emit typecheck passed. `source-compatibility.test.mjs` pins the catalog, JEV inputs, plans, candidates and answers of the two pre-existing sources to digests captured before the refactor.

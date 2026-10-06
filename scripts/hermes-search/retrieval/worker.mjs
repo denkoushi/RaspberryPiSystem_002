@@ -5,8 +5,8 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
-import { catalogEntries, fieldsWithRole, loadCatalog } from './catalog.mjs';
-import { sourceIdsFromEnv } from '../hermes-source-definition.mjs';
+import { catalogEntries, definitionForCatalog, fieldsWithRole, loadCatalog } from './catalog.mjs';
+import { recordSourceId, sourceIdsFromEnv } from '../hermes-source-definition.mjs';
 import { createDenseRuntime, denseSettings } from './dense-dgx.mjs';
 import { execute, openQmdVectorRanker, prepareLexicalCorpus } from './executor.mjs';
 import { createPlanner } from './planner-jev.mjs';
@@ -34,7 +34,6 @@ const COVERAGE_ORDER = {
   relevance: '関連度の高い順',
   source_order: 'ソース順',
 };
-const OUT_OF_SCOPE_ANSWER = '不適合情報の検索に関する質問として解釈できませんでした。';
 const UNAVAILABLE_ANSWER = '検索に失敗しました。該当なしとは判断していません。';
 const TYPESAFE_FAILURE_CODES = new Set([
   'missing_credentials', 'transport_unavailable', 'upstream_http', 'invalid_json',
@@ -93,7 +92,7 @@ function memoryReport(records, catalog) {
   const mb = (bytes) => Math.round(bytes / (1024 * 1024) * 10) / 10;
   const bySource = Object.fromEntries(catalogEntries(catalog).map((entry) => [entry.id, 0]));
   for (const record of records) {
-    const sourceId = record.sourceId ?? 'nonconformity';
+    const sourceId = recordSourceId(record);
     bySource[sourceId] = (bySource[sourceId] ?? 0) + 1;
   }
   return {
@@ -204,25 +203,32 @@ function formatRecords(results, catalog) {
 }
 
 function applyEnrichment(view, enrichmentById, catalog, learnedById) {
-  const hasLearned = learnedById?.size > 0;
-  if ((!enrichmentById || enrichmentById.size === 0) && !hasLearned) return view;
-  const nonconformity = view.bySource.nonconformity;
-  if (!nonconformity) return view;
-  const merged = hasLearned ? mergeLearnedQueries(enrichmentById,
-    [...learnedById].flatMap(([recordId, queries]) => queries.map((query) => ({ recordId, query }))), { states: null }) : enrichmentById;
-  const records = attachEnrichment(nonconformity.records, merged);
-  // Keep summaries and tags out of lexical ranking; only learned queries extend the body.
-  const lexicalCorpus = hasLearned ? prepareLexicalCorpus(records.map((record) => ({
-    ...record,
-    enrichment: { queries: learnedById.get(bareId(record.id)) ?? [], tags: [], summary: '' },
-  })), fieldsWithRole(catalogEntries(catalog).find((entry) => entry.id === 'nonconformity'), 'body')) : nonconformity.lexicalCorpus;
-  const enriched = new Map(records.map((record) => [record.id, record]));
-  return {
-    ...view,
-    records: view.records.map((record) => (record.sourceId ?? 'nonconformity') === 'nonconformity' ? enriched.get(record.id) : record),
-    bySource: { ...view.bySource, nonconformity: { ...nonconformity, records, lexicalCorpus } },
-    ...(hasLearned && catalogEntries(catalog).length === 1 ? { lexicalCorpus } : {}),
-  };
+  let current = view;
+  for (const entry of catalogEntries(catalog)) {
+    const capabilities = definitionForCatalog(entry).retrieval ?? {};
+    const enrichment = capabilities.enrichment ? enrichmentById : null;
+    const learned = capabilities.learnedQueries ? learnedById : null;
+    const hasLearned = learned?.size > 0;
+    if ((!enrichment || enrichment.size === 0) && !hasLearned) continue;
+    const source = current.bySource[entry.id];
+    if (!source) continue;
+    const merged = hasLearned ? mergeLearnedQueries(enrichment,
+      [...learned].flatMap(([recordId, queries]) => queries.map((query) => ({ recordId, query }))), { states: null }) : enrichment;
+    const records = attachEnrichment(source.records, merged);
+    // Keep summaries and tags out of lexical ranking; only learned queries extend the body.
+    const lexicalCorpus = hasLearned ? prepareLexicalCorpus(records.map((record) => ({
+      ...record,
+      enrichment: { queries: learned.get(bareId(record.id)) ?? [], tags: [], summary: '' },
+    })), fieldsWithRole(entry, 'body')) : source.lexicalCorpus;
+    const enriched = new Map(records.map((record) => [record.id, record]));
+    current = {
+      ...current,
+      records: current.records.map((record) => recordSourceId(record) === entry.id ? enriched.get(record.id) : record),
+      bySource: { ...current.bySource, [entry.id]: { ...source, records, lexicalCorpus } },
+      ...(hasLearned && catalogEntries(catalog).length === 1 ? { lexicalCorpus } : {}),
+    };
+  }
+  return current;
 }
 
 function combineExecutions(executions) {
@@ -339,6 +345,8 @@ export function createRetrievalAnswering({
   planner: suppliedPlanner = null,
   vector = null,
   dense = null,
+  denseBySource = null,
+  vectorBySource = null,
   enrichmentById = null,
   learnedById = null,
   snapshotCount = Array.isArray(records) ? records.length : 0,
@@ -347,7 +355,9 @@ export function createRetrievalAnswering({
   const planner = suppliedPlanner ?? createPlanner(typeof evaluate === 'function' ? { evaluate } : {});
   const relevance = createRelevanceJudge(typeof evaluate === 'function' ? { evaluate } : {});
   const entries = catalogEntries(catalog);
-  const nonconformity = entries.find((entry) => entry.id === 'nonconformity');
+  const semanticEntries = entries.filter((entry) => definitionForCatalog(entry).retrieval?.semanticSearch);
+  const denseFor = (sourceId) => denseBySource?.[sourceId] ?? dense;
+  const vectorFor = (sourceId) => vectorBySource?.[sourceId] ?? vector;
   let current = buildCorpusView(records, catalog, null);
   if (valueIndex) {
     current = { ...current, valueIndex, lexicalCorpus, snapshotCount };
@@ -359,7 +369,7 @@ export function createRetrievalAnswering({
       const count = current.snapshotCount;
       try {
         current = applyEnrichment(replaceCorpus(current, catalog, message), await loadEnrichmentById(), catalog, await loadLearnedQueriesById());
-        if (nonconformity) dense?.schedule?.(current.bySource.nonconformity.records, fieldsWithRole(nonconformity, 'body'));
+        for (const entry of semanticEntries) denseFor(entry.id)?.schedule?.(current.bySource[entry.id].records, fieldsWithRole(entry, 'body'));
         return { ok: true, count: current.snapshotCount, memory: memoryReport(current.records, catalog) };
       } catch {
         console.warn(`hermes retrieval corpus refresh failed count=${count}`);
@@ -379,7 +389,7 @@ export function createRetrievalAnswering({
         : view.valueIndex;
       const visibleCount = options.principal
         ? visibleEntries.reduce((count, entry) => count + view.bySource[entry.id].records.length, 0) : view.snapshotCount;
-      const outOfScopeAnswer = visibleEntries.length === 1 && visibleEntries[0].id === 'nonconformity' ? OUT_OF_SCOPE_ANSWER
+      const outOfScopeAnswer = visibleEntries.length === 1 && definitionForCatalog(visibleEntries[0]).outOfScopeAnswer ? definitionForCatalog(visibleEntries[0]).outOfScopeAnswer
         : `${visibleEntries.length ? `${visibleEntries.map((entry) => entry.label).join('・')}の` : ''}検索に関する質問として解釈できませんでした。`;
       const stageDump = options.stageDump === true;
       const vectorBudgetMs = Number.isFinite(options.vectorBudgetMs) && options.vectorBudgetMs > 0 ? options.vectorBudgetMs : undefined;
@@ -418,7 +428,12 @@ export function createRetrievalAnswering({
       // value into the next question through previous_plan when no pointer is used.
       const entity = options.pageContext?.entity;
       const sessionPlan = planned.receipt?.pageContext?.used && entity && compact
-        ? { ...compact, filters: compact.filters.filter((filter) => !(filter.field === entity.kind && filter.values.includes(entity.value))) }
+        ? { ...compact, filters: compact.filters.filter((filter) => {
+          const entry = visibleEntries.find((entry) => entry.id === filter.source);
+          const attributes = entry && definitionForCatalog(entry).pageContextAttributes;
+          const field = attributes ? attributes[entity.kind] : entity.kind;
+          return !(filter.field === field && filter.values.includes(entity.value));
+        }) }
         : compact;
       // One receipt per answer for the API log: the planner decisions and the outcome.
       const receiptOf = (outcome, extra = {}) => ({
@@ -459,10 +474,13 @@ export function createRetrievalAnswering({
         });
       }
       const executions = [];
-      const usesDense = validation.plan.sources.includes('nonconformity') && dense?.queryEnabled;
+      const usesDense = semanticEntries.some((entry) => validation.plan.sources.includes(entry.id) && denseFor(entry.id)?.queryEnabled);
       for (const sourceId of validation.plan.sources) {
         const entry = visibleEntries.find((entry) => entry.id === sourceId);
         const sourceView = view.bySource[sourceId];
+        const semantic = definitionForCatalog(entry).retrieval?.semanticSearch;
+        const sourceDense = semantic ? denseFor(sourceId) : null;
+        const sourceVector = semantic ? vectorFor(sourceId) : null;
         const plan = validation.plan;
         const dateField = entry.fields.find((field) => field.role === 'date');
         const sort = plan.sort !== 'relevance' && !entry.fields.some((field) => field.key === plan.sort.field)
@@ -471,8 +489,8 @@ export function createRetrievalAnswering({
           records: sourceView.records,
           catalog: entry,
           lexicalCorpus: sourceView.lexicalCorpus,
-          retriever: sourceId === 'nonconformity' && dense?.queryEnabled ? 'hybrid' : 'lexical',
-          vector: sourceId !== 'nonconformity' ? null : dense?.queryEnabled ? (query, filtered) => dense.rank(query, filtered) : (typeof vector === 'function' ? vector : null),
+          retriever: sourceDense?.queryEnabled ? 'hybrid' : 'lexical',
+          vector: sourceDense?.queryEnabled ? (query, filtered) => sourceDense.rank(query, filtered) : (typeof sourceVector === 'function' ? sourceVector : null),
           relevance: (input) => relevance.judge(input),
           requestStartedAt: started,
           stageDump,
@@ -522,7 +540,7 @@ export function createRetrievalAnswering({
         });
       }
       const vectorStatus = executed.timings?.vectorStatus;
-      if (dense?.queryEnabled && (vectorStatus === 'timeout' || vectorStatus === 'failed')) {
+      if (usesDense && (vectorStatus === 'timeout' || vectorStatus === 'failed')) {
         noteDenseFallback(vectorStatus);
       }
       const body = formatRecords(executed.results, visibleCatalog);
@@ -639,7 +657,7 @@ export function dispatchWorkerRequest(answering, request, emitFn = emit) {
 }
 
 export async function main() {
-  let ranker = null;
+  const rankers = [];
   let answering;
   try {
     const catalog = loadCatalog(sourceIdsFromEnv(process.env));
@@ -650,26 +668,35 @@ export async function main() {
       const view = buildCorpusView([], catalog, null);
       resources = { ...view, catalog, snapshotId: 'pending-refresh' };
     }
-    try {
-      ranker = catalog.some((entry) => entry.id === 'nonconformity') ? await openOptionalVector(process.env, 'nonconformity') : null;
-    } catch {
-      ranker = null;
-    }
+    const semanticEntries = catalog.filter((entry) => definitionForCatalog(entry).retrieval?.semanticSearch);
+    const vectorBySource = {};
+    const denseBySource = {};
     const denseConfig = denseSettings(process.env);
-    const dense = (denseConfig.queryEnabled || denseConfig.indexEnabled)
-      ? createDenseRuntime({ settings: denseConfig })
-      : null;
-    if (dense) {
-      await dense.load().catch(() => 0);
-      const entry = catalog.find((entry) => entry.id === 'nonconformity');
-      if (entry) dense.schedule(resources.records.filter((record) => (record.sourceId ?? 'nonconformity') === entry.id), fieldsWithRole(entry, 'body'));
+    for (const entry of semanticEntries) {
+      try {
+        const ranker = await openOptionalVector(process.env, entry.id);
+        if (ranker) {
+          rankers.push(ranker);
+          vectorBySource[entry.id] = (query, filtered) => ranker.rank(query, filtered);
+        }
+      } catch { /* Keep lexical fallback when the optional vector index cannot open. */ }
+      if (denseConfig.queryEnabled || denseConfig.indexEnabled) {
+        // The empty suffix retains the existing store; other sources get isolated stores.
+        const suffix = definitionForCatalog(entry).retrieval.denseStoreSuffix ?? entry.id;
+        const dense = createDenseRuntime({ settings: {
+          ...denseConfig, storePath: suffix ? `${denseConfig.storePath}.${suffix}` : denseConfig.storePath,
+        } });
+        denseBySource[entry.id] = dense;
+        await dense.load().catch(() => 0);
+        dense.schedule(resources.records.filter((record) => recordSourceId(record) === entry.id), fieldsWithRole(entry, 'body'));
+      }
     }
     answering = createRetrievalAnswering({
       ...resources,
       enrichmentById: await loadEnrichmentById(),
       learnedById: await loadLearnedQueriesById(),
-      dense,
-      vector: ranker ? (query, filtered) => ranker.rank(query, filtered) : null,
+      denseBySource,
+      vectorBySource,
     });
     emit(readyPayload(resources));
   } catch (error) {
@@ -701,7 +728,7 @@ export async function main() {
   }
   await Promise.allSettled(pending);
   await emitQueue;
-  if (ranker) await ranker.close();
+  for (const ranker of rankers) await ranker.close();
 }
 
 if (process.argv.includes('--hermes-ui-prefetch-worker') || process.argv[1] === fileURLToPath(import.meta.url)) {

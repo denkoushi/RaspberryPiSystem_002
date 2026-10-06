@@ -1,7 +1,8 @@
+import { readdirSync, readFileSync } from 'node:fs';
 import type { KnowledgeProcedureDocument } from '@raspi-system/shared-types';
 import { describe, expect, it } from 'vitest';
 
-import { knowledgeProcedureRow, retrievalSourceIdsFromEnv } from '../hermes-search-sources.js';
+import { knowledgeProcedureRow, registeredSourceReaders, RETRIEVAL_SOURCE_IDS, retrievalSourceIdsFromEnv } from '../hermes-search-sources.js';
 
 const document: KnowledgeProcedureDocument & { publishedAt: string } = {
   formatVersion: 1, procedureId: 'p1', revisionId: 'r1', revisionNumber: 1,
@@ -41,4 +42,25 @@ describe('Hermes retrieval source rows', () => {
   it('rejects unknown ids with the same message as the worker', () => {
     for (const id of ['missing', 'constructor']) expect(() => retrievalSourceIdsFromEnv({ HERMES_RETRIEVAL_SOURCES: `nonconformity,${id}` })).toThrow(`unknown retrieval source: ${id}`);
   });
+});
+
+
+it('API reader registrations exactly match source definitions shipped with the search worker', () => {
+  const directory = new URL('../../../../../../scripts/hermes-search/hermes-sources/', import.meta.url);
+  const ids = readdirSync(directory).filter(file => file.endsWith('.json')).flatMap(file => {
+    const value = JSON.parse(readFileSync(new URL(file, directory), 'utf8')) as { schema?: string; id: string };
+    return value.schema === 'hermes-source-definition/v1' ? [value.id] : [];
+  });
+  expect([...RETRIEVAL_SOURCE_IDS].sort()).toEqual(ids.sort());
+});
+
+it('registered readers accept injected dependencies and preserve the requested source order', async () => {
+  const nonconformity = async () => [{ kind: 'nonconformity', id: 'n' }];
+  const procedures = async () => [{ kind: 'knowledge_procedure', id: 'p' }];
+  const readers = registeredSourceReaders({ nonconformity, procedures,
+    training: () => { throw new Error('unselected training source must not construct Prisma readers'); },
+  }, ['knowledge_procedure', 'nonconformity']);
+  expect(await Promise.all(readers.map(read => read()))).toEqual([
+    [{ kind: 'knowledge_procedure', id: 'p' }], [{ kind: 'nonconformity', id: 'n' }],
+  ]);
 });
