@@ -1,20 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '../../../components/ui/Button';
+import { useProtectedImageBlobUrl } from '../../../hooks/useProtectedImageBlobUrl';
+import { KioskSopLauncher } from '../../kiosk-sop';
 import { AssemblyProcedureStoryboard } from '../AssemblyProcedureStoryboard';
+import { kioskAssemblyTemplateNewPath } from '../assemblyRoutes';
+import { formatAssemblyEditorName } from '../assemblyTemplateGuidePresentation';
 import { AssemblyTemplateProcedurePane } from '../AssemblyTemplateProcedurePane';
 
-import { useAssemblyTemplateEditor } from './AssemblyTemplateEditorContext';
+import { useAssemblyTemplateEditor, useAssemblyTemplateEditorNavigation } from './AssemblyTemplateEditorContext';
+import { AssemblyTemplateEditorHeader } from './AssemblyTemplateEditorHeader';
 
 export function AssemblyTemplateEditorLeftPane() {
-  const [isDesktop, setIsDesktop] = useState(
-    () => typeof window !== 'undefined' && window.innerWidth >= 1280
-  );
-  useEffect(() => {
-    const update = () => setIsDesktop(window.innerWidth >= 1280);
-    window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
-  }, []);
   const {
     addArea,
     areas,
@@ -35,7 +32,6 @@ export function AssemblyTemplateEditorLeftPane() {
     modelCode,
     moveArea,
     pageOptions,
-    procedurePaneOpen,
     procedurePattern,
     procedureSteps,
     readOnly,
@@ -54,12 +50,23 @@ export function AssemblyTemplateEditorLeftPane() {
     setLeftPaneTab,
     setMachineNamePickerOpen,
     templateName,
+    loadedTemplate,
+    visibleCheckItems,
+    setSelectedPageKey,
     templateNameAutomatic,
     templateId,
     toggleAreaDetails
   } = useAssemblyTemplateEditor();
+  const nameRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const input = nameRef.current;
+    if (!input) return;
+    input.style.height = 'auto';
+    input.style.height = `${input.scrollHeight + input.offsetHeight - input.clientHeight}px`;
+  }, [templateName]);
+  const { renderLink } = useAssemblyTemplateEditorNavigation();
   const procedurePane = (
-    <div className="min-h-0 min-w-0 overflow-auto border-b border-white/10 xl:max-h-[52%] xl:shrink-0">
+    <div className="min-w-0">
       <AssemblyTemplateProcedurePane
         items={displayProcedureItems}
         selectedPageKey={selectedPageKey}
@@ -70,6 +77,7 @@ export function AssemblyTemplateEditorLeftPane() {
         selectedAreaId={selectedAreaId}
         expandedAreaDetails={expandedAreaDetails}
         onToggleAreaDetails={toggleAreaDetails}
+        hideTemplateName
         templateName={templateName}
         modelCode={modelCode}
         machineNameSelectionRequired={machineNameSelectionRequired}
@@ -120,58 +128,86 @@ export function AssemblyTemplateEditorLeftPane() {
       markerProjectionByStepId={markerProjectionByStepId}
     />
   );
-  return procedurePaneOpen ? (
-    <aside
-      data-testid="assembly-template-editor-left-pane"
-      className="flex min-h-[32rem] min-w-0 flex-col overflow-hidden rounded border border-[#27313b] bg-[#161c22] xl:min-h-0"
-    >
-      <div className="hidden shrink-0 items-center gap-1 border-b border-white/10 p-1 xl:flex">
-        <Button
-          type="button"
-          variant={leftPaneTab === 'documents' ? 'primary' : 'ghostOnDark'}
-          className="min-h-8 flex-1 whitespace-nowrap !px-1 text-xs"
-          aria-expanded={leftPaneTab === 'documents'}
-          aria-controls="assembly-procedure-pane"
-          aria-label="文書・工程"
-          onClick={() => setLeftPaneTab(leftPaneTab === 'documents' ? 'steps' : 'documents')}
-        >
-          文書・工程 <span aria-hidden="true">{leftPaneTab === 'documents' ? '▴' : '▾'}</span>
-        </Button>
-        <Button
-          type="button"
-          variant={leftPaneTab === 'steps' ? 'primary' : 'ghostOnDark'}
-          className="min-h-8 flex-1 !px-1 text-xs"
-          aria-controls="assembly-step-storyboard"
-          onClick={() => setLeftPaneTab('steps')}
-        >
-          手順
-        </Button>
+  return (
+    <aside data-testid="assembly-template-editor-left-pane" className="flex min-h-0 min-w-0 flex-col gap-3 overflow-y-auto border-r border-[#27313b] bg-[#161c22] p-3.5">
+      <div className="flex shrink-0 flex-col gap-3">
+        <AssemblyTemplateEditorHeader />
+        <label className="grid gap-2 text-base font-bold tracking-wider text-[#9fb0c0]">
+          テンプレート名
+          <textarea ref={nameRef} rows={2} id="assembly-template-name" data-kiosk-sop-target="assembly-editor-template-name" className="min-h-[4.5rem] min-w-0 w-full resize-none whitespace-pre-wrap break-all overflow-hidden rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-xl leading-6 text-slate-900 focus:border-emerald-500 focus:outline-none" value={templateName} title={templateName} maxLength={200} disabled={busy || readOnly} onChange={(event) => changeTemplateName(event.target.value)} />
+        </label>
+        {!templateNameAutomatic ? <button type="button" className="text-right text-xs text-cyan-200 disabled:opacity-40" disabled={busy || readOnly} onClick={restoreSuggestedTemplateName}>自動提案に戻す</button> : null}
       </div>
-      {!isDesktop ? <div className="flex min-h-0 flex-1 flex-col">
-        <div className="grid shrink-0 grid-cols-2 gap-1 border-b border-white/10 p-1">
+      <div role="tablist" aria-label="左ペインの表示" className="grid shrink-0 grid-cols-3 gap-1">
+        {([['areas', '工程'], ['documents', '文書'], ['steps', '手順']] as const).map(([tab, label]) => (
           <Button
+            key={tab}
             type="button"
-            variant={leftPaneTab === 'steps' ? 'primary' : 'ghostOnDark'}
-            className="min-h-8 !px-1 text-xs"
-            onClick={() => setLeftPaneTab('steps')}
+            role="tab"
+            id={`assembly-left-tab-${tab}`}
+            aria-selected={leftPaneTab === tab}
+            aria-controls={`assembly-left-panel-${tab}`}
+            data-kiosk-sop-target={tab === 'documents' ? 'assembly-editor-help' : undefined}
+            variant={leftPaneTab === tab ? 'primary' : 'ghostOnDark'}
+            className="h-11 min-h-11 !px-1 !py-0 text-xs"
+            onClick={() => setLeftPaneTab(tab)}
           >
-            手順
+            {label}
           </Button>
-          <Button
-            type="button"
-            variant={leftPaneTab === 'documents' ? 'primary' : 'ghostOnDark'}
-            className="min-h-8 !px-1 text-xs"
-            onClick={() => setLeftPaneTab('documents')}
-          >
-            文書・工程
-          </Button>
-        </div>
-        {leftPaneTab === 'steps' ? storyboard : <div className="min-h-0 flex-1 overflow-auto">{procedurePane}</div>}
-      </div> : null}
-      {isDesktop ? <div className="flex min-h-0 flex-1 flex-col">
-        {leftPaneTab === 'documents' ? procedurePane : null}
-        {storyboard}
-      </div> : null}
+        ))}
+      </div>
+      <div
+        role="tabpanel"
+        id={`assembly-left-panel-${leftPaneTab}`}
+        aria-labelledby={`assembly-left-tab-${leftPaneTab}`}
+        className={`flex min-w-0 flex-1 shrink-0 flex-col ${leftPaneTab === 'steps' ? 'min-h-[16rem]' : ''}`}
+      >
+        {leftPaneTab === 'areas' ? <div className="grid gap-3">
+          <section aria-label="工程" className="grid gap-2">
+            <h2 className="text-base font-bold tracking-wider text-[#9fb0c0]">工程</h2>
+            <div className="grid gap-1.5">
+              {areas.map((area, index) => <button key={area.id} type="button" aria-current={area.id === selectedAreaId ? 'true' : undefined} className="grid min-h-14 content-center gap-0.5 rounded-lg border border-[#344252] px-3 py-1.5 text-left aria-[current=true]:border-white aria-[current=true]:bg-[#27313b]" onClick={() => selectArea(area.id)}>
+                <span className="truncate text-xl font-bold">{formatAssemblyEditorName([area.processNo.trim(), area.areaCode.trim()].filter(Boolean).join('-') || area.areaName.trim() || `工程 ${index + 1}`)}</span>
+                <span className="font-mono text-[15px] text-[#9fb0c0]">締付 <b className="font-normal text-[#f6b93b]">{area.bolts.length}</b>{visibleCheckItems.length > 0 ? ` · チェック ${visibleCheckItems.length}` : ''}</span>
+              </button>)}
+              <button type="button" data-kiosk-sop-target="assembly-editor-area-add" className="min-h-11 rounded-lg border border-dashed border-[#344252] text-lg text-[#9fb0c0] disabled:opacity-40" disabled={busy || readOnly} onClick={addArea}>＋ 工程</button>
+            </div>
+          </section>
+          <section aria-label="ページ" className="grid gap-2">
+            <h2 className="text-base font-bold tracking-wider text-[#9fb0c0]">ページ</h2>
+            <div className="grid grid-cols-2 gap-2">
+              {pageOptions.map((page) => <button key={page.key} type="button" aria-label={page.label} aria-current={page.key === selectedPageKey ? 'true' : undefined} className="relative aspect-[1/1.414] overflow-hidden rounded border-2 border-transparent bg-white aria-[current=true]:border-[#5ec4ff]" onClick={() => setSelectedPageKey(page.key)}>
+                <PageThumbnail path={page.imageRelativePath} />
+                <span className="absolute bottom-1 left-1.5 bg-white/90 px-1 font-mono text-sm text-[#333]">{page.pageIndex + 1}</span>
+              </button>)}
+            </div>
+          </section>
+        </div> : leftPaneTab === 'documents' ? procedurePane : storyboard}
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center gap-3 pt-3 text-xs text-[#9fb0c0]">
+        <KioskSopLauncher manualId="assembly-procedure-template" initialSheetId={templateId ? 'assembly-revision' : 'assembly-template-auth-basics'} className="!min-h-8 !border-0 !bg-transparent !px-0 !text-xs" />
+        {loadedTemplate ? renderLink({ to: kioskAssemblyTemplateNewPath({ sourceTemplateId: loadedTemplate.id }), className: 'text-xs', children: '複製して新規' }) : null}
+      </div>
     </aside>
-  ) : null;
+  );
+}
+
+function PageThumbnail({ path }: { path: string }) {
+  const thumbnailRef = useRef<HTMLDivElement>(null);
+  const [requested, setRequested] = useState(() => typeof IntersectionObserver === 'undefined');
+  useEffect(() => {
+    const thumbnail = thumbnailRef.current;
+    if (!thumbnail || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver((entries) => {
+      setRequested(entries.some((entry) => entry.isIntersecting));
+    }, { root: thumbnail.closest('[data-testid="assembly-template-editor-left-pane"]'), rootMargin: '200px' });
+    observer.observe(thumbnail);
+    return () => observer.disconnect();
+  }, []);
+  return <div ref={thumbnailRef} className="h-full w-full">{requested ? <PageThumbnailImage path={path} /> : null}</div>;
+}
+
+function PageThumbnailImage({ path }: { path: string }) {
+  const { blobUrl } = useProtectedImageBlobUrl(path);
+  return blobUrl ? <img src={blobUrl} alt="" loading="lazy" className="h-full w-full object-contain" /> : null;
 }
