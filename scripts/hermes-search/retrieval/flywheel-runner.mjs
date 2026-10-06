@@ -7,7 +7,7 @@
 // After generation and grading finish, kept questions without live results are answered by the
 // kiosk's own pipeline, recording the shown and judged ids and the loss stage (flywheel-live.mjs).
 // A nightly budget caps the questions, and a busy guard stops calling the model when it is slow.
-import { appendFile, mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { catalogEntries, fieldsWithRole, loadNonconformityCatalog } from './catalog.mjs';
@@ -458,12 +458,66 @@ async function readStdin() {
   return Array.isArray(payload) ? payload : payload.records;
 }
 
-export async function main() {
+export const RUNNER_LOCK_STALE_MS = 2 * 3600 * 1000;
+
+function processAlive(pid) {
   try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === 'EPERM';
+  }
+}
+
+/**
+ * One runner per night directory. The API starts a runner every few minutes and, during a
+ * blue/green swap, from two containers at once; on 2026-10-06 two runners overlapped and the learn
+ * phase ran while generation was still writing. The lock names the holder's pid and time; a lock
+ * whose process is gone, or older than RUNNER_LOCK_STALE_MS, is taken over.
+ */
+export async function acquireRunnerLock(dir, { pid = process.pid, now = () => new Date(), staleMs = RUNNER_LOCK_STALE_MS, alive = processAlive } = {}) {
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const lockPath = path.join(dir, 'runner.lock');
+  const body = `${JSON.stringify({ pid, at: now().toISOString() })}\n`;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const handle = await open(lockPath, 'wx', 0o600);
+      await handle.writeFile(body);
+      await handle.close();
+      return { path: lockPath, release: () => rm(lockPath, { force: true }) };
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+    }
+    let holder = null;
+    try {
+      holder = JSON.parse(await readFile(lockPath, 'utf8'));
+    } catch {
+      holder = null;
+    }
+    const age = holder?.at ? now().getTime() - Date.parse(holder.at) : Number.POSITIVE_INFINITY;
+    const held = Number.isInteger(holder?.pid) && holder.pid !== pid && alive(holder.pid) && age < staleMs;
+    if (held) return null;
+    await rm(lockPath, { force: true });
+  }
+  return null;
+}
+
+export async function main() {
+  let lock = null;
+  try {
+    const settings = flywheelSettings();
+    lock = await acquireRunnerLock(settings.dir);
+    if (!lock) {
+      console.info('hermes retrieval flywheel reason=already_running');
+      process.exitCode = 0;
+      return;
+    }
     const records = await readStdin();
-    await runFlywheelNight({ records, settings: flywheelSettings() });
+    await runFlywheelNight({ records, settings });
   } catch {
     console.info('hermes retrieval flywheel reason=runner_failed');
+  } finally {
+    if (lock) await lock.release().catch(() => {});
   }
   process.exitCode = 0;
 }
