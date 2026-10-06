@@ -26,6 +26,8 @@ class ClientKeyTransportTests(unittest.TestCase):
             "import os, sys\n"
             "old, new = os.environ['OLD_CLIENT_KEY'], os.environ['NEW_CLIENT_KEY']\n"
             "assert all(old not in arg and new not in arg for arg in sys.argv)\n"
+            "if 'SELECT 1' in sys.argv:\n"
+            "    sys.exit(1 if os.environ.get('FAIL_CONNECT') == '1' else 0)\n"
             "sql = sys.stdin.read()\n"
             "assert old not in sql and new not in sql\n"
             "row = sql.split('COPY rotation_input FROM STDIN;\\n')[1].split('\\n')[0]\n"
@@ -52,6 +54,15 @@ class ClientKeyTransportTests(unittest.TestCase):
             if value:
                 self.assertNotIn(value, output)
         return result, output
+
+    def test_connection_check_fails_before_credentials_are_sent(self):
+        self.env["FAIL_CONNECT"] = "1"
+        result, output = self.run_script(DEVICE_ID)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("cannot reach the database", output)
+
+    def test_compose_mode_does_not_override_the_project_directory(self):
+        self.assertNotIn("--project-directory", SCRIPT.read_text())
 
     def test_stdin_transport_and_trace_suppression(self):
         result, output = self.run_script(DEVICE_ID, trace=True)
