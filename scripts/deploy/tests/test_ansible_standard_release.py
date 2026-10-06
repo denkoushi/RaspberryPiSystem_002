@@ -1949,6 +1949,119 @@ esac
 
 
 class Pi5CanonicalStandardRouteTests(unittest.TestCase):
+    def test_pi5_renders_and_runs_status_agent_outside_api_rollback(self) -> None:
+        tasks = yaml.safe_load(self.task_text("main"))
+        names = [task["name"] for task in tasks]
+        conf_index = names.index(
+            "Render the Pi5 status-agent configuration outside the immutable release tree"
+        )
+        self.assertEqual(conf_index, names.index("Keep the Pi5 system journal across reboots") + 1)
+        self.assertEqual(names[conf_index + 1], "Warn before the Pi5 disk fills")
+        self.assertEqual(tasks[conf_index + 1]["ansible.builtin.import_tasks"], "host-status-agent-storage.yml")
+        self.assertEqual(
+            tasks[conf_index]["ansible.builtin.template"],
+            {
+                "src": "{{ playbook_dir }}/../templates/status-agent.conf.j2",
+                "dest": "/etc/raspi-status-agent.conf",
+                "owner": "root",
+                "group": "root",
+                "mode": "0600",
+            },
+        )
+        self.assertTrue(tasks[conf_index]["no_log"])
+        run = tasks[conf_index + 2]
+        self.assertEqual(run["name"], "Run the Pi5 status-agent once with the rendered configuration")
+        self.assertEqual(
+            run["ansible.builtin.systemd"],
+            {"name": "status-agent.service", "state": "restarted"},
+        )
+        for task in (tasks[conf_index], run):
+            for suppressed in ("when", "ignore_errors", "failed_when", "rescue"):
+                self.assertNotIn(suppressed, task)
+        self.assertEqual(tasks[0]["block"][-1]["ansible.builtin.import_tasks"], "commit.yml")
+        self.assertEqual(tasks[0]["always"][0]["ansible.builtin.import_tasks"], "cleanup.yml")
+        self.assertNotIn("status-agent", self.task_text("rollback"))
+        service = (ROOT / "clients/status-agent/status-agent.service").read_text()
+        self.assertIn("Type=oneshot", service)
+        self.assertIn("Environment=STATUS_AGENT_CONFIG=/etc/raspi-status-agent.conf", service)
+        self.assertNotIn("RemainAfterExit=yes", service)
+        self.assertIn(
+            "Unit=status-agent.service",
+            (ROOT / "clients/status-agent/status-agent.timer").read_text(),
+        )
+
+    def test_pi5_rendered_status_agent_preserves_existing_settings(self) -> None:
+        inventory = yaml.safe_load((ANSIBLE / "inventory.yml").read_text())
+        pi5 = inventory["all"]["children"]["server"]["hosts"]["raspberrypi5"]
+        self.assertEqual(pi5["status_agent_client_key"], "{{ vault_status_agent_client_key }}")
+        self.assertEqual(pi5["status_agent_api_base_url"], "{{ api_base_url }}")
+        self.assertEqual(pi5["status_agent_storage_health_enabled"], "1")
+        self.assertEqual(pi5["status_agent_storage_health_write_warn_gb_per_day"], "300")
+        variables = {
+            key: value for key, value in pi5.items() if key.startswith("status_agent_")
+        }
+        # Resolve only the non-secret URL dependencies; never load host Vaults.
+        group = yaml.safe_load((ANSIBLE / "group_vars/all.yml").read_text())
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = lambda value: str(value).lower() in {"1", "true", "yes", "on"}
+        environment.filters["to_json"] = json.dumps
+        network = environment.compile_expression(group["current_network"][3:-3])(**group)
+        url_variables = {**group, "current_network": network}
+        for key in ("server_ip", "server_base_url", "api_base_url"):
+            url_variables[key] = environment.from_string(group[key]).render(**url_variables)
+        variables["status_agent_api_base_url"] = environment.from_string(
+            variables["status_agent_api_base_url"]
+        ).render(**url_variables)
+        variables["status_agent_client_key"] = "fixture-key"
+        rendered = environment.from_string(
+            (ANSIBLE / "templates/status-agent.conf.j2").read_text()
+        ).render(**variables)
+        agent_dir = ROOT / "clients/status-agent"
+        sys.path.insert(0, str(agent_dir))
+        try:
+            agent = runpy.run_path(str(agent_dir / "status-agent.py"))
+        finally:
+            sys.path.remove(str(agent_dir))
+        with tempfile.TemporaryDirectory() as directory:
+            conf = Path(directory) / "status-agent.conf"
+            conf.write_text(rendered)
+            config = agent["parse_config_file"](conf)
+        self.assertEqual(
+            config,
+            {
+                "API_BASE_URL": "https://100.106.158.2/api",
+                "CLIENT_ID": "raspberrypi5-server",
+                "CLIENT_KEY": "fixture-key",
+                "LOCATION": "ラズパイ5 - サーバー",
+                "LOG_FILE": "/var/log/raspi-status-agent.log",
+                "STATUS_AGENT_LOG_SUCCESS": "0",
+                "REQUEST_TIMEOUT": "10",
+                "TLS_SKIP_VERIFY": "1",
+                "STORAGE_HEALTH_ENABLED": "1",
+                "STORAGE_HEALTH_INTERVAL_SECONDS": "3600",
+                "STORAGE_HEALTH_DISK_WARN_PCT": "80",
+                "STORAGE_HEALTH_DISK_ERROR_PCT": "90",
+                "STORAGE_HEALTH_STATE_FILE": "/run/raspi-status-agent/storage-health-last-run",
+                "STORAGE_HEALTH_WEAR_STATE_FILE": "/run/raspi-status-agent/storage-wear-state.json",
+                "STORAGE_HEALTH_WRITE_WARN_GB_PER_DAY": "300",
+                "TERMINAL_AGENT_HEALTH_NFC_ENABLED": "0",
+                "TERMINAL_AGENT_HEALTH_BARCODE_ENABLED": "0",
+                "TERMINAL_AGENT_HEALTH_TORQUE_ENABLED": "0",
+                "TERMINAL_AGENT_MAINTENANCE_LEASES_JSON": "{}",
+                "TERMINAL_AGENT_HEALTH_STATE_FILE": "/run/raspi-status-agent/terminal-agent-health.json",
+            },
+        )
+        self.assertNotIn("TEMPERATURE_FILE", config)
+        self.assertNotIn("STORAGE_HEALTH_KERNEL_LOG_SINCE", config)
+        storage_tasks = yaml.safe_load(self.task_text("host-status-agent-storage"))[0]["block"]
+        self.assertEqual(
+            storage_tasks[1]["loop"],
+            [
+                {"key": "STORAGE_HEALTH_ENABLED", "value": config["STORAGE_HEALTH_ENABLED"]},
+                {"key": "STORAGE_HEALTH_WRITE_WARN_GB_PER_DAY", "value": config["STORAGE_HEALTH_WRITE_WARN_GB_PER_DAY"]},
+            ],
+        )
+
     def test_finalized_search_read_distinguishes_required_reads_from_legitimate_skips(self) -> None:
         production = yaml.safe_load((ANSIBLE / 'roles/release_pi5/tasks/prepare.yml').read_text())
         selected = [task for task in production if task['name'] in {
