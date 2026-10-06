@@ -19,14 +19,12 @@ type RoleActorUser = {
 };
 
 type AuthRoleAdminPrismaPort = {
-  user: {
-    findUnique: (args: { where: { id: string } }) => Promise<RoleTargetUser | null>;
-  };
   roleAuditLog: {
     count: (args: { where: { toRole: UserRole; createdAt: { gte: Date } } }) => Promise<number>;
   };
   $transaction: <T>(fn: (tx: {
     user: {
+      findUnique: (args: { where: { id: string } }) => Promise<RoleTargetUser | null>;
       update: (args: { where: { id: string }; data: { role: UserRole } }) => Promise<RoleUpdatedUser>;
     };
     roleAuditLog: {
@@ -84,23 +82,21 @@ export class AuthRoleAdminService {
   ) {}
 
   async updateUserRole(input: UpdateUserRoleInput): Promise<{ user: RoleUpdatedUser }> {
-    const target = await this.db.user.findUnique({ where: { id: input.targetUserId } });
-    if (!target) {
-      throw new ApiError(404, 'ユーザーが見つかりません');
-    }
+    const { target, updated } = await this.db.$transaction(async (tx) => {
+      const actor = await tx.user.findUnique({ where: { id: input.actorUser.id } });
+      if (!actor || actor.role !== UserRole.ADMIN) {
+        throw new ApiError(403, '操作権限がありません', undefined, 'AUTH_INSUFFICIENT_PERMISSIONS');
+      }
 
-    if (target.role === input.nextRole) {
-      return {
-        user: {
-          id: target.id,
-          username: target.username,
-          role: target.role,
-          mfaEnabled: target.mfaEnabled,
-        },
-      };
-    }
+      const target = await tx.user.findUnique({ where: { id: input.targetUserId } });
+      if (!target) {
+        throw new ApiError(404, 'ユーザーが見つかりません');
+      }
 
-    const updated = await this.db.$transaction(async (tx) => {
+      if (target.role === input.nextRole) {
+        return { target, updated: target };
+      }
+
       const next = await tx.user.update({
         where: { id: input.targetUserId },
         data: { role: input.nextRole },
@@ -113,8 +109,19 @@ export class AuthRoleAdminService {
           toRole: input.nextRole,
         },
       });
-      return next;
+      return { target, updated: next };
     });
+
+    if (target.role === input.nextRole) {
+      return {
+        user: {
+          id: target.id,
+          username: target.username,
+          role: target.role,
+          mfaEnabled: target.mfaEnabled,
+        },
+      };
+    }
 
     const currentTime = this.now();
     const recentAdminPromotionCount = await this.countRecentAdminPromotions(currentTime, input.nextRole);
