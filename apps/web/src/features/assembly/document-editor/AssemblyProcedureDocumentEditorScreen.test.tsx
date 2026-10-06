@@ -16,16 +16,18 @@ vi.mock('./AssemblyProcedureDocumentEditorCanvas', () => ({
 }));
 vi.mock('../KioskDocumentPageImage', () => ({ KioskDocumentPageImage: () => <span /> }));
 vi.mock('../procedure-manuals/ProcedureMaterialShelfDialog', () => ({
-  ProcedureMaterialShelfDialog: ({ onSelect }: { onSelect: (material: { id: string }) => Promise<void> }) => <div role="dialog" aria-label="素材"><button onClick={() => void onSelect({ id: 'material' })}>配置</button></div>
+  ProcedureMaterialShelfDialog: ({ onSelect, onClose, mode }: { onSelect: (material: { id: string; kind: 'PHOTO' }) => Promise<void>; onClose: () => void; mode: 'place' | 'replace' }) => <div role="dialog" aria-label="素材"><button onClick={() => void onSelect({ id: 'material', kind: 'PHOTO' })}>{mode === 'replace' ? 'この素材に差し替え' : '配置'}</button><button onClick={onClose}>閉じる</button></div>
 }));
 vi.mock('./AssemblyProcedureDocumentEditorInspector', () => ({
   AssemblyProcedureDocumentEditorInspector: ({
     element,
     onRefetchTextCandidates,
+    onReplaceImage,
     onClose
   }: {
     element: AssemblyProcedureOverlayElement | null;
     onRefetchTextCandidates: () => void;
+    onReplaceImage: () => void;
     onClose: () => void;
   }) => (
     <aside aria-label="オーバーレイ編集" data-testid="editor-inspector">
@@ -33,6 +35,7 @@ vi.mock('./AssemblyProcedureDocumentEditorInspector', () => ({
       {element?.kind === 'TEXT' ? (
         <button type="button" onClick={onRefetchTextCandidates}>この範囲で候補を再取得</button>
       ) : null}
+      {element?.kind === 'IMAGE' ? <button onClick={onReplaceImage}>素材から差し替え</button> : null}
     </aside>
   )
 }));
@@ -68,6 +71,7 @@ function makeController(
     messageIsError: false,
     addBlankPage: vi.fn(async () => undefined),
     placeMaterial: vi.fn(async () => undefined),
+    replaceSelectedImageMaterial: vi.fn(async () => undefined),
     document: editorDocument,
     pages: editorDocument.pages,
     loading: false,
@@ -204,7 +208,25 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: '素材' }));
     expect(screen.getByRole('dialog', { name: '素材' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '配置' }));
-    await waitFor(() => expect(placeMaterial).toHaveBeenCalledWith({ id: 'material' }));
+    await waitFor(() => expect(placeMaterial).toHaveBeenCalledWith({ id: 'material', kind: 'PHOTO' }));
+  });
+
+  it('replaces from the inspector and resets to placement when the toolbar reopens the shelf', async () => {
+    const placeMaterial = vi.fn(async () => undefined);
+    const replaceSelectedImageMaterial = vi.fn(async () => undefined);
+    renderScreen(makeController({ placeMaterial, replaceSelectedImageMaterial, selectedElement: {
+      id: 'image', kind: 'IMAGE', assetId: 'old', pageIndex: 0, zIndex: 2,
+      bbox: { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.4 }
+    } }));
+    fireEvent.click(screen.getByRole('button', { name: '素材から差し替え' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: '素材' })).getByRole('button', { name: 'この素材に差し替え' }));
+    await waitFor(() => expect(replaceSelectedImageMaterial).toHaveBeenCalledWith({ id: 'material', kind: 'PHOTO' }));
+    expect(placeMaterial).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+    fireEvent.click(screen.getByRole('button', { name: '素材' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: '素材' })).getByRole('button', { name: '配置' }));
+    await waitFor(() => expect(placeMaterial).toHaveBeenCalledWith({ id: 'material', kind: 'PHOTO' }));
+    expect(replaceSelectedImageMaterial).toHaveBeenCalledOnce();
   });
 
   it('keeps the canvas row usable below xl and prevents the editor shell from overflowing', () => {

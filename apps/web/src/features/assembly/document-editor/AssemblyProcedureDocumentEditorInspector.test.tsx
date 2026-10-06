@@ -19,7 +19,7 @@ function commonProps(onUpdate: (element: AssemblyProcedureOverlayElement) => voi
     onDelete: vi.fn(),
     onBringForward: vi.fn(),
     onSendBackward: vi.fn(),
-    onUploadImage: vi.fn(),
+    onReplaceImage: vi.fn(),
     onRefetchTextCandidates: vi.fn(),
     busy: false
   };
@@ -203,22 +203,36 @@ describe('AssemblyProcedureDocumentEditorInspector', () => {
     expect(screen.getByRole('button', { name: 'この範囲で候補を再取得' })).toBeDisabled();
   });
 
-  it('updates image fit and uploads a selected file', () => {
+  it('updates image fit and offers material replacement without asset or file inputs', () => {
     const onUpdate = vi.fn();
-    const onUploadImage = vi.fn();
-    render(
+    const onReplaceImage = vi.fn();
+    const { container } = render(
       <AssemblyProcedureDocumentEditorInspector
         {...commonProps(onUpdate)}
-        onUploadImage={onUploadImage}
+        onReplaceImage={onReplaceImage}
         element={{ ...base, kind: 'IMAGE', assetId: 'asset-1', objectFit: 'contain' }}
       />
     );
 
     fireEvent.change(screen.getByLabelText('画像の収まり'), { target: { value: 'cover' } });
     expect(onUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ objectFit: 'cover' }));
-    const file = new File(['image'], 'photo.png', { type: 'image/png' });
-    fireEvent.change(screen.getByLabelText('画像ファイルをアップロード'), { target: { files: [file] } });
-    expect(onUploadImage).toHaveBeenCalledWith(file);
+    const button = screen.getByRole('button', { name: '素材から差し替え' });
+    expect(button).toHaveAttribute('data-kiosk-sop-target', 'assembly-document-editor-image-asset');
+    expect(button).toHaveClass('min-h-11');
+    expect(screen.queryByDisplayValue('asset-1')).not.toBeInTheDocument();
+    expect(container.querySelector('input[type="file"]')).toBeNull();
+    fireEvent.click(button);
+    expect(onReplaceImage).toHaveBeenCalledOnce();
+  });
+
+  it.each([{ busy: true }, { readOnly: true }])('disables image replacement with %o', (state) => {
+    const onReplaceImage = vi.fn();
+    render(<AssemblyProcedureDocumentEditorInspector {...commonProps(vi.fn())} {...state}
+      onReplaceImage={onReplaceImage} element={{ ...base, kind: 'IMAGE', assetId: 'asset-1' }} />);
+    const button = screen.getByRole('button', { name: '素材から差し替え' });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(onReplaceImage).not.toHaveBeenCalled();
   });
 
   it('creates line endpoints on shape conversion and edits stroke fields', () => {

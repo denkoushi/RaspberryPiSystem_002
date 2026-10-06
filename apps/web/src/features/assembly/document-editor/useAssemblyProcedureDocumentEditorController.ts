@@ -379,6 +379,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     duplicateSelectedOverlay,
     addBlankPage,
     placeMaterial: overlayCommands.placeMaterial,
+    replaceSelectedImageMaterial: overlayCommands.replaceSelectedImageMaterial,
     document,
     pages: selectDocumentPages(document),
     loading,

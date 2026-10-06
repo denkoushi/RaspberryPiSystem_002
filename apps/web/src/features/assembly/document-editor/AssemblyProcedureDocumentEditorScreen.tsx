@@ -19,6 +19,7 @@ import { AssemblyProcedureTextCandidateDialog } from './AssemblyProcedureTextCan
 export function AssemblyProcedureDocumentEditorScreen({ context }: { context?: import('../types').ProcedureManualEditorContext }) {
   const controller = useAssemblyProcedureDocumentEditor();
   const [materialShelfOpen, setMaterialShelfOpen] = useState(false);
+  const [materialShelfMode, setMaterialShelfMode] = useState<'place' | 'replace'>('place');
   const [materialCount, setMaterialCount] = useState<number | null>(null);
   const [dismissedMessage, setDismissedMessage] = useState<string | null>(null);
   useEffect(() => {
@@ -134,7 +135,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context }: { context?: i
           ) : null}
         </section>
         <AssemblyProcedureDocumentEditorCanvasToolbar controller={controller} workshop={Boolean(context)} materialCount={materialCount} materialOpen={materialShelfOpen} videoOpen={videoLinkOpen}
-          onMaterial={() => setMaterialShelfOpen(true)} onVideo={() => setVideoLinkOpen(true)} onPublish={() => setPublishOpen(true)} onDelete={() => setDeleteOpen(true)} onDiscard={() => setDiscardOpen(true)} />
+          onMaterial={() => { setMaterialShelfMode('place'); setMaterialShelfOpen(true); }} onVideo={() => setVideoLinkOpen(true)} onPublish={() => setPublishOpen(true)} onDelete={() => setDeleteOpen(true)} onDiscard={() => setDiscardOpen(true)} />
         {controller.selectedElement ? <div className="absolute right-20 top-4 z-50 max-h-[calc(100%-32px)] w-[340px] overflow-auto rounded-[14px] border border-[#344252] bg-[#161c22f5] p-4">
         <AssemblyProcedureDocumentEditorInspector
           element={controller.selectedElement}
@@ -144,14 +145,14 @@ export function AssemblyProcedureDocumentEditorScreen({ context }: { context?: i
           onDelete={controller.deleteSelectedOverlay}
           onBringForward={controller.bringForward}
           onSendBackward={controller.sendBackward}
-          onUploadImage={controller.uploadImage}
+          onReplaceImage={() => { setMaterialShelfMode('replace'); setMaterialShelfOpen(true); }}
           onRefetchTextCandidates={() => void controller.refetchTextCandidates()}
           readOnly={controller.readOnly}
           busy={controller.busy}
         />
         </div> : null}
 
-      {materialShelfOpen ? <ProcedureMaterialShelfDialog onClose={() => setMaterialShelfOpen(false)} onSelect={controller.placeMaterial} /> : null}
+      {materialShelfOpen ? <ProcedureMaterialShelfDialog mode={materialShelfMode} onClose={() => setMaterialShelfOpen(false)} onSelect={materialShelfMode === 'replace' ? controller.replaceSelectedImageMaterial : controller.placeMaterial} /> : null}
       <AssemblyProcedureOverlayTypeDialog
         isOpen={controller.pendingRange != null}
         onClose={controller.cancelPendingRange}
