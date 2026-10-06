@@ -42,6 +42,7 @@ import { readAssemblyDocumentEditorRecovery } from './assemblyDocumentEditorReco
 import { useAssemblyProcedureDocumentEditorController } from './useAssemblyProcedureDocumentEditorController';
 
 import type { AssemblyProcedureDocumentDto } from '../types';
+import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 
 const range = { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.2 };
 
@@ -320,6 +321,118 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(hook.result.current.document?.assets?.asset).toMatchObject({ assetId: 'asset' });
     expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
   });
+  it('replaces only the selected image asset, preserves all other properties and supports undo/redo', async () => {
+    const image: AssemblyProcedureOverlayElement = {
+      id: 'selected-image', kind: 'IMAGE', assetId: 'old-asset', pageIndex: 0,
+      bbox: range, zIndex: 7, opacity: 0.6, objectFit: 'cover',
+      mask: { enabled: true, color: '#eeeeee' }
+    };
+    const other: AssemblyProcedureOverlayElement = { ...image, id: 'other-image', zIndex: 6 };
+    const oldAsset = { assetId: 'old-asset', relativeUrl: '/old.png', storageKey: 'old', sha256: 'a', byteSize: 3, contentType: 'image/png', kind: 'OVERLAY_IMAGE' as const };
+    const asset = { ...oldAsset, assetId: 'new-asset', relativeUrl: '/new.png', storageKey: 'new' };
+    const hook = renderEditor(makeDocument({
+      assets: { [oldAsset.assetId]: oldAsset },
+      pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [image, other] }]
+    }));
+    await authenticate(hook.result);
+    act(() => hook.result.current.setSelectedOverlayId(image.id));
+    apiMocks.placeMaterial.mockResolvedValue({ element: { ...image, id: 'unused-new-overlay', bbox: { ...range, widthRatio: 0.8 } }, asset });
+
+    await act(async () => { await hook.result.current.replaceSelectedImageMaterial({ id: 'material-photo', kind: 'PHOTO' }); });
+
+    expect(apiMocks.placeMaterial).toHaveBeenCalledWith({ holderToken: 'session-token', id: 'source-draft', materialId: 'material-photo', pageIndex: 0, accessPassword: '1234' });
+    expect(hook.result.current.elements).toEqual([{ ...image, assetId: asset.assetId }, other]);
+    expect(hook.result.current.selectedElement?.bbox).toEqual(range);
+    expect(hook.result.current.selectedOverlayId).toBe(image.id);
+    expect(hook.result.current.document?.assets).toEqual({ [oldAsset.assetId]: oldAsset, [asset.assetId]: asset });
+    expect(hook.result.current.message).toBe('画像を差し替えました。保存してください。');
+    expect(hook.result.current.isDirty).toBe(true);
+    expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
+    act(() => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual([image, other]);
+    act(() => hook.result.current.redo());
+    expect(hook.result.current.elements).toEqual([{ ...image, assetId: asset.assetId }, other]);
+  });
+
+  it.each(['TEXT', 'SHAPE', null] as const)('does not call the material API when the selected kind is %s', async (kind) => {
+    const element: AssemblyProcedureOverlayElement = kind === 'SHAPE'
+      ? { id: 'selected', kind, shape: 'RECTANGLE', pageIndex: 0, bbox: range, zIndex: 0 }
+      : { id: 'selected', kind: 'TEXT', text: '手順', pageIndex: 0, bbox: range, zIndex: 0 };
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [element] }] }));
+    await authenticate(hook.result);
+    if (kind) act(() => hook.result.current.setSelectedOverlayId(element.id));
+    await act(async () => {
+      await expect(hook.result.current.replaceSelectedImageMaterial({ id: 'material', kind: 'PHOTO' })).rejects.toThrow('現在は画像を差し替えできません');
+    });
+    expect(apiMocks.placeMaterial).not.toHaveBeenCalled();
+    expect(hook.result.current.elements).toEqual([element]);
+    expect(hook.result.current.canUndo).toBe(false);
+  });
+
+  it('rejects text materials before calling the material API', async () => {
+    const image: AssemblyProcedureOverlayElement = { id: 'image', kind: 'IMAGE', assetId: 'old', pageIndex: 0, bbox: range, zIndex: 0 };
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [image] }] }));
+    await authenticate(hook.result);
+    act(() => hook.result.current.setSelectedOverlayId(image.id));
+    await act(async () => {
+      await expect(hook.result.current.replaceSelectedImageMaterial({ id: 'text-material', kind: 'TEXT' })).rejects.toThrow('画像の素材を選んでください。');
+    });
+    expect(apiMocks.placeMaterial).not.toHaveBeenCalled();
+    expect(hook.result.current.elements).toEqual([image]);
+    expect(hook.result.current.canUndo).toBe(false);
+    expect(hook.result.current.busy).toBe(false);
+  });
+
+  it('rejects image replacement in read-only mode', async () => {
+    const image: AssemblyProcedureOverlayElement = { id: 'image', kind: 'IMAGE', assetId: 'old', pageIndex: 0, bbox: range, zIndex: 0 };
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [image] }] }));
+    await authenticate(hook.result);
+    act(() => hook.result.current.setSelectedOverlayId(image.id));
+    act(() => { hook.result.current.onEditLeaseError({ isAxiosError: true, response: { status: 401 } }); });
+    expect(hook.result.current.readOnly).toBe(true);
+    expect(hook.result.current.selectedElement).toEqual(image);
+    await act(async () => {
+      await expect(hook.result.current.replaceSelectedImageMaterial({ id: 'photo', kind: 'PHOTO' })).rejects.toThrow('現在は画像を差し替えできません');
+    });
+    expect(apiMocks.placeMaterial).not.toHaveBeenCalled();
+    expect(hook.result.current.elements).toEqual([image]);
+    expect(hook.result.current.canUndo).toBe(false);
+  });
+
+  it('rejects another replacement while an image replacement is busy', async () => {
+    const image: AssemblyProcedureOverlayElement = { id: 'image', kind: 'IMAGE', assetId: 'old', pageIndex: 0, bbox: range, zIndex: 0 };
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [image] }] }));
+    await authenticate(hook.result);
+    act(() => hook.result.current.setSelectedOverlayId(image.id));
+    const asset = { assetId: 'new', relativeUrl: '/new.png' };
+    let finish: () => void = () => undefined;
+    apiMocks.placeMaterial.mockImplementationOnce(() => new Promise((resolve) => { finish = () => resolve({ element: image, asset }); }));
+    let replacement: Promise<void>;
+    act(() => { replacement = hook.result.current.replaceSelectedImageMaterial({ id: 'first', kind: 'PHOTO' }); });
+    expect(hook.result.current.busy).toBe(true);
+    await act(async () => {
+      await expect(hook.result.current.replaceSelectedImageMaterial({ id: 'second', kind: 'PHOTO' })).rejects.toThrow('現在は画像を差し替えできません');
+    });
+    expect(apiMocks.placeMaterial).toHaveBeenCalledOnce();
+    expect(hook.result.current.elements).toEqual([image]);
+    await act(async () => { finish(); await replacement; });
+    expect(hook.result.current.busy).toBe(false);
+  });
+
+  it('does not change the selected image when a photo response has no image asset', async () => {
+    const image: AssemblyProcedureOverlayElement = { id: 'image', kind: 'IMAGE', assetId: 'old', pageIndex: 0, bbox: range, zIndex: 0 };
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [image] }] }));
+    await authenticate(hook.result);
+    act(() => hook.result.current.setSelectedOverlayId(image.id));
+    apiMocks.placeMaterial.mockResolvedValue({ element: { id: 'text', kind: 'TEXT', text: '手順', pageIndex: 0, bbox: range, zIndex: 0 } });
+    await act(async () => {
+      await expect(hook.result.current.replaceSelectedImageMaterial({ id: 'photo-material', kind: 'PHOTO' })).rejects.toThrow('画像素材を選択してください。');
+    });
+    expect(hook.result.current.elements).toEqual([image]);
+    expect(hook.result.current.canUndo).toBe(false);
+    expect(hook.result.current.busy).toBe(false);
+  });
+
   it('appends sequential shelf selections to the draft with distinct assets and increasing z-order', async () => {
     const hook = renderEditor(makeDocument());
     await authenticate(hook.result);

@@ -38,7 +38,7 @@ export function AssemblyProcedureDocumentEditorInspector({
   onDelete,
   onBringForward,
   onSendBackward,
-  onUploadImage,
+  onReplaceImage,
   onRefetchTextCandidates,
   readOnly = false,
   busy = false
@@ -50,7 +50,7 @@ export function AssemblyProcedureDocumentEditorInspector({
   onDelete: () => void;
   onBringForward: (id: string) => void;
   onSendBackward: (id: string) => void;
-  onUploadImage: (file: File) => void;
+  onReplaceImage?: () => void;
   onRefetchTextCandidates: () => void;
   readOnly?: boolean;
   busy?: boolean;
@@ -148,25 +148,17 @@ export function AssemblyProcedureDocumentEditorInspector({
 
       {element.kind === 'IMAGE' ? (
         <fieldset className="grid gap-1 font-semibold">
-          <legend>画像asset ID</legend>
-          <Input
+          <legend>画像</legend>
+          <Button
+            type="button"
+            variant="ghostOnDark"
             data-kiosk-sop-target="assembly-document-editor-image-asset"
-            value={element.assetId}
-            onChange={(event) => patch({ assetId: event.target.value })}
-            placeholder="asset ID"
-            className="min-h-11 min-w-0 !px-2 text-lg"
-          />
-          <input
-            type="file"
-            accept="image/*"
-            className="min-h-11 w-full min-w-0 rounded border border-slate-500 bg-white px-2 py-2 text-lg text-slate-900"
-            aria-label="画像ファイルをアップロード"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) onUploadImage(file);
-              event.currentTarget.value = '';
-            }}
-          />
+            className="min-h-11"
+            disabled={busy || readOnly}
+            onClick={onReplaceImage}
+          >
+            素材から差し替え
+          </Button>
           <label className="grid gap-0.5 text-sm font-semibold">
             画像の収まり
             <select

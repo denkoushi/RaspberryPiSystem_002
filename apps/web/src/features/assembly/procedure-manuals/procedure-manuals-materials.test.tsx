@@ -120,6 +120,62 @@ describe('procedure-manuals material shelf', () => {
     await waitFor(() => expect(mocks.unplace).toHaveBeenCalledWith('text'));
     expect(mocks.list).toHaveBeenCalledWith({ state: 'placed', q: '', limit: 500 });
   });
+  it('allows only one photo in replacement mode and keeps failed replacement selections visible', async () => {
+    const first = { ...photo, subjectHint: '写真1' };
+    const second = { ...photo, id: 'photo-2', subjectHint: '写真2' };
+    mocks.list.mockResolvedValue([text, first, second]);
+    const onSelect = vi.fn().mockRejectedValueOnce(new Error('現在は画像を差し替えできません')).mockResolvedValueOnce(undefined);
+    const onClose = vi.fn();
+    render(<ProcedureMaterialShelfDialog mode="replace" onClose={onClose} onSelect={onSelect} />);
+    const textCheck = await screen.findByRole('checkbox', { name: 'DFD1 組立' });
+    expect(textCheck).toBeDisabled();
+    expect(screen.getByRole('tab', { name: /^未配置/ })).toHaveAttribute('aria-selected', 'true');
+    const button = screen.getByRole('button', { name: 'この素材に差し替え' });
+    expect(button).toBeDisabled();
+    expect(screen.queryByRole('button', { name: '現在ページに配置' })).not.toBeInTheDocument();
+    const firstCheck = screen.getByRole('checkbox', { name: '写真1' });
+    const secondCheck = screen.getByRole('checkbox', { name: '写真2' });
+    fireEvent.click(firstCheck);
+    expect(firstCheck).toBeChecked();
+    fireEvent.click(secondCheck);
+    expect(firstCheck).not.toBeChecked();
+    expect(secondCheck).toBeChecked();
+    expect(screen.getByRole('status', { name: '選択中の素材' })).toHaveTextContent('1 件を選択中');
+    fireEvent.click(secondCheck);
+    expect(button).toBeDisabled();
+    fireEvent.click(secondCheck);
+    fireEvent.click(button);
+    expect(await screen.findByRole('alert')).toHaveTextContent('現在は画像を差し替えできません');
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(second);
+    expect(secondCheck).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: '写真1' })).toBeInTheDocument();
+    fireEvent.click(button);
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(onSelect).toHaveBeenCalledTimes(2);
+    expect(onSelect).toHaveBeenLastCalledWith(second);
+  });
+  it('disables knowledge text and imports only the latest selected photo in replacement mode', async () => {
+    mocks.knowledge.mockResolvedValue({ enabled: true, items: [
+      { candidateKey: 'knowledge:text', kind: 'TEXT', title: '文章候補', preview: '文章', sourceLabel: 'Chat 投稿', alreadyImported: false },
+      { candidateKey: 'knowledge:first', kind: 'PHOTO', imageId: 'first', title: '写真候補1', preview: '', sourceLabel: 'Chat 投稿', alreadyImported: false },
+      { candidateKey: 'knowledge:second', kind: 'PHOTO', imageId: 'second', title: '写真候補2', preview: '', sourceLabel: 'Chat 投稿', alreadyImported: false }
+    ] });
+    render(<ProcedureMaterialShelfDialog mode="replace" onClose={vi.fn()} onSelect={vi.fn()} />);
+    await screen.findAllByRole('checkbox', { name: 'DFD1 組立' });
+    fireEvent.click(screen.getByRole('tab', { name: 'ナレッジから' }));
+    expect(await screen.findByRole('checkbox', { name: '文章候補' })).toBeDisabled();
+    const first = screen.getByRole('checkbox', { name: '写真候補1' });
+    const second = screen.getByRole('checkbox', { name: '写真候補2' });
+    fireEvent.click(first);
+    fireEvent.click(second);
+    expect(first).not.toBeChecked();
+    expect(second).toBeChecked();
+    expect(screen.getByRole('status', { name: '選択中の素材' })).toHaveTextContent('1 件を選択中');
+    fireEvent.click(screen.getByRole('button', { name: '棚に取り込む' }));
+    await waitFor(() => expect(mocks.importKnowledge).toHaveBeenCalledExactlyOnceWith(['knowledge:second']));
+    await waitFor(() => expect(screen.getByRole('tab', { name: /^未配置/ })).toHaveAttribute('aria-selected', 'true'));
+  });
   it('lists, searches, selects knowledge text/photo and imports them into unplaced materials', async () => {
     const candidates = [
       { candidateKey: 'knowledge:text', kind: 'TEXT', title: 'Chat 素材', summary: '整理した要約', preview: '投稿本文', sourceLabel: 'Chat 投稿', alreadyImported: false },

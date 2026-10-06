@@ -336,7 +336,7 @@ export function OverlayLayer({
   };
 
   return (
-    <div ref={layerRef} className={clsx('pointer-events-none absolute inset-0 overflow-hidden', className)} data-testid={testId} style={{ containerType: 'inline-size' } as CSSProperties}>
+    <div ref={layerRef} className={clsx('pointer-events-none absolute inset-0 isolate overflow-hidden', className)} data-testid={testId} style={{ containerType: 'inline-size' } as CSSProperties}>
       {projected.map(({ source, element }) => {
         const selected = selectedOverlayId === element.id;
         const transformable = interactive && Boolean(onUpdateBBox) && selected;

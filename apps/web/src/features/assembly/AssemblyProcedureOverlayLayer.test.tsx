@@ -35,6 +35,11 @@ describe('AssemblyProcedureOverlayLayer', () => {
     }));
   }
 
+  it('isolates the root stacking context to contain resize handles', () => {
+    render(<AssemblyProcedureOverlayLayer elements={[]} />);
+    expect(screen.getByTestId('assembly-procedure-overlay-layer')).toHaveClass('isolate');
+  });
+
   it('renders asset-map URLs, proportional text sizing, and crop clipping', () => {
     render(
       <div className="relative h-[200px] w-[400px]">

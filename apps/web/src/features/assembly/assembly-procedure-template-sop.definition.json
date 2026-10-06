@@ -128,9 +128,9 @@
         {
           "id": "assembly-document-editor-image-properties",
           "title": "画像のプロパティを編集する",
-          "summary": "登録済み画像asset IDと、画像の収まり方を指定します。",
+          "summary": "画像を素材から差し替え、画像の収まり方を指定します。",
           "steps": [
-            { "id": "document-editor-image-asset", "targetId": "assembly-document-editor-image-asset", "necessity": "required", "title": "画像assetを指定", "description": "登録済み画像asset IDを入力するか、画像ファイルをアップロードします。" }
+            { "id": "document-editor-image-asset", "targetId": "assembly-document-editor-image-asset", "necessity": "required", "title": "素材から差し替え", "description": "「素材から差し替え」を押して素材棚から選ぶと、選択中の画像だけが差し替わります。位置と大きさは変わりません。" }
           ]
         },
         {

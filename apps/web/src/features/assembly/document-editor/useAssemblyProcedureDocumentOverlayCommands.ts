@@ -10,6 +10,7 @@ import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
 import { createOverlayForRange, type OverlayCreationKind, type OverlayDraftAction } from './assemblyDocumentEditorDraft';
 
+import type { ProcedureMaterialDto } from '../procedure-manuals/procedure-material-types';
 import type {
   AssemblyProcedureDocumentDto,
   AssemblyProcedureTextCandidateDto
@@ -294,8 +295,37 @@ export function useAssemblyProcedureDocumentOverlayCommands(
     } finally { session.setBusy(false); }
   }, [addCreatedOverlay, session]);
 
+  const replaceSelectedImageMaterial = useCallback(async (material: Pick<ProcedureMaterialDto, 'id' | 'kind'>) => {
+    const { document, selectedElement, busy, readOnly } = session;
+    if (!document || !selectedElement || selectedElement.kind !== 'IMAGE' || readOnly || busy) throw new Error('現在は画像を差し替えできません');
+    if (material.kind !== 'PHOTO') throw new Error('画像の素材を選んでください。');
+    session.setBusy(true);
+    try {
+      const { asset } = await placeProcedureMaterial({
+        ...(session.holderToken ? { holderToken: session.holderToken } : {}),
+        id: document.id,
+        materialId: material.id,
+        pageIndex: selectedElement.pageIndex,
+        accessPassword: session.passwordInput
+      });
+      if (!asset) throw new Error('画像素材を選択してください。');
+      session.setDocument((current) => current ? {
+        ...current,
+        assets: { ...current.assets, [asset.assetId]: asset }
+      } : current);
+      session.dispatch({ type: 'update', element: { ...selectedElement, assetId: asset.assetId } });
+      session.setMessage('画像を差し替えました。保存してください。');
+    } catch (error: unknown) {
+      session.onEditLeaseError?.(error);
+      throw error;
+    } finally {
+      session.setBusy(false);
+    }
+  }, [session]);
+
   return {
     placeMaterial,
+    replaceSelectedImageMaterial,
     createOverlay,
     chooseTextCandidate,
     cancelTextCandidates,
