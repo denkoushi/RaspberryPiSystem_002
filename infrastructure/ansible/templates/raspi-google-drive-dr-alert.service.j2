@@ -1,0 +1,14 @@
+[Unit]
+Description=Queue Google Drive disaster-recovery failure alert
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+Environment=WEBHOOK_URL=
+ExecStart=/bin/bash {{ google_drive_dr_project_root }}/scripts/generate-alert.sh storage-backup-google-drive-dr-failed "Google Drive DR backup failed" "service=raspi-google-drive-dr;failureType=service-failed"
+TimeoutStartSec=30s
+NoNewPrivileges=true
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal

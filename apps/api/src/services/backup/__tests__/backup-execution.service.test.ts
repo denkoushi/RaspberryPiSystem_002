@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('../../../config/env/load-dotenv.js', () => ({}));
+
 const {
   createFromTargetMock,
   createFromConfigMock,
