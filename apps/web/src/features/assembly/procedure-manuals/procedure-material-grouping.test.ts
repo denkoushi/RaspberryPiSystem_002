@@ -167,6 +167,13 @@ describe('groupMaterials', () => {
     expect(groupMaterials(materials, '(p1/3)')).toEqual([]);
     expect(groupMaterials(materials, '(1/2)')).toEqual([]);
   });
+  it('keeps a hint that is only a page marker as its own titled bundle', () => {
+    const receivedAt = '2026-10-07T00:00:00Z';
+    const groups = groupMaterials([material('a', ' (p1/3)', receivedAt, { gmailDedupeKey: 'pdf:p1' }), material('b', '(p1/3)', receivedAt, { gmailDedupeKey: 'pdf:p2' })]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ key: 'hint:(p1/3)', title: ' (p1/3)' });
+    expect(groupMaterials(groups[0].items, 'p1/3')).toHaveLength(1);
+  });
   it('strips normalized full-width page suffixes while preserving the original title prefix', () => {
     const receivedAt = '2026-10-07T00:00:00Z';
     const materials = [
