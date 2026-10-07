@@ -134,6 +134,25 @@ function pointFromBBoxLocal(
   };
 }
 
+export type LineDirection = 'up' | 'up-right' | 'right' | 'down-right' | 'down' | 'down-left' | 'left' | 'up-left';
+
+export function lineEndpointsForDirection(bbox: AssemblyProcedureOverlayBBox, direction: LineDirection) {
+  const [startX, startY, endX, endY] = ({
+    up: [0.5, 1, 0.5, 0],
+    'up-right': [0, 1, 1, 0],
+    right: [0, 0.5, 1, 0.5],
+    'down-right': [0, 0, 1, 1],
+    down: [0.5, 0, 0.5, 1],
+    'down-left': [1, 0, 0, 1],
+    left: [1, 0.5, 0, 0.5],
+    'up-left': [1, 1, 0, 0]
+  } as const)[direction];
+  return {
+    start: pointFromBBoxLocal({ xRatio: startX, yRatio: startY }, bbox),
+    end: pointFromBBoxLocal({ xRatio: endX, yRatio: endY }, bbox)
+  };
+}
+
 export function updateOverlayBBox(
   element: AssemblyProcedureOverlayElement,
   bbox: AssemblyProcedureOverlayBBox
