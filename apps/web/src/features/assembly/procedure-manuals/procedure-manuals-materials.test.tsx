@@ -196,10 +196,10 @@ describe('procedure-manuals material shelf', () => {
       offsetParent.mockRestore();
     }
   });
-  it('keeps expansion independent for missing hints and the literal missing-hint label', async () => {
+  it('keeps expansion independent for file bases and the literal missing-hint label', async () => {
     mocks.list.mockResolvedValue([text, { ...photo, subjectHint: 'ヒントなし' }, { ...photo, id: 'missing', subjectHint: null }]);
     render(<ProcedureMaterialShelfDialog mode="replace" onClose={vi.fn()} onSelect={vi.fn()} />);
-    const headers = await screen.findAllByRole('button', { name: /^ヒントなし/ });
+    const headers = await screen.findAllByRole('button', { name: /^(ヒントなし|手順)/ });
     expect(headers).toHaveLength(2);
     fireEvent.click(headers[0]);
     expect(headers[0]).toHaveAttribute('aria-expanded', 'true');
