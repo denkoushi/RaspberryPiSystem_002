@@ -1,6 +1,6 @@
 ---
 title: ADR-20261007 写真持出 類似ギャラリーの埋め込みモデルを EmbeddingGemma 2 へ（段階的切り替え）
-status: proposed
+status: accepted
 date: 2026-10-07
 ---
 
@@ -40,7 +40,7 @@ date: 2026-10-07
 2. 近傍検索とラベル別行数は、`embeddingModelId` が現在の設定と一致する行だけを対象にする。モデル切り替え後の再投入中に、別空間のベクトル同士を比べないためである。切り戻し時も旧モデルの行だけが使われる。
 3. 切り替え後のモデル ID は `embeddinggemma-2-512d`、次元は 512（`vector(512)` の列は変更しない）。
 4. しきい値は切り替えと同時に、類似候補 0.22 → 0.14、補助 0.14 → 0.10 とする。
-5. 本番の切り替え（DGX のサーバー、Pi5 の設定、再投入）は、DGX 上での処理時間を別ポートで測ってから行う。
+5. モデル ID は秘密値ではないので vault から `inventory.yml` へ移し、しきい値と同じコミットで切り替える。手順と切り戻しは Runbook の 3.2 節。
 
 ## Alternatives
 
@@ -51,11 +51,13 @@ date: 2026-10-07
 ## Consequences
 
 - **良い**: 類似候補と補助の入力が正確になる。行数の少ないラベルで効果が大きい。
-- **悪い / 注意**: モデルは CLIP より大きい（テキストと画像で約 440M パラメータ）。Mac の CPU では 1 枚 25 秒前後かかり、API の既定タイムアウト（30 秒）に近い。DGX では GPU で動かすか、CPU の所要時間を測って判断する。sentence-transformers 6.1.0 以上が必要で、現行コンテナ（`lmsysorg/sglang:latest`）で動くかは未確認。
+- **悪い / 注意**: モデルは CLIP より大きい（テキストと画像で約 440M パラメータ）。現行コンテナ（`lmsysorg/sglang:latest`、transformers 5.3.0、sentence-transformers なし）では読み込めないため、専用イメージ（`scripts/dgx-local-llm-system/Dockerfile.embedding-eg2`）を使う。
+- DGX での所要時間（2026-10-07、専用イメージ、CPU 8 コアに制限、別ポートで測定）: 768×576 の JPEG で 1 枚 1.8〜2.1 秒、メモリ約 1.2 GB。API の既定タイムアウト 30 秒に収まるので GPU は使わない。Mac の CPU では 1 枚 25 秒前後だった。
+- 本番は補助の本番保存（`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED=true`）が有効である。補助のしきい値 0.10 は保存されるラベルに直接効く。
 - 切り替え直後は、再投入が終わるまで類似候補が少ない（モデル ID で絞るため）。
 - しきい値は 402 行での値であり、切り替え後にシャドーのログで再確認する。
 
 ## References
 
-- Runbook: [photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md)
+- Runbook: [photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md)（3.2 節）
 - 測定スクリプトとデータは非公開フォルダ（`~/Documents/photo-gallery-private`）にあり、リポジトリには含めない。
