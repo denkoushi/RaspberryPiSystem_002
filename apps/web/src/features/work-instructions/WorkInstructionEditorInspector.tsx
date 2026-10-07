@@ -1,178 +1,322 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
-import { Button } from '../../components/ui/Button';
-import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { Input } from '../../components/ui/Input';
 
 import {
-  convertWorkInstructionOverlayShapeKind,
-  normalizeWorkInstructionOverlayBBox,
-  updateWorkInstructionOverlayBBox
-} from './workInstructionEditorDraft';
+  WorkInstructionEditorButton as Button,
+  WorkInstructionEditorConfirmDialog as ConfirmDialog,
+  WorkInstructionEditorPanelHeading
+} from './WorkInstructionEditorControls';
 import {
-  WORK_INSTRUCTION_EDITOR_OPTION_CLASS_NAME,
-  WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME,
-  WORK_INSTRUCTION_EDITOR_SELECT_CLASS_NAME
-} from './workInstructionEditorSelectStyles';
-import { WorkInstructionMemoEditor } from './WorkInstructionMemoEditor';
-import { WorkInstructionMemoReviewList } from './WorkInstructionMemoReviewList';
+  convertWorkInstructionOverlayShapeKind as convertOverlayShapeKind,
+  normalizeWorkInstructionOverlayBBox as normalizeOverlayBBox,
+  updateWorkInstructionOverlayBBox as updateOverlayBBox
+} from './workInstructionEditorDraft';
+import { WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME } from './workInstructionEditorSelectStyles';
 
-import type {
-  WorkInstructionEditorStepDto,
-  WorkInstructionMemoOverrideDto
-} from '../../api/domains/work-instruction-overlays';
+import type { WorkInstructionEditorStepDto } from '../../api/domains/work-instruction-overlays';
 import type { WorkInstructionOverlayElement } from '../../api/domains/work-instructions';
-import type { OverlayBBox } from '@raspi-system/shared-types';
 
 function numberValue(value: string, fallback: number): number {
+  if (value.trim() === '') return fallback;
   const next = Number(value);
   return Number.isFinite(next) ? next : fallback;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+export function ratioToPercent(ratio: number): number {
+  return Math.round(ratio * 1000) / 10;
+}
+
+export function percentToRatio(percent: number): number {
+  return percent / 100;
 }
 
 export function WorkInstructionEditorInspector({
   element,
   onUpdate,
+  onDuplicate,
+  onClose,
   onDelete,
   onBringForward,
   onSendBackward,
   onUploadImage,
-  onRefetchTextCandidates,
   steps = [],
   onAssignStep,
-  step = null,
-  memo = '',
-  memoOverride = null,
-  memoOverrides = [],
-  onMemoChange,
-  onMemoReset,
-  onMemoKeep,
-  onMemoAssignAndKeep,
-  onMemoUseSource,
+  onRefetchTextCandidates,
   readOnly = false,
   busy = false
 }: {
   element: WorkInstructionOverlayElement | null;
+  onDuplicate?: () => void;
+  onClose?: () => void;
   onUpdate: (element: WorkInstructionOverlayElement) => void;
   onDelete: () => void;
   onBringForward: (id: string) => void;
   onSendBackward: (id: string) => void;
   onUploadImage: (file: File) => void;
-  onRefetchTextCandidates: () => void;
   steps?: WorkInstructionEditorStepDto[];
-  onAssignStep?: (overlayId: string, stepKey: string | null) => void;
-  step?: WorkInstructionEditorStepDto | null;
-  memo?: string;
-  memoOverride?: WorkInstructionMemoOverrideDto | null;
-  memoOverrides?: WorkInstructionMemoOverrideDto[];
-  onMemoChange?: (value: string) => void;
-  onMemoReset?: () => void;
-  onMemoKeep?: () => void;
-  onMemoAssignAndKeep?: (overrideKey: string, targetStepKey: string) => void;
-  onMemoUseSource?: (overrideKey: string) => void;
+  onAssignStep?: (id: string, stepKey: string | null) => void;
+  onRefetchTextCandidates: () => void;
   readOnly?: boolean;
   busy?: boolean;
 }) {
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const memoEditor = onMemoChange && onMemoReset && onMemoKeep ? (
-    <WorkInstructionMemoEditor
-      step={step}
-      value={memo}
-      override={memoOverride}
-      disabled={readOnly || busy}
-      onChange={onMemoChange}
-      onReset={onMemoReset}
-      onKeep={onMemoKeep}
-    />
-  ) : null;
-  const memoReviewList = onMemoAssignAndKeep && onMemoUseSource ? (
-    <WorkInstructionMemoReviewList
-      steps={steps}
-      overrides={memoOverrides}
-      disabled={readOnly || busy}
-      onAssignAndKeep={onMemoAssignAndKeep}
-      onUseSource={onMemoUseSource}
-    />
-  ) : null;
-  if (!element) {
-    return <aside className="flex min-h-0 min-w-0 w-full flex-col gap-2 overflow-y-auto border-l border-white/10 bg-slate-900/75 p-3 text-sm text-white/60 xl:w-80 xl:shrink-0" aria-label="加工要領書オーバーレイ編集"><h2 className="text-sm font-bold text-white">オーバーレイ編集</h2>{memoReviewList}{memoEditor}<p>範囲を追加するか、キャンバス上の要素を選択してください。</p></aside>;
-  }
+  if (!element) return null;
 
   const patch = (next: Partial<WorkInstructionOverlayElement>) => onUpdate({ ...element, ...next } as WorkInstructionOverlayElement);
   const patchTextStyle = (next: NonNullable<Extract<WorkInstructionOverlayElement, { kind: 'TEXT' }>['style']>) => {
-    if (element.kind === 'TEXT') patch({ style: { ...(element.style ?? {}), ...next } });
+    if (element.kind !== 'TEXT') return;
+    patch({ style: { ...(element.style ?? {}), ...next } });
   };
   const bbox = element.bbox;
-  const patchBBox = (next: Partial<OverlayBBox>) => onUpdate(updateWorkInstructionOverlayBBox(element, normalizeWorkInstructionOverlayBBox({ ...bbox, ...next })));
 
   return (
-    <aside className="flex min-h-0 min-w-0 w-full flex-col gap-2 overflow-y-auto border-l border-white/10 bg-slate-900/75 p-3 text-sm text-white/80 xl:w-80 xl:shrink-0" aria-label="加工要領書オーバーレイ編集" aria-disabled={readOnly}>
-      {memoReviewList}
+    <aside className="flex min-h-0 w-full flex-col gap-1 text-sm text-[#eef3f6]" aria-label="注釈の編集" aria-disabled={readOnly}>
+      <WorkInstructionEditorPanelHeading title={element.kind === 'TEXT' ? '文章' : element.kind === 'IMAGE' ? '画像' : '図形・記号'} onClose={onClose} />
       <fieldset disabled={readOnly} className="contents">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-bold">{element.kind === 'TEXT' ? '文章' : element.kind === 'IMAGE' ? '画像' : '図形・記号'}編集</h2>
-          <Button type="button" variant="danger" className="min-h-11 !px-2 text-xs" onClick={() => setDeleteOpen(true)}>削除</Button>
-        </div>
-        {memoEditor}
-        {element.kind === 'TEXT' ? (
-          <fieldset className="grid gap-1 font-semibold">
-            <legend>文章</legend>
-            <textarea data-testid="work-instruction-editor-text-value" value={element.text} onChange={(event) => patch({ text: event.target.value })} className={`min-h-24 rounded border border-white/20 px-2 py-2 text-sm ${WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME}`} />
-            <Button type="button" variant="ghostOnDark" className="min-h-11 !px-2 text-xs" disabled={busy} onClick={onRefetchTextCandidates}>この範囲で候補を再取得</Button>
-            <div className="grid grid-cols-2 gap-1.5">
-              <label className="grid gap-0.5 text-xs font-semibold">文字サイズ比率<Input type="number" min={0.005} max={0.2} step={0.005} value={element.style?.fontSizeRatio ?? 0.025} className={`min-h-11 ${WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME}`} onChange={(event) => patchTextStyle({ fontSizeRatio: numberValue(event.target.value, element.style?.fontSizeRatio ?? 0.025) })} /></label>
-              <label className="grid gap-0.5 text-xs font-semibold">文字色<Input type="color" value={element.style?.color ?? '#0f172a'} className={`min-h-11 p-1 ${WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME}`} onChange={(event) => patchTextStyle({ color: event.target.value })} /></label>
-              <label className="grid gap-0.5 text-sm font-semibold">太さ<select value={element.style?.fontWeight ?? 'normal'} onChange={(event) => patchTextStyle({ fontWeight: event.target.value as 'normal' | 'bold' })} className={WORK_INSTRUCTION_EDITOR_SELECT_CLASS_NAME}><option className={WORK_INSTRUCTION_EDITOR_OPTION_CLASS_NAME} value="normal">標準</option><option className={WORK_INSTRUCTION_EDITOR_OPTION_CLASS_NAME} value="bold">太字</option></select></label>
-              <label className="grid gap-0.5 text-sm font-semibold">揃え<select value={element.style?.align ?? 'start'} onChange={(event) => patchTextStyle({ align: event.target.value as 'start' | 'center' | 'end' })} className={WORK_INSTRUCTION_EDITOR_SELECT_CLASS_NAME}><option className={WORK_INSTRUCTION_EDITOR_OPTION_CLASS_NAME} value="start">左</option><option className={WORK_INSTRUCTION_EDITOR_OPTION_CLASS_NAME} value="center">中央</option><option className={WORK_INSTRUCTION_EDITOR_OPTION_CLASS_NAME} value="end">右</option></select></label>
-            </div>
-          </fieldset>
-        ) : null}
-        {element.kind === 'IMAGE' ? (
-          <fieldset className="grid gap-1 font-semibold">
-            <legend>画像asset ID</legend>
-            <Input data-testid="work-instruction-editor-image-asset" value={element.assetId} onChange={(event) => patch({ assetId: event.target.value })} placeholder="asset ID" className={`min-h-11 ${WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME}`} />
-            <input type="file" accept="image/*" className={`min-h-11 w-full rounded border border-white/20 px-2 py-2 text-xs ${WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME}`} aria-label="画像ファイルをアップロード" onChange={(event) => { const file = event.target.files?.[0]; if (file) onUploadImage(file); event.currentTarget.value = ''; }} />
-            <span className="text-xs font-normal text-amber-100/75">画像ファイルまたは登録済みassetを指定できます。</span>
-            <label className="grid gap-0.5 text-sm font-semibold">画像の収まり<select value={element.objectFit ?? 'contain'} onChange={(event) => patch({ objectFit: event.target.value as typeof element.objectFit })} className={WORK_INSTRUCTION_EDITOR_SELECT_CLASS_NAME}><option className={WORK_INSTRUCTION_EDITOR_OPTION_CLASS_NAME} value="contain">全体表示</option><option className={WORK_INSTRUCTION_EDITOR_OPTION_CLASS_NAME} value="cover">枠いっぱい</option><option className={WORK_INSTRUCTION_EDITOR_OPTION_CLASS_NAME} value="fill">引き伸ばす</option></select></label>
-          </fieldset>
-        ) : null}
-        {element.kind === 'SHAPE' ? (
-          <fieldset className="grid gap-1 text-sm font-semibold"><legend>図形</legend><select data-testid="work-instruction-editor-shape-kind" value={element.shape} onChange={(event) => onUpdate(convertWorkInstructionOverlayShapeKind(element, event.target.value as typeof element.shape))} className={WORK_INSTRUCTION_EDITOR_SELECT_CLASS_NAME}><option className={WORK_INSTRUCTION_EDITOR_OPTION_CLASS_NAME} value="RECTANGLE">矩形</option><option className={WORK_INSTRUCTION_EDITOR_OPTION_CLASS_NAME} value="ELLIPSE">楕円</option><option className={WORK_INSTRUCTION_EDITOR_OPTION_CLASS_NAME} value="LINE">線</option><option className={WORK_INSTRUCTION_EDITOR_OPTION_CLASS_NAME} value="ARROW">矢印</option></select><div className="grid grid-cols-2 gap-1.5"><label className="grid gap-0.5 text-xs font-semibold">線色<Input type="color" value={element.strokeColor ?? '#dc2626'} className={`min-h-11 p-1 ${WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME}`} onChange={(event) => patch({ strokeColor: event.target.value })} /></label><label className="grid gap-0.5 text-xs font-semibold">塗り色<Input type="text" value={element.fillColor ?? 'transparent'} className={`min-h-11 ${WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME}`} onChange={(event) => patch({ fillColor: event.target.value })} /></label><label className="grid gap-0.5 text-xs font-semibold">線幅比率<Input type="number" min={0.001} max={0.2} step={0.001} value={element.strokeWidthRatio ?? 0.008} className={`min-h-11 ${WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME}`} onChange={(event) => patch({ strokeWidthRatio: numberValue(event.target.value, element.strokeWidthRatio ?? 0.008) })} /></label></div></fieldset>
-        ) : null}
-        <fieldset className="grid gap-1 rounded border border-white/10 p-2"><legend className="px-1 text-xs font-bold text-white/70">位置と大きさ（元画像比率）</legend><div className="grid grid-cols-2 gap-1.5">{([['xRatio', '左'], ['yRatio', '上'], ['widthRatio', '幅'], ['heightRatio', '高さ']] as const).map(([key, label]) => <label key={key} className="grid gap-0.5 text-xs font-semibold">{label}<Input type="number" min={0} max={1} step={0.01} value={bbox[key]} className={`min-h-11 ${WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME}`} onChange={(event) => patchBBox({ [key]: numberValue(event.target.value, bbox[key]) })} /></label>)}</div></fieldset>
-        <label className="grid gap-1 font-semibold">不透明度<Input type="number" min={0} max={1} step={0.05} value={element.opacity ?? 1} className={`min-h-11 ${WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME}`} onChange={(event) => patch({ opacity: Math.max(0, Math.min(1, numberValue(event.target.value, element.opacity ?? 1))) })} /></label>
-        <fieldset className="grid gap-1 rounded border border-white/10 p-2"><legend className="px-1 text-xs font-bold text-white/70">重なり順とマスク</legend><div className="grid grid-cols-2 gap-1.5"><Button type="button" variant="ghostOnDark" className="min-h-11 !px-2 text-xs" onClick={() => onBringForward(element.id)}>前面へ</Button><Button type="button" variant="ghostOnDark" className="min-h-11 !px-2 text-xs" onClick={() => onSendBackward(element.id)}>背面へ</Button></div>{element.kind === 'TEXT' || element.kind === 'IMAGE' ? <><label className="flex min-h-11 items-center gap-2 text-xs font-semibold"><input type="checkbox" checked={element.mask?.enabled ?? false} className={WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME} onChange={(event) => patch({ mask: { enabled: event.target.checked, color: element.mask?.color ?? '#ffffff' } })} />白マスクを有効化</label><label className="grid min-h-11 grid-cols-[auto_1fr] items-center gap-2 text-xs font-semibold"><span>マスク色</span><Input type="color" value={element.mask?.color ?? '#ffffff'} className={`min-h-11 p-1 ${WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME}`} onChange={(event) => patch({ mask: { enabled: element.mask?.enabled ?? true, color: event.target.value } })} /></label></> : null}</fieldset>
-        <label className="grid gap-1 rounded border border-amber-300/30 bg-amber-300/10 p-2 text-sm font-semibold text-amber-100">
-          <span>移植状態（公開前に確認）</span>
-          <select
-            value={(element.migrationState ?? 'MIGRATED').toUpperCase()}
-            onChange={(event) => patch({ migrationState: event.target.value as WorkInstructionOverlayElement['migrationState'] })}
-            className={WORK_INSTRUCTION_EDITOR_SELECT_CLASS_NAME}
+      <div className="flex items-center justify-between gap-2">
+        <Button type="button" className="min-h-11" onClick={onDuplicate}>複製</Button>
+        <Button type="button" className="text-[#e5484d]" onClick={() => setDeleteOpen(true)}>
+          削除
+        </Button>
+      </div>
+
+      {element.kind === 'TEXT' ? (
+        <fieldset className="grid gap-1 font-semibold">
+          <legend>文章</legend>
+          <textarea
+            aria-label="文章" data-testid="work-instruction-editor-text-value"
+            value={element.text}
+            onChange={(event) => patch({ text: event.target.value })}
+            className={`${WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME} h-24 resize-none`}
+          />
+          <Button
+            type="button"
+            className="min-h-11 !px-2 text-sm"
+            disabled={busy}
+            onClick={onRefetchTextCandidates}
           >
-            <option className={WORK_INSTRUCTION_EDITOR_OPTION_CLASS_NAME} value="MIGRATED">移植済み</option>
-            <option className={WORK_INSTRUCTION_EDITOR_OPTION_CLASS_NAME} value="NEEDS_REVIEW">要確認</option>
-            <option className={WORK_INSTRUCTION_EDITOR_OPTION_CLASS_NAME} value="UNASSIGNED">未割当</option>
-            <option className={WORK_INSTRUCTION_EDITOR_OPTION_CLASS_NAME} value="SKIPPED">対象外</option>
-          </select>
-        </label>
-        {steps.length > 0 && onAssignStep ? (
-          <label className="grid gap-1 rounded border border-cyan-300/30 bg-cyan-300/10 p-2 text-sm font-semibold text-cyan-100">
-            <span>移植先手順</span>
+            この範囲で候補を再取得
+          </Button>
+          <div className="grid grid-cols-2 gap-1.5">
+            <label className="grid gap-0.5 text-sm font-semibold">
+              文字サイズ (%)
+              <Input
+                type="number"
+                min={0.5}
+                max={20}
+                step={0.5}
+                value={ratioToPercent(element.style?.fontSizeRatio ?? 0.025)}
+                className={WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME}
+                onChange={(event) => patchTextStyle({ fontSizeRatio: clamp(percentToRatio(numberValue(event.target.value, (element.style?.fontSizeRatio ?? 0.025) * 100)), 0.005, 0.2) })}
+              />
+            </label>
+            <label className="grid gap-0.5 text-sm font-semibold">
+              文字色
+              <Input
+                type="color"
+                value={element.style?.color ?? '#0f172a'}
+                className={`${WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME} !p-1`}
+                onChange={(event) => patchTextStyle({ color: event.target.value })}
+              />
+            </label>
+            <label className="grid gap-0.5 text-sm font-semibold">
+              太さ
+              <select
+                value={element.style?.fontWeight ?? 'normal'}
+                onChange={(event) => patchTextStyle({ fontWeight: event.target.value as 'normal' | 'bold' })}
+                className={WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME}
+              >
+                <option value="normal">標準</option>
+                <option value="bold">太字</option>
+              </select>
+            </label>
+            <label className="grid gap-0.5 text-sm font-semibold">
+              揃え
+              <select
+                value={element.style?.align ?? 'start'}
+                onChange={(event) => patchTextStyle({ align: event.target.value as 'start' | 'center' | 'end' })}
+                className={WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME}
+              >
+                <option value="start">左</option>
+                <option value="center">中央</option>
+                <option value="end">右</option>
+              </select>
+            </label>
+          </div>
+        </fieldset>
+      ) : null}
+
+      {element.kind === 'IMAGE' ? (
+        <fieldset className="grid gap-1 font-semibold">
+          <legend>画像</legend>
+          <Button
+            type="button"
+            data-testid="work-instruction-editor-image-asset"
+            className="min-h-11"
+            disabled={busy || readOnly}
+            onClick={() => imageInputRef.current?.click()}
+          >
+            画像を選ぶ
+          </Button>
+          <input ref={imageInputRef} type="file" accept="image/*" hidden aria-label="画像を選ぶ" onChange={(event) => { const file = event.target.files?.[0]; if (file) onUploadImage(file); event.currentTarget.value = ''; }} />
+          <label className="grid gap-0.5 text-sm font-semibold">
+            画像の収まり
             <select
-              value={element.stepKey ?? ''}
-              onChange={(event) => onAssignStep(element.id, event.target.value || null)}
-              className={WORK_INSTRUCTION_EDITOR_SELECT_CLASS_NAME}
+              value={element.objectFit ?? 'contain'}
+              onChange={(event) => patch({ objectFit: event.target.value as typeof element.objectFit })}
+              className={WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME}
             >
-              <option className={WORK_INSTRUCTION_EDITOR_OPTION_CLASS_NAME} value="">未割当（今回は移植しない場合は対象外へ）</option>
-              {steps.map((step) => (
-                <option key={step.stepKey} className={WORK_INSTRUCTION_EDITOR_OPTION_CLASS_NAME} value={step.stepKey}>
-                  手順 {step.step}: {step.text.slice(0, 36)}
-                </option>
-              ))}
+              <option value="contain">全体表示</option>
+              <option value="cover">枠いっぱい</option>
+              <option value="fill">引き伸ばす</option>
             </select>
           </label>
+        </fieldset>
+      ) : null}
+
+      {element.kind === 'SHAPE' ? (
+        <fieldset className="grid gap-1 font-semibold">
+          <legend>図形</legend>
+          <select
+            aria-label="図形" data-testid="work-instruction-editor-shape-kind"
+            value={element.shape}
+            onChange={(event) => onUpdate(convertOverlayShapeKind(element, event.target.value as typeof element.shape))}
+            className={WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME}
+          >
+            <option value="RECTANGLE">矩形</option>
+            <option value="ELLIPSE">楕円</option>
+            <option value="LINE">線</option>
+            <option value="ARROW">矢印</option>
+          </select>
+          <div className="grid grid-cols-2 gap-1.5">
+            {([
+              ['strokeColor', '線色', element.strokeColor ?? '#dc2626'],
+              ['fillColor', '塗り色', element.fillColor ?? 'transparent'],
+              ['strokeWidthRatio', '線の太さ (%)', element.strokeWidthRatio ?? 0.008]
+            ] as const).map(([key, label, value]) => (
+              <label key={key} className="grid gap-0.5 text-sm font-semibold">
+                {label}
+                <Input
+                  type={key === 'strokeWidthRatio' ? 'number' : key === 'fillColor' ? 'text' : 'color'}
+                  min={key === 'strokeWidthRatio' ? 0.1 : undefined}
+                  max={key === 'strokeWidthRatio' ? 20 : undefined}
+                  step={key === 'strokeWidthRatio' ? 0.1 : undefined}
+                  value={key === 'strokeWidthRatio' ? ratioToPercent(Number(value)) : value}
+                  className={WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME}
+                  onChange={(event) => patch({ [key]: key === 'strokeWidthRatio' ? clamp(percentToRatio(numberValue(event.target.value, Number(value) * 100)), 0.001, 0.2) : event.target.value })}
+                />
+              </label>
+            ))}
+          </div>
+          {(element.shape === 'LINE' || element.shape === 'ARROW') ? (
+            <fieldset className="grid gap-1 rounded border border-[#27313b] p-1.5">
+              <legend className="px-1 text-xs font-bold text-[#9fadb9]">線分の始点・終点</legend>
+              <div className="grid grid-cols-2 gap-1.5">
+                {([
+                  ['start', '始点', element.start ?? { xRatio: bbox.xRatio, yRatio: bbox.yRatio }],
+                  ['end', '終点', element.end ?? { xRatio: bbox.xRatio + bbox.widthRatio, yRatio: bbox.yRatio + bbox.heightRatio }]
+                ] as const).flatMap(([pointKey, pointLabel, point]) => (
+                  (['xRatio', 'yRatio'] as const).map((axis) => (
+                    <label key={`${pointKey}-${axis}`} className="grid gap-0.5 text-sm font-semibold">
+                      {pointLabel} {axis === 'xRatio' ? 'X' : 'Y'} (%)
+                      <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={0.5}
+                        value={ratioToPercent(point[axis])}
+                        className={WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME}
+                        onChange={(event) => patch({ [pointKey]: { ...point, [axis]: Math.max(0, Math.min(1, percentToRatio(numberValue(event.target.value, point[axis] * 100)))) } })}
+                      />
+                    </label>
+                  ))
+                ))}
+              </div>
+            </fieldset>
+          ) : null}
+        </fieldset>
+      ) : null}
+
+      <fieldset className="grid gap-1 rounded border border-[#27313b] p-1.5">
+        <legend className="px-1 text-xs font-bold text-[#9fadb9]">位置と大きさ (%)</legend>
+        <div className="grid grid-cols-2 gap-1.5">
+          {([
+            ['xRatio', '左'],
+            ['yRatio', '上'],
+            ['widthRatio', '幅'],
+            ['heightRatio', '高さ']
+          ] as const).map(([key, label]) => (
+            <label key={key} className="grid gap-0.5 text-sm font-semibold">
+              {label} (%)
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                step={0.5}
+                value={ratioToPercent(bbox[key])}
+                className={WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME}
+                onChange={(event) => onUpdate(updateOverlayBBox(element, normalizeOverlayBBox({ ...bbox, [key]: percentToRatio(numberValue(event.target.value, bbox[key] * 100)) })))}
+              />
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      <label className="grid gap-1 text-sm font-semibold">
+        不透明度 (%)
+        <Input
+          type="number"
+          min={0}
+          max={100}
+          step={0.5}
+          value={ratioToPercent(element.opacity ?? 1)}
+          className={WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME}
+          onChange={(event) => patch({ opacity: clamp(percentToRatio(numberValue(event.target.value, (element.opacity ?? 1) * 100)), 0, 1) })}
+        />
+      </label>
+
+      <fieldset className="grid gap-1 rounded border border-[#27313b] p-1.5">
+        <legend className="px-1 text-xs font-bold text-[#9fadb9]">重なり順と背景</legend>
+        <div className="grid grid-cols-2 gap-1.5">
+          <Button type="button" className="min-h-11 !px-2 text-sm" onClick={() => onBringForward(element.id)}>
+            前面へ
+          </Button>
+          <Button type="button" className="min-h-11 !px-2 text-sm" onClick={() => onSendBackward(element.id)}>
+            背面へ
+          </Button>
+        </div>
+        {(element.kind === 'TEXT' || element.kind === 'IMAGE') ? (
+          <div className="grid grid-cols-[1fr_94px] items-center gap-1.5">
+            <label className="flex min-h-11 items-center gap-1.5 text-sm font-semibold"><input type="checkbox" className="h-[18px] w-[18px] accent-[#5fc3e8] focus-visible:outline focus-visible:outline-[#5fc3e8]" checked={element.mask?.enabled ?? false} onChange={(event) => patch({ mask: { enabled: event.target.checked, color: element.mask?.color ?? '#ffffff' } })} />背景を付ける</label>
+            <label className="grid gap-0.5 text-xs font-semibold">背景色<Input type="color" value={element.mask?.color ?? '#ffffff'} className={`${WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME} !p-1`} onChange={(event) => patch({ mask: { enabled: element.mask?.enabled ?? true, color: event.target.value } })} /></label>
+          </div>
         ) : null}
       </fieldset>
-      <ConfirmDialog isOpen={deleteOpen} title="オーバーレイを削除" description="このオーバーレイを削除します。保存前なら元に戻せます。" confirmLabel="削除" cancelLabel="キャンセル" tone="danger" onConfirm={() => { setDeleteOpen(false); onDelete(); }} onCancel={() => setDeleteOpen(false)} />
+      <div className="grid grid-cols-2 gap-1.5">
+        <label className="grid gap-0.5 text-sm font-semibold">状態<select className={WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME} value={String(element.migrationState ?? 'MIGRATED').toUpperCase()} onChange={(event) => patch({ migrationState: event.target.value as WorkInstructionOverlayElement['migrationState'] })}><option value="MIGRATED">確認済み</option><option value="NEEDS_REVIEW">要確認</option><option value="SKIPPED">対象外</option>{String(element.migrationState).toUpperCase() === 'UNASSIGNED' ? <option value="UNASSIGNED">未割当</option> : null}</select></label>
+        <label className="grid gap-0.5 text-sm font-semibold">手順<select className={WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME} value={element.stepKey ?? ''} onChange={(event) => onAssignStep?.(element.id, event.target.value || null)}><option value="">未割当</option>{steps.map((step) => <option key={step.stepKey} value={step.stepKey}>手順 {step.step}</option>)}</select></label>
+      </div>
+      </fieldset>
+
+      <ConfirmDialog
+        isOpen={deleteOpen}
+        title="注釈を削除"
+        description="この注釈を削除します。"
+        confirmLabel="削除"
+        cancelLabel="キャンセル"
+        tone="danger"
+        onConfirm={() => {
+          setDeleteOpen(false);
+          onDelete();
+        }}
+        onCancel={() => setDeleteOpen(false)}
+      />
     </aside>
   );
 }

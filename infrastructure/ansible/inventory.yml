@@ -8,6 +8,7 @@ all:
           ansible_user: denkon5sd02
           ansible_python_interpreter: /usr/bin/python3
           ansible_command_timeout: 900
+          unattended_upgrades_enabled: true
           tailscale_enabled: true
           # キオスクお問い合わせ（Slack通知）
           # NOTE: vaultで管理し、Ansibleで /opt/RaspberryPiSystem_002/infrastructure/docker/.env に反映する

@@ -15,6 +15,7 @@ Add self-inspection as a selectable kiosk initial route, make work-instruction m
 - [x] 2026-09-01: Added editor memo draft state, explicit review/reset commands, recovery v2, responsive layout, history toggle, toolbar status, and inspector accessibility fixes.
 - [x] 2026-09-01: Split viewer card/image-dialog/navigation responsibilities and added photo navigation, accessible numbering, and expanded memo presentation.
 - [x] 2026-09-01: Passed focused tests, disposable-Postgres migration/SQL/EXPLAIN/integration validation, Chromium E2E, builds, lint, diff checks, and final lifecycle audit.
+- [x] 2026-10-07: Rebuilt the editor screen to the approved mock `docs/design-previews/kiosk-work-instruction-editor-uiux-preview.html`. The screen exists to view photos and annotate them, so it opens with the photo only. Look and controls follow the assembly procedure editor: 120px step thumbnails, canvas, 64px symbol rail (save, publish, text, shape, range, more, back), a floating 340px annotation panel with white inputs and percent values, and the same palette. Memo, comparison, history and discard moved under "more"; comparison opens by itself only when a newer source exists. Text and shape are added with one press, duplicate and "next item to review" were added to the controller, and the wording changed from 注記 to 注釈. Below 1280px the panels overlay the canvas and comparison opens manually. No API or data change. Verified with 108 unit tests, tsc, lint and the Chromium E2E at 1920px and 640px.
 
 ## Surprises & Discoveries
 

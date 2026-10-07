@@ -50,8 +50,8 @@ describe('WorkInstructionMemoReviewList', () => {
 
     const review = screen.getByTestId('work-instruction-memo-review-list');
     expect(review).toHaveTextContent('旧版の未割当メモ');
-    const target = within(review).getByRole('combobox', { name: '未割当メモ1の移植先手順' });
-    const keep = within(review).getByRole('button', { name: '選択先へKEEP' });
+    const target = within(review).getByRole('combobox', { name: '行き先のないメモ1の移し先の手順' });
+    const keep = within(review).getByRole('button', { name: 'ここへ移す' });
     expect(keep).toBeDisabled();
 
     fireEvent.change(target, { target: { value: steps[0]!.stepKey } });
@@ -59,7 +59,7 @@ describe('WorkInstructionMemoReviewList', () => {
     fireEvent.click(keep);
     expect(onAssignAndKeep).toHaveBeenCalledWith(unassigned.migratedFromStepKey, steps[0]!.stepKey);
 
-    fireEvent.click(within(review).getByRole('button', { name: '原本を使用' }));
+    fireEvent.click(within(review).getByRole('button', { name: '原本を使う' }));
     expect(onUseSource).toHaveBeenCalledWith(unassigned.migratedFromStepKey);
   });
 
@@ -82,7 +82,7 @@ describe('WorkInstructionMemoReviewList', () => {
       />
     );
 
-    const target = screen.getByRole('combobox', { name: '未割当メモ1の移植先手順' });
+    const target = screen.getByRole('combobox', { name: '行き先のないメモ1の移し先の手順' });
     expect(within(target).queryByRole('option', { name: /加工面を確認/ })).not.toBeInTheDocument();
   });
 

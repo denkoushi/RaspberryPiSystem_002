@@ -106,7 +106,7 @@ describe('WorkInstructionVersionComparison', () => {
       />
     );
 
-    const publishedPane = screen.getByRole('region', { name: '公開版（使用側）' });
+    const publishedPane = screen.getByRole('region', { name: '公開中' });
     expect(within(publishedPane).getByText('公開版で採用されたメモ')).toBeInTheDocument();
     expect(within(publishedPane).queryByText('公開版の原本メモ')).not.toBeInTheDocument();
   });
@@ -121,7 +121,7 @@ describe('WorkInstructionVersionComparison', () => {
       />
     );
 
-    const publishedPane = screen.getByRole('region', { name: '公開版（使用側）' });
+    const publishedPane = screen.getByRole('region', { name: '公開中' });
     expect(within(publishedPane).getByText('公開版の原本メモ')).toBeInTheDocument();
   });
 

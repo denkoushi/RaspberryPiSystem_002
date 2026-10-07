@@ -519,8 +519,8 @@ async function expectContainedImage(
 }
 
 async function expectEditorInspectorContrast(page: Page): Promise<void> {
-  const inspector = page.getByRole('complementary', { name: '加工要領書オーバーレイ編集', exact: true });
-  const controls = inspector.locator('input, textarea, select');
+  const inspector = page.getByRole('complementary', { name: '注釈の編集', exact: true });
+  const controls = inspector.locator('input:not([type=checkbox]):not([type=file]), textarea, select');
   await expect(controls).not.toHaveCount(0);
   const styles = await controls.evaluateAll((elements) => elements.map((element) => {
     const computed = window.getComputedStyle(element);
@@ -528,9 +528,16 @@ async function expectEditorInspectorContrast(page: Page): Promise<void> {
   }));
   expect(styles.length).toBeGreaterThan(0);
   for (const style of styles) {
-    expect(style.color).toBe('rgb(255, 255, 255)');
-    expect(style.backgroundColor).toBe('rgb(2, 6, 23)');
+    expect(style.color).toBe('rgb(22, 28, 34)');
+    expect(style.backgroundColor).toBe('rgb(255, 255, 255)');
   }
+}
+
+async function openComparisonOnNarrowScreen(page: Page): Promise<void> {
+  if ((page.viewportSize()?.width ?? 1920) >= 1280) return;
+  await expect(page.getByTestId('work-instruction-editor-comparison-pane')).toHaveCount(0);
+  await page.getByRole('button', { name: 'その他', exact: true }).click();
+  await page.getByRole('button', { name: '比較', exact: true }).click();
 }
 
 test.use({
@@ -552,10 +559,11 @@ for (const viewport of [
     await expect.poll(() => trace.authentication).toBe(1);
     await expect.poll(() => trace.copy).toBe(1);
     await expect.poll(() => trace.audit).toBeGreaterThan(0);
+    await openComparisonOnNarrowScreen(page);
     const comparisonLayout = page.getByTestId('work-instruction-editor-comparison-layout');
     await expect(comparisonLayout).toBeVisible();
-    await expect(page.getByTestId('work-instruction-version-comparison')).toContainText('公開版（使用側）');
-    await expect(page.getByTestId('work-instruction-version-comparison')).toContainText('最新原本（移植先）');
+    await expect(page.getByTestId('work-instruction-version-comparison')).toContainText('公開中');
+    await expect(page.getByTestId('work-instruction-version-comparison')).toContainText('新しい原本');
     const [targetPaneBox, comparisonPaneBox] = await Promise.all([
       page.getByTestId('work-instruction-editor-target-pane').boundingBox(),
       page.getByTestId('work-instruction-editor-comparison-pane').boundingBox()
@@ -563,13 +571,18 @@ for (const viewport of [
     expect(targetPaneBox).not.toBeNull();
     expect(comparisonPaneBox).not.toBeNull();
     if (targetPaneBox && comparisonPaneBox) {
-      const targetHeightShare = targetPaneBox.height / (targetPaneBox.height + comparisonPaneBox.height);
-      expect(targetHeightShare).toBeGreaterThan(0.56);
-      expect(targetHeightShare).toBeLessThan(0.64);
+      expect(comparisonPaneBox.x).toBeGreaterThan(targetPaneBox.x);
+      expect(comparisonPaneBox.width).toBe(viewport.width < 1280 ? Math.min(380, targetPaneBox.width) : 380);
+      if (viewport.width < 1280) {
+        expect(comparisonPaneBox.x).toBeLessThan(targetPaneBox.x + targetPaneBox.width);
+        expect(comparisonPaneBox.x + comparisonPaneBox.width).toBeLessThanOrEqual(targetPaneBox.x + targetPaneBox.width + 1);
+      } else {
+        expect(comparisonPaneBox.x).toBeGreaterThanOrEqual(targetPaneBox.x + targetPaneBox.width);
+      }
     }
     const [publishedPaneBox, latestPaneBox] = await Promise.all([
-      page.getByRole('region', { name: '公開版（使用側）' }).boundingBox(),
-      page.getByRole('region', { name: '最新原本（移植先）' }).boundingBox()
+      page.getByRole('region', { name: '公開中' }).boundingBox(),
+      page.getByRole('region', { name: '新しい原本' }).boundingBox()
     ]);
     expect(publishedPaneBox).not.toBeNull();
     expect(latestPaneBox).not.toBeNull();
@@ -577,8 +590,8 @@ for (const viewport of [
       expect(Math.abs(publishedPaneBox.height - latestPaneBox.height)).toBeLessThanOrEqual(2);
     }
     await expectContainedImage(page.getByTestId('work-instruction-editor-target-pane'), 'work-instruction-editor-canvas');
-    await expectContainedImage(page.getByRole('region', { name: '公開版（使用側）' }));
-    await expectContainedImage(page.getByRole('region', { name: '最新原本（移植先）' }));
+    await expectContainedImage(page.getByRole('region', { name: '公開中' }));
+    await expectContainedImage(page.getByRole('region', { name: '新しい原本' }));
     const stepsPane = page.getByRole('complementary', { name: '手順一覧', exact: true });
     await stepsPane.getByRole('button', { name: /手順 2/ }).click();
     await expectContainedImage(
@@ -589,39 +602,42 @@ for (const viewport of [
     await stepsPane.getByRole('button', { name: /手順 1/ }).click();
     await expectContainedImage(page.getByTestId('work-instruction-editor-target-pane'), 'work-instruction-editor-canvas');
     await expect(page.getByTestId('work-instruction-editor-history-pane')).toHaveCount(0);
-    await page.getByRole('button', { name: '履歴を表示', exact: true }).click();
+    await page.getByRole('button', { name: 'その他', exact: true }).click();
+    await page.getByRole('button', { name: '履歴', exact: true }).click();
     const historyPane = page.getByTestId('work-instruction-editor-history-pane');
     await expect(historyPane).toBeVisible();
-    await expect(historyPane).toContainText('編集操作履歴');
+    await expect(historyPane).toContainText('操作');
     await expect(historyPane).toContainText(EMPLOYEE_NAME);
-    await expect(historyPane).toContainText(`社員コード ${EMPLOYEE_CODE}`);
     await expect(historyPane).toContainText(`端末: ${CLIENT_DEVICE_NAME}`);
-    await historyPane.getByText('詳細差分', { exact: true }).click();
-    await expect(historyPane).toContainText('audit-overlay-1');
-    await page.getByRole('button', { name: '履歴を隠す', exact: true }).click();
+    await expect(historyPane).toContainText('変更 2 件');
+    await page.getByRole('button', { name: '履歴を閉じる', exact: true }).click();
     await expect(page.getByTestId('work-instruction-editor-history-pane')).toHaveCount(0);
+    await page.getByRole('button', { name: 'その他', exact: true }).click();
+    await page.getByRole('button', { name: 'メモ', exact: true }).click();
     await expect(page.getByTestId('work-instruction-memo-editor')).toBeVisible();
+    await page.getByRole('button', { name: '作業メモを閉じる' }).click();
+    await page.getByRole('button', { name: '原本の比較を閉じる' }).click();
 
-    const migratedOverlay = page.getByRole('button', { name: '文章オーバーレイ: 旧版注記', exact: true });
+    const migratedOverlay = page.getByRole('button', { name: '文章の注釈: 旧版注記', exact: true });
     await expect(migratedOverlay).toBeVisible();
     await migratedOverlay.click();
     await expectEditorInspectorContrast(page);
-    const migrationSelect = page.locator('label').filter({ hasText: '移植状態（公開前に確認）' }).getByRole('combobox');
+    const migrationSelect = page.locator('label').filter({ hasText: /^状態/ }).getByRole('combobox');
     await migrationSelect.selectOption('MIGRATED');
     await expect(page.getByRole('button', { name: '保存', exact: true })).toBeEnabled();
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await expect.poll(() => trace.save).toBe(1);
-    await expect(page.getByTestId('work-instruction-editor-toolbar-message')).toHaveText('オーバーレイを保存しました。');
-    await expect(comparisonLayout.getByText('オーバーレイを保存しました。', { exact: true })).toHaveCount(0);
+    await expect(page.getByTestId('work-instruction-editor-toolbar-message')).toHaveText('保存しました');
 
-    await page.getByRole('button', { name: '一括公開', exact: true }).click();
+    await page.getByRole('button', { name: '公開', exact: true }).click();
     await page.getByRole('button', { name: '公開する', exact: true }).click();
     await expect.poll(() => trace.publish).toBe(1);
     await expect(page.getByText('加工要領書を公開しました。使用側の表示を更新できます。', { exact: true })).toBeVisible();
 
-    await page.getByRole('button', { name: '履歴を表示', exact: true }).click();
+    await page.getByRole('button', { name: 'その他', exact: true }).click();
+    await page.getByRole('button', { name: '履歴', exact: true }).click();
     await expect(page.getByTestId('work-instruction-editor-history-pane')).toBeVisible();
-    const deleteButton = page.getByRole('button', { name: '旧画像を一括削除', exact: true });
+    const deleteButton = page.getByRole('button', { name: '旧画像を削除', exact: true });
     await expect(deleteButton).toBeVisible();
     await deleteButton.click();
     await page.getByRole('button', { name: '削除する', exact: true }).click();
