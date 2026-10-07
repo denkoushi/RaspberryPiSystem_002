@@ -138,7 +138,8 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
         ...await resolveAssemblyProcedureEditWriter(request),
         accessPassword: body.accessPassword,
         pageIndex: body.pageIndex,
-        bbox: body.bbox
+        bbox: body.bbox,
+        ...(body.overlays ? { overlays: body.overlays } : {})
       });
       return { asset };
     }
@@ -154,7 +155,8 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
         documentId: params.id,
         accessPassword: body.accessPassword,
         pageIndex: body.pageIndex,
-        bbox: body.bbox
+        bbox: body.bbox,
+        ...(body.overlays ? { overlays: body.overlays } : {})
       });
       return { candidates };
     }

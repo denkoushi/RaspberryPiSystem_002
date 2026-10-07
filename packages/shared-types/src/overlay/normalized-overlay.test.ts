@@ -72,3 +72,21 @@ describe('domain-neutral normalized overlay contract', () => {
     });
   });
 });
+
+describe('region image overlays', () => {
+  const bbox = { xRatio: 0, yRatio: 0, widthRatio: 1, heightRatio: 1 };
+  const overlay = { assetId: 'asset', bbox, zIndex: 2, objectFit: 'cover', opacity: 0.5 };
+  it('accepts omitted overlays, unsaved image inputs and up to 20 images', () => {
+    expect(overlayRegionInputSchema.parse({ pageIndex: 0, bbox }).overlays).toBeUndefined();
+    expect(overlayRegionInputSchema.parse({ pageIndex: 0, bbox, overlays: [overlay] }).overlays).toEqual([overlay]);
+    expect(overlayRegionInputSchema.safeParse({ pageIndex: 0, bbox, overlays: Array(20).fill(overlay) }).success).toBe(true);
+    expect(overlayRegionInputSchema.safeParse({ pageIndex: 0, bbox, overlays: Array(21).fill(overlay) }).success).toBe(false);
+  });
+  it.each([
+    { assetId: '' }, { zIndex: 0.5 }, { zIndex: Infinity },
+    { objectFit: 'stretch' }, { opacity: -0.1 }, { opacity: 1.1 },
+    { bbox: { ...bbox, xRatio: 0.5 } }
+  ])('rejects invalid image data %j', (invalid) => {
+    expect(overlayRegionInputSchema.safeParse({ pageIndex: 0, bbox, overlays: [{ ...overlay, ...invalid }] }).success).toBe(false);
+  });
+});
