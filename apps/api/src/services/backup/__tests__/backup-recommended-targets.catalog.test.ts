@@ -20,8 +20,9 @@ describe('backup-recommended-targets.catalog', () => {
   it('returns server storage entries and no kiosk secrets', () => {
     const catalog = getRecommendedBackupTargetCatalog();
     expect(catalog.some((c) => c.id === 'server-directory-part-measurement-drawings')).toBe(true);
+    expect(catalog.some((c) => c.id === 'server-directory-work-instruction-assets')).toBe(true);
     // 大きくなり得る領域は Dropbox の推奨に含めず、Google Drive DR だけで保護する
-    expect(catalog.some((c) => /knowledge-assets|knowledge-git|assembly-procedure-assets|work-instruction-assets|procedure-materials|procedure-videos/.test(c.target.source))).toBe(false);
+    expect(catalog.some((c) => /knowledge-assets|knowledge-git|assembly-procedure-assets|procedure-materials|procedure-videos/.test(c.target.source))).toBe(false);
     expect(catalog.some((c) => c.id === 'server-directory-measuring-instrument-genres')).toBe(true);
     expect(catalog.some((c) => c.id === 'server-directory-pallet-machine-illustrations')).toBe(true);
     expect(catalog.some((c) => c.id === 'server-directory-pdfs')).toBe(false);
