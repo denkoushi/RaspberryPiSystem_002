@@ -220,6 +220,16 @@ describe('EmployeeService', () => {
       });
     });
 
+    it('部署(section)を保存する', async () => {
+      vi.mocked(prisma.employee.create).mockResolvedValue({ id: 'employee-1' } as any);
+
+      await employeeService.create({ employeeCode: 'EMP001', displayName: 'New Employee', section: '加工1課' });
+
+      expect(prisma.employee.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ section: '加工1課' }),
+      });
+    });
+
     it('オプショナルフィールドがnullの場合、undefinedとして扱う', async () => {
       const input = {
         employeeCode: 'EMP001',
