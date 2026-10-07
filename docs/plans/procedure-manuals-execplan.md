@@ -24,6 +24,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-07) 実機指摘(#1789 反映後に理由が見えた): PNG が「10 MB超過」、PDF が「20 ページまで」で除外。オーナー指定: 写真は受け付け 25 MB、保存は 1 枚 1 MiB 以内(長辺 2000→1600→1200px の順に縮小・元形式で再エンコード、PNG は量子化まで試し、収まらなければ理由付きで除外。EXIF 向き反映)。PDF のページ上限は 25(Poppler アダプタに maxPages を追加、Hermes 側の既定 20 は不変)。添付数の上限は設けない(Gmail の 1 通 25 MB が実質の上限)。Codex(gpt-6.1-sol/high)実装。
 - [x] (2026-10-07) 本番反映の記録 6: #1789(非標準 MIME の拡張子判定 + 添付ごとの除外理由表示)を Pi5 へ反映。merge 983722d4(12:09)、Pi5 release run 20261007-032350-30ac43(12:23→12:29 success、recap ok=268 changed=31 failed=0 unreachable=0、#1787/#1786 と同じ回)、稼働イメージ api/web 983722d4、health 200、API エラーログ 0 件。実機確認はユーザー待ち(未読で残る PNG/PDF メールが「今すぐ取り込む」で入るか、入らなければ種類付きの理由が出るか)。
 - [x] (2026-10-07) 本番反映の記録 5: #1783(「今すぐ取り込む」の見える化 + Outlook の汎用 MIME 添付)を merge 38c5dfa4(11:10)、Pi5 release run 20261007-021825-efa054(11:18→11:23 success、recap ok=268 changed=31 failed=0)。#1785(PDF を各ページの写真素材に)を merge 7c8905c3(11:24)、Pi5 release run 20261007-023303-ecc84b(11:33→11:38 success、同 recap)。稼働イメージ api/web 7c8905c3、health 200、API エラーログは配布直後の「premature close」1 件のみ(無関係)。反映後の実機で PNG 添付がまだ「対応外」のため、添付ごとの除外理由(MIME 付き)の表示と、image/*・application/* の非標準 MIME でも拡張子で判定する修正を続けて実施。
+- [x] (2026-10-07) 実機確認と指摘: オーナーが #1815/#1816/#1818 の 3 点(素材棚の束、長押しの動詞、部品ペイン)を実機で確認し問題なし。追加指摘「右の属性パネルがページに重なる、ドキュメントを左に寄せれば足りる」。属性パネル(右端から 420px、キャンバス列へ 356px 食い込む)が開いている間だけキャンバス列の右に 372px の余白を取り、キャンバスの ResizeObserver でページ画像を左へ収め直す(`AssemblyProcedureDocumentEditorScreen.tsx`)。下部の通知帯も同じ条件で幅を抑える。取説(kiosk-sop)を再生成(属性 3 画面と競合画面)。vitest 39 件成功(新規 1 件)、eslint、tsc --noEmit。main 統合・本番反映は追跡セッション待ち。
 - [x] (2026-10-07) 要望: PDF も素材として取り込む。`application/pdf`(汎用 MIME + .pdf を含む、10 MB 以下)の添付を、既存の Poppler ページ描画(1〜20 ページ、暗号化は不可)で各ページ JPEG にし、ページごとに写真素材として保存(題名「ヒント (p1/3)」、ファイル名「名前 p1.jpg」、ページ単位の重複キー)。描画失敗は除外理由として表示。Excel は要望取り下げ(取込は非対応のまま)。Codex(gpt-6.1-sol/high)実装。
 - [x] (2026-10-07) 本番反映の記録 5: #1815 + #1816(素材棚の束ねルール)を merge 8304abaa で 19:00 に、#1818(記号の動詞チップ、部品ペイン、新規要素の zIndex、取説再生成)を merge c6542dd0 で 19:49 に、それぞれ Pi5 へ反映(run 20261007-095428-a98bf3、20261007-104343-c7689b、ともに success、health 200、API エラー 0)。Pi4・Pi3 は対象外。#1818 の CI では操作ガイドのテストのターゲット検出、取説生成の画像待ち(2 枚決め打ち)、E2E の記号ボタン名の 3 点を直した。実機確認(束、長押しの動詞、部品ペイン)はオーナー待ち。
 - [x] (2026-10-07) 実機要望: エディタ右端の記号の働きが分からない、重なった文字・図形・画像が見分けられない。承認済みモック `docs/design-previews/editor-rail-tips-and-overlap-mock.html` のとおり、記号は記号のままで乗せたとき(キオスクは長押し 0.5 秒)に動詞 1 語のチップを出す(`EditorIconButton.tsx`、`title` は廃止)。ページ一覧の右隣に「部品」ペイン(`AssemblyProcedureDocumentEditorPartsPane.tsx`、幅 280px、つまみで開閉し端末ごとに記憶)を置き、そのページの要素の縮小版(`AssemblyProcedureOverlayLayer` + `crop`)を前から順に並べる。押すと選択、前へ出す/後ろへ下げる/隠す(編集中だけの一時非表示)。記号ペインと範囲から置いた新規要素の zIndex を同一ページの最大 + 1 に(下に潜る不具合の修正)。Codex(`gpt-6.1-sol`/`high`)が実装、Claude が差分を確認。Web のみ、Pi5 配布。
@@ -237,6 +238,10 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - Decision: 素材原本 GC は allowWriteKiosk の手動 POST /assembly/procedure-materials/gc のみとする。
   Rationale: 既存 assembly-procedure-asset-gc は保存・破棄・削除後の呼び出しだけで定期スケジューラーはない。新しいスケジューラーは今回追加しない。sha256/original だけを走査し、24時間より古く storageKey 一致の参照が0件の場合だけ integrity:true で削除する。配置済み・破棄済みを含む全素材の参照と共有原本を保持する。
   Date/Author: 2026-10-05 / Codex。
+
+- Decision (2026-10-07): 属性パネルは右端の重ね表示のまま、開いている間だけキャンバス列に右余白(372px)を足してページ画像を左へ寄せる。パネルを列として分けない。
+  Rationale: オーナー指示「ドキュメントを左に寄せるだけでいけそう」。キャンバスは領域の大きさに追従して全体表示するので、余白だけで重なりが解消し、パネルの開閉でレイアウト列が変わらない。
+  Date/Author: 2026-10-07 / Claude(オーナー指示)。
 
 - Decision: Phase 2c の公開条件・expectedEditVersion 検証・文書行ロックは `publishInTransaction` に共通化し、パスワード検証は `publish`、承認者照合と同一transactionでの承認記録作成は `approvePublish` に置く。PUBLISHED済みへの再実行は文書を返し、承認行を追加しない。
   Rationale: パスワード公開の条件と認証を保持し、承認行の作成失敗・競合では公開と記録を一緒に取り消す。旧形式文書の公開取消と割り当ても同じ文書行をロックし、既知の競合を防ぐ。

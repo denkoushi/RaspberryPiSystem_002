@@ -132,7 +132,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
         <button type="button" aria-label={partsPaneOpen ? '部品を閉じる' : '部品を開く'} onClick={togglePartsPane} className={`absolute top-1/2 z-50 grid h-[72px] w-[22px] -translate-y-1/2 place-items-center rounded-r-lg border border-l-0 border-[#344252] bg-[#161c22] text-[#9fadb9] ${partsPaneOpen ? 'left-[400px]' : 'left-[120px]'}`}>
           <span aria-hidden="true">{partsPaneOpen ? '<' : '>'}</span>
         </button>
-        <section className="relative col-start-3 min-h-0 min-w-0 overflow-hidden p-4" aria-label="手順書キャンバス">
+        <section className={`relative col-start-3 min-h-0 min-w-0 overflow-hidden p-4 ${controller.selectedElement ? 'pr-[372px]' : ''}`} aria-label="手順書キャンバス">
           <AssemblyProcedureDocumentEditorCanvas
             pageUrl={selectedPage.imageRelativePath}
             pageIndex={selectedPage.pageIndex}
@@ -159,7 +159,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
             承認: {controller.document.lastApproval.employeeName}{controller.document.lastApproval.positionName ? `(${controller.document.lastApproval.positionName})` : ''} {new Date(controller.document.lastApproval.approvedAt).toLocaleString('ja-JP')}
           </p> : null}
           {controller.message && controller.message !== dismissedMessage ? (
-            <div className={`absolute bottom-4 left-4 z-40 flex min-h-11 max-w-[calc(100%-32px)] flex-col justify-center rounded-lg border px-3.5 py-2 text-lg ${controller.messageIsError || controller.conflict ? 'border-[#e5484d] bg-[#161c22eb] text-[#e5484d]' : 'border-[#344252] bg-[#161c22eb]'}`} role={controller.messageIsError || controller.conflict ? 'alert' : 'status'}>
+            <div className={`absolute bottom-4 left-4 z-40 flex min-h-11 ${controller.selectedElement ? 'max-w-[calc(100%-404px)]' : 'max-w-[calc(100%-32px)]'} flex-col justify-center rounded-lg border px-3.5 py-2 text-lg ${controller.messageIsError || controller.conflict ? 'border-[#e5484d] bg-[#161c22eb] text-[#e5484d]' : 'border-[#344252] bg-[#161c22eb]'}`} role={controller.messageIsError || controller.conflict ? 'alert' : 'status'}>
               <p className="flex items-center gap-2.5"><span aria-hidden="true" className={`h-2.5 w-2.5 shrink-0 rounded-full ${controller.messageIsError || controller.conflict ? 'bg-[#e5484d]' : 'bg-[#3ba776]'}`} />{controller.message}</p>
               {controller.conflict ? (
                 <div className="mt-2 flex flex-wrap gap-2">

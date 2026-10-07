@@ -221,6 +221,17 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: '最背面へ' }));
     expect(controller.sendToBack).toHaveBeenCalledExactlyOnceWith(element.id);
   });
+  it('keeps the canvas clear of the inspector while an element is selected', () => {
+    const element: AssemblyProcedureOverlayElement = {
+      id: 'overlay', kind: 'SHAPE', shape: 'RECTANGLE', pageIndex: 0, zIndex: 0,
+      bbox: { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.2 }
+    };
+    const { unmount } = renderScreen(makeController({ selectedElement: element }));
+    expect(screen.getByRole('region', { name: '手順書キャンバス' })).toHaveClass('pr-[372px]');
+    unmount();
+    renderScreen(makeController({ selectedElement: null }));
+    expect(screen.getByRole('region', { name: '手順書キャンバス' })).not.toHaveClass('pr-[372px]');
+  });
   it.each([['make', 1, null, '作る · 下書き 第1版', 'text-[#3ba776]'], ['fix', 3, 'root', '直す · 改版の下書き 第3版', 'text-[#f6b93b]'], ['fix', 1, null, '直す · 下書き 第1版', 'text-[#f6b93b]']] as const)('shows workshop context for %s', (mode, revisionNumber, supersedesDocumentId, label, color) => {
     const controller = makeController({ document: { ...editorDocument, revisionNumber, supersedesDocumentId } });
     render(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} context={{ modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', processName: '組立 › 組立', mode }} /></AssemblyProcedureDocumentEditorProvider>);
