@@ -44,24 +44,26 @@ Done on 2026-10-07:
 | Security monitor no longer alerts on short-lived outbound UDP sockets | #1786 | `ee2591e7` | needs the server role |
 | Backup verification failure queues an ops alert; duplicate logrotate entries removed | #1792 | `d2e453fb` | needs the server role |
 | The standard Pi5 release installs `unattended-upgrades`: Debian security origin only, no automatic reboot, Docker, Tailscale, kernel, firmware and Chromium excluded | #1788 | `69d0199c` | released (run `20261007-034510-c5ed02`); dry run shows the single allowed origin, the exclusion list and nothing pending; first automatic run 2026-10-08 06:03 JST |
+| Reboot-requiring packages applied on the Pi5 by hand after the nightly off-site backup finished (21:39 JST), with the owner at the device: kernel 6.12.47 to 6.18.50, boot firmware `1:1.20260915-1`, `rpi-eeprom` 28.33-1, Docker 29.8.2, Compose plugin 5.6.0, containerd 2.3.6, Tailscale 1.102.5; package run 21:47 to 21:53, reboot 21:54, back at 21:55. The bootloader EEPROM itself was not flashed | none | none | yes |
 
 ## Prevention
 
 - Force the locale in every check that parses command output, and read results, not schedules.
 - A job that verifies something must alert when it fails; otherwise it only produces a log.
 - Host configuration that matters for safety should be converged by the standard release where the existing role split allows it, so it cannot drift. What only the server role delivers must be applied on purpose after each change to it.
-- Applying a large backlog of OS packages: keep back the kernel, boot firmware, the container runtime and the remote-access agent unless a reboot is planned with someone at the device; copy the boot partition first; expect passwordless `sudo` to be briefly unavailable while its packages are replaced.
+- Applying a large backlog of OS packages: keep back the kernel, boot firmware, the container runtime and the remote-access agent unless a reboot is planned with someone at the device; copy the boot partition first; run the package step as a detached unit, because the remote-access agent restarts under it; start after the nightly backup, not across it; expect passwordless `sudo` to be briefly unavailable while its packages are replaced.
 
 ## Validation
 
 - Restore check and package run: times and results above; after the package run the listening sockets, firewall, SSH settings, masked services and container count were unchanged, the API health check returned 200, and only the two initramfs files for the running kernel differed on the boot partition.
+- Reboot-requiring update: the package plan removed nothing; after the reboot the kernel was `6.18.50+rpt-rpi-2712`, nine of nine containers were up with every health check passing, the API and web images and the API retrieval-source setting were the same as before, the listening sockets were unchanged, the firewall was active, the API health check returned 200, no package was pending and the nightly backup and automatic-update timers were scheduled. The boot partition copy from before the run is in `/root/os-update-20261007/` on the Pi5.
 - Releases after the package run: `20261007-032350-30ac43` (`failed=0`) and `20261007-034510-c5ed02` (`failed=0 rescued=0`), all four entry URLs 200.
 - Local test runs before each PR: #1786 14, #1787 18 API and 12 contract, #1788 76, #1792 20 (one skipped).
 
 ## Open Items
 
 - An off-site or offline backup copy that cannot be deleted with credentials held on the Pi5. This is the largest remaining gap for the stated goal.
-- Kernel, boot firmware, Docker and Tailscale updates on the Pi5 with a planned reboot and someone at the device; the same backlog on the Pi4 kiosks and the Pi3, where the kiosk browser version is being moved deliberately ([KB-413](./KB-413-kiosk-chromium-canary-stonebase01.md)).
+- The Pi5 bootloader EEPROM update is still offered and not applied. The OS package backlog on the Pi4 kiosks and the Pi3 is also open; there the kiosk browser version is being moved deliberately ([KB-413](./KB-413-kiosk-chromium-canary-stonebase01.md)).
 - Applying the server role and the snapshot playbook for #1786, #1787 (unit files) and #1792, after a dry run that shows the application environment files are not rewritten.
 - A "no successful backup for N hours" alert, because a run that is skipped does not fail; a reboot-required notice; extending automatic security updates to the kiosks.
 - The stale targets of the daily backup lane are owned by the session working on that lane.
