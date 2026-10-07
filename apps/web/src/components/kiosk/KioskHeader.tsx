@@ -6,8 +6,8 @@ import { DUE_MANAGEMENT_AUTH_SESSION_KEY, DUE_MANAGEMENT_TOKEN_SESSION_KEY } fro
 import { useVerifyKioskDueManagementAccessPassword } from '../../api/hooks';
 import { renderKioskReorderableHeaderTab } from '../../features/kiosk/kioskHeaderTabs/kioskHeaderReorderableTabRenderer';
 import { resolveClientKeyForPower } from '../../lib/client-key';
-import { Row } from '../layout/Row';
 
+import { KioskClientStatusChip } from './KioskClientStatusChip';
 import { KioskPowerConfirmModal } from './KioskPowerConfirmModal';
 import { KioskPowerMenuModal } from './KioskPowerMenuModal';
 import { KioskSignagePreviewModal } from './KioskSignagePreviewModal';
@@ -32,21 +32,7 @@ type KioskHeaderProps = {
   navTabOrder: readonly KioskReorderableHeaderTabId[];
 };
 
-const GearIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    className="h-5 w-5"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <path d="M11.983 2.25c-.483 0-.96.037-1.43.109a1.5 1.5 0 00-1.17 1.022l-.258.816a1.5 1.5 0 01-1.094 1.002l-.847.193a1.5 1.5 0 00-1.13 1.13l-.193.847a1.5 1.5 0 01-1.002 1.094l-.816.258a1.5 1.5 0 00-1.022 1.17 10.5 10.5 0 000 2.86 1.5 1.5 0 001.022 1.17l.816.258a1.5 1.5 0 011.002 1.094l.193.847a1.5 1.5 0 001.13 1.13l.847.193a1.5 1.5 0 011.094 1.002l.258.816a1.5 1.5 0 001.17 1.022 10.5 10.5 0 002.86 0 1.5 1.5 0 001.17-1.022l.258-.816a1.5 1.5 0 011.094-1.002l.847-.193a1.5 1.5 0 001.13-1.13l.193-.847a1.5 1.5 0 011.002-1.094l.816-.258a1.5 1.5 0 001.022-1.17 10.5 10.5 0 000-2.86 1.5 1.5 0 00-1.022-1.17l-.816-.258a1.5 1.5 0 01-1.002-1.094l-.193-.847a1.5 1.5 0 00-1.13-1.13l-.847-.193a1.5 1.5 0 01-1.094-1.002l-.258-.816a1.5 1.5 0 00-1.17-1.022 10.5 10.5 0 00-1.43-.109z" />
-    <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-  </svg>
-);
+const utilityClass = 'inline-flex h-11 shrink-0 items-center justify-center whitespace-nowrap rounded-lg border border-inv-line2 px-3 text-[15px] font-semibold text-inv-text hover:bg-inv-s2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inv-cyan';
 
 const PowerIcon = () => (
   <svg
@@ -80,12 +66,6 @@ export function KioskHeader({
   const [isPowerProcessing, setIsPowerProcessing] = useState(false);
   const [showPowerMenu, setShowPowerMenu] = useState(false);
   const [showSignagePreview, setShowSignagePreview] = useState(false);
-
-  const formatKey = (value: string) => {
-    if (!value) return '未設定';
-    if (value.length <= 8) return value;
-    return `${value.slice(0, 4)}…${value.slice(-4)}`;
-  };
 
   const handlePowerSelect = (action: PowerAction) => {
     setShowPowerMenu(false);
@@ -151,93 +131,57 @@ export function KioskHeader({
   );
 
   return (
-    <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-3">
-      <Row className="gap-3 shrink-0">
-        <button
-          type="button"
-          onClick={() => setShowPowerMenu(true)}
-          className="rounded-md bg-slate-700 p-2 text-white transition-colors hover:bg-slate-600"
-          aria-label="電源メニュー"
-          title="電源メニュー"
-        >
-          <PowerIcon />
-        </button>
-        {clientStatus ? (
-          <Row className="gap-3 text-xs shrink-0">
-            {clientStatus.temperature !== null ? (
-              <Row className="gap-1">
-                <span className="text-white/70">CPU温度:</span>
-                <span
-                  className={
-                    clientStatus.temperature >= 70
-                      ? 'font-semibold text-red-400'
-                      : clientStatus.temperature >= 60
-                        ? 'font-semibold text-yellow-400'
-                        : 'font-semibold text-emerald-400'
-                  }
-                >
-                  {clientStatus.temperature.toFixed(1)}°C
-                </span>
-              </Row>
-            ) : null}
-            <Row className="gap-1">
-              <span className="text-white/70">CPU負荷:</span>
-              <span
-                className={
-                  clientStatus.cpuUsage >= 80
-                    ? 'font-semibold text-red-400'
-                    : clientStatus.cpuUsage >= 60
-                      ? 'font-semibold text-yellow-400'
-                      : 'font-semibold text-emerald-400'
-                }
-              >
-                {clientStatus.cpuUsage.toFixed(1)}%
-              </span>
-            </Row>
-          </Row>
-        ) : null}
-      </Row>
-      <Row className="gap-3 min-w-0 flex-1" justify="end">
-        <Row className="gap-2 text-xs shrink-0">
-          <span className="text-white/70">キオスク端末</span>
-          <span className="text-white/70">
-            APIキー: <span className="font-mono text-white/90">{formatKey(clientKey)}</span>
+    <div
+      className="flex items-stretch gap-5"
+      data-kiosk-dock-overlay={showPowerMenu || showSignagePreview || pendingAction !== null || powerOverlayAction !== null}
+    >
+      <nav aria-label="画面の切替" className="mr-auto flex min-w-0 max-w-[1340px] flex-1 flex-wrap content-start gap-1.5">
+        {navTabOrder.map((tabId) => (
+          <span key={tabId} className="shrink-0">
+            {renderKioskReorderableHeaderTab(tabId, reorderableTabContext)}
           </span>
-          <span className="text-white/70">
-            通話ID: <span className="font-mono text-white/90">{formatKey(clientId)}</span>
-          </span>
-        </Row>
-        <nav className="flex items-center gap-1 min-w-0 flex-nowrap overflow-x-auto whitespace-nowrap">
-          {navTabOrder.map((tabId) => (
-            <span key={tabId} className="shrink-0">
-              {renderKioskReorderableHeaderTab(tabId, reorderableTabContext)}
-            </span>
-          ))}
+        ))}
+      </nav>
+      <div className="flex shrink-0 flex-col gap-1.5 border-l border-inv-line pl-5">
+        <div className="flex h-11 items-center gap-1.5">
           <button
             type="button"
             onClick={() => setShowSignagePreview(true)}
-            className="shrink-0 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md px-3 py-2 text-sm font-semibold transition-colors"
+            className={utilityClass}
           >
             サイネージ
           </button>
-          <Link
-            to="/login"
-            state={{ from: { pathname: '/admin' }, forceLogin: true }}
-            className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white rounded-md p-2 text-sm font-semibold transition-colors"
-            aria-label="管理コンソール"
-            title="管理コンソール"
-          >
-            <GearIcon />
-          </Link>
           <button
+            type="button"
             onClick={onOpenSupport}
-            className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white rounded-md px-3 py-2 text-sm font-semibold transition-colors"
+            className={utilityClass}
             aria-label="お問い合わせ"
           >
             お問い合わせ
           </button>
-        </nav>
-      </Row>
+        </div>
+        <div className="flex h-11 items-center gap-1.5">
+          <KioskClientStatusChip clientKey={clientKey} clientId={clientId} clientStatus={clientStatus} />
+          <Link
+            to="/login"
+            state={{ from: { pathname: '/admin' }, forceLogin: true }}
+            className={utilityClass}
+            aria-label="管理コンソール"
+            title="管理コンソール"
+          >
+            管理
+          </Link>
+          <button
+            type="button"
+            onClick={() => setShowPowerMenu(true)}
+            className={`${utilityClass} w-11 !px-0 hover:border-inv-red hover:text-inv-red`}
+            aria-label="電源メニュー"
+            title="電源メニュー"
+          >
+            <PowerIcon />
+          </button>
+        </div>
+      </div>
       <KioskPowerMenuModal
         isOpen={showPowerMenu}
         onClose={() => setShowPowerMenu(false)}

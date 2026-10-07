@@ -1,6 +1,6 @@
 import { DEFAULT_KIOSK_HEADER_TAB_ORDER, normalizeKioskHeaderTabOrder } from '@raspi-system/shared-types';
 import clsx from 'clsx';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 
 import { getResolvedClientKey, setClientKeyHeader } from '../api/client';
@@ -37,6 +37,8 @@ import {
 } from '../features/nfc/nfcRuntimeContract';
 import { useKioskBottomRightHeaderReveal } from '../hooks/useKioskBottomRightHeaderReveal';
 
+import type { TimedHoverRevealCloseReason } from '../hooks/useTimedHoverReveal';
+
 export function KioskLayout() {
   const clientKey = getResolvedClientKey();
   const callTargetsQuery = useKioskCallTargets();
@@ -58,7 +60,37 @@ export function KioskLayout() {
   const [noticeScheduledAt, setNoticeScheduledAt] = useState<{ runId: string; scheduledAt: string } | null>(null);
   const immersiveKioskLayout = usesKioskImmersiveLayout(location.pathname);
   const planningBoardRoute = location.pathname.replace(/\/$/, '') === '/kiosk/production-schedule/planning-board';
-  const headerReveal = useKioskBottomRightHeaderReveal(immersiveKioskLayout);
+  const headerRef = useRef<HTMLElement>(null);
+  const handleRef = useRef<HTMLButtonElement>(null);
+  // キーボードでドック内を操作している間は、マウスが離れても自動では閉じない。
+  const canCloseDock = useCallback((reason: TimedHoverRevealCloseReason = 'manual') => !showSupportModal &&
+    !headerRef.current?.querySelector('[data-kiosk-dock-overlay="true"]') &&
+    !(reason === 'timer' && headerRef.current?.querySelector(':focus-visible')), [showSupportModal]);
+  const headerReveal = useKioskBottomRightHeaderReveal(true, canCloseDock);
+  const closeDock = headerReveal.close;
+
+  useEffect(() => {
+    if (!headerReveal.isVisible) return;
+    const dismissDock = (returnFocus = false) => {
+      if (!canCloseDock()) return;
+      const restoreFocus = returnFocus && headerRef.current?.contains(document.activeElement);
+      closeDock();
+      if (restoreFocus) requestAnimationFrame(() => handleRef.current?.focus());
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') dismissDock(true);
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node &&
+        !headerRef.current?.contains(event.target) && !handleRef.current?.contains(event.target)) dismissDock();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [headerReveal.isVisible, closeDock, canCloseDock]);
   const navTabOrder = normalizeKioskHeaderTabOrder(
     kioskConfig?.navTabOrder ?? DEFAULT_KIOSK_HEADER_TAB_ORDER
   );
@@ -227,28 +259,43 @@ export function KioskLayout() {
       {deployStatus?.preNotice ? (
         <KioskDeployPreNotice runId={preNoticeRunId} scheduledAt={preNoticeScheduledAt} />
       ) : null}
-      {immersiveKioskLayout ? (
-        <div
-          className={KIOSK_IMMERSIVE_HEADER_HOT_ZONE_CLASS}
-          onMouseEnter={headerReveal.onHotZoneEnter}
-          aria-hidden
-        />
-      ) : null}
+      <div
+        className={KIOSK_IMMERSIVE_HEADER_HOT_ZONE_CLASS}
+        onMouseEnter={headerReveal.onHotZoneEnter}
+        onMouseLeave={headerReveal.onHeaderMouseLeave}
+        aria-hidden
+      />
+      <button
+        ref={handleRef}
+        type="button"
+        hidden={headerReveal.isVisible}
+        className="fixed bottom-0 right-4 z-40 [&[hidden]]:hidden flex h-6 w-14 items-center justify-center rounded-t-lg border border-b-0 border-inv-faint bg-inv-s3 text-inv-text opacity-[.85] hover:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inv-cyan"
+        aria-label="メニューを開く"
+        aria-expanded={headerReveal.isVisible}
+        aria-controls="kiosk-dock"
+        onMouseEnter={headerReveal.onHotZoneEnter}
+        onMouseLeave={headerReveal.onHeaderMouseLeave}
+        onClick={headerReveal.onHotZoneEnter}
+      >
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="m6 15 6-6 6 6" />
+        </svg>
+      </button>
       <header
+        ref={headerRef}
+        id="kiosk-dock"
+        aria-hidden={!headerReveal.isVisible}
+        {...(!headerReveal.isVisible ? { inert: '' } : {})}
         className={clsx(
-          'shrink-0 bg-slate-900/80 px-4 py-3 backdrop-blur',
-          !immersiveKioskLayout && 'border-b border-white/10',
-          immersiveKioskLayout && KIOSK_IMMERSIVE_HEADER_BORDER_CLASS,
-          immersiveKioskLayout && KIOSK_IMMERSIVE_HEADER_FIXED_CLASS,
-          immersiveKioskLayout &&
-            !headerReveal.isVisible &&
-            KIOSK_IMMERSIVE_HEADER_HIDDEN_TRANSFORM_CLASS,
-          immersiveKioskLayout &&
-            headerReveal.isVisible &&
-            KIOSK_IMMERSIVE_HEADER_VISIBLE_TRANSFORM_CLASS
+          'shrink-0 bg-inv-bg px-5 py-[14px]',
+          KIOSK_IMMERSIVE_HEADER_BORDER_CLASS,
+          KIOSK_IMMERSIVE_HEADER_FIXED_CLASS,
+          headerReveal.isVisible
+            ? KIOSK_IMMERSIVE_HEADER_VISIBLE_TRANSFORM_CLASS
+            : KIOSK_IMMERSIVE_HEADER_HIDDEN_TRANSFORM_CLASS
         )}
-        onMouseEnter={immersiveKioskLayout ? headerReveal.onHeaderMouseEnter : undefined}
-        onMouseLeave={immersiveKioskLayout ? headerReveal.onHeaderMouseLeave : undefined}
+        onMouseEnter={headerReveal.onHeaderMouseEnter}
+        onMouseLeave={headerReveal.onHeaderMouseLeave}
       >
         <KioskHeader
           clientKey={clientKey}
