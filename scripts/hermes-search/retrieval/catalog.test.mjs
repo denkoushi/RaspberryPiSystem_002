@@ -29,3 +29,38 @@ test('the nonconformity loader stays compatible and unknown source ids fail', ()
   assert.deepEqual(loadCatalog(['nonconformity'])[0], loadNonconformityCatalog());
   assert.throws(() => loadCatalog(['constructor']), { message: 'unknown retrieval source: constructor' });
 });
+
+
+test('training catalogs derive identifiers, employee facets, completion dates and result bodies', () => {
+  const entries = loadCatalog(['torque_training_session', 'torque_training_operator', 'torque_training_team']);
+  assert.deepEqual(entries.map(entry => entry.label), ['訓練セッション', '従業員の訓練集計', 'チームの訓練集計']);
+  for (const entry of entries) {
+    assert.deepEqual(entry.visibility, ['kiosk', 'viewer', 'manager', 'admin']);
+    assert.equal(entry.fields.find(field => field.key === 'summaryText').role, 'body');
+  }
+  assert.equal(entries[0].fields.find(field => field.key === 'sessionId').role, 'identifier');
+  assert.equal(entries[0].fields.find(field => field.key === 'employeeName').role, 'facet');
+  assert.equal(entries[0].fields.find(field => field.key === 'completedOn').role, 'date');
+  assert.equal(entries[1].fields.find(field => field.key === 'lastTrainingOn').role, 'date');
+  assert.equal(entries[1].fields.find(field => field.key === 'employeeCode').role, 'identifier');
+  assert.equal(entries[2].fields.find(field => field.key === 'teamName').role, 'identifier');
+});
+
+test('declared training numbers are never enumerated as value choices', async () => {
+  const { sourceDefinitions } = await import('../hermes-source-definition.mjs');
+  const { buildValueIndex } = await import('./value-index.mjs');
+  const entries = loadCatalog(['torque_training_session', 'torque_training_operator', 'torque_training_team']);
+  const records = entries.map(entry => ({ id: 'synthetic', sourceId: entry.id,
+    ...Object.fromEntries(entry.fields.map(field => [field.key, '83.33333333333334'])),
+  }));
+  const index = buildValueIndex(records, entries);
+  for (const entry of entries) {
+    assert.ok(sourceDefinitions[entry.id].numericFields.length > 0);
+    for (const key of sourceDefinitions[entry.id].numericFields) {
+      assert.deepEqual(entry.fields.find(field => field.key === key), {
+        key, label: sourceDefinitions[entry.id].metadataFields[key], role: 'number', filterable: false, enumerated: false,
+      });
+      assert.equal(Object.hasOwn(index.values[entry.id], key), false);
+    }
+  }
+});

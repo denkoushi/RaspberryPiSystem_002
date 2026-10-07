@@ -3,8 +3,9 @@ import type { Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import {setPriority} from 'node:os';
 import { BusinessHermesMcpService } from './business-hermes-mcp.service.js';
+import { createTorqueTrainingSourceReaders } from '../torque-training/torque-training-hermes-source.service.js';
 import type { KnowledgeProcedureRepositoryPort } from '../knowledge/knowledge-procedure.port.js';
-import { knowledgeProcedureRow, retrievalSourceIdsFromEnv, type RetrievalSourceId, type RetrievalSourceReader } from './hermes-search-sources.js';
+import { knowledgeProcedureRow, registeredSourceReaders, retrievalSourceIdsFromEnv, type RetrievalSourceId } from './hermes-search-sources.js';
 
 export type HermesPageContext = {
   path: string;
@@ -83,6 +84,7 @@ type TrialSettings = {
   refreshSec: number;
   loadRecords?: () => Promise<Array<Record<string, unknown>>>;
   procedures?: KnowledgeProcedureRepositoryPort;
+  createTrainingReaders?: typeof createTorqueTrainingSourceReaders;
 };
 
 const BUSY_ANSWER = '検索が混み合っています。少し待ってからもう一度送信してください。';
@@ -406,12 +408,14 @@ export class HermesSearchTrialService {
 
   private async loadAuthorizedRecords() {
     if (this.settings.loadRecords) return this.settings.loadRecords();
-    const readers: Record<RetrievalSourceId, RetrievalSourceReader> = {
+    let trainingReaders: ReturnType<typeof createTorqueTrainingSourceReaders> | undefined;
+    const readers = registeredSourceReaders({
       nonconformity: () => this.loadNonconformityRecords(),
-      knowledge_procedure: () => this.loadProcedureRecords(),
-    };
+      procedures: () => this.loadProcedureRecords(),
+      training: () => trainingReaders ??= (this.settings.createTrainingReaders ?? createTorqueTrainingSourceReaders)(),
+    }, this.retrievalSources);
     const records: Array<Record<string, unknown>> = [];
-    for (const id of this.retrievalSources) records.push(...await readers[id]());
+    for (const reader of readers) records.push(...await reader());
     return records;
   }
 
