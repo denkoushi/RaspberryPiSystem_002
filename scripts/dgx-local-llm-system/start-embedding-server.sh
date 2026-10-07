@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# 再起動後も同じモデルで起動するよう、設定はファイルに置ける（無ければ下の既定値 = CLIP）
+ENV_FILE="${EMBEDDING_SERVER_ENV_FILE:-/srv/dgx/system-prod/etc/embedding-server.env}"
+if [[ -f "${ENV_FILE}" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "${ENV_FILE}"
+  set +a
+fi
+
 CONTAINER_NAME="${EMBEDDING_CONTAINER_NAME:-system-prod-embedding}"
 IMAGE="${EMBEDDING_SERVER_IMAGE:-lmsysorg/sglang:latest}"
 SCRIPT_PATH="${EMBEDDING_SERVER_SCRIPT_PATH:-/srv/dgx/system-prod/bin/embedding-server.py}"
