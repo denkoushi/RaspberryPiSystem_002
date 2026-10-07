@@ -12,6 +12,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Progress
 
+- [x] (2026-10-07) 本番反映の記録 4: #1779(inline 写真の取り込みと「今すぐ取り込む」の修正)を Pi5 へ反映。merge a7f85ceb(10:08)、Pi5 release run 20261007-011642-ba6c16(10:16→10:21 success、recap ok=268 changed=31 failed=0 unreachable=0)、稼働イメージ api/web a7f85ceb、/・/admin・/kiosk・/api/system/health 200、API エラーログ 0 件。実機確認はユーザー待ち(Outlook からの写真が棚に入ること、「今すぐ取り込む」が動くこと)。
 - [x] (2026-10-07) 実機指摘: PC の Outlook から送った写真が素材棚に入らず、文章の素材に「[cid:…]」だけが残った。Outlook や iPhone メールは写真を Content-ID 付きの inline パートで送るが、resolver は inline 画像を署名ロゴ扱いで捨てていたため。inline でも画像は写真として取り込み(16 KiB 未満の inline 画像だけ除外)、本文から [cid:…] の目印を除き、残りが空なら文章の素材を作らない。Codex(gpt-6.1-sol/high)実装。あわせて、素材棚の「今すぐ取り込む」が「Cannot read properties of undefined (reading 'configPath')」で落ちる不具合(#1696 以来。手動取込ルートが BackupConfigLoader.load を切り離して呼び this を失う)を修正し、回帰テストを追加。
 - [x] (2026-10-07) 本番反映の記録 3: #1771(配置済み素材の再利用)を Pi5 へ反映。merge 0a5dd86a(08:11、追跡セッション不在のためユーザー許可でこのセッションが merge)。main の release-api-image が sharp 0.35.4 の新勧告(GHSA-wq5f-xc86-pv6w)で赤になったため、#1774 で sharp 0.35.5 に更新(merge 7c6a67be、08:38)。Pi5 release run 20261006-234729-189aef(08:47→08:55 success、recap ok=268 changed=31 failed=0 unreachable=0)、稼働イメージ api/web 7c6a67be、/・/admin・/kiosk・/api/system/health 200、API エラーログ 0 件。実機確認はユーザー待ち(素材棚の「配置済み」タブから別の要領書に貼れること)。
 - [x] (2026-10-07) 実機要望: 配置済みの素材も選べるように。API は配置の前提を「捨てていない」だけにし、配置のたびに documentId/placedAt を最後の配置先で上書き(画像は毎回新しい asset をコピー、捨てた素材は 409)。エディタから開く素材棚にも「配置済み」タブを出して配置・差し替えに使え、配置済みタブでは「配置を取り消す」を出さない。未配置の件数(貼り忘れの目安)の意味は維持。Codex(gpt-6.1-sol/high)実装。
