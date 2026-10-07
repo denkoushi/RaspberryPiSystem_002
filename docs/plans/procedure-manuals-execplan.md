@@ -12,6 +12,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Progress
 
+- [x] (2026-10-07) 要望: PDF も素材として取り込む。`application/pdf`(汎用 MIME + .pdf を含む、10 MB 以下)の添付を、既存の Poppler ページ描画(1〜20 ページ、暗号化は不可)で各ページ JPEG にし、ページごとに写真素材として保存(題名「ヒント (p1/3)」、ファイル名「名前 p1.jpg」、ページ単位の重複キー)。描画失敗は除外理由として表示。Excel は要望取り下げ(取込は非対応のまま)。Codex(gpt-6.1-sol/high)実装。
 - [x] (2026-10-07) 実機指摘: Gmail に対象メールが 2 通あるのに「今すぐ取り込む」が全部 0 件・理由なしで原因が分からなかった。手動実行は 5 分の再試行待ちに当たると黙って飛ばし、見つけた件数も表示せず、定期実行の結果もログに出ないため。手動実行は再試行待ちを無視し、結果に「見つけた N 通・再試行待ち N 通」と理由を表示、定期実行の結果(件数と各メールの status/reason)を構造化ログに出す。取込履歴 DB で判明した原因は、Outlook が添付 PNG を汎用 MIME で送り「対応外の添付」になっていたこと(もう 1 通は PDF で仕様どおり対象外)。MIME が汎用なら拡張子で写真/動画の種類を決め、中身は従来どおり検証する。Codex(gpt-6.1-sol/high)実装。
 - [x] (2026-10-07) 本番反映の記録 4: #1779(inline 写真の取り込みと「今すぐ取り込む」の修正)を Pi5 へ反映。merge a7f85ceb(10:08)、Pi5 release run 20261007-011642-ba6c16(10:16→10:21 success、recap ok=268 changed=31 failed=0 unreachable=0)、稼働イメージ api/web a7f85ceb、/・/admin・/kiosk・/api/system/health 200、API エラーログ 0 件。実機確認はユーザー待ち(Outlook からの写真が棚に入ること、「今すぐ取り込む」が動くこと)。
 - [x] (2026-10-07) 実機指摘: PC の Outlook から送った写真が素材棚に入らず、文章の素材に「[cid:…]」だけが残った。Outlook や iPhone メールは写真を Content-ID 付きの inline パートで送るが、resolver は inline 画像を署名ロゴ扱いで捨てていたため。inline でも画像は写真として取り込み(16 KiB 未満の inline 画像だけ除外)、本文から [cid:…] の目印を除き、残りが空なら文章の素材を作らない。Codex(gpt-6.1-sol/high)実装。あわせて、素材棚の「今すぐ取り込む」が「Cannot read properties of undefined (reading 'configPath')」で落ちる不具合(#1696 以来。手動取込ルートが BackupConfigLoader.load を切り離して呼び this を失う)を修正し、回帰テストを追加。

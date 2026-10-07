@@ -4,12 +4,14 @@ import sharp from 'sharp';
 import type { GmailMessage, GmailMessagePart } from '../backup/gmail-api-client.js';
 
 export const PROCEDURE_MATERIAL_MAX_PHOTO_BYTES = 10 * 1024 * 1024;
+export const PROCEDURE_MATERIAL_MAX_PDF_BYTES = 10 * 1024 * 1024;
 export const PROCEDURE_VIDEO_MAX_BYTES = 25 * 1024 * 1024;
 const VIDEO_FORMATS = new Set(['video/mp4', 'video/quicktime', 'video/3gpp', 'video/x-m4v']);
 const PHOTO_FORMATS: Record<string, string> = { 'image/jpeg': 'jpeg', 'image/png': 'png', 'image/webp': 'webp' };
 const ATTACHMENT_EXTENSION_CONTENT_TYPES: Record<string, string> = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp',
   mp4: 'video/mp4', mov: 'video/quicktime', '3gp': 'video/3gpp', m4v: 'video/x-m4v',
+  pdf: 'application/pdf',
 };
 const INLINE_PHOTO_MIN_BYTES = 16 * 1024;
 export type ProcedureMaterialAttachmentClient = { getAttachment: (messageId: string, attachmentId: string) => Promise<Buffer> };
@@ -17,7 +19,8 @@ export type ProcedureMaterialPhoto = {
   gmailDedupeKey: string; filename: string; buffer: Buffer; sha256: string; contentType: string; width: number; height: number;
 };
 export type ProcedureMaterialVideo = Pick<ProcedureMaterialPhoto, 'gmailDedupeKey' | 'filename' | 'buffer' | 'sha256' | 'contentType'>;
-export type ProcedureMaterialPacket = { text: string | null; photos: ProcedureMaterialPhoto[]; videos: ProcedureMaterialVideo[]; duplicate: number; skippedAttachments: number; warnings: string[] };
+export type ProcedureMaterialPdf = Pick<ProcedureMaterialPhoto, 'gmailDedupeKey' | 'filename' | 'buffer' | 'sha256'>;
+export type ProcedureMaterialPacket = { text: string | null; photos: ProcedureMaterialPhoto[]; videos: ProcedureMaterialVideo[]; pdfs: ProcedureMaterialPdf[]; duplicate: number; skippedAttachments: number; warnings: string[] };
 
 export function materialMessageHeader(message: GmailMessage, name: string): string {
   return message.payload?.headers?.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? '';
@@ -26,7 +29,7 @@ export function materialMessageHeader(message: GmailMessage, name: string): stri
 export function resolveAttachmentContentType(mime: string | undefined, filename: string): string {
   const contentType = mime?.trim().toLowerCase() ?? '';
   if (contentType && contentType !== 'application/octet-stream' && contentType !== 'binary/octet-stream') return contentType;
-  const extension = /\.(png|jpe?g|webp|mp4|mov|3gp|m4v)$/.exec(filename.trim().toLowerCase())?.[1] ?? '';
+  const extension = /\.(png|jpe?g|webp|mp4|mov|3gp|m4v|pdf)$/.exec(filename.trim().toLowerCase())?.[1] ?? '';
   return ATTACHMENT_EXTENSION_CONTENT_TYPES[extension] ?? contentType;
 }
 
@@ -78,7 +81,7 @@ export function stripCidPlaceholders(text: string): string {
 export async function resolveProcedureMaterialGmailPacket(params: {
   message: GmailMessage; client: ProcedureMaterialAttachmentClient; savedKeys?: ReadonlySet<string>;
 }): Promise<ProcedureMaterialPacket> {
-  const packet: ProcedureMaterialPacket = { text: null, photos: [], videos: [], duplicate: 0, skippedAttachments: 0, warnings: [] };
+  const packet: ProcedureMaterialPacket = { text: null, photos: [], videos: [], pdfs: [], duplicate: 0, skippedAttachments: 0, warnings: [] };
   const plain: GmailMessagePart[] = [];
   const html: GmailMessagePart[] = [];
   const attachments: Array<{ part: GmailMessagePart; path: string; inline: boolean }> = [];
@@ -88,7 +91,7 @@ export async function resolveProcedureMaterialGmailPacket(params: {
     const attached = disposition.startsWith('attachment');
     const inline = disposition.startsWith('inline') || (!attached && !!contentId);
     const mime = resolveAttachmentContentType(part.mimeType, part.filename ?? '');
-    if (inline && mime && PHOTO_FORMATS[mime]) {
+    if (inline && mime && (PHOTO_FORMATS[mime] || mime === 'application/pdf')) {
       attachments.push({ part, path, inline });
       return;
     }
@@ -118,6 +121,19 @@ export async function resolveProcedureMaterialGmailPacket(params: {
     const filename = part.filename?.normalize('NFC').trim() || 'photo';
     const contentType = resolveAttachmentContentType(part.mimeType, filename);
     const key = `${params.message.id}:${createHash('sha256').update(`${filename}\n${part.partId ?? path}`).digest('hex')}`;
+    if (contentType === 'application/pdf') {
+      if ((part.body?.size ?? 0) > PROCEDURE_MATERIAL_MAX_PDF_BYTES) {
+        packet.skippedAttachments++; packet.warnings.push(`${filename}: 10 MB超過`); continue;
+      }
+      // PDF deduplication uses page keys after rendering in ingestion.
+      // eslint-disable-next-line no-await-in-loop
+      const buffer = await bytes(part);
+      if (buffer.length > PROCEDURE_MATERIAL_MAX_PDF_BYTES) {
+        packet.skippedAttachments++; packet.warnings.push(`${filename}: 10 MB超過`); continue;
+      }
+      packet.pdfs.push({ gmailDedupeKey: key, filename, buffer, sha256: createHash('sha256').update(buffer).digest('hex') });
+      continue;
+    }
     if (VIDEO_FORMATS.has(contentType)) {
       if ((part.body?.size ?? 0) > PROCEDURE_VIDEO_MAX_BYTES) {
         packet.skippedAttachments++; packet.warnings.push(`${filename}: 25 MB超過`); continue;
