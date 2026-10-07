@@ -367,11 +367,11 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   const addOverlay = useCallback((kind: 'TEXT' | 'SHAPE') => {
     if (readOnly || busy) return;
     // Toolbar creation uses a visible starter box; range creation retains OCR/cropping.
-    const element = createOverlayForRange(kind, selectedPageIndex, { xRatio: 0.25, yRatio: 0.25, widthRatio: 0.3, heightRatio: 0.15 });
+    const element = createOverlayForRange(kind, selectedPageIndex, { xRatio: 0.25, yRatio: 0.25, widthRatio: 0.3, heightRatio: 0.15 }, elements);
     dispatch({ type: 'add', element });
     setSelectedOverlayId(element.id);
     setSelectionMode(false);
-  }, [busy, readOnly, selectedPageIndex]);
+  }, [busy, readOnly, selectedPageIndex, elements]);
 
   return {
     onEditLeaseError,

@@ -12,7 +12,7 @@ vi.mock('../../../api/client', () => ({ resolveProcedureManualApprover: approval
 vi.mock('../../kiosk/inventory/setup/useArmedNfcRead', () => ({ useArmedNfcRead: (armed: boolean) => armed ? approvalMocks.read : null }));
 
 vi.mock('./AssemblyProcedureDocumentEditorCanvas', () => ({
-  AssemblyProcedureDocumentEditorCanvas: () => <div aria-label="手順書キャンバス" data-testid="editor-canvas" />
+  AssemblyProcedureDocumentEditorCanvas: ({ elements }: { elements: AssemblyProcedureOverlayElement[] }) => <div aria-label="手順書キャンバス" data-testid="editor-canvas" data-elements={elements.map(element => element.id).join(",")} />
 }));
 vi.mock('../KioskDocumentPageImage', () => ({ KioskDocumentPageImage: () => <span /> }));
 vi.mock('../procedure-manuals/ProcedureMaterialShelfDialog', () => ({
@@ -151,7 +151,64 @@ function renderScreen(controller: AssemblyProcedureDocumentEditorController, onN
 }
 
 describe('AssemblyProcedureDocumentEditorScreen', () => {
-  beforeEach(() => { approvalMocks.read = null; approvalMocks.resolve.mockReset(); });
+  beforeEach(() => { localStorage.clear(); approvalMocks.read = null; approvalMocks.resolve.mockReset(); });
+  it('closes and reopens the parts pane and persists its state', () => {
+    const view = renderScreen(makeController());
+    expect(screen.getByRole('listbox', { name: 'このページの部品' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '部品を閉じる' }));
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(screen.getByTestId('assembly-document-editor-layout')).toHaveClass('grid-cols-[120px_0_minmax(0,1fr)_64px]');
+    expect(localStorage.getItem('assembly-document-editor-parts-pane')).toBe('closed');
+    view.unmount();
+    renderScreen(makeController());
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '部品を開く' }));
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    expect(localStorage.getItem('assembly-document-editor-parts-pane')).toBe('open');
+  });
+
+  it.each(['getItem', 'setItem'] as const)('keeps pane controls usable when storage %s fails', method => {
+    const storage = vi.spyOn(Storage.prototype, method).mockImplementation(() => { throw new Error('storage unavailable'); });
+    try {
+      renderScreen(makeController());
+      fireEvent.click(screen.getByRole('button', { name: '部品を閉じる' }));
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    } finally { storage.mockRestore(); }
+  });
+
+  it('hides only the canvas element, clears selection and lets the hidden part be shown again', () => {
+    const element: AssemblyProcedureOverlayElement = { id: 'part', kind: 'SHAPE', shape: 'RECTANGLE', pageIndex: 0, zIndex: 2, bbox: { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.2 } };
+    const controller = makeController({ elements: [element], selectedPageElements: [element], selectedOverlayId: element.id, selectedElement: element });
+    renderScreen(controller);
+    expect(screen.getByTestId('editor-canvas')).toHaveAttribute('data-elements', 'part');
+    fireEvent.click(screen.getByRole('button', { name: '隠す' }));
+    expect(screen.getByTestId('editor-canvas')).toHaveAttribute('data-elements', '');
+    expect(controller.setSelectedOverlayId).toHaveBeenCalledExactlyOnceWith(null);
+    const row = screen.getByRole('option');
+    expect(row).toHaveClass('opacity-40');
+    expect(within(row).getByTestId('assembly-procedure-overlay-part')).toBeInTheDocument();
+    expect(within(screen.getByRole('complementary', { name: '手順書ページ一覧' })).getByTestId('assembly-procedure-overlay-part')).toBeInTheDocument();
+    fireEvent.click(row);
+    expect(controller.setSelectedOverlayId).toHaveBeenLastCalledWith('part');
+    fireEvent.click(screen.getByRole('button', { name: '出す' }));
+    expect(screen.getByTestId('editor-canvas')).toHaveAttribute('data-elements', 'part');
+    expect(row).not.toHaveClass('opacity-40');
+    expect(controller.elements).toEqual([element]);
+  });
+
+  it.each(['page', 'document'] as const)('clears temporary hiding after a %s change', change => {
+    const element: AssemblyProcedureOverlayElement = { id: 'part', kind: 'SHAPE', shape: 'RECTANGLE', pageIndex: 0, zIndex: 2, bbox: { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.2 } };
+    const controller = makeController({ elements: [element], selectedPageElements: [element], selectedOverlayId: element.id });
+    const view = renderScreen(controller);
+    fireEvent.click(screen.getByRole('button', { name: '隠す' }));
+    expect(screen.getByTestId('editor-canvas')).toHaveAttribute('data-elements', '');
+    const next = change === 'page' ? { ...controller, selectedPageIndex: 1, selectedPage: { ...controller.selectedPage!, pageIndex: 1 }, selectedPageElements: [] } : { ...controller, document: { ...editorDocument, id: 'document-2' } };
+    view.rerender(<AssemblyProcedureDocumentEditorProvider value={next}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} /></AssemblyProcedureDocumentEditorProvider>);
+    view.rerender(<AssemblyProcedureDocumentEditorProvider value={{ ...controller, document: next.document }}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} /></AssemblyProcedureDocumentEditorProvider>);
+    expect(screen.getByTestId('editor-canvas')).toHaveAttribute('data-elements', 'part');
+    expect(screen.getByRole('option')).not.toHaveClass('opacity-40');
+  });
+
   it('connects front and back inspector controls to the controller', () => {
     const element: AssemblyProcedureOverlayElement = {
       id: 'overlay', kind: 'SHAPE', shape: 'RECTANGLE', pageIndex: 0, zIndex: 0,
@@ -170,9 +227,9 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     expect(screen.getByText('DFD1 › 組立 › 組立 › 組立手順書')).toBeInTheDocument();
     expect(screen.getByText(label)).toHaveClass(color);
     const actions = within(screen.getByRole('navigation', { name: 'エディタ操作' })).getAllByRole('button');
-    expect(actions[0]).toHaveAttribute('aria-label', '保存');
+    expect(actions[0]).toHaveAttribute('aria-label', '保存する');
     expect(actions.at(-1)).toHaveAttribute('aria-label', '工房へ戻る');
-    expect(actions.at(-2)).toHaveAttribute('aria-label', supersedesDocumentId ? '改版を破棄' : '削除');
+    expect(actions.at(-2)).toHaveAttribute('aria-label', supersedesDocumentId ? '改版を破棄する' : '削除する');
   });
 
   it.each([401, 403])('connects video link save failure %s to controller revocation', async status => {
@@ -181,7 +238,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     const onEditLeaseError = vi.fn(() => true);
     const controller = makeController({ onEditLeaseError });
     render(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} /></AssemblyProcedureDocumentEditorProvider>);
-    fireEvent.click(screen.getByRole('button', { name: '動画' }));
+    fireEvent.click(screen.getByRole('button', { name: '動画をつなぐ' }));
     await waitFor(() => expect(screen.getByRole('button', { name: '紐づけを保存' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: '紐づけを保存' }));
     await waitFor(() => expect(onEditLeaseError).toHaveBeenCalledWith(error));
@@ -198,22 +255,22 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
   it('shows deletion only for DRAFT and requires irreversible deletion confirmation', () => {
     const deleteDocument = vi.fn(async () => undefined);
     const view = renderScreen(makeController({ deleteDocument }));
-    fireEvent.click(screen.getByRole('button', { name: '削除' }));
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
     expect(screen.getByText('この要領書を削除します。元に戻せません')).toBeInTheDocument();
     expect(deleteDocument).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '削除する' }));
     expect(deleteDocument).toHaveBeenCalledOnce();
     view.rerender(<AssemblyProcedureDocumentEditorProvider value={makeController({ document: { ...editorDocument, status: 'published' }, readOnly: true })}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} /></AssemblyProcedureDocumentEditorProvider>);
-    expect(screen.queryByRole('button', { name: '削除' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '削除する' })).not.toBeInTheDocument();
     view.rerender(<AssemblyProcedureDocumentEditorProvider value={makeController({ document: { ...editorDocument, supersedesDocumentId: 'root-1' } })}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} /></AssemblyProcedureDocumentEditorProvider>);
-    expect(screen.queryByRole('button', { name: '削除' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '削除する' })).not.toBeInTheDocument();
   });
 
   it('disables deletion while busy or read only', () => {
     const view = renderScreen(makeController({ busy: true }));
-    expect(screen.getByRole('button', { name: '削除' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '削除する' })).toBeDisabled();
     view.rerender(<AssemblyProcedureDocumentEditorProvider value={makeController({ readOnly: true })}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} /></AssemblyProcedureDocumentEditorProvider>);
-    expect(screen.getByRole('button', { name: '削除' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '削除する' })).toBeDisabled();
   });
 
   it('runs blank-page addition from the page list', () => {
@@ -225,7 +282,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
   it('opens the material selector and places the selected material', async () => {
     const placeMaterial = vi.fn(async () => undefined);
     renderScreen(makeController({ placeMaterial }));
-    fireEvent.click(screen.getByRole('button', { name: '素材' }));
+    fireEvent.click(screen.getByRole('button', { name: '素材を置く' }));
     expect(screen.getByRole('dialog', { name: '素材' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '配置' }));
     await waitFor(() => expect(placeMaterial).toHaveBeenCalledWith({ id: 'material', kind: 'PHOTO' }));
@@ -260,7 +317,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
       id: 'image', kind: 'IMAGE', assetId: 'old', pageIndex: 0, zIndex: 2,
       bbox: { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.4 }
     } }));
-    fireEvent.click(screen.getByRole('button', { name: mode === 'replace' ? '素材から差し替え' : '素材' }));
+    fireEvent.click(screen.getByRole('button', { name: mode === 'replace' ? '素材から差し替え' : '素材を置く' }));
     fireEvent.click(within(screen.getByRole('dialog', { name: '素材' })).getByRole('button', { name: '配置済み素材を選択' }));
     await waitFor(() => expect(mode === 'replace' ? replaceSelectedImageMaterial : placeMaterial).toHaveBeenCalledExactlyOnceWith({ id: 'placed-material', kind: 'PHOTO', documentId: 'old-document', placedAt: '2026-10-05T04:00:00Z' }));
     expect(mode === 'replace' ? placeMaterial : replaceSelectedImageMaterial).not.toHaveBeenCalled();
@@ -278,7 +335,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     await waitFor(() => expect(replaceSelectedImageMaterial).toHaveBeenCalledWith({ id: 'material', kind: 'PHOTO' }));
     expect(placeMaterial).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
-    fireEvent.click(screen.getByRole('button', { name: '素材' }));
+    fireEvent.click(screen.getByRole('button', { name: '素材を置く' }));
     fireEvent.click(within(screen.getByRole('dialog', { name: '素材' })).getByRole('button', { name: '配置' }));
     await waitFor(() => expect(placeMaterial).toHaveBeenCalledWith({ id: 'material', kind: 'PHOTO' }));
     expect(replaceSelectedImageMaterial).toHaveBeenCalledOnce();
@@ -289,7 +346,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     renderScreen(makeController());
     const layout = screen.getByTestId('assembly-document-editor-layout');
     expect(layout).toHaveClass(
-      'grid-cols-[120px_minmax(0,1fr)_64px]',
+      'grid-cols-[120px_280px_minmax(0,1fr)_64px]',
       'overflow-hidden'
     );
     expect(screen.getByTestId('editor-canvas')).toBeVisible();
@@ -300,20 +357,20 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     const navigateBack = vi.fn();
     const confirmNavigation = vi.fn(() => true);
     renderScreen(makeController({ isDirty: true, navigateBack, confirmNavigation }));
-    fireEvent.click(screen.getByRole('button', { name: '一覧へ' }));
+    fireEvent.click(screen.getByRole('button', { name: '一覧へ戻る' }));
     expect(navigateBack).toHaveBeenCalledTimes(1);
   });
 
   it('requires explicit confirmation before publishing', () => {
     const publish = vi.fn(async () => undefined);
     renderScreen(makeController({ publish }));
-    fireEvent.click(screen.getByRole('button', { name: '公開' }));
+    fireEvent.click(screen.getByRole('button', { name: '公開する' }));
     expect(screen.getByRole('dialog', { name: '手順書を公開' })).toBeInTheDocument();
     expect(screen.getByText(/公開すると/)).toBeInTheDocument();
     expect(publish).not.toHaveBeenCalled();
     expect(screen.getByRole('radio', { name: '社員タグで承認して公開' })).toBeChecked();
     fireEvent.click(screen.getByRole('radio', { name: 'パスワードで公開(締付テンプレート向け)' }));
-    fireEvent.click(screen.getByRole('button', { name: '公開する' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: '手順書を公開' })).getByRole('button', { name: '公開する' }));
     expect(publish).toHaveBeenCalledTimes(1);
   });
 
@@ -322,7 +379,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     const publish = vi.fn(async () => true);
     const controller = makeController({ publish });
     const view = renderScreen(controller);
-    fireEvent.click(screen.getByRole('button', { name: '公開' }));
+    fireEvent.click(screen.getByRole('button', { name: '公開する' }));
     expect(screen.getByRole('button', { name: '承認して公開する' })).toBeDisabled();
     approvalMocks.read = { uid: 'TAG' };
     view.rerender(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} /></AssemblyProcedureDocumentEditorProvider>);
@@ -342,9 +399,9 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
 
   it('disables editing actions in read-only mode while retaining accessible labels', () => {
     renderScreen(makeController({ readOnly: true, canPublish: false }));
-    expect(screen.getByRole('button', { name: '範囲' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '公開' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '範囲を選ぶ' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '保存する' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '公開する' })).toBeDisabled();
     expect(screen.getByRole('region', { name: '手順書キャンバス' })).toBeInTheDocument();
   });
 
@@ -371,17 +428,18 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     const c = makeController({ canSave: true, canUndo: true, canRedo: true, selectionMode: true, selectedElement: { id: 'text', kind: 'TEXT', pageIndex: 0, text: '文字', zIndex: 0, bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.2, heightRatio: 0.2 } } });
     renderScreen(c);
     const rail = screen.getByRole('navigation', { name: 'エディタ操作' });
-    expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['保存', '公開', '素材', '動画', '文字', '図形', '範囲', '元に戻す', 'やり直す', '削除', '一覧へ']);
+    expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['保存する', '公開する', '素材を置く', '動画をつなぐ', '文字を置く', '図形を置く', '範囲を選ぶ', '元に戻す', 'やり直す', '削除する', '一覧へ戻る']);
     expect(rail).toHaveClass('pb-[84px]');
-    expect(screen.getByRole('button', { name: '一覧へ' })).toHaveClass('!border-transparent', '!text-[#9fadb9]');
-    expect(screen.getByRole('button', { name: '削除' })).toHaveClass('!border-transparent', '!text-[#e5484d]');
-    expect(screen.getByRole('button', { name: '保存' })).toHaveAttribute('data-kiosk-sop-target', 'assembly-document-editor-save');
-    expect(screen.getByRole('button', { name: '公開' })).toHaveAttribute('data-kiosk-sop-target', 'assembly-document-editor-publish');
-    expect(screen.getByRole('button', { name: '範囲' })).toHaveAttribute('data-kiosk-sop-target', 'assembly-document-editor-range-add');
-    expect(screen.getByRole('button', { name: '範囲' })).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.click(screen.getByRole('button', { name: '文字' }));
+    for (const button of within(rail).getAllByRole('button')) expect(button).not.toHaveAttribute('title');
+    expect(screen.getByRole('button', { name: '一覧へ戻る' })).toHaveClass('!border-transparent', '!text-[#9fadb9]');
+    expect(screen.getByRole('button', { name: '削除する' })).toHaveClass('!border-transparent', '!text-[#e5484d]');
+    expect(screen.getByRole('button', { name: '保存する' })).toHaveAttribute('data-kiosk-sop-target', 'assembly-document-editor-save');
+    expect(screen.getByRole('button', { name: '公開する' })).toHaveAttribute('data-kiosk-sop-target', 'assembly-document-editor-publish');
+    expect(screen.getByRole('button', { name: '範囲を選ぶ' })).toHaveAttribute('data-kiosk-sop-target', 'assembly-document-editor-range-add');
+    expect(screen.getByRole('button', { name: '範囲を選ぶ' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '文字を置く' }));
     expect(c.addOverlay).toHaveBeenCalledWith('TEXT');
-    fireEvent.click(screen.getByRole('button', { name: '図形' }));
+    fireEvent.click(screen.getByRole('button', { name: '図形を置く' }));
     expect(c.addOverlay).toHaveBeenCalledWith('SHAPE');
     fireEvent.click(screen.getByRole('button', { name: '元に戻す' }));
     fireEvent.click(screen.getByRole('button', { name: 'やり直す' }));
@@ -393,11 +451,11 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     renderScreen(makeController({ document: { ...editorDocument, status: 'published' }, readOnly: true }));
     const rail = screen.getByRole('navigation', { name: 'エディタ操作' });
     const actions = within(rail).getAllByRole('button');
-    expect(actions[0]).toHaveAttribute('aria-label', '保存');
-    expect(actions.at(-1)).toHaveAttribute('aria-label', '一覧へ');
+    expect(actions[0]).toHaveAttribute('aria-label', '保存する');
+    expect(actions.at(-1)).toHaveAttribute('aria-label', '一覧へ戻る');
     expect(actions.at(-1)).toBeEnabled();
     expect(rail).toHaveClass('pb-[84px]');
-    expect(within(rail).queryByRole('button', { name: '削除' })).not.toBeInTheDocument();
+    expect(within(rail).queryByRole('button', { name: '削除する' })).not.toBeInTheDocument();
   });
   it.each([false, true])('expires success notifications but keeps errors (error=%s)', (messageIsError) => {
     vi.useFakeTimers();
@@ -423,7 +481,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
       retryEditLease
     }));
     expect(screen.getByRole('status')).toHaveTextContent('編集の予約を取れていません(他端末と同時編集に注意)');
-    expect(screen.getByRole('button', { name: '保存' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '保存する' })).toBeEnabled();
     expect(screen.getByRole('button', { name: '白紙ページを追加' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: '引き継ぐ' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '予約を再取得' }));
@@ -439,7 +497,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
       takeoverEditLease
     }));
     expect(screen.getByText(/組立端末 2が編集中/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '保存する' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '白紙ページを追加' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '引き継ぐ' }));
     expect(screen.getByRole('dialog', { name: '編集を引き継ぐ' })).toBeInTheDocument();

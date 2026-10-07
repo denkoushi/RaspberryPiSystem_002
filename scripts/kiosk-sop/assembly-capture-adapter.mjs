@@ -272,7 +272,8 @@ async function prepareSheet(page, sheetId) {
       await overlayImages.last().waitFor({ state: 'visible' });
       await page.waitForFunction(() => {
         const images = [...document.querySelectorAll('[data-testid="assembly-procedure-overlay-layer"] img[src^="blob:"]')];
-        return images.length === 2 && images.every((image) => image.complete && image.naturalWidth > 0);
+        // The canvas, the page thumbnail and the parts pane each draw the placed image.
+        return images.length >= 2 && images.every((image) => image.complete && image.naturalWidth > 0);
       });
       return;
     }

@@ -87,6 +87,24 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     window.localStorage.clear(); clearProcedureEditorAccess();
   });
 
+  it('places toolbar and range additions above the current page without using other pages z-indices', async () => {
+    const front: AssemblyProcedureOverlayElement = { id: 'front', kind: 'SHAPE', shape: 'RECTANGLE', pageIndex: 0, bbox: range, zIndex: 8 };
+    const hook = renderEditor(makeDocument({ pages: [
+      { pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [front] },
+      { pageIndex: 1, imageRelativePath: '/pages/2.png', overlays: [{ ...front, id: 'other', pageIndex: 1, zIndex: 100 }] }
+    ] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
+    act(() => hook.result.current.addOverlay('TEXT'));
+    expect(hook.result.current.selectedElement?.zIndex).toBe(9);
+    act(() => hook.result.current.handleRangeSelected(range));
+    await act(async () => hook.result.current.createOverlay('SHAPE'));
+    expect(hook.result.current.selectedElement?.zIndex).toBe(10);
+    act(() => hook.result.current.setSelectedPageIndex(1));
+    act(() => hook.result.current.addOverlay('SHAPE'));
+    expect(hook.result.current.selectedElement?.zIndex).toBe(101);
+  });
+
   it('uses valid entrance access without asking or verifying again', async () => {
     saveProcedureEditorAccess('2520');
     const doc = makeDocument(); apiMocks.getDocument.mockResolvedValue(doc); apiMocks.createRevision.mockResolvedValue(doc);
