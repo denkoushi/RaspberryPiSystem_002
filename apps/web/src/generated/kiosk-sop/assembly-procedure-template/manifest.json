@@ -1,14 +1,14 @@
 {
   "artifacts": {
-    "manual.html": "60e4b316ec268da2922ea5211ca34087d2ec3450b20577935a7fec4a677eb29f",
+    "manual.html": "eef390af33b78ed106adf97d041d4bafbbdfd2586ce94426cdb63cac4bb068cd",
     "screens/assembly-document-editor-auth.png": "9c05ff3fc37cadb687fb5795ca982dcc6fb612941b9181329d3c0e406e660411",
-    "screens/assembly-document-editor-conflict.png": "c2804d92f4f6cb9c0cb72797a3fa7601bd0af7094ca14c7385a4e917bc440c93",
-    "screens/assembly-document-editor-image-properties.png": "72223e801d84f8bc16b0f940836af16414e1660a276c4d414cc67a0571d7c24a",
-    "screens/assembly-document-editor-publish.png": "274aba0016ccdedf62817803d3f69c9182448d59722cca162573190417b6db51",
-    "screens/assembly-document-editor-range.png": "81d30e88df9490053c3c430772bc8992c65133c4ade6b0aeb16e9a51fa6d8755",
-    "screens/assembly-document-editor-shape-properties.png": "4d940c9b8ab57d9f7d93b2150e99098f16522dfb0e6a41557898c63744e3f131",
-    "screens/assembly-document-editor-text-properties.png": "550db11bfe2265241a29cb52ee8e97f7de6add4d5b64efc87a9bb46f2eaeb256",
-    "screens/assembly-document-editor-types.png": "81b7a59d86c14599528900b1d8ee25f60ee74992996ae3989c4aebedd1b4808d",
+    "screens/assembly-document-editor-conflict.png": "72215b9f8c6f2e1d670d3da16718cc7c9f7dc5025d8bf64d9be509d0292960d3",
+    "screens/assembly-document-editor-image-properties.png": "6e8cdd2351aefeb509255b3ee94516c183799a69312c49a50399abcab5aad519",
+    "screens/assembly-document-editor-publish.png": "9952ba471e6c88b390b03630c3df327b5ba8a19a157c5e2d08ad6ba388ed6501",
+    "screens/assembly-document-editor-range.png": "9bfac4190d95ac52c5fff5ae54af9bece835194d77ae86a404f5f4b483e5b800",
+    "screens/assembly-document-editor-shape-properties.png": "8bd073efc775ce8d57c19aaf739165b71b3e040e331f2a8d9a44c2051c05e384",
+    "screens/assembly-document-editor-text-properties.png": "055d22fc80b42b6f9d59b8decb204c306454b7652f56f60ec3081501211a5eca",
+    "screens/assembly-document-editor-types.png": "67f69defddab972315de03f25ec311b7e6757131ebc6f0d9c9c27ed0c65cc066",
     "screens/assembly-file-register.png": "300b43b35cdd7ad0877c2f0e8cad04634b64eb8f018d4e771423d077cd7a94cb",
     "screens/assembly-gmail-publish.png": "9eae36c1fe14afc788fef5334bf6f9d04387c7bf769127476989a61b17f4e5f1",
     "screens/assembly-overview.png": "3a3240916bf83b5b1196ebd8ec041cf795506435820b20112fdca49da7be521b",
@@ -20,13 +20,13 @@
     "screens/assembly-template-procedure.png": "896fe9ac6a9a69588081c36f4b1c5b44608e7c5da24bcfdb6ae87f1d5244ea2e",
     "screens/assembly-template-save.png": "5fcefff5419fdd70f13a63bb77f4f75ffae3ab472e6df6db563ffe88fc484b97",
     "sheets/assembly-document-editor-auth.png": "b0e57d853f7b080176943a6f3e469ba925e1e3e93b8ad5ce0792423ae2a11ce1",
-    "sheets/assembly-document-editor-conflict.png": "caf62f59339fe258d5f222bc80d5e152f38ac70cd37dd3bc9298e9009a3e5f42",
-    "sheets/assembly-document-editor-image-properties.png": "4f9caef9150343896170c1c5835737b8e47cfb848a615e7610e21a3772f06b9a",
-    "sheets/assembly-document-editor-publish.png": "d6443fcf02c19ff39711f419ff8c58387c30f6ef861730ae7a515a174d1405fd",
-    "sheets/assembly-document-editor-range.png": "8d6d26843365171d906d0d222cc061f4f2bd573a11a1984ac7c28b5ed8c0aac2",
-    "sheets/assembly-document-editor-shape-properties.png": "9e8f1d62595c46d24612bb44fb17722f124e213e1c86f25a97ebd89bdd123d3e",
-    "sheets/assembly-document-editor-text-properties.png": "531617d392d0e42401e3874b9a3953ad6cf68f06d55e9f1e9e78edd953b08fd0",
-    "sheets/assembly-document-editor-types.png": "11d2f98cd7d1acb72855fabec77afbb7d02f7ce3c895b942e37c84b849628644",
+    "sheets/assembly-document-editor-conflict.png": "f44450c4ea9cd6d53c5be4746aa8fa2d8d6654a25d8fbc8b75e24ffa849349cc",
+    "sheets/assembly-document-editor-image-properties.png": "98e1cffeab2d6244794b40cfc1771a7f680babca15ee7b2b2670d269422a211d",
+    "sheets/assembly-document-editor-publish.png": "05b4cb5c2e8e28e65ca502fc1744cc81c21d29db567f129ee9fceba62e240043",
+    "sheets/assembly-document-editor-range.png": "0a4b4bc602bb809a367d5fa09099ed2524ccd0cfb2b557c0b75a52a5a3c7c2f5",
+    "sheets/assembly-document-editor-shape-properties.png": "6bb55bf283b8ab0e1c226b983d9898e2be736556e5f7f03c2cbe13a1168bc36f",
+    "sheets/assembly-document-editor-text-properties.png": "afe3c1541bab71ea32c3618b1bb82038af8b7a188283e81cdece400681ca1227",
+    "sheets/assembly-document-editor-types.png": "cdc7eeda2383c82630c9d35c7ad0281d64d78eca1e66e2b104e9018bdbfe27c9",
     "sheets/assembly-file-register.png": "cdcd4b3a229895f797aa8844cef6eb909ac6cfbb07119bdaf718fcbc02d83e7c",
     "sheets/assembly-gmail-publish.png": "9251882d99b937ae78c1c5c2b335f69848b9a57f29b5f7f6874698997f317147",
     "sheets/assembly-overview.png": "7f045a68b3736a2e20bc37a2faa0c3c1f2367a7af2ac5b2775db83d11df106fc",
@@ -82,7 +82,7 @@
           "text": "保持内容を再保存"
         },
         "target": {
-          "x": 0.35566892386530014,
+          "x": 0.5606469619326501,
           "y": 0.9466145833333334
         },
         "targetId": "assembly-document-editor-conflict-retry"
@@ -96,7 +96,7 @@
           "text": "最新を再読込（保持内容を破棄）"
         },
         "target": {
-          "x": 0.2676153001464129,
+          "x": 0.4725933382137628,
           "y": 0.9466145833333334
         },
         "targetId": "assembly-document-editor-conflict-reload"
@@ -122,10 +122,10 @@
       {
         "id": "document-editor-publish",
         "semantics": {
-          "ariaLabel": "公開",
+          "ariaLabel": "公開する",
           "role": null,
           "tagName": "button",
-          "text": ""
+          "text": "公開する"
         },
         "target": {
           "x": 0.982796486090776,
@@ -152,10 +152,10 @@
       {
         "id": "document-editor-range-add",
         "semantics": {
-          "ariaLabel": "範囲",
+          "ariaLabel": "範囲を選ぶ",
           "role": null,
           "tagName": "button",
-          "text": ""
+          "text": "範囲を選ぶ"
         },
         "target": {
           "x": 0.982796486090776,
@@ -173,7 +173,7 @@
         },
         "target": {
           "x": 0.9297218155197657,
-          "y": 0.909423828125
+          "y": 0.806884765625
         },
         "targetId": "assembly-document-editor-range-surface"
       }
@@ -226,10 +226,10 @@
       {
         "id": "document-editor-save-text",
         "semantics": {
-          "ariaLabel": "保存",
+          "ariaLabel": "保存する",
           "role": null,
           "tagName": "button",
-          "text": ""
+          "text": "保存する"
         },
         "target": {
           "x": 0.982796486090776,
@@ -499,7 +499,7 @@
       }
     ]
   },
-  "htmlSha256": "60e4b316ec268da2922ea5211ca34087d2ec3450b20577935a7fec4a677eb29f",
+  "htmlSha256": "eef390af33b78ed106adf97d041d4bafbbdfd2586ce94426cdb63cac4bb068cd",
   "schemaVersion": 1,
-  "sourceSha256": "a476a03a12177f738f1e6fa56c0736ecf711826a3cae7b155da2387ae2a1aebd"
+  "sourceSha256": "2930acf246f6cd3217a38706de59e55ced5d7873806225233e236c4b9f747dcc"
 }

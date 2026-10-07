@@ -34,7 +34,7 @@ describe('operation guide definitions', () => {
           expect(resolved).toEqual(reference);
         }
         let targetExists = implementation.some(sourceCode => sourceCode.includes(`data-kiosk-sop-target="${resolved.targetId}"`)
-          || (sourceCode.includes('data-kiosk-sop-target={options.target}') && sourceCode.includes(`target: '${resolved.targetId}'`)));
+          || ((sourceCode.includes('data-kiosk-sop-target={options.target}') || sourceCode.includes('target={options.target}')) && sourceCode.includes(`target: '${resolved.targetId}'`)));
         if (resolved.targetId.startsWith('assembly-document-editor-type-')) {
           const view = render(createElement(AssemblyProcedureOverlayTypeDialog, { isOpen: true, onClose: () => undefined, onSelect: () => undefined }));
           targetExists = Boolean(document.querySelector(`[data-kiosk-sop-target="${resolved.targetId}"]`));
