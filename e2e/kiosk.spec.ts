@@ -3,12 +3,12 @@ import { test, expect } from '@playwright/test';
 import { clickByRoleSafe, closeDialogWithEscape, revealKioskHeader } from './helpers';
 
 test.describe('キオスク画面', () => {
-  test('キオスク初期表示でヘッダーとナビゲーションが見える', async ({ page }) => {
+  test('キオスク初期表示でリビール後にナビゲーションが見える', async ({ page }) => {
     await page.goto('/kiosk');
     // 端末設定により各キオスク初期画面へ遷移するが、ヘッダーナビは共通
     await expect(page).toHaveURL(/\/kiosk(?:\/tag|\/photo|\/production-schedule|\/assembly)?(?:[?#].*)?$/);
     await revealKioskHeader(page);
-    await expect(page.getByText(/キオスク端末/i)).toBeVisible();
+    await expect(page.getByRole('navigation', { name: '画面の切替' })).toBeVisible();
     await expect(page.locator('a[href="/kiosk/tag"], a[href="/kiosk/photo"]').filter({ hasText: '持出' }).first()).toBeVisible();
     await expect(page.locator('a[href="/kiosk/rigging/borrow"]').filter({ hasText: '吊具 持出' }).first()).toBeVisible();
   });
@@ -40,7 +40,7 @@ test.describe('キオスク画面', () => {
     await expect(page).toHaveURL(/\/kiosk\/tag/);
 
     await revealKioskHeader(page);
-    await expect(page.getByText(/キオスク端末/i)).toBeVisible();
+    await expect(page.getByRole('navigation', { name: '画面の切替' })).toBeVisible();
 
     // サイネージボタンをクリックしてモーダルを開く
     const signageButton = page.getByRole('button', { name: 'サイネージ' });

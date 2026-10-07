@@ -1,11 +1,11 @@
 import { KIOSK_REVEAL_TRANSFORM_TRANSITION_CLASS } from '../../hooks/kioskRevealUi';
 
-/** 沉浸式ヘッダー: 右下24×24pxのマウスホットゾーン。 */
+/** キオスク下辺ドック: 右下24×24pxのマウスホットゾーン。 */
 export const KIOSK_IMMERSIVE_HEADER_HOT_ZONE_CLASS =
   'pointer-events-auto fixed bottom-0 right-0 z-40 h-6 w-6';
 
-/** 沉浸式ヘッダー本体の固定配置（下端・全幅）。 */
-export const KIOSK_IMMERSIVE_HEADER_FIXED_CLASS = `fixed bottom-0 right-0 left-0 z-50 shadow-lg ${KIOSK_REVEAL_TRANSFORM_TRANSITION_CLASS}`;
+/** キオスク下辺ドック本体の固定配置（下端・全幅）。 */
+export const KIOSK_IMMERSIVE_HEADER_FIXED_CLASS = `fixed bottom-0 right-0 left-0 z-50 shadow-[0_-12px_32px_rgba(0,0,0,.45)] ${KIOSK_REVEAL_TRANSFORM_TRANSITION_CLASS}`;
 
 /** 非表示時: スライドアウト + ヒットテスト無効（下辺全幅での誤リビール防止）。 */
 export const KIOSK_IMMERSIVE_HEADER_HIDDEN_TRANSFORM_CLASS =
@@ -14,4 +14,4 @@ export const KIOSK_IMMERSIVE_HEADER_VISIBLE_TRANSFORM_CLASS =
   'pointer-events-auto visible translate-y-0';
 
 /** 下端固定時は上辺ボーダーでコンテンツと分離。 */
-export const KIOSK_IMMERSIVE_HEADER_BORDER_CLASS = 'border-t border-white/10';
+export const KIOSK_IMMERSIVE_HEADER_BORDER_CLASS = 'border-t border-inv-line2';
