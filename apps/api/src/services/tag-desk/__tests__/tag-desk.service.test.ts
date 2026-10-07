@@ -81,17 +81,18 @@ describe('TagDeskService organization fields', () => {
     try {
       db.knowledgePositionRank.findMany.mockResolvedValue([
         { positionName: '一般', rank: 'general' }, { positionName: '班長', rank: 'leader' },
-        { positionName: '課長', rank: 'section_chief' }, { positionName: '部長', rank: 'manager' }
+        { positionName: '係長', rank: 'section_chief' }, { positionName: '課長', rank: 'manager' },
+        { positionName: '部長', rank: 'general_manager' }, { positionName: '役員', rank: 'executive' }
       ]);
-      const positions = ['一般', '班長', '課長', '部長', '主事', null];
+      const positions = ['一般', '班長', '係長', '課長', '部長', '役員', '主事', null];
       db.employee.findMany.mockResolvedValue(positions.map((positionName, index) => ({
         id: `employee-${index}`, employeeCode: `000${index}`, displayName: '山田 太郎',
         department: null, section: null, status: 'ACTIVE', nfcTagUid: null, positionName
       })));
       const rows = await service.listRegistry('employee');
       expect(rows.map((row) => row.positionName)).toEqual(positions);
-      expect(rows.map((row) => row.positionApproval)).toEqual(['none', 'approver', 'approver', 'approver', 'unmapped', null]);
-      expect(rows.map((row) => row.record.positionName)).toEqual(['一般', '班長', '課長', '部長', '主事', '']);
+      expect(rows.map((row) => row.positionApproval)).toEqual(['none', 'approver', 'approver', 'approver', 'approver', 'approver', 'unmapped', null]);
+      expect(rows.map((row) => row.record.positionName)).toEqual(['一般', '班長', '係長', '課長', '部長', '役員', '主事', '']);
     } finally {
       vi.unstubAllEnvs();
     }

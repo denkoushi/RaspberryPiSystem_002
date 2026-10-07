@@ -85,7 +85,7 @@ describe.skipIf(!enabled)('Knowledge procedure PostgreSQL contract', () => {
     expect(await repository.listPublished()).toEqual([]);
   });
 
-  it.each(['leader', 'section_chief', 'manager'])('publishes with %s snapshots and supersedes the previous publication', async rank => {
+  it.each(['leader', 'section_chief', 'manager', 'general_manager', 'executive'])('publishes with %s snapshots and supersedes the previous publication', async rank => {
     const reviewer = await employee(rank); const first = await draft(); await repository.submitForApproval(first.revisionId);
     await repository.approve(first.revisionId, reviewer, 'client:test-device', ' 確認済み ');
     const second = await draft(first.procedureId); await repository.submitForApproval(second.revisionId);

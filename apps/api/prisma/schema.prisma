@@ -5252,7 +5252,7 @@ model MachineSignalImportRun {
 
 model KnowledgePositionRank {
   positionName String   @id
-  /// general | leader | section_chief | manager (DB CHECK)
+  /// general | leader | section_chief | manager | general_manager | executive (DB CHECK)
   rank         String
   updatedAt    DateTime @updatedAt
 }

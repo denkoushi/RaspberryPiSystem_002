@@ -61,7 +61,7 @@ describe('procedure-manual approval publication', () => {
   afterEach(async () => { await app.close(); vi.restoreAllMocks(); });
   const publish = (expectedEditVersion = 3) => app.inject({ method: 'POST', url: `/assembly/procedure-documents/${id}/approve-publish`, payload: { reviewerTagUid: 'TAG', expectedEditVersion, comment: '確認済み' } });
 
-  it.each(['leader', 'section_chief', 'manager'])('publishes for %s, recording employee snapshots and the authenticated actor', async rank => {
+  it.each(['leader', 'section_chief', 'manager', 'general_manager', 'executive'])('publishes for %s, recording employee snapshots and the authenticated actor', async rank => {
     vi.mocked(prisma.knowledgePositionRank.findUnique).mockResolvedValue({ rank } as never);
     const response = await publish();
     expect(response.statusCode).toBe(200);

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { TagDeskDock, dockModeOf } from '../../features/kiosk/tag-desk/TagDeskDock';
 import { TagDeskPinPad } from '../../features/kiosk/tag-desk/TagDeskPinPad';
+import { TagDeskPositionRanks } from '../../features/kiosk/tag-desk/TagDeskPositionRanks';
 import { TagDeskRegistry } from '../../features/kiosk/tag-desk/TagDeskRegistry';
 import { TagDeskTether } from '../../features/kiosk/tag-desk/TagDeskTether';
 import { tagDesk } from '../../features/kiosk/tag-desk/tagDeskTheme';
@@ -21,7 +22,8 @@ export function KioskTagDeskPage() {
 }
 
 function TagDesk({ pin }: { pin: string }) {
-  const state = useTagDesk(pin);
+  const [positionRanks, setPositionRanks] = useState(false);
+  const state = useTagDesk(pin, !positionRanks);
   const [confirming, setConfirming] = useState<string | null>(null);
   const deskRef = useRef<HTMLDivElement>(null);
   const tokenRef = useRef<HTMLDivElement>(null);
@@ -43,11 +45,13 @@ function TagDesk({ pin }: { pin: string }) {
   const freeTag = mode === 'tag' && !state.bindingsLoading && bindings.length === 0;
   const showTether = mode === 'tag' || mode === 'record';
 
+  if (positionRanks) return <TagDeskPositionRanks pin={pin} onBack={() => setPositionRanks(false)} />;
+
   return (
     <div className={`-mx-4 -my-4 flex min-h-0 flex-1 flex-col ${tagDesk.ink}`}>
       <div ref={deskRef} className="relative grid min-h-0 flex-1 grid-cols-[640px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)] gap-5 p-5">
         <TagDeskDock pin={pin} state={state} confirming={confirming} setConfirming={setConfirming} tokenRef={tokenRef} />
-        <TagDeskRegistry state={state} hitKinds={hitKinds} hitIds={hitIds} releasing={confirming !== null} listRef={listRef} />
+        <TagDeskRegistry onPositionRanks={() => setPositionRanks(true)} state={state} hitKinds={hitKinds} hitIds={hitIds} releasing={confirming !== null} listRef={listRef} />
         {showTether ? (
           <TagDeskTether
             deskRef={deskRef}
