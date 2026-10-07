@@ -700,12 +700,33 @@ def enrichment_id_source() -> Path | None:
     return source.resolve()
 
 
+RETRIEVAL_SOURCE_DEFINITIONS = ROOT / "scripts" / "hermes-search" / "hermes-sources"
+
+
+def retrieval_source_ids(directory: Path = RETRIEVAL_SOURCE_DEFINITIONS) -> frozenset[str]:
+    """Ids the retrieval worker of this checkout can load; other JSON contracts in the directory are skipped."""
+    ids: set[str] = set()
+    for path in sorted(directory.glob("*.json")):
+        try:
+            definition = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            raise UsageError(f"retrieval source definition is unreadable: {path.name}") from error
+        if not isinstance(definition, dict) or definition.get("schema") != "hermes-source-definition/v1":
+            continue
+        source_id = definition.get("id")
+        if not isinstance(source_id, str) or re.fullmatch(r"[a-z_]+", source_id) is None:
+            raise UsageError(f"retrieval source definition has an invalid id: {path.name}")
+        ids.add(source_id)
+    return frozenset(ids)
+
+
 def optional_retrieval_sources_setting(name: str = "HERMES_RETRIEVAL_SOURCES") -> str:
     sources = list(dict.fromkeys(
         source.strip() for source in os.environ.get(name, "").split(",") if source.strip()
     ))
+    known = retrieval_source_ids() if sources else frozenset()
     for source in sources:
-        if source not in {"nonconformity", "knowledge_procedure"}:
+        if source not in known:
             raise UsageError(f"{name} contains an unknown source: {source}")
     return ",".join(sources)
 

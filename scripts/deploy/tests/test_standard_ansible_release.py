@@ -328,6 +328,24 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             with self.assertRaisesRegex(MODULE.UsageError, "^HERMES_RETRIEVAL_SOURCES contains an unknown source: unknown$"):
                 MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
 
+    def test_retrieval_sources_follow_the_shipped_definitions(self) -> None:
+        known = MODULE.retrieval_source_ids()
+        self.assertLessEqual({"nonconformity", "knowledge_procedure", "torque_training_session",
+                              "torque_training_operator", "torque_training_team"}, known)
+        every = ",".join(sorted(known))
+        with mock.patch.dict(os.environ, {"HERMES_RETRIEVAL_SOURCES": every}, clear=True):
+            self.assertEqual(MODULE.optional_retrieval_sources_setting(), every)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "added-source.json").write_text(
+                json.dumps({"schema": "hermes-source-definition/v1", "id": "added_source"}), encoding="utf-8")
+            (root / "other-contract.json").write_text(json.dumps({"schema": "other/v1", "id": "ignored"}), encoding="utf-8")
+            self.assertEqual(MODULE.retrieval_source_ids(root), frozenset({"added_source"}))
+            (root / "bad-id.json").write_text(
+                json.dumps({"schema": "hermes-source-definition/v1", "id": "Bad,Id"}), encoding="utf-8")
+            with self.assertRaisesRegex(MODULE.UsageError, "invalid id: bad-id.json"):
+                MODULE.retrieval_source_ids(root)
+
     def test_maintenance_dense_provider_reaches_systemd_without_defaulting(self) -> None:
         args = argparse.Namespace(hermes_search_trial_maintenance="on", branch="main",
                                   limit="raspberrypi5", full_fleet=False, detach=True,
