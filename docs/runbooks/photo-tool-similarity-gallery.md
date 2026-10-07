@@ -87,6 +87,8 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 
 判断と測定は [ADR-20261007](../decisions/ADR-20261007-photo-tool-gallery-embeddinggemma2.md)。Pi5 の設定はモデル ID `embeddinggemma-2-512d`、しきい値 0.14 / 0.10 で、DGX のサーバーと同じモデルでなければならない。
 
+**2026-10-07 14:19 に実施済み。本番は EmbeddingGemma 2 で動いている。** 以下は実施した手順で、次にモデルを変えるときの型として残す。
+
 値が Pi5 の API に届く経路: API スロットの環境は `/etc/raspi-business-hermes-chat/compose.env`（前回の自分の写し）から作られ、標準ローリング更新は `infrastructure/docker/.env` を描画し直さない。`inventory.yml` の値は、`roles/release_pi5/tasks/business-hermes-chat-prepare.yml` の束縛リストに載っているキーだけが新しいスロットへ渡る。写真持出の 3 つのキーはこのリストに入っている。**ほかの `PHOTO_TOOL_*` を変えるときは、同じリストへ追加しないと届かない。**
 
 切り替えの順番（Pi5 を先に変え、届いたことを確かめてから DGX を入れ替える。2026-10-07 の 1 回目は DGX を先に入れ替え、Pi5 に値が届かず中止した）:
