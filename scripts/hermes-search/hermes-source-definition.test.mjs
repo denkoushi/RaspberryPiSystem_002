@@ -76,3 +76,62 @@ test('visibility is required, non-empty and limited to known unique principal ki
   }
   assert.deepEqual(validateSourceDefinition({...structuredClone(nonconformityDefinition),visibility:['admin']},'nonconformity').visibility,['admin']);
 });
+
+
+test('training sources are opt-in validated structured definitions with public visibility',()=>{
+  const ids=['torque_training_session','torque_training_operator','torque_training_team'];
+  assert.deepEqual(sourceIdsFromEnv({HERMES_RETRIEVAL_SOURCES:ids.join(',')}),ids);
+  for(const id of ids) {
+    const definition=sourceDefinitions[id];
+    assert.equal(validateSourceDefinition(structuredClone(definition),id).id,id);
+    assert.equal(definition.offlineExtraction,undefined);
+    assert.deepEqual(definition.visibility,['kiosk','viewer','manager','admin']);
+    assert.ok(Object.isFrozen(definition.metadataFields));
+    assert.deepEqual(definition.contextAttributes,Object.keys(definition.metadataFields));
+    assert.deepEqual(definition.lexicalFields,[...Object.keys(definition.metadataFields),...Object.keys(definition.bodyFields)]);
+  }
+});
+
+test('directory registration discovers definitions and rejects inconsistent or invalid files', async (t)=>{
+  const {mkdtempSync,writeFileSync,rmSync}=await import('node:fs');
+  const {tmpdir}=await import('node:os');
+  const {join}=await import('node:path');
+  const {loadSourceDefinitions}=await import('./hermes-source-definition.mjs');
+  const dir=mkdtempSync(join(tmpdir(),'hermes-source-definitions-'));
+  t.after(()=>rmSync(dir,{recursive:true,force:true}));
+  const value={...structuredClone(knowledgeProcedureDefinition),id:'synthetic_source',label:'合成ソース'};
+  const write=(name,data)=>writeFileSync(join(dir,name),JSON.stringify(data));
+  write('nonconformity-relevance.json',{schema:'hermes-relevance/v1',id:'not_a_source'});
+  write('other.json',{schema:'other-contract/v1',bodyFields:{text:'別契約の本文'}});
+  write('synthetic-source.json',value);
+  const registered=loadSourceDefinitions(dir);
+  assert.deepEqual(Object.keys(registered),['synthetic_source']);
+  assert.equal(registered.synthetic_source.label,'合成ソース');
+  assert.ok(Object.isFrozen(registered.synthetic_source));
+  write('synthetic_source.json',value);
+  assert.throws(()=>loadSourceDefinitions(dir),/duplicate source definition/);
+  rmSync(join(dir,'synthetic_source.json'));
+  write('synthetic-source.json',{...value,id:'wrong'});
+  assert.throws(()=>loadSourceDefinitions(dir),/match/);
+  write('synthetic-source.json',{...value,visibility:[]});
+  assert.throws(()=>loadSourceDefinitions(dir),/visibility/);
+  write('synthetic-source.json',{...value,schema:'hermes-source-definition/v2'});
+  assert.throws(()=>loadSourceDefinitions(dir),/match/);
+  write('synthetic-source.json',{...value,schema:undefined});
+  assert.throws(()=>loadSourceDefinitions(dir),/match/);
+});
+
+test('optional numeric and retrieval policy declarations are validated without requiring them',()=>{
+  const base=structuredClone(knowledgeProcedureDefinition);
+  for(const numericFields of [['unknown'],['title','title'],'title',[null]]) {
+    assert.throws(()=>validateSourceDefinition({...base,numericFields},base.id),/numeric fields/);
+  }
+  for(const retrieval of [null,[],{semanticSearch:'true'},{unknown:true},{denseStoreSuffix:'../bad'}]) {
+    assert.throws(()=>validateSourceDefinition({...base,retrieval},base.id),/retrieval capabilities/);
+  }
+  for(const pageContextAttributes of [[],null,{entity:'unknown'}]) {
+    assert.throws(()=>validateSourceDefinition({...base,pageContextAttributes},base.id),/page context attributes/);
+  }
+  assert.throws(()=>validateSourceDefinition({...base,outOfScopeAnswer:''},base.id),/out of scope answer/);
+  assert.equal(validateSourceDefinition({...base,numericFields:['title'],retrieval:{semanticSearch:true},pageContextAttributes:{entity:null}},base.id).numericFields[0],'title');
+});
