@@ -203,6 +203,70 @@ describe('useWorkInstructionEditorController', () => {
     });
   });
 
+  it('adds default text and rectangles locally, duplicates at an offset, and respects authentication', async () => {
+    const hook = renderEditor();
+    act(() => hook.result.current.addDefaultOverlay('TEXT'));
+    expect(hook.result.current.activeElements).toHaveLength(0);
+    await authenticate(hook);
+    act(() => hook.result.current.addDefaultOverlay('TEXT'));
+    const original = hook.result.current.selectedElement!;
+    expect(original).toMatchObject({ kind: 'TEXT', bbox: { xRatio: 0.38, yRatio: 0.23 }, style: { fontSizeRatio: 0.025 } });
+    act(() => hook.result.current.duplicateSelectedOverlay());
+    const copy = hook.result.current.selectedElement!;
+    expect(copy.id).not.toBe(original.id);
+    expect(copy.bbox.xRatio).toBeCloseTo(original.bbox.xRatio + 0.025);
+    expect(copy.bbox.yRatio).toBeCloseTo(original.bbox.yRatio + 0.025);
+    expect(copy).toMatchObject({ kind: 'TEXT', stepKey: original.stepKey });
+    act(() => hook.result.current.addDefaultOverlay('SHAPE'));
+    expect(hook.result.current.selectedElement).toMatchObject({ kind: 'SHAPE', shape: 'RECTANGLE' });
+    expect(hook.result.current.isDirty).toBe(true);
+    expect(apiMocks.findTextCandidates).not.toHaveBeenCalled();
+    expect(apiMocks.createImageRegion).not.toHaveBeenCalled();
+    expect(apiMocks.save).not.toHaveBeenCalled();
+  });
+
+  it('cycles annotation and memo review across rows using current unsaved state', async () => {
+    const annotation: WorkInstructionOverlayElement = { id: 'review-1', kind: 'TEXT', text: '確認', pageIndex: 0, stepKey: makeStep().stepKey, sourceStep: 1, bbox: range, zIndex: 1, migrationState: 'NEEDS_REVIEW' };
+    const group = makeGroup(makeDraft([annotation]));
+    const otherStep = { ...makeStep(), stepKey: 'other-step', step: 2 };
+    const memo: WorkInstructionMemoOverrideDto = { id: 'memo-review', stepKey: otherStep.stepKey, sourceStep: 2, text: '確認メモ', migrationState: 'NEEDS_REVIEW' };
+    group.rows.push({ ...group.rows[0], rowId: 'row-2', draft: { ...makeDraft([], 0, [memo]), id: 'draft-2', steps: [otherStep] } });
+    apiMocks.copy.mockResolvedValue({ group, revisions: group.rows.map((row) => row.draft) });
+    const hook = renderEditor();
+    await authenticate(hook);
+    expect(hook.result.current.reviewCount).toBe(2);
+    act(() => { expect(hook.result.current.nextReview()?.memo).toBe(false); });
+    expect(hook.result.current.selectedElement?.id).toBe(annotation.id);
+    act(() => { expect(hook.result.current.nextReview()?.memo).toBe(true); });
+    expect(hook.result.current.selectedRowId).toBe('row-2');
+    expect(hook.result.current.selectedStepKey).toBe('other-step');
+    expect(hook.result.current.selectedElement).toBeNull();
+    act(() => hook.result.current.keepMemo('other-step'));
+    expect(hook.result.current.reviewCount).toBe(1);
+    act(() => { hook.result.current.nextReview(); });
+    expect(hook.result.current.selectedRowId).toBe('row-1');
+    act(() => hook.result.current.updateElement({ ...hook.result.current.selectedElement!, migrationState: 'MIGRATED' }));
+    expect(hook.result.current.reviewCount).toBe(0);
+    act(() => { expect(hook.result.current.nextReview()).toBeNull(); });
+  });
+
+  it('keeps duplicate line endpoints inside the image at the edge and reviews unassigned memos', async () => {
+    const line: WorkInstructionOverlayElement = { id: 'line', kind: 'SHAPE', shape: 'LINE', pageIndex: 0, stepKey: makeStep().stepKey, sourceStep: 1, bbox: { xRatio: 0.8, yRatio: 0.8, widthRatio: 0.2, heightRatio: 0.2 }, start: { xRatio: 0.8, yRatio: 0.8 }, end: { xRatio: 1, yRatio: 1 }, zIndex: 1 };
+    const orphan: WorkInstructionMemoOverrideDto = { id: 'orphan', stepKey: null, sourceStep: null, text: '未確認', migrationState: 'UNASSIGNED' };
+    apiMocks.copy.mockResolvedValue({ group: makeGroup(makeDraft([line], 0, [orphan])), revisions: [] });
+    const hook = renderEditor();
+    await authenticate(hook);
+    act(() => hook.result.current.setSelectedOverlayId('line'));
+    act(() => hook.result.current.duplicateSelectedOverlay());
+    expect(hook.result.current.selectedElement).toMatchObject({ bbox: line.bbox, start: line.start, end: line.end });
+    expect(hook.result.current.unassignedMemoCount).toBe(1);
+    act(() => { expect(hook.result.current.nextReview()?.memo).toBe(true); });
+    expect(hook.result.current.selectedStepKey).toBe(makeStep().stepKey);
+    act(() => hook.result.current.useSourceMemo('orphan'));
+    expect(hook.result.current.unassignedMemoCount).toBe(0);
+    expect(hook.result.current.reviewCount).toBe(0);
+  });
+
   it('keeps manual OCR fallback and image upload fallback usable when ROI services fail', async () => {
     const hook = renderEditor();
     await authenticate(hook);

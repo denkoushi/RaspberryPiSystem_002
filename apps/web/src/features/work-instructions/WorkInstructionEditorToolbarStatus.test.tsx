@@ -18,10 +18,10 @@ function controller(overrides: Partial<WorkInstructionEditorController> = {}): W
 }
 
 describe('WorkInstructionEditorToolbarStatus', () => {
-  it('shows normal controller messages in the toolbar', () => {
+  it('keeps normal messages in the separate toast', () => {
     render(<WorkInstructionEditorToolbarStatus controller={controller({ message: 'オーバーレイを保存しました。' })} />);
 
-    expect(screen.getByTestId('work-instruction-editor-toolbar-message')).toHaveTextContent('オーバーレイを保存しました。');
+    expect(screen.queryByTestId('work-instruction-editor-toolbar-message')).not.toBeInTheDocument();
   });
 
   it('keeps conflict messages out of the normal toolbar status', () => {

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 
-import { Button } from '../../components/ui/Button';
-
+import { WorkInstructionEditorButton as Button } from './WorkInstructionEditorControls';
 import { workInstructionMemoOverrideMapKey } from './workInstructionEditorMemo';
 import {
   WORK_INSTRUCTION_EDITOR_OPTION_CLASS_NAME,
@@ -54,14 +53,10 @@ export function WorkInstructionMemoReviewList({
 
   return (
     <section
-      className="grid min-w-0 gap-2 rounded border border-amber-300/40 bg-amber-300/10 p-2"
-      aria-label="未割当メモレビュー"
+      className="grid min-w-0 gap-2"
+      aria-label="行き先のないメモ"
       data-testid="work-instruction-memo-review-list"
     >
-      <div>
-        <h2 className="text-sm font-bold text-amber-100">未割当メモ</h2>
-        <p className="mt-1 text-xs text-amber-100/80">移植先を選んでKEEPするか、原本のメモへ戻してください。</p>
-      </div>
       <div className="grid min-w-0 gap-2">
         {pending.map((override, index) => {
           const overrideKey = workInstructionMemoOverrideMapKey(override, String(index));
@@ -69,15 +64,16 @@ export function WorkInstructionMemoReviewList({
           const selectedStep = steps.find((step) => step.stepKey === selectedTarget);
           const canKeep = Boolean(selectedTarget && !occupiedStepKeys.has(selectedTarget) && selectedStep?.memoFingerprint);
           return (
-            <article key={overrideKey} className="grid min-w-0 gap-2 rounded border border-white/10 bg-slate-950/50 p-2 text-xs">
-              <p className="break-words text-white/80">
-                元手順: {override.migratedFromStepKey ?? override.migratedFromStep ?? '不明'}
+            <article key={overrideKey} className="grid min-w-0 gap-2 rounded-lg border border-[#f6b93b] p-3 text-sm">
+              <h3 className="text-base font-bold text-[#f6b93b]">行き先のないメモ</h3>
+              <p className="break-words text-xs text-[#9fadb9]">
+                元の手順 {override.migratedFromStep ?? '不明'}
               </p>
               <p className="max-h-20 overflow-y-auto whitespace-pre-wrap break-words text-white">{overrideText(override)}</p>
               <label className="grid min-w-0 gap-1 text-sm font-semibold text-white">
-                移植先手順
+                移し先の手順
                 <select
-                  aria-label={`未割当メモ${index + 1}の移植先手順`}
+                  aria-label={`行き先のないメモ${index + 1}の移し先の手順`}
                   value={selectedTarget}
                   disabled={disabled}
                   onChange={(event) => setSelectedTargets((current) => ({ ...current, [overrideKey]: event.target.value }))}
@@ -93,27 +89,25 @@ export function WorkInstructionMemoReviewList({
               </label>
               {selectedTarget && !canKeep ? (
                 <p className="break-words text-amber-100" role="alert">
-                  選択先の原本fingerprintを取得できるまでKEEPできません。
+                  この手順へはまだ移せません。
                 </p>
               ) : null}
-              <div className="flex min-w-0 flex-wrap gap-2">
+              <div className="flex min-w-0 gap-2">
                 <Button
                   type="button"
-                  variant="primary"
                   className="min-h-11 !px-3 text-xs"
                   disabled={disabled || !canKeep}
                   onClick={() => onAssignAndKeep(overrideKey, selectedTarget)}
                 >
-                  選択先へKEEP
+                  ここへ移す
                 </Button>
                 <Button
                   type="button"
-                  variant="ghostOnDark"
                   className="min-h-11 !px-3 text-xs"
                   disabled={disabled}
                   onClick={() => onUseSource(overrideKey)}
                 >
-                  原本を使用
+                  原本を使う
                 </Button>
               </div>
             </article>
