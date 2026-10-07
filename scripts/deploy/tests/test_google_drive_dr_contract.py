@@ -153,15 +153,59 @@ class GoogleDriveDisasterRecoveryContractTests(unittest.TestCase):
         self.assertIn("RESTIC_PASSWORD_FILE=", env)
         self.assertIn("RCLONE_CONFIG=", env)
 
-    def test_timer_is_disabled_by_default_and_has_the_approved_schedule(self) -> None:
+    def test_timer_state_comes_from_inventory_with_a_disabled_fallback(self) -> None:
+        self.assertNotIn("google_drive_dr_timer_enabled", self.play["vars"])
+        timer_tasks = [
+            task["ansible.builtin.systemd"]
+            for task in self.tasks
+            if task.get("ansible.builtin.systemd", {}).get("name")
+            == "{{ google_drive_dr_timer_name }}"
+        ]
+        self.assertEqual(len(timer_tasks), 1)
+        self.assertEqual(
+            timer_tasks[0]["enabled"],
+            "{{ google_drive_dr_timer_enabled | default(false) | bool }}",
+        )
+        self.assertEqual(
+            timer_tasks[0]["state"],
+            "{{ 'started' if (google_drive_dr_timer_enabled | default(false) | bool) else 'stopped' }}",
+        )
+
+    def test_production_pi5_inventory_enables_the_timer(self) -> None:
+        inventory = yaml.safe_load((ANSIBLE_ROOT / "inventory.yml").read_text(encoding="utf-8"))
+        pi5 = inventory["all"]["children"]["server"]["hosts"]["raspberrypi5"]
+        self.assertIs(pi5["google_drive_dr_timer_enabled"], True)
+
+    def test_timer_setting_is_undefined_outside_the_production_pi5(self) -> None:
+        inventory = yaml.safe_load((ANSIBLE_ROOT / "inventory.yml").read_text(encoding="utf-8"))
+        setting_paths = []
+
+        def find_settings(node: dict, path: tuple[str, ...] = ()) -> None:
+            for key, value in node.items():
+                if key == "google_drive_dr_timer_enabled":
+                    setting_paths.append(path)
+                elif isinstance(value, dict):
+                    find_settings(value, (*path, key))
+
+        find_settings(inventory)
+        self.assertEqual(
+            setting_paths,
+            [("all", "children", "server", "hosts", "raspberrypi5")],
+        )
+        for path in [
+            *ANSIBLE_ROOT.glob("inventory-*.yml"),
+            ANSIBLE_ROOT / "group_vars/staging.yml",
+        ]:
+            with self.subTest(path=path.name):
+                self.assertNotIn(
+                    "google_drive_dr_timer_enabled", path.read_text(encoding="utf-8")
+                )
+
+    def test_timer_has_the_approved_schedule(self) -> None:
         source = PLAYBOOK_PATH.read_text(encoding="utf-8")
         timer = TIMER_TEMPLATE.read_text(encoding="utf-8")
 
         self.assertNotIn("timedatectl", source)
-        self.assertIn("google_drive_dr_timer_enabled: false", source)
-        self.assertIn(
-            "enabled: \"{{ google_drive_dr_timer_enabled | bool }}\"", source
-        )
         self.assertIn("OnCalendar=*-*-* 21:30:00 Asia/Tokyo", timer)
         self.assertIn("Persistent=false", timer)
         self.assertNotIn("Persistent=true", timer)

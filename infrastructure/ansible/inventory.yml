@@ -10,6 +10,8 @@ all:
           ansible_command_timeout: 900
           unattended_upgrades_enabled: true
           tailscale_enabled: true
+          # 毎晩の DR。false にすると次の playbook 実行でタイマーが止まる
+          google_drive_dr_timer_enabled: true
           # キオスクお問い合わせ（Slack通知）
           # NOTE: vaultで管理し、Ansibleで /opt/RaspberryPiSystem_002/infrastructure/docker/.env に反映する
           slack_kiosk_support_webhook_url: "{{ vault_slack_kiosk_support_webhook_url | default('') }}"

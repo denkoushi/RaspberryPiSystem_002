@@ -2,6 +2,8 @@
 # This playbook is intentionally separate from the standard fleet deployment.
 # It has one explicit inventory target so a recovery backup cannot be enabled on
 # a kiosk, signage device, or another server by accident.
+# Timer state follows inventory (disabled when undefined); use
+# -e google_drive_dr_timer_enabled=false during initial provisioning.
 - name: Configure Business Pi5 Google Drive disaster-recovery backup
   hosts: raspberrypi5
   gather_facts: false
@@ -16,7 +18,6 @@
     google_drive_dr_rclone_config: /etc/raspi-google-drive-dr/rclone.conf
     google_drive_dr_restic_password_file: /etc/raspi-google-drive-dr/restic-password
     google_drive_dr_repository: rclone:google-drive:RaspberryPiSystem_002/business-pi5
-    google_drive_dr_timer_enabled: false
     google_drive_dr_service_name: raspi-google-drive-dr.service
     google_drive_dr_timer_name: raspi-google-drive-dr.timer
 
@@ -150,7 +151,7 @@
         mode: '0644'
       notify: Reload systemd units
 
-    - name: Install the disabled-by-default DR service unit
+    - name: Install the DR service unit
       ansible.builtin.template:
         src: "{{ playbook_dir }}/../templates/raspi-google-drive-dr.service.j2"
         dest: "/etc/systemd/system/{{ google_drive_dr_service_name }}"
@@ -159,7 +160,7 @@
         mode: '0644'
       notify: Reload systemd units
 
-    - name: Install the disabled-by-default DR timer unit
+    - name: Install the DR timer unit
       ansible.builtin.template:
         src: "{{ playbook_dir }}/../templates/raspi-google-drive-dr.timer.j2"
         dest: "/etc/systemd/system/{{ google_drive_dr_timer_name }}"
@@ -171,11 +172,11 @@
     - name: Flush unit installation handlers before managing the timer
       ansible.builtin.meta: flush_handlers
 
-    - name: Keep the DR timer disabled unless explicitly enabled
+    - name: Apply the configured DR timer state (disabled when undefined)
       ansible.builtin.systemd:
         name: "{{ google_drive_dr_timer_name }}"
-        enabled: "{{ google_drive_dr_timer_enabled | bool }}"
-        state: "{{ 'started' if (google_drive_dr_timer_enabled | bool) else 'stopped' }}"
+        enabled: "{{ google_drive_dr_timer_enabled | default(false) | bool }}"
+        state: "{{ 'started' if (google_drive_dr_timer_enabled | default(false) | bool) else 'stopped' }}"
         daemon_reload: true
 
   handlers:
