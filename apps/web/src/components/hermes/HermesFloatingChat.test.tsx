@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -177,6 +177,12 @@ function ContextControls({ value }: { value: HermesPageContext }) {
   return <button onClick={clearPageContext}>clear page context</button>;
 }
 
+function GuideRouteControls() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  return <><button onClick={() => navigate('/kiosk/assembly/procedure-documents/example/edit')}>文書を開く</button><span data-testid="guide-route">{location.pathname}</span></>;
+}
+
 function renderChat(path = '/kiosk/assembly', pageContext?: HermesPageContext) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -249,6 +255,66 @@ describe('HermesFloatingChat', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it.each(['手順書の作り方', '手順書はどうやって作るの?', '手順書を編集したい'])('offers local assembly guides for %s without creating or sending a consultation', async question => {
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
+    fireEvent.change(input, { target: { value: question } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    expect(screen.getByText('どの手順書ですか?')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '組立の手順書を登録' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '組立の手順書を編集' })).toBeInTheDocument();
+    expect(screen.queryByText('加工の作業手順書')).not.toBeInTheDocument();
+    expect(mocks.createConsultation).not.toHaveBeenCalled();
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.sendConsultationMessage).not.toHaveBeenCalled();
+  });
+
+  it('preserves guide progress across same-tab navigation, completes and offers the other guide', async () => {
+    render(<MemoryRouter initialEntries={['/kiosk/assembly']}><HermesPageContextProvider><GuideRouteControls /><HermesFloatingChat /></HermesPageContextProvider></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '手順書を編集したい' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    fireEvent.click(screen.getByRole('button', { name: '組立の手順書を編集' }));
+    expect(screen.queryByTestId('hermes-panel')).not.toBeInTheDocument();
+    expect(screen.getByText('手順 1 / 9')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /ライブラリへ移動/ }));
+    expect(screen.getByTestId('guide-route')).toHaveTextContent('/kiosk/assembly/library');
+    fireEvent.click(screen.getByRole('button', { name: '文書を開く' }));
+    expect(screen.getByText('手順 1 / 9')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '次へ' }));
+    expect(screen.getByRole('heading', { name: '管理パスワードを入力' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /ライブラリへ移動/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '戻る' }));
+    expect(screen.getByText('手順 1 / 9')).toBeInTheDocument();
+    for (let index = 0; index < 9; index++) fireEvent.click(screen.getByRole('button', { name: '次へ' }));
+    expect(screen.getByText('案内が完了しました')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '組立の手順書を登録' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '組立の手順書を編集' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '組立の手順書を登録' }));
+    expect(screen.getByRole('heading', { name: 'ファイルから登録' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '終了' }));
+    expect(screen.queryByRole('region', { name: '操作ガイド' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('hermes-panel')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /業務Hermesチャットを開く/ })).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('returns to questions and sends an unrelated question without guide history', async () => {
+    mocks.send.mockResolvedValue({ status: 'ready', message: '検索結果', evidence: [] });
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    await waitFor(() => expect(screen.queryByTestId('consultation-list')).not.toBeInTheDocument());
+    fireEvent.change(screen.getByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '手順書の作り方' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    fireEvent.click(screen.getByRole('button', { name: '組立の手順書を編集' }));
+    fireEvent.click(screen.getByRole('button', { name: '質問に戻る' }));
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '品番ABCの不適合は?' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    await waitFor(() => expect(mocks.send).toHaveBeenCalledOnce());
+    expect(mocks.send.mock.calls[0][0].messages).toEqual([{ role: 'user', content: '品番ABCの不適合は?' }]);
+    expect(mocks.createConsultation).not.toHaveBeenCalled();
   });
 
   it('pauses board decoration throughout a held pointer and resumes after inactivity', () => {

@@ -12,6 +12,8 @@ vi.mock('../ProtectedImage', () => ({
   )
 }));
 
+import { OperationGuidePrompt } from '../../features/operation-guide/OperationGuideChoices';
+
 import HermesChatPanel from './HermesChatPanel';
 
 describe('HermesChatPanel evidence cards', () => {
@@ -28,6 +30,17 @@ describe('HermesChatPanel evidence cards', () => {
   });
 
   afterEach(() => vi.restoreAllMocks());
+
+  it('renders local guide choices inside the search panel with the normal question composer', () => {
+    const onChoose = vi.fn();
+    render(<HermesChatPanel messages={[]} draft="" isBusy={false} error={null} authRequired={null}
+      onDraftChange={vi.fn()} onSend={vi.fn()} onReset={vi.fn()} onClose={vi.fn()}
+      conversationExtension={<OperationGuidePrompt question="手順書の作り方" onChoose={onChoose} />} />);
+    expect(screen.getByText('どの手順書ですか?')).toBeInTheDocument();
+    expect(document.querySelector('[contenteditable="true"][aria-label="Hermesへの質問"]')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '組立の手順書を編集' }));
+    expect(onChoose).toHaveBeenCalledWith('assembly-edit');
+  });
 
   it('shows the selected knowledge mode and keeps header control handlers', () => {
     const onKnowledgeModeChange = vi.fn();
