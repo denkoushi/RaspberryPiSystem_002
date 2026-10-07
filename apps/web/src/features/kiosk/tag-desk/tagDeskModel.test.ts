@@ -13,10 +13,25 @@ const options: TagDeskOptions = {
     { division: '管理部', name: '総務課' }
   ],
   departments: ['機械課', '製造担当'],
+  positions: [{ name: '班長', approval: 'approver' }, { name: '一般', approval: 'none' }, { name: '主事', approval: 'unmapped' }],
   genres: []
 };
 
 describe('tagDeskModel', () => {
+  it('puts the position select between section and status with only the configured choices', () => {
+    const index = FORM_FIELDS.employee.findIndex((field) => field.key === 'positionName');
+    expect(FORM_FIELDS.employee[index - 1].key).toBe('section');
+    expect(FORM_FIELDS.employee[index + 1].key).toBe('status');
+    expect(FORM_FIELDS.employee[index]).toMatchObject({ label: '職位', type: 'select' });
+    expect(FORM_FIELDS.employee[index].options?.(options, {})).toEqual([
+      { value: '', label: '未設定' }, { value: '班長', label: '班長' }, { value: '一般', label: '一般' }, { value: '主事', label: '主事' }
+    ]);
+    expect(emptyRecord('employee').positionName).toBe('');
+  });
+
+  it.each([[' 班長 ', '班長'], ['', null], ['   ', null]])('sends employee position %s as %s', (positionName, expected) => {
+    expect(toPayload('employee', { ...emptyRecord('employee'), positionName: positionName! }).positionName).toBe(expected);
+  });
   it('labels employee organization fields and columns as 部門 and 部署', () => {
     expect(KIND_META.employee).toMatchObject({ subLabel: '部門', sub2Label: '部署' });
     expect(FORM_FIELDS.employee.find((field) => field.key === 'department')).toMatchObject({ label: '部門', type: 'select' });

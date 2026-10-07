@@ -6,6 +6,7 @@ export type TagDeskKind = 'employee' | 'item' | 'instrument' | 'rigging';
 export type TagBindingKind = TagDeskKind | 'inventory';
 
 export type TagDeskTag = { bindingId: string; uid: string };
+export type PositionApproval = 'approver' | 'none' | 'unmapped';
 
 export type TagDeskRow = {
   kind: TagDeskKind;
@@ -14,6 +15,8 @@ export type TagDeskRow = {
   name: string;
   sub: string | null;
   sub2?: string | null;
+  positionName?: string | null;
+  positionApproval?: PositionApproval | null;
   status: string;
   tags: TagDeskTag[];
   record: Record<string, string | number>;
@@ -44,6 +47,7 @@ export type TagBindingEvent = {
 };
 
 export type TagDeskOptions = {
+  positions: Array<{ name: string; approval: PositionApproval }>;
   divisions: string[];
   sections: Array<{ division: string; name: string }>;
   departments: string[];

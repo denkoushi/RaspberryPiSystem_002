@@ -10,6 +10,7 @@ export interface EmployeeCreateInput {
   firstName?: string;
   nfcTagUid?: string | null;
   department?: string | null;
+  positionName?: string | null;
   contact?: string | null;
   status?: EmployeeStatus;
 }
@@ -22,6 +23,7 @@ export interface EmployeeUpdateInput {
   nfcTagUid?: string | null;
   department?: string | null;
   section?: string | null;
+  positionName?: string | null;
   contact?: string | null;
   status?: EmployeeStatus;
 }
@@ -94,6 +96,7 @@ export class EmployeeService {
         firstName: data.firstName ?? null,
         nfcTagUid: data.nfcTagUid ?? undefined,
         department: data.department ?? undefined,
+        positionName: data.positionName ?? undefined,
         contact: data.contact ?? undefined,
         status: data.status ?? 'ACTIVE'
       }
@@ -131,6 +134,9 @@ export class EmployeeService {
     }
     if (data.section !== undefined) {
       updateData.section = data.section ?? null;
+    }
+    if (data.positionName !== undefined) {
+      updateData.positionName = data.positionName;
     }
     if (data.contact !== undefined) {
       updateData.contact = data.contact ?? null;

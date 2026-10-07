@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 
 
 import { FORM_FIELDS, KIND_META, changeRecordField, emptyRecord, toPayload, type FieldSpec } from './tagDeskModel';
+import { PositionApprovalChip } from './TagDeskParts';
 import { tagDesk } from './tagDeskTheme';
 
 import type { TagDeskKind, TagDeskOptions } from '../../../api/domains/tag-desk';
@@ -53,6 +54,20 @@ export function TagDeskRecordForm({ kind, record, name, options, saving, deletin
           const selectOptions = field.options?.(options, values) ?? [];
           if (common.value && !selectOptions.some((option) => option.value === common.value)) {
             selectOptions.push({ value: common.value, label: common.value });
+          }
+          if (field.key === 'positionName') {
+            const approval = common.value ? options.positions.find((position) => position.name === common.value)?.approval ?? 'unmapped' : null;
+            return (
+              <div key={field.key} className="flex flex-col gap-1">
+                <label htmlFor={id} className="text-[13px] font-bold text-[#8494a8]">{field.label}</label>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <select {...common} className={`${tagDesk.input} ${WIDTH[field.width]}`}>
+                    {selectOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                  <PositionApprovalChip approval={approval} showNone />
+                </div>
+              </div>
+            );
           }
           return (
             <label key={field.key} htmlFor={id} className={`flex flex-col gap-1 ${field.width === 'l' ? 'w-full' : ''}`}>

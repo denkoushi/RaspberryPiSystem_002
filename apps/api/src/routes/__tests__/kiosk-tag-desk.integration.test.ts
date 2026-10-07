@@ -59,6 +59,82 @@ describe('kiosk tag desk', () => {
     expect(ng.json()).toEqual({ success: false });
   });
 
+  it('creates and updates positions, preserving an omitted key and clearing blanks or null', async () => {
+    let code = Number(Date.now() % 10000);
+    while (await prisma.employee.findUnique({ where: { employeeCode: String(code).padStart(4, '0') } })) code = (code + 1) % 10000;
+    const created = await app.inject({
+      method: 'POST', url: '/api/kiosk/tag-desk/employees', headers: headers(),
+      payload: { employeeCode: String(code).padStart(4, '0'), lastName: 'タグ机', firstName: run, positionName: ' 班長 ' }
+    });
+    expect(created.statusCode).toBe(200);
+    const employee = created.json().employee;
+    expect(employee.positionName).toBe('班長');
+    const update = (payload: Record<string, unknown>) => app.inject({
+      method: 'PUT', url: `/api/kiosk/tag-desk/employees/${employee.id}`, headers: headers(), payload
+    });
+    try {
+      const omitted = await update({ firstName: '更新' });
+      expect(omitted.statusCode).toBe(200);
+      expect(omitted.json().employee.positionName).toBe('班長');
+      for (const positionName of [' 課長 ', '', '   ', null, ` ${'位'.repeat(200)} `]) {
+        const edited = await update({ positionName });
+        expect(edited.statusCode).toBe(200);
+        expect(edited.json().employee.positionName).toBe(positionName?.trim() || null);
+      }
+      const saved = await prisma.employee.findUniqueOrThrow({ where: { id: employee.id } });
+      expect(saved.positionName).toBe('位'.repeat(200));
+      for (const positionName of ['位'.repeat(201), 123]) {
+        const rejected = await update({ positionName });
+        expect(rejected.statusCode).toBe(400);
+        const rejectedCreate = await app.inject({
+          method: 'POST', url: '/api/kiosk/tag-desk/employees', headers: headers(),
+          payload: { employeeCode: '0001', lastName: 'タグ机', firstName: run, positionName }
+        });
+        expect(rejectedCreate.statusCode).toBe(400);
+      }
+    } finally {
+      await prisma.employee.delete({ where: { id: employee.id } });
+    }
+  });
+
+  it('exposes all position approval states in registry and the sorted union in options', async () => {
+    const leader = `タグ机班長-${run}`;
+    const general = `タグ机一般-${run}`;
+    const unknown = `タグ机主事-${run}`;
+    const unused = `タグ机部長-${run}`;
+    const positions = [leader, general, unknown, null];
+    const employees = [];
+    await prisma.knowledgePositionRank.createMany({ data: [
+      { positionName: leader, rank: 'leader' }, { positionName: general, rank: 'general' }, { positionName: unused, rank: 'manager' }
+    ] });
+    try {
+      for (const positionName of positions) {
+        const employee = await createTestEmployee();
+        employees.push(employee);
+        await prisma.employee.update({ where: { id: employee.id }, data: { positionName } });
+      }
+      const registry = await app.inject({ method: 'GET', url: '/api/kiosk/tag-desk/registry?kind=employee', headers: headers() });
+      expect(registry.statusCode).toBe(200);
+      const approvals = ['approver', 'none', 'unmapped', null];
+      employees.forEach((employee, index) => {
+        expect(registry.json().rows.find((row: { id: string }) => row.id === employee.id)).toMatchObject({
+          positionName: positions[index], positionApproval: approvals[index], record: { positionName: positions[index] ?? '' }
+        });
+      });
+      const options = await app.inject({ method: 'GET', url: '/api/kiosk/tag-desk/options', headers: headers() });
+      expect(options.statusCode).toBe(200);
+      const result = options.json().positions as Array<{ name: string; approval: string }>;
+      expect(result).toEqual(expect.arrayContaining([
+        { name: leader, approval: 'approver' }, { name: general, approval: 'none' },
+        { name: unknown, approval: 'unmapped' }, { name: unused, approval: 'approver' }
+      ]));
+      expect(result.map((position) => position.name)).toEqual([...new Set(result.map((position) => position.name))].sort((a, b) => a.localeCompare(b, 'ja')));
+    } finally {
+      await prisma.employee.deleteMany({ where: { id: { in: employees.map((employee) => employee.id) } } });
+      await prisma.knowledgePositionRank.deleteMany({ where: { positionName: { in: [leader, general, unused] } } });
+    }
+  });
+
   it('shows where a tag is used, releases it, and records the release', async () => {
     const uid = `${TAG_PREFIX}EMP-${run}`;
     const employee = await createTestEmployee({ nfcTagUid: uid, displayName: `タグ机 ${run}` });

@@ -9,16 +9,44 @@ const options: TagDeskOptions = {
   divisions: ['製造部', '管理部'],
   sections: [{ division: '製造部', name: '機械課' }, { division: '管理部', name: '総務課' }],
   departments: ['機械課'],
+  positions: [{ name: '班長', approval: 'approver' }, { name: '一般', approval: 'none' }, { name: '主事', approval: 'unmapped' }],
   genres: []
 };
 
-function renderForm(kind: TagDeskKind, record: Record<string, string>) {
+function renderForm(kind: TagDeskKind, record: Record<string, string> | null) {
   const onSave = vi.fn();
   render(<TagDeskRecordForm kind={kind} record={record} name="対象" options={options} saving={false} deleting={false} onSave={onSave} onDelete={vi.fn()} onCancel={vi.fn()} />);
   return onSave;
 }
 
 describe('TagDeskRecordForm', () => {
+  it.each([null, { employeeCode: '0001', lastName: '山田', firstName: '太郎', positionName: '班長', status: 'ACTIVE' }])('selects and saves positions for a new or existing employee (%s)', (record) => {
+    const onSave = renderForm('employee', record);
+    const position = screen.getByRole('combobox', { name: '職位' });
+    expect(position).toHaveValue(record?.positionName ?? '');
+    expect(within(position).getAllByRole('option').map((option) => option.textContent)).toEqual(['未設定', '班長', '一般', '主事']);
+    expect(screen.queryByRole('textbox', { name: '職位' })).not.toBeInTheDocument();
+    for (const [value, chip] of [['班長', '承認可'], ['一般', '承認不可'], ['主事', '対応表なし'], ['', null]] as const) {
+      fireEvent.change(position, { target: { value } });
+      for (const label of ['承認可', '承認不可', '対応表なし']) {
+        if (label === chip) expect(screen.getByText(label)).toBeInTheDocument();
+        else expect(screen.queryByText(label)).not.toBeInTheDocument();
+      }
+      fireEvent.submit(screen.getByRole('form'));
+      expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ positionName: value || null }));
+    }
+  });
+
+  it('keeps an existing unmapped position selected', () => {
+    renderForm('employee', { positionName: '旧職位' });
+    expect(screen.getByLabelText('職位')).toHaveValue('旧職位');
+    expect(screen.getByText('対応表なし')).toBeInTheDocument();
+  });
+
+  it.each(['item', 'instrument', 'rigging'] as const)('does not add position fields to %s', (kind) => {
+    renderForm(kind, null);
+    expect(screen.queryByLabelText('職位')).not.toBeInTheDocument();
+  });
   it.each(['employee', 'item', 'instrument', 'rigging'] as const)('preserves an unknown current select value for %s', (kind) => {
     const onSave = renderForm(kind, {
       employeeCode: '0001', lastName: '山田', firstName: '太郎', itemCode: 'T-1',
