@@ -54,7 +54,7 @@ vault_dropbox_access_token: ""
 # vault_photo_tool_embedding_enabled: "false"
 # vault_photo_tool_embedding_url: ""
 # vault_photo_tool_embedding_api_key: ""
-# vault_photo_tool_embedding_model_id: ""
+# (2026-10) モデル ID は inventory.yml に移した。vault の値は使われない
 # vault_photo_tool_embedding_dimension: "512"
 # シャドー: 2回目VLMはログのみ（本番列は1回目のまま）
 # vault_photo_tool_label_assist_shadow_enabled: "false"

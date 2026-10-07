@@ -89,7 +89,7 @@ export async function cropImageRegionRoi(
   options: { quality?: number } = {}
 ): Promise<ImageRegionRoiImage> {
   if (!sourcePage.length) throw new Error('Source page image is empty');
-  const source = sharp(sourcePage, { failOn: 'none' });
+  const source = sharp(sourcePage, { failOn: 'none', limitInputPixels: 40_000_000 });
   const metadata = await source.metadata();
   const imageWidth = metadata.width ?? 0;
   const imageHeight = metadata.height ?? 0;

@@ -27,7 +27,7 @@ import type {
   AssemblyWorkUnitInvalidationInput,
 } from '../../features/assembly/types';
 import type { A2uiMessage } from '@a2ui/web_core/v0_9';
-import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
+import type { AssemblyProcedureOverlayElement, OverlayRegionImage } from '@raspi-system/shared-types';
 
 function procedureEditHeaders(holderToken?: string | null) {
   return { headers: holderToken ? { 'x-procedure-edit-token': holderToken } : {} };
@@ -160,13 +160,15 @@ export async function createAssemblyProcedureImageRegion(input: {
   accessPassword: string;
   pageIndex: number;
   bbox: AssemblyProcedureOverlayElement['bbox'];
+  overlays?: OverlayRegionImage[];
 }) {
   const { data } = await api.post<{ asset: AssemblyProcedureOverlayAssetDto }>(
     `/assembly/procedure-documents/${encodeURIComponent(input.id)}/regions/image`,
     {
       accessPassword: input.accessPassword,
       pageIndex: input.pageIndex,
-      bbox: input.bbox
+      bbox: input.bbox,
+      ...(input.overlays ? { overlays: input.overlays } : {})
     },
     procedureEditHeaders(input.holderToken)
   );
@@ -178,13 +180,15 @@ export async function findAssemblyProcedureTextCandidates(input: {
   accessPassword: string;
   pageIndex: number;
   bbox: AssemblyProcedureOverlayElement['bbox'];
+  overlays?: OverlayRegionImage[];
 }) {
   const { data } = await api.post<{ candidates: AssemblyProcedureTextCandidateDto[] }>(
     `/assembly/procedure-documents/${encodeURIComponent(input.id)}/regions/text`,
     {
       accessPassword: input.accessPassword,
       pageIndex: input.pageIndex,
-      bbox: input.bbox
+      bbox: input.bbox,
+      ...(input.overlays ? { overlays: input.overlays } : {})
     }
   );
   return data.candidates;
