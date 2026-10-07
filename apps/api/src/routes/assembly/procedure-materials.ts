@@ -46,7 +46,8 @@ export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
   });
   app.post(`${path}/ingest-gmail`, { preHandler: options.allowWriteKiosk }, async (request) => {
     const body = ingestSchema.parse(request.body ?? {});
-    const config = await (options.loadConfig ?? BackupConfigLoader.load)();
+    // Call the static loader as a method; a detached reference loses `this` and throws.
+    const config = options.loadConfig ? await options.loadConfig() : await BackupConfigLoader.load();
     return (options.ingestion ?? getProcedureMaterialGmailIngestionService()).runOnce({ config, allowWait: true, manual: true, ...body });
   });
   app.post(`${path}/gc`, { preHandler: options.allowWriteKiosk, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async () => (options.gc ?? new ProcedureMaterialGcService()).collect());
