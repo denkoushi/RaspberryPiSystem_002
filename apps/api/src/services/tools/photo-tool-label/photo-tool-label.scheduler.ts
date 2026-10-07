@@ -31,7 +31,10 @@ export class PhotoToolLabelScheduler {
       this.service = service;
     } else {
       const embeddingAdapter = createHttpPhotoToolImageEmbeddingAdapter();
-      const galleryRepo = new PgPhotoToolSimilarityGalleryRepository(env.PHOTO_TOOL_EMBEDDING_DIMENSION);
+      const galleryRepo = new PgPhotoToolSimilarityGalleryRepository(
+        env.PHOTO_TOOL_EMBEDDING_DIMENSION,
+        env.PHOTO_TOOL_EMBEDDING_MODEL_ID
+      );
       const labelAssist = new PhotoToolLabelAssistService(embeddingAdapter, galleryRepo);
       const activeAssistGate = new GalleryRowCountActiveAssistGate(galleryRepo, {
         activeEnabled: env.PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED,

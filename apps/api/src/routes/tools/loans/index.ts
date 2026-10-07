@@ -26,7 +26,10 @@ export async function registerLoanRoutes(app: FastifyInstance): Promise<void> {
 
   const visionSource = new PhotoStorageVisionImageSource();
   const embeddingAdapter = createHttpPhotoToolImageEmbeddingAdapter();
-  const galleryRepo = new PgPhotoToolSimilarityGalleryRepository(env.PHOTO_TOOL_EMBEDDING_DIMENSION);
+  const galleryRepo = new PgPhotoToolSimilarityGalleryRepository(
+    env.PHOTO_TOOL_EMBEDDING_DIMENSION,
+    env.PHOTO_TOOL_EMBEDDING_MODEL_ID
+  );
   const galleryIndex = new PhotoToolGalleryIndexService(embeddingAdapter, galleryRepo, visionSource);
   const similarCandidateService = new PhotoToolSimilarCandidateService(
     embeddingAdapter,
