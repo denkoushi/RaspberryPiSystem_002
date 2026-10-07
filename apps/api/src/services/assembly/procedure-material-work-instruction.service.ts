@@ -60,7 +60,7 @@ export class ProcedureMaterialWorkInstructionService {
 
   async list(options: { q?: string; limit?: number } = {}) {
     const read = this.reader();
-    const limit = Math.max(1, Math.min(options.limit ?? 60, 200));
+    const limit = Math.max(1, Math.min(options.limit ?? 60, 1000));
     const items: Candidate[] = [];
     for (const summary of await this.groups(read, options.q?.trim())) {
       const group = await read.readPublishedGroup(summary);

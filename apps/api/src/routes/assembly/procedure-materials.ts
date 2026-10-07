@@ -33,7 +33,7 @@ export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
   const knowledge = options.knowledge ?? new ProcedureMaterialKnowledgeService();
   const workInstructions = options.workInstructions ?? new ProcedureMaterialWorkInstructionService();
   app.get(`${path}/work-instruction-candidates`, { preHandler: options.allowView }, async (request) =>
-    workInstructions.list(querySchema.pick({ q: true, limit: true }).extend({ limit: z.coerce.number().int().min(1).max(200).default(60) }).parse(request.query)));
+    workInstructions.list(querySchema.pick({ q: true, limit: true }).extend({ limit: z.coerce.number().int().min(1).max(1000).default(60) }).parse(request.query)));
   app.post(`${path}/import-work-instructions`, { preHandler: options.allowWriteKiosk }, async (request) => {
     const { items } = z.object({ items: z.array(z.object({
       candidateKey: z.string().min(1).max(500),
