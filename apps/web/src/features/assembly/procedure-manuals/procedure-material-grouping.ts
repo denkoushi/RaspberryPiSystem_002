@@ -24,11 +24,12 @@ export function groupMaterials(materials: ProcedureMaterialDto[], q = ''): Mater
     /^\s+\(p?\d+\/\d+\)\s*$/.test(suffix.normalize('NFKC')) ? '' : suffix);
   const query = normalizeHint(q).toLowerCase();
   for (const material of materials) {
-    const hint = stripPartSuffix(normalizeHint(material.subjectHint ?? ''));
+    const normalizedHint = normalizeHint(material.subjectHint ?? '');
+    const hint = stripPartSuffix(normalizedHint);
     const fileBase = (material.originalFileName ?? '').replace(/\.[^.]+$/, '').replace(/\s+p\d+\s*$/, '');
     const normalizedFileBase = normalizeHint(fileBase);
     const key = hint ? `hint:${hint}` : normalizedFileBase ? `file:${normalizedFileBase}` : '__no_hint__';
-    const title = hint ? stripPartSuffix(material.subjectHint!) : normalizedFileBase ? fileBase : 'ヒントなし';
+    const title = hint ? (hint === normalizedHint ? material.subjectHint! : stripPartSuffix(material.subjectHint!)) : normalizedFileBase ? fileBase : 'ヒントなし';
     const group = groups.get(key) ?? { title, items: [] };
     group.items.push(material);
     groups.set(key, group);
