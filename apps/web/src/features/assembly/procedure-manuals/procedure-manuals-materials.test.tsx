@@ -8,7 +8,7 @@ import { saveProcedureEditorAccess } from '../procedureEditorAccess';
 import { ProcedureManualWorkshop } from './ProcedureManualWorkshop';
 import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
 
-const mocks = vi.hoisted(() => ({ createDocument: vi.fn(), count: vi.fn(), list: vi.fn(), ingest: vi.fn(), file: vi.fn(), discard: vi.fn(), restore: vi.fn(), unplace: vi.fn(), knowledge: vi.fn(), knowledgeImage: vi.fn(), importKnowledge: vi.fn() }));
+const mocks = vi.hoisted(() => ({ createDocument: vi.fn(), count: vi.fn(), list: vi.fn(), ingest: vi.fn(), file: vi.fn(), discard: vi.fn(), restore: vi.fn(), unplace: vi.fn(), knowledge: vi.fn(), knowledgeImage: vi.fn(), importKnowledge: vi.fn(), workInstructions: vi.fn(), workInstructionImage: vi.fn(), importWorkInstructions: vi.fn() }));
 vi.mock('../../../api/client', () => ({
   listProcedureVideos: async () => [],
   listProcedureManualModels: async () => [], listProcedureManualProcesses: async () => [],
@@ -17,6 +17,7 @@ vi.mock('../../../api/client', () => ({
   listProcedureMaterials: (params: { q?: string }) => params.q === undefined ? mocks.count(params) : mocks.list(params), ingestProcedureMaterialsGmail: mocks.ingest, getProcedureMaterialFile: mocks.file,
   listProcedureKnowledgeCandidates: mocks.knowledge, getProcedureKnowledgeImage: mocks.knowledgeImage, importProcedureKnowledge: mocks.importKnowledge,
   createProcedureMaterialDocument: mocks.createDocument,
+  listProcedureWorkInstructionCandidates: mocks.workInstructions, getProcedureWorkInstructionImage: mocks.workInstructionImage, importProcedureWorkInstructions: mocks.importWorkInstructions,
   discardProcedureMaterial: mocks.discard, restoreProcedureMaterial: mocks.restore, unplaceProcedureMaterial: mocks.unplace,
 }));
 vi.mock('../AssemblyProcedureSequenceViewer', () => ({ AssemblyProcedureSequenceViewer: () => null }));
@@ -30,6 +31,9 @@ describe('procedure-manuals material shelf', () => {
     mocks.knowledge.mockResolvedValue({ enabled: false, items: [] });
     mocks.knowledgeImage.mockResolvedValue(new Blob(['knowledge']));
     mocks.importKnowledge.mockResolvedValue({ imported: 2, duplicate: 0, failed: [] });
+    mocks.workInstructions.mockResolvedValue({ items: [] });
+    mocks.workInstructionImage.mockResolvedValue(new Blob(['work-instruction']));
+    mocks.importWorkInstructions.mockResolvedValue({ imported: 2, duplicate: 0, failed: [] });
     mocks.discard.mockResolvedValue(undefined); mocks.restore.mockResolvedValue(undefined);
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:photo'); vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
   });
@@ -322,6 +326,75 @@ describe('procedure-manuals material shelf', () => {
     expect(screen.getByText('ナレッジ')).toBeInTheDocument();
     expect(onSelect).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: '現在ページに配置' })).toBeInTheDocument();
+  });
+  it('lists and searches processing photos, imports multiple selections and shows provenance in the shelf', async () => {
+    const candidates = [
+      { candidateKey: 'work:first', partNumber: 'DFD1', shootingTarget: '外径', step: 1, memo: '公開メモ', assetId: 'asset-1', alreadyImported: false },
+      { candidateKey: 'work:second', partNumber: 'DFD1', shootingTarget: '内径', step: 2, memo: '', assetId: 'asset-2', alreadyImported: false },
+      { candidateKey: 'work:old', partNumber: 'DFD2', shootingTarget: '外径', step: 3, memo: '以前の写真', assetId: 'asset-3', alreadyImported: true },
+    ];
+    mocks.workInstructions.mockResolvedValue({ items: candidates });
+    const material = { ...photo, origin: 'WORK_INSTRUCTION', subjectHint: 'DFD1 外径 手順1', workInstructionRef: {
+      rowId: 'row', sourceVersionId: 'version', step: 1, assetId: 'asset-1', partNumber: 'DFD1', shootingTarget: '外径', memo: '保存メモ' } };
+    mocks.list.mockResolvedValueOnce([]).mockResolvedValue([material]);
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} onSelect={vi.fn()} />);
+    await screen.findByText('素材がありません');
+    fireEvent.click(screen.getByRole('tab', { name: '加工の写真' }));
+    expect(await screen.findByText('公開メモ')).toHaveClass('line-clamp-2');
+    expect(await screen.findByRole('img', { name: 'DFD1 外径 手順 1' })).toBeInTheDocument();
+    expect(mocks.workInstructionImage).toHaveBeenCalledWith('asset-1');
+    expect(mocks.knowledgeImage).not.toHaveBeenCalled();
+    expect(screen.getByRole('checkbox', { name: 'DFD2 外径 手順 3' })).toBeDisabled();
+    expect(screen.getByText(/取込済み/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '棚に取り込む' })).toBeDisabled();
+    expect(screen.getByLabelText('加工の写真検索')).toHaveAttribute('placeholder', '品番・対象');
+    fireEvent.change(screen.getByLabelText('加工の写真検索'), { target: { value: 'DFD1' } });
+    await waitFor(() => expect(mocks.workInstructions).toHaveBeenLastCalledWith({ q: 'DFD1', limit: 60 }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'DFD1 外径 手順 1' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'DFD1 内径 手順 2' }));
+    fireEvent.click(screen.getByRole('button', { name: '棚に取り込む' }));
+    expect(await screen.findByText('保存メモ')).toHaveClass('line-clamp-2');
+    expect(mocks.importWorkInstructions).toHaveBeenCalledExactlyOnceWith([
+      { candidateKey: 'work:first', partNumber: 'DFD1', shootingTarget: '外径' },
+      { candidateKey: 'work:second', partNumber: 'DFD1', shootingTarget: '内径' },
+    ]);
+    expect(screen.getByRole('tab', { name: /^未配置/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('加工')).toBeInTheDocument();
+    expect(screen.getByText('DFD1 外径 · 手順 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: '配置済み' }));
+    expect(await screen.findByText('保存メモ')).toBeInTheDocument();
+    expect(screen.getByText('加工')).toBeInTheDocument();
+  });
+  it('caps processing-photo selection at 50 even when selecting imports for replacement', async () => {
+    mocks.list.mockResolvedValue([]);
+    mocks.workInstructions.mockResolvedValue({ items: Array.from({ length: 51 }, (_, index) => ({
+      candidateKey: `work:${index}`, partNumber: 'DFD1', shootingTarget: '外径', step: index + 1, memo: '', assetId: `asset-${index}`, alreadyImported: false,
+    })) });
+    render(<ProcedureMaterialShelfDialog mode="replace" onClose={vi.fn()} onSelect={vi.fn()} />);
+    fireEvent.click(screen.getByRole('tab', { name: '加工の写真' }));
+    const checks = await screen.findAllByRole('checkbox');
+    for (const check of checks.slice(0, 50)) fireEvent.click(check);
+    expect(checks[50]).toBeDisabled();
+    expect(checks[0]).toBeEnabled();
+    expect(screen.getByRole('status', { name: '選択中の素材' })).toHaveTextContent('50 件を選択中');
+    fireEvent.click(checks[0]);
+    expect(checks[50]).toBeEnabled();
+  });
+  it('shows processing-photo import failures and write permission errors without switching tabs', async () => {
+    mocks.list.mockResolvedValue([]);
+    mocks.workInstructions.mockResolvedValue({ items: [{ candidateKey: 'work:first', partNumber: 'DFD1', shootingTarget: '外径', step: 1, memo: '', assetId: 'asset', alreadyImported: false }] });
+    mocks.importWorkInstructions.mockResolvedValueOnce({ imported: 0, duplicate: 0, failed: [{ candidateKey: 'work:first', reason: '写真がありません' }] })
+      .mockRejectedValueOnce({ isAxiosError: true, response: { status: 403 } });
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('tab', { name: '加工の写真' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'DFD1 外径 手順 1' }));
+    fireEvent.click(screen.getByRole('button', { name: '棚に取り込む' }));
+    expect(await screen.findByText('写真がありません')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '加工の写真' })).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() => expect(mocks.workInstructions).toHaveBeenCalledTimes(2));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'DFD1 外径 手順 1' }));
+    fireEvent.click(screen.getByRole('button', { name: '棚に取り込む' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('権限がありません');
   });
   it('shows a short disabled message in the knowledge tab without image requests', async () => {
     mocks.list.mockResolvedValue([]);

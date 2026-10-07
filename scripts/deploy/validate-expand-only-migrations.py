@@ -91,6 +91,10 @@ DISALLOWED_COLUMN_CLAUSE = re.compile(
     r"IDENTITY|SERIAL|BIGSERIAL|SMALLSERIAL|DROP|ALTER|RENAME|SET|ADD)\b",
     re.IGNORECASE,
 )
+ALLOW_PROCEDURE_MATERIAL_WORK_INSTRUCTION_ADD_VALUE = re.compile(
+    r'^(?i:ALTER)\s+(?i:TYPE)\s+"ProcedureMaterialOrigin"\s+'
+    r"(?i:ADD)\s+(?i:VALUE)\s+'WORK_INSTRUCTION'$"
+)
 BUILTIN_COLUMN_TYPE = re.compile(
     r"^(?:(?:BOOL|BOOLEAN)|"
     r"(?:INT2|SMALLINT|INT4|INT|INTEGER|INT8|BIGINT)|"
@@ -384,6 +388,12 @@ def validate_statement(
             and not _has_top_level_comma(code)
         ):
             return
+
+    if (
+        ALLOW_PROCEDURE_MATERIAL_WORK_INSTRUCTION_ADD_VALUE.fullmatch(statement.text.strip())
+        is not None
+    ):
+        return
 
     raise ValueError(f"disallowed statement in {label}: {statement.text[:120]}")
 

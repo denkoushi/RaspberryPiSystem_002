@@ -137,6 +137,21 @@ class SqlAllowListTests(unittest.TestCase):
             with self.subTest(sql=sql):
                 self.assert_disallowed(sql)
 
+    def test_procedure_material_work_instruction_origin_expansion_is_allowed(self) -> None:
+        path = (
+            ROOT
+            / validator.MIGRATION_ROOT
+            / "20261007000000_add_procedure_material_work_instruction_origin/migration.sql"
+        )
+        validator.validate_sql(path.read_bytes(), str(path))
+        for sql in [
+            'ALTER TYPE "OtherOrigin" ADD VALUE \'WORK_INSTRUCTION\';',
+            'ALTER TYPE "ProcedureMaterialOrigin" ADD VALUE \'OTHER\';',
+            'ALTER TYPE "ProcedureMaterialOrigin" RENAME VALUE \'GMAIL\' TO \'WORK_INSTRUCTION\';',
+        ]:
+            with self.subTest(sql=sql):
+                self.assert_disallowed(sql)
+
     def test_only_torque_confirmation_setting_history_nullability_drops_are_allowed(self) -> None:
         statements = [
             'ALTER TABLE "AssemblyTorqueWrenchConfirmation" '

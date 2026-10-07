@@ -7,6 +7,7 @@ import { ProcedureMaterialService } from '../../services/assembly/procedure-mate
 import { getProcedureMaterialGmailIngestionService, type ProcedureMaterialGmailIngestionService } from '../../services/assembly/procedure-material-gmail-ingestion.service.js';
 
 import { ProcedureMaterialKnowledgeService } from '../../services/assembly/procedure-material-knowledge.service.js';
+import { ProcedureMaterialWorkInstructionService } from '../../services/assembly/procedure-material-work-instruction.service.js';
 
 import { ProcedureMaterialGcService } from '../../services/assembly/procedure-material-gc.service.js';
 
@@ -23,12 +24,24 @@ export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
   service?: ProcedureMaterialService;
   gc?: ProcedureMaterialGcService;
   knowledge?: ProcedureMaterialKnowledgeService;
+  workInstructions?: ProcedureMaterialWorkInstructionService;
   ingestion?: Pick<ProcedureMaterialGmailIngestionService, 'runOnce'>;
   loadConfig?: () => Promise<BackupConfig>;
 }) {
   const service = options.service ?? new ProcedureMaterialService();
   const path = '/assembly/procedure-materials';
   const knowledge = options.knowledge ?? new ProcedureMaterialKnowledgeService();
+  const workInstructions = options.workInstructions ?? new ProcedureMaterialWorkInstructionService();
+  app.get(`${path}/work-instruction-candidates`, { preHandler: options.allowView }, async (request) =>
+    workInstructions.list(querySchema.pick({ q: true, limit: true }).extend({ limit: z.coerce.number().int().min(1).max(200).default(60) }).parse(request.query)));
+  app.post(`${path}/import-work-instructions`, { preHandler: options.allowWriteKiosk }, async (request) => {
+    const { items } = z.object({ items: z.array(z.object({
+      candidateKey: z.string().min(1).max(500),
+      partNumber: z.string().trim().min(1).max(200),
+      shootingTarget: z.string().trim().min(1).max(200),
+    }).strict()).min(1).max(50) }).strict().parse(request.body);
+    return workInstructions.import(items);
+  });
   app.get(`${path}/knowledge-candidates`, { preHandler: options.allowView }, async (request) =>
     knowledge.list(querySchema.pick({ q: true, limit: true }).extend({ limit: z.coerce.number().int().min(1).max(300).default(100) }).parse(request.query)));
   app.get(`${path}/knowledge-candidates/images/:imageId`, { preHandler: options.allowView, config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {

@@ -35,6 +35,9 @@ import { useKnowledgeDestination } from '../../features/hermes-knowledge/useKnow
 import { useKnowledgeIntake } from '../../features/hermes-knowledge/useKnowledgeIntake';
 import { useKnowledgePoster } from '../../features/hermes-knowledge/useKnowledgePoster';
 import { useKnowledgeWorkspace } from '../../features/hermes-knowledge/useKnowledgeWorkspace';
+import { OperationGuidePrompt } from '../../features/operation-guide/OperationGuideChoices';
+import { OperationGuideOverlay } from '../../features/operation-guide/OperationGuideOverlay';
+import { useOperationGuide } from '../../features/operation-guide/useOperationGuide';
 
 import { useHermesPageContext } from './HermesPageContext';
 
@@ -129,6 +132,7 @@ function responseText(response: BusinessHermesChatResponse | BusinessHermesConsu
 export function HermesFloatingChat() {
   const { user, token } = useAuth();
   const location = useLocation();
+  const operationGuide = useOperationGuide();
   const { pageContext } = useHermesPageContext();
   const isPlanningBoardRoute = location.pathname.replace(/\/$/, '') === '/kiosk/production-schedule/planning-board';
   const [viewport, setViewport] = useState(getViewport);
@@ -372,8 +376,9 @@ export function HermesFloatingChat() {
   const handleKnowledgeModeChange = useCallback((mode: HermesKnowledgeMode) => {
     knowledgeModeRevisionRef.current += 1;
     if ((mode === 'record-pilot') !== (knowledgeMode === 'record-pilot')) resetConversation();
+    operationGuide.clear();
     setKnowledgeMode(mode);
-  }, [knowledgeMode, resetConversation]);
+  }, [knowledgeMode, operationGuide, resetConversation]);
 
   const handleDraftChange = useCallback((value: string) => {
     draftRevisionRef.current += 1;
@@ -658,6 +663,11 @@ export function HermesFloatingChat() {
     const content = (typeof messageOverride === 'string' ? messageOverride : draft).trim();
     const hasKnowledgeFiles = knowledgeMode === 'knowledge' && knowledge.files.length > 0;
     if ((!content && !hasKnowledgeFiles) || isBusy || (knowledgeMode === 'knowledge' && knowledge.busy)) return;
+    if (knowledgeMode === 'search' && !options?.selection && !options?.scanValue && operationGuide.receive(content)) {
+      setDraft('');
+      return;
+    }
+    operationGuide.clear();
     if (!ensureCurrentClientKey()) return;
     if (knowledgeMode === 'knowledge' && !options?.selection && !options?.scanValue && !options?.skipKnowledge) {
       const draftRevision = draftRevisionRef.current;
@@ -843,7 +853,7 @@ export function HermesFloatingChat() {
         setActivityStatus(null);
       }
     }
-  }, [activeConsultation, clientKey, consultationMode, draft, ensureCurrentClientKey, identity, isBusy, knowledge, knowledgeMode, knowledgePoster, knowledgeDestination, messages, pageContext, replaceConsultationInList, resetConversation]);
+  }, [activeConsultation, clientKey, consultationMode, draft, ensureCurrentClientKey, identity, isBusy, knowledge, knowledgeMode, knowledgePoster, knowledgeDestination, messages, operationGuide, pageContext, replaceConsultationInList, resetConversation]);
 
   const handleScanSuccess = useCallback((value: string) => {
     closeScanner();
@@ -947,7 +957,7 @@ export function HermesFloatingChat() {
     recordPilotAvailable: recordPilotScope.enabled,
     onKnowledgeModeChange: handleKnowledgeModeChange,
     conversationContent: knowledgeWorkspace.isOpen ? <KnowledgeWorkspace workspace={knowledgeWorkspace} posterName={knowledgePoster.poster?.name ?? null} /> : undefined,
-    conversationExtension: knowledgeMode === 'record-pilot' ? <p className="hermes-chat-panel__status" role="note">
+    conversationExtension: knowledgeMode === 'search' && operationGuide.question ? <OperationGuidePrompt question={operationGuide.question} onChoose={operationGuide.choose} /> : knowledgeMode === 'record-pilot' ? <p className="hermes-chat-panel__status" role="note">
       JEV記録検索：取り込み済みの実際の不適合記録が対象です。工程・現象・処置・原因など、知りたい条件を自然文で入力してください。記録の原文をそのまま表示します。条件を特定できない質問には確認を返します。
     </p> : knowledgeMode === 'knowledge' && knowledge.enabled ? <>
       <KnowledgePosterBar destinationChip={<KnowledgeDestinationChip destination={knowledgeDestination} />} actions={<KnowledgeWorkspaceChips workspace={knowledgeWorkspace} />} poster={knowledgePoster.poster} verifying={knowledgePoster.verifying} error={knowledgePoster.error}
@@ -977,14 +987,14 @@ export function HermesFloatingChat() {
     onFeedback: (id, verdict) => void recordFeedback(id, verdict),
     onDraftChange: handleDraftChange,
     onSend: sendMessage,
-    onReset: () => { knowledge.reset(); resetActiveConversation(); },
+    onReset: () => { operationGuide.clear(); knowledge.reset(); resetActiveConversation(); },
     onClose: closePanel,
     onStop: knowledgeMode === 'knowledge' && knowledge.busy ? undefined : stopRequest,
     isExpanded: panelExpanded,
     onToggleSize: togglePanelSize,
-    onNewConsultation: () => { knowledge.reset(); void createConsultation(); },
+    onNewConsultation: () => { operationGuide.clear(); knowledge.reset(); void createConsultation(); },
     onScan: () => void openScanner(),
-    onSelectConsultation: (consultationId) => void selectConsultation(consultationId),
+    onSelectConsultation: (consultationId) => { operationGuide.clear(); void selectConsultation(consultationId); },
     onLoadOlderMessages: () => void loadOlderMessages(),
     suggestion: consultationSuggestion,
     onAnswerSuggestion: respondToSuggestion,
@@ -1025,7 +1035,13 @@ export function HermesFloatingChat() {
         <span className="hermes-floating-trigger__glyph" aria-hidden="true">H</span>
       </button>
 
-      {open ? (
+      {open && operationGuide.guide ? <OperationGuideOverlay
+        guide={operationGuide.guide} index={operationGuide.index} iconRef={iconRef}
+        onBack={operationGuide.back} onNext={operationGuide.next} onChoose={operationGuide.choose}
+        onEnd={() => { operationGuide.clear(); setOpen(false); iconRef.current?.focus(); }}
+        onQuestion={() => { operationGuide.clear(); setOpen(true); iconRef.current?.focus(); }}
+      /> : null}
+      {open && !operationGuide.guide ? (
         <Suspense fallback={<div className="hermes-chat-panel" style={panelStyle} role="status">チャットを準備中…</div>}>
           <HermesChatPanel {...panelProps} style={panelStyle} />
         </Suspense>

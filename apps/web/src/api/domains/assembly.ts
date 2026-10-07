@@ -1095,6 +1095,21 @@ export async function importProcedureKnowledge(candidateKeys: string[]) {
   return data;
 }
 
+export async function listProcedureWorkInstructionCandidates(params: { q?: string; limit?: number } = {}) {
+  const { data } = await api.get<import('../../features/assembly/procedure-manuals/procedure-material-types').ProcedureWorkInstructionCandidatesResult>('/assembly/procedure-materials/work-instruction-candidates', { params });
+  return data;
+}
+
+export async function getProcedureWorkInstructionImage(assetId: string) {
+  const { data } = await api.get<Blob>(`/work-instructions/assets/${encodeURIComponent(assetId)}`, { responseType: 'blob' });
+  return data;
+}
+
+export async function importProcedureWorkInstructions(items: Array<{ candidateKey: string; partNumber: string; shootingTarget: string }>) {
+  const { data } = await api.post<import('../../features/assembly/procedure-manuals/procedure-material-types').ProcedureWorkInstructionImportResult>('/assembly/procedure-materials/import-work-instructions', { items });
+  return data;
+}
+
 export async function listProcedureVideos(params: { state?: import('../../features/assembly/procedure-manuals/procedure-video-types').ProcedureVideoState; q?: string; limit?: number } = {}) {
   const { data } = await api.get<{ videos: import('../../features/assembly/procedure-manuals/procedure-video-types').ProcedureVideoDto[] }>('/assembly/procedure-videos', { params });
   return data.videos;

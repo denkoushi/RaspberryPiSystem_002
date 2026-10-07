@@ -18,7 +18,7 @@ This Runbook never performs an automatic live restore. It first restores into a 
 
 ## Preconditions and safety boundaries
 
-Only the immutable merged SHA approved for the relevant rollout may be used on a Pi. Local feature-branch success is not deployment evidence. The dedicated playbook targets exactly `raspberrypi5` and is not included in normal fleet deployment. Installing it, placing credentials, performing the first manual backup, enabling the timer, and changing a production host are separate approval steps.
+Only the immutable merged SHA approved for the relevant rollout may be used on a Pi. Local feature-branch success is not deployment evidence. The dedicated playbook targets exactly `raspberrypi5` and is not included in normal fleet deployment. Initial installation, placing credentials, performing the first manual backup, first timer activation, and changing a production host are separate approval steps. Routine playbook runs follow the approved timer state in inventory.
 
 The repository is:
 
@@ -26,7 +26,7 @@ The repository is:
 
 Google OAuth uses `drive.file`; this limits the application to files it creates. The restic password is repository-specific and must be held in the approved password manager and on an offline medium. Never paste the password or OAuth token into a shell history, Git file, manifest, ticket, or log.
 
-The Pi credential directory is dedicated to this lane. It contains the rclone configuration, restic password file, and environment metadata as applicable. It must be owned by `root:root`, files must be mode `0600`, and the directory must not be a backup source. The systemd timer is disabled by default. Do not enable it until the manual capacity, backup, and isolated restore checks pass.
+The Pi credential directory is dedicated to this lane. It contains the rclone configuration, restic password file, and environment metadata as applicable. It must be owned by `root:root`, files must be mode `0600`, and the directory must not be a backup source. Production inventory sets `google_drive_dr_timer_enabled: true` for `raspberrypi5`; when undefined, the timer is disabled. For a new Pi 5, pass `-e google_drive_dr_timer_enabled=false` on every playbook run until the manual capacity, backup, and isolated restore checks pass.
 
 ## Snapshot coverage
 
@@ -43,7 +43,7 @@ The runner excludes `.ssh` authority directories, Google OAuth credentials, the 
 1. Select the exact merged SHA and prove the CI checks required by the release process. Do not run this playbook from an unreviewed feature branch on a production host.
 2. Prepare the Google Drive remote with the `drive.file` scope. Create a new repository-specific restic password and store it in the approved password manager and an offline medium. Do not reuse the DGX repository password.
 3. Transfer the rclone credential file and password file out of band to the dedicated Pi directory. Confirm `root:root` ownership and `0600` mode. Keep the timer disabled.
-4. Run the dedicated Ansible playbook in check mode with an exact host limit and verify `--list-hosts` contains only `raspberrypi5`. The playbook must place the runner, non-secret environment, service, and disabled timer without changing the public API, UI, database schema, migrations, or Dropbox settings.
+4. Run the dedicated Ansible playbook in check mode with an exact host limit and verify `--list-hosts` contains only `raspberrypi5`. Pass `-e google_drive_dr_timer_enabled=false` in both check mode and the approved initial installation to keep the timer disabled despite the production inventory setting. The playbook must place the runner, non-secret environment, service, and disabled timer without changing the public API, UI, database schema, migrations, or Dropbox settings.
 5. On the Pi, inspect the installed unit and environment paths without printing their values. Confirm the service is `Type=oneshot`, `TimeoutStartSec=9h30m`, `KillMode=control-group`, and has no `RuntimeMaxSec`; confirm the timer has `OnCalendar=*-*-* 21:30:00 Asia/Tokyo`, `Persistent=false`, and is disabled. The explicit calendar timezone makes the schedule independent of the host's local timezone; the playbook neither changes nor rejects the host timezone.
 
 ## Capacity check
@@ -94,13 +94,13 @@ The service is scheduled only after capacity, manual backup, and isolated restor
 - `forget --group-by host,tags` after every successful snapshot with daily 7, weekly 5, monthly 12. The matching `backup --group-by host,tags` keeps each UUID staging path in the single Business Pi 5 tag lane, rather than creating a separate retention group per run; and
 - `prune` on Sunday only, so normal nightly uploads remain bounded.
 
-Enablement is a separately approved operation. After enablement, inspect the next timer event and the following morning's service result. A run that has not finished by approximately 07:00 is not automatically treated as data loss: stop daytime uploads, inspect the journal and capacity, and let the next overnight run reuse restic blobs. Do not extend the timer into the business window without a new operational decision.
+First activation on a new Pi 5 is a separately approved operation after these checks pass; then omit the initial `-e google_drive_dr_timer_enabled=false` override to follow inventory. Routine production playbook runs preserve the configured enabled timer; verify in `--check` that the timer state task reports no change. To explicitly disable and stop it, pass `-e google_drive_dr_timer_enabled=false`. After enablement, inspect the next timer event and the following morning's service result. A run that has not finished by approximately 07:00 is not automatically treated as data loss: stop daytime uploads, inspect the journal and capacity, and let the next overnight run reuse restic blobs. Do not extend the timer into the business window without a new operational decision.
 
 ## Total-loss recovery procedure
 
 1. Record the incident, the last known successful snapshot ID, and the exact immutable source SHA. Do not modify the failed SSD or delete the old repository.
 2. Prepare a new Pi 5 or SSD with the approved OS, Docker, storage mount, fresh host identity, and standard Ansible prerequisites. Do not copy old `.ssh` or Tailscale state into the replacement.
-3. Install the approved merged SHA and the dedicated DR runner/credentials using the Pi 5-only playbook. Keep the timer disabled and keep the live application path empty or isolated.
+3. Install the approved merged SHA and the dedicated DR runner/credentials using the Pi 5-only playbook with `-e google_drive_dr_timer_enabled=false`. Keep the timer disabled and keep the live application path empty or isolated.
 4. Run `capacity`, then `restore-check` into a new isolated directory. Verify the manifest, Git bundle, dump format, schema/migration ledger, representative row counts and query plan, and representative primary-file hashes.
 5. Apply the same Git SHA and release configuration to the replacement. Restore application files only through an explicit, reviewed operator action after the isolated evidence passes. Load the database dump into the replacement database, run the approved migrations, and confirm API health and representative business screens before cutover.
 6. Perform final network, certificate, authentication, and data checks. Only after the operator has accepted the isolated restore may traffic be switched to the replacement. Live restore is never triggered automatically by the backup timer.
