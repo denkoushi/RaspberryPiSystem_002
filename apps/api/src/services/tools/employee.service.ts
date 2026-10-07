@@ -10,6 +10,7 @@ export interface EmployeeCreateInput {
   firstName?: string;
   nfcTagUid?: string | null;
   department?: string | null;
+  section?: string | null;
   positionName?: string | null;
   contact?: string | null;
   status?: EmployeeStatus;
@@ -96,6 +97,7 @@ export class EmployeeService {
         firstName: data.firstName ?? null,
         nfcTagUid: data.nfcTagUid ?? undefined,
         department: data.department ?? undefined,
+        section: data.section ?? undefined,
         positionName: data.positionName ?? undefined,
         contact: data.contact ?? undefined,
         status: data.status ?? 'ACTIVE'
