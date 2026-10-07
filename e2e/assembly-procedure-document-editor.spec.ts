@@ -441,7 +441,7 @@ async function authenticateDocumentEditor(page: Page): Promise<void> {
   expect((await leaseAcquired).status()).toBe(200);
   await expect(page.getByTestId('assembly-document-editor-layout')).toBeVisible();
   await expect(page.getByRole('region', { name: '手順書キャンバス' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '範囲', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '範囲を選ぶ', exact: true })).toBeEnabled();
 }
 
 async function drawRange(page: Page, start = { x: 0.12, y: 0.16 }, end = { x: 0.38, y: 0.3 }): Promise<void> {
@@ -467,7 +467,7 @@ async function addOverlay(
   start: { x: number; y: number },
   end: { x: number; y: number }
 ): Promise<void> {
-  await page.getByRole('button', { name: '範囲', exact: true }).click();
+  await page.getByRole('button', { name: '範囲を選ぶ', exact: true }).click();
   await drawRange(page, start, end);
   await selectOverlayType(page, type);
 }
@@ -521,7 +521,7 @@ test('published source authenticates into a draft, edits TEXT/ROI IMAGE/ARROW, s
       .locator('marker')
   ).toHaveCount(1);
 
-  const saveButton = page.getByRole('button', { name: '保存', exact: true });
+  const saveButton = page.getByRole('button', { name: '保存する', exact: true });
   await expect(saveButton).toBeEnabled();
   await saveButton.click();
   await expect.poll(() => evidence.saveBodies.length).toBe(1);
@@ -567,7 +567,7 @@ test('published source authenticates into a draft, edits TEXT/ROI IMAGE/ARROW, s
   await expect(page.getByRole('button', { name: '図形オーバーレイ: LINE', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '図形オーバーレイ: ELLIPSE', exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: '公開', exact: true }).click();
+  await page.getByRole('button', { name: '公開する', exact: true }).click();
   const publishDialog = page.getByRole('dialog', { name: '手順書を公開' });
   await expect(publishDialog).toBeVisible();
   // Tag approval is the default; this scenario exercises the password path.
