@@ -3,6 +3,7 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 
 import { ImageOverlayFrame } from '../overlays/ImageOverlayFrame';
 
+import { WorkInstructionEditorAnnotationControls } from './WorkInstructionEditorAnnotationControls';
 import { normalizeWorkInstructionOverlayBBox } from './workInstructionEditorDraft';
 
 import type { WorkInstructionEditorStepDto } from '../../api/domains/work-instruction-overlays';
@@ -62,6 +63,7 @@ function RangeSurface({
     if (!pending || pending.pointerId !== event.pointerId) return;
     const end = pointInSurface(event);
     pointerRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     setPreview(null);
     event.preventDefault();
     event.stopPropagation();
@@ -76,15 +78,15 @@ function RangeSurface({
       className="pointer-events-auto absolute inset-0 z-40 cursor-crosshair touch-none"
       role="application"
       tabIndex={0}
-      aria-label="オーバーレイ範囲選択面"
+      aria-label="注釈の範囲選択面"
       data-testid="work-instruction-editor-range-surface"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={finish}
-      onPointerCancel={finish}
+      onPointerCancel={() => { pointerRef.current = null; setPreview(null); }}
     >
       {preview && preview.widthRatio > 0 && preview.heightRatio > 0 ? (
-        <div className="pointer-events-none absolute border-2 border-amber-300 bg-amber-300/20" style={{ left: `${preview.xRatio * 100}%`, top: `${preview.yRatio * 100}%`, width: `${preview.widthRatio * 100}%`, height: `${preview.heightRatio * 100}%` }} data-testid="work-instruction-editor-pending-range" />
+        <div className="pointer-events-none absolute border-2 border-[#5fc3e8] bg-[#5fc3e8]/10" style={{ left: `${preview.xRatio * 100}%`, top: `${preview.yRatio * 100}%`, width: `${preview.widthRatio * 100}%`, height: `${preview.heightRatio * 100}%` }} data-testid="work-instruction-editor-pending-range" />
       ) : null}
     </div>
   );
@@ -100,6 +102,7 @@ export function WorkInstructionEditorCanvas({
   onNudgeOverlay,
   onUpdateOverlayBBox,
   onRangeSelected,
+  onDeselect,
   assets,
   className
 }: {
@@ -112,6 +115,7 @@ export function WorkInstructionEditorCanvas({
   onNudgeOverlay: (id: string, dxRatio: number, dyRatio: number) => void;
   onUpdateOverlayBBox: (id: string, bbox: OverlayBBox) => void;
   onRangeSelected: (bbox: OverlayBBox) => void;
+  onDeselect?: () => void;
   assets?: Record<string, { assetId?: string; storageKey?: string; contentType?: string; byteSize?: number; sha256?: string; url?: string; relativeUrl?: string }>;
   className?: string;
 }) {
@@ -123,16 +127,14 @@ export function WorkInstructionEditorCanvas({
     <ImageOverlayFrame
       imageUrl={imagePath}
       alt={`手順${step.step}の作業要領画像`}
-      overlays={elements}
+      overlays={elements.filter((element) => element.kind !== 'IMAGE' || element.assetId)}
       assets={assets}
-      selectedOverlayId={selectedOverlayId}
-      interactive={editable && !selectionMode}
-      onSelectOverlay={onSelectOverlay}
-      onNudgeOverlay={onNudgeOverlay}
-      onUpdateOverlayBBox={editable ? onUpdateOverlayBBox : undefined}
+      onFrameClick={onDeselect}
+      frameClassName="bg-white"
       className={clsx('h-full w-full', className)}
       testId="work-instruction-editor-canvas"
     >
+      {editable && !selectionMode ? <WorkInstructionEditorAnnotationControls elements={elements} selectedId={selectedOverlayId} onSelect={onSelectOverlay} onNudge={onNudgeOverlay} onUpdateBBox={onUpdateOverlayBBox} /> : null}
       <RangeSurface enabled={editable && selectionMode} onRangeSelected={onRangeSelected} />
     </ImageOverlayFrame>
   );

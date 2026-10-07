@@ -59,29 +59,8 @@ function memoReviewCount(controller: WorkInstructionEditorController): number {
   }, 0);
 }
 
-export function WorkInstructionEditorToolbarStatus({ controller }: { controller: WorkInstructionEditorController }) {
+export function WorkInstructionEditorToolbarStatus({ controller, onReview }: { controller: WorkInstructionEditorController; onReview?: () => void }) {
   const statusLabel = controller.busy ? '処理中…' : controller.isDirty ? '未保存' : '保存済み';
-  const statusClass = controller.busy
-    ? 'border-cyan-300/40 bg-cyan-300/10 text-cyan-100'
-    : controller.isDirty
-      ? 'border-amber-300/50 bg-amber-300/10 text-amber-100'
-      : 'border-emerald-300/40 bg-emerald-300/10 text-emerald-100';
-  const reviewCount = overlayReviewCount(controller)
-    + memoReviewCount(controller);
-
-  return (
-    <div className="flex min-w-0 shrink-0 items-center gap-2 text-xs" role="status" aria-live="polite" data-testid="work-instruction-editor-toolbar-status">
-      <span className={`rounded border px-2 py-1 font-bold ${statusClass}`}>{statusLabel}</span>
-      {reviewCount > 0 ? <span className="rounded border border-amber-300/40 bg-amber-300/10 px-2 py-1 text-amber-100">要確認 {reviewCount}</span> : null}
-      {!controller.conflict && controller.message ? (
-        <span
-          className="max-w-[28rem] truncate text-white/80"
-          data-testid="work-instruction-editor-toolbar-message"
-          title={controller.message}
-        >
-          {controller.message}
-        </span>
-      ) : null}
-    </div>
-  );
+  const reviewCount = controller.reviewCount ?? overlayReviewCount(controller) + memoReviewCount(controller);
+  return <div className="flex max-w-full flex-wrap items-center gap-2 text-[15px] xl:shrink-0 xl:flex-nowrap" data-testid="work-instruction-editor-toolbar-status"><span role="status" aria-live="polite" className={`flex h-11 items-center rounded-lg border border-[#344252] bg-[#161c22eb] px-3 ${controller.busy ? 'text-[#9fadb9]' : controller.isDirty ? 'text-[#f6b93b]' : 'text-[#3ba776]'}`}>{statusLabel}</span>{reviewCount > 0 ? <button type="button" aria-label="次の要確認へ" title="次の要確認へ" onClick={onReview ?? controller.nextReview} className="h-11 rounded-lg border border-[#344252] bg-[#161c22eb] px-3 text-[#f6b93b] focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-[#5fc3e8]">要確認 {reviewCount}</button> : null}</div>;
 }
