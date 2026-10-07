@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 
 import { getEmployees } from '../../api/domains/tools';
+import { Card } from '../../components/ui/Card';
 import { useAuth } from '../../contexts/AuthContext';
 import { getKnowledgeCapabilities, getKnowledgePositionRanks, saveKnowledgePositionRanks } from '../../features/hermes-knowledge/knowledgeReviewApi';
 
@@ -52,7 +53,7 @@ function PositionRanksEditor() {
     finally { setBusy(false); }
   }
 
-  return <div className="space-y-3 text-slate-900">
+  return <Card className="space-y-3">
     <h1 className="text-xl font-bold">職位の対応表</h1>
     {enabled === false ? <p>ナレッジは無効です。</p> : <>
       {error ? <p role="alert" className="text-sm text-red-700">{error}</p> : null}
@@ -74,7 +75,7 @@ function PositionRanksEditor() {
           {saved ? <span role="status" className="text-sm text-green-700">保存しました</span> : null}</div>
       </> : null}
     </>}
-  </div>;
+  </Card>;
 }
 
 export function KnowledgePositionRanksPage() {
