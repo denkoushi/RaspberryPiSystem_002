@@ -86,6 +86,18 @@
     enabled: true
     state: started
 
+- name: Deploy backup verification failure alert service
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/backup-verify-alert@.service.j2"
+    dest: /etc/systemd/system/backup-verify-alert@.service
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    project_root: "{{ repo_path }}"
+  register: backup_verify_alert_service_unit
+  when: backup_verify_enabled | default(true)
+
 - name: Deploy backup verification monthly service
   ansible.builtin.template:
     src: "{{ playbook_dir }}/../templates/backup-verify-monthly.service.j2"
@@ -135,7 +147,7 @@
     daemon_reload: true
   when:
     - backup_verify_enabled | default(true)
-    - (backup_verify_monthly_service_unit is changed) or (backup_verify_monthly_timer_unit is changed) or (backup_verify_quarterly_service_unit is changed) or (backup_verify_quarterly_timer_unit is changed)
+    - (backup_verify_alert_service_unit is changed) or (backup_verify_monthly_service_unit is changed) or (backup_verify_monthly_timer_unit is changed) or (backup_verify_quarterly_service_unit is changed) or (backup_verify_quarterly_timer_unit is changed)
 
 - name: Enable and start backup verification timers
   ansible.builtin.systemd:

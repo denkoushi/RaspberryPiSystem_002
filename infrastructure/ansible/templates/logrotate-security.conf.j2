@@ -1,23 +1,5 @@
-/var/log/fail2ban.log {
-    weekly
-    rotate 52
-    missingok
-    compress
-    delaycompress
-    notifempty
-    postrotate
-        /usr/bin/systemctl reload fail2ban 2>/dev/null || true
-    endscript
-}
-
-/var/log/clamav/*.log {
-    weekly
-    rotate 52
-    missingok
-    compress
-    delaycompress
-    notifempty
-}
+# fail2ban / ClamAV logs use package-owned rotation; omit duplicates instead of
+# overriding package definitions to enforce the former rotate 52 retention.
 
 /var/log/trivy/*.log {
     weekly
