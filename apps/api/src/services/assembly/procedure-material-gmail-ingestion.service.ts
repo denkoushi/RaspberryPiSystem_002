@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import sharp from 'sharp';
+
 import { ProcedureVideoService } from './procedure-video.service.js';
 import { getProcedureVideoScheduler } from './procedure-video.scheduler.js';
 import { Prisma } from '@prisma/client';
@@ -12,7 +15,9 @@ import { getFileStorageRuntime } from '../file-storage/file-storage-runtime.js';
 import { resolveGmailApiClientFromBackupConfig } from '../gmail/gmail-api-client.factory.js';
 import { getProcedureMaterialSubjectHint, isProcedureMaterialGmailSubject, PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS } from '../gmail/gmail-subject-reservation.policy.js';
 import { escapeGmailQuotedSearchValue, extractEmail } from '../item-inventory/item-inventory-ingestion.policy.js';
-import { materialMessageHeader, resolveProcedureMaterialGmailPacket, type ProcedureMaterialAttachmentClient } from './procedure-material-gmail-packet-resolver.js';
+import type { PdfPagesPort } from '../knowledge/pdf-pages.port.js';
+import { PopplerPdfPagesAdapter } from '../knowledge/poppler-pdf-pages.adapter.js';
+import { materialMessageHeader, resolveProcedureMaterialGmailPacket, type ProcedureMaterialAttachmentClient, type ProcedureMaterialPhoto } from './procedure-material-gmail-packet-resolver.js';
 
 export type ProcedureMaterialGmailPort = ProcedureMaterialAttachmentClient & {
   searchMessagesAll: (query: string) => Promise<string[]>;
@@ -44,6 +49,7 @@ export class ProcedureMaterialGmailIngestionService {
     private readonly gmailFactory: (config: BackupConfig, options: { allowWait: boolean }) => Promise<ProcedureMaterialGmailPort>,
     private readonly db = defaultPrisma,
     private readonly store: DurableFileStorePort = getFileStorageRuntime().store,
+    private readonly pdfPages: PdfPagesPort = new PopplerPdfPagesAdapter(),
   ) {}
 
   async runOnce(options: { config: BackupConfig; allowWait: boolean; manual?: boolean; messageId?: string; forceRetry?: boolean }): Promise<ProcedureMaterialCycleSummary> {
@@ -112,7 +118,8 @@ export class ProcedureMaterialGmailIngestionService {
       if (expectedFrom && fromEmail !== expectedFrom) return { ...result, reason: '送信元が設定と一致しません' };
       const existing = await this.db.procedureMaterial.findMany({ where: { gmailMessageId: messageId }, select: { gmailDedupeKey: true } });
       const existingVideos = await this.db.procedureVideo.findMany({ where: { gmailMessageId: messageId }, select: { gmailDedupeKey: true } });
-      const packet = await resolveProcedureMaterialGmailPacket({ message, client: gmail, savedKeys: new Set([...existing, ...existingVideos].map((row) => row.gmailDedupeKey)) });
+      const savedKeys = new Set([...existing, ...existingVideos].map((row) => row.gmailDedupeKey));
+      const packet = await resolveProcedureMaterialGmailPacket({ message, client: gmail, savedKeys });
       result.duplicate = packet.duplicate;
       result.skippedAttachments = packet.skippedAttachments;
       result.warnings = packet.warnings;
@@ -127,38 +134,69 @@ export class ProcedureMaterialGmailIngestionService {
           return false;
         }
       };
-      if (packet.text) await save({ ...common, kind: 'TEXT', text: packet.text, gmailDedupeKey: `${messageId}:body` });
-      for (const photo of packet.photos) {
+      const savePhoto = async (photo: ProcedureMaterialPhoto, subjectHint = common.subjectHint) => {
         const storageKey = `procedure-materials/${photo.sha256}/original`;
         try {
-          // eslint-disable-next-line no-await-in-loop
           await this.store.write({ key: storageKey, data: photo.buffer, mode: 'create', integrity: true });
         } catch (error) {
           if (!(error instanceof FileStorageAlreadyExistsError)) throw error;
-          // eslint-disable-next-line no-await-in-loop
           const bytes = await this.store.read(storageKey, { verifyIntegrity: true });
           if (!bytes.equals(photo.buffer)) throw new Error('Procedure material identity conflict');
         }
-        // eslint-disable-next-line no-await-in-loop
-        const created = await save({ ...common, kind: 'PHOTO', gmailDedupeKey: photo.gmailDedupeKey, storageKey, sha256: photo.sha256, contentType: photo.contentType, byteSize: photo.buffer.length, originalFileName: photo.filename, width: photo.width, height: photo.height });
+        const created = await save({ ...common, subjectHint, kind: 'PHOTO', gmailDedupeKey: photo.gmailDedupeKey, storageKey, sha256: photo.sha256, contentType: photo.contentType, byteSize: photo.buffer.length, originalFileName: photo.filename, width: photo.width, height: photo.height });
         if (created) {
           // GC may have removed an unreferenced original before this row existed.
           try {
-            // eslint-disable-next-line no-await-in-loop
             await this.store.stat(storageKey);
           } catch (error) {
             if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
             try {
-              // eslint-disable-next-line no-await-in-loop
               await this.store.write({ key: storageKey, data: photo.buffer, mode: 'create', integrity: true });
             } catch (writeError) {
               if (!(writeError instanceof FileStorageAlreadyExistsError)) throw writeError;
               // Another ingestion may have restored the shared original first.
-              // eslint-disable-next-line no-await-in-loop
               const bytes = await this.store.read(storageKey, { verifyIntegrity: true });
               if (!bytes.equals(photo.buffer)) throw new Error('Procedure material identity conflict');
             }
           }
+        }
+      };
+      if (packet.text) await save({ ...common, kind: 'TEXT', text: packet.text, gmailDedupeKey: `${messageId}:body` });
+      for (const photo of packet.photos) {
+        // eslint-disable-next-line no-await-in-loop
+        await savePhoto(photo);
+      }
+      for (const pdf of packet.pdfs) {
+        const photos: ProcedureMaterialPhoto[] = [];
+        try {
+          // Consume all pages before saving so failures cannot leave a partial PDF import.
+          for await (const page of this.pdfPages.extract(pdf.buffer)) {
+            if (photos.length >= 20) throw new Error('Pilot PDF must contain 1–20 pages');
+            // eslint-disable-next-line no-await-in-loop
+            const metadata = await sharp(page.jpeg).metadata();
+            if (metadata.format !== 'jpeg' || !metadata.width || !metadata.height) throw new Error('ページ画像を読み取れません');
+            // eslint-disable-next-line no-await-in-loop
+            await sharp(page.jpeg).stats();
+            photos.push({
+              gmailDedupeKey: `${pdf.gmailDedupeKey}:p${page.pageNumber}`,
+              filename: `${pdf.filename.replace(/\.[^.]+$/, '')} p${page.pageNumber}.jpg`,
+              buffer: page.jpeg, sha256: createHash('sha256').update(page.jpeg).digest('hex'),
+              contentType: 'image/jpeg', width: metadata.width, height: metadata.height,
+            });
+          }
+          if (!photos.length) throw new Error('PDF にページがありません');
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          const warning = /encrypted|incorrect password/i.test(reason) ? '暗号化 PDF は対応外'
+            : reason === 'Pilot PDF must contain 1–20 pages' ? 'PDF は 20 ページまで' : `PDF を描画できません: ${reason}`;
+          result.skippedAttachments++;
+          result.warnings.push(`${pdf.filename}: ${warning}`);
+          continue;
+        }
+        for (const [index, photo] of photos.entries()) {
+          if (savedKeys.has(photo.gmailDedupeKey)) { result.duplicate++; continue; }
+          // eslint-disable-next-line no-await-in-loop
+          await savePhoto(photo, common.subjectHint ? `${common.subjectHint} (p${index + 1}/${photos.length})` : null);
         }
       }
       for (const video of packet.videos) {

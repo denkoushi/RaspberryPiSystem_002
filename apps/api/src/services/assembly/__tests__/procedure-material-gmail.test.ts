@@ -3,9 +3,11 @@ import sharp from 'sharp';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { logger } from '../../../lib/logger.js';
+import { buildMinimalValidPdfBuffer } from '../../../lib/__tests__/fixtures/minimal-pdf.js';
 import { defaultBackupConfig, BackupConfigSchema } from '../../backup/backup-config.js';
 import type { GmailMessage, GmailMessagePart } from '../../backup/gmail-api-client.js';
 import { FileStorageAlreadyExistsError } from '../../file-storage/file-storage-errors.js';
+import type { PdfPagesPort } from '../../knowledge/pdf-pages.port.js';
 import { buildProcedureMaterialGmailSearchQuery, ProcedureMaterialGmailIngestionService } from '../procedure-material-gmail-ingestion.service.js';
 import { resolveAttachmentContentType, resolveProcedureMaterialGmailPacket, stripCidPlaceholders } from '../procedure-material-gmail-packet-resolver.js';
 
@@ -13,8 +15,11 @@ vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn() } }));
 
 let image: Buffer;
 let inlineImage: Buffer;
+let pageImage: Buffer;
+const pdf = buildMinimalValidPdfBuffer();
 beforeAll(async () => {
   image = await sharp({ create: { width: 4, height: 3, channels: 3, background: 'blue' } }).png().toBuffer();
+  pageImage = await sharp(image).jpeg().toBuffer();
   const pixels = Buffer.alloc(256 * 256 * 3);
   let seed = 1;
   for (let i = 0; i < pixels.length; i++) {
@@ -26,6 +31,7 @@ beforeAll(async () => {
 });
 const textPart = (text: string, mimeType = 'text/plain'): GmailMessagePart => ({ mimeType, body: { data: Buffer.from(text).toString('base64url') } });
 const photoPart = (name = 'photo.png', overrides: Partial<GmailMessagePart> = {}): GmailMessagePart => ({ filename: name, mimeType: 'image/png', body: { attachmentId: name }, ...overrides });
+const pdfPart = (overrides: Partial<GmailMessagePart> = {}): GmailMessagePart => ({ filename: '組立.v1.pdf', partId: 'pdf-1', mimeType: 'application/pdf', body: { attachmentId: 'pdf' }, ...overrides });
 function message(parts: GmailMessagePart[], subject = '[Procedure-material] DFD1 組立'): GmailMessage {
   return { id: 'mail-1', threadId: 'thread', labelIds: ['INBOX', 'UNREAD'], snippet: '', internalDateMs: Date.parse('2026-10-05T03:00:00Z'), payload: {
     mimeType: 'multipart/mixed', headers: [{ name: 'Subject', value: subject }, { name: 'From', value: '送信者 <sender@thkintechs.co.jp>' }], parts,
@@ -69,6 +75,10 @@ describe('resolveAttachmentContentType', () => {
     ['  ', 'photo.png', 'image/png'],
     [' APPLICATION/OCTET-STREAM ', 'photo.png', 'image/png'],
     ['application/octet-stream', 'clip.MP4', 'video/mp4'],
+    ['application/octet-stream', 'manual.PDF', 'application/pdf'],
+    ['binary/octet-stream', 'manual.pdf', 'application/pdf'],
+    [undefined, 'manual.pdf', 'application/pdf'],
+    ['text/plain', 'manual.pdf', 'text/plain'],
     ['application/octet-stream', 'clip.mov', 'video/quicktime'],
     ['binary/octet-stream', 'clip.3GP', 'video/3gpp'],
     ['', 'clip.m4v', 'video/x-m4v'],
@@ -84,6 +94,39 @@ describe('resolveAttachmentContentType', () => {
 });
 
 describe('procedure-material Gmail packet', () => {
+  it.each(['application/pdf', 'application/octet-stream', 'binary/octet-stream', undefined])('collects PDF bytes with MIME %j without rendering', async (mimeType) => {
+    const attachmentClient = { getAttachment: vi.fn().mockResolvedValue(pdf) };
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([pdfPart({ mimeType })]), client: attachmentClient });
+    expect(packet).toMatchObject({ text: null, photos: [], videos: [], skippedAttachments: 0, warnings: [] });
+    expect(packet.pdfs).toEqual([{
+      filename: '組立.v1.pdf', buffer: pdf, sha256: createHash('sha256').update(pdf).digest('hex'),
+      gmailDedupeKey: `mail-1:${createHash('sha256').update('組立.v1.pdf\npdf-1').digest('hex')}`,
+    }]);
+    expect(attachmentClient.getAttachment).toHaveBeenCalledExactlyOnceWith('mail-1', 'pdf');
+  });
+  it('collects inline PDF bytes and distinct keys for same-name parts', async () => {
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([
+      pdfPart({ headers: [{ name: 'Content-Disposition', value: 'inline' }], body: { data: pdf.toString('base64url') } }),
+      pdfPart({ partId: 'pdf-2', body: { data: pdf.toString('base64url') } }),
+    ]), client: client() });
+    expect(packet.pdfs).toHaveLength(2);
+    expect(packet.pdfs[0]?.gmailDedupeKey).not.toBe(packet.pdfs[1]?.gmailDedupeKey);
+    expect(packet.skippedAttachments).toBe(0);
+  });
+  it.each([true, false])('excludes PDFs over 10 MiB (reported size: %s)', async (reported) => {
+    const attachmentClient = { getAttachment: vi.fn().mockResolvedValue(Buffer.alloc(10 * 1024 * 1024 + 1)) };
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([pdfPart({
+      body: { attachmentId: 'pdf', ...(reported ? { size: 10 * 1024 * 1024 + 1 } : {}) },
+    })]), client: attachmentClient });
+    expect(packet).toMatchObject({ pdfs: [], skippedAttachments: 1, warnings: ['組立.v1.pdf: 10 MB超過'] });
+    expect(attachmentClient.getAttachment).toHaveBeenCalledTimes(reported ? 0 : 1);
+  });
+  it('accepts PDFs at exactly 10 MiB', async () => {
+    const buffer = Buffer.alloc(10 * 1024 * 1024);
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([pdfPart({ body: { attachmentId: 'pdf', size: buffer.length } })]), client: { getAttachment: async () => buffer } });
+    expect(packet.pdfs).toHaveLength(1);
+    expect(packet.skippedAttachments).toBe(0);
+  });
   it.each([
     ['  ハンドル2.png  ', 'png', 'image/png'],
     ['photo.JPG', 'jpeg', 'image/jpeg'],
@@ -239,15 +282,15 @@ describe('procedure-material Gmail packet', () => {
     expect(packet.text).toBe('手順'); expect(packet.photos).toHaveLength(2);
     expect(packet.photos[0]?.gmailDedupeKey).not.toBe(packet.photos[1]?.gmailDedupeKey);
   });
-  it('skips PDF, unsupported video, small inline and oversized images without fetching their bytes', async () => {
+  it('skips unsupported video, small inline and oversized images without fetching their bytes', async () => {
     const attachmentClient = client();
     const packet = await resolveProcedureMaterialGmailPacket({ message: message([
-      photoPart('video.avi', { mimeType: 'video/x-msvideo' }), photoPart('file.pdf', { mimeType: 'application/pdf' }),
+      photoPart('video.avi', { mimeType: 'video/x-msvideo' }),
       photoPart('inline.png', { headers: [{ name: 'Content-Disposition', value: 'inline' }], body: { attachmentId: 'inline', size: image.length } }),
       photoPart('cid.png', { headers: [{ name: 'Content-ID', value: '<cid>' }], body: { attachmentId: 'cid', size: image.length } }),
       photoPart('large.png', { body: { attachmentId: 'large', size: 10 * 1024 * 1024 + 1 } }),
     ]), client: attachmentClient });
-    expect(packet).toMatchObject({ text: null, photos: [], skippedAttachments: 5 });
+    expect(packet).toMatchObject({ text: null, photos: [], skippedAttachments: 4 });
     expect(attachmentClient.getAttachment).not.toHaveBeenCalled();
   });
   it('checks the actual size and skips corrupt images', async () => {
@@ -275,7 +318,7 @@ describe('procedure-material Gmail packet', () => {
   });
 });
 
-function harness(parts: GmailMessagePart[] = [textPart('手順'), photoPart()]) {
+function harness(parts: GmailMessagePart[] = [textPart('手順'), photoPart()], pdfPages?: PdfPagesPort) {
   const rows: Array<Record<string, unknown>> = [];
   const db = { procedureVideo: { findMany: vi.fn().mockResolvedValue([]) }, procedureMaterial: {
     findMany: vi.fn(async () => rows),
@@ -285,13 +328,79 @@ function harness(parts: GmailMessagePart[] = [textPart('手順'), photoPart()]) 
   const gmail = { ...client(), getMessage: vi.fn().mockResolvedValue(message(parts)), searchMessagesAll: vi.fn().mockResolvedValue(['mail-1']), trashMessage: vi.fn().mockResolvedValue(undefined) };
   const store = { write: vi.fn().mockResolvedValue(undefined), read: vi.fn().mockResolvedValue(image), stat: vi.fn().mockResolvedValue({ isFile: () => true }) };
   const factory = vi.fn().mockResolvedValue(gmail);
-  const service = new ProcedureMaterialGmailIngestionService(factory, db as never, store as never);
+  const service = new ProcedureMaterialGmailIngestionService(factory, db as never, store as never, pdfPages);
   const config = { ...defaultBackupConfig, procedureMaterialGmailIngest: { ...defaultBackupConfig.procedureMaterialGmailIngest, enabled: true } };
   return { rows, db, gmail, store, factory, service, config };
 }
 
 describe('procedure-material Gmail ingestion', () => {
   beforeEach(() => { vi.mocked(logger.info).mockClear(); });
+  it.each(['[Procedure-material] DFD1 組立', '[Procedure-material]'])('saves three PDF pages once with page metadata for subject %j', async (subject) => {
+    const extract = vi.fn(async function* (buffer: Buffer) {
+      expect(buffer).toEqual(pdf);
+      for (let pageNumber = 1; pageNumber <= 3; pageNumber++) yield { pageNumber, text: 'unused PDF text', jpeg: pageImage };
+    });
+    const h = harness([pdfPart()], { extract });
+    h.gmail.getAttachment.mockResolvedValue(pdf);
+    h.gmail.getMessage.mockResolvedValue(message([pdfPart()], subject));
+    const first = await h.service.runOnce({ config: h.config, allowWait: false });
+    expect(first).toMatchObject({ saved: 3, duplicate: 0, retryable: 0, skippedAttachments: 0, messages: [{ status: 'saved', trashed: true, warnings: [] }] });
+    const sha256 = createHash('sha256').update(pageImage).digest('hex');
+    const baseKey = `mail-1:${createHash('sha256').update('組立.v1.pdf\npdf-1').digest('hex')}`;
+    expect(h.rows).toEqual([1, 2, 3].map((pageNumber) => expect.objectContaining({
+      kind: 'PHOTO', gmailDedupeKey: `${baseKey}:p${pageNumber}`, originalFileName: `組立.v1 p${pageNumber}.jpg`,
+      subjectHint: subject === '[Procedure-material]' ? null : `DFD1 組立 (p${pageNumber}/3)`,
+      storageKey: `procedure-materials/${sha256}/original`, sha256, byteSize: pageImage.length,
+      contentType: 'image/jpeg', width: 4, height: 3,
+    })));
+    expect(h.store.write).toHaveBeenCalledTimes(3);
+    expect(h.store.write).toHaveBeenCalledWith({ key: `procedure-materials/${sha256}/original`, data: pageImage, mode: 'create', integrity: true });
+    expect(h.store.stat).toHaveBeenCalledTimes(3);
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: 0, duplicate: 3, messages: [{ status: 'duplicate', trashed: true }] });
+    expect(h.rows).toHaveLength(3);
+    expect(h.store.write).toHaveBeenCalledTimes(3);
+    expect(h.gmail.trashMessage).toHaveBeenCalledTimes(2);
+    expect(extract).toHaveBeenCalledTimes(2);
+  });
+  it.each([
+    ['renderer failed', 'PDF を描画できません: renderer failed'],
+    ['Encrypted PDFs are not supported', '暗号化 PDF は対応外'],
+    ['Command failed: pdfinfo\nCommand Line Error: Incorrect password', '暗号化 PDF は対応外'],
+    ['Pilot PDF must contain 1–20 pages', 'PDF は 20 ページまで'],
+  ])('skips PDF extraction failure %j with a warning and no partial save', async (reason, warning) => {
+    const h = harness([pdfPart()], { extract: async function* () {
+      yield { pageNumber: 1, text: '', jpeg: pageImage };
+      throw new Error(reason);
+    } });
+    h.gmail.getAttachment.mockResolvedValue(pdf);
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({
+      saved: 0, retryable: 0, skipped: 1, skippedAttachments: 1, errors: [],
+      messages: [{ status: 'skipped', reason: '本文が空で、対応する写真・動画がありません', trashed: false, warnings: [`組立.v1.pdf: ${warning}`] }],
+    });
+    expect(h.rows).toEqual([]);
+    expect(h.store.write).not.toHaveBeenCalled();
+    expect(h.gmail.trashMessage).not.toHaveBeenCalled();
+  });
+  it('aggregates PDF and attachment warnings while saving the existing body and photo', async () => {
+    const h = harness([textPart('手順'), photoPart(), pdfPart(), photoPart('clip.avi', { mimeType: 'video/x-msvideo' })], {
+      extract: () => { throw new Error('renderer failed'); },
+    });
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({
+      saved: 2, skipped: 0, retryable: 0, skippedAttachments: 2,
+      messages: [{ status: 'saved', trashed: true, warnings: ['clip.avi: 対応外の添付または10 MB超過', '組立.v1.pdf: PDF を描画できません: renderer failed'] }],
+    });
+  });
+  it('keeps PDF storage failures retryable and resumes with only missing pages', async () => {
+    const h = harness([pdfPart()], { extract: async function* () {
+      for (let pageNumber = 1; pageNumber <= 3; pageNumber++) yield { pageNumber, text: '', jpeg: pageImage };
+    } });
+    h.gmail.getAttachment.mockResolvedValue(pdf);
+    h.store.write.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('storage unavailable'));
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: 1, retryable: 1, skippedAttachments: 0 });
+    expect(h.gmail.trashMessage).not.toHaveBeenCalled();
+    expect(await h.service.runOnce({ config: h.config, allowWait: false, manual: true })).toMatchObject({ saved: 2, duplicate: 1, retryable: 0 });
+    expect(h.rows).toHaveLength(3);
+  });
   it.each(['skipped', 'retryable'])('manual ingestion retries all %s messages during backoff', async (status) => {
     const h = harness([]);
     h.gmail.searchMessagesAll.mockResolvedValue(['mail-1', 'mail-2']);
