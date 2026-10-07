@@ -217,7 +217,10 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, mode = 'place'
       {result ? <div role="status" className="max-h-24 shrink-0 overflow-auto text-sm text-[#9fadb9]">
         <p>見つけた {result.scanned} 通・取込 {result.saved}件・保存済み {result.duplicate}件・スキップ {result.skipped}通・再試行 {result.retryable}通・再試行待ち {result.deferred}通・除外添付 {result.skippedAttachments}件</p>
         {result.scanned === 0 ? <p>受信トレイに未読の対象メールがありません</p> : null}
-        {result.messages.filter((m) => m.reason).map((m) => <p key={m.messageId}>{m.reason}</p>)}
+        {result.messages.filter((m) => m.reason || m.warnings.length).map((m) => <div key={m.messageId}>
+          {m.reason ? <p>{m.reason}</p> : null}
+          {m.warnings.map((warning, index) => <p key={`${index}:${warning}`} className="break-all">{warning}</p>)}
+        </div>)}
       </div> : null}
       <div className="min-h-0 flex-1 overflow-auto" aria-label="素材一覧">
         {loading ? <p role="status">読込中…</p> : state === 'knowledge' ? knowledge?.enabled === false ? <p>ナレッジ機能は無効です</p> : !error && !knowledge?.items.length ? <p>候補がありません</p> : null : state === 'workInstruction' ? !error && !workInstructions?.items.length ? <p>候補がありません</p> : null : !error && materials.length === 0 ? <p>素材がありません</p> : null}

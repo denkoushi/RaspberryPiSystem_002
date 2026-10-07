@@ -2,6 +2,7 @@
 Description=Business Pi5 Google Drive encrypted disaster-recovery snapshot
 Wants=network-online.target
 After=network-online.target
+OnFailure=raspi-google-drive-dr-alert.service
 ConditionPathExists={{ google_drive_dr_rclone_config }}
 ConditionPathExists={{ google_drive_dr_restic_password_file }}
 

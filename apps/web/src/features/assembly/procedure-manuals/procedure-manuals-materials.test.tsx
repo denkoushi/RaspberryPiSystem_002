@@ -26,7 +26,7 @@ const photo = { ...text, id: 'photo', kind: 'PHOTO', text: null, originalFileNam
 describe('procedure-manuals material shelf', () => {
   beforeEach(() => {
     vi.resetAllMocks(); localStorage.clear(); saveProcedureEditorAccess('2520'); mocks.count.mockResolvedValue([]); mocks.list.mockResolvedValue([text, photo]); mocks.file.mockResolvedValue(new Blob(['photo'], { type: 'image/png' }));
-    mocks.ingest.mockResolvedValue({ scanned: 2, processed: 2, saved: 2, duplicate: 0, skipped: 1, retryable: 0, deferred: 0, skippedAttachments: 1, errors: [], messages: [{ messageId: 'unsupported', reason: '本文が空で、対応する写真がありません' }] });
+    mocks.ingest.mockResolvedValue({ scanned: 2, processed: 2, saved: 2, duplicate: 0, skipped: 1, retryable: 0, deferred: 0, skippedAttachments: 1, errors: [], messages: [{ messageId: 'unsupported', reason: '本文が空で、対応する写真がありません', warnings: [] }] });
     mocks.knowledge.mockResolvedValue({ enabled: false, items: [] });
     mocks.knowledgeImage.mockResolvedValue(new Blob(['knowledge']));
     mocks.importKnowledge.mockResolvedValue({ imported: 2, duplicate: 0, failed: [] });
@@ -54,6 +54,35 @@ describe('procedure-manuals material shelf', () => {
     expect(screen.queryByRole('button', { name: '現在ページに配置' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '閉じる' })); expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:photo');
+  });
+  it('shows each attachment warning below its message reason and leaves empty warnings blank', async () => {
+    const reason = '本文が空で、対応する写真・動画がありません';
+    const unsupported = 'ハンドル2.png (image/x-png): 対応外の添付';
+    const oversized = '写真.jpg: 10 MB超過';
+    const otherReason = '送信元のドメインが許可されていません';
+    mocks.ingest.mockResolvedValue({ scanned: 2, processed: 2, saved: 0, duplicate: 0, skipped: 2, retryable: 0, deferred: 0, skippedAttachments: 2, errors: [], messages: [
+      { messageId: 'unsupported', reason, warnings: [unsupported, oversized] },
+      { messageId: 'sender', reason: otherReason, warnings: [] },
+    ] });
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '今すぐ取り込む' }));
+    const reasonLine = await screen.findByText(reason);
+    expect(reasonLine.nextElementSibling).toHaveTextContent(unsupported);
+    expect(reasonLine.nextElementSibling?.nextElementSibling).toHaveTextContent(oversized);
+    expect(screen.getByText(unsupported).tagName).toBe('P');
+    expect(screen.getByText(oversized).tagName).toBe('P');
+    const otherReasonLine = screen.getByText(otherReason);
+    expect(otherReasonLine.nextElementSibling).toBeNull();
+    expect(otherReasonLine.parentElement).not.toHaveTextContent(unsupported);
+  });
+  it('shows warnings for saved messages without a reason', async () => {
+    const warning = '手順.heic (image/heic): 対応外の添付';
+    mocks.ingest.mockResolvedValue({ scanned: 1, processed: 1, saved: 1, duplicate: 0, skipped: 0, retryable: 0, deferred: 0, skippedAttachments: 1, errors: [], messages: [
+      { messageId: 'saved', status: 'saved', warnings: [warning] },
+    ] });
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '今すぐ取り込む' }));
+    expect(await screen.findByText(warning)).toBeInTheDocument();
   });
   it('shows a no-unread-mail message when ingestion finds no messages', async () => {
     mocks.ingest.mockResolvedValue({ scanned: 0, processed: 0, saved: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 0, skippedAttachments: 0, errors: [], messages: [] });

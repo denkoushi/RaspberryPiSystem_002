@@ -67,10 +67,15 @@ describe('resolveAttachmentContentType', () => {
     ['', 'photo.JPG', 'image/jpeg'],
     ['application/octet-stream', 'photo.jpeg', 'image/jpeg'],
     ['binary/octet-stream', 'photo.WEBP', 'image/webp'],
-    ['application/x-download', '  ハンドル2.PNG  ', 'application/x-download'],
+    ['application/x-download', '  ハンドル2.PNG  ', 'image/png'],
+    ['image/x-png', 'ハンドル2.png', 'image/png'],
+    ['image/pjpeg', 'photo.jpg', 'image/jpeg'],
+    [' IMAGE/X-PNG ', 'photo.PNG', 'image/png'],
     ['text/plain', 'photo.png', 'text/plain'],
     [' TEXT/PLAIN ', 'photo.png', 'text/plain'],
     ['text/html', 'clip.mp4', 'text/html'],
+    ['message/rfc822', 'photo.png', 'message/rfc822'],
+    ['multipart/mixed', 'photo.png', 'multipart/mixed'],
     ['application/pdf', 'photo.png', 'application/pdf'],
     ['  ', 'photo.png', 'image/png'],
     [' APPLICATION/OCTET-STREAM ', 'photo.png', 'image/png'],
@@ -84,10 +89,14 @@ describe('resolveAttachmentContentType', () => {
     ['', 'clip.m4v', 'video/x-m4v'],
     [' IMAGE/JPEG ', 'photo.png', 'image/jpeg'],
     ['video/quicktime', 'clip.mp4', 'video/quicktime'],
-    ['image/gif', 'photo.png', 'image/gif'],
-    ['video/x-msvideo', 'clip.mp4', 'video/x-msvideo'],
+    ['image/gif', 'photo.png', 'image/png'],
+    ['video/x-msvideo', 'clip.mp4', 'video/mp4'],
+    ['application/x-foo', 'photo.txt', 'application/x-foo'],
+    ['image/heic', 'photo.heic', 'image/heic'],
     ['application/octet-stream', 'photo', 'application/octet-stream'],
     ['application/octet-stream', 'photo.png.txt', 'application/octet-stream'],
+    ['application/pdf; name="manual.pdf"', 'manual.pdf', 'application/pdf'],
+    ['image/x-png; charset=binary', 'photo.png', 'image/png'],
   ])('resolves MIME %j and filename %j to %s', (mime, filename, expected) => {
     expect(resolveAttachmentContentType(mime, filename)).toBe(expected);
   });
@@ -128,12 +137,14 @@ describe('procedure-material Gmail packet', () => {
     expect(packet.skippedAttachments).toBe(0);
   });
   it.each([
-    ['  ハンドル2.png  ', 'png', 'image/png'],
-    ['photo.JPG', 'jpeg', 'image/jpeg'],
-  ] as const)('imports octet-stream photo %s with the inferred content type', async (filename, format, contentType) => {
+    ['  ハンドル2.png  ', 'png', 'image/png', 'application/octet-stream'],
+    ['photo.JPG', 'jpeg', 'image/jpeg', 'application/octet-stream'],
+    ['ハンドル2.png', 'png', 'image/png', 'image/x-png'],
+    ['photo.jpg', 'jpeg', 'image/jpeg', 'image/pjpeg'],
+  ] as const)('imports photo %s containing %s bytes as %s with MIME %s', async (filename, format, contentType, mimeType) => {
     const buffer = await sharp(image).toFormat(format).toBuffer();
     const attachmentClient = { getAttachment: vi.fn().mockResolvedValue(buffer) };
-    const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart(filename, { mimeType: 'application/octet-stream' })]), client: attachmentClient });
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart(filename, { mimeType })]), client: attachmentClient });
     expect(packet).toMatchObject({ skippedAttachments: 0, warnings: [], videos: [] });
     expect(packet.photos).toHaveLength(1);
     expect(packet.photos[0]).toMatchObject({ filename: filename.trim(), buffer, contentType, width: 4, height: 3 });
@@ -151,8 +162,30 @@ describe('procedure-material Gmail packet', () => {
   it.each(['  ハンドル2  ', '\tハンドル2.txt\u3000'])('rejects octet-stream with unsupported filename %j and trims warning filenames', async (filename) => {
     const attachmentClient = client();
     const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart(filename, { mimeType: 'application/octet-stream' })]), client: attachmentClient });
-    expect(packet).toMatchObject({ photos: [], videos: [], skippedAttachments: 1, warnings: [`${filename.trim()}: 対応外の添付または10 MB超過`] });
+    expect(packet).toMatchObject({ photos: [], videos: [], skippedAttachments: 1, warnings: [`${filename.trim()} (application/octet-stream): 対応外の添付`] });
     expect(attachmentClient.getAttachment).not.toHaveBeenCalled();
+  });
+  it.each([
+    ['photo.png', 'text/plain', 'text/plain'],
+    ['photo.txt', 'application/x-foo', 'application/x-foo'],
+    ['photo.heic', 'image/heic', 'image/heic'],
+    ['photo.txt', undefined, '種類なし'],
+    ['photo.txt', '  ', '種類なし'],
+    ['photo.txt', 'application/x-\u202efoo\u0007', 'application/x-foo'],
+    ['photo.txt', `application/x-${'a'.repeat(80)}`, `${`application/x-${'a'.repeat(80)}`.slice(0, 64)}…`],
+  ])('rejects unsupported attachment %s with MIME %j in the warning', async (filename, mimeType, originalType) => {
+    const attachmentClient = client();
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart(filename, { mimeType })]), client: attachmentClient });
+    expect(packet).toMatchObject({ text: null, photos: [], videos: [], pdfs: [], skippedAttachments: 1, warnings: [`${filename} (${originalType}): 対応外の添付`] });
+    expect(attachmentClient.getAttachment).not.toHaveBeenCalled();
+  });
+  it.each([true, false])('excludes inferred photos over 10 MiB with a size warning (reported size: %s)', async (reported) => {
+    const attachmentClient = { getAttachment: vi.fn().mockResolvedValue(Buffer.alloc(10 * 1024 * 1024 + 1)) };
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart('ハンドル2.png', {
+      mimeType: 'image/x-png', body: { attachmentId: 'photo', ...(reported ? { size: 10 * 1024 * 1024 + 1 } : {}) },
+    })]), client: attachmentClient });
+    expect(packet).toMatchObject({ photos: [], skippedAttachments: 1, warnings: ['ハンドル2.png: 10 MB超過'] });
+    expect(attachmentClient.getAttachment).toHaveBeenCalledTimes(reported ? 0 : 1);
   });
   it('treats octet-stream MP4 attachments as videos', async () => {
     const buffer = Buffer.from('video bytes');
@@ -306,7 +339,7 @@ describe('procedure-material Gmail packet', () => {
       photoPart('actual-large.png', { headers }), photoPart('corrupt.png', { headers }),
     ]), client: attachmentClient });
     expect(packet).toMatchObject({ photos: [], skippedAttachments: 3, warnings: [
-      'reported-large.png: 対応外の添付または10 MB超過', 'actual-large.png: 10 MB超過', 'corrupt.png: 画像を読み取れません',
+      'reported-large.png: 10 MB超過', 'actual-large.png: 10 MB超過', 'corrupt.png: 画像を読み取れません',
     ] });
     expect(attachmentClient.getAttachment).toHaveBeenCalledTimes(2);
   });
@@ -387,7 +420,7 @@ describe('procedure-material Gmail ingestion', () => {
     });
     expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({
       saved: 2, skipped: 0, retryable: 0, skippedAttachments: 2,
-      messages: [{ status: 'saved', trashed: true, warnings: ['clip.avi: 対応外の添付または10 MB超過', '組立.v1.pdf: PDF を描画できません: renderer failed'] }],
+      messages: [{ status: 'saved', trashed: true, warnings: ['clip.avi (video/x-msvideo): 対応外の添付', '組立.v1.pdf: PDF を描画できません: renderer failed'] }],
     });
   });
   it('keeps PDF storage failures retryable and resumes with only missing pages', async () => {
