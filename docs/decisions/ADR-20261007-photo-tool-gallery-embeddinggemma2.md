@@ -40,7 +40,7 @@ date: 2026-10-07
 2. 近傍検索とラベル別行数は、`embeddingModelId` が現在の設定と一致する行だけを対象にする。モデル切り替え後の再投入中に、別空間のベクトル同士を比べないためである。切り戻し時も旧モデルの行だけが使われる。
 3. 切り替え後のモデル ID は `embeddinggemma-2-512d`、次元は 512（`vector(512)` の列は変更しない）。
 4. しきい値は切り替えと同時に、類似候補 0.22 → 0.14、補助 0.14 → 0.10 とする。
-5. Pi5 のモデル ID としきい値は、DGX の入れ替えと続けて切り替える。手順と切り戻しは Runbook の 3.2 節。値を Pi5 に届ける経路は未確定（下の実施記録）。
+5. Pi5 のモデル ID としきい値は、DGX の入れ替えと続けて切り替える。手順と切り戻しは Runbook の 3.2 節。値は release_pi5 の束縛リスト経由で API に届ける（下の実施記録）。
 
 ## Alternatives
 
@@ -61,7 +61,8 @@ date: 2026-10-07
 
 - 2026-10-07 10:38〜10:44: 切り替えを試みて中止した。DGX のサーバーを EmbeddingGemma 2 に入れ替え（13 秒）、設定のコミット（859f0edd）を Pi5 に標準配布したが、API の環境変数は旧値のままだった。標準ローリング更新は `infrastructure/docker/.env` を描画し直さないため、`inventory.yml` の変更だけでは本番に届かない。DGX を CLIP に戻して整合を回復した。不整合の間にギャラリーへ書かれた行は 0 件で、データの修復は不要だった。
 - `inventory.yml` の 3 つの値は元に戻した。`.env` を描画し直す別の作業で、DGX と合わないモデル ID が Pi5 に入るのを防ぐためである。
-- やり直しの条件: Pi5 の環境変数を正規の経路で変える手順（`manage-app-configs.yml` と blue-green スロットへの反映）を確かめ、Runbook 3.2 の手順 4 を直してから実施する。DGX 側の準備（イメージ `system-prod-embedding-eg2:20261007`、モデルファイル、設定ファイルの控え `embedding-server.env.eg2-staged`）は残してある。
+- 原因の詳細: API スロットの環境は `/etc/raspi-business-hermes-chat/compose.env`（前回の自分の写し）から作られ、`inventory.yml` の値は `roles/release_pi5/tasks/business-hermes-chat-prepare.yml` の束縛リストにあるキーだけが渡る。写真持出のキーはリストに無かった。
+- 対処: 3 つのキーを束縛リストに追加し、`inventory.yml` の値を再び切り替え後の値にした。やり直しは Pi5 を先に配布し、API の環境変数が変わったことを確かめてから DGX を入れ替える（Runbook 3.2）。DGX 側の準備（イメージ `system-prod-embedding-eg2:20261007`、モデルファイル、設定ファイルの控え `embedding-server.env.eg2-staged`）は残してある。
 
 ## References
 

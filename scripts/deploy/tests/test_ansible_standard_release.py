@@ -85,6 +85,10 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertIn("inference_providers_json", bindings["INFERENCE_PROVIDERS_JSON"])
         # Dropbox backup encryption key reaches the API from Vault (docker .env is not re-rendered by the release)
         self.assertIn("backup_encryption_key", bindings["BACKUP_ENCRYPTION_KEY"])
+        # The photo gallery model id and distances reach the API the same way (inventory alone does not)
+        self.assertIn("photo_tool_embedding_model_id", bindings["PHOTO_TOOL_EMBEDDING_MODEL_ID"])
+        self.assertIn("photo_tool_similarity_max_cosine_distance", bindings["PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE"])
+        self.assertIn("photo_tool_label_assist_max_cosine_distance", bindings["PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE"])
         self.assertTrue(task["no_log"])
         self.assertEqual(task["ansible.builtin.lineinfile"]["mode"], "0600")
 

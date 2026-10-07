@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 702,
-    "totalLines": 184140,
-    "totalBytes": 14497047,
+    "totalLines": 184143,
+    "totalBytes": 14497652,
     "withFrontmatter": 315,
     "withStatus": 167,
     "sourceOfTruthDeclared": 115,
@@ -17737,8 +17737,8 @@
     },
     {
       "path": "docs/decisions/ADR-20261007-photo-tool-gallery-embeddinggemma2.md",
-      "lineCount": 69,
-      "byteSize": 6595,
+      "lineCount": 70,
+      "byteSize": 6990,
       "hasFrontmatter": true,
       "title": "ADR-20261007 写真持出 類似ギャラリーの埋め込みモデルを EmbeddingGemma 2 へ（段階的切り替え）",
       "status": "accepted",
@@ -39839,8 +39839,8 @@
     },
     {
       "path": "docs/runbooks/photo-tool-similarity-gallery.md",
-      "lineCount": 120,
-      "byteSize": 13113,
+      "lineCount": 122,
+      "byteSize": 13323,
       "hasFrontmatter": false,
       "title": "Runbook: 写真持出 GOOD 類似ギャラリー（埋め込み・バックフィル・シャドー観測）",
       "status": null,
