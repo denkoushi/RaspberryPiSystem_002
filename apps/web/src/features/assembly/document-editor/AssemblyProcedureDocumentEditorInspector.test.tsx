@@ -179,6 +179,68 @@ describe('AssemblyProcedureDocumentEditorInspector', () => {
     expect(onUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ mask: { enabled: true, color: '#eeeeee' } }));
   });
 
+  describe.each(['LINE', 'ARROW'] as const)('%s direction presets', (shape) => {
+    it.each([
+      ['左上へ', '↖', 0.625, 0.5, 0.125, 0.25],
+      ['上へ', '↑', 0.375, 0.5, 0.375, 0.25],
+      ['右上へ', '↗', 0.125, 0.5, 0.625, 0.25],
+      ['左へ', '←', 0.625, 0.375, 0.125, 0.375],
+      ['右へ', '→', 0.125, 0.375, 0.625, 0.375],
+      ['左下へ', '↙', 0.625, 0.25, 0.125, 0.5],
+      ['下へ', '↓', 0.375, 0.25, 0.375, 0.5],
+      ['右下へ', '↘', 0.125, 0.25, 0.625, 0.5]
+    ] as const)('updates endpoints via onUpdate for %s while preserving the bbox', (label, symbol, startX, startY, endX, endY) => {
+      const onUpdate = vi.fn();
+      const element: AssemblyProcedureOverlayElement = {
+        ...base,
+        bbox: { xRatio: 0.125, yRatio: 0.25, widthRatio: 0.5, heightRatio: 0.25 },
+        kind: 'SHAPE',
+        shape,
+        start: { xRatio: 0.2, yRatio: 0.3 },
+        end: { xRatio: 0.3, yRatio: 0.4 }
+      };
+      render(<AssemblyProcedureDocumentEditorInspector {...commonProps(onUpdate)} element={element} />);
+      const button = screen.getByRole('button', { name: label });
+      expect(button).toHaveTextContent(symbol);
+      expect(button).toHaveClass('min-h-11', 'min-w-11');
+      const grid = button.parentElement!;
+      expect(grid).toHaveClass('grid-cols-3');
+      expect(grid.children).toHaveLength(9);
+      expect(grid.children[4]).toBeEmptyDOMElement();
+      fireEvent.click(button);
+      expect(onUpdate).toHaveBeenCalledExactlyOnceWith({
+        ...element,
+        start: { xRatio: startX, yRatio: startY },
+        end: { xRatio: endX, yRatio: endY }
+      });
+      expect(onUpdate.mock.calls[0][0].bbox).toBe(element.bbox);
+    });
+
+    it('disables all direction presets when read-only', () => {
+      const onUpdate = vi.fn();
+      render(<AssemblyProcedureDocumentEditorInspector {...commonProps(onUpdate)} readOnly
+        element={{ ...base, kind: 'SHAPE', shape }} />);
+      const group = screen.getByRole('group', { name: '向き' });
+      const buttons = group.querySelectorAll('button');
+      expect(buttons).toHaveLength(8);
+      for (const button of buttons) {
+        expect(button).toBeDisabled();
+        fireEvent.click(button);
+      }
+      expect(onUpdate).not.toHaveBeenCalled();
+    });
+  });
+
+  it.each([
+    { ...base, kind: 'TEXT', text: '手順' },
+    { ...base, kind: 'IMAGE', assetId: 'asset-1' },
+    { ...base, kind: 'SHAPE', shape: 'RECTANGLE' },
+    { ...base, kind: 'SHAPE', shape: 'ELLIPSE' }
+  ] as const)('hides direction presets for $kind $shape', (element) => {
+    render(<AssemblyProcedureDocumentEditorInspector {...commonProps(vi.fn())} element={element} />);
+    expect(screen.queryByRole('group', { name: '向き' })).not.toBeInTheDocument();
+  });
+
   describe.each(['LINE', 'ARROW'] as const)('%s direction reversal', (shape) => {
     it.each([
       { start: { xRatio: 0.7, yRatio: 0.6 }, end: { xRatio: 0.3, yRatio: 0.2 } },
