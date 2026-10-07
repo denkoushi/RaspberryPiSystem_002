@@ -96,7 +96,7 @@ export class EmployeeService {
         firstName: data.firstName ?? null,
         nfcTagUid: data.nfcTagUid ?? undefined,
         department: data.department ?? undefined,
-        positionName: data.positionName ?? null,
+        positionName: data.positionName ?? undefined,
         contact: data.contact ?? undefined,
         status: data.status ?? 'ACTIVE'
       }
