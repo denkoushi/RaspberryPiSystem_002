@@ -43,6 +43,7 @@ export class ProcedureMaterialPlacementService {
         await tx.$queryRaw`SELECT "id" FROM "ProcedureMaterial" WHERE "id" = ${params.materialId} FOR UPDATE`;
         const material = await tx.procedureMaterial.findUnique({ where: { id: params.materialId } });
         if (!material) throw new ApiError(404, '素材がありません');
+        if (material.kind === 'PDF') throw new ApiError(400, 'PDF 素材は要領書を作成してください');
         if (material.discardedAt) throw new ApiError(409, '捨てた素材は配置できません');
         const page = await tx.assemblyProcedureDocumentPage.findUnique({ where: { documentId_pageIndex: { documentId: params.documentId, pageIndex: params.pageIndex } } });
         if (!page) throw new ApiError(400, '指定ページが存在しません');

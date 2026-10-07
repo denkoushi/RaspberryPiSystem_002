@@ -51,6 +51,8 @@ export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
     return (options.ingestion ?? getProcedureMaterialGmailIngestionService()).runOnce({ config, allowWait: true, manual: true, ...body });
   });
   app.post(`${path}/gc`, { preHandler: options.allowWriteKiosk, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async () => (options.gc ?? new ProcedureMaterialGcService()).collect());
+  app.post(`${path}/:id/create-document`, { preHandler: options.allowWriteKiosk }, async (request) =>
+    service.createDocument(paramsSchema.parse(request.params).id));
   app.post(`${path}/:id/unplace`, { preHandler: options.allowWriteKiosk }, async (request) => {
     await service.unplace(paramsSchema.parse(request.params).id);
     return { saved: true };

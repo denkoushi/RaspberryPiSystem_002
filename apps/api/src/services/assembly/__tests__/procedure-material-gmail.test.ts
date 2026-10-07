@@ -476,11 +476,11 @@ describe('procedure-material Gmail ingestion', () => {
     } });
     h.gmail.getAttachment.mockResolvedValue(pdf);
     expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({
-      saved: count === 25 ? 25 : 0, skippedAttachments: count === 25 ? 0 : 1,
+      saved: count === 25 ? 26 : 0, skippedAttachments: count === 25 ? 0 : 1,
       messages: [{ warnings: count === 25 ? [] : ['組立.v1.pdf: PDF は 25 ページまで'] }],
     });
-    expect(h.rows).toHaveLength(count === 25 ? 25 : 0);
-    expect(h.store.write).toHaveBeenCalledTimes(count === 25 ? 25 : 0);
+    expect(h.rows).toHaveLength(count === 25 ? 26 : 0);
+    expect(h.store.write).toHaveBeenCalledTimes(count === 25 ? 26 : 0);
   });
   it('uses the page count from the default adapter rather than its error text', async () => {
     const error = new PdfPageCountError(26, 25);
@@ -509,21 +509,30 @@ describe('procedure-material Gmail ingestion', () => {
     h.gmail.getAttachment.mockResolvedValue(pdf);
     h.gmail.getMessage.mockResolvedValue(message([pdfPart()], subject));
     const first = await h.service.runOnce({ config: h.config, allowWait: false });
-    expect(first).toMatchObject({ saved: 3, duplicate: 0, retryable: 0, skippedAttachments: 0, messages: [{ status: 'saved', trashed: true, warnings: [] }] });
+    expect(first).toMatchObject({ saved: 4, duplicate: 0, retryable: 0, skippedAttachments: 0, messages: [{ status: 'saved', trashed: true, warnings: [] }] });
     const sha256 = createHash('sha256').update(pageImage).digest('hex');
     const baseKey = `mail-1:${createHash('sha256').update('組立.v1.pdf\npdf-1').digest('hex')}`;
-    expect(h.rows).toEqual([1, 2, 3].map((pageNumber) => expect.objectContaining({
+    const pdfHash = createHash('sha256').update(pdf).digest('hex');
+    expect(h.rows[0]).toMatchObject({
+      kind: 'PDF', gmailDedupeKey: baseKey, originalFileName: '組立.v1.pdf',
+      storageKey: `procedure-materials/${pdfHash}/original`, sha256: pdfHash, byteSize: pdf.length,
+      contentType: 'application/pdf', subjectHint: subject === '[Procedure-material]' ? null : 'DFD1 組立',
+      receivedAt: new Date('2026-10-05T03:00:00Z'),
+    });
+    expect(h.rows[0]).not.toHaveProperty('width');
+    expect(h.rows[0]).not.toHaveProperty('height');
+    expect(h.rows.slice(1)).toEqual([1, 2, 3].map((pageNumber) => expect.objectContaining({
       kind: 'PHOTO', gmailDedupeKey: `${baseKey}:p${pageNumber}`, originalFileName: `組立.v1 p${pageNumber}.jpg`,
       subjectHint: subject === '[Procedure-material]' ? null : `DFD1 組立 (p${pageNumber}/3)`,
       storageKey: `procedure-materials/${sha256}/original`, sha256, byteSize: pageImage.length,
       contentType: 'image/jpeg', width: 4, height: 3,
     })));
-    expect(h.store.write).toHaveBeenCalledTimes(3);
+    expect(h.store.write).toHaveBeenCalledTimes(4);
     expect(h.store.write).toHaveBeenCalledWith({ key: `procedure-materials/${sha256}/original`, data: pageImage, mode: 'create', integrity: true });
-    expect(h.store.stat).toHaveBeenCalledTimes(3);
-    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: 0, duplicate: 3, messages: [{ status: 'duplicate', trashed: true }] });
-    expect(h.rows).toHaveLength(3);
-    expect(h.store.write).toHaveBeenCalledTimes(3);
+    expect(h.store.stat).toHaveBeenCalledTimes(4);
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: 0, duplicate: 4, messages: [{ status: 'duplicate', trashed: true }] });
+    expect(h.rows).toHaveLength(4);
+    expect(h.store.write).toHaveBeenCalledTimes(4);
     expect(h.gmail.trashMessage).toHaveBeenCalledTimes(2);
     expect(extract).toHaveBeenCalledTimes(2);
   });
@@ -563,8 +572,8 @@ describe('procedure-material Gmail ingestion', () => {
     h.store.write.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('storage unavailable'));
     expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: 1, retryable: 1, skippedAttachments: 0 });
     expect(h.gmail.trashMessage).not.toHaveBeenCalled();
-    expect(await h.service.runOnce({ config: h.config, allowWait: false, manual: true })).toMatchObject({ saved: 2, duplicate: 1, retryable: 0 });
-    expect(h.rows).toHaveLength(3);
+    expect(await h.service.runOnce({ config: h.config, allowWait: false, manual: true })).toMatchObject({ saved: 3, duplicate: 1, retryable: 0 });
+    expect(h.rows).toHaveLength(4);
   });
   it.each(['skipped', 'retryable'])('manual ingestion retries all %s messages during backoff', async (status) => {
     const h = harness([]);
