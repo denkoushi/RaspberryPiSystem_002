@@ -1,5 +1,6 @@
 [Unit]
 Description=Backup verification (monthly, non-destructive)
+OnFailure=backup-verify-alert@backup-verify-monthly.service
 After=docker.service
 Requires=docker.service
 

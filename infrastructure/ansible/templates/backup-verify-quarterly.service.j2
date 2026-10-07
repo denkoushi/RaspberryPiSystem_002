@@ -1,5 +1,6 @@
 [Unit]
 Description=Backup verification (quarterly, integrity check)
+OnFailure=backup-verify-alert@backup-verify-quarterly.service
 After=docker.service
 Requires=docker.service
 
