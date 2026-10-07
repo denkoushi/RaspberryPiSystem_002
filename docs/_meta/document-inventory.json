@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 702,
-    "totalLines": 184143,
-    "totalBytes": 14497652,
+    "totalLines": 184152,
+    "totalBytes": 14498966,
     "withFrontmatter": 315,
     "withStatus": 167,
     "sourceOfTruthDeclared": 115,
@@ -39839,8 +39839,8 @@
     },
     {
       "path": "docs/runbooks/photo-tool-similarity-gallery.md",
-      "lineCount": 122,
-      "byteSize": 13323,
+      "lineCount": 131,
+      "byteSize": 14637,
       "hasFrontmatter": false,
       "title": "Runbook: 写真持出 GOOD 類似ギャラリー（埋め込み・バックフィル・シャドー観測）",
       "status": null,

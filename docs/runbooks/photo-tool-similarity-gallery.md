@@ -100,7 +100,16 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 
 入れ替え中の挙動: 検索は現在のモデル ID の行だけを見る。手順 2 の配布後は新しい ID の行がまだ無いので、手順 5 が終わるまで候補も補助も出ない（誤った候補は出ない）。手順 2 から 4 の間に GOOD にした写真は、新しい ID で CLIP のベクトルが入るが、手順 5 で上書きされる。
 
-切り戻し: DGX の `embedding-server.env` を消して `stop` / `start` し（既定値の CLIP、`lmsysorg/sglang:latest` に戻る）、設定のコミットを revert して Pi5 に配布し、**再投入をもう一度実行する**（入れ替え中に入った行を CLIP のベクトルへ戻すため）。
+切り戻し（モデルを CLIP に戻す）:
+
+1. `inventory.yml` の 3 つの値だけを旧値（モデル ID は `clip-ViT-B-32`、しきい値 0.22 / 0.14）に戻すコミットを作り、Pi5 に標準配布する。**束縛リストの 3 キーは残す。** 切り替えのコミットを `git revert` すると束縛も消え、`compose.env` に新しい値が残ったままになる（前回の自分の写しから作るため）。
+2. API の環境変数が旧値になったことを確かめる。
+3. DGX の `embedding-server.env` を外して `stop` / `start` する（既定値の CLIP、`lmsysorg/sglang:latest` に戻る）。
+4. 再投入をもう一度実行する（入れ替え中に入った行を CLIP のベクトルへ戻すため）。
+
+アプリだけを前の release へ戻す場合（release の rollback や、切り替え前の SHA の配布）: 失敗した release の自動 rollback は `compose.env` を配布前の内容に戻す。切り替えが済んだ後に古い SHA を配布しても、`compose.env` の 3 つの値は新しいまま残るので、DGX（EmbeddingGemma 2）との整合は保たれる。モデルを戻したいときは上の手順を使う。
+
+他の配布との関係: 手順 2 の後は、どの release も新しい値でスロットを作るので、別の PR の配布が挟まっても値は変わらない。ただし再投入（手順 5）は稼働中の API コンテナの中で動くため、その間に配布でスロットが入れ替わると中断される（再実行すればよい）。再投入が終わるまで Pi5 への配布を止める。
 
 ## 4. 関連ドキュメント
 
