@@ -137,6 +137,24 @@ class SqlAllowListTests(unittest.TestCase):
             with self.subTest(sql=sql):
                 self.assert_disallowed(sql)
 
+    def test_knowledge_rank_check_expansion_is_allowed(self) -> None:
+        path = (
+            ROOT
+            / validator.MIGRATION_ROOT
+            / "20261007160000_expand_knowledge_position_ranks/migration.sql"
+        )
+        validator.validate_sql(path.read_bytes(), str(path))
+        for sql in [
+            'ALTER TABLE "Employee" DROP CONSTRAINT "KnowledgePositionRank_rank_check";',
+            'ALTER TABLE "KnowledgePositionRank" DROP CONSTRAINT "KnowledgePositionRank_pkey";',
+            'ALTER TABLE "KnowledgePositionRank" ADD CONSTRAINT "KnowledgePositionRank_rank_check" '
+            "CHECK (\"rank\" IN ('general','leader'));",
+            'ALTER TABLE "KnowledgeProcedureReview" ADD CONSTRAINT "KnowledgePositionRank_rank_check" '
+            "CHECK (\"rank\" IN ('general','leader','section_chief','manager','general_manager','executive'));",
+        ]:
+            with self.subTest(sql=sql):
+                self.assert_disallowed(sql)
+
     def test_procedure_material_work_instruction_origin_expansion_is_allowed(self) -> None:
         path = (
             ROOT
