@@ -1,3 +1,4 @@
+import { projectAssemblyProcedureOverlayBBoxToCrop } from '@raspi-system/shared-types';
 import { useCallback, useRef } from 'react';
 
 import {
@@ -16,6 +17,7 @@ import type {
   AssemblyProcedureTextCandidateDto
 } from '../types';
 import type {
+  OverlayRegionImage,
   AssemblyProcedureOverlayBBox,
   AssemblyProcedureOverlayElement
 } from '@raspi-system/shared-types';
@@ -52,6 +54,20 @@ export type AssemblyProcedureDocumentOverlayCommandSession = {
   holderToken?: string | null;
   onEditLeaseError?: (error: unknown) => boolean;
 };
+
+function regionOverlays(
+  elements: AssemblyProcedureOverlayElement[],
+  pageIndex: number,
+  bbox: AssemblyProcedureOverlayBBox
+): { overlays?: OverlayRegionImage[] } {
+  const overlays = elements
+    .filter((element): element is Extract<AssemblyProcedureOverlayElement, { kind: 'IMAGE' }> =>
+      element.kind === 'IMAGE' && element.pageIndex === pageIndex &&
+      Boolean(element.assetId) && projectAssemblyProcedureOverlayBBoxToCrop(element.bbox, bbox) !== null)
+    .sort((left, right) => left.zIndex - right.zIndex)
+    .map(({ assetId, bbox, zIndex, objectFit, opacity }) => ({ assetId, bbox, zIndex, objectFit, opacity }));
+  return overlays.length ? { overlays } : {};
+}
 
 export function useAssemblyProcedureDocumentOverlayCommands(
   session: AssemblyProcedureDocumentOverlayCommandSession
@@ -111,7 +127,8 @@ export function useAssemblyProcedureDocumentOverlayCommands(
           id: document.id,
           accessPassword: passwordInput,
           pageIndex: selectedPage.pageIndex,
-          bbox: range
+          bbox: range,
+          ...regionOverlays(session.elements, selectedPage.pageIndex, range)
         });
         if (candidates.length > 0) {
           setTextCandidates(candidates);
@@ -127,7 +144,8 @@ export function useAssemblyProcedureDocumentOverlayCommands(
           id: document.id,
           accessPassword: passwordInput,
           pageIndex: selectedPage.pageIndex,
-          bbox: range
+          bbox: range,
+          ...regionOverlays(session.elements, selectedPage.pageIndex, range)
         });
         setDocument((current) => current ? {
           ...current,
@@ -225,7 +243,8 @@ export function useAssemblyProcedureDocumentOverlayCommands(
         id: document.id,
         accessPassword: passwordInput,
         pageIndex,
-        bbox
+        bbox,
+        ...regionOverlays(session.elements, pageIndex, bbox)
       });
       if (candidates.length > 0) {
         setTextCandidates(candidates);

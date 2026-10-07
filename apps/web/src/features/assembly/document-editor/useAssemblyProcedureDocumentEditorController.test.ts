@@ -617,6 +617,33 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(hook.result.current.elements).toHaveLength(1);
   });
 
+  it('sends intersecting images from the current unsaved draft in z order for both region kinds', async () => {
+    const image: AssemblyProcedureOverlayElement = { id: 'low', kind: 'IMAGE', assetId: 'low-asset', pageIndex: 0, bbox: range, zIndex: 1, objectFit: 'cover', opacity: 0.5 };
+    const high: AssemblyProcedureOverlayElement = { ...image, id: 'high', assetId: 'high-asset', zIndex: 5 };
+    const outside: AssemblyProcedureOverlayElement = { ...image, id: 'outside', bbox: { ...range, xRatio: 0.6 } };
+    const boundary: AssemblyProcedureOverlayElement = { ...image, id: 'boundary', bbox: { ...range, yRatio: 0.4 } };
+    const otherPage: AssemblyProcedureOverlayElement = { ...image, id: 'page-1', pageIndex: 1 };
+    const shape: AssemblyProcedureOverlayElement = { id: 'shape', kind: 'SHAPE', shape: 'RECTANGLE', pageIndex: 0, bbox: range, zIndex: 3 };
+    const hook = renderEditor(makeDocument({ pages: [
+      { pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [high, outside, boundary, shape, image] },
+      { pageIndex: 1, imageRelativePath: '/pages/2.png', overlays: [otherPage] }
+    ] }));
+    await authenticate(hook.result);
+    const edited = { ...image, assetId: 'unsaved-asset', bbox: { ...range, widthRatio: 0.2 } };
+    act(() => hook.result.current.updateElement(edited));
+    apiMocks.findTextCandidates.mockResolvedValue([{ text: '素材文章', confidence: 0.9, bounds: range, pageIndex: 0, source: 'ocr' }]);
+    const overlays = [edited, high].map(({ assetId, bbox, zIndex, objectFit, opacity }) => ({ assetId, bbox, zIndex, objectFit, opacity }));
+    act(() => hook.result.current.handleRangeSelected(range));
+    await act(async () => hook.result.current.createOverlay('TEXT'));
+    expect(apiMocks.findTextCandidates).toHaveBeenLastCalledWith({ id: 'source-draft', accessPassword: '1234', pageIndex: 0, bbox: range, overlays });
+    act(() => hook.result.current.cancelTextCandidates());
+    apiMocks.createImageRegion.mockResolvedValue({ assetId: 'cropped', relativeUrl: '/crop.jpg', contentType: 'image/jpeg' });
+    act(() => hook.result.current.handleRangeSelected(range));
+    await act(async () => hook.result.current.createOverlay('IMAGE'));
+    expect(apiMocks.createImageRegion).toHaveBeenLastCalledWith({ holderToken: 'session-token', id: 'source-draft', accessPassword: '1234', pageIndex: 0, bbox: range, overlays });
+    expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
+  });
+
   it('creates an image from an ROI and replaces its asset through upload', async () => {
     const source = makeDocument();
     const hook = renderEditor(source);
