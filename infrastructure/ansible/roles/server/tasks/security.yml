@@ -8,13 +8,15 @@
     update_cache: true
     cache_valid_time: "{{ apt_cache_valid_time_seconds | default(3600) }}"
 
+# Access logs can carry request query strings, so the directory is not world-readable.
+# Production already runs with 0750; keep the role from widening it.
 - name: Ensure Caddy log directory exists
   ansible.builtin.file:
     path: "{{ caddy_log_dir }}"
     state: directory
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
-    mode: "0755"
+    mode: "0750"
 
 - name: Configure UFW default incoming policy
   ansible.builtin.command: "ufw default {{ ufw_default_incoming_policy }} incoming"
