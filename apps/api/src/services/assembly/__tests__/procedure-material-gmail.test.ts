@@ -7,9 +7,10 @@ import { buildMinimalValidPdfBuffer } from '../../../lib/__tests__/fixtures/mini
 import { defaultBackupConfig, BackupConfigSchema } from '../../backup/backup-config.js';
 import type { GmailMessage, GmailMessagePart } from '../../backup/gmail-api-client.js';
 import { FileStorageAlreadyExistsError } from '../../file-storage/file-storage-errors.js';
+import { PdfPageCountError, PopplerPdfPagesAdapter } from '../../knowledge/poppler-pdf-pages.adapter.js';
 import type { PdfPagesPort } from '../../knowledge/pdf-pages.port.js';
 import { buildProcedureMaterialGmailSearchQuery, ProcedureMaterialGmailIngestionService } from '../procedure-material-gmail-ingestion.service.js';
-import { resolveAttachmentContentType, resolveProcedureMaterialGmailPacket, stripCidPlaceholders } from '../procedure-material-gmail-packet-resolver.js';
+import { normalizePhotoForStorage, PHOTO_RESIZE_STEPS, PROCEDURE_MATERIAL_MAX_PHOTO_BYTES, PROCEDURE_MATERIAL_STORED_PHOTO_MAX_BYTES, resolveAttachmentContentType, resolveProcedureMaterialGmailPacket, stripCidPlaceholders } from '../procedure-material-gmail-packet-resolver.js';
 
 vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn() } }));
 
@@ -17,16 +18,19 @@ let image: Buffer;
 let inlineImage: Buffer;
 let pageImage: Buffer;
 const pdf = buildMinimalValidPdfBuffer();
-beforeAll(async () => {
-  image = await sharp({ create: { width: 4, height: 3, channels: 3, background: 'blue' } }).png().toBuffer();
-  pageImage = await sharp(image).jpeg().toBuffer();
-  const pixels = Buffer.alloc(256 * 256 * 3);
+function noiseImage(width: number, height: number) {
+  const pixels = Buffer.alloc(width * height * 3);
   let seed = 1;
   for (let i = 0; i < pixels.length; i++) {
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
     pixels[i] = seed >>> 24;
   }
-  inlineImage = await sharp(pixels, { raw: { width: 256, height: 256, channels: 3 } }).jpeg().toBuffer();
+  return sharp(pixels, { raw: { width, height, channels: 3 } });
+}
+beforeAll(async () => {
+  image = await sharp({ create: { width: 4, height: 3, channels: 3, background: 'blue' } }).png().toBuffer();
+  pageImage = await sharp(image).jpeg().toBuffer();
+  inlineImage = await noiseImage(256, 256).jpeg().toBuffer();
   expect(inlineImage.length).toBeGreaterThan(16 * 1024);
 });
 const textPart = (text: string, mimeType = 'text/plain'): GmailMessagePart => ({ mimeType, body: { data: Buffer.from(text).toString('base64url') } });
@@ -102,7 +106,89 @@ describe('resolveAttachmentContentType', () => {
   });
 });
 
+describe('normalizePhotoForStorage', () => {
+  it.each(['png', 'jpeg', 'webp'] as const)('preserves small %s bytes and dimensions', async (format) => {
+    const buffer = await sharp(image).toFormat(format).toBuffer();
+    const normalized = await normalizePhotoForStorage(buffer, `image/${format}`);
+    expect(normalized).toEqual({ buffer, width: 4, height: 3 });
+    expect(normalized.buffer).toBe(buffer);
+  });
+  it('preserves images at both normalization thresholds', async () => {
+    expect(PROCEDURE_MATERIAL_STORED_PHOTO_MAX_BYTES).toBe(1024 * 1024);
+    expect(PHOTO_RESIZE_STEPS).toEqual([2000, 1600, 1200]);
+    const image = await sharp({ create: { width: PHOTO_RESIZE_STEPS[0], height: 2, channels: 3, background: 'blue' } }).png().toBuffer();
+    const buffer = Buffer.concat([image, Buffer.alloc(PROCEDURE_MATERIAL_STORED_PHOTO_MAX_BYTES - image.length)]);
+    const normalized = await normalizePhotoForStorage(buffer, 'image/png');
+    expect(normalized).toEqual({ buffer, width: PHOTO_RESIZE_STEPS[0], height: 2 });
+    expect(normalized.buffer).toBe(buffer);
+  });
+  it.each(['png', 'jpeg', 'webp'] as const)('bounds the long side while retaining %s format', async (format) => {
+    const buffer = await sharp({ create: { width: 3600, height: 1800, channels: 3, background: 'blue' } }).toFormat(format).toBuffer();
+    const normalized = await normalizePhotoForStorage(buffer, `image/${format}`);
+    expect(normalized).toMatchObject({ width: PHOTO_RESIZE_STEPS[0], height: PHOTO_RESIZE_STEPS[0] / 2 });
+    expect(normalized.buffer.length).toBeLessThanOrEqual(PROCEDURE_MATERIAL_STORED_PHOTO_MAX_BYTES);
+    expect(normalized.buffer.equals(buffer)).toBe(false);
+    expect(await sharp(normalized.buffer).metadata()).toMatchObject({ format, width: PHOTO_RESIZE_STEPS[0], height: PHOTO_RESIZE_STEPS[0] / 2 });
+  });
+  it('re-encodes bytes above 1 MiB without enlarging a small image', async () => {
+    const buffer = Buffer.concat([image, Buffer.alloc(PROCEDURE_MATERIAL_STORED_PHOTO_MAX_BYTES + 1 - image.length)]);
+    const normalized = await normalizePhotoForStorage(buffer, 'image/png');
+    expect(normalized).toMatchObject({ width: 4, height: 3 });
+    expect(normalized.buffer.equals(buffer)).toBe(false);
+    expect(normalized.buffer.length).toBeLessThanOrEqual(PROCEDURE_MATERIAL_STORED_PHOTO_MAX_BYTES);
+  });
+  it('reduces a large noisy JPEG to the first resize step that fits within 1 MiB', async () => {
+    const buffer = await noiseImage(4000, 3000).jpeg({ quality: 100 }).toBuffer();
+    expect(buffer.length).toBeGreaterThan(PROCEDURE_MATERIAL_STORED_PHOTO_MAX_BYTES);
+    expect(buffer.length).toBeLessThanOrEqual(PROCEDURE_MATERIAL_MAX_PHOTO_BYTES);
+    const firstStep = await sharp(buffer).rotate().resize({ width: PHOTO_RESIZE_STEPS[0], height: PHOTO_RESIZE_STEPS[0], fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
+    expect(firstStep.length).toBeGreaterThan(PROCEDURE_MATERIAL_STORED_PHOTO_MAX_BYTES);
+    const normalized = await normalizePhotoForStorage(buffer, 'image/jpeg');
+    expect(normalized.buffer.length).toBeLessThanOrEqual(PROCEDURE_MATERIAL_STORED_PHOTO_MAX_BYTES);
+    expect(normalized).toMatchObject({ width: PHOTO_RESIZE_STEPS[1], height: PHOTO_RESIZE_STEPS[1] * 3 / 4 });
+    expect(await sharp(normalized.buffer).metadata()).toMatchObject({ format: 'jpeg', width: normalized.width, height: normalized.height });
+  });
+  it('keeps PNG format using palette quantization when resizing alone exceeds 1 MiB', async () => {
+    const buffer = await noiseImage(900, 900).png().toBuffer();
+    expect(buffer.length).toBeGreaterThan(PROCEDURE_MATERIAL_STORED_PHOTO_MAX_BYTES);
+    const normalized = await normalizePhotoForStorage(buffer, 'image/png');
+    expect(normalized.buffer.length).toBeLessThanOrEqual(PROCEDURE_MATERIAL_STORED_PHOTO_MAX_BYTES);
+    expect(normalized).toMatchObject({ width: 900, height: 900 });
+    expect(await sharp(normalized.buffer).metadata()).toMatchObject({ format: 'png', isPalette: true, width: 900, height: 900 });
+  });
+  it('applies EXIF orientation before recording the resized dimensions', async () => {
+    const buffer = await sharp({ create: { width: 4000, height: 2000, channels: 3, background: 'blue' } })
+      .jpeg().withMetadata({ orientation: 6 }).toBuffer();
+    expect(await sharp(buffer).metadata()).toMatchObject({ orientation: 6 });
+    const normalized = await normalizePhotoForStorage(buffer, 'image/jpeg');
+    expect(normalized).toMatchObject({ width: PHOTO_RESIZE_STEPS[0] / 2, height: PHOTO_RESIZE_STEPS[0] });
+    const metadata = await sharp(normalized.buffer).metadata();
+    expect(metadata).toMatchObject({ format: 'jpeg', width: PHOTO_RESIZE_STEPS[0] / 2, height: PHOTO_RESIZE_STEPS[0] });
+    expect(metadata.orientation).toBeUndefined();
+  });
+});
+
 describe('procedure-material Gmail packet', () => {
+  it.each([true, false])('accepts photos at exactly 25 MiB (reported size: %s)', async (reported) => {
+    expect(PROCEDURE_MATERIAL_MAX_PHOTO_BYTES).toBe(25 * 1024 * 1024);
+    const buffer = Buffer.concat([image, Buffer.alloc(PROCEDURE_MATERIAL_MAX_PHOTO_BYTES - image.length)]);
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart('photo.png', {
+      body: { attachmentId: 'photo', ...(reported ? { size: buffer.length } : {}) },
+    })]), client: { getAttachment: async () => buffer } });
+    expect(packet).toMatchObject({ skippedAttachments: 0, warnings: [] });
+    expect(packet.photos).toHaveLength(1);
+    expect(packet.photos[0]?.buffer.length).toBeLessThanOrEqual(PROCEDURE_MATERIAL_STORED_PHOTO_MAX_BYTES);
+  });
+  it('rejects a noisy PNG still over 1 MiB at 1200px after palette quantization with a warning', async () => {
+    const buffer = await noiseImage(PHOTO_RESIZE_STEPS[2], PHOTO_RESIZE_STEPS[2]).png().toBuffer();
+    expect(buffer.length).toBeGreaterThan(PROCEDURE_MATERIAL_STORED_PHOTO_MAX_BYTES);
+    expect(buffer.length).toBeLessThan(PROCEDURE_MATERIAL_MAX_PHOTO_BYTES);
+    const quantized = await sharp(buffer).rotate().resize({ width: PHOTO_RESIZE_STEPS[2], height: PHOTO_RESIZE_STEPS[2], fit: 'inside', withoutEnlargement: true }).png({ compressionLevel: 9, palette: true }).toBuffer();
+    expect(quantized.length).toBeGreaterThan(PROCEDURE_MATERIAL_STORED_PHOTO_MAX_BYTES);
+    await expect(normalizePhotoForStorage(buffer, 'image/png')).rejects.toThrow('縮小しても 1 MB に収まりません');
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart()]), client: { getAttachment: async () => buffer } });
+    expect(packet).toMatchObject({ photos: [], skippedAttachments: 1, warnings: ['photo.png: 縮小しても 1 MB に収まりません'] });
+  });
   it.each(['application/pdf', 'application/octet-stream', 'binary/octet-stream', undefined])('collects PDF bytes with MIME %j without rendering', async (mimeType) => {
     const attachmentClient = { getAttachment: vi.fn().mockResolvedValue(pdf) };
     const packet = await resolveProcedureMaterialGmailPacket({ message: message([pdfPart({ mimeType })]), client: attachmentClient });
@@ -179,12 +265,12 @@ describe('procedure-material Gmail packet', () => {
     expect(packet).toMatchObject({ text: null, photos: [], videos: [], pdfs: [], skippedAttachments: 1, warnings: [`${filename} (${originalType}): 対応外の添付`] });
     expect(attachmentClient.getAttachment).not.toHaveBeenCalled();
   });
-  it.each([true, false])('excludes inferred photos over 10 MiB with a size warning (reported size: %s)', async (reported) => {
-    const attachmentClient = { getAttachment: vi.fn().mockResolvedValue(Buffer.alloc(10 * 1024 * 1024 + 1)) };
+  it.each([true, false])('excludes inferred photos over 25 MiB with a size warning (reported size: %s)', async (reported) => {
+    const attachmentClient = { getAttachment: vi.fn().mockResolvedValue(Buffer.alloc(25 * 1024 * 1024 + 1)) };
     const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart('ハンドル2.png', {
-      mimeType: 'image/x-png', body: { attachmentId: 'photo', ...(reported ? { size: 10 * 1024 * 1024 + 1 } : {}) },
+      mimeType: 'image/x-png', body: { attachmentId: 'photo', ...(reported ? { size: 25 * 1024 * 1024 + 1 } : {}) },
     })]), client: attachmentClient });
-    expect(packet).toMatchObject({ photos: [], skippedAttachments: 1, warnings: ['ハンドル2.png: 10 MB超過'] });
+    expect(packet).toMatchObject({ photos: [], skippedAttachments: 1, warnings: ['ハンドル2.png: 25 MB超過'] });
     expect(attachmentClient.getAttachment).toHaveBeenCalledTimes(reported ? 0 : 1);
   });
   it('treats octet-stream MP4 attachments as videos', async () => {
@@ -321,25 +407,25 @@ describe('procedure-material Gmail packet', () => {
       photoPart('video.avi', { mimeType: 'video/x-msvideo' }),
       photoPart('inline.png', { headers: [{ name: 'Content-Disposition', value: 'inline' }], body: { attachmentId: 'inline', size: image.length } }),
       photoPart('cid.png', { headers: [{ name: 'Content-ID', value: '<cid>' }], body: { attachmentId: 'cid', size: image.length } }),
-      photoPart('large.png', { body: { attachmentId: 'large', size: 10 * 1024 * 1024 + 1 } }),
+      photoPart('large.png', { body: { attachmentId: 'large', size: 25 * 1024 * 1024 + 1 } }),
     ]), client: attachmentClient });
     expect(packet).toMatchObject({ text: null, photos: [], skippedAttachments: 4 });
     expect(attachmentClient.getAttachment).not.toHaveBeenCalled();
   });
   it('checks the actual size and skips corrupt images', async () => {
-    const attachmentClient = { getAttachment: vi.fn().mockResolvedValueOnce(Buffer.alloc(10 * 1024 * 1024 + 1)).mockResolvedValueOnce(Buffer.from('invalid')) };
+    const attachmentClient = { getAttachment: vi.fn().mockResolvedValueOnce(Buffer.alloc(25 * 1024 * 1024 + 1)).mockResolvedValueOnce(Buffer.from('invalid')) };
     const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart('large.png'), photoPart('broken.png')]), client: attachmentClient });
     expect(packet.photos).toEqual([]); expect(packet.skippedAttachments).toBe(2);
   });
   it('checks reported and actual size limits and rejects corrupt inline photos', async () => {
-    const attachmentClient = { getAttachment: vi.fn().mockResolvedValueOnce(Buffer.alloc(10 * 1024 * 1024 + 1)).mockResolvedValueOnce(Buffer.alloc(16 * 1024)) };
+    const attachmentClient = { getAttachment: vi.fn().mockResolvedValueOnce(Buffer.alloc(25 * 1024 * 1024 + 1)).mockResolvedValueOnce(Buffer.alloc(16 * 1024)) };
     const headers = [{ name: 'Content-Disposition', value: 'inline' }];
     const packet = await resolveProcedureMaterialGmailPacket({ message: message([
-      photoPart('reported-large.png', { headers, body: { attachmentId: 'reported-large', size: 10 * 1024 * 1024 + 1 } }),
+      photoPart('reported-large.png', { headers, body: { attachmentId: 'reported-large', size: 25 * 1024 * 1024 + 1 } }),
       photoPart('actual-large.png', { headers }), photoPart('corrupt.png', { headers }),
     ]), client: attachmentClient });
     expect(packet).toMatchObject({ photos: [], skippedAttachments: 3, warnings: [
-      'reported-large.png: 10 MB超過', 'actual-large.png: 10 MB超過', 'corrupt.png: 画像を読み取れません',
+      'reported-large.png: 25 MB超過', 'actual-large.png: 25 MB超過', 'corrupt.png: 画像を読み取れません',
     ] });
     expect(attachmentClient.getAttachment).toHaveBeenCalledTimes(2);
   });
@@ -368,6 +454,52 @@ function harness(parts: GmailMessagePart[] = [textPart('手順'), photoPart()], 
 
 describe('procedure-material Gmail ingestion', () => {
   beforeEach(() => { vi.mocked(logger.info).mockClear(); });
+  it.each(['png', 'jpeg'] as const)('saves normalized %s bytes with matching hash, size and dimensions', async (format) => {
+    const buffer = await sharp({ create: { width: 3600, height: 1800, channels: 3, background: 'blue' } }).toFormat(format).toBuffer();
+    const h = harness([photoPart(`original.${format}`, { mimeType: `image/${format}` })]);
+    h.gmail.getAttachment.mockResolvedValue(buffer);
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: 1, retryable: 0, skippedAttachments: 0 });
+    const stored = h.store.write.mock.calls[0]![0] as { key: string; data: Buffer };
+    expect(stored.data.length).toBeLessThanOrEqual(PROCEDURE_MATERIAL_STORED_PHOTO_MAX_BYTES);
+    const sha256 = createHash('sha256').update(stored.data).digest('hex');
+    expect(stored.data.equals(buffer)).toBe(false);
+    expect(sha256).not.toBe(createHash('sha256').update(buffer).digest('hex'));
+    expect(await sharp(stored.data).metadata()).toMatchObject({ format, width: PHOTO_RESIZE_STEPS[0], height: PHOTO_RESIZE_STEPS[0] / 2 });
+    expect(h.rows).toEqual([expect.objectContaining({
+      width: PHOTO_RESIZE_STEPS[0], height: PHOTO_RESIZE_STEPS[0] / 2, sha256, byteSize: stored.data.length,
+      storageKey: `procedure-materials/${sha256}/original`, contentType: `image/${format}`, originalFileName: `original.${format}`,
+    })]);
+  });
+  it.each([25, 26])('enforces the 25-page ingestion limit for %i yielded pages without partial saves', async (count) => {
+    const h = harness([pdfPart()], { extract: async function* () {
+      for (let pageNumber = 1; pageNumber <= count; pageNumber++) yield { pageNumber, text: '', jpeg: pageImage };
+    } });
+    h.gmail.getAttachment.mockResolvedValue(pdf);
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({
+      saved: count === 25 ? 25 : 0, skippedAttachments: count === 25 ? 0 : 1,
+      messages: [{ warnings: count === 25 ? [] : ['組立.v1.pdf: PDF は 25 ページまで'] }],
+    });
+    expect(h.rows).toHaveLength(count === 25 ? 25 : 0);
+    expect(h.store.write).toHaveBeenCalledTimes(count === 25 ? 25 : 0);
+  });
+  it('uses the page count from the default adapter rather than its error text', async () => {
+    const error = new PdfPageCountError(26, 25);
+    error.message = 'changed adapter message';
+    const extract = vi.spyOn(PopplerPdfPagesAdapter.prototype, 'extract').mockImplementation(function () {
+      expect(this).toMatchObject({ maxPages: 25 });
+      throw error;
+    });
+    try {
+      const h = harness([pdfPart()]);
+      h.gmail.getAttachment.mockResolvedValue(pdf);
+      expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({
+        saved: 0, skippedAttachments: 1, messages: [{ warnings: ['組立.v1.pdf: PDF は 25 ページまで'] }],
+      });
+      expect(h.store.write).not.toHaveBeenCalled();
+    } finally {
+      extract.mockRestore();
+    }
+  });
   it.each(['[Procedure-material] DFD1 組立', '[Procedure-material]'])('saves three PDF pages once with page metadata for subject %j', async (subject) => {
     const extract = vi.fn(async function* (buffer: Buffer) {
       expect(buffer).toEqual(pdf);
@@ -399,7 +531,7 @@ describe('procedure-material Gmail ingestion', () => {
     ['renderer failed', 'PDF を描画できません: renderer failed'],
     ['Encrypted PDFs are not supported', '暗号化 PDF は対応外'],
     ['Command failed: pdfinfo\nCommand Line Error: Incorrect password', '暗号化 PDF は対応外'],
-    ['Pilot PDF must contain 1–20 pages', 'PDF は 20 ページまで'],
+    ['PDF must contain 1–60 pages', 'PDF を描画できません: PDF must contain 1–60 pages'],
   ])('skips PDF extraction failure %j with a warning and no partial save', async (reason, warning) => {
     const h = harness([pdfPart()], { extract: async function* () {
       yield { pageNumber: 1, text: '', jpeg: pageImage };
