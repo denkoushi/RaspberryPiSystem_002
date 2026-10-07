@@ -16,7 +16,7 @@ import { resolveGmailApiClientFromBackupConfig } from '../gmail/gmail-api-client
 import { getProcedureMaterialSubjectHint, isProcedureMaterialGmailSubject, PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS } from '../gmail/gmail-subject-reservation.policy.js';
 import { escapeGmailQuotedSearchValue, extractEmail } from '../item-inventory/item-inventory-ingestion.policy.js';
 import type { PdfPagesPort } from '../knowledge/pdf-pages.port.js';
-import { PopplerPdfPagesAdapter } from '../knowledge/poppler-pdf-pages.adapter.js';
+import { PdfPageCountError, PopplerPdfPagesAdapter } from '../knowledge/poppler-pdf-pages.adapter.js';
 import { materialMessageHeader, resolveProcedureMaterialGmailPacket, type ProcedureMaterialAttachmentClient, type ProcedureMaterialPhoto } from './procedure-material-gmail-packet-resolver.js';
 
 export type ProcedureMaterialGmailPort = ProcedureMaterialAttachmentClient & {
@@ -34,6 +34,7 @@ export type ProcedureMaterialCycleSummary = {
 };
 const RETRY_DELAY_MS = 5 * 60 * 1000;
 const BATCH_LIMIT = 20;
+const PROCEDURE_MATERIAL_MAX_PDF_PAGES = 25;
 
 export function buildProcedureMaterialGmailSearchQuery(config?: BackupConfig['procedureMaterialGmailIngest']): string {
   const tokens = config?.subjectTokens.filter((token) => (PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS as readonly string[]).includes(token)) ?? [];
@@ -49,7 +50,7 @@ export class ProcedureMaterialGmailIngestionService {
     private readonly gmailFactory: (config: BackupConfig, options: { allowWait: boolean }) => Promise<ProcedureMaterialGmailPort>,
     private readonly db = defaultPrisma,
     private readonly store: DurableFileStorePort = getFileStorageRuntime().store,
-    private readonly pdfPages: PdfPagesPort = new PopplerPdfPagesAdapter(),
+    private readonly pdfPages: PdfPagesPort = new PopplerPdfPagesAdapter({ maxPages: PROCEDURE_MATERIAL_MAX_PDF_PAGES }),
   ) {}
 
   async runOnce(options: { config: BackupConfig; allowWait: boolean; manual?: boolean; messageId?: string; forceRetry?: boolean }): Promise<ProcedureMaterialCycleSummary> {
@@ -171,7 +172,7 @@ export class ProcedureMaterialGmailIngestionService {
         try {
           // Consume all pages before saving so failures cannot leave a partial PDF import.
           for await (const page of this.pdfPages.extract(pdf.buffer)) {
-            if (photos.length >= 20) throw new Error('Pilot PDF must contain 1–20 pages');
+            if (photos.length >= PROCEDURE_MATERIAL_MAX_PDF_PAGES) throw new PdfPageCountError(photos.length + 1, PROCEDURE_MATERIAL_MAX_PDF_PAGES);
             // eslint-disable-next-line no-await-in-loop
             const metadata = await sharp(page.jpeg).metadata();
             if (metadata.format !== 'jpeg' || !metadata.width || !metadata.height) throw new Error('ページ画像を読み取れません');
@@ -188,7 +189,8 @@ export class ProcedureMaterialGmailIngestionService {
         } catch (error) {
           const reason = error instanceof Error ? error.message : String(error);
           const warning = /encrypted|incorrect password/i.test(reason) ? '暗号化 PDF は対応外'
-            : reason === 'Pilot PDF must contain 1–20 pages' ? 'PDF は 20 ページまで' : `PDF を描画できません: ${reason}`;
+            : error instanceof PdfPageCountError && error.pageCount > PROCEDURE_MATERIAL_MAX_PDF_PAGES
+              ? 'PDF は 25 ページまで' : `PDF を描画できません: ${reason}`;
           result.skippedAttachments++;
           result.warnings.push(`${pdf.filename}: ${warning}`);
           continue;

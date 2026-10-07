@@ -3,7 +3,9 @@ import sharp from 'sharp';
 
 import type { GmailMessage, GmailMessagePart } from '../backup/gmail-api-client.js';
 
-export const PROCEDURE_MATERIAL_MAX_PHOTO_BYTES = 10 * 1024 * 1024;
+export const PROCEDURE_MATERIAL_MAX_PHOTO_BYTES = 25 * 1024 * 1024;
+export const PROCEDURE_MATERIAL_STORED_PHOTO_MAX_BYTES = 1024 * 1024;
+export const PHOTO_RESIZE_STEPS = [2000, 1600, 1200] as const;
 export const PROCEDURE_MATERIAL_MAX_PDF_BYTES = 10 * 1024 * 1024;
 export const PROCEDURE_VIDEO_MAX_BYTES = 25 * 1024 * 1024;
 const VIDEO_FORMATS = new Set(['video/mp4', 'video/quicktime', 'video/3gpp', 'video/x-m4v']);
@@ -14,6 +16,7 @@ const ATTACHMENT_EXTENSION_CONTENT_TYPES: Record<string, string> = {
   pdf: 'application/pdf',
 };
 const INLINE_PHOTO_MIN_BYTES = 16 * 1024;
+const PHOTO_STORAGE_SIZE_ERROR = '縮小しても 1 MB に収まりません';
 export type ProcedureMaterialAttachmentClient = { getAttachment: (messageId: string, attachmentId: string) => Promise<Buffer> };
 export type ProcedureMaterialPhoto = {
   gmailDedupeKey: string; filename: string; buffer: Buffer; sha256: string; contentType: string; width: number; height: number;
@@ -21,6 +24,47 @@ export type ProcedureMaterialPhoto = {
 export type ProcedureMaterialVideo = Pick<ProcedureMaterialPhoto, 'gmailDedupeKey' | 'filename' | 'buffer' | 'sha256' | 'contentType'>;
 export type ProcedureMaterialPdf = Pick<ProcedureMaterialPhoto, 'gmailDedupeKey' | 'filename' | 'buffer' | 'sha256'>;
 export type ProcedureMaterialPacket = { text: string | null; photos: ProcedureMaterialPhoto[]; videos: ProcedureMaterialVideo[]; pdfs: ProcedureMaterialPdf[]; duplicate: number; skippedAttachments: number; warnings: string[] };
+
+/** Bounds decode memory on the Pi5: 40 MP ≈ 160 MiB RGBA. Larger inputs fail fast instead of risking OOM. */
+export const PHOTO_MAX_INPUT_PIXELS = 40_000_000;
+const PHOTO_PIXEL_LIMIT_ERROR = '画像の画素数が大きすぎます';
+function openPhoto(buffer: Buffer) {
+  return sharp(buffer, { limitInputPixels: PHOTO_MAX_INPUT_PIXELS });
+}
+function describePhotoError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return /pixel limit/i.test(message) ? PHOTO_PIXEL_LIMIT_ERROR : message;
+}
+
+export async function normalizePhotoForStorage(buffer: Buffer, contentType: string): Promise<{ buffer: Buffer; width: number; height: number }> {
+  const metadata = await openPhoto(buffer).metadata();
+  if (!metadata.width || !metadata.height) throw new Error('画像を読み取れません');
+  if (Math.max(metadata.width, metadata.height) <= PHOTO_RESIZE_STEPS[0] && buffer.length <= PROCEDURE_MATERIAL_STORED_PHOTO_MAX_BYTES) {
+    return { buffer, width: metadata.width, height: metadata.height };
+  }
+  for (const dimension of PHOTO_RESIZE_STEPS) {
+    const image = openPhoto(buffer).rotate().resize({
+      width: dimension, height: dimension, fit: 'inside', withoutEnlargement: true,
+    });
+    if (contentType === 'image/jpeg') image.jpeg({ quality: 85 });
+    else if (contentType === 'image/png') image.png({ compressionLevel: 9 });
+    else if (contentType === 'image/webp') image.webp({ quality: 85 });
+    else throw new Error('画像形式が一致しません');
+    // eslint-disable-next-line no-await-in-loop
+    const { data, info } = await image.toBuffer({ resolveWithObject: true });
+    if (data.length <= PROCEDURE_MATERIAL_STORED_PHOTO_MAX_BYTES) {
+      return { buffer: data, width: info.width, height: info.height };
+    }
+    if (contentType === 'image/png' && dimension === PHOTO_RESIZE_STEPS[2]) {
+      // eslint-disable-next-line no-await-in-loop
+      const quantized = await image.png({ compressionLevel: 9, palette: true }).toBuffer({ resolveWithObject: true });
+      if (quantized.data.length <= PROCEDURE_MATERIAL_STORED_PHOTO_MAX_BYTES) {
+        return { buffer: quantized.data, width: quantized.info.width, height: quantized.info.height };
+      }
+    }
+  }
+  throw new Error(PHOTO_STORAGE_SIZE_ERROR);
+}
 
 export function materialMessageHeader(message: GmailMessage, name: string): string {
   return message.payload?.headers?.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? '';
@@ -171,7 +215,7 @@ export async function resolveProcedureMaterialGmailPacket(params: {
       continue;
     }
     if ((part.body?.size ?? 0) > PROCEDURE_MATERIAL_MAX_PHOTO_BYTES) {
-      packet.skippedAttachments++; packet.warnings.push(`${filename}: 10 MB超過`); continue;
+      packet.skippedAttachments++; packet.warnings.push(`${filename}: 25 MB超過`); continue;
     }
     if (params.savedKeys?.has(key)) { packet.duplicate++; continue; }
     // eslint-disable-next-line no-await-in-loop
@@ -181,18 +225,22 @@ export async function resolveProcedureMaterialGmailPacket(params: {
       continue;
     }
     if (buffer.length > PROCEDURE_MATERIAL_MAX_PHOTO_BYTES) {
-      packet.skippedAttachments++; packet.warnings.push(`${filename}: 10 MB超過`); continue;
+      packet.skippedAttachments++; packet.warnings.push(`${filename}: 25 MB超過`); continue;
     }
     try {
       // eslint-disable-next-line no-await-in-loop
-      const metadata = await sharp(buffer).metadata();
+      const metadata = await openPhoto(buffer).metadata();
       if (metadata.format !== PHOTO_FORMATS[contentType] || !metadata.width || !metadata.height) throw new Error('画像形式が一致しません');
-      // Validate the decoded pixels as well as the header before accepting the original.
+      // Validate the decoded pixels as well as the header before normalization.
       // eslint-disable-next-line no-await-in-loop
-      await sharp(buffer).stats();
-      packet.photos.push({ gmailDedupeKey: key, filename, buffer, contentType, width: metadata.width, height: metadata.height, sha256: createHash('sha256').update(buffer).digest('hex') });
-    } catch {
-      packet.skippedAttachments++; packet.warnings.push(`${filename}: 画像を読み取れません`);
+      await openPhoto(buffer).stats();
+      // eslint-disable-next-line no-await-in-loop
+      const normalized = await normalizePhotoForStorage(buffer, contentType);
+      packet.photos.push({ gmailDedupeKey: key, filename, ...normalized, contentType, sha256: createHash('sha256').update(normalized.buffer).digest('hex') });
+    } catch (error) {
+      const message = describePhotoError(error);
+      const warning = message === PHOTO_STORAGE_SIZE_ERROR || message === PHOTO_PIXEL_LIMIT_ERROR ? message : '画像を読み取れません';
+      packet.skippedAttachments++; packet.warnings.push(`${filename}: ${warning}`);
     }
   }
   return packet;
