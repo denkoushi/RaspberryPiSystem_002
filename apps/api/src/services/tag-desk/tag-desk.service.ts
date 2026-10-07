@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
+import { canApprove, positionRank } from '../knowledge/knowledge-position-rank.js';
 
 /** Master records that carry NFC tags and are managed on the kiosk tag desk. */
 export const TAG_DESK_KINDS = ['employee', 'item', 'instrument', 'rigging'] as const;
@@ -10,6 +11,7 @@ export type TagDeskKind = (typeof TAG_DESK_KINDS)[number];
 export type TagBindingKind = TagDeskKind | 'inventory';
 
 export type TagDeskTag = { bindingId: string; uid: string };
+export type PositionApproval = 'approver' | 'none' | 'unmapped';
 
 export type TagDeskRow = {
   kind: TagDeskKind;
@@ -18,6 +20,8 @@ export type TagDeskRow = {
   name: string;
   sub: string | null;
   sub2?: string | null;
+  positionName?: string | null;
+  positionApproval?: PositionApproval | null;
   status: string;
   tags: TagDeskTag[];
   /** Editable master fields, shaped like the kiosk edit form. */
@@ -85,11 +89,21 @@ type LoanRow = Prisma.LoanGetPayload<{ select: typeof loanSelect }>;
 const assetLabel = (loan: LoanRow) =>
   loan.item?.name ?? loan.measuringInstrument?.name ?? loan.riggingGear?.name ?? '写真持出';
 
+function positionApproval(name: string | null, ranks: Map<string, string>): PositionApproval | null {
+  if (!name) return null;
+  if (!ranks.has(name)) return 'unmapped';
+  return canApprove(positionRank(ranks.get(name))) ? 'approver' : 'none';
+}
+
 export class TagDeskService {
   async listRegistry(kind: TagDeskKind): Promise<TagDeskRow[]> {
     switch (kind) {
       case 'employee': {
-        const rows = await prisma.employee.findMany({ orderBy: { employeeCode: 'asc' } });
+        const [rows, mappings] = await Promise.all([
+          prisma.employee.findMany({ orderBy: { employeeCode: 'asc' } }),
+          prisma.knowledgePositionRank.findMany({ select: { positionName: true, rank: true } })
+        ]);
+        const ranks = new Map(mappings.map((mapping) => [mapping.positionName, mapping.rank]));
         return rows.map((e) => ({
           kind,
           id: e.id,
@@ -97,6 +111,8 @@ export class TagDeskService {
           name: e.displayName,
           sub: e.department,
           sub2: e.section || null,
+          positionName: e.positionName,
+          positionApproval: positionApproval(e.positionName, ranks),
           status: e.status,
           tags: e.nfcTagUid ? [{ bindingId: e.id, uid: e.nfcTagUid }] : [],
           record: {
@@ -105,6 +121,7 @@ export class TagDeskService {
             firstName: e.firstName ?? '',
             department: e.department ?? '',
             section: e.section ?? '',
+            positionName: e.positionName ?? '',
             status: e.status
           }
         }));
@@ -367,12 +384,14 @@ export class TagDeskService {
     sections: Array<{ division: string; name: string }>;
     departments: string[];
     genres: Array<{ id: string; name: string }>;
+    positions: Array<{ name: string; approval: PositionApproval }>;
   }> {
-    const [employees, instrumentDepartments, riggingDepartments, genres] = await Promise.all([
-      prisma.employee.findMany({ distinct: ['department', 'section'], select: { department: true, section: true } }),
+    const [employees, instrumentDepartments, riggingDepartments, genres, mappings] = await Promise.all([
+      prisma.employee.findMany({ distinct: ['department', 'section', 'positionName'], select: { department: true, section: true, positionName: true } }),
       prisma.measuringInstrument.findMany({ where: { department: { not: null } }, distinct: ['department'], select: { department: true } }),
       prisma.riggingGear.findMany({ where: { department: { not: null } }, distinct: ['department'], select: { department: true } }),
-      prisma.measuringInstrumentGenre.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } })
+      prisma.measuringInstrumentGenre.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+      prisma.knowledgePositionRank.findMany({ select: { positionName: true, rank: true } })
     ]);
     const uniqueNames = (values: Array<string | null>) => [...new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))]
       .sort((a, b) => a.localeCompare(b, 'ja'));
@@ -387,7 +406,12 @@ export class TagDeskService {
       ...instrumentDepartments.map((instrument) => instrument.department),
       ...riggingDepartments.map((rigging) => rigging.department)
     ]);
-    return { divisions, sections, departments, genres };
+    const ranks = new Map(mappings.map((mapping) => [mapping.positionName, mapping.rank]));
+    const positions = [...new Set([...mappings.map((mapping) => mapping.positionName), ...employees.map((employee) => employee.positionName)]
+      .filter((name): name is string => Boolean(name)))]
+      .sort((a, b) => a.localeCompare(b, 'ja'))
+      .map((name) => ({ name, approval: positionApproval(name, ranks)! }));
+    return { divisions, sections, departments, genres, positions };
   }
 
   /** Label of the first record this UID is bound to, or null when it is free. */

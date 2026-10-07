@@ -81,6 +81,7 @@ export const FORM_FIELDS: Record<TagDeskKind, FieldSpec[]> = {
     { key: 'firstName', label: '名前', type: 'text', required: true, width: 's' },
     { key: 'department', label: '部門', type: 'select', width: 'm', options: (opts) => [{ value: '', label: '未設定' }, ...opts.divisions.map((division) => ({ value: division, label: division }))] },
     { key: 'section', label: '部署', type: 'select', width: 'm', options: sectionOptions },
+    { key: 'positionName', label: '職位', type: 'select', width: 's', options: (opts) => [{ value: '', label: '未設定' }, ...opts.positions.map((position) => ({ value: position.name, label: position.name }))] },
     { key: 'status', label: '状態', type: 'select', width: 's', options: () => Object.entries(EMPLOYEE_STATUS).map(([value, label]) => ({ value, label })) }
   ],
   item: [

@@ -49,6 +49,7 @@ const employeeCreateBody = z.object({
   firstName: z.string().trim().min(1, '名前は必須です'),
   department: optionalText,
   section: optionalText,
+  positionName: z.string().trim().max(200).nullable().transform((v) => v || null).optional(),
   status: z.nativeEnum(EmployeeStatus).optional()
 });
 const employeeUpdateBody = employeeCreateBody.partial();

@@ -72,7 +72,7 @@ describe('KioskTagDeskPage', () => {
     nfc.listeners.clear();
     api.verifyTagDeskPin.mockResolvedValue({ success: true });
     api.getTagDeskRegistry.mockResolvedValue(employees);
-    api.getTagDeskOptions.mockResolvedValue({ divisions: [], sections: [], departments: [], genres: [] });
+    api.getTagDeskOptions.mockResolvedValue({ divisions: [], sections: [], departments: [], genres: [], positions: [] });
     api.getTagDeskEvents.mockResolvedValue([]);
     api.unlinkTagDeskTag.mockResolvedValue(undefined);
     api.linkTagDeskTag.mockResolvedValue([]);
@@ -89,6 +89,36 @@ describe('KioskTagDeskPage', () => {
     for (const digit of ['1', '1', '1', '1']) fireEvent.click(within(pad).getByRole('button', { name: digit }));
     expect(await screen.findByRole('alert')).toHaveTextContent('パスワードが違います');
     expect(api.getTagDeskRegistry).not.toHaveBeenCalled();
+  });
+
+  it('shows employee position chips and counts approvers across all rows, and hides them on asset tabs', async () => {
+    api.getTagDeskRegistry.mockResolvedValue([
+      { ...employees[0], positionName: '班長', positionApproval: 'approver' },
+      { ...employees[1], positionName: '一般', positionApproval: 'none' },
+      { ...employees[1], id: 'emp-3', name: '未対応 社員', positionName: '主事', positionApproval: 'unmapped' },
+      { ...employees[1], id: 'emp-4', name: '未設定 社員', positionName: null, positionApproval: null }
+    ]);
+    await unlock();
+    const registry = screen.getByRole('region', { name: '紐づけ先の一覧' });
+    expect(within(registry).getByText('職位')).toBeInTheDocument();
+    const approver = within(registry).getByRole('button', { name: /山本 健太/ });
+    expect(within(approver).getByText('班長')).toBeInTheDocument();
+    expect(within(approver).getByText('承認可')).toHaveClass('text-[#34d399]');
+    expect(within(approver).getByText('承認可').querySelector('svg')).not.toBeNull();
+    const general = within(registry).getByRole('button', { name: /岡本 由香/ });
+    expect(within(general).getByText('一般')).toBeInTheDocument();
+    expect(within(general).queryByText(/承認/)).not.toBeInTheDocument();
+    expect(within(registry).getByText('対応表なし')).toHaveClass('text-[#ffb547]');
+    expect(within(registry).getByText('未設定')).toHaveClass('text-[#5c6d83]');
+    expect(within(registry).getByText('承認可 1人')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('名前・コードで探す'), { target: { value: '未設定' } });
+    expect(within(registry).getByText('承認可 1人')).toBeInTheDocument();
+    api.getTagDeskRegistry.mockResolvedValue([]);
+    for (const tab of ['工具', '計測機器', '吊具']) {
+      fireEvent.click(screen.getByRole('tab', { name: tab }));
+      expect(within(registry).queryByText('職位')).not.toBeInTheDocument();
+      expect(within(registry).queryByText(/承認可/)).not.toBeInTheDocument();
+    }
   });
 
   it('shows where a read tag is bound and releases it only after the second press', async () => {
