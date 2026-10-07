@@ -181,6 +181,10 @@ python3 ./probe-photo-label-vlm.py ./sample-tool.jpg --start-runtime --stop-runt
   - 既定は `cpu`。現状の `lmsysorg/sglang:latest` では GB10 の CUDA capability 警告を避けるため、まず CPU 動作を正とする
 - `EMBEDDING_NORMALIZE`
   - 既定 `true`。cosine 距離を使う前提で画像特徴を L2 normalize する
+- `EMBEDDING_BACKEND`
+  - 既定 `clip`。`embeddinggemma2` は `EMBEDDING_HF_MODEL=google/embeddinggemma-2` と sentence-transformers 6.1.0 以上が必要
+- `EMBEDDING_TRUNCATE_DIM`
+  - 既定は空（切り詰めなし）。先頭 N 次元を取り、`EMBEDDING_NORMALIZE=true` なら再正規化する（例: `512`）
 
 ## systemd（推奨・再起動耐性）
 

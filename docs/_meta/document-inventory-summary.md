@@ -12,8 +12,8 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Metric | Count |
 |--------|------:|
 | Documents | 701 |
-| Total lines | 183890 |
-| Total bytes | 14448466 |
+| Total lines | 184017 |
+| Total bytes | 14480473 |
 | With frontmatter | 314 |
 | With status | 166 |
 | source_of_truth declared | 115 |
@@ -21,7 +21,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Question-mark corruption documents | 1 |
 | Replacement-character documents | 1 |
 | Long-line documents | 37 |
-| Local links | 5779 |
+| Local links | 5780 |
 | Broken local links | 89 |
 | Documents over 1,000 lines | 29 |
 | Documents over 3,000 lines | 6 |
@@ -35,12 +35,12 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | `EXEC_PLAN.md` | 4660 | 976722 |
 | `docs/knowledge-base/frontend.md` | 4643 | 277726 |
 | `docs/knowledge-base/infrastructure/ansible-deployment.md` | 4368 | 281621 |
-| `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` | 3221 | 440272 |
+| `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` | 3225 | 442254 |
 | `docs/archive/deployments/2026-05.md` | 2571 | 499357 |
 | `docs/archive/architecture/deployment-modules-legacy-through-2026-07.md` | 2522 | 128149 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2208 | 137917 |
 | `docs/knowledge-base/infrastructure/signage.md` | 2208 | 190029 |
-| `docs/INDEX.md` | 2069 | 357108 |
+| `docs/INDEX.md` | 2069 | 357251 |
 | `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1951 | 217024 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153539 |
 | `docs/archive/deployments/legacy-operator-guide-through-2026-07.md` | 1600 | 108031 |
@@ -79,7 +79,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/decisions/ADR-20260930-pi4-sd-card-backup.md` (20:1251)
 - `docs/guides/phase3-token-refresh-test-results.md` (94:1437)
 - `docs/guides/verification-checklist.md` (623:1641)
-- `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` (214:1414, 216:1048, 225:1224)
+- `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` (218:1414, 220:1048, 229:1224)
 - `docs/knowledge-base/KB-313-kiosk-documents.md` (137:1274, 157:1178)
 - `docs/knowledge-base/KB-320-kiosk-part-measurement.md` (1808:1045, 1815:1213)
 - `docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md` (13:1164, 79:1101, 304:1220)

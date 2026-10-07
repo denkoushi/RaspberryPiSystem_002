@@ -11,6 +11,8 @@ MODEL_ID="${EMBEDDING_MODEL_ID:-clip-ViT-B-32}"
 HF_MODEL="${EMBEDDING_HF_MODEL:-openai/clip-vit-base-patch32}"
 DEVICE="${EMBEDDING_DEVICE:-cpu}"
 NORMALIZE="${EMBEDDING_NORMALIZE:-true}"
+BACKEND="${EMBEDDING_BACKEND:-clip}"
+TRUNCATE_DIM="${EMBEDDING_TRUNCATE_DIM:-}"
 
 install -d "$(dirname "${LOG_PATH}")" "${CACHE_DIR}"
 
@@ -36,6 +38,8 @@ docker run -d \
   -e EMBEDDING_HF_MODEL="${HF_MODEL}" \
   -e EMBEDDING_DEVICE="${DEVICE}" \
   -e EMBEDDING_NORMALIZE="${NORMALIZE}" \
+  -e EMBEDDING_BACKEND="${BACKEND}" \
+  -e EMBEDDING_TRUNCATE_DIM="${TRUNCATE_DIM}" \
   "${IMAGE}" \
   bash -lc 'python /opt/embedding-server.py' >>"${LOG_PATH}" 2>&1
 

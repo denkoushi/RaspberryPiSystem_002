@@ -10,7 +10,10 @@ import type {
  * embedding は長さ検証済みの number[] のみを渡すこと。
  */
 export class PgPhotoToolSimilarityGalleryRepository implements PhotoToolSimilarityGalleryRepositoryPort {
-  constructor(private readonly embeddingDimension: number) {}
+  constructor(
+    private readonly embeddingDimension: number,
+    private readonly embeddingModelId: string | undefined
+  ) {}
 
   private formatVectorLiteral(embedding: number[]): string {
     if (embedding.length !== this.embeddingDimension) {
@@ -57,6 +60,9 @@ export class PgPhotoToolSimilarityGalleryRepository implements PhotoToolSimilari
     excludeLoanId: string;
     limit: number;
   }): Promise<SimilarityGalleryNeighbor[]> {
+    if (!this.embeddingModelId) {
+      return [];
+    }
     const safeLimit = Math.max(1, Math.min(Math.trunc(params.limit), 100));
     const vec = this.formatVectorLiteral(params.queryEmbedding);
     const rows = await prisma.$queryRawUnsafe<
@@ -66,11 +72,13 @@ export class PgPhotoToolSimilarityGalleryRepository implements PhotoToolSimilari
               (g."embedding" <=> $1::vector) AS distance
        FROM "photo_tool_similarity_gallery" g
        WHERE g."loanId" <> $2
+         AND g."embeddingModelId" = $4
        ORDER BY g."embedding" <=> $1::vector
        LIMIT $3`,
       vec,
       params.excludeLoanId,
-      safeLimit
+      safeLimit,
+      this.embeddingModelId
     );
     return rows.map((r) => ({
       sourceLoanId: r.loanId,
@@ -80,14 +88,16 @@ export class PgPhotoToolSimilarityGalleryRepository implements PhotoToolSimilari
   }
 
   async countRowsByCanonicalLabel(trimmedCanonicalLabel: string): Promise<number> {
-    if (!trimmedCanonicalLabel) {
+    if (!trimmedCanonicalLabel || !this.embeddingModelId) {
       return 0;
     }
     const rows = await prisma.$queryRawUnsafe<{ count: bigint | number | string }[]>(
       `SELECT COUNT(*)::bigint AS count
        FROM "photo_tool_similarity_gallery" g
-       WHERE BTRIM(g."canonicalLabel") = $1`,
-      trimmedCanonicalLabel
+       WHERE BTRIM(g."canonicalLabel") = $1
+         AND g."embeddingModelId" = $2`,
+      trimmedCanonicalLabel,
+      this.embeddingModelId
     );
     const n = rows[0]?.count;
     const parsed = typeof n === 'bigint' ? Number(n) : Number(n ?? 0);

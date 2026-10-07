@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 701,
-    "totalLines": 183890,
-    "totalBytes": 14448466,
+    "totalLines": 184017,
+    "totalBytes": 14480473,
     "withFrontmatter": 314,
     "withStatus": 166,
     "sourceOfTruthDeclared": 115,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 37,
-    "localLinkCount": 5779,
+    "localLinkCount": 5780,
     "brokenLocalLinkCount": 89,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
@@ -5920,7 +5920,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 2069,
-      "byteSize": 357108,
+      "byteSize": 357251,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6959,6 +6959,11 @@
         {
           "href": "./decisions/ADR-20260930-pi4-sd-card-backup.md",
           "targetPath": "docs/decisions/ADR-20260930-pi4-sd-card-backup.md",
+          "exists": true
+        },
+        {
+          "href": "./decisions/ADR-20261007-photo-tool-gallery-embeddinggemma2.md",
+          "targetPath": "docs/decisions/ADR-20261007-photo-tool-gallery-embeddinggemma2.md",
           "exists": true
         },
         {
@@ -22638,8 +22643,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-297-kiosk-due-management-workflow.md",
-      "lineCount": 3221,
-      "byteSize": 440272,
+      "lineCount": 3225,
+      "byteSize": 442254,
       "hasFrontmatter": true,
       "title": "KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装",
       "status": null,
@@ -22966,19 +22971,19 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 214,
+          "line": 218,
           "length": 1414
         },
         {
-          "line": 216,
+          "line": 220,
           "length": 1048
         },
         {
-          "line": 225,
+          "line": 229,
           "length": 1224
         },
         {
-          "line": 675,
+          "line": 679,
           "length": 1803
         }
       ],
@@ -26784,8 +26789,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-411-planning-board-resource-view-update-loop.md",
-      "lineCount": 62,
-      "byteSize": 4186,
+      "lineCount": 67,
+      "byteSize": 4498,
       "hasFrontmatter": true,
       "title": "Kiosk planning board (製番ボード) resource view crashed with a React update loop on 切削",
       "status": "active",
@@ -26862,7 +26867,7 @@
     {
       "path": "docs/knowledge-base/KB-415-ai-security-scan-2026-10.md",
       "lineCount": 76,
-      "byteSize": 6560,
+      "byteSize": 6714,
       "hasFrontmatter": false,
       "title": "KB-415: AI security scan of the whole repository (2026-10) and the access-control fixes it led to",
       "status": null,
@@ -34436,8 +34441,8 @@
     },
     {
       "path": "docs/plans/hermes-retrieval-accuracy-log.md",
-      "lineCount": 383,
-      "byteSize": 46110,
+      "lineCount": 395,
+      "byteSize": 48282,
       "hasFrontmatter": false,
       "title": "Hermes retrieval accuracy log",
       "status": null,
@@ -34466,8 +34471,8 @@
     },
     {
       "path": "docs/plans/hermes-synthetic-question-flywheel-execplan.md",
-      "lineCount": 152,
-      "byteSize": 29459,
+      "lineCount": 153,
+      "byteSize": 29795,
       "hasFrontmatter": false,
       "title": "Hermes synthetic question flywheel for nonconformity retrieval",
       "status": null,
@@ -34478,15 +34483,15 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 116,
+          "line": 117,
           "length": 1248
         },
         {
-          "line": 126,
+          "line": 127,
           "length": 1162
         },
         {
-          "line": 128,
+          "line": 129,
           "length": 1021
         }
       ],
@@ -36725,8 +36730,8 @@
     },
     {
       "path": "docs/plans/procedure-manuals-execplan.md",
-      "lineCount": 522,
-      "byteSize": 104414,
+      "lineCount": 577,
+      "byteSize": 121474,
       "hasFrontmatter": false,
       "title": "機種×工程ごとの要領書を、組立手順書を正本にして閲覧・作成できるようにする",
       "status": null,
@@ -37189,11 +37194,11 @@
     },
     {
       "path": "docs/plans/security-client-key-rotation-phase-b.md",
-      "lineCount": 155,
-      "byteSize": 21351,
+      "lineCount": 205,
+      "byteSize": 31069,
       "hasFrontmatter": true,
       "title": "Phase B: Rotate every device credential to a per-device random value",
-      "status": "draft",
+      "status": "in_progress",
       "source_of_truth": "this plan",
       "localLinks": [],
       "inboundCount": 1,
@@ -37201,11 +37206,11 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 104,
+          "line": 131,
           "length": 1296
         },
         {
-          "line": 106,
+          "line": 133,
           "length": 1449
         }
       ],
@@ -40382,7 +40387,7 @@
     {
       "path": "docs/runbooks/security-hardening-remediation.md",
       "lineCount": 107,
-      "byteSize": 7908,
+      "byteSize": 8038,
       "hasFrontmatter": false,
       "title": "Runbook: Security hardening remediation (Batch C — operator actions)",
       "status": null,
