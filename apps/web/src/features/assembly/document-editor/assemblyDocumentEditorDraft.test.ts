@@ -5,12 +5,33 @@ import {
   canPublishAssemblyProcedureDocument,
   convertOverlayShapeKind,
   createOverlayForRange,
+  lineEndpointsForDirection,
   normalizeOverlayBBox,
   overlayDraftReducer
   , updateOverlayBBox
 } from './assemblyDocumentEditorDraft';
 
 const bbox = { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.2, heightRatio: 0.2 };
+
+describe('lineEndpointsForDirection', () => {
+  it.each([
+    ['up', 0.375, 0.5, 0.375, 0.25],
+    ['up-right', 0.125, 0.5, 0.625, 0.25],
+    ['right', 0.125, 0.375, 0.625, 0.375],
+    ['down-right', 0.125, 0.25, 0.625, 0.5],
+    ['down', 0.375, 0.25, 0.375, 0.5],
+    ['down-left', 0.625, 0.25, 0.125, 0.5],
+    ['left', 0.625, 0.375, 0.125, 0.375],
+    ['up-left', 0.625, 0.5, 0.125, 0.25]
+  ] as const)('sets %s endpoints without changing the bbox', (direction, startX, startY, endX, endY) => {
+    const bounds = Object.freeze({ xRatio: 0.125, yRatio: 0.25, widthRatio: 0.5, heightRatio: 0.25 });
+    expect(lineEndpointsForDirection(bounds, direction)).toEqual({
+      start: { xRatio: startX, yRatio: startY },
+      end: { xRatio: endX, yRatio: endY }
+    });
+    expect(bounds).toEqual({ xRatio: 0.125, yRatio: 0.25, widthRatio: 0.5, heightRatio: 0.25 });
+  });
+});
 
 describe('assembly document editor draft reducer', () => {
   it('defaults text and image ranges to a white mask', () => {

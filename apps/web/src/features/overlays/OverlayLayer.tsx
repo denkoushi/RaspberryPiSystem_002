@@ -3,7 +3,7 @@ import {
   projectOverlayElementToCrop
 } from '@raspi-system/shared-types';
 import clsx from 'clsx';
-import { useRef } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 
 import { useProtectedImageBlobUrl } from '../../hooks/useProtectedImageBlobUrl';
 
@@ -186,11 +186,39 @@ function pointToLocal(point: OverlayPoint, element: OverlayElement): OverlayPoin
 }
 
 function ShapeContent({ element }: { element: Extract<OverlayElement, { kind: 'SHAPE' }> }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
+  useLayoutEffect(() => {
+    const node = svgRef.current;
+    if (!node) return undefined;
+    const update = (width: number, height: number) => {
+      setSize((previous) => {
+        if (width <= 0 || height <= 0) return null;
+        return previous?.width === width && previous.height === height ? previous : { width, height };
+      });
+    };
+    const measure = () => {
+      const rect = node.getBoundingClientRect();
+      update(rect.width, rect.height);
+    };
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(([entry]) => {
+      if (entry) update(entry.contentRect.width, entry.contentRect.height);
+    });
+    observer?.observe(node);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [element.shape, element.bbox.widthRatio, element.bbox.heightRatio]);
+
   const points = shapePoints(element);
   const start = pointToLocal(points.start, element);
   const end = pointToLocal(points.end, element);
   const stroke = element.strokeColor ?? '#0f172a';
   const fill = element.fillColor ?? 'transparent';
+  // The existing non-scaling stroke uses CSS pixels, unlike text sized in cqw.
   const strokeWidth = Math.max(1, Math.min(20, (element.strokeWidthRatio ?? 0.01) * 100));
   const common = { stroke, strokeWidth, fill, vectorEffect: 'non-scaling-stroke' as const };
   if (element.shape === 'ELLIPSE') {
@@ -198,10 +226,12 @@ function ShapeContent({ element }: { element: Extract<OverlayElement, { kind: 'S
   }
   if (element.shape === 'LINE' || element.shape === 'ARROW') {
     const markerId = `overlay-arrowhead-${element.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+    const width = size?.width ?? 1;
+    const height = size?.height ?? 1;
     return (
-      <svg aria-hidden="true" className="absolute inset-0 h-full w-full overflow-hidden" viewBox="0 0 1 1">
-        {element.shape === 'ARROW' ? <defs><marker id={markerId} markerWidth="0.08" markerHeight="0.08" markerUnits="userSpaceOnUse" orient="auto" refX="0.075" refY="0.04" viewBox="0 0 0.08 0.08"><path d="M0 0 L0.08 0.04 L0 0.08 Z" fill={stroke} stroke="none" /></marker></defs> : null}
-        <line x1={start.xRatio} y1={start.yRatio} x2={end.xRatio} y2={end.yRatio} {...common} markerEnd={element.shape === 'ARROW' ? `url(#${markerId})` : undefined} />
+      <svg ref={svgRef} aria-hidden="true" className="absolute inset-0 h-full w-full overflow-hidden" viewBox={`0 0 ${width} ${height}`}>
+        {element.shape === 'ARROW' ? <defs><marker id={markerId} markerWidth={size ? 8 : 0.08} markerHeight={size ? 8 : 0.08} markerUnits={size ? 'strokeWidth' : 'userSpaceOnUse'} orient="auto" refX={size ? 0.08 : 0.075} refY="0.04" viewBox="0 0 0.08 0.08"><path d="M0 0 L0.08 0.04 L0 0.08 Z" fill={stroke} stroke="none" /></marker></defs> : null}
+        <line x1={start.xRatio * width} y1={start.yRatio * height} x2={end.xRatio * width} y2={end.yRatio * height} {...common} markerEnd={element.shape === 'ARROW' ? `url(#${markerId})` : undefined} />
       </svg>
     );
   }

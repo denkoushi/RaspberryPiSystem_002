@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -6,6 +6,7 @@ import { kioskWebNavigation } from '../features/kiosk/kioskWebActivation';
 
 import { KioskLayout } from './KioskLayout';
 
+const revealMode = vi.hoisted(() => ({ real: false }));
 const acknowledgeDeployStatus = vi.fn();
 const proveNfcRuntimeReady = vi.fn();
 let deployStatus: Record<string, unknown> | undefined;
@@ -42,14 +43,20 @@ vi.mock('../components/kiosk/KioskHeader', () => ({ KioskHeader: () => <div>kios
 vi.mock('../components/kiosk/KioskMaintenanceScreen', () => ({ KioskMaintenanceScreen: () => <div>maintenance-screen</div> }));
 vi.mock('../components/kiosk/KioskSupportModal', () => ({ KioskSupportModal: () => null }));
 vi.mock('../components/KioskRedirect', () => ({ KioskRedirect: () => <div>normal-kiosk-content</div> }));
-vi.mock('../hooks/useKioskBottomRightHeaderReveal', () => ({
-  useKioskBottomRightHeaderReveal: () => ({
-    isVisible: true,
-    onHotZoneEnter: vi.fn(),
-    onHeaderMouseEnter: vi.fn(),
-    onHeaderMouseLeave: vi.fn()
-  })
-}));
+vi.mock('../hooks/useKioskBottomRightHeaderReveal', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../hooks/useKioskBottomRightHeaderReveal')>();
+  return {
+    useKioskBottomRightHeaderReveal: (...args: Parameters<typeof actual.useKioskBottomRightHeaderReveal>) => revealMode.real
+      ? actual.useKioskBottomRightHeaderReveal(...args)
+      : {
+        isVisible: true,
+        close: vi.fn(),
+        onHotZoneEnter: vi.fn(),
+        onHeaderMouseEnter: vi.fn(),
+        onHeaderMouseLeave: vi.fn()
+      }
+  };
+});
 
 describe('KioskLayout deploy status handling', () => {
   it.each([['/kiosk/assembly/manuals', false], ['/kiosk/assembly/manuals/workshop', false], ['/kiosk/assembly', true]])('reserves the full height only for manuals (%s)', (path, padded) => {
@@ -61,6 +68,7 @@ describe('KioskLayout deploy status handling', () => {
   });
 
   beforeEach(() => {
+    revealMode.real = false;
     deployStatus = undefined;
     acknowledgeDeployStatus.mockReset();
     acknowledgeDeployStatus.mockResolvedValue({ acknowledged: true });
@@ -305,5 +313,64 @@ describe('KioskLayout deploy status handling', () => {
       ['run-repeat', 'ready', BUNDLE_RELEASE_SHA, RELEASE_VERIFICATION_ID],
       ['run-repeat', 'ready', BUNDLE_RELEASE_SHA, ROLLBACK_VERIFICATION_ID]
     ]);
+  });
+
+  it('uses a hidden bottom dock and a handle on non-immersive call routes', () => {
+    revealMode.real = true;
+    deployStatus = { isMaintenance: false };
+    const { container } = render(<MemoryRouter initialEntries={['/kiosk/call']}><KioskLayout /></MemoryRouter>);
+    const dock = container.querySelector('header')!;
+    expect(dock).toHaveClass('fixed', 'bottom-0', 'pointer-events-none', 'invisible', 'translate-y-full');
+    expect(dock).toHaveAttribute('inert');
+    expect(dock).toHaveAttribute('aria-hidden', 'true');
+    const handle = screen.getByRole('button', { name: 'メニューを開く' });
+    expect(handle).toHaveAttribute('aria-expanded', 'false');
+    expect(handle).toHaveAttribute('aria-controls', dock.id);
+    expect(screen.getByRole('main').parentElement).toHaveClass('min-h-dvh');
+    fireEvent.click(handle);
+    expect(dock).toHaveClass('visible', 'translate-y-0');
+    expect(dock).not.toHaveAttribute('inert');
+    expect(handle).not.toBeVisible();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(dock).toHaveAttribute('inert');
+    expect(handle).toBeVisible();
+  });
+
+  it('reveals on handle hover and closes after leave or outside pointerdown', () => {
+    vi.useFakeTimers();
+    revealMode.real = true;
+    deployStatus = { isMaintenance: false };
+    const { container } = render(<MemoryRouter initialEntries={['/kiosk/call']}><KioskLayout /></MemoryRouter>);
+    const dock = container.querySelector('header')!;
+    fireEvent.mouseEnter(screen.getByRole('button', { name: 'メニューを開く' }));
+    fireEvent.mouseEnter(dock);
+    fireEvent.mouseLeave(dock);
+    act(() => vi.advanceTimersByTime(199));
+    expect(dock).toHaveClass('visible');
+    act(() => vi.advanceTimersByTime(1));
+    expect(dock).toHaveClass('invisible');
+    fireEvent.mouseMove(window, { clientX: window.innerWidth - 2, clientY: window.innerHeight - 2 });
+    expect(dock).toHaveClass('visible');
+    fireEvent.pointerDown(screen.getByRole('main'));
+    expect(dock).toHaveClass('invisible');
+  });
+
+  it('keeps the dock open while a dock overlay handles leave, Escape and pointerdown', () => {
+    vi.useFakeTimers();
+    revealMode.real = true;
+    deployStatus = { isMaintenance: false };
+    const { container } = render(<MemoryRouter initialEntries={['/kiosk/call']}><KioskLayout /></MemoryRouter>);
+    const dock = container.querySelector('header')!;
+    fireEvent.click(screen.getByRole('button', { name: 'メニューを開く' }));
+    const overlayMarker = screen.getByText('kiosk-header');
+    overlayMarker.setAttribute('data-kiosk-dock-overlay', 'true');
+    fireEvent.mouseLeave(dock);
+    act(() => vi.advanceTimersByTime(200));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.pointerDown(document.body);
+    expect(dock).toHaveClass('visible');
+    overlayMarker.removeAttribute('data-kiosk-dock-overlay');
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(dock).toHaveClass('invisible');
   });
 });

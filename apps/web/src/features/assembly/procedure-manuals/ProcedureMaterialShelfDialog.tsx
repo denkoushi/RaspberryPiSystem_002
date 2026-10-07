@@ -7,7 +7,9 @@ import { Dialog } from '../../../components/ui/Dialog';
 import { Input } from '../../../components/ui/Input';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
-import type { ProcedureWorkInstructionCandidatesResult, ProcedureKnowledgeCandidatesResult, ProcedureKnowledgeImportResult, ProcedureMaterialDto, ProcedureMaterialIngestResult, ProcedureMaterialState } from './procedure-material-types';
+import { groupMaterials, groupWorkInstructionCandidates, materialSource } from './procedure-material-grouping';
+
+import type { ProcedureWorkInstructionCandidate, ProcedureWorkInstructionCandidatesResult, ProcedureKnowledgeCandidatesResult, ProcedureKnowledgeImportResult, ProcedureMaterialDto, ProcedureMaterialIngestResult, ProcedureMaterialState } from './procedure-material-types';
 import type { ReactNode } from 'react';
 
 function MaterialPhoto({ id, alt, knowledge = false, workInstruction = false, onZoom }: { id: string; alt: string; knowledge?: boolean; workInstruction?: boolean; onZoom: (url: string, title: string) => void }) {
@@ -66,6 +68,21 @@ function MaterialCard({ title, source, date, checked, disabled, onChange, childr
   </li>;
 }
 
+function MaterialBundle({ title, subtitle, count, photoCount, open, onToggle, onSelectAll, disabled, children }: {
+  title: string; subtitle: string; count: number; photoCount?: boolean; open: boolean;
+  onToggle: () => void; onSelectAll?: () => void; disabled: boolean; children: ReactNode;
+}) {
+  return <details open={open} className="rounded-xl border border-[#344252] bg-[#1b222a]">
+    <summary role="button" tabIndex={0} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onToggle(); } }} aria-expanded={open} className="grid min-h-[52px] cursor-pointer list-none grid-cols-[28px_minmax(0,1fr)_auto_auto] items-center gap-3 px-3.5 text-[19px] font-bold [&::-webkit-details-marker]:hidden" onClick={(event) => { event.preventDefault(); onToggle(); }}>
+      <span aria-hidden="true" className="text-sm text-[#9fadb9]">{open ? '▼' : '▶'}</span>
+      <span className="min-w-0">{title} <span className="text-base font-medium text-[#9fadb9]">{subtitle}</span></span>
+      <span className="rounded-full bg-[#27313b] px-3 py-0.5 text-base font-semibold tabular-nums">{count} {photoCount ? '枚' : '件'}</span>
+      {onSelectAll ? <button type="button" disabled={disabled} className="relative h-9 rounded-lg border border-[#344252] px-3 text-[15px] font-normal text-[#9fadb9] before:absolute before:-inset-y-1 before:inset-x-0 disabled:opacity-40" onClick={(event) => { event.stopPropagation(); onSelectAll(); }}>束を全部選ぶ</button> : null}
+    </summary>
+    {open ? children : null}
+  </details>;
+}
+
 const shelfSizeKey = 'procedure-material-shelf-size';
 type ShelfSize = 'small' | 'medium' | 'large';
 const shelfColumns = { small: 6, medium: 4, large: 3 };
@@ -92,6 +109,8 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
   const [knowledgeQ, setKnowledgeQ] = useState('');
   const [workInstructions, setWorkInstructions] = useState<ProcedureWorkInstructionCandidatesResult | null>(null);
   const [workInstructionQ, setWorkInstructionQ] = useState('');
+  const [openGroups, setOpenGroups] = useState<Map<string, boolean>>(() => new Map());
+  useEffect(() => { setOpenGroups(new Map()); }, [state]);
   const [selected, setSelected] = useState<string[]>([]);
   const [knowledgeResult, setKnowledgeResult] = useState<ProcedureKnowledgeImportResult | null>(null);
   const [version, setVersion] = useState(0);
@@ -127,7 +146,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
     if (state !== 'workInstruction') return;
     let cancelled = false;
     setLoading(true); setWorkInstructions(null); setSelected([]); setError(null);
-    void listProcedureWorkInstructionCandidates({ q: workInstructionQ, limit: 60 }).then((next) => { if (!cancelled) setWorkInstructions(next); })
+    void listProcedureWorkInstructionCandidates({ q: workInstructionQ, limit: 1000 }).then((next) => { if (!cancelled) setWorkInstructions(next); })
       .catch((e: unknown) => { if (!cancelled) setError(isAxiosError(e) && e.response?.status === 403 ? '権限がありません' : readAssemblyApiErrorMessage(e, '候補を取得できません')); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -199,6 +218,18 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
     } catch (e) { setError(readAssemblyApiErrorMessage(e, '素材を変更できません')); }
     finally { setBusy(false); }
   };
+  const materialDisabled = (material: ProcedureMaterialDto) => busy || (selectionMode && material.kind === 'PDF') || (state !== 'unplaced' && !(selectionMode && state === 'placed')) || (mode === 'replace' && material.kind !== 'PHOTO');
+  const workInstructionDisabled = (candidate: ProcedureWorkInstructionCandidate) => busy || candidate.alreadyImported || (!selected.includes(candidate.candidateKey) && selected.length >= 50);
+  const toggleGroup = (ids: string[], limit = Infinity) => setSelected((current) => ids.every((id) => current.includes(id))
+    ? current.filter((id) => !ids.includes(id))
+    : [...current, ...ids.filter((id) => !current.includes(id)).slice(0, Math.max(0, limit - current.length))]);
+  const gridStyle = { gridTemplateColumns: `repeat(${shelfColumns[size]}, minmax(0, 1fr))` };
+  const renderWorkInstructions = (items: ProcedureWorkInstructionCandidate[]) => items.map((candidate) => <MaterialCard key={candidate.candidateKey} title={`${candidate.partNumber} ${candidate.shootingTarget} 手順 ${candidate.step}`} source="加工" checked={selected.includes(candidate.candidateKey)} disabled={workInstructionDisabled(candidate)} onChange={(checked) => setSelected((ids) => checked ? [...ids, candidate.candidateKey] : ids.filter((id) => id !== candidate.candidateKey))} detail={<><p>{candidate.partNumber} {candidate.shootingTarget} · 手順 {candidate.step}{candidate.alreadyImported ? ' · 取込済み' : ''}</p>{candidate.memo ? <p className="line-clamp-2 whitespace-pre-wrap break-words">{candidate.memo}</p> : null}</>}>
+            <MaterialPhoto id={candidate.assetId} alt={`${candidate.partNumber} ${candidate.shootingTarget} 手順 ${candidate.step}`} workInstruction onZoom={zoom} />
+          </MaterialCard>);
+  const renderMaterials = (items: ProcedureMaterialDto[]) => items.map((material) => <MaterialCard key={material.id} title={material.subjectHint || material.originalFileName || 'ヒントなし'} source={materialSource(material)} date={material.receivedAt} checked={selected.includes(material.id)} disabled={materialDisabled(material)} onChange={(checked) => toggleSelected(material.id, checked)} detail={material.kind === 'PDF' || (material.origin === 'WORK_INSTRUCTION' && material.workInstructionRef) || (state === 'placed' && !selectionMode) || state === 'discarded' ? <>{material.kind === 'PDF' ? <Button variant="ghostOnDark" className="min-h-11" disabled={busy || Boolean(material.documentId || material.placedAt || material.discardedAt)} onClick={() => void createDocument(material)}>要領書を作る</Button> : null}{material.origin === 'WORK_INSTRUCTION' && material.workInstructionRef ? <><p>{material.workInstructionRef.partNumber} {material.workInstructionRef.shootingTarget} · 手順 {material.workInstructionRef.step}</p>{material.workInstructionRef.memo ? <p className="line-clamp-2 whitespace-pre-wrap break-words">{material.workInstructionRef.memo}</p> : null}</> : null}{(state === 'placed' && !selectionMode && material.kind !== 'PDF') || state === 'discarded' ? <Button variant="ghostOnDark" className="min-h-11" disabled={busy} onClick={() => void toggleDiscard(material)}>{state === 'placed' ? '配置を取り消す' : '戻す'}</Button> : null}</> : undefined}>
+            {material.kind === 'PHOTO' ? <MaterialPhoto id={material.id} alt={material.originalFileName || '素材の写真'} onZoom={zoom} /> : material.kind === 'PDF' ? <div className="flex aspect-[4/3] items-center justify-center bg-[#27313b] text-3xl font-bold">PDF</div> : <div className="aspect-[4/3] overflow-hidden bg-[#fdfcf7] p-4 pt-14 text-[19px] leading-normal text-[#1a1a1a]"><p className="line-clamp-6 whitespace-pre-wrap break-words">{material.text}</p></div>}
+          </MaterialCard>);
   const toolClass = 'h-11 shrink-0 rounded-lg border border-[#344252] px-3.5 text-[19px] font-bold disabled:opacity-40';
   return (
     <>
@@ -238,15 +269,27 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
       </div> : null}
       <div className="min-h-0 flex-1 overflow-auto" aria-label="素材一覧">
         {loading ? <p role="status">読込中…</p> : state === 'knowledge' ? knowledge?.enabled === false ? <p>ナレッジ機能は無効です</p> : !error && !knowledge?.items.length ? <p>候補がありません</p> : null : state === 'workInstruction' ? !error && !workInstructions?.items.length ? <p>候補がありません</p> : null : !error && materials.length === 0 ? <p>素材がありません</p> : null}
-        <ul className="grid content-start gap-3.5 pr-1" style={{ gridTemplateColumns: `repeat(${shelfColumns[size]}, minmax(0, 1fr))` }}>
-          {state === 'workInstruction' ? workInstructions?.items.map((candidate) => <MaterialCard key={candidate.candidateKey} title={`${candidate.partNumber} ${candidate.shootingTarget} 手順 ${candidate.step}`} source="加工" checked={selected.includes(candidate.candidateKey)} disabled={busy || candidate.alreadyImported || (!selected.includes(candidate.candidateKey) && selected.length >= 50)} onChange={(checked) => setSelected((ids) => checked ? [...ids, candidate.candidateKey] : ids.filter((id) => id !== candidate.candidateKey))} detail={<><p>{candidate.partNumber} {candidate.shootingTarget} · 手順 {candidate.step}{candidate.alreadyImported ? ' · 取込済み' : ''}</p>{candidate.memo ? <p className="line-clamp-2 whitespace-pre-wrap break-words">{candidate.memo}</p> : null}</>}>
-            <MaterialPhoto id={candidate.assetId} alt={`${candidate.partNumber} ${candidate.shootingTarget} 手順 ${candidate.step}`} workInstruction onZoom={zoom} />
-          </MaterialCard>) : state === 'knowledge' ? knowledge?.items.map((candidate) => <MaterialCard key={candidate.candidateKey} title={candidate.title} source="ナレッジ" checked={selected.includes(candidate.candidateKey)} disabled={busy || candidate.alreadyImported || (mode === 'replace' && candidate.kind !== 'PHOTO') || (!selected.includes(candidate.candidateKey) && selected.length >= 50)} onChange={(checked) => toggleSelected(candidate.candidateKey, checked)} detail={<>{candidate.summary ? <p className="line-clamp-2">{candidate.summary}</p> : null}<p>{candidate.kind === 'PHOTO' && candidate.preview ? <span className="line-clamp-2">{candidate.preview}</span> : null}{candidate.sourceLabel}{candidate.alreadyImported ? ' · 取込済み' : ''}</p></>}>
+        {state === 'workInstruction' ? <div className="grid content-start gap-2.5 pr-1">
+          {groupWorkInstructionCandidates(workInstructions?.items ?? [], workInstructionQ).map(({ key, title, subtitle, items }, index) => {
+            const open = Boolean(workInstructionQ.trim()) || (openGroups.get(key) ?? index === 0);
+            const selectable = items.filter((item) => !workInstructionDisabled(item)).map((item) => item.candidateKey);
+            return <MaterialBundle key={key} title={title} subtitle={subtitle} count={items.length} photoCount open={open} onToggle={() => { if (!workInstructionQ.trim()) setOpenGroups((groups) => new Map(groups).set(key, !open)); }} onSelectAll={mode === 'replace' ? undefined : () => toggleGroup(selectable, 50)} disabled={!selectable.length}>
+              <ul className="grid content-start gap-3.5 px-3.5 pb-3.5" style={gridStyle}>{renderWorkInstructions(items)}</ul>
+            </MaterialBundle>;
+          })}
+        </div> : state === 'unplaced' || state === 'placed' ? <div className="grid content-start gap-2.5 pr-1">
+          {groupMaterials(materials, q).map(({ key, title, subtitle, items }, index) => {
+            const open = Boolean(q.trim()) || (openGroups.get(key) ?? index === 0);
+            const selectable = items.filter((item) => !materialDisabled(item)).map((item) => item.id);
+            return <MaterialBundle key={key} title={title} subtitle={subtitle} count={items.length} open={open} onToggle={() => { if (!q.trim()) setOpenGroups((groups) => new Map(groups).set(key, !open)); }} onSelectAll={mode === 'replace' ? undefined : () => toggleGroup(selectable)} disabled={!selectable.length}>
+              <ul className="grid content-start gap-3.5 px-3.5 pb-3.5" style={gridStyle}>{renderMaterials(items)}</ul>
+            </MaterialBundle>;
+          })}
+        </div> : <ul className="grid content-start gap-3.5 pr-1" style={gridStyle}>
+          {state === 'knowledge' ? knowledge?.items.map((candidate) => <MaterialCard key={candidate.candidateKey} title={candidate.title} source="ナレッジ" checked={selected.includes(candidate.candidateKey)} disabled={busy || candidate.alreadyImported || (mode === 'replace' && candidate.kind !== 'PHOTO') || (!selected.includes(candidate.candidateKey) && selected.length >= 50)} onChange={(checked) => toggleSelected(candidate.candidateKey, checked)} detail={<>{candidate.summary ? <p className="line-clamp-2">{candidate.summary}</p> : null}<p>{candidate.kind === 'PHOTO' && candidate.preview ? <span className="line-clamp-2">{candidate.preview}</span> : null}{candidate.sourceLabel}{candidate.alreadyImported ? ' · 取込済み' : ''}</p></>}>
             {candidate.kind === 'PHOTO' && candidate.imageId ? <MaterialPhoto id={candidate.imageId} alt={candidate.title} knowledge onZoom={zoom} /> : <div className="aspect-[4/3] overflow-hidden bg-[#fdfcf7] p-4 pt-14 text-[19px] leading-normal text-[#1a1a1a]"><p className="line-clamp-6 whitespace-pre-wrap break-words">{candidate.preview}</p></div>}
-          </MaterialCard>) : materials.map((material) => <MaterialCard key={material.id} title={material.subjectHint || material.originalFileName || 'ヒントなし'} source={material.origin === 'WORK_INSTRUCTION' ? '加工' : material.origin === 'KNOWLEDGE' ? 'ナレッジ' : 'メール'} date={material.receivedAt} checked={selected.includes(material.id)} disabled={busy || (selectionMode && material.kind === 'PDF') || (state !== 'unplaced' && !(selectionMode && state === 'placed')) || (mode === 'replace' && material.kind !== 'PHOTO')} onChange={(checked) => toggleSelected(material.id, checked)} detail={material.kind === 'PDF' || (material.origin === 'WORK_INSTRUCTION' && material.workInstructionRef) || (state === 'placed' && !selectionMode) || state === 'discarded' ? <>{material.kind === 'PDF' ? <Button variant="ghostOnDark" className="min-h-11" disabled={busy || Boolean(material.documentId || material.placedAt || material.discardedAt)} onClick={() => void createDocument(material)}>要領書を作る</Button> : null}{material.origin === 'WORK_INSTRUCTION' && material.workInstructionRef ? <><p>{material.workInstructionRef.partNumber} {material.workInstructionRef.shootingTarget} · 手順 {material.workInstructionRef.step}</p>{material.workInstructionRef.memo ? <p className="line-clamp-2 whitespace-pre-wrap break-words">{material.workInstructionRef.memo}</p> : null}</> : null}{(state === 'placed' && !selectionMode && material.kind !== 'PDF') || state === 'discarded' ? <Button variant="ghostOnDark" className="min-h-11" disabled={busy} onClick={() => void toggleDiscard(material)}>{state === 'placed' ? '配置を取り消す' : '戻す'}</Button> : null}</> : undefined}>
-            {material.kind === 'PHOTO' ? <MaterialPhoto id={material.id} alt={material.originalFileName || '素材の写真'} onZoom={zoom} /> : material.kind === 'PDF' ? <div className="flex aspect-[4/3] items-center justify-center bg-[#27313b] text-3xl font-bold">PDF</div> : <div className="aspect-[4/3] overflow-hidden bg-[#fdfcf7] p-4 pt-14 text-[19px] leading-normal text-[#1a1a1a]"><p className="line-clamp-6 whitespace-pre-wrap break-words">{material.text}</p></div>}
-          </MaterialCard>)}
-        </ul>
+          </MaterialCard>) : renderMaterials(materials)}
+        </ul>}
       </div>
     </Dialog>
     {lightbox ? <Dialog isOpen title={lightbox.title} ariaLabel="素材の原寸表示" size="full" overlayZIndex={60} className="flex min-h-0 !h-[92dvh] flex-col !bg-[#161c22] !text-[#eef3f6]" onClose={() => setLightbox(null)}>

@@ -1,5 +1,5 @@
 import { resolveKioskDefaultModePath } from '@raspi-system/shared-types';
-import { NavLink } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 import { KIOSK_MACHINE_SIGNAL_PATH } from '../../machine-signal/machineSignalRoutes';
 import {
@@ -25,24 +25,20 @@ export function resolveKioskBorrowHeaderTabPath(defaultMode: KioskHeaderReordera
   return resolveKioskDefaultModePath(defaultMode);
 }
 
-function renderNavLinkTab(params: {
+function renderLinkTab(params: {
   to: string;
   label: ReactNode;
   isActive: boolean;
-  activeClassName: string;
-  end?: boolean;
-  style?: React.CSSProperties;
 }): ReactNode {
-  const { to, label, isActive, activeClassName, end, style } = params;
+  const { to, label, isActive } = params;
   return (
-    <NavLink
+    <Link
       to={to}
-      end={end}
-      className={() => kioskHeaderNavClass(isActive, activeClassName)}
-      style={style}
+      className={kioskHeaderNavClass(isActive)}
+      aria-current={isActive ? 'page' : undefined}
     >
       {label}
-    </NavLink>
+    </Link>
   );
 }
 
@@ -54,155 +50,132 @@ export function renderKioskReorderableHeaderTab(
 
   switch (tabId) {
     case 'borrow':
-      return renderNavLinkTab({
+      return renderLinkTab({
         to: resolveKioskBorrowHeaderTabPath(ctx.defaultMode),
         label: '持出',
         isActive: pathname === '/kiosk' || pathname === '/kiosk/tag' || pathname === '/kiosk/photo',
-        activeClassName: 'bg-emerald-500 text-white'
       });
     case 'inventory_settings':
-      return renderNavLinkTab({
+      return renderLinkTab({
         to: '/kiosk/inventory',
         label: '在庫',
         isActive: pathname.startsWith('/kiosk/inventory'),
-        activeClassName: 'bg-sky-600 text-white'
       });
     case 'self_inspection':
-      return renderNavLinkTab({
+      return renderLinkTab({
         to: '/kiosk/part-measurement/self-inspection',
         label: '自主検査',
         isActive: isKioskSelfInspectionPath(pathname),
-        activeClassName: 'bg-amber-500 text-slate-950'
       });
     case 'instruments_borrow':
-      return renderNavLinkTab({
+      return renderLinkTab({
         to: '/kiosk/instruments/borrow',
         label: '計測機器 持出',
         isActive: pathname.startsWith('/kiosk/instruments/borrow'),
-        activeClassName: 'bg-emerald-500 text-white'
       });
     case 'rigging_borrow':
-      return renderNavLinkTab({
+      return renderLinkTab({
         to: '/kiosk/rigging/borrow',
         label: '吊具 持出',
         isActive: pathname.startsWith('/kiosk/rigging/borrow'),
-        activeClassName: 'bg-amber-400 text-slate-900'
       });
     case 'tag_desk':
-      return renderNavLinkTab({
+      return renderLinkTab({
         to: '/kiosk/tag-desk',
         label: 'タグ管理',
         isActive: pathname.startsWith('/kiosk/tag-desk'),
-        activeClassName: 'bg-cyan-400 text-slate-950'
       });
     case 'production_schedule':
-      return renderNavLinkTab({
+      return renderLinkTab({
         to: '/kiosk/production-schedule',
         label: '生産スケジュール',
         isActive: pathname === '/kiosk/production-schedule',
-        activeClassName: 'bg-blue-500 text-white',
-        end: true
       });
     case 'manual_order':
-      return renderNavLinkTab({
+      return renderLinkTab({
         to: '/kiosk/production-schedule/manual-order',
         label: '手動順番',
         isActive: pathname.startsWith('/kiosk/production-schedule/manual-order'),
-        activeClassName: 'bg-indigo-500 text-white'
       });
     case 'leader_order_board':
-      return renderNavLinkTab({
+      return renderLinkTab({
         to: '/kiosk/production-schedule/leader-order-board',
         label: '順位ボード',
         isActive: pathname.startsWith('/kiosk/production-schedule/leader-order-board'),
-        activeClassName: 'bg-violet-600 text-white'
       });
     case 'grinding_planning_board':
-      return renderNavLinkTab({
+      return renderLinkTab({
         to: '/kiosk/production-schedule/planning-board',
         label: '製番ボード',
         isActive: pathname.startsWith('/kiosk/production-schedule/planning-board'),
-        activeClassName: 'bg-emerald-600 text-white'
       });
     case 'progress_overview':
-      return renderNavLinkTab({
+      return renderLinkTab({
         to: '/kiosk/production-schedule/progress-overview',
         label: '進捗一覧',
         isActive: pathname.startsWith('/kiosk/production-schedule/progress-overview'),
-        activeClassName: 'bg-cyan-600 text-white'
       });
     case 'load_balancing':
-      return renderNavLinkTab({
+      return renderLinkTab({
         to: '/kiosk/production-schedule/load-balancing',
         label: '負荷調整',
         isActive: pathname.startsWith('/kiosk/production-schedule/load-balancing'),
-        activeClassName: 'bg-fuchsia-700 text-white'
       });
     case 'purchase_order_lookup':
-      return renderNavLinkTab({
+      return renderLinkTab({
         to: '/kiosk/purchase-order-lookup',
         label: '購買照会',
         isActive: pathname.startsWith('/kiosk/purchase-order-lookup'),
-        activeClassName: 'bg-lime-600 text-white'
       });
     case 'pallet_visualization':
-      return renderNavLinkTab({
+      return renderLinkTab({
         to: '/kiosk/pallet-visualization',
         label: 'パレット',
         isActive: pathname.startsWith('/kiosk/pallet-visualization'),
-        activeClassName: 'bg-orange-600 text-white'
       });
     case 'shelf_master':
-      return renderNavLinkTab({
+      return renderLinkTab({
         to: '/kiosk/mobile-placement/shelf-master',
         label: '棚マスタ',
         isActive: pathname.startsWith('/kiosk/mobile-placement/shelf-master'),
-        activeClassName: 'bg-stone-600 text-white'
       });
     case 'documents':
-      return renderNavLinkTab({
+      return renderLinkTab({
         to: '/kiosk/documents',
         label: '要領書',
         isActive: pathname.startsWith('/kiosk/documents'),
-        activeClassName: 'bg-teal-600 text-white'
       });
     case 'assembly':
-      return renderNavLinkTab({
+      return renderLinkTab({
         to: '/kiosk/assembly',
         label: '組立',
         isActive: pathname.startsWith('/kiosk/assembly'),
-        activeClassName: 'bg-cyan-500 text-slate-950'
       });
     case 'part_measurement':
-      return renderNavLinkTab({
+      return renderLinkTab({
         to: '/kiosk/part-measurement',
         label: '部品測定',
         isActive: isKioskPartMeasurementHubPath(pathname),
-        activeClassName: 'bg-rose-600 text-white'
       });
     case 'inspection_drawing':
-      return renderNavLinkTab({
+      return renderLinkTab({
         to: KIOSK_INSPECTION_DRAWING_LIBRARY_PATH,
         label: '検査図面',
         isActive: isKioskInspectionDrawingPath(pathname),
-        activeClassName: 'bg-amber-700 text-white'
       });
     case 'rigging_analytics': {
       const isActive = pathname.startsWith('/kiosk/rigging-analytics');
-      return renderNavLinkTab({
+      return renderLinkTab({
         to: '/kiosk/rigging-analytics',
         label: '集計',
         isActive,
-        activeClassName: 'text-white',
-        style: isActive ? { backgroundColor: 'var(--color-primitive-blue-900)' } : undefined
       });
     }
     case 'machine_signal':
-      return renderNavLinkTab({
+      return renderLinkTab({
         to: KIOSK_MACHINE_SIGNAL_PATH,
         label: '設備稼働',
         isActive: pathname.startsWith(KIOSK_MACHINE_SIGNAL_PATH),
-        activeClassName: 'bg-emerald-700 text-white'
       });
     case 'due_management':
       return (
@@ -210,20 +183,19 @@ export function renderKioskReorderableHeaderTab(
           type="button"
           onClick={() => void ctx.onDueManagementNavigate()}
           disabled={ctx.dueManagementPending}
+          aria-current={pathname.startsWith('/kiosk/production-schedule/due-management') ? 'page' : undefined}
           className={kioskHeaderNavClass(
-            pathname.startsWith('/kiosk/production-schedule/due-management'),
-            'bg-sky-600 text-white'
+            pathname.startsWith('/kiosk/production-schedule/due-management')
           )}
         >
           納期管理
         </button>
       );
     case 'call':
-      return renderNavLinkTab({
+      return renderLinkTab({
         to: '/kiosk/call',
-        label: '📞 通話',
+        label: '通話',
         isActive: pathname.startsWith('/kiosk/call'),
-        activeClassName: 'bg-purple-600 text-white'
       });
     default:
       return null;

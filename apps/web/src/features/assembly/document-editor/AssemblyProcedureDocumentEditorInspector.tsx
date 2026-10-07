@@ -6,6 +6,7 @@ import { Input } from '../../../components/ui/Input';
 
 import {
   convertOverlayShapeKind,
+  lineEndpointsForDirection,
   normalizeOverlayBBox,
   updateOverlayBBox
 } from './assemblyDocumentEditorDraft';
@@ -215,6 +216,28 @@ export function AssemblyProcedureDocumentEditorInspector({
           {(element.shape === 'LINE' || element.shape === 'ARROW') ? (
             <fieldset className="grid gap-1 rounded border border-white/10 p-2">
               <legend className="px-1 text-xs font-bold text-white/70">線分の始点・終点</legend>
+              <div role="group" aria-label="向き" className="grid gap-1">
+                <span className="text-sm font-semibold">向き</span>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {([
+                    ['up-left', '左上へ', '↖'], ['up', '上へ', '↑'], ['up-right', '右上へ', '↗'],
+                    ['left', '左へ', '←'], null, ['right', '右へ', '→'],
+                    ['down-left', '左下へ', '↙'], ['down', '下へ', '↓'], ['down-right', '右下へ', '↘']
+                  ] as const).map((option) => option ? (
+                    <Button
+                      key={option[0]}
+                      type="button"
+                      variant="ghostOnDark"
+                      aria-label={option[1]}
+                      className="min-h-11 min-w-11 text-xl"
+                      disabled={readOnly}
+                      onClick={() => patch(lineEndpointsForDirection(bbox, option[0]))}
+                    >
+                      <span aria-hidden="true">{option[2]}</span>
+                    </Button>
+                  ) : <span key="center" aria-hidden="true" />)}
+                </div>
+              </div>
               <Button
                 type="button"
                 variant="ghostOnDark"
