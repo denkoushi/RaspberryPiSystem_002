@@ -58,6 +58,29 @@ describe('kiosk header reorderable tabs', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByRole('link', { name: '在庫' }).className).toContain('bg-sky-600');
+    expect(screen.getByRole('link', { name: '在庫' })).toHaveClass('bg-inv-cyan', 'text-inv-cyan-ink', 'font-bold');
+    expect(screen.getByRole('link', { name: '在庫' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it.each([
+    ['borrow', '/kiosk/photo', '持出'],
+    ['assembly', '/kiosk/assembly/manuals', '組立'],
+    ['rigging_analytics', '/kiosk/rigging-analytics', '集計'],
+    ['due_management', '/kiosk/production-schedule/due-management', '納期管理'],
+    ['call', '/kiosk/call', '通話']
+  ] as const)('uses the common selected style and aria-current for %s', (tabId, pathname, label) => {
+    render(<MemoryRouter>{renderKioskReorderableHeaderTab(tabId, { ...baseContext, pathname })}</MemoryRouter>);
+    const tab = screen.getByRole(tabId === 'due_management' ? 'button' : 'link', { name: label });
+    expect(tab).toHaveClass('bg-inv-cyan', 'text-inv-cyan-ink', 'font-bold');
+    expect(tab).toHaveAttribute('aria-current', 'page');
+    expect(tab).not.toHaveAttribute('style');
+  });
+
+  it('keeps visual and aria selection based on the existing condition even when the link destination differs', () => {
+    render(<MemoryRouter initialEntries={['/kiosk/part-measurement/inspection']}>
+      {renderKioskReorderableHeaderTab('part_measurement', { ...baseContext, pathname: '/kiosk/part-measurement/inspection' })}
+    </MemoryRouter>);
+    expect(screen.getByRole('link', { name: '部品測定' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('link', { name: '部品測定' })).not.toHaveClass('bg-inv-cyan');
   });
 });

@@ -63,7 +63,7 @@ export async function clickByRoleSafe(
 }
 
 /**
- * 沉浸式キオスク（下端ヘッダー既定非表示）ではナビがビューポート外になり得る。
+ * 全キオスクルートで下辺ドックは既定非表示。
  * 右下24×24pxへマウスを移してヘッダーを表示する（`useKioskBottomRightHeaderReveal` と同型）。
  */
 export async function revealKioskHeader(page: Page): Promise<void> {
