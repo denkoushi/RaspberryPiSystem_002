@@ -11,9 +11,9 @@ import { ProcedureVideoService } from '../procedure-video.service.js';
 const kick = vi.hoisted(() => vi.fn());
 vi.mock('../procedure-video.scheduler.js', () => ({ getProcedureVideoScheduler: () => ({ kick }) }));
 const bytes = Buffer.from('video bytes');
-function message(mimeType = 'video/mp4', size = bytes.length, inline = false): GmailMessage {
+function message(mimeType = 'video/mp4', size = bytes.length, inline = false, filename = '手順.mp4'): GmailMessage {
   return { id: 'gmail-1', threadId: 't', labelIds: [], snippet: '', internalDateMs: 0,
-    payload: { mimeType: 'multipart/mixed', headers: [{ name: 'Subject', value: '[Procedure-material] 手順' }, { name: 'From', value: 'sender@thkintechs.co.jp' }], parts: [{ partId: '2', filename: '手順.mp4', mimeType, headers: [{ name: 'Content-Disposition', value: inline ? 'inline' : 'attachment' }], body: { attachmentId: 'a', size } }] } };
+    payload: { mimeType: 'multipart/mixed', headers: [{ name: 'Subject', value: '[Procedure-material] 手順' }, { name: 'From', value: 'sender@thkintechs.co.jp' }], parts: [{ partId: '2', filename, mimeType, headers: [{ name: 'Content-Disposition', value: inline ? 'inline' : 'attachment' }], body: { attachmentId: 'a', size } }] } };
 }
 
 describe('procedure-video Gmail', () => {
@@ -25,9 +25,9 @@ describe('procedure-video Gmail', () => {
     const duplicate = await resolveProcedureMaterialGmailPacket({ message: message(mimeType), client, savedKeys: new Set([key]) });
     expect(duplicate).toMatchObject({ duplicate: 1, videos: [] }); expect(client.getAttachment).toHaveBeenCalledOnce();
   });
-  it.each([['video/mp4', PROCEDURE_VIDEO_MAX_BYTES + 1, false], ['video/x-msvideo', 10, false], ['video/mp4', 10, true]] as const)('skips unsupported/oversized/inline %s before download', async (mimeType, size, inline) => {
+  it.each([['video/mp4', PROCEDURE_VIDEO_MAX_BYTES + 1, false, '手順.mp4'], ['video/x-msvideo', 10, false, '手順.avi'], ['video/mp4', 10, true, '手順.mp4']] as const)('skips unsupported/oversized/inline %s before download', async (mimeType, size, inline, filename) => {
     const client = { getAttachment: vi.fn() };
-    expect(await resolveProcedureMaterialGmailPacket({ message: message(mimeType, size, inline), client })).toMatchObject({ skippedAttachments: 1, videos: [] });
+    expect(await resolveProcedureMaterialGmailPacket({ message: message(mimeType, size, inline, filename), client })).toMatchObject({ skippedAttachments: 1, videos: [] });
     expect(client.getAttachment).not.toHaveBeenCalled();
   });
   it('checks the real downloaded size and accepts the 25 MB boundary', async () => {

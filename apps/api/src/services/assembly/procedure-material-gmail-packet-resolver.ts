@@ -26,9 +26,23 @@ export function materialMessageHeader(message: GmailMessage, name: string): stri
   return message.payload?.headers?.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? '';
 }
 
+/** Keeps the raw MIME readable in warnings: bounded length, no control or bidi characters. */
+function describeMimeType(mime: string | undefined): string {
+  const cleaned = Array.from(mime ?? '').filter((char) => {
+    const code = char.codePointAt(0) ?? 0;
+    const control = code < 0x20 || code === 0x7f;
+    const bidi = code === 0x200e || code === 0x200f || (code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069);
+    return !control && !bidi;
+  }).join('').trim();
+  if (!cleaned) return '種類なし';
+  return cleaned.length > 64 ? `${cleaned.slice(0, 64)}…` : cleaned;
+}
+
 export function resolveAttachmentContentType(mime: string | undefined, filename: string): string {
-  const contentType = mime?.trim().toLowerCase() ?? '';
-  if (contentType && contentType !== 'application/octet-stream' && contentType !== 'binary/octet-stream') return contentType;
+  // Some clients append parameters ("application/pdf; name=..."); only the media type matters here.
+  const contentType = (mime ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
+  if (PHOTO_FORMATS[contentType] || VIDEO_FORMATS.has(contentType) || contentType === 'application/pdf') return contentType;
+  if (contentType && !/^(application|image|video|binary)\//.test(contentType)) return contentType;
   const extension = /\.(png|jpe?g|webp|mp4|mov|3gp|m4v|pdf)$/.exec(filename.trim().toLowerCase())?.[1] ?? '';
   return ATTACHMENT_EXTENSION_CONTENT_TYPES[extension] ?? contentType;
 }
@@ -151,10 +165,13 @@ export async function resolveProcedureMaterialGmailPacket(params: {
       packet.skippedAttachments++;
       continue;
     }
-    if (!PHOTO_FORMATS[contentType] || (part.body?.size ?? 0) > PROCEDURE_MATERIAL_MAX_PHOTO_BYTES) {
+    if (!PHOTO_FORMATS[contentType]) {
       packet.skippedAttachments++;
-      packet.warnings.push(`${filename}: 対応外の添付または10 MB超過`);
+      packet.warnings.push(`${filename} (${describeMimeType(part.mimeType)}): 対応外の添付`);
       continue;
+    }
+    if ((part.body?.size ?? 0) > PROCEDURE_MATERIAL_MAX_PHOTO_BYTES) {
+      packet.skippedAttachments++; packet.warnings.push(`${filename}: 10 MB超過`); continue;
     }
     if (params.savedKeys?.has(key)) { packet.duplicate++; continue; }
     // eslint-disable-next-line no-await-in-loop
