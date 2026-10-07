@@ -122,6 +122,10 @@
     - { key: BUSINESS_HERMES_CHAT_TIMEOUT_MS, value: "{{ api_business_hermes_chat_timeout_ms }}" }
     # compose.env は前回の自分をコピーして作るため、Vault の新しい値はここで渡さないと API に届かない
     - { key: BACKUP_ENCRYPTION_KEY, value: "{{ backup_encryption_key | default('') }}" }
+    # 写真持出ギャラリーの埋め込みモデルとしきい値。DGX の埋め込みサーバーと組で変える（ADR-20261007）
+    - { key: PHOTO_TOOL_EMBEDDING_MODEL_ID, value: "{{ photo_tool_embedding_model_id | default('') }}" }
+    - { key: PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE, value: "{{ photo_tool_similarity_max_cosine_distance | default('0.22') }}" }
+    - { key: PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE, value: "{{ photo_tool_label_assist_max_cosine_distance | default('0.14') }}" }
   no_log: true
 
 - name: Bind consultation Compose paths and persistent candidate environment
