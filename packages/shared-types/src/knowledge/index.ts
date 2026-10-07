@@ -64,7 +64,7 @@ export interface KnowledgeProcedureSummary {
   publishedAt: string;
 }
 
-export type KnowledgePositionRank = 'general' | 'leader' | 'section_chief' | 'manager';
+export type KnowledgePositionRank = 'general' | 'leader' | 'section_chief' | 'manager' | 'general_manager' | 'executive';
 export interface KnowledgePositionRankEntry { positionName: string; rank: KnowledgePositionRank }
 export interface KnowledgePositionRanksResponse {
   ranks: KnowledgePositionRankEntry[];

@@ -25,7 +25,6 @@ import { DgxResourceAdminPage } from './pages/admin/DgxResourceAdminPage';
 import { GmailConfigPage } from './pages/admin/GmailConfigPage';
 import { KioskDocumentsAdminPage } from './pages/admin/KioskDocumentsAdminPage';
 import { KioskSettingsPage } from './pages/admin/KioskSettingsPage';
-import { KnowledgePositionRanksPage } from './pages/admin/KnowledgePositionRanksPage';
 import { LoanReportPage } from './pages/admin/LoanReportPage';
 import { LocalLlmAdminPage } from './pages/admin/LocalLlmAdminPage';
 import { MachineSignalAdminPage } from './pages/admin/MachineSignalAdminPage';
@@ -407,7 +406,7 @@ function App() {
         <Route path="reports">
           <Route path="loan-report" element={<LoanReportPage />} />
         </Route>
-        <Route path="knowledge-position-ranks" element={<KnowledgePositionRanksPage />} />
+        <Route path="knowledge-position-ranks" element={<MovedToKioskTagDeskPage positionRanks />} />
         <Route path="local-llm" element={<LocalLlmAdminPage />} />
         <Route path="dgx-resource" element={<DgxResourceAdminPage />} />
         <Route path="photo-loan-label-reviews" element={<PhotoLoanLabelReviewsPage />} />

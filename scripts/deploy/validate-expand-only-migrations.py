@@ -86,6 +86,13 @@ ALLOW_PROCEDURE_MATERIAL_PDF_ADD_VALUE = re.compile(
     r'^(?i:ALTER)\s+(?i:TYPE)\s+"ProcedureMaterialKind"\s+'
     r"(?i:ADD)\s+(?i:VALUE)\s+'PDF'$"
 )
+ALLOW_KNOWLEDGE_RANK_CHECK_EXPANSION = re.compile(
+    r'^(?i:ALTER)\s+(?i:TABLE)\s+"(?P<table>KnowledgePositionRank|KnowledgeProcedureReview)"\s+'
+    r'(?:(?i:DROP)\s+(?i:CONSTRAINT)\s+"(?P=table)_rank_check"'
+    r'|(?i:ADD)\s+(?i:CONSTRAINT)\s+"(?P=table)_rank_check"\s+'
+    r'(?i:CHECK)\s*\(\s*"(?:rank|employeeRankSnapshot)"\s+(?i:IN)\s*'
+    r"\('general','leader','section_chief','manager','general_manager','executive'\)\s*\))$"
+)
 DISALLOWED_COLUMN_CLAUSE = re.compile(
     r"\b(DEFAULT|NULL|CONSTRAINT|UNIQUE|PRIMARY|REFERENCES|CHECK|GENERATED|"
     r"IDENTITY|SERIAL|BIGSERIAL|SMALLSERIAL|DROP|ALTER|RENAME|SET|ADD)\b",
@@ -352,6 +359,9 @@ def validate_statement(
         return
 
     if ALLOW_PROCEDURE_MATERIAL_PDF_ADD_VALUE.fullmatch(statement.text.strip()) is not None:
+        return
+
+    if ALLOW_KNOWLEDGE_RANK_CHECK_EXPANSION.fullmatch(statement.text.strip()) is not None:
         return
 
     create_table = CREATE_TABLE.match(code)

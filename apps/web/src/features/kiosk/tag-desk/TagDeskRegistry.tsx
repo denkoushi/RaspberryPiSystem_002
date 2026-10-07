@@ -14,6 +14,7 @@ const EMPLOYEE_COLUMNS = 'grid grid-cols-[170px_84px_minmax(0,1.2fr)_minmax(0,0.
 
 type Props = {
   state: TagDeskState;
+  onPositionRanks: () => void;
   /** Kinds (tabs) where the scanned tag is bound, marked with a dot. */
   hitKinds: Set<TagDeskKind>;
   /** Rows bound to the scanned tag. */
@@ -22,7 +23,7 @@ type Props = {
   listRef: Ref<HTMLDivElement>;
 };
 
-export function TagDeskRegistry({ state, hitKinds, hitIds, releasing, listRef }: Props) {
+export function TagDeskRegistry({ state, hitKinds, hitIds, releasing, listRef, onPositionRanks }: Props) {
   const meta = KIND_META[state.kind];
   const tagged = state.rows.filter((row) => row.tags.length > 0).length;
   const untagged = state.rows.length - tagged;
@@ -69,7 +70,8 @@ export function TagDeskRegistry({ state, hitKinds, hitIds, releasing, listRef }:
           タグなし
           <span className="font-mono text-[13px]">{untagged}</span>
         </button>
-        <button type="button" className={`${tagDesk.btn} ${tagDesk.ghost} ml-auto`} onClick={() => state.openForm({ kind: state.kind, id: null })}>
+        {state.kind === 'employee' ? <button type="button" className={`${tagDesk.btn} ${tagDesk.ghost} ml-auto`} onClick={onPositionRanks}>職位の対応表</button> : null}
+        <button type="button" className={`${tagDesk.btn} ${tagDesk.ghost} ${state.kind === 'employee' ? '' : 'ml-auto'}`} onClick={() => state.openForm({ kind: state.kind, id: null })}>
           <PlusIcon />
           {meta.label}を追加
         </button>

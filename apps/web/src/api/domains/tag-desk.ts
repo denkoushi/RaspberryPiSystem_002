@@ -1,5 +1,8 @@
 import { api } from '../http';
 
+import type { KnowledgePositionRanksRequest, KnowledgePositionRanksResponse } from '@raspi-system/shared-types';
+
+
 /** Master records whose NFC tags are managed on the kiosk tag desk. */
 export type TagDeskKind = 'employee' | 'item' | 'instrument' | 'rigging';
 /** Inventory shelf / quantity / restock tags: released here, attached in inventory setup. */
@@ -109,4 +112,13 @@ export async function saveTagDeskRecord(pin: string, kind: TagDeskKind, id: stri
 
 export async function deleteTagDeskRecord(pin: string, kind: TagDeskKind, id: string) {
   await api.delete(`/kiosk/tag-desk/${MASTER_PATHS[kind]}/${encodeURIComponent(id)}`, { headers: pinHeaders(pin) });
+}
+
+export async function getTagDeskPositionRanks(pin: string) {
+  const { data } = await api.get<KnowledgePositionRanksResponse>('/kiosk/tag-desk/position-ranks', { headers: pinHeaders(pin) });
+  return data;
+}
+
+export async function saveTagDeskPositionRanks(pin: string, body: KnowledgePositionRanksRequest) {
+  await api.put('/kiosk/tag-desk/position-ranks', body, { headers: pinHeaders(pin) });
 }

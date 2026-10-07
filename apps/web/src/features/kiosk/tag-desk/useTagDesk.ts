@@ -26,7 +26,7 @@ const KEY = ['kiosk-tag-desk'] as const;
  * All state of the tag desk screen. The reader is live whenever no form is open: a read
  * replaces the current tag. A selected list row stays selected so a free tag can be bound to it.
  */
-export function useTagDesk(pin: string) {
+export function useTagDesk(pin: string, active = true) {
   const queryClient = useQueryClient();
   const [kind, setKind] = useState<TagDeskKind>('employee');
   const [search, setSearch] = useState('');
@@ -37,7 +37,7 @@ export function useTagDesk(pin: string) {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const read = useArmedNfcRead(form === null);
+  const read = useArmedNfcRead(active && form === null);
   useEffect(() => {
     if (!read?.uid) return;
     setUid(read.uid.trim());
