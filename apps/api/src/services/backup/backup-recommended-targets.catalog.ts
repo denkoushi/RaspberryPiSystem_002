@@ -25,44 +25,19 @@ const DROPBOX: NonNullable<BackupConfig['targets'][number]['storage']> = {
  */
 /**
  * 永続・一次資産のみ（派生キャッシュは含めない）。
+ * Dropbox は容量が小さいため、大きくなり得る領域（knowledge-assets / knowledge-git /
+ * assembly-procedure-assets / work-instruction-assets / procedure-materials / procedure-videos）は推奨に含めず、
+ * Google Drive DR（scripts/google_drive_dr/source_policy.py）だけで保護する。
  * 変更時は KB / 運用ドキュメントも更新すること。
  */
 export function getRecommendedBackupTargetCatalog(): RecommendedBackupTargetSpec[] {
   const server: RecommendedBackupTargetSpec[] = [
-    ...['knowledge-assets', 'knowledge-git'].map(source => ({
-      id: `server-directory-${source}`, message: `Hermesナレッジの永続領域（${source}）`,
-      target: { kind: 'directory' as const, source: `/app/storage/${source}`, schedule: DEFAULT_SCHEDULE, enabled: true, storage: DROPBOX, retention: DEFAULT_RETENTION },
-    })),
     {
       id: 'server-directory-part-measurement-drawings',
       message: '部品測定図面ストレージ（ホスト永続ボリューム）',
       target: {
         kind: 'directory',
         source: '/app/storage/part-measurement-drawings',
-        schedule: DEFAULT_SCHEDULE,
-        enabled: true,
-        storage: DROPBOX,
-        retention: DEFAULT_RETENTION,
-      },
-    },
-    {
-      id: 'server-directory-assembly-procedure-assets',
-      message: '組立手順書の原本・overlay assetストレージ（ホスト永続ボリューム）',
-      target: {
-        kind: 'directory',
-        source: '/app/storage/assembly-procedure-assets',
-        schedule: DEFAULT_SCHEDULE,
-        enabled: true,
-        storage: DROPBOX,
-        retention: DEFAULT_RETENTION,
-      },
-    },
-    {
-      id: 'server-directory-work-instruction-assets',
-      message: 'SharePoint作業要領の原本画像ストレージ（ホスト永続ボリューム）',
-      target: {
-        kind: 'directory',
-        source: '/app/storage/work-instruction-assets',
         schedule: DEFAULT_SCHEDULE,
         enabled: true,
         storage: DROPBOX,
