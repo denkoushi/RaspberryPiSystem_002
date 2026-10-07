@@ -5323,12 +5323,14 @@ enum ProcedureMaterialKind {
 enum ProcedureMaterialOrigin {
   GMAIL
   KNOWLEDGE
+  WORK_INSTRUCTION
 }
 
 model ProcedureMaterial {
   id               String @id @default(uuid())
   origin           ProcedureMaterialOrigin @default(GMAIL)
   knowledgeRef     Json?
+  workInstructionRef Json?
   kind             ProcedureMaterialKind
   text             String?
   storageKey       String?

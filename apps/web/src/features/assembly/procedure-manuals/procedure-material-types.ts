@@ -1,6 +1,7 @@
 export type ProcedureMaterialState = 'unplaced' | 'placed' | 'discarded' | 'all';
 export type ProcedureMaterialDto = {
-  origin: 'GMAIL' | 'KNOWLEDGE';
+  origin: 'GMAIL' | 'KNOWLEDGE' | 'WORK_INSTRUCTION';
+  workInstructionRef: ProcedureWorkInstructionRef | null;
   knowledgeRef: { kind: 'source' | 'procedure_step'; sourceId?: string; imageId?: string; procedureId?: string; revisionNumber?: number; stepId?: string } | null;
   id: string; kind: 'TEXT' | 'PHOTO'; text: string | null;
   storageKey: string | null; sha256: string | null; contentType: string | null; byteSize: number | null;
@@ -24,3 +25,14 @@ export type ProcedureKnowledgeCandidate = {
 };
 export type ProcedureKnowledgeCandidatesResult = { enabled: boolean; items: ProcedureKnowledgeCandidate[] };
 export type ProcedureKnowledgeImportResult = { imported: number; duplicate: number; failed: Array<{ candidateKey: string; reason: string }> };
+
+export type ProcedureWorkInstructionRef = {
+  rowId: string; sourceVersionId: string; step: number; assetId: string;
+  partNumber: string; shootingTarget: string; memo: string; sourceSystem?: string; sourceList?: string;
+};
+export type ProcedureWorkInstructionCandidate = {
+  candidateKey: string; partNumber: string; shootingTarget: string; step: number; memo: string;
+  assetId: string; sourceModified?: string; alreadyImported: boolean;
+};
+export type ProcedureWorkInstructionCandidatesResult = { items: ProcedureWorkInstructionCandidate[] };
+export type ProcedureWorkInstructionImportResult = { imported: number; duplicate: number; failed: Array<{ candidateKey: string; reason: string }> };
