@@ -25,7 +25,7 @@ const photo = { ...text, id: 'photo', kind: 'PHOTO', text: null, originalFileNam
 describe('procedure-manuals material shelf', () => {
   beforeEach(() => {
     vi.resetAllMocks(); localStorage.clear(); saveProcedureEditorAccess('2520'); mocks.count.mockResolvedValue([]); mocks.list.mockResolvedValue([text, photo]); mocks.file.mockResolvedValue(new Blob(['photo'], { type: 'image/png' }));
-    mocks.ingest.mockResolvedValue({ saved: 2, duplicate: 0, skipped: 1, retryable: 0, skippedAttachments: 1, messages: [{ messageId: 'unsupported', reason: '本文が空で、対応する写真がありません' }] });
+    mocks.ingest.mockResolvedValue({ scanned: 2, processed: 2, saved: 2, duplicate: 0, skipped: 1, retryable: 0, deferred: 0, skippedAttachments: 1, errors: [], messages: [{ messageId: 'unsupported', reason: '本文が空で、対応する写真がありません' }] });
     mocks.knowledge.mockResolvedValue({ enabled: false, items: [] });
     mocks.knowledgeImage.mockResolvedValue(new Blob(['knowledge']));
     mocks.importKnowledge.mockResolvedValue({ imported: 2, duplicate: 0, failed: [] });
@@ -44,11 +44,26 @@ describe('procedure-manuals material shelf', () => {
     fireEvent.change(screen.getByLabelText('素材のヒント検索'), { target: { value: 'DFD1' } });
     await waitFor(() => expect(mocks.list).toHaveBeenLastCalledWith({ state: 'unplaced', q: 'DFD1', limit: 500 }));
     fireEvent.click(screen.getByRole('button', { name: '今すぐ取り込む' }));
-    expect(await screen.findByText(/取込 2件/)).toBeInTheDocument(); expect(screen.getByText('本文が空で、対応する写真がありません')).toBeInTheDocument();
+    expect(await screen.findByText('見つけた 2 通・取込 2件・保存済み 0件・スキップ 1通・再試行 0通・再試行待ち 0通・除外添付 1件')).toBeInTheDocument(); expect(screen.getByText('本文が空で、対応する写真がありません')).toBeInTheDocument();
+    expect(screen.queryByText('受信トレイに未読の対象メールがありません')).not.toBeInTheDocument();
     expect(mocks.ingest).toHaveBeenCalledOnce(); await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(3));
     expect(screen.queryByRole('button', { name: '現在ページに配置' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '閉じる' })); expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:photo');
+  });
+  it('shows a no-unread-mail message when ingestion finds no messages', async () => {
+    mocks.ingest.mockResolvedValue({ scanned: 0, processed: 0, saved: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 0, skippedAttachments: 0, errors: [], messages: [] });
+    render(<ProcedureMaterialShelfDialog isOpen onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '今すぐ取り込む' }));
+    expect(await screen.findByText('受信トレイに未読の対象メールがありません')).toBeInTheDocument();
+    expect(screen.getByText('見つけた 0 通・取込 0件・保存済み 0件・スキップ 0通・再試行 0通・再試行待ち 0通・除外添付 0件')).toBeInTheDocument();
+  });
+  it('shows deferred counts without a no-unread-mail message when messages were found', async () => {
+    mocks.ingest.mockResolvedValue({ scanned: 2, processed: 0, saved: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 2, skippedAttachments: 0, errors: [], messages: [] });
+    render(<ProcedureMaterialShelfDialog isOpen onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '今すぐ取り込む' }));
+    expect(await screen.findByText('見つけた 2 通・取込 0件・保存済み 0件・スキップ 0通・再試行 0通・再試行待ち 2通・除外添付 0件')).toBeInTheDocument();
+    expect(screen.queryByText('受信トレイに未読の対象メールがありません')).not.toBeInTheDocument();
   });
   it('fetches only visible photos once and disconnects observers/revokes URLs on close', async () => {
     const observers: Array<{ notify: (visible: boolean) => void; observe: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> }> = [];
