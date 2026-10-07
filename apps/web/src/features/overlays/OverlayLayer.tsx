@@ -251,16 +251,23 @@ function ImageContent({ element, assets, resolveAssetUrl }: {
   return <img src={blobUrl} alt="" className="h-full w-full" draggable={false} style={{ objectFit: element.objectFit ?? 'contain' }} />;
 }
 
-function OverlayContent({ element, assets, resolveAssetUrl }: {
+/** Text is sized against the source page width, so a cropped layer scales it up by the crop width. */
+export function overlayTextFontSize(fontSizeRatio: number | undefined, crop?: OverlayCropRect | null): string {
+  const cropScale = crop && crop.widthRatio > 0 ? 1 / crop.widthRatio : 1;
+  return `${Math.max(0.005, fontSizeRatio ?? 0.025) * 100 * cropScale}cqw`;
+}
+
+function OverlayContent({ element, assets, resolveAssetUrl, crop }: {
   element: OverlayElement;
   assets?: OverlayAssetMap;
   resolveAssetUrl: (assetId: string, asset?: OverlayAsset) => string;
+  crop?: OverlayCropRect | null;
 }): ReactNode {
   if (element.kind === 'TEXT') {
     const style: CSSProperties = {
       color: element.style?.color ?? '#0f172a',
       fontFamily: element.style?.fontFamily,
-      fontSize: `${Math.max(0.005, element.style?.fontSizeRatio ?? 0.025) * 100}cqw`,
+      fontSize: overlayTextFontSize(element.style?.fontSizeRatio, crop),
       fontWeight: element.style?.fontWeight ?? 'normal',
       textAlign: element.style?.align === 'center' ? 'center' : element.style?.align === 'end' ? 'right' : 'left'
     };
@@ -405,7 +412,7 @@ export function OverlayLayer({
                 onNudge?.(element.id, event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0, event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0);
               } : undefined}
             >
-              <OverlayContent element={element} assets={assets} resolveAssetUrl={resolveAssetUrl} />
+              <OverlayContent element={element} assets={assets} resolveAssetUrl={resolveAssetUrl} crop={crop} />
             </div>
             {transformable ? (['nw', 'ne', 'sw', 'se'] as const).map((handle) => {
               const label = { nw: '左上', ne: '右上', sw: '左下', se: '右下' }[handle];

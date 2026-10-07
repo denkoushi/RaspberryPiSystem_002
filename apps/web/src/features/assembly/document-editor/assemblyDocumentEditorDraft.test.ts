@@ -34,6 +34,25 @@ describe('lineEndpointsForDirection', () => {
 });
 
 describe('assembly document editor draft reducer', () => {
+  it.each(['TEXT', 'IMAGE', 'SHAPE'] as const)('places a new %s above only its own page', kind => {
+    const elements = [
+      { ...createOverlayForRange('SHAPE', 0, bbox), zIndex: 8 },
+      { ...createOverlayForRange('SHAPE', 0, bbox), zIndex: 3 },
+      { ...createOverlayForRange('SHAPE', 1, bbox), zIndex: 100 }
+    ];
+    expect(createOverlayForRange(kind, 0, bbox, elements).zIndex).toBe(9);
+    expect(createOverlayForRange(kind, 2, bbox, elements).zIndex).toBe(0);
+    const createdWithoutContext = createOverlayForRange(kind, 0, bbox);
+    expect(overlayDraftReducer(elements, { type: 'add', element: createdWithoutContext }).at(-1)?.zIndex).toBe(9);
+    expect(elements.map(element => element.zIndex)).toEqual([8, 3, 100]);
+  });
+
+  it('starts at zero on an empty page and handles negative existing z-indices', () => {
+    const created = createOverlayForRange('SHAPE', 0, bbox);
+    expect(overlayDraftReducer([], { type: 'add', element: created })[0].zIndex).toBe(0);
+    expect(createOverlayForRange('SHAPE', 0, bbox, [{ ...created, zIndex: -3 }]).zIndex).toBe(-2);
+  });
+
   it('defaults text and image ranges to a white mask', () => {
     expect(createOverlayForRange('TEXT', 0, bbox)).toMatchObject({
       kind: 'TEXT',

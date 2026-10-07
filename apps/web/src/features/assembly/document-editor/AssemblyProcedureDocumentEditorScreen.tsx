@@ -12,12 +12,37 @@ import { AssemblyProcedureDocumentEditorCanvasToolbar } from './AssemblyProcedur
 import { useAssemblyProcedureDocumentEditor } from './AssemblyProcedureDocumentEditorContext';
 import { AssemblyProcedureDocumentEditorInspector } from './AssemblyProcedureDocumentEditorInspector';
 import { AssemblyProcedureDocumentEditorPageList } from './AssemblyProcedureDocumentEditorPageList';
+import { AssemblyProcedureDocumentEditorPartsPane } from './AssemblyProcedureDocumentEditorPartsPane';
 import { AssemblyProcedureDocumentPublishDialog } from './AssemblyProcedureDocumentPublishDialog';
 import { AssemblyProcedureOverlayTypeDialog } from './AssemblyProcedureOverlayTypeDialog';
 import { AssemblyProcedureTextCandidateDialog } from './AssemblyProcedureTextCandidateDialog';
 
 export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDocument }: { context?: import('../types').ProcedureManualEditorContext; onNavigateToDocument: (documentId: string) => void }) {
   const controller = useAssemblyProcedureDocumentEditor();
+  const [partsPaneOpen, setPartsPaneOpen] = useState(() => {
+    try { return localStorage.getItem('assembly-document-editor-parts-pane') !== 'closed'; }
+    catch { return true; }
+  });
+  const [hiddenOverlayIds, setHiddenOverlayIds] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    setHiddenOverlayIds(new Set());
+  }, [controller.selectedPageIndex, controller.document?.id]);
+  const togglePartsPane = () => {
+    const open = !partsPaneOpen;
+    setPartsPaneOpen(open);
+    try { localStorage.setItem('assembly-document-editor-parts-pane', open ? 'open' : 'closed'); }
+    catch { /* The editor remains usable when local storage is unavailable. */ }
+  };
+  const toggleHidden = (id: string) => {
+    const hidden = hiddenOverlayIds.has(id);
+    setHiddenOverlayIds(current => {
+      const next = new Set(current);
+      if (hidden) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    if (!hidden) controller.setSelectedOverlayId(null);
+  };
   const [materialShelfOpen, setMaterialShelfOpen] = useState(false);
   const [materialShelfMode, setMaterialShelfMode] = useState<'place' | 'replace'>('place');
   const [materialCount, setMaterialCount] = useState<number | null>(null);
@@ -68,7 +93,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   }
 
   return (
-    <main className="relative grid min-h-0 flex-1 grid-cols-[120px_minmax(0,1fr)_64px] overflow-hidden bg-[#0a0d10] text-[#eef3f6]" data-testid="assembly-document-editor-layout">
+    <main className={`relative grid min-h-0 flex-1 ${partsPaneOpen ? 'grid-cols-[120px_280px_minmax(0,1fr)_64px]' : 'grid-cols-[120px_0_minmax(0,1fr)_64px]'} overflow-hidden bg-[#0a0d10] text-[#eef3f6]`} data-testid="assembly-document-editor-layout">
       {controller.document?.status === 'draft' && (!controller.editLeaseMine || controller.editLeaseUnavailable) ? (
         <div className="absolute bottom-16 left-[136px] z-50 flex max-w-[calc(100%-216px)] flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-400/30 bg-[#161c22] px-3 py-2" role="status">
           <p className="text-sm font-semibold text-amber-100">
@@ -92,11 +117,26 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           onAddBlankPage={() => void controller.addBlankPage()}
           disabled={controller.readOnly || controller.busy || controller.conflict}
         />
-        <section className="relative min-h-0 min-w-0 overflow-hidden p-4" aria-label="手順書キャンバス">
+        {partsPaneOpen ? <AssemblyProcedureDocumentEditorPartsPane
+          elements={controller.selectedPageElements}
+          assets={controller.document?.assets}
+          selectedOverlayId={controller.selectedOverlayId}
+          hiddenOverlayIds={hiddenOverlayIds}
+          onSelect={controller.setSelectedOverlayId}
+          onBringForward={controller.bringForward}
+          onSendBackward={controller.sendBackward}
+          onToggleHidden={toggleHidden}
+          readOnly={controller.readOnly}
+          busy={controller.busy}
+        /> : null}
+        <button type="button" aria-label={partsPaneOpen ? '部品を閉じる' : '部品を開く'} onClick={togglePartsPane} className={`absolute top-1/2 z-50 grid h-[72px] w-[22px] -translate-y-1/2 place-items-center rounded-r-lg border border-l-0 border-[#344252] bg-[#161c22] text-[#9fadb9] ${partsPaneOpen ? 'left-[400px]' : 'left-[120px]'}`}>
+          <span aria-hidden="true">{partsPaneOpen ? '<' : '>'}</span>
+        </button>
+        <section className="relative col-start-3 min-h-0 min-w-0 overflow-hidden p-4" aria-label="手順書キャンバス">
           <AssemblyProcedureDocumentEditorCanvas
             pageUrl={selectedPage.imageRelativePath}
             pageIndex={selectedPage.pageIndex}
-            elements={controller.selectedPageElements}
+            elements={controller.selectedPageElements.filter(element => !hiddenOverlayIds.has(element.id))}
             selectionMode={controller.selectionMode}
             editable={!controller.readOnly}
             selectedOverlayId={controller.selectedOverlayId}

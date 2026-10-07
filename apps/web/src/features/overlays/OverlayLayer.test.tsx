@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AssemblyProcedureDocumentEditorInspector } from '../assembly/document-editor/AssemblyProcedureDocumentEditorInspector';
 
-import { OverlayLayer } from './OverlayLayer';
+import { OverlayLayer, overlayTextFontSize } from './OverlayLayer';
 
 import type { OverlayElement } from '@raspi-system/shared-types';
 
@@ -123,5 +123,14 @@ describe('OverlayLayer line geometry', () => {
     rect.mockReturnValue(new DOMRect(0, 0, 200, 25));
     fireEvent(window, new Event('resize'));
     expect(svg).toHaveAttribute('viewBox', '0 0 200 25');
+  });
+});
+
+describe('overlayTextFontSize', () => {
+  it('scales the font by the crop width so a cropped layer matches the page rendering', () => {
+    expect(overlayTextFontSize(0.02)).toBe('2cqw');
+    expect(overlayTextFontSize(0.02, null)).toBe('2cqw');
+    expect(overlayTextFontSize(0.02, { xRatio: 0.25, yRatio: 0.25, widthRatio: 0.5, heightRatio: 0.25 })).toBe('4cqw');
+    expect(overlayTextFontSize(undefined, { xRatio: 0, yRatio: 0, widthRatio: 0, heightRatio: 0 })).toBe('2.5cqw');
   });
 });

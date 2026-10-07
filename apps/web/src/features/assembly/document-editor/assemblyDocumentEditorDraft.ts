@@ -65,7 +65,7 @@ export function overlayDraftReducer(
     case 'replace':
       return action.elements.map((element) => ({ ...element }));
     case 'add':
-      return [...state, action.element];
+      return [...state, { ...action.element, zIndex: nextPageZIndex(state, action.element.pageIndex) }];
     case 'update':
       return state.map((element) => (element.id === action.element.id ? action.element : element));
     case 'remove':
@@ -106,6 +106,11 @@ export function createOverlayId(): string {
 }
 
 export type OverlayCreationKind = 'TEXT' | 'IMAGE' | 'SHAPE';
+
+function nextPageZIndex(elements: AssemblyProcedureOverlayElement[], pageIndex: number): number {
+  const pageElements = pageOverlayElements(elements, pageIndex);
+  return pageElements.length ? Math.max(...pageElements.map(element => element.zIndex)) + 1 : 0;
+}
 
 const MIN_OVERLAY_RATIO = 0.005;
 
@@ -195,13 +200,14 @@ export function convertOverlayShapeKind(
 export function createOverlayForRange(
   kind: OverlayCreationKind,
   pageIndex: number,
-  bbox: AssemblyProcedureOverlayBBox
+  bbox: AssemblyProcedureOverlayBBox,
+  elements: AssemblyProcedureOverlayElement[] = []
 ): AssemblyProcedureOverlayElement {
   const base = {
     id: createOverlayId(),
     pageIndex,
     bbox,
-    zIndex: 0,
+    zIndex: nextPageZIndex(elements, pageIndex),
     opacity: 1
   } as const;
   if (kind === 'TEXT') {

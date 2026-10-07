@@ -1,3 +1,5 @@
+import { EditorIconButton } from './EditorIconButton';
+
 import type { AssemblyProcedureDocumentEditorController } from './useAssemblyProcedureDocumentEditorController';
 import type { ReactNode } from 'react';
 
@@ -28,26 +30,23 @@ export function AssemblyProcedureDocumentEditorCanvasToolbar({ controller: c, wo
   onDiscard: () => void;
 }) {
   const disabled = c.readOnly || c.busy;
-  const button = (label: string, icon: string, onClick: () => void, options: { disabled?: boolean; pressed?: boolean; color?: string; target?: string; badge?: number | null } = {}) => <button key={icon} type="button" aria-label={label} title={label} aria-pressed={options.pressed} disabled={options.disabled} data-kiosk-sop-target={options.target} onClick={onClick} className={`relative grid h-12 w-12 shrink-0 place-items-center rounded-[10px] border border-[#344252] text-[#eef3f6] disabled:opacity-40 aria-pressed:bg-[#27313b] ${options.color ?? ''}`}>
-    <svg aria-hidden="true" className="h-[26px] w-[26px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">{icons[icon]}</svg>
-    {options.badge != null && options.badge > 0 ? <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-[#f6b93b] px-1 text-[13px] font-black text-[#0b1a12]">{options.badge}</span> : null}
-  </button>;
+  const button = (label: string, icon: string, onClick: () => void, options: { disabled?: boolean; pressed?: boolean; color?: string; target?: string; badge?: number | null } = {}) => <EditorIconButton key={icon} label={label} icon={icons[icon]} onClick={onClick} disabled={options.disabled} pressed={options.pressed} target={options.target} badge={options.badge} className={options.color} tipSide="left" />;
   const separator = <span aria-hidden="true" className="my-1 h-px w-9 shrink-0 bg-[#344252]" />;
   return <nav aria-label="エディタ操作" className="flex min-h-0 flex-col items-center gap-2 overflow-y-auto border-l border-[#27313b] bg-[#161c22] pb-[84px] pt-2.5">
-    {button('保存', 'save', () => void c.save(), { disabled: disabled || !c.canSave, color: '!border-[#3ba776] !bg-[#3ba776] !text-[#0b1a12]', target: 'assembly-document-editor-save' })}
-    {button('公開', 'publish', onPublish, { disabled: disabled || !c.canPublish, color: '!border-[#f6b93b] !text-[#f6b93b]', target: 'assembly-document-editor-publish' })}
+    {button('保存する', 'save', () => void c.save(), { disabled: disabled || !c.canSave, color: '!border-[#3ba776] !bg-[#3ba776] !text-[#0b1a12]', target: 'assembly-document-editor-save' })}
+    {button('公開する', 'publish', onPublish, { disabled: disabled || !c.canPublish, color: '!border-[#f6b93b] !text-[#f6b93b]', target: 'assembly-document-editor-publish' })}
     {separator}
-    {button('素材', 'material', onMaterial, { disabled, pressed: materialOpen, badge: materialCount })}
-    {button('動画', 'video', onVideo, { disabled, pressed: videoOpen })}
-    {button('文字', 'text', () => c.addOverlay('TEXT'), { disabled, pressed: c.selectedElement?.kind === 'TEXT' })}
-    {button('図形', 'shape', () => c.addOverlay('SHAPE'), { disabled, pressed: c.selectedElement?.kind === 'SHAPE' })}
-    {button('範囲', 'range', () => c.setSelectionMode(!c.selectionMode), { disabled, pressed: c.selectionMode, target: 'assembly-document-editor-range-add' })}
+    {button('素材を置く', 'material', onMaterial, { disabled, pressed: materialOpen, badge: materialCount })}
+    {button('動画をつなぐ', 'video', onVideo, { disabled, pressed: videoOpen })}
+    {button('文字を置く', 'text', () => c.addOverlay('TEXT'), { disabled, pressed: c.selectedElement?.kind === 'TEXT' })}
+    {button('図形を置く', 'shape', () => c.addOverlay('SHAPE'), { disabled, pressed: c.selectedElement?.kind === 'SHAPE' })}
+    {button('範囲を選ぶ', 'range', () => c.setSelectionMode(!c.selectionMode), { disabled, pressed: c.selectionMode, target: 'assembly-document-editor-range-add' })}
     {separator}
     {button('元に戻す', 'undo', c.undo, { disabled: disabled || !c.canUndo })}
     {button('やり直す', 'redo', c.redo, { disabled: disabled || !c.canRedo })}
     <span aria-hidden="true" className="min-h-2 flex-1" />
-    {c.document?.status === 'draft' ? button(c.document.supersedesDocumentId ? '改版を破棄' : '削除', 'delete', c.document.supersedesDocumentId ? onDiscard : onDelete, { disabled: disabled || (Boolean(c.document.supersedesDocumentId) && !c.canDiscard), color: '!border-transparent !text-[#e5484d]' }) : null}
+    {c.document?.status === 'draft' ? button(c.document.supersedesDocumentId ? '改版を破棄する' : '削除する', 'delete', c.document.supersedesDocumentId ? onDiscard : onDelete, { disabled: disabled || (Boolean(c.document.supersedesDocumentId) && !c.canDiscard), color: '!border-transparent !text-[#e5484d]' }) : null}
     {separator}
-    {button(workshop ? '工房へ戻る' : '一覧へ', 'back', c.navigateBack, { color: '!border-transparent !text-[#9fadb9]' })}
+    {button(workshop ? '工房へ戻る' : '一覧へ戻る', 'back', c.navigateBack, { color: '!border-transparent !text-[#9fadb9]' })}
   </nav>;
 }
