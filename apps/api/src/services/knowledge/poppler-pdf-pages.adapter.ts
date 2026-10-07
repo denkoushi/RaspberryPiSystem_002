@@ -8,8 +8,21 @@ import type { PdfPagesPort } from './pdf-pages.port.js';
 
 const execute = promisify(execFile);
 
+export class PdfPageCountError extends Error {
+  constructor(public readonly pageCount: number, maxPages: number) {
+    super(`PDF must contain 1–${maxPages} pages`);
+    this.name = 'PdfPageCountError';
+  }
+}
+
 /** Reuses the system's Poppler tools. Unlike kiosk import, extraction failures remain explicit. */
 export class PopplerPdfPagesAdapter implements PdfPagesPort {
+  private readonly maxPages: number;
+
+  constructor(options: { maxPages?: number } = {}) {
+    this.maxPages = options.maxPages ?? 20;
+  }
+
   async *extract(pdf: Buffer, signal?: AbortSignal) {
     signal?.throwIfAborted();
     const directory = await mkdtemp(path.join(os.tmpdir(), 'hermes-pdf-'));
@@ -20,7 +33,7 @@ export class PopplerPdfPagesAdapter implements PdfPagesPort {
       const info = await execute('pdfinfo', [input], { ...options, maxBuffer: 64_000 });
       if (/^Encrypted:\s+yes/m.test(info.stdout)) throw new Error('Encrypted PDFs are not supported');
       const pages = Number(info.stdout.match(/^Pages:\s+(\d+)/m)?.[1]);
-      if (!Number.isInteger(pages) || pages < 1 || pages > 20) throw new Error('Pilot PDF must contain 1–20 pages');
+      if (!Number.isInteger(pages) || pages < 1 || pages > this.maxPages) throw new PdfPageCountError(pages, this.maxPages);
       for (let pageNumber = 1; pageNumber <= pages; pageNumber++) {
         signal?.throwIfAborted();
         const page = String(pageNumber);
