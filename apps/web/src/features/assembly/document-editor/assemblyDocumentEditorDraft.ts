@@ -13,13 +13,15 @@ export type OverlayDraftAction =
   | { type: 'remove'; id: string }
   | { type: 'bringForward'; id: string }
   | { type: 'sendBackward'; id: string }
+  | { type: 'bringToFront'; id: string }
+  | { type: 'sendToBack'; id: string }
   | { type: 'nudge'; id: string; dxRatio: number; dyRatio: number }
   | { type: 'clear' };
 
 function reorderElement(
   state: AssemblyProcedureOverlayElement[],
   id: string,
-  direction: 'forward' | 'backward'
+  direction: 'forward' | 'backward' | 'front' | 'back'
 ): AssemblyProcedureOverlayElement[] {
   const target = state.find((element) => element.id === id);
   if (!target) return state;
@@ -28,14 +30,16 @@ function reorderElement(
     .filter(({ element }) => element.pageIndex === target.pageIndex)
     .sort((a, b) => a.element.zIndex - b.element.zIndex || a.index - b.index);
   const position = pageElements.findIndex(({ element }) => element.id === id);
-  const otherPosition = direction === 'forward' ? position + 1 : position - 1;
-  if (position < 0 || otherPosition < 0 || otherPosition >= pageElements.length) return state;
-  const current = pageElements[position].element;
-  const other = pageElements[otherPosition].element;
+  const nextPosition = direction === 'front' ? pageElements.length - 1
+    : direction === 'back' ? 0
+    : direction === 'forward' ? Math.min(position + 1, pageElements.length - 1)
+    : Math.max(position - 1, 0);
+  const [current] = pageElements.splice(position, 1);
+  pageElements.splice(nextPosition, 0, current);
+  const zIndexes = new Map(pageElements.map(({ element }, index) => [element.id, index]));
   return state.map((element) => {
-    if (element.id === current.id) return { ...element, zIndex: other.zIndex };
-    if (element.id === other.id) return { ...element, zIndex: current.zIndex };
-    return element;
+    if (element.pageIndex !== target.pageIndex) return element;
+    return { ...element, zIndex: zIndexes.get(element.id)! };
   });
 }
 
@@ -70,6 +74,10 @@ export function overlayDraftReducer(
       return reorderElement(state, action.id, 'forward');
     case 'sendBackward':
       return reorderElement(state, action.id, 'backward');
+    case 'bringToFront':
+      return reorderElement(state, action.id, 'front');
+    case 'sendToBack':
+      return reorderElement(state, action.id, 'back');
     case 'nudge':
       return nudgeElement(state, action.id, action.dxRatio, action.dyRatio);
     case 'clear':
