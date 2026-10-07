@@ -12,6 +12,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Progress
 
+- [x] (2026-10-07) 実機指摘: PC の Outlook から送った写真が素材棚に入らず、文章の素材に「[cid:…]」だけが残った。Outlook や iPhone メールは写真を Content-ID 付きの inline パートで送るが、resolver は inline 画像を署名ロゴ扱いで捨てていたため。inline でも画像は写真として取り込み(16 KiB 未満の inline 画像だけ除外)、本文から [cid:…] の目印を除き、残りが空なら文章の素材を作らない。Codex(gpt-6.1-sol/high)実装。
 - [x] (2026-10-07) 本番反映の記録 3: #1771(配置済み素材の再利用)を Pi5 へ反映。merge 0a5dd86a(08:11、追跡セッション不在のためユーザー許可でこのセッションが merge)。main の release-api-image が sharp 0.35.4 の新勧告(GHSA-wq5f-xc86-pv6w)で赤になったため、#1774 で sharp 0.35.5 に更新(merge 7c6a67be、08:38)。Pi5 release run 20261006-234729-189aef(08:47→08:55 success、recap ok=268 changed=31 failed=0 unreachable=0)、稼働イメージ api/web 7c6a67be、/・/admin・/kiosk・/api/system/health 200、API エラーログ 0 件。実機確認はユーザー待ち(素材棚の「配置済み」タブから別の要領書に貼れること)。
 - [x] (2026-10-07) 実機要望: 配置済みの素材も選べるように。API は配置の前提を「捨てていない」だけにし、配置のたびに documentId/placedAt を最後の配置先で上書き(画像は毎回新しい asset をコピー、捨てた素材は 409)。エディタから開く素材棚にも「配置済み」タブを出して配置・差し替えに使え、配置済みタブでは「配置を取り消す」を出さない。未配置の件数(貼り忘れの目安)の意味は維持。Codex(gpt-6.1-sol/high)実装。
 - [x] (2026-10-06) 夜 本番反映の記録 2: #1768(画像の「素材から差し替え」とハンドルの重なり修正)を Pi5 へ反映。merge 19ce5861(22:27)、run 20261006-133541-8aa713(22:35→22:41 success、recap ok=268 changed=31 failed=0 unreachable=0)、稼働イメージ api/web 19ce5861、/・/admin・/kiosk・/api/system/health 200、API エラーログ 0 件。実機確認はユーザー待ち(画像の差し替え、ダイアログ上にハンドルが透けないこと)。
@@ -202,6 +203,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - Decision (2026-10-07): 素材は配置済みでも何度でも配置・差し替えに使える。documentId / placedAt は「最後に配置した先・日時」を表し、配置のたびに上書きする。捨てた素材だけ配置を拒否する。
   Rationale: 同じ写真を複数の機種・工程の要領書で使い回す要望(オーナー、2026-10-07)。配置ごとに文書側へ asset をコピーするので素材と文書の結合はなく、未配置タブの件数は「一度も貼っていない素材」の目安として従来どおり使える。「配置を取り消す」は最後の配置の記録を消すだけで、文書の画像には影響しない。
   Date/Author: 2026-10-07 / Claude(オーナー要望)。
+- Decision (2026-10-07): inline(Content-ID 付き)の画像も写真素材として取り込む。16 KiB 未満の inline 画像だけ署名ロゴとみなして捨てる。本文テキストの [cid:…] は除去し、空なら文章の素材を作らない。
+  Rationale: PC の Outlook と iPhone メールは写真を inline で送るため、「inline は棚に入れない」だと主要な送り方が使えない(オーナー実機確認、2026-10-07)。重複キーと保存経路は従来どおり。
+  Date/Author: 2026-10-07 / Claude(オーナー実機確認)。
 - Decision: 素材原本 GC は allowWriteKiosk の手動 POST /assembly/procedure-materials/gc のみとする。
   Rationale: 既存 assembly-procedure-asset-gc は保存・破棄・削除後の呼び出しだけで定期スケジューラーはない。新しいスケジューラーは今回追加しない。sha256/original だけを走査し、24時間より古く storageKey 一致の参照が0件の場合だけ integrity:true で削除する。配置済み・破棄済みを含む全素材の参照と共有原本を保持する。
   Date/Author: 2026-10-05 / Codex。

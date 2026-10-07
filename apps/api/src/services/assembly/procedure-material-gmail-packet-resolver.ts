@@ -7,6 +7,7 @@ export const PROCEDURE_MATERIAL_MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 export const PROCEDURE_VIDEO_MAX_BYTES = 25 * 1024 * 1024;
 const VIDEO_FORMATS = new Set(['video/mp4', 'video/quicktime', 'video/3gpp', 'video/x-m4v']);
 const PHOTO_FORMATS: Record<string, string> = { 'image/jpeg': 'jpeg', 'image/png': 'png', 'image/webp': 'webp' };
+const INLINE_PHOTO_MIN_BYTES = 16 * 1024;
 export type ProcedureMaterialAttachmentClient = { getAttachment: (messageId: string, attachmentId: string) => Promise<Buffer> };
 export type ProcedureMaterialPhoto = {
   gmailDedupeKey: string; filename: string; buffer: Buffer; sha256: string; contentType: string; width: number; height: number;
@@ -58,26 +59,34 @@ function htmlToText(html: string): string {
   return decodeHtmlEntities(out).trim();
 }
 
-/** MIME bodies and actual attachments are separate; inline images never enter the shelf. */
+export function stripCidPlaceholders(text: string): string {
+  return text.replace(/\[cid:[^\]\r\n]+\]/gi, '').replace(/\r\n?/g, '\n').replace(/\n(?:[ \t]*\n)+/g, '\n\n').trim();
+}
+
+/** Inline photos use the attachment path; small inline images are treated as signature logos. */
 export async function resolveProcedureMaterialGmailPacket(params: {
   message: GmailMessage; client: ProcedureMaterialAttachmentClient; savedKeys?: ReadonlySet<string>;
 }): Promise<ProcedureMaterialPacket> {
   const packet: ProcedureMaterialPacket = { text: null, photos: [], videos: [], duplicate: 0, skippedAttachments: 0, warnings: [] };
   const plain: GmailMessagePart[] = [];
   const html: GmailMessagePart[] = [];
-  const attachments: Array<{ part: GmailMessagePart; path: string }> = [];
+  const attachments: Array<{ part: GmailMessagePart; path: string; inline: boolean }> = [];
   function walk(part: GmailMessagePart, path: string) {
     const disposition = part.headers?.find((h) => h.name.toLowerCase() === 'content-disposition')?.value.trim().toLowerCase() ?? '';
     const contentId = part.headers?.some((h) => h.name.toLowerCase() === 'content-id');
     const attached = disposition.startsWith('attachment');
-    const inline = disposition.startsWith('inline') || (!attached && contentId);
+    const inline = disposition.startsWith('inline') || (!attached && !!contentId);
     const mime = part.mimeType?.toLowerCase();
+    if (inline && mime && PHOTO_FORMATS[mime]) {
+      attachments.push({ part, path, inline });
+      return;
+    }
     if (inline && (part.filename || (mime !== 'text/plain' && mime !== 'text/html'))) {
       packet.skippedAttachments++;
       return;
     }
     if (part.filename || attached || (part.body?.attachmentId && mime !== 'text/plain' && mime !== 'text/html')) {
-      attachments.push({ part, path });
+      attachments.push({ part, path, inline });
       return;
     }
     if (mime === 'text/plain') plain.push(part);
@@ -92,9 +101,9 @@ export async function resolveProcedureMaterialGmailPacket(params: {
   if (params.savedKeys?.has(bodyKey)) packet.duplicate++;
   else {
     const bodies = await Promise.all((plain.length ? plain : html).map(async (part) => (await bytes(part)).toString('utf8')));
-    packet.text = (plain.length ? bodies.join('\n') : bodies.map(htmlToText).join('\n')).trim() || null;
+    packet.text = stripCidPlaceholders(plain.length ? bodies.join('\n') : bodies.map(htmlToText).join('\n')) || null;
   }
-  for (const { part, path } of attachments) {
+  for (const { part, path, inline } of attachments) {
     const filename = part.filename?.normalize('NFC').trim() || 'photo';
     const contentType = part.mimeType?.trim().toLowerCase() ?? '';
     const key = `${params.message.id}:${createHash('sha256').update(`${filename}\n${part.partId ?? path}`).digest('hex')}`;
@@ -111,6 +120,10 @@ export async function resolveProcedureMaterialGmailPacket(params: {
       packet.videos.push({ gmailDedupeKey: key, filename, buffer, contentType, sha256: createHash('sha256').update(buffer).digest('hex') });
       continue;
     }
+    if (inline && part.body?.size !== undefined && part.body.size < INLINE_PHOTO_MIN_BYTES) {
+      packet.skippedAttachments++;
+      continue;
+    }
     if (!PHOTO_FORMATS[contentType] || (part.body?.size ?? 0) > PROCEDURE_MATERIAL_MAX_PHOTO_BYTES) {
       packet.skippedAttachments++;
       packet.warnings.push(`${filename}: 対応外の添付または10 MB超過`);
@@ -119,6 +132,10 @@ export async function resolveProcedureMaterialGmailPacket(params: {
     if (params.savedKeys?.has(key)) { packet.duplicate++; continue; }
     // eslint-disable-next-line no-await-in-loop
     const buffer = await bytes(part);
+    if (inline && part.body?.size === undefined && buffer.length < INLINE_PHOTO_MIN_BYTES) {
+      packet.skippedAttachments++;
+      continue;
+    }
     if (buffer.length > PROCEDURE_MATERIAL_MAX_PHOTO_BYTES) {
       packet.skippedAttachments++; packet.warnings.push(`${filename}: 10 MB超過`); continue;
     }
