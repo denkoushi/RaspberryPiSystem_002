@@ -1,3 +1,4 @@
+- フローティングChatの操作ガイド（組立の登録・編集、固定案内の最初のスライス）: [ExecPlan](./plans/hermes-operation-guide-execplan.md)
 # ドキュメント索引
 - 機種×工程ごとの要領書（組立手順書を正本に、型番×工程の割り当てと閲覧、Gmail素材取込、ナレッジ連携）: [ExecPlan](./plans/procedure-manuals-execplan.md)
 - Chatに投げ込んだ素材をAIが手順書に仕立てる（種類別の承認・段階的な写真への書き込み・DocJev評価）: [ExecPlan](./plans/hermes-knowledge-procedures-execplan.md)
