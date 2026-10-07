@@ -6,10 +6,21 @@ import { defaultBackupConfig, BackupConfigSchema } from '../../backup/backup-con
 import type { GmailMessage, GmailMessagePart } from '../../backup/gmail-api-client.js';
 import { FileStorageAlreadyExistsError } from '../../file-storage/file-storage-errors.js';
 import { buildProcedureMaterialGmailSearchQuery, ProcedureMaterialGmailIngestionService } from '../procedure-material-gmail-ingestion.service.js';
-import { resolveProcedureMaterialGmailPacket } from '../procedure-material-gmail-packet-resolver.js';
+import { resolveProcedureMaterialGmailPacket, stripCidPlaceholders } from '../procedure-material-gmail-packet-resolver.js';
 
 let image: Buffer;
-beforeAll(async () => { image = await sharp({ create: { width: 4, height: 3, channels: 3, background: 'blue' } }).png().toBuffer(); });
+let inlineImage: Buffer;
+beforeAll(async () => {
+  image = await sharp({ create: { width: 4, height: 3, channels: 3, background: 'blue' } }).png().toBuffer();
+  const pixels = Buffer.alloc(256 * 256 * 3);
+  let seed = 1;
+  for (let i = 0; i < pixels.length; i++) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    pixels[i] = seed >>> 24;
+  }
+  inlineImage = await sharp(pixels, { raw: { width: 256, height: 256, channels: 3 } }).jpeg().toBuffer();
+  expect(inlineImage.length).toBeGreaterThan(16 * 1024);
+});
 const textPart = (text: string, mimeType = 'text/plain'): GmailMessagePart => ({ mimeType, body: { data: Buffer.from(text).toString('base64url') } });
 const photoPart = (name = 'photo.png', overrides: Partial<GmailMessagePart> = {}): GmailMessagePart => ({ filename: name, mimeType: 'image/png', body: { attachmentId: name }, ...overrides });
 function message(parts: GmailMessagePart[], subject = '[Procedure-material] DFD1 組立'): GmailMessage {
@@ -18,6 +29,28 @@ function message(parts: GmailMessagePart[], subject = '[Procedure-material] DFD1
   } };
 }
 const client = () => ({ getAttachment: vi.fn().mockImplementation(async () => image) });
+
+function outlookMessage(text: string): GmailMessage {
+  const mail = message([textPart(text), photoPart('image001.jpg', {
+    partId: '1', mimeType: 'image/jpeg', body: { attachmentId: 'outlook-photo', size: inlineImage.length },
+    headers: [{ name: 'Content-ID', value: '<image001.jpg@01DB1234>' }, { name: 'Content-Disposition', value: 'inline; filename=image001.jpg' }],
+  })]);
+  mail.payload!.mimeType = 'multipart/related';
+  return mail;
+}
+
+describe('stripCidPlaceholders', () => {
+  it.each([
+    ['手順\n[cid:first]\n\n[CID:second]\n\n\n次', '手順\n\n次'],
+    ['\n \n[cid:image001.jpg@01DB1234]\n\t\n', ''],
+    ['\r\n[CiD:first]\r\n\r\n 手順 \r\n\r\n[CID:second]\r\n', '手順'],
+    ['手順 [cid:first]写真 [CID:second]', '手順 写真'],
+    ['手順\n[cid:first]\n \n  次', '手順\n\n  次'],
+    ['cid:reference\n[別の目印]', 'cid:reference\n[別の目印]'],
+  ])('strips placeholders and excess blank lines from %j', (input, expected) => {
+    expect(stripCidPlaceholders(input)).toBe(expected);
+  });
+});
 
 describe('procedure-material Gmail packet', () => {
   it('resolves body only and prefers plain text to the alternative HTML', async () => {
@@ -28,6 +61,102 @@ describe('procedure-material Gmail packet', () => {
     const packet = await resolveProcedureMaterialGmailPacket({ message: message([textPart('<style>x</style><p>手順 &amp; 写真</p><div>&#x7d44;&#31435;<br>次</div>', 'text/html')]), client: client() });
     expect(packet.text).toBe('手順 & 写真\n組立\n次');
   });
+  it.each([
+    ['<p>手順</p><p>[CID:image001]</p><img src="cid:image001"><p>次</p>', '手順\n\n次'],
+    ['<p>[cid:image001]</p><img src="cid:image001">', null],
+  ])('strips CID placeholders and image tags from HTML-only bodies', async (body, expected) => {
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([textPart(body, 'text/html')]), client: client() });
+    expect(packet.text).toBe(expected);
+  });
+  it.each([
+    ['手順\n\n[cid:image001.jpg@01DB1234]\n\n\n次', '手順\n\n次'],
+    ['[cid:image001.jpg@01DB1234]', null],
+  ])('imports Outlook related photos and removes body placeholders', async (body, expected) => {
+    const attachmentClient = { getAttachment: vi.fn().mockResolvedValue(inlineImage) };
+    const mail = outlookMessage(body);
+    const packet = await resolveProcedureMaterialGmailPacket({ message: mail, client: attachmentClient });
+    const key = `mail-1:${createHash('sha256').update('image001.jpg\n1').digest('hex')}`;
+    expect(packet).toMatchObject({ text: expected, skippedAttachments: 0, warnings: [] });
+    expect(packet.photos).toHaveLength(1);
+    expect(packet.photos[0]).toMatchObject({ gmailDedupeKey: key, filename: 'image001.jpg', buffer: inlineImage, contentType: 'image/jpeg', width: 256, height: 256 });
+    const retry = await resolveProcedureMaterialGmailPacket({ message: mail, client: attachmentClient, savedKeys: new Set([key]) });
+    expect(retry).toMatchObject({ duplicate: 1, photos: [] });
+    expect(attachmentClient.getAttachment).toHaveBeenCalledExactlyOnceWith('mail-1', 'outlook-photo');
+  });
+  it('imports Outlook photos nested in alternative and related parts', async () => {
+    const attachmentClient = { getAttachment: vi.fn().mockResolvedValue(inlineImage) };
+    const mail = message([
+      textPart('手順\n[cid:image001.jpg@01DB1234]\n次'),
+      { mimeType: 'multipart/related', parts: [
+        textPart('<p>別の本文</p><img src="cid:image001.jpg@01DB1234">', 'text/html'),
+        photoPart('image001.jpg', {
+          mimeType: 'image/jpeg', body: { attachmentId: 'outlook-photo', size: inlineImage.length },
+          headers: [{ name: 'Content-ID', value: '<image001.jpg@01DB1234>' }, { name: 'Content-Disposition', value: 'inline; filename=image001.jpg' }],
+        }),
+      ] },
+    ]);
+    mail.payload!.mimeType = 'multipart/alternative';
+    const packet = await resolveProcedureMaterialGmailPacket({ message: mail, client: attachmentClient });
+    expect(packet).toMatchObject({ text: '手順\n\n次', skippedAttachments: 0, warnings: [] });
+    expect(packet.photos).toHaveLength(1);
+    expect(packet.photos[0]).toMatchObject({ filename: 'image001.jpg', buffer: inlineImage, contentType: 'image/jpeg' });
+    expect(attachmentClient.getAttachment).toHaveBeenCalledExactlyOnceWith('mail-1', 'outlook-photo');
+  });
+  it('imports Gmail Web attachments alongside an alternative plain text body', async () => {
+    const attachmentClient = { getAttachment: vi.fn().mockResolvedValue(inlineImage) };
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([
+      { mimeType: 'multipart/alternative', parts: [textPart('手順\n本文'), textPart('<p>別の本文</p>', 'text/html')] },
+      photoPart('photo.jpg', {
+        mimeType: 'image/jpeg', headers: [{ name: 'Content-Disposition', value: 'attachment; filename=photo.jpg' }],
+      }),
+    ]), client: attachmentClient });
+    expect(packet).toMatchObject({ text: '手順\n本文', skippedAttachments: 0, warnings: [] });
+    expect(packet.photos).toHaveLength(1);
+    expect(packet.photos[0]).toMatchObject({ filename: 'photo.jpg', buffer: inlineImage, contentType: 'image/jpeg' });
+    expect(attachmentClient.getAttachment).toHaveBeenCalledExactlyOnceWith('mail-1', 'photo.jpg');
+  });
+  it('deduplicates inline photos without a reported size before fetching bytes', async () => {
+    const attachmentClient = client();
+    const key = `mail-1:${createHash('sha256').update('image001.jpg\n1').digest('hex')}`;
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart('image001.jpg', {
+      partId: '1', mimeType: 'image/jpeg', body: { attachmentId: 'outlook-photo' },
+      headers: [{ name: 'Content-ID', value: '<image001.jpg@01DB1234>' }, { name: 'Content-Disposition', value: 'inline; filename=image001.jpg' }],
+    })]), client: attachmentClient, savedKeys: new Set([key]) });
+    expect(packet).toMatchObject({ duplicate: 1, photos: [], skippedAttachments: 0, warnings: [] });
+    expect(attachmentClient.getAttachment).not.toHaveBeenCalled();
+  });
+  it.each(['IMG_0001.jpg', ''])('imports Content-ID photos without disposition, with filename %j', async (filename) => {
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart(filename, {
+      mimeType: 'image/jpeg', headers: [{ name: 'Content-ID', value: '<iphone-photo>' }], body: { data: inlineImage.toString('base64url') },
+    })]), client: client() });
+    expect(packet.photos).toHaveLength(1);
+    expect(packet.photos[0]).toMatchObject({ filename: filename || 'photo', buffer: inlineImage });
+    expect(packet.warnings).toEqual([]);
+  });
+  it.each([true, false])('silently skips small inline logos (size provided: %s)', async (withSize) => {
+    const attachmentClient = client();
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart('logo.png', {
+      headers: [{ name: 'Content-Disposition', value: 'inline' }], body: { attachmentId: 'logo', ...(withSize ? { size: image.length } : {}) },
+    })]), client: attachmentClient });
+    expect(packet).toMatchObject({ photos: [], skippedAttachments: 1, warnings: [] });
+    expect(attachmentClient.getAttachment).toHaveBeenCalledTimes(withSize ? 0 : 1);
+  });
+  it('imports small explicit attachments even with Content-ID', async () => {
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart('small.png', {
+      headers: [{ name: 'Content-Disposition', value: 'attachment; filename=small.png' }, { name: 'Content-ID', value: '<small>' }],
+      body: { attachmentId: 'small', size: image.length },
+    })]), client: client() });
+    expect(packet).toMatchObject({ skippedAttachments: 0, warnings: [] });
+    expect(packet.photos).toHaveLength(1);
+  });
+  it.each([true, false])('imports inline photos at exactly 16 KiB (size provided: %s)', async (withSize) => {
+    const buffer = Buffer.concat([image, Buffer.alloc(16 * 1024 - image.length)]);
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart('', {
+      headers: [{ name: 'Content-Disposition', value: 'inline' }], body: { data: buffer.toString('base64url'), ...(withSize ? { size: buffer.length } : {}) },
+    })]), client: client() });
+    expect(packet.photos).toHaveLength(1);
+    expect(packet.warnings).toEqual([]);
+  });
   it('resolves photo only with original hash and dimensions', async () => {
     const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart()]), client: client() });
     expect(packet.text).toBeNull(); expect(packet.photos[0]).toMatchObject({ width: 4, height: 3, contentType: 'image/png', sha256: createHash('sha256').update(image).digest('hex') });
@@ -37,12 +166,12 @@ describe('procedure-material Gmail packet', () => {
     expect(packet.text).toBe('手順'); expect(packet.photos).toHaveLength(2);
     expect(packet.photos[0]?.gmailDedupeKey).not.toBe(packet.photos[1]?.gmailDedupeKey);
   });
-  it('skips PDF, unsupported video, inline and oversized images without fetching their bytes', async () => {
+  it('skips PDF, unsupported video, small inline and oversized images without fetching their bytes', async () => {
     const attachmentClient = client();
     const packet = await resolveProcedureMaterialGmailPacket({ message: message([
       photoPart('video.avi', { mimeType: 'video/x-msvideo' }), photoPart('file.pdf', { mimeType: 'application/pdf' }),
-      photoPart('inline.png', { headers: [{ name: 'Content-Disposition', value: 'inline' }] }),
-      photoPart('cid.png', { headers: [{ name: 'Content-ID', value: '<cid>' }] }),
+      photoPart('inline.png', { headers: [{ name: 'Content-Disposition', value: 'inline' }], body: { attachmentId: 'inline', size: image.length } }),
+      photoPart('cid.png', { headers: [{ name: 'Content-ID', value: '<cid>' }], body: { attachmentId: 'cid', size: image.length } }),
       photoPart('large.png', { body: { attachmentId: 'large', size: 10 * 1024 * 1024 + 1 } }),
     ]), client: attachmentClient });
     expect(packet).toMatchObject({ text: null, photos: [], skippedAttachments: 5 });
@@ -52,6 +181,18 @@ describe('procedure-material Gmail packet', () => {
     const attachmentClient = { getAttachment: vi.fn().mockResolvedValueOnce(Buffer.alloc(10 * 1024 * 1024 + 1)).mockResolvedValueOnce(Buffer.from('invalid')) };
     const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart('large.png'), photoPart('broken.png')]), client: attachmentClient });
     expect(packet.photos).toEqual([]); expect(packet.skippedAttachments).toBe(2);
+  });
+  it('checks reported and actual size limits and rejects corrupt inline photos', async () => {
+    const attachmentClient = { getAttachment: vi.fn().mockResolvedValueOnce(Buffer.alloc(10 * 1024 * 1024 + 1)).mockResolvedValueOnce(Buffer.alloc(16 * 1024)) };
+    const headers = [{ name: 'Content-Disposition', value: 'inline' }];
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([
+      photoPart('reported-large.png', { headers, body: { attachmentId: 'reported-large', size: 10 * 1024 * 1024 + 1 } }),
+      photoPart('actual-large.png', { headers }), photoPart('corrupt.png', { headers }),
+    ]), client: attachmentClient });
+    expect(packet).toMatchObject({ photos: [], skippedAttachments: 3, warnings: [
+      'reported-large.png: 対応外の添付または10 MB超過', 'actual-large.png: 10 MB超過', 'corrupt.png: 画像を読み取れません',
+    ] });
+    expect(attachmentClient.getAttachment).toHaveBeenCalledTimes(2);
   });
   it.each(['jpeg', 'webp'] as const)('accepts %s and small base64 MIME attachments', async (format) => {
     const bytes = await sharp(image).toFormat(format).toBuffer();
@@ -77,6 +218,18 @@ function harness(parts: GmailMessagePart[] = [textPart('手順'), photoPart()]) 
 }
 
 describe('procedure-material Gmail ingestion', () => {
+  it.each([
+    ['手順\n[cid:image001.jpg@01DB1234]', '手順'],
+    ['[cid:image001.jpg@01DB1234]', null],
+  ])('saves Outlook photos and creates TEXT only for remaining body text', async (body, expectedText) => {
+    const h = harness();
+    h.gmail.getMessage.mockResolvedValue(outlookMessage(body));
+    h.gmail.getAttachment.mockResolvedValue(inlineImage);
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: expectedText ? 2 : 1, skippedAttachments: 0 });
+    expect(h.rows.filter((row) => row.kind === 'PHOTO')).toHaveLength(1);
+    expect(h.rows.filter((row) => row.kind === 'TEXT')).toEqual(expectedText ? [expect.objectContaining({ text: expectedText })] : []);
+    expect(h.store.write).toHaveBeenCalledWith(expect.objectContaining({ data: inlineImage }));
+  });
   it('saves originals and metadata once, trashes both first and duplicate runs without downloading again', async () => {
     const h = harness();
     const first = await h.service.runOnce({ config: h.config, allowWait: false });

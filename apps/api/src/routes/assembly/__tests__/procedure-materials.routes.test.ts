@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../../lib/errors.js';
 import { registerErrorHandler } from '../../../plugins/error-handler.js';
 import { defaultBackupConfig } from '../../../services/backup/backup-config.js';
+import { BackupConfigLoader } from '../../../services/backup/backup-config.loader.js';
 import { ProcedureMaterialService } from '../../../services/assembly/procedure-material.service.js';
 import { registerProcedureMaterialRoutes } from '../procedure-materials.js';
 
@@ -87,6 +88,23 @@ describe('procedure-material routes with mocked Prisma', () => {
     expect(db.procedureMaterial.updateMany).toHaveBeenCalledWith({ where: { id }, data: { documentId: null, placedAt: null } });
     db.procedureMaterial.updateMany.mockResolvedValueOnce({ count: 0 });
     expect((await app.inject({ method: 'POST', url: `${base}/${id}/unplace` })).statusCode).toBe(404);
+  });
+  it('loads the backup config as a method when no loader is injected', async () => {
+    const { ingestion } = harness();
+    app = Fastify(); registerErrorHandler(app);
+    registerProcedureMaterialRoutes(app, {
+      service: new ProcedureMaterialService({ procedureMaterial: {} } as never, {} as never), ingestion, gc: { collect: vi.fn() } as never,
+      allowView: async () => {}, allowWriteKiosk: async () => {},
+    });
+    const load = vi.spyOn(BackupConfigLoader, 'load').mockImplementation(async function (this: unknown) {
+      if (this !== BackupConfigLoader) throw new TypeError("Cannot read properties of undefined (reading 'configPath')");
+      return defaultBackupConfig;
+    });
+    const response = await app.inject({ method: 'POST', url: `${base}/ingest-gmail`, payload: {} });
+    expect(response.statusCode).toBe(200);
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(ingestion.runOnce).toHaveBeenCalledWith({ config: defaultBackupConfig, allowWait: true, manual: true });
+    load.mockRestore();
   });
   it('manually ingests while disabled and returns per-message status/counts', async () => {
     const { ingestion } = harness();
