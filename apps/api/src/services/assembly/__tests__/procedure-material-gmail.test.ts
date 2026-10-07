@@ -1,12 +1,15 @@
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { logger } from '../../../lib/logger.js';
 import { defaultBackupConfig, BackupConfigSchema } from '../../backup/backup-config.js';
 import type { GmailMessage, GmailMessagePart } from '../../backup/gmail-api-client.js';
 import { FileStorageAlreadyExistsError } from '../../file-storage/file-storage-errors.js';
 import { buildProcedureMaterialGmailSearchQuery, ProcedureMaterialGmailIngestionService } from '../procedure-material-gmail-ingestion.service.js';
-import { resolveProcedureMaterialGmailPacket, stripCidPlaceholders } from '../procedure-material-gmail-packet-resolver.js';
+import { resolveAttachmentContentType, resolveProcedureMaterialGmailPacket, stripCidPlaceholders } from '../procedure-material-gmail-packet-resolver.js';
+
+vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn() } }));
 
 let image: Buffer;
 let inlineImage: Buffer;
@@ -52,7 +55,77 @@ describe('stripCidPlaceholders', () => {
   });
 });
 
+describe('resolveAttachmentContentType', () => {
+  it.each([
+    [undefined, 'ハンドル2.png', 'image/png'],
+    ['', 'photo.JPG', 'image/jpeg'],
+    ['application/octet-stream', 'photo.jpeg', 'image/jpeg'],
+    ['binary/octet-stream', 'photo.WEBP', 'image/webp'],
+    ['application/x-download', '  ハンドル2.PNG  ', 'application/x-download'],
+    ['text/plain', 'photo.png', 'text/plain'],
+    [' TEXT/PLAIN ', 'photo.png', 'text/plain'],
+    ['text/html', 'clip.mp4', 'text/html'],
+    ['application/pdf', 'photo.png', 'application/pdf'],
+    ['  ', 'photo.png', 'image/png'],
+    [' APPLICATION/OCTET-STREAM ', 'photo.png', 'image/png'],
+    ['application/octet-stream', 'clip.MP4', 'video/mp4'],
+    ['application/octet-stream', 'clip.mov', 'video/quicktime'],
+    ['binary/octet-stream', 'clip.3GP', 'video/3gpp'],
+    ['', 'clip.m4v', 'video/x-m4v'],
+    [' IMAGE/JPEG ', 'photo.png', 'image/jpeg'],
+    ['video/quicktime', 'clip.mp4', 'video/quicktime'],
+    ['image/gif', 'photo.png', 'image/gif'],
+    ['video/x-msvideo', 'clip.mp4', 'video/x-msvideo'],
+    ['application/octet-stream', 'photo', 'application/octet-stream'],
+    ['application/octet-stream', 'photo.png.txt', 'application/octet-stream'],
+  ])('resolves MIME %j and filename %j to %s', (mime, filename, expected) => {
+    expect(resolveAttachmentContentType(mime, filename)).toBe(expected);
+  });
+});
+
 describe('procedure-material Gmail packet', () => {
+  it.each([
+    ['  ハンドル2.png  ', 'png', 'image/png'],
+    ['photo.JPG', 'jpeg', 'image/jpeg'],
+  ] as const)('imports octet-stream photo %s with the inferred content type', async (filename, format, contentType) => {
+    const buffer = await sharp(image).toFormat(format).toBuffer();
+    const attachmentClient = { getAttachment: vi.fn().mockResolvedValue(buffer) };
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart(filename, { mimeType: 'application/octet-stream' })]), client: attachmentClient });
+    expect(packet).toMatchObject({ skippedAttachments: 0, warnings: [], videos: [] });
+    expect(packet.photos).toHaveLength(1);
+    expect(packet.photos[0]).toMatchObject({ filename: filename.trim(), buffer, contentType, width: 4, height: 3 });
+  });
+  it('imports generic MIME inline photos using the same inference', async () => {
+    const attachmentClient = { getAttachment: vi.fn().mockResolvedValue(inlineImage) };
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart('photo.JPG', {
+      mimeType: 'binary/octet-stream', headers: [{ name: 'Content-Disposition', value: 'inline' }],
+      body: { attachmentId: 'inline', size: inlineImage.length },
+    })]), client: attachmentClient });
+    expect(packet).toMatchObject({ skippedAttachments: 0, warnings: [] });
+    expect(packet.photos).toHaveLength(1);
+    expect(packet.photos[0]?.contentType).toBe('image/jpeg');
+  });
+  it.each(['  ハンドル2  ', '\tハンドル2.txt\u3000'])('rejects octet-stream with unsupported filename %j and trims warning filenames', async (filename) => {
+    const attachmentClient = client();
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart(filename, { mimeType: 'application/octet-stream' })]), client: attachmentClient });
+    expect(packet).toMatchObject({ photos: [], videos: [], skippedAttachments: 1, warnings: [`${filename.trim()}: 対応外の添付または10 MB超過`] });
+    expect(attachmentClient.getAttachment).not.toHaveBeenCalled();
+  });
+  it('treats octet-stream MP4 attachments as videos', async () => {
+    const buffer = Buffer.from('video bytes');
+    const attachmentClient = { getAttachment: vi.fn().mockResolvedValue(buffer) };
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart('clip.mp4', { mimeType: 'application/octet-stream' })]), client: attachmentClient });
+    expect(packet).toMatchObject({ photos: [], skippedAttachments: 0, warnings: [] });
+    expect(packet.videos).toHaveLength(1);
+    expect(packet.videos[0]).toMatchObject({ filename: 'clip.mp4', buffer, contentType: 'video/mp4' });
+  });
+  it.each(['invalid', 'jpeg', 'truncated'] as const)('rejects inferred PNG attachments containing %s bytes', async (contents) => {
+    const buffer = contents === 'invalid' ? Buffer.from('not an image')
+      : contents === 'jpeg' ? inlineImage : image.subarray(0, image.length - 20);
+    const attachmentClient = { getAttachment: vi.fn().mockResolvedValue(buffer) };
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart('  ハンドル2.png  ', { mimeType: 'application/octet-stream' })]), client: attachmentClient });
+    expect(packet).toMatchObject({ photos: [], videos: [], skippedAttachments: 1, warnings: ['ハンドル2.png: 画像を読み取れません'] });
+  });
   it('resolves body only and prefers plain text to the alternative HTML', async () => {
     const packet = await resolveProcedureMaterialGmailPacket({ message: message([{ ...textPart('  手順\n本文  '), headers: [{ name: 'Content-Disposition', value: 'inline' }] }, textPart('<p>別の本文</p>', 'text/html')]), client: client() });
     expect(packet.text).toBe('手順\n本文'); expect(packet.photos).toEqual([]);
@@ -218,6 +291,72 @@ function harness(parts: GmailMessagePart[] = [textPart('手順'), photoPart()]) 
 }
 
 describe('procedure-material Gmail ingestion', () => {
+  beforeEach(() => { vi.mocked(logger.info).mockClear(); });
+  it.each(['skipped', 'retryable'])('manual ingestion retries all %s messages during backoff', async (status) => {
+    const h = harness([]);
+    h.gmail.searchMessagesAll.mockResolvedValue(['mail-1', 'mail-2']);
+    if (status === 'retryable') h.gmail.getMessage.mockRejectedValue(new Error('temporary Gmail failure'));
+    const first = await h.service.runOnce({ config: h.config, allowWait: false, manual: false });
+    expect(first).toMatchObject({ scanned: 2, processed: 2, deferred: 0, [status]: 2 });
+    const deferred = await h.service.runOnce({ config: h.config, allowWait: false, manual: false });
+    expect(deferred).toEqual({ scanned: 2, processed: 0, saved: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 2, skippedAttachments: 0, errors: [], messages: [] });
+    expect(logger.info).toHaveBeenLastCalledWith({ manual: false, scanned: 2, processed: 0, saved: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 2, skippedAttachments: 0, messages: [] }, '[ProcedureMaterialGmail] cycle completed');
+    const manual = await h.service.runOnce({ config: h.config, allowWait: true, manual: true });
+    expect(manual).toMatchObject({ scanned: 2, processed: 2, deferred: 0, [status]: 2 });
+    expect(manual.messages.map(({ messageId, status: messageStatus, reason }) => ({ messageId, status: messageStatus, reason }))).toEqual(['mail-1', 'mail-2'].map((messageId) => ({ messageId, status, reason: first.messages[0]!.reason })));
+    expect(h.gmail.getMessage).toHaveBeenCalledTimes(4);
+  });
+  it.each([false, true])('logs fixed skip reasons and retryable error names without error messages (manual: %s)', async (manual) => {
+    const h = harness();
+    h.gmail.searchMessagesAll.mockResolvedValue(['mail-1', 'mail-2', 'mail-3']);
+    h.gmail.getMessage.mockResolvedValueOnce(message([textPart('手順'), photoPart()]))
+      .mockResolvedValueOnce(message([], 'Re: [Procedure-material]'))
+      .mockRejectedValueOnce(new Error('temporary Gmail failure'));
+    const summary = await h.service.runOnce({ config: h.config, allowWait: false, manual });
+    expect(summary.messages[2]).toMatchObject({ status: 'retryable', reason: 'temporary Gmail failure' });
+    expect(summary.messages[2]).not.toHaveProperty('errorName');
+    expect(summary.errors).toEqual(['mail-3: temporary Gmail failure']);
+    expect(logger.info).toHaveBeenCalledExactlyOnceWith({
+      manual, scanned: 3, processed: 3, saved: 2, duplicate: 0, skipped: 1, retryable: 1, deferred: 0, skippedAttachments: 0,
+      messages: [
+        { messageId: 'mail-1', status: 'saved', reason: undefined },
+        { messageId: 'mail-2', status: 'skipped', reason: '件名トークンが一致しません' },
+        { messageId: 'mail-3', status: 'retryable', errorName: 'Error' },
+      ],
+    }, '[ProcedureMaterialGmail] cycle completed');
+    expect(JSON.stringify(vi.mocked(logger.info).mock.calls)).not.toContain('temporary Gmail failure');
+  });
+  it.each([
+    [new TypeError('private failure details'), 'TypeError'],
+    ['private failure details', 'Error'],
+  ])('logs the error name for a retryable failure %j', async (error, errorName) => {
+    const h = harness();
+    h.gmail.getMessage.mockRejectedValue(error);
+    const summary = await h.service.runOnce({ config: h.config, allowWait: false });
+    expect(summary.messages[0]).toMatchObject({ status: 'retryable', reason: 'private failure details' });
+    expect(logger.info).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      messages: [{ messageId: 'mail-1', status: 'retryable', errorName }],
+    }), '[ProcedureMaterialGmail] cycle completed');
+    expect(JSON.stringify(vi.mocked(logger.info).mock.calls)).not.toContain('private failure details');
+  });
+  it('processes all 25 messages in a manual run without the scheduled batch limit', async () => {
+    const h = harness([textPart('手順')]);
+    const ids = Array.from({ length: 25 }, (_, i) => `mail-${i + 1}`);
+    h.gmail.searchMessagesAll.mockResolvedValue(ids);
+    h.gmail.getMessage.mockImplementation(async (id: string) => ({ ...message([textPart('手順')]), id }));
+    const summary = await h.service.runOnce({ config: h.config, allowWait: true, manual: true });
+    expect(summary).toMatchObject({ scanned: 25, processed: 25, saved: 25, deferred: 0, retryable: 0 });
+    expect(summary.messages.map(({ messageId }) => messageId)).toEqual(ids);
+    expect(h.gmail.getMessage).toHaveBeenCalledTimes(25);
+    expect(h.gmail.trashMessage.mock.calls.map(([id]) => id)).toEqual(ids);
+  });
+  it('returns and logs zero counts when no messages are found', async () => {
+    const h = harness();
+    h.gmail.searchMessagesAll.mockResolvedValue([]);
+    expect(await h.service.runOnce({ config: h.config, allowWait: false, manual: true })).toEqual({ scanned: 0, processed: 0, saved: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 0, skippedAttachments: 0, errors: [], messages: [] });
+    expect(logger.info).toHaveBeenCalledExactlyOnceWith({ manual: true, scanned: 0, processed: 0, saved: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 0, skippedAttachments: 0, messages: [] }, '[ProcedureMaterialGmail] cycle completed');
+    expect(h.gmail.getMessage).not.toHaveBeenCalled();
+  });
   it.each([
     ['手順\n[cid:image001.jpg@01DB1234]', '手順'],
     ['[cid:image001.jpg@01DB1234]', null],
@@ -303,15 +442,15 @@ describe('procedure-material Gmail ingestion', () => {
     }
     const clock = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
     try {
-      expect(await h.service.runOnce({ config, allowWait: false })).toMatchObject({ scanned: 21, processed: 20, skipped: 20, saved: 0 });
-      expect(await h.service.runOnce({ config, allowWait: false })).toMatchObject({ scanned: 21, processed: 1, skipped: 0, saved: 1 });
+      expect(await h.service.runOnce({ config, allowWait: false })).toMatchObject({ scanned: 21, processed: 20, skipped: 20, saved: 0, deferred: 0 });
+      expect(await h.service.runOnce({ config, allowWait: false })).toMatchObject({ scanned: 21, processed: 1, skipped: 0, saved: 1, deferred: 20 });
       expect(h.gmail.getMessage).toHaveBeenCalledTimes(21);
       expect(h.gmail.trashMessage).toHaveBeenCalledExactlyOnceWith('mail-21');
       h.gmail.searchMessagesAll.mockResolvedValue(ids.slice(0, 20));
       clock.mockReturnValue(1_000_000 + 5 * 60 * 1000 - 1);
-      expect(await h.service.runOnce({ config, allowWait: false })).toMatchObject({ scanned: 20, processed: 0 });
+      expect(await h.service.runOnce({ config, allowWait: false })).toMatchObject({ scanned: 20, processed: 0, deferred: 20 });
       clock.mockReturnValue(1_000_000 + 5 * 60 * 1000);
-      expect(await h.service.runOnce({ config, allowWait: false })).toMatchObject({ scanned: 20, processed: 20, skipped: 20 });
+      expect(await h.service.runOnce({ config, allowWait: false })).toMatchObject({ scanned: 20, processed: 20, skipped: 20, deferred: 0 });
     } finally { clock.mockRestore(); }
   });
   it('retries cleanup without increasing material count and allows targeted forceRetry during backoff', async () => {
@@ -337,6 +476,7 @@ describe('procedure-material Gmail ingestion', () => {
     const h = harness();
     const config = { ...h.config, procedureMaterialGmailIngest: { ...h.config.procedureMaterialGmailIngest, enabled: false } };
     expect(await h.service.runOnce({ config, allowWait: false })).toMatchObject({ processed: 0 }); expect(h.factory).not.toHaveBeenCalled();
+    expect(logger.info).not.toHaveBeenCalled();
     await h.service.runOnce({ config, allowWait: false, manual: true }); expect(h.factory).toHaveBeenCalledWith(config, { allowWait: false });
     expect(buildProcedureMaterialGmailSearchQuery({ ...defaultBackupConfig.procedureMaterialGmailIngest, enabled: true, subjectTokens: ['invalid'], fromEmail: 'someone@thkintechs.co.jp' })).toBe('(subject:"[Procedure-material]") in:inbox is:unread');
     expect(BackupConfigSchema.parse({ storage: { provider: 'local' }, targets: [] }).procedureMaterialGmailIngest).toEqual({ enabled: false, subjectTokens: ['[Procedure-material]'], allowedSenderDomains: ['thkintechs.co.jp'] });

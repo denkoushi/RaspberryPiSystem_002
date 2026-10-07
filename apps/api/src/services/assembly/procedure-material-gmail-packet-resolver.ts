@@ -7,6 +7,10 @@ export const PROCEDURE_MATERIAL_MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 export const PROCEDURE_VIDEO_MAX_BYTES = 25 * 1024 * 1024;
 const VIDEO_FORMATS = new Set(['video/mp4', 'video/quicktime', 'video/3gpp', 'video/x-m4v']);
 const PHOTO_FORMATS: Record<string, string> = { 'image/jpeg': 'jpeg', 'image/png': 'png', 'image/webp': 'webp' };
+const ATTACHMENT_EXTENSION_CONTENT_TYPES: Record<string, string> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp',
+  mp4: 'video/mp4', mov: 'video/quicktime', '3gp': 'video/3gpp', m4v: 'video/x-m4v',
+};
 const INLINE_PHOTO_MIN_BYTES = 16 * 1024;
 export type ProcedureMaterialAttachmentClient = { getAttachment: (messageId: string, attachmentId: string) => Promise<Buffer> };
 export type ProcedureMaterialPhoto = {
@@ -17,6 +21,13 @@ export type ProcedureMaterialPacket = { text: string | null; photos: ProcedureMa
 
 export function materialMessageHeader(message: GmailMessage, name: string): string {
   return message.payload?.headers?.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? '';
+}
+
+export function resolveAttachmentContentType(mime: string | undefined, filename: string): string {
+  const contentType = mime?.trim().toLowerCase() ?? '';
+  if (contentType && contentType !== 'application/octet-stream' && contentType !== 'binary/octet-stream') return contentType;
+  const extension = /\.(png|jpe?g|webp|mp4|mov|3gp|m4v)$/.exec(filename.trim().toLowerCase())?.[1] ?? '';
+  return ATTACHMENT_EXTENSION_CONTENT_TYPES[extension] ?? contentType;
 }
 
 const BLOCK_END_TAGS = new Set(['p', 'div', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'tr']);
@@ -76,7 +87,7 @@ export async function resolveProcedureMaterialGmailPacket(params: {
     const contentId = part.headers?.some((h) => h.name.toLowerCase() === 'content-id');
     const attached = disposition.startsWith('attachment');
     const inline = disposition.startsWith('inline') || (!attached && !!contentId);
-    const mime = part.mimeType?.toLowerCase();
+    const mime = resolveAttachmentContentType(part.mimeType, part.filename ?? '');
     if (inline && mime && PHOTO_FORMATS[mime]) {
       attachments.push({ part, path, inline });
       return;
@@ -105,7 +116,7 @@ export async function resolveProcedureMaterialGmailPacket(params: {
   }
   for (const { part, path, inline } of attachments) {
     const filename = part.filename?.normalize('NFC').trim() || 'photo';
-    const contentType = part.mimeType?.trim().toLowerCase() ?? '';
+    const contentType = resolveAttachmentContentType(part.mimeType, filename);
     const key = `${params.message.id}:${createHash('sha256').update(`${filename}\n${part.partId ?? path}`).digest('hex')}`;
     if (VIDEO_FORMATS.has(contentType)) {
       if ((part.body?.size ?? 0) > PROCEDURE_VIDEO_MAX_BYTES) {

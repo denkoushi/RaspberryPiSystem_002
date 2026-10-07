@@ -21,7 +21,7 @@ describe('procedure-material routes with mocked Prisma', () => {
     } };
     const store = { read: vi.fn().mockResolvedValue(Buffer.from('photo-original')) };
     const gc = { collect: vi.fn().mockResolvedValue({ scanned: 3, deleted: 1 }) };
-    const ingestion = { runOnce: vi.fn().mockResolvedValue({ scanned: 1, saved: 1, messages: [{ messageId: 'gmail-1', status: 'saved', trashed: true }] }) };
+    const ingestion = { runOnce: vi.fn().mockResolvedValue({ scanned: 1, deferred: 0, saved: 1, messages: [{ messageId: 'gmail-1', status: 'saved', trashed: true }] }) };
     const loadConfig = vi.fn().mockResolvedValue(defaultBackupConfig);
     app = Fastify(); registerErrorHandler(app);
     registerProcedureMaterialRoutes(app, {
@@ -109,7 +109,7 @@ describe('procedure-material routes with mocked Prisma', () => {
   it('manually ingests while disabled and returns per-message status/counts', async () => {
     const { ingestion } = harness();
     const response = await app.inject({ method: 'POST', url: `${base}/ingest-gmail`, payload: { messageId: 'gmail-1', forceRetry: true } });
-    expect(response.statusCode).toBe(200); expect(response.json()).toMatchObject({ saved: 1, messages: [{ status: 'saved', trashed: true }] });
+    expect(response.statusCode).toBe(200); expect(response.json()).toMatchObject({ scanned: 1, deferred: 0, saved: 1, messages: [{ status: 'saved', trashed: true }] });
     expect(ingestion.runOnce).toHaveBeenCalledWith({ config: defaultBackupConfig, allowWait: true, manual: true, messageId: 'gmail-1', forceRetry: true });
   });
   it.each([['GET', base], ['GET', `${base}/${id}/file`], ['POST', `${base}/ingest-gmail`], ['POST', `${base}/${id}/discard`], ['POST', `${base}/${id}/restore`], ['POST', `${base}/${id}/unplace`], ['POST', `${base}/gc`]] as const)('rejects unauthorized %s %s before touching materials', async (method, url) => {

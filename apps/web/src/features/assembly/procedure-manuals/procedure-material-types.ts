@@ -10,7 +10,7 @@ export type ProcedureMaterialDto = {
   createdAt: string; updatedAt: string;
 };
 export type ProcedureMaterialIngestResult = {
-  scanned: number; processed: number; saved: number; duplicate: number; skipped: number; retryable: number;
+  scanned: number; processed: number; saved: number; duplicate: number; skipped: number; retryable: number; deferred: number;
   skippedAttachments: number; errors: string[];
   messages: Array<{
     messageId: string; status: 'saved' | 'duplicate' | 'skipped' | 'retryable'; reason?: string;

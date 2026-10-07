@@ -3,6 +3,7 @@ import { getProcedureVideoScheduler } from './procedure-video.scheduler.js';
 import { Prisma } from '@prisma/client';
 
 import { prisma as defaultPrisma } from '../../lib/prisma.js';
+import { logger } from '../../lib/logger.js';
 import { defaultBackupConfig, type BackupConfig } from '../backup/backup-config.js';
 import type { GmailMessage } from '../backup/gmail-api-client.js';
 import type { DurableFileStorePort } from '../file-storage/durable-file-store.port.js';
@@ -23,7 +24,7 @@ export type ProcedureMaterialMessageResult = {
   saved: number; duplicate: number; skippedAttachments: number; trashed: boolean; warnings: string[];
 };
 export type ProcedureMaterialCycleSummary = {
-  scanned: number; processed: number; saved: number; duplicate: number; skipped: number; retryable: number;
+  scanned: number; processed: number; saved: number; duplicate: number; skipped: number; retryable: number; deferred: number;
   skippedAttachments: number; errors: string[]; messages: ProcedureMaterialMessageResult[];
 };
 const RETRY_DELAY_MS = 5 * 60 * 1000;
@@ -47,18 +48,26 @@ export class ProcedureMaterialGmailIngestionService {
 
   async runOnce(options: { config: BackupConfig; allowWait: boolean; manual?: boolean; messageId?: string; forceRetry?: boolean }): Promise<ProcedureMaterialCycleSummary> {
     if (this.running) throw new Error('procedure material ingest is already running');
-    const summary: ProcedureMaterialCycleSummary = { scanned: 0, processed: 0, saved: 0, duplicate: 0, skipped: 0, retryable: 0, skippedAttachments: 0, errors: [], messages: [] };
+    const summary: ProcedureMaterialCycleSummary = { scanned: 0, processed: 0, saved: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 0, skippedAttachments: 0, errors: [], messages: [] };
     if (!options.manual && !options.config.procedureMaterialGmailIngest?.enabled) return summary;
+    const loggedMessages: Array<Pick<ProcedureMaterialMessageResult, 'messageId' | 'status' | 'reason'> & { errorName?: string }> = [];
     this.running = true;
     try {
       const gmail = await this.gmailFactory(options.config, { allowWait: options.allowWait });
       const ids = [...new Set(options.messageId ? [options.messageId] : await gmail.searchMessagesAll(buildProcedureMaterialGmailSearchQuery(options.config.procedureMaterialGmailIngest)))];
       summary.scanned = ids.length;
-      const eligible = ids.filter((id) => (options.forceRetry && options.messageId === id) || (this.retryAt.get(id) ?? 0) <= Date.now()).slice(0, BATCH_LIMIT);
-      for (const id of eligible) {
+      const eligible = ids.filter((id) => {
+        if (options.manual || (options.forceRetry && options.messageId === id) || (this.retryAt.get(id) ?? 0) <= Date.now()) return true;
+        summary.deferred++;
+        return false;
+      });
+      for (const id of options.manual ? eligible : eligible.slice(0, BATCH_LIMIT)) {
         // eslint-disable-next-line no-await-in-loop
-        const result = await this.processMessage(gmail, id, options.config);
+        const { errorName, ...result } = await this.processMessage(gmail, id, options.config);
         summary.messages.push(result);
+        loggedMessages.push({ messageId: result.messageId, status: result.status,
+          ...(result.status === 'retryable' ? { errorName: errorName ?? 'Error' } : { reason: result.reason }),
+        });
         summary.processed++;
         summary.saved += result.saved;
         summary.duplicate += result.duplicate;
@@ -70,10 +79,24 @@ export class ProcedureMaterialGmailIngestionService {
         if (result.status === 'retryable') { summary.retryable++; summary.errors.push(`${id}: ${result.reason}`); }
       }
       return summary;
-    } finally { this.running = false; }
+    } finally {
+      this.running = false;
+      logger.info({
+        manual: options.manual ?? false,
+        scanned: summary.scanned,
+        processed: summary.processed,
+        saved: summary.saved,
+        duplicate: summary.duplicate,
+        skipped: summary.skipped,
+        retryable: summary.retryable,
+        deferred: summary.deferred,
+        skippedAttachments: summary.skippedAttachments,
+        messages: loggedMessages,
+      }, '[ProcedureMaterialGmail] cycle completed');
+    }
   }
 
-  private async processMessage(gmail: ProcedureMaterialGmailPort, messageId: string, config: BackupConfig): Promise<ProcedureMaterialMessageResult> {
+  private async processMessage(gmail: ProcedureMaterialGmailPort, messageId: string, config: BackupConfig): Promise<ProcedureMaterialMessageResult & { errorName?: string }> {
     const result: ProcedureMaterialMessageResult = { messageId, status: 'skipped', saved: 0, duplicate: 0, skippedAttachments: 0, trashed: false, warnings: [] };
     try {
       const message = await gmail.getMessage(messageId);
@@ -153,7 +176,7 @@ export class ProcedureMaterialGmailIngestionService {
       return result;
     } catch (error) {
       this.retryAt.set(messageId, Date.now() + RETRY_DELAY_MS);
-      return { ...result, status: 'retryable', reason: error instanceof Error ? error.message : String(error) };
+      return { ...result, status: 'retryable', reason: error instanceof Error ? error.message : String(error), errorName: error instanceof Error ? error.name : 'Error' };
     }
   }
 }
