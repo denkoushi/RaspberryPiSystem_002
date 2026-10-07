@@ -141,6 +141,15 @@
         mode: '0644'
       notify: Reload systemd units
 
+    - name: Install the DR failure alert unit
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/raspi-google-drive-dr-alert.service.j2"
+        dest: /etc/systemd/system/raspi-google-drive-dr-alert.service
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Reload systemd units
+
     - name: Install the disabled-by-default DR service unit
       ansible.builtin.template:
         src: "{{ playbook_dir }}/../templates/raspi-google-drive-dr.service.j2"

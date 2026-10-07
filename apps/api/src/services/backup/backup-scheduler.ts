@@ -5,8 +5,9 @@ import type { BackupConfig } from './backup-config.js';
 import { BackupTargetFactory } from './backup-target-factory.js';
 import { BackupHistoryService } from './backup-history.service.js';
 import { logger } from '../../lib/logger.js';
-import { executeBackupAcrossProviders, resolveBackupProviders } from './backup-execution.service.js';
+import { executeBackupAcrossProviders, resolveBackupProviders, type BackupExecutionResult } from './backup-execution.service.js';
 import { cleanupBackupsAfterManualExecution } from './post-backup-cleanup.service.js';
+import { notifyScheduledBackupFailure, type BackupFailureDetails } from './backup-failure-alert.service.js';
 
 /**
  * バックアップスケジューラー
@@ -62,23 +63,46 @@ export class BackupScheduler {
       // 新しいタスクを作成
       try {
         const task = cron.schedule(target.schedule, async () => {
+          let failure: BackupFailureDetails | undefined;
           try {
             logger?.info(
               { kind: target.kind, source: target.source },
               '[BackupScheduler] Starting scheduled backup'
             );
 
-            await this.executeBackup(config, target);
+            const results = await this.executeBackup(config, target);
+            const failed = results.filter((result) => !result.success);
+            const allFailed = failed.length === results.length;
+            if (allFailed || failed.length > 0) {
+              failure = {
+                targetKind: target.kind,
+                failureType: allFailed ? 'all-providers-failed' : 'partial-providers-failed',
+                providerCount: results.length,
+                failedProviderCount: failed.length,
+                failedProviders: [...new Set(failed.map((result) => result.provider))]
+              };
+            }
 
-            logger?.info(
-              { kind: target.kind, source: target.source },
-              '[BackupScheduler] Scheduled backup completed'
-            );
+            if (allFailed) {
+              logger?.error(
+                { kind: target.kind, source: target.source },
+                '[BackupScheduler] Scheduled backup failed on all providers'
+              );
+            } else {
+              logger?.info(
+                { kind: target.kind, source: target.source },
+                '[BackupScheduler] Scheduled backup completed'
+              );
+            }
           } catch (error) {
+            failure = { targetKind: target.kind, failureType: 'execution-failed' };
             logger?.error(
               { err: error, kind: target.kind, source: target.source },
               '[BackupScheduler] Scheduled backup failed'
             );
+          }
+          if (failure) {
+            await notifyScheduledBackupFailure(target.source, failure);
           }
         }, {
           scheduled: true,
@@ -137,7 +161,7 @@ export class BackupScheduler {
   private async executeBackup(
     config: BackupConfig,
     target: BackupConfig['targets'][0]
-  ): Promise<void> {
+  ): Promise<BackupExecutionResult[]> {
     // Dropboxのアクセストークン更新時は設定ファイルへ書き戻す（次回以降の実行を安定化）
     // Dropbox専用: options.dropbox.accessToken へ保存
     const onTokenUpdate = async (newToken: string) => {
@@ -170,8 +194,7 @@ export class BackupScheduler {
 
     const allFailed = results.every((r) => !r.success);
     if (allFailed) {
-      const errorMessages = results.map((r) => `${r.provider}: ${r.error || 'Unknown error'}`).join('; ');
-      throw new Error(`Backup failed on all providers: ${errorMessages}`);
+      return results;
     }
 
     await cleanupBackupsAfterManualExecution({
@@ -185,6 +208,7 @@ export class BackupScheduler {
       results,
       onTokenUpdate,
     });
+    return results;
   }
 
   /**

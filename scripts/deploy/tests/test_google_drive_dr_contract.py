@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import json
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -16,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[3]
 ANSIBLE_ROOT = ROOT / "infrastructure/ansible"
 PLAYBOOK_PATH = ANSIBLE_ROOT / "playbooks/deploy-google-drive-disaster-recovery.yml"
 SERVICE_TEMPLATE = ANSIBLE_ROOT / "templates/raspi-google-drive-dr.service.j2"
+ALERT_TEMPLATE = ANSIBLE_ROOT / "templates/raspi-google-drive-dr-alert.service.j2"
 TIMER_TEMPLATE = ANSIBLE_ROOT / "templates/raspi-google-drive-dr.timer.j2"
 ENV_TEMPLATE = ANSIBLE_ROOT / "templates/raspi-google-drive-dr.env.j2"
 STANDARD_PLAYBOOK = ANSIBLE_ROOT / "playbooks/deploy-release-standard.yml"
@@ -179,6 +182,51 @@ class GoogleDriveDisasterRecoveryContractTests(unittest.TestCase):
         self.assertIn("google_drive_dr_env_file", service)
         self.assertIn("google_drive_dr_credential_root", ENV_TEMPLATE.read_text(encoding="utf-8"))
 
+    def test_service_failure_queues_one_alert_through_the_existing_script(self) -> None:
+        service = SERVICE_TEMPLATE.read_text(encoding="utf-8")
+        unit, _ = service.split("[Service]", 1)
+        self.assertIn("OnFailure=raspi-google-drive-dr-alert.service", unit)
+        alert = ALERT_TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn("Type=oneshot", alert)
+        self.assertEqual(alert.count("ExecStart="), 1)
+        self.assertIn(
+            "ExecStart=/bin/bash {{ google_drive_dr_project_root }}/scripts/generate-alert.sh "
+            "storage-backup-google-drive-dr-failed", alert
+        )
+        self.assertIn("Environment=WEBHOOK_URL=", alert)
+        self.assertNotIn("EnvironmentFile=", alert)
+        self.assertNotIn("journalctl", alert)
+        self.assertNotIn("google_drive_dr_repository", alert)
+        self.assertNotIn("OnFailure=", alert)
+        tasks = [task for task in self.tasks if task.get("ansible.builtin.template", {}).get("src")
+                 == "{{ playbook_dir }}/../templates/raspi-google-drive-dr-alert.service.j2"]
+        self.assertEqual(len(tasks), 1)
+        self.assertEqual(tasks[0]["ansible.builtin.template"]["dest"],
+                         "/etc/systemd/system/raspi-google-drive-dr-alert.service")
+        self.assertEqual(tasks[0]["notify"], "Reload systemd units")
+
+    def test_failure_handler_generates_one_non_secret_alert_file(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="google-drive-dr-alert-") as directory:
+            project_root = Path(directory)
+            (project_root / "scripts").mkdir()
+            shutil.copyfile(ROOT / "scripts/generate-alert.sh", project_root / "scripts/generate-alert.sh")
+            unit = ALERT_TEMPLATE.read_text(encoding="utf-8").replace(
+                "{{ google_drive_dr_project_root }}", str(project_root)
+            )
+            command = next(line.removeprefix("ExecStart=") for line in unit.splitlines()
+                           if line.startswith("ExecStart="))
+            result = subprocess.run(shlex.split(command), env={"PATH": os.defpath, "WEBHOOK_URL": ""},
+                                    capture_output=True, text=True, check=False)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            files = list((project_root / "alerts").glob("alert-*.json"))
+            self.assertEqual(len(files), 1)
+            alert = json.loads(files[0].read_text(encoding="utf-8"))
+            self.assertEqual(alert["type"], "storage-backup-google-drive-dr-failed")
+            self.assertEqual(alert["message"], "Google Drive DR backup failed")
+            self.assertEqual(alert["details"], "service=raspi-google-drive-dr;failureType=service-failed")
+            self.assertFalse(alert["acknowledged"])
+            self.assertNotIn(str(project_root), json.dumps(alert))
+
     def test_template_tasks_resolve_the_shared_ansible_template_directory(self) -> None:
         template_sources = {
             task["ansible.builtin.template"]["src"]
@@ -188,10 +236,11 @@ class GoogleDriveDisasterRecoveryContractTests(unittest.TestCase):
         expected_sources = {
             "{{ playbook_dir }}/../templates/raspi-google-drive-dr.env.j2",
             "{{ playbook_dir }}/../templates/raspi-google-drive-dr.service.j2",
+            "{{ playbook_dir }}/../templates/raspi-google-drive-dr-alert.service.j2",
             "{{ playbook_dir }}/../templates/raspi-google-drive-dr.timer.j2",
         }
         self.assertEqual(template_sources, expected_sources)
-        for template_path in (ENV_TEMPLATE, SERVICE_TEMPLATE, TIMER_TEMPLATE):
+        for template_path in (ENV_TEMPLATE, SERVICE_TEMPLATE, ALERT_TEMPLATE, TIMER_TEMPLATE):
             with self.subTest(template_path=template_path):
                 self.assertTrue(template_path.is_file())
 
