@@ -1948,6 +1948,133 @@ esac
         self.assertIn("source: ${BUSINESS_HERMES_CONFIG_FILE:-/etc/raspi-business-hermes/config.yaml}", compose_text)
 
 
+class Pi5UnattendedSecurityUpgradeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.group = yaml.safe_load((ANSIBLE / "group_vars/all.yml").read_text())
+        self.inventory = yaml.safe_load((ANSIBLE / "inventory.yml").read_text())
+        self.tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_pi5/tasks/host-unattended-upgrades.yml").read_text()
+        )
+        self.environment = Environment(undefined=StrictUndefined)
+        self.environment.filters["bool"] = lambda value: str(value).lower() in {
+            "1", "true", "yes", "on"
+        }
+        self.template = self.environment.from_string(
+            (ANSIBLE / "roles/release_pi5/templates/unattended-upgrades.conf.j2").read_text()
+        )
+
+    def render(self, **overrides: object) -> str:
+        return self.template.render(**{**self.group, **overrides})
+
+    def test_policy_runs_on_standard_pi5_releases_outside_api_rollback(self) -> None:
+        main = yaml.safe_load((ANSIBLE / "roles/release_pi5/tasks/main.yml").read_text())
+        policy = next(task for task in main if task.get("name") == "Converge the Pi5 unattended security update policy")
+        self.assertEqual(policy["block"][0]["ansible.builtin.import_tasks"], "host-unattended-upgrades.yml")
+        self.assertEqual(policy["when"], "'server' in group_names")
+        condition = self.environment.compile_expression(policy["when"])
+        self.assertTrue(condition(group_names=["server"]))
+        for group in ("kiosk", "signage"):
+            self.assertFalse(condition(group_names=[group]))
+        self.assertGreater(main.index(policy), 0)
+        # An unreachable mirror must not fail the application release.
+        self.assertEqual(list(policy["rescue"][0]), ["name", "ansible.builtin.debug"])
+        play = next(play for play in yaml.safe_load(PLAYBOOK)
+                    if {"role": "release_pi5"} in play.get("roles", []))
+        self.assertEqual(play["hosts"], "server")
+
+    def test_only_pi5_opts_in_by_default(self) -> None:
+        self.assertIs(self.group["unattended_upgrades_enabled"], False)
+        enabled_hosts = []
+
+        def visit(group: dict[str, object]) -> None:
+            for name, variables in group.get("hosts", {}).items():
+                if (variables or {}).get("unattended_upgrades_enabled", self.group["unattended_upgrades_enabled"]):
+                    enabled_hosts.append(name)
+            for child in group.get("children", {}).values():
+                visit(child)
+
+        visit(self.inventory["all"])
+        self.assertEqual(enabled_hosts, ["raspberrypi5"])
+
+    def test_rendered_policy_clears_vendor_origins_and_allows_only_security(self) -> None:
+        rendered = self.render(unattended_upgrades_enabled=True)
+        origin_block = re.search(r"Unattended-Upgrade::Origins-Pattern\s*\{(.*?)\};", rendered, re.S)
+        self.assertIsNotNone(origin_block)
+        self.assertEqual(re.findall(r'"([^"\n]+)";', origin_block.group(1)), [
+            "origin=Debian,codename=${distro_codename}-security,label=Debian-Security"
+        ])
+        for mechanism in ("Allowed-Origins", "Origins-Pattern"):
+            self.assertLess(rendered.index(f"#clear Unattended-Upgrade::{mechanism};"), origin_block.start())
+        for directive, value in (
+            ("Unattended-Upgrade::Automatic-Reboot", "false"),
+            ("Unattended-Upgrade::Remove-Unused-Kernel-Packages", "false"),
+            ("APT::Periodic::Update-Package-Lists", "1"),
+            ("APT::Periodic::Unattended-Upgrade", "1"),
+            ("APT::Periodic::AutocleanInterval", "7"),
+        ):
+            self.assertIn(f'{directive} "{value}";', rendered)
+        self.assertIn('"--force-confdef";', rendered)
+        self.assertIn('"--force-confold";', rendered)
+
+    def test_rendered_blacklist_matches_protected_packages_and_is_overridable(self) -> None:
+        rendered = self.render(unattended_upgrades_enabled=True)
+        block = re.search(r"Unattended-Upgrade::Package-Blacklist\s*\{(.*?)\};", rendered, re.S)
+        patterns = re.findall(r'"([^"\n]+)";', block.group(1))
+        self.assertEqual(patterns, self.group["unattended_upgrades_package_blacklist"])
+        for package in (
+            "docker-ce", "docker-ce-cli", "containerd.io", "docker-buildx-plugin",
+            "docker-compose-plugin", "tailscale", "linux-image-rpi-2712",
+            "linux-image-6.12.0-rpi", "linux-headers-rpi-2712", "raspi-firmware",
+            "raspberrypi-kernel", "raspberrypi-bootloader", "rpi-eeprom",
+            "rpi-eeprom-images", "firmware-brcm80211", "chromium", "chromium-common",
+        ):
+            with self.subTest(package=package):
+                self.assertTrue(any(re.match(pattern, package) for pattern in patterns))
+        for package in ("openssl", "libssl3t64", "libc6", "ca-certificates", "containerdXio"):
+            with self.subTest(package=package):
+                self.assertFalse(any(re.match(pattern, package) for pattern in patterns))
+        custom = self.render(unattended_upgrades_package_blacklist=["^fixture-package$"])
+        self.assertIn('"^fixture-package$";', custom)
+        self.assertNotIn('"^docker-ce$";', custom)
+        self.assertNotIn("#clear Unattended-Upgrade::Package-Blacklist", custom)
+
+    def test_disabled_hosts_are_untouched_and_previous_installs_are_disabled(self) -> None:
+        template_task = next(task for task in self.tasks if "ansible.builtin.template" in task)
+        condition = self.environment.compile_expression(template_task["when"])
+        for enabled, exists, expected in ((False, False, False), (False, True, True), (True, False, True)):
+            with self.subTest(enabled=enabled, exists=exists):
+                self.assertEqual(condition(unattended_upgrades_enabled=enabled,
+                                           release_pi5_unattended_policy={"stat": {"exists": exists}}), expected)
+        disabled = self.render(unattended_upgrades_enabled=False)
+        for directive in ("Update-Package-Lists", "Unattended-Upgrade", "AutocleanInterval"):
+            self.assertIn(f'APT::Periodic::{directive} "0";', disabled)
+        for task in self.tasks:
+            if "ansible.builtin.apt" in task or "ansible.builtin.systemd" in task:
+                self.assertFalse(self.environment.compile_expression(task["when"])(unattended_upgrades_enabled=False))
+
+    def test_convergence_preserves_vendor_files_and_does_not_run_an_upgrade(self) -> None:
+        template_task = next(task for task in self.tasks if "ansible.builtin.template" in task)
+        destination = "/etc/apt/apt.conf.d/52raspi-unattended-upgrades"
+        self.assertEqual(template_task["ansible.builtin.template"], {
+            "src": "unattended-upgrades.conf.j2", "dest": destination,
+            "owner": "root", "group": "root", "mode": "0644",
+        })
+        inspect = self.tasks[0]
+        self.assertEqual(inspect["ansible.builtin.stat"]["path"], destination)
+        install = next(task for task in self.tasks if "ansible.builtin.apt" in task)
+        self.assertLess(self.tasks.index(template_task), self.tasks.index(install))
+        self.assertEqual(install["ansible.builtin.apt"]["name"], "unattended-upgrades")
+        self.assertEqual(install["ansible.builtin.apt"]["state"], "present")
+        self.assertNotIn("upgrade", install["ansible.builtin.apt"])
+        timers = next(task for task in self.tasks if "ansible.builtin.systemd" in task)
+        self.assertEqual(timers["loop"], ["apt-daily.timer", "apt-daily-upgrade.timer"])
+        self.assertEqual(timers["ansible.builtin.systemd"], {
+            "name": "{{ item }}", "enabled": True, "state": "started",
+        })
+        for task in self.tasks:
+            self.assertFalse({"ansible.builtin.command", "ansible.builtin.shell", "rescue", "ignore_errors"} & task.keys())
+
+
 class Pi5CanonicalStandardRouteTests(unittest.TestCase):
     def test_pi5_renders_and_runs_status_agent_outside_api_rollback(self) -> None:
         tasks = yaml.safe_load(self.task_text("main"))
