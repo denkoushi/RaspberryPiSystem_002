@@ -1,0 +1,90 @@
+{
+  "schema": "hermes-source-definition/v1",
+  "id": "torque_training_session",
+  "label": "訓練セッション",
+  "numericFields": ["targetTorque", "attemptCount", "passRate", "meanAbsoluteErrorPercent", "meanDeviationPercent"],
+  "visibility": [
+    "kiosk",
+    "viewer",
+    "manager",
+    "admin"
+  ],
+  "description": "トルクレンチ締付訓練の完了セッション。従業員・完了日の期間・訓練条件・総合合否で検索し、各回の測定値と判定を表示する。",
+  "recordNumberField": "sessionId",
+  "metadataFields": {
+    "sessionId": "訓練セッションID",
+    "employeeName": "従業員名",
+    "employeeCode": "社員コード",
+    "trainingName": "訓練名",
+    "targetBolt": "対象ボルト (呼び径)",
+    "material": "材質",
+    "targetTorque": "目標トルク",
+    "wrench": "使用レンチ",
+    "terminalName": "端末名",
+    "completedOn": "完了日",
+    "overallJudgement": "総合合否",
+    "attemptCount": "締付回数",
+    "passRate": "合格率 (%)",
+    "meanAbsoluteErrorPercent": "平均絶対誤差 (%)",
+    "meanDeviationPercent": "平均偏差 (%)"
+  },
+  "bodyFields": {
+    "summaryText": "訓練結果",
+    "attemptsText": "各回の締付値・目標・判定"
+  },
+  "contextAttributes": [
+    "sessionId",
+    "employeeName",
+    "employeeCode",
+    "trainingName",
+    "targetBolt",
+    "material",
+    "targetTorque",
+    "wrench",
+    "terminalName",
+    "completedOn",
+    "overallJudgement",
+    "attemptCount",
+    "passRate",
+    "meanAbsoluteErrorPercent",
+    "meanDeviationPercent"
+  ],
+  "searchMetadataFields": [
+    "sessionId",
+    "employeeName",
+    "employeeCode",
+    "trainingName",
+    "targetBolt",
+    "material",
+    "targetTorque",
+    "wrench",
+    "terminalName",
+    "completedOn",
+    "overallJudgement"
+  ],
+  "lexicalFields": [
+    "sessionId",
+    "employeeName",
+    "employeeCode",
+    "trainingName",
+    "targetBolt",
+    "material",
+    "targetTorque",
+    "wrench",
+    "terminalName",
+    "completedOn",
+    "overallJudgement",
+    "attemptCount",
+    "passRate",
+    "meanAbsoluteErrorPercent",
+    "meanDeviationPercent",
+    "summaryText",
+    "attemptsText"
+  ],
+  "organizedLabels": {
+    "result": "訓練結果"
+  },
+  "organizedContextClasses": [
+    "result"
+  ]
+}

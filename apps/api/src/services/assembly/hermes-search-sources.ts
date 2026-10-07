@@ -1,8 +1,28 @@
 import type { KnowledgeProcedureDocument, KnowledgeProcedureSummary } from '@raspi-system/shared-types';
 
-export const RETRIEVAL_SOURCE_IDS = ['nonconformity', 'knowledge_procedure'] as const;
-export type RetrievalSourceId = typeof RETRIEVAL_SOURCE_IDS[number];
+import type { createTorqueTrainingSourceReaders } from '../torque-training/torque-training-hermes-source.service.js';
+
 export type RetrievalSourceReader = () => Promise<Array<Record<string, unknown>>>;
+type ReaderContext = {
+  nonconformity: RetrievalSourceReader;
+  procedures: RetrievalSourceReader;
+  training: () => ReturnType<typeof createTorqueTrainingSourceReaders>;
+};
+
+// The only API registration point. Reader factories receive code-owned dependencies.
+export const RETRIEVAL_SOURCE_READERS = {
+  nonconformity: (context: ReaderContext) => context.nonconformity,
+  knowledge_procedure: (context: ReaderContext) => context.procedures,
+  torque_training_session: (context: ReaderContext) => context.training().torque_training_session,
+  torque_training_operator: (context: ReaderContext) => context.training().torque_training_operator,
+  torque_training_team: (context: ReaderContext) => context.training().torque_training_team,
+} satisfies Record<string, (context: ReaderContext) => RetrievalSourceReader>;
+export type RetrievalSourceId = keyof typeof RETRIEVAL_SOURCE_READERS;
+export const RETRIEVAL_SOURCE_IDS = Object.keys(RETRIEVAL_SOURCE_READERS) as RetrievalSourceId[];
+
+export function registeredSourceReaders(context: ReaderContext, ids: RetrievalSourceId[]): RetrievalSourceReader[] {
+  return ids.map(id => RETRIEVAL_SOURCE_READERS[id](context));
+}
 
 export function retrievalSourceIdsFromEnv(env: NodeJS.ProcessEnv = process.env): RetrievalSourceId[] {
   const ids = [...new Set((env.HERMES_RETRIEVAL_SOURCES ?? '').split(',').map(id => id.trim()).filter(Boolean))];

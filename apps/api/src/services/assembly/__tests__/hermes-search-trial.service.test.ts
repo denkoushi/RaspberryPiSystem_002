@@ -5,6 +5,10 @@ import type { KnowledgeProcedureDocument } from '@raspi-system/shared-types';
 const spawnMock = vi.hoisted(() => vi.fn());
 const mcpCalls = vi.hoisted(() => [] as unknown[]);
 const readSourcePage = vi.hoisted(() => vi.fn());
+const trainingReaderFactory = vi.hoisted(() => vi.fn());
+vi.mock('../../torque-training/torque-training-hermes-source.service.js', () => ({
+  createTorqueTrainingSourceReaders: trainingReaderFactory,
+}));
 
 vi.mock('node:child_process', () => ({ spawn: spawnMock }));
 vi.mock('node:os', () => ({ setPriority: () => {} }));
@@ -96,6 +100,7 @@ describe('HermesSearchTrialService retrieval switch', () => {
     else process.env.HERMES_SEARCH_ENTRY = previous.entry;
     spawnMock.mockReset();
     readSourcePage.mockReset();
+    trainingReaderFactory.mockReset();
     if (previous.sources === undefined) delete process.env.HERMES_RETRIEVAL_SOURCES;
     else process.env.HERMES_RETRIEVAL_SOURCES = previous.sources;
     mcpCalls.length = 0;
@@ -230,6 +235,24 @@ describe('HermesSearchTrialService retrieval switch', () => {
     } finally { service.close(); }
   });
 
+  it('registers only opted-in training readers and shares the reader factory per corpus refresh', async () => {
+    process.env.HERMES_RETRIEVAL_SOURCES = 'torque_training_session,torque_training_operator,torque_training_team';
+    const ids = process.env.HERMES_RETRIEVAL_SOURCES.split(',');
+    const readers = Object.fromEntries(ids.map(id => [id, vi.fn().mockResolvedValue([{ kind: id, id: 'synthetic' }])]));
+    trainingReaderFactory.mockReturnValue(readers);
+    const gate = holdingChild();
+    spawnMock.mockImplementation(() => gate.child);
+    const service = new HermesSearchTrialService({ ...v2Settings(), loadRecords: undefined });
+    try {
+      await service.scope();
+      await vi.waitFor(() => expect(gate.corpus).toHaveLength(1));
+      expect(gate.corpus[0]?.records).toEqual(ids.map(id => ({ kind: id, id: 'synthetic' })));
+      expect(trainingReaderFactory).toHaveBeenCalledTimes(1);
+      for (const reader of Object.values(readers)) expect(reader).toHaveBeenCalledTimes(1);
+      expect(readSourcePage).not.toHaveBeenCalled();
+    } finally { service.close(); }
+  });
+
   it('keeps the default authorized reader on nonconformity without reading procedures', async () => {
     delete process.env.HERMES_RETRIEVAL_SOURCES;
     const gate = holdingChild();
@@ -242,6 +265,7 @@ describe('HermesSearchTrialService retrieval switch', () => {
       await vi.waitFor(() => expect(gate.corpus).toHaveLength(1));
       expect(gate.corpus[0]?.records).toEqual([{ kind: 'nonconformity', id: 'n1' }]);
       expect(procedures.listPublished).not.toHaveBeenCalled();
+      expect(trainingReaderFactory).not.toHaveBeenCalled();
     } finally { service.close(); }
   });
 

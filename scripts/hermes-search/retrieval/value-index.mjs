@@ -1,3 +1,4 @@
+import { recordSourceId } from '../hermes-source-definition.mjs';
 import { catalogEntries } from './catalog.mjs';
 import { contentTokens } from './structural-text.mjs';
 
@@ -11,7 +12,7 @@ export function normalizeForMatch(value) {
 function distinctValues(records, key, sourceId) {
   const seen = new Map();
   for (const record of records) {
-    if ((record?.sourceId ?? 'nonconformity') !== sourceId) continue;
+    if ((recordSourceId(record)) !== sourceId) continue;
     const raw = record?.[key];
     if (typeof raw !== 'string' || !raw.trim()) continue;
     const norm = normalizeForMatch(raw);

@@ -76,7 +76,7 @@ describe('procedure-manuals material shelf', () => {
     expect(screen.getByRole('dialog', { name: '素材' })).toBeInTheDocument();
     expect(await screen.findByText(/締付手順/)).toHaveClass('line-clamp-6');
     expect(await screen.findByRole('img', { name: '手順.png' })).toHaveAttribute('src', 'blob:photo');
-    expect(screen.getAllByText('DFD1 組立')).toHaveLength(2);
+    expect(screen.getAllByText('DFD1 組立')).toHaveLength(3);
     expect(mocks.list).toHaveBeenCalledWith({ state: 'unplaced', q: '', limit: 500 });
     fireEvent.change(screen.getByLabelText('素材のヒント検索'), { target: { value: 'DFD1' } });
     await waitFor(() => expect(mocks.list).toHaveBeenLastCalledWith({ state: 'unplaced', q: 'DFD1', limit: 500 }));
@@ -87,6 +87,127 @@ describe('procedure-manuals material shelf', () => {
     expect(screen.queryByRole('button', { name: '現在ページに配置' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '閉じる' })); expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:photo');
+  });
+  it('opens only the first bundle, restores expansion after search, and resets it when switching tabs', async () => {
+    mocks.list.mockResolvedValue([
+      { ...text, subjectHint: 'DFD1 組立' },
+      { ...photo, subjectHint: 'DFD2 組立' },
+      { ...photo, id: 'other', subjectHint: '検査' },
+    ]);
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    const first = await screen.findByRole('button', { name: /^DFD1 組立/ });
+    const second = screen.getByRole('button', { name: /^DFD2 組立/ });
+    expect(first).toHaveAttribute('aria-expanded', 'true');
+    expect(second).toHaveAttribute('aria-expanded', 'false');
+    expect(mocks.file).not.toHaveBeenCalled();
+    fireEvent.click(second);
+    expect(second).toHaveAttribute('aria-expanded', 'true');
+    await screen.findByRole('img', { name: '手順.png' });
+    fireEvent.click(first);
+    expect(first).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.change(screen.getByLabelText('素材のヒント検索'), { target: { value: 'DFD' } });
+    expect(await screen.findByRole('button', { name: /^DFD1 組立/ })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: /^DFD2 組立/ })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.queryByRole('button', { name: /^検査/ })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('素材のヒント検索'), { target: { value: '' } });
+    expect(await screen.findByRole('button', { name: /^DFD1 組立/ })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: /^DFD2 組立/ })).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(screen.getByRole('tab', { name: '配置済み' }));
+    expect(await screen.findByRole('button', { name: /^DFD1 組立/ })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: /^DFD2 組立/ })).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(screen.getByRole('tab', { name: /^未配置/ }));
+    expect(await screen.findByRole('button', { name: /^DFD1 組立/ })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: /^DFD2 組立/ })).toHaveAttribute('aria-expanded', 'false');
+  });
+  it.each(['unplaced', 'placed'] as const)('adds and removes only selectable cards in a %s bundle without affecting other bundles or expansion', async (tab) => {
+    mocks.list.mockResolvedValue([text, photo, { ...photo, id: 'pdf', kind: 'PDF' }, { ...text, id: 'other', subjectHint: '別の束' }]);
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} onSelect={vi.fn()} />);
+    await screen.findByRole('button', { name: /^DFD1 組立/ });
+    if (tab === 'placed') {
+      fireEvent.click(screen.getByRole('tab', { name: '配置済み' }));
+      await screen.findByRole('button', { name: /^DFD1 組立/ });
+    }
+    const otherHeader = await screen.findByRole('button', { name: /^別の束/ });
+    fireEvent.click(otherHeader);
+    fireEvent.click(screen.getByRole('checkbox', { name: '別の束' }));
+    const header = screen.getByRole('button', { name: /^DFD1 組立/ });
+    const pick = within(header).getByRole('button', { name: '束を全部選ぶ' });
+    fireEvent.click(pick);
+    expect(header).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('status', { name: '選択中の素材' })).toHaveTextContent('3 件を選択中');
+    const checks = screen.getAllByRole('checkbox', { name: 'DFD1 組立' });
+    expect(checks.filter((check) => (check as HTMLInputElement).checked)).toHaveLength(2);
+    expect(checks[2]).toBeDisabled();
+    fireEvent.click(pick);
+    expect(screen.getByRole('status', { name: '選択中の素材' })).toHaveTextContent('1 件を選択中');
+    expect(screen.getByRole('checkbox', { name: '別の束' })).toBeChecked();
+  });
+  it('bulk-selects processing photos within the import limit and excludes imported candidates', async () => {
+    mocks.workInstructions.mockResolvedValue({ items: Array.from({ length: 52 }, (_, index) => ({
+      candidateKey: `work:${index}`, partNumber: 'DFD1', shootingTarget: '外径', step: index + 1, memo: '', assetId: `asset-${index}`, alreadyImported: index === 0,
+    })) });
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('tab', { name: '加工の写真' }));
+    const header = await screen.findByRole('button', { name: /^DFD1 撮影対象/ });
+    expect(mocks.workInstructions).toHaveBeenCalledWith({ q: '', limit: 1000 });
+    const pick = within(header).getByRole('button', { name: '束を全部選ぶ' });
+    fireEvent.click(pick);
+    expect(screen.getByRole('status', { name: '選択中の素材' })).toHaveTextContent('50 件を選択中');
+    expect(screen.getByRole('checkbox', { name: 'DFD1 外径 手順 1' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'DFD1 外径 手順 52' })).toBeDisabled();
+    fireEvent.click(pick);
+    expect(screen.getByRole('status', { name: '選択中の素材' })).toHaveTextContent('0 件を選択中');
+  });
+  it('hides bundle selection in replacement mode on material and processing tabs', async () => {
+    mocks.workInstructions.mockResolvedValue({ items: [{ candidateKey: 'work:1', partNumber: 'DFD1', shootingTarget: '外径', step: 1, memo: '', assetId: 'asset', alreadyImported: false }] });
+    render(<ProcedureMaterialShelfDialog mode="replace" onClose={vi.fn()} onSelect={vi.fn()} />);
+    await screen.findAllByRole('checkbox');
+    expect(screen.queryByRole('button', { name: '束を全部選ぶ' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: '加工の写真' }));
+    await screen.findByRole('checkbox', { name: 'DFD1 外径 手順 1' });
+    expect(screen.queryByRole('button', { name: '束を全部選ぶ' })).not.toBeInTheDocument();
+  });
+  it('tabs to a closed replacement bundle through the focus trap and toggles it with Enter and Space', async () => {
+    const offsetParent = vi.spyOn(HTMLElement.prototype, 'offsetParent', 'get').mockImplementation(function (this: HTMLElement) { return this.parentElement; });
+    try {
+      mocks.list.mockResolvedValue([text, { ...photo, subjectHint: '写真' }]);
+      render(<ProcedureMaterialShelfDialog mode="replace" onClose={vi.fn()} onSelect={vi.fn()} />);
+      const header = await screen.findByRole('button', { name: /^写真/ });
+      expect(header).toHaveAttribute('aria-expanded', 'false');
+      expect(header).toHaveAttribute('tabindex', '0');
+      const first = screen.getByRole('tab', { name: /^未配置/ });
+      first.focus();
+      fireEvent.keyDown(first, { key: 'Tab', shiftKey: true });
+      expect(header).toHaveFocus();
+      fireEvent.keyDown(header, { key: 'Enter' });
+      expect(header).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByRole('checkbox', { name: '写真' })).toBeInTheDocument();
+      fireEvent.keyDown(header, { key: ' ' });
+      expect(header).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByRole('checkbox', { name: '写真' })).not.toBeInTheDocument();
+      fireEvent.keyDown(header, { key: 'Tab' });
+      expect(first).toHaveFocus();
+      fireEvent.keyDown(first, { key: 'Tab', shiftKey: true });
+      fireEvent.keyDown(header, { key: ' ' });
+      expect(header).toHaveAttribute('aria-expanded', 'true');
+      fireEvent.keyDown(header, { key: 'Enter' });
+      expect(header).toHaveAttribute('aria-expanded', 'false');
+    } finally {
+      offsetParent.mockRestore();
+    }
+  });
+  it('keeps expansion independent for missing hints and the literal missing-hint label', async () => {
+    mocks.list.mockResolvedValue([text, { ...photo, subjectHint: 'ヒントなし' }, { ...photo, id: 'missing', subjectHint: null }]);
+    render(<ProcedureMaterialShelfDialog mode="replace" onClose={vi.fn()} onSelect={vi.fn()} />);
+    const headers = await screen.findAllByRole('button', { name: /^ヒントなし/ });
+    expect(headers).toHaveLength(2);
+    fireEvent.click(headers[0]);
+    expect(headers[0]).toHaveAttribute('aria-expanded', 'true');
+    expect(headers[1]).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(headers[1]);
+    fireEvent.click(headers[0]);
+    expect(headers[0]).toHaveAttribute('aria-expanded', 'false');
+    expect(headers[1]).toHaveAttribute('aria-expanded', 'true');
   });
   it('shows each attachment warning below its message reason and leaves empty warnings blank', async () => {
     const reason = '本文が空で、対応する写真・動画がありません';
@@ -203,6 +324,7 @@ describe('procedure-manuals material shelf', () => {
     await screen.findByText('素材がありません');
     fireEvent.click(screen.getByRole('tab', { name: '配置済み' }));
     const textCheck = await screen.findByRole('checkbox', { name: 'DFD1 組立' });
+    fireEvent.click(screen.getByRole('button', { name: /^配置済み写真/ }));
     const photoCheck = screen.getByRole('checkbox', { name: '配置済み写真' });
     expect(textCheck).toBeEnabled(); expect(photoCheck).toBeEnabled();
     expect(mocks.list).toHaveBeenLastCalledWith({ state: 'placed', q: '', limit: 500 });
@@ -250,6 +372,8 @@ describe('procedure-manuals material shelf', () => {
     const button = screen.getByRole('button', { name: 'この素材に差し替え' });
     expect(button).toBeDisabled();
     expect(screen.queryByRole('button', { name: '現在ページに配置' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^写真1/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^写真2/ }));
     const firstCheck = screen.getByRole('checkbox', { name: '写真1' });
     const secondCheck = screen.getByRole('checkbox', { name: '写真2' });
     fireEvent.click(firstCheck);
@@ -344,12 +468,13 @@ describe('procedure-manuals material shelf', () => {
     expect(await screen.findByRole('img', { name: 'DFD1 外径 手順 1' })).toBeInTheDocument();
     expect(mocks.workInstructionImage).toHaveBeenCalledWith('asset-1');
     expect(mocks.knowledgeImage).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /^DFD2/ }));
     expect(screen.getByRole('checkbox', { name: 'DFD2 外径 手順 3' })).toBeDisabled();
     expect(screen.getByText(/取込済み/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '棚に取り込む' })).toBeDisabled();
     expect(screen.getByLabelText('加工の写真検索')).toHaveAttribute('placeholder', '品番・対象');
     fireEvent.change(screen.getByLabelText('加工の写真検索'), { target: { value: 'DFD1' } });
-    await waitFor(() => expect(mocks.workInstructions).toHaveBeenLastCalledWith({ q: 'DFD1', limit: 60 }));
+    await waitFor(() => expect(mocks.workInstructions).toHaveBeenLastCalledWith({ q: 'DFD1', limit: 1000 }));
     fireEvent.click(await screen.findByRole('checkbox', { name: 'DFD1 外径 手順 1' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'DFD1 内径 手順 2' }));
     fireEvent.click(screen.getByRole('button', { name: '棚に取り込む' }));

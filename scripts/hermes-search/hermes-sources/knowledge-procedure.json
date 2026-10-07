@@ -1,6 +1,8 @@
 {
   "schema": "hermes-source-definition/v1",
   "id": "knowledge_procedure",
+  "label": "手順書",
+  "pageContextAttributes": {"partNumber": "partNumber", "drawingNumber": "drawingNumber", "procedureId": null},
   "visibility": ["kiosk", "viewer", "manager", "admin"],
   "description": "Chatのナレッジ機能で公開された作業手順書",
   "recordNumberField": "title",

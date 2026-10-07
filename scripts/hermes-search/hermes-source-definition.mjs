@@ -1,6 +1,8 @@
 // Source definitions describe columns and extraction semantics. They never
 // grant database access or select a connection supplied by model output.
 import fs from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 
 function freeze(value) {
@@ -40,6 +42,29 @@ export function validateSourceDefinition(value,expectedId) {
     const aliases=value.quantityUnits.flatMap(unit=>unit.aliases.map(alias=>alias.toLowerCase()));
     if(new Set(aliases).size!==aliases.length)throw new Error('ambiguous quantity unit alias');
   }
+  if(value.label!==undefined && (typeof value.label!=='string'||!value.label.trim()))throw new Error('invalid label');
+  if(value.numericFields!==undefined && (!Array.isArray(value.numericFields)
+    ||new Set(value.numericFields).size!==value.numericFields.length
+    ||value.numericFields.some(key=>typeof key!=='string'||!Object.hasOwn(value.metadataFields??{},key)))) {
+    throw new Error('invalid numeric fields');
+  }
+  if(value.retrieval!==undefined) {
+    if(!value.retrieval||typeof value.retrieval!=='object'||Array.isArray(value.retrieval)
+      ||Object.entries(value.retrieval).some(([key,enabled])=>key==='denseStoreSuffix'
+        ? typeof enabled!=='string'||!/^[a-z0-9_-]*$/u.test(enabled)
+        : !['semanticSearch','enrichment','learnedQueries'].includes(key)||typeof enabled!=='boolean')) {
+      throw new Error('invalid retrieval capabilities');
+    }
+  }
+  if(value.pageContextAttributes!==undefined && (!value.pageContextAttributes
+    ||typeof value.pageContextAttributes!=='object'||Array.isArray(value.pageContextAttributes)
+    ||Object.entries(value.pageContextAttributes).some(([kind,field])=>!kind
+      ||field!==null && (typeof field!=='string'||!Object.hasOwn(value.metadataFields??{},field))))) {
+    throw new Error('invalid page context attributes');
+  }
+  if(value.outOfScopeAnswer!==undefined && (typeof value.outOfScopeAnswer!=='string'||!value.outOfScopeAnswer.trim())) {
+    throw new Error('invalid out of scope answer');
+  }
   const extraction=value.offlineExtraction;
   // A structured source may supply typed values directly, without extraction.
   if(extraction && (typeof extraction.prompt!=='string' || !extraction.prompt.trim()
@@ -50,19 +75,36 @@ export function validateSourceDefinition(value,expectedId) {
   return freeze(value);
 }
 
-export const nonconformityDefinitionPath=new URL('./hermes-sources/nonconformity.json',import.meta.url);
-const raw=fs.readFileSync(nonconformityDefinitionPath,'utf8');
-export const nonconformityDefinition=validateSourceDefinition(JSON.parse(raw),'nonconformity');
-export const nonconformityDefinitionDigest=createHash('sha256').update(raw).digest('hex');
+export function loadSourceDefinitions(directory=new URL('./hermes-sources/',import.meta.url)) {
+  const root=directory instanceof URL?fileURLToPath(directory):directory;
+  const definitions=Object.create(null);
+  for(const file of fs.readdirSync(root).sort()) {
+    if(!file.endsWith('.json')||!fs.statSync(path.join(root,file)).isFile())continue;
+    const value=JSON.parse(fs.readFileSync(path.join(root,file),'utf8'));
+    // Other JSON contracts (e.g. relevance rules) share this directory.
+    if(!String(value?.schema??'').startsWith('hermes-source-definition/')
+      && (value?.schema!==undefined||!Object.hasOwn(value??{},'bodyFields')))continue;
+    if(Object.hasOwn(definitions,value.id))throw new Error(`duplicate source definition: ${value.id}`);
+    const expectedId=file.slice(0,-5).replaceAll('-','_');
+    definitions[expectedId]=validateSourceDefinition(value,expectedId);
+  }
+  return Object.freeze(definitions);
+}
 
-export const knowledgeProcedureDefinition=validateSourceDefinition(
-  JSON.parse(fs.readFileSync(new URL('./hermes-sources/knowledge-procedure.json',import.meta.url),'utf8')),
-  'knowledge_procedure',
-);
-export const sourceDefinitions=Object.freeze({
-  nonconformity:nonconformityDefinition,
-  knowledge_procedure:knowledgeProcedureDefinition,
-});
+export const sourceDefinitions=loadSourceDefinitions();
+// Compatibility exports for the existing ingestion and legacy consumers.
+export const nonconformityDefinitionPath=new URL('./hermes-sources/nonconformity.json',import.meta.url);
+export const nonconformityDefinition=sourceDefinitions.nonconformity;
+export const nonconformityDefinitionDigest=createHash('sha256').update(fs.readFileSync(nonconformityDefinitionPath,'utf8')).digest('hex');
+export const knowledgeProcedureDefinition=sourceDefinitions.knowledge_procedure;
+export const torqueTrainingSessionDefinition=sourceDefinitions.torque_training_session;
+export const torqueTrainingOperatorDefinition=sourceDefinitions.torque_training_operator;
+export const torqueTrainingTeamDefinition=sourceDefinitions.torque_training_team;
+
+// Only this boundary supplies the source identity of legacy untagged records.
+export function recordSourceId(record) {
+  return record?.sourceId ?? 'nonconformity';
+}
 
 export function sourceIdsFromEnv(env=process.env) {
   const ids=[...new Set((env.HERMES_RETRIEVAL_SOURCES??'').split(',').map(id=>id.trim()).filter(Boolean))];

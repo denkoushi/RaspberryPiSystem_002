@@ -1,7 +1,7 @@
 // One JEV call per turn. Choice options come only from code-found candidates.
 // evaluate is injectable; the default transport follows hermes-jev-record-pilot.
 import { performance } from 'node:perf_hooks';
-import { catalogEntries } from './catalog.mjs';
+import { catalogEntries, definitionForCatalog } from './catalog.mjs';
 import { QUERY_PLAN_SCHEMA, hasAppliedHardFilter, shouldSkipRelevance } from './query-plan.mjs';
 import { contentSpans } from './structural-text.mjs';
 import { enumeratedChoiceGroups } from './value-index.mjs';
@@ -435,27 +435,33 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       const pageFilters = [];
       let pageContextUsed = false;
       if (currentEntity && !outOfScope) {
-        if (currentEntity.kind === 'procedureId') {
-          if (entries.some((entry) => entry.id === 'knowledge_procedure')) {
-            plannedSources = ['knowledge_procedure'];
-            pageContextUsed = true;
-          }
+        const sourceOwners = entries.filter((entry) => {
+          const attributes = definitionForCatalog(entry).pageContextAttributes;
+          return attributes && Object.hasOwn(attributes, currentEntity.kind) && attributes[currentEntity.kind] === null;
+        });
+        if (sourceOwners.length) {
+          plannedSources = sourceOwners.map((entry) => entry.id);
+          pageContextUsed = true;
         } else {
-          const owners = entries.filter((entry) => entry.fields.some((field) => field.key === currentEntity.kind && field.filterable)
-            && (currentEntity.kind !== 'drawingNumber' || entry.id === 'knowledge_procedure'));
+          const fieldFor = (entry) => {
+            const attributes = definitionForCatalog(entry).pageContextAttributes;
+            return attributes ? (attributes[currentEntity.kind] ?? null) : currentEntity.kind;
+          };
+          const owners = entries.filter((entry) => entry.fields.some((field) => field.key === fieldFor(entry) && field.filterable));
           const selectedOwners = owners.filter((entry) => plannedSources.includes(entry.id));
           const targets = selectedOwners.length ? selectedOwners : owners.slice(0, 1);
           if (targets.length) {
             plannedSources = targets.map((entry) => entry.id);
-            pageFilters.push(...targets.map((entry) => ({ source: entry.id, field: currentEntity.kind, op: 'eq', values: [currentEntity.value] })));
+            pageFilters.push(...targets.map((entry) => ({ source: entry.id, field: fieldFor(entry), op: 'eq', values: [currentEntity.value] })));
             pageContextUsed = true;
           }
         }
       }
+
       const dateOwner = entries.find((entry) => plannedSources.includes(entry.id) && entry.fields.some((field) => field.role === 'date'));
       const dateKey = dateOwner?.fields.find((field) => field.role === 'date')?.key ?? null;
       const dated = [];
-      const recentField = dateField(entries);
+      const recentField = dateField(entries.filter(entry => plannedSources.includes(entry.id)));
       if (dateOwner && dateKey && periodChoices.length) {
         let picked = periodChoices.length === 1 ? periodChoices[0] : null;
         if (periodAmbiguous) {
@@ -479,8 +485,9 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         return decision ? [{ source: filter.source, field: filter.field, op: filter.op, values: [...filter.values] }] : [];
       });
       const pageFields = new Set(pageFilters.map((filter) => `${filter.source}\u0000${filter.field}`));
+      // Shared facet values can be selected in several sources; only the chosen scope applies.
       const filters = mergeFilters([
-        ...[...carried, ...selected, ...dated].filter((filter) => (!pageContextUsed || plannedSources.includes(filter.source)) && !pageFields.has(`${filter.source}\u0000${filter.field}`)),
+        ...[...carried, ...selected, ...dated].filter((filter) => plannedSources.includes(filter.source) && !pageFields.has(`${filter.source}\u0000${filter.field}`)),
         ...pageFilters,
       ]);
       const judged = contentChoice === 'true' ? true : contentChoice === 'false' ? false : null;

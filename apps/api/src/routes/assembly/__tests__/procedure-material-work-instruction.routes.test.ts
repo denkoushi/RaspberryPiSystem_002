@@ -89,13 +89,17 @@ describe('procedure-material work-instruction routes', () => {
     expect(read.readPublishedGroups).toHaveBeenLastCalledWith({ limit: 500, offset: 500 });
     expect(read.readPublishedGroup).toHaveBeenCalledOnce();
   });
-  it('defaults to 60, caps at 200, validates list and import bounds', async () => {
+  it('defaults to 60, caps the route and service at 1000, validates list and import bounds', async () => {
     const { row, step, service } = await harness();
-    row.steps = Array.from({ length: 250 }, (_, i) => ({ ...step, step: i + 1 }));
+    row.steps = Array.from({ length: 1250 }, (_, i) => ({ ...step, step: i + 1 }));
     expect((await app.inject(`${base}/work-instruction-candidates`)).json().items).toHaveLength(60);
     expect((await app.inject(`${base}/work-instruction-candidates?limit=200`)).json().items).toHaveLength(200);
-    expect((await service.list({ limit: 500 })).items).toHaveLength(200);
-    for (const limit of [0, 201]) expect((await app.inject(`${base}/work-instruction-candidates?limit=${limit}`)).statusCode).toBe(400);
+    const response = await app.inject(`${base}/work-instruction-candidates?limit=1000`);
+    expect(response.statusCode).toBe(200);
+    expect(response.json().items).toHaveLength(1000);
+    expect((await service.list({ limit: 500 })).items).toHaveLength(500);
+    expect((await service.list({ limit: 2000 })).items).toHaveLength(1000);
+    for (const limit of [0, 1001]) expect((await app.inject(`${base}/work-instruction-candidates?limit=${limit}`)).statusCode).toBe(400);
     const invalidBodies = [
       { candidateKeys: [key] }, { items: [] }, { items: Array(51).fill(item) },
       { items: [item], memo: '偽メモ' }, { items: [{ ...item, memo: '偽メモ' }] },
