@@ -38,6 +38,8 @@ export function AssemblyProcedureDocumentEditorInspector({
   onDelete,
   onBringForward,
   onSendBackward,
+  onBringToFront,
+  onSendToBack,
   onReplaceImage,
   onRefetchTextCandidates,
   readOnly = false,
@@ -50,6 +52,8 @@ export function AssemblyProcedureDocumentEditorInspector({
   onDelete: () => void;
   onBringForward: (id: string) => void;
   onSendBackward: (id: string) => void;
+  onBringToFront: (id: string) => void;
+  onSendToBack: (id: string) => void;
   onReplaceImage?: () => void;
   onRefetchTextCandidates: () => void;
   readOnly?: boolean;
@@ -200,7 +204,7 @@ export function AssemblyProcedureDocumentEditorInspector({
                   type={key === 'strokeWidthRatio' ? 'number' : key === 'fillColor' ? 'text' : 'color'}
                   min={key === 'strokeWidthRatio' ? 0.1 : undefined}
                   max={key === 'strokeWidthRatio' ? 20 : undefined}
-                  step={key === 'strokeWidthRatio' ? 0.1 : undefined}
+                  step={key === 'strokeWidthRatio' ? 0.5 : undefined}
                   value={key === 'strokeWidthRatio' ? ratioToPercent(Number(value)) : value}
                   className="min-h-11 min-w-0 !px-2 text-lg"
                   onChange={(event) => patch({ [key]: key === 'strokeWidthRatio' ? clamp(percentToRatio(numberValue(event.target.value, Number(value) * 100)), 0.001, 0.2) : event.target.value })}
@@ -211,6 +215,18 @@ export function AssemblyProcedureDocumentEditorInspector({
           {(element.shape === 'LINE' || element.shape === 'ARROW') ? (
             <fieldset className="grid gap-1 rounded border border-white/10 p-2">
               <legend className="px-1 text-xs font-bold text-white/70">線分の始点・終点</legend>
+              <Button
+                type="button"
+                variant="ghostOnDark"
+                className="min-h-11"
+                disabled={readOnly}
+                onClick={() => patch({
+                  start: element.end ?? { xRatio: bbox.xRatio + bbox.widthRatio, yRatio: bbox.yRatio + bbox.heightRatio },
+                  end: element.start ?? { xRatio: bbox.xRatio, yRatio: bbox.yRatio }
+                })}
+              >
+                向きを反転
+              </Button>
               <div className="grid grid-cols-2 gap-1.5">
                 {([
                   ['start', '始点', element.start ?? { xRatio: bbox.xRatio, yRatio: bbox.yRatio }],
@@ -279,11 +295,17 @@ export function AssemblyProcedureDocumentEditorInspector({
       <fieldset className="grid gap-1 rounded border border-white/10 p-2">
         <legend className="px-1 text-xs font-bold text-white/70">重なり順とマスク</legend>
         <div className="grid grid-cols-2 gap-1.5">
+          <Button type="button" variant="ghostOnDark" className="min-h-11 !px-2 text-xs" onClick={() => onBringToFront(element.id)}>
+            最前面へ
+          </Button>
           <Button type="button" variant="ghostOnDark" className="min-h-11 !px-2 text-xs" onClick={() => onBringForward(element.id)}>
             前面へ
           </Button>
           <Button type="button" variant="ghostOnDark" className="min-h-11 !px-2 text-xs" onClick={() => onSendBackward(element.id)}>
             背面へ
+          </Button>
+          <Button type="button" variant="ghostOnDark" className="min-h-11 !px-2 text-xs" onClick={() => onSendToBack(element.id)}>
+            最背面へ
           </Button>
         </div>
         {(element.kind === 'TEXT' || element.kind === 'IMAGE') ? (

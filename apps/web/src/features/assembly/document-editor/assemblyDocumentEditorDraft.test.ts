@@ -49,6 +49,51 @@ describe('assembly document editor draft reducer', () => {
     expect(canDiscardAssemblyProcedureDocumentRevision({ status: 'draft', supersedesDocumentId: 'base-1' })).toBe(true);
   });
 
+  it.each([
+    ['bringForward', 'first', ['middle', 'first', 'last']],
+    ['sendBackward', 'last', ['first', 'last', 'middle']],
+    ['bringToFront', 'first', ['middle', 'last', 'first']],
+    ['sendToBack', 'last', ['last', 'first', 'middle']]
+  ] as const)('reorders equal z-indices with %s and leaves other pages unchanged', (type, id, order) => {
+    const otherPage = { ...createOverlayForRange('SHAPE', 1, bbox), id: 'other-page', zIndex: 7 };
+    const elements = [
+      { ...createOverlayForRange('SHAPE', 0, bbox), id: 'first', zIndex: 5 },
+      otherPage,
+      { ...createOverlayForRange('SHAPE', 0, bbox), id: 'middle', zIndex: 5 },
+      { ...createOverlayForRange('SHAPE', 0, bbox), id: 'last', zIndex: 5 }
+    ];
+    const reordered = overlayDraftReducer(elements, { type, id });
+    const page = reordered.filter((element) => element.pageIndex === 0).sort((a, b) => a.zIndex - b.zIndex);
+    expect(page.map((element) => element.id)).toEqual(order);
+    expect(page.map((element) => element.zIndex)).toEqual([0, 1, 2]);
+    expect(reordered.find((element) => element.id === otherPage.id)).toBe(otherPage);
+    expect(elements.map((element) => element.zIndex)).toEqual([5, 7, 5, 5]);
+  });
+
+  it('sorts by z-index before moving and renumbers the whole page', () => {
+    const elements = [
+      { ...createOverlayForRange('SHAPE', 0, bbox), id: 'front', zIndex: 9 },
+      { ...createOverlayForRange('SHAPE', 0, bbox), id: 'back', zIndex: 2 },
+      { ...createOverlayForRange('SHAPE', 0, bbox), id: 'middle', zIndex: 5 }
+    ];
+    const reordered = overlayDraftReducer(elements, { type: 'bringForward', id: 'back' });
+    expect(reordered.map((element) => [element.id, element.zIndex])).toEqual([
+      ['front', 2], ['back', 1], ['middle', 0]
+    ]);
+  });
+
+  it.each([
+    ['bringForward', 'front'], ['bringToFront', 'front'],
+    ['sendBackward', 'back'], ['sendToBack', 'back']
+  ] as const)('keeps boundary order for %s', (type, id) => {
+    const elements = [
+      { ...createOverlayForRange('SHAPE', 0, bbox), id: 'back', zIndex: 0 },
+      { ...createOverlayForRange('SHAPE', 0, bbox), id: 'front', zIndex: 1 }
+    ];
+    expect(overlayDraftReducer(elements, { type, id })).toEqual(elements);
+    expect(overlayDraftReducer(elements, { type, id: 'missing' })).toBe(elements);
+  });
+
   it('keeps bbox values inside the page with a positive minimum size', () => {
     expect(normalizeOverlayBBox({ xRatio: 0.9, yRatio: -1, widthRatio: 0.2, heightRatio: 2 })).toEqual({
       xRatio: 0.8,

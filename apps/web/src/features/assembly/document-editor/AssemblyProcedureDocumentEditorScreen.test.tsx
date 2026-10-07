@@ -23,15 +23,21 @@ vi.mock('./AssemblyProcedureDocumentEditorInspector', () => ({
     element,
     onRefetchTextCandidates,
     onReplaceImage,
+    onBringToFront,
+    onSendToBack,
     onClose
   }: {
     element: AssemblyProcedureOverlayElement | null;
     onRefetchTextCandidates: () => void;
     onReplaceImage: () => void;
+    onBringToFront: (id: string) => void;
+    onSendToBack: (id: string) => void;
     onClose: () => void;
   }) => (
     <aside aria-label="オーバーレイ編集" data-testid="editor-inspector">
       <button onClick={onClose} aria-label="属性を閉じる">✕</button>
+      <button onClick={() => element && onBringToFront(element.id)}>最前面へ</button>
+      <button onClick={() => element && onSendToBack(element.id)}>最背面へ</button>
       {element?.kind === 'TEXT' ? (
         <button type="button" onClick={onRefetchTextCandidates}>この範囲で候補を再取得</button>
       ) : null}
@@ -124,6 +130,8 @@ function makeController(
     uploadImage: vi.fn(async () => undefined),
     bringForward: vi.fn(),
     sendBackward: vi.fn(),
+    bringToFront: vi.fn(),
+    sendToBack: vi.fn(),
     nudgeElement: vi.fn(),
     updateElementBBox: vi.fn(),
     confirmNavigation: vi.fn(() => true),
@@ -144,6 +152,18 @@ function renderScreen(controller: AssemblyProcedureDocumentEditorController, onN
 
 describe('AssemblyProcedureDocumentEditorScreen', () => {
   beforeEach(() => { approvalMocks.read = null; approvalMocks.resolve.mockReset(); });
+  it('connects front and back inspector controls to the controller', () => {
+    const element: AssemblyProcedureOverlayElement = {
+      id: 'overlay', kind: 'SHAPE', shape: 'RECTANGLE', pageIndex: 0, zIndex: 0,
+      bbox: { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.2 }
+    };
+    const controller = makeController({ selectedElement: element });
+    renderScreen(controller);
+    fireEvent.click(screen.getByRole('button', { name: '最前面へ' }));
+    expect(controller.bringToFront).toHaveBeenCalledExactlyOnceWith(element.id);
+    fireEvent.click(screen.getByRole('button', { name: '最背面へ' }));
+    expect(controller.sendToBack).toHaveBeenCalledExactlyOnceWith(element.id);
+  });
   it.each([['make', 1, null, '作る · 下書き 第1版', 'text-[#3ba776]'], ['fix', 3, 'root', '直す · 改版の下書き 第3版', 'text-[#f6b93b]'], ['fix', 1, null, '直す · 下書き 第1版', 'text-[#f6b93b]']] as const)('shows workshop context for %s', (mode, revisionNumber, supersedesDocumentId, label, color) => {
     const controller = makeController({ document: { ...editorDocument, revisionNumber, supersedesDocumentId } });
     render(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} context={{ modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', processName: '組立 › 組立', mode }} /></AssemblyProcedureDocumentEditorProvider>);
