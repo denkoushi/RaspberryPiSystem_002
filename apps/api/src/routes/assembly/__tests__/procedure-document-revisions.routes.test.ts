@@ -275,7 +275,8 @@ describe('assembly procedure revision routes', () => {
     const region = {
       accessPassword: '2520',
       pageIndex: 0,
-      bbox: { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.4 }
+      bbox: { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.4 },
+      overlays: [{ assetId: 'material', bbox: { xRatio: 0, yRatio: 0, widthRatio: 1, heightRatio: 1 }, zIndex: 1, objectFit: 'fill', opacity: 0.5 }]
     };
     const imageRegion = await app.inject({
       method: 'POST',

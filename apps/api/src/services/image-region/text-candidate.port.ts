@@ -13,7 +13,7 @@ export type TextCandidate = {
   confidence: number | null;
   bounds: TextCandidateBounds | null;
   pageIndex: number | null;
-  source: 'coordinate-ocr' | 'poppler' | 'none';
+  source: 'coordinate-ocr' | 'poppler' | 'none' | 'ocr';
 };
 
 export type TextCandidateInput = {

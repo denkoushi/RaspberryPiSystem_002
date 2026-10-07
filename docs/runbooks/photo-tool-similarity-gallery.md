@@ -85,20 +85,31 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 
 ## 3.2 埋め込みモデルの切り替え（CLIP → EmbeddingGemma 2、2026-10）
 
-判断と測定は [ADR-20261007](../decisions/ADR-20261007-photo-tool-gallery-embeddinggemma2.md)。**2026-10-07 時点で未実施（1 回試みて中止）。本番は CLIP のまま。** 切り替え後の Pi5 の設定はモデル ID `embeddinggemma-2-512d`、しきい値 0.14 / 0.10 で、DGX のサーバーと同じモデルでなければならない。
+判断と測定は [ADR-20261007](../decisions/ADR-20261007-photo-tool-gallery-embeddinggemma2.md)。Pi5 の設定はモデル ID `embeddinggemma-2-512d`、しきい値 0.14 / 0.10 で、DGX のサーバーと同じモデルでなければならない。
 
-切り替えの順番（候補が出ない時間を短くするため、この設定のコミットを main に入れて main CI が成功し、配布できる状態になってから手順 2 を始め、続けて手順 4 を行う）:
+値が Pi5 の API に届く経路: API スロットの環境は `/etc/raspi-business-hermes-chat/compose.env`（前回の自分の写し）から作られ、標準ローリング更新は `infrastructure/docker/.env` を描画し直さない。`inventory.yml` の値は、`roles/release_pi5/tasks/business-hermes-chat-prepare.yml` の束縛リストに載っているキーだけが新しいスロットへ渡る。写真持出の 3 つのキーはこのリストに入っている。**ほかの `PHOTO_TOOL_*` を変えるときは、同じリストへ追加しないと届かない。**
 
-1. DGX でイメージを作る: `docker build -t system-prod-embedding-eg2:20261007 -f Dockerfile.embedding-eg2 .`。`embedding-server.py` と `start-embedding-server.sh` を `/srv/dgx/system-prod/bin/` に置く（置く前に旧ファイルを控える）。
-2. DGX で入れ替える: `scripts/dgx-local-llm-system/systemd/embedding-server.env.eg2.example` を `/srv/dgx/system-prod/etc/embedding-server.env` として置き、`stop-embedding-server.sh` の後に `start-embedding-server.sh` を実行する。起動スクリプトはこのファイルを読むので、`@reboot` の起動でも同じモデルになる。起動後に `docker exec system-prod-embedding nvidia-smi -L` が成功することを確かめる（Control Plane の復旧手順がこの確認を使う）。
-3. Pi5 の API コンテナから `/embed` を確認する: 200、512 次元、`modelId=embeddinggemma-2-512d`。
-4. Pi5 の API の環境変数 3 つ（`PHOTO_TOOL_EMBEDDING_MODEL_ID`、`PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE`、`PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE`）を切り替える。**標準ローリング更新（`--limit raspberrypi5`）は `infrastructure/docker/.env` を描画し直さないので、`inventory.yml` を変えて配布するだけでは切り替わらない**（2026-10-07 に確認）。`.env` を描画する経路と稼働中スロットへの反映を確かめてから実施し、API コンテナの環境変数で結果を確認する。
+切り替えの順番（Pi5 を先に変え、届いたことを確かめてから DGX を入れ替える。2026-10-07 の 1 回目は DGX を先に入れ替え、Pi5 に値が届かず中止した）:
+
+1. DGX の準備（稼働中のサービスは変えない）: `docker build -t system-prod-embedding-eg2:20261007 -f Dockerfile.embedding-eg2 .`、モデルファイルを `/srv/dgx/system-prod/data/hf-cache` に置く、`embedding-server.py` と `start-embedding-server.sh` を `/srv/dgx/system-prod/bin/` に置く（旧ファイルを控える）。
+2. 設定のコミットを Pi5 に標準配布する（`--limit raspberrypi5`）。
+3. API コンテナの環境変数を確認する: `PHOTO_TOOL_EMBEDDING_MODEL_ID=embeddinggemma-2-512d`、`PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE=0.14`、`PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE=0.10`。**変わっていなければここで中止する。** DGX は未変更なので食い違いは無い。
+4. DGX で入れ替える: `scripts/dgx-local-llm-system/systemd/embedding-server.env.eg2.example` を `/srv/dgx/system-prod/etc/embedding-server.env` として置き、`stop-embedding-server.sh` の後に `start-embedding-server.sh` を実行する。起動スクリプトはこのファイルを読むので、`@reboot` の起動でも同じモデルになる。起動後に `/embed` が 512 次元・`modelId=embeddinggemma-2-512d` を返すことと、`docker exec system-prod-embedding nvidia-smi -L` の成功を確かめる（Control Plane の復旧手順がこの確認を使う）。
 5. 再投入する（2 節の `pnpm backfill:photo-tool-gallery:prod`）。1 枚あたり約 2 秒。
 6. 確認する: `photo_tool_similarity_gallery` の `embeddingModelId` が全行 `embeddinggemma-2-512d`、管理画面の写真持出レビューで類似候補が出る。
 
-入れ替え中の挙動: 検索は現在のモデル ID の行だけを見る。手順 2 から 4 の間は、新モデルの問い合わせベクトルと CLIP の行を比べるため距離が 1 付近になり、候補も補助も出ない（誤った候補は出ない）。この間に GOOD にした写真は CLIP の ID で新モデルのベクトルが入るが、手順 5 で上書きされる。手順 4 から 5 の間は新しい ID の行がまだ無く、候補は出ない。
+入れ替え中の挙動: 検索は現在のモデル ID の行だけを見る。手順 2 の配布後は新しい ID の行がまだ無いので、手順 5 が終わるまで候補も補助も出ない（誤った候補は出ない）。手順 2 から 4 の間に GOOD にした写真は、新しい ID で CLIP のベクトルが入るが、手順 5 で上書きされる。
 
-切り戻し: DGX の `embedding-server.env` を消して `stop` / `start` し（既定値の CLIP、`lmsysorg/sglang:latest` に戻る）、設定のコミットを revert して Pi5 に配布し、**再投入をもう一度実行する**（入れ替え中に入った行を CLIP のベクトルへ戻すため）。
+切り戻し（モデルを CLIP に戻す）:
+
+1. `inventory.yml` の 3 つの値だけを旧値（モデル ID は `clip-ViT-B-32`、しきい値 0.22 / 0.14）に戻すコミットを作り、Pi5 に標準配布する。**束縛リストの 3 キーは残す。** 切り替えのコミットを `git revert` すると束縛も消え、`compose.env` に新しい値が残ったままになる（前回の自分の写しから作るため）。
+2. API の環境変数が旧値になったことを確かめる。
+3. DGX の `embedding-server.env` を外して `stop` / `start` する（既定値の CLIP、`lmsysorg/sglang:latest` に戻る）。
+4. 再投入をもう一度実行する（入れ替え中に入った行を CLIP のベクトルへ戻すため）。
+
+アプリだけを前の release へ戻す場合（release の rollback や、切り替え前の SHA の配布）: 失敗した release の自動 rollback は `compose.env` を配布前の内容に戻す。切り替えが済んだ後に古い SHA を配布しても、`compose.env` の 3 つの値は新しいまま残るので、DGX（EmbeddingGemma 2）との整合は保たれる。モデルを戻したいときは上の手順を使う。
+
+他の配布との関係: 手順 2 の後は、どの release も新しい値でスロットを作るので、別の PR の配布が挟まっても値は変わらない。ただし再投入（手順 5）は稼働中の API コンテナの中で動くため、その間に配布でスロットが入れ替わると中断される（再実行すればよい）。再投入が終わるまで Pi5 への配布を止める。
 
 ## 4. 関連ドキュメント
 

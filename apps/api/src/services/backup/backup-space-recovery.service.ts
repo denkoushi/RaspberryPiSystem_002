@@ -17,14 +17,12 @@ export async function recoverAndRetryBackupOnInsufficientSpace(params: {
   target: BackupTarget;
   backupOptions?: BackupOptions;
   errorMessage?: string;
-  maxDeleteCount?: number;
 }): Promise<{ recovered: boolean; result?: BackupResult; deletedPaths: string[] }> {
   const {
     backupService,
     target,
     backupOptions,
-    errorMessage,
-    maxDeleteCount = 100
+    errorMessage
   } = params;
 
   if (!isDropboxInsufficientSpaceErrorMessage(errorMessage)) {
@@ -59,30 +57,33 @@ export async function recoverAndRetryBackupOnInsufficientSpace(params: {
     return { recovered: false, deletedPaths: [] };
   }
 
+  // 小さな対象は削除しても容量が空かないため、最古の1件だけ試し、最後のコピーは必ず残す。
+  if (targetBackups.length === 1) {
+    logger?.warn({ path: targetBackups[0].path }, '[BackupSpaceRecovery] Skipped space recovery because only the newest backup remains');
+    return { recovered: false, deletedPaths: [] };
+  }
+
   const historyService = new BackupHistoryService();
   const deletedPaths: string[] = [];
-  const toDelete = targetBackups.slice(0, Math.max(1, maxDeleteCount));
+  const entry = targetBackups[0];
+  if (!entry.path) return { recovered: false, deletedPaths };
+  try {
+    await backupService.deleteBackup(entry.path);
+    deletedPaths.push(entry.path);
+    await historyService.markHistoryAsDeletedByPath(entry.path).catch(() => {});
+    logger?.warn({ path: entry.path }, '[BackupSpaceRecovery] Deleted oldest backup to recover space');
+  } catch (error) {
+    logger?.error({ err: error, path: entry.path }, '[BackupSpaceRecovery] Failed to delete backup during space recovery');
+    return { recovered: false, deletedPaths };
+  }
 
-  for (const entry of toDelete) {
-    if (!entry.path) continue;
-    try {
-      await backupService.deleteBackup(entry.path);
-      deletedPaths.push(entry.path);
-      await historyService.markHistoryAsDeletedByPath(entry.path).catch(() => {});
-      logger?.warn({ path: entry.path }, '[BackupSpaceRecovery] Deleted oldest backup to recover space');
-    } catch (error) {
-      logger?.error({ err: error, path: entry.path }, '[BackupSpaceRecovery] Failed to delete backup during space recovery');
-      continue;
-    }
-
-    const retried = await backupService.backup(target, backupOptions);
-    if (retried.success) {
-      logger?.info(
-        { deletedCount: deletedPaths.length, path: retried.path },
-        '[BackupSpaceRecovery] Backup retried successfully after deleting old backups'
-      );
-      return { recovered: true, result: retried, deletedPaths };
-    }
+  const retried = await backupService.backup(target, backupOptions);
+  if (retried.success) {
+    logger?.info(
+      { deletedCount: deletedPaths.length, path: retried.path },
+      '[BackupSpaceRecovery] Backup retried successfully after deleting old backups'
+    );
+    return { recovered: true, result: retried, deletedPaths };
   }
 
   return { recovered: false, deletedPaths };
