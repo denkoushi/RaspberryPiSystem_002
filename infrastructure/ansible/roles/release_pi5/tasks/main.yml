@@ -83,3 +83,16 @@
   ansible.builtin.systemd:
     name: status-agent.service
     state: restarted
+
+# Host policy converges even on settled releases, outside API rollback. Like
+# host-journald.yml, a failure here (for example an unreachable package
+# mirror) only reports; it never fails or rolls back the application release.
+- name: Converge the Pi5 unattended security update policy
+  when: "'server' in group_names"
+  block:
+    - name: Apply the Pi5 unattended security update policy
+      ansible.builtin.import_tasks: host-unattended-upgrades.yml
+  rescue:
+    - name: Report that the Pi5 unattended security update policy was not applied
+      ansible.builtin.debug:
+        msg: "The unattended security update policy was not applied on {{ inventory_hostname }}; the release continues."

@@ -230,6 +230,25 @@ rkhunter:
     hour: "4"
     weekday: "0"
 
+# OS security updates: opt in only on Pi5; host variables may override the
+# Python-regex blacklist. Docker, remote access, kernel/firmware and Chromium
+# remain manually maintained. Only Debian's security origin is allowed.
+unattended_upgrades_enabled: false
+unattended_upgrades_package_blacklist:
+  - '^docker-ce$'
+  - '^docker-ce-cli$'
+  - '^containerd[.]io$'
+  - '^docker-buildx-plugin$'
+  - '^docker-compose-plugin$'
+  - '^tailscale$'
+  - '^linux-image'
+  - '^linux-headers'
+  - '^raspi-firmware$'
+  - '^raspberrypi-(kernel|bootloader)'
+  - '^rpi-eeprom'
+  - '^firmware-'
+  - '^chromium'
+
 # 監視・アラート設定（Phase6）
 security_monitor_enabled: true
 security_monitor_state_dir: "/var/lib/security-monitor"

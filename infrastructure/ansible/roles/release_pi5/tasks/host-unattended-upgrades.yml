@@ -1,0 +1,42 @@
+---
+- name: Inspect the managed unattended upgrade policy
+  ansible.builtin.stat:
+    path: /etc/apt/apt.conf.d/52raspi-unattended-upgrades
+  register: release_pi5_unattended_policy
+
+# Render before installing the package: Debian's 50unattended-upgrades also
+# permits the base suite. Keep that file and 20auto-upgrades untouched.
+# Retain an explicit zero when disabling an already managed host, so Debian's
+# configuration cannot re-enable periodic upgrades. Unmanaged disabled hosts
+# receive no changes.
+- name: Configure the Pi5 unattended security update policy
+  ansible.builtin.template:
+    src: unattended-upgrades.conf.j2
+    dest: /etc/apt/apt.conf.d/52raspi-unattended-upgrades
+    owner: root
+    group: root
+    mode: "0644"
+  when: >-
+    unattended_upgrades_enabled | default(false) | bool or
+    release_pi5_unattended_policy.stat.exists
+
+- name: Install unattended-upgrades on enabled Pi5 hosts
+  ansible.builtin.apt:
+    name: unattended-upgrades
+    state: present
+    install_recommends: false
+    update_cache: true
+    cache_valid_time: "{{ apt_cache_valid_time_seconds | default(3600) }}"
+  when: unattended_upgrades_enabled | default(false) | bool
+
+# Debian trixie runs upgrades at 06:00 with up to 60 minutes of jitter.
+# Preserve the vendor schedule rather than adding a competing timer/drop-in.
+- name: Enable the existing APT periodic timers on enabled Pi5 hosts
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - apt-daily.timer
+    - apt-daily-upgrade.timer
+  when: unattended_upgrades_enabled | default(false) | bool
