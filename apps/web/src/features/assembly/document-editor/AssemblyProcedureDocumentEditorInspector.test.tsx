@@ -19,6 +19,8 @@ function commonProps(onUpdate: (element: AssemblyProcedureOverlayElement) => voi
     onDelete: vi.fn(),
     onBringForward: vi.fn(),
     onSendBackward: vi.fn(),
+    onBringToFront: vi.fn(),
+    onSendToBack: vi.fn(),
     onReplaceImage: vi.fn(),
     onRefetchTextCandidates: vi.fn(),
     busy: false
@@ -84,7 +86,7 @@ describe('AssemblyProcedureDocumentEditorInspector', () => {
     );
 
     for (const [label, value, min, max, step] of [
-      ['線幅比率 (%)', 0.9, 0.1, 20, '0.1'],
+      ['線幅比率 (%)', 0.9, 0.1, 20, '0.5'],
       ['始点 X (%)', 11.2, 0, 100, '0.5'],
       ['始点 Y (%)', 21.4, 0, 100, '0.5'],
       ['終点 X (%)', 71.4, 0, 100, '0.5'],
@@ -175,6 +177,43 @@ describe('AssemblyProcedureDocumentEditorInspector', () => {
     expect(onUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ style: expect.objectContaining({ align: 'center' }) }));
     fireEvent.change(screen.getByLabelText('マスク色'), { target: { value: '#eeeeee' } });
     expect(onUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ mask: { enabled: true, color: '#eeeeee' } }));
+  });
+
+  describe.each(['LINE', 'ARROW'] as const)('%s direction reversal', (shape) => {
+    it.each([
+      { start: { xRatio: 0.7, yRatio: 0.6 }, end: { xRatio: 0.3, yRatio: 0.2 } },
+      { start: undefined, end: undefined },
+      { start: { xRatio: 0.7, yRatio: 0.6 }, end: undefined },
+      { start: undefined, end: { xRatio: 0.3, yRatio: 0.2 } }
+    ])('swaps stored endpoints or bbox defaults for %o', (points) => {
+      const onUpdate = vi.fn();
+      const element: AssemblyProcedureOverlayElement = { ...base, kind: 'SHAPE', shape, ...points };
+      render(<AssemblyProcedureDocumentEditorInspector {...commonProps(onUpdate)} element={element} />);
+      const button = screen.getByRole('button', { name: '向きを反転' });
+      expect(button).toHaveClass('min-h-11');
+      fireEvent.click(button);
+      expect(onUpdate).toHaveBeenCalledExactlyOnceWith({
+        ...element,
+        start: points.end ?? { xRatio: 0.4, yRatio: 0.4 },
+        end: points.start ?? { xRatio: 0.1, yRatio: 0.2 }
+      });
+    });
+  });
+
+  it('calls all four z-order controls in a two-column grid', () => {
+    const props = commonProps(vi.fn());
+    render(<AssemblyProcedureDocumentEditorInspector {...props} element={{ ...base, kind: 'TEXT', text: '手順' }} />);
+    for (const [label, callback] of [
+      ['最前面へ', props.onBringToFront], ['前面へ', props.onBringForward],
+      ['背面へ', props.onSendBackward], ['最背面へ', props.onSendToBack]
+    ] as const) {
+      const button = screen.getByRole('button', { name: label });
+      expect(button).toHaveClass('min-h-11');
+      expect(button.parentElement).toHaveClass('grid-cols-2');
+      fireEvent.click(button);
+      expect(callback).toHaveBeenCalledExactlyOnceWith(base.id);
+    }
+    expect(screen.queryByRole('button', { name: '向きを反転' })).not.toBeInTheDocument();
   });
 
   it('offers explicit OCR candidate re-fetch for selected text and disables it while busy', () => {
@@ -294,6 +333,19 @@ describe('AssemblyProcedureDocumentEditorInspector', () => {
     expect(screen.getByRole('textbox')).toBeDisabled();
     expect(screen.getByRole('button', { name: '削除' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '前面へ' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '最前面へ' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '背面へ' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '最背面へ' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'この範囲で候補を再取得' })).toBeDisabled();
+  });
+
+  it('disables direction reversal when read-only', () => {
+    const onUpdate = vi.fn();
+    render(<AssemblyProcedureDocumentEditorInspector {...commonProps(onUpdate)} readOnly
+      element={{ ...base, kind: 'SHAPE', shape: 'ARROW' }} />);
+    const button = screen.getByRole('button', { name: '向きを反転' });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(onUpdate).not.toHaveBeenCalled();
   });
 });

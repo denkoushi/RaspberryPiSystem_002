@@ -145,6 +145,8 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           onDelete={controller.deleteSelectedOverlay}
           onBringForward={controller.bringForward}
           onSendBackward={controller.sendBackward}
+          onBringToFront={controller.bringToFront}
+          onSendToBack={controller.sendToBack}
           onReplaceImage={() => { setMaterialShelfMode('replace'); setMaterialShelfOpen(true); }}
           onRefetchTextCandidates={() => void controller.refetchTextCandidates()}
           readOnly={controller.readOnly}

@@ -318,6 +318,12 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   const sendBackward = useCallback((id: string) => {
     if (!readOnly) dispatch({ type: 'sendBackward', id });
   }, [readOnly]);
+  const bringToFront = useCallback((id: string) => {
+    if (!readOnly) dispatch({ type: 'bringToFront', id });
+  }, [readOnly]);
+  const sendToBack = useCallback((id: string) => {
+    if (!readOnly) dispatch({ type: 'sendToBack', id });
+  }, [readOnly]);
   const nudgeElement = useCallback((id: string, dxRatio: number, dyRatio: number) => {
     if (!readOnly) dispatch({ type: 'nudge', id, dxRatio, dyRatio });
   }, [readOnly]);
@@ -434,6 +440,8 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     uploadImage: overlayCommands.uploadImage,
     bringForward,
     sendBackward,
+    bringToFront,
+    sendToBack,
     nudgeElement,
     updateElementBBox,
     confirmNavigation,

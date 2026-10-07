@@ -186,6 +186,49 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     act(() => hook.result.current.undo()); act(() => hook.result.current.undo());
     expect(hook.result.current.elements).toEqual([]); expect(hook.result.current.canUndo).toBe(false);
   });
+  it.each([
+    ['bringForward', 'first', ['middle', 'first', 'last']],
+    ['sendBackward', 'last', ['first', 'last', 'middle']],
+    ['bringToFront', 'first', ['middle', 'last', 'first']],
+    ['sendToBack', 'last', ['last', 'first', 'middle']]
+  ] as const)('guards %s while read-only and records one undo step', async (command, id, order) => {
+    const elements: AssemblyProcedureOverlayElement[] = ['first', 'middle', 'last'].map((elementId) => ({
+      id: elementId, kind: 'SHAPE', shape: 'RECTANGLE', pageIndex: 0, bbox: range, zIndex: 5
+    }));
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: elements }] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
+    act(() => hook.result.current[command](id));
+    const reordered = hook.result.current.elements;
+    expect([...reordered].sort((a, b) => a.zIndex - b.zIndex).map((element) => element.id)).toEqual(order);
+    act(() => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual(elements);
+    expect(hook.result.current.canUndo).toBe(false);
+    act(() => hook.result.current.redo());
+    expect(hook.result.current.elements).toEqual(reordered);
+    act(() => hook.result.current.onEditLeaseError({ isAxiosError: true, response: { status: 401 } }));
+    expect(hook.result.current.readOnly).toBe(true);
+    act(() => hook.result.current[command](id));
+    expect(hook.result.current.elements).toEqual(reordered);
+  });
+
+  it('records endpoint reversal through updateElement in undo history', async () => {
+    const arrow: AssemblyProcedureOverlayElement = {
+      id: 'arrow', kind: 'SHAPE', shape: 'ARROW', pageIndex: 0, bbox: range, zIndex: 0,
+      start: { xRatio: 0.1, yRatio: 0.2 }, end: { xRatio: 0.4, yRatio: 0.4 }
+    };
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [arrow] }] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
+    const reversed = { ...arrow, start: arrow.end, end: arrow.start };
+    act(() => hook.result.current.updateElement(reversed));
+    expect(hook.result.current.elements).toEqual([reversed]);
+    act(() => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual([arrow]);
+    act(() => hook.result.current.redo());
+    expect(hook.result.current.elements).toEqual([reversed]);
+  });
+
   it('drops the oldest history entry after 51 operations', async () => {
     const hook = renderEditor(makeDocument()); await authenticate(hook.result);
     await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
