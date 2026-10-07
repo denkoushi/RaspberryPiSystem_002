@@ -12,6 +12,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Progress
 
+- [x] (2026-10-07) 本番反映の記録 8: #1800(「範囲」ツールを貼った素材に: 合成切り出し + OCR 候補)を merge 1d2a37bc(13:48)、Pi5 release run 20261007-050224-5c4fd8(14:02→14:07 success、#1784 と同じ回、recap ok=272 changed=31 failed=0)。#1801(PDF 素材から要領書を直接作る)を merge 77b69278(14:38)、Pi5 release run 20261007-055217-a56965(14:52→14:57 success、同 recap)。migration 20261007150000_add_procedure_material_pdf_kind は 14:53:55 JST に適用(rolled_back なし、enum ProcedureMaterialKind = TEXT/PHOTO/PDF)。稼働イメージ api/web 77b69278、health 200、API エラーログ 0 件。実機確認はユーザー待ち(取り込み、範囲ツール、PDF カードの「要領書を作る」)。
 - [x] (2026-10-07) 要望と本番反映: 加工要領書の写真を素材棚から選べるようにした(#1790)。素材棚に「加工の写真」タブを足し、公開中の加工要領書の手順写真(ACTIVE のみ、公開版 ID のない移行前データは対象外)を品番・対象で探して「棚に取り込む」。「ナレッジから」と同じ型で、選んだ写真だけを `procedure-materials/<sha256>/original` へコピーして `origin=WORK_INSTRUCTION` の写真素材を作る(写真だけ。注釈は持っていかない)。品番・対象・手順番号・表示メモは nullable 列 `workInstructionRef` に取込時点の値を写し、カードに「加工」バッジと一緒に出す。取込 API は候補キーを公開中データでサーバー側再解決し、クライアントの品番・対象は探す場所の手がかりにだけ使う。migration `20261007000000_add_procedure_material_work_instruction_origin` は expand-only。配布時の検証が `ALTER TYPE ... ADD VALUE` を拒否するため、この 1 文だけを完全一致で許可した。merge b09ee343(14:18)、Pi5 release run 20261007-053213-60e2b9(14:32→14:36 success、recap ok=272 changed=31 failed=0 unreachable=0)、稼働イメージ api/web b09ee343、/・/admin・/kiosk・/api/system/health は 200。migration は 14:33:58 に適用済みで、enum 値 WORK_INSTRUCTION と jsonb 列を確認。戻すときの注意: 加工の写真を 1 件でも取り込んだ後は、旧 Prisma Client が新しい enum 値を読めないため、この PR より前へ戻さず前進修正する。実機確認は未実施。
 - [x] (2026-10-07) 要望(案 1): 素材として届いた PDF から要領書を直接作る。取込で元 PDF を kind PDF の素材として保存(expand-only migration で enum 追加)し、素材棚の「要領書を作る」で組立手順書の取込と同じ `importDraft` を使って文書化(ページ画像 + 元 PDF を保持、範囲ツールの文章候補が文字層から効く)。作成後は素材を配置済み扱い。Codex(gpt-6.1-sol/high)実装。
 - [x] (2026-10-07) 本番反映の記録 7: #1794(写真は 25 MiB 受付・保存 1 MiB に段階縮小、PDF 25 ページ、画素数上限)を Pi5 へ反映。merge 63791e00(13:03)、Pi5 release run 20261007-041311-2e4a75(13:13→13:18 success、recap ok=272 changed=31 failed=0 unreachable=0)、稼働イメージ api/web 63791e00、health 200、API エラーログ 0 件。実機確認はユーザー待ち(未読で残る PNG/PDF メールが「今すぐ取り込む」で入るか)。
@@ -216,6 +217,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - Decision (2026-10-07): inline(Content-ID 付き)の画像も写真素材として取り込む。16 KiB 未満の inline 画像だけ署名ロゴとみなして捨てる。本文テキストの [cid:…] は除去し、空なら文章の素材を作らない。
   Rationale: PC の Outlook と iPhone メールは写真を inline で送るため、「inline は棚に入れない」だと主要な送り方が使えない(オーナー実機確認、2026-10-07)。重複キーと保存経路は従来どおり。
   Date/Author: 2026-10-07 / Claude(オーナー実機確認)。
+- Decision (2026-10-07): #1801 以降の戻し先の下限。`ProcedureMaterialKind` に `PDF` を追加する migration は expand-only で旧イメージでも起動するが、PDF 素材の行(kind=PDF)が作られた後に #1801 より前のイメージへ戻すと、旧 API が素材一覧でその行を読めずエラーになる。PDF 行ができた後は #1801 より前へ戻さず前進修正する。
+  Rationale: Prisma の enum は未知の値をデコードできない。PDF 行ができる前のロールバックは安全。追跡セッションの引き継ぎメモ「戻さない下限」と同じ内容。
+  Date/Author: 2026-10-07 / Claude(追跡セッションの依頼)。
 - Decision: 素材原本 GC は allowWriteKiosk の手動 POST /assembly/procedure-materials/gc のみとする。
   Rationale: 既存 assembly-procedure-asset-gc は保存・破棄・削除後の呼び出しだけで定期スケジューラーはない。新しいスケジューラーは今回追加しない。sha256/original だけを走査し、24時間より古く storageKey 一致の参照が0件の場合だけ integrity:true で削除する。配置済み・破棄済みを含む全素材の参照と共有原本を保持する。
   Date/Author: 2026-10-05 / Codex。
