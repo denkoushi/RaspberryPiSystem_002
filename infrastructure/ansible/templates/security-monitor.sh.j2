@@ -131,6 +131,11 @@ process_listen_ports() {
   fi
 
   local unexpected=()
+  local ephemeral_udp=()
+  local ephemeral_state_file="${STATE_DIR}/listen-ports.ephemeral-udp"
+  local ephemeral_min ephemeral_max ephemeral_range
+  ephemeral_range=$(cat /proc/sys/net/ipv4/ip_local_port_range 2>/dev/null || echo "32768 60999")
+  read -r ephemeral_min ephemeral_max <<< "${ephemeral_range}"
   local allowed_set=" ${ALLOWED_LISTEN_PORTS} "
   local ignore_procs_set=" ${SECURITY_MONITOR_IGNORE_PROCESSES} "
   local ignore_addr_prefixes="${SECURITY_MONITOR_IGNORE_ADDR_PREFIXES}"
@@ -140,8 +145,9 @@ process_listen_ports() {
       [[ -z "${line}" ]] && continue
 
       # ss output columns: proto state ... local_address:port ... users:(("proc",pid=...))
-      local local_field proto proc addr port
+      local local_field proto state proc addr port socket_key
       proto=$(echo "${line}" | awk '{print $1}')
+      state=$(echo "${line}" | awk '{print $2}')
       local_field=$(echo "${line}" | awk '{print $5}')
       proc=$(echo "${line}" | sed -n 's/.*users:((" *\([^"]*\)".*/\1/p')
 
@@ -167,7 +173,15 @@ process_listen_ports() {
       done
 
       # Only alert on ports that are not explicitly allowed
-      [[ "${allowed_set}" == *" ${port} "* ]] || unexpected+=("${addr}:${port}(${proc:-unknown},${proto})")
+      [[ "${allowed_set}" == *" ${port} "* ]] && continue
+      socket_key="${addr}:${port}(${proc:-unknown},${proto})"
+      # Ephemeral UDP clients must persist across two consecutive observations.
+      if [[ "${proto}" == "udp" && "${state}" == "UNCONN" ]] &&
+        (( port >= ephemeral_min && port <= ephemeral_max )); then
+        ephemeral_udp+=("${socket_key}")
+        grep -Fxq -- "${socket_key}" "${ephemeral_state_file}" 2>/dev/null || continue
+      fi
+      unexpected+=("${socket_key}")
     done <<< "${lines}"
   else
     # netstat fallback: keep old behavior (port-only) to avoid false negatives
@@ -177,6 +191,13 @@ process_listen_ports() {
       [[ -z "${port}" ]] && continue
       [[ "${allowed_set}" == *" ${port} "* ]] || unexpected+=("${port}")
     done <<< "${current_ports}"
+  fi
+
+  # Save every observation before notification deduplication can return early.
+  if (( {{ '${#' }}ephemeral_udp[@]} > 0 )); then
+    printf '%s\n' "${ephemeral_udp[@]}" > "${ephemeral_state_file}" 2>/dev/null || true
+  else
+    rm -f "${ephemeral_state_file}" 2>/dev/null || true
   fi
 
   if (( {{ '${#' }}unexpected[@]} > 0 )); then

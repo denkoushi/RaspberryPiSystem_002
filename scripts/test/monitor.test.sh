@@ -349,5 +349,8 @@ else
   echo "✅ 同一の想定外露出は重複発報しません（state抑止）"
 fi
 
+# Ephemeral UDP confirmation and existing detection regressions (fully offline).
+python3 "${PROJECT_DIR}/scripts/deploy/tests/test_security_monitor.py"
+
 rm -rf "${TMP_DIR}"
 
