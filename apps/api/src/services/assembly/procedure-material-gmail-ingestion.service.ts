@@ -135,7 +135,7 @@ export class ProcedureMaterialGmailIngestionService {
           return false;
         }
       };
-      const savePhoto = async (photo: ProcedureMaterialPhoto, subjectHint = common.subjectHint) => {
+      const saveFile = async (photo: Pick<ProcedureMaterialPhoto, 'sha256' | 'buffer'>, data: Prisma.ProcedureMaterialCreateInput) => {
         const storageKey = `procedure-materials/${photo.sha256}/original`;
         try {
           await this.store.write({ key: storageKey, data: photo.buffer, mode: 'create', integrity: true });
@@ -144,7 +144,7 @@ export class ProcedureMaterialGmailIngestionService {
           const bytes = await this.store.read(storageKey, { verifyIntegrity: true });
           if (!bytes.equals(photo.buffer)) throw new Error('Procedure material identity conflict');
         }
-        const created = await save({ ...common, subjectHint, kind: 'PHOTO', gmailDedupeKey: photo.gmailDedupeKey, storageKey, sha256: photo.sha256, contentType: photo.contentType, byteSize: photo.buffer.length, originalFileName: photo.filename, width: photo.width, height: photo.height });
+        const created = await save({ ...data, storageKey, sha256: photo.sha256, byteSize: photo.buffer.length });
         if (created) {
           // GC may have removed an unreferenced original before this row existed.
           try {
@@ -162,6 +162,10 @@ export class ProcedureMaterialGmailIngestionService {
           }
         }
       };
+      const savePhoto = (photo: ProcedureMaterialPhoto, subjectHint = common.subjectHint) => saveFile(photo, {
+        ...common, subjectHint, kind: 'PHOTO', gmailDedupeKey: photo.gmailDedupeKey, contentType: photo.contentType,
+        originalFileName: photo.filename, width: photo.width, height: photo.height,
+      });
       if (packet.text) await save({ ...common, kind: 'TEXT', text: packet.text, gmailDedupeKey: `${messageId}:body` });
       for (const photo of packet.photos) {
         // eslint-disable-next-line no-await-in-loop
@@ -194,6 +198,12 @@ export class ProcedureMaterialGmailIngestionService {
           result.skippedAttachments++;
           result.warnings.push(`${pdf.filename}: ${warning}`);
           continue;
+        }
+        if (savedKeys.has(pdf.gmailDedupeKey)) result.duplicate++;
+        else {
+          // eslint-disable-next-line no-await-in-loop
+          await saveFile(pdf, { ...common, kind: 'PDF', gmailDedupeKey: pdf.gmailDedupeKey,
+            originalFileName: pdf.filename, contentType: 'application/pdf' });
         }
         for (const [index, photo] of photos.entries()) {
           if (savedKeys.has(photo.gmailDedupeKey)) { result.duplicate++; continue; }

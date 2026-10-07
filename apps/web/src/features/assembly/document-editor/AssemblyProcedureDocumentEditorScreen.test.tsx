@@ -16,7 +16,7 @@ vi.mock('./AssemblyProcedureDocumentEditorCanvas', () => ({
 }));
 vi.mock('../KioskDocumentPageImage', () => ({ KioskDocumentPageImage: () => <span /> }));
 vi.mock('../procedure-manuals/ProcedureMaterialShelfDialog', () => ({
-  ProcedureMaterialShelfDialog: ({ onSelect, onClose, mode }: { onSelect: (material: { id: string; kind: 'PHOTO'; documentId?: string; placedAt?: string }) => Promise<void>; onClose: () => void; mode: 'place' | 'replace' }) => <div role="dialog" aria-label="素材"><button onClick={() => void onSelect({ id: 'material', kind: 'PHOTO' })}>{mode === 'replace' ? 'この素材に差し替え' : '配置'}</button><button onClick={() => void onSelect({ id: 'placed-material', kind: 'PHOTO', documentId: 'old-document', placedAt: '2026-10-05T04:00:00Z' })}>配置済み素材を選択</button><button onClick={onClose}>閉じる</button></div>
+  ProcedureMaterialShelfDialog: ({ onSelect, onClose, mode, onCreatedDocument }: { onSelect: (material: { id: string; kind: 'PHOTO'; documentId?: string; placedAt?: string }) => Promise<void>; onClose: () => void; onCreatedDocument: (documentId: string) => void; mode: 'place' | 'replace' }) => <div role="dialog" aria-label="素材"><button onClick={() => void onSelect({ id: 'material', kind: 'PHOTO' })}>{mode === 'replace' ? 'この素材に差し替え' : '配置'}</button><button onClick={() => void onSelect({ id: 'placed-material', kind: 'PHOTO', documentId: 'old-document', placedAt: '2026-10-05T04:00:00Z' })}>配置済み素材を選択</button><button onClick={() => onCreatedDocument('created-document')}>要領書を作る</button><button onClick={onClose}>閉じる</button></div>
 }));
 vi.mock('./AssemblyProcedureDocumentEditorInspector', () => ({
   AssemblyProcedureDocumentEditorInspector: ({
@@ -134,10 +134,10 @@ function makeController(
   };
 }
 
-function renderScreen(controller: AssemblyProcedureDocumentEditorController) {
+function renderScreen(controller: AssemblyProcedureDocumentEditorController, onNavigateToDocument = vi.fn()) {
   return render(
     <AssemblyProcedureDocumentEditorProvider value={controller}>
-      <AssemblyProcedureDocumentEditorScreen />
+      <AssemblyProcedureDocumentEditorScreen onNavigateToDocument={onNavigateToDocument} />
     </AssemblyProcedureDocumentEditorProvider>
   );
 }
@@ -146,7 +146,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
   beforeEach(() => { approvalMocks.read = null; approvalMocks.resolve.mockReset(); });
   it.each([['make', 1, null, '作る · 下書き 第1版', 'text-[#3ba776]'], ['fix', 3, 'root', '直す · 改版の下書き 第3版', 'text-[#f6b93b]'], ['fix', 1, null, '直す · 下書き 第1版', 'text-[#f6b93b]']] as const)('shows workshop context for %s', (mode, revisionNumber, supersedesDocumentId, label, color) => {
     const controller = makeController({ document: { ...editorDocument, revisionNumber, supersedesDocumentId } });
-    render(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen context={{ modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', processName: '組立 › 組立', mode }} /></AssemblyProcedureDocumentEditorProvider>);
+    render(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} context={{ modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', processName: '組立 › 組立', mode }} /></AssemblyProcedureDocumentEditorProvider>);
     expect(screen.getByText('DFD1 › 組立 › 組立 › 組立手順書')).toBeInTheDocument();
     expect(screen.getByText(label)).toHaveClass(color);
     const actions = within(screen.getByRole('navigation', { name: 'エディタ操作' })).getAllByRole('button');
@@ -160,7 +160,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     approvalMocks.saveVideos.mockRejectedValueOnce(error);
     const onEditLeaseError = vi.fn(() => true);
     const controller = makeController({ onEditLeaseError });
-    render(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen /></AssemblyProcedureDocumentEditorProvider>);
+    render(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} /></AssemblyProcedureDocumentEditorProvider>);
     fireEvent.click(screen.getByRole('button', { name: '動画' }));
     await waitFor(() => expect(screen.getByRole('button', { name: '紐づけを保存' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: '紐づけを保存' }));
@@ -169,7 +169,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
   it('keeps workshop context and the return action before editor authentication', () => {
     const navigateBack = vi.fn();
     const controller = makeController({ accessGranted: false, navigateBack });
-    render(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen context={{ modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', processName: '組立 › 組立', mode: 'fix' }} /></AssemblyProcedureDocumentEditorProvider>);
+    render(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} context={{ modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', processName: '組立 › 組立', mode: 'fix' }} /></AssemblyProcedureDocumentEditorProvider>);
     expect(screen.getByRole('heading', { name: 'DFD1 › 組立 › 組立 › 組立手順書' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '戻る' }));
     expect(navigateBack).toHaveBeenCalledOnce();
@@ -183,16 +183,16 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     expect(deleteDocument).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '削除する' }));
     expect(deleteDocument).toHaveBeenCalledOnce();
-    view.rerender(<AssemblyProcedureDocumentEditorProvider value={makeController({ document: { ...editorDocument, status: 'published' }, readOnly: true })}><AssemblyProcedureDocumentEditorScreen /></AssemblyProcedureDocumentEditorProvider>);
+    view.rerender(<AssemblyProcedureDocumentEditorProvider value={makeController({ document: { ...editorDocument, status: 'published' }, readOnly: true })}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} /></AssemblyProcedureDocumentEditorProvider>);
     expect(screen.queryByRole('button', { name: '削除' })).not.toBeInTheDocument();
-    view.rerender(<AssemblyProcedureDocumentEditorProvider value={makeController({ document: { ...editorDocument, supersedesDocumentId: 'root-1' } })}><AssemblyProcedureDocumentEditorScreen /></AssemblyProcedureDocumentEditorProvider>);
+    view.rerender(<AssemblyProcedureDocumentEditorProvider value={makeController({ document: { ...editorDocument, supersedesDocumentId: 'root-1' } })}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} /></AssemblyProcedureDocumentEditorProvider>);
     expect(screen.queryByRole('button', { name: '削除' })).not.toBeInTheDocument();
   });
 
   it('disables deletion while busy or read only', () => {
     const view = renderScreen(makeController({ busy: true }));
     expect(screen.getByRole('button', { name: '削除' })).toBeDisabled();
-    view.rerender(<AssemblyProcedureDocumentEditorProvider value={makeController({ readOnly: true })}><AssemblyProcedureDocumentEditorScreen /></AssemblyProcedureDocumentEditorProvider>);
+    view.rerender(<AssemblyProcedureDocumentEditorProvider value={makeController({ readOnly: true })}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} /></AssemblyProcedureDocumentEditorProvider>);
     expect(screen.getByRole('button', { name: '削除' })).toBeDisabled();
   });
 
@@ -209,6 +209,28 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     expect(screen.getByRole('dialog', { name: '素材' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '配置' }));
     await waitFor(() => expect(placeMaterial).toHaveBeenCalledWith({ id: 'material', kind: 'PHOTO' }));
+  });
+
+  it.each(['place', 'replace'] as const)('closes the shelf and navigates to the created document in %s mode', (mode) => {
+    const onNavigateToDocument = vi.fn();
+    const controller = makeController({ selectedElement: mode === 'replace' ? { id: 'image', kind: 'IMAGE' } as AssemblyProcedureOverlayElement : null });
+    renderScreen(controller, onNavigateToDocument);
+    fireEvent.click(screen.getByRole('button', { name: mode === 'replace' ? '素材から差し替え' : /^素材/ }));
+    fireEvent.click(screen.getByRole('button', { name: '要領書を作る' }));
+    expect(controller.confirmNavigation).toHaveBeenCalledOnce();
+    expect(onNavigateToDocument).toHaveBeenCalledExactlyOnceWith('created-document');
+    expect(screen.queryByRole('dialog', { name: '素材' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the current editor when the unsaved changes navigation guard rejects leaving', () => {
+    const onNavigateToDocument = vi.fn();
+    const confirmNavigation = vi.fn(() => false);
+    renderScreen(makeController({ isDirty: true, confirmNavigation }), onNavigateToDocument);
+    fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
+    fireEvent.click(screen.getByRole('button', { name: '要領書を作る' }));
+    expect(confirmNavigation).toHaveBeenCalledOnce();
+    expect(onNavigateToDocument).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: '素材' })).not.toBeInTheDocument();
   });
 
   it.each(['place', 'replace'] as const)('forwards a placed material to the controller in %s mode', async (mode) => {
@@ -283,7 +305,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: '公開' }));
     expect(screen.getByRole('button', { name: '承認して公開する' })).toBeDisabled();
     approvalMocks.read = { uid: 'TAG' };
-    view.rerender(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen /></AssemblyProcedureDocumentEditorProvider>);
+    view.rerender(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} /></AssemblyProcedureDocumentEditorProvider>);
     expect(await screen.findByText('承認者: 承認太郎(班長)')).toBeInTheDocument();
     expect(approvalMocks.resolve).toHaveBeenCalledExactlyOnceWith('TAG');
     expect(publish).not.toHaveBeenCalled();

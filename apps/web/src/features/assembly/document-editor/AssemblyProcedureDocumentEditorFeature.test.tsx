@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -7,7 +7,7 @@ import { AssemblyProcedureDocumentEditorPage } from './AssemblyProcedureDocument
 const mocks = vi.hoisted(() => ({ controller: vi.fn() }));
 vi.mock('./useAssemblyProcedureDocumentEditorController', () => ({ useAssemblyProcedureDocumentEditorController: mocks.controller }));
 vi.mock('./AssemblyProcedureDocumentEditorContext', () => ({ AssemblyProcedureDocumentEditorProvider: ({ children }: { children: React.ReactNode }) => children }));
-vi.mock('./AssemblyProcedureDocumentEditorScreen', () => ({ AssemblyProcedureDocumentEditorScreen: ({ context }: { context?: { modelCode: string } }) => <p>{context?.modelCode ?? '既存の見出し'}</p> }));
+vi.mock('./AssemblyProcedureDocumentEditorScreen', () => ({ AssemblyProcedureDocumentEditorScreen: ({ context, onNavigateToDocument }: { context?: { modelCode: string }; onNavigateToDocument: (id: string) => void }) => <><p>{context?.modelCode ?? '既存の見出し'}</p><button onClick={() => onNavigateToDocument('created-document')}>作成した要領書を開く</button></> }));
 function Location() { const location = useLocation(); return <output>{location.pathname}{location.search}</output>; }
 function show(state: unknown) {
   render(<MemoryRouter initialEntries={[{ pathname: '/kiosk/assembly/procedure-documents/doc/edit', state }]}><Routes>
@@ -23,6 +23,16 @@ beforeEach(() => {
 });
 
 describe('document-editor workshop entry', () => {
+  it('opens the created document on the existing editor route and retains the return path', () => {
+    const returnTo = '/kiosk/assembly/manuals/workshop?model=DFD1&process=assembly';
+    show({ returnTo });
+    fireEvent.click(screen.getByRole('button', { name: '作成した要領書を開く' }));
+    const input = mocks.controller.mock.calls.at(-1)![0];
+    expect(input.documentId).toBe('created-document');
+    act(() => input.onNavigateBack());
+    expect(screen.getByText(returnTo)).toBeInTheDocument();
+  });
+
   it.each(['onNavigateBack', 'onNavigateAfterPublish', 'onNavigateAfterDiscard', 'onNavigateAfterDelete'])('returns to the selected workshop after %s', callback => {
     const returnTo = '/kiosk/assembly/manuals/workshop?model=DFD1&process=assembly';
     show({ returnTo, context: { modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', processName: '組立', mode: 'fix' } });

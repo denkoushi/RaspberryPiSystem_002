@@ -3,7 +3,7 @@ export type ProcedureMaterialDto = {
   origin: 'GMAIL' | 'KNOWLEDGE' | 'WORK_INSTRUCTION';
   workInstructionRef: ProcedureWorkInstructionRef | null;
   knowledgeRef: { kind: 'source' | 'procedure_step'; sourceId?: string; imageId?: string; procedureId?: string; revisionNumber?: number; stepId?: string } | null;
-  id: string; kind: 'TEXT' | 'PHOTO'; text: string | null;
+  id: string; kind: 'TEXT' | 'PHOTO' | 'PDF'; text: string | null;
   storageKey: string | null; sha256: string | null; contentType: string | null; byteSize: number | null;
   originalFileName: string | null; width: number | null; height: number | null;
   subjectHint: string | null; fromEmail: string | null; gmailMessageId: string | null; gmailDedupeKey: string;

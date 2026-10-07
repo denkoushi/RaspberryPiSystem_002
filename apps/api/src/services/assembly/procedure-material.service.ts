@@ -1,3 +1,5 @@
+import { AssemblyProcedureDraftImportService } from './assembly-procedure-draft-import.service.js';
+
 import type { Prisma } from '@prisma/client';
 
 import { ApiError } from '../../lib/errors.js';
@@ -7,7 +9,11 @@ import { getFileStorageRuntime } from '../file-storage/file-storage-runtime.js';
 
 export type ProcedureMaterialState = 'unplaced' | 'placed' | 'discarded' | 'all';
 export class ProcedureMaterialService {
-  constructor(private readonly db = defaultPrisma, private readonly store: DurableFileStorePort = getFileStorageRuntime().store) {}
+  constructor(
+    private readonly db = defaultPrisma,
+    private readonly store: DurableFileStorePort = getFileStorageRuntime().store,
+    private readonly importer: Pick<AssemblyProcedureDraftImportService, 'importDraft'> = new AssemblyProcedureDraftImportService(),
+  ) {}
 
   async list(options: { state: ProcedureMaterialState; q?: string; limit: number }) {
     const where: Prisma.ProcedureMaterialWhereInput = {};
@@ -25,9 +31,36 @@ export class ProcedureMaterialService {
     return { bytes, contentType: material.contentType ?? 'application/octet-stream' };
   }
 
+  async createDocument(id: string) {
+    return this.db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "ProcedureMaterial" WHERE "id" = ${id} FOR UPDATE`;
+      const material = await tx.procedureMaterial.findUnique({ where: { id } });
+      if (!material) throw new ApiError(404, '素材がありません');
+      if (material.kind !== 'PDF') throw new ApiError(400, 'PDF 素材だけ要領書を作成できます');
+      if (material.documentId) throw new ApiError(409, 'この PDF からは作成済みです');
+      if (material.discardedAt) throw new ApiError(409, '捨てた素材からは作成できません');
+      if (!material.storageKey) throw new ApiError(400, 'PDF の原本がありません');
+      const filename = material.originalFileName || '素材.pdf';
+      const buffer = await this.store.read(material.storageKey, { verifyIntegrity: true });
+      const document = await this.importer.importDraft({
+        name: material.subjectHint || filename.replace(/\.[^.]+$/, ''),
+        transaction: tx, avoidDuplicateName: true, buffer, mimetype: 'application/pdf', filename,
+        source: { sourceType: 'MANUAL', sourceAttachmentName: filename },
+      });
+      await tx.procedureMaterial.update({ where: { id }, data: { documentId: document.id, placedAt: new Date() } });
+      return { document: { id: document.id, name: document.name } };
+    }, { timeout: 120_000 });
+  }
+
   async unplace(id: string) {
-    const updated = await this.db.procedureMaterial.updateMany({ where: { id }, data: { documentId: null, placedAt: null } });
-    if (!updated.count) throw new ApiError(404, '素材がありません');
+    const updated = await this.db.procedureMaterial.updateMany({
+      where: { id, OR: [{ kind: { not: 'PDF' } }, { documentId: null }] },
+      data: { documentId: null, placedAt: null },
+    });
+    if (!updated.count) {
+      if (!await this.db.procedureMaterial.findUnique({ where: { id }, select: { id: true } })) throw new ApiError(404, '素材がありません');
+      throw new ApiError(409, '要領書を作成済みの PDF は配置を取り消せません');
+    }
   }
 
   async setDiscarded(id: string, discarded: boolean) {

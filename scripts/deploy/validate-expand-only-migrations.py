@@ -82,6 +82,10 @@ ALLOW_SETTING_HISTORY_DROP_NOT_NULL = re.compile(
     r'(?i:ALTER)\s+(?i:COLUMN)\s+"settingHistoryId"\s+'
     r'(?i:DROP)\s+(?i:NOT)\s+(?i:NULL)$'
 )
+ALLOW_PROCEDURE_MATERIAL_PDF_ADD_VALUE = re.compile(
+    r'^(?i:ALTER)\s+(?i:TYPE)\s+"ProcedureMaterialKind"\s+'
+    r"(?i:ADD)\s+(?i:VALUE)\s+'PDF'$"
+)
 DISALLOWED_COLUMN_CLAUSE = re.compile(
     r"\b(DEFAULT|NULL|CONSTRAINT|UNIQUE|PRIMARY|REFERENCES|CHECK|GENERATED|"
     r"IDENTITY|SERIAL|BIGSERIAL|SMALLSERIAL|DROP|ALTER|RENAME|SET|ADD)\b",
@@ -345,6 +349,9 @@ def validate_statement(
         raise ValueError(f"unbalanced parentheses in {label}: {statement.text[:120]}")
 
     if ALLOW_SETTING_HISTORY_DROP_NOT_NULL.fullmatch(statement.text.strip()) is not None:
+        return
+
+    if ALLOW_PROCEDURE_MATERIAL_PDF_ADD_VALUE.fullmatch(statement.text.strip()) is not None:
         return
 
     create_table = CREATE_TABLE.match(code)

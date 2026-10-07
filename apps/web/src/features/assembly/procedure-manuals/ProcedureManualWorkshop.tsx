@@ -273,7 +273,10 @@ export function ProcedureManualWorkshop() {
     }} /> : null}
     {accessGranted && blankOpen ? <ProcedureManualBlankDialog beforeMutation={checkAccess} models={models} processes={processes} modelCode={modelCode} processId={processId} onClose={() => setBlankOpen(false)} /> : null}
     {accessGranted && assignmentOpen ? <ProcedureManualAssignmentDialog beforeMutation={checkAccess} modelCode={modelCode} processId={processId} processes={processes} onClose={() => setAssignmentOpen(false)} onSaved={(key, id) => { setAssignmentOpen(false); select(key, id); setVersion(value => value + 1); }} /> : null}
-    {materialOpen ? <ProcedureMaterialShelfDialog onClose={() => setMaterialOpen(false)} /> : null}
+    {materialOpen ? <ProcedureMaterialShelfDialog onClose={() => setMaterialOpen(false)} onCreatedDocument={(documentId) => {
+      setMaterialOpen(false);
+      navigate(kioskAssemblyProcedureDocumentEditPath(documentId), { state: { returnTo: kioskAssemblyManualsWorkshopPath({ model: modelCodeKey, process: processId }) } });
+    }} /> : null}
     {videoOpen ? <ProcedureVideoShelfDialog onClose={() => setVideoOpen(false)} /> : null}
     <ConfirmDialog isOpen={Boolean(removing)} title="割り当てを外す" description={removing?.label || removing?.title} confirmLabel="外す" buttonClassName="min-h-11" onCancel={() => setRemoving(null)} onConfirm={() => { if (removing) void remove(removing); setRemoving(null); }} />
     <ConfirmDialog isOpen={Boolean(deleting)} title="要領書を削除" description="割り当てを外して削除します。元に戻せません" confirmLabel="削除" tone="danger" buttonClassName="min-h-11" onCancel={() => setDeleting(null)} onConfirm={() => { if (deleting) void remove(deleting, true); setDeleting(null); }} />

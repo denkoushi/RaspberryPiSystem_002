@@ -1048,6 +1048,11 @@ export async function ingestProcedureMaterialsGmail() {
   return data;
 }
 
+export async function createProcedureMaterialDocument(id: string) {
+  const { data } = await api.post<{ document: { id: string; name: string } }>(`/assembly/procedure-materials/${encodeURIComponent(id)}/create-document`);
+  return data.document;
+}
+
 export async function discardProcedureMaterial(id: string) {
   await api.post(`/assembly/procedure-materials/${encodeURIComponent(id)}/discard`);
 }

@@ -23,7 +23,7 @@ vi.mock('./ProcedureManualAssignmentDialog', async importOriginal => ({
   ...await importOriginal<typeof import('./ProcedureManualAssignmentDialog')>(),
   ProcedureManualAssignmentDialog: ({ modelCode, processId, onSaved }: { modelCode: string; processId: string; onSaved: (model: string, process: string) => void }) => <div role="dialog" aria-label="割り当て">{modelCode} / {processId}<button onClick={() => onSaved('DFD1', 'assembly')}>保存</button></div>
 }));
-vi.mock('./ProcedureMaterialShelfDialog', () => ({ ProcedureMaterialShelfDialog: ({ onClose }: { onClose: () => void }) => <div role="dialog" aria-label="素材"><button onClick={onClose}>閉じる</button></div> }));
+vi.mock('./ProcedureMaterialShelfDialog', () => ({ ProcedureMaterialShelfDialog: ({ onClose, onCreatedDocument }: { onClose: () => void; onCreatedDocument: (documentId: string) => void }) => <div role="dialog" aria-label="素材"><button onClick={() => onCreatedDocument('created-document')}>要領書を作る</button><button onClick={onClose}>閉じる</button></div> }));
 vi.mock('./ProcedureVideoShelfDialog', () => ({ ProcedureVideoShelfDialog: ({ onClose }: { onClose: () => void }) => <div role="dialog" aria-label="動画"><button onClick={onClose}>閉じる</button></div> }));
 const processes = [
   { id: 'parent', name: '組立工程', parentId: null },
@@ -61,6 +61,17 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('procedure-manuals workshop', () => {
+  it('closes the material shelf and opens the created document editor with the workshop return path', async () => {
+    show();
+    fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
+    fireEvent.click(screen.getByRole('button', { name: '要領書を作る' }));
+    expect(screen.queryByRole('dialog', { name: '素材' })).not.toBeInTheDocument();
+    await waitFor(() => expect(JSON.parse(screen.getByTestId('location').textContent!)).toEqual({
+      pathname: '/kiosk/assembly/procedure-documents/created-document/edit', search: '',
+      state: { returnTo: '/kiosk/assembly/manuals/workshop?model=DFD1&process=assembly' }
+    }));
+  });
+
   it('skips the PIN dialog with valid access', () => {
     show(); expect(screen.queryByRole('dialog', { name: '暗証番号' })).not.toBeInTheDocument();
     expect(mocks.verify).not.toHaveBeenCalled();

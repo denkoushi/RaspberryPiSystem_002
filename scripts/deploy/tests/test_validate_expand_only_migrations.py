@@ -126,6 +126,17 @@ class SqlAllowListTests(unittest.TestCase):
             with self.subTest(statement=statement):
                 self.assert_allowed(statement)
 
+    def test_procedure_material_pdf_enum_expansion_is_allowed(self) -> None:
+        path = ROOT / validator.MIGRATION_ROOT / "20261007150000_add_procedure_material_pdf_kind/migration.sql"
+        validator.validate_sql(path.read_bytes(), str(path))
+        for sql in [
+            'ALTER TYPE "OtherKind" ADD VALUE \'PDF\';',
+            'ALTER TYPE "ProcedureMaterialKind" ADD VALUE \'OTHER\';',
+            'ALTER TYPE "ProcedureMaterialKind" RENAME VALUE \'PHOTO\' TO \'PDF\';',
+        ]:
+            with self.subTest(sql=sql):
+                self.assert_disallowed(sql)
+
     def test_procedure_material_work_instruction_origin_expansion_is_allowed(self) -> None:
         path = (
             ROOT

@@ -16,7 +16,7 @@ import { AssemblyProcedureDocumentPublishDialog } from './AssemblyProcedureDocum
 import { AssemblyProcedureOverlayTypeDialog } from './AssemblyProcedureOverlayTypeDialog';
 import { AssemblyProcedureTextCandidateDialog } from './AssemblyProcedureTextCandidateDialog';
 
-export function AssemblyProcedureDocumentEditorScreen({ context }: { context?: import('../types').ProcedureManualEditorContext }) {
+export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDocument }: { context?: import('../types').ProcedureManualEditorContext; onNavigateToDocument: (documentId: string) => void }) {
   const controller = useAssemblyProcedureDocumentEditor();
   const [materialShelfOpen, setMaterialShelfOpen] = useState(false);
   const [materialShelfMode, setMaterialShelfMode] = useState<'place' | 'replace'>('place');
@@ -152,7 +152,10 @@ export function AssemblyProcedureDocumentEditorScreen({ context }: { context?: i
         />
         </div> : null}
 
-      {materialShelfOpen ? <ProcedureMaterialShelfDialog mode={materialShelfMode} onClose={() => setMaterialShelfOpen(false)} onSelect={materialShelfMode === 'replace' ? controller.replaceSelectedImageMaterial : controller.placeMaterial} /> : null}
+      {materialShelfOpen ? <ProcedureMaterialShelfDialog mode={materialShelfMode} onClose={() => setMaterialShelfOpen(false)} onSelect={materialShelfMode === 'replace' ? controller.replaceSelectedImageMaterial : controller.placeMaterial} onCreatedDocument={(documentId) => {
+        setMaterialShelfOpen(false);
+        if (controller.confirmNavigation()) onNavigateToDocument(documentId);
+      }} /> : null}
       <AssemblyProcedureOverlayTypeDialog
         isOpen={controller.pendingRange != null}
         onClose={controller.cancelPendingRange}

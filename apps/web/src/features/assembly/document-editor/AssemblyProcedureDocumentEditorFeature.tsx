@@ -1,6 +1,6 @@
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 
-import { kioskAssemblyLibraryPath, kioskAssemblyManualsPath } from '../assemblyRoutes';
+import { kioskAssemblyLibraryPath, kioskAssemblyManualsPath, kioskAssemblyProcedureDocumentEditPath } from '../assemblyRoutes';
 
 import { AssemblyProcedureDocumentEditorProvider } from './AssemblyProcedureDocumentEditorContext';
 import { AssemblyProcedureDocumentEditorScreen } from './AssemblyProcedureDocumentEditorScreen';
@@ -48,7 +48,7 @@ function AssemblyProcedureDocumentEditorRoute({ documentId }: { documentId: stri
   return (
     <AssemblyProcedureDocumentEditorProvider value={controller}>
       {typeof assignmentError === 'string' ? <p className="shrink-0 border-b border-amber-400/30 bg-amber-500/15 px-3 py-2 text-sm text-amber-100" role="alert">{assignmentError}</p> : null}
-      <AssemblyProcedureDocumentEditorScreen context={isProcedureManualEditorContext(state?.context) ? state.context : undefined} />
+      <AssemblyProcedureDocumentEditorScreen context={isProcedureManualEditorContext(state?.context) ? state.context : undefined} onNavigateToDocument={(id) => navigate(kioskAssemblyProcedureDocumentEditPath(id), { state: { returnTo: returnTo ?? fallback } })} />
     </AssemblyProcedureDocumentEditorProvider>
   );
 }

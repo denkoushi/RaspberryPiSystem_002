@@ -8,7 +8,7 @@ import { saveProcedureEditorAccess } from '../procedureEditorAccess';
 import { ProcedureManualWorkshop } from './ProcedureManualWorkshop';
 import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
 
-const mocks = vi.hoisted(() => ({ count: vi.fn(), list: vi.fn(), ingest: vi.fn(), file: vi.fn(), discard: vi.fn(), restore: vi.fn(), unplace: vi.fn(), knowledge: vi.fn(), knowledgeImage: vi.fn(), importKnowledge: vi.fn(), workInstructions: vi.fn(), workInstructionImage: vi.fn(), importWorkInstructions: vi.fn() }));
+const mocks = vi.hoisted(() => ({ createDocument: vi.fn(), count: vi.fn(), list: vi.fn(), ingest: vi.fn(), file: vi.fn(), discard: vi.fn(), restore: vi.fn(), unplace: vi.fn(), knowledge: vi.fn(), knowledgeImage: vi.fn(), importKnowledge: vi.fn(), workInstructions: vi.fn(), workInstructionImage: vi.fn(), importWorkInstructions: vi.fn() }));
 vi.mock('../../../api/client', () => ({
   listProcedureVideos: async () => [],
   listProcedureManualModels: async () => [], listProcedureManualProcesses: async () => [],
@@ -16,6 +16,7 @@ vi.mock('../../../api/client', () => ({
   getAssemblyProcedureDocumentRevisions: vi.fn(), getKioskDocuments: vi.fn(), replaceProcedureManualAssignments: vi.fn(),
   listProcedureMaterials: (params: { q?: string }) => params.q === undefined ? mocks.count(params) : mocks.list(params), ingestProcedureMaterialsGmail: mocks.ingest, getProcedureMaterialFile: mocks.file,
   listProcedureKnowledgeCandidates: mocks.knowledge, getProcedureKnowledgeImage: mocks.knowledgeImage, importProcedureKnowledge: mocks.importKnowledge,
+  createProcedureMaterialDocument: mocks.createDocument,
   listProcedureWorkInstructionCandidates: mocks.workInstructions, getProcedureWorkInstructionImage: mocks.workInstructionImage, importProcedureWorkInstructions: mocks.importWorkInstructions,
   discardProcedureMaterial: mocks.discard, restoreProcedureMaterial: mocks.restore, unplaceProcedureMaterial: mocks.unplace,
 }));
@@ -37,6 +38,38 @@ describe('procedure-manuals material shelf', () => {
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:photo'); vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
   });
   afterEach(() => { vi.unstubAllGlobals(); });
+  it.each(['browse', 'place', 'replace'] as const)('shows a PDF card and creates a document in %s mode', async (mode) => {
+    mocks.list.mockResolvedValue([{ ...photo, id: 'pdf', kind: 'PDF', subjectHint: null, originalFileName: '原本.pdf' }]);
+    mocks.createDocument.mockResolvedValue({ id: 'created-document', name: '原本' });
+    const onSelect = mode === 'browse' ? undefined : vi.fn();
+    const onCreatedDocument = vi.fn();
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} onSelect={onSelect} mode={mode === 'replace' ? 'replace' : 'place'} onCreatedDocument={onCreatedDocument} />);
+    expect(await screen.findByText('PDF')).toBeInTheDocument();
+    expect(screen.getByText('原本.pdf')).toBeInTheDocument();
+    const checkbox = screen.getByRole('checkbox', { name: '原本.pdf' });
+    if (mode === 'browse') expect(checkbox).toBeEnabled();
+    else expect(checkbox).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '要領書を作る' }));
+    expect(await screen.findByText('要領書『原本』を作成しました')).toBeInTheDocument();
+    expect(mocks.createDocument).toHaveBeenCalledExactlyOnceWith('pdf');
+    expect(onCreatedDocument).toHaveBeenCalledExactlyOnceWith('created-document');
+    expect(mocks.file).not.toHaveBeenCalled();
+    if (onSelect) expect(onSelect).not.toHaveBeenCalled();
+  });
+  it('shows create errors and disables creation for placed or discarded PDFs', async () => {
+    mocks.list.mockResolvedValue([{ ...photo, id: 'pdf', kind: 'PDF' }]);
+    mocks.createDocument.mockRejectedValue(new Error('failed'));
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: '要領書を作る' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('failed');
+    mocks.list.mockResolvedValue([{ ...photo, id: 'pdf', kind: 'PDF', documentId: 'created', placedAt: '2026-10-07T06:00:00Z' }]);
+    fireEvent.click(screen.getByRole('tab', { name: '配置済み' }));
+    expect(await screen.findByRole('button', { name: '要領書を作る' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: '配置を取り消す' })).not.toBeInTheDocument();
+    mocks.list.mockResolvedValue([{ ...photo, id: 'pdf', kind: 'PDF', discardedAt: '2026-10-07T06:00:00Z' }]);
+    fireEvent.click(screen.getByRole('button', { name: '捨てた素材' }));
+    expect(await screen.findByRole('button', { name: '要領書を作る' })).toBeDisabled();
+  });
   it('opens the shelf from the workshop, shows text/photo metadata, filters hints, and manually ingests/reloads', async () => {
     localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualWorkshop /></MemoryRouter>);
     fireEvent.click(screen.getByRole('button', { name: /^素材/ }));

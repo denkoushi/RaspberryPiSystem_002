@@ -217,8 +217,8 @@ export class AssemblyProcedureDocumentService {
       sourceAttachmentName: string;
       gmailInternalDateMs: number;
       gmailDedupeKey: string;
-    };
-  }): Promise<AssemblyProcedureDocumentRecord> {
+    } | { sourceType: 'MANUAL'; sourceAttachmentName: string };
+  }, transaction?: Prisma.TransactionClient): Promise<AssemblyProcedureDocumentRecord> {
     const name = params.name.trim();
     if (!name) {
       throw new ApiError(400, '手順書名が必要です');
@@ -238,7 +238,7 @@ export class AssemblyProcedureDocumentService {
       throw new ApiError(400, '元assetサイズが不正です');
     }
 
-    return runAssemblyTransaction(async (tx) => {
+    const create = async (tx: Prisma.TransactionClient) => {
       let savedName = name.slice(0, 200);
       if (params.avoidDuplicateName) {
         // Serialize blank naming across API instances, including the first creation.
@@ -274,10 +274,12 @@ export class AssemblyProcedureDocumentService {
                 source: {
                   create: {
                     sourceType: params.source.sourceType,
-                    gmailMessageId: params.source.gmailMessageId,
                     sourceAttachmentName: params.source.sourceAttachmentName,
-                    gmailInternalDateMs: BigInt(params.source.gmailInternalDateMs),
-                    gmailDedupeKey: params.source.gmailDedupeKey
+                    ...(params.source.sourceType === 'GMAIL' ? {
+                      gmailMessageId: params.source.gmailMessageId,
+                      gmailInternalDateMs: BigInt(params.source.gmailInternalDateMs),
+                      gmailDedupeKey: params.source.gmailDedupeKey
+                    } : {})
                   }
                 }
               }
@@ -306,7 +308,8 @@ export class AssemblyProcedureDocumentService {
       });
       if (!result) throw new ApiError(500, '手順書を取得できませんでした');
       return result;
-    });
+    };
+    return transaction ? create(transaction) : runAssemblyTransaction(create);
   }
 
   async findByGmailDedupeKey(gmailDedupeKey: string): Promise<AssemblyProcedureDocumentRecord | null> {
