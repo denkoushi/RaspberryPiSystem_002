@@ -56,7 +56,9 @@ process_fail2ban() {
 
   [[ -z "${new_lines}" ]] && return
 
-  echo "${new_lines}" | grep "Ban " || return
+  # No ban among the new lines (for example fail2ban startup after a reboot)
+  # is not a failure; the remaining checks must still run.
+  echo "${new_lines}" | grep "Ban " >/dev/null || return 0
 
   while read -r line; do
     [[ -z "${line}" ]] && continue

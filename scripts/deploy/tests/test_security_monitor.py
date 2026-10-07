@@ -83,6 +83,25 @@ class SecurityMonitorTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout
 
+    def test_fail2ban_lines_without_ban_do_not_stop_later_checks(self):
+        log = self.directory / "fail2ban.log"
+        log.write_text("fail2ban.jail INFO Jail 'sshd' started\n")
+        self.run_monitor()
+        log.write_text(log.read_text() + "fail2ban.jail INFO Jail 'sshd' started\n")
+        output = self.run_monitor(REQUIRED_PROCESSES="missing-process")
+        self.assertNotIn("fail2ban-ban", output)
+        self.assertIn("process-missing", output)
+
+    def test_fail2ban_ban_line_alerts_once(self):
+        log = self.directory / "fail2ban.log"
+        log.write_text("fail2ban.jail INFO Jail 'sshd' started\n")
+        self.run_monitor()
+        log.write_text(log.read_text() + "fail2ban.actions NOTICE [sshd] Ban 203.0.113.7\n")
+        output = self.run_monitor()
+        self.assertEqual(output.count("fail2ban-ban"), 1)
+        self.assertIn("203.0.113.7", output)
+        self.assertNotIn("fail2ban-ban", self.run_monitor())
+
     def test_transient_ephemeral_udp_never_alerts_and_clears_candidate(self):
         self.assertNotIn("ports-unexpected", self.run_monitor(socket_line()))
         self.assertTrue(self.ephemeral_state.exists())
