@@ -18,6 +18,24 @@ const rows = [
   { a: 'a8', b: 'b8', seed: { style: 'typo' }, question: null, kept: false, reason: 'ungraded' },
 ];
 
+test('real reports count correct, mismatched and unsupported filter questions separately', () => {
+  const rows = [
+    { source: 'real', kind: 'filter', relevant: [], dayOutcome: 'answer', filterCheck: { supported: true, ok: true }, live: live(null) },
+    { source: 'real', kind: 'filter', relevant: [], dayOutcome: 'answer', filterCheck: { supported: true, ok: false }, live: live('filter_mismatch') },
+    { source: 'real', kind: 'filter', relevant: [], dayOutcome: 'answer', filterCheck: { supported: false, ok: null }, live: live('filter_unsupported') },
+    { source: 'real', kind: 'filter', relevant: [], dayOutcome: 'answer' },
+    { source: 'real', relevant: ['a'], dayOutcome: 'answer', live: live(null) },
+    { source: 'synthetic', kind: 'filter', filterCheck: { supported: true, ok: true } },
+  ];
+  const summary = summarizeReal(rows);
+  assert.deepEqual(summary.filter, { questions: 4, supported: 2, ok: 1, mismatch: 1 });
+  assert.equal(summary.questions, 5);
+  assert.equal(summary.withRelevant, 1);
+  assert.equal(summary.shown, 1);
+  assert.deepEqual(summary.lossStages, {});
+  assert.match(formatRealReport('2026-10-03', summary), /filter questions 4, correct 1, mismatch 1, unsupported 2/u);
+});
+
 test('a night summary counts generation, keep decisions, and live loss stages', () => {
   const summary = summarizeNight(rows);
   assert.equal(summary.generated, 7);
@@ -91,9 +109,10 @@ test('real summaries count only known relevance in shown and loss totals', () =>
   assert.deepEqual(summarizeReal(realRows), {
     questions: 6, withRelevant: 4, shown: 1, lossStages: { not_in_pool: 1, judge_rejected: 1, other_shown: 1 },
     dayOutcomes: { answer: 3, no_result: 2, no_other: 1 },
+    filter: { questions: 0, supported: 0, ok: 0, mismatch: 0 },
   });
   const formatted = formatRealReport('2026-10-03', summarizeReal(realRows));
-  assert.match(formatted, /^real 2026-10-03: questions 6, with relevant 4, relevant shown 1, nothing shown 2 \(outside judged candidates 1, rejected by judge 1, asked back or out of scope 0\), other records shown 1, day outcomes answer 3, no_result 2, no_other 1$/u);
+  assert.match(formatted, /^real 2026-10-03: questions 6, with relevant 4, relevant shown 1, nothing shown 2 \(outside judged candidates 1, rejected by judge 1, asked back or out of scope 0\), other records shown 1, day outcomes answer 3, no_result 2, no_other 1\n  filter questions 0, correct 0, mismatch 0, unsupported 0$/u);
   assert.match(formatRealReport('2026-10-03', summarizeReal([])), /questions 0, with relevant 0, relevant shown 0.*day outcomes none/u);
 });
 

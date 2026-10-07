@@ -82,10 +82,11 @@ export async function createLiveScorer({ records, catalog, evaluate, env = proce
         judged,
         loss: lossStage({ relevant: relevantIds(row), outcome, shown, candidates, judged }),
         vectorStatus: result.receipt?.timings?.vectorStatus ?? null,
+        plan: result.receipt?.plan ?? null,
         ms: ms(),
       };
     } catch {
-      return { outcome: 'failed', shown: [], candidates: [], judged, loss: 'failed', vectorStatus: null, ms: ms() };
+      return { outcome: 'failed', shown: [], candidates: [], judged, loss: 'failed', vectorStatus: null, plan: null, ms: ms() };
     }
   };
 }

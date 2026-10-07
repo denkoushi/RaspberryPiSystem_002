@@ -43,3 +43,15 @@ test('real rows and existing ids tolerate torn lines and only read dated real fi
   assert.deepEqual(await existingRealIds(path.join(dir, 'missing')), new Set());
   assert.deepEqual(readRealRows('\n{"id":"r-a"}\nbroken\n'), [{ id: 'r-a' }]);
 });
+
+test('filter-only receipts join the set while questions with neither content nor filters stay out', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-real-filter-'));
+  const rows = [
+    { at: '2026-10-06T01:00:00Z', recordIds: ['nonconformity:a1'], hermesReceipt: { question: '仙台工場FA組立課の不適合２件', outcome: 'answer', plan: { semanticQuery: '', filters: [{ field: 'originDepartmentName', op: 'eq', values: ['仙台工場FA組立課'] }], sort: 'recent', limit: 2 } } },
+    { at: '2026-10-06T01:01:00Z', recordIds: [], hermesReceipt: { question: '最近の不適合を２件', outcome: 'answer', plan: { semanticQuery: '', filters: [], sort: 'recent', limit: 2 } } },
+    { at: '2026-10-06T01:02:00Z', recordIds: [], hermesReceipt: { question: 'こんにちは', outcome: 'answer', plan: { semanticQuery: '', filters: [], sort: null } } },
+  ];
+  writeFileSync(path.join(dir, 'receipts-2026-10-06.jsonl'), rows.map((row) => JSON.stringify(row)).join('\n') + '\n');
+  const questions = await readReceiptQuestions({ receiptsDir: dir, days: ['2026-10-06'] });
+  assert.deepEqual(questions.map((item) => item.question), ['仙台工場FA組立課の不適合２件', '最近の不適合を２件']);
+});

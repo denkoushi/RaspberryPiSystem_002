@@ -453,6 +453,7 @@ test('real content questions get consensus labels and corrected loss once across
   assert.equal(rows.length, 1);
   const row = rows[0];
   assert.equal(row.source, 'real');
+  assert.equal(row.kind, 'content');
   assert.equal(row.id, realId('傷はある？'));
   assert.equal(row.split, splitOf(row.id));
   assert.equal(row.receiptAt, '2026-10-03T03:00:00Z');
@@ -486,6 +487,36 @@ test('zero real budget leaves receipt questions pending without scoring or gradi
   assert.equal(status.real, 0);
   assert.equal(status.realPending, 1);
   assert.equal(existsSync(realPath(dir, '2026-10-03')), false);
+});
+
+test('real filter questions are checked deterministically without either grader', async () => {
+  for (const [shown, extraPlan, expectedLoss] of [
+    [['nonconformity:a1', 'b1'], {}, null],
+    [['b1', 'a1'], {}, 'filter_mismatch'],
+    [['a1', 'b1'], { filters: [{ field: 'discoveredOn', op: 'gte', values: ['2026-10-01'] }] }, 'filter_unsupported'],
+  ]) {
+    const { dir, input } = realFixture();
+    const plan = { filters: [{ field: 'originDepartmentName', op: 'eq', values: ['North Shop'] }], semanticQuery: '', sort: { field: 'discoveredOn', direction: 'desc' }, limit: 2, ...extraPlan };
+    const status = await runFlywheelNight({ ...input,
+      records: records.map((record, index) => ({ ...record, discoveredOn: `2026-10-0${6 - index}` })),
+      live: async () => ({ outcome: 'answer', shown, candidates: ['a1', 'b1', 'c1'], judged: 30, loss: 'other_shown', vectorStatus: 'not_requested', ms: 1, plan }),
+      chat: async () => assert.fail('filter questions must not call DGX grading'),
+      jevEvaluate: async () => assert.fail('filter questions must not call JEV grading'),
+    });
+    const [row] = readRealRows(readFileSync(realPath(dir, '2026-10-03'), 'utf8'));
+    assert.equal(row.kind, 'filter');
+    assert.deepEqual(row.relevant, []);
+    assert.deepEqual(row.labels, {});
+    assert.equal(row.filterCheck.supported, expectedLoss !== 'filter_unsupported');
+    assert.equal(row.filterCheck.ok, expectedLoss === null ? true : expectedLoss === 'filter_mismatch' ? false : null);
+    assert.equal(row.live.loss, expectedLoss);
+    assert.deepEqual(row.live.plan, plan);
+    assert.equal(status.real, 1);
+    assert.equal(status.realPending, 0);
+    assert.equal(existsSync(path.join(dir, 'labels.json')), false);
+    const again = await runFlywheelNight({ ...input, live: async () => assert.fail('filter question already processed') });
+    assert.equal(again.real, 0);
+  }
 });
 
 test('the real budget subtracts existing night rows and includes previous-day receipts', async () => {

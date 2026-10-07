@@ -14,6 +14,7 @@ import { catalogEntries, fieldsWithRole, loadNonconformityCatalog } from './cata
 import { denseSettings, readDenseStore } from './dense-dgx.mjs';
 import { enrichmentSettings, withinWindow } from './enrichment-dgx.mjs';
 import { createDgxGrader, createJevPairGrader, filterAndLabel } from './flywheel-filter.mjs';
+import { checkFilterAnswer, isFilterOnlyPlan } from './flywheel-filter-check.mjs';
 import { createDgxChat, generateForPairs, guardChat } from './flywheel-generate.mjs';
 import { createLiveScorer, lossStage, relevantIds } from './flywheel-live.mjs';
 import { questionSet, splitOf } from './flywheel-gate.mjs';
@@ -367,6 +368,17 @@ export async function runFlywheelNight({
     if (!withinWindow(settings.window, now())) break;
     score ??= await makeLive({ records, catalog, evaluate });
     const live = await score({ a: null, b: null, question: question.question, grades: null });
+    if (isFilterOnlyPlan(live.plan)) {
+      const filterCheck = checkFilterAnswer({ plan: live.plan, shown: live.shown, records: corpus, catalog });
+      live.loss = filterCheck.ok === true ? null : filterCheck.ok === false ? 'filter_mismatch' : 'filter_unsupported';
+      await appendFile(realFile, `${JSON.stringify({
+        at: now().toISOString(), source: 'real', ...question, split: splitOf(question.id),
+        kind: 'filter', relevant: [], labels: {}, live, filterCheck,
+      })}\n`, { mode: 0o600 });
+      status.real += 1;
+      status.realPending -= 1;
+      continue;
+    }
     const ids = [...new Set([
       ...(live.candidates ?? []).slice(0, REAL_LABEL_DEPTH), ...(live.shown ?? []), ...question.dayShown,
     ].map(bareId))].filter((id) => recordsById.has(id));
@@ -389,7 +401,7 @@ export async function runFlywheelNight({
     live.loss = lossStage({ relevant, outcome: live.outcome, shown: live.shown, candidates: live.candidates, judged: live.judged });
     await writeJson(labelsPath, { schema: 'hermes-flywheel-labels/v1', labels });
     await appendFile(realFile, `${JSON.stringify({
-      at: now().toISOString(), source: 'real', ...question, split: splitOf(question.id), relevant, labels: questionLabels, live,
+      at: now().toISOString(), source: 'real', ...question, split: splitOf(question.id), kind: 'content', relevant, labels: questionLabels, live,
     })}\n`, { mode: 0o600 });
     status.real += 1;
     status.realPending -= 1;
