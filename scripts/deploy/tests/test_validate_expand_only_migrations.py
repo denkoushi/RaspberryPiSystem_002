@@ -170,6 +170,27 @@ class SqlAllowListTests(unittest.TestCase):
             with self.subTest(sql=sql):
                 self.assert_disallowed(sql)
 
+    def test_procedure_video_link_scene_foreign_key_is_allowed(self) -> None:
+        path = (
+            ROOT
+            / validator.MIGRATION_ROOT
+            / "20261008130000_add_procedure_video_scenes/migration.sql"
+        )
+        validator.validate_sql(path.read_bytes(), str(path))
+        for sql in [
+            'ALTER TABLE "ProcedureVideo" ADD CONSTRAINT "ProcedureVideoLink_sceneId_fkey" '
+            'FOREIGN KEY ("sceneId") REFERENCES "ProcedureVideoScene"("id") '
+            "ON DELETE RESTRICT ON UPDATE CASCADE;",
+            'ALTER TABLE "ProcedureVideoLink" ADD CONSTRAINT "ProcedureVideoLink_sceneId_fkey" '
+            'FOREIGN KEY ("videoId") REFERENCES "ProcedureVideoScene"("id") '
+            "ON DELETE RESTRICT ON UPDATE CASCADE;",
+            'ALTER TABLE "ProcedureVideoLink" ADD CONSTRAINT "ProcedureVideoLink_sceneId_fkey" '
+            'FOREIGN KEY ("sceneId") REFERENCES "ProcedureVideoScene"("id") '
+            "ON DELETE CASCADE ON UPDATE CASCADE;",
+        ]:
+            with self.subTest(sql=sql):
+                self.assert_disallowed(sql)
+
     def test_only_torque_confirmation_setting_history_nullability_drops_are_allowed(self) -> None:
         statements = [
             'ALTER TABLE "AssemblyTorqueWrenchConfirmation" '
