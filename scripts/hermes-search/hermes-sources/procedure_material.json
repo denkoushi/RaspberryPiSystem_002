@@ -1,0 +1,14 @@
+{
+  "schema": "hermes-source-definition/v1",
+  "id": "procedure_material",
+  "label": "要領書の素材",
+  "retrieval": {"semanticSearch": true, "enrichment": false, "learnedQueries": false, "denseStoreSuffix": "procedure_material"},
+  "visibility": ["kiosk", "viewer", "manager", "admin"],
+  "description": "メール単位にまとめた要領書の素材",
+  "bodyFields": {"bodyText": "件名・本文・ファイル名"},
+  "contextAttributes": [],
+  "searchMetadataFields": [],
+  "lexicalFields": ["bodyText"],
+  "organizedLabels": {"material": "素材"},
+  "organizedContextClasses": ["material"]
+}

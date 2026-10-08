@@ -531,21 +531,8 @@ function unavailableResult(reason, timings, plan) {
   };
 }
 
-export async function execute(plan, options = {}) {
-  const started = performance.now();
-  const records = options.records ?? [];
-  if (!Array.isArray(records)) throw new TypeError('records must be an array');
-  if (Array.isArray(plan?.unresolved) && plan.unresolved.length) {
-    return {
-      status: 'clarification',
-      results: [],
-      timings: { filterMs: 0, lexicalMs: 0, vectorMs: null, vectorStatus: 'not_requested', vectorReason: null, relevanceMs: null, filteredCount: 0, totalMs: 0 },
-      insufficient: false,
-      requested: null,
-      returned: 0,
-      clarification: { message: 'Some terms could not be resolved to an indexed value.', candidates: plan.unresolved },
-    };
-  }
+// Shared candidate preparation; judging and presentation remain in execute.
+async function prepareCandidateRanking(plan, options, records) {
   const filterStarted = performance.now();
   const filters = Array.isArray(plan?.filters) ? plan.filters : [];
   const filtered = records.filter((record) => filters.every((filter) => matchesFilter(record, filter)));
@@ -619,8 +606,7 @@ export async function execute(plan, options = {}) {
     .filter((item) => item.record);
   const recentContent = isRecentContentPlan(plan, options.catalog);
   let candidatePoolTruncated = false;
-  const poolLimit = relevancePoolLimit(options);
-  let relevanceCut = false;
+  const poolLimit = options.candidateLimit ?? relevancePoolLimit(options);
   if (recentContent) {
     const dateField = dateRoleField(plan, options.catalog);
     ranked = orderRecentContentPool(buildRecentContentPool({
@@ -659,6 +645,46 @@ export async function execute(plan, options = {}) {
       .map((item) => ({ record: byId.get(item.id), score: item.score, lexicalValue: lexicalScores.get(item.id) ?? 0 }))
       .filter((item) => item.record);
   }
+  return { ranked, candidateIds, candidatePoolTruncated, filtered, filters, semanticQuery,
+    bodyFields, filterMs, lexicalMs, vectorMs, vectorStatus, vectorReason, filteredOnly, recentContent, poolLimit, retriever };
+}
+
+// A rank-only request always selects one source and never invokes a planner or judge.
+export async function rankCandidates(query, options = {}) {
+  if (typeof options.sourceId !== 'string' || !options.sourceId) throw new TypeError('sourceId is required');
+  if (typeof query !== 'string' || !query.trim()) throw new TypeError('query is required');
+  const records = options.records ?? [];
+  if (!Array.isArray(records)) throw new TypeError('records must be an array');
+  const plan = { sources: [options.sourceId], filters: [], semanticQuery: query.trim(), sort: 'relevance' };
+  const limit = Number.isInteger(options.limit) ? Math.max(1, Math.min(options.limit, 100)) : 50;
+  const candidates = await prepareCandidateRanking(plan, { ...options, retriever: 'hybrid', candidateLimit: limit }, records);
+  const ranked = candidates.ranked.filter(item => candidates.retriever === 'hybrid' || item.lexicalValue > 0);
+  ranked.sort((left, right) => right.score - left.score || String(left.record.id).localeCompare(String(right.record.id)));
+  const mode = candidates.retriever === 'hybrid' ? 'semantic' : 'lexical';
+  return { recordIds: ranked.slice(0, limit).map(item => item.record.id), mode, fallback: mode === 'lexical' };
+}
+
+export async function execute(plan, options = {}) {
+  const started = performance.now();
+  const records = options.records ?? [];
+  if (!Array.isArray(records)) throw new TypeError('records must be an array');
+  if (Array.isArray(plan?.unresolved) && plan.unresolved.length) {
+    return {
+      status: 'clarification',
+      results: [],
+      timings: { filterMs: 0, lexicalMs: 0, vectorMs: null, vectorStatus: 'not_requested', vectorReason: null, relevanceMs: null, filteredCount: 0, totalMs: 0 },
+      insufficient: false,
+      requested: null,
+      returned: 0,
+      clarification: { message: 'Some terms could not be resolved to an indexed value.', candidates: plan.unresolved },
+    };
+  }
+  const { filtered, filters, semanticQuery, bodyFields, filterMs, lexicalMs, vectorMs,
+    vectorStatus, vectorReason, filteredOnly, recentContent, poolLimit, candidateIds,
+    candidatePoolTruncated: poolTruncated, ranked: candidates } = await prepareCandidateRanking(plan, options, records);
+  let ranked = candidates;
+  let candidatePoolTruncated = poolTruncated;
+  let relevanceCut = false;
   let relevanceMs = semanticQuery ? 0 : null;
   // The planner's content span, when present, keeps request wording such as 「…はほかにある」 away from the judge.
   const contentSpan = typeof plan?.diagnostics?.contentSpan === 'string' ? plan.diagnostics.contentSpan : '';
