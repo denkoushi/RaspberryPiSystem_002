@@ -13,6 +13,7 @@ import { authorizeRoles } from '../../lib/auth.js';
 import { registerBusinessHermesRoutes } from './business-hermes.js';
 import { registerBusinessHermesMcpRoutes } from './business-hermes-mcp.js';
 import { registerHermesSearchTrialRoutes } from './hermes-search-trial.js';
+import { HermesSearchTrialService } from '../../services/assembly/hermes-search-trial.service.js';
 import { BusinessHermesService } from '../../services/assembly/business-hermes.service.js';
 import { BusinessHermesConsultationService } from '../../services/assembly/business-hermes-consultation.service.js';
 import { requireClientDevice } from '../kiosk/shared.js';
@@ -759,9 +760,10 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
     consultationService: businessHermesConsultationService
   });
   await registerBusinessHermesMcpRoutes(app);
-  await registerHermesSearchTrialRoutes(app);
+  const hermesSearchTrial = new HermesSearchTrialService();
+  await registerHermesSearchTrialRoutes(app, hermesSearchTrial);
 
-  registerProcedureMaterialRoutes(app, { allowView, allowWriteKiosk });
+  registerProcedureMaterialRoutes(app, { allowView, allowWriteKiosk, semanticSearch: hermesSearchTrial });
   registerProcedureVideoRoutes(app, { allowView, allowWriteKiosk });
   registerProcedureManualRoutes(app, { allowView, allowWriteKiosk, serializeSequence: serializeProcedureSequence });
 

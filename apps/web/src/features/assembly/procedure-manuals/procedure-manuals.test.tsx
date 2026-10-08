@@ -144,7 +144,7 @@ describe('procedure-manuals', () => {
     expect(model.querySelector('[aria-hidden="true"]')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: '機種一覧' })).toHaveTextContent('DFD2');
     expect(screen.getByLabelText('機種検索')).toHaveClass('h-12', 'shrink-0', 'text-[21px]');
-    expect(screen.getByRole('group', { name: '機種テンキー' }).parentElement?.parentElement).toHaveClass('grid-cols-[200px_minmax(0,1fr)]');
+    expect(screen.getByRole('group', { name: '機種テンキー' }).parentElement?.parentElement).toHaveClass('grid-cols-[64px_minmax(0,1fr)]');
   });
 
   it('automatically selects the only process with assignments after a model click', async () => {

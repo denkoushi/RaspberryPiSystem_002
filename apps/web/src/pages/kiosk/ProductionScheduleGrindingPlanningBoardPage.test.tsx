@@ -18,6 +18,7 @@ class TestPointerEvent extends MouseEvent {
 
 const mocks = vi.hoisted(() => ({
   snapshot: vi.fn(),
+  load: vi.fn(),
   refetch: vi.fn(),
   overrides: vi.fn(),
   candidates: vi.fn(),
@@ -52,6 +53,7 @@ vi.mock('../../api/hooks', () => ({
     };
   },
   useKioskGrindingPlanningBoardDueDetail: (...args: unknown[]) => mocks.dueDetail(...args),
+  useKioskGrindingPlanningBoardLoad: (...args: unknown[]) => mocks.load(...args),
   useKioskGrindingPlanningBoardSeibanCandidates: (...args: unknown[]) => {
     const result = mocks.candidates(...args);
     return result ?? {
@@ -136,6 +138,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   beforeEach(() => {
     vi.stubGlobal('PointerEvent', TestPointerEvent);
     mocks.snapshot.mockReset();
+    mocks.load.mockReset();
+    mocks.load.mockReturnValue({ data: { load: fixture().load, unknownRequiredMinutesCount: 0 } });
     mocks.refetch.mockReset();
     mocks.overrides.mockReset();
     mocks.candidates.mockReset();
@@ -174,6 +178,29 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('負荷未着でも一覧と編集操作を使え、別取得の負荷が開いた編集パネルへ反映される', () => {
+    const board = { ...fixture(), load: [], loadDeferred: true };
+    mocks.snapshot.mockReturnValue({ data: board, isLoading: false, isError: false, refetch: mocks.refetch });
+    mocks.load.mockReturnValue({ data: undefined, isLoading: true });
+    const page = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.getAllByRole('button', { name: '資源CD 305を変更' })).toHaveLength(4);
+    selectAllBoardItems();
+    fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
+    const editor = screen.getByRole('dialog', { name: '一括変更' });
+    const resource = within(editor).getByRole('button', { name: '資源CD 305へ変更' });
+    expect(resource).toBeEnabled();
+    expect(resource).toHaveTextContent('…');
+    expect(resource).not.toHaveTextContent('0分');
+    fireEvent.click(resource);
+    expect(editor).not.toHaveTextContent('移動後負荷:');
+    const summary = { ...fixture().load[0]!, originalRequiredMinutes: 240, alternateRequiredMinutes: 240, requiredMinutes: 240 };
+    mocks.load.mockReturnValue({ data: { load: [summary], unknownRequiredMinutesCount: 0 }, isLoading: false });
+    page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(within(editor).getByRole('button', { name: '資源CD 305へ変更' })).toHaveTextContent('240分');
+    expect(editor).toHaveTextContent('移動後負荷: 240分');
+    expect(mocks.load).toHaveBeenCalledWith('grinding');
   });
 
   it('通常表示で製番明細を初期展開し、手動で閉じられる', () => {

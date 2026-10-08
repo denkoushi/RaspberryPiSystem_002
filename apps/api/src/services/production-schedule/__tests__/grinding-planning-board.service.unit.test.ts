@@ -84,10 +84,15 @@ vi.mock('../leaderboard/leaderboard-shell-snapshot-generation.js', () => ({
 import { createInMemoryLeaderboardShellSnapshotStore } from '../leaderboard/leaderboard-shell-snapshot.store.js';
 import {
   getGrindingPlanningBoard,
+  getGrindingPlanningBoardLoad,
   updateGrindingPlanningBoardSeibanOrder
 } from '../grinding-planning-board.service.js';
 
+let databaseGeneration = 0;
+
 function configurePersistence(): void {
+  // Each test models an independent database generation for the in-process cache.
+  databaseGeneration += 1;
   const { prisma, sourceRow, state } = mocks;
   const details = {
     id: sourceRow.id,
@@ -146,7 +151,7 @@ function configurePersistence(): void {
   prisma.productionScheduleOrderAssignment.findMany.mockResolvedValue([]);
   prisma.productionScheduleOrderSplitAssignment.findMany.mockResolvedValue([]);
   prisma.productionScheduleResourceMaster.findMany.mockResolvedValue([{ resourceCd: '305' }, { resourceCd: '581' }]);
-  prisma.productionScheduleResourceMaster.aggregate.mockResolvedValue({ _count: { _all: 2 }, _max: { updatedAt: null } });
+  prisma.productionScheduleResourceMaster.aggregate.mockResolvedValue({ _count: { _all: 2 }, _max: { updatedAt: new Date(databaseGeneration) } });
   prisma.productionScheduleSeibanMachineNameSupplement.aggregate.mockResolvedValue({ _count: { _all: 0 }, _max: { updatedAt: null } });
   mocks.readGrindingPlanningBoardSnapshotGenerationToken.mockResolvedValue('leaderboard-generation-1');
   prisma.$queryRaw.mockImplementation(async (strings: unknown) => {
@@ -190,6 +195,66 @@ describe('grinding planning board service orchestration', () => {
     expect(response.items[0]?.materialArrivalStatus).toBe('ordered');
     expect(response.items[0]?.materialArrivalBasis).toBe(basis === 'part' ? 'part' : undefined);
     expect(response.items[0]?.itemRevision).toBe('item-revision-a');
+  });
+
+  it('omits load SQL and keeps deferred and legacy snapshots separate', async () => {
+    const snapshotStore = createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 });
+    const params = { siteKey: 'site-a', category: 'grinding' as const, view: 'seiban' as const, snapshotStore };
+    const deferred = await getGrindingPlanningBoard({ ...params, includeLoad: false });
+    const loadQueries = () => mocks.prisma.$queryRaw.mock.calls.filter(([sql]) => JSON.stringify(sql).includes('effectiveItems'));
+    expect(loadQueries()).toHaveLength(0);
+    expect(deferred).toMatchObject({ load: [], unknownRequiredMinutesCount: 0, loadDeferred: true });
+    const legacy = await getGrindingPlanningBoard(params);
+    expect(legacy.load[0]).toMatchObject({ resourceCd: '305', requiredMinutes: 30 });
+    expect(legacy.unknownRequiredMinutesCount).toBe(0);
+    expect(legacy).not.toHaveProperty('loadDeferred');
+    const again = await getGrindingPlanningBoard({ ...params, includeLoad: false });
+    expect(again).toMatchObject({ load: [], unknownRequiredMinutesCount: 0, loadDeferred: true });
+    const legacyAgain = await getGrindingPlanningBoard(params);
+    expect(legacyAgain.load).toEqual(legacy.load);
+    expect(legacyAgain.unknownRequiredMinutesCount).toBe(legacy.unknownRequiredMinutesCount);
+    expect(loadQueries()).toHaveLength(1);
+    expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns legacy load through the separate endpoint without reading source details', async () => {
+    const snapshotStore = createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 });
+    const legacy = await getGrindingPlanningBoard({ siteKey: 'site-a', category: 'grinding', view: 'seiban', snapshotStore });
+    mocks.prisma.$queryRaw.mockClear();
+    mocks.prisma.csvDashboardRow.findMany.mockClear();
+    mocks.projectGrindingPlanningBoard.mockClear();
+    const load = await getGrindingPlanningBoardLoad({ siteKey: 'site-a', category: 'grinding' });
+    expect(load).toEqual({ load: legacy.load, unknownRequiredMinutesCount: legacy.unknownRequiredMinutesCount });
+    expect(mocks.prisma.csvDashboardRow.findMany).not.toHaveBeenCalled();
+    expect(mocks.projectGrindingPlanningBoard).not.toHaveBeenCalled();
+    expect(mocks.prisma.$queryRaw.mock.calls).toHaveLength(1); // canonical winner ids only
+  });
+
+  it('shares load SQL across category, view, completion and seiban filters and refreshes after override changes', async () => {
+    const query = mocks.prisma.$queryRaw.getMockImplementation()!;
+    mocks.prisma.$queryRaw.mockImplementation(async (sql: unknown) => {
+      if (JSON.stringify(sql).includes('effectiveItems')) return [
+        { originalResourceCd: '305', effectiveResourceCd: '305', itemCount: 1n, unknownItemCount: 1n, requiredMinutesSum: null },
+        { originalResourceCd: '581', effectiveResourceCd: '581', itemCount: 2n, unknownItemCount: 0n, requiredMinutesSum: 60 }
+      ];
+      return query(sql);
+    });
+    mocks.isProductionScheduleGrindingResourceCd.mockImplementation((cd: string) => cd === '305');
+    mocks.isProductionScheduleCuttingResourceCd.mockImplementation((cd: string) => cd === '581');
+    const params = { siteKey: 'site-a', category: 'grinding' as const, view: 'seiban' as const,
+      snapshotStore: createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 }) };
+    const grinding = await getGrindingPlanningBoard(params);
+    const cutting = await getGrindingPlanningBoardLoad({ siteKey: 'site-a', category: 'cutting' });
+    expect(grinding.unknownRequiredMinutesCount).toBe(1);
+    expect(cutting.load[0]).toMatchObject({ resourceCd: '581', requiredMinutes: 60 });
+    await getGrindingPlanningBoard({ ...params, category: 'cutting', view: 'resource', completionFilter: 'incomplete', fseibans: ['unregistered'] });
+    const loadQueries = () => mocks.prisma.$queryRaw.mock.calls.filter(([sql]) => JSON.stringify(sql).includes('effectiveItems'));
+    expect(loadQueries()).toHaveLength(1);
+    mocks.prisma.productionScheduleGrindingPlanningBoardOverride.aggregate.mockResolvedValue({
+      _count: { _all: 1 }, _max: { updatedAt: new Date('2026-10-08T00:00:00Z') }
+    });
+    await getGrindingPlanningBoardLoad({ siteKey: 'site-a', category: 'grinding' });
+    expect(loadQueries()).toHaveLength(2);
   });
 
   it('reuses a first page without a snapshot ID and keeps both generation checks', async () => {
@@ -322,7 +387,7 @@ describe('grinding planning board service orchestration', () => {
     expect(response.seibanProgress).toEqual({ 'ORDER-A': { completed: 0, total: 1 } });
     expect(response.snapshotId).toEqual(expect.any(String));
     expect(response.nextCursor).toBeNull();
-    expect(mocks.readGrindingPlanningBoardSnapshotGenerationToken).toHaveBeenCalledTimes(2);
+    expect(mocks.readGrindingPlanningBoardSnapshotGenerationToken).toHaveBeenCalledTimes(3);
 
     await expect(getGrindingPlanningBoard({
       siteKey: 'other-site',

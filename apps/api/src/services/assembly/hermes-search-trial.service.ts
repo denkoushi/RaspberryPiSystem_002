@@ -2,6 +2,7 @@ import { spawn, type ChildProcessByStdio, type ChildProcessWithoutNullStreams } 
 import type { Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import {setPriority} from 'node:os';
+import { loadProcedureMaterialRecords } from './procedure-material-hermes-source.service.js';
 import { BusinessHermesMcpService } from './business-hermes-mcp.service.js';
 import { createTorqueTrainingSourceReaders } from '../torque-training/torque-training-hermes-source.service.js';
 import type { KnowledgeProcedureRepositoryPort } from '../knowledge/knowledge-procedure.port.js';
@@ -67,10 +68,24 @@ type TrialSession = {
   expiresAt: number;
 };
 
-type WorkerResponse = { workerReady?: boolean; workerRequestId?: string; workerError?: string; failureDiagnostic?: unknown; memory?: WorkerMemory; runtime?: {
+export type HermesRankResult = { recordIds: string[]; mode: 'semantic' | 'lexical'; fallback: boolean };
+export type HermesRankAvailability = { available: true; mode: 'semantic' | 'lexical'; recordIds: string[] }
+  | { available: false; mode: 'unavailable'; recordIds: string[] };
+type PendingWorkerRequest =
+  | { kind?: 'answer'; resolve: (value: HermesTrialAnswer) => void; reject: (error: Error) => void }
+  | { kind: 'rank'; resolve: (value: HermesRankResult) => void; reject: (error: Error) => void };
+
+function isRankResult(value: unknown): value is HermesRankResult {
+  if (!value || typeof value !== 'object') return false;
+  const result = value as HermesRankResult;
+  return Array.isArray(result.recordIds) && result.recordIds.every(id => typeof id === 'string')
+    && (result.mode === 'semantic' || result.mode === 'lexical') && result.fallback === (result.mode === 'lexical');
+}
+
+type WorkerResponse = { type?: string; ok?: boolean; sourceIds?: RetrievalSourceId[]; workerReady?: boolean; workerRequestId?: string; workerError?: string; failureDiagnostic?: unknown; memory?: WorkerMemory; runtime?: {
   snapshot?: { count: number; snapshotId: string }; organized?: { count: number };
   memory?: WorkerMemory;
-}; result?: HermesTrialAnswer };
+}; result?: HermesTrialAnswer | HermesRankResult };
 
 type TrialSettings = {
   enabled: boolean;
@@ -114,7 +129,7 @@ function trialSettingsFromEnv(): TrialSettings {
 export class HermesSearchTrialService {
   private child: ChildProcessWithoutNullStreams | null = null;
   private pending: { id: string; resolve: (value: HermesTrialAnswer) => void; reject: (error: Error) => void } | null = null;
-  private readonly pendingMap = new Map<string, { resolve: (value: HermesTrialAnswer) => void; reject: (error: Error) => void }>();
+  private readonly pendingMap = new Map<string, PendingWorkerRequest>();
   private inflight = 0;
   private waitQueue: Array<{ grant: () => void; reject: (error: Error) => void }> = [];
   private runtime: WorkerResponse['runtime'];
@@ -124,6 +139,7 @@ export class HermesSearchTrialService {
   private sourceSearch: BusinessHermesMcpService | null = null;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private corpusReady = false;
+  private readonly appliedCorpusSources = new Set<RetrievalSourceId>();
   private retrievalSources: RetrievalSourceId[] = ['nonconformity'];
   private procedures: KnowledgeProcedureRepositoryPort | null = null;
   private lastCorpusCount = 0;
@@ -172,6 +188,7 @@ export class HermesSearchTrialService {
           for (const waiter of this.waitQueue) waiter.reject(error);
           this.waitQueue = [];
           this.inflight = 0;
+          this.appliedCorpusSources.clear();
           this.child = null;
           this.ready = null;
           this.failure = null;
@@ -198,6 +215,9 @@ export class HermesSearchTrialService {
           if (!line.startsWith('__HERMES_UI_PREFETCH__')) continue;
           try {
             const row = JSON.parse(line.slice('__HERMES_UI_PREFETCH__'.length)) as WorkerResponse;
+            if (row.type === 'corpus' && row.ok === true && Array.isArray(row.sourceIds)) {
+              for (const sourceId of row.sourceIds) if (this.retrievalSources.includes(sourceId)) this.appliedCorpusSources.add(sourceId);
+            }
             if (row.workerReady) this.runtime = row.runtime;
             if (row.memory || row.runtime?.memory) {
               const memory = (row.memory ?? row.runtime?.memory)!;
@@ -221,21 +241,22 @@ export class HermesSearchTrialService {
               this.pendingMap.delete(row.workerRequestId);
               this.releaseSlot();
               if (!pending) continue;
-              if (row.workerError || !row.result || typeof row.result.answer !== 'string') {
+              if (row.workerError || !row.result || (pending.kind === 'rank' ? !isRankResult(row.result) : !('answer' in row.result) || typeof row.result.answer !== 'string')) {
                 const error = new Error('検索に失敗しました。該当なしとは判断していません。') as Error & { workerFailureDiagnostic?: unknown };
                 if (row.failureDiagnostic !== undefined) error.workerFailureDiagnostic = row.failureDiagnostic;
                 pending.reject(error);
-              } else pending.resolve(row.result);
+              } else if (pending.kind === 'rank') pending.resolve(row.result as HermesRankResult);
+              else pending.resolve(row.result as HermesTrialAnswer);
             }
             else if (row.workerRequestId === this.pending?.id) {
               const pending = this.pending;
               this.pending = null;
-              if (row.workerError || !row.result || typeof row.result.answer !== 'string') {
+              if (row.workerError || !row.result || !('answer' in row.result) || typeof row.result.answer !== 'string') {
                 const error = new Error('検索に失敗しました。該当なしとは判断していません。') as Error & { workerFailureDiagnostic?: unknown };
                 if (row.failureDiagnostic !== undefined) error.workerFailureDiagnostic = row.failureDiagnostic;
                 pending?.reject(error);
               }
-              else pending?.resolve(row.result);
+              else pending?.resolve(row.result as HermesTrialAnswer);
             } else if (row.workerError) { clearTimeout(timeout); fail(); }
           } catch { fail(); child.kill('SIGTERM'); }
         }
@@ -387,6 +408,46 @@ export class HermesSearchTrialService {
     }
   }
 
+  async rank(sourceId: RetrievalSourceId, query: string, limit = 50, allowedRecordIds?: string[]): Promise<HermesRankAvailability> {
+    const unavailable = { available: false, mode: 'unavailable', recordIds: [] } as const;
+    if (!this.settings.enabled || !this.settings.retrievalV2) return { ...unavailable, recordIds: [] };
+    let written = false;
+    let acquired = false;
+    try {
+      if (allowedRecordIds !== undefined && (!Array.isArray(allowedRecordIds) || allowedRecordIds.length > 20000
+        || !allowedRecordIds.every(id => typeof id === 'string' && id.length > 0))) return { ...unavailable, recordIds: [] };
+      if (!retrievalSourceIdsFromEnv().includes(sourceId)) return { ...unavailable, recordIds: [] };
+      await this.start();
+      if (!this.appliedCorpusSources.has(sourceId)) return { ...unavailable, recordIds: [] };
+      await this.acquireSlot();
+      acquired = true;
+      const result = await new Promise<HermesRankResult>((resolve, reject) => {
+        const id = randomUUID();
+        const timeout = setTimeout(() => {
+          // As with answers, retain ownership until the worker completes or exits.
+          this.child?.stdin.write(JSON.stringify({ type: 'cancel', requestId: id }) + '\n');
+          reject(new Error('rank timeout'));
+        }, 30000);
+        this.pendingMap.set(id, {
+          kind: 'rank', resolve: value => { clearTimeout(timeout); resolve(value); },
+          reject: error => { clearTimeout(timeout); reject(error); },
+        });
+        try {
+          this.child!.stdin.write(JSON.stringify({ type: 'rank', requestId: id, sourceId, q: query, limit, ...(allowedRecordIds === undefined ? {} : { allowedRecordIds }) }) + '\n');
+          written = true;
+        } catch (error) {
+          clearTimeout(timeout);
+          this.pendingMap.delete(id);
+          reject(error);
+        }
+      });
+      return { available: true, mode: result.mode, recordIds: result.recordIds };
+    } catch {
+      if (acquired && !written) this.releaseSlot();
+      return { ...unavailable, recordIds: [] };
+    }
+  }
+
   private async searchExactNonconformity(args: Record<string, unknown>): Promise<{ answer: string; recordIds: string[] }> {
     this.sourceSearch ??= new BusinessHermesMcpService();
     const response = await this.sourceSearch.call('business_hermes_search', args);
@@ -412,6 +473,7 @@ export class HermesSearchTrialService {
     const readers = registeredSourceReaders({
       nonconformity: () => this.loadNonconformityRecords(),
       procedures: () => this.loadProcedureRecords(),
+      materials: loadProcedureMaterialRecords,
       training: () => trainingReaders ??= (this.settings.createTrainingReaders ?? createTorqueTrainingSourceReaders)(),
     }, this.retrievalSources);
     const records: Array<Record<string, unknown>> = [];
@@ -525,6 +587,7 @@ export class HermesSearchTrialService {
   close() {
     if (this.refreshTimer) clearInterval(this.refreshTimer);
     this.sessions.clear();
+    this.appliedCorpusSources.clear();
     this.child?.kill('SIGTERM');
     this.enrichmentChild?.kill('SIGTERM');
     this.flywheelChild?.kill('SIGTERM');

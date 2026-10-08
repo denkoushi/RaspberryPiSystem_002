@@ -6,6 +6,7 @@ export type RetrievalSourceReader = () => Promise<Array<Record<string, unknown>>
 type ReaderContext = {
   nonconformity: RetrievalSourceReader;
   procedures: RetrievalSourceReader;
+  materials: RetrievalSourceReader;
   training: () => ReturnType<typeof createTorqueTrainingSourceReaders>;
 };
 
@@ -13,6 +14,7 @@ type ReaderContext = {
 export const RETRIEVAL_SOURCE_READERS = {
   nonconformity: (context: ReaderContext) => context.nonconformity,
   knowledge_procedure: (context: ReaderContext) => context.procedures,
+  procedure_material: (context: ReaderContext) => context.materials,
   torque_training_session: (context: ReaderContext) => context.training().torque_training_session,
   torque_training_operator: (context: ReaderContext) => context.training().torque_training_operator,
   torque_training_team: (context: ReaderContext) => context.training().torque_training_team,
