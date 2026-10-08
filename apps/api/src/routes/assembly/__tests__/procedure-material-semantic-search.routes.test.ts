@@ -16,10 +16,10 @@ describe('procedure material semantic search route', () => {
 
   async function harness(denyView = false) {
     const rows = [
-      { id: 'b2', gmailMessageId: 'b', kind: 'PHOTO', receivedAt: '2026-10-03', discardedAt: null, placedAt: null, documentId: null },
+      { id: 'b2', gmailMessageId: 'b', kind: 'PHOTO', text: 'ページの文字', receivedAt: '2026-10-03', discardedAt: null, placedAt: null, documentId: null },
       { id: 'a', gmailMessageId: 'a', kind: 'TEXT', text: '一覧と同じ本文', receivedAt: '2026-10-02', discardedAt: null, placedAt: null, documentId: null },
-      { id: 'standalone', gmailMessageId: null, kind: 'PDF', receivedAt: '2026-10-02', discardedAt: null, placedAt: null, documentId: null },
-      { id: 'b1', gmailMessageId: 'b', kind: 'PDF', receivedAt: '2026-10-01', discardedAt: null, placedAt: null, documentId: null },
+      { id: 'standalone', gmailMessageId: null, kind: 'PDF', text: 'PDF の文字', receivedAt: '2026-10-02', discardedAt: null, placedAt: null, documentId: null },
+      { id: 'b1', gmailMessageId: 'b', kind: 'PDF', text: 'PDF の文字', receivedAt: '2026-10-01', discardedAt: null, placedAt: null, documentId: null },
       { id: 'placed-at', gmailMessageId: 'a', kind: 'PHOTO', discardedAt: null, placedAt: '2026-10-01', documentId: null },
       { id: 'document', gmailMessageId: 'b', kind: 'PDF', discardedAt: null, placedAt: null, documentId: 'doc' },
       { id: 'discarded', gmailMessageId: 'a', kind: 'TEXT', discardedAt: '2026-10-01', placedAt: null, documentId: null },
@@ -49,7 +49,7 @@ describe('procedure material semantic search route', () => {
     const { rank, findMany, rows } = await harness();
     const response = await app.inject({ method: 'POST', url, payload });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ available: true, mode: 'semantic', items: [rows[1], rows[0], rows[3], rows[2]] });
+    expect(response.json()).toEqual({ available: true, mode: 'semantic', items: [rows[1], { ...rows[0], text: null }, { ...rows[3], text: null }, { ...rows[2], text: null }] });
     expect(rank).toHaveBeenCalledWith('procedure_material', '溶接', 100, ['mail:b', 'mail:a', 'material:standalone']);
     expect(findMany).toHaveBeenNthCalledWith(1, {
       where: { discardedAt: null, documentId: null, placedAt: null }, select: { id: true, gmailMessageId: true },
