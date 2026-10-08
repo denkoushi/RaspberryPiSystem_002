@@ -12,6 +12,7 @@ import { InventoryPhotoDialog } from '../../../../components/kiosk/InventoryPhot
 import { AREA_DIRECTIONS, composeArea, DEFAULT_AREA_DIRECTION, splitArea } from '../areaNaming';
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, ChevronDownIcon, PlusIcon, TrashIcon } from '../InventoryIcons';
 import {
+  invSetupTargets,
   invButtonGo,
   invButtonSm,
   invButtonSmGhost,
@@ -27,6 +28,8 @@ import {
 import { NfcPrompt } from '../NfcPrompt';
 
 import { InventoryUnitPicker } from './InventoryUnitPicker';
+import { setupErrorText as errorText } from './setupError';
+import { touchSetupPin } from './setupPinSession';
 import { ToolValueBoard } from './ToolValueBoard';
 import { useArmedNfcRead } from './useArmedNfcRead';
 
@@ -101,15 +104,9 @@ export function registrationChecklist(draft: Draft): CheckItem[] {
   ];
 }
 
-function errorText(error: unknown): string {
-  const message = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
-  if (message) return message;
-  return error instanceof Error ? error.message : '処理に失敗しました';
-}
-
 // Fixed, content-sized controls: never stretched to the screen.
-const keyClass = 'h-10 w-12 rounded-lg border border-inv-line2 bg-inv-s2 text-[17px] font-black text-inv-text hover:bg-inv-s3';
-const iconSm = `${invButtonSm} w-9 px-0`;
+const keyClass = 'h-11 w-12 rounded-lg border border-inv-line2 bg-inv-s2 text-[17px] font-black text-inv-text hover:bg-inv-s3';
+const iconSm = `${invButtonSm} w-11 px-0`;
 
 function StepMark({ number, done, current }: { number: number; done: boolean; current: boolean }) {
   if (done) return <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-inv-green text-inv-green-ink" aria-hidden="true"><CheckIcon size={13} /></span>;
@@ -145,7 +142,7 @@ function QuantityKeypad({ value, onChange }: { value: string; onChange: (next: s
       {['7', '8', '9', '4', '5', '6', '1', '2', '3', '0'].map((digit) => (
         <button key={digit} type="button" className={keyClass} onClick={() => press(digit)}>{digit}</button>
       ))}
-      <button type="button" className={`${keyClass} text-[13px] font-bold text-inv-muted`} onClick={() => onChange(value.slice(0, -1))}>消す</button>
+      <button type="button" className={`${keyClass} text-[13px] font-bold text-inv-muted`} onClick={() => onChange(value.slice(0, -1))}>削除</button>
       <button type="button" className={`${keyClass} text-[13px] font-bold text-inv-muted`} onClick={() => onChange('')}>クリア</button>
     </div>
   );
@@ -168,21 +165,30 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
   registration: RegistrationState;
   setRegistration: Dispatch<SetStateAction<RegistrationState>>;
 }) {
-  const importsQuery = useInventoryImports(accessPassword);
-  const messagesQuery = useInventoryImportMessages(accessPassword);
+  const importsQuery = useInventoryImports(accessPassword, true);
+  const messagesQuery = useInventoryImportMessages(accessPassword, true);
   const locationsQuery = useInventoryLocations();
-  const mutations = useInventoryMutations(accessPassword);
+  const mutations = useInventoryMutations(accessPassword, true);
+  const [hiddenIds, setHiddenIds] = useState<string[]>([]);
+  const [undoDismiss, setUndoDismiss] = useState<{ candidate: InventoryImport; draft: Draft } | null>(null);
+  const [working, setWorking] = useState(false);
+  const [errorAt, setErrorAt] = useState('register');
   // Newest first, like the unregistered cards on the daily list.
-  const candidates = useMemo(() => [...(importsQuery.data ?? [])].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)), [importsQuery.data]);
+  const candidates = useMemo(() => [...(importsQuery.data ?? [])].filter((entry) => !hiddenIds.includes(entry.id) && entry.status !== 'DISMISSED' && entry.status !== 'REGISTERED').sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)), [importsQuery.data, hiddenIds]);
   const { selectedId } = registration;
+  const registrationRef = useRef(registration);
+  registrationRef.current = registration;
   const completedIdRef = useRef<string | null>(null);
   const setSelectedId = (id: string | null) => setRegistration({ selectedId: id, draft: null });
   const candidate = selectedId ? candidates.find((entry) => entry.id === selectedId) ?? null : candidates.find((entry) => entry.id !== completedIdRef.current) ?? null;
   const draft = registration.draft ?? emptyDraft(candidate);
-  const setDraft = useCallback((update: SetStateAction<Draft>) => setRegistration((current) => ({
-    selectedId: current.selectedId ?? candidate?.id ?? null,
-    draft: typeof update === 'function' ? update(current.draft ?? emptyDraft(candidate)) : update,
-  })), [candidate, setRegistration]);
+  const setDraft = useCallback((update: SetStateAction<Draft>) => {
+    setUndoDismiss(null);
+    setRegistration((current) => ({
+      selectedId: current.selectedId ?? candidate?.id ?? null,
+      draft: typeof update === 'function' ? update(current.draft ?? emptyDraft(candidate)) : update,
+    }));
+  }, [candidate, setRegistration]);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [confirmDeletePhotoId, setConfirmDeletePhotoId] = useState<string | null>(null);
@@ -219,6 +225,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
   useEffect(() => {
     if (!read || handledRef.current === read) return;
     handledRef.current = read;
+    touchSetupPin();
     setDraft((current) => ({ ...current, itemTagUid: read.uid }));
   }, [read, setDraft]);
 
@@ -260,13 +267,14 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
       const parent = areaShelves.find((entry) => entry.id === autoSelect.shelfId);
       const created = parent?.drawers.find((drawer) => drawer.drawerNumber === autoSelect.drawerNumber);
       if (!parent || !created) return;
-      setDraft((current) => ({ ...current, drawerId: created.id, drawerLabel: `${parent.area}・棚${parent.shelfNumber}・引出し${created.drawerNumber}`, itemTagUid: '' }));
+      setDraft((current) => ({ ...current, drawerId: created.id, drawerLabel: `${parent.area}・棚${parent.shelfNumber}・引き出し${created.drawerNumber}`, itemTagUid: '' }));
     }
     setAutoSelect(null);
   }, [areaShelves, autoSelect, setDraft]);
   const createShelf = async () => {
     if (!candidate) return;
     setError(null);
+    setErrorAt('place');
     try {
       if (!draft.area) return;
       await mutations.createShelf.mutateAsync({ area: draft.area, shelfNumber: nextShelfNumber });
@@ -278,6 +286,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
   const createDrawer = async () => {
     if (!shelf) return;
     setError(null);
+    setErrorAt('place');
     try {
       await mutations.createDrawer.mutateAsync({ shelfId: shelf.id, drawerNumber: nextDrawerNumber });
       setAutoSelect({ kind: 'drawer', shelfId: shelf.id, drawerNumber: nextDrawerNumber });
@@ -298,12 +307,14 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
     if (target < 0 || target >= ids.length) return;
     [ids[index], ids[target]] = [ids[target], ids[index]];
     setError(null);
+    setErrorAt('photos');
     void mutations.reorderImportPhotos.mutateAsync({ payloadId: candidate.id, photoIds: ids }).catch((caught) => setError(errorText(caught)));
   };
   const deletePhoto = (photoId: string) => {
     if (!candidate) return;
     setConfirmDeletePhotoId(null);
     setError(null);
+    setErrorAt('photos');
     void mutations.deleteImportPhoto.mutateAsync({ payloadId: candidate.id, photoId }).catch((caught) => setError(errorText(caught)));
   };
   // Only coming back from an existing item clears what that item filled in; a name or tool
@@ -321,8 +332,11 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
   };
 
   const register = async () => {
-    if (!candidate || !draft.mode || remaining > 0) return;
+    if (!candidate || !draft.mode || remaining > 0 || working) return;
+    setUndoDismiss(null);
+    setErrorAt('register');
     setError(null);
+    setWorking(true);
     const isNew = draft.mode === 'NEW_ITEM';
     try {
       await mutations.registerImport.mutateAsync({
@@ -345,29 +359,79 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
         },
       });
       setDone(`候補 #${candidate.sourceItemId} を登録しました`);
+      setHiddenIds((ids) => [...ids, candidate.id]);
       completedIdRef.current = candidate.id;
-      setSelectedId(candidates.find((entry) => entry.id !== candidate.id)?.id ?? null);
+      setRegistration((current) => current.selectedId === candidate.id ? {
+        selectedId: candidates.find((entry) => entry.id !== candidate.id)?.id ?? null, draft: null,
+      } : current);
     } catch (caught) {
       setError(errorText(caught));
+    } finally {
+      setWorking(false);
     }
   };
+
+  const dismiss = async () => {
+    if (!candidate || working) return;
+    setWorking(true);
+    setUndoDismiss(null);
+    setErrorAt('register');
+    setError(null);
+    try {
+      await mutations.dismissImport.mutateAsync(candidate.id);
+      if (registrationRef.current.selectedId === candidate.id) setUndoDismiss({ candidate, draft });
+      setHiddenIds((ids) => [...ids, candidate.id]);
+      setDone(`候補 #${candidate.sourceItemId} は登録しません`);
+      setRegistration((current) => current.selectedId === candidate.id ? {
+        selectedId: candidates.find((entry) => entry.id !== candidate.id)?.id ?? null, draft: null,
+      } : current);
+    } catch (caught) {
+      setError(errorText(caught));
+    } finally {
+      setWorking(false);
+    }
+  };
+  const restore = async () => {
+    if (!undoDismiss || working) return;
+    setWorking(true);
+    const beforeRestore = registrationRef.current;
+    setErrorAt('undo');
+    setError(null);
+    try {
+      await mutations.restoreImport.mutateAsync(undoDismiss.candidate.id);
+      setHiddenIds((ids) => ids.filter((id) => id !== undoDismiss.candidate.id));
+      setRegistration((current) => current === beforeRestore ? { selectedId: undoDismiss.candidate.id, draft: undoDismiss.draft } : current);
+      setUndoDismiss(null);
+      setDone('候補を戻しました');
+    } catch (caught) {
+      setError(errorText(caught));
+    } finally {
+      setWorking(false);
+    }
+  };
+  const localError = (target: string) => <div className="h-8 shrink-0 overflow-hidden text-sm leading-4">{error && errorAt === target ? <p className="line-clamp-2 text-[#ffd0d0]" role="alert">{error}</p> : null}</div>;
 
   const retryPanel = failedMessages.length > 0 ? (
     <section className="flex flex-wrap items-center gap-3 rounded-xl border border-inv-amber/40 bg-inv-amber/[0.12] px-3 py-2 text-sm text-[#ffe8bf]" aria-label="取込エラー">
       <span className="font-bold">写真メールの取込に失敗:</span>
       {failedMessages.map((entry) => (
-        <span key={entry.id} className="flex items-center gap-2">
+        <span key={entry.id} className="flex flex-col gap-1">
           {entry.errorMessage ?? '再試行できるエラー'}
-          <button type="button" className={invButtonSm} disabled={mutations.retryImport.isPending} onClick={() => void mutations.retryImport.mutateAsync(entry.id).catch((caught) => setError(errorText(caught)))}>もう一度取り込む</button>
+          <button type="button" className={invButtonSm} disabled={mutations.retryImport.isPending} onClick={() => { setErrorAt(entry.id); setError(null); void mutations.retryImport.mutateAsync(entry.id).catch((caught) => setError(errorText(caught))); }}>もう一度取り込む</button>
+          {localError(entry.id)}
         </span>
       ))}
     </section>
   ) : null;
-  const doneBanner = <div className="flex h-12 shrink-0 items-center overflow-hidden">{done ? <p className={`rounded-xl border px-3 py-2 text-base font-bold ${invSuccess}`} role="status">{done}</p> : null}</div>;
+  const doneBanner = <div className="flex h-12 shrink-0 items-center gap-3 overflow-hidden">
+    {done ? <p className="min-w-0 truncate text-base font-bold text-[#d7fbe9]" role="status">{done}</p> : null}
+    {undoDismiss ? <button type="button" className={invButtonSmGhost} disabled={working} onClick={() => void restore()}>元に戻す</button> : null}
+    {errorAt === 'undo' ? localError('undo') : null}
+  </div>;
 
   if (!candidate) {
     return (
-      <div className="flex flex-col gap-3">
+      <div className={`${invSetupTargets} flex flex-col gap-3`}>
         {doneBanner}
         {retryPanel}
         <p className={`${invPanel} p-6 text-center text-base text-inv-muted`}>{importsQuery.isLoading ? '読み込み中…' : '登録待ちの候補はありません'}</p>
@@ -379,7 +443,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
   const next = () => { stepNumber += 1; return stepNumber; };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 pt-4">
+    <div className={`${invSetupTargets} flex min-h-0 flex-1 flex-col gap-3 pt-4`}>
       {doneBanner}
       {retryPanel}
       <div className="relative grid min-h-[560px] flex-1 grid-cols-[680px_minmax(0,1fr)_340px] gap-[18px]">
@@ -394,13 +458,13 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
           <div className="grid min-h-0 flex-1 auto-rows-[calc(50%-0.375rem)] grid-cols-2 gap-3 overflow-y-auto">
             {candidate.photos.map((photo, index) => (
               <figure key={photo.id} className="flex min-h-0 flex-col gap-2">
-                <button type="button" className="block min-h-0 w-full flex-1" aria-label={`写真${index + 1}を拡大`} onClick={() => setSelectedPhoto({ url: photo.photoUrl, alt: photo.filename })}>
+                <button type="button" className="block min-h-11 min-w-11 w-full flex-1" aria-label={`写真${index + 1}を拡大`} onClick={() => setSelectedPhoto({ url: photo.photoUrl, alt: photo.filename })}>
                   <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.filename} className="h-full w-full rounded-xl border border-inv-line object-cover" />
                 </button>
                 {confirmDeletePhotoId === photo.id ? (
                   <div className="flex items-center gap-1.5">
-                    <span className="flex-1 text-sm text-[#ffb3b3]">この写真を消しますか？</span>
-                    <button type="button" className={`${invButtonSm} border-inv-red/60 text-[#ffb3b3]`} disabled={photoPending} onClick={() => deletePhoto(photo.id)}>消す</button>
+                    <span className="flex-1 text-sm text-[#ffb3b3]">この写真を削除しますか？</span>
+                    <button type="button" className={`${invButtonSm} border-inv-red/60 text-[#ffb3b3]`} disabled={photoPending} onClick={() => deletePhoto(photo.id)}>削除</button>
                     <button type="button" className={invButtonSmGhost} onClick={() => setConfirmDeletePhotoId(null)}>やめる</button>
                   </div>
                 ) : (
@@ -414,6 +478,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
               </figure>
             ))}
           </div>
+          {localError('photos')}
         </section>
 
         <div className={`${invPanel} relative flex min-h-0 flex-col overflow-y-auto px-[18px] py-1`}>
@@ -428,7 +493,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
                 {(itemsQuery.data ?? []).map((item) => (
                   <button key={item.id} type="button" aria-pressed={item.id === draft.itemId} className={`flex h-14 w-64 items-center gap-2 rounded-[10px] px-2 text-left ${item.id === draft.itemId ? 'border-2 border-inv-cyan bg-inv-cyan/[0.12]' : 'border border-inv-line bg-inv-bg hover:bg-inv-s2'}`} onClick={() => chooseExisting(item)}>
                     {item.photos[0] ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(item.photos[0].photoUrl)} alt="" className="h-10 w-10 rounded object-cover" /> : <span className="h-10 w-10 rounded bg-inv-s3" aria-hidden="true" />}
-                    <span className="min-w-0"><span className="block truncate text-sm font-bold">{item.name}</span><span className="text-xs text-inv-faint">{item.itemCode}</span></span>
+                    <span className="min-w-0"><span className="line-clamp-2 break-all text-sm font-bold leading-4">{item.name}</span><span className="text-xs text-inv-faint">{item.itemCode}</span></span>
                   </button>
                 ))}
               </div>
@@ -475,7 +540,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
                     <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="ほかの加工機の棚">
                       <span className={`${invLabel} w-[52px]`}>ほか</span>
                       {otherAreas.map((area) => (
-                        <button key={area} type="button" aria-pressed={area === draft.area} className={`${invSeg(area === draft.area)} h-9 text-sm`} onClick={() => chooseArea(area)}>{area}</button>
+                        <button key={area} type="button" aria-pressed={area === draft.area} className={`${invSeg(area === draft.area)} h-11 text-sm`} onClick={() => chooseArea(area)}>{area}</button>
                       ))}
                     </div>
                   ) : null}
@@ -489,19 +554,20 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
                   </div>
                   {shelf ? (
                     <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="引き出し">
-                      <span className={`${invLabel} w-[52px]`}>引出し</span>
+                      <span className={`${invLabel} w-[52px]`}>引き出し</span>
                       {shelf.drawers.map((drawer) => {
                         const used = drawer.compartments.length > 0;
                         return (
-                          <button key={drawer.id} type="button" disabled={used} aria-label={`引出し${drawer.drawerNumber}${used ? ' 使用中' : ''}`} aria-pressed={drawer.id === draft.drawerId} className={`${invSeg(drawer.id === draft.drawerId)} disabled:!opacity-[0.38]`} onClick={() => update({ drawerId: drawer.id, drawerLabel: `${shelf.area}・棚${shelf.shelfNumber}・引出し${drawer.drawerNumber}`, itemTagUid: '' })}>
+                          <button key={drawer.id} type="button" disabled={used} aria-label={`引き出し${drawer.drawerNumber}${used ? ' 使用中' : ''}`} aria-pressed={drawer.id === draft.drawerId} className={`${invSeg(drawer.id === draft.drawerId)} disabled:!opacity-[0.38]`} onClick={() => update({ drawerId: drawer.id, drawerLabel: `${shelf.area}・棚${shelf.shelfNumber}・引き出し${drawer.drawerNumber}`, itemTagUid: '' })}>
                             {drawer.drawerNumber}
                           </button>
                         );
                       })}
-                      <button type="button" className={invSegAdd} aria-label={`引出し${nextDrawerNumber}を作る`} disabled={creating} onClick={() => void createDrawer()}><PlusIcon /></button>
+                      <button type="button" className={invSegAdd} aria-label={`引き出し${nextDrawerNumber}を作る`} disabled={creating} onClick={() => void createDrawer()}><PlusIcon /></button>
                     </div>
                   ) : null}
                 </div>
+                {localError('place')}
               </Row>
 
               <Row id="tag" number={next()} title="アイテムタグ" done={isDone('tag')} current={currentId === 'tag'}>
@@ -515,7 +581,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
                         <button type="button" className={invButtonSm} disabled={!draft.manualUid.trim()} onClick={() => { update({ itemTagUid: draft.manualUid.trim(), manualUid: '' }); setManualOpen(false); }}>使う</button>
                       </span>
                     ) : (
-                      <button type="button" className="text-[13px] text-inv-cyan underline underline-offset-2" onClick={() => setManualOpen(true)}>IDを手で入れる</button>
+                      <button type="button" className="inline-flex min-h-11 min-w-11 items-center text-[13px] text-inv-cyan underline underline-offset-2" onClick={() => setManualOpen(true)}>IDを手で入れる</button>
                     )}
                   </div>
                 ) : null}
@@ -556,11 +622,12 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
             })}
           </ul>
           <div className="flex-1" />
-          <div className="flex h-16 shrink-0 items-center overflow-hidden">{error ? <p className={`rounded-lg border px-3 py-2 text-sm ${invError}`} role="alert">{error}</p> : null}</div>
+          <div className="flex h-16 shrink-0 items-center overflow-hidden">{error && errorAt === 'register' ? <p className={`line-clamp-2 rounded-lg border px-3 py-2 text-sm ${invError}`} role="alert">{error}</p> : null}</div>
           <p className="text-center text-lg font-black tabular-nums" aria-live="polite">{remaining === 0 ? '登録できます' : `あと ${remaining} つ`}</p>
-          <button type="button" className={`${invButtonGo} h-14 text-lg disabled:border-inv-line2 disabled:bg-inv-s2 disabled:text-inv-muted disabled:opacity-100`} disabled={remaining > 0 || mutations.registerImport.isPending} onClick={() => void register()}>
+          <button type="button" className={`${invButtonGo} h-14 text-lg disabled:border-inv-line2 disabled:bg-inv-s2 disabled:text-inv-muted disabled:opacity-100`} disabled={remaining > 0 || working || mutations.registerImport.isPending} onClick={() => void register()}>
             {mutations.registerImport.isPending ? '登録中…' : '登録する'}
           </button>
+          <button type="button" className={`${invButtonSmGhost} self-start`} disabled={working} onClick={() => void dismiss()}>登録しない</button>
         </aside>
         {optionsOpen ? (
           <>
@@ -591,7 +658,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
                 </span>
                 <span className="min-w-0">
                   <b className="block">#{entry.sourceItemId}</b>
-                  <span className="block truncate text-xs text-inv-muted">{entry.area}</span>
+                  <span className="line-clamp-2 break-all text-xs text-inv-muted">{entry.area}</span>
                   <span className="block truncate text-xs text-inv-faint">{entry.category ?? '-'}・写真{entry.photos.length}</span>
                 </span>
               </button>

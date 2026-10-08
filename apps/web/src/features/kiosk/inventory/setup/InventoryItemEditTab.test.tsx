@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useInventoryMutations } from '../../../../api/hooks';
+import { resolveInventoryTag } from '../../../../api/client';
+import { useInventoryItems, useInventoryMutations } from '../../../../api/hooks';
 
 import { InventoryItemEditTab } from './InventoryItemEditTab';
 
@@ -10,7 +11,7 @@ import type { NfcEvent } from '../../../../hooks/useNfcStream';
 const nfc = vi.hoisted(() => ({ event: null as NfcEvent | null }));
 const area = '30007_KSJP-55';
 
-vi.mock('../../../../api/client', () => ({ inventoryThumbnailUrl: (value: string) => value, api: { get: vi.fn() } }));
+vi.mock('../../../../api/client', () => ({ inventoryThumbnailUrl: (value: string) => value, resolveInventoryTag: vi.fn(), api: { get: vi.fn() } }));
 vi.mock('../../../../api/hooks', () => ({
   useInventoryItems: vi.fn(() => ({
     data: [{
@@ -49,8 +50,9 @@ describe('InventoryItemEditTab', () => {
 
   beforeEach(() => {
     nfc.event = null;
+    vi.mocked(resolveInventoryTag).mockReset().mockResolvedValue(null);
     mutations = {
-      move: mutation(), bindCompartment: mutation(), deleteItemPhoto: mutation(), reorderItemPhotos: mutation(), deleteItem: mutation(),
+      replaceTag: mutation(), move: mutation(), bindCompartment: mutation(), deleteItemPhoto: mutation(), reorderItemPhotos: mutation(), deleteItem: mutation(),
       setItemUnit: mutation(), createUnit: mutation(), updateItemDetails: mutation(),
       renameToolFieldValue: mutation(), addToolFieldValue: mutation(), deleteToolFieldValue: mutation(),
     };
@@ -62,18 +64,18 @@ describe('InventoryItemEditTab', () => {
     fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
     fireEvent.click(screen.getByRole('button', { name: '別の引き出しへ移す' }));
 
-    expect(screen.queryByRole('button', { name: '棚1 引出し1' })).not.toBeInTheDocument();
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '棚1 引出し2' })); });
+    expect(screen.queryByRole('button', { name: '棚1 引き出し1' })).not.toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '棚1 引き出し2' })); });
 
     expect(mutations.move.mutateAsync).toHaveBeenCalledWith({ id: 'comp-1', drawerId: 'drawer-2' });
-    expect(screen.getByText('棚1 / 引出し2 へ移しました')).toBeInTheDocument();
+    expect(screen.getByText('棚1 / 引き出し2 へ移しました')).toBeInTheDocument();
   });
 
   it('adds another drawer with a held tag and a keypad count', async () => {
     const view = render(<InventoryItemEditTab accessPassword="2520" />);
     fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
     fireEvent.click(screen.getByRole('button', { name: '別の引き出しにも置く' }));
-    fireEvent.click(screen.getByRole('button', { name: '引出し2' }));
+    fireEvent.click(screen.getByRole('button', { name: '引き出し2' }));
 
     nfc.event = { uid: 'new-tag', eventId: 5, timestamp: new Date().toISOString() } as NfcEvent;
     view.rerender(<InventoryItemEditTab accessPassword="2520" />);
@@ -148,4 +150,138 @@ describe('InventoryItemEditTab', () => {
 
     expect(mutations.deleteItem.mutateAsync).toHaveBeenCalledWith('item-1');
   });
+  it('opens a registered item by NFC even when it is filtered out', async () => {
+    vi.mocked(resolveInventoryTag).mockResolvedValue({ kind: 'ITEM', compartment: { item: { id: 'item-1' } } } as never);
+    const view = render(<InventoryItemEditTab accessPassword="2520" />);
+    fireEvent.change(screen.getByLabelText('品名・型式で絞り込む'), { target: { value: '見つからない名前' } });
+    nfc.event = { uid: 'tag-1', eventId: 1, timestamp: '2026-10-08' } as NfcEvent;
+    await act(async () => { view.rerender(<InventoryItemEditTab accessPassword="2520" />); });
+    expect(resolveInventoryTag).toHaveBeenCalledWith('tag-1');
+    expect(screen.getByRole('region', { name: '写真' })).toHaveTextContent('治具A');
+    expect(screen.getByText('品物を開きました')).toBeInTheDocument();
+  });
+  it('ignores a tag lookup that answers after an item was picked by hand', async () => {
+    let answer: (tag: unknown) => void = () => undefined;
+    vi.mocked(resolveInventoryTag).mockReturnValue(new Promise((resolve) => { answer = resolve; }) as never);
+    const view = render(<InventoryItemEditTab accessPassword="2520" />);
+    nfc.event = { uid: 'tag-1', eventId: 1, timestamp: '2026-10-08' } as NfcEvent;
+    await act(async () => { view.rerender(<InventoryItemEditTab accessPassword="2520" />); });
+    fireEvent.click(screen.getAllByRole('button', { pressed: false }).find((button) => button.textContent?.includes('治具A'))!);
+    await act(async () => { answer({ kind: 'ITEM', compartment: { item: { id: 'item-1' } } }); });
+    expect(screen.queryByText('品物を開きました')).not.toBeInTheDocument();
+  });
+
+  it.each([['QUANTITY', '数量タグです'], ['RESTOCK', '補充タグです'], [null, '未登録のタグです']])('only reports %s tags without changing the open item', async (kind, message) => {
+    vi.mocked(resolveInventoryTag).mockResolvedValue(kind ? { kind, compartment: null } as never : null);
+    const view = render(<InventoryItemEditTab accessPassword="2520" />);
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
+    nfc.event = { uid: 'other-tag', eventId: 1, timestamp: '2026-10-08' } as NfcEvent;
+    await act(async () => { view.rerender(<InventoryItemEditTab accessPassword="2520" />); });
+    expect(screen.getByText(message)).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '写真' })).toHaveTextContent('治具A');
+    expect(mutations.replaceTag.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('replaces the tag of the selected compartment with the next held UID', async () => {
+    const view = render(<InventoryItemEditTab accessPassword="2520" />);
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'タグを交換' }));
+    nfc.event = { uid: 'replacement', eventId: 2, timestamp: '2026-10-08' } as NfcEvent;
+    await act(async () => { view.rerender(<InventoryItemEditTab accessPassword="2520" />); });
+    expect(mutations.replaceTag.mutateAsync).toHaveBeenCalledWith({ id: 'comp-1', uid: 'replacement' });
+    expect(resolveInventoryTag).not.toHaveBeenCalled();
+    expect(screen.getByText('タグを交換しました')).toBeInTheDocument();
+  });
+
+  it('shows a failed tag replacement at the scanner and keeps waiting', async () => {
+    mutations.replaceTag.mutateAsync.mockRejectedValue({ response: { data: { errorCode: 'TAG_ALREADY_REGISTERED', message: 'このタグは使用中です' } } });
+    const view = render(<InventoryItemEditTab accessPassword="2520" />);
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'タグを交換' }));
+    nfc.event = { uid: 'used', eventId: 2, timestamp: '2026-10-08' } as NfcEvent;
+    await act(async () => { view.rerender(<InventoryItemEditTab accessPassword="2520" />); });
+    expect(screen.getByRole('region', { name: '置き場所' })).toContainElement(screen.getByRole('alert'));
+    expect(screen.getByRole('alert')).toHaveTextContent('このタグは使用中です');
+    expect(screen.getByText('新しい品物タグ')).toBeInTheDocument();
+  });
+
+  it('refreshes a stale item list when a registered tag belongs to an item missing from the cache', async () => {
+    const original = vi.mocked(useInventoryItems).getMockImplementation()!;
+    const loaded = original();
+    const refetch = vi.fn().mockImplementation(async () => {
+      vi.mocked(useInventoryItems).mockReturnValue(loaded);
+      return { data: loaded.data };
+    });
+    vi.mocked(useInventoryItems).mockReturnValue({ data: [], isLoading: false, refetch } as never);
+    vi.mocked(resolveInventoryTag).mockResolvedValue({ kind: 'ITEM', compartment: { item: { id: 'item-1' } } } as never);
+    try {
+      const view = render(<InventoryItemEditTab accessPassword="2520" />);
+      nfc.event = { uid: 'tag-1', eventId: 1, timestamp: '2026-10-08' } as NfcEvent;
+      await act(async () => { view.rerender(<InventoryItemEditTab accessPassword="2520" />); });
+      expect(refetch).toHaveBeenCalledWith({ throwOnError: true });
+      expect(screen.getByRole('region', { name: '写真' })).toHaveTextContent('治具A');
+    } finally { vi.mocked(useInventoryItems).mockImplementation(original); }
+  });
+
+  it('ignores item-opening scans while an added drawer quantity is being entered', async () => {
+    vi.mocked(resolveInventoryTag).mockResolvedValue({ kind: 'ITEM', compartment: { item: { id: 'item-2' } } } as never);
+    const view = render(<InventoryItemEditTab accessPassword="2520" />);
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
+    fireEvent.click(screen.getByRole('button', { name: '別の引き出しにも置く' }));
+    fireEvent.click(screen.getByRole('button', { name: '引き出し2' }));
+    nfc.event = { uid: 'add-tag', eventId: 1, timestamp: '2026-10-08' } as NfcEvent;
+    await act(async () => { view.rerender(<InventoryItemEditTab accessPassword="2520" />); });
+    fireEvent.click(within(screen.getByRole('group', { name: '入っている数のテンキー' })).getByRole('button', { name: '5', exact: true }));
+    nfc.event = { uid: 'item-tag', eventId: 2, timestamp: '2026-10-08' } as NfcEvent;
+    await act(async () => { view.rerender(<InventoryItemEditTab accessPassword="2520" />); });
+    expect(resolveInventoryTag).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('入っている数')).toHaveTextContent('5');
+    expect(screen.getByRole('region', { name: '写真' })).toHaveTextContent('治具A');
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'この引き出しを追加する' })); });
+    expect(mutations.bindCompartment.mutateAsync).toHaveBeenCalledWith({ itemId: 'item-1', shelfId: 'shelf-1', drawerId: 'drawer-2', itemTagUid: 'add-tag', initialQuantity: 5 });
+  });
+
+  it.each(['add', 'replace'])('uses the %s waiting mode without opening another item', async (mode) => {
+    vi.mocked(resolveInventoryTag).mockResolvedValue({ kind: 'ITEM', compartment: { item: { id: 'item-2' } } } as never);
+    let finish!: (value: object) => void;
+    if (mode === 'replace') mutations.replaceTag.mutateAsync.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const view = render(<InventoryItemEditTab accessPassword="2520" />);
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
+    if (mode === 'add') {
+      fireEvent.click(screen.getByRole('button', { name: '別の引き出しにも置く' }));
+      fireEvent.click(screen.getByRole('button', { name: '引き出し2' }));
+    } else fireEvent.click(screen.getByRole('button', { name: 'タグを交換' }));
+    nfc.event = { uid: 'item-tag', eventId: 1, timestamp: '2026-10-08' } as NfcEvent;
+    await act(async () => { view.rerender(<InventoryItemEditTab accessPassword="2520" />); });
+    expect(resolveInventoryTag).not.toHaveBeenCalled();
+    expect(screen.getByRole('region', { name: '写真' })).toHaveTextContent('治具A');
+    if (mode === 'add') expect(screen.getByLabelText('入っている数')).toBeInTheDocument();
+    else {
+      expect(mutations.replaceTag.mutateAsync).toHaveBeenCalledWith({ id: 'comp-1', uid: 'item-tag' });
+      nfc.event = { uid: 'next-item-tag', eventId: 2, timestamp: '2026-10-08' } as NfcEvent;
+      await act(async () => { view.rerender(<InventoryItemEditTab accessPassword="2520" />); });
+      expect(mutations.replaceTag.mutateAsync).toHaveBeenCalledTimes(1);
+      expect(resolveInventoryTag).not.toHaveBeenCalled();
+      await act(async () => { finish({}); });
+    }
+  });
+
+  it('does not open an item while a location panel or text input is open', async () => {
+    const view = render(<InventoryItemEditTab accessPassword="2520" />);
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
+    const input = screen.getByRole('textbox', { name: '名前の値' });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: '書きかけ' } });
+    nfc.event = { uid: 'item-tag', eventId: 1, timestamp: '2026-10-08' } as NfcEvent;
+    await act(async () => { view.rerender(<InventoryItemEditTab accessPassword="2520" />); });
+    expect(resolveInventoryTag).not.toHaveBeenCalled();
+    expect(input).toHaveValue('書きかけ');
+    fireEvent.blur(input);
+    fireEvent.click(screen.getByRole('button', { name: '別の引き出しにも置く' }));
+    nfc.event = { uid: 'item-tag-2', eventId: 2, timestamp: '2026-10-08' } as NfcEvent;
+    await act(async () => { view.rerender(<InventoryItemEditTab accessPassword="2520" />); });
+    expect(resolveInventoryTag).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('追加する引き出し')).toBeInTheDocument();
+  });
+
 });

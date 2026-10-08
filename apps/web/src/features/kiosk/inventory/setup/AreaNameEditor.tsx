@@ -11,13 +11,13 @@ type Props = {
   machineChoices?: string[];
   confirmLabel: string;
   pending: boolean;
+  error?: string | null;
   onConfirm: (area: string) => void;
   onCancel: () => void;
 };
 
-
 /** Machine name (typed or chosen) + 東西南北, previewed before it is saved. */
-export function AreaNameEditor({ title, initialArea, machineChoices = [], confirmLabel, pending, onConfirm, onCancel }: Props) {
+export function AreaNameEditor({ title, initialArea, machineChoices = [], confirmLabel, pending, error, onConfirm, onCancel }: Props) {
   const initial = initialArea ? splitArea(initialArea) : { machine: '', direction: null };
   const [machine, setMachine] = useState(initial.machine);
   const [direction, setDirection] = useState<AreaDirection>(initial.direction ?? DEFAULT_AREA_DIRECTION);
@@ -49,6 +49,7 @@ export function AreaNameEditor({ title, initialArea, machineChoices = [], confir
         <button type="button" className={invButtonGo} disabled={!next || next === initialArea || pending} onClick={() => onConfirm(next)}>{confirmLabel}</button>
         <button type="button" className={invButtonGhost} onClick={onCancel}>やめる</button>
       </div>
+      <div className="h-8 overflow-hidden text-sm leading-4">{error ? <p role="alert" className="line-clamp-2 text-[#ffd0d0]">{error}</p> : null}</div>
     </div>
   );
 }

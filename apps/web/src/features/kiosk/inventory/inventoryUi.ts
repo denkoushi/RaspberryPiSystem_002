@@ -40,3 +40,6 @@ export const invKeyUtil = 'inline-flex h-16 items-center justify-center rounded-
 
 export const invSuccess = 'border-inv-green bg-inv-green/[0.12] text-[#d7fbe9]';
 export const invError = 'border-inv-red/70 bg-inv-red/10 text-[#ffd0d0]';
+
+/** Touch targets scoped to setup; shared daily controls keep their existing sizes. */
+export const invSetupTargets = "[&_button]:min-h-11 [&_button]:min-w-11 [&_a]:min-h-11 [&_a]:min-w-11";
