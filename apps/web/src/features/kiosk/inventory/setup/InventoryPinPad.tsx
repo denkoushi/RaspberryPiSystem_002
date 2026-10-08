@@ -55,7 +55,7 @@ export function InventoryPinPad({ onUnlocked }: { onUnlocked: (password: string)
             <span key={index} className={index < digits.length ? 'h-[18px] w-[18px] rounded-full bg-inv-cyan' : 'h-[18px] w-[18px] rounded-full border-2 border-inv-line2'} />
           ))}
         </div>
-        {message ? <p className={`rounded-xl border p-3 text-center text-base ${invError}`} role="alert">{message}</p> : null}
+        <div className="h-12 overflow-hidden">{message ? <p className={`line-clamp-2 rounded-xl border px-3 py-1 text-center text-sm leading-4 ${invError}`} role="alert">{message}</p> : null}</div>
         <KioskDigitTenkey
           value={digits}
           onChange={change}

@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
 
+import { captureSetupPinSession, sendSetupRequest } from '../../features/kiosk/inventory/setup/setupPinSession';
 import {
   addInventoryToolFieldValue,
   cancelInventoryTransaction,
@@ -9,6 +11,11 @@ import {
   createInventoryUnit,
   createInventoryShelf,
   deleteInventoryItem,
+  deleteInventoryDrawer,
+  deleteInventoryShelf,
+  deleteInventoryTag,
+  dismissInventoryImport,
+  restoreInventoryImport,
   deleteInventoryImportPhoto,
   deleteInventoryItemPhoto,
   deleteInventoryToolFieldValue,
@@ -61,8 +68,9 @@ const inventoryKeys = {
 export function useInventoryItems(enabled = true) { return useQuery({ queryKey: inventoryKeys.items, queryFn: getInventoryItems, enabled }); }
 export function useInventoryLocations() { return useQuery({ queryKey: inventoryKeys.locations, queryFn: getInventoryLocations }); }
 export function useInventoryToolFieldOptions(enabled = true) { return useQuery({ queryKey: inventoryKeys.toolFieldOptions, queryFn: getInventoryToolFieldOptions, enabled }); }
-export function useInventoryToolFieldValues(accessPassword: string, enabled = true) {
-  return useQuery({ queryKey: inventoryKeys.toolFieldValues, queryFn: () => getInventoryToolFieldValues(accessPassword), enabled });
+export function useInventoryToolFieldValues(accessPassword: string, enabled = true, setup = false) {
+  const session = useMemo(() => setup ? captureSetupPinSession(accessPassword) : null, [accessPassword, setup]);
+  return useQuery({ queryKey: session ? [...inventoryKeys.toolFieldValues, 'setup', session.generation] : inventoryKeys.toolFieldValues, queryFn: () => session ? sendSetupRequest(session, () => getInventoryToolFieldValues(accessPassword)) : getInventoryToolFieldValues(accessPassword), enabled });
 }
 export function useInventoryUnits() { return useQuery({ queryKey: inventoryKeys.units, queryFn: getInventoryUnits }); }
 export function useInventoryTags(refetchInterval?: number) { return useQuery({ queryKey: inventoryKeys.tags, queryFn: getInventoryTags, refetchInterval }); }
@@ -70,16 +78,18 @@ export function useInventoryImportSummaries() {
   // Mail is ingested every five minutes; a kiosk left on the list picks new candidates up.
   return useQuery({ queryKey: inventoryKeys.importSummaries, queryFn: getInventoryImportSummaries, refetchInterval: 60_000 });
 }
-export function useInventoryImports(accessPassword?: string) {
+export function useInventoryImports(accessPassword?: string, setup = false) {
+  const session = useMemo(() => setup ? captureSetupPinSession(accessPassword ?? '') : null, [accessPassword, setup]);
   return useQuery({
-    queryKey: inventoryKeys.imports,
-    queryFn: () => getInventoryImports(accessPassword)
+    queryKey: session ? [...inventoryKeys.imports, 'setup', session.generation] : inventoryKeys.imports,
+    queryFn: () => session ? sendSetupRequest(session, () => getInventoryImports(accessPassword)) : getInventoryImports(accessPassword)
   });
 }
-export function useInventoryImportMessages(accessPassword?: string) {
+export function useInventoryImportMessages(accessPassword?: string, setup = false) {
+  const session = useMemo(() => setup ? captureSetupPinSession(accessPassword ?? '') : null, [accessPassword, setup]);
   return useQuery({
-    queryKey: inventoryKeys.importMessages,
-    queryFn: () => getInventoryImportMessages(accessPassword)
+    queryKey: session ? [...inventoryKeys.importMessages, 'setup', session.generation] : inventoryKeys.importMessages,
+    queryFn: () => session ? sendSetupRequest(session, () => getInventoryImportMessages(accessPassword)) : getInventoryImportMessages(accessPassword)
   });
 }
 export function useInventoryHistory() { return useQuery({ queryKey: inventoryKeys.history, queryFn: () => getInventoryHistory() }); }
@@ -98,8 +108,11 @@ function invalidateInventory(queryClient: ReturnType<typeof useQueryClient>) {
   for (const key of Object.values(inventoryKeys)) void queryClient.invalidateQueries({ queryKey: key });
 }
 
-export function useInventoryMutations(accessPassword?: string) {
+export function useInventoryMutations(accessPassword?: string, setup = false) {
+  const session = useMemo(() => setup ? captureSetupPinSession(accessPassword ?? '') : null, [accessPassword, setup]);
+  const send = <T,>(request: () => Promise<T>) => session ? sendSetupRequest(session, request) : request();
   const queryClient = useQueryClient();
+  const importsKey = session ? [...inventoryKeys.imports, 'setup', session.generation] : inventoryKeys.imports;
   const invalidate = () => invalidateInventory(queryClient);
   const invalidateStock = () => {
     for (const key of [inventoryKeys.history, inventoryKeys.locations, inventoryKeys.tags]) void queryClient.invalidateQueries({ queryKey: key });
@@ -117,28 +130,28 @@ export function useInventoryMutations(accessPassword?: string) {
   };
   return {
     ingest: useMutation({ mutationFn: ingestInventoryMail, onSuccess: invalidate }),
-    retryImport: useMutation({ mutationFn: (id: string) => retryInventoryImportMessage(id, accessPassword), onSuccess: invalidate }),
+    retryImport: useMutation({ mutationFn: (id: string) => send(() => retryInventoryImportMessage(id, accessPassword)), onSuccess: invalidate }),
     deleteImportPhoto: useMutation({
-      mutationFn: ({ payloadId, photoId }: { payloadId: string; photoId: string }) => deleteInventoryImportPhoto(payloadId, photoId, accessPassword),
+      mutationFn: ({ payloadId, photoId }: { payloadId: string; photoId: string }) => send(() => deleteInventoryImportPhoto(payloadId, photoId, accessPassword)),
       onMutate: async ({ payloadId, photoId }) => {
-        await queryClient.cancelQueries({ queryKey: inventoryKeys.imports });
-        const previous = queryClient.getQueryData<InventoryImport[]>(inventoryKeys.imports);
-        queryClient.setQueryData<InventoryImport[]>(inventoryKeys.imports, (current) => current?.map((entry) => (
+        await queryClient.cancelQueries({ queryKey: importsKey });
+        const previous = queryClient.getQueryData<InventoryImport[]>(importsKey);
+        queryClient.setQueryData<InventoryImport[]>(importsKey, (current) => current?.map((entry) => (
           entry.id === payloadId ? { ...entry, photos: entry.photos.filter((photo) => photo.id !== photoId).map((photo, index) => ({ ...photo, photoIndex: index + 1 })) } : entry
         )));
         return { previous };
       },
       onError: (_error, _variables, context) => {
-        if (context?.previous) queryClient.setQueryData(inventoryKeys.imports, context.previous);
+        if (context?.previous) queryClient.setQueryData(importsKey, context.previous);
       },
-      onSettled: () => { void queryClient.invalidateQueries({ queryKey: inventoryKeys.imports }); },
+      onSettled: () => { void queryClient.invalidateQueries({ queryKey: importsKey }); },
     }),
     reorderImportPhotos: useMutation({
-      mutationFn: ({ payloadId, photoIds }: { payloadId: string; photoIds: string[] }) => reorderInventoryImportPhotos(payloadId, photoIds, accessPassword),
+      mutationFn: ({ payloadId, photoIds }: { payloadId: string; photoIds: string[] }) => send(() => reorderInventoryImportPhotos(payloadId, photoIds, accessPassword)),
       onMutate: async ({ payloadId, photoIds }) => {
-        await queryClient.cancelQueries({ queryKey: inventoryKeys.imports });
-        const previous = queryClient.getQueryData<InventoryImport[]>(inventoryKeys.imports);
-        queryClient.setQueryData<InventoryImport[]>(inventoryKeys.imports, (current) => current?.map((entry) => {
+        await queryClient.cancelQueries({ queryKey: importsKey });
+        const previous = queryClient.getQueryData<InventoryImport[]>(importsKey);
+        queryClient.setQueryData<InventoryImport[]>(importsKey, (current) => current?.map((entry) => {
           if (entry.id !== payloadId) return entry;
           const photosById = new Map(entry.photos.map((photo) => [photo.id, photo]));
           if (photoIds.length !== entry.photos.length || new Set(photoIds).size !== entry.photos.length || photoIds.some((id) => !photosById.has(id))) return entry;
@@ -147,12 +160,12 @@ export function useInventoryMutations(accessPassword?: string) {
         return { previous };
       },
       onError: (_error, _variables, context) => {
-        if (context?.previous) queryClient.setQueryData(inventoryKeys.imports, context.previous);
+        if (context?.previous) queryClient.setQueryData(importsKey, context.previous);
       },
-      onSettled: () => { void queryClient.invalidateQueries({ queryKey: inventoryKeys.imports }); },
+      onSettled: () => { void queryClient.invalidateQueries({ queryKey: importsKey }); },
     }),
     deleteItemPhoto: useMutation({
-      mutationFn: ({ itemId, photoId }: { itemId: string; photoId: string }) => deleteInventoryItemPhoto(itemId, photoId, accessPassword),
+      mutationFn: ({ itemId, photoId }: { itemId: string; photoId: string }) => send(() => deleteInventoryItemPhoto(itemId, photoId, accessPassword)),
       onMutate: async ({ itemId, photoId }) => {
         await queryClient.cancelQueries({ queryKey: inventoryKeys.items });
         const previous = queryClient.getQueryData<InventoryItem[]>(inventoryKeys.items);
@@ -166,9 +179,9 @@ export function useInventoryMutations(accessPassword?: string) {
       },
       onSettled: () => { void queryClient.invalidateQueries({ queryKey: inventoryKeys.items }); },
     }),
-    deleteItem: useMutation({ mutationFn: (itemId: string) => deleteInventoryItem(itemId, accessPassword), onSuccess: invalidate }),
+    deleteItem: useMutation({ mutationFn: (itemId: string) => send(() => deleteInventoryItem(itemId, accessPassword)), onSuccess: invalidate }),
     reorderItemPhotos: useMutation({
-      mutationFn: ({ itemId, photoIds }: { itemId: string; photoIds: string[] }) => reorderInventoryItemPhotos(itemId, photoIds, accessPassword),
+      mutationFn: ({ itemId, photoIds }: { itemId: string; photoIds: string[] }) => send(() => reorderInventoryItemPhotos(itemId, photoIds, accessPassword)),
       onMutate: async ({ itemId, photoIds }) => {
         await queryClient.cancelQueries({ queryKey: inventoryKeys.items });
         const previous = queryClient.getQueryData<InventoryItem[]>(inventoryKeys.items);
@@ -185,39 +198,44 @@ export function useInventoryMutations(accessPassword?: string) {
       },
       onSettled: () => { void queryClient.invalidateQueries({ queryKey: inventoryKeys.items }); },
     }),
-    registerImport: useMutation({ mutationFn: ({ id, input }: { id: string; input: Parameters<typeof registerInventoryImport>[1] }) => registerInventoryImport(id, input, accessPassword), onSuccess: invalidate }),
-    bindCompartment: useMutation({ mutationFn: (input: Parameters<typeof bindInventoryCompartment>[0]) => bindInventoryCompartment(input, accessPassword), onSuccess: invalidate }),
-    createShelf: useMutation({ mutationFn: (input: Parameters<typeof createInventoryShelf>[0]) => createInventoryShelf(input, accessPassword), onSuccess: invalidate }),
-    renameArea: useMutation({ mutationFn: ({ from, to }: { from: string; to: string }) => renameInventoryArea(from, to, accessPassword), onSuccess: invalidate }),
-    createDrawer: useMutation({ mutationFn: (input: Parameters<typeof createInventoryDrawer>[0]) => createInventoryDrawer(input, accessPassword), onSuccess: invalidate }),
-    quantityTag: useMutation({ mutationFn: (input: Parameters<typeof registerInventoryQuantityTag>[0]) => registerInventoryQuantityTag(input, accessPassword), onSuccess: invalidate }),
-    restockTag: useMutation({ mutationFn: (uid: string) => registerInventoryRestockTag(uid, accessPassword), onSuccess: invalidate }),
+    registerImport: useMutation({ mutationFn: ({ id, input }: { id: string; input: Parameters<typeof registerInventoryImport>[1] }) => send(() => registerInventoryImport(id, input, accessPassword)), onSuccess: invalidate }),
+    dismissImport: useMutation({ mutationFn: (id: string) => send(() => dismissInventoryImport(id, accessPassword)), onSuccess: invalidate }),
+    restoreImport: useMutation({ mutationFn: (id: string) => send(() => restoreInventoryImport(id, accessPassword)), onSuccess: async () => { invalidate(); await queryClient.invalidateQueries({ queryKey: importsKey }); } }),
+    deleteDrawer: useMutation({ mutationFn: (id: string) => send(() => deleteInventoryDrawer(id, accessPassword)), onSuccess: invalidate }),
+    deleteShelf: useMutation({ mutationFn: (id: string) => send(() => deleteInventoryShelf(id, accessPassword)), onSuccess: invalidate }),
+    deleteTag: useMutation({ mutationFn: (id: string) => send(() => deleteInventoryTag(id, accessPassword)), onSuccess: invalidate }),
+    bindCompartment: useMutation({ mutationFn: (input: Parameters<typeof bindInventoryCompartment>[0]) => send(() => bindInventoryCompartment(input, accessPassword)), onSuccess: invalidate }),
+    createShelf: useMutation({ mutationFn: (input: Parameters<typeof createInventoryShelf>[0]) => send(() => createInventoryShelf(input, accessPassword)), onSuccess: invalidate }),
+    renameArea: useMutation({ mutationFn: ({ from, to }: { from: string; to: string }) => send(() => renameInventoryArea(from, to, accessPassword)), onSuccess: invalidate }),
+    createDrawer: useMutation({ mutationFn: (input: Parameters<typeof createInventoryDrawer>[0]) => send(() => createInventoryDrawer(input, accessPassword)), onSuccess: invalidate }),
+    quantityTag: useMutation({ mutationFn: (input: Parameters<typeof registerInventoryQuantityTag>[0]) => send(() => registerInventoryQuantityTag(input, accessPassword)), onSuccess: invalidate }),
+    restockTag: useMutation({ mutationFn: (uid: string) => send(() => registerInventoryRestockTag(uid, accessPassword)), onSuccess: invalidate }),
     transaction: useMutation({ mutationFn: processInventoryTransaction, onSuccess: updateStock }),
     touchTransaction: useMutation({ mutationFn: processInventoryTouchTransaction, onSuccess: updateStock }),
-    cancel: useMutation({ mutationFn: (id: string) => cancelInventoryTransaction(id, accessPassword), onSuccess: () => {
+    cancel: useMutation({ mutationFn: (id: string) => send(() => cancelInventoryTransaction(id, accessPassword)), onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: inventoryKeys.items });
       invalidateStock();
     } }),
-    correction: useMutation({ mutationFn: (input: Parameters<typeof correctInventoryStock>[0]) => correctInventoryStock(input, accessPassword), onSuccess: updateStock }),
-    move: useMutation({ mutationFn: ({ id, drawerId }: { id: string; drawerId: string }) => moveInventoryCompartment(id, drawerId, accessPassword), onSuccess: invalidate }),
+    correction: useMutation({ mutationFn: (input: Parameters<typeof correctInventoryStock>[0]) => send(() => correctInventoryStock(input, accessPassword)), onSuccess: updateStock }),
+    move: useMutation({ mutationFn: ({ id, drawerId }: { id: string; drawerId: string }) => send(() => moveInventoryCompartment(id, drawerId, accessPassword)), onSuccess: invalidate }),
     addToolFieldValue: useMutation({
-      mutationFn: ({ field, value }: { field: InventoryOptionField; value: string }) => addInventoryToolFieldValue(field, value, accessPassword),
+      mutationFn: ({ field, value }: { field: InventoryOptionField; value: string }) => send(() => addInventoryToolFieldValue(field, value, accessPassword)),
       onSuccess: invalidate,
     }),
     renameToolFieldValue: useMutation({
-      mutationFn: ({ field, from, to }: { field: InventoryOptionField; from: string; to: string }) => renameInventoryToolFieldValue(field, from, to, accessPassword),
+      mutationFn: ({ field, from, to }: { field: InventoryOptionField; from: string; to: string }) => send(() => renameInventoryToolFieldValue(field, from, to, accessPassword)),
       onSuccess: invalidate,
     }),
     deleteToolFieldValue: useMutation({
-      mutationFn: ({ field, value }: { field: InventoryOptionField; value: string }) => deleteInventoryToolFieldValue(field, value, accessPassword),
+      mutationFn: ({ field, value }: { field: InventoryOptionField; value: string }) => send(() => deleteInventoryToolFieldValue(field, value, accessPassword)),
       onSuccess: invalidate,
     }),
-    createUnit: useMutation({ mutationFn: (name: string) => createInventoryUnit(name, accessPassword), onSuccess: invalidate }),
-    setItemUnit: useMutation({ mutationFn: ({ itemId, unit }: { itemId: string; unit: string | null }) => setInventoryItemUnit(itemId, unit, accessPassword), onSuccess: invalidate }),
+    createUnit: useMutation({ mutationFn: (name: string) => send(() => createInventoryUnit(name, accessPassword)), onSuccess: invalidate }),
+    setItemUnit: useMutation({ mutationFn: ({ itemId, unit }: { itemId: string; unit: string | null }) => send(() => setInventoryItemUnit(itemId, unit, accessPassword)), onSuccess: invalidate }),
     updateItemDetails: useMutation({
-      mutationFn: ({ itemId, details }: { itemId: string; details: Partial<Record<InventoryOptionField, string>> }) => updateInventoryItemDetails(itemId, details, accessPassword),
+      mutationFn: ({ itemId, details }: { itemId: string; details: Partial<Record<InventoryOptionField, string>> }) => send(() => updateInventoryItemDetails(itemId, details, accessPassword)),
       onSuccess: invalidate,
     }),
-    replaceTag: useMutation({ mutationFn: ({ id, uid }: { id: string; uid: string }) => replaceInventoryItemTag(id, uid, accessPassword), onSuccess: invalidate }),
+    replaceTag: useMutation({ mutationFn: ({ id, uid }: { id: string; uid: string }) => send(() => replaceInventoryItemTag(id, uid, accessPassword)), onSuccess: invalidate }),
   };
 }

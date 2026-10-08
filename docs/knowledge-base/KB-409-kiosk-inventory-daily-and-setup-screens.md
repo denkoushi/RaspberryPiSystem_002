@@ -58,6 +58,20 @@ Run `20260926-112811-48762d` failed after 3 seconds. The PR for the next milesto
 
 Do not merge to `main` until a standard release run has finished. The next run must re-check CI for the new SHA and re-run `--print-plan`.
 
+## Updates (2026-10-08, 在庫の準備 screen)
+
+Fourth part of the review: fewer repeats and dead ends in setup. The four tabs and their panes keep their shape.
+
+- The PIN is remembered in memory only (`setup/setupPinSession.ts`, never in browser storage) for 5 minutes after the last touch on the setup screen, so going to 在庫操作 and back does not ask again. ロック forgets it at once.
+  - Every setup request goes through `sendSetupRequest`. It refuses to send when the session was locked after the request was created (also when the same PIN was entered again), and only a 401 or 403 on such a request locks the screen. Failures of other requests do not.
+- 登録待ち: 登録しない sets a candidate aside (`dismiss`) and moves to the next one; 元に戻す is offered in the result row until another candidate is registered, set aside or edited.
+- 棚・引き出し and NFCタグ: 削除 for a shelf without drawers, an empty drawer, and quantity and restock tags. 元に戻す creates it again with the same values, so the internal id is new.
+- Quantity tags are registered one after another: the panel stays open, keeps the last quantity, counts the registrations and ignores a tag read twice. Tags read while one is being saved wait in order; a failure, 終わる, leaving the tab or a lock drops the ones still waiting.
+- アイテム編集: holding a registered item tag opens its item (only while no panel or input is open), and タグを交換 replaces the tag of a drawer there. A lookup that answers after an item was picked by hand is ignored.
+- Controls in setup are at least 44px, the words are 引き出し and 削除 everywhere in setup, errors appear next to the control that caused them in a fixed-height slot, and long names wrap to two lines.
+- Accepted limit: a quantity tag read while the kiosk is offline is registered when the connection returns, also after 終わる, unless the screen was locked in between.
+- Not checked: the real look at 1920×1080 on a kiosk.
+
 ## Updates (2026-10-08, 在庫操作 screen)
 
 Third part of the review: the daily screen can be used by touch alone, and a tag shows its item at once.

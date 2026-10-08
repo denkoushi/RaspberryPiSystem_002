@@ -1,8 +1,11 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useInventoryImports, useInventoryMutations, useVerifyKioskDueManagementAccessPassword } from '../../api/hooks';
+import { captureSetupPinSession, clearSetupPin, sendSetupRequest } from '../../features/kiosk/inventory/setup/setupPinSession';
+import { useArmedNfcRead } from '../../features/kiosk/inventory/setup/useArmedNfcRead';
 
 import { KioskItemInventorySettingsPage } from './KioskItemInventorySettingsPage';
 
@@ -30,19 +33,25 @@ vi.mock('../../features/kiosk/inventory/setup/InventoryItemEditTab', () => ({
 }));
 
 function renderPage(state?: { importId: string }) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const view = render(
+    <QueryClientProvider client={queryClient}>
     <MemoryRouter initialEntries={[{ pathname: '/kiosk/inventory/settings', state }]}>
       <KioskItemInventorySettingsPage />
     </MemoryRouter>
+    </QueryClientProvider>
   );
   return {
     ...view,
+    queryClient,
     readTag: (uid: string, eventId: number) => {
       nfc.event = { uid, eventId, timestamp: new Date().toISOString() } as NfcEvent;
       view.rerender(
+        <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={['/kiosk/inventory/settings']}>
           <KioskItemInventorySettingsPage />
         </MemoryRouter>
+        </QueryClientProvider>
       );
     },
   };
@@ -60,6 +69,7 @@ describe('KioskItemInventorySettingsPage', () => {
   const quantityTag = vi.fn();
 
   beforeEach(() => {
+    clearSetupPin();
     nfc.event = null;
     verify.mockReset();
     quantityTag.mockReset().mockResolvedValue({});
@@ -71,6 +81,8 @@ describe('KioskItemInventorySettingsPage', () => {
       createShelf: { mutateAsync: vi.fn(), isPending: false },
       createDrawer: { mutateAsync: vi.fn(), isPending: false },
       renameArea: { mutateAsync: vi.fn(), isPending: false },
+      dismissImport: { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false },
+      restoreImport: { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false },
       registerImport: { mutateAsync: vi.fn(), isPending: false },
       retryImport: { mutateAsync: vi.fn(), isPending: false },
       deleteImportPhoto: { mutateAsync: vi.fn(), isPending: false },
@@ -88,7 +100,7 @@ describe('KioskItemInventorySettingsPage', () => {
     await waitFor(() => expect(verify).toHaveBeenCalledWith({ password: '2520' }));
     expect(prompt).not.toHaveBeenCalled();
     expect(await screen.findByRole('tab', { name: '登録待ち' })).toHaveAttribute('aria-selected', 'true');
-    expect(useInventoryImports).toHaveBeenCalledWith('2520');
+    expect(useInventoryImports).toHaveBeenCalledWith('2520', true);
     expect(screen.getByRole('button', { name: '登録する' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'アイテム編集' }));
     expect(screen.getByText('item-edit-open:2520')).toBeInTheDocument();
@@ -161,6 +173,118 @@ describe('KioskItemInventorySettingsPage', () => {
     press('パスワードのテンキー', '2520');
     expect(await screen.findByRole('button', { name: '候補 #1' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: '登録する' })).toBeInTheDocument();
+  });
+
+  it('remembers the PIN on reentry, refreshes activity, and expires after five idle minutes', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      verify.mockResolvedValue({ success: true });
+      const first = renderPage();
+      press('パスワードのテンキー', '2520');
+      await screen.findByRole('tab', { name: '登録待ち' });
+      first.unmount();
+      act(() => vi.advanceTimersByTime(4 * 60_000));
+      const second = renderPage();
+      expect(screen.queryByRole('group', { name: 'パスワードのテンキー' })).not.toBeInTheDocument();
+      expect(verify).toHaveBeenCalledTimes(1);
+      act(() => vi.advanceTimersByTime(4 * 60_000));
+      fireEvent.click(screen.getByRole('tab', { name: 'アイテム編集' }));
+      second.unmount();
+      act(() => vi.advanceTimersByTime(4 * 60_000));
+      const third = renderPage();
+      expect(screen.getByRole('tablist')).toBeInTheDocument();
+      third.unmount();
+      act(() => vi.advanceTimersByTime(5 * 60_000));
+      renderPage();
+      expect(screen.getByRole('group', { name: 'パスワードのテンキー' })).toBeInTheDocument();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('locks manually and does not reuse the PIN afterward', async () => {
+    verify.mockResolvedValue({ success: true });
+    const page = renderPage();
+    press('パスワードのテンキー', '2520');
+    fireEvent.click(await screen.findByRole('button', { name: 'ロック' }));
+    expect(screen.getByRole('group', { name: 'パスワードのテンキー' })).toBeInTheDocument();
+    page.unmount();
+    renderPage();
+    expect(screen.getByRole('group', { name: 'パスワードのテンキー' })).toBeInTheDocument();
+  });
+
+  it.each([401, 403])('locks on an API query failure (%s)', async (status) => {
+    verify.mockResolvedValue({ success: true });
+    const page = renderPage();
+    press('パスワードのテンキー', '2520');
+    await screen.findByRole('tablist');
+    await act(async () => {
+      await page.queryClient.fetchQuery({ queryKey: ['inventory-imports'], queryFn: () => sendSetupRequest(captureSetupPinSession('2520'), () => Promise.reject({ response: { status } })) }).catch(() => undefined);
+    });
+    expect(screen.getByRole('group', { name: 'パスワードのテンキー' })).toBeInTheDocument();
+    page.unmount();
+    renderPage();
+    expect(screen.getByRole('group', { name: 'パスワードのテンキー' })).toBeInTheDocument();
+  });
+
+  it('locks on an API mutation failure', async () => {
+    verify.mockResolvedValue({ success: true });
+    const page = renderPage();
+    press('パスワードのテンキー', '2520');
+    await screen.findByRole('tablist');
+    await act(async () => {
+      await page.queryClient.getMutationCache().build(page.queryClient, { mutationFn: () => sendSetupRequest(captureSetupPinSession('2520'), () => Promise.reject({ response: { status: 403 } })) }).execute(undefined).catch(() => undefined);
+    });
+    expect(screen.getByRole('group', { name: 'パスワードのテンキー' })).toBeInTheDocument();
+  });
+
+  it.each([401, 403])('keeps setup unlocked for unrelated query and mutation failures (%s)', async (status) => {
+    verify.mockResolvedValue({ success: true });
+    const page = renderPage();
+    press('パスワードのテンキー', '2520');
+    await screen.findByRole('tablist');
+    await act(async () => {
+      await page.queryClient.fetchQuery({ queryKey: ['unrelated'], queryFn: () => Promise.reject({ response: { status } }) }).catch(() => undefined);
+      await page.queryClient.getMutationCache().build(page.queryClient, { mutationFn: () => Promise.reject({ response: { status } }) }).execute(undefined).catch(() => undefined);
+    });
+    expect(screen.getByRole('tablist')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'パスワードのテンキー' })).not.toBeInTheDocument();
+  });
+
+  it('refreshes the remembered PIN for NFC activity in setup', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      verify.mockResolvedValue({ success: true });
+      const page = renderPage();
+      press('パスワードのテンキー', '2520');
+      fireEvent.click(await screen.findByRole('tab', { name: 'NFCタグ' }));
+      fireEvent.click(screen.getAllByRole('button', { name: 'タグを追加' })[0]);
+      press('数量のテンキー', '3');
+      fireEvent.click(screen.getByRole('button', { name: '次へ：タグをかざす' }));
+      act(() => vi.advanceTimersByTime(4 * 60_000));
+      await act(async () => { page.readTag('active-tag', 3); });
+      act(() => vi.advanceTimersByTime(2 * 60_000));
+      expect(screen.getByRole('tablist')).toBeInTheDocument();
+      expect(quantityTag).toHaveBeenCalledWith({ uid: 'active-tag', quantity: 3 });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('does not extend the setup PIN for NFC activity on other screens', async () => {
+    function OtherNfcScreen() { useArmedNfcRead(true); return <p>別の画面</p>; }
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      verify.mockResolvedValue({ success: true });
+      const page = renderPage();
+      press('パスワードのテンキー', '2520');
+      await screen.findByRole('tablist');
+      page.unmount();
+      const other = render(<OtherNfcScreen />);
+      act(() => vi.advanceTimersByTime(4 * 60_000));
+      nfc.event = { uid: 'outside', eventId: 10, timestamp: '2026-10-08' } as NfcEvent;
+      other.rerender(<OtherNfcScreen />);
+      act(() => vi.advanceTimersByTime(2 * 60_000));
+      other.unmount();
+      renderPage();
+      expect(screen.getByRole('group', { name: 'パスワードのテンキー' })).toBeInTheDocument();
+    } finally { vi.useRealTimers(); }
   });
 
 });
