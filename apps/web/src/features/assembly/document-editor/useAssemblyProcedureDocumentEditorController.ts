@@ -27,6 +27,7 @@ import { useAssemblyDocumentEditorRecovery } from './useAssemblyDocumentEditorRe
 import { useAssemblyProcedureDocumentEditLease } from './useAssemblyProcedureDocumentEditLease';
 import { useAssemblyProcedureDocumentOverlayCommands } from './useAssemblyProcedureDocumentOverlayCommands';
 import { useAssemblyProcedureDocumentRevisionCommands } from './useAssemblyProcedureDocumentRevisionCommands';
+import { useAssemblyProcedureLayoutSuggestions } from './useAssemblyProcedureLayoutSuggestions';
 
 import type { AssemblyProcedureDocumentDto, AssemblyProcedureTextCandidateDto } from '../types';
 import type { AssemblyProcedureOverlayBBox, AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
@@ -153,7 +154,19 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
       setErrorMessage('認証の期限が切れました。');
     }
   }), [revokeAccess, setErrorMessage]);
-  const readOnly = !accessGranted || document?.status !== 'draft' || (!editLease.mine && !editLease.unavailable);
+  const baseReadOnly = !accessGranted || document?.status !== 'draft' || (!editLease.mine && !editLease.unavailable);
+  const layoutSuggestions = useAssemblyProcedureLayoutSuggestions({
+    documentId: document?.id ?? null,
+    pageIndex: selectedPageIndex,
+    elements: selectedPageElements,
+    accessPassword: passwordInput,
+    holderToken: editLease.holderToken,
+    disabled: baseReadOnly || busy || conflict || !editLease.mine,
+    onStart: () => { setSelectedOverlayId(null); setSelectionMode(false); setMessage(null); },
+    onApply: proposed => { dispatch({ type: 'applyLayout', pageIndex: selectedPageIndex, elements: proposed }); setMessage('整えました。元に戻せます'); },
+    onEditLeaseError
+  });
+  const readOnly = baseReadOnly || layoutSuggestions.locked;
   const revisionSession = useMemo(() => ({
     document,
     hasAuthenticated: baselineSnapshot != null,
@@ -294,8 +307,9 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   const { confirmNavigation } = useUnsavedChangesGuard(isDirty);
   const onNavigateBack = input.onNavigateBack;
   const navigateBack = useCallback(() => {
+    if (layoutSuggestions.locked) return;
     if (confirmNavigation()) onNavigateBack?.();
-  }, [confirmNavigation, onNavigateBack]);
+  }, [confirmNavigation, onNavigateBack, layoutSuggestions.locked]);
 
   const handleRangeSelected = useCallback((bbox: AssemblyProcedureOverlayBBox) => {
     setPendingRange(bbox);
@@ -306,10 +320,11 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     setSelectionMode(false);
   }, []);
   const setSelectedPage = useCallback((pageIndex: number) => {
+    if (layoutSuggestions.locked) return;
     setSelectedPageIndex(pageIndex);
     setSelectedOverlayId(null);
     setPendingRange(null);
-  }, []);
+  }, [layoutSuggestions.locked]);
 
   const updateElement = useCallback((element: AssemblyProcedureOverlayElement) => {
     if (!readOnly) dispatch({ type: 'update', element });
@@ -385,6 +400,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   }, [busy, readOnly, selectedPageIndex, elements]);
 
   return {
+    layoutSuggestions,
     onEditLeaseError,
     beginOverlayDrag: () => { if (!readOnly) dispatch({ type: 'beginDrag' }); },
     endOverlayDrag: () => dispatch({ type: 'endDrag' }),
@@ -417,11 +433,11 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     selectedPage,
     selectedPageElements,
     selectedOverlayId,
-    setSelectedOverlayId,
+    setSelectedOverlayId: (id: string | null) => { if (!layoutSuggestions.locked) setSelectedOverlayId(id); },
     selectedElement,
     elements,
     selectionMode: selectionMode && !readOnly,
-    setSelectionMode,
+    setSelectionMode: (value: boolean) => { if (!layoutSuggestions.locked) setSelectionMode(value); },
     pendingRange,
     cancelPendingRange,
     createOverlay: overlayCommands.createOverlay,

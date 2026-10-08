@@ -20,6 +20,7 @@ type Props = {
   onToggleHidden: (id: string) => void;
   readOnly: boolean;
   busy: boolean;
+  locked?: boolean;
 };
 
 function previewBounds(bbox: AssemblyProcedureOverlayBBox) {
@@ -34,7 +35,7 @@ function previewBounds(bbox: AssemblyProcedureOverlayBBox) {
   return { crop, width, height };
 }
 
-export function AssemblyProcedureDocumentEditorPartsPane({ elements, pageIndex, onDuplicate, assets, selectedOverlayId, hiddenOverlayIds, onSelect, onBringForward, onSendBackward, onToggleHidden, readOnly, busy }: Props) {
+export function AssemblyProcedureDocumentEditorPartsPane({ elements, pageIndex, onDuplicate, assets, selectedOverlayId, hiddenOverlayIds, onSelect, onBringForward, onSendBackward, onToggleHidden, readOnly, busy, locked = false }: Props) {
   const [source, setSource] = useState<'current' | 'other'>('current');
   const sorted = useMemo(() => elements
     .map((element, index) => ({ element, index }))
@@ -55,7 +56,7 @@ export function AssemblyProcedureDocumentEditorPartsPane({ elements, pageIndex, 
     <div className="flex h-14 items-center gap-2.5 border-b border-[#27313b] pl-4 pr-3">
       <h2 className="whitespace-nowrap text-[19px] font-black tracking-[0.06em]">部品</h2>
       <div role="group" aria-label="部品の表示元" className="flex w-max gap-0.5 rounded-lg border border-[#344252] p-[3px]">
-        {(['current', 'other'] as const).map(value => <button key={value} type="button" aria-pressed={source === value} onClick={() => setSource(value)} className={`h-[34px] whitespace-nowrap rounded-[5px] px-2 text-sm ${source === value ? 'bg-[#27313b] text-[#eef3f6]' : 'text-[#9fadb9]'}`}>
+        {(['current', 'other'] as const).map(value => <button key={value} type="button" disabled={locked} aria-pressed={source === value} onClick={() => setSource(value)} className={`h-[34px] whitespace-nowrap rounded-[5px] px-2 text-sm ${source === value ? 'bg-[#27313b] text-[#eef3f6]' : 'text-[#9fadb9]'}`}>
           {value === 'current' ? 'このページ' : 'ほか'}<span className="ml-[5px] font-mono text-[#9fadb9]">{value === 'current' ? currentRows.length : otherRows.length}</span>
         </button>)}
       </div>
@@ -74,7 +75,7 @@ export function AssemblyProcedureDocumentEditorPartsPane({ elements, pageIndex, 
           role="option"
           aria-selected={selected}
           aria-label={source === 'current' ? `${number}: ${assemblyProcedureOverlayElementLabel(element)}` : `p${element.pageIndex + 1}から置く: ${assemblyProcedureOverlayElementLabel(element)}`}
-          disabled={source === 'other' && (readOnly || busy)}
+          disabled={locked || (source === 'other' && (readOnly || busy))}
           onClick={() => {
             if (source === 'other') {
               onDuplicate(element.id);
