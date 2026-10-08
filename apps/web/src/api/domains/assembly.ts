@@ -703,9 +703,19 @@ export type HermesSearchTrialScope = {
   snapshotId?: string;
 };
 
+export type HermesRecordAnswerDisplay = {
+  records: Array<{
+    sourceLabel: string;
+    fields: Array<{ label: string; value: string; role: 'identifier' | 'date' | 'organization' | 'body' }>;
+  }>;
+  notices: string[];
+  dataAsOf: string | null;
+};
+
 export type HermesSearchTrialAnswer = {
   status: string;
   answer: string;
+  display?: HermesRecordAnswerDisplay;
   recordIds: string[];
   elapsedMs: number;
   confirmationPending?: {

@@ -154,6 +154,49 @@ describe('HermesSearchTrialService retrieval switch', () => {
     };
   }
 
+  it('passes a validated record display on V2 without changing the answer or receipt', async () => {
+    const display = {
+      records: [{ sourceLabel: '不適合情報', fields: [
+        { label: '番号', value: 'N1', role: 'identifier' },
+        { label: '本文', value: '2回目: 9.8 N·m。\n\n原文。', role: 'body' },
+      ] }],
+      notices: ['件数案内'], dataAsOf: '2026-10-08 09:30',
+    };
+    const receipt = { outcome: 'answer' };
+    spawnMock.mockImplementation(() => fakeChild({ ...workerResult, display, receipt }));
+    const service = new HermesSearchTrialService(v2Settings());
+    try {
+      const answer = await service.answer('synthetic question');
+      expect(answer.display).toEqual(display);
+      expect(answer.answer).toBe(workerResult.answer);
+      expect(answer.receipt).toEqual(receipt);
+    } finally { service.close(); }
+  });
+
+  it.each([
+    null,
+    {},
+    { records: [], notices: [], dataAsOf: 'invalid' },
+    { records: Array(21).fill({ sourceLabel: 'source', fields: [] }), notices: [], dataAsOf: null },
+    { records: [{ sourceLabel: 's'.repeat(201), fields: [] }], notices: [], dataAsOf: null },
+    { records: [{ sourceLabel: 'source', fields: Array(65).fill({ label: 'l', value: 'v', role: 'body' }) }], notices: [], dataAsOf: null },
+    { records: [{ sourceLabel: 'source', fields: [{ label: 'l'.repeat(201), value: 'v', role: 'body' }] }], notices: [], dataAsOf: null },
+    { records: [{ sourceLabel: 'source', fields: [{ label: 'l', value: 'v'.repeat(100001), role: 'body' }] }], notices: [], dataAsOf: null },
+    { records: [{ sourceLabel: 'source', fields: [{ label: 'l', value: 'v', role: 'facet' }] }], notices: [], dataAsOf: null },
+    { records: [{ sourceLabel: 'source', fields: [{ label: 'l', value: 1, role: 'body' }] }], notices: [], dataAsOf: null },
+    { records: [], notices: Array(9).fill('notice'), dataAsOf: null },
+    { records: [], notices: ['n'.repeat(2001)], dataAsOf: null },
+  ])('drops invalid display case %# while preserving the text answer', async display => {
+    spawnMock.mockImplementation(() => fakeChild({ ...workerResult, display }));
+    const service = new HermesSearchTrialService(v2Settings());
+    try {
+      const answer = await service.answer('synthetic question');
+      expect(answer).not.toHaveProperty('display');
+      expect(answer.answer).toBe(workerResult.answer);
+      expect(answer.recordIds).toEqual(workerResult.recordIds);
+    } finally { service.close(); }
+  });
+
   function holdingChild(memory?: Record<string, unknown>, autoApply = true) {
     const stdout = new EventEmitter() as EventEmitter & { setEncoding: (encoding: string) => void };
     stdout.setEncoding = () => {};

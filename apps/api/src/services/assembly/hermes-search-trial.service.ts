@@ -2,6 +2,7 @@ import { spawn, type ChildProcessByStdio, type ChildProcessWithoutNullStreams } 
 import type { Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import {setPriority} from 'node:os';
+import { z } from 'zod';
 import { loadProcedureMaterialRecords } from './procedure-material-hermes-source.service.js';
 import { BusinessHermesMcpService } from './business-hermes-mcp.service.js';
 import { createTorqueTrainingSourceReaders } from '../torque-training/torque-training-hermes-source.service.js';
@@ -38,9 +39,23 @@ type SearchDiagnostics = {
 };
 type SearchPlan = { mode: 'exact' | 'classified'; source?: string; args?: Record<string, unknown> };
 
+const answerDisplaySchema = z.object({
+  records: z.array(z.object({
+    sourceLabel: z.string().max(200),
+    fields: z.array(z.object({
+      label: z.string().max(200),
+      value: z.string().max(100000),
+      role: z.enum(['identifier', 'date', 'organization', 'body']),
+    })).max(64),
+  })).max(20),
+  notices: z.array(z.string().max(2000)).max(8),
+  dataAsOf: z.string().max(16).regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/u).nullable(),
+});
+
 export type HermesTrialAnswer = {
   status: string;
   answer: string;
+  display?: z.infer<typeof answerDisplaySchema>;
   recordIds: string[];
   elapsedMs: number;
   confirmationPending?: {
@@ -389,9 +404,11 @@ export class HermesSearchTrialService {
       } else {
         this.sessions.delete(activeSessionId);
       }
+      const display = answerDisplaySchema.safeParse(result.display);
       return {
         status: result.status,
         answer: result.answer,
+        ...(display.success ? { display: display.data } : {}),
         recordIds: result.recordIds,
         elapsedMs: result.elapsedMs,
         confirmationPending: result.confirmationPending ?? null,

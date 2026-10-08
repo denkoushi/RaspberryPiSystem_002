@@ -743,6 +743,7 @@ export function HermesFloatingChat() {
           id: `hermes-assistant-${requestId}`,
           role: 'assistant',
           content: response.answer,
+          display: response.display,
           recordIds: response.recordIds,
           createdAt: new Date().toISOString()
         }]);
