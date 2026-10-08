@@ -16,6 +16,17 @@ export type ShelfFilters = { sources: string[]; kinds: string[]; days: number | 
 export const emptyShelfFilters: ShelfFilters = { sources: [], kinds: [], days: null };
 export const normalizeShelfQuery = (value: string) => value.normalize('NFKC').toLowerCase().trim();
 
+export function shelfMatchExcerpt(text: string, query: string) {
+  const needle = normalizeShelfQuery(query);
+  const normalized = text.normalize('NFKC').toLowerCase();
+  const index = needle ? normalized.indexOf(needle) : -1;
+  if (index === -1) return null;
+  if (normalized.length !== text.length || [...text].some((char) => char.normalize('NFKC').length !== char.length)) return text;
+  const start = Math.max(0, index - 8);
+  const end = Math.min(text.length, index + needle.length + 40);
+  return `${start ? '...' : ''}${text.slice(start, end).replace(/[\r\n]+/g, ' ')}${end < text.length ? '...' : ''}`;
+}
+
 export function ShelfHighlight({ text, query }: { text: string; query: string }) {
   const normalized = text.normalize('NFKC').toLowerCase();
   const needle = normalizeShelfQuery(query);

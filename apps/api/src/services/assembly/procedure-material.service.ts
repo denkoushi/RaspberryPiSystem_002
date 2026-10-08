@@ -20,7 +20,13 @@ export class ProcedureMaterialService {
     if (options.state === 'unplaced') Object.assign(where, { documentId: null, placedAt: null, discardedAt: null });
     if (options.state === 'placed') Object.assign(where, { discardedAt: null, OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] });
     if (options.state === 'discarded') where.discardedAt = { not: null };
-    if (options.q) where.AND = [{ OR: [...new Set([options.q, options.q.normalize('NFKC')])].flatMap((q) => [{ subjectHint: { contains: q, mode: 'insensitive' as const } }, { originalFileName: { contains: q, mode: 'insensitive' as const } }]) }];
+    if (options.q) {
+      const queries = [...new Set([options.q, options.q.normalize('NFKC')])];
+      const textMatches = queries.map((q) => ({ text: { contains: q, mode: 'insensitive' as const } }));
+      const messages = await this.db.procedureMaterial.findMany({ where: { gmailMessageId: { not: null }, OR: textMatches }, select: { gmailMessageId: true }, distinct: ['gmailMessageId'], take: 500 });
+      const messageIds = messages.flatMap((material) => material.gmailMessageId === null ? [] : [material.gmailMessageId]);
+      where.AND = [{ OR: [...queries.flatMap((q) => [{ subjectHint: { contains: q, mode: 'insensitive' as const } }, { originalFileName: { contains: q, mode: 'insensitive' as const } }]), ...textMatches, ...(messageIds.length ? [{ gmailMessageId: { in: messageIds } }] : [])] }];
+    }
     const materials = await this.db.procedureMaterial.findMany({ where, orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }], take: options.limit });
     // PDF and page text exists for search only; keep it out of the list payload.
     return materials.map((material) => material.kind === 'TEXT' ? material : { ...material, text: null });
