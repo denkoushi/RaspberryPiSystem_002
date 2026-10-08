@@ -1,16 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import {
   resolveInventoryTag,
   type InventoryCompartment,
   type InventoryHistoryEntry,
+  type InventoryImportSummary,
   type InventoryTag,
 } from '../../api/client';
 import { useInventoryImportSummaries, useInventoryItems, useInventoryMutations } from '../../api/hooks';
 import { InventoryCorrectionPanel } from '../../features/kiosk/inventory/InventoryCorrectionPanel';
 import {
   correctionResultMessage,
+  formatSignedDelta,
   pickedCompartmentTag,
   unitLabel,
 } from '../../features/kiosk/inventory/inventoryDailyFlow';
@@ -54,9 +56,13 @@ function messageFromError(error: unknown): string {
   return error instanceof Error ? error.message : '処理に失敗しました';
 }
 
+const EMPTY_IMPORTS: InventoryImportSummary[] = [];
+let inventoryAudioContext: AudioContext | null = null;
+
 function playInventoryTone(kind: 'success' | 'restock' | 'error') {
   if (typeof window === 'undefined' || !window.AudioContext) return;
-  const context = new window.AudioContext();
+  const context = inventoryAudioContext ??= new window.AudioContext();
+  if (context.state === 'suspended') void context.resume();
   const oscillator = context.createOscillator();
   const gain = context.createGain();
   const frequency = kind === 'success' ? 880 : kind === 'restock' ? 660 : 180;
@@ -68,7 +74,6 @@ function playInventoryTone(kind: 'success' | 'restock' | 'error') {
   oscillator.connect(gain).connect(context.destination);
   oscillator.start();
   oscillator.stop(context.currentTime + 0.2);
-  window.setTimeout(() => { void context.close(); }, 400);
 }
 
 export function KioskItemInventoryPage() {
@@ -81,12 +86,16 @@ export function KioskItemInventoryPage() {
   const [message, setMessage] = useState('アイテムNFCタグを読み取ってください');
   const [messageKind, setMessageKind] = useState<'info' | 'success' | 'error'>('info');
   const [lastTransaction, setLastTransaction] = useState<InventoryHistoryEntry | null>(null);
+  const [lastTransactionUnit, setLastTransactionUnit] = useState('個');
+  const [activeTag, setActiveTag] = useState<InventoryTag | null>(null);
+  const [resultTransaction, setResultTransaction] = useState<InventoryHistoryEntry | null>(null);
+  const [activity, setActivity] = useState(0);
   const [busy, setBusy] = useState(false);
   const [panel, setPanel] = useState<'none' | 'correct' | 'pick'>('none');
   const [correctionError, setCorrectionError] = useState<string | null>(null);
   const itemsQuery = useInventoryItems();
   const pendingQuery = useInventoryImportSummaries();
-  const pendingImports = pendingQuery.data ?? [];
+  const pendingImports = pendingQuery.data ?? EMPTY_IMPORTS;
   const itemCompartments = useMemo(() => (itemsQuery.data ?? []).flatMap((item) => item.compartments.map((compartment) => ({ ...compartment, item }))), [itemsQuery.data]);
   const flowRef = useRef({ restockMode: false, restockTagUid: null as string | null, selectedTag: null as InventoryTag | null, processing: false });
   const mountedRef = useRef(true);
@@ -111,18 +120,21 @@ export function KioskItemInventoryPage() {
     return () => { mountedRef.current = false; };
   }, []);
 
-  const reset = () => {
+  const reset = useCallback(() => {
     const flow = flowRef.current;
     flow.restockMode = false;
     flow.restockTagUid = null;
     flow.selectedTag = null;
     setRestockMode(false);
     setSelectedTag(null);
+    setActiveTag(null);
+    setLastTransaction(null);
+    setResultTransaction(null);
     setPanel('none');
     setCorrectionError(null);
     setMessage('アイテムNFCタグを読み取ってください');
     setMessageKind('info');
-  };
+  }, []);
 
   useEffect(() => {
     drainEventsRef.current = async () => {
@@ -151,6 +163,7 @@ export function KioskItemInventoryPage() {
             flow.selectedTag = null;
             setRestockMode(true);
             setSelectedTag(null);
+            setActiveTag(null);
             setMessage('補充モードです。アイテムNFCタグを読み取ってください');
             setMessageKind('info');
             continue;
@@ -162,7 +175,9 @@ export function KioskItemInventoryPage() {
               playInventoryTone('error');
               continue;
             }
+            setLastTransaction((current) => current?.compartmentId === tag.compartment?.id ? current : null);
             flow.selectedTag = tag;
+            setActiveTag(tag);
             setSelectedTag(tag);
             setMessage(flow.restockMode ? '数量NFCタグを読み取って補充してください' : '数量NFCタグを読み取ってください');
             setMessageKind('info');
@@ -193,14 +208,17 @@ export function KioskItemInventoryPage() {
               idempotencyKey: `nfc-${event.eventId ?? `${event.uid}-${event.timestamp}`}`,
             });
             setLastTransaction(result.transaction);
+            setResultTransaction(result.transaction);
             updateDisplayedStock(result.transaction);
             const unit = unitLabel(flow.selectedTag?.compartment?.item);
+            setLastTransactionUnit(unit);
             setMessage(restock ? `補充しました（${result.transaction.delta}${unit}）` : `払い出しました（${Math.abs(result.transaction.delta)}${unit}）`);
             setMessageKind('success');
             playInventoryTone(restock ? 'restock' : 'success');
             flow.restockMode = false;
             flow.restockTagUid = null;
             flow.selectedTag = null;
+            setActiveTag(null);
             setRestockMode(false);
           } catch (error) {
             setMessage(messageFromError(error));
@@ -234,7 +252,7 @@ export function KioskItemInventoryPage() {
     if (panel !== 'none') return;
     const timer = window.setTimeout(reset, 30000);
     return () => window.clearTimeout(timer);
-  }, [restockMode, selectedTag, message, panel]);
+  }, [restockMode, selectedTag, message, panel, activity, reset]);
 
   useEffect(() => {
     if (messageKind === 'info') return;
@@ -256,6 +274,7 @@ export function KioskItemInventoryPage() {
     try {
       const result = await mutations.cancel.mutateAsync(lastTransaction.id);
       updateDisplayedStock(result.transaction);
+      setResultTransaction(result.transaction);
       setLastTransaction(null);
       setMessage('直前の取引を取り消しました');
       setMessageKind('success');
@@ -269,17 +288,20 @@ export function KioskItemInventoryPage() {
     }
   };
 
-  const pickCompartment = (compartment: InventoryCompartment) => {
+  const pickCompartment = useCallback((compartment: InventoryCompartment) => {
     const tag = pickedCompartmentTag(compartment);
     const flow = flowRef.current;
+    setLastTransaction((current) => current?.compartmentId === compartment.id ? current : null);
     flow.selectedTag = tag;
+    setActiveTag(tag);
     setSelectedTag(tag);
     setPanel('none');
     setMessage(!tag.uid
       ? 'この引き出しにはアイテムタグがありません（確認と数の修正だけできます）'
       : flow.restockMode ? '数量NFCタグを読み取って補充してください' : '数量NFCタグを読み取ってください');
     setMessageKind('info');
-  };
+  }, []);
+  const pickPending = useCallback((candidate: InventoryImportSummary) => navigate('/kiosk/inventory/settings', { state: { importId: candidate.id } }), [navigate]);
 
   const submitCorrection = async (desiredQuantity: number) => {
     const compartment = selectedTag?.compartment;
@@ -293,6 +315,8 @@ export function KioskItemInventoryPage() {
         expectedBeforeQuantity: compartment.stockQuantity,
       });
       setLastTransaction(result.transaction);
+      setLastTransactionUnit(unitLabel(compartment.item));
+      setResultTransaction(result.transaction);
       updateDisplayedStock(result.transaction);
       setPanel('none');
       setMessage(correctionResultMessage(result.transaction.beforeQuantity, result.transaction.afterQuantity, unitLabel(compartment.item)));
@@ -307,7 +331,17 @@ export function KioskItemInventoryPage() {
         const latest = await resolveInventoryTag(uid).catch(() => null);
         if (latest?.compartment?.id === compartment.id && mountedRef.current) {
           if (flowRef.current.selectedTag?.compartment?.id === compartment.id) flowRef.current.selectedTag = latest;
-          setSelectedTag(latest);
+          setSelectedTag((current) => current?.compartment?.id === compartment.id ? latest : current);
+          setActiveTag((current) => current?.compartment?.id === compartment.id ? latest : current);
+        }
+      } else {
+        const refreshed = await itemsQuery.refetch().catch(() => null);
+        const latest = refreshed?.data?.flatMap((item) => item.compartments.map((entry) => ({ ...entry, item }))).find((entry) => entry.id === compartment.id);
+        if (latest && mountedRef.current) {
+          const tag = pickedCompartmentTag(latest);
+          if (flowRef.current.selectedTag?.compartment?.id === compartment.id) flowRef.current.selectedTag = tag;
+          setSelectedTag((current) => current?.compartment?.id === compartment.id ? tag : current);
+          setActiveTag((current) => current?.compartment?.id === compartment.id ? tag : current);
         }
       }
     } finally {
@@ -322,9 +356,9 @@ export function KioskItemInventoryPage() {
   const resultBadge = (
     <p role="status" aria-live="polite" className={`inline-flex h-11 items-center rounded-full border-[1.5px] px-5 text-base font-bold ${messageKind === 'success' ? invSuccess : invError}`}>{message}</p>
   );
-  const prompt = messageKind !== 'info' ? resultBadge : selectedCompartment && !selectedTag?.uid ? (
+  const prompt = messageKind !== 'info' ? resultBadge : activeTag?.compartment && !activeTag.uid ? (
     <p role="status" className="inline-flex h-11 items-center rounded-full border border-inv-line2 px-4 text-[15px] text-inv-muted">タグなし（確認と数の修正のみ）</p>
-  ) : selectedCompartment ? (
+  ) : activeTag?.compartment ? (
     <NfcPrompt size="small" label="数量タグ" tone={restockMode ? 'green' : 'amber'} sub={restockMode ? '補充' : undefined} />
   ) : (
     <NfcPrompt size="small" label="アイテムタグ" tone={restockMode ? 'green' : 'sky'} sub={restockMode ? '補充' : undefined} />
@@ -338,7 +372,7 @@ export function KioskItemInventoryPage() {
   }) : [];
 
   return (
-    <section className={invSurface}>
+    <section className={invSurface} onPointerDownCapture={() => setActivity((current) => current + 1)} onClickCapture={() => setActivity((current) => current + 1)} onKeyDownCapture={() => setActivity((current) => current + 1)}>
       <div className="flex shrink-0 flex-wrap items-center gap-3">
         {selectedCompartment ? <button type="button" className={invButtonGhost} onClick={reset} disabled={busy}><BackIcon />一覧へ</button> : null}
         <h1 className={invTitle}>在庫操作</h1>
@@ -353,8 +387,8 @@ export function KioskItemInventoryPage() {
         ) : null}
         <span className="flex-1" />
         {panel === 'none' ? <button type="button" className={invButtonGhost} onClick={() => setPanel('pick')} disabled={busy}><GridIcon />置き場所から選ぶ</button> : null}
-        <button type="button" className={invButtonGhost} onClick={reset} disabled={busy}><ResetIcon />選択をリセット</button>
-        <button type="button" className={invButtonDanger} onClick={() => void cancelLast()} disabled={!lastTransaction || busy}><UndoIcon />直前の取引を取消</button>
+        {!selectedCompartment && restockMode ? <button type="button" className={invButtonGhost} onClick={reset} disabled={busy}><ResetIcon />補充をやめる</button> : null}
+        {lastTransaction ? <button type="button" className={`${invButtonDanger} max-w-[360px]`} onClick={() => void cancelLast()} disabled={busy}><UndoIcon /><span className="min-w-0 truncate">取消：{lastTransaction.inventoryItem.name}</span><span className="shrink-0">{formatSignedDelta(lastTransaction.delta)}{lastTransactionUnit}</span></button> : null}
         <span className="mx-1 h-7 w-px bg-inv-line" />
         <Link to="/kiosk/inventory/settings" className={invButton}><LockIcon />在庫の準備</Link>
       </div>
@@ -385,6 +419,7 @@ export function KioskItemInventoryPage() {
                 <dd aria-label="現在庫" className="flex items-end gap-2.5">
                   <span className="text-8xl font-black leading-[0.95] tracking-[-0.02em] tabular-nums">{selectedCompartment.stockQuantity}</span>
                   <span className="pb-2.5 text-[22px] font-bold text-inv-muted">{unitLabel(selectedCompartment.item)}</span>
+                  {messageKind === 'success' && resultTransaction?.compartmentId === selectedCompartment.id ? <span className={`pb-2.5 text-4xl font-black tabular-nums ${resultTransaction.action === 'ISSUE' ? 'text-inv-amber' : resultTransaction.action === 'RESTOCK' ? 'text-inv-green' : 'text-inv-muted'}`}>{formatSignedDelta(resultTransaction.delta)}</span> : null}
                 </dd>
               </div>
               <dd className="ml-auto self-center">
@@ -419,12 +454,12 @@ export function KioskItemInventoryPage() {
           <p className="flex shrink-0 items-baseline gap-2.5"><span className={invEyebrow}>登録済み</span><span className="font-black tabular-nums">{itemCompartments.length}</span><span className="text-[13px] text-inv-faint">件 ・ 最近持ち出した順</span>
             {pendingImports.length > 0 ? <><span className={`${invEyebrow} ml-3 text-inv-amber`}>未登録</span><span className="font-black tabular-nums text-inv-amber">{pendingImports.length}</span><span className="text-[13px] text-inv-faint">件</span></> : null}
           </p>
-          <InventoryItemGrid
+          {itemsQuery.isLoading ? <p className="text-inv-muted">読み込み中…</p> : itemsQuery.isError ? <div className="flex items-center gap-3"><p role="alert" className="text-inv-red">一覧を取得できませんでした</p><button type="button" className={invButtonGhost} onClick={() => void itemsQuery.refetch()}>もう一度</button></div> : <InventoryItemGrid
             compartments={itemCompartments}
             onPick={pickCompartment}
             pending={pendingImports}
-            onPickPending={(candidate) => navigate('/kiosk/inventory/settings', { state: { importId: candidate.id } })}
-          />
+            onPickPending={pickPending}
+          />}
         </>
       )}
     </section>

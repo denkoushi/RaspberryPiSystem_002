@@ -40,6 +40,7 @@ import { OperationGuideOverlay } from '../../features/operation-guide/OperationG
 import { useOperationGuide } from '../../features/operation-guide/useOperationGuide';
 
 import { useHermesPageContext } from './HermesPageContext';
+import { HermesPageContextShortcuts } from './HermesPageContextShortcuts';
 
 import type { HermesChatPanelProps, HermesPanelMessage, HermesConsultationSuggestion, HermesKnowledgeMode } from './HermesChatPanel';
 import type { BusinessHermesChatEvidence } from '../../api/domains/assembly';
@@ -659,17 +660,19 @@ export function HermesFloatingChat() {
     }
   }, [activeConsultation, invalidateChatRequest, isBusy]);
 
-  const sendMessage = useCallback(async (messageOverride?: string, options?: { selection?: { prompt: string; option: string }; displayContent?: string; scanValue?: string; skipKnowledge?: boolean }) => {
+  const sendMessage = useCallback(async (messageOverride?: string, options?: { selection?: { prompt: string; option: string }; displayContent?: string; scanValue?: string; skipKnowledge?: boolean; knowledgeMode?: 'record-pilot' }) => {
+    // A shortcut sends before the mode state has rendered.
+    const sendMode = options?.knowledgeMode ?? knowledgeMode;
     const content = (typeof messageOverride === 'string' ? messageOverride : draft).trim();
-    const hasKnowledgeFiles = knowledgeMode === 'knowledge' && knowledge.files.length > 0;
-    if ((!content && !hasKnowledgeFiles) || isBusy || (knowledgeMode === 'knowledge' && knowledge.busy)) return;
-    if (knowledgeMode === 'search' && !options?.selection && !options?.scanValue && operationGuide.receive(content)) {
+    const hasKnowledgeFiles = sendMode === 'knowledge' && knowledge.files.length > 0;
+    if ((!content && !hasKnowledgeFiles) || isBusy || (sendMode === 'knowledge' && knowledge.busy)) return;
+    if (sendMode === 'search' && !options?.selection && !options?.scanValue && operationGuide.receive(content)) {
       setDraft('');
       return;
     }
     operationGuide.clear();
     if (!ensureCurrentClientKey()) return;
-    if (knowledgeMode === 'knowledge' && !options?.selection && !options?.scanValue && !options?.skipKnowledge) {
+    if (sendMode === 'knowledge' && !options?.selection && !options?.scanValue && !options?.skipKnowledge) {
       const draftRevision = draftRevisionRef.current;
       const knowledgeModeRevision = knowledgeModeRevisionRef.current;
       try {
@@ -678,7 +681,7 @@ export function HermesFloatingChat() {
         const handled = await knowledge.receive(content, author, knowledgePoster.consume);
         const canClearDraft = draftRevisionRef.current === draftRevision
           && knowledgeModeRevisionRef.current === knowledgeModeRevision
-          && knowledgeModeRef.current === knowledgeMode;
+          && knowledgeModeRef.current === sendMode;
         if (handled === true) { if (canClearDraft) setDraft(''); return; }
         if (handled === null) return;
         if (knowledge.enabled) { if (canClearDraft) setDraft(''); return; }
@@ -687,7 +690,7 @@ export function HermesFloatingChat() {
       } catch { return; }
     }
     if (!content) return;
-    if (knowledgeMode !== 'record-pilot' && consultationMode === 'loading') {
+    if (sendMode !== 'record-pilot' && consultationMode === 'loading') {
       setConsultationError('相談を準備しています。少し待ってから送信してください。');
       return;
     }
@@ -708,7 +711,7 @@ export function HermesFloatingChat() {
       .map(({ role, content: messageContent }) => ({ role, content: messageContent }));
 
     if (!options?.selection) setMessages((current) => [...current, userMessage]);
-    if (activeConsultation && !options?.selection && knowledgeMode !== 'record-pilot') {
+    if (activeConsultation && !options?.selection && sendMode !== 'record-pilot') {
       setActiveConsultation((current) => current ? {
         ...current,
         messages: [...current.messages, {
@@ -732,7 +735,7 @@ export function HermesFloatingChat() {
     const requestIdentity = identity;
 
     try {
-      if (knowledgeMode === 'record-pilot') {
+      if (sendMode === 'record-pilot') {
         const response = await sendHermesSearchTrialAnswer({
           question: content,
           sessionId: recordPilotSessionIdRef.current,
@@ -953,22 +956,34 @@ export function HermesFloatingChat() {
       if (identityRef.current === requestIdentity) setError(getApiErrorMessage(error, '評価を保存できませんでした。もう一度お試しください。'));
     } finally { setFeedbackBusy(false); }
   };
+  const showPageContextShortcuts = open && pageContext?.entity.kind === 'partNumber'
+    && recordPilotScope.enabled && knowledgeMode !== 'knowledge';
+  const showPageContextIndicator = pageContext?.entity.kind === 'partNumber'
+    && (!recordPilotScope.loaded || recordPilotScope.enabled);
+  const handlePageContextShortcut = (question: string) => {
+    if (isBusy) return;
+    handleKnowledgeModeChange('record-pilot');
+    void sendMessage(question, { knowledgeMode: 'record-pilot' });
+  };
   const panelProps: HermesChatPanelProps = {
     knowledgeMode,
     recordPilotAvailable: recordPilotScope.enabled,
     onKnowledgeModeChange: handleKnowledgeModeChange,
     conversationContent: knowledgeWorkspace.isOpen ? <KnowledgeWorkspace workspace={knowledgeWorkspace} posterName={knowledgePoster.poster?.name ?? null} /> : undefined,
-    conversationExtension: knowledgeMode === 'search' && operationGuide.question ? <OperationGuidePrompt question={operationGuide.question} onChoose={operationGuide.choose} /> : knowledgeMode === 'record-pilot' ? <p className="hermes-chat-panel__status" role="note">
-      JEV記録検索：取り込み済みの実際の不適合記録が対象です。工程・現象・処置・原因など、知りたい条件を自然文で入力してください。記録の原文をそのまま表示します。条件を特定できない質問には確認を返します。
-    </p> : knowledgeMode === 'knowledge' && knowledge.enabled ? <>
-      <KnowledgePosterBar destinationChip={<KnowledgeDestinationChip destination={knowledgeDestination} />} actions={<KnowledgeWorkspaceChips workspace={knowledgeWorkspace} />} poster={knowledgePoster.poster} verifying={knowledgePoster.verifying} error={knowledgePoster.error}
-        partNumber={knowledgePoster.partNumber} pending={knowledgePoster.pending} onClearPartNumber={() => knowledgePoster.setPartNumber(null)}
-        onPendingDecided={(intakeId, title) => { knowledgePoster.removePending(intakeId); knowledge.markDecided(intakeId, title); }} />
-      {knowledgePoster.poster ? <KnowledgeDestinationPicker key={knowledgePoster.poster.tagUid} destination={knowledgeDestination} partNumber={knowledgePoster.partNumber} onScan={openScanner} /> : null}
-      <KnowledgeIntakePanel key={identity} items={knowledge.items} error={knowledge.error} busy={knowledge.busy}
-        onChoose={(item, action) => void knowledge.choose(item, action)} onDelegate={text => void sendMessage(text, { skipKnowledge: true })}
-        triage={{ tagFor: knowledge.tagFor, decided: knowledge.decided, later: knowledge.later, onDecided: knowledge.markDecided, onLater: knowledge.markLater }} />
-    </> : null,
+    conversationExtension: <>
+      {showPageContextShortcuts && pageContext ? <HermesPageContextShortcuts partNumber={pageContext.entity.value} disabled={isBusy} onChoose={handlePageContextShortcut} /> : null}
+      {knowledgeMode === 'search' && operationGuide.question ? <OperationGuidePrompt question={operationGuide.question} onChoose={operationGuide.choose} /> : knowledgeMode === 'record-pilot' && !showPageContextShortcuts ? <p className="hermes-chat-panel__status" role="note">
+        JEV記録検索：取り込み済みの実際の不適合記録が対象です。工程・現象・処置・原因など、知りたい条件を自然文で入力してください。記録の原文をそのまま表示します。条件を特定できない質問には確認を返します。
+      </p> : knowledgeMode === 'knowledge' && knowledge.enabled ? <>
+        <KnowledgePosterBar destinationChip={<KnowledgeDestinationChip destination={knowledgeDestination} />} actions={<KnowledgeWorkspaceChips workspace={knowledgeWorkspace} />} poster={knowledgePoster.poster} verifying={knowledgePoster.verifying} error={knowledgePoster.error}
+          partNumber={knowledgePoster.partNumber} pending={knowledgePoster.pending} onClearPartNumber={() => knowledgePoster.setPartNumber(null)}
+          onPendingDecided={(intakeId, title) => { knowledgePoster.removePending(intakeId); knowledge.markDecided(intakeId, title); }} />
+        {knowledgePoster.poster ? <KnowledgeDestinationPicker key={knowledgePoster.poster.tagUid} destination={knowledgeDestination} partNumber={knowledgePoster.partNumber} onScan={openScanner} /> : null}
+        <KnowledgeIntakePanel key={identity} items={knowledge.items} error={knowledge.error} busy={knowledge.busy}
+          onChoose={(item, action) => void knowledge.choose(item, action)} onDelegate={text => void sendMessage(text, { skipKnowledge: true })}
+          triage={{ tagFor: knowledge.tagFor, decided: knowledge.decided, later: knowledge.later, onDecided: knowledge.markDecided, onLater: knowledge.markLater }} />
+      </> : null}
+    </>,
     composerVisible: knowledgeMode !== 'knowledge' || !knowledge.enabled || knowledgeDestination.ready,
     attachmentControl: knowledgeMode === 'knowledge' && knowledge.enabled && knowledgeDestination.ready ? <KnowledgeAttachments files={knowledge.files} onChange={knowledge.setFiles} disabled={isBusy || knowledge.busy} onSend={() => void sendMessage()} /> : null,
     mode: knowledgeMode === 'record-pilot' || consultationMode === 'legacy' ? 'legacy' : 'consultations',
@@ -1012,7 +1027,7 @@ export function HermesFloatingChat() {
         style={iconStyle}
         aria-label="業務Hermesチャットを開く。ドラッグで移動できます"
         aria-expanded={open}
-        title="業務Hermesチャット（ドラッグで移動）"
+        title={showPageContextIndicator ? 'この品番で検索できます' : '業務Hermesチャット（ドラッグで移動）'}
         onClick={handleButtonClick}
         onKeyDown={handleButtonKeyDown}
         onPointerDown={handlePointerDown}
@@ -1034,6 +1049,7 @@ export function HermesFloatingChat() {
           </span>
         </span>
         <span className="hermes-floating-trigger__glyph" aria-hidden="true">H</span>
+        {showPageContextIndicator ? <span className="hermes-floating-trigger__context-dot" aria-hidden="true" /> : null}
       </button>
 
       {open && operationGuide.guide ? <OperationGuideOverlay

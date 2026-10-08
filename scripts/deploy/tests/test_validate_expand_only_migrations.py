@@ -174,7 +174,7 @@ class SqlAllowListTests(unittest.TestCase):
         path = (
             ROOT
             / validator.MIGRATION_ROOT
-            / "20261008130000_add_procedure_video_scenes/migration.sql"
+            / "20261008140000_add_procedure_video_scenes/migration.sql"
         )
         validator.validate_sql(path.read_bytes(), str(path))
         for sql in [

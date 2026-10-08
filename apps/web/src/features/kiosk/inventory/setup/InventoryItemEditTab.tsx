@@ -108,10 +108,10 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
     return !needle || [entry.name, entry.itemCode, entry.model ?? ''].some((text) => text.normalize('NFKC').toLowerCase().includes(needle));
   });
   const banner = (
-    <>
-      {done ? <p className={`rounded-xl border px-3 py-2 text-base font-bold ${invSuccess}`} role="status">{done}</p> : null}
-      {error ? <p className={`rounded-xl border px-3 py-2 text-base ${invError}`} role="alert">{error}</p> : null}
-    </>
+    <div className="flex h-12 shrink-0 items-center gap-3 overflow-hidden">
+        {done ? <p className={`rounded-xl border px-3 py-2 text-base font-bold ${invSuccess}`} role="status">{done}</p> : null}
+        {error ? <p className={`rounded-xl border px-3 py-2 text-base ${invError}`} role="alert">{error}</p> : null}
+    </div>
   );
   const list = (
     <nav className="flex min-h-0 flex-col gap-1.5" aria-label="アイテム一覧">
@@ -131,7 +131,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
           const on = entry.id === item?.id;
           return (
             <button key={entry.id} type="button" aria-pressed={on} className={`flex h-[60px] shrink-0 items-center gap-2.5 rounded-xl px-2.5 text-left text-sm font-bold ${on ? 'border-2 border-inv-cyan bg-inv-cyan/[0.12]' : 'border border-inv-line bg-inv-s1 hover:bg-inv-s2'}`} onClick={() => open(entry.id)}>
-              {entry.photos[0] ? <img src={inventoryThumbnailUrl(entry.photos[0].photoUrl)} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" /> : <span className="h-10 w-10 shrink-0 rounded-lg bg-inv-s3" aria-hidden="true" />}
+              {entry.photos[0] ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(entry.photos[0].photoUrl)} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" /> : <span className="h-10 w-10 shrink-0 rounded-lg bg-inv-s3" aria-hidden="true" />}
               <span className="min-w-0 flex-1 truncate">{entry.name}</span>
               {isProvisionalInventoryName(entry.name)
                 ? <span className={provisionalTag}>仮名</span>
@@ -205,7 +205,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
             {item.photos.map((photo, index) => (
               <figure key={photo.id} className="flex min-h-0 flex-col gap-2">
                 <button type="button" className="block min-h-0 w-full flex-1" aria-label={`写真${index + 1}を拡大`} onClick={() => setSelectedPhoto({ url: photo.photoUrl, alt: photo.originalFilename })}>
-                  <img src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.originalFilename} className="h-full w-full rounded-xl border border-inv-line object-cover" />
+                  <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.originalFilename} className="h-full w-full rounded-xl border border-inv-line object-cover" />
                 </button>
                 {confirmPhotoId === photo.id ? (
                   <div className="flex items-center gap-1.5">

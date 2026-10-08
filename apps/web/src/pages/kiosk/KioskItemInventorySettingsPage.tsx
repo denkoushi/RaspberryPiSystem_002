@@ -4,7 +4,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { invButtonSmGhost, invSurface } from '../../features/kiosk/inventory/inventoryUi';
 import { InventoryItemEditTab } from '../../features/kiosk/inventory/setup/InventoryItemEditTab';
 import { InventoryPinPad } from '../../features/kiosk/inventory/setup/InventoryPinPad';
-import { InventoryRegistrationTab } from '../../features/kiosk/inventory/setup/InventoryRegistrationTab';
+import { InventoryRegistrationTab, type RegistrationState } from '../../features/kiosk/inventory/setup/InventoryRegistrationTab';
 import { InventoryShelvesTab } from '../../features/kiosk/inventory/setup/InventoryShelvesTab';
 import { InventoryTagsTab } from '../../features/kiosk/inventory/setup/InventoryTagsTab';
 
@@ -23,6 +23,7 @@ export function KioskItemInventorySettingsPage() {
   const initialImportId = (location.state as { importId?: string } | null)?.importId ?? null;
   // The verified PIN lives only while this page is mounted; leaving it locks setup again.
   const [accessPassword, setAccessPassword] = useState<string | null>(null);
+  const [registration, setRegistration] = useState<RegistrationState>({ selectedId: initialImportId, draft: null });
   const [tab, setTab] = useState<SetupTab>('review');
 
   if (!accessPassword) return <InventoryPinPad onUnlocked={setAccessPassword} />;
@@ -52,7 +53,7 @@ export function KioskItemInventorySettingsPage() {
         <Link to="/kiosk/inventory" className={`${invButtonSmGhost} ml-auto`}>在庫操作に戻る</Link>
       </div>
       <div role="tabpanel" aria-label={TABS.find((entry) => entry.id === tab)?.label} className="flex min-h-0 flex-1 flex-col">
-        {tab === 'review' ? <InventoryRegistrationTab accessPassword={accessPassword} initialImportId={initialImportId} /> : null}
+        {tab === 'review' ? <InventoryRegistrationTab accessPassword={accessPassword} registration={registration} setRegistration={setRegistration} /> : null}
         {tab === 'shelves' ? <InventoryShelvesTab accessPassword={accessPassword} /> : null}
         {tab === 'tags' ? <InventoryTagsTab accessPassword={accessPassword} /> : null}
         {tab === 'items' ? <InventoryItemEditTab accessPassword={accessPassword} /> : null}

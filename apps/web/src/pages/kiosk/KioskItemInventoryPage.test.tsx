@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
-import { resolveInventoryTag, type InventoryItem, type InventoryTag } from '../../api/client';
+import { inventoryThumbnailUrl, resolveInventoryTag, type InventoryItem, type InventoryTag } from '../../api/client';
 import { useInventoryCompartmentHistory, useInventoryImportSummaries, useInventoryItems, useInventoryMutations } from '../../api/hooks';
 
 import { KioskItemInventoryPage } from './KioskItemInventoryPage';
@@ -10,7 +10,7 @@ import { KioskItemInventoryPage } from './KioskItemInventoryPage';
 import type { NfcEvent } from '../../hooks/useNfcStream';
 
 
-vi.mock('../../api/client', () => ({ resolveInventoryTag: vi.fn(), inventoryThumbnailUrl: (value: string) => value }));
+vi.mock('../../api/client', () => ({ resolveInventoryTag: vi.fn(), inventoryThumbnailUrl: vi.fn((value: string) => value) }));
 vi.mock('../../api/hooks', () => ({
   useInventoryMutations: vi.fn(),
   useInventoryItems: vi.fn(() => ({ data: [], isLoading: false })),
@@ -138,8 +138,8 @@ describe('KioskItemInventoryPage', () => {
       navigateToEvent?.({ uid: otherItemTag.uid, timestamp: new Date(Date.now() + 2).toISOString(), inventoryTag: otherItemTag });
     });
     expect(screen.getByLabelText('現在庫')).toHaveTextContent('20個');
-    await act(async () => { screen.getByRole('button', { name: '直前の取引を取消' }).click(); });
-    await waitFor(() => expect(cancelMutateAsync).toHaveBeenCalledWith('transaction-id'));
+    expect(screen.queryByRole('button', { name: /取消：/ })).not.toBeInTheDocument();
+    expect(cancelMutateAsync).not.toHaveBeenCalled();
     expect(screen.getByLabelText('現在庫')).toHaveTextContent('20個');
   });
 
@@ -190,7 +190,7 @@ describe('KioskItemInventoryPage', () => {
       navigateToEvent?.({ uid: 'restock-uid-2', timestamp: new Date(Date.now() + 3).toISOString(), inventoryTag: { id: 'restock-tag-2', uid: 'restock-uid-2', kind: 'RESTOCK', quantity: null, compartment: null } });
     });
     expect(screen.getByText('補充モード')).toBeInTheDocument();
-    await act(async () => { screen.getByRole('button', { name: '選択をリセット' }).click(); });
+    await act(async () => { screen.getByRole('button', { name: '補充をやめる' }).click(); });
     expect(screen.queryByText('補充モード')).not.toBeInTheDocument();
     expect(screen.getByText('アイテムタグ')).toBeInTheDocument();
 
@@ -270,7 +270,7 @@ describe('KioskItemInventoryPage stock correction and tag-less picking', () => {
     expect(screen.getByText('在庫を 1個 減らしました（10 → 9個）')).toBeInTheDocument();
     expect(screen.getByLabelText('現在庫')).toHaveTextContent('9個');
 
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '直前の取引を取消' })); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /取消：治具/ })); });
     expect(cancel).toHaveBeenCalledWith('correction-id');
     expect(screen.getByLabelText('現在庫')).toHaveTextContent('10個');
   });
@@ -455,4 +455,109 @@ describe('KioskItemInventoryPage item list and history', () => {
     expect(screen.getByText('setup p5')).toBeInTheDocument();
     vi.mocked(useInventoryImportSummaries).mockReturnValue({ data: [], isLoading: false } as never);
   });
+});
+
+describe('KioskItemInventoryPage UX safeguards', () => {
+  it('distinguishes loading, failed loading with retry, and an empty list', () => {
+    const refetch = vi.fn();
+    vi.mocked(useInventoryItems).mockReturnValue({ isLoading: true, data: undefined } as never);
+    const view = render(<MemoryRouter><KioskItemInventoryPage /></MemoryRouter>);
+    expect(screen.getByText('読み込み中…')).toBeInTheDocument();
+    expect(screen.queryByText('登録済みのアイテムはまだありません')).not.toBeInTheDocument();
+    vi.mocked(useInventoryItems).mockReturnValue({ isLoading: false, isError: true, refetch } as never);
+    view.rerender(<MemoryRouter><KioskItemInventoryPage /></MemoryRouter>);
+    expect(screen.getByRole('alert')).toHaveTextContent('一覧を取得できませんでした');
+    fireEvent.click(screen.getByRole('button', { name: 'もう一度' }));
+    expect(refetch).toHaveBeenCalledOnce();
+    vi.mocked(useInventoryItems).mockReturnValue({ data: [], isLoading: false, isError: false } as never);
+    view.rerender(<MemoryRouter><KioskItemInventoryPage /></MemoryRouter>);
+    expect(screen.getByText('登録済みのアイテムはまだありません')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /取消：|選択をリセット|補充をやめる/ })).not.toBeInTheDocument();
+  });
+
+  it('keeps the item visible after issuing but prompts for an item tag, and clears undo on reset', async () => {
+    const transaction = vi.fn().mockResolvedValue({ transaction: historyEntry({ action: 'ISSUE', delta: -2, afterQuantity: 8 }) });
+    vi.mocked(useInventoryMutations).mockReturnValue({ transaction: { mutateAsync: transaction }, cancel: { mutateAsync: vi.fn() } } as never);
+    vi.useFakeTimers();
+    try {
+      const scan = renderWithNfc();
+      await scan(itemTag);
+      expect(screen.getByText('数量タグ')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '一覧へ' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '選択をリセット' })).not.toBeInTheDocument();
+      await scan(quantityTag);
+      expect(screen.getByRole('button', { name: '取消：治具 -2個' })).toBeInTheDocument();
+      expect(screen.getByLabelText('現在庫')).toHaveTextContent('-2');
+      await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+      expect(screen.getByText('アイテムタグ')).toBeInTheDocument();
+      expect(screen.queryByText('数量タグ')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('現在庫')).toHaveTextContent('8個');
+      await scan(quantityTag);
+      expect(screen.getByRole('status')).toHaveTextContent('先にアイテムNFCタグを読み取ってください');
+      expect(transaction).toHaveBeenCalledOnce();
+      fireEvent.click(screen.getByRole('button', { name: '一覧へ' }));
+      expect(screen.queryByRole('button', { name: /取消：/ })).not.toBeInTheDocument();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('extends inactivity on clicks and keys and drops undo after the automatic return', async () => {
+    vi.mocked(useInventoryMutations).mockReturnValue({ transaction: { mutateAsync: vi.fn().mockResolvedValue({ transaction: historyEntry({ action: 'ISSUE' }) }) } } as never);
+    vi.useFakeTimers();
+    try {
+      const scan = renderWithNfc();
+      await scan(itemTag);
+      await scan(quantityTag);
+      await act(async () => { await vi.advanceTimersByTimeAsync(25000); });
+      fireEvent.click(screen.getByAltText('item.jpg'));
+      await act(async () => { await vi.advanceTimersByTimeAsync(25000); });
+      expect(screen.getByLabelText('現在庫')).toBeInTheDocument();
+      fireEvent.keyDown(screen.getByAltText('item.jpg'), { key: 'ArrowRight' });
+      await act(async () => { await vi.advanceTimersByTimeAsync(29000); });
+      expect(screen.getByRole('button', { name: /取消：/ })).toBeInTheDocument();
+      await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+      expect(screen.queryByLabelText('現在庫')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /取消：/ })).not.toBeInTheDocument();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('reloads a tagless drawer after a correction conflict and uses its latest stock on retry', async () => {
+    const correction = vi.fn().mockRejectedValueOnce({ response: { status: 409, data: { message: '在庫が変わりました' } } }).mockResolvedValueOnce({ transaction: historyEntry({ afterQuantity: 7 }) });
+    vi.mocked(useInventoryMutations).mockReturnValue({ correction: { mutateAsync: correction }, transaction: { mutateAsync: vi.fn() } } as never);
+    const untagged = { ...itemTag.compartment!, itemTagUid: null };
+    const refetch = vi.fn().mockResolvedValue({ data: [{ ...untagged.item, compartments: [{ ...untagged, stockQuantity: 8 }] }] });
+    vi.mocked(useInventoryItems).mockReturnValue({ data: [{ ...untagged.item, compartments: [untagged] }], isLoading: false, refetch } as never);
+    const lookup = vi.mocked(resolveInventoryTag).mock.calls.length;
+    renderWithNfc();
+    fireEvent.click(within(screen.getByLabelText('登録済みアイテム')).getByRole('button', { name: /治具/ }));
+    fireEvent.click(screen.getByRole('button', { name: '数を直す' }));
+    pressDigits('7');
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '7個に直す' })); });
+    expect(refetch).toHaveBeenCalledOnce();
+    expect(vi.mocked(resolveInventoryTag).mock.calls).toHaveLength(lookup);
+    expect(screen.getByLabelText('現在庫')).toHaveTextContent('8個');
+    expect(screen.getByText('記録を 1個 減らします')).toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '7個に直す' })); });
+    expect(correction).toHaveBeenLastCalledWith({ compartmentId: untagged.id, desiredQuantity: 7, expectedBeforeQuantity: 8 });
+  });
+});
+
+
+it('does not redraw the item grid when a prompt changes or its four-second timer expires', async () => {
+  const item = { ...itemTag.compartment!.item, compartments: [itemTag.compartment!] } as InventoryItem;
+  vi.mocked(useInventoryItems).mockReturnValue({ data: [item], isLoading: false } as never);
+  vi.mocked(useInventoryImportSummaries).mockReturnValue({ data: [], isLoading: false } as never);
+  vi.mocked(useInventoryMutations).mockReturnValue({ transaction: { mutateAsync: vi.fn() } } as never);
+  vi.useFakeTimers();
+  try {
+    const scan = renderWithNfc();
+    const renders = vi.mocked(inventoryThumbnailUrl).mock.calls.length;
+    await scan(quantityTag);
+    expect(screen.getByRole('status')).toHaveTextContent('先にアイテム');
+    expect(vi.mocked(inventoryThumbnailUrl).mock.calls).toHaveLength(renders);
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(screen.getByText('アイテムタグ')).toBeInTheDocument();
+    expect(vi.mocked(inventoryThumbnailUrl).mock.calls).toHaveLength(renders);
+    expect(screen.getByLabelText('登録済みアイテム').querySelector('img')).toHaveAttribute('loading', 'lazy');
+    expect(screen.getByLabelText('登録済みアイテム').querySelector('img')).toHaveAttribute('decoding', 'async');
+  } finally { vi.useRealTimers(); }
 });

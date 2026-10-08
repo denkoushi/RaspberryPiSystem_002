@@ -4,6 +4,7 @@ import { procedureLayoutSuggestionResponseSchema, type ProcedureLayoutSuggestion
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { AssemblyProcedureImageStorage } from '../../lib/assembly-procedure-image-storage.js';
+import { getAssemblyProcedureAssetStorage } from '../assembly-procedure-assets/index.js';
 import { getInferenceRuntime } from '../inference/inference-runtime.js';
 import { InferenceDeferredError, type TextCompletionPort } from '../inference/ports/text-completion.port.js';
 import { AssemblyTemplateAccessService } from './assembly-template-access.service.js';
@@ -52,12 +53,28 @@ export class ProcedureLayoutSuggestionService {
     const assetIds = [...new Set(params.elements.filter((element) => element.kind === 'IMAGE').map((element) => element.assetId))];
     const assets = await prisma.assemblyProcedureAsset.findMany({
       where: { id: { in: assetIds }, kind: 'OVERLAY_IMAGE' },
-      select: { id: true, width: true, height: true },
+      select: { id: true, width: true, height: true, storageKey: true },
     });
-    if (assets.length !== assetIds.length || assets.some((asset) => !asset.width || !asset.height || asset.width <= 0 || asset.height <= 0)) {
+    if (assets.length !== assetIds.length) {
       throw new ApiError(422, '写真の寸法を取得できません', undefined, 'ASSEMBLY_PROCEDURE_LAYOUT_DIMENSIONS_UNAVAILABLE');
     }
-    const imageAspectRatios = Object.fromEntries(assets.map((asset) => [asset.id, asset.width! / asset.height!]));
+    // Uploaded photos are stored without width/height (only crops record them),
+    // so measure the stored bitmap as the browser displays it.
+    const imageAspectRatios: Record<string, number> = {};
+    for (const asset of assets) {
+      let size = asset.width && asset.height && asset.width > 0 && asset.height > 0 ? { width: asset.width, height: asset.height } : null;
+      if (!size) {
+        try {
+          const metadata = await sharp(await getAssemblyProcedureAssetStorage().read({ storageKey: asset.storageKey })).metadata();
+          if (!metadata.width || !metadata.height) throw new Error('Missing photo dimensions');
+          const rotated = (metadata.orientation ?? 1) >= 5;
+          size = rotated ? { width: metadata.height, height: metadata.width } : { width: metadata.width, height: metadata.height };
+        } catch {
+          throw new ApiError(422, '写真の寸法を取得できません', undefined, 'ASSEMBLY_PROCEDURE_LAYOUT_DIMENSIONS_UNAVAILABLE');
+        }
+      }
+      imageAspectRatios[asset.id] = size.width / size.height;
+    }
     const elements = params.elements.filter((element) => element.kind === 'TEXT' || element.kind === 'IMAGE').map((element) => ({
       id: element.id, kind: element.kind,
       ...(element.kind === 'TEXT' ? { text: element.text.slice(0, 200) } : {}),
