@@ -120,7 +120,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
     void load().then((blob) => { if (sequence === zoomSequence.current) setLightbox({ url: URL.createObjectURL(blob), title }); })
       .catch(() => { if (sequence === zoomSequence.current) setLightbox({ url: null, title, failed: true }); });
   };
-  const toggleSelected = (id: string, checked: boolean) => setSelected((ids) => checked ? mode === 'replace' ? [id] : [...ids, id] : ids.filter((item) => item !== id));
+  const toggleSelected = (id: string, checked: boolean) => { setDiscarded([]); setSelected((ids) => checked ? mode === 'replace' ? [id] : [...ids, id] : ids.filter((item) => item !== id)); };
   const [q, setQ] = useState('');
   const [state, setState] = useState<ProcedureMaterialState | 'knowledge' | 'workInstruction'>('unplaced');
   const [composing, setComposing] = useState(false);
@@ -130,6 +130,10 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
   const [openGroups, setOpenGroups] = useState<Map<string, boolean>>(() => new Map());
   useEffect(() => { setOpenGroups(new Map()); }, [state]);
   const [selected, setSelected] = useState<string[]>([]);
+  const [discarded, setDiscarded] = useState<string[]>([]);
+  const retainSelectionOnRefresh = useRef(false);
+  useEffect(() => { setDiscarded([]); }, [q, state, filters]);
+  const closeShelf = () => { setDiscarded([]); onClose(); };
   const [knowledgeResult, setKnowledgeResult] = useState<ProcedureKnowledgeImportResult | null>(null);
   const [version, setVersion] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -144,9 +148,15 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
   const visibleMaterials = filterShelfMaterials(materials, filters);
   const visibleKnowledge = filterShelfKnowledge(knowledge?.items ?? [], filters);
   const visibleWork = filterShelfWorkInstructions(workInstructions?.items ?? [], filters);
+  const visibleIds = new Set(state === 'knowledge' ? visibleKnowledge.map((item) => item.candidateKey) : state === 'workInstruction' ? visibleWork.map((item) => item.candidateKey) : visibleMaterials.map((item) => item.id));
+  const visibleSelected = selected.filter((id) => visibleIds.has(id));
+  const hiddenSelectedCount = selected.length - visibleSelected.length;
   const visibleCount = state === 'knowledge' ? visibleKnowledge.length : state === 'workInstruction' ? visibleWork.length : visibleMaterials.length;
   const retained = useRef(new Map<string, { material?: ProcedureMaterialDto; knowledge?: ProcedureKnowledgeCandidate; work?: ProcedureWorkInstructionCandidate }>());
-  useEffect(() => { setSelected([]); setError(null); retained.current.clear(); }, [state, version]);
+  useEffect(() => {
+    if (retainSelectionOnRefresh.current) { retainSelectionOnRefresh.current = false; return; }
+    setSelected([]); setError(null); retained.current.clear();
+  }, [state, version]);
   useEffect(() => {
     for (const material of materials) retained.current.set(material.id, { material });
     for (const candidate of knowledge?.items ?? []) retained.current.set(candidate.candidateKey, { knowledge: candidate });
@@ -204,27 +214,48 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
         setSelected((ids) => ids.filter((item) => item !== id));
         if (state === 'unplaced') lists.removeUnplaced(id);
       }
-      onClose();
+      closeShelf();
     } catch (e) { setError(isAxiosError(e) && e.response?.status === 403 ? '権限がありません' : readAssemblyApiErrorMessage(e, '素材を配置できません')); }
     finally { setBusy(false); }
   };
   const discardSelected = async () => {
-    setDiscardConfirm(false); setBusy(true); setError(null);
+    if (busy || state !== 'unplaced' || !visibleSelected.length) return;
+    setDiscardConfirm(false); setBusy(true); setError(null); setDiscarded([]);
+    const completed: string[] = [];
     try {
-      for (const id of selected) {
+      for (const id of visibleSelected) {
         await discardProcedureMaterial(id);
+        completed.push(id);
         setSelected((ids) => ids.filter((item) => item !== id));
         lists.removeUnplaced(id);
       }
-      setVersion((v) => v + 1);
     } catch (e) { setError(readAssemblyApiErrorMessage(e, '素材を変更できません')); }
-    finally { setBusy(false); }
+    finally {
+      if (completed.length) { setDiscarded(completed); retainSelectionOnRefresh.current = true; setVersion((v) => v + 1); }
+      setBusy(false);
+    }
+  };
+  const undoDiscard = async () => {
+    if (busy || !discarded.length) return;
+    setBusy(true); setError(null);
+    const completed: string[] = [];
+    try {
+      for (const id of discarded) {
+        await restoreProcedureMaterial(id);
+        completed.push(id);
+        setDiscarded((ids) => ids.filter((item) => item !== id));
+      }
+    } catch (e) { setError(isAxiosError(e) && e.response?.status === 403 ? '権限がありません' : readAssemblyApiErrorMessage(e, '素材を変更できません')); }
+    finally {
+      if (completed.length) { retainSelectionOnRefresh.current = true; setVersion((v) => v + 1); }
+      setBusy(false);
+    }
   };
   const materialDisabled = (material: ProcedureMaterialDto) => busy || (selectionMode && material.kind === 'PDF') || (state !== 'unplaced' && !(selectionMode && state === 'placed')) || (mode === 'replace' && material.kind !== 'PHOTO');
   const workInstructionDisabled = (candidate: ProcedureWorkInstructionCandidate) => busy || candidate.alreadyImported || (!selected.includes(candidate.candidateKey) && selected.length >= 50);
-  const toggleGroup = (ids: string[], limit = Infinity) => setSelected((current) => ids.every((id) => current.includes(id))
+  const toggleGroup = (ids: string[], limit = Infinity) => { setDiscarded([]); setSelected((current) => ids.every((id) => current.includes(id))
     ? current.filter((id) => !ids.includes(id))
-    : [...current, ...ids.filter((id) => !current.includes(id)).slice(0, Math.max(0, limit - current.length))]);
+    : [...current, ...ids.filter((id) => !current.includes(id)).slice(0, Math.max(0, limit - current.length))]); };
   const gridStyle = { gridTemplateColumns: `repeat(${shelfColumns[size]}, minmax(0, 1fr))` };
   const renderWorkInstructions = (items: ProcedureWorkInstructionCandidate[]) => items.map((candidate) => <MaterialCard query={query} key={candidate.candidateKey} title={`${candidate.partNumber} ${candidate.shootingTarget} 手順 ${candidate.step}`} source="加工" checked={selected.includes(candidate.candidateKey)} disabled={workInstructionDisabled(candidate)} onChange={(checked) => setSelected((ids) => checked ? [...ids, candidate.candidateKey] : ids.filter((id) => id !== candidate.candidateKey))} detail={<><p><ShelfHighlight text={`${candidate.partNumber} ${candidate.shootingTarget} · 手順 ${candidate.step}`} query={query} />{candidate.alreadyImported ? ' · 取込済み' : ''}</p>{candidate.memo ? <p className="line-clamp-2 whitespace-pre-wrap break-words"><ShelfHighlight text={candidate.memo} query={query} /></p> : null}</>}>
             <MaterialPhoto cache={photoCache} id={candidate.assetId} alt={`${candidate.partNumber} ${candidate.shootingTarget} 手順 ${candidate.step}`} workInstruction onZoom={zoom} />
@@ -238,7 +269,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
   const toolClass = 'h-11 shrink-0 rounded-lg border border-[#344252] px-3.5 text-[19px] font-bold disabled:opacity-40';
   return (
     <>
-    <Dialog isOpen onClose={() => { if (!busy) onClose(); }} ariaLabel="素材" size="full" closeOnEsc={!lightbox && !discardConfirm && !busy} closeOnBackdrop={!busy && !lightbox && !discardConfirm} trapFocus={!lightbox && !discardConfirm} className="!mx-auto !my-[calc((100dvh-min(980px,92dvh))/2-1rem)] flex !h-[min(980px,92dvh)] min-h-0 !max-h-[92dvh] !w-[min(1760px,92vw)] flex-col gap-3 !rounded-[14px] !border !border-[#344252] !bg-[#161c22] !px-[26px] !py-6 !text-[#eef3f6]">
+    <Dialog isOpen onClose={() => { if (!busy) closeShelf(); }} ariaLabel="素材" size="full" closeOnEsc={!lightbox && !discardConfirm && !busy} closeOnBackdrop={!busy && !lightbox && !discardConfirm} trapFocus={!lightbox && !discardConfirm} className="!mx-auto !my-[calc((100dvh-min(980px,92dvh))/2-1rem)] flex !h-[min(980px,92dvh)] min-h-0 !max-h-[92dvh] !w-[min(1760px,92vw)] flex-col gap-3 !rounded-[14px] !border !border-[#344252] !bg-[#161c22] !px-[26px] !py-6 !text-[#eef3f6]">
       <div className="flex shrink-0 flex-wrap items-center gap-3">
         <h2 className="text-2xl font-black">素材</h2>
         <div className="relative ml-4 w-80 max-w-[40vw]">
@@ -247,7 +278,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
         </div>
         <div role="group" aria-label="表示サイズ" className="ml-auto flex items-center gap-1 text-[17px] text-[#9fadb9]">表示 {([['small', '小'], ['medium', '中'], ['large', '大']] as const).map(([value, label]) => <button key={value} aria-pressed={size === value} className={`h-11 w-11 rounded-lg border border-[#344252] text-base font-bold text-[#eef3f6] ${size === value ? 'bg-[#27313b]' : ''}`} onClick={() => changeSize(value)}>{label}</button>)}</div>
         <button className={`${toolClass} border-transparent text-[#9fadb9]`} disabled={busy} onClick={() => void runNow()}>{busy ? '処理中…' : '今すぐ取り込む'}</button>
-        <button className={`${toolClass} border-transparent text-[#9fadb9]`} disabled={busy} onClick={onClose}>閉じる</button>
+        <button className={`${toolClass} border-transparent text-[#9fadb9]`} disabled={busy} onClick={closeShelf}>閉じる</button>
       </div>
       <div role="tablist" aria-label="素材の種類" className="flex shrink-0 items-center gap-1">
         {shelfTabs.map(([value, label]) => {
@@ -295,8 +326,13 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
           {state === 'knowledge' ? renderKnowledge(visibleKnowledge) : renderMaterials(materials)}
         </ul>}
       </div>
-      <div className={`flex shrink-0 items-center gap-3 text-[19px] text-[#9fadb9] ${selected.length ? 'border-t border-[#344252] pt-3' : 'sr-only'}`}>
-        <span role="status" aria-label="選択中の素材"><b className="font-mono font-medium text-[#eef3f6]">{selected.length}</b> 件を選択中</span>
+      <div className={`flex shrink-0 items-center gap-3 text-[19px] text-[#9fadb9] ${selected.length || discarded.length ? 'border-t border-[#344252] pt-3' : 'sr-only'}`}>
+        <span role="status" aria-label="選択中の素材" className={selected.length ? 'shrink-0' : 'sr-only'}><b className="font-mono font-medium text-[#eef3f6]">{selected.length}</b> 件を選択中{hiddenSelectedCount ? `(表示外 ${hiddenSelectedCount})` : ''}</span>
+        {selected.length ? <>
+        <button className={`${toolClass} border-transparent text-[#9fadb9]`} disabled={busy} onClick={() => setSelected([])}>選択を外す</button>
+        {state === 'unplaced' ? <button className={toolClass} disabled={busy || !visibleSelected.length} onClick={() => setDiscardConfirm(true)}>捨てる</button> : null}
+        </> : null}
+        {discarded.length ? <><span role="status" className="flex min-h-12 shrink-0 items-center">{discarded.length} 件を捨てました</span><button className={toolClass} disabled={busy} onClick={() => void undoDiscard()}>元に戻す</button></> : null}
         {selected.length ? <>
         <div aria-label="選択した素材のサムネイル" className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto">{selected.map((id) => {
           const item = retained.current.get(id);
@@ -304,9 +340,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
           const title = item?.work ? `${item.work.partNumber} ${item.work.shootingTarget} 手順 ${item.work.step}` : item?.knowledge?.title ?? item?.material?.subjectHint ?? item?.material?.originalFileName ?? '素材';
           return <div key={id} title={title} className="h-12 w-16 shrink-0 overflow-hidden rounded-md border border-[#344252] bg-[#27313b]">{photoId ? <MaterialPhoto compact cache={photoCache} id={photoId} alt={title} knowledge={Boolean(item?.knowledge)} workInstruction={Boolean(item?.work)} onZoom={zoom} /> : <span className="grid h-full place-items-center text-sm">{item?.material?.kind === 'PDF' ? 'PDF' : '文章'}</span>}</div>;
         })}</div>
-        <button className={`${toolClass} border-transparent text-[#9fadb9]`} disabled={busy} onClick={() => setSelected([])}>選択を外す</button>
         {state === 'knowledge' || state === 'workInstruction' ? <button className={`${toolClass} bg-[#3ba776] text-[#0b1a12]`} disabled={busy || !selected.length} onClick={() => void importSelected()}>棚に取り込む</button> : state === 'unplaced' || state === 'placed' ? <>
-          {state === 'unplaced' ? <button className={`${toolClass} !h-[52px] !rounded-[10px] !px-[22px] !text-[21px]`} disabled={busy || !selected.length} onClick={() => setDiscardConfirm(true)}>捨てる</button> : null}
           {onSelect ? <button className={`${toolClass} !h-[52px] !rounded-[10px] bg-[#3ba776] !px-[22px] !text-[21px] text-[#0b1a12]`} disabled={busy || !selected.length} onClick={() => void placeSelected()}>{mode === 'replace' ? 'この素材に差し替え' : '現在ページに配置'}</button> : null}
         </> : null}
         </> : null}
@@ -317,8 +351,8 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
       <div className="min-h-0 flex-1 overflow-auto">{lightbox.url ? <img src={lightbox.url} alt={lightbox.title} className="mx-auto block max-w-none" /> : <p role={lightbox.failed ? 'alert' : 'status'}>{lightbox.failed ? '写真を取得できません' : '読込中…'}</p>}</div>
     </Dialog> : null}
     {discardConfirm ? <Dialog isOpen title="素材を捨てる" overlayZIndex={60} onClose={() => setDiscardConfirm(false)}>
-      <p className="my-3">選択した {selected.length} 件を捨てますか？捨てた素材から戻せます。</p>
-      <div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setDiscardConfirm(false)}>キャンセル</Button><Button variant="danger" onClick={() => void discardSelected()}>捨てる</Button></div>
+      <p className="my-3">選択した {visibleSelected.length} 件を捨てますか？捨てた素材から戻せます。</p>
+      <div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setDiscardConfirm(false)}>キャンセル</Button><Button variant="danger" disabled={busy || !visibleSelected.length} onClick={() => void discardSelected()}>捨てる</Button></div>
     </Dialog> : null}
     </>
   );
