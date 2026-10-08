@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>要領書エディタ 部品の再利用</title>
+<style>
+:root{--bg:#0a0d10;--bar:#161c22;--line:#27313b;--line-2:#344252;--fg:#eef3f6;--muted:#9fadb9;--use:#5fc3e8;--mono:ui-monospace,Menlo,monospace;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Hiragino Sans",sans-serif}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible{outline:2px solid var(--use);outline-offset:3px}
+button:disabled{opacity:.4;cursor:default}
+svg{display:block;width:100%;height:100%}
+#editor{position:absolute;width:1920px;height:1080px;display:grid;grid-template-columns:120px 280px minmax(0,1fr) 64px;transform-origin:top left}
+.pages{background:var(--bar);border-right:1px solid var(--line);padding:10px;display:flex;flex-direction:column;gap:12px}
+.page{width:100px;height:142px;padding:0;background:#fff;border:2px solid transparent;border-radius:4px;position:relative;color:#333;flex:none;overflow:hidden}
+.page[aria-current="page"]{border-color:var(--use);box-shadow:0 0 0 1px var(--use)}
+.page span{position:absolute;left:6px;bottom:4px;font:14px var(--mono);background:#fff;padding:0 2px}
+.page-mini{position:absolute;inset:0;pointer-events:none}
+.page-mini .piece{outline:none!important;pointer-events:none;border:none;padding:0;background:transparent}
+.parts{background:var(--bar);border-right:1px solid var(--line);display:grid;grid-template-rows:56px minmax(0,1fr) auto;min-height:0}
+.ph{display:flex;align-items:center;gap:10px;padding:0 12px 0 16px;border-bottom:1px solid var(--line)}
+.ph h1{margin:0;font-size:19px;font-weight:900;letter-spacing:.06em;white-space:nowrap}
+.tabs{display:flex;gap:2px;padding:3px;border:1px solid var(--line-2);border-radius:8px;width:max-content}
+.tab{height:34px;border:0;border-radius:5px;padding:0 8px;background:transparent;color:var(--muted);font-size:14px;white-space:nowrap}
+.tab[aria-pressed="true"]{background:var(--line);color:var(--fg)}
+.count{font-family:var(--mono);margin-left:5px;color:var(--muted)}
+.plist{display:grid;align-content:start;gap:6px;padding:8px;min-height:0;overflow:hidden}
+.group-title{margin:4px 0 2px;padding:0 4px;font:15px var(--mono);color:var(--muted)}
+.part{height:112px;display:grid;grid-template-columns:minmax(0,1fr) 20px;align-items:center;gap:4px;padding:8px 4px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.part:hover{border-color:var(--line-2)}
+.part[aria-selected="true"]{border-color:var(--use);box-shadow:0 0 0 2px var(--use)}
+.part.hidden{opacity:.4}
+.mini{height:96px;display:grid;place-items:center;overflow:hidden;pointer-events:none}
+.mini-art{max-width:224px;max-height:96px;display:block;color:#111}
+.part .number{font:14px var(--mono);color:var(--muted);text-align:right}
+.part[aria-selected="true"] .number{color:var(--use)}
+.pfoot{display:flex;justify-content:center;gap:6px;padding:8px;border-top:1px solid var(--line)}
+.pfoot[hidden]{display:none}
+.icon{height:48px;width:48px;flex:none;display:grid;place-items:center;border:1px solid var(--line-2);border-radius:10px;background:transparent;padding:10px}
+.icon svg{fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.canvas{position:relative;display:grid;place-items:center;padding:16px;min-width:0}
+.sheet{width:740px;height:1046px;background:#fff;color:#111;position:relative;box-shadow:0 4px 24px #0006;overflow:hidden;touch-action:none}
+.page-tag{position:absolute;top:12px;left:16px;font:16px var(--mono);color:var(--muted)}
+.piece{position:absolute;border:0;padding:0;background:transparent;touch-action:none;cursor:grab;user-select:none}
+.piece[aria-selected="true"]{outline:3px solid var(--use);outline-offset:2px}
+.piece[aria-selected="true"]::before,.piece[aria-selected="true"]::after{content:"";position:absolute;width:10px;height:10px;border:2px solid #fff;background:var(--use);z-index:1}
+.piece::before{left:-7px;top:-7px}.piece::after{right:-7px;bottom:-7px}
+.piece:active{cursor:grabbing}
+.rail{background:var(--bar);border-left:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 0}
+.rail .primary{background:#3ba776;border-color:#3ba776;color:#0b1a12}
+.sep{width:36px;height:1px;background:var(--line-2);margin:4px 0}
+.spacer{flex:1}
+</style>
+</head>
+<body>
+<main id="editor" aria-label="要領書エディタ">
+<nav class="pages" id="pages" aria-label="ページ"></nav>
+<aside class="parts" aria-label="部品">
+  <header class="ph"><h1>部品</h1><div class="tabs" role="group" aria-label="部品の表示元">
+    <button class="tab" id="current" aria-pressed="false">このページ<span class="count" id="current-count">0</span></button>
+    <button class="tab" id="other" aria-pressed="true">ほか<span class="count" id="other-count">6</span></button>
+  </div></header>
+  <div id="plist" class="plist" role="listbox" aria-label="ほかのページの部品"></div>
+  <footer class="pfoot" id="pfoot" hidden>
+    <button class="icon" id="forward" title="前へ出す" aria-label="前へ出す"><svg viewBox="0 0 24 24"><path d="M6 14l6-6 6 6"/></svg></button>
+    <button class="icon" id="backward" title="後ろへ下げる" aria-label="後ろへ下げる"><svg viewBox="0 0 24 24"><path d="M6 10l6 6 6-6"/></svg></button>
+    <button class="icon" id="hide" title="隠す" aria-label="隠す"><svg viewBox="0 0 24 24"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z"/><circle cx="12" cy="12" r="2.5"/></svg></button>
+  </footer>
+</aside>
+<section class="canvas" aria-label="キャンバス"><span class="page-tag" id="page-tag">p3</span><div class="sheet" id="sheet" aria-label="p3"></div></section>
+<nav class="rail" aria-label="エディタ記号">
+  <button class="icon primary" disabled title="保存する" aria-label="保存する"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6"/></svg></button>
+  <div class="sep"></div>
+  <button class="icon" disabled title="素材を置く" aria-label="素材を置く"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="9" r="2"/><path d="M4 18l6-6 4 4 3-3 4 4"/></svg></button>
+  <button class="icon" disabled title="文字を置く" aria-label="文字を置く"><svg viewBox="0 0 24 24"><path d="M5 6h14M12 6v13"/></svg></button>
+  <button class="icon" disabled title="図形を置く" aria-label="図形を置く"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7"/><circle cx="16.5" cy="16.5" r="3.5"/></svg></button>
+  <button class="icon" disabled title="範囲を選ぶ" aria-label="範囲を選ぶ"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 3"/></svg></button>
+  <div class="sep"></div>
+  <button class="icon" disabled title="元に戻す" aria-label="元に戻す"><svg viewBox="0 0 24 24"><path d="M9 14l-4-4 4-4M5 10h9a5 5 0 010 10h-3"/></svg></button>
+  <span class="spacer"></span>
+  <button class="icon" disabled title="工房へ戻る" aria-label="工房へ戻る"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+</nav>
+</main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const drawings = {
+  bearing: '<svg viewBox="0 0 300 210" aria-hidden="true"><rect width="300" height="210" fill="#f4f6f7"/><ellipse cx="150" cy="169" rx="96" ry="17" fill="#dce2e5"/><circle cx="150" cy="101" r="81" fill="#b8c3cb" stroke="#475866" stroke-width="5"/><circle cx="150" cy="101" r="61" fill="#e5eaed" stroke="#657886" stroke-width="4"/><g fill="#788d9b" stroke="#425563" stroke-width="2"><circle cx="150" cy="50" r="10"/><circle cx="186" cy="65" r="10"/><circle cx="201" cy="101" r="10"/><circle cx="186" cy="137" r="10"/><circle cx="150" cy="152" r="10"/><circle cx="114" cy="137" r="10"/><circle cx="99" cy="101" r="10"/><circle cx="114" cy="65" r="10"/></g><circle cx="150" cy="101" r="34" fill="#fff" stroke="#475866" stroke-width="6"/></svg>',
+  bracket: '<svg viewBox="0 0 300 210" aria-hidden="true"><rect width="300" height="210" fill="#f4f6f7"/><path d="M46 149l137 36 74-53-137-35z" fill="#aab7c1" stroke="#425563" stroke-width="4"/><path d="M46 149V47l137 36v102z" fill="#ced6dc" stroke="#425563" stroke-width="4"/><path d="M183 83l20-15v103l-20 14z" fill="#7c8f9e" stroke="#425563" stroke-width="3"/><ellipse cx="86" cy="88" rx="13" ry="18" fill="#fff" stroke="#657886" stroke-width="4"/><ellipse cx="143" cy="105" rx="13" ry="18" fill="#fff" stroke="#657886" stroke-width="4"/><ellipse cx="215" cy="139" rx="14" ry="7" fill="#fff" stroke="#657886" stroke-width="3"/></svg>',
+  bolt: '<svg viewBox="0 0 300 210" aria-hidden="true"><rect width="300" height="210" fill="#f4f6f7"/><g transform="translate(150 108) rotate(-25)"><path d="M-60-23H90v46H-60z" fill="#aab7c1" stroke="#475866" stroke-width="4"/><path d="M-97-37l37-12 24 25v48l-24 25-37-12z" fill="#ced6dc" stroke="#475866" stroke-width="4"/><path d="M-97-37l24 25v48l-24 1z" fill="#899cab"/><g stroke="#657886" stroke-width="3"><path d="M0-22l-12 44M16-22L4 22M32-22L20 22M48-22L36 22M64-22L52 22M80-22L68 22"/></g></g></svg>',
+  text1: '<svg viewBox="0 0 280 66" aria-hidden="true"><text x="140" y="42" text-anchor="middle" fill="#111" font-family="sans-serif" font-weight="700" font-size="25">ベアリングを圧入</text></svg>',
+  text2: '<svg viewBox="0 0 280 66" aria-hidden="true"><text x="140" y="42" text-anchor="middle" fill="#111" font-family="sans-serif" font-weight="700" font-size="25">M8 ボルトを締める</text></svg>',
+  arrow: '<svg viewBox="0 0 140 120" aria-hidden="true"><path d="M120 16L22 100m0 0 9-36m-9 36 38-3" fill="none" stroke="#d8262f" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+};
+const pages = [
+  [{id:'a',kind:'bearing',label:'ベアリング',x:90,y:190,w:300,h:210},{id:'b',kind:'bracket',label:'ブラケット',x:340,y:490,w:300,h:210},{id:'c',kind:'text1',label:'ベアリングを圧入',x:100,y:415,w:280,h:66}],
+  [{id:'d',kind:'bolt',label:'ボルト',x:120,y:270,w:300,h:210},{id:'e',kind:'text2',label:'M8 ボルトを締める',x:140,y:520,w:280,h:66},{id:'f',kind:'arrow',label:'矢印',x:390,y:355,w:140,h:120}],
+  []
+];
+let page = 2, mode = 'other', selected = null, serial = 0;
+function fit(){const scale=Math.min(innerWidth/1920,innerHeight/1080);$('editor').style.transform=`scale(${scale})`;}
+addEventListener('resize',fit);fit();
+function pieceElement(item, miniature=false){
+  const el=document.createElement(miniature?'div':'button');
+  el.className='piece';
+  const scale=miniature?100/740:1;
+  Object.assign(el.style,{left:item.x*scale+'px',top:item.y*scale+'px',width:item.w*scale+'px',height:item.h*scale+'px'});
+  el.innerHTML=drawings[item.kind];
+  if(!miniature){
+    el.dataset.id=item.id;el.setAttribute('aria-label',item.label);el.setAttribute('aria-selected',String(selected===item.id));
+    el.addEventListener('click',()=>{selected=item.id;renderSelection();});
+    el.addEventListener('pointerdown',event=>startDrag(event,item,el));
+  }
+  return el;
+}
+function renderPages(){
+  $('pages').replaceChildren();
+  pages.forEach((items,index)=>{
+    const button=document.createElement('button');button.className='page';button.setAttribute('aria-label',`p${index+1}`);
+    if(index===page)button.setAttribute('aria-current','page');
+    const mini=document.createElement('div');mini.className='page-mini';
+    items.filter(item=>!item.hidden).forEach(item=>mini.append(pieceElement(item,true)));
+    const label=document.createElement('span');label.textContent=`p${index+1}`;button.append(mini,label);
+    button.addEventListener('click',()=>{page=index;selected=null;render();});$('pages').append(button);
+  });
+}
+function renderParts(){
+  $('current-count').textContent=pages[page].length;
+  $('other-count').textContent=pages.reduce((sum,items,index)=>sum+(index===page?0:items.length),0);
+  ['current','other'].forEach(id=>$(id).setAttribute('aria-pressed',String(mode===id)));
+  $('pfoot').hidden=mode==='other';
+  const list=$('plist');list.replaceChildren();list.setAttribute('aria-label',mode==='other'?'ほかのページの部品':'このページの部品');
+  const groups=mode==='current'?[[page,pages[page]]]:pages.map((items,index)=>[index,items]).filter(([index])=>index!==page);
+  const total=groups.reduce((sum,[,items])=>sum+items.length,0);
+  // Keep all cards visible even after repeated copies, without introducing scrolling.
+  const headings=mode==='other'?groups.filter(([,items])=>items.length).length:0;
+  const available=1080-56-(mode==='current'?65:0)-16;
+  const cardHeight=Math.min(112,(available-headings*30-Math.max(0,total+headings-1)*6)/Math.max(1,total));
+  groups.forEach(([index,items])=>{
+    if(mode==='other'&&items.length){const heading=document.createElement('h2');heading.className='group-title';heading.textContent=`p${index+1}`;list.append(heading);}
+    [...items].reverse().forEach((item,i)=>{
+      const card=document.createElement('button');card.className='part'+(item.hidden?' hidden':'');card.dataset.id=item.id;
+      card.style.height=cardHeight+'px';card.setAttribute('role','option');card.setAttribute('aria-selected',String(mode==='current'&&selected===item.id));
+      card.setAttribute('aria-label',`${mode==='other'?`p${index+1}から置く: `:''}${item.label}`);
+      const mini=document.createElement('span');mini.className='mini';mini.style.height=Math.min(96,Math.max(1,cardHeight-16))+'px';
+      const art=document.createElement('span');art.className='mini-art';const ratio=item.w/item.h;
+      art.style.width=Math.min(224,96*ratio)+'px';art.style.aspectRatio=String(ratio);art.style.maxHeight='100%';art.innerHTML=drawings[item.kind];
+      mini.append(art);const number=document.createElement('span');number.className='number';number.textContent=i+1;card.append(mini,number);
+      card.addEventListener('click',()=>{
+        if(mode==='other'){const copy={...item,id:`copy-${++serial}`,hidden:false};pages[page].push(copy);selected=copy.id;mode='current';}
+        else selected=item.id;
+        render();
+      });list.append(card);
+    });
+  });
+  updateActions();
+}
+function updateActions(){
+  const items=pages[page],index=items.findIndex(item=>item.id===selected),item=items[index];
+  $('forward').disabled=index<0||index===items.length-1;$('backward').disabled=index<=0;$('hide').disabled=index<0;
+  const label=item?.hidden?'出す':'隠す';$('hide').title=label;$('hide').setAttribute('aria-label',label);$('hide').setAttribute('aria-pressed',String(Boolean(item?.hidden)));
+}
+function renderSelection(){
+  for(const el of $('sheet').children)el.setAttribute('aria-selected',String(el.dataset.id===selected));
+  for(const el of $('plist').querySelectorAll('.part'))el.setAttribute('aria-selected',String(mode==='current'&&el.dataset.id===selected));
+  updateActions();
+}
+function render(){
+  renderPages();renderParts();$('page-tag').textContent=`p${page+1}`;$('sheet').setAttribute('aria-label',`p${page+1}`);$('sheet').replaceChildren();
+  pages[page].filter(item=>!item.hidden).forEach(item=>$('sheet').append(pieceElement(item)));
+}
+function startDrag(event,item,el){
+  if(event.button!==0)return;
+  selected=item.id;renderSelection();el.setPointerCapture(event.pointerId);
+  const scale=$('sheet').getBoundingClientRect().width/740;
+  const start={x:event.clientX,y:event.clientY,left:item.x,top:item.y};
+  function move(e){item.x=Math.max(0,Math.min(740-item.w,start.left+(e.clientX-start.x)/scale));item.y=Math.max(0,Math.min(1046-item.h,start.top+(e.clientY-start.y)/scale));el.style.left=item.x+'px';el.style.top=item.y+'px';}
+  function end(){el.removeEventListener('pointermove',move);el.removeEventListener('pointerup',end);el.removeEventListener('pointercancel',end);renderPages();}
+  el.addEventListener('pointermove',move);el.addEventListener('pointerup',end);el.addEventListener('pointercancel',end);
+}
+$('current').addEventListener('click',()=>{mode='current';renderParts();});
+$('other').addEventListener('click',()=>{mode='other';renderParts();});
+function reorder(delta){const items=pages[page],index=items.findIndex(item=>item.id===selected),next=index+delta;if(index<0||next<0||next>=items.length)return;[items[index],items[next]]=[items[next],items[index]];render();}
+$('forward').addEventListener('click',()=>reorder(1));$('backward').addEventListener('click',()=>reorder(-1));
+$('hide').addEventListener('click',()=>{const item=pages[page].find(item=>item.id===selected);if(item){item.hidden=!item.hidden;render();}});
+render();
+</script>
+</body>
+</html>

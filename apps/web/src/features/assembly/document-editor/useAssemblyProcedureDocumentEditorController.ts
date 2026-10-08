@@ -8,6 +8,7 @@ import { clearProcedureEditorAccess, readProcedureEditorAccess, subscribeProcedu
 
 import {
   createOverlayForRange,
+  createOverlayId,
   isOverlayDraftSaveable,
   overlayDraftReducer,
   overlayDraftSnapshot,
@@ -358,6 +359,15 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     } finally { setBusy(false); }
   }, [editLease.holderToken, busy, conflict, document, onEditLeaseError, isDirty, passwordInput, readOnly, saveRecoveryImmediately, setSelectedPage, setMessage, setErrorMessage]);
 
+  const duplicateOverlayToCurrentPage = useCallback((sourceId: string) => {
+    if (readOnly || busy || !selectedPage) return;
+    const source = elements.find((element) => element.id === sourceId);
+    if (!source || source.pageIndex === selectedPage.pageIndex) return;
+    const id = createOverlayId();
+    dispatch({ type: 'duplicate', sourceId, id, pageIndex: selectedPage.pageIndex });
+    setSelectedOverlayId(id);
+  }, [readOnly, busy, selectedPage, elements]);
+
   const duplicateSelectedOverlay = useCallback(() => {
     if (!selectedElement || readOnly) return;
     const copy = { ...selectedElement, id: createAssemblyRequestId(), zIndex: Math.max(0, ...elements.map(element => element.zIndex)) + 1 };
@@ -383,6 +393,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     redo: () => { if (!readOnly && !busy) dispatch({ type: 'redo' }); },
     addOverlay,
     duplicateSelectedOverlay,
+    duplicateOverlayToCurrentPage,
     addBlankPage,
     placeMaterial: overlayCommands.placeMaterial,
     replaceSelectedImageMaterial: overlayCommands.replaceSelectedImageMaterial,

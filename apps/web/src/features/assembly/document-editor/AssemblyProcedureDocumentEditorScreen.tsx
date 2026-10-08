@@ -118,7 +118,9 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           disabled={controller.readOnly || controller.busy || controller.conflict}
         />
         {partsPaneOpen ? <AssemblyProcedureDocumentEditorPartsPane
-          elements={controller.selectedPageElements}
+          elements={controller.elements}
+          pageIndex={selectedPage.pageIndex}
+          onDuplicate={controller.duplicateOverlayToCurrentPage}
           assets={controller.document?.assets}
           selectedOverlayId={controller.selectedOverlayId}
           hiddenOverlayIds={hiddenOverlayIds}

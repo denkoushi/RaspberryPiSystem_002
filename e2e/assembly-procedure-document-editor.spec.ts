@@ -132,9 +132,9 @@ function makeEditorEvidence(): EditorEvidence {
 async function installEditorApiMocks(
   page: Page,
   evidence: EditorEvidence,
-  options: { conflictVersions?: Array<number | null> } = {}
+  options: { conflictVersions?: Array<number | null>; pages?: ProcedureDocument['pages'] } = {}
 ): Promise<void> {
-  let sourceDocument = makeDocument();
+  let sourceDocument = makeDocument(options.pages ? { pages: options.pages } : {});
   let latestDocument = makeDocument({
     id: REVISION_DOCUMENT_ID,
     name: '公開済み組立手順書（改版）',
@@ -143,7 +143,8 @@ async function installEditorApiMocks(
     revisionRootId: SOURCE_DOCUMENT_ID,
     supersedesDocumentId: SOURCE_DOCUMENT_ID,
     isRevisionHead: true,
-    editVersion: 1
+    editVersion: 1,
+    ...(options.pages ? { pages: clone(options.pages) } : {})
   });
   const conflictVersions = [...(options.conflictVersions ?? [])];
 
@@ -580,6 +581,43 @@ test('published source authenticates into a draft, edits TEXT/ROI IMAGE/ARROW, s
   });
   await expect(page).toHaveURL(/\/kiosk\/assembly\/library\?focus=procedures$/);
   await expectNoHorizontalOverflow(page);
+});
+
+test('reuses another page’s part independently on the current page with one-step undo', async ({ page }) => {
+  const evidence = makeEditorEvidence();
+  const source: OverlayElement = {
+    id: 'source-text', kind: 'TEXT', pageIndex: 0, zIndex: 3,
+    bbox: { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.15 },
+    text: '共通の組立手順', style: { fontSizeRatio: 0.025, color: '#0f172a' }
+  };
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await installEditorApiMocks(page, evidence, { pages: [
+    { pageIndex: 0, imageRelativePath: procedureImage, overlays: [source] },
+    { pageIndex: 1, imageRelativePath: procedureImage, overlays: [] }
+  ] });
+  await page.goto(`/kiosk/assembly/procedure-documents/${SOURCE_DOCUMENT_ID}/edit`, { waitUntil: 'domcontentloaded' });
+  await authenticateDocumentEditor(page);
+  await page.getByRole('button', { name: '2ページ目', exact: true }).click();
+  const parts = page.getByRole('complementary', { name: '部品', exact: true });
+  await expect(parts.getByRole('button', { name: /^このページ\s*0$/ })).toBeVisible();
+  await parts.getByRole('button', { name: /^ほか\s*1$/ }).click();
+  await expect(parts.getByRole('heading', { name: 'p1' })).toBeVisible();
+  await parts.getByRole('option', { name: 'p1から置く: 文章オーバーレイ: 共通の組立手順' }).click();
+  const current = parts.getByRole('listbox', { name: 'このページの部品' });
+  await expect(current.getByRole('option')).toHaveAttribute('aria-selected', 'true');
+  await page.getByRole('button', { name: '元に戻す', exact: true }).click();
+  await expect(current.getByRole('option')).toHaveCount(0);
+  await expect(parts.getByRole('button', { name: /^ほか\s*1$/ })).toBeVisible();
+  await page.getByRole('button', { name: 'やり直す', exact: true }).click();
+  await expect(current.getByRole('option')).toHaveCount(1);
+  await page.getByRole('complementary', { name: 'オーバーレイ編集' }).locator('textarea').fill('このページだけの手順');
+  await page.getByRole('button', { name: '保存する', exact: true }).click();
+  await expect.poll(() => evidence.saveBodies.length).toBe(1);
+  const saved = evidence.saveBodies[0].elements as OverlayElement[];
+  expect(saved.find(element => element.id === source.id)).toEqual(source);
+  const copy = saved.find(element => element.id !== source.id)!;
+  expect(copy.id).not.toBe(source.id);
+  expect(copy).toMatchObject({ pageIndex: 1, zIndex: 0, bbox: source.bbox, text: 'このページだけの手順' });
 });
 
 for (const viewport of [

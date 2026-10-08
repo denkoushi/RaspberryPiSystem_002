@@ -19,7 +19,7 @@ const elements = [
   { ...createOverlayForRange('SHAPE', 0, bbox), id: 'front', zIndex: 10 }
 ];
 function props(overrides: Partial<ComponentProps<typeof AssemblyProcedureDocumentEditorPartsPane>> = {}) {
-  return { elements, selectedOverlayId: 'tie-last', hiddenOverlayIds: new Set<string>(), onSelect: vi.fn(), onBringForward: vi.fn(), onSendBackward: vi.fn(), onToggleHidden: vi.fn(), readOnly: false, busy: false, ...overrides };
+  return { elements, pageIndex: 0, onDuplicate: vi.fn(), selectedOverlayId: 'tie-last', hiddenOverlayIds: new Set<string>(), onSelect: vi.fn(), onBringForward: vi.fn(), onSendBackward: vi.fn(), onToggleHidden: vi.fn(), readOnly: false, busy: false, ...overrides };
 }
 
 describe('AssemblyProcedureDocumentEditorPartsPane', () => {
@@ -35,6 +35,58 @@ describe('AssemblyProcedureDocumentEditorPartsPane', () => {
     fireEvent.click(options[2]);
     expect(p.onSelect).toHaveBeenCalledExactlyOnceWith('tie-first');
     expect(screen.queryByText('図形オーバーレイ: RECTANGLE')).not.toBeInTheDocument();
+  });
+
+  it('switches counts and groups other pages in page order and front order, then copies a card', () => {
+    const other = [
+      { ...elements[0], id: 'p3', pageIndex: 2 },
+      { ...elements[1], id: 'p2-back', pageIndex: 1 },
+      { ...elements[2], id: 'p2-front', pageIndex: 1 }
+    ];
+    const p = props({ elements: [...other, ...elements] });
+    render(<AssemblyProcedureDocumentEditorPartsPane {...p} />);
+    expect(screen.getByRole('complementary', { name: '部品' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'このページ 4' })).toHaveAttribute('aria-pressed', 'true');
+    const otherButton = screen.getByRole('button', { name: 'ほか 3' });
+    fireEvent.click(otherButton);
+    expect(otherButton).toHaveAttribute('aria-pressed', 'true');
+    const list = screen.getByRole('listbox', { name: 'ほかのページの部品' });
+    expect(list).toHaveClass('min-h-0', 'overflow-y-auto');
+    expect(screen.getAllByRole('heading', { level: 3 }).map(row => row.textContent)).toEqual(['p2', 'p3']);
+    expect(screen.getAllByRole('option').map(row => row.getAttribute('aria-label'))).toEqual([
+      'p2から置く: 図形オーバーレイ: RECTANGLE', 'p2から置く: 図形オーバーレイ: RECTANGLE',
+      'p3から置く: 文章オーバーレイ: ここに文章を入力'
+    ]);
+    for (const label of ['前へ出す', '後ろへ下げる', '隠す']) expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('option')[0]);
+    expect(p.onDuplicate).toHaveBeenCalledExactlyOnceWith('p2-front');
+    expect(p.onSelect).not.toHaveBeenCalled();
+    expect(screen.getByRole('listbox', { name: 'このページの部品' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'このページ 4' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it.each([{ readOnly: true }, { busy: true }])('shows other pages but prevents copying when %j', overrides => {
+    const p = props({ ...overrides, elements: [{ ...elements[0], pageIndex: 1 }] });
+    render(<AssemblyProcedureDocumentEditorPartsPane {...p} />);
+    fireEvent.click(screen.getByRole('button', { name: 'ほか 1' }));
+    const card = screen.getByRole('option');
+    expect(card).toBeDisabled();
+    fireEvent.click(card);
+    expect(p.onDuplicate).not.toHaveBeenCalled();
+    expect(screen.getByRole('listbox', { name: 'ほかのページの部品' })).toBeInTheDocument();
+  });
+
+  it('keeps the source toggle while updating rows and counts for a new current page', () => {
+    const p = props({ elements: [elements[0], { ...elements[1], id: 'other', pageIndex: 1 }] });
+    const view = render(<AssemblyProcedureDocumentEditorPartsPane {...p} />);
+    fireEvent.click(screen.getByRole('button', { name: 'ほか 1' }));
+    expect(screen.getByRole('heading', { name: 'p2' })).toBeInTheDocument();
+    view.rerender(<AssemblyProcedureDocumentEditorPartsPane {...p} pageIndex={1} />);
+    expect(screen.getByRole('button', { name: 'ほか 1' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('heading', { name: 'p1' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'p2' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('option'));
+    expect(p.onDuplicate).toHaveBeenCalledExactlyOnceWith('back');
   });
 
   it('connects reorder and hide controls and dims hidden parts', () => {
@@ -64,7 +116,8 @@ describe('AssemblyProcedureDocumentEditorPartsPane', () => {
 
   it.each([{ selectedOverlayId: null }, { readOnly: true }, { busy: true }])('disables the footer when %j', overrides => {
     render(<AssemblyProcedureDocumentEditorPartsPane {...props(overrides)} />);
-    for (const button of screen.getAllByRole('button')) expect(button).toBeDisabled();
+    for (const label of ['前へ出す', '後ろへ下げる', '隠す']) expect(screen.getByRole('button', { name: label })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^ほか/ })).toBeEnabled();
   });
 
   it('scrolls the selected row into view when canvas selection changes', () => {
