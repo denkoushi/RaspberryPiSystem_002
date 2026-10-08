@@ -10,11 +10,11 @@ import { FileStorageAlreadyExistsError } from '../file-storage/file-storage-erro
 import { getFileStorageRuntime } from '../file-storage/file-storage-runtime.js';
 import type { WorkInstructionGroupSummaryView, WorkInstructionGroupView } from '../work-instructions/domain/types.js';
 import { normalizeWorkInstructionPartNumber } from '../work-instructions/domain/normalization.js';
-import { readPartNamesByPartNumbers, readPartNumbersByPartName } from '../work-instructions/repositories/prisma-work-instruction-part-names.js';
+import { readPartNamesByPartNumbers } from '../work-instructions/repositories/prisma-work-instruction-part-names.js';
 import type { WorkInstructionReadService } from '../work-instructions/work-instruction-read.service.js';
 import { getWorkInstructionServices } from '../work-instructions/work-instruction-service.factory.js';
 
-type Reader = Pick<WorkInstructionReadService, 'readPublishedGroup' | 'readPublishedGroups' | 'searchPublishedGroups' | 'readAsset'>;
+type Reader = Pick<WorkInstructionReadService, 'readPublishedGroup' | 'readPublishedGroups' | 'searchPublishedGroups' | 'readPublishedGroupsByPartName' | 'readAsset'>;
 type Candidate = {
   candidateKey: string; partNumber: string; shootingTarget: string; step: number; memo: string;
   assetId: string; sourceModified: Date; originalFileName: string | null;
@@ -47,26 +47,24 @@ export class ProcedureMaterialWorkInstructionService {
     private readonly reader: () => Reader = () => getWorkInstructionServices().read,
   ) {}
 
-  private async groups(read: Reader, q?: string): Promise<WorkInstructionGroupSummaryView[]> {
+  private async groups(read: Reader, q?: string): Promise<Array<{ summary: WorkInstructionGroupSummaryView; memoOnly: boolean }>> {
     const groups: WorkInstructionGroupSummaryView[] = [];
     for (let offset = 0; ; offset += 500) {
-      const page = q ? await read.searchPublishedGroups({ query: q, limit: 500, offset }) : null;
+      const page = q ? await read.searchPublishedGroups({ query: q, normalizeText: true, limit: 500, offset }) : null;
       const items = page?.groups ?? await read.readPublishedGroups({ limit: 500, offset });
       groups.push(...items);
       if (page ? !page.hasMore : items.length < 500) break;
     }
-    if (q) {
-      const parts = new Set(await readPartNumbersByPartName(this.db, q));
-      if (parts.size) {
-        for (let offset = 0; ; offset += 500) {
-          const page = await read.readPublishedGroups({ limit: 500, offset });
-          groups.push(...page.filter((group) => parts.has(normalizeWorkInstructionPartNumber(group.partNumber) ?? group.partNumber)));
-          if (page.length < 500) break;
-        }
-      }
-    }
-    const unique = new Map(groups.map((group) => [JSON.stringify([group.partNumber, group.shootingTarget]), group]));
-    return [...unique.values()].sort((a, b) => b.latestModified.getTime() - a.latestModified.getTime());
+    const nameGroups = q ? await read.readPublishedGroupsByPartName(q) : [];
+    const key = (group: WorkInstructionGroupSummaryView) => JSON.stringify([group.partNumber, group.shootingTarget]);
+    const nameKeys = new Set(nameGroups.map(key));
+    const unique = new Map([...groups, ...nameGroups].map((group) => [key(group), group]));
+    const query = q?.normalize('NFKC').trim().toLowerCase();
+    return [...unique.values()].sort((a, b) => b.latestModified.getTime() - a.latestModified.getTime()).map((summary) => ({
+      summary,
+      memoOnly: Boolean(query && !nameKeys.has(key(summary)) &&
+        ![summary.partNumber, summary.shootingTarget].some((text) => text.normalize('NFKC').toLowerCase().includes(query))),
+    }));
   }
 
   async list(options: { q?: string; limit?: number } = {}) {
@@ -76,11 +74,15 @@ export class ProcedureMaterialWorkInstructionService {
     const summaries = await this.groups(read, options.q?.trim());
     for (let offset = 0; offset < summaries.length && items.length < limit;) {
       const batch = summaries.slice(offset, offset + Math.min(6, limit - items.length));
-      const groups = await Promise.allSettled(batch.map((summary) => read.readPublishedGroup(summary)));
+      const groups = await Promise.allSettled(batch.map(({ summary }) => read.readPublishedGroup(summary)));
       offset += batch.length;
-      for (const result of groups) {
+      for (const [index, result] of groups.entries()) {
         if (result.status === 'rejected') throw result.reason;
-        if (result.value) items.push(...candidates(result.value).slice(0, limit - items.length));
+        if (result.value) {
+          const query = options.q?.normalize('NFKC').trim().toLowerCase();
+          const photos = candidates(result.value).filter((item) => !batch[index].memoOnly || item.memo.normalize('NFKC').toLowerCase().includes(query!));
+          items.push(...photos.slice(0, limit - items.length));
+        }
         if (items.length >= limit) break;
       }
     }

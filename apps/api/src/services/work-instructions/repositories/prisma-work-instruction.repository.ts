@@ -36,6 +36,7 @@ import {
   readWorkInstructionRows,
   readPublishedWorkInstructionGroup,
   readPublishedWorkInstructionGroups,
+  readPublishedWorkInstructionGroupsByPartName,
   searchPublishedWorkInstructionGroups,
   readPublishedWorkInstructionPartCandidates,
   readPublishedWorkInstructionPartAlias,
@@ -366,6 +367,10 @@ export class PrismaWorkInstructionRepository implements WorkInstructionRepositor
 
   async searchPublishedGroups(input: WorkInstructionPublishedTextSearchQuery): Promise<WorkInstructionPublishedTextSearchPage> {
     return searchPublishedWorkInstructionGroups(this.db, input);
+  }
+
+  async readPublishedGroupsByPartName(query: string) {
+    return readPublishedWorkInstructionGroupsByPartName(this.db, query);
   }
 
   async readPublishedPartCandidates(input: WorkInstructionPartCandidatesQuery) {

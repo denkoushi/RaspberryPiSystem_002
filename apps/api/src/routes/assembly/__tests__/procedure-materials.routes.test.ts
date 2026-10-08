@@ -87,24 +87,27 @@ describe('procedure-material routes with mocked Prisma', () => {
     expect(db.procedureMaterial.findMany).toHaveBeenNthCalledWith(1, { where: { gmailMessageId: { not: null }, OR: [...new Set([q, q.normalize('NFKC')])].map((value) => ({ text: { contains: value, mode: 'insensitive' } })) }, select: { gmailMessageId: true }, distinct: ['gmailMessageId'], take: 500 });
     expect(db.procedureMaterial.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { documentId: null, placedAt: null, discardedAt: null, AND: [{ OR: expect.arrayContaining([{ gmailMessageId: { in: ['mail-1', 'mail-3'] } }]) }] } }));
   });
-  it('searches part-name matches through the hint and snapshot, and names only snapshot materials in one lookup', async () => {
+  it('joins matching material IDs once and names snapshot and matching mail materials', async () => {
     const { db, material } = harness();
     const work = { ...material, id: 'work', kind: 'PHOTO', workInstructionRef: { partNumber: 'DFD1' }, subjectHint: null };
     const mail = { ...material, id: 'mail', subjectHint: 'DFD1 の資料', workInstructionRef: null };
-    const rows = [work, mail, { ...mail, id: 'other', subjectHint: '別の資料' }];
-    db.$queryRaw.mockResolvedValueOnce([{ partNumber: 'DFD1' }]).mockResolvedValueOnce([{ partNumber: 'DFD1', partName: '軸受ホルダー' }]);
+    db.$queryRaw.mockResolvedValueOnce([{ id: 'work', partNumber: 'DFD1' }, { id: 'mail', partNumber: 'DFD1' }])
+      .mockResolvedValueOnce([{ partNumber: 'DFD1', partName: '軸受ホルダー' }]);
     db.procedureMaterial.findMany.mockResolvedValueOnce([]).mockImplementationOnce(async ({ where }) => {
-      expect(where.AND[0].OR).toEqual(expect.arrayContaining([
-        { subjectHint: { contains: 'DFD1', mode: 'insensitive' } }, { workInstructionRef: { path: ['partNumber'], equals: 'DFD1' } },
-      ]));
-      return rows.filter((row) => where.AND[0].OR.some((condition: { subjectHint?: { contains: string }; workInstructionRef?: { equals: string } }) =>
-        (condition.subjectHint && row.subjectHint?.includes(condition.subjectHint.contains)) || (condition.workInstructionRef && row.workInstructionRef?.partNumber === condition.workInstructionRef.equals)));
+      expect(where.AND[0].OR).toContainEqual({ id: { in: ['work', 'mail'] } });
+      return [work, mail];
     });
     const response = await app.inject(`${base}?q=${encodeURIComponent('ホル')}`);
     expect(response.statusCode).toBe(200);
-    expect(response.json().materials.map(({ id, partName }: { id: string; partName: string | null }) => [id, partName])).toEqual([['work', '軸受ホルダー'], ['mail', null]]);
+    expect(response.json().materials.map(({ id, partName }: { id: string; partName: string | null }) => [id, partName]))
+      .toEqual([['work', '軸受ホルダー'], ['mail', '軸受ホルダー']]);
     expect(db.$queryRaw).toHaveBeenCalledTimes(2);
-    expect(db.$queryRaw.mock.calls[0][0].values.at(-1)).toBe(20);
+    expect(db.$queryRaw.mock.calls[0][0].sql).toContain('LIMIT 2000');
+  });
+  it.each(['unplaced', 'placed'])('skips reverse lookup for one normalized character in %s', async (state) => {
+    const { db } = harness();
+    expect((await app.inject(`${base}?state=${state}&q=${encodeURIComponent('　Ａ　')}`)).statusCode).toBe(200);
+    expect(db.$queryRaw).not.toHaveBeenCalled();
   });
   it('looks up all snapshot names once without reverse lookup when q is absent', async () => {
     const { db, material } = harness();

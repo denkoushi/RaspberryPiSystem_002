@@ -54,6 +54,10 @@ export class WorkInstructionReadService {
     return this.repository.searchPublishedGroups(input);
   }
 
+  readPublishedGroupsByPartName(query: string): Promise<ReadonlyArray<WorkInstructionGroupSummaryView>> {
+    return this.repository.readPublishedGroupsByPartName(query);
+  }
+
   readPublishedPartCandidates(input: WorkInstructionPartCandidatesQuery): Promise<WorkInstructionPartCandidatePageView> {
     return this.repository.readPublishedPartCandidates(input);
   }

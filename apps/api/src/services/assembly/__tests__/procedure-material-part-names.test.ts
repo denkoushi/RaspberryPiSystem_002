@@ -13,12 +13,13 @@ describe('procedure material schedule part names', () => {
     const query = db.$queryRaw.mock.calls[0][0];
     expect(query.values).toEqual([PRODUCTION_SCHEDULE_DASHBOARD_ID, 'MH-1', 'EMPTY', 'MISSING']);
     expect(query.sql).toContain(`MIN(NULLIF(TRIM("rowData"->>'FHINMEI'), ''))`);
-    expect(query.sql).toContain(`UPPER(TRIM("rowData"->>'FHINCD')) IN`);
+    expect(query.sql).toContain(`UPPER(TRIM(NORMALIZE("rowData"->>'FHINCD', NFKC))) IN`);
   });
   it('skips empty lookups and blank name queries', async () => {
     const db = { $queryRaw: vi.fn() };
     expect(await readPartNamesByPartNumbers(db as never, [' ', ''])).toEqual(new Map());
     expect(await readPartNumbersByPartName(db as never, '　')).toEqual([]);
+    expect(await readPartNumbersByPartName(db as never, ' Ａ ')).toEqual([]);
     expect(db.$queryRaw).not.toHaveBeenCalled();
   });
   it('normalizes stored names and queries, escapes LIKE wildcards and caps the deterministic reverse lookup', async () => {
