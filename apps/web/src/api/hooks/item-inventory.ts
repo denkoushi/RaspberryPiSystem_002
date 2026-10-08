@@ -65,7 +65,7 @@ export function useInventoryToolFieldValues(accessPassword: string, enabled = tr
   return useQuery({ queryKey: inventoryKeys.toolFieldValues, queryFn: () => getInventoryToolFieldValues(accessPassword), enabled });
 }
 export function useInventoryUnits() { return useQuery({ queryKey: inventoryKeys.units, queryFn: getInventoryUnits }); }
-export function useInventoryTags(refetchInterval?: number) { return useQuery({ queryKey: inventoryKeys.tags, queryFn: getInventoryTags, refetchInterval }); }
+export function useInventoryTags(refetchInterval?: number, enabled = true) { return useQuery({ queryKey: inventoryKeys.tags, queryFn: getInventoryTags, refetchInterval, enabled }); }
 export function useInventoryImportSummaries() {
   // Mail is ingested every five minutes; a kiosk left on the list picks new candidates up.
   return useQuery({ queryKey: inventoryKeys.importSummaries, queryFn: getInventoryImportSummaries, refetchInterval: 60_000 });

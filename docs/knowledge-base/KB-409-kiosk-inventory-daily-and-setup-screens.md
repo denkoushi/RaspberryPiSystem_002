@@ -64,7 +64,7 @@ Third part of the review: the daily screen can be used by touch alone, and a tag
 
 - Number buttons (1, 2, 5, 10, 20 and ほかの数 with a keypad) record a movement the moment they are pressed, through `POST /item-inventory/touch-transactions`. There is no confirmation step; the named cancel button undoes a wrong press. 払い出し and 補充 are a two-way switch on the item screen and share the restock mode of the restock tag.
 - The list is narrowed by area and shelf chips above it. 置き場所から選ぶ and the place and tool-detail blocks are gone from the daily screen.
-- A scanned item tag is shown from a tag table kept on the kiosk (`['inventory-tags']`, refreshed every 5 minutes by `InventoryNfcRouter`) and checked against the server in the background. The check replaces the item if the tag now points at another drawer, updates the stock if only that changed, and clears the screen if the tag is gone.
+- A scanned item tag is shown from a tag table kept on the kiosk (`['inventory-tags']`, loaded and refreshed every 5 minutes by `InventoryNfcRouter` on the inventory screens only; other kiosk screens send no tag request, and a scan there uses what is cached or asks the server as before) and checked against the server in the background. The check replaces the item if the tag now points at another drawer, updates the stock if only that changed, and clears the screen if the tag is gone.
 - Rules that keep a movement on the drawer the worker sees:
   - Everything that changes stock (number button, quantity tag, correction, cancel) runs one at a time. A scan read while an operation is running waits for it.
   - An operation waits for the background check of the selection before it is sent, and is dropped if the check changes the drawer.

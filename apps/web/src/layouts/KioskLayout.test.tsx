@@ -43,6 +43,7 @@ vi.mock('../components/kiosk/KioskHeader', () => ({ KioskHeader: () => <div>kios
 vi.mock('../components/kiosk/KioskMaintenanceScreen', () => ({ KioskMaintenanceScreen: () => <div>maintenance-screen</div> }));
 vi.mock('../components/kiosk/KioskSupportModal', () => ({ KioskSupportModal: () => null }));
 vi.mock('../components/KioskRedirect', () => ({ KioskRedirect: () => <div>normal-kiosk-content</div> }));
+vi.mock('../features/kiosk/InventoryNfcRouter', () => ({ InventoryNfcRouter: () => null }));
 vi.mock('../hooks/useKioskBottomRightHeaderReveal', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../hooks/useKioskBottomRightHeaderReveal')>();
   return {
