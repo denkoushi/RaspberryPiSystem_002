@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AssemblyProcedureDocumentEditorProvider } from './AssemblyProcedureDocumentEditorContext';
@@ -91,7 +92,7 @@ function makeController(
     retryConflictSave: vi.fn(async () => undefined),
     passwordInput: '1234',
     setPasswordInput: vi.fn(),
-    verifyEditorPassword: vi.fn(async () => undefined),
+    verifyEditorPassword: vi.fn(async () => true),
     selectedPageIndex: 0,
     setSelectedPageIndex: vi.fn(),
     selectedPage,
@@ -280,8 +281,8 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
   it('keeps workshop context and the return action before editor authentication', () => {
     const navigateBack = vi.fn();
     const controller = makeController({ accessGranted: false, navigateBack });
-    render(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} context={{ modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', processName: '組立 › 組立', mode: 'fix' }} /></AssemblyProcedureDocumentEditorProvider>);
-    expect(screen.getByRole('heading', { name: 'DFD1 › 組立 › 組立 › 組立手順書' })).toBeInTheDocument();
+    render(<MemoryRouter><AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} context={{ modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', processName: '組立 › 組立', mode: 'fix' }} /></AssemblyProcedureDocumentEditorProvider></MemoryRouter>);
+    expect(screen.getByRole('dialog', { name: '暗証番号' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '戻る' }));
     expect(navigateBack).toHaveBeenCalledOnce();
   });

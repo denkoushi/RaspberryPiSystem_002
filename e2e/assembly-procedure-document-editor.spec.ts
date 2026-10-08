@@ -433,12 +433,12 @@ async function installEditorApiMocks(
 }
 
 async function authenticateDocumentEditor(page: Page): Promise<void> {
-  await expect(page.getByRole('heading', { name: '手順書オーバーレイ編集' })).toBeVisible();
-  await page.getByTestId('assembly-document-editor-password').fill(EDITOR_PASSWORD);
+  await expect(page.getByRole('dialog', { name: '暗証番号', exact: true })).toBeVisible();
   const leaseAcquired = page.waitForResponse((response) =>
     response.url().endsWith(`/procedure-documents/${REVISION_DOCUMENT_ID}/edit-lease`) && response.request().method() === 'POST'
   );
-  await page.getByRole('button', { name: '認証' }).click();
+  const tenkey = page.getByTestId('assembly-document-editor-password');
+  for (const digit of EDITOR_PASSWORD) await tenkey.getByRole('button', { name: digit, exact: true }).click();
   expect((await leaseAcquired).status()).toBe(200);
   await expect(page.getByTestId('assembly-document-editor-layout')).toBeVisible();
   await expect(page.getByRole('region', { name: '手順書キャンバス' })).toBeVisible();

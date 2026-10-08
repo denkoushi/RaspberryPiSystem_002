@@ -285,7 +285,7 @@ describe('HermesFloatingChat', () => {
     fireEvent.click(screen.getByRole('button', { name: '文書を開く' }));
     expect(screen.getByText('手順 1 / 9')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '次へ' }));
-    expect(screen.getByRole('heading', { name: '管理パスワードを入力' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '暗証番号を入力' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /ライブラリへ移動/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '戻る' }));
     expect(screen.getByText('手順 1 / 9')).toBeInTheDocument();

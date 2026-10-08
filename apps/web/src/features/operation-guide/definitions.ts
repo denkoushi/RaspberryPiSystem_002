@@ -36,8 +36,8 @@ export const operationGuides: readonly OperationGuide[] = [
     id: 'assembly-edit', label: '組立の手順書', action: '編集',
     steps: [
       { kind: 'sop', sheetId: 'assembly-procedure-edit', stepId: 'open-procedure-edit', description: '「編集」か「改版編集」を押します。' },
-      { kind: 'sop', sheetId: 'assembly-document-editor-auth', stepId: 'document-editor-password', description: '管理パスワードを入力します。' },
-      { kind: 'direct', title: '認証', targetId: 'assembly-document-editor-authenticate', description: '認証して編集画面を開きます。' },
+      { kind: 'sop', sheetId: 'assembly-document-editor-auth', stepId: 'document-editor-password', description: 'テンキーで暗証番号を入力します。' },
+      { kind: 'direct', title: 'OK', targetId: 'assembly-document-editor-authenticate', description: '4桁で自動認証。再試行は「OK」。' },
       { kind: 'sop', sheetId: 'assembly-document-editor-range', stepId: 'document-editor-range-add', description: '「範囲」を押して選択を始めます。' },
       { kind: 'sop', sheetId: 'assembly-document-editor-range', stepId: 'document-editor-range-surface', description: '編集する範囲をドラッグします。' },
       { kind: 'sop', sheetId: 'assembly-document-editor-types', stepId: 'document-editor-type-text', description: '「文章」を選び、内容を入力します。' },

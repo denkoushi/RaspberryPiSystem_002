@@ -230,8 +230,8 @@ async function prepareSheet(page, sheetId) {
   }
   if (sheetId === 'assembly-document-editor-auth') return;
   if (sheetId.startsWith('assembly-document-editor-')) {
-    await page.locator('[data-kiosk-sop-target="assembly-document-editor-password"]').fill('0000');
-    await page.locator('[data-kiosk-sop-target="assembly-document-editor-authenticate"]').click();
+    const tenkey = page.locator('[data-kiosk-sop-target="assembly-document-editor-password"]');
+    for (const digit of '0000') await tenkey.getByRole('button', { name: digit, exact: true }).click();
     await page.locator('[data-kiosk-sop-target="assembly-document-editor-range-add"]').waitFor({ state: 'visible' });
 
     const selectRange = async () => {

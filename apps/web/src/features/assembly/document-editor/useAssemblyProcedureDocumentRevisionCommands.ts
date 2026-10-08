@@ -10,6 +10,7 @@ import {
   saveAssemblyProcedureDocumentOverlays,
   verifyAssemblyTemplateAccessPassword
 } from '../../../api/client';
+import { kioskPinErrorResult, type KioskPinSubmitResult } from '../../kiosk/KioskPinDialog';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 import { clearProcedureEditorAccess, saveProcedureEditorAccess } from '../procedureEditorAccess';
 
@@ -42,6 +43,7 @@ export type AssemblyProcedureDocumentRevisionCommandSession = {
   document: AssemblyProcedureDocumentDto | null;
   elements: AssemblyProcedureOverlayElement[];
   passwordInput: string;
+  setPasswordInput: StateSetter<string>;
   busy: boolean;
   isDirty: boolean;
   readOnly: boolean;
@@ -74,11 +76,11 @@ export function useAssemblyProcedureDocumentRevisionCommands(
     []
   );
 
-  const verifyEditorPassword = useCallback(async () => {
+  const verifyEditorPassword = useCallback(async (pin: string): Promise<KioskPinSubmitResult> => {
     const {
       busy,
       document,
-      passwordInput,
+      setPasswordInput,
       setAccessGranted,
       setBaselineSnapshot,
       setBusy,
@@ -88,16 +90,17 @@ export function useAssemblyProcedureDocumentRevisionCommands(
       setMessage,
       dispatch
     } = session;
-    if (!passwordInput.trim() || !document || busy) return;
+    if (!pin.trim()) return 'mismatch';
+    if (!document || busy) return 'network';
     setBusy(true);
-    setMessage(null);
     setConflict(false);
     setConflictEditVersion(null);
     try {
-      const result = await verifyAssemblyTemplateAccessPassword({ password: passwordInput });
-      if (!result.success) throw new Error('パスワードが正しくありません。');
-      const editableDocument = await createAssemblyProcedureDocumentRevision(document.id, passwordInput);
+      const result = await verifyAssemblyTemplateAccessPassword({ password: pin });
+      if (!result.success) return 'mismatch';
+      const editableDocument = await createAssemblyProcedureDocumentRevision(document.id, pin);
       const nextElements = selectDocumentOverlayElements(editableDocument);
+      setMessage(null);
       setDocument(editableDocument);
       if (editableDocument.id === document.id && document.status === 'draft' && session.hasAuthenticated) {
         // Reauthentication keeps this document's edits and undo history.
@@ -110,8 +113,10 @@ export function useAssemblyProcedureDocumentRevisionCommands(
         dispatch({ type: 'replace', elements: nextElements });
         setBaselineSnapshot(overlayDraftSnapshot(nextElements));
       }
-      saveProcedureEditorAccess(passwordInput);
+      saveProcedureEditorAccess(pin);
+      setPasswordInput(pin);
       setAccessGranted(true);
+      return true;
     } catch (error: unknown) {
       if (session.revokeAccess) session.revokeAccess();
       else {
@@ -120,6 +125,7 @@ export function useAssemblyProcedureDocumentRevisionCommands(
         setAccessGranted(false);
       }
       (session.setErrorMessage ?? setMessage)(readAssemblyApiErrorMessage(error, '認証または改版の作成に失敗しました。'));
+      return kioskPinErrorResult(error);
     } finally {
       setBusy(false);
     }
