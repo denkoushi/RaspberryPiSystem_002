@@ -7,6 +7,7 @@ import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { AssemblyProcedureImageStorage } from '../../../lib/assembly-procedure-image-storage.js';
 import { registerErrorHandler } from '../../../plugins/error-handler.js';
+import { LocalAssemblyProcedureAssetStorageAdapter } from '../../../services/assembly-procedure-assets/local-assembly-procedure-asset-storage.adapter.js';
 import { AssemblyTemplateAccessService } from '../../../services/assembly/assembly-template-access.service.js';
 import { AssemblyProcedureDocumentEditLeaseService } from '../../../services/assembly/assembly-procedure-document-edit-lease.service.js';
 import * as inferenceRuntime from '../../../services/inference/inference-runtime.js';
@@ -130,8 +131,22 @@ describe('procedure layout suggestion routes', () => {
     expect(text.complete).not.toHaveBeenCalled();
   });
 
-  it('reports missing photo dimensions before inference', async () => {
-    vi.mocked(prisma.assemblyProcedureAsset.findMany).mockResolvedValue([{ id: 'asset-photo', width: null, height: null }] as never);
+  it('measures the stored photo when its dimensions are not recorded', async () => {
+    vi.mocked(prisma.assemblyProcedureAsset.findMany).mockResolvedValue([{ id: 'asset-photo', width: null, height: null, storageKey: 'photo-key' }] as never);
+    // 800x600 pixels with EXIF orientation 6 is displayed as a 3:4 portrait photo.
+    const photo = await sharp({ create: { width: 800, height: 600, channels: 3, background: '#808080' } }).withMetadata({ orientation: 6 }).jpeg().toBuffer();
+    const read = vi.spyOn(LocalAssemblyProcedureAssetStorageAdapter.prototype, 'read').mockResolvedValue(photo);
+    register();
+    const response = await app.inject({ method: 'POST', url, payload: { pageIndex: 0, elements } });
+    expect(response.statusCode).toBe(200);
+    expect(read).toHaveBeenCalledWith({ storageKey: 'photo-key' });
+    const bbox = response.json().plans[0].elements.find((element: { id: string }) => element.id === 'photo').bbox;
+    expect((bbox.widthRatio * 1200) / (bbox.heightRatio * 1600)).toBeCloseTo(3 / 4, 2);
+  });
+
+  it('reports missing photo dimensions before inference when the stored photo cannot be read', async () => {
+    vi.mocked(prisma.assemblyProcedureAsset.findMany).mockResolvedValue([{ id: 'asset-photo', width: null, height: null, storageKey: 'photo-key' }] as never);
+    vi.spyOn(LocalAssemblyProcedureAssetStorageAdapter.prototype, 'read').mockRejectedValue(new Error('missing'));
     register();
     const response = await app.inject({ method: 'POST', url, payload: { pageIndex: 0, elements } });
     expect(response.statusCode).toBe(422);
