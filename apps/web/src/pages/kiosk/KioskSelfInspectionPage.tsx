@@ -744,7 +744,7 @@ export function KioskSelfInspectionPage() {
             openInstructionTarget(target);
           }}
         />
-        {instructionManualErrorMessage ? <p role="alert" className="text-sm text-rose-100">{instructionManualErrorMessage}</p> : null}
+        {instructionManualErrorMessage ? <p role="alert" title={instructionManualErrorMessage} className="max-w-[9rem] shrink-0 truncate text-xs text-rose-100">{instructionManualErrorMessage}</p> : null}
         <button
           type="button"
           aria-label="部品番号を1文字削除"
