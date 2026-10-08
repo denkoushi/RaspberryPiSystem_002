@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 
 import { inventoryThumbnailUrl, type InventoryImport, type InventoryItem } from '../../../../api/client';
 import {
@@ -32,8 +32,7 @@ import { useArmedNfcRead } from './useArmedNfcRead';
 
 import type { NfcEvent } from '../../../../hooks/useNfcStream';
 
-type Draft = {
-  photosChecked: boolean;
+export type Draft = {
   mode: 'NEW_ITEM' | 'EXISTING_ITEM' | null;
   itemId: string;
   itemName: string;
@@ -51,6 +50,7 @@ type Draft = {
   drawerId: string;
   drawerLabel: string;
   itemTagUid: string;
+  manualUid: string;
   quantity: string;
 };
 
@@ -60,7 +60,6 @@ const QUANTITY_MAX_DIGITS = 6;
 
 function emptyDraft(candidate: InventoryImport | null): Draft {
   return {
-    photosChecked: false,
     mode: null,
     itemId: '',
     itemName: '',
@@ -77,14 +76,14 @@ function emptyDraft(candidate: InventoryImport | null): Draft {
     drawerId: '',
     drawerLabel: '',
     itemTagUid: '',
+    manualUid: '',
     quantity: '',
   };
 }
 
 /** What is done and what is left, in the order a worker does it. */
-export function registrationChecklist(draft: Draft, photoCount: number): CheckItem[] {
+export function registrationChecklist(draft: Draft): CheckItem[] {
   const items: CheckItem[] = [
-    { id: 'photos', label: '写真の確認', done: draft.photosChecked, detail: draft.photosChecked ? `${photoCount}枚` : 'まだ' },
     {
       id: 'mode',
       label: '新規か既存か',
@@ -162,23 +161,34 @@ const TEXT_FIELDS: Array<{ key: TextFieldKey; label: string; aria?: string }> = 
   { key: 'toolSize', label: '工具寸法' },
   { key: 'usage', label: '用途' },
 ];
-export function InventoryRegistrationTab({ accessPassword, initialImportId = null }: { accessPassword: string; initialImportId?: string | null }) {
+export type RegistrationState = { selectedId: string | null; draft: Draft | null };
+
+export function InventoryRegistrationTab({ accessPassword, registration, setRegistration }: {
+  accessPassword: string;
+  registration: RegistrationState;
+  setRegistration: Dispatch<SetStateAction<RegistrationState>>;
+}) {
   const importsQuery = useInventoryImports(accessPassword);
   const messagesQuery = useInventoryImportMessages(accessPassword);
   const locationsQuery = useInventoryLocations();
   const mutations = useInventoryMutations(accessPassword);
   // Newest first, like the unregistered cards on the daily list.
   const candidates = useMemo(() => [...(importsQuery.data ?? [])].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)), [importsQuery.data]);
-  const [selectedId, setSelectedId] = useState<string | null>(initialImportId);
-  const candidate = candidates.find((entry) => entry.id === selectedId) ?? candidates[0] ?? null;
-  const [draft, setDraft] = useState<Draft>(() => emptyDraft(candidate));
+  const { selectedId } = registration;
+  const completedIdRef = useRef<string | null>(null);
+  const setSelectedId = (id: string | null) => setRegistration({ selectedId: id, draft: null });
+  const candidate = selectedId ? candidates.find((entry) => entry.id === selectedId) ?? null : candidates.find((entry) => entry.id !== completedIdRef.current) ?? null;
+  const draft = registration.draft ?? emptyDraft(candidate);
+  const setDraft = useCallback((update: SetStateAction<Draft>) => setRegistration((current) => ({
+    selectedId: current.selectedId ?? candidate?.id ?? null,
+    draft: typeof update === 'function' ? update(current.draft ?? emptyDraft(candidate)) : update,
+  })), [candidate, setRegistration]);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [confirmDeletePhotoId, setConfirmDeletePhotoId] = useState<string | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; alt: string } | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const [manualUid, setManualUid] = useState('');
   const itemsQuery = useInventoryItems(draft.mode !== null);
   const waitingForTag = draft.mode === 'NEW_ITEM' && Boolean(draft.drawerId) && !draft.itemTagUid;
   const read = useArmedNfcRead(waitingForTag);
@@ -189,7 +199,16 @@ export function InventoryRegistrationTab({ accessPassword, initialImportId = nul
   // A different candidate starts over.
   const candidateId = candidate?.id ?? null;
   useEffect(() => {
-    setDraft(emptyDraft(candidate));
+    if (candidate && !registration.draft) setRegistration({ selectedId: candidate.id, draft: emptyDraft(candidate) });
+  }, [candidate, registration.draft, setRegistration]);
+
+  // The chosen candidate is gone (registered on another terminal): fall back to the newest one.
+  const selectedGone = Boolean(selectedId) && !candidate && importsQuery.data !== undefined && !importsQuery.isFetching;
+  useEffect(() => {
+    if (selectedGone) setRegistration({ selectedId: null, draft: null });
+  }, [selectedGone, setRegistration]);
+
+  useEffect(() => {
     setError(null);
     setConfirmDeletePhotoId(null);
     setManualOpen(false);
@@ -201,7 +220,7 @@ export function InventoryRegistrationTab({ accessPassword, initialImportId = nul
     if (!read || handledRef.current === read) return;
     handledRef.current = read;
     setDraft((current) => ({ ...current, itemTagUid: read.uid }));
-  }, [read]);
+  }, [read, setDraft]);
 
   // The mail location is the machine; the shelf area is "<machine> <direction>" or another machine's area.
   const machine = candidate?.area ?? '';
@@ -213,7 +232,7 @@ export function InventoryRegistrationTab({ accessPassword, initialImportId = nul
   useEffect(() => {
     if (draft.mode !== 'NEW_ITEM' || draft.area || !defaultArea || itemsQuery.isLoading) return;
     setDraft((current) => (current.area ? current : { ...current, area: defaultArea }));
-  }, [defaultArea, draft.area, draft.mode, itemsQuery.isLoading]);
+  }, [defaultArea, draft.area, draft.mode, itemsQuery.isLoading, setDraft]);
   const selectedSplit = splitArea(draft.area);
   const selectedDirection = selectedSplit.machine === machine ? selectedSplit.direction : null;
   const otherAreas = useMemo(
@@ -244,7 +263,7 @@ export function InventoryRegistrationTab({ accessPassword, initialImportId = nul
       setDraft((current) => ({ ...current, drawerId: created.id, drawerLabel: `${parent.area}・棚${parent.shelfNumber}・引出し${created.drawerNumber}`, itemTagUid: '' }));
     }
     setAutoSelect(null);
-  }, [areaShelves, autoSelect]);
+  }, [areaShelves, autoSelect, setDraft]);
   const createShelf = async () => {
     if (!candidate) return;
     setError(null);
@@ -267,7 +286,7 @@ export function InventoryRegistrationTab({ accessPassword, initialImportId = nul
     }
   };
   const update = (patch: Partial<Draft>) => setDraft((current) => ({ ...current, ...patch }));
-  const checklist = registrationChecklist(draft, candidate?.photos.length ?? 0);
+  const checklist = registrationChecklist(draft);
   const remaining = checklist.filter((entry) => !entry.done).length;
   const currentId = checklist.find((entry) => !entry.done)?.id ?? null;
   const isDone = (id: string) => checklist.find((entry) => entry.id === id)?.done ?? false;
@@ -292,7 +311,7 @@ export function InventoryRegistrationTab({ accessPassword, initialImportId = nul
   const chooseNew = () => {
     if (draft.mode === 'NEW_ITEM') return;
     if (draft.mode === 'EXISTING_ITEM' && draft.itemId) {
-      update({ mode: 'NEW_ITEM', area: '', shelfId: '', drawerId: '', drawerLabel: '', itemTagUid: '', itemId: '', itemName: '', name: `ItemlistRaspi ${candidate?.sourceItemId ?? ''}`, model: '', usage: '', unit: null, maker: '', toolName: '', workMaterial: '', toolSize: '' });
+      update({ mode: 'NEW_ITEM', area: '', shelfId: '', drawerId: '', drawerLabel: '', itemTagUid: '', manualUid: '', itemId: '', itemName: '', name: `ItemlistRaspi ${candidate?.sourceItemId ?? ''}`, model: '', usage: '', unit: null, maker: '', toolName: '', workMaterial: '', toolSize: '' });
       return;
     }
     update({ mode: 'NEW_ITEM', itemId: '', itemName: '' });
@@ -326,7 +345,8 @@ export function InventoryRegistrationTab({ accessPassword, initialImportId = nul
         },
       });
       setDone(`候補 #${candidate.sourceItemId} を登録しました`);
-      setSelectedId(null);
+      completedIdRef.current = candidate.id;
+      setSelectedId(candidates.find((entry) => entry.id !== candidate.id)?.id ?? null);
     } catch (caught) {
       setError(errorText(caught));
     }
@@ -343,7 +363,7 @@ export function InventoryRegistrationTab({ accessPassword, initialImportId = nul
       ))}
     </section>
   ) : null;
-  const doneBanner = done ? <p className={`rounded-xl border px-3 py-2 text-base font-bold ${invSuccess}`} role="status">{done}</p> : null;
+  const doneBanner = <div className="flex h-12 shrink-0 items-center overflow-hidden">{done ? <p className={`rounded-xl border px-3 py-2 text-base font-bold ${invSuccess}`} role="status">{done}</p> : null}</div>;
 
   if (!candidate) {
     return (
@@ -355,7 +375,7 @@ export function InventoryRegistrationTab({ accessPassword, initialImportId = nul
     );
   }
 
-  let stepNumber = 1;
+  let stepNumber = 0;
   const next = () => { stepNumber += 1; return stepNumber; };
 
   return (
@@ -366,12 +386,8 @@ export function InventoryRegistrationTab({ accessPassword, initialImportId = nul
         {/* The photos stay in front of the shade so the name can be chosen while looking at them. */}
         <section aria-label="写真の確認" className={`${invPanel} flex min-h-0 flex-col gap-3 p-4 ${optionsOpen ? 'relative z-[45]' : ''}`}>
           <div className="flex items-center gap-2">
-            <StepMark number={1} done={isDone('photos')} current={currentId === 'photos'} />
             <h3 className="text-[15px] font-black">写真の確認</h3>
             <span className="min-w-0 flex-1 truncate text-xs text-inv-faint">加工機 {candidate.area} ・ 分類 {candidate.category ?? '-'} ・ メモ {candidate.note ?? '-'}</span>
-            <button type="button" aria-pressed={draft.photosChecked} className={draft.photosChecked ? `${invButtonSm} border-inv-green bg-inv-green/[0.12] text-[#d7fbe9] hover:bg-inv-green/20` : invButtonSm} onClick={() => update({ photosChecked: !draft.photosChecked })}>
-              {draft.photosChecked ? <><CheckIcon />写真を確認した</> : '写真を確認した'}
-            </button>
           </div>
           {candidate.photos.length === 0 ? <p className="text-sm text-inv-faint">写真はありません</p> : null}
           {/* Two rows fill the pane; more than four photos scroll inside it. */}
@@ -379,7 +395,7 @@ export function InventoryRegistrationTab({ accessPassword, initialImportId = nul
             {candidate.photos.map((photo, index) => (
               <figure key={photo.id} className="flex min-h-0 flex-col gap-2">
                 <button type="button" className="block min-h-0 w-full flex-1" aria-label={`写真${index + 1}を拡大`} onClick={() => setSelectedPhoto({ url: photo.photoUrl, alt: photo.filename })}>
-                  <img src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.filename} className="h-full w-full rounded-xl border border-inv-line object-cover" />
+                  <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.filename} className="h-full w-full rounded-xl border border-inv-line object-cover" />
                 </button>
                 {confirmDeletePhotoId === photo.id ? (
                   <div className="flex items-center gap-1.5">
@@ -411,7 +427,7 @@ export function InventoryRegistrationTab({ accessPassword, initialImportId = nul
                 {itemsQuery.isLoading ? <p className="text-sm text-inv-faint">読み込み中…</p> : null}
                 {(itemsQuery.data ?? []).map((item) => (
                   <button key={item.id} type="button" aria-pressed={item.id === draft.itemId} className={`flex h-14 w-64 items-center gap-2 rounded-[10px] px-2 text-left ${item.id === draft.itemId ? 'border-2 border-inv-cyan bg-inv-cyan/[0.12]' : 'border border-inv-line bg-inv-bg hover:bg-inv-s2'}`} onClick={() => chooseExisting(item)}>
-                    {item.photos[0] ? <img src={inventoryThumbnailUrl(item.photos[0].photoUrl)} alt="" className="h-10 w-10 rounded object-cover" /> : <span className="h-10 w-10 rounded bg-inv-s3" aria-hidden="true" />}
+                    {item.photos[0] ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(item.photos[0].photoUrl)} alt="" className="h-10 w-10 rounded object-cover" /> : <span className="h-10 w-10 rounded bg-inv-s3" aria-hidden="true" />}
                     <span className="min-w-0"><span className="block truncate text-sm font-bold">{item.name}</span><span className="text-xs text-inv-faint">{item.itemCode}</span></span>
                   </button>
                 ))}
@@ -495,8 +511,8 @@ export function InventoryRegistrationTab({ accessPassword, initialImportId = nul
                     <NfcPrompt size="small" tone="amber" label="アイテムタグ" sub={draft.drawerLabel} />
                     {manualOpen ? (
                       <span className="flex items-center gap-2">
-                        <input aria-label="タグのID" placeholder="タグのID" className={`${invField} w-56`} value={manualUid} onChange={(event) => setManualUid(event.target.value)} />
-                        <button type="button" className={invButtonSm} disabled={!manualUid.trim()} onClick={() => { update({ itemTagUid: manualUid.trim() }); setManualUid(''); setManualOpen(false); }}>使う</button>
+                        <input aria-label="タグのID" placeholder="タグのID" className={`${invField} w-56`} value={draft.manualUid} onChange={(event) => update({ manualUid: event.target.value })} />
+                        <button type="button" className={invButtonSm} disabled={!draft.manualUid.trim()} onClick={() => { update({ itemTagUid: draft.manualUid.trim(), manualUid: '' }); setManualOpen(false); }}>使う</button>
                       </span>
                     ) : (
                       <button type="button" className="text-[13px] text-inv-cyan underline underline-offset-2" onClick={() => setManualOpen(true)}>IDを手で入れる</button>
@@ -540,7 +556,7 @@ export function InventoryRegistrationTab({ accessPassword, initialImportId = nul
             })}
           </ul>
           <div className="flex-1" />
-          {error ? <p className={`rounded-lg border px-3 py-2 text-sm ${invError}`} role="alert">{error}</p> : null}
+          <div className="flex h-16 shrink-0 items-center overflow-hidden">{error ? <p className={`rounded-lg border px-3 py-2 text-sm ${invError}`} role="alert">{error}</p> : null}</div>
           <p className="text-center text-lg font-black tabular-nums" aria-live="polite">{remaining === 0 ? '登録できます' : `あと ${remaining} つ`}</p>
           <button type="button" className={`${invButtonGo} h-14 text-lg disabled:border-inv-line2 disabled:bg-inv-s2 disabled:text-inv-muted disabled:opacity-100`} disabled={remaining > 0 || mutations.registerImport.isPending} onClick={() => void register()}>
             {mutations.registerImport.isPending ? '登録中…' : '登録する'}
@@ -571,7 +587,7 @@ export function InventoryRegistrationTab({ accessPassword, initialImportId = nul
             return (
               <button key={entry.id} type="button" aria-pressed={selected} aria-label={`候補 #${entry.sourceItemId}`} className={`flex w-[220px] shrink-0 items-center gap-2 rounded-xl border p-1.5 text-left ${selected ? 'border-2 border-inv-cyan bg-inv-cyan/[0.1]' : 'border-inv-line bg-inv-s2 hover:bg-inv-s3'}`} onClick={() => { setSelectedId(entry.id); setDone(null); }}>
                 <span className="block h-[88px] w-[88px] shrink-0 overflow-hidden rounded-lg bg-inv-s3">
-                  {photo ? <img src={inventoryThumbnailUrl(photo.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
+                  {photo ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
                 </span>
                 <span className="min-w-0">
                   <b className="block">#{entry.sourceItemId}</b>

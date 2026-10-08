@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useInventoryMutations, useVerifyKioskDueManagementAccessPassword } from '../../api/hooks';
+import { useInventoryImports, useInventoryMutations, useVerifyKioskDueManagementAccessPassword } from '../../api/hooks';
 
 import { KioskItemInventorySettingsPage } from './KioskItemInventorySettingsPage';
 
@@ -16,20 +16,22 @@ vi.mock('../../api/hooks', () => ({
   useInventoryTags: vi.fn(() => ({ data: [{ id: 't1', uid: 'q1', kind: 'QUANTITY', quantity: 5, compartment: null }] })),
   useInventoryItems: vi.fn(() => ({ data: [], isLoading: false })),
   useInventoryLocations: vi.fn(() => ({ data: [] })),
+  useInventoryImports: vi.fn(() => ({ data: [{ id: 'candidate-1', sourceItemId: 1, area: '加工機', category: null, note: null, createdAt: '2026-10-01T00:00:00Z', photos: [] }], isLoading: false })),
+  useInventoryImportMessages: vi.fn(() => ({ data: [] })),
+  useInventoryUnits: vi.fn(() => ({ data: [] })),
+  useInventoryToolFieldOptions: vi.fn(() => ({ data: {} })),
+  useInventoryToolFieldValues: vi.fn(() => ({ data: {} })),
 }));
 vi.mock('../../hooks/useNfcStream', () => ({
   useNfcStream: vi.fn((enabled: boolean) => (enabled ? nfc.event : null)),
-}));
-vi.mock('../../features/kiosk/inventory/setup/InventoryRegistrationTab', () => ({
-  InventoryRegistrationTab: ({ accessPassword }: { accessPassword: string }) => <div>registration-open:{accessPassword}</div>
 }));
 vi.mock('../../features/kiosk/inventory/setup/InventoryItemEditTab', () => ({
   InventoryItemEditTab: ({ accessPassword }: { accessPassword: string }) => <div>item-edit-open:{accessPassword}</div>
 }));
 
-function renderPage() {
+function renderPage(state?: { importId: string }) {
   const view = render(
-    <MemoryRouter initialEntries={['/kiosk/inventory/settings']}>
+    <MemoryRouter initialEntries={[{ pathname: '/kiosk/inventory/settings', state }]}>
       <KioskItemInventorySettingsPage />
     </MemoryRouter>
   );
@@ -68,6 +70,11 @@ describe('KioskItemInventorySettingsPage', () => {
       replaceTag: { mutateAsync: vi.fn(), isPending: false },
       createShelf: { mutateAsync: vi.fn(), isPending: false },
       createDrawer: { mutateAsync: vi.fn(), isPending: false },
+      renameArea: { mutateAsync: vi.fn(), isPending: false },
+      registerImport: { mutateAsync: vi.fn(), isPending: false },
+      retryImport: { mutateAsync: vi.fn(), isPending: false },
+      deleteImportPhoto: { mutateAsync: vi.fn(), isPending: false },
+      reorderImportPhotos: { mutateAsync: vi.fn(), isPending: false },
     } as never);
   });
 
@@ -81,7 +88,8 @@ describe('KioskItemInventorySettingsPage', () => {
     await waitFor(() => expect(verify).toHaveBeenCalledWith({ password: '2520' }));
     expect(prompt).not.toHaveBeenCalled();
     expect(await screen.findByRole('tab', { name: '登録待ち' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByText('registration-open:2520')).toBeInTheDocument();
+    expect(useInventoryImports).toHaveBeenCalledWith('2520');
+    expect(screen.getByRole('button', { name: '登録する' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'アイテム編集' }));
     expect(screen.getByText('item-edit-open:2520')).toBeInTheDocument();
     prompt.mockRestore();
@@ -132,4 +140,27 @@ describe('KioskItemInventorySettingsPage', () => {
     expect(quantityTag).toHaveBeenCalledTimes(1);
     expect(await screen.findByText('数量タグ「3」を登録しました')).toBeInTheDocument();
   });
+  it('retains the registration candidate and draft when another tab unmounts registration', async () => {
+    verify.mockResolvedValue({ success: true });
+    renderPage();
+    press('パスワードのテンキー', '2520');
+    fireEvent.change(await screen.findByLabelText('アイテム名'), { target: { value: '入力中の治具' } });
+    fireEvent.change(screen.getByLabelText('型式'), { target: { value: 'M-12' } });
+    fireEvent.click(screen.getByRole('tab', { name: 'アイテム編集' }));
+    expect(screen.queryByLabelText('アイテム名')).not.toBeInTheDocument();
+    expect(screen.getByText('item-edit-open:2520')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: '登録待ち' }));
+    expect(screen.getByRole('button', { name: '候補 #1' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('アイテム名')).toHaveValue('入力中の治具');
+    expect(screen.getByLabelText('型式')).toHaveValue('M-12');
+  });
+
+  it('falls back to the newest candidate when the requested one is no longer waiting', async () => {
+    verify.mockResolvedValue({ success: true });
+    renderPage({ importId: 'already-registered' });
+    press('パスワードのテンキー', '2520');
+    expect(await screen.findByRole('button', { name: '候補 #1' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '登録する' })).toBeInTheDocument();
+  });
+
 });

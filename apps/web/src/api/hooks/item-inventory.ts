@@ -37,6 +37,7 @@ import {
   resolveInventoryTag,
   setInventoryItemUnit,
   updateInventoryItemDetails,
+  type InventoryHistoryEntry,
   type InventoryImport,
   type InventoryItem,
   type InventoryOptionField,
@@ -99,6 +100,20 @@ function invalidateInventory(queryClient: ReturnType<typeof useQueryClient>) {
 export function useInventoryMutations(accessPassword?: string) {
   const queryClient = useQueryClient();
   const invalidate = () => invalidateInventory(queryClient);
+  const invalidateStock = () => {
+    for (const key of [inventoryKeys.history, inventoryKeys.locations, inventoryKeys.tags]) void queryClient.invalidateQueries({ queryKey: key });
+  };
+  const updateStock = ({ transaction }: { transaction: InventoryHistoryEntry }) => {
+    queryClient.setQueryData<InventoryItem[]>(inventoryKeys.items, (items) => items?.map((item) => ({
+      ...item,
+      compartments: item.compartments.map((compartment) => compartment.id === transaction.compartmentId ? {
+        ...compartment,
+        stockQuantity: transaction.afterQuantity,
+        ...(transaction.action === 'ISSUE' ? { lastIssuedAt: transaction.createdAt } : {}),
+      } : compartment),
+    })));
+    invalidateStock();
+  };
   return {
     ingest: useMutation({ mutationFn: ingestInventoryMail, onSuccess: invalidate }),
     retryImport: useMutation({ mutationFn: (id: string) => retryInventoryImportMessage(id, accessPassword), onSuccess: invalidate }),
@@ -176,9 +191,12 @@ export function useInventoryMutations(accessPassword?: string) {
     createDrawer: useMutation({ mutationFn: (input: Parameters<typeof createInventoryDrawer>[0]) => createInventoryDrawer(input, accessPassword), onSuccess: invalidate }),
     quantityTag: useMutation({ mutationFn: (input: Parameters<typeof registerInventoryQuantityTag>[0]) => registerInventoryQuantityTag(input, accessPassword), onSuccess: invalidate }),
     restockTag: useMutation({ mutationFn: (uid: string) => registerInventoryRestockTag(uid, accessPassword), onSuccess: invalidate }),
-    transaction: useMutation({ mutationFn: processInventoryTransaction, onSuccess: invalidate }),
-    cancel: useMutation({ mutationFn: (id: string) => cancelInventoryTransaction(id, accessPassword), onSuccess: invalidate }),
-    correction: useMutation({ mutationFn: (input: Parameters<typeof correctInventoryStock>[0]) => correctInventoryStock(input, accessPassword), onSuccess: invalidate }),
+    transaction: useMutation({ mutationFn: processInventoryTransaction, onSuccess: updateStock }),
+    cancel: useMutation({ mutationFn: (id: string) => cancelInventoryTransaction(id, accessPassword), onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: inventoryKeys.items });
+      invalidateStock();
+    } }),
+    correction: useMutation({ mutationFn: (input: Parameters<typeof correctInventoryStock>[0]) => correctInventoryStock(input, accessPassword), onSuccess: updateStock }),
     move: useMutation({ mutationFn: ({ id, drawerId }: { id: string; drawerId: string }) => moveInventoryCompartment(id, drawerId, accessPassword), onSuccess: invalidate }),
     addToolFieldValue: useMutation({
       mutationFn: ({ field, value }: { field: InventoryOptionField; value: string }) => addInventoryToolFieldValue(field, value, accessPassword),

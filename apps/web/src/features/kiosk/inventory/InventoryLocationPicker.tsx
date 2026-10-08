@@ -55,7 +55,7 @@ export function InventoryLocationPicker({ items, loading, onPick, onClose }: Pro
             return (
               <button key={compartment.id} type="button" className="flex items-center gap-3 rounded-[14px] border border-inv-line bg-inv-s2 p-3 text-left hover:border-inv-cyan" onClick={() => onPick(compartment)}>
                 {photo
-                  ? <img src={inventoryThumbnailUrl(photo.photoUrl)} alt="" className="h-20 w-20 shrink-0 rounded-lg object-cover" />
+                  ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt="" className="h-20 w-20 shrink-0 rounded-lg object-cover" />
                   : <span className="h-20 w-20 shrink-0 rounded-lg bg-inv-s3" aria-hidden="true" />}
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="text-xs tabular-nums text-inv-faint">引出し{compartment.drawerNumber}</span>
