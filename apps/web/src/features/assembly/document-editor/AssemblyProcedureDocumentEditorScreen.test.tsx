@@ -74,6 +74,7 @@ function makeController(
     redo: vi.fn(),
     addOverlay: vi.fn(),
     duplicateSelectedOverlay: vi.fn(),
+    duplicateOverlayToCurrentPage: vi.fn(),
     messageIsError: false,
     addBlankPage: vi.fn(async () => undefined),
     placeMaterial: vi.fn(async () => undefined),
@@ -165,6 +166,28 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: '部品を開く' }));
     expect(screen.getByRole('listbox')).toBeInTheDocument();
     expect(localStorage.getItem('assembly-document-editor-parts-pane')).toBe('open');
+  });
+
+  it('wires all draft pages and reuse, selects the visible copy without inheriting hiding', () => {
+    const source: AssemblyProcedureOverlayElement = { id: 'source', kind: 'SHAPE', shape: 'RECTANGLE', pageIndex: 0, zIndex: 2, bbox: { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.2 } };
+    const copy = { ...source, id: 'copy', pageIndex: 1, zIndex: 0 };
+    const controller = makeController({ elements: [source], selectedPageElements: [source], selectedOverlayId: source.id });
+    const view = renderScreen(controller);
+    fireEvent.click(screen.getByRole('button', { name: '隠す' }));
+    const next = { ...controller, selectedPageIndex: 1, selectedPage: { pageIndex: 1, imageRelativePath: '/pages/2.png', overlays: [] }, selectedPageElements: [], selectedOverlayId: null };
+    view.rerender(<AssemblyProcedureDocumentEditorProvider value={next}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} /></AssemblyProcedureDocumentEditorProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'ほか 1' }));
+    expect(screen.getByRole('heading', { name: 'p1' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('option'));
+    expect(controller.duplicateOverlayToCurrentPage).toHaveBeenCalledExactlyOnceWith('source');
+    const copied = { ...next, elements: [source, copy], selectedPageElements: [copy], selectedOverlayId: copy.id, selectedElement: copy };
+    view.rerender(<AssemblyProcedureDocumentEditorProvider value={copied}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} /></AssemblyProcedureDocumentEditorProvider>);
+    expect(screen.getByRole('listbox', { name: 'このページの部品' })).toBeInTheDocument();
+    expect(screen.getByRole('option')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('option')).not.toHaveClass('opacity-40');
+    expect(screen.getByTestId('editor-canvas')).toHaveAttribute('data-elements', 'copy');
+    expect(screen.getByRole('button', { name: 'このページ 1' })).toBeInTheDocument();
+    expect(source.pageIndex).toBe(0);
   });
 
   it.each(['getItem', 'setItem'] as const)('keeps pane controls usable when storage %s fails', method => {

@@ -38,6 +38,7 @@ vi.mock('../../../api/client', () => ({
 
 import { clearProcedureEditorAccess, readProcedureEditorAccess, saveProcedureEditorAccess } from '../procedureEditorAccess';
 
+import { createOverlayForRange } from './assemblyDocumentEditorDraft';
 import { readAssemblyDocumentEditorRecovery } from './assemblyDocumentEditorRecovery';
 import { useAssemblyProcedureDocumentEditorController } from './useAssemblyProcedureDocumentEditorController';
 
@@ -103,6 +104,66 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     act(() => hook.result.current.setSelectedPageIndex(1));
     act(() => hook.result.current.addOverlay('SHAPE'));
     expect(hook.result.current.selectedElement?.zIndex).toBe(101);
+  });
+
+  it.each(['TEXT', 'IMAGE', 'SHAPE'] as const)('copies another page’s %s, selects it, keeps its source and undoes in one step', async kind => {
+    const created = createOverlayForRange(kind, 1, range);
+    const source = { ...created, ...(created.kind === 'IMAGE' ? { assetId: 'shared-asset' } : {}), id: 'source', zIndex: 100 };
+    const front = { ...createOverlayForRange('SHAPE', 0, range), id: 'front', zIndex: 5 };
+    const hook = renderEditor(makeDocument({ pages: [
+      { pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [front] },
+      { pageIndex: 1, imageRelativePath: '/pages/2.png', overlays: [source] }
+    ] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
+    const initial = hook.result.current.elements;
+    act(() => hook.result.current.duplicateOverlayToCurrentPage('source'));
+    const copy = hook.result.current.selectedElement!;
+    expect(copy.id).not.toBe('source');
+    expect(copy).toEqual({ ...source, id: copy.id, pageIndex: 0, zIndex: 6 });
+    expect(copy.bbox).not.toBe(source.bbox);
+    expect(hook.result.current.selectedPageElements).toEqual([front, copy]);
+    expect(hook.result.current.elements.find(element => element.id === 'source')).toEqual(source);
+    expect(hook.result.current.isDirty).toBe(true);
+    act(() => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual(initial);
+    expect(hook.result.current.isDirty).toBe(false);
+    expect(hook.result.current.canUndo).toBe(false);
+    act(() => hook.result.current.redo());
+    expect(hook.result.current.selectedElement).toEqual(copy);
+    act(() => hook.result.current.updateElement({ ...copy, bbox: { ...copy.bbox, xRatio: 0.5 } }));
+    expect(hook.result.current.elements.find(element => element.id === 'source')).toEqual(source);
+    act(() => hook.result.current.setSelectedPageIndex(1));
+    act(() => hook.result.current.duplicateOverlayToCurrentPage('front'));
+    expect(hook.result.current.selectedElement).toMatchObject({ pageIndex: 1, zIndex: 101 });
+  });
+
+  it('guards reuse when read-only, busy, missing or already on the current page', async () => {
+    const source = { ...createOverlayForRange('SHAPE', 1, range), id: 'source' };
+    const hook = renderEditor(makeDocument({ pages: [
+      { pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [] },
+      { pageIndex: 1, imageRelativePath: '/pages/2.png', overlays: [source] }
+    ] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
+    act(() => hook.result.current.duplicateOverlayToCurrentPage('missing'));
+    act(() => hook.result.current.setSelectedPageIndex(1));
+    act(() => hook.result.current.duplicateOverlayToCurrentPage('source'));
+    act(() => hook.result.current.setSelectedPageIndex(0));
+    let finish: (document: AssemblyProcedureDocumentDto) => void = () => undefined;
+    apiMocks.addBlankPage.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    let pending: Promise<void>;
+    act(() => { pending = hook.result.current.addBlankPage(); });
+    expect(hook.result.current.busy).toBe(true);
+    act(() => hook.result.current.duplicateOverlayToCurrentPage('source'));
+    expect(hook.result.current.elements).toEqual([source]);
+    await act(async () => { finish(hook.result.current.document!); await pending; });
+    act(() => hook.result.current.setSelectedPageIndex(0));
+    act(() => clearProcedureEditorAccess());
+    expect(hook.result.current.readOnly).toBe(true);
+    act(() => hook.result.current.duplicateOverlayToCurrentPage('source'));
+    expect(hook.result.current.elements).toEqual([source]);
+    expect(hook.result.current.canUndo).toBe(false);
   });
 
   it('uses valid entrance access without asking or verifying again', async () => {

@@ -9,6 +9,7 @@ import type {
 export type OverlayDraftAction =
   | { type: 'replace'; elements: AssemblyProcedureOverlayElement[]; preserveHistory?: boolean }
   | { type: 'add'; element: AssemblyProcedureOverlayElement }
+  | { type: 'duplicate'; sourceId: string; id: string; pageIndex: number }
   | { type: 'update'; element: AssemblyProcedureOverlayElement }
   | { type: 'remove'; id: string }
   | { type: 'bringForward'; id: string }
@@ -66,6 +67,12 @@ export function overlayDraftReducer(
       return action.elements.map((element) => ({ ...element }));
     case 'add':
       return [...state, { ...action.element, zIndex: nextPageZIndex(state, action.element.pageIndex) }];
+    case 'duplicate': {
+      const source = state.find((element) => element.id === action.sourceId);
+      if (!source) return state;
+      const copy = { ...structuredClone(source), id: action.id, pageIndex: action.pageIndex, zIndex: nextPageZIndex(state, action.pageIndex) };
+      return [...state, copy];
+    }
     case 'update':
       return state.map((element) => (element.id === action.element.id ? action.element : element));
     case 'remove':

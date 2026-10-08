@@ -12,6 +12,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Progress
 
+- [x] (2026-10-08) 部品をほかのページで使う: 部品ペインに「このページ / ほか」の切替を追加し、ほかのページの部品を現在ページへ複製して置けるようにした(Web のみ、undo 1 回で取り消し、読み取り専用・処理中は置けない)。検証: `vitest run src/features/assembly` 617 件成功、web lint、`tsc -b` 成功。本番反映は未実施。
 - [x] (2026-10-07) 本番反映の記録 9: #1808(矢印の反転・線幅 0.5・重なり順の振り直し)を merge b938e2dd(15:40、追跡 04 不在のためユーザー許可でこのセッションが merge)、Pi5 release run 20261007-064737-e5225d(15:47→15:52 success、failed=0)。#1809(素材棚の分類と加工候補の上限 1000)を merge b9465e24(16:44)、run 20261007-075604-af7d5b(16:56→17:02 success)。#1810(矢印の 8 方向「向き」と線・矢印の実寸描画)を merge 9792ae8f(17:39)、run 20261007-084633-3c25d5(17:46→17:52 success)。いずれも稼働イメージ api/web が merge SHA、/・/admin・/kiosk・/api/system/health 200、API エラーログ 0 件、Pi4/Pi3 対象外。実機確認はユーザー待ち(素材棚の束、矢印の向き)。
 - [x] (2026-10-07) 実機指摘(#1808 反映後): 矢印を右上・左下へ向けられない。始点・終点が範囲の左上→右下の対角で作られ、反転しても逆対角にしかならないため、右ペインに「向き」の 8 方向ボタン(斜めは対角、上下左右は辺の中点同士)を追加。レビューで、線・矢印の描画が正方形前提(viewBox 0 0 1 1)で細長い範囲では線が中央に縮む既存不具合が判明し、範囲の実寸(px)で描き矢じりは線幅比例にする修正も同梱。Codex(gpt-6.1-sol/high)実装。
 - [x] (2026-10-07) 実機指摘: 素材棚の「加工」写真が 60 件までで全件出ず、全件出すと分類が無いと見渡せない(未配置も同様)。承認済みモック `docs/design-previews/material-shelf-grouping-mock.html` のとおり、カードを折りたためる束にする(加工は品番ごと、未配置/配置済みはヒントごと、ヒントなしは最後。見出しに件数と「束を全部選ぶ」。最初は先頭だけ開き、検索時は該当する束だけを開く)。加工の上限は Web 1000 件(API の丸め上限も 1000)。Codex(gpt-6.1-sol/high)実装。
@@ -153,6 +154,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Evidence: `infrastructure/docker/docker-compose.server.yml` の API volumes と named volumes。今回の infrastructure 変更禁止により未修正。本番反映前に別依頼で永続マウントを追加する必要がある。
 
 ## Decision Log
+
+- Decision (2026-10-08): 部品を別のページで使う手段は、同じ手順書内の「独立した複製」にする(オーナー承認、モック `docs/design-previews/editor-parts-reuse-mock.html`)。部品ペインの見出しに「このページ / ほか」の切替を置き、「ほか」の部品を押すと現在ページの同じ位置へ複製を置いて選択する。元の部品とは連動しない。別の手順書への持ち出しは対象外。
+  Rationale: 要素は文書全体の配列で持っており、同一文書内で 1 つの asset を複数要素が参照することは保存と GC が既に許しているため、API・DB を変えずに済む。未配置の切り抜きを持ち続ける共通ライブラリや文書間の再利用は、asset のリースと GC に手が入るため見送った。ページ寸法をエディタが持たないので bbox はそのまま複製し、縦横比の違うページでは画像の比率が変わりうる。
 
 - Decision (2026-10-06): サーバー発行トークンが無いため、暗証番号はタブのメモリにだけ持ち(最長 8 時間)、保存領域(sessionStorage)には期限と端末鍵の短い指紋(FNV-1a、復元不可)だけを置く(CodeQL js/clear-text-storage-of-sensitive-data #113 への対応。再読み込みすると再入力)。将来は用途限定トークンへ。
   Rationale: 暗証番号の永続保存を避け、端末認証の変更と期限到達時に破棄する。

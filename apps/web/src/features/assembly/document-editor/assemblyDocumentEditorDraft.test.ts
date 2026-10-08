@@ -47,6 +47,26 @@ describe('assembly document editor draft reducer', () => {
     expect(elements.map(element => element.zIndex)).toEqual([8, 3, 100]);
   });
 
+  it.each(['TEXT', 'IMAGE', 'SHAPE'] as const)('duplicates %s with independent properties and a page-local front z-index', kind => {
+    const source = createOverlayForRange(kind, 2, bbox);
+    const front = { ...createOverlayForRange('SHAPE', 0, bbox), zIndex: 7 };
+    const initial = [source, front];
+    const next = overlayDraftReducer(initial, { type: 'duplicate', sourceId: source.id, id: 'copy', pageIndex: 0 });
+    const copy = next[2];
+    expect(copy).toEqual({ ...source, id: 'copy', pageIndex: 0, zIndex: 8 });
+    expect(next.slice(0, 2)).toEqual(initial);
+    expect(copy.bbox).not.toBe(source.bbox);
+    copy.bbox.xRatio = 0.4;
+    expect(source.bbox.xRatio).toBe(0.1);
+    if (copy.kind === 'TEXT' && source.kind === 'TEXT') {
+      expect(copy.style).not.toBe(source.style);
+      expect(copy.mask).not.toBe(source.mask);
+    }
+    if (copy.kind === 'IMAGE' && source.kind === 'IMAGE') expect(copy.assetId).toBe(source.assetId);
+    expect(overlayDraftReducer(initial, { type: 'duplicate', sourceId: 'missing', id: 'none', pageIndex: 0 })).toBe(initial);
+    expect(overlayDraftReducer([source], { type: 'duplicate', sourceId: source.id, id: 'empty', pageIndex: 1 })[1].zIndex).toBe(0);
+  });
+
   it('starts at zero on an empty page and handles negative existing z-indices', () => {
     const created = createOverlayForRange('SHAPE', 0, bbox);
     expect(overlayDraftReducer([], { type: 'add', element: created })[0].zIndex).toBe(0);
