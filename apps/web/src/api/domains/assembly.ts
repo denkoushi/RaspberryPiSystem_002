@@ -1151,6 +1151,13 @@ export async function replaceProcedureVideoComments(id: string, comments: import
   return data.comments;
 }
 
+export async function getProcedureManualOverview(processId?: string, published?: boolean) {
+  const { data } = await api.get<import('../../features/assembly/types').ProcedureManualOverviewDto>(
+    '/assembly/procedure-manuals/overview', { params: { processId, published } }
+  );
+  return data;
+}
+
 export async function getProcedureManualModelOverview(modelCodeKey: string) {
   const { data } = await api.get<import('../../features/assembly/types').ProcedureManualModelOverviewDto>(
     `/assembly/procedure-manuals/models/${encodeURIComponent(modelCodeKey)}/overview`

@@ -76,11 +76,35 @@ export class ProcedureManualService {
 
   async getModelOverview(modelCode: string) {
     const modelCodeKey = modelKey(modelCode);
+    const { processes, rows, items } = await this.loadOverview({ modelCodeKey });
+    return {
+      modelCode: rows[0]?.modelCode ?? modelCodeKey, modelCodeKey,
+      processes: processes.filter(process => process.parentId).map(process => {
+        const processItems = items.filter(({ row }) => row.processId === process.id).map(({ item }) => item);
+        return { processId: process.id, count: processItems.length, items: processItems };
+      })
+    };
+  }
+
+  async getOverview(processId?: string, published = false) {
+    const { processes, items } = await this.loadOverview(processId ? { processId } : {});
+    return {
+      processes: processes.filter(process => process.parentId && (!processId || process.id === processId)).map(process => {
+        const processItems = items.filter(({ row, item }) => row.processId === process.id && (!published || item.status === 'published')).map(({ row, item }) => ({
+          modelCode: row.modelCode, modelCodeKey: row.modelCodeKey, processId: row.processId, ...item,
+          draftRevision: published ? null : item.draftRevision
+        }));
+        return { processId: process.id, count: processItems.length, items: processItems };
+      })
+    };
+  }
+
+  private async loadOverview(where: Prisma.ProcedureManualAssignmentWhereInput) {
     const [processes, rows] = await Promise.all([
       this.listProcesses(),
       prisma.procedureManualAssignment.findMany({
-        where: { modelCodeKey },
-        orderBy: [{ processId: 'asc' }, { sortOrder: 'asc' }],
+        where,
+        orderBy: [{ modelCodeKey: 'asc' }, { processId: 'asc' }, { sortOrder: 'asc' }],
         include: { kioskDocument: { select: assemblyProcedureSequenceKioskDocumentSelect } }
       })
     ]);
@@ -113,7 +137,6 @@ export class ProcedureManualService {
       families.set(rootId, family);
     }
     const now = new Date();
-    const itemsByProcess = new Map<string, ReturnType<typeof toItem>[]>();
     function toItem(row: typeof rows[number]) {
       const allRevisions = families.get(row.assemblyProcedureDocumentId ?? '') ?? [];
       const family = allRevisions
@@ -149,18 +172,7 @@ export class ProcedureManualService {
         thumbnailPageUrl: isPdf || !display ? null : display.pages[0]?.imageRelativePath ?? display.imageRelativePath
       };
     }
-    for (const row of rows) {
-      const items = itemsByProcess.get(row.processId) ?? [];
-      items.push(toItem(row));
-      itemsByProcess.set(row.processId, items);
-    }
-    return {
-      modelCode: rows[0]?.modelCode ?? modelCodeKey, modelCodeKey,
-      processes: processes.filter(process => process.parentId).map(process => {
-        const items = itemsByProcess.get(process.id) ?? [];
-        return { processId: process.id, count: items.length, items };
-      })
-    };
+    return { processes, rows, items: rows.map(row => ({ row, item: toItem(row) })) };
   }
 
   async getAssignments(modelCode: string, processId: string) {
