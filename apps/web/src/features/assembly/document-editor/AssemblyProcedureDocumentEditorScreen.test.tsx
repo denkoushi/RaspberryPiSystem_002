@@ -69,7 +69,7 @@ function makeController(
     layoutSuggestions: {
       state: { status: 'idle' }, locked: false, canSuggest: false,
       start: vi.fn(async () => undefined), cancel: vi.fn(), apply: vi.fn(),
-      previewElements: null, selectPlan: vi.fn(), showBefore: vi.fn()
+      previewElements: null, showBefore: vi.fn()
     },
     onEditLeaseError: vi.fn(() => false),
     beginOverlayDrag: vi.fn(),
@@ -476,15 +476,14 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     expect(c.layoutSuggestions.cancel).toHaveBeenCalledOnce();
   });
 
-  it('shows proposals on the canvas and routes before/after, plan, apply and cancel actions', () => {
+  it('shows proposals on the canvas and routes before/after, apply and cancel actions', () => {
     const c = makeController({ readOnly: true });
     const proposed: AssemblyProcedureOverlayElement[] = [{ id: 'proposal', kind: 'TEXT', pageIndex: 0, text: '手順', zIndex: 0, bbox: { xRatio: 0.1, yRatio: 0.1, widthRatio: 0.8, heightRatio: 0.2 } }];
-    c.layoutSuggestions = { ...c.layoutSuggestions, locked: true, previewElements: proposed, state: { status: 'preview', planKey: 'standard', before: false, plans: [{ key: 'standard', elements: proposed }, { key: 'largePhoto', elements: proposed }] } };
+    c.layoutSuggestions = { ...c.layoutSuggestions, locked: true, previewElements: proposed, state: { status: 'preview', before: false, suggestion: { elements: proposed, addedElementIds: [], changes: ['文章を写真の右にそろえた'] } } };
     renderScreen(c);
     expect(screen.getByTestId('editor-canvas')).toHaveAttribute('data-elements', 'proposal');
-    expect(screen.getByText('余白・写真の幅・文字の大きさをそろえ、1手順を1行にしました')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '案2 写真大きめ' }));
-    expect(c.layoutSuggestions.selectPlan).toHaveBeenCalledWith('largePhoto');
+    expect(screen.getByText('文章を写真の右にそろえた')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: '配置案' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '前', exact: true }));
     fireEvent.click(screen.getByRole('button', { name: '後', exact: true }));
     expect(c.layoutSuggestions.showBefore).toHaveBeenNthCalledWith(1, true);

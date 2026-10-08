@@ -11,8 +11,8 @@ describe('procedure layout suggestion contracts', () => {
   it('preserves exact draft text after validating the overlay contract', () => {
     const request = procedureLayoutSuggestionRequestSchema.parse({ pageIndex: 0, elements });
     expect(request.elements[0]).toMatchObject({ text: '  1 手順\n' });
-    const response = procedureLayoutSuggestionResponseSchema.parse({ plans: [{ key: 'standard', elements }, { key: 'largePhoto', elements }] });
-    expect(response.plans[0].elements[0]).toMatchObject({ text: '  1 手順\n' });
+    const response = procedureLayoutSuggestionResponseSchema.parse({ elements, addedElementIds: [], changes: ['文章をそろえた'] });
+    expect(response.elements[0]).toMatchObject({ text: '  1 手順\n' });
   });
   it.each([
     { pageIndex: 1, elements },
@@ -23,10 +23,13 @@ describe('procedure layout suggestion contracts', () => {
   ])('rejects other pages, insufficient elements, duplicate/missing IDs and overflow (%j)', (request) => {
     expect(procedureLayoutSuggestionRequestSchema.safeParse(request).success).toBe(false);
   });
-  it('requires exactly the two named plans in the shared response', () => {
-    const first = { key: 'standard', elements };
-    expect(procedureLayoutSuggestionResponseSchema.safeParse({ plans: [first] }).success).toBe(false);
-    expect(procedureLayoutSuggestionResponseSchema.safeParse({ plans: [first, first] }).success).toBe(false);
-    expect(procedureLayoutSuggestionResponseSchema.safeParse({ plans: [first, { key: 'largePhoto', elements }, first] }).success).toBe(false);
+  it('requires one complete suggestion with at most eight changes', () => {
+    const response = { elements, addedElementIds: ['text'], changes: ['文章を足した'] };
+    expect(procedureLayoutSuggestionResponseSchema.safeParse(response).success).toBe(true);
+    for (const invalid of [
+      { plans: [] }, { ...response, changes: Array(9).fill('変更') },
+      { ...response, addedElementIds: ['photo'] }, { ...response, addedElementIds: ['unknown'] },
+      { ...response, addedElementIds: ['text', 'text'] }, { ...response, changes: [] }
+    ]) expect(procedureLayoutSuggestionResponseSchema.safeParse(invalid).success).toBe(false);
   });
 });

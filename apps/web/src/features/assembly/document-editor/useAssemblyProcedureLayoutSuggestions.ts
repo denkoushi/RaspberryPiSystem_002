@@ -8,7 +8,7 @@ import type { AssemblyProcedureOverlayElement, ProcedureLayoutSuggestionResponse
 type LayoutSuggestionState =
   | { status: 'idle' }
   | { status: 'pending'; seconds: number }
-  | { status: 'preview'; plans: ProcedureLayoutSuggestionResponse['plans']; planKey: 'standard' | 'largePhoto'; before: boolean }
+  | { status: 'preview'; suggestion: ProcedureLayoutSuggestionResponse; before: boolean }
   | { status: 'error'; message: string };
 
 export function useAssemblyProcedureLayoutSuggestions(input: {
@@ -52,7 +52,7 @@ export function useAssemblyProcedureLayoutSuggestions(input: {
     try {
       const response = await suggestAssemblyProcedureLayout({ id: input.documentId, pageIndex: input.pageIndex, elements: input.elements, accessPassword: input.accessPassword, holderToken: input.holderToken, signal: controller.signal });
       if (request.current !== controller || controller.signal.aborted) return;
-      setState({ status: 'preview', plans: response.plans, planKey: 'standard', before: false });
+      setState({ status: 'preview', suggestion: response, before: false });
     } catch (error) {
       if (request.current !== controller || controller.signal.aborted) return;
       input.onEditLeaseError(error);
@@ -62,7 +62,7 @@ export function useAssemblyProcedureLayoutSuggestions(input: {
       if (request.current === controller) request.current = null;
     }
   };
-  const proposal = state.status === 'preview' ? state.plans.find(plan => plan.key === state.planKey)!.elements : null;
+  const proposal = state.status === 'preview' ? state.suggestion.elements : null;
   const apply = () => {
     if (input.disabled || !proposal) return;
     input.onApply(proposal);
@@ -70,8 +70,10 @@ export function useAssemblyProcedureLayoutSuggestions(input: {
   };
   return {
     state, locked, canSuggest, start, cancel, apply,
-    previewElements: state.status === 'preview' && !state.before ? proposal : null,
-    selectPlan: (planKey: 'standard' | 'largePhoto') => setState(current => current.status === 'preview' ? { ...current, planKey } : current),
+    // Preview-only mask: the proposal passed to onApply remains ordinary text.
+    previewElements: state.status === 'preview' && !state.before ? proposal?.map(element =>
+      element.kind === 'TEXT' && state.suggestion.addedElementIds.includes(element.id)
+        ? { ...element, mask: { enabled: true, color: '#fff2c6' } } : element) ?? null : null,
     showBefore: (before: boolean) => setState(current => current.status === 'preview' ? { ...current, before } : current)
   };
 }
