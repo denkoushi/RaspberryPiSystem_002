@@ -74,6 +74,66 @@
   text-shadow: 0 0 8px rgba(123, 255, 172, 0.9);
 }
 
+.hermes-floating-trigger__context-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid #071f18;
+  border-radius: 50%;
+  background: #9cf1b9;
+}
+
+.hermes-page-context-shortcuts {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  color: #c8ffda;
+  background: #0b2820;
+}
+
+.hermes-page-context-shortcuts__part {
+  min-width: 0;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hermes-page-context-shortcuts button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 4px 7px;
+  border: 1px solid rgba(156, 241, 185, 0.35);
+  border-radius: 7px;
+  color: inherit;
+  background: transparent;
+  font-size: 0.76rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.hermes-page-context-shortcuts button:hover:not(:disabled) {
+  background: rgba(113, 255, 161, 0.12);
+}
+
+.hermes-page-context-shortcuts button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.hermes-page-context-shortcuts svg {
+  width: 15px;
+  height: 15px;
+}
+
 @keyframes hermes-matrix-stream {
   0% {
     opacity: 0;

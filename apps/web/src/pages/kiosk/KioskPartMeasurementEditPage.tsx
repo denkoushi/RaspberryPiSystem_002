@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useMatch, useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useMatch, useNavigate, useParams } from 'react-router-dom';
 
 import {
   cancelPartMeasurementSheet,
@@ -10,6 +10,7 @@ import {
   patchPartMeasurementSheet,
   transferPartMeasurementEditLock
 } from '../../api/client';
+import { useHermesPageContext } from '../../components/hermes/HermesPageContext';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
@@ -35,6 +36,8 @@ function resultKey(pieceIndex: number, templateItemId: string) {
 export function KioskPartMeasurementEditPage() {
   const { sheetId } = useParams<{ sheetId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { setPageContext, clearPageContext } = useHermesPageContext();
   const clientKey = getResolvedClientKey();
   const isActiveRoute = useMatch('/kiosk/part-measurement/edit/:sheetId');
   const nfcEvent = useNfcStream(Boolean(isActiveRoute));
@@ -50,6 +53,16 @@ export function KioskPartMeasurementEditPage() {
   const [lockPrompt, setLockPrompt] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+
+  useEffect(() => {
+    const value = sheet?.fhincd?.trim();
+    if (value) {
+      setPageContext({ path: location.pathname, entity: { kind: 'partNumber', value } });
+    } else {
+      clearPageContext();
+    }
+    return clearPageContext;
+  }, [sheet?.fhincd, location.pathname, setPageContext, clearPageContext]);
 
   const syncCellsFromSheet = useCallback((s: PartMeasurementSheetDto) => {
     const next: Record<string, string> = {};
