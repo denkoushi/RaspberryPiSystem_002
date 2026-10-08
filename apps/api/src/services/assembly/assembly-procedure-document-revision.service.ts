@@ -232,7 +232,7 @@ export class AssemblyProcedureDocumentRevisionService {
         }))
       });
       if (sourceRecord.procedureVideoLinks?.length) {
-        await tx.procedureVideoLink.createMany({ data: sourceRecord.procedureVideoLinks.map((link) => ({ videoId: link.videoId, pageIndex: link.pageIndex, sortOrder: link.sortOrder, assemblyProcedureDocumentId: created.id })) });
+        await tx.procedureVideoLink.createMany({ data: sourceRecord.procedureVideoLinks.map((link) => ({ videoId: link.videoId, sceneId: link.sceneId, pageIndex: link.pageIndex, sortOrder: link.sortOrder, assemblyProcedureDocumentId: created.id })) });
       }
       if (sourceRecord.overlayElements.length > 0) {
         await tx.assemblyProcedureOverlayElement.createMany({

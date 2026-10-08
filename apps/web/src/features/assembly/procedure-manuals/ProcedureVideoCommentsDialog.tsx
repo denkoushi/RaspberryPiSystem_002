@@ -8,9 +8,9 @@ import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
 import { ProcedureVideoPlayer } from './ProcedureVideoPlayer';
 
-import type { ProcedureVideoCommentDto, ProcedureVideoSummaryDto } from './procedure-video-types';
+import type { ProcedureVideoCommentDto, ProcedureVideoDto } from './procedure-video-types';
 
-export function ProcedureVideoCommentsDialog({ video, onClose, onSaved }: { video: ProcedureVideoSummaryDto; onClose: () => void; onSaved: () => void }) {
+export function ProcedureVideoCommentsDialog({ video, onClose, onSaved }: { video: ProcedureVideoDto; onClose: () => void; onSaved: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [comments, setComments] = useState<ProcedureVideoCommentDto[]>([]);
   const [loading, setLoading] = useState(true);

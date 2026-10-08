@@ -5417,23 +5417,42 @@ model ProcedureVideo {
   updatedAt         DateTime @updatedAt
   links             ProcedureVideoLink[]
   comments          ProcedureVideoComment[]
+  scenes            ProcedureVideoScene[]
 
   @@index([status, updatedAt])
   @@index([discardedAt, receivedAt])
 }
 
+model ProcedureVideoScene {
+  id           String @id @default(uuid())
+  videoId      String
+  title        String
+  startSeconds Float
+  endSeconds   Float
+  posterStorageKey String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  video        ProcedureVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  links        ProcedureVideoLink[]
+
+  @@index([videoId, startSeconds])
+}
+
 model ProcedureVideoLink {
   id                          String @id @default(uuid())
   videoId                     String
+  sceneId                     String?
   assemblyProcedureDocumentId String
   pageIndex                   Int
   sortOrder                   Int
   createdAt                   DateTime @default(now())
   video                       ProcedureVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  scene                       ProcedureVideoScene? @relation(fields: [sceneId], references: [id], onDelete: Restrict)
   document                    AssemblyProcedureDocument @relation(fields: [assemblyProcedureDocumentId], references: [id], onDelete: Restrict)
 
   @@unique([assemblyProcedureDocumentId, pageIndex, sortOrder])
   @@index([videoId])
+  @@index([sceneId])
 }
 
 model ProcedureVideoComment {

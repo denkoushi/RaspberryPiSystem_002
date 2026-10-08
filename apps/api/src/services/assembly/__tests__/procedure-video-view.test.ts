@@ -17,6 +17,14 @@ describe('procedure-video document viewing', () => {
     expect(result.pages[0].videos.map((video) => video.id)).toEqual(['READY']);
     expect(serializeAssemblyProcedureDocumentRevision({ ...doc, status: 'PUBLISHED', pages: [{ pageIndex: 1, imageRelativePath: 'image' }] }).pages[0].videos).toEqual([]);
   });
+  it('serializes a scene title and range while keeping the video id for file access', () => {
+    const sceneLink = { ...links[0], sceneId: 'scene', scene: { title: '締付', startSeconds: 0.1, endSeconds: 1.2, posterStorageKey: 'procedure-videos/scenes/poster.jpg' } };
+    const result = serializeAssemblyProcedureDocumentRevision({ ...doc, status: 'PUBLISHED', procedureVideoLinks: [sceneLink, links[0]] });
+    expect(result.pages[0].videos).toEqual([
+      { id: 'READY', title: '締付', durationSeconds: 1.1, status: 'READY', sceneId: 'scene', startSeconds: 0.1, endSeconds: 1.2, hasScenePoster: true },
+      { id: 'READY', title: 'READY', durationSeconds: 3, status: 'READY', sceneId: null, startSeconds: null, endSeconds: null, hasScenePoster: false }
+    ]);
+  });
   it('returns only READY videos in the manual sequence', async () => {
     vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([{ id: 'assign', modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'p', sortOrder: 0, label: null, assemblyProcedureDocumentId: 'doc', kioskDocumentId: null }] as never);
     vi.spyOn(prisma.assemblyProcedureDocumentRevision, 'findFirst').mockResolvedValue({ document: doc } as never);
@@ -26,7 +34,7 @@ describe('procedure-video document viewing', () => {
   it('copies video links into a new revision without changing the published links', async () => {
     vi.spyOn(prisma, '$transaction').mockImplementation((async (work: any) => work(prisma)) as never);
     vi.spyOn(prisma, '$queryRaw').mockResolvedValue([{ id: 'doc', status: 'PUBLISHED', isActive: true, revisionRootId: 'doc', revisionNumber: 1, isRevisionHead: true, sourceAssetId: null }]);
-    vi.spyOn(prisma.assemblyProcedureDocument, 'findUnique').mockResolvedValue({ ...doc, procedureVideoLinks: [{ pageIndex: 0, sortOrder: 0, videoId: 'READY' }] } as never);
+    vi.spyOn(prisma.assemblyProcedureDocument, 'findUnique').mockResolvedValue({ ...doc, procedureVideoLinks: [{ pageIndex: 0, sortOrder: 0, videoId: 'READY', sceneId: 'scene' }] } as never);
     vi.spyOn(prisma.assemblyProcedureDocument, 'create').mockResolvedValue({ id: 'draft' } as never);
     vi.spyOn(prisma.assemblyProcedureDocumentRevision, 'update').mockResolvedValue({} as never);
     vi.spyOn(prisma.assemblyProcedureDocumentRevision, 'aggregate').mockResolvedValue({ _max: { revisionNumber: 1 } } as never);
@@ -35,7 +43,7 @@ describe('procedure-video document viewing', () => {
     const copy = vi.spyOn(prisma.procedureVideoLink, 'createMany').mockResolvedValue({ count: 1 });
     const remove = vi.spyOn(prisma.procedureVideoLink, 'deleteMany');
     await new AssemblyProcedureDocumentRevisionService({ requireAccessPassword: async () => undefined } as never, {} as never).createRevision('doc', 'pw');
-    expect(copy).toHaveBeenCalledExactlyOnceWith({ data: [{ videoId: 'READY', pageIndex: 0, sortOrder: 0, assemblyProcedureDocumentId: 'draft' }] });
+    expect(copy).toHaveBeenCalledExactlyOnceWith({ data: [{ videoId: 'READY', sceneId: 'scene', pageIndex: 0, sortOrder: 0, assemblyProcedureDocumentId: 'draft' }] });
     expect(remove).not.toHaveBeenCalled();
   });
   it('discards only the draft video links before deleting its document', async () => {
