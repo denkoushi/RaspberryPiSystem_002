@@ -49,6 +49,7 @@ export function registerPhotoStorageRoutes(app: FastifyInstance): void {
 
       // Content-Typeを設定
       reply.type('image/jpeg');
+      reply.header('Cache-Control', 'private, max-age=86400');
       
       // 画像データを返す
       return reply.send(imageBuffer);

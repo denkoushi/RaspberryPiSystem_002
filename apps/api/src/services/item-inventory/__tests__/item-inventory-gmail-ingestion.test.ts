@@ -131,6 +131,29 @@ describe('ItemInventoryGmailIngestionService', () => {
     expect(payloadCreate.mock.calls[0][0].data.manifest.location).toBe(' 30041R_2ＭＦ-Ｐ ');
   });
 
+  it('keeps a dismissed payload dismissed on same-message and same-content resends', async () => {
+    const payload = { id: 'dismissed-payload', status: 'DISMISSED' };
+    const { db, payloadCreate } = createFakeDb(new Map([['original', {
+      gmailMessageId: 'original', outcome: 'PENDING', payloadId: payload.id, nextRetryAt: null, updatedAt: new Date(), mailCleanupCompleted: true,
+    }]]));
+    db.inventoryImportPayload.findUnique.mockResolvedValue(payload as never);
+    resolvePacketMock.mockResolvedValue(validPacket);
+    const gmail = {
+      searchMessagesAll: vi.fn().mockResolvedValue(['original', 'resent']),
+      getMessage: vi.fn().mockResolvedValue({ payload: { headers: [{ name: 'Subject', value: '[ItemlistRaspi-photo] 2' }] } }),
+      getAttachment: vi.fn(),
+      markAsRead: vi.fn().mockResolvedValue(undefined),
+      trashMessage: vi.fn().mockResolvedValue(undefined),
+    };
+    const service = new ItemInventoryGmailIngestionService(vi.fn().mockResolvedValue(gmail), db as never);
+    await expect(service.runOnce({ config: config(), allowWait: true })).resolves.toMatchObject({ duplicate: 1, pending: 0 });
+    expect(gmail.getMessage).toHaveBeenCalledExactlyOnceWith('resent');
+    expect(db.inventoryImportPayload.findUnique).toHaveBeenCalledWith({ where: { contentHash: validPacket.contentHash } });
+    expect(payloadCreate).not.toHaveBeenCalled();
+    expect(payload.status).toBe('DISMISSED');
+    expect(gmail.trashMessage).toHaveBeenCalledWith('resent');
+  });
+
   it('does not trash a message whose manifest cannot be ingested', async () => {
     const { db } = createFakeDb(new Map());
     resolvePacketMock.mockRejectedValueOnce(new Error('manifest is invalid'));

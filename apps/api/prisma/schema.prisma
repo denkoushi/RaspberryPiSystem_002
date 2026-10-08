@@ -86,6 +86,7 @@ enum InventoryImportOutcome {
 
 enum InventoryImportPayloadStatus {
   PENDING
+  DISMISSED
   REGISTERED
   INVALID
   DUPLICATE
@@ -1098,6 +1099,7 @@ model InventoryCompartment {
   drawerId        String
   inventoryItemId String
   stockQuantity   Int                    @default(0)
+  lastIssuedAt    DateTime?
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
   drawer          InventoryDrawer        @relation(fields: [drawerId], references: [id], onDelete: Cascade)
