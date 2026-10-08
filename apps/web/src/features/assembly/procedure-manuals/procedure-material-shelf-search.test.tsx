@@ -11,6 +11,10 @@ describe('material shelf search boundaries', () => {
     expect([...container.querySelectorAll('mark')].map((mark) => mark.textContent)).toEqual(['MH-1', 'mh-1']);
     expect(container).toHaveTextContent('㍉ MH-1');
   });
+  it('skips highlighting when expansion and composition cancel out in length', () => {
+    const { container } = render(<ShelfHighlight text={'\ufb00e\u0301'} query="é" />);
+    expect(container.querySelector('mark')).toBeNull();
+  });
   it('uses local midnight for today, includes the seven-day boundary and excludes missing or future dates', () => {
     const now = new Date(2026, 9, 8, 12).getTime();
     expect(shelfPeriodMatches(new Date(2026, 9, 8, 0).toISOString(), 1, now)).toBe(true);

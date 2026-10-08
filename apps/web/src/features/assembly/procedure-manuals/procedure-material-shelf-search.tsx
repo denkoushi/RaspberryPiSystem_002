@@ -19,7 +19,7 @@ export const normalizeShelfQuery = (value: string) => value.normalize('NFKC').to
 export function ShelfHighlight({ text, query }: { text: string; query: string }) {
   const normalized = text.normalize('NFKC').toLowerCase();
   const needle = normalizeShelfQuery(query);
-  if (!needle || normalized.length !== text.length) return <>{text}</>;
+  if (!needle || normalized.length !== text.length || [...text].some((char) => char.normalize('NFKC').length !== char.length)) return <>{text}</>;
   const parts = [];
   let start = 0;
   let index = normalized.indexOf(needle);
@@ -34,6 +34,7 @@ export function ShelfHighlight({ text, query }: { text: string; query: string })
 export function useShelfLists(tab: ShelfTab, query: string, filtered: boolean, version: number) {
   const { entries: cache } = useMemo(() => ({ version, entries: new Map<string, ShelfEntry>() }), [version]);
   const [, update] = useState(0);
+  const [stale, setStale] = useState(0);
   const key = (value: ShelfTab) => JSON.stringify([value, query]);
   useEffect(() => {
     let cancelled = false;
@@ -41,7 +42,7 @@ export function useShelfLists(tab: ShelfTab, query: string, filtered: boolean, v
     for (const value of tabs) {
       const entryKey = JSON.stringify([value, query]);
       let entry = cache.get(entryKey);
-      if (!entry) {
+      if (!entry || entry.error) {
         const next: ShelfEntry = { promise: Promise.resolve() };
         next.promise = (value === 'knowledge' ? listProcedureKnowledgeCandidates({ q: query, limit: 100 }).then((knowledge) => ({ knowledge }))
           : value === 'workInstruction' ? listProcedureWorkInstructionCandidates({ q: query, limit: 1000 }).then((workInstructions) => ({ workInstructions }))
@@ -52,13 +53,14 @@ export function useShelfLists(tab: ShelfTab, query: string, filtered: boolean, v
       void entry.promise.then(() => { if (!cancelled) update((n) => n + 1); });
     }
     return () => { cancelled = true; };
-  }, [cache, filtered, query, tab]);
+  }, [cache, filtered, query, stale, tab]);
   const current = cache.get(key(tab));
   return { data: current?.data, loading: !current?.data && !current?.error, error: current?.error, getData: (value: ShelfTab) => cache.get(key(value))?.data, removeUnplaced: (id: string) => {
     for (const [entryKey, entry] of cache) {
-      if (JSON.parse(entryKey)[0] === 'unplaced' && entry.data?.materials) entry.data.materials = entry.data.materials.filter((item) => item.id !== id);
+      if (JSON.parse(entryKey)[0] !== 'unplaced') cache.delete(entryKey);
+      else if (entry.data?.materials) entry.data.materials = entry.data.materials.filter((item) => item.id !== id);
     }
-    update((n) => n + 1);
+    setStale((n) => n + 1);
   } };
 }
 

@@ -124,7 +124,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
   const [q, setQ] = useState('');
   const [state, setState] = useState<ProcedureMaterialState | 'knowledge' | 'workInstruction'>('unplaced');
   const [composing, setComposing] = useState(false);
-  const query = useShelfSearch(q, composing).normalize('NFKC').trim();
+  const query = useShelfSearch(q, composing).trim();
   const [filters, setFilters] = useState<ShelfFilters>(emptyShelfFilters);
   const filtered = Boolean(query || filters.sources.length || filters.kinds.length || filters.days);
   const [openGroups, setOpenGroups] = useState<Map<string, boolean>>(() => new Map());

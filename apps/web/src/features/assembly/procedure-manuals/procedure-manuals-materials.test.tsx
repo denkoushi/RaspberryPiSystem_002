@@ -121,7 +121,7 @@ describe('procedure-manuals material shelf', () => {
     mocks.workInstructions.mockResolvedValue({ items: [{ candidateKey: 'work:1', partNumber: 'MH-4521', shootingTarget: '外径', step: 1, memo: 'mh-4521 のメモ', assetId: 'asset', alreadyImported: false }] });
     render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'ＭＨ－４５２１' } });
-    await waitFor(() => expect(mocks.workInstructions).toHaveBeenCalledWith({ q: 'MH-4521', limit: 1000 }));
+    await waitFor(() => expect(mocks.workInstructions).toHaveBeenCalledWith({ q: 'ＭＨ－４５２１', limit: 1000 }));
     fireEvent.click(screen.getByRole('tab', { name: /^加工の写真/ }));
     const checkbox = await screen.findByRole('checkbox', { name: 'MH-4521 外径 手順 1' });
     const card = checkbox.closest('li')!;
@@ -167,7 +167,7 @@ describe('procedure-manuals material shelf', () => {
     await waitFor(() => expect(mocks.importWorkInstructions).toHaveBeenCalledExactlyOnceWith([{ candidateKey: 'work:1', partNumber: 'MH-1', shootingTarget: '外径' }]));
     expect(screen.getByRole('status', { name: '選択中の素材' })).toHaveTextContent('0 件を選択中');
   });
-  it('keeps successful tabs usable when another tab fails and omits its count', async () => {
+  it('keeps successful tabs usable when another tab fails, omits its count and retries it on revisit', async () => {
     mocks.knowledge.mockRejectedValue(new Error('候補の取得失敗'));
     render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
     await screen.findAllByRole('checkbox', { name: 'DFD1 組立' });
@@ -179,7 +179,10 @@ describe('procedure-manuals material shelf', () => {
     fireEvent.click(screen.getByRole('tab', { name: /^配置済み/ }));
     expect(await screen.findAllByRole('checkbox')).toHaveLength(2);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(mocks.knowledge).toHaveBeenCalledOnce();
+    mocks.knowledge.mockResolvedValue({ enabled: true, items: [] });
+    fireEvent.click(screen.getByRole('tab', { name: /^ナレッジから/ }));
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(mocks.knowledge.mock.calls.length).toBeGreaterThan(1);
   });
   it.each(['browse', 'place', 'replace'] as const)('shows a PDF card and creates a document in %s mode', async (mode) => {
     mocks.list.mockResolvedValue([{ ...photo, id: 'pdf', kind: 'PDF', subjectHint: null, originalFileName: '原本.pdf' }]);

@@ -20,7 +20,7 @@ export class ProcedureMaterialService {
     if (options.state === 'unplaced') Object.assign(where, { documentId: null, placedAt: null, discardedAt: null });
     if (options.state === 'placed') Object.assign(where, { discardedAt: null, OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] });
     if (options.state === 'discarded') where.discardedAt = { not: null };
-    if (options.q) where.AND = [{ OR: [{ subjectHint: { contains: options.q, mode: 'insensitive' } }, { originalFileName: { contains: options.q, mode: 'insensitive' } }] }];
+    if (options.q) where.AND = [{ OR: [...new Set([options.q, options.q.normalize('NFKC')])].flatMap((q) => [{ subjectHint: { contains: q, mode: 'insensitive' as const } }, { originalFileName: { contains: q, mode: 'insensitive' as const } }]) }];
     return this.db.procedureMaterial.findMany({ where, orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }], take: options.limit });
   }
 
