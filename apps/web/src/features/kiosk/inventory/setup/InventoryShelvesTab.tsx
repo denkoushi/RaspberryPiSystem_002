@@ -56,8 +56,10 @@ export function InventoryShelvesTab({ accessPassword }: { accessPassword: string
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 pt-4">
-      {done ? <p className={`rounded-xl border px-3 py-2 text-base font-bold ${invSuccess}`} role="status">{done}</p> : null}
-      {error ? <p className={`rounded-xl border px-3 py-2 text-base ${invError}`} role="alert">{error}</p> : null}
+      <div className="flex h-12 shrink-0 items-center gap-3 overflow-hidden">
+        {done ? <p className={`rounded-xl border px-3 py-2 text-base font-bold ${invSuccess}`} role="status">{done}</p> : null}
+        {error ? <p className={`rounded-xl border px-3 py-2 text-base ${invError}`} role="alert">{error}</p> : null}
+      </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-[360px_minmax(0,1fr)] gap-5">
         <section className="flex min-h-0 flex-col gap-2 overflow-y-auto" aria-label="エリア">

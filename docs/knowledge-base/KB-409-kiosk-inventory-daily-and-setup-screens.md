@@ -64,6 +64,24 @@ Do not merge to `main` until a standard release run has finished. The next run m
 - Areas are normalized (NFKC, trimmed) on intake, shelf creation and registration; existing rows were normalized once with `apps/api/scripts/inventory-area-normalize.mjs` (backup `/opt/backups/inventory-area-normalize-20260928.json`). Run scripts in the running blue/green API container (`docker ps | grep api`), not with `docker compose exec api`.
 - Each item has one unit (null means 個; no conversion). Units are chosen or added in 在庫の準備; quantity tags carry only a number.
 
+## Updates (2026-10-08)
+
+A review of every inventory screen for fewer steps and faster response; this is the first of three parts (small fixes on the web side only, no API change).
+
+- 在庫操作
+  - After a movement the item stays on screen but the prompt asks for the item tag again, because the selection is already cleared. Before, the screen asked for a quantity tag and the next quantity tag gave an error.
+  - The cancel button names its target (`取消：<item> <signed change><unit>`) and is shown only while there is something to cancel. Returning to the list (also the 30-second return) or choosing another drawer drops it. 選択をリセット is gone: 一覧へ does the same, and 補充をやめる appears only in restock mode with nothing chosen.
+  - The change (`−5`, `+10`) is shown large beside the stock number while the result is displayed.
+  - The list tells loading, failure (with もう一度) and empty apart.
+  - Any touch or key press on the screen restarts the 30-second return.
+  - A failed correction on a drawer without a tag re-reads the stock from the item list.
+- Speed: a movement or correction rewrites the cached item list from the response and refreshes only history, locations and tags; cancel also refreshes items. The item grid is memoized and its images load lazily. One `AudioContext` is reused for the tones.
+- 在庫の準備
+  - The chosen candidate and its draft (including a tag already read) live in the page, so they survive a visit to another tab and the arrival of a newer candidate. A candidate that is no longer waiting falls back to the newest one.
+  - 写真を確認した is no longer a required step.
+  - Result messages sit in a fixed-height row, so buttons below do not move.
+- Still open, planned as parts two and three: showing a scanned item without waiting for the tag lookup, smaller cached photos, and layout changes (filter by area and shelf on the list, touch-only issue, delete and undo in setup), which get a mock first.
+
 ## Updates (2026-10-02)
 
 - 在庫操作 showed 401 on a stock change (keypad correction or quantity tag) although the change was saved. The browser still sent an expired admin-console token. `authenticate` sets the reply status to 401 before throwing; `writeOrKiosk` caught the error and went on with the client key, so the handler succeeded but the response kept the 401. `writeOrKiosk` now resets the status after the client key is accepted, as the other routes with a token-then-client-key fallback already do (rigging, measuring instruments, assembly, part measurement, torque wrenches, work instructions, loan analytics). Setup actions with the PIN were not affected because they do not try the token first.
