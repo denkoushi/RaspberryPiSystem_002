@@ -9,6 +9,7 @@ import {
 import { Button } from '../../../components/ui/Button';
 import { Dialog } from '../../../components/ui/Dialog';
 import { Input } from '../../../components/ui/Input';
+import { normalizeWorkInstructionPartNumber } from '../../../lib/workInstructionRules';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
 import type { ProcedureManualAssignmentInput, ProcedureManualProcessDto } from '../types';
@@ -35,7 +36,8 @@ export function ProcedureManualAssignmentDialog({ modelCode: initialModel, proce
   const [loadFailed, setLoadFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const modelCodeKey = procedureManualModelKey(modelCode);
+  const isPart = processes.find(row => row.id === processId)?.subjectKind === 'PART';
+  const modelCodeKey = isPart ? normalizeWorkInstructionPartNumber(modelCode) : procedureManualModelKey(modelCode);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,8 +108,8 @@ export function ProcedureManualAssignmentDialog({ modelCode: initialModel, proce
     <Dialog isOpen onClose={busy ? () => undefined : onClose} title="割り当てを編集" size="lg" className="!bg-[#161c22] !text-[#eef3f6]">
       <div className="mt-3 grid gap-3">
         <div className="grid gap-2 sm:grid-cols-2">
-          <Input aria-label="型番" placeholder="型番" value={modelCode} disabled={busy} onChange={(e) => setModelCode(e.target.value)} />
-          <select aria-label="工程" className="min-h-11 rounded-md border border-white/20 bg-[#1f2730] px-2" value={processId} disabled={busy} onChange={(e) => setProcessId(e.target.value)}>
+          <Input aria-label={isPart ? '品番' : '型番'} placeholder={isPart ? '品番' : '型番'} className="min-h-11" value={modelCode} disabled={busy} onChange={(e) => setModelCode(e.target.value)} />
+          <select aria-label="工程" className="min-h-11 rounded-md border border-white/20 bg-[#1f2730] px-2" value={processId} disabled={busy} onChange={(e) => { if ((processes.find(row => row.id === e.target.value)?.subjectKind === 'PART') !== isPart) setModelCode(''); setProcessId(e.target.value); }}>
             {processes.filter((p) => p.parentId).map((p) => <option key={p.id} value={p.id}>{processes.find((parent) => parent.id === p.parentId)?.name} &gt; {p.name}</option>)}
           </select>
         </div>
@@ -130,7 +132,7 @@ export function ProcedureManualAssignmentDialog({ modelCode: initialModel, proce
             <Button variant="ghostOnDark" aria-label={`外す(紐づけ解除) ${index + 1}`} disabled={!canEdit} onClick={() => setItems(items.filter((_, i) => i !== index))}>外す(紐づけ解除)</Button>
           </li>)}
         </ol>
-        {loading ? <p role="status">読込中…</p> : items.length === 0 ? <p className="text-sm text-[#9fadb9]">まだ割り当てがありません。型番を入れて文書を追加してください</p> : null}
+        {loading ? <p role="status">読込中…</p> : items.length === 0 ? <p className="text-sm text-[#9fadb9]">まだ割り当てがありません。{isPart ? '品番' : '型番'}を入れて文書を追加してください</p> : null}
         {error ? <p role="alert" className="text-sm text-red-400">{error}</p> : null}
         <div className="flex justify-end gap-2">
           <Button variant="ghostOnDark" disabled={busy} onClick={onClose}>閉じる</Button>

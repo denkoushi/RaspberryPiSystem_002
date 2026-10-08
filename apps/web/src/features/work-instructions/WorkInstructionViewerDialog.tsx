@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Dialog } from '../../components/ui/Dialog';
+import { AssemblyProcedureSequenceViewer } from '../assembly/AssemblyProcedureSequenceViewer';
 
 import { SelfInspectionNonconformityPanel } from './SelfInspectionNonconformityPanel';
 import { WorkInstructionImageDialog } from './WorkInstructionImageDialog';
@@ -13,8 +14,11 @@ import {
 
 import type { SelfInspectionNonconformity } from '../../api/domains/self-inspection-nonconformities';
 import type { WorkInstructionGroup } from '../../api/domains/work-instructions';
+import type { AssemblyProcedureSequenceDto } from '../assembly/types';
 
 export type WorkInstructionViewerDialogProps = {
+  manualSequence?: AssemblyProcedureSequenceDto;
+  hasWorkInstruction?: boolean;
   isOpen: boolean;
   partNumber: string;
   shootingTarget: string;
@@ -32,6 +36,8 @@ export type WorkInstructionViewerDialogProps = {
 
 export function WorkInstructionViewerDialog({
   isOpen,
+  manualSequence,
+  hasWorkInstruction = true,
   partNumber,
   shootingTarget,
   group,
@@ -44,6 +50,10 @@ export function WorkInstructionViewerDialog({
   onRetryNonconformities,
   onEdit
 }: WorkInstructionViewerDialogProps) {
+  const [source, setSource] = useState<'original' | 'manual'>('original');
+  useEffect(() => { setSource('original'); setSelectedImageStepId(null); }, [isOpen, partNumber, shootingTarget]);
+  const hasManual = Boolean(manualSequence?.documents.length);
+  const showManual = hasManual && (!hasWorkInstruction || source === 'manual');
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [selectedImageStepId, setSelectedImageStepId] = useState<string | null>(null);
   const steps = useMemo(() => group?.steps ?? [], [group?.steps]);
@@ -87,7 +97,8 @@ export function WorkInstructionViewerDialog({
               {partNumber} ・ {shootingTarget}
             </p>
           </div>
-          {group?.updateAvailable ? (
+          {hasManual && hasWorkInstruction ? <div role="tablist" aria-label="資料" className="flex shrink-0 gap-1">{([['original', '加工要領書'], ['manual', '手順書']] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={source === value} className={`min-h-11 rounded-lg border border-white/25 px-3 text-sm font-bold ${source === value ? 'bg-cyan-950 text-cyan-50' : ''}`} onClick={() => { setSelectedImageStepId(null); setSource(value); }}>{label}</button>)}</div> : null}
+          {!showManual && group?.updateAvailable ? (
             <span
               className="shrink-0 rounded border border-amber-300/50 bg-amber-300/15 px-2 py-1 text-xs font-bold text-amber-100"
               role="status"
@@ -101,7 +112,7 @@ export function WorkInstructionViewerDialog({
             errorMessage={nonconformityErrorMessage}
             onRetry={onRetryNonconformities}
           />
-          {onEdit ? (
+          {onEdit && hasWorkInstruction && !showManual ? (
             <button
               type="button"
               className="min-h-11 shrink-0 rounded-md border border-cyan-300/50 px-3 text-sm font-bold text-cyan-100 hover:bg-cyan-300/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
@@ -121,7 +132,7 @@ export function WorkInstructionViewerDialog({
           </button>
         </header>
 
-        {isLoading ? (
+        {showManual && manualSequence ? <AssemblyProcedureSequenceViewer sequence={manualSequence} showCurrentMarkerButton={false} className="min-h-0 flex-1" /> : isLoading ? (
           <div className="flex min-h-0 flex-1 items-center justify-center bg-slate-950 px-4 text-sm font-semibold text-white/60" role="status">
             作業要領を読み込み中…
           </div>

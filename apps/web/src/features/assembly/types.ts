@@ -685,6 +685,7 @@ export type AssemblyTraceabilityDetailDto = {
 
 
 export type ProcedureManualProcessDto = {
+  subjectKind: 'MODEL' | 'PART';
   id: string;
   parentId: string | null;
   name: string;
@@ -749,4 +750,9 @@ export type ProcedureManualEditorContext = {
   processId: string;
   processName: string;
   mode: 'fix' | 'make';
+};
+
+export type ProcedureManualByPartDto = {
+  partNumber: string; partNumberKey: string;
+  processes: { processId: string; processName: string; sequence: AssemblyProcedureSequenceDto }[];
 };

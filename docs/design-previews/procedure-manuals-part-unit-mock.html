@@ -1,0 +1,420 @@
+<title>部品単位の手順書 モック</title>
+<style>
+/* Layout: a mock control strip on top, then one 1920x1080 kiosk screen scaled to the page width, then a short list of what changed. */
+:root{
+  color-scheme:dark;
+  --page:#0a0d10; --ink:#eef3f6; --muted:#9fadb9;
+  --bg:#0f1317; --panel:#161c22; --line:#27313b; --line2:#344252; --row:#1b222a;
+  --yellow:#f6b93b; --yellow-ink:#0b1a12; --focus:#7cc4ff;
+  --slate9:#0f172a; --slate95:#020617; --cyan:#a5f3fc; --cyan-bg:#0b3a47; --amber:#fde68a; --amber-bg:#4a2a06;
+  --green:#7ddc9a; --new:#ff8fb1;
+  --sans:"Hiragino Sans","Noto Sans JP","Yu Gothic UI","Meiryo",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono","Menlo","Consolas",monospace;
+}
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.6}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:0}
+button:disabled{cursor:not-allowed;opacity:.4}
+button:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.wrap{max-width:1500px;margin:0 auto;padding-inline:16px;padding-block:16px 40px;display:flex;flex-direction:column;gap:14px}
+.strip{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center}
+.strip h1{font-size:17px;margin:0;font-weight:800;letter-spacing:.04em}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{min-height:40px;padding:0 14px;border:1px solid var(--line2);border-radius:8px;color:var(--muted);font-weight:700}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--page);border-color:var(--ink)}
+.sim{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
+.sim span{color:var(--muted);font-size:13px}
+.sim button{min-height:40px;padding:0 12px;border:1px dashed var(--new);border-radius:8px;color:var(--new);font-family:var(--mono);font-size:13px;font-weight:700}
+.stage{position:relative;width:100%;overflow:hidden;border:1px solid var(--line2);border-radius:6px;background:var(--bg)}
+.screen{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;display:flex;flex-direction:column;overflow:hidden}
+.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px 28px;margin:0;padding:0;list-style:none}
+.notes li{min-width:0;padding-left:16px;position:relative;color:var(--muted)}
+.notes li::before{content:"";position:absolute;left:0;top:.62em;width:8px;height:8px;border-radius:50%;background:var(--new)}
+.notes b{color:var(--ink)}
+.mono{font-family:var(--mono)}
+.newdot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--new);margin-left:6px;vertical-align:middle}
+
+/* ---- 組立 > 要領書 作る・直す ---- */
+.ws{flex:1;min-height:0;display:grid;grid-template-rows:64px minmax(0,1fr);background:var(--bg)}
+.ws header{display:flex;align-items:center;gap:16px;padding:0 20px;background:var(--panel);border-bottom:1px solid var(--line)}
+.ws header h2{margin:0;font-size:26px;font-weight:900;letter-spacing:.1em}
+.pill{display:inline-flex;height:40px;align-items:center;gap:8px;border-radius:999px;background:#f6b93b29;color:var(--yellow);padding:0 14px;font-size:19px;font-weight:700}
+.ws .body{display:grid;grid-template-columns:460px minmax(0,1fr);min-height:0}
+.pane{display:flex;flex-direction:column;gap:10px;min-height:0;padding:16px;background:var(--panel);border-right:1px solid var(--line)}
+.pane h3{margin:0;font-size:16px;font-weight:700;letter-spacing:.1em;color:var(--muted);display:flex;align-items:center;gap:10px;min-height:36px}
+.procs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.procs button{height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;border:1px solid var(--line2);border-radius:8px;font-size:19px;font-weight:700;line-height:1.2;color:var(--muted)}
+.procs button span{font-family:var(--mono);font-size:14px;font-weight:400}
+.procs button[aria-pressed=true]{background:var(--yellow);border-color:var(--yellow);color:var(--yellow-ink)}
+.unit{margin-left:auto;display:flex;gap:4px}
+.unit button{min-height:36px;padding:0 12px;border:1px solid var(--line2);border-radius:999px;font-size:15px;font-weight:700;color:var(--muted)}
+.unit button[aria-pressed=true]{background:var(--line2);color:var(--ink)}
+.searchrow{display:flex;gap:8px}
+.searchrow input{flex:1;min-width:0;height:48px;border-radius:8px;border:1px solid var(--line2);background:#fff;color:#0f1317;padding:0 12px;font-size:21px;font-family:var(--sans)}
+.iconbtn{width:48px;height:48px;flex:none;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line2);border-radius:8px;color:var(--ink)}
+.iconbtn svg,.act svg{width:22px;height:22px}
+.pick{display:grid;grid-template-columns:64px minmax(0,1fr);gap:12px;min-height:0;flex:1}
+.digits{height:26px;font-size:20px;font-family:var(--mono);overflow:hidden}
+.tenkey{display:grid;gap:4px}
+.tenkey button{height:48px;border:1px solid var(--line2);border-radius:8px;font-size:21px;font-weight:700;font-family:var(--mono)}
+.cands{display:flex;flex-direction:column;gap:2px;overflow:auto;min-height:0}
+.cands button{display:flex;align-items:center;min-height:48px;flex:none;border-radius:8px;padding:0 12px;text-align:left;font-family:var(--mono);font-size:18px;font-weight:700}
+.cands button:hover,.cands button[aria-pressed=true]{background:var(--line)}
+.cands button i{margin-left:auto;font-style:normal;font-weight:400;font-size:16px;color:var(--muted)}
+.cands p{color:var(--muted);margin:6px 0;font-size:17px}
+.list{min-width:0;min-height:0;overflow:auto;padding:12px 16px}
+.lhead{display:flex;align-items:center;gap:12px;min-height:52px;margin-bottom:6px}
+.crumb{display:flex;align-items:center;gap:8px;font-size:22px;font-weight:900;margin:0}
+.crumb span{display:inline-flex;align-items:center;min-height:44px;gap:6px;border:1px solid var(--line2);border-radius:8px;padding:0 12px}
+.crumb span.none{border-style:dashed;color:var(--muted)}
+.crumb em{font-style:normal;font-size:14px;font-weight:700;color:var(--muted);letter-spacing:.08em}
+.count{font-family:var(--mono);font-size:18px;color:var(--muted)}
+.make{margin-left:auto;display:inline-flex;align-items:center;min-height:48px;padding:0 20px;border-radius:10px;background:var(--yellow);color:var(--yellow-ink);font-size:20px;font-weight:900}
+.row{display:grid;align-items:center;gap:12px;height:56px;padding:0 10px;border-bottom:1px solid var(--line)}
+.row:hover{background:var(--row)}
+.row .name{font-size:20px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .key{font-family:var(--mono);font-size:17px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .key small{font-family:var(--sans);font-size:12px;color:var(--muted);margin-right:6px;font-weight:700}
+.row .pr{font-size:17px;font-weight:700}
+.row .pg{font-family:var(--mono);color:var(--muted);text-align:right}
+.st{justify-self:start;border-radius:999px;padding:3px 12px;font-size:16px;font-weight:700}
+.st.pub{background:#7ddc9a22;color:var(--green)} .st.dr{background:#f6b93b1f;color:var(--yellow)}
+.acts{display:flex;gap:4px}
+.act{width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line2);border-radius:8px}
+.act.y{border-color:var(--yellow);color:var(--yellow)}
+.empty{padding:16px;font-size:18px;color:var(--muted)}
+.hint{margin-top:10px;font-size:17px;color:var(--muted)}
+
+.br{flex:1;min-height:0;display:grid;grid-template-columns:460px minmax(0,1fr);background:var(--bg)}
+.brl{display:flex;flex-direction:column;min-height:0;background:var(--panel)}
+.brl header{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.brl header h2{margin:0 10px 0 0;font-size:24px;font-weight:900;letter-spacing:.1em}
+.tool{min-height:44px;display:inline-flex;align-items:center;gap:8px;padding:0 14px;border:1px solid var(--line2);border-radius:8px;font-size:18px;font-weight:700}
+.tool svg{width:20px;height:20px}
+.brl .pane{flex:1}
+.brr{min-width:0;min-height:0;display:flex;flex-direction:column;background:var(--page)}
+.ovh,.ovr{display:grid;grid-template-columns:64px minmax(0,1fr) 250px 110px 90px;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--line);text-align:left}
+.ovh{font-size:17px;font-weight:700;color:var(--muted)}
+.ovr{width:100%;min-height:72px;font-size:19px}
+.ovr:hover{background:var(--row)}
+.ovr svg{width:64px;height:40px;border-radius:4px;display:block}
+.ovr .nm{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ovr .m{font-family:var(--mono)} .ovr .m small{font-family:var(--sans);font-size:12px;font-weight:700;color:var(--muted);margin-right:6px}
+.ovr .c{text-align:center;font-family:var(--mono)}
+.doct{display:flex;align-items:center;gap:12px;padding:10px 14px 0;font-size:20px;font-weight:800}
+.doct .tool{margin-left:auto}
+.doct span{font-family:var(--mono);font-size:16px;font-weight:400;color:var(--muted)}
+
+/* ---- 自主検査 ---- */
+.si{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;padding:8px;background:linear-gradient(180deg,#0b1220,#070b14)}
+.sibar{display:flex;align-items:center;gap:8px;min-height:52px}
+.sibar h2{margin:0 6px 0 4px;font-size:20px;font-weight:800}
+.fld{height:44px;border:1px solid #ffffff33;border-radius:6px;background:#ffffff0f;padding:0 10px;display:flex;align-items:center;font-family:var(--mono);font-size:16px;color:var(--ink);white-space:nowrap}
+.fld.ph{color:#ffffff66}
+.ghost,.sec,.pri{min-height:44px;padding:0 12px;border-radius:6px;font-size:16px;font-weight:700;white-space:nowrap;flex:none}
+.ghost{color:#ffffffcc} .sec{border:1px solid #ffffff40;background:#ffffff14} .pri{background:#10b981;color:#02140d}
+.status{flex:1;min-width:112px;border:1px solid #ffffff30;border-radius:4px;padding:5px 9px;font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.status.ok{border-color:#67e8f980;color:var(--cyan)} .status.err{border-color:#fda4af80;color:#fecdd3;background:#4c0519aa} .status.idle{color:#ffffff99}
+.chips{display:flex;gap:6px;flex:1;min-width:0}
+.chip{min-height:44px;flex:none;display:inline-flex;align-items:center;gap:7px;border-radius:999px;border:1px solid #a5f3fc80;background:var(--cyan-bg);color:#ecfeff;padding:0 13px;font-size:16px;font-weight:700}
+.chip.sim2{border-color:#fde68a99;background:var(--amber-bg);color:#fffbeb}
+.chip b{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;border-radius:999px;background:#ecfeff;color:#083344;font-family:var(--mono);font-size:14px}
+.chip.sim2 b{background:#fffbeb;color:#451a03}
+.simain{flex:1;min-height:0;overflow:auto;border:1px solid #ffffff26;border-radius:6px;background:#02061773;padding:8px}
+.cand{display:grid;grid-template-columns:150px 170px 190px 1fr 110px 220px;gap:12px;align-items:center;min-height:52px;padding:0 12px;border-bottom:1px solid #ffffff14;font-size:16px}
+.cand.h{min-height:36px;color:#ffffff80;font-size:13px;font-weight:700}
+.cand .m{font-family:var(--mono)}
+.simsg{padding:48px 0;text-align:center;color:#ffffff99;font-size:16px}
+
+/* ---- viewer ---- */
+.ov{position:absolute;inset:0;background:#000000b3;display:flex;padding:16px;z-index:5}
+.vw{flex:1;min-width:0;display:flex;flex-direction:column;border:1px solid #ffffff33;border-radius:8px;background:var(--slate95);overflow:hidden}
+.vw header{display:flex;align-items:center;gap:12px;min-height:60px;padding:8px 12px;background:var(--slate9);border-bottom:1px solid #ffffff26}
+.vw h3{margin:0;font-size:18px;font-weight:700;white-space:nowrap}
+.vw header p{margin:0;font-size:14px;color:#ffffff99;font-family:var(--mono);white-space:nowrap}
+.tabs{display:flex;gap:6px;margin-left:16px;min-width:0;flex:1}
+.tab{min-height:44px;max-width:420px;display:inline-flex;align-items:center;gap:8px;padding:0 14px;border:1px solid #ffffff33;border-radius:8px;font-size:16px;font-weight:700;color:#ffffffb3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tab small{font-size:12px;font-weight:700;padding:2px 7px;border-radius:999px;background:#ffffff1f;color:#ffffffcc}
+.tab[aria-selected=true]{background:#ecfeff;color:#083344;border-color:#ecfeff}
+.tab[aria-selected=true] small{background:#0833441f;color:#083344}
+.back{margin-left:auto;min-height:44px;padding:0 12px;border:1px solid #ffffff40;border-radius:6px;font-size:14px;font-weight:700;flex:none}
+.cards{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:12px;align-content:start}
+.card{border:1px solid #ffffff26;border-radius:8px;background:var(--slate9);overflow:hidden}
+.card svg{display:block;width:100%;height:auto}
+.card div{display:flex;gap:10px;padding:10px 12px;font-size:16px}
+.card div b{flex:none;width:28px;height:28px;border-radius:50%;background:#ecfeff;color:#083344;display:inline-flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:14px}
+.pages{flex:1;min-height:0;display:grid;grid-template-columns:180px minmax(0,1fr) 72px;gap:12px;padding:12px}
+.thumbs{display:flex;flex-direction:column;gap:8px;overflow:auto}
+.thumbs button{border:2px solid #ffffff26;border-radius:6px;overflow:hidden;position:relative}
+.thumbs button[aria-current=true]{border-color:var(--yellow)}
+.thumbs svg{display:block;width:100%;height:auto}
+.thumbs i{position:absolute;left:6px;top:4px;font-style:normal;font-family:var(--mono);font-size:13px;font-weight:700;color:#0f1317;background:#ffffffd9;border-radius:4px;padding:0 5px}
+.big{min-height:0;display:flex;align-items:center;justify-content:center;background:#0b0f14;border:1px solid #ffffff1f;border-radius:8px;overflow:hidden}
+.big svg{height:100%;width:auto;max-width:100%}
+.nav{display:flex;flex-direction:column;gap:10px;justify-content:center}
+.nav button{height:120px;border:1px solid #ffffff40;border-radius:8px;font-size:30px}
+.nav output{text-align:center;font-family:var(--mono);font-size:18px;color:#ffffffb3}
+
+/* ---- create dialog ---- */
+.dlg{margin:auto;width:680px;border:1px solid var(--line2);border-radius:14px;background:var(--panel);padding:24px;display:flex;flex-direction:column;gap:16px}
+.dlg h3{margin:0;font-size:24px;font-weight:900}
+.dlg .tags{display:flex;gap:8px;flex-wrap:wrap}
+.dlg .tags span{display:inline-flex;align-items:center;gap:8px;min-height:44px;border:1px solid var(--line2);border-radius:8px;padding:0 12px;font-size:19px;font-weight:700}
+.dlg .tags em{font-style:normal;font-size:13px;color:var(--muted)}
+.dlg input{height:52px;border-radius:8px;border:1px solid var(--line2);background:#fff;color:#0f1317;padding:0 12px;font-size:21px;font-family:var(--sans)}
+.dlg .btns{display:flex;justify-content:flex-end;gap:12px}
+.dlg .btns button{min-height:48px;padding:0 22px;border-radius:10px;font-size:19px;font-weight:800;border:1px solid var(--line2)}
+.dlg .btns .go{background:var(--yellow);color:var(--yellow-ink);border-color:var(--yellow)}
+@media (prefers-reduced-motion:no-preference){.chip,.tab,.procs button{transition:background-color .12s}}
+</style>
+
+<div class="wrap">
+  <div class="strip">
+    <h1>部品単位の手順書 モック</h1>
+    <div class="seg" role="group" aria-label="画面">
+      <button id="tab-si" aria-pressed="true">自主検査</button>
+      <button id="tab-vw" aria-pressed="false">組立 › 要領書（見る）</button>
+      <button id="tab-ws" aria-pressed="false">組立 › 要領書（作る・直す）</button>
+    </div>
+    <div class="sim" id="sim">
+      <span>読取りを再現</span>
+      <button data-scan="K2041-33871">両方ある品番</button>
+      <button data-scan="K5120-00412">手順書だけの品番</button>
+      <button data-scan="K2041-33871A">別名の品番</button>
+      <button data-scan="K9999-00000">何もない品番</button>
+    </div>
+  </div>
+  <div class="stage" id="stage"><div class="screen" id="screen"></div></div>
+  <ul class="notes" id="notes"></ul>
+</div>
+
+<script>
+const PROCS=[{id:'a',name:'組立',unit:'model'},{id:'i',name:'検査',unit:'model'},{id:'c',name:'切削',unit:'part'},{id:'g',name:'研削',unit:'part'}];
+const KEYS={model:['MX-4200','MX-5100','RG-300'],part:['K2041-33871','K5120-00412','K3307-10925','K7716-48030']};
+const WI={'K2041-33871':['研削','切削']};            // 既存の加工要領書（SharePoint 由来）
+const ALIAS={'K2041-33871A':'K2041-33871'};
+const S={
+  screen:'si', proc:'', unit:'model', key:'', search:'', digits:'',
+  items:[
+    {id:1,name:'主軸ユニット組付',key:'MX-4200',proc:'a',pub:true,pages:12},
+    {id:2,name:'カバー取付とトルク確認',key:'MX-4200',proc:'a',pub:true,pages:5},
+    {id:3,name:'出荷前 外観検査',key:'MX-5100',proc:'i',pub:true,pages:4},
+    {id:4,name:'フランジ外径 研削段取り',key:'K2041-33871',proc:'g',pub:true,pages:6},
+    {id:5,name:'フランジ 砥石ドレス手順',key:'K2041-33871',proc:'g',pub:false,pages:3},
+    {id:6,name:'スピンドルケース 治具セット',key:'K5120-00412',proc:'c',pub:true,pages:4}
+  ],
+  nextId:7, vpage:0, creating:false, draftName:'',
+  scan:null, armed:false, viewer:null
+};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const proc=id=>PROCS.find(p=>p.id===id);
+const unitNow=()=>S.proc?proc(S.proc).unit:S.unit;
+const unitLabel=u=>u==='part'?'部品':'機種';
+const ICON={
+  eye:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+  pen:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>',
+  ok:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>',
+  scan:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M3 8V5h3M21 8V5h-3M3 16v3h3M21 16v3h-3M7 8v8M10 8v8M13 8v8M17 8v8"/></svg>',
+  plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true" style="width:22px;height:22px;margin-right:8px"><path d="M12 5v14M5 12h14"/></svg>'
+};
+// 図面風のダミー画像
+function pic(n,light){
+  const bg=light?'#f4f6f8':'#dfe5ea', r=40+((n*37)%50), x=150+((n*53)%120);
+  return `<svg viewBox="0 0 480 300" role="img" aria-label="写真 ${n}"><rect width="480" height="300" fill="${bg}"/>
+  <rect x="${x-90}" y="90" width="${180+r}" height="120" rx="6" fill="#b9c4cd" stroke="#59687a" stroke-width="3"/>
+  <circle cx="${x+40}" cy="150" r="${r*.6}" fill="#8e9dab" stroke="#3d4a59" stroke-width="3"/>
+  <circle cx="${x+40}" cy="150" r="${r*.25}" fill="#eef3f6" stroke="#3d4a59" stroke-width="2"/>
+  <path d="M${x-90} 235h${180+r}M${x-90} 228v14M${x+90+r} 228v14" stroke="#c0392b" stroke-width="2" fill="none"/>
+  <circle cx="${x+40+r*.6}" cy="${150-r*.6}" r="15" fill="#f6b93b" stroke="#7a5200" stroke-width="2"/>
+  <text x="${x+40+r*.6}" y="${155-r*.6}" text-anchor="middle" font-size="15" font-weight="700" fill="#3a2800" font-family="monospace">${n}</text></svg>`;
+}
+
+/* ---------- 自主検査 ---------- */
+function resolveScan(raw){
+  const canon=ALIAS[raw]||raw, wi=WI[canon]||[];
+  const manuals=S.items.filter(i=>i.pub&&i.key===canon&&proc(i.proc).unit==='part');
+  const targets=['研削','切削'].filter(t=>wi.includes(t)||manuals.some(m=>proc(m.proc).name===t)).map(t=>({
+    name:t, docs:[...(wi.includes(t)?[{kind:'wi',title:'加工要領書'}]:[]),...manuals.filter(m=>proc(m.proc).name===t).map(m=>({kind:'manual',title:m.name,pages:m.pages}))]
+  }));
+  return {raw,canon,alias:raw!==canon,targets};
+}
+function siHtml(){
+  const sc=S.scan?resolveScan(S.scan):null;
+  let status='<div class="status idle" role="status">製造order か 部品番号 をスキャン</div>';
+  if(S.armed) status='<div class="status ok" role="status">移動票の品番バーコードを読んでください</div>';
+  else if(sc&&!sc.targets.length) status=`<div class="status err" role="status">${esc(sc.raw)} の要領書・手順書はありません</div>`;
+  else if(sc) status='';
+  const chips=sc&&sc.targets.length?`<div class="chips" role="group" aria-label="撮影対象">${sc.targets.map((t,i)=>
+    `<button class="chip ${sc.alias?'sim2':''}" data-open="${i}" title="${sc.alias?`読取品番 ${esc(sc.raw)} → 正式品番 ${esc(sc.canon)}`:''}">${sc.alias?'類似・':''}${t.name}${t.docs.length>1?`<b aria-label="${t.docs.length} 件">${t.docs.length}</b>`:''}</button>`).join('')}</div>`:'';
+  const rows=sc&&sc.targets.length?[['4500218834','F24-1187',sc.canon,'フランジ','581','MX-4200'],['4500219020','F24-1203',sc.canon,'フランジ','305','MX-5100']]:[];
+  return `<div class="si">
+    <div class="sibar">
+      <h2>自主検査</h2>
+      <div class="fld ph" style="width:150px">製造order</div><div class="fld ph" style="width:130px">製番</div>
+      <div class="fld ${sc?'':'ph'}" style="width:190px">${sc?esc(sc.canon):'品番'}</div><div class="fld ph" style="width:90px">581</div>
+      <button class="ghost" data-clear>クリア</button>
+      ${status}${chips}
+      <button class="sec" style="width:44px;padding:0;font-size:20px" disabled aria-label="部品番号を1文字削除">←</button>
+      <button class="sec" style="width:44px;padding:0;font-size:20px" disabled aria-label="部品番号を1文字復活">→</button>
+      <button class="${S.armed?'pri':'sec'}" data-arm>${S.armed?'スキャン中止':'部品番号スキャン'}</button>
+    </div>
+    <div class="simain">${rows.length?`<div class="cand h"><span>製造order</span><span>製番</span><span>品番</span><span>品名</span><span>資源CD</span><span>機種</span></div>`+rows.map(r=>`<div class="cand"><span class="m">${r[0]}</span><span class="m">${r[1]}</span><span class="m">${esc(r[2])}</span><span>${r[3]}</span><span class="m">${r[4]}</span><span class="m">${r[5]}</span></div>`).join('')
+      :`<div class="simsg">${S.armed?'上の「読取りを再現」から品番を選ぶと、スキャンした状態になります。':'自主検査対象の候補がここに並びます。'}</div>`}</div>
+  </div>`;
+}
+
+/* ---------- 組立 > 要領書 ---------- */
+function paneHtml(all){
+  const u=unitNow(), keys=KEYS[u];
+  const inKey=all.filter(i=>!S.key||i.key===S.key);
+  const btns=[{id:'',name:'全て'},...PROCS];
+  const q=S.search.trim().toUpperCase();
+  const cands=keys.filter(k=>(!q||k.includes(q))&&(!S.digits||k.replace(/\D/g,'').includes(S.digits)));
+  return `<section class="pane" aria-label="絞り込み">
+        <h3>工程</h3>
+        <div class="procs" role="group" aria-label="工程で絞り込み">${btns.map(b=>{
+          const n=inKey.filter(i=>!b.id||i.proc===b.id).length;
+          return `<button data-proc="${b.id}" aria-pressed="${S.proc===b.id}">${b.name}<span>${n||'—'}</span></button>`;}).join('')}</div>
+        <h3>${unitLabel(u)}${S.proc?(u==='part'?'<span class="newdot" title="新しい動き"></span>':''):
+          `<div class="unit" role="group" aria-label="機種か部品か"><button data-unit="model" aria-pressed="${u==='model'}">機種</button><button data-unit="part" aria-pressed="${u==='part'}">部品</button></div>`}</h3>
+        <div class="searchrow">
+          <input id="ws-search" type="search" aria-label="${unitLabel(u)}検索" placeholder="${u==='part'?'品番で検索':'型番で検索'}" value="${esc(S.search)}">
+          ${u==='part'?`<button class="iconbtn" data-wsscan aria-label="品番をスキャン" title="品番をスキャン">${ICON.scan}</button>`:''}
+        </div>
+        <div class="pick">
+          <div><div class="digits" aria-label="数字検索">${esc(S.digits)}</div>
+            <div class="tenkey">${[1,2,3,4,5,6,7,8,9,0].map(d=>`<button data-digit="${d}">${d}</button>`).join('')}<button data-digit="x" aria-label="1文字消す">⌫</button></div></div>
+          <div class="cands" aria-label="${unitLabel(u)}候補">${cands.length?cands.map(k=>
+            `<button data-key="${k}" aria-pressed="${S.key===k}">${k}<i>${all.filter(i=>i.key===k&&(!S.proc||i.proc===S.proc)).length||'—'}</i></button>`).join(''):`<p>該当する${unitLabel(u)}がありません</p>`}</div>
+        </div>
+      </section>`;
+}
+/* ---------- 組立 > 要領書（見る） ---------- */
+function vwHtml(){
+  const pub=S.items.filter(i=>i.pub);
+  const rows=pub.filter(i=>(!S.key||i.key===S.key)&&(!S.proc||i.proc===S.proc));
+  let right;
+  if(S.key&&S.proc){
+    const pages=rows.flatMap(d=>Array.from({length:d.pages},(_,n)=>({d,n})));
+    if(!pages.length) right='<p class="empty">この工程の要領書はまだありません</p>';
+    else{ const cur=pages[Math.min(S.vpage,pages.length-1)], at=pages.indexOf(cur);
+      right=`<div class="doct">${esc(cur.d.name)}<span>${esc(S.key)} ・ ${proc(S.proc).name}</span><button class="tool" data-list>一覧</button></div>
+      <div class="pages"><div class="thumbs">${pages.map((x,i)=>`<button data-page="${i}" aria-current="${i===at}" aria-label="${i+1} ページ">${pic(x.d.id*7+x.n,true)}<i>${i+1}</i></button>`).join('')}</div>
+        <div class="big">${pic(cur.d.id*7+cur.n,true)}</div>
+        <div class="nav"><button data-step="-1" ${at===0?'disabled':''} aria-label="前のページ">‹</button><output>${at+1} / ${pages.length}</output><button data-step="1" ${at===pages.length-1?'disabled':''} aria-label="次のページ">›</button></div></div>`; }
+  } else right=`<div class="ovh"><span></span><span>名前</span><span>機種・部品</span><span>工程</span><span style="text-align:center">ページ数</span></div>
+    <div style="overflow:auto;min-height:0">${rows.map(i=>`<button class="ovr" data-row="${i.id}" aria-label="${esc(i.name)}">${pic(i.id*7,true)}<span class="nm">${esc(i.name)}</span><span class="m"><small>${unitLabel(proc(i.proc).unit)}</small>${esc(i.key)}</span><span>${proc(i.proc).name}</span><span class="c">${i.pages}</span></button>`).join('')||'<p class="empty">該当する要領書がありません</p>'}</div>`;
+  return `<div class="br"><div class="brl"><header><h2>要領書</h2><button class="tool" data-goto="ws">${ICON.pen}作る・直す</button></header>${paneHtml(pub)}</div><section class="brr" aria-label="要領書">${right}</section></div>`;
+}
+function wsHtml(){
+  const u=unitNow();
+  const rows=S.items.filter(i=>(!S.key||i.key===S.key)&&(!S.proc||i.proc===S.proc));
+  const p=S.proc?proc(S.proc):null;
+  const cols=`minmax(260px,1fr) ${S.key?'':'230px '}${S.proc?'':'90px '}110px 60px 150px`;
+  return `<div class="ws">
+    <header><h2>要領書</h2><span class="pill">${ICON.pen.replace('<svg','<svg style="width:22px;height:22px"')}作る・直す</span></header>
+    <div class="body">
+      ${paneHtml(S.items)}
+      <section class="list" aria-label="要領書一覧">
+        <div class="lhead">
+          <h4 class="crumb"><span class="${S.key?'':'none'}">${S.key?`<em>${unitLabel(u)}</em>${esc(S.key)}`:(S.proc?`全${unitLabel(u)}`:'全て')}</span>›<span class="${p?'':'none'}">${p?p.name:'全工程'}</span></h4>
+          <span class="count">${rows.length} 件</span>
+          <button class="make" data-make ${S.key&&p?'':'disabled'}>${ICON.plus}作る</button>
+        </div>
+        ${rows.map(i=>{const ip=proc(i.proc);return `<div class="row" style="grid-template-columns:${cols}">
+          <div class="name" title="${esc(i.name)}">${esc(i.name)}</div>
+          ${S.key?'':`<div class="key"><small>${unitLabel(ip.unit)}</small>${esc(i.key)}</div>`}
+          ${S.proc?'':`<div class="pr">${ip.name}</div>`}
+          <span class="st ${i.pub?'pub':'dr'}">${i.pub?'公開':'下書き'}</span>
+          <div class="pg">${i.pages}</div>
+          <div class="acts"><button class="act" data-view="${i.id}" aria-label="見る" title="見る">${ICON.eye}</button>
+            ${i.pub?'':`<button class="act y" data-pub="${i.id}" aria-label="公開する" title="公開する">${ICON.ok}</button>`}</div>
+        </div>`;}).join('')||'<p class="empty">該当する要領書がありません</p>'}
+        ${p&&p.unit==='part'?'<p class="hint">公開した手順書は、自主検査の部品番号スキャンに出ます。</p>':''}
+      </section>
+    </div>
+  </div>`;
+}
+
+/* ---------- overlays ---------- */
+function viewerHtml(){
+  const v=S.viewer; if(!v) return '';
+  const d=v.docs[v.tab];
+  const body=d.kind==='wi'
+    ?`<div class="cards">${['チャック爪を清掃して取付','外径を仮測定し取り代を確認','砥石を当てて荒研削','仕上げ研削 送り 0.005','外径マイクロで全数測定','面取り部のバリ確認'].map((t,i)=>`<div class="card">${pic(i+1)}<div><b>${i+1}</b>${t}</div></div>`).join('')}</div>`
+    :`<div class="pages"><div class="thumbs">${Array.from({length:d.pages},(_,i)=>`<button data-page="${i}" aria-current="${v.page===i}" aria-label="${i+1} ページ">${pic(i+11,true)}<i>${i+1}</i></button>`).join('')}</div>
+        <div class="big">${pic(v.page+11,true)}</div>
+        <div class="nav"><button data-step="-1" ${v.page===0?'disabled':''} aria-label="前のページ">‹</button><output>${v.page+1} / ${d.pages}</output><button data-step="1" ${v.page===d.pages-1?'disabled':''} aria-label="次のページ">›</button></div></div>`;
+  return `<div class="ov"><div class="vw" role="dialog" aria-label="${esc(d.title)}">
+    <header><div><h3>${v.docs.length>1?esc(v.sub):esc(d.title)}</h3><p>${v.docs.length>1?`${v.docs.length} 件`:esc(v.sub)}</p></div>
+      ${v.docs.length>1?`<div class="tabs" role="tablist">${v.docs.map((x,i)=>`<button class="tab" role="tab" data-tab="${i}" aria-selected="${v.tab===i}"><small>${x.kind==='wi'?'原本':'手順書'}</small>${esc(x.title)}</button>`).join('')}</div>`:''}
+      <button class="back" data-close>${v.from==='si'?'自主検査画面に戻る':'閉じる'}</button></header>${body}</div></div>`;
+}
+function createHtml(){
+  if(!S.creating) return '';
+  const p=proc(S.proc);
+  return `<div class="ov"><div class="dlg" role="dialog" aria-label="作る"><h3>作る</h3>
+    <div class="tags"><span><em>${unitLabel(p.unit)}</em><span class="mono">${esc(S.key)}</span></span><span><em>工程</em>${p.name}</span></div>
+    <input id="dlg-name" type="text" aria-label="名前" placeholder="名前" value="${esc(S.draftName)}">
+    <div class="btns"><button data-cancel>やめる</button><button class="go" data-create ${S.draftName.trim()?'':'disabled'}>作る</button></div></div></div>`;
+}
+
+/* ---------- render ---------- */
+const NOTES={
+  si:['<b>チップの数字</b>は、その工程で開ける資料の数です。押すと原本の加工要領書が開き、上のタブで組立側の手順書に切り替えます。',
+      '<b>1 件だけ</b>のときはタブを出さず、そのまま開きます。加工要領書が無い品番でも、公開済みの手順書があればチップが出ます。',
+      '<b>別名・類似の品番</b>は今と同じ黄色のチップで、手順書も正式品番のものを開きます。下書きは出ません。'],
+  vw:['<b>組立・検査</b>は今のままです。工程を選び、テンキーか検索で機種を探します。',
+      '工程で<b>切削・研削</b>を選ぶと、同じテンキーと検索で部品番号を探せます。検索欄の横のスキャンでも絞り込めます。',
+      '部品(または機種)と工程が決まると右に手順書が開きます。一覧の行を押しても開きます。下書きは出ません。'],
+  ws:['工程で<b>切削・研削</b>を選ぶと、左の一覧が機種から部品に替わります。組立・検査は今のまま機種です。',
+      '部品の検索欄の横の<b>スキャン</b>で、移動票の品番を読んで絞り込めます。',
+      '<b>作る</b>は、部品(または機種)と工程を選ぶと押せます。この画面の「公開する」はモック用の近道で、実際は今の承認の流れのままです。']
+};
+function render(){
+  const a=document.activeElement, fid=a&&a.id, pos=a&&a.selectionStart;
+  $('screen').innerHTML=(S.screen==='si'?siHtml():S.screen==='vw'?vwHtml():wsHtml())+viewerHtml()+createHtml();
+  $('tab-si').setAttribute('aria-pressed',S.screen==='si'); $('tab-ws').setAttribute('aria-pressed',S.screen==='ws'); $('tab-vw').setAttribute('aria-pressed',S.screen==='vw');
+  $('sim').hidden=S.screen!=='si';
+  $('notes').innerHTML=NOTES[S.screen].map(n=>`<li>${n}</li>`).join('');
+  if(fid&&$(fid)){ $(fid).focus(); try{$(fid).setSelectionRange(pos,pos);}catch(e){} }
+}
+function fit(){ const w=$('stage').clientWidth, k=w/1920; $('screen').style.transform=`scale(${k})`; $('stage').style.height=(1080*k)+'px'; }
+
+document.addEventListener('click',e=>{
+  const t=e.target.closest('button'); if(!t) return; const d=t.dataset;
+  if(t.id==='tab-si'||t.id==='tab-ws'||t.id==='tab-vw'){ S.screen=t.id.slice(4); S.viewer=null; S.creating=false; }
+  else if('scan' in d){ S.scan=d.scan; S.armed=false; S.viewer=null; }
+  else if('arm' in d){ S.armed=!S.armed; if(S.armed) S.scan=null; }
+  else if('clear' in d){ S.scan=null; S.armed=false; }
+  else if('open' in d){ const sc=resolveScan(S.scan), tg=sc.targets[+d.open]; S.viewer={docs:tg.docs,tab:0,page:0,sub:`${sc.canon} ・ ${tg.name}`,from:'si'}; }
+  else if('tab' in d){ S.viewer.tab=+d.tab; S.viewer.page=0; }
+  else if('page' in d){ if(S.viewer) S.viewer.page=+d.page; else S.vpage=+d.page; }
+  else if('step' in d){ if(S.viewer) S.viewer.page+=+d.step; else S.vpage+=+d.step; }
+  else if('goto' in d){ S.screen=d.goto; }
+  else if('list' in d){ S.key=''; S.vpage=0; }
+  else if('row' in d){ const i=S.items.find(x=>x.id===+d.row); S.proc=i.proc; S.unit=proc(i.proc).unit; S.key=i.key; S.search=''; S.digits='';
+    S.vpage=S.items.filter(x=>x.pub&&x.key===i.key&&x.proc===i.proc).slice(0).reduce((n,x)=>x.id<i.id?n+x.pages:n,0); }
+  else if('close' in d){ S.viewer=null; }
+  else if('proc' in d){ S.vpage=0; const was=unitNow(); S.proc=S.proc===d.proc?'':d.proc; if(S.proc) S.unit=proc(S.proc).unit; if(unitNow()!==was){ S.key=''; S.search=''; S.digits=''; } }
+  else if('unit' in d){ if(S.unit!==d.unit){ S.unit=d.unit; S.key=''; S.search=''; S.digits=''; } }
+  else if('key' in d){ S.vpage=0; S.key=S.key===d.key?'':d.key; }
+  else if('digit' in d){ S.digits=d.digit==='x'?S.digits.slice(0,-1):(S.digits+d.digit).slice(0,8); }
+  else if('wsscan' in d){ S.vpage=0; const ks=KEYS.part; S.key=ks[(ks.indexOf(S.key)+1)%ks.length]; S.search=''; S.digits=''; }
+  else if('make' in d){ S.creating=true; S.draftName=''; }
+  else if('cancel' in d){ S.creating=false; }
+  else if('create' in d){ S.items.push({id:S.nextId++,name:S.draftName.trim(),key:S.key,proc:S.proc,pub:false,pages:1}); S.creating=false; }
+  else if('pub' in d){ S.items.find(i=>i.id===+d.pub).pub=true; }
+  else if('view' in d){ const i=S.items.find(x=>x.id===+d.view); S.viewer={docs:[{kind:'manual',title:i.name,pages:i.pages}],tab:0,page:0,sub:`${i.key} ・ ${proc(i.proc).name}`,from:'ws'}; }
+  else return;
+  render();
+  if('make' in d&&$('dlg-name')) $('dlg-name').focus();
+});
+document.addEventListener('input',e=>{
+  if(e.target.id==='ws-search'){ S.search=e.target.value; render(); }
+  else if(e.target.id==='dlg-name'){ S.draftName=e.target.value; render(); }
+});
+window.addEventListener('resize',fit);
+S.scan='K2041-33871'; render(); fit();
+</script>

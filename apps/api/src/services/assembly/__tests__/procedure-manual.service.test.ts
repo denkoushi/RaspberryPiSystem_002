@@ -24,13 +24,69 @@ function assignment(id: string, assemblyProcedureDocumentId: string | null = roo
 }
 
 describe('procedure-manual service', () => {
+  beforeEach(() => { vi.spyOn(prisma.procedureManualProcess, 'findFirst').mockResolvedValue({ id: 'assembly', subjectKind: 'MODEL' } as never); });
   afterEach(() => vi.restoreAllMocks());
 
+
+  it('uses the process kind for PART reads and both assignment writes without changing MODEL normalization', async () => {
+    const process = vi.spyOn(prisma.procedureManualProcess, 'findFirst').mockResolvedValue({ id: 'cutting', subjectKind: 'PART' } as never);
+    const rows = vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([]);
+    vi.spyOn(prisma, '$transaction').mockImplementation((async (work: (tx: Prisma.TransactionClient) => Promise<unknown>) => work(prisma)) as never);
+    vi.spyOn(prisma, '$queryRaw').mockResolvedValue([]);
+    vi.spyOn(prisma.assemblyProcedureDocument, 'findUnique').mockResolvedValue(document() as never);
+    const create = vi.spyOn(prisma.procedureManualAssignment, 'create').mockResolvedValue({} as never);
+    const remove = vi.spyOn(prisma.procedureManualAssignment, 'deleteMany').mockResolvedValue({ count: 0 });
+    const service = new ProcedureManualService();
+    expect(await service.normalizeSubjectKey(' ｐａｒｔ－① ', 'cutting')).toBe('PART-1');
+    await service.getAssignments(' ｐａｒｔ－① ', 'cutting');
+    expect(rows).toHaveBeenCalledWith(expect.objectContaining({ where: { modelCodeKey: 'PART-1', processId: 'cutting' } }));
+    await service.appendDraftAssignment(' ｐａｒｔ－① ', 'cutting', rootId);
+    expect(create).toHaveBeenCalledWith({ data: expect.objectContaining({ modelCodeKey: 'PART-1', processId: 'cutting' }) });
+    await service.replaceAssignments(' ｐａｒｔ－① ', 'cutting', []);
+    expect(remove).toHaveBeenCalledWith({ where: { modelCodeKey: 'PART-1', processId: 'cutting' } });
+    process.mockResolvedValue({ id: 'assembly', subjectKind: 'MODEL' } as never);
+    expect(await service.normalizeSubjectKey('ｄｆｄ１', 'assembly')).toBe('DFD1');
+    await expect(service.normalizeSubjectKey('　', 'assembly')).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('by-part exposes only available published documents of active PART child processes', async () => {
+    vi.spyOn(prisma.procedureManualProcess, 'findMany').mockResolvedValue([
+      { id: 'assembly', parentId: 'parent', subjectKind: 'MODEL' },
+      { id: 'cutting', parentId: 'machining', name: '切削', subjectKind: 'PART' },
+      { id: 'grinding', parentId: 'machining', name: '研削', subjectKind: 'PART' }
+    ] as never);
+    vi.spyOn(prisma.procedureManualProcess, 'findFirst').mockResolvedValue({ subjectKind: 'PART' } as never);
+    const query = vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockImplementation(async args => {
+      if (args?.where?.processId === 'grinding') return [assignment('only-draft', 'draft')] as never;
+      return [assignment('published'), assignment('draft', 'draft', 1), assignment('inactive', 'inactive', 2), { ...assignment('disabled', null, 3), kioskDocumentId: pdfId, kioskDocument: { enabled: false } }] as never;
+    });
+    vi.spyOn(prisma.assemblyProcedureDocumentRevision, 'findFirst').mockResolvedValue(null);
+    vi.spyOn(prisma.assemblyProcedureDocument, 'findFirst').mockImplementation(async args => args?.where?.id === rootId ? document() as never : null);
+    const result = await new ProcedureManualService().getByPart(' ｐａｒｔ－① ');
+    expect(result).toMatchObject({ partNumber: 'PART-1', partNumberKey: 'PART-1', processes: [{ processId: 'cutting', processName: '切削' }] });
+    expect(result.processes).toHaveLength(1);
+    expect(result.processes[0].sequence.documents.map(doc => doc.orderItemId)).toEqual(['published']);
+    expect(query.mock.calls.map(([args]) => args?.where)).toEqual([{ modelCodeKey: 'PART-1', processId: 'cutting' }, { modelCodeKey: 'PART-1', processId: 'grinding' }]);
+    expect(JSON.stringify(result)).not.toContain('draft');
+  });
+
   it('lists assembly children before machining children', async () => {
-    const machining = { id: 'cutting', parentId: 'procedure-manual-machining', sortOrder: 0 };
-    const assembly = { id: 'assembly', parentId: 'procedure-manual-assembly', sortOrder: 0 };
+    const machining = { id: 'cutting', parentId: 'procedure-manual-machining', sortOrder: 0, subjectKind: 'PART' };
+    const assembly = { id: 'assembly', parentId: 'procedure-manual-assembly', sortOrder: 0, subjectKind: 'MODEL' };
     vi.spyOn(prisma.procedureManualProcess, 'findMany').mockResolvedValue([machining, assembly] as never);
-    expect((await new ProcedureManualService().listProcesses()).map(process => process.id)).toEqual(['assembly', 'cutting']);
+    expect((await new ProcedureManualService().listProcesses()).map(process => [process.id, process.subjectKind])).toEqual([['assembly', 'MODEL'], ['cutting', 'PART']]);
+  });
+
+  it('keeps MODEL candidate searches separate from part assignments', async () => {
+    const query = vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([]);
+    expect(await new ProcedureManualService().listModels()).toEqual([]);
+    expect(query).toHaveBeenCalledWith(expect.objectContaining({ where: { process: { subjectKind: 'MODEL' } } }));
+  });
+
+  it('lists assigned PART keys without returning draft document data', async () => {
+    const query = vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([{ modelCode: 'ｐａｒｔ１', modelCodeKey: 'PART1' }] as never);
+    expect(await new ProcedureManualService().listParts()).toEqual([{ partNumber: 'ｐａｒｔ１', partNumberKey: 'PART1' }]);
+    expect(query).toHaveBeenCalledWith(expect.objectContaining({ where: { process: { subjectKind: 'PART' } }, select: { modelCode: true, modelCodeKey: true } }));
   });
 
   it('resolves an older published revision even when the revision head is a draft', async () => {

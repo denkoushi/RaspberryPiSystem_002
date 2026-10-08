@@ -147,6 +147,10 @@ export function KioskSelfInspectionPage() {
     partNumber: instructionPartNumber,
     selectedTarget: instructionTarget,
     targets: instructionTargets,
+    targetCounts: instructionTargetCounts,
+    selectedManualSequence: instructionManualSequence,
+    hasWorkInstruction: instructionHasWorkInstruction,
+    manualErrorMessage: instructionManualErrorMessage,
     groupsQuery: instructionGroupsQuery,
     groupQuery: instructionGroupQuery,
     beginPartScan,
@@ -732,6 +736,7 @@ export function KioskSelfInspectionPage() {
         </div>
         <WorkInstructionTargetChips
           targets={instructionTargets}
+          counts={instructionTargetCounts}
           similarMatch={instructionSimilarMatch}
           onSelect={(target) => {
             setHidScanTarget(null);
@@ -739,6 +744,7 @@ export function KioskSelfInspectionPage() {
             openInstructionTarget(target);
           }}
         />
+        {instructionManualErrorMessage ? <p role="alert" className="text-sm text-rose-100">{instructionManualErrorMessage}</p> : null}
         <button
           type="button"
           aria-label="部品番号を1文字削除"
@@ -870,6 +876,8 @@ export function KioskSelfInspectionPage() {
         partNumber={instructionPartNumber}
         shootingTarget={instructionTarget ?? ''}
         group={instructionGroupQuery.data}
+        manualSequence={instructionManualSequence}
+        hasWorkInstruction={instructionHasWorkInstruction}
         isLoading={instructionGroupQuery.isLoading}
         errorMessage={
           instructionGroupQuery.isError ? '作業要領書の読み込みに失敗しました。' : undefined

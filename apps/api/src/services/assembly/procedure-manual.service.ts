@@ -1,10 +1,11 @@
 import { procedureVideoLinksInclude, videosForPage } from './procedure-video.service.js';
 import { procedureManualApprovalInclude, serializeLastProcedureManualApproval } from './assembly-procedure-document-revision.serializer.js';
-import { Prisma } from '@prisma/client';
+import { Prisma, type ProcedureManualSubjectKind } from '@prisma/client';
 
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { PdfStorageRenderAdapter } from '../kiosk-documents/adapters/pdf-storage-render.adapter.js';
+import { normalizeWorkInstructionPartNumber } from '../work-instructions/domain/normalization.js';
 import { normalizeMachineNameForCompare } from '../production-schedule/machine-name-compare.js';
 import {
   assemblyProcedureSequenceKioskDocumentSelect,
@@ -34,14 +35,30 @@ const assemblyDocumentInclude = {
   }
 } satisfies Prisma.AssemblyProcedureDocumentInclude;
 
-function modelKey(modelCode: string): string {
-  const key = normalizeMachineNameForCompare(modelCode).trim();
-  if (!key) throw new ApiError(400, '型番が必要です');
+function modelKey(modelCode: string, kind: ProcedureManualSubjectKind = 'MODEL'): string {
+  const key = kind === 'PART' ? normalizeWorkInstructionPartNumber(modelCode) : normalizeMachineNameForCompare(modelCode).trim();
+  if (!key) throw new ApiError(400, kind === 'PART' ? '品番が必要です' : '型番が必要です');
   return key;
 }
 
 export class ProcedureManualService {
   constructor(private readonly render = new PdfStorageRenderAdapter()) {}
+
+  async normalizeSubjectKey(value: string, processId: string) {
+    const process = await prisma.procedureManualProcess.findFirst({ where: { id: processId, active: true, parent: { active: true, parentId: null } } });
+    if (!process) throw new ApiError(400, '工程が見つかりません');
+    return modelKey(value, process.subjectKind);
+  }
+
+  async getByPart(partNumber: string) {
+    const partNumberKey = modelKey(partNumber, 'PART');
+    const processes = (await this.listProcesses()).filter(process => process.parentId && process.subjectKind === 'PART');
+    const results = await Promise.all(processes.map(async process => {
+      const { sequence } = await this.getAssignments(partNumberKey, process.id);
+      return { processId: process.id, processName: process.name, sequence };
+    }));
+    return { partNumber: partNumberKey, partNumberKey, processes: results.filter(result => result.sequence.documents.length > 0) };
+  }
 
   async listProcesses() {
     const processes = await prisma.procedureManualProcess.findMany({
@@ -54,10 +71,19 @@ export class ProcedureManualService {
 
   async listModels() {
     return prisma.procedureManualAssignment.findMany({
+      where: { process: { subjectKind: 'MODEL' } },
       distinct: ['modelCodeKey'],
       select: { modelCode: true, modelCodeKey: true },
       orderBy: [{ modelCodeKey: 'asc' }, { updatedAt: 'desc' }]
     });
+  }
+
+  async listParts() {
+    const rows = await prisma.procedureManualAssignment.findMany({
+      where: { process: { subjectKind: 'PART' } }, distinct: ['modelCodeKey'],
+      select: { modelCode: true, modelCodeKey: true }, orderBy: [{ modelCodeKey: 'asc' }, { updatedAt: 'desc' }]
+    });
+    return rows.map(row => ({ partNumber: row.modelCode, partNumberKey: row.modelCodeKey }));
   }
 
   private async resolvePublished(rootId: string, db: Prisma.TransactionClient = prisma) {
@@ -76,10 +102,10 @@ export class ProcedureManualService {
 
   async getModelOverview(modelCode: string) {
     const modelCodeKey = modelKey(modelCode);
-    const { processes, rows, items } = await this.loadOverview({ modelCodeKey });
+    const { processes, rows, items } = await this.loadOverview({ modelCodeKey, process: { subjectKind: 'MODEL' } });
     return {
       modelCode: rows[0]?.modelCode ?? modelCodeKey, modelCodeKey,
-      processes: processes.filter(process => process.parentId).map(process => {
+      processes: processes.filter(process => process.parentId && process.subjectKind !== 'PART').map(process => {
         const processItems = items.filter(({ row }) => row.processId === process.id).map(({ item }) => item);
         return { processId: process.id, count: processItems.length, items: processItems };
       })
@@ -176,7 +202,7 @@ export class ProcedureManualService {
   }
 
   async getAssignments(modelCode: string, processId: string) {
-    const modelCodeKey = modelKey(modelCode);
+    const modelCodeKey = await this.normalizeSubjectKey(modelCode, processId);
     const rows = await prisma.procedureManualAssignment.findMany({
       where: { modelCodeKey, processId },
       orderBy: { sortOrder: 'asc' },
@@ -226,11 +252,11 @@ export class ProcedureManualService {
   }
 
   async appendDraftAssignment(modelCode: string, processId: string, documentId: string) {
-    const modelCodeKey = modelKey(modelCode);
     await runAssemblyTransaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "ProcedureManualProcess" WHERE id = ${processId} FOR UPDATE`;
       const process = await tx.procedureManualProcess.findFirst({ where: { id: processId, active: true, parent: { active: true, parentId: null } } });
       if (!process) throw new ApiError(400, '工程が見つかりません');
+      const modelCodeKey = modelKey(modelCode, process.subjectKind);
       await tx.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${documentId} FOR UPDATE`;
       const document = await tx.assemblyProcedureDocument.findUnique({ where: { id: documentId }, include: { revisionMetadata: true } });
       if (!document || !document.isActive) throw new ApiError(400, '手順書が見つかりません');
@@ -244,7 +270,7 @@ export class ProcedureManualService {
   }
 
   async replaceAssignments(modelCode: string, processId: string, items: ProcedureManualAssignmentInput[]) {
-    const modelCodeKey = modelKey(modelCode);
+    if (!modelCode.trim()) throw new ApiError(400, '型番または品番が必要です');
     if (new Set(items.map((item) => item.sortOrder)).size !== items.length) {
       throw new ApiError(400, '並び順が重複しています');
     }
@@ -261,6 +287,7 @@ export class ProcedureManualService {
         where: { id: processId, active: true, parent: { active: true, parentId: null } }
       });
       if (!process) throw new ApiError(400, '工程が見つかりません');
+      const modelCodeKey = modelKey(modelCode, process.subjectKind);
       // Use a stable order when a replacement references multiple documents.
       const ids = [...new Set(items.flatMap(item => item.assemblyProcedureDocumentId ? [item.assemblyProcedureDocumentId] : []))].sort();
       for (const id of ids) await tx.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${id} FOR UPDATE`;

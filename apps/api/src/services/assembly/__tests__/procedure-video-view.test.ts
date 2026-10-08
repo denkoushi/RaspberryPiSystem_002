@@ -19,6 +19,7 @@ describe('procedure-video document viewing', () => {
   });
   it('returns only READY videos in the manual sequence', async () => {
     vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([{ id: 'assign', modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'p', sortOrder: 0, label: null, assemblyProcedureDocumentId: 'doc', kioskDocumentId: null }] as never);
+    vi.spyOn(prisma.procedureManualProcess, 'findFirst').mockResolvedValue({ id: 'p', subjectKind: 'MODEL' } as never);
     vi.spyOn(prisma.assemblyProcedureDocumentRevision, 'findFirst').mockResolvedValue({ document: doc } as never);
     const result = await new ProcedureManualService().getAssignments('DFD1', 'p');
     expect(result.sequence.documents[0].pages[0].videos?.map((video) => video.id)).toEqual(['READY']);

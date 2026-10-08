@@ -1020,6 +1020,11 @@ export async function listProcedureManualModels() {
   return data.models;
 }
 
+export async function listProcedureManualParts() {
+  const { data } = await api.get<{ parts: { partNumber: string; partNumberKey: string }[] }>('/assembly/procedure-manuals/parts');
+  return data.parts;
+}
+
 function procedureManualPath(modelCodeKey: string, processId: string) {
   return `/assembly/procedure-manuals/models/${encodeURIComponent(modelCodeKey)}/processes/${encodeURIComponent(processId)}`;
 }
@@ -1194,5 +1199,10 @@ export async function getProcedureKnowledgeThumbnail(imageId: string) {
 
 export async function getProcedureWorkInstructionThumbnail(assetId: string) {
   const { data } = await api.get<Blob>(`/assembly/procedure-materials/work-instruction-candidates/images/${encodeURIComponent(assetId)}/thumbnail`, { responseType: 'blob' });
+  return data;
+}
+
+export async function getProcedureManualsByPart(partNumber: string) {
+  const { data } = await api.get<import('../../features/assembly/types').ProcedureManualByPartDto>('/assembly/procedure-manuals/by-part', { params: { partNumber } });
   return data;
 }

@@ -27,6 +27,11 @@ describe('assemblyRoutes', () => {
     expect(kioskAssemblyManualsWorkshopPath({ model: ' ', process: '' })).toBe(KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH);
   });
 
+  it('builds part links while preserving model links', () => {
+    expect(kioskAssemblyManualsPath({ part: ' PART 1 ', process: 'cutting' })).toBe('/kiosk/assembly/manuals?part=PART+1&process=cutting');
+    expect(kioskAssemblyManualsWorkshopPath({ part: 'P1', process: 'grinding' })).toBe('/kiosk/assembly/manuals/workshop?part=P1&process=grinding');
+  });
+
   it('keeps start top and management library paths separate', () => {
     expect(KIOSK_ASSEMBLY_HOME_PATH).toBe('/kiosk/assembly');
     expect(KIOSK_ASSEMBLY_LIBRARY_PATH).toBe('/kiosk/assembly/library');

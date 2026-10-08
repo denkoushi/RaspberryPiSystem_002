@@ -3,8 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useSelfInspectionWorkInstructions } from './useSelfInspectionWorkInstructions';
 
-const { useGroupsMock, useGroupMock, getAliasMock, getCandidatesMock, putAliasMock } = vi.hoisted(() => ({
+const { useGroupsMock, useGroupMock, useManualsMock, getAliasMock, getCandidatesMock, putAliasMock } = vi.hoisted(() => ({
   useGroupsMock: vi.fn(),
+  useManualsMock: vi.fn(),
   useGroupMock: vi.fn(),
   getAliasMock: vi.fn(),
   getCandidatesMock: vi.fn(),
@@ -13,6 +14,7 @@ const { useGroupsMock, useGroupMock, getAliasMock, getCandidatesMock, putAliasMo
 
 vi.mock('../../api/hooks', () => ({
   useWorkInstructionGroups: useGroupsMock,
+  useProcedureManualsByPart: useManualsMock,
   useWorkInstructionGroup: useGroupMock
 }));
 
@@ -24,6 +26,8 @@ vi.mock('../../api/client', () => ({
 
 describe('useSelfInspectionWorkInstructions', () => {
   beforeEach(() => {
+    useManualsMock.mockReset();
+    useManualsMock.mockReturnValue({ data: { processes: [] }, isSuccess: true, isFetching: false, isError: false });
     useGroupsMock.mockReset();
     useGroupMock.mockReset();
     getAliasMock.mockReset();
@@ -31,6 +35,56 @@ describe('useSelfInspectionWorkInstructions', () => {
     putAliasMock.mockReset();
     useGroupsMock.mockReturnValue({ data: undefined, isFetching: false });
     useGroupMock.mockReturnValue({ data: undefined });
+  });
+
+  it('unions targets in the existing order and counts each original once plus published manuals', () => {
+    useGroupsMock.mockReturnValue({ data: [{ shootingTarget: '切削' }, { shootingTarget: '切削' }, { shootingTarget: '581' }], isSuccess: true, isFetching: false });
+    useManualsMock.mockReturnValue({ data: { processes: [{ processId: 'grinding', processName: '研削', sequence: { documents: [{}, {}] } }, { processId: 'cutting', processName: '切削', sequence: { documents: [{}] } }] }, isSuccess: true, isFetching: false });
+    const { result } = renderHook(() => useSelfInspectionWorkInstructions());
+    act(() => { result.current.acceptPartScan('PART-1'); result.current.openTarget('研削'); });
+    expect(result.current.targets).toEqual(['研削', '切削', '581']);
+    expect(result.current.targetCounts).toEqual({ 研削: 2, 切削: 2, '581': 1 });
+    expect(result.current.hasWorkInstruction).toBe(false);
+    expect(result.current.selectedManualSequence?.documents).toHaveLength(2);
+  });
+
+  it('treats a manuals-only part as exact before alias or prefix lookup and waits for the manual response', async () => {
+    useGroupsMock.mockReturnValue({ data: [], isSuccess: true, isFetching: false });
+    useManualsMock.mockReturnValue({ data: undefined, isSuccess: false, isFetching: true });
+    const { result, rerender } = renderHook(() => useSelfInspectionWorkInstructions());
+    act(() => { result.current.acceptPartScan('part-1'); });
+    expect(getAliasMock).not.toHaveBeenCalled();
+    useManualsMock.mockReturnValue({ data: { processes: [{ processId: 'cutting', processName: '切削', sequence: { documents: [{}] } }] }, isSuccess: true, isFetching: false });
+    rerender();
+    await waitFor(() => expect(result.current.autoFallbackPending).toBe(false));
+    expect(result.current.targets).toEqual(['切削']);
+    expect(useManualsMock).toHaveBeenLastCalledWith('PART-1');
+    expect(getAliasMock).not.toHaveBeenCalled();
+    expect(getCandidatesMock).not.toHaveBeenCalled();
+  });
+
+  it('fetches canonical manuals when an alias resolves and keeps amber targets', async () => {
+    useGroupsMock.mockReturnValue({ data: [], isSuccess: true, isFetching: false });
+    useManualsMock.mockImplementation(part => ({ data: { processes: part === 'CANON' ? [{ processName: '研削', sequence: { documents: [{}] } }] : [] }, isSuccess: true, isFetching: false }));
+    getAliasMock.mockResolvedValue({ scannedPartNumber: 'ALIAS', canonicalPartNumber: 'CANON' });
+    const { result } = renderHook(() => useSelfInspectionWorkInstructions());
+    act(() => { result.current.acceptPartScan('ALIAS'); });
+    await waitFor(() => expect(result.current.targets).toEqual(['研削']));
+    expect(result.current.partNumber).toBe('CANON');
+    expect(result.current.similarMatch).toEqual({ scannedPartNumber: 'ALIAS', canonicalPartNumber: 'CANON' });
+    expect(getCandidatesMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps original chips and reports by-part failure without breaking resolution', async () => {
+    useGroupsMock.mockReturnValue({ data: [{ shootingTarget: '研削' }], isSuccess: true, isFetching: false });
+    useManualsMock.mockReturnValue({ data: undefined, isSuccess: false, isFetching: false, isError: true });
+    const { result } = renderHook(() => useSelfInspectionWorkInstructions());
+    act(() => { result.current.acceptPartScan('PART-1'); });
+    await waitFor(() => expect(result.current.autoFallbackPending).toBe(false));
+    expect(result.current.targets).toEqual(['研削']);
+    expect(result.current.targetCounts).toEqual({ 研削: 1 });
+    expect(result.current.manualErrorMessage).toBe('手順書を取得できませんでした。');
+    expect(getAliasMock).not.toHaveBeenCalled();
   });
 
   it('keeps current chips during a background refetch and clears them when a new scan begins', () => {
