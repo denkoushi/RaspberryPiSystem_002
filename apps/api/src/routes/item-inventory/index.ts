@@ -163,6 +163,13 @@ const transactionBody = z.object({
   restock: z.boolean().default(false),
   idempotencyKey: z.string().trim().min(1).max(200).optional(),
 });
+const touchTransactionBody = z.object({
+  compartmentId: z.string().uuid(),
+  quantity: z.number().int().min(1).max(999999),
+  restock: z.boolean().default(false),
+  expectedBeforeQuantity: z.number().int().min(0).optional(),
+  idempotencyKey: z.string().trim().min(1).max(200).optional(),
+});
 const inventorySettingsAccessPasswordBody = z.object({
   password: z.string().trim().regex(/^\d{4}$/, '操作パスワードは4桁の数字で入力してください')
 });
@@ -252,6 +259,16 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     }
   });
 
+  app.post('/item-inventory/touch-transactions', { preHandler: [writeOrKiosk] }, async (request) => {
+    const body = touchTransactionBody.parse(request.body ?? {});
+    try {
+      const result = await services.inventory.processTouchTransaction({ ...body, actor: await actor(request) });
+      return { ...result, transaction: { ...result.transaction, createdAt: result.transaction.createdAt.toISOString() } };
+    } catch (error) {
+      mapMutationError(error);
+    }
+  });
+
   app.post('/item-inventory/transactions/:id/cancel', { preHandler: [cancelWrite] }, async (request) => {
     const { id } = idParams.parse(request.params);
     try {
@@ -306,6 +323,47 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
   app.post('/item-inventory/tags/restock', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const body = z.object({ uid: z.string().trim().min(1).max(256) }).parse(request.body ?? {});
     return { tag: await services.inventory.upsertRestockTag(body.uid) };
+  });
+
+  app.delete('/item-inventory/drawers/:id', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const { id } = idParams.parse(request.params);
+    try {
+      return { result: await services.inventory.deleteDrawer(id) };
+    } catch (error) {
+      mapMutationError(error);
+    }
+  });
+  app.delete('/item-inventory/shelves/:id', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const { id } = idParams.parse(request.params);
+    try {
+      return { result: await services.inventory.deleteShelf(id) };
+    } catch (error) {
+      mapMutationError(error);
+    }
+  });
+  app.delete('/item-inventory/tags/:id', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const { id } = idParams.parse(request.params);
+    try {
+      return { result: await services.inventory.deleteTag(id) };
+    } catch (error) {
+      mapMutationError(error);
+    }
+  });
+  app.post('/item-inventory/imports/:id/dismiss', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const { id } = idParams.parse(request.params);
+    try {
+      return { result: await services.inventory.dismissImport(id) };
+    } catch (error) {
+      mapMutationError(error);
+    }
+  });
+  app.post('/item-inventory/imports/:id/restore', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const { id } = idParams.parse(request.params);
+    try {
+      return { result: await services.inventory.restoreImport(id) };
+    } catch (error) {
+      mapMutationError(error);
+    }
   });
 
   app.post('/item-inventory/imports/:id/register', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
