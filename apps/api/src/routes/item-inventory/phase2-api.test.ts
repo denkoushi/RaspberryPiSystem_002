@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { inventory, requireClientDeviceMock, verifyPasswordMock } = vi.hoisted(() => ({
   inventory: {
+    processTransaction: vi.fn(),
     processTouchTransaction: vi.fn(), deleteDrawer: vi.fn(), deleteShelf: vi.fn(), deleteTag: vi.fn(), dismissImport: vi.fn(), restoreImport: vi.fn(),
   },
   requireClientDeviceMock: vi.fn(),
@@ -17,7 +18,7 @@ vi.mock('../../services/production-schedule/production-schedule-settings.service
 
 import { ApiError } from '../../lib/errors.js';
 import { registerErrorHandler } from '../../plugins/error-handler.js';
-import { InventoryConflictError, InventoryInsufficientStockError } from '../../services/item-inventory/item-inventory.service.js';
+import { InventoryConflictError, InventoryInsufficientStockError, ItemInventoryService } from '../../services/item-inventory/item-inventory.service.js';
 import { registerItemInventoryRoutes } from './index.js';
 
 const id = '00000000-0000-4000-8000-000000000001';
@@ -50,9 +51,52 @@ describe('inventory phase 2 API contracts', () => {
     });
     verifyPasswordMock.mockResolvedValue({ success: true });
     inventory.processTouchTransaction.mockReset().mockResolvedValue({ transaction: { id, createdAt: new Date('2026-10-08T00:00:00Z') }, replayed: false });
+    inventory.processTransaction.mockReset().mockResolvedValue({ transaction: { id, createdAt: new Date('2026-10-08T00:00:00Z') }, replayed: false });
     for (const route of setupRoutes) route.handler.mockReset().mockResolvedValue({ id });
     inventory.dismissImport.mockResolvedValue({ id, status: 'DISMISSED' });
     inventory.restoreImport.mockResolvedValue({ id, status: 'PENDING' });
+  });
+
+  it.each([id, undefined])('passes the optional expected compartment to tag transactions: %s', async (expectedCompartmentId) => {
+    const payload = { itemTagUid: 'item-uid', quantityTagUid: 'quantity-uid', expectedCompartmentId };
+    const response = await request('POST', '/item-inventory/transactions', clientHeaders, payload);
+    expect(response.statusCode).toBe(200);
+    expect(inventory.processTransaction).toHaveBeenCalledExactlyOnceWith({
+      itemTagUid: 'item-uid', quantityTagUid: 'quantity-uid', ...(expectedCompartmentId ? { expectedCompartmentId } : {}),
+      restock: false, actor: { clientId: 'terminal-1', performedByUserId: null },
+    });
+  });
+
+  it('returns 409 INVENTORY_CONFLICT for a changed tag registration', async () => {
+    const compartment = { id: '00000000-0000-4000-8000-000000000002', inventoryItemId: id, stockQuantity: 10 };
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      inventoryNfcTag: { findUnique: vi.fn(async ({ where }: { where: { uid: string } }) => where.uid === 'item-uid'
+        ? { id: 'item-tag', kind: 'ITEM', compartmentId: compartment.id }
+        : { id: 'quantity-tag', kind: 'QUANTITY', quantity: 2 }) },
+      inventoryCompartment: { findUnique: vi.fn(async () => ({ ...compartment })), update: vi.fn() },
+      inventoryTransaction: { create: vi.fn() },
+    };
+    const db = { $transaction: vi.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)) };
+    const service = new ItemInventoryService(db as never);
+    inventory.processTransaction.mockImplementationOnce((input) => service.processTransaction(input));
+    const response = await request('POST', '/item-inventory/transactions', clientHeaders, {
+      itemTagUid: 'item-uid', quantityTagUid: 'quantity-uid', expectedCompartmentId: id,
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ errorCode: 'INVENTORY_CONFLICT', message: 'タグの登録が変わりました' });
+    expect(tx.$queryRaw).toHaveBeenCalledOnce();
+    expect(compartment.stockQuantity).toBe(10);
+    expect(tx.inventoryCompartment.update).not.toHaveBeenCalled();
+    expect(tx.inventoryTransaction.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-uuid expected compartment before invoking the service', async () => {
+    const response = await request('POST', '/item-inventory/transactions', clientHeaders, {
+      itemTagUid: 'item-uid', quantityTagUid: 'quantity-uid', expectedCompartmentId: 'bad',
+    });
+    expect(response.statusCode).toBe(400);
+    expect(inventory.processTransaction).not.toHaveBeenCalled();
   });
 
   it('allows a touch issue with just the client key and defaults restock to false', async () => {

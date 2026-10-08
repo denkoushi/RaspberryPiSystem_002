@@ -41,7 +41,7 @@ export function InventoryRecentHistory({ compartmentId }: { compartmentId: strin
         ))}
       </ul>
       {hidden > 0 ? (
-        <button type="button" className={`${invButtonSmGhost} self-start`} aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+        <button type="button" className={`${invButtonSmGhost} min-h-11 self-start`} aria-expanded={open} onClick={() => setOpen((current) => !current)}>
           {open ? <><ChevronUpIcon />閉じる</> : <><ChevronDownIcon />あと{hidden}件</>}
         </button>
       ) : null}

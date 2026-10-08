@@ -333,6 +333,7 @@ export async function registerInventoryRestockTag(uid: string, accessPassword?: 
 
 export async function processInventoryTransaction(input: {
   itemTagUid: string;
+  expectedCompartmentId?: string;
   quantityTagUid: string;
   restockTagUid?: string;
   restock: boolean;
