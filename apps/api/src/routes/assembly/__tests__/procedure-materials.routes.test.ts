@@ -15,7 +15,7 @@ describe('procedure-material routes with mocked Prisma', () => {
   let app: ReturnType<typeof Fastify>;
   afterEach(async () => { await app?.close(); });
   function harness(deny: 'view' | 'write' | null = null) {
-    const material = { id, kind: 'TEXT', text: '手順', documentId: null, placedAt: null, discardedAt: null, storageKey: null };
+    const material = { id, kind: 'TEXT', text: '手順', documentId: null, placedAt: null, discardedAt: null, storageKey: null, gmailMessageId: null };
     const db = { $queryRaw: vi.fn(), $transaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(db)), procedureMaterial: {
       findMany: vi.fn().mockResolvedValue([material]), findUnique: vi.fn().mockResolvedValue(material),
       update: vi.fn(async ({ data }: { data: object }) => Object.assign(material, data)),
@@ -48,21 +48,49 @@ describe('procedure-material routes with mocked Prisma', () => {
     ['unplaced', { documentId: null, placedAt: null, discardedAt: null }],
     ['placed', { discardedAt: null, OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] }],
     ['discarded', { discardedAt: { not: null } }], ['all', {}],
-  ])('filters state=%s and hint or filename with a newest-first limit', async (state, where) => {
+  ])('filters state=%s and hint, filename or text with a newest-first limit', async (state, where) => {
     const { db } = harness();
     const response = await app.inject({ method: 'GET', url: `${base}?state=${state}&q=DFD1&limit=12` });
     expect(response.statusCode).toBe(200); expect(response.json().materials[0].text).toBe('手順');
-    expect(db.procedureMaterial.findMany).toHaveBeenCalledWith({ where: { ...where, AND: [{ OR: [{ subjectHint: { contains: 'DFD1', mode: 'insensitive' } }, { originalFileName: { contains: 'DFD1', mode: 'insensitive' } }] }] }, orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }], take: 12 });
+    expect(db.procedureMaterial.findMany).toHaveBeenCalledWith({ where: { ...where, AND: [{ OR: [{ subjectHint: { contains: 'DFD1', mode: 'insensitive' } }, { originalFileName: { contains: 'DFD1', mode: 'insensitive' } }, { text: { contains: 'DFD1', mode: 'insensitive' } }] }] }, orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }], take: 12 });
   });
   it('also searches the NFKC form of a full-width query', async () => {
     const { db } = harness();
     await app.inject({ method: 'GET', url: `${base}?state=all&q=${encodeURIComponent('ＤＦＤ１')}` });
-    const [{ where }] = vi.mocked(db.procedureMaterial.findMany).mock.calls[0] as [{ where: { AND: [{ OR: Array<Record<string, { contains: string }>> }] } }];
-    expect(where.AND[0].OR.map((item) => Object.values(item)[0].contains)).toEqual(['ＤＦＤ１', 'ＤＦＤ１', 'DFD1', 'DFD1']);
+    const [{ where }] = vi.mocked(db.procedureMaterial.findMany).mock.calls[1] as [{ where: { AND: [{ OR: Array<Record<string, { contains: string }>> }] } }];
+    expect(where.AND[0].OR.map((item) => Object.values(item)[0].contains)).toEqual(['ＤＦＤ１', 'ＤＦＤ１', 'DFD1', 'DFD1', 'ＤＦＤ１', 'DFD1']);
+  });
+  it.each(['mh-4521', 'ＭＨ－４５２１'])('matches body text and its email attachments without including unrelated or null email IDs for %s', async (q) => {
+    const { db, material } = harness();
+    const rows = [
+      { ...material, id: 'body', text: '前文 MH-4521 の手順', gmailMessageId: 'mail-1' },
+      { ...material, id: 'photo', kind: 'PHOTO', text: null, gmailMessageId: 'mail-1', originalFileName: 'IMG_0001.jpg' },
+      { ...material, id: 'pdf', kind: 'PDF', text: null, gmailMessageId: 'mail-1', originalFileName: 'scan.pdf' },
+      { ...material, id: 'other', kind: 'PHOTO', text: null, gmailMessageId: 'mail-2' },
+      { ...material, id: 'null-body', text: 'MH-4521', gmailMessageId: null },
+      { ...material, id: 'null-photo', kind: 'PHOTO', text: null, gmailMessageId: null },
+      { ...material, id: 'discarded-body', kind: 'PHOTO', text: 'MH-4521', gmailMessageId: 'mail-3', discardedAt: new Date() },
+      { ...material, id: 'discarded-email-photo', kind: 'PHOTO', text: null, gmailMessageId: 'mail-3' },
+    ];
+    type Condition = Record<string, { contains?: string; mode?: string; in?: string[] }>;
+    const matches = (row: typeof rows[number], conditions: Condition[]) => conditions.some((condition) => Object.entries(condition).some(([field, filter]) => {
+      const value = row[field as keyof typeof row];
+      return filter.in ? typeof value === 'string' && filter.in.includes(value) : typeof value === 'string' && filter.mode === 'insensitive' && value.toLowerCase().includes(filter.contains!.toLowerCase());
+    }));
+    db.procedureMaterial.findMany.mockImplementation(async ({ where, select }: { where: { OR?: Condition[]; AND?: [{ OR: Condition[] }] }; select?: object }) => select
+      ? [...new Set(rows.filter((row) => row.gmailMessageId !== null && matches(row, where.OR!)).map((row) => row.gmailMessageId))].map((gmailMessageId) => ({ gmailMessageId }))
+      : rows.filter((row) => !row.discardedAt && matches(row, where.AND![0].OR)));
+    const response = await app.inject({ method: 'GET', url: `${base}?q=${encodeURIComponent(q)}` });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().materials.map((row: { id: string }) => row.id)).toEqual(['body', 'photo', 'pdf', 'null-body', 'discarded-email-photo']);
+    expect(db.procedureMaterial.findMany).toHaveBeenCalledTimes(2);
+    expect(db.procedureMaterial.findMany).toHaveBeenNthCalledWith(1, { where: { gmailMessageId: { not: null }, OR: [...new Set([q, q.normalize('NFKC')])].map((value) => ({ text: { contains: value, mode: 'insensitive' } })) }, select: { gmailMessageId: true }, distinct: ['gmailMessageId'], take: 500 });
+    expect(db.procedureMaterial.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { documentId: null, placedAt: null, discardedAt: null, AND: [{ OR: expect.arrayContaining([{ gmailMessageId: { in: ['mail-1', 'mail-3'] } }]) }] } }));
   });
   it('defaults to 100 unplaced materials and rejects invalid filters', async () => {
     const { db } = harness();
     expect((await app.inject({ method: 'GET', url: base })).statusCode).toBe(200);
+    expect(db.procedureMaterial.findMany).toHaveBeenCalledOnce();
     expect(db.procedureMaterial.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { documentId: null, placedAt: null, discardedAt: null }, take: 100 }));
     for (const query of ['state=invalid', 'limit=0', 'limit=501']) expect((await app.inject({ method: 'GET', url: `${base}?${query}` })).statusCode).toBe(400);
   });
