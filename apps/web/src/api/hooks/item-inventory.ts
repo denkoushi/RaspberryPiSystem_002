@@ -25,6 +25,7 @@ import {
   ingestInventoryMail,
   moveInventoryCompartment,
   processInventoryTransaction,
+  processInventoryTouchTransaction,
   renameInventoryArea,
   renameInventoryToolFieldValue,
   registerInventoryImport,
@@ -64,7 +65,7 @@ export function useInventoryToolFieldValues(accessPassword: string, enabled = tr
   return useQuery({ queryKey: inventoryKeys.toolFieldValues, queryFn: () => getInventoryToolFieldValues(accessPassword), enabled });
 }
 export function useInventoryUnits() { return useQuery({ queryKey: inventoryKeys.units, queryFn: getInventoryUnits }); }
-export function useInventoryTags() { return useQuery({ queryKey: inventoryKeys.tags, queryFn: getInventoryTags }); }
+export function useInventoryTags(refetchInterval?: number) { return useQuery({ queryKey: inventoryKeys.tags, queryFn: getInventoryTags, refetchInterval }); }
 export function useInventoryImportSummaries() {
   // Mail is ingested every five minutes; a kiosk left on the list picks new candidates up.
   return useQuery({ queryKey: inventoryKeys.importSummaries, queryFn: getInventoryImportSummaries, refetchInterval: 60_000 });
@@ -192,6 +193,7 @@ export function useInventoryMutations(accessPassword?: string) {
     quantityTag: useMutation({ mutationFn: (input: Parameters<typeof registerInventoryQuantityTag>[0]) => registerInventoryQuantityTag(input, accessPassword), onSuccess: invalidate }),
     restockTag: useMutation({ mutationFn: (uid: string) => registerInventoryRestockTag(uid, accessPassword), onSuccess: invalidate }),
     transaction: useMutation({ mutationFn: processInventoryTransaction, onSuccess: updateStock }),
+    touchTransaction: useMutation({ mutationFn: processInventoryTouchTransaction, onSuccess: updateStock }),
     cancel: useMutation({ mutationFn: (id: string) => cancelInventoryTransaction(id, accessPassword), onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: inventoryKeys.items });
       invalidateStock();

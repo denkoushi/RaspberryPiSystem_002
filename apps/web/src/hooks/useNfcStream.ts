@@ -1,22 +1,26 @@
 import { useEffect, useState } from 'react';
 
-import { resolveInventoryTag, type InventoryTag } from '../api/client';
+import { resolveInventoryTag, type InventoryItem, type InventoryTag } from '../api/client';
 import { resolveNfcRuntimeContract } from '../features/nfc/nfcRuntimeContract';
 
 import type { NfcStreamPolicy } from '../features/nfc/nfcPolicy';
+import type { QueryClient } from '@tanstack/react-query';
 
 export interface NfcEvent {
   uid: string;
   timestamp: string;
+  receivedAt?: number;
   readerSerial?: string;
   type?: string;
   eventId?: number;
   eventKey?: string;
   inventoryTag?: InventoryTag;
+  inventoryTagNeedsRefresh?: boolean;
+  inventoryTagFromCache?: boolean;
 }
 
 type NfcSubscriberRole = 'legacy' | 'inventory';
-type NfcSubscriber = { role: NfcSubscriberRole; suppressInventoryRouting: boolean; setEvent: (event: NfcEvent | null) => void };
+type NfcSubscriber = { role: NfcSubscriberRole; suppressInventoryRouting: boolean; inventoryQueryClient?: QueryClient; setEvent: (event: NfcEvent | null) => void };
 
 const isBrowser = typeof window !== 'undefined';
 const LAST_EVENT_ID_KEY = 'kiosk-last-event-id';
@@ -75,6 +79,34 @@ function notifySubscribers(event: NfcEvent, role: NfcSubscriberRole) {
   }
 }
 
+const tagIndexes = new WeakMap<InventoryTag[], Map<string, InventoryTag>>();
+
+function cachedInventoryEvent(event: NfcEvent): NfcEvent | null {
+  const client = [...hub.subscribers].find((subscriber) => subscriber.role === 'inventory' && subscriber.inventoryQueryClient)?.inventoryQueryClient;
+  if (!client || client.getQueryState(['inventory-tags'])?.status !== 'success') return null;
+  const tags = client.getQueryData<InventoryTag[]>(['inventory-tags']);
+  if (!tags) return null;
+  let index = tagIndexes.get(tags);
+  if (!index) {
+    index = new Map(tags.map((tag) => [tag.uid, tag]));
+    tagIndexes.set(tags, index);
+  }
+  const tag = index.get(event.uid);
+  if (!tag) return null;
+  if (tag.kind !== 'ITEM') return { ...event, inventoryTag: tag };
+  if (!tag.compartment) return { ...event, inventoryTag: tag, inventoryTagFromCache: true };
+  const items = client.getQueryData<InventoryItem[]>(['inventory-items']);
+  const item = items?.find((entry) => entry.compartments.some((compartment) => compartment.id === tag.compartment?.id));
+  const compartment = item?.compartments.find((entry) => entry.id === tag.compartment?.id);
+  const complete = compartment && item && Array.isArray(item.photos) && Number.isFinite(compartment.stockQuantity);
+  return {
+    ...event,
+    inventoryTag: { ...tag, compartment: complete ? { ...compartment, item } : { ...tag.compartment, stockQuantity: NaN, item: { ...tag.compartment.item, photos: [] } } },
+    inventoryTagNeedsRefresh: !complete,
+    inventoryTagFromCache: true,
+  };
+}
+
 function enqueueEvent(event: NfcEvent, generation: number) {
   // Keep a scan private even if its armed reader unmounts before the queue reaches it.
   const suppressInventoryRouting = [...hub.subscribers].some((subscriber) => subscriber.suppressInventoryRouting);
@@ -87,6 +119,11 @@ function enqueueEvent(event: NfcEvent, generation: number) {
         return;
       }
       try {
+        const cached = cachedInventoryEvent(event);
+        if (cached) {
+          notifySubscribers(cached, 'inventory');
+          return;
+        }
         const inventoryTag = await resolveInventoryTag(event.uid);
         if (generation !== hub.generation || hub.subscribers.size === 0) return;
         notifySubscribers(inventoryTag ? { ...event, inventoryTag } : event, inventoryTag ? 'inventory' : 'legacy');
@@ -95,6 +132,8 @@ function enqueueEvent(event: NfcEvent, generation: number) {
         if (generation === hub.generation) notifySubscribers(event, 'legacy');
       }
     })
+    // Let subscriber effects consume each scan before delivering the next one.
+    .finally(() => new Promise<void>((resolve) => setTimeout(resolve, 0)))
     .catch(() => {
       // A malformed or failed classification is isolated to this event.
     });
@@ -118,6 +157,7 @@ function startHubSocket(policy?: NfcStreamPolicy) {
       hub.socket = socket;
       socket.onopen = () => { opened = true; };
       socket.onmessage = (message) => {
+        const receivedAt = performance.now();
         if (generation !== hub.generation) return;
         try {
           const payload = JSON.parse(message.data) as Partial<NfcEvent>;
@@ -133,7 +173,7 @@ function startHubSocket(policy?: NfcStreamPolicy) {
           const eventKey = `${payload.uid}:${payload.timestamp}`;
           if (eventId === null && hub.lastEventKey === eventKey) return;
           hub.lastEventKey = eventKey;
-          enqueueEvent(payload as NfcEvent, generation);
+          enqueueEvent({ ...payload, receivedAt } as NfcEvent, generation);
         } catch {
           // Ignore malformed payloads.
         }
@@ -164,9 +204,10 @@ function startHubSocket(policy?: NfcStreamPolicy) {
 export function useNfcStream(
   enabled = false,
   policy?: NfcStreamPolicy,
-  options: { role?: NfcSubscriberRole; suppressInventoryRouting?: boolean } = {},
+  options: { role?: NfcSubscriberRole; suppressInventoryRouting?: boolean; inventoryQueryClient?: QueryClient } = {},
 ) {
   const [event, setEvent] = useState<NfcEvent | null>(null);
+  const inventoryQueryClient = options.inventoryQueryClient;
   const role = options.role ?? 'legacy';
   const suppressInventoryRouting = options.suppressInventoryRouting ?? false;
 
@@ -175,7 +216,7 @@ export function useNfcStream(
       setEvent(null);
       return;
     }
-    const subscriber: NfcSubscriber = { role, suppressInventoryRouting, setEvent };
+    const subscriber: NfcSubscriber = { role, suppressInventoryRouting, inventoryQueryClient, setEvent };
     hub.subscribers.add(subscriber);
     startHubSocket(policy);
     return () => {
@@ -183,7 +224,7 @@ export function useNfcStream(
       setEvent(null);
       if (hub.subscribers.size === 0) closeHubSocket();
     };
-  }, [enabled, policy, role, suppressInventoryRouting]);
+  }, [enabled, policy, role, suppressInventoryRouting, inventoryQueryClient]);
 
   return event;
 }

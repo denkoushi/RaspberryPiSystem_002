@@ -883,6 +883,7 @@ export class ItemInventoryService {
 
   async processTransaction(input: {
     itemTagUid: string;
+    expectedCompartmentId?: string;
     quantityTagUid: string;
     restockTagUid?: string;
     restock: boolean;
@@ -930,7 +931,7 @@ export class ItemInventoryService {
   }
 
   private async processStockTransaction(
-    input: { restock?: boolean; expectedBeforeQuantity?: number; idempotencyKey?: string; actor?: InventoryActor },
+    input: { restock?: boolean; expectedCompartmentId?: string; expectedBeforeQuantity?: number; idempotencyKey?: string; actor?: InventoryActor },
     resolveMovement: (tx: Prisma.TransactionClient) => Promise<{
       compartmentId: string;
       quantity: number;
@@ -947,6 +948,9 @@ export class ItemInventoryService {
         }
         const movement = await resolveMovement(tx);
         await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "InventoryCompartment" WHERE "id" = ${movement.compartmentId} FOR UPDATE`);
+        if (input.expectedCompartmentId !== undefined && input.expectedCompartmentId !== movement.compartmentId) {
+          throw new InventoryConflictError('タグの登録が変わりました');
+        }
         const compartment = await tx.inventoryCompartment.findUnique({ where: { id: movement.compartmentId } });
         if (!compartment) throw new ApiError(404, '在庫区画が見つかりません');
         if (input.expectedBeforeQuantity !== undefined && input.expectedBeforeQuantity !== compartment.stockQuantity) {
