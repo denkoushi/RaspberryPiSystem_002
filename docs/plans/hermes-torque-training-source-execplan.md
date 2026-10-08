@@ -31,6 +31,7 @@ Kiosk Chat's JEV record search will expose completed torque wrench training sess
 - [x] (2026-10-07) Main integration: #1761 merged as d7394416 and deployed to the Pi5 (run 20261007-072219-89269e). #1821 (87e3cbfd) makes the deploy launcher derive the allowed `HERMES_RETRIEVAL_SOURCES` ids from the source definitions, which #1761 had missed.
 - [x] (2026-10-07 11:53Z) Source enablement on the Pi5 through the maintenance route (run 20261007-114834-42c797): `HERMES_RETRIEVAL_SOURCES=nonconformity,knowledge_procedure,torque_training_session,torque_training_operator,torque_training_team`; no other Hermes setting changed. Loaded 8299 records (nonconformity 8274, knowledge_procedure 1, session 21, operator 2, team 1), no errors.
 - [x] (2026-10-08 06:50Z) Device check by the owner in the floating chat「JEV記録検索」: a question about one employee's latest training result was planned as `sources=["torque_training_operator"]` with an `employeeName` filter and newest-first order and answered with 1 record; a nonconformity question right after was planned as `sources=["nonconformity"]` and answered with 2 records. The owner judged both answers correct. Nonconformity routing is unchanged from before the enablement.
+- [x] (2026-10-08) Answer layout in the floating chat: the owner found the record answers hard to read (one block of "label: long sentence" lines) and approved a mock. #1858 (main c9d142af, Pi5 run 20261008-075537-c95570) adds an optional `display` object to record answers (same fields and order as the `answer` string, which is unchanged), validates it in the API and renders one card per record with a header line, field headings and per-sentence bullets; without `display` the panel renders as before. The owner checked training and nonconformity answers on the device and accepted the layout.
 - [ ] Not measured: external-JEV latency with five sources, team and session questions on the device, and ranking questions such as "who fails most".
 
 ## Surprises & Discoveries
@@ -123,6 +124,8 @@ Three opt-in sources and synthetic coverage are implemented locally. API unit te
 Revision note (2026-10-06): created the plan, recorded shared-name and date-free-source planner decisions, completed local evidence, and left full-suite completion, integration, and source enablement open.
 
 Revision note (2026-10-08): recorded main integration, the Pi5 source enablement and the owner's device check; left latency and the unmeasured question types open.
+
+Revision note (2026-10-08, second): recorded the structured answer layout (#1858), its Pi5 deploy and the owner's device check.
 
 
 ## Source Registration Refactor (2026-10-06)

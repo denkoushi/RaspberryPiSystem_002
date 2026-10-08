@@ -41,6 +41,8 @@ beforeEach(() => {
   mocks.file.mockResolvedValue(new Blob(['mp4'], { type: 'video/mp4' })); mocks.poster.mockResolvedValue(new Blob(['jpeg'], { type: 'image/jpeg' }));
   vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => blob.type === 'video/mp4' ? 'blob:video' : 'blob:poster');
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+  // jsdom does not implement media playback.
+  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
@@ -208,6 +210,12 @@ describe('procedure-manuals videos', () => {
     expect(start).toHaveValue('4.2');
     player.currentTime = 8.3; fireEvent.click(screen.getByRole('button', { name: '終了を現在位置に' }));
     expect(end).toHaveValue('8.3');
+    fireEvent.change(start, { target: { value: '2' } });
+    expect(player.currentTime).toBe(2); expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+    fireEvent.change(end, { target: { value: '7.5' } });
+    expect(player.currentTime).toBe(7.5);
+    fireEvent.keyDown(end, { key: 'ArrowLeft' });
+    expect(player.currentTime).toBe(7.4);
   });
   it('lets each overlapping 44px thumb be selected and brings the focused handle to the front', async () => {
     render(<ProcedureVideoShelfDialog onClose={vi.fn()} />);
