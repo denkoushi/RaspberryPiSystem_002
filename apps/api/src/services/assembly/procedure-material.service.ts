@@ -27,7 +27,9 @@ export class ProcedureMaterialService {
       const messageIds = messages.flatMap((material) => material.gmailMessageId === null ? [] : [material.gmailMessageId]);
       where.AND = [{ OR: [...queries.flatMap((q) => [{ subjectHint: { contains: q, mode: 'insensitive' as const } }, { originalFileName: { contains: q, mode: 'insensitive' as const } }]), ...textMatches, ...(messageIds.length ? [{ gmailMessageId: { in: messageIds } }] : [])] }];
     }
-    return this.db.procedureMaterial.findMany({ where, orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }], take: options.limit });
+    const materials = await this.db.procedureMaterial.findMany({ where, orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }], take: options.limit });
+    // PDF and page text exists for search only; keep it out of the list payload.
+    return materials.map((material) => material.kind === 'TEXT' ? material : { ...material, text: null });
   }
 
   async readFile(id: string) {

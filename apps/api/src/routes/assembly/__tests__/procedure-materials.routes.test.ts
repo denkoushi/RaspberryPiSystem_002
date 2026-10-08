@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import rateLimit from '@fastify/rate-limit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../../../lib/errors.js';
@@ -23,16 +24,26 @@ describe('procedure-material routes with mocked Prisma', () => {
     const importer = { importDraft: vi.fn().mockResolvedValue({ id: 'document-1', name: 'DFD1 組立' }) };
     const store = { read: vi.fn().mockResolvedValue(Buffer.from('photo-original')) };
     const gc = { collect: vi.fn().mockResolvedValue({ scanned: 3, deleted: 1 }) };
+    const pdfText = { backfill: vi.fn().mockResolvedValue({ dryRun: true, candidates: 3, updated: 0, withoutText: 1, failed: 0 }) };
     const ingestion = { runOnce: vi.fn().mockResolvedValue({ scanned: 1, deferred: 0, saved: 1, messages: [{ messageId: 'gmail-1', status: 'saved', trashed: true }] }) };
     const loadConfig = vi.fn().mockResolvedValue(defaultBackupConfig);
     app = Fastify(); registerErrorHandler(app);
-    registerProcedureMaterialRoutes(app, {
-      service: new ProcedureMaterialService(db as never, store as never, importer as never), ingestion, loadConfig, gc: gc as never,
-      allowView: async () => { if (deny === 'view') throw new ApiError(403, '権限がありません'); },
-      allowWriteKiosk: async () => { if (deny === 'write') throw new ApiError(403, '権限がありません'); },
+    app.register(async (scope) => {
+      await scope.register(rateLimit, { global: false });
+      registerProcedureMaterialRoutes(scope, {
+        service: new ProcedureMaterialService(db as never, store as never, importer as never), ingestion, loadConfig, gc: gc as never, pdfText,
+        allowView: async () => { if (deny === 'view') throw new ApiError(403, '権限がありません'); },
+        allowWriteKiosk: async () => { if (deny === 'write') throw new ApiError(403, '権限がありません'); },
+      });
     });
-    return { db, store, importer, ingestion, loadConfig, material, gc };
+    return { db, store, importer, ingestion, loadConfig, material, gc, pdfText };
   }
+  it('keeps PDF and page text out of the list payload', async () => {
+    const { db, material } = harness();
+    db.procedureMaterial.findMany.mockResolvedValue([material, { ...material, id: 'pdf', kind: 'PDF', text: 'PDF の文字' }, { ...material, id: 'page', kind: 'PHOTO', text: 'ページの文字' }]);
+    const response = await app.inject({ method: 'GET', url: `${base}?state=unplaced&limit=12` });
+    expect(response.json().materials.map((row: { text: string | null }) => row.text)).toEqual(['手順', null, null]);
+  });
   it.each([
     ['unplaced', { documentId: null, placedAt: null, discardedAt: null }],
     ['placed', { discardedAt: null, OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] }],
@@ -202,10 +213,27 @@ describe('procedure-material routes with mocked Prisma', () => {
     expect(response.statusCode).toBe(200); expect(response.json()).toMatchObject({ scanned: 1, deferred: 0, saved: 1, messages: [{ status: 'saved', trashed: true }] });
     expect(ingestion.runOnce).toHaveBeenCalledWith({ config: defaultBackupConfig, allowWait: true, manual: true, messageId: 'gmail-1', forceRetry: true });
   });
-  it.each([['GET', base], ['GET', `${base}/${id}/file`], ['POST', `${base}/ingest-gmail`], ['POST', `${base}/${id}/discard`], ['POST', `${base}/${id}/restore`], ['POST', `${base}/${id}/unplace`], ['POST', `${base}/gc`], ['POST', `${base}/${id}/create-document`]] as const)('rejects unauthorized %s %s before touching materials', async (method, url) => {
-    const { db, ingestion, loadConfig } = harness(method === 'GET' ? 'view' : 'write');
+  it.each([['POST', base + '/pdf-text-backfill'], ['GET', base], ['GET', `${base}/${id}/file`], ['POST', `${base}/ingest-gmail`], ['POST', `${base}/${id}/discard`], ['POST', `${base}/${id}/restore`], ['POST', `${base}/${id}/unplace`], ['POST', `${base}/gc`], ['POST', `${base}/${id}/create-document`]] as const)('rejects unauthorized %s %s before touching materials', async (method, url) => {
+    const { db, ingestion, loadConfig, pdfText } = harness(method === 'GET' ? 'view' : 'write');
     expect((await app.inject({ method, url })).statusCode).toBe(403);
     expect(db.procedureMaterial.findMany).not.toHaveBeenCalled(); expect(db.procedureMaterial.findUnique).not.toHaveBeenCalled(); expect(db.procedureMaterial.updateMany).not.toHaveBeenCalled();
     expect(loadConfig).not.toHaveBeenCalled(); expect(ingestion.runOnce).not.toHaveBeenCalled();
+    expect(pdfText.backfill).not.toHaveBeenCalled();
+  });
+  it('defaults PDF text backfill to dry run and passes validated options with counts only', async () => {
+    const { pdfText } = harness();
+    const response = await app.inject({ method: 'POST', url: `${base}/pdf-text-backfill` });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ dryRun: true, candidates: 3, updated: 0, withoutText: 1, failed: 0 });
+    expect(pdfText.backfill).toHaveBeenLastCalledWith({ dryRun: true, limit: 50 });
+    expect((await app.inject({ method: 'POST', url: `${base}/pdf-text-backfill`, payload: { dryRun: false, limit: 200 } })).statusCode).toBe(200);
+    expect(pdfText.backfill).toHaveBeenLastCalledWith({ dryRun: false, limit: 200 });
+    expect((await app.inject({ method: 'POST', url: `${base}/pdf-text-backfill` })).statusCode).toBe(429);
+    expect(pdfText.backfill).toHaveBeenCalledTimes(2);
+  });
+  it.each([{ dryRun: 'false' }, { limit: '50' }, { limit: 0 }, { limit: 201 }, { limit: 1.5 }, { limit: null }, { dryRun: null }, { unknown: true }, null])('rejects invalid PDF text backfill body %j', async (payload) => {
+    const { pdfText } = harness();
+    const response = await app.inject({ method: 'POST', url: `${base}/pdf-text-backfill`, payload: JSON.stringify(payload), headers: { 'content-type': 'application/json' } });
+    expect(response.statusCode).toBe(400); expect(pdfText.backfill).not.toHaveBeenCalled();
   });
 });

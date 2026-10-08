@@ -11,6 +11,7 @@ import { ProcedureMaterialWorkInstructionService } from '../../services/assembly
 
 import { ProcedureMaterialGcService } from '../../services/assembly/procedure-material-gc.service.js';
 import { ProcedureMaterialThumbnailService } from '../../services/assembly/procedure-material-thumbnail.service.js';
+import { ProcedureMaterialPdfTextService } from '../../services/assembly/procedure-material-pdf-text.service.js';
 
 const querySchema = z.object({
   state: z.enum(['unplaced', 'placed', 'discarded', 'all']).default('unplaced'),
@@ -19,11 +20,13 @@ const querySchema = z.object({
 });
 const paramsSchema = z.object({ id: z.string().uuid() });
 const ingestSchema = z.object({ messageId: z.string().min(1).max(200).optional(), forceRetry: z.boolean().optional() });
+const pdfTextBackfillSchema = z.object({ dryRun: z.boolean().default(true), limit: z.number().int().min(1).max(200).default(50) }).strict();
 
 export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
   allowView: preHandlerHookHandler; allowWriteKiosk: preHandlerHookHandler;
   service?: ProcedureMaterialService;
   gc?: ProcedureMaterialGcService;
+  pdfText?: Pick<ProcedureMaterialPdfTextService, 'backfill'>;
   knowledge?: ProcedureMaterialKnowledgeService;
   workInstructions?: ProcedureMaterialWorkInstructionService;
   ingestion?: Pick<ProcedureMaterialGmailIngestionService, 'runOnce'>;
@@ -79,6 +82,8 @@ export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
     return (options.ingestion ?? getProcedureMaterialGmailIngestionService()).runOnce({ config, allowWait: true, manual: true, ...body });
   });
   app.post(`${path}/gc`, { preHandler: options.allowWriteKiosk, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async () => (options.gc ?? new ProcedureMaterialGcService()).collect());
+  app.post(`${path}/pdf-text-backfill`, { preHandler: options.allowWriteKiosk, config: { rateLimit: { max: 2, timeWindow: '1 minute' } } }, async (request) =>
+    (options.pdfText ?? new ProcedureMaterialPdfTextService()).backfill(pdfTextBackfillSchema.parse(request.body === undefined ? {} : request.body)));
   app.post(`${path}/:id/create-document`, { preHandler: options.allowWriteKiosk }, async (request) =>
     service.createDocument(paramsSchema.parse(request.params).id));
   app.post(`${path}/:id/unplace`, { preHandler: options.allowWriteKiosk }, async (request) => {
