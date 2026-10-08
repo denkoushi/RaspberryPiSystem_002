@@ -16,7 +16,7 @@ describe('procedure-material routes with mocked Prisma', () => {
   afterEach(async () => { await app?.close(); });
   function harness(deny: 'view' | 'write' | null = null) {
     const material = { id, kind: 'TEXT', text: '手順', documentId: null, placedAt: null, discardedAt: null, storageKey: null, gmailMessageId: null };
-    const db = { $queryRaw: vi.fn(), $transaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(db)), procedureMaterial: {
+    const db = { $queryRaw: vi.fn().mockResolvedValue([]), $transaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(db)), procedureMaterial: {
       findMany: vi.fn().mockResolvedValue([material]), findUnique: vi.fn().mockResolvedValue(material),
       update: vi.fn(async ({ data }: { data: object }) => Object.assign(material, data)),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -87,10 +87,38 @@ describe('procedure-material routes with mocked Prisma', () => {
     expect(db.procedureMaterial.findMany).toHaveBeenNthCalledWith(1, { where: { gmailMessageId: { not: null }, OR: [...new Set([q, q.normalize('NFKC')])].map((value) => ({ text: { contains: value, mode: 'insensitive' } })) }, select: { gmailMessageId: true }, distinct: ['gmailMessageId'], take: 500 });
     expect(db.procedureMaterial.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { documentId: null, placedAt: null, discardedAt: null, AND: [{ OR: expect.arrayContaining([{ gmailMessageId: { in: ['mail-1', 'mail-3'] } }]) }] } }));
   });
+  it('searches part-name matches through the hint and snapshot, and names only snapshot materials in one lookup', async () => {
+    const { db, material } = harness();
+    const work = { ...material, id: 'work', kind: 'PHOTO', workInstructionRef: { partNumber: 'DFD1' }, subjectHint: null };
+    const mail = { ...material, id: 'mail', subjectHint: 'DFD1 の資料', workInstructionRef: null };
+    const rows = [work, mail, { ...mail, id: 'other', subjectHint: '別の資料' }];
+    db.$queryRaw.mockResolvedValueOnce([{ partNumber: 'DFD1' }]).mockResolvedValueOnce([{ partNumber: 'DFD1', partName: '軸受ホルダー' }]);
+    db.procedureMaterial.findMany.mockResolvedValueOnce([]).mockImplementationOnce(async ({ where }) => {
+      expect(where.AND[0].OR).toEqual(expect.arrayContaining([
+        { subjectHint: { contains: 'DFD1', mode: 'insensitive' } }, { workInstructionRef: { path: ['partNumber'], equals: 'DFD1' } },
+      ]));
+      return rows.filter((row) => where.AND[0].OR.some((condition: { subjectHint?: { contains: string }; workInstructionRef?: { equals: string } }) =>
+        (condition.subjectHint && row.subjectHint?.includes(condition.subjectHint.contains)) || (condition.workInstructionRef && row.workInstructionRef?.partNumber === condition.workInstructionRef.equals)));
+    });
+    const response = await app.inject(`${base}?q=${encodeURIComponent('ホル')}`);
+    expect(response.statusCode).toBe(200);
+    expect(response.json().materials.map(({ id, partName }: { id: string; partName: string | null }) => [id, partName])).toEqual([['work', '軸受ホルダー'], ['mail', null]]);
+    expect(db.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(db.$queryRaw.mock.calls[0][0].values.at(-1)).toBe(20);
+  });
+  it('looks up all snapshot names once without reverse lookup when q is absent', async () => {
+    const { db, material } = harness();
+    db.procedureMaterial.findMany.mockResolvedValue([{ ...material, workInstructionRef: { partNumber: 'DFD1' } }, { ...material, workInstructionRef: { partNumber: 'OTHER' } }]);
+    db.$queryRaw.mockResolvedValue([{ partNumber: 'DFD1', partName: 'ホルダー' }]);
+    expect((await app.inject(base)).json().materials.map(({ partName }: { partName: string | null }) => partName)).toEqual(['ホルダー', null]);
+    expect(db.$queryRaw).toHaveBeenCalledOnce();
+    expect(db.$queryRaw.mock.calls[0][0].values).toEqual(expect.arrayContaining(['DFD1', 'OTHER']));
+  });
   it('defaults to 100 unplaced materials and rejects invalid filters', async () => {
     const { db } = harness();
     expect((await app.inject({ method: 'GET', url: base })).statusCode).toBe(200);
     expect(db.procedureMaterial.findMany).toHaveBeenCalledOnce();
+    expect(db.$queryRaw).not.toHaveBeenCalled();
     expect(db.procedureMaterial.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { documentId: null, placedAt: null, discardedAt: null }, take: 100 }));
     for (const query of ['state=invalid', 'limit=0', 'limit=501']) expect((await app.inject({ method: 'GET', url: `${base}?${query}` })).statusCode).toBe(400);
   });

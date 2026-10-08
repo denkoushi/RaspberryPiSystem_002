@@ -7,6 +7,13 @@ import { prisma as defaultPrisma } from '../../lib/prisma.js';
 import type { DurableFileStorePort } from '../file-storage/durable-file-store.port.js';
 import { getFileStorageRuntime } from '../file-storage/file-storage-runtime.js';
 
+import { normalizeWorkInstructionPartNumber } from '../work-instructions/domain/normalization.js';
+import { readPartNamesByPartNumbers, readPartNumbersByPartName } from '../work-instructions/repositories/prisma-work-instruction-part-names.js';
+
+function materialPartNumber(ref: Prisma.JsonValue | undefined): string | null {
+  return ref && typeof ref === 'object' && !Array.isArray(ref) && typeof ref.partNumber === 'string' ? normalizeWorkInstructionPartNumber(ref.partNumber) : null;
+}
+
 export type ProcedureMaterialState = 'unplaced' | 'placed' | 'discarded' | 'all';
 export class ProcedureMaterialService {
   constructor(
@@ -24,12 +31,16 @@ export class ProcedureMaterialService {
       const queries = [...new Set([options.q, options.q.normalize('NFKC')])];
       const textMatches = queries.map((q) => ({ text: { contains: q, mode: 'insensitive' as const } }));
       const messages = await this.db.procedureMaterial.findMany({ where: { gmailMessageId: { not: null }, OR: textMatches }, select: { gmailMessageId: true }, distinct: ['gmailMessageId'], take: 500 });
+      const parts = await readPartNumbersByPartName(this.db, options.q, 20);
+      const partMatches: Prisma.ProcedureMaterialWhereInput[] = parts.flatMap((partNumber) => [{ subjectHint: { contains: partNumber, mode: 'insensitive' } }, { workInstructionRef: { path: ['partNumber'], equals: partNumber } }]);
       const messageIds = messages.flatMap((material) => material.gmailMessageId === null ? [] : [material.gmailMessageId]);
-      where.AND = [{ OR: [...queries.flatMap((q) => [{ subjectHint: { contains: q, mode: 'insensitive' as const } }, { originalFileName: { contains: q, mode: 'insensitive' as const } }]), ...textMatches, ...(messageIds.length ? [{ gmailMessageId: { in: messageIds } }] : [])] }];
+      where.AND = [{ OR: [...queries.flatMap((q) => [{ subjectHint: { contains: q, mode: 'insensitive' as const } }, { originalFileName: { contains: q, mode: 'insensitive' as const } }]), ...textMatches, ...partMatches, ...(messageIds.length ? [{ gmailMessageId: { in: messageIds } }] : [])] }];
     }
     const materials = await this.db.procedureMaterial.findMany({ where, orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }], take: options.limit });
     // PDF and page text exists for search only; keep it out of the list payload.
-    return materials.map((material) => material.kind === 'TEXT' ? material : { ...material, text: null });
+    const partNames = await readPartNamesByPartNumbers(this.db, materials.flatMap((material) => materialPartNumber(material.workInstructionRef) ?? []));
+    return materials.map((material) => ({ ...material, text: material.kind === 'TEXT' ? material.text : null,
+      partName: partNames.get(materialPartNumber(material.workInstructionRef) ?? '') ?? null }));
   }
 
   async readFile(id: string) {

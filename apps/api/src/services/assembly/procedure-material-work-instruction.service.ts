@@ -9,6 +9,8 @@ import type { DurableFileStorePort } from '../file-storage/durable-file-store.po
 import { FileStorageAlreadyExistsError } from '../file-storage/file-storage-errors.js';
 import { getFileStorageRuntime } from '../file-storage/file-storage-runtime.js';
 import type { WorkInstructionGroupSummaryView, WorkInstructionGroupView } from '../work-instructions/domain/types.js';
+import { normalizeWorkInstructionPartNumber } from '../work-instructions/domain/normalization.js';
+import { readPartNamesByPartNumbers, readPartNumbersByPartName } from '../work-instructions/repositories/prisma-work-instruction-part-names.js';
 import type { WorkInstructionReadService } from '../work-instructions/work-instruction-read.service.js';
 import { getWorkInstructionServices } from '../work-instructions/work-instruction-service.factory.js';
 
@@ -53,10 +55,18 @@ export class ProcedureMaterialWorkInstructionService {
       groups.push(...items);
       if (page ? !page.hasMore : items.length < 500) break;
     }
-    // Search also matches memo text; this shelf searches only part number / target.
-    const query = q?.normalize('NFKC').trim().toLowerCase();
-    return groups.filter((group) => !query || [group.partNumber, group.shootingTarget].some((text) => text.normalize('NFKC').toLowerCase().includes(query)))
-      .sort((a, b) => b.latestModified.getTime() - a.latestModified.getTime());
+    if (q) {
+      const parts = new Set(await readPartNumbersByPartName(this.db, q));
+      if (parts.size) {
+        for (let offset = 0; ; offset += 500) {
+          const page = await read.readPublishedGroups({ limit: 500, offset });
+          groups.push(...page.filter((group) => parts.has(normalizeWorkInstructionPartNumber(group.partNumber) ?? group.partNumber)));
+          if (page.length < 500) break;
+        }
+      }
+    }
+    const unique = new Map(groups.map((group) => [JSON.stringify([group.partNumber, group.shootingTarget]), group]));
+    return [...unique.values()].sort((a, b) => b.latestModified.getTime() - a.latestModified.getTime());
   }
 
   async list(options: { q?: string; limit?: number } = {}) {
@@ -75,9 +85,10 @@ export class ProcedureMaterialWorkInstructionService {
       }
     }
     const imported = await this.db.procedureMaterial.findMany({ where: { gmailDedupeKey: { in: items.map((item) => item.candidateKey) } }, select: { gmailDedupeKey: true } });
+    const partNames = await readPartNamesByPartNumbers(this.db, items.map((item) => item.partNumber));
     const keys = new Set(imported.map((item) => item.gmailDedupeKey));
     return { items: items.map(({ candidateKey, partNumber, shootingTarget, step, memo, assetId, sourceModified }) => ({
-      candidateKey, partNumber, shootingTarget, step, memo: memo.slice(0, 200), assetId, sourceModified, alreadyImported: keys.has(candidateKey),
+      candidateKey, partNumber, partName: partNames.get(normalizeWorkInstructionPartNumber(partNumber) ?? '') ?? null, shootingTarget, step, memo: memo.slice(0, 200), assetId, sourceModified, alreadyImported: keys.has(candidateKey),
     })) };
   }
 
