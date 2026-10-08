@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../../../lib/photo-storage.js', () => ({ PhotoStorage: { deletePhoto: vi.fn().mockResolvedValue(undefined) } }));
 
 import { normalizeInventoryArea } from '../inventory-area.js';
-import { ItemInventoryService } from '../item-inventory.service.js';
+import { InventoryConflictError, ItemInventoryService } from '../item-inventory.service.js';
 import { PhotoStorage } from '../../../lib/photo-storage.js';
 
 function transactionDb(overrides: Record<string, unknown> = {}) {
@@ -452,6 +452,28 @@ function inventoryState(stockQuantity = 10) {
 }
 
 describe('ItemInventoryService stock transactions', () => {
+  it.each(['compartment-1', undefined])('accepts an expected matching compartment or the legacy input: %s', async (expectedCompartmentId) => {
+    const { state, db } = inventoryState();
+    const result = await new ItemInventoryService(db as never).processTransaction({
+      itemTagUid: 'item-uid', quantityTagUid: 'quantity-uid', restock: false, expectedCompartmentId,
+    });
+    expect(result.transaction).toMatchObject({ compartmentId: 'compartment-1', delta: -2, beforeQuantity: 10, afterQuantity: 8 });
+    expect(state.compartment.stockQuantity).toBe(8);
+    expect(state.transactions).toHaveLength(1);
+  });
+
+  it('rejects a reassigned item tag after locking without changing stock or creating a transaction', async () => {
+    const { state, tx, db } = inventoryState();
+    await expect(new ItemInventoryService(db as never).processTransaction({
+      itemTagUid: 'item-uid', quantityTagUid: 'quantity-uid', restock: false, expectedCompartmentId: 'displayed-compartment',
+    })).rejects.toThrow(new InventoryConflictError('タグの登録が変わりました'));
+    expect(tx.$queryRaw).toHaveBeenCalledOnce();
+    expect(tx.inventoryCompartment.update).not.toHaveBeenCalled();
+    expect(tx.inventoryTransaction.create).not.toHaveBeenCalled();
+    expect(state.compartment.stockQuantity).toBe(10);
+    expect(state.transactions).toHaveLength(0);
+  });
+
   it('records issue and restock before/after balances independently', async () => {
     const { state, db } = inventoryState();
     const service = new ItemInventoryService(db as never);

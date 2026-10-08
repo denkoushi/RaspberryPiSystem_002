@@ -58,6 +58,24 @@ Run `20260926-112811-48762d` failed after 3 seconds. The PR for the next milesto
 
 Do not merge to `main` until a standard release run has finished. The next run must re-check CI for the new SHA and re-run `--print-plan`.
 
+## Updates (2026-10-08, 在庫操作 screen)
+
+Third part of the review: the daily screen can be used by touch alone, and a tag shows its item at once.
+
+- Number buttons (1, 2, 5, 10, 20 and ほかの数 with a keypad) record a movement the moment they are pressed, through `POST /item-inventory/touch-transactions`. There is no confirmation step; the named cancel button undoes a wrong press. 払い出し and 補充 are a two-way switch on the item screen and share the restock mode of the restock tag.
+- The list is narrowed by area and shelf chips above it. 置き場所から選ぶ and the place and tool-detail blocks are gone from the daily screen.
+- A scanned item tag is shown from a tag table kept on the kiosk (`['inventory-tags']`, refreshed every 5 minutes by `InventoryNfcRouter`) and checked against the server in the background. The check replaces the item if the tag now points at another drawer, updates the stock if only that changed, and clears the screen if the tag is gone.
+- Rules that keep a movement on the drawer the worker sees:
+  - Everything that changes stock (number button, quantity tag, correction, cancel) runs one at a time. A scan read while an operation is running waits for it.
+  - An operation waits for the background check of the selection before it is sent, and is dropped if the check changes the drawer.
+  - When an operation fails, scans read up to that moment are dropped, also across leaving and reopening the screen (the failure time is kept outside the component).
+  - The tag route accepts `expectedCompartmentId`; if the tag now belongs to another drawer the API answers 409 `INVENTORY_CONFLICT` (タグの登録が変わりました) and nothing moves. A replay with the same idempotency key returns the first result before this check.
+  - No answer (network error or 5xx) is treated as unknown: the item list is re-read and the screen says 通信できませんでした。在庫数を確かめてください. It does not retry by itself.
+  - 補充 chosen on the header, or a quantity tag on a drawer without a tag, re-reads the quantity and goes through the touch route.
+- The screen reads API errors from `errorCode` (what the error handler sends), falling back to `code`.
+- Accepted limit: a quantity or restock tag deleted on another terminal is still treated as an inventory tag for up to 5 minutes here. No stock moves, because the server rejects it.
+- Not checked: the real look at 1920×1080 on a kiosk. Tests cover behaviour only.
+
 ## Updates (2026-10-08, API)
 
 API groundwork for the next kiosk screens; no screen calls the new endpoints yet.

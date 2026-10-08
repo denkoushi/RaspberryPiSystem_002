@@ -34,12 +34,13 @@ describe('InventoryItemGrid', () => {
     expect(sorted.map((entry) => entry.id)).toEqual(['c', 'b', 'd', 'a']);
   });
 
-  it('shows name, count and unit, then area, shelf and drawer on two lines', () => {
+  it('shows a two-line 17px name and the count, unit and location below', () => {
     render(<InventoryItemGrid compartments={[drawer('a', '治具', null, 4)]} onPick={vi.fn()} />);
     expect(screen.getByText('治具')).toBeInTheDocument();
     expect(screen.getByText('ケース')).toBeInTheDocument();
-    expect(screen.getByText('50013_540AP 北')).toBeInTheDocument();
-    expect(screen.getByText('棚2 引4')).toBeInTheDocument();
+    expect(screen.getByText('50013_540AP 北・棚2-4')).toBeInTheDocument();
+    expect(screen.getByText('治具')).toHaveClass('line-clamp-2', 'text-[17px]');
+    expect(screen.getByRole('button')).toHaveTextContent('3ケース');
   });
 
   it('leads with unregistered candidates, newest first, and opens setup for the tapped one', () => {

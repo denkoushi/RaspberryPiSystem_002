@@ -158,6 +158,7 @@ const registerBody = z.object({
 
 const transactionBody = z.object({
   itemTagUid: z.string().trim().min(1).max(256),
+  expectedCompartmentId: z.string().uuid().optional(),
   quantityTagUid: z.string().trim().min(1).max(256),
   restockTagUid: z.string().trim().min(1).max(256).optional(),
   restock: z.boolean().default(false),

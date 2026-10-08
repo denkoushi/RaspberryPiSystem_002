@@ -33,7 +33,7 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
   if (sorted.length === 0 && pending.length === 0) return <p className="text-inv-muted">登録済みのアイテムはまだありません</p>;
   const now = new Date();
   return (
-    <div className="grid min-h-0 flex-1 auto-rows-max grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-3.5 overflow-y-auto pb-1" aria-label="登録済みアイテム">
+    <div className="grid min-h-0 flex-1 auto-rows-max grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3 overflow-y-auto pb-1" aria-label="登録済みアイテム">
       {pending.map((candidate) => (
         <button key={candidate.id} type="button" aria-label={`未登録 候補 #${candidate.sourceItemId} を登録する`} className="flex flex-col overflow-hidden rounded-[14px] border-2 border-inv-amber bg-inv-s1 text-left text-inv-text hover:brightness-110 focus:outline-none focus-visible:brightness-110" onClick={() => onPickPending?.(candidate)}>
           <span className="relative block h-[150px] w-full bg-inv-s3">
@@ -54,19 +54,15 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
         const empty = compartment.stockQuantity === 0;
         return (
           <button key={compartment.id} type="button" className="flex flex-col overflow-hidden rounded-[14px] border border-inv-line bg-inv-s1 text-left text-inv-text hover:border-inv-cyan focus:outline-none focus-visible:border-inv-cyan" onClick={() => onPick(compartment)}>
-            <span className="relative block h-[150px] w-full bg-inv-s3">
+            <span className="relative block h-[110px] w-full bg-inv-s3">
               {photo ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
               {issued ? <span className="absolute left-2 top-2 rounded-md bg-inv-bg/75 px-2 py-0.5 text-[11px] font-bold tracking-[0.06em]">{issued} 持出</span> : null}
             </span>
-            <span className="flex items-baseline gap-1.5 px-3 pt-2.5">
-              <span className="min-w-0 flex-1 truncate text-sm font-bold">{compartment.item.name}</span>
-              <span className={`text-[22px] font-black tabular-nums ${empty ? 'text-inv-amber' : ''}`}>{compartment.stockQuantity}</span>
-              <span className="text-xs text-inv-faint">{unitLabel(compartment.item)}</span>
-            </span>
-            <span className="flex items-center gap-1 px-3 pb-3 pt-0.5 text-xs text-inv-faint">
-              <PinIcon />
-              <span className="min-w-0 truncate">{compartment.area}</span>
-              <span className="ml-auto shrink-0 font-bold tabular-nums text-inv-muted">棚{compartment.shelfNumber} 引{compartment.drawerNumber}</span>
+            <span className="line-clamp-2 min-h-[3.05em] px-3 pt-2.5 text-[17px] font-bold leading-[1.35]">{compartment.item.name}</span>
+            <span className="flex min-w-0 flex-wrap items-baseline gap-1.5 px-3 pb-3 pt-1 text-base text-inv-muted">
+              <span className={`shrink-0 text-[26px] font-black tabular-nums ${empty ? 'text-inv-amber' : 'text-inv-text'}`}>{compartment.stockQuantity}</span>
+              <span className="min-w-0 break-all">{unitLabel(compartment.item)}</span>
+              <span className="ml-auto min-w-0 break-all text-sm">{compartment.area}・棚{compartment.shelfNumber}-{compartment.drawerNumber}</span>
             </span>
           </button>
         );
