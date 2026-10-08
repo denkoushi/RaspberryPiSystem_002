@@ -5,6 +5,7 @@ import { deleteAssemblyProcedureDocument, verifyAssemblyTemplateAccessPassword, 
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Dialog } from '../../../components/ui/Dialog';
 import { IconActionTooltip } from '../../../components/ui/IconActionTooltip';
+import { normalizeWorkInstructionPartNumber } from '../../../lib/workInstructionRules';
 import { KioskPinDialog, kioskPinErrorResult } from '../../kiosk/KioskPinDialog';
 import { AssemblyProcedurePreviewDialog } from '../AssemblyProcedurePreviewDialog';
 import { AssemblyProcedureSequenceViewer } from '../AssemblyProcedureSequenceViewer';
@@ -33,7 +34,7 @@ const shortName = (process?: ProcedureManualProcessDto) => process?.name.replace
 export function ProcedureManualWorkshop() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const modelCodeKey = procedureManualModelKey(params.get('model') ?? '');
+  const modelCodeKey = params.has('part') ? normalizeWorkInstructionPartNumber(params.get('part')) : procedureManualModelKey(params.get('model') ?? '');
   const processId = params.get('process') ?? '';
   const [search, setSearch] = useState('');
   const [nameFilter, setNameFilter] = useState('');
@@ -42,6 +43,8 @@ export function ProcedureManualWorkshop() {
   const [models, setModels] = useState<ProcedureManualModelDto[]>([]);
   const [candidates, setCandidates] = useState<ProcedureManualModelDto[]>([]);
   const [processes, setProcesses] = useState<ProcedureManualProcessDto[]>([]);
+  const [allKind, setAllKind] = useState<'MODEL' | 'PART'>(() => params.has('part') ? 'PART' : 'MODEL');
+  const subjectKind = processes.find(row => row.id === processId)?.subjectKind ?? allKind;
   const [items, setItems] = useState<ProcedureManualAssignmentOverviewItemDto[]>([]);
   const [preview, setPreview] = useState<AssemblyProcedureDocumentDto | null>(null);
   const [previewSequence, setPreviewSequence] = useState<AssemblyProcedureSequenceDto | null>(null);
@@ -83,6 +86,7 @@ export function ProcedureManualWorkshop() {
   }, []);
   useEffect(() => {
     const sequence = ++requestSequence.current;
+    if (subjectKind === 'PART') { setSearchLoading(false); setSearchError(null); setHasMore(false); return; }
     setSearchLoading(true); setSearchError(null); setCandidates([]); setHasMore(false);
     const load = search || digitQuery
       ? listAssemblyMachineNameCandidates({ digitQuery, q: search, limit: 30 }).then(result => {
@@ -101,7 +105,7 @@ export function ProcedureManualWorkshop() {
     void load.catch(e => { if (sequence === requestSequence.current) setSearchError(readAssemblyApiErrorMessage(e, '機種を検索できません')); })
       .finally(() => { if (sequence === requestSequence.current) setSearchLoading(false); });
     return () => { requestSequence.current += 1; };
-  }, [search, digitQuery, version]);
+  }, [search, digitQuery, version, subjectKind]);
   useEffect(() => {
     let cancelled = false;
     setItems([]); setError(null); setOverviewLoading(true);
@@ -122,9 +126,11 @@ export function ProcedureManualWorkshop() {
       .catch(() => { if (!cancelled) setVideoCount(null); });
     return () => { cancelled = true; };
   }, [videoOpen]);
-  const select = (model: string, process = '') => {
+  const select = (model: string, process = '', selectedKind?: 'MODEL' | 'PART') => {
     const next = new URLSearchParams();
-    if (model) next.set('model', model);
+    const kind = selectedKind ?? processes.find(row => row.id === process)?.subjectKind ?? subjectKind;
+    setAllKind(kind);
+    if (model) next.set(kind === 'PART' ? 'part' : 'model', model);
     if (process) next.set('process', process);
     setParams(next, { replace: true });
   };
@@ -136,14 +142,14 @@ export function ProcedureManualWorkshop() {
       || (statusFilter === '公開' && item.status === 'published')
       || (statusFilter === '下書き' && item.status === 'draft' && !item.draftRevision)
       || (statusFilter === '改版中' && Boolean(item.draftRevision));
-    return (!modelCodeKey || item.modelCodeKey === modelCodeKey) && (!processId || item.processId === processId) && matchesStatus && (item.label || item.title).normalize('NFKC').toLocaleLowerCase().includes(normalizedNameFilter);
+    return (!modelCodeKey || item.modelCodeKey === modelCodeKey) && (!processId || item.processId === processId) && (!modelCodeKey || (processes.find(row => row.id === item.processId)?.subjectKind ?? 'MODEL') === subjectKind) && matchesStatus && (item.label || item.title).normalize('NFKC').toLocaleLowerCase().includes(normalizedNameFilter);
   });
   const rowProcessName = (item: ProcedureManualAssignmentOverviewItemDto) => {
     const child = processes.find(row => row.id === item.processId);
     return `${shortName(processes.find(row => row.id === child?.parentId))} › ${shortName(child)}`;
   };
   const openEditor = (item: ProcedureManualAssignmentOverviewItemDto) => navigate(kioskAssemblyProcedureDocumentEditPath(item.draftRevision?.documentId ?? item.documentId), {
-    state: { returnTo: kioskAssemblyManualsWorkshopPath({ model: modelCodeKey, process: processId }),
+    state: { returnTo: kioskAssemblyManualsWorkshopPath({ [subjectKind === 'PART' ? 'part' : 'model']: modelCodeKey, process: processId }),
       context: { modelCode: item.modelCode, modelCodeKey: item.modelCodeKey, processId: item.processId, processName: rowProcessName(item), mode: 'fix' } }
   });
   const fix = (item: ProcedureManualAssignmentOverviewItemDto) => { if (checkAccess()) openEditor(item); };
@@ -201,16 +207,16 @@ export function ProcedureManualWorkshop() {
       </div>
     </header>
     <div className="grid min-h-0 grid-cols-[460px_minmax(0,1fr)]">
-      <ProcedureManualFilterPane processes={processes} items={items} models={candidates} modelCodeKey={modelCodeKey} processId={processId}
+      <ProcedureManualFilterPane subjectKind={subjectKind} onKindChange={kind => { setSearch(''); setDigitQuery(''); select('', '', kind); }} processes={processes} items={items} models={candidates} modelCodeKey={modelCodeKey} processId={processId}
         search={search} digitQuery={digitQuery} onSearchChange={setSearch} onDigitQueryChange={setDigitQuery}
-        onModelSelect={key => select(key === modelCodeKey ? '' : key, processId)} onProcessSelect={id => select(modelCodeKey, id)}
+        onModelSelect={key => select(key === modelCodeKey ? '' : key, processId)} onProcessSelect={id => { const kind = processes.find(row => row.id === id)?.subjectKind ?? subjectKind; if (kind !== subjectKind) { setSearch(''); setDigitQuery(''); } select(kind === subjectKind ? modelCodeKey : '', id); }}
         loading={searchLoading} error={searchError} hasMore={hasMore} />
       <section aria-label="要領書一覧" className="grid min-h-0 min-w-0 content-start overflow-auto px-4 py-3">
         <>
           <div className="mb-1.5 flex min-h-[52px] min-w-max items-center gap-3">
-            <h2 aria-label={`${modelCodeKey || '全機種'} › ${process ? shortName(process) : '全工程'}`} className="flex items-center gap-2 text-[22px] font-black">
+            <h2 aria-label={`${modelCodeKey || (subjectKind === 'PART' ? '全部品' : '全機種')} › ${process ? shortName(process) : '全工程'}`} className="flex items-center gap-2 text-[22px] font-black">
               <span className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-[#344252] pl-3 ${modelCodeKey ? '' : 'border-dashed pr-3 text-[#9fadb9]'}`}>
-                {modelCodeKey || '全機種'}{modelCodeKey ? <IconActionTooltip label="機種の絞り込みを外す"><button aria-label="機種の絞り込みを外す" className={symbolAction} onClick={() => select('', processId)}>×</button></IconActionTooltip> : null}
+                {modelCodeKey || (subjectKind === 'PART' ? '全部品' : '全機種')}{modelCodeKey ? <IconActionTooltip label={`${subjectKind === 'PART' ? '部品' : '機種'}の絞り込みを外す`}><button aria-label={`${subjectKind === 'PART' ? '部品' : '機種'}の絞り込みを外す`} className={symbolAction} onClick={() => select('', processId)}>×</button></IconActionTooltip> : null}
               </span> ›
               <span className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-[#344252] pl-3 ${process ? '' : 'border-dashed pr-3 text-[#9fadb9]'}`}>
                 {process ? shortName(process) : '全工程'}{process ? <IconActionTooltip label="工程の絞り込みを外す"><button aria-label="工程の絞り込みを外す" className={symbolAction} onClick={() => select(modelCodeKey)}>×</button></IconActionTooltip> : null}
@@ -225,7 +231,7 @@ export function ProcedureManualWorkshop() {
           </div>
           <div role="table" aria-label={process ? shortName(process) : '全工程'} className="min-w-[1100px]">
           <div role="row" className="sr-only">
-            {['サムネイル', '名前', ...(!modelCodeKey ? ['機種'] : []), ...(!processId ? ['工程'] : []), '状態', '他の使用先', '担当・承認', 'ページ', '操作'].map(label => <div role="columnheader" key={label}>{label}</div>)}
+            {['サムネイル', '名前', ...(!modelCodeKey ? ['機種・部品'] : []), ...(!processId ? ['工程'] : []), '状態', '他の使用先', '担当・承認', 'ページ', '操作'].map(label => <div role="columnheader" key={label}>{label}</div>)}
           </div>
           {filteredItems.map(item => <div role="row" key={item.assignmentId} aria-label={item.label || item.title} style={{ gridTemplateColumns: `36px minmax(220px,1fr) ${!modelCodeKey ? '160px ' : ''}${!processId ? '90px ' : ''}150px 180px 150px 50px 188px` }} className="grid h-14 items-center gap-3 border-b border-[#27313b] px-2.5 hover:bg-[#1b222a]">
             <div role="cell"><ManualThumbnail url={item.thumbnailPageUrl} /></div>
@@ -267,11 +273,11 @@ export function ProcedureManualWorkshop() {
       setAccessGranted(true);
       return true;
     }} /> : null}
-    {accessGranted && blankOpen ? <ProcedureManualBlankDialog beforeMutation={checkAccess} models={models} processes={processes} modelCode={modelCode} processId={processId} onClose={() => setBlankOpen(false)} /> : null}
+    {accessGranted && blankOpen ? <ProcedureManualBlankDialog beforeMutation={checkAccess} models={models} partCandidates={items.filter(row => processes.find(process => process.id === row.processId)?.subjectKind === 'PART')} processes={processes} modelCode={modelCode} processId={processId} onClose={() => setBlankOpen(false)} /> : null}
     {accessGranted && assignmentOpen ? <ProcedureManualAssignmentDialog beforeMutation={checkAccess} modelCode={modelCode} processId={processId} processes={processes} onClose={() => setAssignmentOpen(false)} onSaved={(key, id) => { setAssignmentOpen(false); select(key, id); setVersion(value => value + 1); }} /> : null}
     {materialOpen ? <ProcedureMaterialShelfDialog onClose={() => setMaterialOpen(false)} onCreatedDocument={(documentId) => {
       setMaterialOpen(false);
-      navigate(kioskAssemblyProcedureDocumentEditPath(documentId), { state: { returnTo: kioskAssemblyManualsWorkshopPath({ model: modelCodeKey, process: processId }) } });
+      navigate(kioskAssemblyProcedureDocumentEditPath(documentId), { state: { returnTo: kioskAssemblyManualsWorkshopPath({ [subjectKind === 'PART' ? 'part' : 'model']: modelCodeKey, process: processId }) } });
     }} /> : null}
     {videoOpen ? <ProcedureVideoShelfDialog onClose={() => setVideoOpen(false)} /> : null}
     <AssemblyProcedurePreviewDialog document={preview} isOpen={Boolean(preview)} onClose={() => setPreview(null)} />

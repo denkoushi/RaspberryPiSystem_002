@@ -436,6 +436,12 @@ async function installApiMocks(page: Page) {
       return;
     }
 
+    if (path === '/api/assembly/procedure-manuals/by-part') {
+      const partNumber = url.searchParams.get('partNumber') ?? '';
+      await route.fulfill({ json: { partNumber, partNumberKey: partNumber, processes: [] } });
+      return;
+    }
+
     await route.fulfill({ status: 404, json: { message: `Unexpected E2E API request: ${path}` } });
   });
 

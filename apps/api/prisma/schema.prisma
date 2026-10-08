@@ -5279,8 +5279,14 @@ model KnowledgeProcedureReview {
   @@index([revisionId, createdAt])
 }
 
+enum ProcedureManualSubjectKind {
+  MODEL
+  PART
+}
+
 /// Two-level process list for standalone procedure manual browsing.
 model ProcedureManualProcess {
+  subjectKind ProcedureManualSubjectKind @default(MODEL)
   id          String                      @id @default(uuid())
   parentId    String?
   name        String
@@ -5294,6 +5300,7 @@ model ProcedureManualProcess {
   @@index([parentId, sortOrder])
 }
 
+/// For PART processes, modelCode/modelCodeKey store the part number/normalized part key.
 model ProcedureManualAssignment {
   id                          String                     @id @default(uuid())
   modelCode                   String

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { normalizeWorkInstructionPartNumber } from '../../lib/workInstructionRules';
 import {
+  getProcedureManualsByPart,
   getWorkInstructionEditorGroup,
   getWorkInstructionGroup,
   getWorkInstructionGroupsByPartNumber
@@ -53,4 +54,9 @@ export function useWorkInstructionEditorGroup(
     }),
     enabled
   });
+}
+
+export function useProcedureManualsByPart(partNumber: string) {
+  const key = normalizeWorkInstructionPartNumber(partNumber);
+  return useQuery({ queryKey: ['procedure-manuals', 'by-part', key], queryFn: () => getProcedureManualsByPart(key), enabled: Boolean(key), retry: false });
 }

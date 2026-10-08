@@ -2,6 +2,7 @@ import { prisma } from '../../../lib/prisma.js';
 import Fastify from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { normalizeMachineNameForCompare } from '../../../services/production-schedule/machine-name-compare.js';
 import { ApiError } from '../../../lib/errors.js';
 import { registerErrorHandler } from '../../../plugins/error-handler.js';
 import { ProcedureManualService } from '../../../services/assembly/procedure-manual.service.js';
@@ -9,7 +10,10 @@ import { serializeProcedureSequence } from '../index.js';
 import { registerAssemblyProcedureDocumentRoutes, type AssemblyProcedureDocumentRouteOptions } from '../procedure-documents.js';
 import { registerProcedureManualRoutes } from '../procedure-manuals.js';
 
-beforeEach(() => { vi.spyOn(prisma.assemblyProcedureDocumentEditLease, 'findUnique').mockResolvedValue(null); });
+beforeEach(() => {
+  vi.spyOn(prisma.assemblyProcedureDocumentEditLease, 'findUnique').mockResolvedValue(null);
+  vi.spyOn(prisma.procedureManualProcess, 'findFirst').mockResolvedValue({ subjectKind: 'MODEL' } as never);
+});
 
 const documentId = '00000000-0000-4000-8000-000000000001';
 const path = '/assembly/procedure-manuals/models/DFD1/processes/assembly';
@@ -19,7 +23,10 @@ describe('procedure-manual routes', () => {
 
   function harness(writeDenied = false, viewDenied = false) {
     const service = {
-      listProcesses: vi.fn().mockResolvedValue([{ id: 'assembly' }]),
+      listProcesses: vi.fn().mockResolvedValue([{ id: 'assembly', subjectKind: 'MODEL' }]),
+      normalizeSubjectKey: vi.fn(async (value: string) => normalizeMachineNameForCompare(value).trim()),
+      getByPart: vi.fn(),
+      listParts: vi.fn().mockResolvedValue([{ partNumber: 'PART-1', partNumberKey: 'PART-1' }]),
       listModels: vi.fn().mockResolvedValue([{ modelCode: 'ｄｆｄ１', modelCodeKey: 'DFD1' }]),
       getModelOverview: vi.fn(),
       getOverview: vi.fn(),
@@ -40,9 +47,46 @@ describe('procedure-manual routes', () => {
     return { service, view };
   }
 
+  it('serializes the by-part sequence and applies view permission and query validation', async () => {
+    const { service, view } = harness();
+    const detail = await service.getAssignments();
+    service.getByPart.mockResolvedValue({ partNumber: 'PART-1', partNumberKey: 'PART-1', processes: [{ processId: 'cutting', processName: '切削', sequence: detail.sequence }] });
+    const response = await app.inject({ method: 'GET', url: '/assembly/procedure-manuals/by-part?partNumber=part-1' });
+    expect(response.statusCode).toBe(200);
+    expect(service.getByPart).toHaveBeenCalledWith('part-1');
+    expect(response.json().processes[0].sequence).toMatchObject({ reason: null, stepSource: 'document_expansion' });
+    expect(response.json()).not.toHaveProperty('modelCode');
+    expect(view).toHaveBeenCalledOnce();
+    expect((await app.inject({ method: 'GET', url: '/assembly/procedure-manuals/by-part?partNumber=%20' })).statusCode).toBe(400);
+  });
+
+  it('returns only part candidate keys through allowView', async () => {
+    const { view } = harness();
+    const response = await app.inject({ method: 'GET', url: '/assembly/procedure-manuals/parts' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ parts: [{ partNumber: 'PART-1', partNumberKey: 'PART-1' }] });
+    expect(view).toHaveBeenCalledOnce();
+  });
+
+  it('by-part rejects viewing without permission', async () => {
+    const { service } = harness(false, true);
+    expect((await app.inject({ method: 'GET', url: '/assembly/procedure-manuals/by-part?partNumber=P1' })).statusCode).toBe(403);
+    expect(service.getByPart).not.toHaveBeenCalled();
+  });
+
+  it('validates PUT keys through the kind-aware service', async () => {
+    const { service } = harness();
+    service.normalizeSubjectKey.mockImplementation(async value => new ProcedureManualService().normalizeSubjectKey(value, 'cutting'));
+    vi.spyOn(prisma.procedureManualProcess, 'findFirst').mockResolvedValue({ subjectKind: 'PART' } as never);
+    const url = '/assembly/procedure-manuals/models/PART-1/processes/cutting';
+    expect((await app.inject({ method: 'PUT', url, payload: { modelCode: ' ｐａｒｔ－① ', assignments: [] } })).statusCode).toBe(200);
+    expect(service.replaceAssignments).toHaveBeenCalledWith(' ｐａｒｔ－① ', 'cutting', []);
+    expect((await app.inject({ method: 'PUT', url, payload: { modelCode: 'PART-2', assignments: [] } })).statusCode).toBe(400);
+  });
+
   it('registers all three viewing routes and serializes the document expansion sequence', async () => {
     const { service, view } = harness();
-    expect((await app.inject({ method: 'GET', url: '/assembly/procedure-manuals/processes' })).json()).toEqual({ processes: [{ id: 'assembly' }] });
+    expect((await app.inject({ method: 'GET', url: '/assembly/procedure-manuals/processes' })).json()).toEqual({ processes: [{ id: 'assembly', subjectKind: 'MODEL' }] });
     expect((await app.inject({ method: 'GET', url: '/assembly/procedure-manuals/models' })).json().models[0].modelCodeKey).toBe('DFD1');
     const response = await app.inject({ method: 'GET', url: path });
     expect(response.statusCode).toBe(200);

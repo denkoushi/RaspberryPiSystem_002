@@ -6,7 +6,7 @@ import {
   putWorkInstructionPartAlias,
   type WorkInstructionPartAlias
 } from '../../api/client';
-import { useWorkInstructionGroup, useWorkInstructionGroups } from '../../api/hooks';
+import { useWorkInstructionGroup, useWorkInstructionGroups, useProcedureManualsByPart } from '../../api/hooks';
 import {
   dedupeAndSortWorkInstructionTargets,
   normalizeWorkInstructionPartNumber
@@ -56,15 +56,21 @@ export function useSelfInspectionWorkInstructions() {
   const candidateRequestRef = useRef<{ generation: number; controller: AbortController | null }>({ generation: 0, controller: null });
   const aliasSaveChainRef = useRef<Promise<void>>(Promise.resolve());
   const groupsQuery = useWorkInstructionGroups(partNumber);
-  const groupQuery = useWorkInstructionGroup(partNumber, selectedTarget ?? '');
+  const manualsQuery = useProcedureManualsByPart(partNumber);
+  const manualProcesses = manualsQuery.isError ? undefined : manualsQuery.data?.processes;
+  const originalTargets = (groupsQuery.data ?? []).map(group => group.shootingTarget);
+  const hasWorkInstruction = selectedTarget !== null && originalTargets.includes(selectedTarget);
+  const selectedManualSequence = manualProcesses?.find(process => process.processName === selectedTarget)?.sequence;
+  const groupQuery = useWorkInstructionGroup(partNumber, hasWorkInstruction ? selectedTarget ?? '' : '');
   const targets = useMemo(
     () =>
       dedupeAndSortWorkInstructionTargets(
-        (groupsQuery.data ?? []).map((group) => group.shootingTarget)
+        [...(groupsQuery.data ?? []).map((group) => group.shootingTarget), ...(manualProcesses ?? []).map(process => process.processName)]
       ),
-    [groupsQuery.data]
+    [groupsQuery.data, manualProcesses]
   );
-  const exactGroupCount = groupsQuery.data?.length ?? 0;
+  const exactGroupCount = (groupsQuery.data?.length ?? 0) + (manualProcesses?.length ?? 0);
+  const targetCounts = Object.fromEntries(targets.map(target => [target, Number(originalTargets.includes(target)) + (manualProcesses ?? []).filter(process => process.processName === target).reduce((count, process) => count + process.sequence.documents.length, 0)]));
 
   const originalCharacters = useMemo(() => Array.from(originalPartNumber), [originalPartNumber]);
 
@@ -178,14 +184,15 @@ export function useSelfInspectionWorkInstructions() {
     // A failed exact/canonical lookup must settle the resolution state too.
     // Otherwise the page keeps reporting a pending fallback forever and the
     // normal query-error status can never be surfaced to the operator.
-    if (groupsQuery.isError) {
+    if (manualsQuery.isFetching || (!manualsQuery.isSuccess && !manualsQuery.isError)) return;
+    if (groupsQuery.isError && exactGroupCount === 0) {
       if (resolutionPhase !== 'idle') {
         cancelCandidateRequest();
         setResolutionPhase('idle');
       }
       return;
     }
-    if (!groupsQuery.isSuccess || groupsQuery.isFetching) return;
+    if ((!groupsQuery.isSuccess && !groupsQuery.isError) || groupsQuery.isFetching) return;
     if (resolutionPhase === 'checking-exact') {
       if (exactGroupCount > 0) {
         setScannedPartHasExactMatch(true);
@@ -234,6 +241,9 @@ export function useSelfInspectionWorkInstructions() {
     groupsQuery.isError,
     groupsQuery.isFetching,
     groupsQuery.isSuccess,
+    manualsQuery.isSuccess,
+    manualsQuery.isFetching,
+    manualsQuery.isError,
     openAutomaticFallback,
     originalPartNumber,
     resolutionPhase
@@ -308,6 +318,10 @@ export function useSelfInspectionWorkInstructions() {
     partNumber,
     selectedTarget,
     targets,
+    targetCounts,
+    selectedManualSequence,
+    hasWorkInstruction,
+    manualErrorMessage: manualsQuery.isError ? '手順書を取得できませんでした。' : null,
     groupsQuery,
     groupQuery,
     beginPartScan,

@@ -4,10 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkInstructionViewerDialog } from './WorkInstructionViewerDialog';
 
 import type { WorkInstructionGroup, WorkInstructionStep } from '../../api/domains/work-instructions';
+import type { AssemblyProcedureSequenceDto } from '../assembly/types';
 
 const { useProtectedImageBlobUrlMock } = vi.hoisted(() => ({
   useProtectedImageBlobUrlMock: vi.fn()
 }));
+
+vi.mock('../assembly/AssemblyProcedureSequenceViewer', () => ({ AssemblyProcedureSequenceViewer: ({ sequence }: { sequence: AssemblyProcedureSequenceDto }) => <div data-testid="manual-viewer">{sequence.documents.map(document => <span key={document.orderItemId}>{document.title}</span>)}</div> }));
 
 vi.mock('../../hooks/useProtectedImageBlobUrl', () => ({
   useProtectedImageBlobUrl: useProtectedImageBlobUrlMock
@@ -73,6 +76,25 @@ describe('WorkInstructionViewerDialog', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('defaults to original and switches to manuals when both sources exist', () => {
+    const manualSequence = { documents: [{ orderItemId: 'one', title: '公開手順書' }] } as AssemblyProcedureSequenceDto;
+    const view = renderViewer({ manualSequence });
+    expect(screen.getByRole('tab', { name: '加工要領書' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('work-instruction-card-grid')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: '手順書' }));
+    expect(screen.getByTestId('manual-viewer')).toHaveTextContent('公開手順書');
+    expect(screen.queryByTestId('work-instruction-card-grid')).not.toBeInTheDocument();
+    view.rerender(<WorkInstructionViewerDialog isOpen partNumber="PN-002" shootingTarget="FRONT" group={group} isLoading={false} manualSequence={manualSequence} onClose={vi.fn()} />);
+    expect(screen.getByRole('tab', { name: '加工要領書' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('opens a manuals-only sequence without tabs or original loading/error messages', () => {
+    renderViewer({ group: undefined, hasWorkInstruction: false, isLoading: true, errorMessage: '原本エラー', manualSequence: { documents: [{ orderItemId: 'one', title: '公開手順書' }] } as AssemblyProcedureSequenceDto });
+    expect(screen.getByTestId('manual-viewer')).toHaveTextContent('公開手順書');
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(screen.queryByText('原本エラー')).not.toBeInTheDocument();
   });
 
   it('renders the flattened step order, display numbers, memo-only cards, and responsive grid contract', () => {

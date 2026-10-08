@@ -68,6 +68,17 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('procedure-manuals workshop', () => {
+  it('switches machining candidates to parts and allows first creation from a typed part', async () => {
+    mocks.processes.mockResolvedValue([...processes, { id: 'cutting', parentId: 'machining', name: '切削', subjectKind: 'PART' }]);
+    show('');
+    fireEvent.click(await screen.findByRole('button', { name: '切削' }));
+    fireEvent.change(screen.getByLabelText('部品検索'), { target: { value: ' ｎｅｗ－① ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'NEW-1' }));
+    expect(JSON.parse(screen.getByTestId('location').textContent!).search).toBe('?part=NEW-1&process=cutting');
+    fireEvent.click(screen.getByRole('button', { name: '作る' }));
+    expect(screen.getByRole('dialog', { name: '白紙から作る' })).toHaveTextContent('NEW-1 / cutting');
+  });
+
   it.each([
     ['draft', false, '削除'], ['draft', true, '外す'], ['published', false, '外す'], ['published', true, '外す']
   ] as const)('offers a single destructive action for %s (shared=%s)', async (status, shared, action) => {
@@ -378,16 +389,16 @@ describe('procedure-manuals workshop', () => {
     expect(screen.queryByText('工程を選択')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '作る' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: '＋ 既存の要領書を割り当てる' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(expect.arrayContaining(['機種', '工程']));
+    expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(expect.arrayContaining(['機種・部品', '工程']));
     fireEvent.click(screen.getByRole('button', { name: '組立' }));
     expect(screen.getByRole('button', { name: '組立' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('columnheader', { name: '機種' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '機種・部品' })).toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: '工程' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '工程の絞り込みを外す' }));
     expect(screen.getByRole('button', { name: '組立' })).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(screen.getByRole('button', { name: 'DFD1' }));
     expect(screen.getByRole('columnheader', { name: '工程' })).toBeInTheDocument();
-    expect(screen.queryByRole('columnheader', { name: '機種' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: '機種・部品' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '機種の絞り込みを外す' }));
     expect(screen.getByRole('heading', { name: /全機種.*全工程/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'DFD1' }));

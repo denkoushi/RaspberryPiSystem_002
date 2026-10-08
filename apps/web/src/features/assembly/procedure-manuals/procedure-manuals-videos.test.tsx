@@ -21,6 +21,7 @@ vi.mock('../../../api/client', () => ({
   concatProcedureVideos: mocks.concat,
   getProcedurePageVideos: mocks.page, replaceProcedurePageVideos: mocks.save,
   listProcedureManualModels: async () => [{ modelCode: 'DFD1', modelCodeKey: 'DFD1' }],
+  listProcedureManualParts: async () => [],
   listProcedureManualProcesses: async () => [{ id: 'root', name: '組立工程', parentId: null }, { id: 'p', name: '検査工程', parentId: 'root' }],
   getProcedureManualModelOverview: async () => ({ modelCode: 'DFD1', modelCodeKey: 'DFD1', processes: [{ processId: 'p', count: 0, items: [] }] }),
   getProcedureManualAssignments: mocks.detail,
