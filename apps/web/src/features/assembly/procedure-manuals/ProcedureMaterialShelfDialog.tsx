@@ -1,7 +1,7 @@
 import { isAxiosError } from 'axios';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { createProcedureMaterialDocument, getProcedureMaterialThumbnail, getProcedureKnowledgeThumbnail, getProcedureWorkInstructionThumbnail, getProcedureWorkInstructionImage, importProcedureWorkInstructions, discardProcedureMaterial, getProcedureMaterialFile, getProcedureKnowledgeImage, importProcedureKnowledge, ingestProcedureMaterialsGmail, restoreProcedureMaterial, unplaceProcedureMaterial } from '../../../api/client';
+import { semanticSearchProcedureMaterials, createProcedureMaterialDocument, getProcedureMaterialThumbnail, getProcedureKnowledgeThumbnail, getProcedureWorkInstructionThumbnail, getProcedureWorkInstructionImage, importProcedureWorkInstructions, discardProcedureMaterial, getProcedureMaterialFile, getProcedureKnowledgeImage, importProcedureKnowledge, ingestProcedureMaterialsGmail, restoreProcedureMaterial, unplaceProcedureMaterial } from '../../../api/client';
 import { Button } from '../../../components/ui/Button';
 import { Dialog } from '../../../components/ui/Dialog';
 import { Input } from '../../../components/ui/Input';
@@ -60,12 +60,13 @@ function useShelfSearch(value: string, composing: boolean) {
   return query;
 }
 
-function MaterialCard({ title, query = '', source, date, checked, disabled, onChange, children, detail }: {
+function MaterialCard({ title, query = '', source, date, checked, disabled, onChange, children, detail, semantic = false }: {
   title: string; query?: string; source: string; date?: string; checked: boolean; disabled: boolean;
-  onChange: (checked: boolean) => void; children: ReactNode; detail?: ReactNode;
+  onChange: (checked: boolean) => void; children: ReactNode; detail?: ReactNode; semantic?: boolean;
 }) {
   return <li className={`relative overflow-hidden rounded-xl border border-[#344252] bg-[#1b222a] ${checked ? 'outline outline-[3px] -outline-offset-[3px] outline-[#3ba776]' : ''}`}>
     {children}
+    {semantic ? <span className="absolute right-2.5 top-2.5 flex h-7 items-center rounded-full bg-[#e2b44c] px-2.5 text-sm font-bold text-[#1f1703]"><span aria-hidden="true">✦</span> 意味</span> : null}
     <input type="checkbox" aria-label={title} checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} className="absolute left-2.5 top-2.5 h-11 w-11 cursor-pointer accent-[#3ba776] disabled:cursor-default" />
     <div className="flex min-h-12 min-w-0 items-center gap-2.5 px-3 py-2.5 text-[17px] text-[#9fadb9]">
       <b className="min-w-0 flex-1 truncate text-[19px] text-[#eef3f6]" title={title}><ShelfHighlight text={title} query={query} /></b>
@@ -141,18 +142,45 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
   const [createdMessage, setCreatedMessage] = useState<string | null>(null);
   const [result, setResult] = useState<ProcedureMaterialIngestResult | null>(null);
   const lists = useShelfLists(state, query, filtered, version);
-  const materials = lists.data?.materials ?? emptyMaterials;
+  const [semanticResult, setSemanticResult] = useState<Awaited<ReturnType<typeof semanticSearchProcedureMaterials>> | null>(null);
+  const [semanticLoading, setSemanticLoading] = useState(false);
+  const [semanticError, setSemanticError] = useState<string | null>(null);
+  const semanticSequence = useRef(0);
+  const resetSemantic = useCallback(() => { semanticSequence.current++; setSemanticResult(null); setSemanticLoading(false); setSemanticError(null); }, []);
+  useEffect(() => { resetSemantic(); return resetSemantic; }, [version, resetSemantic]);
+  const changeQuery = (value: string) => { resetSemantic(); setQ(value); };
+  const changeTab = (value: typeof state) => { resetSemantic(); setState(value); };
+  const semanticActive = Boolean(semanticResult && semanticResult.mode !== 'lexical');
+  const materialQuery = semanticResult ? q.trim() : query;
+  const materials = semanticResult?.items ?? lists.data?.materials ?? emptyMaterials;
   const knowledge = lists.data?.knowledge;
   const workInstructions = lists.data?.workInstructions;
   const loading = lists.loading;
+  const semanticEnabled = (state === 'unplaced' || state === 'placed') && q.trim().length >= 2 && !busy && !composing && !loading && !semanticLoading;
+  const searchSemantic = async () => {
+    if (!semanticEnabled || (state !== 'unplaced' && state !== 'placed')) return;
+    if (semanticActive) { resetSemantic(); return; }
+    const sequence = ++semanticSequence.current;
+    setSemanticLoading(true); setSemanticError(null);
+    try {
+      const next = await semanticSearchProcedureMaterials({ q: q.trim(), state });
+      if (sequence !== semanticSequence.current) return;
+      if (next.available) setSemanticResult(next);
+      else { setSemanticResult(null); setSemanticError('意味で探すは今使えません'); }
+    } catch (e) {
+      if (sequence !== semanticSequence.current) return;
+      setSemanticResult(null); setSemanticError(isAxiosError(e) && e.response?.status === 429 ? '少し待ってからもう一度押してください' : '意味で探すは今使えません');
+    } finally { if (sequence === semanticSequence.current) setSemanticLoading(false); }
+  };
   const visibleMaterials = filterShelfMaterials(materials, filters);
   const visibleKnowledge = filterShelfKnowledge(knowledge?.items ?? [], filters);
   const visibleWork = filterShelfWorkInstructions(workInstructions?.items ?? [], filters);
   const visibleIds = new Set(state === 'knowledge' ? visibleKnowledge.map((item) => item.candidateKey) : state === 'workInstruction' ? visibleWork.map((item) => item.candidateKey) : visibleMaterials.map((item) => item.id));
   const visibleSelected = selected.filter((id) => visibleIds.has(id));
   const hiddenSelectedCount = selected.length - visibleSelected.length;
-  const discardReady = !composing && q.trim() === query && !loading && visibleSelected.length > 0;
+  const discardReady = !composing && q.trim() === query && !loading && !semanticLoading && visibleSelected.length > 0;
   const visibleCount = state === 'knowledge' ? visibleKnowledge.length : state === 'workInstruction' ? visibleWork.length : visibleMaterials.length;
+  const semanticEmpty = !loading && !semanticLoading && !semanticResult && !visibleCount && semanticEnabled;
   const retained = useRef(new Map<string, { material?: ProcedureMaterialDto; knowledge?: ProcedureKnowledgeCandidate; work?: ProcedureWorkInstructionCandidate }>());
   useEffect(() => {
     if (retainSelectionOnRefresh.current) { retainSelectionOnRefresh.current = false; return; }
@@ -172,7 +200,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
         return candidate ? [{ candidateKey: candidate.candidateKey, partNumber: candidate.partNumber, shootingTarget: candidate.shootingTarget }] : [];
       })) : importProcedureKnowledge(selected));
       setKnowledgeResult(next); setSelected([]); setVersion((v) => v + 1);
-      if (!next.failed.length) { setQ(''); setState('unplaced'); }
+      if (!next.failed.length) { changeQuery(''); changeTab('unplaced'); }
     } catch (e) { setError(isAxiosError(e) && e.response?.status === 403 ? '権限がありません' : readAssemblyApiErrorMessage(e, '取込に失敗しました')); }
     finally { setBusy(false); }
   };
@@ -264,30 +292,36 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
   const bodyExcerpts = new Map<string, string>();
   for (const material of materials) {
     if (material.kind !== 'TEXT' || !material.gmailMessageId) continue;
-    const excerpt = shelfMatchExcerpt(material.text ?? '', query);
+    const excerpt = shelfMatchExcerpt(material.text ?? '', materialQuery);
     if (excerpt && !bodyExcerpts.has(material.gmailMessageId)) bodyExcerpts.set(material.gmailMessageId, excerpt);
   }
   const renderMaterials = (items: ProcedureMaterialDto[]) => items.map((material) => {
     const bodyExcerpt = material.kind !== 'TEXT' && material.gmailMessageId ? bodyExcerpts.get(material.gmailMessageId) : undefined;
     const text = material.text ?? '';
-    const preview = normalizeShelfQuery(text.split('\n').slice(0, 2).join('\n')).includes(normalizeShelfQuery(query)) ? text : shelfMatchExcerpt(text, query) ?? text;
-    return <MaterialCard query={query} key={material.id} title={material.subjectHint || material.originalFileName || 'ヒントなし'} source={materialSource(material)} date={material.receivedAt} checked={selected.includes(material.id)} disabled={materialDisabled(material)} onChange={(checked) => toggleSelected(material.id, checked)} detail={material.partName || bodyExcerpt || material.kind === 'PDF' || (material.origin === 'WORK_INSTRUCTION' && material.workInstructionRef) || (state === 'placed' && !selectionMode) || state === 'discarded' ? <>{material.partName ? <p className="truncate" title={material.partName}><ShelfHighlight text={material.partName} query={query} /></p> : null}{bodyExcerpt ? <p className="truncate"><ShelfHighlight text={bodyExcerpt} query={query} /></p> : null}{material.kind === 'PDF' ? <Button variant="ghostOnDark" className="min-h-11" disabled={busy || Boolean(material.documentId || material.placedAt || material.discardedAt)} onClick={() => void createDocument(material)}>要領書を作る</Button> : null}{material.origin === 'WORK_INSTRUCTION' && material.workInstructionRef ? <><p><ShelfHighlight text={`${material.workInstructionRef.partNumber} ${material.workInstructionRef.shootingTarget} · 手順 ${material.workInstructionRef.step}`} query={query} /></p>{material.workInstructionRef.memo ? <p className="line-clamp-2 whitespace-pre-wrap break-words"><ShelfHighlight text={material.workInstructionRef.memo} query={query} /></p> : null}</> : null}{(state === 'placed' && !selectionMode && material.kind !== 'PDF') || state === 'discarded' ? <Button variant="ghostOnDark" className="min-h-11" disabled={busy} onClick={() => void toggleDiscard(material)}>{state === 'placed' ? '配置を取り消す' : '戻す'}</Button> : null}</> : undefined}>
-            {material.kind === 'PHOTO' ? <MaterialPhoto cache={photoCache} id={material.id} alt={material.originalFileName || '素材の写真'} onZoom={zoom} /> : material.kind === 'PDF' ? <div className="flex aspect-[4/3] items-center justify-center bg-[#27313b] text-3xl font-bold">PDF</div> : <div className="aspect-[4/3] overflow-hidden bg-[#fdfcf7] p-4 pt-14 text-[19px] leading-normal text-[#1a1a1a]"><p className="line-clamp-6 whitespace-pre-wrap break-words"><ShelfHighlight text={preview} query={query} /></p></div>}
+    const preview = normalizeShelfQuery(text.split('\n').slice(0, 2).join('\n')).includes(normalizeShelfQuery(materialQuery)) ? text : shelfMatchExcerpt(text, materialQuery) ?? text;
+    const title = material.subjectHint || material.originalFileName || 'ヒントなし';
+    const ref = material.origin === 'WORK_INSTRUCTION' ? material.workInstructionRef : null;
+    const visibleText = [title, material.partName, bodyExcerpt, material.kind === 'TEXT' ? preview : null, ref ? `${ref.partNumber} ${ref.shootingTarget} · 手順 ${ref.step}` : null, ref?.memo];
+    const semantic = semanticActive && !visibleText.some((value) => value && normalizeShelfQuery(value).includes(normalizeShelfQuery(materialQuery)));
+    return <MaterialCard semantic={semantic} query={materialQuery} key={material.id} title={title} source={materialSource(material)} date={material.receivedAt} checked={selected.includes(material.id)} disabled={materialDisabled(material)} onChange={(checked) => toggleSelected(material.id, checked)} detail={material.partName || bodyExcerpt || material.kind === 'PDF' || (material.origin === 'WORK_INSTRUCTION' && material.workInstructionRef) || (state === 'placed' && !selectionMode) || state === 'discarded' ? <>{material.partName ? <p className="truncate" title={material.partName}><ShelfHighlight text={material.partName} query={materialQuery} /></p> : null}{bodyExcerpt ? <p className="truncate"><ShelfHighlight text={bodyExcerpt} query={materialQuery} /></p> : null}{material.kind === 'PDF' ? <Button variant="ghostOnDark" className="min-h-11" disabled={busy || Boolean(material.documentId || material.placedAt || material.discardedAt)} onClick={() => void createDocument(material)}>要領書を作る</Button> : null}{material.origin === 'WORK_INSTRUCTION' && material.workInstructionRef ? <><p><ShelfHighlight text={`${material.workInstructionRef.partNumber} ${material.workInstructionRef.shootingTarget} · 手順 ${material.workInstructionRef.step}`} query={materialQuery} /></p>{material.workInstructionRef.memo ? <p className="line-clamp-2 whitespace-pre-wrap break-words"><ShelfHighlight text={material.workInstructionRef.memo} query={materialQuery} /></p> : null}</> : null}{(state === 'placed' && !selectionMode && material.kind !== 'PDF') || state === 'discarded' ? <Button variant="ghostOnDark" className="min-h-11" disabled={busy} onClick={() => void toggleDiscard(material)}>{state === 'placed' ? '配置を取り消す' : '戻す'}</Button> : null}</> : undefined}>
+            {material.kind === 'PHOTO' ? <MaterialPhoto cache={photoCache} id={material.id} alt={material.originalFileName || '素材の写真'} onZoom={zoom} /> : material.kind === 'PDF' ? <div className="flex aspect-[4/3] items-center justify-center bg-[#27313b] text-3xl font-bold">PDF</div> : <div className="aspect-[4/3] overflow-hidden bg-[#fdfcf7] p-4 pt-14 text-[19px] leading-normal text-[#1a1a1a]"><p className="line-clamp-6 whitespace-pre-wrap break-words"><ShelfHighlight text={preview} query={materialQuery} /></p></div>}
           </MaterialCard>;
   });
   const renderKnowledge = (items: ProcedureKnowledgeCandidate[]) => items.map((candidate) => <MaterialCard query={query} key={candidate.candidateKey} title={candidate.title} source="ナレッジ" checked={selected.includes(candidate.candidateKey)} disabled={busy || candidate.alreadyImported || (mode === 'replace' && candidate.kind !== 'PHOTO') || (!selected.includes(candidate.candidateKey) && selected.length >= 50)} onChange={(checked) => toggleSelected(candidate.candidateKey, checked)} detail={<>{candidate.summary ? <p className="line-clamp-2"><ShelfHighlight text={candidate.summary} query={query} /></p> : null}<p>{candidate.kind === 'PHOTO' && candidate.preview ? <span className="line-clamp-2"><ShelfHighlight text={candidate.preview} query={query} /></span> : null}<ShelfHighlight text={candidate.sourceLabel} query={query} />{candidate.alreadyImported ? ' · 取込済み' : ''}</p></>}>
             {candidate.kind === 'PHOTO' && candidate.imageId ? <MaterialPhoto cache={photoCache} id={candidate.imageId} alt={candidate.title} knowledge onZoom={zoom} /> : <div className="aspect-[4/3] overflow-hidden bg-[#fdfcf7] p-4 pt-14 text-[19px] leading-normal text-[#1a1a1a]"><p className="line-clamp-6 whitespace-pre-wrap break-words"><ShelfHighlight text={candidate.preview} query={query} /></p></div>}
           </MaterialCard>);
   const toolClass = 'h-11 shrink-0 rounded-lg border border-[#344252] px-3.5 text-[19px] font-bold disabled:opacity-40';
+  const semanticButton = <button type="button" disabled={!semanticEnabled} aria-pressed={semanticActive} className={`${toolClass} whitespace-nowrap !border-[#e2b44c] ${semanticActive ? 'bg-[#e2b44c] text-[#1f1703]' : 'text-[#e2b44c]'}`} onClick={() => void searchSemantic()}><span aria-hidden="true">✦</span> 意味で探す</button>;
   return (
     <>
     <Dialog isOpen onClose={() => { if (!busy) closeShelf(); }} ariaLabel="素材" size="full" closeOnEsc={!lightbox && !discardConfirm && !busy} closeOnBackdrop={!busy && !lightbox && !discardConfirm} trapFocus={!lightbox && !discardConfirm} className="!mx-auto !my-[calc((100dvh-min(980px,92dvh))/2-1rem)] flex !h-[min(980px,92dvh)] min-h-0 !max-h-[92dvh] !w-[min(1760px,92vw)] flex-col gap-3 !rounded-[14px] !border !border-[#344252] !bg-[#161c22] !px-[26px] !py-6 !text-[#eef3f6]">
       <div className="flex shrink-0 flex-wrap items-center gap-3">
         <h2 className="text-2xl font-black">素材</h2>
         <div className="relative ml-4 w-80 max-w-[40vw]">
-          <Input type="search" disabled={busy} aria-label="素材を探す" placeholder="品番・品名・本文" className="h-11 !w-full pr-11 text-xl [&::-webkit-search-cancel-button]:hidden" maxLength={200} onCompositionStart={() => setComposing(true)} onCompositionEnd={() => setComposing(false)} value={q} onChange={(e) => setQ(e.target.value)} />
-          {q ? <button aria-label="検索語を消す" disabled={busy} className="absolute right-0 top-0 h-11 w-11 text-[#9fadb9]" onClick={() => setQ('')}>✕</button> : null}
+          <Input type="search" disabled={busy} aria-label="素材を探す" placeholder="品番・品名・本文" className="h-11 !w-full pr-11 text-xl [&::-webkit-search-cancel-button]:hidden" maxLength={200} onCompositionStart={() => setComposing(true)} onCompositionEnd={() => setComposing(false)} value={q} onChange={(e) => changeQuery(e.target.value)} />
+          {q ? <button aria-label="検索語を消す" disabled={busy} className="absolute right-0 top-0 h-11 w-11 text-[#9fadb9]" onClick={() => changeQuery('')}>✕</button> : null}
         </div>
+        {semanticButton}
         <div role="group" aria-label="表示サイズ" className="ml-auto flex items-center gap-1 text-[17px] text-[#9fadb9]">表示 {([['small', '小'], ['medium', '中'], ['large', '大']] as const).map(([value, label]) => <button key={value} aria-pressed={size === value} className={`h-11 w-11 rounded-lg border border-[#344252] text-base font-bold text-[#eef3f6] ${size === value ? 'bg-[#27313b]' : ''}`} onClick={() => changeSize(value)}>{label}</button>)}</div>
         <button className={`${toolClass} border-transparent text-[#9fadb9]`} disabled={busy} onClick={() => void runNow()}>{busy ? '処理中…' : '今すぐ取り込む'}</button>
         <button className={`${toolClass} border-transparent text-[#9fadb9]`} disabled={busy} onClick={closeShelf}>閉じる</button>
@@ -296,9 +330,9 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
         {shelfTabs.map(([value, label]) => {
           const data = lists.getData(value);
           const count = !data ? undefined : value === 'knowledge' ? filterShelfKnowledge(data.knowledge?.items ?? [], filters).length : value === 'workInstruction' ? filterShelfWorkInstructions(data.workInstructions?.items ?? [], filters).length : filterShelfMaterials(data.materials ?? [], filters).length;
-          return <button key={value} role="tab" aria-selected={state === value} disabled={busy} className={`h-11 whitespace-nowrap rounded-lg px-4 text-[19px] font-bold ${state === value ? 'bg-[#27313b] text-[#eef3f6]' : filtered && count ? 'text-[#3ba776]' : 'text-[#9fadb9]'}`} onClick={() => setState(value)}>{label}{filtered && count !== undefined ? <span className={`ml-2 rounded-full bg-[#27313b] px-2 text-sm tabular-nums ${count ? 'text-[#3ba776]' : 'text-[#9fadb9]'}`}>{count}</span> : !filtered && value === 'unplaced' && state === value && !loading ? ` (${materials.length}${materials.length === 500 ? '+' : ''})` : ''}</button>;
+          return <button key={value} role="tab" aria-selected={state === value} disabled={busy} className={`h-11 whitespace-nowrap rounded-lg px-4 text-[19px] font-bold ${state === value ? 'bg-[#27313b] text-[#eef3f6]' : filtered && count ? 'text-[#3ba776]' : 'text-[#9fadb9]'}`} onClick={() => changeTab(value)}>{label}{filtered && count !== undefined ? <span className={`ml-2 rounded-full bg-[#27313b] px-2 text-sm tabular-nums ${count ? 'text-[#3ba776]' : 'text-[#9fadb9]'}`}>{count}</span> : !filtered && value === 'unplaced' && state === value && !loading ? ` (${materials.length}${materials.length === 500 ? '+' : ''})` : ''}</button>;
         })}
-        <div className="ml-auto">{!selectionMode ? <button className={`${toolClass} border-transparent text-[#9fadb9]`} aria-pressed={state === 'discarded'} disabled={busy} onClick={() => setState('discarded')}>捨てた素材</button> : null}</div>
+        <div className="ml-auto">{!selectionMode ? <button className={`${toolClass} border-transparent text-[#9fadb9]`} aria-pressed={state === 'discarded'} disabled={busy} onClick={() => changeTab('discarded')}>捨てた素材</button> : null}</div>
       </div>
       <ShelfFilterChips tab={state} hasWorkDates={workHasDates(workInstructions?.items ?? [])} filters={filters} disabled={busy} onChange={setFilters} />
       {error || lists.error ? <p role="alert" className="shrink-0 text-sm text-red-400">{error || lists.error}</p> : null}
@@ -315,10 +349,11 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
           {m.warnings.map((warning, index) => <p key={`${index}:${warning}`} className="break-all">{warning}</p>)}
         </div>)}
       </div> : null}
-      {!loading && !lists.error ? <p role="status" aria-label="一致件数" className="shrink-0 text-sm text-[#9fadb9]">{visibleCount ? `${visibleCount} 件` : '見つかりません'}</p> : null}
+      {semanticError ? <p role="alert" className="shrink-0 text-sm text-[#9fadb9]">{semanticError}</p> : !loading && !semanticLoading && !lists.error ? <p role="status" aria-label="一致件数" className="shrink-0 text-sm text-[#9fadb9]">{visibleCount || semanticActive || semanticEmpty ? `${visibleCount} 件` : '見つかりません'}{semanticActive ? <span className="ml-2 text-[#e2b44c]">✦ 近い順</span> : null}</p> : null}
       <div className="min-h-0 flex-1 overflow-auto" aria-label="素材一覧">
-        {loading ? <p role="status">読込中…</p> : state === 'knowledge' && knowledge?.enabled === false ? <p>ナレッジ機能は無効です</p> : null}
-        {filtered ? <ul className="grid content-start gap-3.5 pr-1" style={gridStyle}>{state === 'workInstruction' ? renderWorkInstructions([...visibleWork].sort((a, b) => (Date.parse(b.sourceModified ?? '') || 0) - (Date.parse(a.sourceModified ?? '') || 0))) : state === 'knowledge' ? renderKnowledge(visibleKnowledge) : renderMaterials([...visibleMaterials].sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt)))}</ul> : state === 'workInstruction' ? <div className="grid content-start gap-2.5 pr-1">
+        {semanticLoading ? <p role="status">✦ 探しています…</p> : loading ? <p role="status">読込中…</p> : state === 'knowledge' && knowledge?.enabled === false ? <p>ナレッジ機能は無効です</p> : null}
+        {semanticEmpty ? <div className="flex items-center gap-3"><span>見つかりません</span>{semanticButton}</div> : null}
+        {semanticLoading ? null : filtered || semanticResult ? <ul className="grid content-start gap-3.5 pr-1" style={gridStyle}>{state === 'workInstruction' ? renderWorkInstructions([...visibleWork].sort((a, b) => (Date.parse(b.sourceModified ?? '') || 0) - (Date.parse(a.sourceModified ?? '') || 0))) : state === 'knowledge' ? renderKnowledge(visibleKnowledge) : renderMaterials(semanticResult ? visibleMaterials : [...visibleMaterials].sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt)))}</ul> : state === 'workInstruction' ? <div className="grid content-start gap-2.5 pr-1">
           {groupWorkInstructionCandidates(workInstructions?.items ?? []).map(({ key, title, subtitle, items }, index) => {
             const open = openGroups.get(key) ?? index === 0;
             const selectable = items.filter((item) => !workInstructionDisabled(item)).map((item) => item.candidateKey);

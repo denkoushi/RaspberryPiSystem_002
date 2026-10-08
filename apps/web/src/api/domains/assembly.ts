@@ -1065,6 +1065,11 @@ export async function listProcedureMaterials(params: { state?: import('../../fea
   return data.materials;
 }
 
+export async function semanticSearchProcedureMaterials(input: { q: string; state: 'unplaced' | 'placed'; limit?: number }) {
+  const { data } = await api.post<{ available: boolean; mode: string; items: import('../../features/assembly/procedure-manuals/procedure-material-types').ProcedureMaterialDto[] }>('/assembly/procedure-materials/semantic-search', input);
+  return data;
+}
+
 export async function getProcedureMaterialFile(id: string) {
   const { data } = await api.get<Blob>(`/assembly/procedure-materials/${encodeURIComponent(id)}/file`, { responseType: 'blob' });
   return data;
