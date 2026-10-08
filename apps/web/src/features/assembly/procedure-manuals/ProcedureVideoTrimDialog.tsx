@@ -25,8 +25,11 @@ export function ProcedureVideoTrimDialog({ video, onClose, onSaved }: { video: P
   const move = (handle: 'start' | 'end', value: number) => {
     setActiveHandle(handle);
     const rounded = Math.round(value * 10) / 10;
-    if (handle === 'start') setStart(Math.max(0, Math.min(rounded, end - 0.5)));
-    else setEnd(Math.min(duration, Math.max(rounded, start + 0.5)));
+    const next = handle === 'start' ? Math.max(0, Math.min(rounded, end - 0.5)) : Math.min(duration, Math.max(rounded, start + 0.5));
+    if (handle === 'start') setStart(next); else setEnd(next);
+    // Show the frame under the handle so the cut point can be judged while dragging.
+    const player = videoRef.current;
+    if (player) { player.pause(); player.currentTime = next; }
   };
   const key = (handle: 'start' | 'end', event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
