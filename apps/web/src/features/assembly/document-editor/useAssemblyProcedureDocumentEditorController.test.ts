@@ -12,6 +12,7 @@ const apiMocks = vi.hoisted(() => ({
   publishDocument: vi.fn(),
   discardRevision: vi.fn(),
   addBlankPage: vi.fn(),
+  suggestLayout: vi.fn(),
   placeMaterial: vi.fn()
 }));
 
@@ -24,6 +25,7 @@ vi.mock('../../../api/domains/assembly-edit-lease', async (importOriginal) => ({
 
 vi.mock('../../../api/client', () => ({
   addBlankAssemblyProcedurePage: apiMocks.addBlankPage,
+  suggestAssemblyProcedureLayout: apiMocks.suggestLayout,
   placeProcedureMaterial: apiMocks.placeMaterial,
   verifyAssemblyTemplateAccessPassword: apiMocks.verifyPassword,
   getAssemblyProcedureDocument: apiMocks.getDocument,
@@ -85,6 +87,98 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     leaseMocks.acquire.mockResolvedValue({ mine: true, holderToken: 'session-token', lease: { holderLabel: '自分の端末', acquiredAt: '2026-10-06T03:00:00Z', heartbeatAt: '2026-10-06T03:00:00Z' } });
     leaseMocks.release.mockResolvedValue(undefined);
     window.localStorage.clear(); clearProcedureEditorAccess();
+  });
+
+  it('previews the unsaved current page, applies one history change, and undoes it once', async () => {
+    const text = { ...createOverlayForRange('TEXT', 0, range), id: 'text' };
+    const image = { ...createOverlayForRange('IMAGE', 0, range), id: 'image', assetId: 'photo' };
+    const other = { ...text, id: 'other', pageIndex: 1 };
+    const hook = renderEditor(makeDocument({ pages: [
+      { pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [text, image] },
+      { pageIndex: 1, imageRelativePath: '/pages/2.png', overlays: [other] }
+    ] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.layoutSuggestions.canSuggest).toBe(true));
+    const draftText = { ...text, text: '未保存の文章' } as AssemblyProcedureOverlayElement;
+    act(() => hook.result.current.updateElement(draftText));
+    const initial = hook.result.current.elements;
+    const standard = [draftText, image].map(element => ({ ...element, bbox: { ...range, xRatio: 0.4 } }));
+    const largePhoto = standard.map(element => ({ ...element, bbox: { ...range, xRatio: 0.5 } }));
+    apiMocks.suggestLayout.mockResolvedValue({ plans: [{ key: 'standard', elements: standard }, { key: 'largePhoto', elements: largePhoto }] });
+    await act(async () => hook.result.current.layoutSuggestions.start());
+    expect(apiMocks.suggestLayout).toHaveBeenCalledWith(expect.objectContaining({ pageIndex: 0, elements: [draftText, image], accessPassword: '1234', holderToken: 'session-token', signal: expect.any(AbortSignal) }));
+    expect(hook.result.current.elements).toEqual(initial);
+    expect(hook.result.current.layoutSuggestions.previewElements).toEqual(standard);
+    expect(hook.result.current.readOnly).toBe(true);
+    act(() => { hook.result.current.setSelectedPageIndex(1); hook.result.current.addOverlay('TEXT'); hook.result.current.updateElement(text); hook.result.current.undo(); });
+    expect(hook.result.current.selectedPageIndex).toBe(0);
+    expect(hook.result.current.elements).toEqual(initial);
+    act(() => hook.result.current.layoutSuggestions.selectPlan('largePhoto'));
+    act(() => hook.result.current.layoutSuggestions.showBefore(true));
+    expect(hook.result.current.layoutSuggestions.previewElements).toBeNull();
+    act(() => hook.result.current.layoutSuggestions.apply());
+    expect(hook.result.current.selectedPageElements).toEqual(largePhoto);
+    expect(hook.result.current.elements.find(element => element.id === 'other')).toEqual(other);
+    expect(hook.result.current.message).toBe('整えました。元に戻せます');
+    expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
+    act(() => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual(initial);
+  });
+
+  it('cancels preview and pending requests without draft or history changes, including late responses', async () => {
+    const text = { ...createOverlayForRange('TEXT', 0, range), id: 'text' };
+    const image = { ...createOverlayForRange('IMAGE', 0, range), id: 'image', assetId: 'photo' };
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [text, image] }] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.layoutSuggestions.canSuggest).toBe(true));
+    const initial = hook.result.current.elements;
+    const response = { plans: [{ key: 'standard', elements: [text, image] }, { key: 'largePhoto', elements: [text, image] }] };
+    apiMocks.suggestLayout.mockResolvedValueOnce(response);
+    await act(async () => hook.result.current.layoutSuggestions.start());
+    act(() => hook.result.current.layoutSuggestions.cancel());
+    expect(hook.result.current.elements).toEqual(initial);
+    expect(hook.result.current.canUndo).toBe(false);
+    let finish!: () => void;
+    apiMocks.suggestLayout.mockImplementationOnce(() => new Promise(resolve => { finish = () => resolve(response); }));
+    let pending!: Promise<void>;
+    act(() => { pending = hook.result.current.layoutSuggestions.start(); });
+    expect(hook.result.current.layoutSuggestions.state.status).toBe('pending');
+    const signal = apiMocks.suggestLayout.mock.calls[1][0].signal as AbortSignal;
+    act(() => hook.result.current.layoutSuggestions.cancel());
+    expect(signal.aborted).toBe(true);
+    await act(async () => { finish(); await pending; });
+    expect(hook.result.current.layoutSuggestions.state.status).toBe('idle');
+    expect(hook.result.current.elements).toEqual(initial);
+    expect(hook.result.current.canUndo).toBe(false);
+  });
+
+  it.each([
+    ['ASSEMBLY_PROCEDURE_LAYOUT_DOES_NOT_FIT', 422, 'このページは1枚に収まりません'],
+    ['ASSEMBLY_PROCEDURE_LAYOUT_INFERENCE_FAILED', 502, 'いまは提案できません']
+  ] as const)('displays the friendly layout failure message for %s without changing the draft', async (errorCode, status, message) => {
+    const text = { ...createOverlayForRange('TEXT', 0, range), id: 'text' };
+    const image = { ...createOverlayForRange('IMAGE', 0, range), id: 'image', assetId: 'photo' };
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [text, image] }] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.layoutSuggestions.canSuggest).toBe(true));
+    const initial = hook.result.current.elements;
+    apiMocks.suggestLayout.mockRejectedValueOnce({ isAxiosError: true, response: { status, data: { errorCode } } });
+    await act(async () => hook.result.current.layoutSuggestions.start());
+    expect(hook.result.current.layoutSuggestions.state).toEqual({ status: 'error', message });
+    expect(hook.result.current.readOnly).toBe(false);
+    expect(hook.result.current.elements).toEqual(initial);
+    expect(hook.result.current.canUndo).toBe(false);
+    act(() => hook.result.current.layoutSuggestions.cancel());
+    expect(hook.result.current.layoutSuggestions.state.status).toBe('idle');
+  });
+
+  it('disables arranging a page with fewer than two text or image elements', async () => {
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [createOverlayForRange('TEXT', 0, range), createOverlayForRange('SHAPE', 0, range)] }] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
+    expect(hook.result.current.layoutSuggestions.canSuggest).toBe(false);
+    await act(async () => hook.result.current.layoutSuggestions.start());
+    expect(apiMocks.suggestLayout).not.toHaveBeenCalled();
   });
 
   it('places toolbar and range additions above the current page without using other pages z-indices', async () => {

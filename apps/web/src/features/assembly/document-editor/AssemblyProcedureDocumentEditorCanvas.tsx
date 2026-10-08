@@ -116,6 +116,7 @@ export function AssemblyProcedureDocumentEditorCanvas({
   elements,
   selectionMode,
   editable,
+  locked = false,
   selectedOverlayId,
   onSelectOverlay,
   onNudgeOverlay,
@@ -132,6 +133,7 @@ export function AssemblyProcedureDocumentEditorCanvas({
   elements: AssemblyProcedureOverlayElement[];
   selectionMode: boolean;
   editable: boolean;
+  locked?: boolean;
   selectedOverlayId: string | null;
   onSelectOverlay: (id: string) => void;
   onNudgeOverlay: (id: string, dxRatio: number, dyRatio: number) => void;
@@ -148,7 +150,7 @@ export function AssemblyProcedureDocumentEditorCanvas({
         elements={elements}
         crop={crop}
         selectedOverlayId={selectedOverlayId}
-        interactive={!selectionMode}
+        interactive={!selectionMode && !locked}
         onSelect={onSelectOverlay}
         onNudge={onNudgeOverlay}
         onUpdateBBox={editable ? onUpdateOverlayBBox : undefined}

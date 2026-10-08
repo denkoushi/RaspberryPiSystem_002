@@ -12,6 +12,7 @@ const icons: Record<string, ReactNode> = {
   text: <path d="M5 6h14M12 6v13" />,
   shape: <><rect x="4" y="4" width="7" height="7" /><circle cx="16.5" cy="16.5" r="3.5" /></>,
   range: <rect x="4" y="4" width="16" height="16" rx="2" strokeDasharray="3 3" />,
+  layout: <><rect x="4" y="4" width="6" height="5" rx="1" /><rect x="4" y="13" width="6" height="5" rx="1" /><path d="M14 5h6M14 8h6M14 14h6M14 17h6" /></>,
   undo: <><path d="M9 5L4 10l5 5M4 10h9a6 6 0 016 6" /></>,
   redo: <><path d="M15 5l5 5-5 5M20 10h-9a6 6 0 00-6 6" /></>,
   delete: <><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5" /></>
@@ -41,12 +42,13 @@ export function AssemblyProcedureDocumentEditorCanvasToolbar({ controller: c, wo
     {button('文字を置く', 'text', () => c.addOverlay('TEXT'), { disabled, pressed: c.selectedElement?.kind === 'TEXT' })}
     {button('図形を置く', 'shape', () => c.addOverlay('SHAPE'), { disabled, pressed: c.selectedElement?.kind === 'SHAPE' })}
     {button('範囲を選ぶ', 'range', () => c.setSelectionMode(!c.selectionMode), { disabled, pressed: c.selectionMode, target: 'assembly-document-editor-range-add' })}
+    {button('整える', 'layout', () => void c.layoutSuggestions.start(), { disabled: disabled || !c.layoutSuggestions.canSuggest, pressed: c.layoutSuggestions.locked, color: '!border-[#5fc3e8] !text-[#5fc3e8]' })}
     {separator}
     {button('元に戻す', 'undo', c.undo, { disabled: disabled || !c.canUndo })}
     {button('やり直す', 'redo', c.redo, { disabled: disabled || !c.canRedo })}
     <span aria-hidden="true" className="min-h-2 flex-1" />
     {c.document?.status === 'draft' ? button(c.document.supersedesDocumentId ? '改版を破棄する' : '削除する', 'delete', c.document.supersedesDocumentId ? onDiscard : onDelete, { disabled: disabled || (Boolean(c.document.supersedesDocumentId) && !c.canDiscard), color: '!border-transparent !text-[#e5484d]' }) : null}
     {separator}
-    {button(workshop ? '工房へ戻る' : '一覧へ戻る', 'back', c.navigateBack, { color: '!border-transparent !text-[#9fadb9]' })}
+    {button(workshop ? '工房へ戻る' : '一覧へ戻る', 'back', c.navigateBack, { disabled: c.layoutSuggestions.locked, color: '!border-transparent !text-[#9fadb9]' })}
   </nav>;
 }

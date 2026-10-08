@@ -2,7 +2,8 @@ import type { FastifyInstance, FastifyRequest, preHandlerHookHandler } from 'fas
 import { z } from 'zod';
 import {
   assemblyProcedureOverlayRegionInputSchema,
-  assemblyProcedureOverlaySaveInputSchema
+  assemblyProcedureOverlaySaveInputSchema,
+  procedureLayoutSuggestionRequestSchema
 } from '@raspi-system/shared-types';
 
 import {
@@ -14,6 +15,7 @@ import { enforceAssemblyProcedureEditLease, resolveAssemblyProcedureEditWriter }
 import { ApiError } from '../../lib/errors.js';
 import { AssemblyProcedureDocumentBlankService } from '../../services/assembly/assembly-procedure-document-blank.service.js';
 import { ProcedureMaterialPlacementService } from '../../services/assembly/procedure-material-placement.service.js';
+import { ProcedureLayoutSuggestionService } from '../../services/assembly/procedure-layout-suggestion.service.js';
 
 const idParamsSchema = z.object({ id: z.string().uuid() });
 const accessPasswordSchema = z.string().max(128).default('');
@@ -57,6 +59,21 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
     const { id, materialId } = z.object({ id: z.string().uuid(), materialId: z.string().uuid() }).parse(request.params);
     const body = z.object({ accessPassword: accessPasswordSchema, pageIndex: z.coerce.number().int().min(0) }).parse(request.body);
     return new ProcedureMaterialPlacementService().place({ documentId: id, materialId, ...body, ...await resolveAssemblyProcedureEditWriter(request) });
+  });
+  app.post('/assembly/procedure-documents/:id/layout-suggestions', {
+    preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease],
+    config: { rateLimit: { max: 4, timeWindow: '1 minute' } }
+  }, async (request, reply) => {
+    const { id } = idParamsSchema.parse(request.params);
+    const body = procedureLayoutSuggestionRequestSchema.parse(request.body);
+    const abortController = new AbortController();
+    const onClose = () => { if (!reply.raw.writableEnded) abortController.abort(); };
+    reply.raw.once('close', onClose);
+    try {
+      return await new ProcedureLayoutSuggestionService().suggest({ documentId: id, ...body, signal: abortController.signal });
+    } finally {
+      reply.raw.off('close', onClose);
+    }
   });
 
   async function readOverlayMultipart(request: FastifyRequest) {
