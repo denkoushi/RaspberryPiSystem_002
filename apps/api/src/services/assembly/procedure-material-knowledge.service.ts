@@ -108,8 +108,8 @@ export class ProcedureMaterialKnowledgeService {
 
   async list(options: { q?: string; limit?: number } = {}) {
     if (!this.enabled()) return { enabled: false, items: [] };
-    const q = options.q?.toLowerCase();
-    const candidates = (await this.candidates()).items.filter((c) => !q || c.searchText.toLowerCase().includes(q)).slice(0, Math.min(options.limit ?? 100, 300));
+    const q = options.q?.normalize('NFKC').toLowerCase();
+    const candidates = (await this.candidates()).items.filter((c) => !q || c.searchText.normalize('NFKC').toLowerCase().includes(q)).slice(0, Math.min(options.limit ?? 100, 300));
     const imported = await this.db.procedureMaterial.findMany({ where: { gmailDedupeKey: { in: candidates.map(firstDedupeKey) } }, select: { gmailDedupeKey: true } });
     const keys = new Set(imported.map((m) => m.gmailDedupeKey));
     return { enabled: true, items: candidates.map((candidate) => {

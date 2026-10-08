@@ -38,6 +38,152 @@ describe('procedure-manuals material shelf', () => {
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:photo'); vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
   });
   afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+  it('loads only the active list without filters, then fetches four tabs in parallel and reuses queries across tabs', async () => {
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    await screen.findAllByRole('checkbox', { name: 'DFD1 組立' });
+    expect(mocks.list).toHaveBeenCalledExactlyOnceWith({ state: 'unplaced', q: '', limit: 500 });
+    expect(mocks.knowledge).not.toHaveBeenCalled(); expect(mocks.workInstructions).not.toHaveBeenCalled();
+    let resolveMaterial!: (items: unknown[]) => void;
+    let resolveKnowledge!: (result: unknown) => void;
+    let resolveWork!: (result: unknown) => void;
+    const pendingMaterials = new Promise<unknown[]>((resolve) => { resolveMaterial = resolve; });
+    mocks.list.mockReturnValue(pendingMaterials);
+    mocks.knowledge.mockReturnValue(new Promise((resolve) => { resolveKnowledge = resolve; }));
+    mocks.workInstructions.mockReturnValue(new Promise((resolve) => { resolveWork = resolve; }));
+    const input = screen.getByRole('searchbox', { name: '素材を探す' });
+    fireEvent.change(input, { target: { value: 'DFD1' } });
+    await waitFor(() => expect(mocks.workInstructions).toHaveBeenCalledExactlyOnceWith({ q: 'DFD1', limit: 1000 }));
+    expect(mocks.knowledge).toHaveBeenCalledExactlyOnceWith({ q: 'DFD1', limit: 100 });
+    expect(mocks.list).toHaveBeenCalledWith({ state: 'unplaced', q: 'DFD1', limit: 500 });
+    expect(mocks.list).toHaveBeenCalledWith({ state: 'placed', q: 'DFD1', limit: 500 });
+    await act(async () => { resolveMaterial([text, photo]); resolveKnowledge({ enabled: true, items: [] }); resolveWork({ items: [] }); });
+    expect(screen.getByRole('tab', { name: /^未配置\s*2$/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^配置済み\s*2$/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^ナレッジから\s*0$/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^加工の写真\s*0$/ })).toBeInTheDocument();
+    for (const name of [/^配置済み/, /^ナレッジから/, /^加工の写真/, /^未配置/]) {
+      fireEvent.click(screen.getByRole('tab', { name })); expect(input).toHaveValue('DFD1');
+    }
+    expect(screen.getAllByRole('searchbox')).toHaveLength(1);
+    expect(mocks.list).toHaveBeenCalledTimes(3); expect(mocks.knowledge).toHaveBeenCalledOnce(); expect(mocks.workInstructions).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: '検索語を消す' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^DFD1 組立/ })).toBeInTheDocument());
+    fireEvent.change(input, { target: { value: 'DFD1' } });
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^DFD1 組立/ })).not.toBeInTheDocument());
+    expect(mocks.list).toHaveBeenCalledTimes(3);
+    fireEvent.click(screen.getByRole('button', { name: '今すぐ取り込む' }));
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(5));
+    expect(mocks.knowledge).toHaveBeenCalledTimes(2); expect(mocks.workInstructions).toHaveBeenCalledTimes(2);
+  });
+  it('filters loaded lists and tab counts with multiple sources and kinds, and shows only supported chips', async () => {
+    const recent = new Date(Date.now() - 60000).toISOString();
+    mocks.list.mockResolvedValue([
+      { ...text, receivedAt: recent }, { ...photo, receivedAt: recent },
+      { ...photo, id: 'processing', origin: 'WORK_INSTRUCTION', receivedAt: recent },
+      { ...photo, id: 'old', kind: 'PDF', receivedAt: new Date(Date.now() - 40 * 86400000).toISOString() },
+    ]);
+    mocks.knowledge.mockResolvedValue({ enabled: true, items: [{ candidateKey: 'knowledge:text', kind: 'TEXT', title: '知識', preview: '本文', sourceLabel: 'Chat', alreadyImported: false }] });
+    mocks.workInstructions.mockResolvedValue({ items: [{ candidateKey: 'work:1', partNumber: 'MH-1', shootingTarget: '外径', step: 1, memo: '', assetId: 'asset', alreadyImported: false }] });
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    await screen.findAllByRole('checkbox', { name: 'DFD1 組立' });
+    const chips = screen.getByLabelText('素材の絞り込み');
+    fireEvent.click(within(chips).getByRole('button', { name: '写真' }));
+    await waitFor(() => expect(screen.getByRole('tab', { name: /^加工の写真\s*1$/ })).toBeInTheDocument());
+    expect(screen.getByRole('status', { name: '一致件数' })).toHaveTextContent('2 件');
+    expect(screen.getByRole('tab', { name: /^未配置\s*2$/ })).toBeInTheDocument();
+    fireEvent.click(within(chips).getByRole('button', { name: 'メール' }));
+    expect(screen.getByRole('status', { name: '一致件数' })).toHaveTextContent('1 件');
+    fireEvent.click(within(chips).getByRole('button', { name: '加工' }));
+    expect(screen.getByRole('status', { name: '一致件数' })).toHaveTextContent('2 件');
+    fireEvent.click(within(chips).getByRole('button', { name: '文章' }));
+    expect(screen.getByRole('status', { name: '一致件数' })).toHaveTextContent('3 件');
+    fireEvent.click(within(chips).getByRole('button', { name: '7日' }));
+    fireEvent.click(within(chips).getByRole('button', { name: '30日' }));
+    expect(within(chips).getByRole('button', { name: '7日' })).toHaveAttribute('aria-pressed', 'false');
+    expect(within(chips).getByRole('button', { name: '30日' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(within(chips).getByRole('button', { name: '絞り込みを外す' }));
+    expect(screen.getByRole('status', { name: '一致件数' })).toHaveTextContent('4 件');
+    expect(within(chips).queryByRole('button', { name: '絞り込みを外す' })).not.toBeInTheDocument();
+    fireEvent.click(within(chips).getByRole('button', { name: '7日' }));
+    expect(screen.getByRole('status', { name: '一致件数' })).toHaveTextContent('3 件');
+    expect(mocks.list).toHaveBeenCalledTimes(2); expect(mocks.knowledge).toHaveBeenCalledOnce(); expect(mocks.workInstructions).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('tab', { name: /^ナレッジから/ }));
+    expect(within(chips).queryByRole('button', { name: '7日' })).not.toBeInTheDocument();
+    expect(within(chips).queryByRole('button', { name: 'PDF' })).not.toBeInTheDocument();
+    expect(screen.getByRole('status', { name: '一致件数' })).toHaveTextContent('1 件');
+    fireEvent.click(screen.getByRole('tab', { name: /^加工の写真/ }));
+    expect(within(chips).queryByRole('button', { name: '7日' })).not.toBeInTheDocument();
+    expect(within(chips).queryByRole('button', { name: '文章' })).not.toBeInTheDocument();
+    expect(within(chips).queryByRole('button', { name: 'PDF' })).not.toBeInTheDocument();
+    expect(screen.getByRole('status', { name: '一致件数' })).toHaveTextContent('1 件');
+  });
+  it('highlights full-width search in titles and existing excerpts without bundles', async () => {
+    mocks.workInstructions.mockResolvedValue({ items: [{ candidateKey: 'work:1', partNumber: 'MH-4521', shootingTarget: '外径', step: 1, memo: 'mh-4521 のメモ', assetId: 'asset', alreadyImported: false }] });
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'ＭＨ－４５２１' } });
+    await waitFor(() => expect(mocks.workInstructions).toHaveBeenCalledWith({ q: 'ＭＨ－４５２１', limit: 1000 }));
+    fireEvent.click(screen.getByRole('tab', { name: /^加工の写真/ }));
+    const checkbox = await screen.findByRole('checkbox', { name: 'MH-4521 外径 手順 1' });
+    const card = checkbox.closest('li')!;
+    expect(card.querySelectorAll('mark')).toHaveLength(3);
+    expect([...card.querySelectorAll('mark')].map((mark) => mark.textContent)).toEqual(['MH-4521', 'MH-4521', 'mh-4521']);
+    expect(screen.queryByRole('button', { name: '束を全部選ぶ' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '検索語を消す' }));
+    expect(await screen.findByRole('button', { name: /^MH-4521 撮影対象/ })).toBeInTheDocument();
+  });
+  it('retains hidden selections across search and chips, places their saved DTO, and clears on tab switches', async () => {
+    mocks.list.mockImplementation(({ q }: { q: string }) => Promise.resolve(q ? [] : [photo]));
+    const onSelect = vi.fn().mockResolvedValue(undefined);
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} onSelect={onSelect} />);
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'DFD1 組立' }));
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '見えない' } });
+    await screen.findByText('見つかりません');
+    expect(screen.getByRole('status', { name: '選択中の素材' })).toHaveTextContent('1 件を選択中');
+    fireEvent.click(within(screen.getByLabelText('素材の絞り込み')).getByRole('button', { name: '文章' }));
+    expect(screen.getByRole('status', { name: '選択中の素材' })).toHaveTextContent('1 件を選択中');
+    expect(await within(screen.getByLabelText('選択した素材のサムネイル')).findByRole('img')).toHaveAttribute('src', 'blob:photo');
+    expect(mocks.thumbnail).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: '現在ページに配置' }));
+    await waitFor(() => expect(onSelect).toHaveBeenCalledExactlyOnceWith(photo));
+    fireEvent.click(within(screen.getByLabelText('素材の絞り込み')).getByRole('button', { name: '絞り込みを外す' }));
+    fireEvent.click(screen.getByRole('button', { name: '検索語を消す' }));
+    await screen.findByRole('tab', { name: '未配置 (0)' });
+    fireEvent.click(screen.getByRole('tab', { name: /^配置済み/ }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'DFD1 組立' }));
+    fireEvent.click(screen.getByRole('tab', { name: /^未配置/ }));
+    expect(screen.getByRole('status', { name: '選択中の素材' })).toHaveTextContent('0 件を選択中');
+    expect(screen.queryByLabelText('選択した素材のサムネイル')).not.toBeInTheDocument();
+  });
+  it('imports processing selections that disappear from the current search and clears them after success', async () => {
+    const candidate = { candidateKey: 'work:1', partNumber: 'MH-1', shootingTarget: '外径', step: 1, memo: '', assetId: 'asset', alreadyImported: false };
+    mocks.workInstructions.mockImplementation(({ q }: { q: string }) => Promise.resolve({ items: q ? [] : [candidate] }));
+    mocks.importWorkInstructions.mockResolvedValue({ imported: 1, duplicate: 0, failed: [{ candidateKey: 'other', reason: '別候補' }] });
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('tab', { name: '加工の写真' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'MH-1 外径 手順 1' }));
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '別の品番' } });
+    await screen.findByText('見つかりません');
+    fireEvent.click(screen.getByRole('button', { name: '棚に取り込む' }));
+    await waitFor(() => expect(mocks.importWorkInstructions).toHaveBeenCalledExactlyOnceWith([{ candidateKey: 'work:1', partNumber: 'MH-1', shootingTarget: '外径' }]));
+    expect(screen.getByRole('status', { name: '選択中の素材' })).toHaveTextContent('0 件を選択中');
+  });
+  it('keeps successful tabs usable when another tab fails, omits its count and retries it on revisit', async () => {
+    mocks.knowledge.mockRejectedValue(new Error('候補の取得失敗'));
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    await screen.findAllByRole('checkbox', { name: 'DFD1 組立' });
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'DFD1' } });
+    await screen.findByRole('tab', { name: /^未配置\s*2$/ });
+    expect(screen.getByRole('tab', { name: 'ナレッジから' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'ナレッジから' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('候補の取得失敗');
+    fireEvent.click(screen.getByRole('tab', { name: /^配置済み/ }));
+    expect(await screen.findAllByRole('checkbox')).toHaveLength(2);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    mocks.knowledge.mockResolvedValue({ enabled: true, items: [] });
+    fireEvent.click(screen.getByRole('tab', { name: /^ナレッジから/ }));
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(mocks.knowledge.mock.calls.length).toBeGreaterThan(1);
+  });
   it.each(['browse', 'place', 'replace'] as const)('shows a PDF card and creates a document in %s mode', async (mode) => {
     mocks.list.mockResolvedValue([{ ...photo, id: 'pdf', kind: 'PDF', subjectHint: null, originalFileName: '原本.pdf' }]);
     mocks.createDocument.mockResolvedValue({ id: 'created-document', name: '原本' });
@@ -78,12 +224,12 @@ describe('procedure-manuals material shelf', () => {
     expect(await screen.findByRole('img', { name: '手順.png' })).toHaveAttribute('src', 'blob:photo');
     expect(screen.getAllByText('DFD1 組立')).toHaveLength(3);
     expect(mocks.list).toHaveBeenCalledWith({ state: 'unplaced', q: '', limit: 500 });
-    fireEvent.change(screen.getByLabelText('素材のヒント検索'), { target: { value: 'DFD1' } });
-    await waitFor(() => expect(mocks.list).toHaveBeenLastCalledWith({ state: 'unplaced', q: 'DFD1', limit: 500 }));
+    fireEvent.change(screen.getByLabelText('素材を探す'), { target: { value: 'DFD1' } });
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledWith({ state: 'unplaced', q: 'DFD1', limit: 500 }));
     fireEvent.click(screen.getByRole('button', { name: '今すぐ取り込む' }));
     expect(await screen.findByText('見つけた 2 通・取込 2件・保存済み 0件・スキップ 1通・再試行 0通・再試行待ち 0通・除外添付 1件')).toBeInTheDocument(); expect(screen.getByText('本文が空で、対応する写真がありません')).toBeInTheDocument();
     expect(screen.queryByText('受信トレイに未読の対象メールがありません')).not.toBeInTheDocument();
-    expect(mocks.ingest).toHaveBeenCalledOnce(); await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(3));
+    expect(mocks.ingest).toHaveBeenCalledOnce(); await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(5));
     expect(screen.queryByRole('button', { name: '現在ページに配置' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '閉じる' })); expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:photo');
@@ -105,11 +251,12 @@ describe('procedure-manuals material shelf', () => {
     await screen.findByRole('img', { name: '手順.png' });
     fireEvent.click(first);
     expect(first).toHaveAttribute('aria-expanded', 'false');
-    fireEvent.change(screen.getByLabelText('素材のヒント検索'), { target: { value: 'DFD' } });
-    expect(await screen.findByRole('button', { name: /^DFD1 組立/ })).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('button', { name: /^DFD2 組立/ })).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.queryByRole('button', { name: /^検査/ })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('素材のヒント検索'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('素材を探す'), { target: { value: 'DFD' } });
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledWith({ state: 'unplaced', q: 'DFD', limit: 500 }));
+    expect(screen.queryByRole('button', { name: /^DFD1 組立/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^DFD2 組立/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox')).toHaveLength(3);
+    fireEvent.change(screen.getByLabelText('素材を探す'), { target: { value: '' } });
     expect(await screen.findByRole('button', { name: /^DFD1 組立/ })).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByRole('button', { name: /^DFD2 組立/ })).toHaveAttribute('aria-expanded', 'true');
     fireEvent.click(screen.getByRole('tab', { name: '配置済み' }));
@@ -172,10 +319,10 @@ describe('procedure-manuals material shelf', () => {
     try {
       mocks.list.mockResolvedValue([text, { ...photo, subjectHint: '写真' }]);
       render(<ProcedureMaterialShelfDialog mode="replace" onClose={vi.fn()} onSelect={vi.fn()} />);
-      const header = await screen.findByRole('button', { name: /^写真/ });
+      const header = await screen.findByRole('button', { name: /^写真/, expanded: false });
       expect(header).toHaveAttribute('aria-expanded', 'false');
       expect(header).toHaveAttribute('tabindex', '0');
-      const first = screen.getByRole('tab', { name: /^未配置/ });
+      const first = screen.getByRole('searchbox', { name: '素材を探す' });
       first.focus();
       fireEvent.keyDown(first, { key: 'Tab', shiftKey: true });
       expect(header).toHaveFocus();
@@ -291,11 +438,11 @@ describe('procedure-manuals material shelf', () => {
     fireEvent.click(await screen.findByRole('checkbox', { name: 'DFD1 組立' }));
     fireEvent.click(screen.getByRole('button', { name: '捨てる' }));
     fireEvent.click(within(screen.getByRole('dialog', { name: '素材を捨てる' })).getByRole('button', { name: '捨てる' }));
-    await screen.findByText('素材がありません'); expect(mocks.discard).toHaveBeenCalledWith('text');
+    await screen.findByText('見つかりません'); expect(mocks.discard).toHaveBeenCalledWith('text');
     fireEvent.click(screen.getByRole('button', { name: '捨てた素材' }));
     fireEvent.click(await screen.findByRole('button', { name: '戻す' }));
     await waitFor(() => expect(mocks.restore).toHaveBeenCalledWith('text'));
-    await screen.findByText('素材がありません'); expect(mocks.list).toHaveBeenLastCalledWith({ state: 'discarded', q: '', limit: 500 });
+    await screen.findByText('見つかりません'); expect(mocks.list).toHaveBeenLastCalledWith({ state: 'discarded', q: '', limit: 500 });
   });
   it('selects unplaced materials with the existing hint filter and keeps placement failures visible', async () => {
     mocks.list.mockResolvedValue([text]);
@@ -321,7 +468,7 @@ describe('procedure-manuals material shelf', () => {
     const onSelect = vi.fn().mockResolvedValue(undefined);
     const onClose = vi.fn();
     render(<ProcedureMaterialShelfDialog onClose={onClose} onSelect={onSelect} />);
-    await screen.findByText('素材がありません');
+    await screen.findByText('見つかりません');
     fireEvent.click(screen.getByRole('tab', { name: '配置済み' }));
     const textCheck = await screen.findByRole('checkbox', { name: 'DFD1 組立' });
     fireEvent.click(screen.getByRole('button', { name: /^配置済み写真/ }));
@@ -330,9 +477,9 @@ describe('procedure-manuals material shelf', () => {
     expect(mocks.list).toHaveBeenLastCalledWith({ state: 'placed', q: '', limit: 500 });
     expect(screen.queryByRole('button', { name: '配置を取り消す' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '捨てる' })).not.toBeInTheDocument();
-    const place = screen.getByRole('button', { name: '現在ページに配置' });
-    expect(place).toBeDisabled();
+    expect(screen.queryByRole('button', { name: '現在ページに配置' })).not.toBeInTheDocument();
     fireEvent.click(textCheck); fireEvent.click(photoCheck);
+    const place = screen.getByRole('button', { name: '現在ページに配置' });
     expect(place).toBeEnabled();
     fireEvent.click(place);
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
@@ -340,7 +487,7 @@ describe('procedure-manuals material shelf', () => {
     expect(onSelect).toHaveBeenNthCalledWith(2, placedPhoto);
     expect(textCheck).toBeInTheDocument(); expect(textCheck).not.toBeChecked();
     expect(photoCheck).toBeInTheDocument(); expect(photoCheck).not.toBeChecked();
-    fireEvent.click(photoCheck); fireEvent.click(place);
+    fireEvent.click(photoCheck); fireEvent.click(screen.getByRole('button', { name: '現在ページに配置' }));
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(2));
     expect(onSelect).toHaveBeenNthCalledWith(3, placedPhoto);
     expect(mocks.unplace).not.toHaveBeenCalled(); expect(mocks.discard).not.toHaveBeenCalled();
@@ -349,7 +496,7 @@ describe('procedure-manuals material shelf', () => {
     mocks.list.mockResolvedValueOnce([]).mockResolvedValueOnce([{ ...text, documentId: 'document', placedAt: '2026-10-05T04:00:00Z' }]).mockResolvedValueOnce([]);
     localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualWorkshop /></MemoryRouter>);
     fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
-    await screen.findByText('素材がありません');
+    await screen.findByText('見つかりません');
     fireEvent.click(screen.getByRole('tab', { name: /^配置済み/ }));
     fireEvent.click(await screen.findByRole('button', { name: '配置を取り消す' }));
     await waitFor(() => expect(mocks.unplace).toHaveBeenCalledWith('text'));
@@ -369,8 +516,7 @@ describe('procedure-manuals material shelf', () => {
     expect(textCheck).toBeDisabled();
     expect(screen.getByRole('tab', { name: state === 'placed' ? /^配置済み/ : /^未配置/ })).toHaveAttribute('aria-selected', 'true');
     expect(screen.queryByRole('button', { name: '配置を取り消す' })).not.toBeInTheDocument();
-    const button = screen.getByRole('button', { name: 'この素材に差し替え' });
-    expect(button).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'この素材に差し替え' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '現在ページに配置' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /^写真1/ }));
     fireEvent.click(screen.getByRole('button', { name: /^写真2/ }));
@@ -383,8 +529,9 @@ describe('procedure-manuals material shelf', () => {
     expect(secondCheck).toBeChecked();
     expect(screen.getByRole('status', { name: '選択中の素材' })).toHaveTextContent('1 件を選択中');
     fireEvent.click(secondCheck);
-    expect(button).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'この素材に差し替え' })).not.toBeInTheDocument();
     fireEvent.click(secondCheck);
+    const button = screen.getByRole('button', { name: 'この素材に差し替え' });
     fireEvent.click(button);
     expect(await screen.findByRole('alert')).toHaveTextContent('現在は画像を差し替えできません');
     expect(onClose).not.toHaveBeenCalled();
@@ -427,7 +574,7 @@ describe('procedure-manuals material shelf', () => {
     mocks.list.mockResolvedValueOnce([]).mockResolvedValue([{ ...text, origin: 'KNOWLEDGE', text: '取り込んだ本文' }]);
     const onSelect = vi.fn();
     render(<ProcedureMaterialShelfDialog onClose={vi.fn()} onSelect={onSelect} />);
-    await screen.findByText('素材がありません');
+    await screen.findByText('見つかりません');
     fireEvent.click(screen.getByRole('tab', { name: /^ナレッジから/ }));
     expect(await screen.findByText('投稿本文')).toBeInTheDocument();
     expect(screen.getByText('整理した要約')).toBeInTheDocument();
@@ -437,8 +584,8 @@ describe('procedure-manuals material shelf', () => {
     expect(screen.getByText('写真の説明')).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: '古い素材' })).toBeDisabled();
     expect(screen.getByText(/取込済み/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '棚に取り込む' })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('ナレッジ検索'), { target: { value: 'DFD1' } });
+    expect(screen.queryByRole('button', { name: '棚に取り込む' })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('素材を探す'), { target: { value: 'DFD1' } });
     await waitFor(() => expect(mocks.knowledge).toHaveBeenLastCalledWith({ q: 'DFD1', limit: 100 }));
     await screen.findByRole('checkbox', { name: 'Chat 素材' });
     fireEvent.click(screen.getByRole('checkbox', { name: 'Chat 素材' }));
@@ -447,9 +594,9 @@ describe('procedure-manuals material shelf', () => {
     expect(await screen.findByText('取り込んだ本文')).toBeInTheDocument();
     expect(mocks.importKnowledge).toHaveBeenCalledExactlyOnceWith(['knowledge:text', 'knowledge:photo']);
     expect(screen.getByRole('tab', { name: /^未配置/ })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByText('ナレッジ')).toBeInTheDocument();
+    expect(within(screen.getByLabelText('素材一覧')).getByText('ナレッジ')).toBeInTheDocument();
     expect(onSelect).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: '現在ページに配置' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '現在ページに配置' })).not.toBeInTheDocument();
   });
   it('lists and searches processing photos, imports multiple selections and shows provenance in the shelf', async () => {
     const candidates = [
@@ -462,7 +609,7 @@ describe('procedure-manuals material shelf', () => {
       rowId: 'row', sourceVersionId: 'version', step: 1, assetId: 'asset-1', partNumber: 'DFD1', shootingTarget: '外径', memo: '保存メモ' } };
     mocks.list.mockResolvedValueOnce([]).mockResolvedValue([material]);
     render(<ProcedureMaterialShelfDialog onClose={vi.fn()} onSelect={vi.fn()} />);
-    await screen.findByText('素材がありません');
+    await screen.findByText('見つかりません');
     fireEvent.click(screen.getByRole('tab', { name: '加工の写真' }));
     expect(await screen.findByText('公開メモ')).toHaveClass('line-clamp-2');
     expect(await screen.findByRole('img', { name: 'DFD1 外径 手順 1' })).toBeInTheDocument();
@@ -471,9 +618,9 @@ describe('procedure-manuals material shelf', () => {
     fireEvent.click(screen.getByRole('button', { name: /^DFD2/ }));
     expect(screen.getByRole('checkbox', { name: 'DFD2 外径 手順 3' })).toBeDisabled();
     expect(screen.getByText(/取込済み/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '棚に取り込む' })).toBeDisabled();
-    expect(screen.getByLabelText('加工の写真検索')).toHaveAttribute('placeholder', '品番・対象');
-    fireEvent.change(screen.getByLabelText('加工の写真検索'), { target: { value: 'DFD1' } });
+    expect(screen.queryByRole('button', { name: '棚に取り込む' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('素材を探す')).toHaveAttribute('placeholder', '品番・ヒント');
+    fireEvent.change(screen.getByLabelText('素材を探す'), { target: { value: 'DFD1' } });
     await waitFor(() => expect(mocks.workInstructions).toHaveBeenLastCalledWith({ q: 'DFD1', limit: 1000 }));
     fireEvent.click(await screen.findByRole('checkbox', { name: 'DFD1 外径 手順 1' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'DFD1 内径 手順 2' }));
@@ -484,11 +631,11 @@ describe('procedure-manuals material shelf', () => {
       { candidateKey: 'work:second', partNumber: 'DFD1', shootingTarget: '内径' },
     ]);
     expect(screen.getByRole('tab', { name: /^未配置/ })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByText('加工')).toBeInTheDocument();
-    expect(screen.getByText('DFD1 外径 · 手順 1')).toBeInTheDocument();
+    expect(within(screen.getByLabelText('素材一覧')).getByText('加工')).toBeInTheDocument();
+    expect(await screen.findByText('DFD1 外径 · 手順 1')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: '配置済み' }));
     expect(await screen.findByText('保存メモ')).toBeInTheDocument();
-    expect(screen.getByText('加工')).toBeInTheDocument();
+    expect(within(screen.getByLabelText('素材一覧')).getByText('加工')).toBeInTheDocument();
   });
   it('caps processing-photo selection at 50 even when selecting imports for replacement', async () => {
     mocks.list.mockResolvedValue([]);
@@ -527,7 +674,7 @@ describe('procedure-manuals material shelf', () => {
     fireEvent.click(screen.getByRole('tab', { name: /^ナレッジから/ }));
     expect(await screen.findByText('ナレッジ機能は無効です')).toBeInTheDocument();
     expect(mocks.knowledgeThumbnail).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: '棚に取り込む' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: '棚に取り込む' })).not.toBeInTheDocument();
   });
   it('fetches only visible knowledge photos and retains their URLs on tab switch', async () => {
     const observers: Array<{ notify: () => void }> = [];
@@ -614,9 +761,9 @@ describe('procedure-manuals material shelf', () => {
     mocks.list.mockResolvedValue([photo]);
     mocks.knowledge.mockResolvedValue({ enabled: true, items: [{ candidateKey: 'knowledge:photo', kind: 'PHOTO', imageId: 'image-1', title: 'DFD1 写真', preview: '', sourceLabel: 'Chat 投稿', alreadyImported: false }] });
     mocks.workInstructions.mockResolvedValue({ items: [{ candidateKey: 'work:photo', partNumber: 'DFD1', shootingTarget: '外径', step: 1, memo: '', assetId: 'asset-1', alreadyImported: false }] });
-    const tab = source === 'material' ? /^未配置/ : source === 'knowledge' ? /^ナレッジから/ : '加工の写真';
+    const tab = source === 'material' ? /^未配置/ : source === 'knowledge' ? /^ナレッジから/ : /^加工の写真/;
     const title = source === 'material' ? '手順.png' : source === 'knowledge' ? 'DFD1 写真' : 'DFD1 外径 手順 1';
-    const label = source === 'material' ? '素材のヒント検索' : source === 'knowledge' ? 'ナレッジ検索' : '加工の写真検索';
+    const label = '素材を探す';
     const thumbnail = source === 'material' ? mocks.thumbnail : source === 'knowledge' ? mocks.knowledgeThumbnail : mocks.workInstructionThumbnail;
     const original = source === 'material' ? mocks.file : source === 'knowledge' ? mocks.knowledgeImage : mocks.workInstructionImage;
     const list = source === 'material' ? mocks.list : source === 'knowledge' ? mocks.knowledge : mocks.workInstructions;
@@ -631,7 +778,7 @@ describe('procedure-manuals material shelf', () => {
       await screen.findByRole('img', { name: title });
     }
     fireEvent.change(screen.getByLabelText(label), { target: { value: 'DFD1' } });
-    await waitFor(() => expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'DFD1' })));
+    await waitFor(() => expect(list).toHaveBeenCalledWith(expect.objectContaining({ q: 'DFD1' })));
     await screen.findByRole('img', { name: title });
     fireEvent.click(screen.getByRole('tab', { name: source === 'material' ? /^ナレッジから/ : /^未配置/ }));
     await waitFor(() => expect(screen.queryByRole('img', { name: title })).not.toBeInTheDocument());
@@ -650,10 +797,10 @@ describe('procedure-manuals material shelf', () => {
     await screen.findByRole('img', { name: '手順.png' });
     if (source !== 'material') {
       fireEvent.click(screen.getByRole('tab', { name: source === 'knowledge' ? /^ナレッジから/ : '加工の写真' }));
-      await screen.findByText(source === 'knowledge' ? 'ナレッジ機能は無効です' : '候補がありません');
+      await screen.findByText(source === 'knowledge' ? 'ナレッジ機能は無効です' : '見つかりません');
     }
     const list = source === 'material' ? mocks.list : source === 'knowledge' ? mocks.knowledge : mocks.workInstructions;
-    const input = screen.getByLabelText(source === 'material' ? '素材のヒント検索' : source === 'knowledge' ? 'ナレッジ検索' : '加工の写真検索');
+    const input = screen.getByLabelText('素材を探す');
     list.mockClear(); vi.useFakeTimers();
     for (const value of ['D', 'DF', 'DFD1']) {
       fireEvent.change(input, { target: { value } });
@@ -662,7 +809,7 @@ describe('procedure-manuals material shelf', () => {
       expect(list).not.toHaveBeenCalled();
     }
     await act(async () => { await vi.advanceTimersByTimeAsync(200); });
-    expect(list).toHaveBeenCalledOnce(); expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'DFD1' }));
+    expect(list).toHaveBeenCalledTimes(source === 'material' ? 2 : 1); expect(list).toHaveBeenCalledWith(expect.objectContaining({ q: 'DFD1' }));
     list.mockClear(); fireEvent.compositionStart(input);
     fireEvent.change(input, { target: { value: '組' } });
     await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
@@ -670,7 +817,7 @@ describe('procedure-manuals material shelf', () => {
     fireEvent.compositionEnd(input);
     await act(async () => { await vi.advanceTimersByTimeAsync(299); }); expect(list).not.toHaveBeenCalled();
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-    expect(list).toHaveBeenCalledOnce(); expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ q: '組' }));
+    expect(list).toHaveBeenCalledTimes(source === 'material' ? 2 : 1); expect(list).toHaveBeenCalledWith(expect.objectContaining({ q: '組' }));
     vi.useRealTimers(); view.unmount();
   });
   it('shows original-image failures and ignores a response after closing the lightbox', async () => {
