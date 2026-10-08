@@ -47,6 +47,24 @@ export function registerProcedureVideoRoutes(app: FastifyInstance, options: {
     await service.requestTrim(idParams.parse(request.params).id, startSeconds, endSeconds);
     return { saved: true };
   });
+  const sceneParams = idParams.extend({ sceneId: z.string().uuid() });
+  app.get(`${path}/:id/scenes/:sceneId/poster`, { preHandler: options.allowView, config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const { id, sceneId } = sceneParams.parse(request.params);
+    const bytes = await service.readScenePoster(id, sceneId);
+    return reply.header('Cache-Control', 'private, no-store').header('X-Content-Type-Options', 'nosniff').type('image/jpeg').send(bytes);
+  });
+  const sceneBody = z.object({ title: z.string().trim().max(80).optional(), startSeconds: z.number().finite(), endSeconds: z.number().finite() }).strict();
+  app.get(`${path}/:id/scenes`, { preHandler: options.allowView }, async (request) => ({ scenes: await service.listScenes(idParams.parse(request.params).id) }));
+  app.post(`${path}/:id/scenes`, { preHandler: options.allowWriteKiosk }, async (request) => service.createScene(idParams.parse(request.params).id, sceneBody.parse(request.body)));
+  app.patch(`${path}/:id/scenes/:sceneId`, { preHandler: options.allowWriteKiosk }, async (request) => {
+    const { id, sceneId } = sceneParams.parse(request.params);
+    return service.updateScene(id, sceneId, sceneBody.partial().parse(request.body));
+  });
+  app.delete(`${path}/:id/scenes/:sceneId`, { preHandler: options.allowWriteKiosk }, async (request) => {
+    const { id, sceneId } = sceneParams.parse(request.params);
+    await service.deleteScene(id, sceneId);
+    return { saved: true };
+  });
   app.get(`${path}/:id/comments`, { preHandler: options.allowView }, async (request) => ({ comments: await service.listComments(idParams.parse(request.params).id) }));
   app.put(`${path}/:id/comments`, { preHandler: options.allowWriteKiosk }, async (request) => {
     const { comments } = z.object({ comments: z.array(z.object({ atSeconds: z.number().finite().min(0), text: z.string().trim().min(1).max(80) }).strict()).max(5) }).strict().parse(request.body);
@@ -59,7 +77,7 @@ export function registerProcedureVideoRoutes(app: FastifyInstance, options: {
   });
   app.put(pagesPath, { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request) => {
     const { id, pageIndex } = pageParams.parse(request.params);
-    const body = z.object({ videoIds: z.array(z.string().uuid()).max(50), accessPassword: z.string().max(128).default('') }).strict().parse(request.body);
+    const body = z.object({ videoIds: z.array(z.string().uuid()).max(50).optional(), items: z.array(z.object({ videoId: z.string().uuid(), sceneId: z.string().uuid().nullable().optional() }).strict()).max(50).optional(), accessPassword: z.string().max(128).default('') }).strict().refine((body) => (body.videoIds == null) !== (body.items == null), 'videoIdsかitemsのどちらかを指定してください').parse(request.body);
     return { videos: await service.replacePage({ documentId: id, pageIndex, ...body, ...await resolveAssemblyProcedureEditWriter(request) }) };
   });
 }

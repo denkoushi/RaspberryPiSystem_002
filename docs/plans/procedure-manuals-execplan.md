@@ -659,3 +659,24 @@ UX 改善(2 回目)の変更・追加ファイル一覧(34ファイル。各migr
 - 推論失敗・後回し・構造不合格・配置不合格は個別エラーコード。認証・編集リースは素材placeと共通、レート制限は4回/分。
 - ローカルの構造／配置・共有契約・ルート（推論/DBモック）・エディタ履歴を検証。本番LLMでの実測、実機確認、main統合・本番反映は未実施（integrationPending）。
 - 本番反映(2026-10-08、#1862、main `a6234415`、run `20261008-091739-90c3eb`)後の実機確認で、押すたびに「いまは提案できません」になった。APIログは3回とも422 `ASSEMBLY_PROCEDURE_LAYOUT_DIMENSIONS_UNAVAILABLE`(写真の寸法)。通常の写真アップロードは `AssemblyProcedureAsset.width/height` を記録せず(記録するのは切り抜きだけ)、「古い写真だけの制限」という見立ては誤りだった。寸法が無い写真は保存済みの画像から測る(EXIFの向きを反映)ように修正した。画像を読めない場合だけ422のまま。
+
+
+### 動画の場面(非破壊の範囲指定) (2026-10-08)
+
+- [x] (2026-10-08) 動画の場面(非破壊の範囲指定): 場面CRUD、ページ紐づけ、改版への複製、棚の場面選択、つまみ移動時の実動画シーク、範囲ループ再生、名前変更、削除と1段階の「元に戻す」をローカル実装した。場面は動画ごとに20件、0.1秒単位・最短0.5秒、長さの上限なし。
+- [x] (2026-10-08) 場面サムネイル: 場面作成・範囲変更のコミット後に、保存済みMP4の開始位置のフレームをbest-effortで生成する。失敗はログへ記録し、リクエストは成功を維持して動画ポスターへフォールバックする。
+- [ ] オーナー実機確認: 21.5インチ1920×1080で画面内に収まり、タッチ操作・場面作成/紐づけ・範囲再生・削除/復元と開始位置のサムネイル表示が期待どおり動くことを確認する。
+
+- Decision: 動画ファイル1本と複数の開始/終了範囲を保存し、破壊的なトリミングを場面編集へ置き換える。ページ紐づけの10.5秒制限を廃止する。紐づいた場面の範囲変更/削除は409で拒否し、名前変更だけ許可する。`sceneId=null`は動画全体を表し、既存リンクのデータ移行は不要。新規テーブル、nullable列、index、FKだけのexpand-only migrationを使う。
+  Rationale: 範囲を選ぶ操作自体をガードとして、元動画と公開済み文書の再生範囲を保持する。元の10秒制限の理由は記録されていない。動画の行ロックを場面・紐づけ・discard・trimで共有し、場面のある動画のtrimを拒否する。DBを戻さずアプリだけ戻せる追加変更に留める。
+  Date/Author: 2026-10-08 / Codex。
+
+- Decision: 場面のnullable `posterStorageKey`に開始位置の画像を保存し、棚・場面エディタ・ページ動画一覧は`hasScenePoster`が真なら場面ポスター、偽なら動画ポスターを使う。範囲変更で旧画像の参照を外し、生成後は場面が同じ開始位置かつポスター未設定のときだけ公開する。差し替え・削除・競合で不要になったファイルと一時ファイルはbest-effortで掃除する。
+  Rationale: ffmpeg実行中は行ロックを保持せず、生成失敗や同時編集で範囲操作を失敗させない。画像は既存の`procedure-videos/`配下に保存してGoogle Drive DRの保護対象を維持する。
+  Date/Author: 2026-10-08 / Codex。
+
+検証: Prisma generate、API/Web lint、Web tsc、Web指定テスト465件が成功。API全体の`pnpm exec tsc --noEmit`は既存tsconfigのrootDir外ファイル5件(TS6059)で失敗し、対象外の設定は変更していない。API指定テストは333件成功・1件skip、Gmail取込の実DB統合4件はlocalhost:5432へ接続できず失敗(場面service/routes/summaryのテストは成功)。実DBへのmigration適用と実機確認は未実施。commit/push/PR/merge/deployは未実施でintegrationPending。変更禁止のgenerated配下とtrim/concat workerは変更していない。
+
+場面サムネイル追記の検証(2026-10-08): Prisma generate、API/Web lint、Web `pnpm exec tsc --noEmit`が成功。APIの`pnpm exec vitest run procedure-video ffmpeg-procedure-video backup-recommended`は7ファイル189件成功。Webの`pnpm exec vitest run procedure-manuals document-editor`は23ファイル469件成功、追加のposter URLテスト2件も成功。作成/範囲変更後の生成、失敗時の成功応答、競合時の公開抑止と掃除、配信200/404、DTOの存在フラグ、動画ポスターへのフォールバック、範囲更新後の画像再取得を確認した。実Postgresへのmigration適用・実機目視は未実施。既存WIPを保持し、gitの変更操作・生成ソース変更・本番反映は行っていない。
+
+追加のブラウザ目視確認は未完了: ローカルChromiumはsandboxのMachPort権限で起動できず、Browser Useのローカルfile URLもURLポリシーで拒否された。回避操作は行わず、1920×1080の目視/タッチ確認は上のオーナー実機確認に残す。

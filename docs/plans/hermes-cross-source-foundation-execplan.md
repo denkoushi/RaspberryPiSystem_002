@@ -43,6 +43,8 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 - [x] (2026-10-04 04:13Z) Milestone 2（改訂）のローカル実装: worker の起動・corpus 更新応答に小数1桁のメモリとソース別件数を追加し、API の runtime.memory・数値ログ・scope に接続。visibility の必須検証と主体別の計画器入力・検索・表示制限を追加。複数ソースの全体語句索引を生成しない。既存 pageContext 第3引数、principal 無しの全ソース検索、authorizedRecords の1引数、bare candidateIds を維持。
 - [x] (2026-10-04 04:13Z) 検証: 対象 Node 29/29、待受けを使う2ファイルを除く retrieval 145/145、ソース定義6/6、API hermes-search 27/27が成功。API lint 指摘0件。API tsc は既知の未ビルド依存由来11件のみで、hermes の変更ファイルにエラー0件。
 - [ ] (2026-10-04 04:13Z) Milestone 2 の全体検証・本番確認: 指定の node --test retrieval/ は既存 dense-dgx の localhost listen EPERM 2件と Node 24.3.0 の異常終了で未完了。待受け2ファイルの対象を絞った確認も同じ環境制約で停止。commit / push / PR / merge / deploy は未実施。Pi5 のログ・scope・RSS / p95 と10倍外挿は配布後の確認として残す。既存 prototypes と本計画の先行更新は保持。
+- [x] (2026-10-08 10:54Z) ページ文脈の利用場面を追加（#1871、main c9225309、Pi5 配布 run 20261008-104803-f64225 成功）。部品測定の編集画面が `sheet.fhincd` を partNumber として登録し、空・アンマウントで消去する。フローティング Chat は partNumber の文脈があり JEV記録の利用範囲内のとき、品番と「不適合」「手順書」ボタンを出し、押すと JEV記録経路で定型質問（「この品番の不適合」「この品番の手順書」）を pageContext つきで1回送る。ランチャーには静止した印だけを付ける。画面を開く・品番が変わる・Chat を開くだけでは通信を増やさない（テストで確認）。計画器、API、worker は変更なし。組立作業画面は品番を持たないため対象外のまま。
+- [ ] (2026-10-08 10:54Z) 実機確認: 部品測定の編集画面でボタンを押し、その品番の不適合・手順書が返ること。「手順書」で手順書ソースが選ばれるか（ソース選択はモデル判定）と、`fhincd` と不適合記録の品番の形式が一致するかは未確認。
 
 ## Surprises & Discoveries
 
