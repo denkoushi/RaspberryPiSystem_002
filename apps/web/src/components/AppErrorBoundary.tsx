@@ -4,6 +4,7 @@ import {
   browserKioskRuntimeRecovery,
   type BrowserRuntimeRecoveryController
 } from '../features/kiosk/browserKioskRuntimeRecovery';
+import { reportKioskException } from '../features/kiosk/errorTelemetry';
 
 interface AppErrorBoundaryProps {
   children: ReactNode;
@@ -13,6 +14,7 @@ interface AppErrorBoundaryProps {
 interface AppErrorBoundaryState {
   failed: boolean;
   reloading: boolean;
+  incident?: { incidentCode: string; occurredAt: string };
 }
 
 const INITIAL_STATE: AppErrorBoundaryState = {
@@ -36,8 +38,10 @@ export class AppErrorBoundary extends Component<
     try {
       decision = runtime.decide(error);
     } catch {
+      this.setState({ incident: reportKioskException('render_crash', error, 'decision_failed') });
       return;
     }
+    this.setState({ incident: reportKioskException('render_crash', error, decision.kind) });
     if (decision.kind !== 'reload') return;
 
     this.setState({ reloading: true }, () => {
@@ -86,6 +90,11 @@ export class AppErrorBoundary extends Component<
           <p className="mt-5 text-xl leading-relaxed text-slate-200">
             一時的な読み込みエラーの可能性があります。下のボタンでもう一度読み込んでください。
           </p>
+          {this.state.incident && (
+            <p className="mt-3 text-sm text-slate-400">
+              記録番号 {this.state.incident.incidentCode} ・ {new Date(this.state.incident.occurredAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+            </p>
+          )}
           <button
             type="button"
             className="mt-8 min-h-20 w-full rounded-xl bg-sky-600 px-8 py-5 text-2xl font-bold text-white shadow-lg transition hover:bg-sky-500 focus:outline-none focus:ring-4 focus:ring-sky-300"

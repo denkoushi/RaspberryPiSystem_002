@@ -1,6 +1,7 @@
 import axios, { AxiosError, isAxiosError } from 'axios';
 
 import { readProductionBuildConfig } from '../config/productionBuildConfig';
+import { reportKioskApi } from '../features/kiosk/errorTelemetry';
 import { readViteApiTimeoutMs } from '../lib/api-timeout-ms';
 import {
   DEFAULT_CLIENT_KEY,
@@ -76,8 +77,11 @@ if (typeof window !== 'undefined') {
   setClientKeyHeader(resolved);
 }
 
+const requestStartedAt = new WeakMap<object, number>();
+
 // すべてのリクエストで client-key を付与
 api.interceptors.request.use((config) => {
+  requestStartedAt.set(config, Date.now());
   const key = resolveClientKey({ allowDefaultFallback: true }).key;
   config.headers = config.headers ?? {};
   if (!config.headers['x-client-key'] && key.length > 0) {
@@ -87,10 +91,18 @@ api.interceptors.request.use((config) => {
 });
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    reportKioskApi({ method: response.config.method, url: response.config.url, status: response.status,
+      durationMs: Date.now() - (requestStartedAt.get(response.config) ?? Date.now()) });
+    return response;
+  },
   (error: unknown) => {
     if (isAxiosError(error)) {
       const ax = error as AxiosError<{ code?: unknown; message?: unknown }>;
+      reportKioskApi({ method: ax.config?.method, url: ax.config?.url, status: ax.response?.status,
+        code: ax.code, apiCode: (ax.response?.data as { errorCode?: unknown; code?: unknown })?.errorCode ?? ax.response?.data?.code,
+        requestId: (ax.response?.data as { requestId?: unknown })?.requestId,
+        durationMs: Date.now() - (ax.config ? requestStartedAt.get(ax.config) ?? Date.now() : Date.now()) });
       // axios: 請求タイムアウトは通常 ECONNABORTED を付与
       const isTimeout = ax.code === 'ECONNABORTED';
       if (isTimeout) {
