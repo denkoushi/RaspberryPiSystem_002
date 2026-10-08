@@ -82,7 +82,10 @@ export function shelfPeriodMatches(date: string | undefined, days: number | null
   return time >= since && time <= now;
 }
 const matches = (values: string[], value: string) => !values.length || values.includes(value);
-export const filterShelfMaterials = (items: ProcedureMaterialDto[], filters: ShelfFilters) => items.filter((item) => matches(filters.sources, materialSource(item)) && matches(filters.kinds, item.kind) && shelfPeriodMatches(item.receivedAt, filters.days));
+export function shelfMaterialKindMatches(item: ProcedureMaterialDto, kinds: string[]) {
+  return matches(kinds, item.kind) || (kinds.includes('PDF') && item.kind === 'PHOTO' && item.origin === 'GMAIL' && /\sp\d+\.jpg$/i.test(item.originalFileName ?? ''));
+}
+export const filterShelfMaterials = (items: ProcedureMaterialDto[], filters: ShelfFilters) => items.filter((item) => matches(filters.sources, materialSource(item)) && shelfMaterialKindMatches(item, filters.kinds) && shelfPeriodMatches(item.receivedAt, filters.days));
 export const filterShelfKnowledge = (items: ProcedureKnowledgeCandidate[], filters: ShelfFilters) => items.filter((item) => matches(filters.sources, 'ナレッジ') && matches(filters.kinds, item.kind));
 export const workHasDates = (items: ProcedureWorkInstructionCandidate[]) => items.some((item) => item.sourceModified && Number.isFinite(Date.parse(item.sourceModified)));
 export const filterShelfWorkInstructions = (items: ProcedureWorkInstructionCandidate[], filters: ShelfFilters) => {

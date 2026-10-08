@@ -50,6 +50,8 @@ export type WorkInstructionGroupsQuery = {
 /** Public effective-text search is evaluated against the publication pointer. */
 export type WorkInstructionPublishedTextSearchQuery = WorkInstructionGroupsQuery & {
   query: string;
+  /** Shelf matching also folds compatibility characters in stored public text. */
+  normalizeText?: boolean;
 };
 
 export type WorkInstructionPublishedTextSearchPage = {
@@ -127,6 +129,7 @@ export interface WorkInstructionRepository {
   readPublishedGroups?(input: WorkInstructionGroupsQuery): Promise<ReadonlyArray<WorkInstructionGroupSummaryView>>;
   /** DB-filtered search over the published pointer and effective memo text. */
   searchPublishedGroups(input: WorkInstructionPublishedTextSearchQuery): Promise<WorkInstructionPublishedTextSearchPage>;
+  readPublishedGroupsByPartName(query: string): Promise<ReadonlyArray<WorkInstructionGroupSummaryView>>;
   readPublishedPartCandidates(input: WorkInstructionPartCandidatesQuery): Promise<WorkInstructionPartCandidatePageView>;
   readPublishedPartAlias(scannedPartNumber: string): Promise<WorkInstructionPartAliasView | null>;
   upsertPartAlias(input: UpsertWorkInstructionPartAliasInput): Promise<WorkInstructionPartAliasView>;

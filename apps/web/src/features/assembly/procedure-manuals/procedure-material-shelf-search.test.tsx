@@ -1,7 +1,9 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { emptyShelfFilters, filterShelfWorkInstructions, ShelfFilterChips, ShelfHighlight, shelfPeriodMatches } from './procedure-material-shelf-search';
+import { emptyShelfFilters, filterShelfMaterials, filterShelfWorkInstructions, ShelfFilterChips, ShelfHighlight, shelfPeriodMatches } from './procedure-material-shelf-search';
+
+import type { ProcedureMaterialDto } from './procedure-material-types';
 
 const candidate = { candidateKey: 'work:1', partNumber: 'MH-1', shootingTarget: '外径', step: 1, memo: '', assetId: 'asset', alreadyImported: false };
 
@@ -14,6 +16,17 @@ describe('material shelf search boundaries', () => {
   it('skips highlighting when expansion and composition cancel out in length', () => {
     const { container } = render(<ShelfHighlight text={'\ufb00e\u0301'} query="é" />);
     expect(container.querySelector('mark')).toBeNull();
+  });
+  it('includes only Gmail PDF page photos alongside PDF rows without removing them from photo results', () => {
+    const material = { id: 'pdf', kind: 'PDF', origin: 'GMAIL' } as ProcedureMaterialDto;
+    const page = { ...material, id: 'page', kind: 'PHOTO', originalFileName: 'scan p12.JPG' } as ProcedureMaterialDto;
+    const photo = { ...page, id: 'photo', originalFileName: 'scan.jpg' };
+    const rows = [material, page, photo, { ...page, id: 'work', origin: 'WORK_INSTRUCTION' } as ProcedureMaterialDto,
+      { ...page, id: 'no-space', originalFileName: 'scanp1.jpg' }, { ...page, id: 'no-number', originalFileName: 'scan p.jpg' },
+      { ...page, id: 'suffix', originalFileName: 'scan p1.jpg.png' }, { ...page, id: 'null', originalFileName: null }];
+    expect(filterShelfMaterials(rows, { ...emptyShelfFilters, kinds: ['PDF'] })).toEqual([material, page]);
+    expect(filterShelfMaterials(rows, { ...emptyShelfFilters, kinds: ['PHOTO'] })).toEqual(rows.slice(1));
+    expect(filterShelfMaterials(rows, { ...emptyShelfFilters, kinds: ['PHOTO', 'PDF'] })).toEqual(rows);
   });
   it('uses local midnight for today, includes the seven-day boundary and excludes missing or future dates', () => {
     const now = new Date(2026, 9, 8, 12).getTime();

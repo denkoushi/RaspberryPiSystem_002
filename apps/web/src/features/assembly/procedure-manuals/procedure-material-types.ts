@@ -2,6 +2,7 @@ export type ProcedureMaterialState = 'unplaced' | 'placed' | 'discarded' | 'all'
 export type ProcedureMaterialDto = {
   origin: 'GMAIL' | 'KNOWLEDGE' | 'WORK_INSTRUCTION';
   workInstructionRef: ProcedureWorkInstructionRef | null;
+  partName?: string | null;
   knowledgeRef: { kind: 'source' | 'procedure_step'; sourceId?: string; imageId?: string; procedureId?: string; revisionNumber?: number; stepId?: string } | null;
   id: string; kind: 'TEXT' | 'PHOTO' | 'PDF'; text: string | null;
   storageKey: string | null; sha256: string | null; contentType: string | null; byteSize: number | null;
@@ -31,7 +32,7 @@ export type ProcedureWorkInstructionRef = {
   partNumber: string; shootingTarget: string; memo: string; sourceSystem?: string; sourceList?: string;
 };
 export type ProcedureWorkInstructionCandidate = {
-  candidateKey: string; partNumber: string; shootingTarget: string; step: number; memo: string;
+  candidateKey: string; partNumber: string; partName?: string | null; shootingTarget: string; step: number; memo: string;
   assetId: string; sourceModified?: string; alreadyImported: boolean;
 };
 export type ProcedureWorkInstructionCandidatesResult = { items: ProcedureWorkInstructionCandidate[] };
