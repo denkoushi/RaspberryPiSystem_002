@@ -65,6 +65,28 @@ describe('AssemblyProcedureSequenceViewer', () => {
     expect(screen.getByRole('img')).toHaveAttribute('src', 'blob:sequence-image');
   });
 
+  it.each(['assembly_procedure_document', 'kiosk_document'] as const)('starts document B on its first page (%s), and defaults to A without a start', documentType => {
+    const sequence: AssemblyProcedureSequenceDto = {
+      ...assemblySequence,
+      documents: [baseDocument, {
+        ...baseDocument, orderItemId: 'item-b', documentType,
+        assemblyProcedureDocumentId: documentType === 'assembly_procedure_document' ? 'doc-b' : null,
+        kioskDocumentId: documentType === 'kiosk_document' ? 'doc-b' : null,
+        title: '公開文書B', pageCount: 2, pageUrls: ['/b-first.png', '/b-second.png']
+      }]
+    };
+    const onPageChange = vi.fn();
+    const view = render(<AssemblyProcedureSequenceViewer sequence={sequence} layout="manuals" initialDocumentId="doc-b" onCurrentPageChange={onPageChange} />);
+    expect(onPageChange).toHaveBeenLastCalledWith(expect.objectContaining({ documentId: 'doc-b', pageIndex: 0, pageUrl: '/b-first.png' }));
+    expect(screen.getByLabelText('ページ番号')).toHaveTextContent('2/3');
+    fireEvent.click(screen.getByRole('button', { name: '次手順' }));
+    expect(onPageChange).toHaveBeenLastCalledWith(expect.objectContaining({ documentId: 'doc-b', pageIndex: 1 }));
+    view.rerender(<AssemblyProcedureSequenceViewer sequence={sequence} layout="manuals" onCurrentPageChange={onPageChange} />);
+    expect(onPageChange).toHaveBeenLastCalledWith(expect.objectContaining({ documentId: 'doc-1', pageIndex: 0 }));
+    view.rerender(<AssemblyProcedureSequenceViewer sequence={sequence} layout="manuals" initialDocumentId="missing" onCurrentPageChange={onPageChange} />);
+    expect(onPageChange).toHaveBeenLastCalledWith(expect.objectContaining({ documentId: 'doc-1', pageIndex: 0 }));
+  });
+
   it('keeps the current-marker button by default and hides it for manual browsing', () => {
     const view = render(<AssemblyProcedureSequenceViewer sequence={assemblySequence} />);
     expect(screen.getByRole('button', { name: '現在の丸数字へ' })).toBeInTheDocument();
