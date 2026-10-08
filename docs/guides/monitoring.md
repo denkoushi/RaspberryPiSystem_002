@@ -239,3 +239,44 @@ check_http -H raspberry-pi-5 -p 8080 -u /api/system/health -e "200"
 5. **バックアップとの連携**: 監視スクリプトとバックアップスクリプトを連携させて、異常検知時に自動バックアップを実行
 6. **ストレージメンテナンスの自動化**: `storage-maintenance.service`（systemd timer）で毎日自動実行され、signage履歴を削除する。月次未完了時は、対象を限定したPi5旧リリースイメージ整理も実行する（詳細は [Pi5標準Ansible診断Runbook](../runbooks/pi5-blue-green-deploy.md#pi5-docker旧リリースイメージ整理)）。月初のBuild Cache整理は従来どおり維持する
 7. **Pi4のストレージメンテナンス**: `pi4-storage-maintenance.timer` が毎日3時30分（電源断時は次回起動後）に `/usr/local/sbin/pi4-storage-maintenance.sh` を実行する。稼働中のイメージと、リポジトリごとに直前1つ（端末で最後にタグ付けされた順）のリリースイメージ、24時間以内にタグ付けされたrollbackイメージだけを残し、他の旧リリースイメージ・古いrollbackタグ・旧ローカルビルドイメージ・Build Cache・aptキャッシュを削除する。Chromiumキオスクでは未使用のFirefox本体とプロファイルも削除する。ユニットとスクリプトは標準リリース（`release_kiosk`）で配布される。削除対象だけを確認するには `sudo PI4_STORAGE_DRY_RUN=1 /usr/local/sbin/pi4-storage-maintenance.sh`、実行結果は `journalctl -u pi4-storage-maintenance.service` で確認する
+
+## キオスク画面エラーの記録と調査
+
+`/kiosk` 画面の未捕捉例外、未処理 Promise、ErrorBoundary 到達、API 通信断・タイムアウト・5xx を
+`ClientLog` の `ERROR` に記録する。401 以外の 4xx と成功時の 10 秒以上の応答は `WARN`。
+既存の貸出・返却ログとは別に、`context.category = kiosk_ui_error` で検索できる。
+
+- 共通: `kind`, `route`（pathname）, `occurredAt`（ISO）, `count`, `incidentCode`, `online`, `releaseSha`（ビルド時設定がある場合）。
+- API: `method`, `urlPath`（クエリなし）, `status`, `apiCode`, `requestId`, `durationMs`。
+- 例外: `name`, `stack`（最大 2000 文字）。画面クラッシュは `recoveryDecision` に自動復旧判断も記録。
+- サーバで `clientDeviceId`, `clientDeviceName` を付与し、登録端末の `statusClientId` があれば `clientId` を補正する。
+- 同じ失敗は送信待ちの間 `count` に集約。5 秒ごとに送信を試み、クラッシュは即時。同じ失敗の再送は 1 分に 1 行まで。
+  無害な `ResizeObserver loop` の window エラーは記録しない。
+  未送信分は localStorage に最大 50 件保持し、起動・通信復帰で再送する（保存できないブラウザではメモリのみ）。
+  送信試行は直近 1 分に最大 20 行。上限超過・キュー満杯で捨てた件数は次の送信の `droppedCount` に記録する。
+- body・ヘッダ・入力値を収集せず、例外文中のクエリや資格情報をマスクする。
+- Slack は既存の端末周辺機器アラートと同じ配送ルート。エラー画面が出た `render_crash` は即時、それ以外
+  （自動リロードで復旧した `render_crash` を含む）は同じ登録端末の直近 10 分の `ERROR` 件数（`count` 合計）が 3 以上。
+  `WARN` は通知せず、確認済みを含め端末ごとに 30 分抑制。
+- API 起動後 3 分間に保存された行は件数に数えない（デプロイの再起動で全端末が通知を出すのを防ぐ。記録は残る）。
+
+現場からフォールバック画面の「記録番号」と時刻を聞き、管理者認証付きで次を取得する。
+`since` は保存時刻で絞り、実際の発生時刻は `occurredAt` で確認する（通信断後の再送に注意）。
+
+```text
+GET /api/clients/logs?category=kiosk_ui_error&clientId=raspberrypi4-kiosk1&since=2026-10-08T00:00:00Z
+```
+
+DB を直接読む場合（端末 ID・日時・記録番号は調査対象へ置き換える）:
+
+```sql
+SELECT "clientId", "createdAt", level, message, context
+FROM "ClientLog"
+WHERE context->>'category' = 'kiosk_ui_error'
+  AND "clientId" = 'raspberrypi4-kiosk1'
+  AND "createdAt" >= '2026-10-08T00:00:00Z'
+  AND context->>'incidentCode' = 'A7K2Q9'
+ORDER BY "createdAt" DESC;
+```
+
+`route`・`kind`・`count` で影響を把握し、`requestId` があれば API 構造化ログの同じ ID と照合する。

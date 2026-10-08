@@ -53,6 +53,7 @@ export const logsPayloadSchema = z.object({
 });
 
 export const logListQuerySchema = z.object({
+  category: z.string().min(1).optional(),
   clientId: z.string().min(1).optional(),
   level: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),

@@ -1,6 +1,6 @@
 /**
  * エラーハンドラープラグイン
- * 
+ *
  * すべてのエラーレスポンスは統一された形式で返されます:
  * {
  *   "message": "エラーメッセージ",
@@ -10,10 +10,10 @@
  *   "details": {},                  // エラーの詳細情報
  *   "issues": []                    // バリデーションエラーの詳細
  * }
- * 
+ *
  * デバッグ時: requestIdを使ってログを検索できます
  *   docker compose logs api | grep "req-xxx"
- * 
+ *
  * 詳細: docs/guides/error-handling.md
  */
 import type { FastifyInstance } from 'fastify';
@@ -21,6 +21,7 @@ import { ZodError } from 'zod';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { env } from '../config/env.js';
 import { ApiError } from '../lib/errors.js';
+import { resolveErrorLogDevice } from '../services/clients/error-log-device.service.js';
 
 type ErrorResponse = {
   message: string;
@@ -184,20 +185,24 @@ export function registerErrorHandler(app: FastifyInstance): void {
   app.setSchemaErrorFormatter((errors) => {
     return new Error(`Schema validation error: ${JSON.stringify(errors)}`);
   });
-  
+
   app.setErrorHandler((error, request, reply) => {
+    const device = resolveErrorLogDevice(request);
+    const emit = (level: 'warn' | 'error', log: Record<string, unknown>, message: string) => {
+      void device.then((identity) => request.log[level]({ ...log, ...identity }, message)).catch(() => undefined);
+    };
     const requestId = request.id;
     const method = request.method;
     const url = request.url;
     const userAgent = request.headers['user-agent'];
     const userId = request.user?.id;
     const normalizedError = toError(error);
-    
+
 
     // Fastifyのスキーマ検証エラーを処理
     if (hasValidation(error)) {
       const validationErrors = error.validation;
-      request.log.warn(
+      emit('warn',
         buildStructuredErrorLog(
           requestId,
           method,
@@ -223,7 +228,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
     }
 
     if (error instanceof ApiError) {
-      request.log.warn(
+      emit('warn',
         buildStructuredErrorLog(
           requestId,
           method,
@@ -250,7 +255,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
     }
 
     if (error instanceof ZodError) {
-      request.log.warn(
+      emit('warn',
         buildStructuredErrorLog(
           requestId,
           method,
@@ -276,7 +281,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
     }
 
     if (error instanceof PrismaClientKnownRequestError) {
-      request.log.error(
+      emit('error',
         buildStructuredErrorLog(
           requestId,
           method,
@@ -291,14 +296,14 @@ export function registerErrorHandler(app: FastifyInstance): void {
         ),
         'Database error',
       );
-      
+
       // P2003: 外部キー制約違反の場合、より詳細なメッセージを返す
       if (error.code === 'P2003') {
         const fieldName = getMetaString(error.meta, 'field_name', '不明なフィールド');
         const modelName = getMetaString(error.meta, 'model_name', '不明なモデル');
         // 外部キー制約違反の一般的なメッセージ（削除エンドポイントでは事前チェックで防いでいるため、通常は発生しない）
         const detailedMessage = `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、操作できません。`;
-        request.log.error(
+        emit('error',
           buildStructuredErrorLog(
             requestId,
             method,
@@ -329,13 +334,13 @@ export function registerErrorHandler(app: FastifyInstance): void {
           );
         return;
       }
-      
+
       // P2002: ユニーク制約違反の場合、より詳細なメッセージを返す
       if (error.code === 'P2002') {
         const targetFields = getMetaListString(error.meta, 'target', 'target');
         const modelName = getMetaString(error.meta, 'model_name', '不明なモデル');
         const detailedMessage = `ユニーク制約違反: ${modelName}の${targetFields}が既に存在します。`;
-        request.log.error(
+        emit('error',
           buildStructuredErrorLog(
             requestId,
             method,
@@ -366,7 +371,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
           );
         return;
       }
-      
+
       reply
         .status(400)
         .send(
@@ -382,17 +387,17 @@ export function registerErrorHandler(app: FastifyInstance): void {
         );
         return;
     }
-    
+
     // PrismaClientKnownRequestErrorのインスタンスチェックが失敗する場合のフォールバック
     if (isPrismaLikeError(error)) {
       const prismaError: PrismaLikeError = error;
       const errorCode = prismaError.code;
-      
+
       if (errorCode === 'P2003') {
         const fieldName = getMetaString(prismaError.meta, 'field_name', '不明なフィールド');
         const modelName = getMetaString(prismaError.meta, 'model_name', '不明なモデル');
         const detailedMessage = `外部キー制約違反: ${modelName}の${fieldName}に関連するレコードが存在するため、操作できません。`;
-        request.log.error(
+        emit('error',
           buildStructuredErrorLog(
             requestId,
             method,
@@ -423,12 +428,12 @@ export function registerErrorHandler(app: FastifyInstance): void {
           );
         return;
       }
-      
+
       if (errorCode === 'P2002') {
         const targetFields = getMetaListString(prismaError.meta, 'target', 'target');
         const modelName = getMetaString(prismaError.meta, 'model_name', '不明なモデル');
         const detailedMessage = `ユニーク制約違反: ${modelName}の${targetFields}が既に存在します。`;
-        request.log.error(
+        emit('error',
           buildStructuredErrorLog(
             requestId,
             method,
@@ -461,7 +466,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
       }
     }
 
-    request.log.error(
+    emit('error',
       buildStructuredErrorLog(
         requestId,
         method,
@@ -475,10 +480,10 @@ export function registerErrorHandler(app: FastifyInstance): void {
       ),
       'Unhandled error',
     );
-    
+
     const statusCode = getStatusCode(error) ?? 500;
     const message = getMessage(error) || 'サーバーエラー';
-    
+
     reply
       .status(statusCode)
       .send(

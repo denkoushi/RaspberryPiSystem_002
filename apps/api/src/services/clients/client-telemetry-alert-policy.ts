@@ -180,11 +180,46 @@ function terminalDecision(
   };
 }
 
+export const KIOSK_ERROR_WINDOW_MS = 10 * 60 * 1000;
+export const KIOSK_ALERT_COOLDOWN_MS = 30 * 60 * 1000;
+export const KIOSK_ERROR_THRESHOLD = 3;
+// Every kiosk reports failed requests right after an API restart (deploy); those must not page anyone.
+export const KIOSK_ALERT_STARTUP_GRACE_MS = 3 * 60 * 1000;
+export function kioskErrorCountSince(now: Date, apiStartedAt: Date): Date | null {
+  const graceEnd = apiStartedAt.getTime() + KIOSK_ALERT_STARTUP_GRACE_MS;
+  if (now.getTime() < graceEnd) return null;
+  return new Date(Math.max(now.getTime() - KIOSK_ERROR_WINDOW_MS, graceEnd));
+}
+export function kioskErrorCount(context: Record<string, unknown> | undefined): number {
+  const count = context?.count;
+  return typeof count === 'number' && Number.isSafeInteger(count) && count > 0 ? count : 1;
+}
+function kioskDecision(clientId: string, entry: ClientTelemetryLogEntry, recentCount: number, now: Date): TelemetryAlertDecision | null {
+  const context = entry.context!;
+  // A crash that the kiosk reloaded away by itself counts like any other error.
+  const blockingCrash = context.kind === 'render_crash' && context.recoveryDecision !== 'reload';
+  if (entry.level !== 'ERROR' || (!blockingCrash && recentCount < KIOSK_ERROR_THRESHOLD)) return null;
+  const type = 'kiosk-ui-error';
+  const count = Math.max(recentCount, kioskErrorCount(context));
+  return {
+    type, severity: AlertSeverity.ERROR,
+    message: `キオスク画面異常: ${context.clientDeviceName ?? clientId} / 画面 ${context.route ?? '不明'} / 種類 ${context.kind ?? '不明'} / 件数 ${count} / 記録番号 ${context.incidentCode ?? '不明'} / requestId ${context.requestId ?? 'なし'}`,
+    details: { clientId, count, ...context },
+    source: { service: 'kiosk-web', clientId, clientDeviceId: context.clientDeviceId, category: 'kiosk_ui_error' },
+    fingerprint: fingerprint([type, String(context.clientDeviceId ?? clientId), String(Math.floor(now.getTime() / KIOSK_ALERT_COOLDOWN_MS))]),
+    timestamp: now,
+    dedupeAcrossAcknowledgedAlerts: true
+  };
+}
+
 export function resolveTelemetryAlertDecision(
   clientId: string,
-  entry: ClientTelemetryLogEntry
+  entry: ClientTelemetryLogEntry,
+  recentCount = 0,
+  now = new Date()
 ): TelemetryAlertDecision | null {
   if (!isRecord(entry.context)) return null;
+  if (entry.context.category === 'kiosk_ui_error') return kioskDecision(clientId, entry, recentCount, now);
   if (entry.context.category === STORAGE_CATEGORY) {
     return storageDecision(clientId, entry, entry.context);
   }

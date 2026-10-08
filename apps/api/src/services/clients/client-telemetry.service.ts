@@ -9,6 +9,9 @@ import { invalidateSiteDirectory } from '../../lib/site-directory.js';
 import { loadAlertsDispatcherConfig, resolveRouteKey } from '../alerts/alerts-config.js';
 import {
   resolveTelemetryAlertDecision,
+  kioskErrorCount,
+  kioskErrorCountSince,
+  KIOSK_ALERT_COOLDOWN_MS,
   sanitizeClientTelemetryLogEntry,
   type ClientTelemetryLogEntry
 } from './client-telemetry-alert-policy.js';
@@ -24,19 +27,41 @@ async function createTelemetrySlackAlerts(params: {
     const config = await loadAlertsDispatcherConfig();
 
     for (const entry of params.logs) {
-      const decision = resolveTelemetryAlertDecision(params.clientId, entry);
+      const kiosk = entry.context?.category === 'kiosk_ui_error';
+      const now = new Date();
+      let recentCount = 0;
+      const deviceId = entry.context?.clientDeviceId;
+      const countSince = kioskErrorCountSince(now, new Date(now.getTime() - process.uptime() * 1000));
+      if (kiosk && entry.level === 'ERROR' && countSince) {
+        const recentLogs = await prisma.clientLog.findMany({
+          where: {
+            ...(typeof deviceId === 'string' ? {} : { clientId: params.clientId }),
+            level: 'ERROR', createdAt: { gte: countSince },
+            AND: [
+              { context: { path: ['category'], equals: 'kiosk_ui_error' } },
+              ...(typeof deviceId === 'string' ? [{ context: { path: ['clientDeviceId'], equals: deviceId } }] : [])
+            ]
+          }, select: { context: true }
+        });
+        recentCount = recentLogs.reduce((sum, row) => sum + kioskErrorCount(row.context as Record<string, unknown> | undefined), 0);
+      }
+      const decision = resolveTelemetryAlertDecision(params.clientId, entry, recentCount, now);
       if (!decision) continue;
 
       const existingOpenAlert = await prisma.alert.findFirst({
         where: {
-          fingerprint: decision.fingerprint,
+          ...(kiosk ? {
+            type: decision.type,
+            timestamp: { gt: new Date(now.getTime() - KIOSK_ALERT_COOLDOWN_MS) },
+            source: { path: [typeof deviceId === 'string' ? 'clientDeviceId' : 'clientId'], equals: deviceId ?? params.clientId }
+          } : { fingerprint: decision.fingerprint }),
           ...(decision.dedupeAcrossAcknowledgedAlerts ? {} : { acknowledged: false })
         },
         select: { id: true }
       });
       if (existingOpenAlert) continue;
 
-      const routeKey = resolveRouteKey(decision.type, config.routing);
+      const routeKey = resolveRouteKey(kiosk ? 'terminal-agent-health-kiosk-ui' : decision.type, config.routing);
       await prisma.$transaction(async (tx) => {
         const alert = await tx.alert.create({
           data: {
@@ -301,17 +326,24 @@ export async function storeClientLogs(params: {
   const logs = params.logs
     .map(sanitizeClientTelemetryLogEntry)
     .filter((entry): entry is ClientTelemetryLogEntry => entry !== null);
-  await requireRegisteredClientDevice(clientKey, { lastSeenAt: new Date() });
+  const clientDevice = await requireRegisteredClientDevice(clientKey, { lastSeenAt: new Date() });
+  const kioskClientId = clientDevice.statusClientId ?? clientId;
+  for (const entry of logs) {
+    if (entry.context?.category === 'kiosk_ui_error') {
+      entry.context = { ...entry.context, clientDeviceId: clientDevice.id, clientDeviceName: clientDevice.name };
+    }
+  }
 
   await prisma.clientLog.createMany({
     data: logs.map((entry) => ({
-      clientId,
+      clientId: entry.context?.category === 'kiosk_ui_error' ? kioskClientId : clientId,
       level: entry.level,
       message: entry.message.slice(0, 1000),
       context: entry.context ? (entry.context as Prisma.InputJsonValue) : undefined
     }))
   });
-  await createTelemetrySlackAlerts({ clientId, logs, requestId });
+  await createTelemetrySlackAlerts({ clientId, logs: logs.filter((entry) => entry.context?.category !== 'kiosk_ui_error'), requestId });
+  await createTelemetrySlackAlerts({ clientId: kioskClientId, logs: logs.filter((entry) => entry.context?.category === 'kiosk_ui_error'), requestId });
 
   return { requestId, logsStored: logs.length };
 }
@@ -370,6 +402,7 @@ export async function listClientLogs(params: {
   requestId: string;
   clientId?: string;
   level?: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+  category?: string;
   limit: number;
   since?: Date;
 }) {
@@ -377,6 +410,7 @@ export async function listClientLogs(params: {
     where: {
       clientId: params.clientId ?? undefined,
       level: params.level ?? undefined,
+      context: params.category ? { path: ['category'], equals: params.category } : undefined,
       createdAt: params.since ? { gte: params.since } : undefined
     },
     orderBy: { createdAt: 'desc' },
