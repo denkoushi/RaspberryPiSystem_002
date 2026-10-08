@@ -1,9 +1,9 @@
 {
   "artifacts": {
-    "manual.html": "3355665ee1568efc207f836b0ff2cae3332d8395fdba073bb39e6b712dd29f8b",
-    "screens/assembly-document-editor-auth.png": "9c05ff3fc37cadb687fb5795ca982dcc6fb612941b9181329d3c0e406e660411",
+    "manual.html": "fe3690e7b9eab5f1cb7f01968ced3fef00cc1ccc4d90def336593b9ed9689c58",
+    "screens/assembly-document-editor-auth.png": "daf8667d9ec30a901d7802a9717e553a582a44f57496422d0156008f30de8e93",
     "screens/assembly-document-editor-conflict.png": "9107034fdaf3a3fe5e9b6f3967af91223df00b942e58fb3cec75ff0e96e02a72",
-    "screens/assembly-document-editor-image-properties.png": "92d9ba8b665c94adc3f4c3c967b150644a2bb27a05bae31919ba84fe32506c10",
+    "screens/assembly-document-editor-image-properties.png": "c3ff0eeceba03dd8a828af6bd80580a3999762b23ae9d48406168337079ae4bd",
     "screens/assembly-document-editor-publish.png": "2bc4acf2133674d2b15e5cd2cabaee401b94693d5e25d3a0488be46f725dc4a6",
     "screens/assembly-document-editor-range.png": "08670ed1a69a7d0d9c48bc18ac559aa38cfb8cfbdfbe43e003a960267c2e3e97",
     "screens/assembly-document-editor-shape-properties.png": "a4cbb1f5848b151338c479e33af96024c714e71a80ed818f32929e57b837b664",
@@ -19,9 +19,9 @@
     "screens/assembly-template-markers.png": "896fe9ac6a9a69588081c36f4b1c5b44608e7c5da24bcfdb6ae87f1d5244ea2e",
     "screens/assembly-template-procedure.png": "896fe9ac6a9a69588081c36f4b1c5b44608e7c5da24bcfdb6ae87f1d5244ea2e",
     "screens/assembly-template-save.png": "5fcefff5419fdd70f13a63bb77f4f75ffae3ab472e6df6db563ffe88fc484b97",
-    "sheets/assembly-document-editor-auth.png": "b0e57d853f7b080176943a6f3e469ba925e1e3e93b8ad5ce0792423ae2a11ce1",
+    "sheets/assembly-document-editor-auth.png": "75a02c27e4f6ccd2432b4b990a9617b000551a3a8180424fad8a302aaf2046dd",
     "sheets/assembly-document-editor-conflict.png": "dbaf016f0748db48c700f0b57e4334bad744077a7fb1a4657d88514241e89423",
-    "sheets/assembly-document-editor-image-properties.png": "13b157a5ba08b49818a1e4261a5e8a052f48d48ee45428150d040ea00412a5c5",
+    "sheets/assembly-document-editor-image-properties.png": "9e21b69e4e27e0c8ad777cf25db6aab66b2d8f164b7b76d100d00384bc8ed14c",
     "sheets/assembly-document-editor-publish.png": "f83c430a42393c76e2210f39533d55e4a70fa54c74a6b34fc1bd2132bbe8993f",
     "sheets/assembly-document-editor-range.png": "629288e31ec2e89ba3bdc66025ab3d00e906d64975a6e24dfc9fb56149a6a4f1",
     "sheets/assembly-document-editor-shape-properties.png": "283b781dd04efed6756bcd53e6ad9a16afa280cd5461c1bd409f0f11319a1dc1",
@@ -39,7 +39,7 @@
     "sheets/assembly-template-save.png": "ee87c984fa85510a7980f10888dad61c851b11bd9af13d558a95e829615ed443"
   },
   "browserVersion": "141.0.7390.37",
-  "definitionSha256": "af34bf6fbd16f10d34636e5d62b1215d08f649dc134546b5125ad6e5c07aa7cc",
+  "definitionSha256": "bde3c47897d313a0cf0e2cf307c057df1eb6d5d70c8c391be386b104c9dec354",
   "generatorVersion": "1.3.0",
   "geometry": {
     "assembly-document-editor-auth": [
@@ -48,12 +48,12 @@
         "semantics": {
           "ariaLabel": null,
           "role": null,
-          "tagName": "input",
-          "text": ""
+          "tagName": "div",
+          "text": "7 8 9 4 5 6 1 2 3 0 ⌫"
         },
         "target": {
-          "x": 0.308199121522694,
-          "y": 0.20963541666666666
+          "x": 0.6837481698389458,
+          "y": 0.6979166666666666
         },
         "targetId": "assembly-document-editor-password"
       },
@@ -63,11 +63,11 @@
           "ariaLabel": null,
           "role": null,
           "tagName": "button",
-          "text": "認証"
+          "text": "OK"
         },
         "target": {
-          "x": 0.3609077598828697,
-          "y": 0.20963541666666666
+          "x": 0.5527658308931186,
+          "y": 0.7786458333333334
         },
         "targetId": "assembly-document-editor-authenticate"
       }
@@ -499,7 +499,7 @@
       }
     ]
   },
-  "htmlSha256": "3355665ee1568efc207f836b0ff2cae3332d8395fdba073bb39e6b712dd29f8b",
+  "htmlSha256": "fe3690e7b9eab5f1cb7f01968ced3fef00cc1ccc4d90def336593b9ed9689c58",
   "schemaVersion": 1,
-  "sourceSha256": "014b98c56f17ffc5ef7ee4637023ef1d2d4352b620eb81175a2b7d6716b2d6c8"
+  "sourceSha256": "2805555aa216931316a5803fb5831ba141a41cf545e8f79652e82843740adc6f"
 }

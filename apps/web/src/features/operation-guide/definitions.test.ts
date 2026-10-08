@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 import sop from '../assembly/assembly-procedure-template-sop.definition.json';
 import { AssemblyProcedureOverlayTypeDialog } from '../assembly/document-editor/AssemblyProcedureOverlayTypeDialog';
+import { KioskPinDialog } from '../kiosk/KioskPinDialog';
 
 import { operationGuides, resolveGuideStep } from './definitions';
 
@@ -40,6 +41,11 @@ describe('operation guide definitions', () => {
           targetExists = Boolean(document.querySelector(`[data-kiosk-sop-target="${resolved.targetId}"]`));
           view.unmount();
         }
+        if (['assembly-document-editor-password', 'assembly-document-editor-authenticate'].includes(resolved.targetId)) {
+          const view = render(createElement(KioskPinDialog, { pinTargetId: 'assembly-document-editor-password', submitTargetId: 'assembly-document-editor-authenticate', onSubmit: async () => true, onBack: () => undefined }));
+          targetExists = Boolean(document.querySelector(`[data-kiosk-sop-target="${resolved.targetId}"]`));
+          view.unmount();
+        }
         expect(targetExists, `Implemented target: ${resolved.targetId}`).toBe(true);
         // The kiosk card has room for about 21 full-width characters at 14px.
         const units = [...resolved.description].reduce((count, char) => count + (/^[\x20-\x7e]$/u.test(char) ? .55 : 1), 0);
@@ -68,7 +74,8 @@ describe('operation guide definitions', () => {
   });
   it('aligns editing authentication, text selection and default tag approval with the controls', () => {
     const steps = operationGuides[1].steps.map(resolveGuideStep);
-    expect(steps[2]).toMatchObject({ title: '認証', targetId: 'assembly-document-editor-authenticate', description: '認証して編集画面を開きます。' });
+    expect(steps[1]).toMatchObject({ title: '暗証番号を入力', targetId: 'assembly-document-editor-password', description: 'テンキーで暗証番号を入力します。' });
+    expect(steps[2]).toMatchObject({ title: 'OK', targetId: 'assembly-document-editor-authenticate', description: '4桁で自動認証。再試行は「OK」。' });
     expect(steps[5]).toMatchObject({ title: '文章を選ぶ', targetId: 'assembly-document-editor-type-text', description: '「文章」を選び、内容を入力します。' });
     expect(steps[8]).toMatchObject({ title: '承認して公開する', targetId: 'assembly-document-editor-publish-confirm', description: '承認者の社員タグをかざして公開します。' });
   });
