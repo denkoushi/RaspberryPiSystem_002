@@ -151,6 +151,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
   const visibleIds = new Set(state === 'knowledge' ? visibleKnowledge.map((item) => item.candidateKey) : state === 'workInstruction' ? visibleWork.map((item) => item.candidateKey) : visibleMaterials.map((item) => item.id));
   const visibleSelected = selected.filter((id) => visibleIds.has(id));
   const hiddenSelectedCount = selected.length - visibleSelected.length;
+  const discardReady = !composing && q.trim() === query && !loading && visibleSelected.length > 0;
   const visibleCount = state === 'knowledge' ? visibleKnowledge.length : state === 'workInstruction' ? visibleWork.length : visibleMaterials.length;
   const retained = useRef(new Map<string, { material?: ProcedureMaterialDto; knowledge?: ProcedureKnowledgeCandidate; work?: ProcedureWorkInstructionCandidate }>());
   useEffect(() => {
@@ -219,7 +220,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
     finally { setBusy(false); }
   };
   const discardSelected = async () => {
-    if (busy || state !== 'unplaced' || !visibleSelected.length) return;
+    if (busy || state !== 'unplaced' || !discardReady) { setDiscardConfirm(false); return; }
     setDiscardConfirm(false); setBusy(true); setError(null); setDiscarded([]);
     const completed: string[] = [];
     try {
@@ -329,8 +330,8 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
       <div className={`flex shrink-0 items-center gap-3 text-[19px] text-[#9fadb9] ${selected.length || discarded.length ? 'border-t border-[#344252] pt-3' : 'sr-only'}`}>
         <span role="status" aria-label="選択中の素材" className={selected.length ? 'shrink-0' : 'sr-only'}><b className="font-mono font-medium text-[#eef3f6]">{selected.length}</b> 件を選択中{hiddenSelectedCount ? `(表示外 ${hiddenSelectedCount})` : ''}</span>
         {selected.length ? <>
-        <button className={`${toolClass} border-transparent text-[#9fadb9]`} disabled={busy} onClick={() => setSelected([])}>選択を外す</button>
-        {state === 'unplaced' ? <button className={toolClass} disabled={busy || !visibleSelected.length} onClick={() => setDiscardConfirm(true)}>捨てる</button> : null}
+        <button className={`${toolClass} border-transparent text-[#9fadb9]`} disabled={busy} onClick={() => { setDiscarded([]); setSelected([]); }}>選択を外す</button>
+        {state === 'unplaced' ? <button className={toolClass} disabled={busy || !discardReady} onClick={() => setDiscardConfirm(true)}>捨てる</button> : null}
         </> : null}
         {discarded.length ? <><span role="status" className="flex min-h-12 shrink-0 items-center">{discarded.length} 件を捨てました</span><button className={toolClass} disabled={busy} onClick={() => void undoDiscard()}>元に戻す</button></> : null}
         {selected.length ? <>
@@ -352,7 +353,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
     </Dialog> : null}
     {discardConfirm ? <Dialog isOpen title="素材を捨てる" overlayZIndex={60} onClose={() => setDiscardConfirm(false)}>
       <p className="my-3">選択した {visibleSelected.length} 件を捨てますか？捨てた素材から戻せます。</p>
-      <div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setDiscardConfirm(false)}>キャンセル</Button><Button variant="danger" disabled={busy || !visibleSelected.length} onClick={() => void discardSelected()}>捨てる</Button></div>
+      <div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setDiscardConfirm(false)}>キャンセル</Button><Button variant="danger" disabled={busy || !discardReady} onClick={() => void discardSelected()}>捨てる</Button></div>
     </Dialog> : null}
     </>
   );

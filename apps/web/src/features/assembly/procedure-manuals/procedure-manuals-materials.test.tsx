@@ -443,8 +443,10 @@ describe('procedure-manuals material shelf', () => {
     expect(screen.getByRole('status', { name: '選択中の素材' })).toHaveTextContent('3 件を選択中');
     expect(screen.getByRole('status', { name: '選択中の素材' })).not.toHaveTextContent('表示外');
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '締付' } });
+    expect(screen.getByRole('button', { name: '捨てる' })).toBeDisabled();
     await waitFor(() => expect(screen.getAllByRole('checkbox')).toHaveLength(1));
     expect(screen.getByRole('status', { name: '選択中の素材' })).toHaveTextContent('3 件を選択中(表示外 2)');
+    await waitFor(() => expect(screen.getByRole('button', { name: '捨てる' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: '捨てる' }));
     const confirm = screen.getByRole('dialog', { name: '素材を捨てる' });
     expect(confirm).toHaveTextContent('選択した 1 件を捨てますか？捨てた素材から戻せます。');
