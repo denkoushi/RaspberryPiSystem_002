@@ -125,7 +125,7 @@ export class ProcedureVideoProcessingService {
             if (comments.length) await tx.procedureVideoComment.createMany({ data: comments });
           }
           // Writers and old-output cleanup share the same lock. Keep encoding outside it.
-          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${storageKey}))`;
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${storageKey}))`;
           await this.save(storageKey, bytes);
           await this.save(posterStorageKey, posterBytes);
           if (isTrim && trim) {
@@ -159,7 +159,7 @@ export class ProcedureVideoProcessingService {
   private async cleanupOriginal(videoId: string, sourceStorageKey: string): Promise<void> {
     try {
       const deleteOriginal = await runAssemblyTransaction(async (tx) => {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${sourceStorageKey}))`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${sourceStorageKey}))`;
         const video = await tx.procedureVideo.findUnique({ where: { id: videoId }, select: { status: true, sourceStorageKey: true } });
         if (video?.status !== 'READY' || video.sourceStorageKey !== sourceStorageKey) return false;
         const references = await tx.procedureVideo.count({ where: { sourceStorageKey } });
@@ -178,7 +178,7 @@ export class ProcedureVideoProcessingService {
       // READY is already committed. Hold the lock through deletion so another
       // conversion cannot publish this hash between the reference check and delete.
       await runAssemblyTransaction(async (tx) => {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${storageKey}))`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${storageKey}))`;
         if (await tx.procedureVideo.count({ where: { storageKey } })) return;
         await this.store.delete(storageKey, { integrity: true });
         if (posterStorageKey) await this.store.delete(posterStorageKey, { integrity: true });
