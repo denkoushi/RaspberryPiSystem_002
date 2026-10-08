@@ -66,7 +66,11 @@ export function overlayDraftReducer(
   switch (action.type) {
     case 'applyLayout': {
       const proposed = new Map(action.elements.map(element => [element.id, element]));
-      return state.map(element => element.pageIndex === action.pageIndex ? { ...proposed.get(element.id)! } : element);
+      const existingIds = new Set(state.filter(element => element.pageIndex === action.pageIndex).map(element => element.id));
+      return [
+        ...state.map(element => element.pageIndex === action.pageIndex ? { ...(proposed.get(element.id) ?? element) } : element),
+        ...action.elements.filter(element => element.pageIndex === action.pageIndex && !existingIds.has(element.id)).map(element => ({ ...element }))
+      ];
     }
     case 'replace':
       return action.elements.map((element) => ({ ...element }));

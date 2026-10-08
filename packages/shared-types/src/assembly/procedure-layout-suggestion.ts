@@ -35,10 +35,14 @@ export const procedureLayoutSuggestionRequestSchema = z.object({
 });
 
 export const procedureLayoutSuggestionResponseSchema = z.object({
-  plans: z.tuple([
-    z.object({ key: z.literal('standard'), elements: elementsSchema }),
-    z.object({ key: z.literal('largePhoto'), elements: elementsSchema })
-  ])
+  elements: elementsSchema,
+  addedElementIds: z.array(z.string().min(1).max(120)),
+  changes: z.array(z.string().trim().min(1).max(120)).min(1).max(8)
+}).superRefine((response, ctx) => {
+  const texts = new Set(response.elements.filter(element => element.kind === 'TEXT').map(element => element.id));
+  if (new Set(response.addedElementIds).size !== response.addedElementIds.length || response.addedElementIds.some(id => !texts.has(id))) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '追加した文章のidが不正です', path: ['addedElementIds'] });
+  }
 });
 
 export type ProcedureLayoutSuggestionRequest = z.infer<typeof procedureLayoutSuggestionRequestSchema>;
