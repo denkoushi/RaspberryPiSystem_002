@@ -131,6 +131,31 @@ describe('procedure-manuals material shelf', () => {
     fireEvent.click(screen.getByRole('button', { name: '検索語を消す' }));
     expect(await screen.findByRole('button', { name: /^MH-4521 撮影対象/ })).toBeInTheDocument();
   });
+  it('shows a highlighted body match beyond the opening lines and on photos/PDFs from the same listed email', async () => {
+    const body = `${'冒頭の文章\n'.repeat(8)}${'前の文'.repeat(12)} mh-4521 を締める。後の文${'続き'.repeat(30)}`;
+    mocks.list.mockResolvedValue([
+      { ...text, subjectHint: '本文', gmailMessageId: 'mail-1', text: body },
+      { ...photo, subjectHint: '写真', gmailMessageId: 'mail-1' },
+      { ...photo, id: 'pdf', kind: 'PDF', subjectHint: 'PDF', gmailMessageId: 'mail-1' },
+      { ...photo, id: 'other', subjectHint: '別メール', gmailMessageId: 'mail-2' },
+      { ...photo, id: 'null', subjectHint: 'メールなし', gmailMessageId: null },
+    ]);
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    expect(screen.getByRole('searchbox')).toHaveAttribute('placeholder', '品番・ヒント・本文');
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'ＭＨ－４５２１' } });
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledWith({ state: 'unplaced', q: 'ＭＨ－４５２１', limit: 500 }));
+    for (const title of ['本文', '写真', 'PDF']) {
+      await waitFor(() => expect(screen.getByRole('checkbox', { name: title }).closest('li')!.querySelector('mark')).toHaveTextContent('mh-4521'));
+      const card = screen.getByRole('checkbox', { name: title }).closest('li')!;
+      expect(card).toHaveTextContent('前の文 mh-4521 を締める。後の文');
+      expect(card).not.toHaveTextContent('冒頭の文章');
+      if (title !== '本文') expect(card.querySelector('p.truncate')).toBeInTheDocument();
+    }
+    for (const title of ['別メール', 'メールなし']) expect(screen.getByRole('checkbox', { name: title }).closest('li')!.querySelector('mark')).toBeNull();
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '' } });
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: '本文' }).closest('li')).toHaveTextContent('冒頭の文章'));
+    expect(screen.getByRole('dialog').querySelector('p.truncate')).toBeNull();
+  });
   it('retains hidden selections across search and chips, places their saved DTO, and clears on tab switches', async () => {
     mocks.list.mockImplementation(({ q }: { q: string }) => Promise.resolve(q ? [] : [photo]));
     const onSelect = vi.fn().mockResolvedValue(undefined);
@@ -619,7 +644,7 @@ describe('procedure-manuals material shelf', () => {
     expect(screen.getByRole('checkbox', { name: 'DFD2 外径 手順 3' })).toBeDisabled();
     expect(screen.getByText(/取込済み/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '棚に取り込む' })).not.toBeInTheDocument();
-    expect(screen.getByLabelText('素材を探す')).toHaveAttribute('placeholder', '品番・ヒント');
+    expect(screen.getByLabelText('素材を探す')).toHaveAttribute('placeholder', '品番・ヒント・本文');
     fireEvent.change(screen.getByLabelText('素材を探す'), { target: { value: 'DFD1' } });
     await waitFor(() => expect(mocks.workInstructions).toHaveBeenLastCalledWith({ q: 'DFD1', limit: 1000 }));
     fireEvent.click(await screen.findByRole('checkbox', { name: 'DFD1 外径 手順 1' }));
