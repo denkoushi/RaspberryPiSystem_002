@@ -599,15 +599,15 @@ test('reuses another page’s part independently on the current page with one-st
   await authenticateDocumentEditor(page);
   await page.getByRole('button', { name: '2ページ目', exact: true }).click();
   const parts = page.getByRole('complementary', { name: '部品', exact: true });
-  await expect(parts.getByRole('button', { name: 'このページ 0' })).toBeVisible();
-  await parts.getByRole('button', { name: 'ほか 1' }).click();
+  await expect(parts.getByRole('button', { name: /^このページ\s*0$/ })).toBeVisible();
+  await parts.getByRole('button', { name: /^ほか\s*1$/ }).click();
   await expect(parts.getByRole('heading', { name: 'p1' })).toBeVisible();
   await parts.getByRole('option', { name: 'p1から置く: 文章オーバーレイ: 共通の組立手順' }).click();
   const current = parts.getByRole('listbox', { name: 'このページの部品' });
   await expect(current.getByRole('option')).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('button', { name: '元に戻す', exact: true }).click();
   await expect(current.getByRole('option')).toHaveCount(0);
-  await expect(parts.getByRole('button', { name: 'ほか 1' })).toBeVisible();
+  await expect(parts.getByRole('button', { name: /^ほか\s*1$/ })).toBeVisible();
   await page.getByRole('button', { name: 'やり直す', exact: true }).click();
   await expect(current.getByRole('option')).toHaveCount(1);
   await page.getByRole('complementary', { name: 'オーバーレイ編集' }).locator('textarea').fill('このページだけの手順');
