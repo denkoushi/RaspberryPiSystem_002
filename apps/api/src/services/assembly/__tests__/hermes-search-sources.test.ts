@@ -57,7 +57,7 @@ it('API reader registrations exactly match source definitions shipped with the s
 it('registered readers accept injected dependencies and preserve the requested source order', async () => {
   const nonconformity = async () => [{ kind: 'nonconformity', id: 'n' }];
   const procedures = async () => [{ kind: 'knowledge_procedure', id: 'p' }];
-  const readers = registeredSourceReaders({ nonconformity, procedures,
+  const readers = registeredSourceReaders({ nonconformity, procedures, materials: async () => { throw new Error('unselected material reader'); },
     training: () => { throw new Error('unselected training source must not construct Prisma readers'); },
   }, ['knowledge_procedure', 'nonconformity']);
   expect(await Promise.all(readers.map(read => read()))).toEqual([

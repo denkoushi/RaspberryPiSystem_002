@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { catalogEntries, definitionForCatalog, fieldsWithRole, loadCatalog } from './catalog.mjs';
 import { recordSourceId, sourceIdsFromEnv } from '../hermes-source-definition.mjs';
 import { createDenseRuntime, denseSettings } from './dense-dgx.mjs';
-import { execute, openQmdVectorRanker, prepareLexicalCorpus } from './executor.mjs';
+import { execute, rankCandidates, openQmdVectorRanker, prepareLexicalCorpus } from './executor.mjs';
 import { createPlanner } from './planner-jev.mjs';
 import { createRelevanceJudge } from './relevance-jev.mjs';
 import { validateQueryPlan } from './query-plan.mjs';
@@ -365,12 +365,29 @@ export function createRetrievalAnswering({
   }
   current = applyEnrichment(current, enrichmentById, catalog, learnedById);
   return {
+    async rank(query, options = {}) {
+      const entry = entries.find(entry => entry.id === options.sourceId);
+      if (!entry || !definitionForCatalog(entry).retrieval?.semanticSearch
+        || (options.principal && !entry.visibility.includes(options.principal.kind))) {
+        throw new Error('an enabled visible semantic sourceId is required');
+      }
+      const sourceView = current.bySource[entry.id];
+      const sourceDense = denseFor(entry.id);
+      const allowed = options.allowedRecordIds === undefined ? null : new Set(options.allowedRecordIds);
+      const records = allowed ? sourceView.records.filter(record => allowed.has(record.id)) : sourceView.records;
+      return rankCandidates(query, {
+        sourceId: entry.id, records, catalog: entry,
+        lexicalCorpus: allowed ? null : sourceView.lexicalCorpus, limit: options.limit,
+        vector: sourceDense?.queryEnabled ? (query, filtered) => sourceDense.rank(query, filtered) : null,
+        vectorBudgetMs: 1500,
+      });
+    },
     async replaceCorpus(message) {
       const count = current.snapshotCount;
       try {
         current = applyEnrichment(replaceCorpus(current, catalog, message), await loadEnrichmentById(), catalog, await loadLearnedQueriesById());
         for (const entry of semanticEntries) denseFor(entry.id)?.schedule?.(current.bySource[entry.id].records, fieldsWithRole(entry, 'body'));
-        return { ok: true, count: current.snapshotCount, memory: memoryReport(current.records, catalog) };
+        return { ok: true, sourceIds: entries.map(entry => entry.id), count: current.snapshotCount, memory: memoryReport(current.records, catalog) };
       } catch {
         console.warn(`hermes retrieval corpus refresh failed count=${count}`);
         return { ok: false, count, memory: memoryReport(current.records, catalog) };
@@ -621,6 +638,18 @@ async function openOptionalVector(env, sourceId) {
 export async function completeRequest(answering, request) {
   const requestId = request && typeof request.requestId === 'string' ? request.requestId : null;
   try {
+    if (request?.type === 'rank') {
+      if (!requestId || typeof request.sourceId !== 'string' || !request.sourceId
+        || typeof request.q !== 'string' || !request.q.trim() || request.q.trim().length > 200
+        || (request.limit !== undefined && (!Number.isInteger(request.limit) || request.limit < 1 || request.limit > 100))
+        || (request.allowedRecordIds !== undefined && (!Array.isArray(request.allowedRecordIds) || request.allowedRecordIds.length > 20000
+          || !request.allowedRecordIds.every(id => typeof id === 'string' && id.length > 0)))) {
+        throw new Error('rank requires requestId, sourceId, q and a valid limit');
+      }
+      const result = await answering.rank(request.q, { sourceId: request.sourceId, limit: request.limit, allowedRecordIds: request.allowedRecordIds,
+        ...(request.principal ? { principal: request.principal } : {}) });
+      return { workerRequestId: requestId, stage: 'completed', result };
+    }
     if (!request || request.type !== 'request' || !requestId || typeof request.question !== 'string') {
       throw new Error('request type, requestId, and question are required');
     }

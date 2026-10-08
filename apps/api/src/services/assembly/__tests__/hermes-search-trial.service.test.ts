@@ -6,6 +6,8 @@ const spawnMock = vi.hoisted(() => vi.fn());
 const mcpCalls = vi.hoisted(() => [] as unknown[]);
 const readSourcePage = vi.hoisted(() => vi.fn());
 const trainingReaderFactory = vi.hoisted(() => vi.fn());
+const materialReader = vi.hoisted(() => vi.fn());
+vi.mock('../procedure-material-hermes-source.service.js', () => ({ loadProcedureMaterialRecords: materialReader }));
 vi.mock('../../torque-training/torque-training-hermes-source.service.js', () => ({
   createTorqueTrainingSourceReaders: trainingReaderFactory,
 }));
@@ -101,6 +103,7 @@ describe('HermesSearchTrialService retrieval switch', () => {
     spawnMock.mockReset();
     readSourcePage.mockReset();
     trainingReaderFactory.mockReset();
+    materialReader.mockReset();
     if (previous.sources === undefined) delete process.env.HERMES_RETRIEVAL_SOURCES;
     else process.env.HERMES_RETRIEVAL_SOURCES = previous.sources;
     mcpCalls.length = 0;
@@ -151,7 +154,7 @@ describe('HermesSearchTrialService retrieval switch', () => {
     };
   }
 
-  function holdingChild(memory?: Record<string, unknown>) {
+  function holdingChild(memory?: Record<string, unknown>, autoApply = true) {
     const stdout = new EventEmitter() as EventEmitter & { setEncoding: (encoding: string) => void };
     stdout.setEncoding = () => {};
     const stderr = new EventEmitter() as EventEmitter & { resume: () => void };
@@ -169,6 +172,9 @@ describe('HermesSearchTrialService retrieval switch', () => {
       const request = JSON.parse(String(line).trim()) as { type?: string; mode?: string; records?: unknown[]; asOf?: string; requestId: string; question?: string; session?: { previousPlan?: { semanticQuery?: string } } };
       if (request.type === 'corpus') {
         corpus.push(request);
+        if (autoApply) setImmediate(() => stdout.emit('data', `__HERMES_UI_PREFETCH__${JSON.stringify({
+          type: 'corpus', ok: true, sourceIds: (process.env.HERMES_RETRIEVAL_SOURCES ?? 'nonconformity').split(','),
+        })}\n`));
         return true;
       }
       held.push({
@@ -311,6 +317,123 @@ describe('HermesSearchTrialService retrieval switch', () => {
     }
   });
 
+
+  it('does not read materials or start a worker for disabled or unselected ranking', async () => {
+    delete process.env.HERMES_RETRIEVAL_SOURCES;
+    const service = new HermesSearchTrialService(v2Settings());
+    expect(await service.rank('procedure_material', 'q')).toEqual({ available: false, mode: 'unavailable', recordIds: [] });
+    process.env.HERMES_RETRIEVAL_SOURCES = 'procedure_material';
+    expect(await new HermesSearchTrialService({ enabled: false }).rank('procedure_material', 'q')).toMatchObject({ available: false });
+    expect(spawnMock).not.toHaveBeenCalled(); expect(materialReader).not.toHaveBeenCalled();
+    service.close();
+  });
+
+  it('reads material records only when selected and sends full refreshes', async () => {
+    process.env.HERMES_RETRIEVAL_SOURCES = 'procedure_material';
+    const rows = [{ kind: 'procedure_material', id: 'mail:m1', bodyText: '組立' }];
+    materialReader.mockResolvedValue(rows);
+    const gate = holdingChild(); spawnMock.mockImplementation(() => gate.child);
+    const settings = v2Settings();
+    const service = new HermesSearchTrialService({ ...settings, loadRecords: undefined });
+    try {
+      await service.scope();
+      await vi.waitFor(() => expect(gate.corpus).toHaveLength(1));
+      expect(gate.corpus[0]).toMatchObject({ mode: 'full', records: rows });
+      expect(readSourcePage).not.toHaveBeenCalled(); expect(trainingReaderFactory).not.toHaveBeenCalled();
+    } finally { service.close(); }
+  });
+
+  it('keeps rank unavailable until the requested source corpus is applied', async () => {
+    process.env.HERMES_RETRIEVAL_SOURCES = 'nonconformity,procedure_material';
+    let resolveLoad!: (rows: Array<Record<string, unknown>>) => void;
+    const gate = holdingChild(undefined, false); spawnMock.mockImplementation(() => gate.child);
+    const service = new HermesSearchTrialService(v2Settings({ loadRecords: () => new Promise(resolve => { resolveLoad = resolve; }) }));
+    const emit = (ok: boolean, sourceIds: string[]) => gate.child.stdout.emit('data', `__HERMES_UI_PREFETCH__${JSON.stringify({ type: 'corpus', ok, sourceIds })}\n`);
+    try {
+      expect(await service.rank('procedure_material', 'q')).toMatchObject({ available: false });
+      expect(gate.held).toHaveLength(0); expect(gate.corpus).toHaveLength(0);
+      resolveLoad([{ kind: 'procedure_material', id: 'mail:m1', bodyText: '組立' }]);
+      await vi.waitFor(() => expect(gate.corpus).toHaveLength(1));
+      expect(await service.rank('procedure_material', 'q')).toMatchObject({ available: false });
+      emit(false, ['procedure_material']);
+      expect(await service.rank('procedure_material', 'q')).toMatchObject({ available: false });
+      emit(true, ['nonconformity']);
+      expect(await service.rank('procedure_material', 'q')).toMatchObject({ available: false });
+      emit(true, ['nonconformity', 'procedure_material']);
+      const ranked = service.rank('procedure_material', 'q');
+      await vi.waitFor(() => expect(gate.held).toHaveLength(1));
+      gate.held[0].release({ recordIds: ['mail:m1'], mode: 'lexical', fallback: true });
+      expect(await ranked).toEqual({ available: true, mode: 'lexical', recordIds: ['mail:m1'] });
+      gate.child.emit('exit');
+      const replacement = holdingChild(undefined, false); spawnMock.mockImplementation(() => replacement.child);
+      expect(await service.rank('procedure_material', 'q')).toMatchObject({ available: false });
+      expect(replacement.held).toHaveLength(0);
+    } finally { service.close(); }
+  });
+
+  it('keeps rank unavailable when the initial material read fails', async () => {
+    process.env.HERMES_RETRIEVAL_SOURCES = 'procedure_material';
+    materialReader.mockRejectedValue(new Error('read failed'));
+    const gate = holdingChild(); spawnMock.mockImplementation(() => gate.child);
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const service = new HermesSearchTrialService({ ...v2Settings(), loadRecords: undefined });
+    try {
+      expect(await service.rank('procedure_material', 'q')).toMatchObject({ available: false });
+      await vi.waitFor(() => expect(warning).toHaveBeenCalled());
+      expect(await service.rank('procedure_material', 'q')).toMatchObject({ available: false });
+      expect(gate.corpus).toHaveLength(0); expect(gate.held).toHaveLength(0);
+    } finally { service.close(); warning.mockRestore(); }
+  });
+
+  it('rejects oversized allowed ids before starting a worker', async () => {
+    process.env.HERMES_RETRIEVAL_SOURCES = 'procedure_material';
+    const service = new HermesSearchTrialService(v2Settings());
+    expect(await service.rank('procedure_material', 'q', 100, Array(20001).fill('mail:m1'))).toMatchObject({ available: false });
+    expect(spawnMock).not.toHaveBeenCalled();
+    service.close();
+  });
+
+  it('shares answer slots and queue with ranking and decodes both response shapes', async () => {
+    process.env.HERMES_RETRIEVAL_SOURCES = 'nonconformity,procedure_material';
+    const gate = holdingChild(); spawnMock.mockImplementation(() => gate.child);
+    const service = new HermesSearchTrialService(v2Settings({ maxInflight: 1, maxQueue: 1 }));
+    try {
+      const answer = service.answer('q');
+      await vi.waitFor(() => expect(gate.held).toHaveLength(1));
+      const rank = service.rank('procedure_material', '溶接', 20, ['mail:m1']);
+      await new Promise(resolve => setImmediate(resolve));
+      expect(gate.held).toHaveLength(1);
+      expect(await service.rank('procedure_material', 'third')).toEqual({ available: false, mode: 'unavailable', recordIds: [] });
+      gate.held[0].release(workerResult); await answer;
+      await vi.waitFor(() => expect(gate.held).toHaveLength(2));
+      expect(gate.held[1].request).toMatchObject({ type: 'rank', sourceId: 'procedure_material', q: '溶接', limit: 20, allowedRecordIds: ['mail:m1'] });
+      gate.held[1].release({ recordIds: ['mail:m1'], mode: 'semantic', fallback: false });
+      expect(await rank).toEqual({ available: true, mode: 'semantic', recordIds: ['mail:m1'] });
+      const lexical = service.rank('procedure_material', 'q');
+      await vi.waitFor(() => expect(gate.held).toHaveLength(3));
+      gate.held[2].release({ recordIds: [], mode: 'lexical', fallback: true });
+      expect(await lexical).toEqual({ available: true, mode: 'lexical', recordIds: [] });
+    } finally { service.close(); }
+  });
+
+  it('returns unavailable on worker failure or invalid rank response', async () => {
+    process.env.HERMES_RETRIEVAL_SOURCES = 'procedure_material';
+    spawnMock.mockImplementationOnce(() => { throw new Error('worker missing'); });
+    const failed = new HermesSearchTrialService(v2Settings());
+    expect(await failed.rank('procedure_material', 'q')).toMatchObject({ available: false, mode: 'unavailable' });
+    failed.close();
+    const gate = holdingChild(); spawnMock.mockImplementation(() => gate.child);
+    const service = new HermesSearchTrialService(v2Settings());
+    try {
+      await service.scope();
+      await vi.waitFor(() => expect(gate.corpus).toHaveLength(1));
+      await new Promise(resolve => setImmediate(resolve));
+      const invalid = service.rank('procedure_material', 'q');
+      await vi.waitFor(() => expect(gate.held).toHaveLength(1));
+      gate.held[0].release(workerResult);
+      expect(await invalid).toEqual({ available: false, mode: 'unavailable', recordIds: [] });
+    } finally { service.close(); }
+  });
 
   it('forwards pageContext per request without storing it in the session', async () => {
     const gate = holdingChild();
