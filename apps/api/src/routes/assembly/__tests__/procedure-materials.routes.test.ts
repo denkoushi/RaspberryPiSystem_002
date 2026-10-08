@@ -37,11 +37,17 @@ describe('procedure-material routes with mocked Prisma', () => {
     ['unplaced', { documentId: null, placedAt: null, discardedAt: null }],
     ['placed', { discardedAt: null, OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] }],
     ['discarded', { discardedAt: { not: null } }], ['all', {}],
-  ])('filters state=%s and hint with a newest-first limit', async (state, where) => {
+  ])('filters state=%s and hint or filename with a newest-first limit', async (state, where) => {
     const { db } = harness();
     const response = await app.inject({ method: 'GET', url: `${base}?state=${state}&q=DFD1&limit=12` });
     expect(response.statusCode).toBe(200); expect(response.json().materials[0].text).toBe('手順');
-    expect(db.procedureMaterial.findMany).toHaveBeenCalledWith({ where: { ...where, subjectHint: { contains: 'DFD1', mode: 'insensitive' } }, orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }], take: 12 });
+    expect(db.procedureMaterial.findMany).toHaveBeenCalledWith({ where: { ...where, AND: [{ OR: [{ subjectHint: { contains: 'DFD1', mode: 'insensitive' } }, { originalFileName: { contains: 'DFD1', mode: 'insensitive' } }] }] }, orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }], take: 12 });
+  });
+  it('also searches the NFKC form of a full-width query', async () => {
+    const { db } = harness();
+    await app.inject({ method: 'GET', url: `${base}?state=all&q=${encodeURIComponent('ＤＦＤ１')}` });
+    const [{ where }] = vi.mocked(db.procedureMaterial.findMany).mock.calls[0] as [{ where: { AND: [{ OR: Array<Record<string, { contains: string }>> }] } }];
+    expect(where.AND[0].OR.map((item) => Object.values(item)[0].contains)).toEqual(['ＤＦＤ１', 'ＤＦＤ１', 'DFD1', 'DFD1']);
   });
   it('defaults to 100 unplaced materials and rejects invalid filters', async () => {
     const { db } = harness();
