@@ -8,13 +8,13 @@ import { saveProcedureEditorAccess } from '../procedureEditorAccess';
 import { ProcedureManualWorkshop } from './ProcedureManualWorkshop';
 import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
 
-const mocks = vi.hoisted(() => ({ createDocument: vi.fn(), count: vi.fn(), list: vi.fn(), ingest: vi.fn(), file: vi.fn(), discard: vi.fn(), restore: vi.fn(), unplace: vi.fn(), knowledge: vi.fn(), knowledgeImage: vi.fn(), importKnowledge: vi.fn(), workInstructions: vi.fn(), workInstructionImage: vi.fn(), importWorkInstructions: vi.fn() }));
+const mocks = vi.hoisted(() => ({ thumbnail: vi.fn(), knowledgeThumbnail: vi.fn(), workInstructionThumbnail: vi.fn(), createDocument: vi.fn(), count: vi.fn(), list: vi.fn(), ingest: vi.fn(), file: vi.fn(), discard: vi.fn(), restore: vi.fn(), unplace: vi.fn(), knowledge: vi.fn(), knowledgeImage: vi.fn(), importKnowledge: vi.fn(), workInstructions: vi.fn(), workInstructionImage: vi.fn(), importWorkInstructions: vi.fn() }));
 vi.mock('../../../api/client', () => ({
   listProcedureVideos: async () => [],
   listProcedureManualModels: async () => [], listProcedureManualProcesses: async () => [],
   getProcedureManualAssignments: vi.fn(), listAssemblyProcedureDocumentSummaries: vi.fn(),
   getAssemblyProcedureDocumentRevisions: vi.fn(), getKioskDocuments: vi.fn(), replaceProcedureManualAssignments: vi.fn(),
-  listProcedureMaterials: (params: { q?: string }) => params.q === undefined ? mocks.count(params) : mocks.list(params), ingestProcedureMaterialsGmail: mocks.ingest, getProcedureMaterialFile: mocks.file,
+  listProcedureMaterials: (params: { q?: string }) => params.q === undefined ? mocks.count(params) : mocks.list(params), ingestProcedureMaterialsGmail: mocks.ingest, getProcedureMaterialFile: mocks.file, getProcedureMaterialThumbnail: mocks.thumbnail, getProcedureKnowledgeThumbnail: mocks.knowledgeThumbnail, getProcedureWorkInstructionThumbnail: mocks.workInstructionThumbnail,
   listProcedureKnowledgeCandidates: mocks.knowledge, getProcedureKnowledgeImage: mocks.knowledgeImage, importProcedureKnowledge: mocks.importKnowledge,
   createProcedureMaterialDocument: mocks.createDocument,
   listProcedureWorkInstructionCandidates: mocks.workInstructions, getProcedureWorkInstructionImage: mocks.workInstructionImage, importProcedureWorkInstructions: mocks.importWorkInstructions,
@@ -29,15 +29,15 @@ describe('procedure-manuals material shelf', () => {
     vi.resetAllMocks(); localStorage.clear(); saveProcedureEditorAccess('2520'); mocks.count.mockResolvedValue([]); mocks.list.mockResolvedValue([text, photo]); mocks.file.mockResolvedValue(new Blob(['photo'], { type: 'image/png' }));
     mocks.ingest.mockResolvedValue({ scanned: 2, processed: 2, saved: 2, duplicate: 0, skipped: 1, retryable: 0, deferred: 0, skippedAttachments: 1, errors: [], messages: [{ messageId: 'unsupported', reason: '本文が空で、対応する写真がありません', warnings: [] }] });
     mocks.knowledge.mockResolvedValue({ enabled: false, items: [] });
-    mocks.knowledgeImage.mockResolvedValue(new Blob(['knowledge']));
+    mocks.knowledgeImage.mockResolvedValue(new Blob(['knowledge'])); mocks.knowledgeThumbnail.mockResolvedValue(new Blob(['knowledge-thumbnail']));
     mocks.importKnowledge.mockResolvedValue({ imported: 2, duplicate: 0, failed: [] });
     mocks.workInstructions.mockResolvedValue({ items: [] });
-    mocks.workInstructionImage.mockResolvedValue(new Blob(['work-instruction']));
+    mocks.workInstructionImage.mockResolvedValue(new Blob(['work-instruction'])); mocks.workInstructionThumbnail.mockResolvedValue(new Blob(['work-thumbnail'])); mocks.thumbnail.mockResolvedValue(new Blob(['thumbnail']));
     mocks.importWorkInstructions.mockResolvedValue({ imported: 2, duplicate: 0, failed: [] });
     mocks.discard.mockResolvedValue(undefined); mocks.restore.mockResolvedValue(undefined);
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:photo'); vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
   });
-  afterEach(() => { vi.unstubAllGlobals(); });
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
   it.each(['browse', 'place', 'replace'] as const)('shows a PDF card and creates a document in %s mode', async (mode) => {
     mocks.list.mockResolvedValue([{ ...photo, id: 'pdf', kind: 'PDF', subjectHint: null, originalFileName: '原本.pdf' }]);
     mocks.createDocument.mockResolvedValue({ id: 'created-document', name: '原本' });
@@ -265,22 +265,22 @@ describe('procedure-manuals material shelf', () => {
     localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualWorkshop /></MemoryRouter>); fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
     await waitFor(() => expect(observers).toHaveLength(2));
     expect(observers[0]!.observe).toHaveBeenCalledOnce();
-    expect(mocks.file).not.toHaveBeenCalled();
+    expect(mocks.thumbnail).not.toHaveBeenCalled();
     act(() => { observers[0]!.notify(false); });
-    expect(mocks.file).not.toHaveBeenCalled();
+    expect(mocks.thumbnail).not.toHaveBeenCalled();
     act(() => { observers[0]!.notify(true); observers[0]!.notify(true); });
     expect(await screen.findByRole('img', { name: '手順.png' })).toBeInTheDocument();
-    expect(mocks.file).toHaveBeenCalledExactlyOnceWith('photo');
+    expect(mocks.thumbnail).toHaveBeenCalledExactlyOnceWith('photo');
     fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
     expect(observers.every((observer) => observer.disconnect.mock.calls.length > 0)).toBe(true);
     expect(URL.revokeObjectURL).toHaveBeenCalledExactlyOnceWith('blob:photo');
   });
   it('does not create an object URL if a photo response arrives after closing', async () => {
     let resolve: (blob: Blob) => void = () => undefined;
-    mocks.file.mockReturnValue(new Promise<Blob>((done) => { resolve = done; }));
+    mocks.thumbnail.mockReturnValue(new Promise<Blob>((done) => { resolve = done; }));
     mocks.list.mockResolvedValue([photo]);
     localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualWorkshop /></MemoryRouter>); fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
-    await waitFor(() => expect(mocks.file).toHaveBeenCalledOnce());
+    await waitFor(() => expect(mocks.thumbnail).toHaveBeenCalledOnce());
     fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
     await act(async () => { resolve(new Blob(['photo'])); });
     expect(URL.createObjectURL).not.toHaveBeenCalled();
@@ -432,7 +432,7 @@ describe('procedure-manuals material shelf', () => {
     expect(await screen.findByText('投稿本文')).toBeInTheDocument();
     expect(screen.getByText('整理した要約')).toBeInTheDocument();
     expect(await screen.findByRole('img', { name: '手順写真' })).toBeInTheDocument();
-    expect(mocks.knowledgeImage).toHaveBeenCalledWith('image-1');
+    expect(mocks.knowledgeThumbnail).toHaveBeenCalledWith('image-1');
     expect(screen.getByText('手順書: 組立')).toBeInTheDocument();
     expect(screen.getByText('写真の説明')).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: '古い素材' })).toBeDisabled();
@@ -466,8 +466,8 @@ describe('procedure-manuals material shelf', () => {
     fireEvent.click(screen.getByRole('tab', { name: '加工の写真' }));
     expect(await screen.findByText('公開メモ')).toHaveClass('line-clamp-2');
     expect(await screen.findByRole('img', { name: 'DFD1 外径 手順 1' })).toBeInTheDocument();
-    expect(mocks.workInstructionImage).toHaveBeenCalledWith('asset-1');
-    expect(mocks.knowledgeImage).not.toHaveBeenCalled();
+    expect(mocks.workInstructionThumbnail).toHaveBeenCalledWith('asset-1');
+    expect(mocks.knowledgeThumbnail).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: /^DFD2/ }));
     expect(screen.getByRole('checkbox', { name: 'DFD2 外径 手順 3' })).toBeDisabled();
     expect(screen.getByText(/取込済み/)).toBeInTheDocument();
@@ -526,10 +526,10 @@ describe('procedure-manuals material shelf', () => {
     render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
     fireEvent.click(screen.getByRole('tab', { name: /^ナレッジから/ }));
     expect(await screen.findByText('ナレッジ機能は無効です')).toBeInTheDocument();
-    expect(mocks.knowledgeImage).not.toHaveBeenCalled();
+    expect(mocks.knowledgeThumbnail).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: '棚に取り込む' })).toBeDisabled();
   });
-  it('fetches only visible knowledge photos and releases their URLs on tab switch', async () => {
+  it('fetches only visible knowledge photos and retains their URLs on tab switch', async () => {
     const observers: Array<{ notify: () => void }> = [];
     vi.stubGlobal('IntersectionObserver', class {
       observe = vi.fn(); disconnect = vi.fn();
@@ -542,12 +542,12 @@ describe('procedure-manuals material shelf', () => {
     render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
     fireEvent.click(screen.getByRole('tab', { name: /^ナレッジから/ }));
     await waitFor(() => expect(observers).toHaveLength(2));
-    expect(mocks.knowledgeImage).not.toHaveBeenCalled();
+    expect(mocks.knowledgeThumbnail).not.toHaveBeenCalled();
     act(() => observers[0]!.notify());
     await screen.findByRole('img', { name: 'first' });
-    expect(mocks.knowledgeImage).toHaveBeenCalledExactlyOnceWith('first');
+    expect(mocks.knowledgeThumbnail).toHaveBeenCalledExactlyOnceWith('first');
     fireEvent.click(screen.getByRole('tab', { name: /^未配置/ }));
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:photo');
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
   });
   it('switches 6/4/3 columns and remembers the terminal size, including unavailable storage', async () => {
     const view = render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
@@ -588,13 +588,17 @@ describe('procedure-manuals material shelf', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
     expect(onSelect).toHaveBeenNthCalledWith(3, photo);
   });
-  it('opens the original image without another fetch, then closes only the lightbox on Escape', async () => {
+  it('fetches the original only on zoom, then closes only the lightbox on Escape', async () => {
     const onClose = vi.fn();
     render(<ProcedureMaterialShelfDialog onClose={onClose} />);
     const zoom = await screen.findByRole('button', { name: '手順.pngを原寸表示' });
     await waitFor(() => expect(zoom).toBeEnabled());
+    expect(mocks.file).not.toHaveBeenCalled();
+    expect(mocks.thumbnail).toHaveBeenCalledOnce();
     fireEvent.click(zoom);
     const lightbox = screen.getByRole('dialog', { name: '素材の原寸表示' });
+    expect(within(lightbox).getByRole('status')).toHaveTextContent('読込中…');
+    await within(lightbox).findByRole('img');
     expect(within(lightbox).getByRole('img')).toHaveAttribute('src', 'blob:photo');
     expect(within(lightbox).getByRole('img')).toHaveClass('max-w-none');
     expect(mocks.file).toHaveBeenCalledOnce();
@@ -605,6 +609,86 @@ describe('procedure-manuals material shelf', () => {
     expect(screen.queryByRole('dialog', { name: '素材の原寸表示' })).not.toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: '素材' })).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
+  });
+  it.each(['material', 'knowledge', 'work'] as const)('reuses %s thumbnails across bundles, search and tabs, fetching originals only on zoom', async (source) => {
+    mocks.list.mockResolvedValue([photo]);
+    mocks.knowledge.mockResolvedValue({ enabled: true, items: [{ candidateKey: 'knowledge:photo', kind: 'PHOTO', imageId: 'image-1', title: 'DFD1 写真', preview: '', sourceLabel: 'Chat 投稿', alreadyImported: false }] });
+    mocks.workInstructions.mockResolvedValue({ items: [{ candidateKey: 'work:photo', partNumber: 'DFD1', shootingTarget: '外径', step: 1, memo: '', assetId: 'asset-1', alreadyImported: false }] });
+    const tab = source === 'material' ? /^未配置/ : source === 'knowledge' ? /^ナレッジから/ : '加工の写真';
+    const title = source === 'material' ? '手順.png' : source === 'knowledge' ? 'DFD1 写真' : 'DFD1 外径 手順 1';
+    const label = source === 'material' ? '素材のヒント検索' : source === 'knowledge' ? 'ナレッジ検索' : '加工の写真検索';
+    const thumbnail = source === 'material' ? mocks.thumbnail : source === 'knowledge' ? mocks.knowledgeThumbnail : mocks.workInstructionThumbnail;
+    const original = source === 'material' ? mocks.file : source === 'knowledge' ? mocks.knowledgeImage : mocks.workInstructionImage;
+    const list = source === 'material' ? mocks.list : source === 'knowledge' ? mocks.knowledge : mocks.workInstructions;
+    const view = render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    await screen.findByRole('img', { name: '手順.png' });
+    fireEvent.click(screen.getByRole('tab', { name: tab }));
+    await screen.findByRole('img', { name: title });
+    if (source !== 'knowledge') {
+      fireEvent.click(screen.getByRole('button', { name: /^DFD1/, expanded: true }));
+      expect(screen.queryByRole('img', { name: title })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /^DFD1/, expanded: false }));
+      await screen.findByRole('img', { name: title });
+    }
+    fireEvent.change(screen.getByLabelText(label), { target: { value: 'DFD1' } });
+    await waitFor(() => expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'DFD1' })));
+    await screen.findByRole('img', { name: title });
+    fireEvent.click(screen.getByRole('tab', { name: source === 'material' ? /^ナレッジから/ : /^未配置/ }));
+    await waitFor(() => expect(screen.queryByRole('img', { name: title })).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole('tab', { name: tab }));
+    await screen.findByRole('img', { name: title });
+    expect(thumbnail).toHaveBeenCalledOnce(); expect(original).not.toHaveBeenCalled();
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: `${title}を原寸表示` }));
+    const lightbox = screen.getByRole('dialog', { name: '素材の原寸表示' });
+    await within(lightbox).findByRole('img');
+    expect(original).toHaveBeenCalledOnce();
+    view.unmount(); expect(URL.revokeObjectURL).toHaveBeenCalled();
+  });
+  it.each(['material', 'knowledge', 'work'] as const)('debounces consecutive %s input and waits for IME composition', async (source) => {
+    const view = render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    await screen.findByRole('img', { name: '手順.png' });
+    if (source !== 'material') {
+      fireEvent.click(screen.getByRole('tab', { name: source === 'knowledge' ? /^ナレッジから/ : '加工の写真' }));
+      await screen.findByText(source === 'knowledge' ? 'ナレッジ機能は無効です' : '候補がありません');
+    }
+    const list = source === 'material' ? mocks.list : source === 'knowledge' ? mocks.knowledge : mocks.workInstructions;
+    const input = screen.getByLabelText(source === 'material' ? '素材のヒント検索' : source === 'knowledge' ? 'ナレッジ検索' : '加工の写真検索');
+    list.mockClear(); vi.useFakeTimers();
+    for (const value of ['D', 'DF', 'DFD1']) {
+      fireEvent.change(input, { target: { value } });
+      expect(input).toHaveValue(value);
+      await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+      expect(list).not.toHaveBeenCalled();
+    }
+    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+    expect(list).toHaveBeenCalledOnce(); expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'DFD1' }));
+    list.mockClear(); fireEvent.compositionStart(input);
+    fireEvent.change(input, { target: { value: '組' } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(list).not.toHaveBeenCalled();
+    fireEvent.compositionEnd(input);
+    await act(async () => { await vi.advanceTimersByTimeAsync(299); }); expect(list).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(list).toHaveBeenCalledOnce(); expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ q: '組' }));
+    vi.useRealTimers(); view.unmount();
+  });
+  it('shows original-image failures and ignores a response after closing the lightbox', async () => {
+    mocks.file.mockRejectedValueOnce(new Error('failed'));
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    await screen.findByRole('img', { name: '手順.png' });
+    fireEvent.click(screen.getByRole('button', { name: '手順.pngを原寸表示' }));
+    const lightbox = screen.getByRole('dialog', { name: '素材の原寸表示' });
+    expect(await within(lightbox).findByRole('alert')).toHaveTextContent('写真を取得できません');
+    fireEvent.click(within(lightbox).getByRole('button', { name: '閉じる' }));
+    let finish!: (blob: Blob) => void;
+    mocks.file.mockImplementationOnce(() => new Promise<Blob>((resolve) => { finish = resolve; }));
+    fireEvent.click(screen.getByRole('button', { name: '手順.pngを原寸表示' }));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    const count = vi.mocked(URL.createObjectURL).mock.calls.length;
+    await act(async () => { finish(new Blob(['original'])); });
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(count);
+    expect(screen.queryByRole('dialog', { name: '素材の原寸表示' })).not.toBeInTheDocument();
   });
   it('shows write permission errors near the action controls', async () => {
     mocks.ingest.mockRejectedValue({ isAxiosError: true, response: { status: 403 } });

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import sharp from 'sharp';
 
+import { ApiError } from '../../lib/errors.js';
 import { prisma as defaultPrisma } from '../../lib/prisma.js';
 import type { DurableFileStorePort } from '../file-storage/durable-file-store.port.js';
 import { FileStorageAlreadyExistsError } from '../file-storage/file-storage-errors.js';
@@ -62,16 +63,28 @@ export class ProcedureMaterialWorkInstructionService {
     const read = this.reader();
     const limit = Math.max(1, Math.min(options.limit ?? 60, 1000));
     const items: Candidate[] = [];
-    for (const summary of await this.groups(read, options.q?.trim())) {
-      const group = await read.readPublishedGroup(summary);
-      if (group) items.push(...candidates(group).slice(0, limit - items.length));
-      if (items.length >= limit) break;
+    const summaries = await this.groups(read, options.q?.trim());
+    for (let offset = 0; offset < summaries.length && items.length < limit;) {
+      const batch = summaries.slice(offset, offset + Math.min(6, limit - items.length));
+      const groups = await Promise.allSettled(batch.map((summary) => read.readPublishedGroup(summary)));
+      offset += batch.length;
+      for (const result of groups) {
+        if (result.status === 'rejected') throw result.reason;
+        if (result.value) items.push(...candidates(result.value).slice(0, limit - items.length));
+        if (items.length >= limit) break;
+      }
     }
     const imported = await this.db.procedureMaterial.findMany({ where: { gmailDedupeKey: { in: items.map((item) => item.candidateKey) } }, select: { gmailDedupeKey: true } });
     const keys = new Set(imported.map((item) => item.gmailDedupeKey));
     return { items: items.map(({ candidateKey, partNumber, shootingTarget, step, memo, assetId, sourceModified }) => ({
       candidateKey, partNumber, shootingTarget, step, memo: memo.slice(0, 200), assetId, sourceModified, alreadyImported: keys.has(candidateKey),
     })) };
+  }
+
+  async readImage(assetId: string) {
+    const result = await this.reader().readAsset(assetId);
+    if (!result || result.asset.status !== 'ACTIVE') throw new ApiError(404, '作業要領画像が見つかりません', undefined, 'WORK_INSTRUCTION_ASSET_NOT_FOUND');
+    return result.bytes;
   }
 
   private async saveOriginal(key: string, bytes: Buffer) {

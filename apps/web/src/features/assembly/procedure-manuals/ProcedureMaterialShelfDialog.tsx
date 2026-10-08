@@ -1,55 +1,61 @@
 import { isAxiosError } from 'axios';
 import { useEffect, useRef, useState } from 'react';
 
-import { createProcedureMaterialDocument, getProcedureWorkInstructionImage, importProcedureWorkInstructions, listProcedureWorkInstructionCandidates, discardProcedureMaterial, getProcedureMaterialFile, getProcedureKnowledgeImage, importProcedureKnowledge, ingestProcedureMaterialsGmail, listProcedureKnowledgeCandidates, listProcedureMaterials, restoreProcedureMaterial, unplaceProcedureMaterial } from '../../../api/client';
+import { createProcedureMaterialDocument, getProcedureMaterialThumbnail, getProcedureKnowledgeThumbnail, getProcedureWorkInstructionThumbnail, getProcedureWorkInstructionImage, importProcedureWorkInstructions, listProcedureWorkInstructionCandidates, discardProcedureMaterial, getProcedureMaterialFile, getProcedureKnowledgeImage, importProcedureKnowledge, ingestProcedureMaterialsGmail, listProcedureKnowledgeCandidates, listProcedureMaterials, restoreProcedureMaterial, unplaceProcedureMaterial } from '../../../api/client';
 import { Button } from '../../../components/ui/Button';
 import { Dialog } from '../../../components/ui/Dialog';
 import { Input } from '../../../components/ui/Input';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
 import { groupMaterials, groupWorkInstructionCandidates, materialSource } from './procedure-material-grouping';
+import { ProcedureMaterialPhotoCache } from './procedure-material-photo-cache';
 
 import type { ProcedureWorkInstructionCandidate, ProcedureWorkInstructionCandidatesResult, ProcedureKnowledgeCandidatesResult, ProcedureKnowledgeImportResult, ProcedureMaterialDto, ProcedureMaterialIngestResult, ProcedureMaterialState } from './procedure-material-types';
 import type { ReactNode } from 'react';
 
-function MaterialPhoto({ id, alt, knowledge = false, workInstruction = false, onZoom }: { id: string; alt: string; knowledge?: boolean; workInstruction?: boolean; onZoom: (url: string, title: string) => void }) {
+function MaterialPhoto({ id, alt, cache, knowledge = false, workInstruction = false, onZoom }: { id: string; alt: string; cache: ProcedureMaterialPhotoCache; knowledge?: boolean; workInstruction?: boolean; onZoom: (load: () => Promise<Blob>, title: string) => void }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    let objectUrl: string | undefined;
-    let requested = false;
-    const load = () => {
-      if (requested || cancelled) return;
-      requested = true;
-      void (workInstruction ? getProcedureWorkInstructionImage(id) : knowledge ? getProcedureKnowledgeImage(id) : getProcedureMaterialFile(id)).then((blob) => {
-        if (cancelled) return;
-        objectUrl = URL.createObjectURL(blob);
-        setUrl(objectUrl);
-      }).catch(() => { if (!cancelled) setFailed(true); });
-    };
+    let request: ReturnType<ProcedureMaterialPhotoCache['request']> | undefined;
     let observer: IntersectionObserver | undefined;
+    setUrl(null); setFailed(false);
+    const load = () => {
+      if (request || cancelled) return;
+      const next = cache.request(`${workInstruction ? 'work' : knowledge ? 'knowledge' : 'material'}:${id}`,
+        () => workInstruction ? getProcedureWorkInstructionThumbnail(id) : knowledge ? getProcedureKnowledgeThumbnail(id) : getProcedureMaterialThumbnail(id));
+      request = next;
+      void next.promise.then((objectUrl) => {
+        if (cancelled || request !== next) return;
+        setUrl(objectUrl); observer?.disconnect();
+      }).catch(() => { if (!cancelled && request === next) { setFailed(true); observer?.disconnect(); } });
+    };
     if (typeof IntersectionObserver === 'undefined') load();
     else {
       observer = new IntersectionObserver((entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          observer?.disconnect();
-          load();
-        }
+        if (entries.some((entry) => entry.isIntersecting)) load();
+        else { request?.release(); request = undefined; }
       });
       if (cardRef.current) observer.observe(cardRef.current);
     }
-    return () => {
-      cancelled = true;
-      observer?.disconnect();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [id, knowledge, workInstruction]);
+    return () => { cancelled = true; observer?.disconnect(); request?.release(); };
+  }, [cache, id, knowledge, workInstruction]);
   return <div ref={cardRef} className="relative flex aspect-[4/3] items-center justify-center bg-gradient-to-br from-[#30404f] to-[#1b222a]">
     {url ? <img src={url} alt={alt} loading="lazy" className="h-full w-full object-contain" /> : <p className="text-lg text-[#9fadb9]">{failed ? '写真を取得できません' : '読込中…'}</p>}
-    <button aria-label={`${alt}を原寸表示`} disabled={!url} className="absolute bottom-2.5 right-2.5 grid h-11 w-11 place-items-center rounded-lg border border-white/50 bg-black/45 text-lg text-white disabled:opacity-40" onClick={() => { if (url) onZoom(url, alt); }}>⤢</button>
+    <button aria-label={`${alt}を原寸表示`} disabled={!url} className="absolute bottom-2.5 right-2.5 grid h-11 w-11 place-items-center rounded-lg border border-white/50 bg-black/45 text-lg text-white disabled:opacity-40" onClick={() => onZoom(() => workInstruction ? getProcedureWorkInstructionImage(id) : knowledge ? getProcedureKnowledgeImage(id) : getProcedureMaterialFile(id), alt)}>⤢</button>
   </div>;
+}
+
+function useShelfSearch(value: string, composing: boolean) {
+  const [query, setQuery] = useState(value);
+  useEffect(() => {
+    if (composing) return;
+    const timer = window.setTimeout(() => setQuery(value), 300);
+    return () => window.clearTimeout(timer);
+  }, [value, composing]);
+  return query;
 }
 
 function MaterialCard({ title, source, date, checked, disabled, onChange, children, detail }: {
@@ -98,9 +104,19 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
     setSize(next);
     try { localStorage.setItem(shelfSizeKey, next); } catch { /* Keep the in-memory setting. */ }
   };
-  const [lightbox, setLightbox] = useState<{ url: string; title: string } | null>(null);
+  const [lightbox, setLightbox] = useState<{ url: string | null; title: string; failed?: boolean } | null>(null);
+  const [photoCache] = useState(() => new ProcedureMaterialPhotoCache());
+  const zoomSequence = useRef(0);
+  useEffect(() => () => { photoCache.clear(); zoomSequence.current++; }, [photoCache]);
+  useEffect(() => { const url = lightbox?.url; return () => { if (url) URL.revokeObjectURL(url); }; }, [lightbox?.url]);
   const [discardConfirm, setDiscardConfirm] = useState(false);
-  const zoom = (url: string, title: string) => setLightbox({ url, title });
+  const closeLightbox = () => { zoomSequence.current++; setLightbox(null); };
+  const zoom = (load: () => Promise<Blob>, title: string) => {
+    const sequence = ++zoomSequence.current;
+    setLightbox({ url: null, title });
+    void load().then((blob) => { if (sequence === zoomSequence.current) setLightbox({ url: URL.createObjectURL(blob), title }); })
+      .catch(() => { if (sequence === zoomSequence.current) setLightbox({ url: null, title, failed: true }); });
+  };
   const toggleSelected = (id: string, checked: boolean) => setSelected((ids) => checked ? mode === 'replace' ? [id] : [...ids, id] : ids.filter((item) => item !== id));
   const [materials, setMaterials] = useState<ProcedureMaterialDto[]>([]);
   const [q, setQ] = useState('');
@@ -109,6 +125,10 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
   const [knowledgeQ, setKnowledgeQ] = useState('');
   const [workInstructions, setWorkInstructions] = useState<ProcedureWorkInstructionCandidatesResult | null>(null);
   const [workInstructionQ, setWorkInstructionQ] = useState('');
+  const [composing, setComposing] = useState(false);
+  const materialQuery = useShelfSearch(q, composing);
+  const knowledgeQuery = useShelfSearch(knowledgeQ, composing);
+  const workInstructionQuery = useShelfSearch(workInstructionQ, composing);
   const [openGroups, setOpenGroups] = useState<Map<string, boolean>>(() => new Map());
   useEffect(() => { setOpenGroups(new Map()); }, [state]);
   const [selected, setSelected] = useState<string[]>([]);
@@ -126,31 +146,31 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
     setMaterials([]);
     setSelected([]);
     setError(null);
-    void listProcedureMaterials({ state, q, limit: 500 }).then((next) => { if (!cancelled) setMaterials(next); })
+    void listProcedureMaterials({ state, q: materialQuery, limit: 500 }).then((next) => { if (!cancelled) setMaterials(next); })
       .catch((e: unknown) => { if (!cancelled) setError(isAxiosError(e) && e.response?.status === 403 ? '権限がありません' : readAssemblyApiErrorMessage(e, '素材を取得できません')); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [q, state, version, selectionMode]);
+  }, [materialQuery, state, version, selectionMode]);
 
   useEffect(() => {
     if (state !== 'knowledge') return;
     let cancelled = false;
     setLoading(true); setKnowledge(null); setSelected([]); setError(null);
-    void listProcedureKnowledgeCandidates({ q: knowledgeQ, limit: 100 }).then((next) => { if (!cancelled) setKnowledge(next); })
+    void listProcedureKnowledgeCandidates({ q: knowledgeQuery, limit: 100 }).then((next) => { if (!cancelled) setKnowledge(next); })
       .catch((e: unknown) => { if (!cancelled) setError(isAxiosError(e) && e.response?.status === 403 ? '権限がありません' : readAssemblyApiErrorMessage(e, '候補を取得できません')); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [knowledgeQ, state, version]);
+  }, [knowledgeQuery, state, version]);
 
   useEffect(() => {
     if (state !== 'workInstruction') return;
     let cancelled = false;
     setLoading(true); setWorkInstructions(null); setSelected([]); setError(null);
-    void listProcedureWorkInstructionCandidates({ q: workInstructionQ, limit: 1000 }).then((next) => { if (!cancelled) setWorkInstructions(next); })
+    void listProcedureWorkInstructionCandidates({ q: workInstructionQuery, limit: 1000 }).then((next) => { if (!cancelled) setWorkInstructions(next); })
       .catch((e: unknown) => { if (!cancelled) setError(isAxiosError(e) && e.response?.status === 403 ? '権限がありません' : readAssemblyApiErrorMessage(e, '候補を取得できません')); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [workInstructionQ, state, version]);
+  }, [workInstructionQuery, state, version]);
 
   const importSelected = async () => {
     setBusy(true); setError(null); setKnowledgeResult(null);
@@ -225,10 +245,10 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
     : [...current, ...ids.filter((id) => !current.includes(id)).slice(0, Math.max(0, limit - current.length))]);
   const gridStyle = { gridTemplateColumns: `repeat(${shelfColumns[size]}, minmax(0, 1fr))` };
   const renderWorkInstructions = (items: ProcedureWorkInstructionCandidate[]) => items.map((candidate) => <MaterialCard key={candidate.candidateKey} title={`${candidate.partNumber} ${candidate.shootingTarget} 手順 ${candidate.step}`} source="加工" checked={selected.includes(candidate.candidateKey)} disabled={workInstructionDisabled(candidate)} onChange={(checked) => setSelected((ids) => checked ? [...ids, candidate.candidateKey] : ids.filter((id) => id !== candidate.candidateKey))} detail={<><p>{candidate.partNumber} {candidate.shootingTarget} · 手順 {candidate.step}{candidate.alreadyImported ? ' · 取込済み' : ''}</p>{candidate.memo ? <p className="line-clamp-2 whitespace-pre-wrap break-words">{candidate.memo}</p> : null}</>}>
-            <MaterialPhoto id={candidate.assetId} alt={`${candidate.partNumber} ${candidate.shootingTarget} 手順 ${candidate.step}`} workInstruction onZoom={zoom} />
+            <MaterialPhoto cache={photoCache} id={candidate.assetId} alt={`${candidate.partNumber} ${candidate.shootingTarget} 手順 ${candidate.step}`} workInstruction onZoom={zoom} />
           </MaterialCard>);
   const renderMaterials = (items: ProcedureMaterialDto[]) => items.map((material) => <MaterialCard key={material.id} title={material.subjectHint || material.originalFileName || 'ヒントなし'} source={materialSource(material)} date={material.receivedAt} checked={selected.includes(material.id)} disabled={materialDisabled(material)} onChange={(checked) => toggleSelected(material.id, checked)} detail={material.kind === 'PDF' || (material.origin === 'WORK_INSTRUCTION' && material.workInstructionRef) || (state === 'placed' && !selectionMode) || state === 'discarded' ? <>{material.kind === 'PDF' ? <Button variant="ghostOnDark" className="min-h-11" disabled={busy || Boolean(material.documentId || material.placedAt || material.discardedAt)} onClick={() => void createDocument(material)}>要領書を作る</Button> : null}{material.origin === 'WORK_INSTRUCTION' && material.workInstructionRef ? <><p>{material.workInstructionRef.partNumber} {material.workInstructionRef.shootingTarget} · 手順 {material.workInstructionRef.step}</p>{material.workInstructionRef.memo ? <p className="line-clamp-2 whitespace-pre-wrap break-words">{material.workInstructionRef.memo}</p> : null}</> : null}{(state === 'placed' && !selectionMode && material.kind !== 'PDF') || state === 'discarded' ? <Button variant="ghostOnDark" className="min-h-11" disabled={busy} onClick={() => void toggleDiscard(material)}>{state === 'placed' ? '配置を取り消す' : '戻す'}</Button> : null}</> : undefined}>
-            {material.kind === 'PHOTO' ? <MaterialPhoto id={material.id} alt={material.originalFileName || '素材の写真'} onZoom={zoom} /> : material.kind === 'PDF' ? <div className="flex aspect-[4/3] items-center justify-center bg-[#27313b] text-3xl font-bold">PDF</div> : <div className="aspect-[4/3] overflow-hidden bg-[#fdfcf7] p-4 pt-14 text-[19px] leading-normal text-[#1a1a1a]"><p className="line-clamp-6 whitespace-pre-wrap break-words">{material.text}</p></div>}
+            {material.kind === 'PHOTO' ? <MaterialPhoto cache={photoCache} id={material.id} alt={material.originalFileName || '素材の写真'} onZoom={zoom} /> : material.kind === 'PDF' ? <div className="flex aspect-[4/3] items-center justify-center bg-[#27313b] text-3xl font-bold">PDF</div> : <div className="aspect-[4/3] overflow-hidden bg-[#fdfcf7] p-4 pt-14 text-[19px] leading-normal text-[#1a1a1a]"><p className="line-clamp-6 whitespace-pre-wrap break-words">{material.text}</p></div>}
           </MaterialCard>);
   const toolClass = 'h-11 shrink-0 rounded-lg border border-[#344252] px-3.5 text-[19px] font-bold disabled:opacity-40';
   return (
@@ -239,7 +259,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
         <div role="tablist" aria-label="素材の種類" className="ml-2 flex gap-1">
           {([['unplaced', `未配置${state === 'unplaced' && !loading ? ` (${materials.length}${materials.length === 500 ? '+' : ''})` : ''}`], ['placed', '配置済み'], ['knowledge', 'ナレッジから'], ['workInstruction', '加工の写真']] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={state === value} disabled={busy} className={`h-11 whitespace-nowrap rounded-lg px-4 text-[19px] font-bold ${state === value ? 'bg-[#27313b] text-[#eef3f6]' : 'text-[#9fadb9]'}`} onClick={() => setState(value)}>{label}</button>)}
         </div>
-        <Input type="search" disabled={busy} aria-label={state === 'workInstruction' ? '加工の写真検索' : state === 'knowledge' ? 'ナレッジ検索' : '素材のヒント検索'} placeholder={state === 'workInstruction' ? '品番・対象' : 'ヒントで絞り込み'} className="ml-4 h-11 !w-80 text-xl" maxLength={200} value={state === 'workInstruction' ? workInstructionQ : state === 'knowledge' ? knowledgeQ : q} onChange={(e) => state === 'workInstruction' ? setWorkInstructionQ(e.target.value) : state === 'knowledge' ? setKnowledgeQ(e.target.value) : setQ(e.target.value)} />
+        <Input type="search" disabled={busy} aria-label={state === 'workInstruction' ? '加工の写真検索' : state === 'knowledge' ? 'ナレッジ検索' : '素材のヒント検索'} placeholder={state === 'workInstruction' ? '品番・対象' : 'ヒントで絞り込み'} className="ml-4 h-11 !w-80 text-xl" maxLength={200} onCompositionStart={() => setComposing(true)} onCompositionEnd={() => setComposing(false)} value={state === 'workInstruction' ? workInstructionQ : state === 'knowledge' ? knowledgeQ : q} onChange={(e) => state === 'workInstruction' ? setWorkInstructionQ(e.target.value) : state === 'knowledge' ? setKnowledgeQ(e.target.value) : setQ(e.target.value)} />
         <div role="group" aria-label="表示サイズ" className="ml-auto flex items-center gap-1 text-[17px] text-[#9fadb9]">表示 {([['small', '小'], ['medium', '中'], ['large', '大']] as const).map(([value, label]) => <button key={value} aria-pressed={size === value} className={`h-11 w-11 rounded-lg border border-[#344252] text-base font-bold text-[#eef3f6] ${size === value ? 'bg-[#27313b]' : ''}`} onClick={() => changeSize(value)}>{label}</button>)}</div>
         <button className={`${toolClass} border-transparent text-[#9fadb9]`} disabled={busy} onClick={() => void runNow()}>{busy ? '処理中…' : '今すぐ取り込む'}</button>
         <button className={`${toolClass} border-transparent text-[#9fadb9]`} disabled={busy} onClick={onClose}>閉じる</button>
@@ -287,14 +307,14 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
           })}
         </div> : <ul className="grid content-start gap-3.5 pr-1" style={gridStyle}>
           {state === 'knowledge' ? knowledge?.items.map((candidate) => <MaterialCard key={candidate.candidateKey} title={candidate.title} source="ナレッジ" checked={selected.includes(candidate.candidateKey)} disabled={busy || candidate.alreadyImported || (mode === 'replace' && candidate.kind !== 'PHOTO') || (!selected.includes(candidate.candidateKey) && selected.length >= 50)} onChange={(checked) => toggleSelected(candidate.candidateKey, checked)} detail={<>{candidate.summary ? <p className="line-clamp-2">{candidate.summary}</p> : null}<p>{candidate.kind === 'PHOTO' && candidate.preview ? <span className="line-clamp-2">{candidate.preview}</span> : null}{candidate.sourceLabel}{candidate.alreadyImported ? ' · 取込済み' : ''}</p></>}>
-            {candidate.kind === 'PHOTO' && candidate.imageId ? <MaterialPhoto id={candidate.imageId} alt={candidate.title} knowledge onZoom={zoom} /> : <div className="aspect-[4/3] overflow-hidden bg-[#fdfcf7] p-4 pt-14 text-[19px] leading-normal text-[#1a1a1a]"><p className="line-clamp-6 whitespace-pre-wrap break-words">{candidate.preview}</p></div>}
+            {candidate.kind === 'PHOTO' && candidate.imageId ? <MaterialPhoto cache={photoCache} id={candidate.imageId} alt={candidate.title} knowledge onZoom={zoom} /> : <div className="aspect-[4/3] overflow-hidden bg-[#fdfcf7] p-4 pt-14 text-[19px] leading-normal text-[#1a1a1a]"><p className="line-clamp-6 whitespace-pre-wrap break-words">{candidate.preview}</p></div>}
           </MaterialCard>) : renderMaterials(materials)}
         </ul>}
       </div>
     </Dialog>
-    {lightbox ? <Dialog isOpen title={lightbox.title} ariaLabel="素材の原寸表示" size="full" overlayZIndex={60} className="flex min-h-0 !h-[92dvh] flex-col !bg-[#161c22] !text-[#eef3f6]" onClose={() => setLightbox(null)}>
-      <button className={`${toolClass} ml-auto mb-3`} onClick={() => setLightbox(null)}>閉じる</button>
-      <div className="min-h-0 flex-1 overflow-auto"><img src={lightbox.url} alt={lightbox.title} className="mx-auto block max-w-none" /></div>
+    {lightbox ? <Dialog isOpen title={lightbox.title} ariaLabel="素材の原寸表示" size="full" overlayZIndex={60} className="flex min-h-0 !h-[92dvh] flex-col !bg-[#161c22] !text-[#eef3f6]" onClose={closeLightbox}>
+      <button className={`${toolClass} ml-auto mb-3`} onClick={closeLightbox}>閉じる</button>
+      <div className="min-h-0 flex-1 overflow-auto">{lightbox.url ? <img src={lightbox.url} alt={lightbox.title} className="mx-auto block max-w-none" /> : <p role={lightbox.failed ? 'alert' : 'status'}>{lightbox.failed ? '写真を取得できません' : '読込中…'}</p>}</div>
     </Dialog> : null}
     {discardConfirm ? <Dialog isOpen title="素材を捨てる" overlayZIndex={60} onClose={() => setDiscardConfirm(false)}>
       <p className="my-3">選択した {selected.length} 件を捨てますか？捨てた素材から戻せます。</p>
