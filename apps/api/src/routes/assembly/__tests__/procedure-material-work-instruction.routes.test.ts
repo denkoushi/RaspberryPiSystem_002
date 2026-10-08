@@ -30,9 +30,9 @@ describe('procedure-material work-instruction routes', () => {
     const row = { id: 'row-1', source: { system: 'sharepoint', list: '加工', itemId: 1, modified: summary.latestModified },
       publication: { publishedVersionId: 'version-1' }, steps: [step] };
     const group = { partNumber: summary.partNumber, shootingTarget: summary.shootingTarget, rows: [row], steps: [step] };
-    const read = { readPublishedGroups: vi.fn().mockResolvedValue([summary]), searchPublishedGroups: vi.fn().mockResolvedValue({ groups: [summary], hasMore: false, total: 1 }),
+    const read = { readPublishedGroupsByPartName: vi.fn().mockResolvedValue([]), readPublishedGroups: vi.fn().mockResolvedValue([summary]), searchPublishedGroups: vi.fn().mockResolvedValue({ groups: [summary], hasMore: false, total: 1 }),
       readPublishedGroup: vi.fn().mockResolvedValue(group), readAsset: vi.fn().mockResolvedValue({ bytes, asset: { assetId, status: 'ACTIVE', mimeType: 'image/png' } }) };
-    const db = { procedureMaterial: { findMany: vi.fn().mockResolvedValue([]), findUnique: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: 'material' }) } };
+    const db = { $queryRaw: vi.fn().mockResolvedValue([]), procedureMaterial: { findMany: vi.fn().mockResolvedValue([]), findUnique: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: 'material' }) } };
     const store = { write: vi.fn().mockResolvedValue({}), read: vi.fn().mockResolvedValue(bytes), stat: vi.fn().mockResolvedValue({}) };
     const reader = vi.fn(() => read);
     const service = new ProcedureMaterialWorkInstructionService(db as never, store as never, reader as never);
@@ -48,7 +48,7 @@ describe('procedure-material work-instruction routes', () => {
     db.procedureMaterial.findMany.mockResolvedValue([{ gmailDedupeKey: key }]);
     const response = await app.inject(`${base}/work-instruction-candidates`);
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ items: [{ candidateKey: key, partNumber: 'DFD1', shootingTarget: '外径', step: 1, memo: '公開メモ', assetId,
+    expect(response.json()).toEqual({ items: [{ candidateKey: key, partNumber: 'DFD1', partName: null, shootingTarget: '外径', step: 1, memo: '公開メモ', assetId,
       sourceModified: '2026-10-01T00:00:00.000Z', alreadyImported: true }] });
     expect(read.readPublishedGroups).toHaveBeenCalledWith({ limit: 500, offset: 0 });
     expect(read.readAsset).not.toHaveBeenCalled(); expect(store.write).not.toHaveBeenCalled();
@@ -75,9 +75,49 @@ describe('procedure-material work-instruction routes', () => {
   it.each(['dfd', '外径'])('searches part number / target with the public search facade: %s', async (q) => {
     const { read } = await harness();
     expect((await app.inject(`${base}/work-instruction-candidates?q=${encodeURIComponent(q)}&limit=1`)).json().items).toHaveLength(1);
-    expect(read.searchPublishedGroups).toHaveBeenCalledWith({ query: q, limit: 500, offset: 0 });
+    expect(read.searchPublishedGroups).toHaveBeenCalledWith({ query: q, normalizeText: true, limit: 500, offset: 0 });
     expect(read.readPublishedGroups).not.toHaveBeenCalled();
-    expect((await app.inject(`${base}/work-instruction-candidates?q=${encodeURIComponent('公開メモ')}`)).json().items).toHaveLength(0);
+
+  });
+  it('searches public memos without reading unpublished details', async () => {
+    const { read, summary } = await harness();
+    read.searchPublishedGroups.mockImplementation(async ({ query }) => ({ groups: query === '公開メモ' ? [summary] : [], hasMore: false, total: query === '公開メモ' ? 1 : 0 }));
+    expect((await app.inject(`${base}/work-instruction-candidates?q=${encodeURIComponent('公開メモ')}`)).json().items[0].memo).toBe('公開メモ');
+    read.readPublishedGroup.mockClear();
+    for (const query of ['下書きメモ', '非公開メモ']) {
+      expect((await app.inject(`${base}/work-instruction-candidates?q=${encodeURIComponent(query)}`)).json().items).toEqual([]);
+    }
+    expect(read.readPublishedGroup).not.toHaveBeenCalled();
+    expect(read.readPublishedGroups).not.toHaveBeenCalled();
+  });
+  it('resolves partial part names, merges public matches once and returns the name', async () => {
+    const { read, db, summary } = await harness();
+    read.readPublishedGroupsByPartName.mockResolvedValue([summary]);
+    db.$queryRaw.mockResolvedValue([{ partNumber: 'DFD1', partName: '軸受ホルダー' }]);
+    read.searchPublishedGroups.mockResolvedValue({ groups: [], hasMore: false, total: 0 });
+    const response = await app.inject(`${base}/work-instruction-candidates?q=${encodeURIComponent('ホル')}`);
+    expect(response.statusCode).toBe(200);
+    expect(response.json().items).toHaveLength(1);
+    expect(response.json().items[0]).toMatchObject({ partNumber: 'DFD1', partName: '軸受ホルダー' });
+    expect(read.readPublishedGroup).toHaveBeenCalledExactlyOnceWith(summary);
+    expect(read.readPublishedGroupsByPartName).toHaveBeenCalledExactlyOnceWith('ホル');
+    expect(read.readPublishedGroups).not.toHaveBeenCalled();
+    read.readPublishedGroupsByPartName.mockResolvedValue([summary]);
+    db.$queryRaw.mockResolvedValue([{ partNumber: 'DFD1', partName: '軸受ホルダー' }]);
+    read.searchPublishedGroups.mockResolvedValue({ groups: [summary], hasMore: false, total: 1 });
+    expect((await app.inject(`${base}/work-instruction-candidates?q=${encodeURIComponent('ホル')}`)).json().items).toHaveLength(1);
+  });
+  it('filters memo-only matches before the photo limit using normalized effective memos', async () => {
+    const { row, step } = await harness();
+    row.steps = [{ ...step, memoOverride: '別メモ' }, { ...step, step: 2, memoOverride: '公開 ＨｏｌＤｅｒ メモ' }];
+    const response = await app.inject(`${base}/work-instruction-candidates?q=holder&limit=1`);
+    expect(response.json().items.map(({ step }: { step: number }) => step)).toEqual([2]);
+  });
+  it('keeps all photos for part-name matches even when only another step memo matches', async () => {
+    const { row, step, read, summary } = await harness();
+    row.steps = [{ ...step, memoOverride: '' }, { ...step, step: 2, memoOverride: 'ホル' }];
+    read.readPublishedGroupsByPartName.mockResolvedValue([summary]);
+    expect((await app.inject(`${base}/work-instruction-candidates?q=${encodeURIComponent('ホル')}&limit=1`)).json().items[0].step).toBe(1);
   });
   it('paginates summaries before sorting newest groups and applies the photo limit after exclusions', async () => {
     const { read, summary, group } = await harness();
@@ -102,7 +142,7 @@ describe('procedure-material work-instruction routes', () => {
     for (let index = 5; index >= 0; index--) finish.get(`part-${index}`)!();
     await vi.waitFor(() => expect(read.readPublishedGroup).toHaveBeenCalledTimes(8));
     finish.get('part-7')!(); finish.get('part-6')!();
-    expect(await result).toEqual({ items: summaries.map(({ partNumber }) => ({ candidateKey: key, partNumber, shootingTarget: '外径', step: 1,
+    expect(await result).toEqual({ items: summaries.map(({ partNumber }) => ({ candidateKey: key, partNumber, partName: null, shootingTarget: '外径', step: 1,
       memo: '公開メモ', assetId, sourceModified: summary.latestModified, alreadyImported: false })) });
   });
   it('keeps exclusions and the partial-group limit, ignoring errors beyond the cutoff and stopping new batches', async () => {

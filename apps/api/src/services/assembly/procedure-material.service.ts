@@ -1,11 +1,18 @@
 import { AssemblyProcedureDraftImportService } from './assembly-procedure-draft-import.service.js';
 
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 import { ApiError } from '../../lib/errors.js';
 import { prisma as defaultPrisma } from '../../lib/prisma.js';
 import type { DurableFileStorePort } from '../file-storage/durable-file-store.port.js';
 import { getFileStorageRuntime } from '../file-storage/file-storage-runtime.js';
+
+import { normalizeWorkInstructionPartNumber } from '../work-instructions/domain/normalization.js';
+import { readPartNamesByPartNumbers, readMaterialMatchesByPartName } from '../work-instructions/repositories/prisma-work-instruction-part-names.js';
+
+function materialPartNumber(ref: Prisma.JsonValue | undefined): string | null {
+  return ref && typeof ref === 'object' && !Array.isArray(ref) && typeof ref.partNumber === 'string' ? normalizeWorkInstructionPartNumber(ref.partNumber) : null;
+}
 
 export type ProcedureMaterialState = 'unplaced' | 'placed' | 'discarded' | 'all';
 export class ProcedureMaterialService {
@@ -20,16 +27,25 @@ export class ProcedureMaterialService {
     if (options.state === 'unplaced') Object.assign(where, { documentId: null, placedAt: null, discardedAt: null });
     if (options.state === 'placed') Object.assign(where, { discardedAt: null, OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] });
     if (options.state === 'discarded') where.discardedAt = { not: null };
+    const matchedParts = new Map<string, string>();
     if (options.q) {
       const queries = [...new Set([options.q, options.q.normalize('NFKC')])];
       const textMatches = queries.map((q) => ({ text: { contains: q, mode: 'insensitive' as const } }));
       const messages = await this.db.procedureMaterial.findMany({ where: { gmailMessageId: { not: null }, OR: textMatches }, select: { gmailMessageId: true }, distinct: ['gmailMessageId'], take: 500 });
+      const scope = options.state === 'unplaced' ? Prisma.sql`material."documentId" IS NULL AND material."placedAt" IS NULL AND material."discardedAt" IS NULL`
+        : options.state === 'placed' ? Prisma.sql`material."discardedAt" IS NULL AND (material."documentId" IS NOT NULL OR material."placedAt" IS NOT NULL)`
+        : options.state === 'discarded' ? Prisma.sql`material."discardedAt" IS NOT NULL` : Prisma.sql`TRUE`;
+      for (const match of await readMaterialMatchesByPartName(this.db, options.q, scope)) matchedParts.set(match.id, match.partNumber);
+      const partMatches: Prisma.ProcedureMaterialWhereInput[] = matchedParts.size ? [{ id: { in: [...matchedParts.keys()] } }] : [];
       const messageIds = messages.flatMap((material) => material.gmailMessageId === null ? [] : [material.gmailMessageId]);
-      where.AND = [{ OR: [...queries.flatMap((q) => [{ subjectHint: { contains: q, mode: 'insensitive' as const } }, { originalFileName: { contains: q, mode: 'insensitive' as const } }]), ...textMatches, ...(messageIds.length ? [{ gmailMessageId: { in: messageIds } }] : [])] }];
+      where.AND = [{ OR: [...queries.flatMap((q) => [{ subjectHint: { contains: q, mode: 'insensitive' as const } }, { originalFileName: { contains: q, mode: 'insensitive' as const } }]), ...textMatches, ...partMatches, ...(messageIds.length ? [{ gmailMessageId: { in: messageIds } }] : [])] }];
     }
     const materials = await this.db.procedureMaterial.findMany({ where, orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }], take: options.limit });
     // PDF and page text exists for search only; keep it out of the list payload.
-    return materials.map((material) => material.kind === 'TEXT' ? material : { ...material, text: null });
+    const partNumberFor = (material: typeof materials[number]) => materialPartNumber(material.workInstructionRef) ?? matchedParts.get(material.id);
+    const partNames = await readPartNamesByPartNumbers(this.db, materials.flatMap((material) => partNumberFor(material) ?? []));
+    return materials.map((material) => ({ ...material, text: material.kind === 'TEXT' ? material.text : null,
+      partName: partNames.get(partNumberFor(material) ?? '') ?? null }));
   }
 
   async listRankRecordIds(state: 'unplaced' | 'placed') {
