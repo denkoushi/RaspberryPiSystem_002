@@ -42,6 +42,7 @@ import {
   getKioskProductionScheduleSearchHistory,
   getKioskProductionScheduleHistoryProgress,
   getKioskGrindingPlanningBoard,
+  getKioskGrindingPlanningBoardLoad,
   getKioskGrindingPlanningBoardSnapshot,
   getKioskGrindingPlanningBoardSeibanCandidates,
   updateKioskGrindingPlanningBoardOverrides,
@@ -329,14 +330,28 @@ export function useKioskGrindingPlanningBoard(
     staleTime?: number;
   }
 ) {
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: ['kiosk-grinding-planning-board', params],
-    queryFn: () => getKioskGrindingPlanningBoard(params!),
+    queryFn: async () => {
+      const board = await getKioskGrindingPlanningBoard(params!);
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board', 'load'] });
+      return board;
+    },
     enabled: (options?.enabled ?? true) && Boolean(params),
     refetchInterval: options?.refetchIntervalMs ?? 30000,
     staleTime: options?.staleTime,
     refetchOnWindowFocus: options?.refetchOnWindowFocus,
     placeholderData: (previousData) => previousData
+  });
+}
+
+export function useKioskGrindingPlanningBoardLoad(category: 'grinding' | 'cutting') {
+  return useQuery({
+    queryKey: ['kiosk-grinding-planning-board', 'load', category],
+    queryFn: () => getKioskGrindingPlanningBoardLoad(category),
+    refetchOnWindowFocus: false,
+    staleTime: LEADER_BOARD_LEADER_PHASED_STALE_MS
   });
 }
 
@@ -494,9 +509,14 @@ export function useKioskGrindingPlanningBoardSnapshot(
   params: KioskGrindingPlanningBoardQuery | undefined,
   options?: { enabled?: boolean; refetchIntervalMs?: number | false; refetchOnWindowFocus?: boolean }
 ) {
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: ['kiosk-grinding-planning-board', 'snapshot', params],
-    queryFn: () => getKioskGrindingPlanningBoardSnapshot(params!),
+    queryFn: async () => {
+      const board = await getKioskGrindingPlanningBoardSnapshot(params!);
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board', 'load'] });
+      return board;
+    },
     enabled: (options?.enabled ?? true) && Boolean(params),
     refetchInterval: options?.refetchIntervalMs ?? 30000,
     refetchOnWindowFocus: options?.refetchOnWindowFocus ?? true

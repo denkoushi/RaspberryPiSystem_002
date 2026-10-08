@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import {
   getGrindingPlanningBoard,
+  getGrindingPlanningBoardLoad,
   updateGrindingPlanningBoardOverrides,
   updateGrindingPlanningBoardRank,
   updateGrindingPlanningBoardResourceOrder,
@@ -17,6 +18,7 @@ import type { KioskRouteDeps } from './shared.js';
 const querySchema = z.object({
   view: z.enum(['seiban', 'resource']).default('seiban'),
   category: z.enum(['grinding', 'cutting']).default('grinding'),
+  includeLoad: z.enum(['true', 'false']).default('true').transform((value) => value === 'true'),
   fseibans: z.string().max(4000).optional(),
   cursor: z.coerce.number().int().min(0).optional(),
   snapshotId: z.string().min(1).max(200).optional(),
@@ -117,8 +119,16 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
       snapshotId: query.snapshotId,
       pageSize: query.pageSize,
       completionFilter: query.completionFilter,
+      includeLoad: query.includeLoad,
       snapshotStore: deps.leaderboardShellSnapshotStore
     });
+  });
+
+  app.get('/kiosk/production-schedule/grinding-planning-board/load', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const scope = deps.resolveLocationScopeContext(clientDevice);
+    const query = z.object({ category: z.enum(['grinding', 'cutting']).default('grinding') }).parse(request.query);
+    return getGrindingPlanningBoardLoad({ siteKey: scope.siteKey, category: query.category });
   });
 
   app.get('/kiosk/production-schedule/grinding-planning-board/seiban/:fseiban/due-detail', { config: { rateLimit: false } }, async (request) => {

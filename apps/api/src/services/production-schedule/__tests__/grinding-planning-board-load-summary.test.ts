@@ -162,3 +162,142 @@ describe('grinding-planning-board-load-summary', () => {
     });
   });
 });
+
+describe('materialized load aggregate cache', () => {
+  function setup() {
+    const aggregates = [
+      { originalResourceCd: 'G-01', effectiveResourceCd: 'G-02', itemCount: 2n, unknownItemCount: 1n, requiredMinutesSum: 20 },
+      { originalResourceCd: 'C-01', effectiveResourceCd: 'C-01', itemCount: 1n, unknownItemCount: 0n, requiredMinutesSum: 5 }
+    ];
+    const queryRaw = vi.fn(async (sql: Prisma.Sql) => sql.sql.includes('effectiveItems') ? aggregates : []);
+    const readGenerationToken = vi.fn().mockResolvedValue('generation-1');
+    const measure = vi.fn<(phase: string) => void>();
+    const params = {
+      client: { $queryRaw: queryRaw } as never,
+      siteKey: 'site-a', category: 'grinding' as const, splitEnabled: true,
+      leaderboardMaterializedBaseWhere: Prisma.sql`"CsvDashboardRow"."id" = ANY(${['row-2', 'row-1']}::text[])`,
+      isResourceInCategory: (cd: string, category: 'grinding' | 'cutting') => cd.startsWith(category === 'grinding' ? 'G-' : 'C-'),
+      cache: { generationToken: 'generation-1', readGenerationToken, performance: {
+        async measure<T>(phase: string, work: () => Promise<T>): Promise<T> {
+          measure(phase);
+          return work();
+        },
+        flush: vi.fn()
+      } }
+    };
+    const aggregateCalls = () => queryRaw.mock.calls.filter(([sql]: [Prisma.Sql]) => sql.sql.includes('effectiveItems')).length;
+    return { params, aggregates, queryRaw, readGenerationToken, measure, aggregateCalls };
+  }
+
+  it('shares concurrent SQL, reduces each category separately and normalizes winner membership order', async () => {
+    const { params, queryRaw, aggregates, measure, aggregateCalls } = setup();
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    queryRaw.mockImplementation(async (sql: Prisma.Sql) => {
+      if (!sql.sql.includes('effectiveItems')) return [];
+      await gate;
+      return aggregates;
+    });
+    const grinding = readGrindingPlanningBoardLoadSummary(params);
+    const cutting = readGrindingPlanningBoardLoadSummary({ ...params, category: 'cutting',
+      leaderboardMaterializedBaseWhere: Prisma.sql`"CsvDashboardRow"."id" = ANY(${['row-1', 'row-2']}::text[])` });
+    await vi.waitFor(() => expect(aggregateCalls()).toBe(1));
+    release?.();
+    expect((await grinding).unknownRequiredMinutesCount).toBe(1);
+    expect((await cutting).load[0]).toMatchObject({ resourceCd: 'C-01', requiredMinutes: 5 });
+    await readGrindingPlanningBoardLoadSummary(params);
+    expect(aggregateCalls()).toBe(1);
+    expect(measure.mock.calls.map(([phase]) => phase)).toEqual(['loadSummaryCompute', 'loadSummaryCacheHit', 'loadSummaryCacheHit']);
+  });
+
+  it('recomputes on generation changes and discards the previous generation', async () => {
+    const { params, readGenerationToken, aggregateCalls } = setup();
+    await readGrindingPlanningBoardLoadSummary(params);
+    readGenerationToken.mockResolvedValue('generation-2');
+    await readGrindingPlanningBoardLoadSummary({ ...params, cache: { ...params.cache, generationToken: 'generation-2' } });
+    readGenerationToken.mockResolvedValue('generation-1');
+    await readGrindingPlanningBoardLoadSummary(params);
+    expect(aggregateCalls()).toBe(3);
+  });
+
+  it('isolates sites, split flags and base predicates', async () => {
+    const { params, aggregateCalls } = setup();
+    await readGrindingPlanningBoardLoadSummary(params);
+    await readGrindingPlanningBoardLoadSummary({ ...params, siteKey: 'site-b' });
+    await readGrindingPlanningBoardLoadSummary({ ...params, splitEnabled: false });
+    await readGrindingPlanningBoardLoadSummary({ ...params, leaderboardMaterializedBaseWhere: Prisma.sql`FALSE` });
+    expect(aggregateCalls()).toBe(4);
+  });
+
+  it('removes a failed shared promise and allows a subsequent retry', async () => {
+    const { params, queryRaw, aggregates, aggregateCalls } = setup();
+    const failure = new Error('aggregate SQL failed');
+    let fail = true;
+    queryRaw.mockImplementation(async (sql: Prisma.Sql) => {
+      if (!sql.sql.includes('effectiveItems')) return [];
+      if (fail) throw failure;
+      return aggregates;
+    });
+    const results = await Promise.allSettled([
+      readGrindingPlanningBoardLoadSummary(params), readGrindingPlanningBoardLoadSummary({ ...params, category: 'cutting' })
+    ]);
+    expect(results).toEqual([{ status: 'rejected', reason: failure }, { status: 'rejected', reason: failure }]);
+    fail = false;
+    await readGrindingPlanningBoardLoadSummary(params);
+    expect(aggregateCalls()).toBe(2);
+  });
+
+  it('does not retain results when the generation changes during SQL', async () => {
+    const { params, readGenerationToken, aggregateCalls } = setup();
+    readGenerationToken.mockResolvedValueOnce('generation-2');
+    await expect(readGrindingPlanningBoardLoadSummary(params)).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_SNAPSHOT' });
+    await readGrindingPlanningBoardLoadSummary(params);
+    expect(aggregateCalls()).toBe(2);
+  });
+
+  it('recomputes a completed aggregate after its fixed lifetime', async () => {
+    const { params, aggregateCalls } = setup();
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+    try {
+      await readGrindingPlanningBoardLoadSummary(params);
+      now.mockReturnValue(1_000_000 + 10 * 60 * 1000);
+      await readGrindingPlanningBoardLoadSummary(params);
+      expect(aggregateCalls()).toBe(1);
+      now.mockReturnValue(1_000_000 + 10 * 60 * 1000 + 1);
+      await readGrindingPlanningBoardLoadSummary(params);
+      expect(aggregateCalls()).toBe(2);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it('keeps a newer in-flight aggregate when an older generation arrives late', async () => {
+    const { params, queryRaw, aggregates, readGenerationToken, aggregateCalls } = setup();
+    readGenerationToken.mockResolvedValue('generation-2');
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    queryRaw.mockImplementation(async (sql: Prisma.Sql) => {
+      if (!sql.sql.includes('effectiveItems')) return [];
+      await gate;
+      return aggregates;
+    });
+    const newer = { ...params, cache: { ...params.cache, generationToken: 'generation-2' } };
+    const first = readGrindingPlanningBoardLoadSummary(newer);
+    const late = readGrindingPlanningBoardLoadSummary(params);
+    const second = readGrindingPlanningBoardLoadSummary(newer);
+    await vi.waitFor(() => expect(aggregateCalls()).toBe(2));
+    release?.();
+    await expect(late).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_SNAPSHOT' });
+    await Promise.all([first, second]);
+    expect(aggregateCalls()).toBe(2);
+  });
+
+  it('bounds retained entries', async () => {
+    const { params, aggregateCalls } = setup();
+    for (let site = 0; site < 129; site += 1) {
+      await readGrindingPlanningBoardLoadSummary({ ...params, siteKey: `site-${site}` });
+    }
+    await readGrindingPlanningBoardLoadSummary({ ...params, siteKey: 'site-0' });
+    expect(aggregateCalls()).toBe(130);
+  });
+});
