@@ -56,7 +56,8 @@ export class ProcedureMaterialService {
       group.push(material);
       byRecord.set(key, group);
     }
-    return [...new Set(recordIds)].flatMap(id => byRecord.get(id) ?? []).slice(0, options.limit);
+    return [...new Set(recordIds)].flatMap(id => byRecord.get(id) ?? []).slice(0, options.limit)
+      .map(material => material.kind === 'TEXT' ? material : { ...material, text: null });
   }
 
   async readFile(id: string) {
