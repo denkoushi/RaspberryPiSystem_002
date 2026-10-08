@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../../services/backup/backup-config.js';
+import { HermesSearchTrialService } from '../../services/assembly/hermes-search-trial.service.js';
 import { ProcedureMaterialService } from '../../services/assembly/procedure-material.service.js';
 import { getProcedureMaterialGmailIngestionService, type ProcedureMaterialGmailIngestionService } from '../../services/assembly/procedure-material-gmail-ingestion.service.js';
 
@@ -25,6 +26,7 @@ const pdfTextBackfillSchema = z.object({ dryRun: z.boolean().default(true), limi
 export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
   allowView: preHandlerHookHandler; allowWriteKiosk: preHandlerHookHandler;
   service?: ProcedureMaterialService;
+  semanticSearch?: Pick<HermesSearchTrialService, 'rank'>;
   gc?: ProcedureMaterialGcService;
   pdfText?: Pick<ProcedureMaterialPdfTextService, 'backfill'>;
   knowledge?: ProcedureMaterialKnowledgeService;
@@ -33,7 +35,20 @@ export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
   loadConfig?: () => Promise<BackupConfig>;
 }) {
   const service = options.service ?? new ProcedureMaterialService();
+  const semanticSearch = options.semanticSearch ?? new HermesSearchTrialService();
+  if (semanticSearch instanceof HermesSearchTrialService && !options.semanticSearch) app.addHook('onClose', async () => { semanticSearch.close(); });
   const path = '/assembly/procedure-materials';
+  app.post(`${path}/semantic-search`, { preHandler: options.allowView, config: { rateLimit: { max: 12, timeWindow: '1 minute' } } }, async (request) => {
+    const { q, state, limit } = z.object({
+      q: z.string().trim().min(1).max(200), state: z.enum(['unplaced', 'placed']),
+      limit: z.number().int().min(1).max(100).default(50),
+    }).strict().parse(request.body);
+    const allowedRecordIds = await service.listRankRecordIds(state);
+    if (!allowedRecordIds.length) return { available: true, mode: 'lexical', items: [] };
+    const ranked = await semanticSearch.rank('procedure_material', q, 100, allowedRecordIds);
+    if (!ranked.available) return { available: false, mode: 'unavailable', items: [] };
+    return { available: true, mode: ranked.mode, items: await service.listRanked(ranked.recordIds, { state, limit }) };
+  });
   const knowledge = options.knowledge ?? new ProcedureMaterialKnowledgeService();
   const workInstructions = options.workInstructions ?? new ProcedureMaterialWorkInstructionService();
   const thumbnails = new ProcedureMaterialThumbnailService();

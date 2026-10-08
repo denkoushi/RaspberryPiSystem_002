@@ -123,6 +123,11 @@ export interface GrindingPlanningBoardLoad {
   alternateUnknownItemCount: number;
 }
 
+export interface GrindingPlanningBoardLoadResponse {
+  load: GrindingPlanningBoardLoad[];
+  unknownRequiredMinutesCount: number;
+}
+
 export interface GrindingPlanningBoardResponse {
   siteKey: string;
   category: GrindingPlanningBoardCategory;
@@ -135,6 +140,7 @@ export interface GrindingPlanningBoardResponse {
   items: GrindingPlanningBoardItem[];
   load: GrindingPlanningBoardLoad[];
   unknownRequiredMinutesCount: number;
+  loadDeferred?: boolean;
   seibanProgress: Record<string, { completed: number; total: number }>;
   snapshotId: string;
   nextCursor: string | null;

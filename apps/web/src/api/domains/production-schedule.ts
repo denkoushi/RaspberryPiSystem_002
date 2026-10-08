@@ -9,6 +9,7 @@ import type {
   GrindingPlanningBoardCategory,
   GrindingPlanningBoardOverridesResponse,
   GrindingPlanningBoardResponse,
+  GrindingPlanningBoardLoadResponse,
   GrindingPlanningBoardView,
   GrindingPlanningBoardOverridesRequest,
   GrindingPlanningBoardRankRequest,
@@ -606,12 +607,20 @@ export async function getKioskGrindingPlanningBoard(params: KioskGrindingPlannin
     params: {
       category: params.category,
       view: params.view,
+      includeLoad: false,
       ...(params.fseibans && params.fseibans.length > 0 ? { fseibans: params.fseibans.join(',') } : {}),
       ...(params.cursor == null ? {} : { cursor: params.cursor }),
       ...(params.pageSize == null ? {} : { pageSize: params.pageSize }),
       ...(params.snapshotId == null ? {} : { snapshotId: params.snapshotId }),
       ...(params.completionFilter == null ? {} : { completionFilter: params.completionFilter })
     }
+  });
+  return data;
+}
+
+export async function getKioskGrindingPlanningBoardLoad(category: GrindingPlanningBoardCategory) {
+  const { data } = await api.get<GrindingPlanningBoardLoadResponse>('/kiosk/production-schedule/grinding-planning-board/load', {
+    params: { category }
   });
   return data;
 }

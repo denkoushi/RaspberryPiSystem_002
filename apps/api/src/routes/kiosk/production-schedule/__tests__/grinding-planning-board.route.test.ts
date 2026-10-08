@@ -4,6 +4,7 @@ import { ZodError } from 'zod';
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
+  getLoad: vi.fn(),
   updateOverrides: vi.fn(),
   updateRank: vi.fn(),
   updateResourceOrder: vi.fn(),
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../../../services/production-schedule/grinding-planning-board.service.js', () => ({
   getGrindingPlanningBoard: mocks.get,
+  getGrindingPlanningBoardLoad: mocks.getLoad,
   updateGrindingPlanningBoardOverrides: mocks.updateOverrides,
   updateGrindingPlanningBoardRank: mocks.updateRank,
   updateGrindingPlanningBoardResourceOrder: mocks.updateResourceOrder,
@@ -53,6 +55,50 @@ function createApp(requireClientDevice: (rawClientKey: unknown) => Promise<unkno
 describe('grinding planning board route scope', () => {
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it.each(['true', 'false'])('parses includeLoad=%s without boolean coercion', async (includeLoad) => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    mocks.get.mockResolvedValue({ load: [], unknownRequiredMinutesCount: 0 });
+    try {
+      const response = await app.inject({ method: 'GET', url: `/kiosk/production-schedule/grinding-planning-board?includeLoad=${includeLoad}` });
+      expect(response.statusCode).toBe(200);
+      expect(mocks.get).toHaveBeenCalledWith(expect.objectContaining({ siteKey: 'site-a', includeLoad: includeLoad === 'true' }));
+    } finally { await app.close(); }
+  });
+
+  it('includes load by default for legacy requests', async () => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    try {
+      await app.inject({ method: 'GET', url: '/kiosk/production-schedule/grinding-planning-board' });
+      expect(mocks.get).toHaveBeenCalledWith(expect.objectContaining({ includeLoad: true }));
+    } finally { await app.close(); }
+  });
+
+  it('uses the authenticated site for load and validates its category', async () => {
+    const requireClientDevice = vi.fn(async () => ({ id: 'device-1' }));
+    const summary = { load: [], unknownRequiredMinutesCount: 2 };
+    mocks.getLoad.mockResolvedValue(summary);
+    const app = await createApp(requireClientDevice);
+    try {
+      const response = await app.inject({ method: 'GET', url: '/kiosk/production-schedule/grinding-planning-board/load?category=cutting&siteKey=foreign-site', headers: { 'x-client-key': 'key-1' } });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual(summary);
+      expect(requireClientDevice).toHaveBeenCalledWith('key-1');
+      expect(mocks.getLoad).toHaveBeenCalledWith({ siteKey: 'site-a', category: 'cutting' });
+      const invalid = await app.inject({ method: 'GET', url: '/kiosk/production-schedule/grinding-planning-board/load?category=invalid' });
+      expect(invalid.statusCode).toBe(400);
+      expect(mocks.getLoad).toHaveBeenCalledTimes(1);
+    } finally { await app.close(); }
+  });
+
+  it('authenticates load before accessing its service', async () => {
+    const app = await createApp(async () => { throw Object.assign(new Error('client key required'), { statusCode: 401 }); });
+    try {
+      const response = await app.inject({ method: 'GET', url: '/kiosk/production-schedule/grinding-planning-board/load' });
+      expect(response.statusCode).toBe(401);
+      expect(mocks.getLoad).not.toHaveBeenCalled();
+    } finally { await app.close(); }
   });
 
   it('rejects a missing client key before calling the board service', async () => {

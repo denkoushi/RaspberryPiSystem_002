@@ -1,22 +1,24 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   useKioskGrindingPlanningBoardProgressive,
+  useKioskGrindingPlanningBoardLoad,
   useUpdateKioskGrindingPlanningBoardSeibanOrder
 } from './production-schedule';
 
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResponse } from '@raspi-system/shared-types';
 import type { ReactNode } from 'react';
 
-const mocks = vi.hoisted(() => ({ getBoard: vi.fn(), updateOrder: vi.fn() }));
+const mocks = vi.hoisted(() => ({ getBoard: vi.fn(), getLoad: vi.fn(), updateOrder: vi.fn() }));
 
 vi.mock('../../api/client', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/client')>();
   return {
     ...original,
     getKioskGrindingPlanningBoard: mocks.getBoard,
+    getKioskGrindingPlanningBoardLoad: mocks.getLoad,
     updateKioskGrindingPlanningBoardSeibanOrder: mocks.updateOrder
   };
 });
@@ -79,7 +81,36 @@ function wrapper(client = new QueryClient({ defaultOptions: { queries: { retry: 
 describe('useKioskGrindingPlanningBoardProgressive', () => {
   beforeEach(() => {
     mocks.getBoard.mockReset();
+    mocks.getLoad.mockReset();
     mocks.updateOrder.mockReset();
+  });
+
+  it('負荷未着でも一覧を表示し、refetchと書き込み後の無効化で負荷も取り直す', async () => {
+    let releaseLoad: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => { releaseLoad = resolve; });
+    mocks.getBoard.mockResolvedValue(response([item('1')], null, { loadDeferred: true }));
+    mocks.getLoad.mockImplementationOnce(async () => {
+      await gate;
+      return { load: [], unknownRequiredMinutesCount: 1 };
+    }).mockResolvedValue({ load: [], unknownRequiredMinutesCount: 2 });
+    mocks.updateOrder.mockResolvedValue({ sourceRevision: 'revision-2', seibanOrder: ['26-1041'] });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const hook = renderHook(() => ({
+      board: useKioskGrindingPlanningBoardProgressive({ category: 'grinding', view: 'seiban' }),
+      load: useKioskGrindingPlanningBoardLoad('grinding'),
+      mutation: useUpdateKioskGrindingPlanningBoardSeibanOrder()
+    }), { wrapper: wrapper(client) });
+    await waitFor(() => expect(hook.result.current.board.scopeReady).toBe(true));
+    expect(hook.result.current.board.data?.items).toHaveLength(1);
+    expect(hook.result.current.load.data).toBeUndefined();
+    await act(async () => { releaseLoad?.(); });
+    await waitFor(() => expect(hook.result.current.load.data?.unknownRequiredMinutesCount).toBe(1));
+    await act(async () => { await hook.result.current.board.refetch(); });
+    await waitFor(() => expect(hook.result.current.load.data?.unknownRequiredMinutesCount).toBe(2));
+    const beforeMutation = mocks.getLoad.mock.calls.length;
+    await act(async () => { await hook.result.current.mutation.mutateAsync({ sourceRevision: 'revision-1', fseibans: ['26-1041'] }); });
+    await waitFor(() => expect(mocks.getLoad.mock.calls.length).toBeGreaterThan(beforeMutation));
+    expect(mocks.getLoad).toHaveBeenCalledWith('grinding');
   });
 
   it('初回ページを先にreadyにし、続き400件を順次追加する', async () => {

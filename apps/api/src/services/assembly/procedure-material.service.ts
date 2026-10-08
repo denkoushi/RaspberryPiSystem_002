@@ -48,6 +48,40 @@ export class ProcedureMaterialService {
       partName: partNames.get(partNumberFor(material) ?? '') ?? null }));
   }
 
+  async listRankRecordIds(state: 'unplaced' | 'placed') {
+    const materials = await this.db.procedureMaterial.findMany({
+      where: { discardedAt: null, ...(state === 'unplaced' ? { documentId: null, placedAt: null }
+        : { OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] }) },
+      select: { id: true, gmailMessageId: true },
+      orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+    });
+    return [...new Set(materials.map(row => row.gmailMessageId === null ? `material:${row.id}` : `mail:${row.gmailMessageId}`))];
+  }
+
+  async listRanked(recordIds: string[], options: { state: 'unplaced' | 'placed'; limit: number }) {
+    const mailIds = recordIds.filter(id => id.startsWith('mail:')).map(id => id.slice(5));
+    const materialIds = recordIds.filter(id => id.startsWith('material:')).map(id => id.slice(9));
+    if (!mailIds.length && !materialIds.length) return [];
+    const state = options.state === 'unplaced'
+      ? { documentId: null, placedAt: null }
+      : { OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] };
+    const materials = await this.db.procedureMaterial.findMany({
+      where: { discardedAt: null, AND: [state, { OR: [
+        { gmailMessageId: { in: mailIds } }, { id: { in: materialIds }, gmailMessageId: null },
+      ] }] },
+      orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+    });
+    const byRecord = new Map<string, typeof materials>();
+    for (const material of materials) {
+      const key = material.gmailMessageId === null ? `material:${material.id}` : `mail:${material.gmailMessageId}`;
+      const group = byRecord.get(key) ?? [];
+      group.push(material);
+      byRecord.set(key, group);
+    }
+    return [...new Set(recordIds)].flatMap(id => byRecord.get(id) ?? []).slice(0, options.limit)
+      .map(material => material.kind === 'TEXT' ? material : { ...material, text: null });
+  }
+
   async readFile(id: string) {
     const material = await this.db.procedureMaterial.findUnique({ where: { id } });
     if (!material || material.kind !== 'PHOTO' || !material.storageKey) throw new ApiError(404, '写真がありません');
