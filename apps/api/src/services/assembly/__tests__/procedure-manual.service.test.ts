@@ -19,7 +19,7 @@ function document(id = rootId) {
 function assignment(id: string, assemblyProcedureDocumentId: string | null = rootId, sortOrder = 0) {
   return {
     id, modelCode: 'ｄｆｄ１', modelCodeKey: 'DFD1', processId: 'assembly', sortOrder,
-    label: null, assemblyProcedureDocumentId, kioskDocumentId: null, kioskDocument: null
+    process: { name: '組立' }, label: null, assemblyProcedureDocumentId, kioskDocumentId: null, kioskDocument: null
   };
 }
 
@@ -107,7 +107,7 @@ describe('procedure-manual service', () => {
     expect(result.processes.map(p => [p.processId, p.count])).toEqual([['assembly', 6], ['empty', 0]]);
     expect(result.processes[1].items).toEqual([]);
     const items = result.processes[0].items;
-    expect(items[0]).toEqual({ assignmentId: 'revision', sortOrder: 0, label: null, kind: 'assembly_procedure_document', documentId: 'v2', title: '公開手順', status: 'published', publishedRevisionNumber: 2,
+    expect(items[0]).toEqual({ otherAssignments: [], assignmentId: 'revision', sortOrder: 0, label: null, kind: 'assembly_procedure_document', documentId: 'v2', title: '公開手順', status: 'published', publishedRevisionNumber: 2,
       approval: null, draftRevision: { documentId: 'v3', revisionNumber: 3, editLease: { holderLabel: '佐藤', acquiredAt: now.toISOString() } }, unavailableReason: null, pageCount: 1, thumbnailPageUrl: document().imageRelativePath });
     expect(items[1]).toMatchObject({ status: 'draft', publishedRevisionNumber: null, draftRevision: null, documentId: 'draft-root' });
     expect(items[2]).toMatchObject({ title: '公開手順', status: 'unavailable', unavailableReason: 'no_published_revision', pageCount: null, thumbnailPageUrl: null });
@@ -170,6 +170,28 @@ describe('procedure-manual service', () => {
     const query = vi.spyOn(prisma.assemblyProcedureDocument, 'findMany');
     expect(await new ProcedureManualService().getModelOverview('new')).toEqual({ modelCode: 'NEW', modelCodeKey: 'NEW', processes: [{ processId: 'assembly', count: 0, items: [] }] });
     expect(query).not.toHaveBeenCalled();
+  });
+
+  it('batches other assignments by the exact assembly or PDF reference and excludes only the current row', async () => {
+    const rows = [assignment('here'), { ...assignment('here-pdf', null), kioskDocumentId: pdfId }];
+    vi.spyOn(prisma.procedureManualProcess, 'findMany').mockResolvedValue([{ id: 'assembly', parentId: 'parent' }] as never);
+    const query = vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValueOnce(rows as never).mockResolvedValue([
+      ...rows,
+      { ...assignment('same-model-other-process'), processId: 'inspection', process: { name: '検査' } },
+      { ...assignment('other-model'), modelCode: 'DFD2', modelCodeKey: 'DFD2' },
+      { ...assignment('pdf-other', null), kioskDocumentId: pdfId, modelCode: 'DFD3', modelCodeKey: 'DFD3' }
+    ] as never);
+    vi.spyOn(prisma.assemblyProcedureDocument, 'findMany').mockResolvedValue([document()] as never);
+    const items = (await new ProcedureManualService().getModelOverview('DFD1')).processes[0].items;
+    expect(items[0].otherAssignments).toEqual([
+      { modelCode: 'ｄｆｄ１', modelCodeKey: 'DFD1', processId: 'inspection', processName: '検査' },
+      { modelCode: 'DFD2', modelCodeKey: 'DFD2', processId: 'assembly', processName: '組立' }
+    ]);
+    expect(items[1].otherAssignments).toEqual([{ modelCode: 'DFD3', modelCodeKey: 'DFD3', processId: 'assembly', processName: '組立' }]);
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query).toHaveBeenLastCalledWith(expect.objectContaining({ where: { OR: [
+      { assemblyProcedureDocumentId: { in: [rootId] } }, { kioskDocumentId: { in: [pdfId] } }
+    ] } }));
   });
 
   it('rejects empty normalized models, duplicate order values and invalid document choices before writing', async () => {

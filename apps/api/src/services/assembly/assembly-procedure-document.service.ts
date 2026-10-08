@@ -49,6 +49,7 @@ export type AssemblyProcedureDocumentRecord = Prisma.AssemblyProcedureDocumentGe
 export type AssemblyProcedureDocumentSummary = Omit<AssemblyProcedureDocumentRecord, 'overlayElements' | 'ownedAssets' | 'procedureVideoLinks'> & {
   activeTemplateCount: number;
   totalTemplateCount: number;
+  manualAssignments: { modelCode: string; modelCodeKey: string; processId: string; processName: string }[];
 };
 
 export type AssemblyProcedureDocumentReferenceUsage = {
@@ -134,6 +135,37 @@ export class AssemblyProcedureDocumentService {
     const documentIds = documents.map((document) => document.id);
     if (documentIds.length === 0) return [];
 
+    // Match getReferenceUsage: direct references always count, root references
+    // also belong to the latest active published revision (not a revision draft).
+    const rootIds = [...new Set(documents.flatMap(document => document.revisionMetadata ? [document.revisionMetadata.revisionRootId] : []))];
+    const [manualAssignments, publishedRevisions] = await Promise.all([
+      prisma.procedureManualAssignment.findMany({
+        where: { assemblyProcedureDocumentId: { in: [...new Set([...documentIds, ...rootIds])] } },
+        include: { process: { select: { name: true } } },
+        orderBy: [{ modelCodeKey: 'asc' }, { processId: 'asc' }, { sortOrder: 'asc' }]
+      }),
+      rootIds.length ? prisma.assemblyProcedureDocumentRevision.findMany({
+        where: { revisionRootId: { in: rootIds }, document: { status: 'PUBLISHED', isActive: true } },
+        orderBy: { revisionNumber: 'desc' },
+        select: { revisionRootId: true, documentId: true }
+      }) : Promise.resolve([])
+    ]);
+    const latestPublishedByRoot = new Map<string, string>();
+    for (const revision of publishedRevisions) {
+      if (!latestPublishedByRoot.has(revision.revisionRootId)) latestPublishedByRoot.set(revision.revisionRootId, revision.documentId);
+    }
+    const assignmentsByDocument = new Map<string, typeof manualAssignments>();
+    for (const assignment of manualAssignments) {
+      const directId = assignment.assemblyProcedureDocumentId!;
+      const ids = new Set([directId, latestPublishedByRoot.get(directId)]);
+      for (const id of ids) {
+        if (!id) continue;
+        const assignments = assignmentsByDocument.get(id) ?? [];
+        assignments.push(assignment);
+        assignmentsByDocument.set(id, assignments);
+      }
+    }
+
     const templateReferences = await prisma.assemblyTemplate.findMany({
       where: {
         OR: [
@@ -191,6 +223,10 @@ export class AssemblyProcedureDocumentService {
 
     return documents.map((document) => ({
       ...document,
+      manualAssignments: (assignmentsByDocument.get(document.id) ?? []).map(assignment => ({
+        modelCode: assignment.modelCode, modelCodeKey: assignment.modelCodeKey,
+        processId: assignment.processId, processName: assignment.process.name
+      })),
       activeTemplateCount: activeTemplateIdsByDocument.get(document.id)?.size ?? 0,
       totalTemplateCount: totalTemplateIdsByDocument.get(document.id)?.size ?? 0
     }));

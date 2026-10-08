@@ -60,7 +60,10 @@ export type AssemblyProcedureDocumentDto = {
   updatedAt: string;
 };
 
+export type ProcedureManualUsageDto = { modelCode: string; modelCodeKey: string; processId: string; processName: string };
+
 export type AssemblyProcedureDocumentSummaryDto = AssemblyProcedureDocumentDto & {
+  manualAssignments: ProcedureManualUsageDto[];
   activeTemplateCount: number;
   totalTemplateCount: number;
 };
@@ -714,6 +717,7 @@ export type ProcedureManualDetailDto = {
 };
 
 export type ProcedureManualOverviewItemDto = {
+  otherAssignments: ProcedureManualUsageDto[];
   assignmentId: string;
   sortOrder: number;
   label: string | null;

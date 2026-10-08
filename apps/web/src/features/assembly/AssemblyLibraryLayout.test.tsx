@@ -25,7 +25,7 @@ const document = {
   imageRelativePath: '/image.png', status: 'published' as const, publishedAt: '2026-07-14T00:00:00.000Z',
   isActive: true, revisionNumber: 2, pages: [{ pageIndex: 0, imageRelativePath: '/image.png' }],
   createdAt: '2026-07-14T00:00:00.000Z', updatedAt: '2026-07-14T01:00:00.000Z',
-  activeTemplateCount: 1, totalTemplateCount: 1
+  manualAssignments: [], activeTemplateCount: 1, totalTemplateCount: 1
 };
 const template = {
   id: 'template-1', modelCode: 'FH-VERY-LONG-MODEL-CODE-20A', procedurePattern: '手順7', name: '長い組立テンプレート名',
@@ -44,13 +44,16 @@ describe('assembly dense library', () => {
     renderProcedures();
     const table = screen.getByRole('table', { name: '手順書ライブラリ' });
     expect(within(table).getAllByRole('row')).toHaveLength(2);
-    expect(within(table).getAllByRole('columnheader').map(header => header.textContent)).toEqual(['サムネイル', '名前', '状態', '頁', 'テンプレ', '更新', '操作']);
+    expect(within(table).getAllByRole('columnheader').map(header => header.textContent)).toEqual(['サムネイル', '名前', '状態', '使用先', '頁', 'テンプレ', '更新', '操作']);
     expect(table.querySelector('thead')).toHaveClass('sr-only');
     expect(within(table).getByText(document.name).closest('tr')).toHaveClass('h-14');
     expect(within(table).getByText('公開 第2版')).toBeInTheDocument();
     for (const label of ['内容確認', '改版編集', 'テンプレート新規作成', '公開取消', '名前変更', '削除']) {
       const action = within(table).getByLabelText(label);
-      expect(action).toHaveAttribute('title', label === '削除' ? 'テンプレートで使用中のため削除できません' : label);
+      expect(action).not.toHaveAttribute('title');
+      fireEvent.pointerEnter(action.parentElement!);
+      expect(screen.getByRole('tooltip')).toHaveTextContent(label === '削除' ? 'テンプレートで使用中のため削除できません' : label);
+      fireEvent.pointerLeave(action.parentElement!);
       expect(action).toHaveClass('h-11', 'w-11');
       expect(action.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
       expect(action).toHaveTextContent('');
@@ -62,8 +65,8 @@ describe('assembly dense library', () => {
     fireEvent.click(screen.getByRole('button', { name: '下書き' }));
     expect(screen.getByRole('button', { name: '下書き' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByText(document.name)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '内容確認・公開' })).toHaveAttribute('title', '内容確認・公開');
-    expect(screen.getByRole('link', { name: '編集' })).toHaveAttribute('title', '編集');
+    expect(screen.getByRole('button', { name: '内容確認・公開' })).not.toHaveAttribute('title');
+    expect(screen.getByRole('link', { name: '編集' })).not.toHaveAttribute('title');
     expect(screen.getByRole('link', { name: 'テンプレート新規作成' })).toHaveAttribute('aria-disabled', 'true');
     expect(screen.queryByRole('button', { name: '公開取消' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '公開' }));
@@ -76,7 +79,7 @@ describe('assembly dense library', () => {
   });
 
   it('keeps delete reference guards and confirmation before unpublish/delete', async () => {
-    listDocuments.mockResolvedValueOnce([document, { ...document, id: 'unused', name: '未参照手順', totalTemplateCount: 0, activeTemplateCount: 0 }]);
+    listDocuments.mockResolvedValueOnce([document, { ...document, id: 'unused', name: '未参照手順', totalTemplateCount: 0, manualAssignments: [], activeTemplateCount: 0 }]);
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     render(<MemoryRouter><AssemblyProcedureLibrarySection onRegisterClick={vi.fn()} /></MemoryRouter>);
     const usedRow = (await screen.findByText(document.name)).closest('tr')!;
@@ -88,6 +91,46 @@ describe('assembly dense library', () => {
     expect(confirm).toHaveBeenCalledTimes(2);
     expect(deleteDocument).not.toHaveBeenCalled();
     expect(unpublishDocument).not.toHaveBeenCalled();
+  });
+
+  it('shows assignment chips, filters unused documents with a count, and reports filter changes', () => {
+    const onStatusFilterChange = vi.fn();
+    render(<MemoryRouter><AssemblyProcedureLibrarySection onRegisterClick={vi.fn()} onStatusFilterChange={onStatusFilterChange} previewDocuments={[
+      { ...document, manualAssignments: [
+        { modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', processName: '組立' },
+        { modelCode: 'DFD2', modelCodeKey: 'DFD2', processId: 'inspection', processName: '検査' }
+      ] },
+      { ...document, id: 'unused', name: '未参照手順' }
+    ]} /></MemoryRouter>);
+    expect(screen.getByText(/DFD1/).parentElement).toHaveTextContent('DFD1 · 組立');
+    expect(screen.getByText('+1')).toBeInTheDocument();
+    expect(screen.getByText('未使用', { selector: 'span' })).toHaveClass('border-dashed', 'border-amber-400');
+    fireEvent.click(screen.getByRole('button', { name: '未使用 1' }));
+    expect(onStatusFilterChange).toHaveBeenCalledWith('unused');
+    expect(screen.queryByText(document.name)).not.toBeInTheDocument();
+    expect(screen.getByText('未参照手順')).toBeInTheDocument();
+  });
+
+  it('disables deletion for manual assignments even without template references', async () => {
+    listDocuments.mockResolvedValueOnce([{ ...document, totalTemplateCount: 0, manualAssignments: [
+      { modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', processName: '組立' }
+    ] }]);
+    render(<MemoryRouter><AssemblyProcedureLibrarySection onRegisterClick={vi.fn()} /></MemoryRouter>);
+    const row = (await screen.findByText(document.name)).closest('tr')!;
+    const button = within(row).getByRole('button', { name: '削除' });
+    expect(button).toBeDisabled(); expect(button).not.toHaveAttribute('title');
+    fireEvent.pointerEnter(button.parentElement!);
+    expect(screen.getByRole('tooltip')).toHaveTextContent('使用中は削除できません');
+    fireEvent.click(button);
+    expect(deleteDocument).not.toHaveBeenCalled();
+  });
+
+  it('restores the unused filter through initialStatusFilter', () => {
+    render(<MemoryRouter><AssemblyProcedureLibrarySection onRegisterClick={vi.fn()} initialStatusFilter="unused" previewDocuments={[
+      document, { ...document, id: 'used', name: '使用中', manualAssignments: [{ modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', processName: '組立' }] }
+    ]} /></MemoryRouter>);
+    expect(screen.getByRole('button', { name: '未使用 1' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByText('使用中')).not.toBeInTheDocument();
   });
 
   it('renders one template table with symbol labels, history/retire handlers and inactive guards', () => {

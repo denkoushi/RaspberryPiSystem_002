@@ -145,7 +145,7 @@ describe('KioskAssemblyPage thumbnail references', () => {
     const documents: AssemblyProcedureDocumentSummaryDto[] = Array.from({ length: PROTECTED_IMAGE_BLOB_CACHE_MAX_ENTRIES + 1 }, (_, index) => ({
       id: `doc-${index}`, name: `手順書${index}`, imageRelativePath: `/image-${index}.png`,
       status: 'published', isActive: true, pages: [{ pageIndex: 0, imageRelativePath: `/image-${index}.png` }],
-      activeTemplateCount: 0, totalTemplateCount: 0, createdAt: '2026-10-06T00:00:00.000Z', updatedAt: '2026-10-06T00:00:00.000Z'
+      manualAssignments: [], activeTemplateCount: 0, totalTemplateCount: 0, createdAt: '2026-10-06T00:00:00.000Z', updatedAt: '2026-10-06T00:00:00.000Z'
     }));
     listDocuments.mockResolvedValueOnce(documents);
     const apiGet = vi.spyOn(api, 'get').mockImplementation(async () => ({ data: new Blob(['image']) }) as never);

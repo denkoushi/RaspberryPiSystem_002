@@ -85,6 +85,22 @@ export class ProcedureManualService {
       })
     ]);
     const rootIds = [...new Set(rows.flatMap(row => row.assemblyProcedureDocumentId ? [row.assemblyProcedureDocumentId] : []))];
+    const pdfIds = [...new Set(rows.flatMap(row => row.kioskDocumentId ? [row.kioskDocumentId] : []))];
+    const relatedAssignments = rows.length ? await prisma.procedureManualAssignment.findMany({
+      where: { OR: [
+        { assemblyProcedureDocumentId: { in: rootIds } },
+        { kioskDocumentId: { in: pdfIds } }
+      ] },
+      include: { process: { select: { name: true } } },
+      orderBy: [{ modelCodeKey: 'asc' }, { processId: 'asc' }, { sortOrder: 'asc' }]
+    }) : [];
+    const assignmentsByDocument = new Map<string, typeof relatedAssignments>();
+    for (const assignment of relatedAssignments) {
+      const key = assignment.assemblyProcedureDocumentId ? `assembly:${assignment.assemblyProcedureDocumentId}` : `kiosk:${assignment.kioskDocumentId}`;
+      const assignments = assignmentsByDocument.get(key) ?? [];
+      assignments.push(assignment);
+      assignmentsByDocument.set(key, assignments);
+    }
     const documents = rootIds.length ? await prisma.assemblyProcedureDocument.findMany({
       where: { OR: [{ id: { in: rootIds } }, { revisionMetadata: { is: { revisionRootId: { in: rootIds } } } }] },
       include: { revisionMetadata: true, editLease: true, pages: { orderBy: { pageIndex: 'asc' } }, procedureManualApprovals: procedureManualApprovalInclude }
@@ -111,6 +127,10 @@ export class ProcedureManualService {
       const isPdf = Boolean(row.kioskDocumentId);
       const available = isPdf ? Boolean(pdf?.enabled) : Boolean(display);
       return {
+        otherAssignments: (assignmentsByDocument.get(row.assemblyProcedureDocumentId ? `assembly:${row.assemblyProcedureDocumentId}` : `kiosk:${row.kioskDocumentId}`) ?? [])
+          .filter(assignment => assignment.id !== row.id)
+          .map(assignment => ({ modelCode: assignment.modelCode, modelCodeKey: assignment.modelCodeKey,
+            processId: assignment.processId, processName: assignment.process.name })),
         assignmentId: row.id, sortOrder: row.sortOrder, label: row.label,
         kind: isPdf ? 'kiosk_document' as const : 'assembly_procedure_document' as const,
         documentId: isPdf ? row.kioskDocumentId! : display?.id ?? row.assemblyProcedureDocumentId!,
