@@ -98,18 +98,19 @@ export function parseAssemblyProcedureOrderSettingsSearch(search: string): { mac
 export const KIOSK_ASSEMBLY_MANUALS_PATH = `${KIOSK_ASSEMBLY_PATH_PREFIX}/manuals`;
 export const KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH = `${KIOSK_ASSEMBLY_MANUALS_PATH}/workshop`;
 
-function manualsPath(path: string, params?: { model?: string | null; process?: string | null }): string {
+function manualsPath(path: string, params?: { model?: string | null; part?: string | null; process?: string | null }): string {
   const query = new URLSearchParams();
   if (params?.model?.trim()) query.set('model', params.model.trim());
+  if (params?.part?.trim()) query.set('part', params.part.trim());
   if (params?.process?.trim()) query.set('process', params.process.trim());
   const suffix = query.toString();
   return suffix ? `${path}?${suffix}` : path;
 }
 
-export function kioskAssemblyManualsPath(params?: { model?: string | null; process?: string | null }): string {
+export function kioskAssemblyManualsPath(params?: { model?: string | null; part?: string | null; process?: string | null }): string {
   return manualsPath(KIOSK_ASSEMBLY_MANUALS_PATH, params);
 }
 
-export function kioskAssemblyManualsWorkshopPath(params?: { model?: string | null; process?: string | null }): string {
+export function kioskAssemblyManualsWorkshopPath(params?: { model?: string | null; part?: string | null; process?: string | null }): string {
   return manualsPath(KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH, params);
 }

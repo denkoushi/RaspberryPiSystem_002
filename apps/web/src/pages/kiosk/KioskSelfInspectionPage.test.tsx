@@ -7,6 +7,7 @@ import { HermesPageContextProvider, useHermesPageContext } from '../../component
 import { KioskSelfInspectionPage } from './KioskSelfInspectionPage';
 
 import type { ProductionScheduleRow } from '../../api/client';
+import type { AssemblyProcedureSequenceDto } from '../../features/assembly/types';
 import type { SelfInspectionSessionSummaryDto } from '../../features/part-measurement/types';
 import type { NfcEvent } from '../../hooks/useNfcStream';
 import type { ReactNode } from 'react';
@@ -15,6 +16,7 @@ const mockUseKioskProductionSchedule = vi.fn();
 const mockUseKioskProductionScheduleResources = vi.fn();
 const mockUseSelfInspectionSessions = vi.fn();
 const mockUseSelfInspectionNonconformities = vi.fn();
+const mockUseProcedureManualsByPart = vi.fn();
 const mockUseWorkInstructionGroups = vi.fn();
 const mockUseWorkInstructionGroup = vi.fn();
 const mockIssueSelfInspectionPaperReport = vi.fn();
@@ -34,6 +36,7 @@ vi.mock('../../api/hooks', () => ({
   useKioskProductionScheduleResources: (...args: unknown[]) => mockUseKioskProductionScheduleResources(...args),
   useSelfInspectionSessions: (...args: unknown[]) => mockUseSelfInspectionSessions(...args),
   useSelfInspectionNonconformities: (...args: unknown[]) => mockUseSelfInspectionNonconformities(...args),
+  useProcedureManualsByPart: (...args: unknown[]) => mockUseProcedureManualsByPart(...args),
   useWorkInstructionGroups: (...args: unknown[]) => mockUseWorkInstructionGroups(...args),
   useWorkInstructionGroup: (...args: unknown[]) => mockUseWorkInstructionGroup(...args),
   useInvalidateSelfInspectionItem: () => ({
@@ -49,6 +52,8 @@ vi.mock('../../api/client', () => ({
   getWorkInstructionPartAlias: (...args: unknown[]) => mockGetWorkInstructionPartAlias(...args),
   putWorkInstructionPartAlias: (...args: unknown[]) => mockPutWorkInstructionPartAlias(...args)
 }));
+
+vi.mock('../../features/assembly/AssemblyProcedureSequenceViewer', () => ({ AssemblyProcedureSequenceViewer: ({ sequence }: { sequence: AssemblyProcedureSequenceDto }) => <div data-testid="manual-viewer">{sequence.documents.map(document => <span key={document.orderItemId}>{document.title}</span>)}</div> }));
 
 vi.mock('../../hooks/useNfcStream', () => ({
   useNfcStream: (enabled: boolean) => {
@@ -185,6 +190,8 @@ async function scanPartHidText(text: string) {
 
 describe('KioskSelfInspectionPage HID scan workflow', () => {
   beforeEach(() => {
+    mockUseProcedureManualsByPart.mockReset();
+    mockUseProcedureManualsByPart.mockReturnValue({ data: { processes: [] }, isSuccess: true, isFetching: false, isError: false });
     scheduleRows = [];
     wipSessions = [];
     reviewPendingSessions = [];
@@ -370,6 +377,44 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
         })
       );
     });
+  });
+
+  it('unions manual chips, shows counts and switches the existing viewer between sources', async () => {
+    mockUseProcedureManualsByPart.mockImplementation(part => ({ data: { processes: part ? [
+      { processId: 'grinding', processName: '研削', sequence: { documents: [{ orderItemId: 'manual1', title: '公開手順書' }] } },
+      { processId: 'cutting', processName: '切削', sequence: { documents: [{ orderItemId: 'manual2', title: '切削手順書' }] } }
+    ] : [] }, isSuccess: true, isFetching: false }));
+    renderPage();
+    await scanPartHidText('MH001');
+    expect(screen.getByRole('button', { name: '研削' })).toHaveTextContent('2');
+    expect(screen.getByRole('button', { name: '切削' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '研削' }));
+    expect(screen.getByRole('tab', { name: '加工要領書' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('加工面を確認します。')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: '手順書' }));
+    expect(screen.getByTestId('manual-viewer')).toHaveTextContent('公開手順書');
+  });
+
+  it('opens manuals-only matches without alias fallback or source tabs', async () => {
+    mockUseWorkInstructionGroups.mockReturnValue({ data: [], isSuccess: true, isFetching: false, isLoading: false });
+    mockUseProcedureManualsByPart.mockImplementation(part => ({ data: { processes: part ? [{ processId: 'cutting', processName: '切削', sequence: { documents: [{ orderItemId: 'manual', title: '部品手順書' }] } }] : [] }, isSuccess: true, isFetching: false }));
+    renderPage();
+    await scanPartHidText('PART-1');
+    fireEvent.click(screen.getByRole('button', { name: '切削' }));
+    expect(screen.getByTestId('manual-viewer')).toHaveTextContent('部品手順書');
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(mockGetWorkInstructionPartAlias).not.toHaveBeenCalled();
+    expect(mockGetWorkInstructionPartCandidates).not.toHaveBeenCalled();
+  });
+
+  it('keeps original chips and shows a nearby manual lookup error', async () => {
+    mockUseProcedureManualsByPart.mockImplementation(part => ({ data: undefined, isSuccess: !part, isError: Boolean(part), isFetching: false }));
+    renderPage();
+    await scanPartHidText('MH001');
+    expect(screen.getByRole('button', { name: '研削' })).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('手順書を取得できませんでした。');
+    fireEvent.click(screen.getByRole('button', { name: '研削' }));
+    expect(screen.getByText('加工面を確認します。')).toBeInTheDocument();
   });
 
   it('registers scanned FHINCD, updates it, and clears it on clear and navigation', async () => {

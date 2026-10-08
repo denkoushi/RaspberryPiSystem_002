@@ -12,6 +12,10 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Progress
 
+- [x] (2026-10-08) 部品単位の要領書をローカル実装: 切削・研削の `subjectKind=PART`、手書きSQL、工程別キー正規化、公開文書だけの by-part API、両画面の部品候補・初回品番・一回スキャン・`part=`リンク、自主検査のチップ統合・件数・資料タブ・正式品番解決・取得失敗表示。PIN gateは維持。承認モック: `docs/design-previews/procedure-manuals-part-unit-mock.html`。
+- [x] (2026-10-08) 部品単位のfocused検証: API 50件（Prisma mock、DB不要）、Web 143件を対象単位で確認。API/Webのtscとpackage lint成功、修正後の対象lintも成功。Prismaは通常生成がcache権限で失敗し、既存engine指定の `generate --no-engine` で型を生成。取説画面は変更なし、source digestのみrefresh。Gitの状態変更・秘密ファイル参照・DB migrationは行っていない。
+- [ ] (2026-10-08) 部品単位のDB migration実適用、main統合、本番deploy、実機での読取・切替確認は未実施（今回の対象外）。
+
 - [x] (2026-10-08) 素材棚の検索を広げる(本文・品名・メモ・PDF チップ): (1) メール本文で探す(#1843、merge ee73ab8e、Pi5 run 20261008-074019-080a55 成功)。本文の言葉で、その本文の素材と同じメールで届いた写真が一致する。(2) 品名・メモで探す(#1861、merge 0e0651f4、Pi5 run 20261008-084039-a4101a 成功)。生産日程の品番→品名(FHINCD→FHINMEI)から品番を引き、その品番を持つ加工の写真の素材と、件名・ファイル名に品番が単語として入っている素材を一致させ、カードに品名を 1 行出す。「加工の写真」タブはメモでも一致し、メモだけで一致したグループは一致した手順の写真だけを出す。「PDF」チップにメールで届いた PDF のページ画像(ファイル名が `… pN.jpg`)を含める。検索語は NFKC にそろえ、2 文字未満では品名の逆引きをしない。逆引きは新しい順に上限 2000 件で、品名で一致した素材に出す品番は一致した中の 1 つ。DB の変更は無い。実 DB の統合テスト 8 件を足した(手元は pgvector 入りの Postgres が必要)。戻す先の main は 4f9dc05a。Pi 上の応答時間と実機確認は未実施。残り: PDF の文字の既存分への付け直し(#1847 の後追い適用)、「意味で探す」の有効化とボタン(裏側は #1846)。
 - [x] (2026-10-08) 素材棚の誤破棄と再発防止: 10/08 14:25 JST の 12 秒間に、未配置の素材 30 件が画面の「捨てる」1 回で捨てられた(削除は 0 件、総数 73 のまま)。利用者の指示で、その時刻に捨てられ文書にも置かれていない 30 件だけを `discardedAt = NULL` に戻した(件数が 30 でなければ中止する条件付き。結果は未配置 30 / 配置済み 42 / 捨てた 1、利用者が画面で確認)。原因は特定できていない。#1837 で選択が検索や絞り込みをまたいで残るようになり、見えていない選択まで捨てる対象だったことが有力。再発防止(#1856、merge 49127dc1、Pi5 run 20261008-071756-6afbb6 成功): 「捨てる」の対象を一覧に出ている選択だけにし、確認の件数もその数にした。表示外の選択は帯に「(表示外 N)」と出す。「捨てる」を主操作の隣から「選択を外す」の横へ移し標準の大きさにした。捨てた直後に「N 件を捨てました」と「元に戻す」を出す(次の選択、タブ切替、検索や絞り込みの変更、閉じるで消える)。検索語の反映待ちと読込中は捨てられない。閉じた束の中の選択は「束を全部選ぶ」の通常操作なので対象のまま。戻す先の main は 26e890c7。実機確認は未実施。
 - [x] (2026-10-08) 左ペインのテンキーを縦 1 列に、「見る」ダイアログの枠をページの形に: #1844 の実機確認の指摘 2 点を直した。(1) 左ペインのテンキーを 3 列(幅 200px)から縦 1 列(1〜9、0、⌫、幅 64px、キー高さ 48px)にし、機種候補の幅を約 215px から約 350px に広げた(`KioskDigitTenkey` に並び順を渡す `digits` を追加。「白紙から作る」ダイアログは 3 列のまま)。(2) `AssemblyProcedurePreviewDialog` の画像の枠が「列の幅いっぱい・高さ 62vh まで」の箱で、重ねた要素が箱全体を基準に置かれてページとずれていたため、枠を画像の大きさに合わせた(組立の手順書一覧から開く同じダイアログにも効く)。検証: web vitest 244 files / 1796 件、tsc、lint、kiosk-sop source-check 成功(取説は digest の更新のみ)。PR #1850(merge `06acd313`)。Pi5 配布 run `20261008-060423-19b573`(15:04→15:08 成功、api / web とも `06acd313`、health 200)。戻し先はイメージ `4bfe6945`。ブラウザでの見た目は配布前に確認していない。**実機確認済み**(2026-10-08、所有者が 1920×1080 のキオスクで OK: 機種名が 1 行に収まる、「見る」の表示がつぶれず欠けない)。
@@ -163,6 +167,12 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Evidence: `infrastructure/docker/docker-compose.server.yml` の API volumes と named volumes。今回の infrastructure 変更禁止により未修正。本番反映前に別依頼で永続マウントを追加する必要がある。
 
 ## Decision Log
+
+- Decision (2026-10-08): 組立・検査はMODEL（機種）、切削・研削はPART（部品）。工程にenum/default MODELを追加し、migrationと参照データで加工の子工程をPARTとする。割り当ての新しい列は追加せず、PARTでは既存 `modelCode/modelCodeKey` に品番/正規化キーを格納する（schema注記）。
+  Rationale: 工程が対象の種類を決めるため、既存の一意制約・文書参照・割り当てrouteを保った最小変更で済む。正規化はserviceに集約し、MODELの既存ルールを維持、PARTは加工要領書と同じNFKC/trim/uppercase関数を再利用。PUTも工程の種類で照合する。
+- Decision (2026-10-08): 新規read契約は `GET /assembly/procedure-manuals/by-part?partNumber=`（allowView）。`partNumber/partNumberKey` と、公開済みで利用可能な文書があるPART工程の `processId/processName/sequence` を返す。既存sequence serializerを使い、下書きは出さない。候補取得には機種一覧と同じ形の `/assembly/procedure-manuals/parts`（allowView、`parts: [{partNumber, partNumberKey}]`）も追加し、初版下書きの割り当て先品番だけを取得できるようにする。「見る」で非公開overviewを取る必要をなくす。
+- Decision (2026-10-08): 共有フィルタはPART工程で部品/品番表示、全てでは機種｜部品切替。候補はPART割り当て済みのキー＋未割り当て入力品番、検索/数字はcontains、一回スキャンで選択。種類変更はキーと検索をクリア。作成・割り当ても部品表記、混在一覧は機種・部品。リンクはMODELの `model=` を維持しPARTに `part=` を使う。PIN gateは変更しない。
+- Decision (2026-10-08): 自主検査は正式品番で両資料を取得し、従来の工程順でチップを統合。件数は原本1＋公開手順書の文書数、2件以上だけ表示。両資料がある場合だけ「加工要領書」（既定）/「手順書」のタブ、単独資料は直接表示。手順書だけの完全一致は別名/類似候補より先に成立させ、別名・類似のamber表示を維持。by-part失敗時は原本のチップを残し近くにエラー表示。モック `docs/design-previews/procedure-manuals-part-unit-mock.html` を参照し、DGX・deploy・インフラは変更しない。
 
 - Decision (2026-10-08): 「作る・直す」と「見る」は、機種と工程をそれぞれ単独で絞り込めるようにする(オーナー承認、モック `docs/design-previews/procedure-manual-view-and-process-filter-mock.html`)。工程ボタン(全て＋子工程)を左ペインの最上部に置き、親工程(組立・加工)は表示から省く。「作る・直す」の行の先頭に、編集操作のない「見る」を置く(重ねて開くダイアログ)。
   Rationale: 機種を先に決めないと要領書に届かず、検査や研削の担当者が自分の工程の要領書を横断して探せなかった。

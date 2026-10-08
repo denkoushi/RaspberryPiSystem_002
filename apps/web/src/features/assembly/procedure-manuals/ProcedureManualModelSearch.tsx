@@ -5,9 +5,9 @@ const keyClass = 'h-[52px] rounded-lg border border-[#344252] bg-[#1b222a] text-
 const columnKeyClass = 'h-12 rounded-lg border border-[#344252] bg-[#1b222a] text-2xl font-bold disabled:opacity-35';
 const COLUMN_DIGITS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'] as const;
 
-export function ProcedureManualModelTenkey({ value, onChange, column = false }: { value: string; onChange: (value: string) => void; column?: boolean }) {
-  if (column) return <KioskDigitTenkey value={value} onChange={onChange} showReset={false} showBackspace digits={COLUMN_DIGITS} ariaLabel="機種テンキー" className="mt-1.5 grid grid-cols-1 gap-1.5" keyClassName={`${columnKeyClass} text-[#eef3f6]`} resetClassName={`${columnKeyClass} text-[#9fadb9]`} />;
-  return <KioskDigitTenkey value={value} onChange={onChange} showReset={false} showBackspace ariaLabel="機種テンキー" className="mb-2 mt-1.5 grid grid-cols-3 gap-1.5" keyClassName={`${keyClass} text-[#eef3f6]`} resetClassName={`${keyClass} text-[#9fadb9]`} />;
+export function ProcedureManualModelTenkey({ value, onChange, column = false, ariaLabel = '機種テンキー' }: { value: string; onChange: (value: string) => void; column?: boolean; ariaLabel?: string }) {
+  if (column) return <KioskDigitTenkey value={value} onChange={onChange} showReset={false} showBackspace digits={COLUMN_DIGITS} ariaLabel={ariaLabel} className="mt-1.5 grid grid-cols-1 gap-1.5" keyClassName={`${columnKeyClass} text-[#eef3f6]`} resetClassName={`${columnKeyClass} text-[#9fadb9]`} />;
+  return <KioskDigitTenkey value={value} onChange={onChange} showReset={false} showBackspace ariaLabel={ariaLabel} className="mb-2 mt-1.5 grid grid-cols-3 gap-1.5" keyClassName={`${keyClass} text-[#eef3f6]`} resetClassName={`${keyClass} text-[#9fadb9]`} />;
 }
 
 export function ProcedureManualModelMatch({ code, search }: { code: string; search: string }) {

@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { ApiError } from '../../lib/errors.js';
 import { ProcedureManualService } from '../../services/assembly/procedure-manual.service.js';
 import type { AssemblyProcedureSequence } from '../../services/assembly/assembly-procedure-sequence.service.js';
-import { normalizeMachineNameForCompare } from '../../services/production-schedule/machine-name-compare.js';
 
 const paramsSchema = z.object({ modelCodeKey: z.string().min(1).max(200), processId: z.string().min(1).max(200) });
 const bodySchema = z.object({
@@ -25,6 +24,7 @@ export function registerProcedureManualRoutes(app: FastifyInstance, options: {
 }) {
   const service = options.service ?? new ProcedureManualService();
   app.get('/assembly/procedure-manuals/processes', { preHandler: options.allowView }, async () => ({ processes: await service.listProcesses() }));
+  app.get('/assembly/procedure-manuals/parts', { preHandler: options.allowView }, async () => ({ parts: await service.listParts() }));
   app.get('/assembly/procedure-manuals/models', { preHandler: options.allowView }, async () => ({ models: await service.listModels() }));
   app.get('/assembly/procedure-manuals/overview', { preHandler: options.allowView }, async (request) => {
     const query = paramsSchema.pick({ processId: true }).partial().extend({
@@ -36,6 +36,11 @@ export function registerProcedureManualRoutes(app: FastifyInstance, options: {
     const params = paramsSchema.pick({ modelCodeKey: true }).parse(request.params);
     return service.getModelOverview(params.modelCodeKey);
   });
+  app.get('/assembly/procedure-manuals/by-part', { preHandler: options.allowView }, async (request) => {
+    const { partNumber } = z.object({ partNumber: z.string().trim().min(1).max(200) }).parse(request.query);
+    const result = await service.getByPart(partNumber);
+    return { ...result, processes: result.processes.map(process => ({ ...process, sequence: options.serializeSequence(process.sequence) })) };
+  });
   const path = '/assembly/procedure-manuals/models/:modelCodeKey/processes/:processId';
   app.get(path, { preHandler: options.allowView }, async (request) => {
     const params = paramsSchema.parse(request.params);
@@ -45,9 +50,9 @@ export function registerProcedureManualRoutes(app: FastifyInstance, options: {
   app.put(path, { preHandler: options.allowWriteKiosk }, async (request) => {
     const params = paramsSchema.parse(request.params);
     const body = bodySchema.parse(request.body);
-    const key = normalizeMachineNameForCompare(body.modelCode).trim();
-    if (!key || key !== normalizeMachineNameForCompare(params.modelCodeKey).trim()) {
-      throw new ApiError(400, '型番が不正です');
+    const key = await service.normalizeSubjectKey(body.modelCode, params.processId);
+    if (!key || key !== await service.normalizeSubjectKey(params.modelCodeKey, params.processId)) {
+      throw new ApiError(400, '型番または品番が不正です');
     }
     await service.replaceAssignments(body.modelCode, params.processId, body.assignments);
     return { saved: true };

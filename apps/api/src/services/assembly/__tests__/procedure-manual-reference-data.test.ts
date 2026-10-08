@@ -31,8 +31,8 @@ describe('procedure-manual reference data', () => {
     await ensureProcedureManualProcesses(prisma);
     expect(rows).toEqual([
       { id: 'procedure-manual-machining', parentId: null, name: '加工', sortOrder: 2 },
-      { id: 'procedure-manual-machining-cutting', parentId: 'procedure-manual-machining', name: '切削', sortOrder: 0 },
-      { id: 'procedure-manual-machining-grinding', parentId: 'procedure-manual-machining', name: '研削', sortOrder: 1 },
+      { id: 'procedure-manual-machining-cutting', parentId: 'procedure-manual-machining', name: '切削', sortOrder: 0, subjectKind: 'PART' },
+      { id: 'procedure-manual-machining-grinding', parentId: 'procedure-manual-machining', name: '研削', sortOrder: 1, subjectKind: 'PART' },
     ]);
   });
 
@@ -54,7 +54,7 @@ describe('procedure-manual reference data', () => {
     await ensureProcedureManualProcesses(prisma);
     expect(rows).toEqual([
       ...existing,
-      { id: 'procedure-manual-machining-grinding', parentId: 'procedure-manual-machining', name: '研削', sortOrder: 1 },
+      { id: 'procedure-manual-machining-grinding', parentId: 'procedure-manual-machining', name: '研削', sortOrder: 1, subjectKind: 'PART' },
     ]);
   });
 });
