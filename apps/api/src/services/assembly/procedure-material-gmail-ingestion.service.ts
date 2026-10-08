@@ -18,6 +18,7 @@ import { escapeGmailQuotedSearchValue, extractEmail } from '../item-inventory/it
 import type { PdfPagesPort } from '../knowledge/pdf-pages.port.js';
 import { PdfPageCountError, PopplerPdfPagesAdapter } from '../knowledge/poppler-pdf-pages.adapter.js';
 import { materialMessageHeader, resolveProcedureMaterialGmailPacket, type ProcedureMaterialAttachmentClient, type ProcedureMaterialPhoto } from './procedure-material-gmail-packet-resolver.js';
+import { joinProcedureMaterialPdfText, normalizeProcedureMaterialPdfText, PROCEDURE_MATERIAL_MAX_PDF_PAGES } from './procedure-material-pdf-text.service.js';
 
 export type ProcedureMaterialGmailPort = ProcedureMaterialAttachmentClient & {
   searchMessagesAll: (query: string) => Promise<string[]>;
@@ -34,7 +35,6 @@ export type ProcedureMaterialCycleSummary = {
 };
 const RETRY_DELAY_MS = 5 * 60 * 1000;
 const BATCH_LIMIT = 20;
-const PROCEDURE_MATERIAL_MAX_PDF_PAGES = 25;
 
 export function buildProcedureMaterialGmailSearchQuery(config?: BackupConfig['procedureMaterialGmailIngest']): string {
   const tokens = config?.subjectTokens.filter((token) => (PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS as readonly string[]).includes(token)) ?? [];
@@ -162,9 +162,9 @@ export class ProcedureMaterialGmailIngestionService {
           }
         }
       };
-      const savePhoto = (photo: ProcedureMaterialPhoto, subjectHint = common.subjectHint) => saveFile(photo, {
+      const savePhoto = (photo: ProcedureMaterialPhoto, subjectHint = common.subjectHint, text: string | null = null) => saveFile(photo, {
         ...common, subjectHint, kind: 'PHOTO', gmailDedupeKey: photo.gmailDedupeKey, contentType: photo.contentType,
-        originalFileName: photo.filename, width: photo.width, height: photo.height,
+        originalFileName: photo.filename, width: photo.width, height: photo.height, text,
       });
       if (packet.text) await save({ ...common, kind: 'TEXT', text: packet.text, gmailDedupeKey: `${messageId}:body` });
       for (const photo of packet.photos) {
@@ -172,7 +172,7 @@ export class ProcedureMaterialGmailIngestionService {
         await savePhoto(photo);
       }
       for (const pdf of packet.pdfs) {
-        const photos: ProcedureMaterialPhoto[] = [];
+        const photos: Array<ProcedureMaterialPhoto & { pageNumber: number; text: string | null }> = [];
         try {
           // Consume all pages before saving so failures cannot leave a partial PDF import.
           for await (const page of this.pdfPages.extract(pdf.buffer)) {
@@ -183,6 +183,7 @@ export class ProcedureMaterialGmailIngestionService {
             // eslint-disable-next-line no-await-in-loop
             await sharp(page.jpeg).stats();
             photos.push({
+              pageNumber: page.pageNumber, text: normalizeProcedureMaterialPdfText(page.text),
               gmailDedupeKey: `${pdf.gmailDedupeKey}:p${page.pageNumber}`,
               filename: `${pdf.filename.replace(/\.[^.]+$/, '')} p${page.pageNumber}.jpg`,
               buffer: page.jpeg, sha256: createHash('sha256').update(page.jpeg).digest('hex'),
@@ -203,12 +204,12 @@ export class ProcedureMaterialGmailIngestionService {
         else {
           // eslint-disable-next-line no-await-in-loop
           await saveFile(pdf, { ...common, kind: 'PDF', gmailDedupeKey: pdf.gmailDedupeKey,
-            originalFileName: pdf.filename, contentType: 'application/pdf' });
+            originalFileName: pdf.filename, contentType: 'application/pdf', text: joinProcedureMaterialPdfText(photos) });
         }
         for (const [index, photo] of photos.entries()) {
           if (savedKeys.has(photo.gmailDedupeKey)) { result.duplicate++; continue; }
           // eslint-disable-next-line no-await-in-loop
-          await savePhoto(photo, common.subjectHint ? `${common.subjectHint} (p${index + 1}/${photos.length})` : null);
+          await savePhoto(photo, common.subjectHint ? `${common.subjectHint} (p${index + 1}/${photos.length})` : null, photo.text);
         }
       }
       for (const video of packet.videos) {
