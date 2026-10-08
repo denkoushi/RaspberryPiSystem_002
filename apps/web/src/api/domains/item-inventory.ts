@@ -5,7 +5,7 @@ function inventorySettingsHeaders(accessPassword?: string) {
 }
 
 export type InventoryTagKind = 'ITEM' | 'QUANTITY' | 'RESTOCK';
-export type InventoryPhoto = { id: string; photoIndex: number; photoUrl: string; originalFilename: string; sha256?: string };
+export type InventoryPhoto = { id: string; photoIndex: number; photoUrl: string; originalFilename: string };
 export type InventoryImportPhoto = { id: string; photoIndex: number; filename: string; photoUrl: string; sha256: string };
 type InventoryItemFields = {
   id: string;
@@ -340,6 +340,52 @@ export async function processInventoryTransaction(input: {
 }) {
   const { data } = await api.post<{ transaction: InventoryHistoryEntry; replayed?: boolean }>('/item-inventory/transactions', input);
   return data;
+}
+
+export async function processInventoryTouchTransaction(input: {
+  compartmentId: string;
+  quantity: number;
+  restock?: boolean;
+  expectedBeforeQuantity?: number;
+  idempotencyKey?: string;
+}) {
+  const { data } = await api.post<{ transaction: InventoryHistoryEntry; replayed: boolean }>('/item-inventory/touch-transactions', input);
+  return data;
+}
+
+export async function deleteInventoryDrawer(id: string, accessPassword?: string) {
+  const { data } = await api.delete<{ result: { id: string } }>(`/item-inventory/drawers/${id}`, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data.result;
+}
+
+export async function deleteInventoryShelf(id: string, accessPassword?: string) {
+  const { data } = await api.delete<{ result: { id: string } }>(`/item-inventory/shelves/${id}`, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data.result;
+}
+
+export async function deleteInventoryTag(id: string, accessPassword?: string) {
+  const { data } = await api.delete<{ result: { id: string } }>(`/item-inventory/tags/${id}`, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data.result;
+}
+
+export async function dismissInventoryImport(id: string, accessPassword?: string) {
+  const { data } = await api.post<{ result: { id: string; status: 'DISMISSED' } }>(`/item-inventory/imports/${id}/dismiss`, undefined, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data.result;
+}
+
+export async function restoreInventoryImport(id: string, accessPassword?: string) {
+  const { data } = await api.post<{ result: { id: string; status: 'PENDING' } }>(`/item-inventory/imports/${id}/restore`, undefined, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data.result;
 }
 
 export async function cancelInventoryTransaction(id: string, accessPassword?: string) {

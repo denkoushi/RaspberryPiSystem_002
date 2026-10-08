@@ -58,6 +58,17 @@ Run `20260926-112811-48762d` failed after 3 seconds. The PR for the next milesto
 
 Do not merge to `main` until a standard release run has finished. The next run must re-check CI for the new SHA and re-run `--print-plan`.
 
+## Updates (2026-10-08, API)
+
+API groundwork for the next kiosk screens; no screen calls the new endpoints yet.
+
+- `POST /item-inventory/touch-transactions` (kiosk client key, no PIN) moves stock for a drawer chosen by touch: `compartmentId`, `quantity`, optional `restock`, `expectedBeforeQuantity` and `idempotencyKey`. It shares the stock logic of the tag route and records `details.source = "touch"`. Errors: 409 `INVENTORY_INSUFFICIENT_STOCK`, 409 `INVENTORY_CONFLICT`.
+- Setup (PIN) can now delete: `DELETE /item-inventory/drawers/:id` (empty drawers only), `DELETE /item-inventory/shelves/:id` (shelves without drawers only), `DELETE /item-inventory/tags/:id` (quantity and restock tags only; an item tag returns 409).
+- A mailed candidate can be set aside with `POST /item-inventory/imports/:id/dismiss` and brought back with `.../restore` (PIN). Status `DISMISSED` is hidden from both pending lists, and a resend of the same mail or content does not bring it back. There is no list of dismissed candidates; the screen must offer the undo itself.
+- `InventoryCompartment.lastIssuedAt` replaces the per-request `groupBy` over all transactions in `GET /item-inventory/items`. It is set on every ISSUE and recomputed from the remaining ISSUE rows when one is cancelled. Migration `20261008130000` backfills it.
+- `GET /api/storage/photos/*` answers with `Cache-Control: private, max-age=86400`, so a kiosk does not re-download full-size photos on every visit.
+- Rollback note: the column and the enum value stay in the database. An API older than this change cannot read a candidate in status `DISMISSED`; restore such candidates before rolling back below this release.
+
 ## Updates (2026-09-28)
 
 - The kiosks are 21.5-inch 1920×1080 monitors and have a physical keyboard (Pi4 and Mac). Typing on the kiosk is acceptable; flows stay touch-first.

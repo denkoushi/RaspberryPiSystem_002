@@ -403,7 +403,7 @@ describe('ItemInventoryService safety boundaries', () => {
 
 function inventoryState(stockQuantity = 10) {
   const state = {
-    compartment: { id: 'compartment-1', inventoryItemId: 'item-1', stockQuantity },
+    compartment: { id: 'compartment-1', inventoryItemId: 'item-1', stockQuantity, lastIssuedAt: null as Date | null },
     tags: new Map([
       ['item-uid', { id: 'item-tag-1', uid: 'item-uid', kind: 'ITEM', compartmentId: 'compartment-1' }],
       ['quantity-uid', { id: 'quantity-tag-1', uid: 'quantity-uid', kind: 'QUANTITY', quantity: 2, compartmentId: null }],
@@ -420,20 +420,27 @@ function inventoryState(stockQuantity = 10) {
     },
     inventoryCompartment: {
       findUnique: vi.fn(async () => ({ ...state.compartment })),
-      update: vi.fn(async ({ data }: { data: { stockQuantity: number } }) => {
-        state.compartment.stockQuantity = data.stockQuantity;
+      update: vi.fn(async ({ data }: { data: { stockQuantity: number; lastIssuedAt?: Date | null } }) => {
+        Object.assign(state.compartment, data);
         return { ...state.compartment };
       }),
     },
     inventoryTransaction: {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) => state.transactions.find((entry) => entry.id === where.id) ?? null),
-      findFirst: vi.fn(async ({ where }: { where: { clientId?: string; idempotencyKey?: string; compartmentId?: string } }) => {
+      findFirst: vi.fn(async ({ where }: { where: { clientId?: string; idempotencyKey?: string; compartmentId?: string; action?: string; id?: { not: string }; reversedBy?: { is: null } } }) => {
         if (where.idempotencyKey) return state.transactions.find((entry) => entry.clientId === where.clientId && entry.idempotencyKey === where.idempotencyKey) ?? null;
-        if (where.compartmentId) return [...state.transactions].reverse().find((entry) => entry.compartmentId === where.compartmentId) ?? null;
+        if (where.compartmentId) return [...state.transactions].reverse().find((entry) => entry.compartmentId === where.compartmentId
+          && (!where.action || entry.action === where.action)
+          && (!where.id || entry.id !== where.id.not)
+          && (!where.reversedBy || !entry.reversedBy)) ?? null;
         return null;
       }),
       create: vi.fn(async ({ data }: { data: Record<string, any> }) => {
         const transaction = { id: `transaction-${state.transactions.length + 1}`, createdAt: new Date(), ...data, reversedBy: null };
+        if (data.reversalOfId) {
+          const original = state.transactions.find((entry) => entry.id === data.reversalOfId);
+          if (original) original.reversedBy = { id: transaction.id };
+        }
         state.transactions.push(transaction);
         return transaction;
       }),
@@ -456,6 +463,77 @@ describe('ItemInventoryService stock transactions', () => {
     expect(restock.transaction).toMatchObject({ delta: 2, beforeQuantity: 8, afterQuantity: 10, action: 'RESTOCK' });
     expect(state.compartment.stockQuantity).toBe(10);
     expect(state.transactions).toHaveLength(2);
+  });
+
+  it('uses the issue transaction time and preserves it on restock and correction', async () => {
+    const { state, tx, db } = inventoryState();
+    const service = new ItemInventoryService(db as never);
+    const issue = await service.processTransaction({ itemTagUid: 'item-uid', quantityTagUid: 'quantity-uid', restock: false });
+    expect(state.compartment.lastIssuedAt).toEqual(issue.transaction.createdAt);
+    expect(tx.inventoryCompartment.update).toHaveBeenCalledWith({ where: { id: 'compartment-1' }, data: { stockQuantity: 8, lastIssuedAt: issue.transaction.createdAt } });
+    expect(issue.transaction.details).toEqual({ itemTagUid: 'item-uid', quantityTagUid: 'quantity-uid', restockTagUid: null });
+    await service.processTransaction({ itemTagUid: 'item-uid', quantityTagUid: 'quantity-uid', restockTagUid: 'restock-uid', restock: true });
+    await service.correctStock('compartment-1', 12, {});
+    expect(state.compartment.lastIssuedAt).toEqual(issue.transaction.createdAt);
+  });
+
+  it('recomputes last issue on cancellation, excluding all cancelled issues', async () => {
+    const { state, tx, db } = inventoryState();
+    const service = new ItemInventoryService(db as never);
+    const input = { itemTagUid: 'item-uid', quantityTagUid: 'quantity-uid', restock: false, actor: { clientId: 'terminal-1' } };
+    const first = await service.processTransaction(input);
+    first.transaction.createdAt = new Date('2026-10-01T00:00:00Z');
+    const second = await service.processTransaction(input);
+    await service.cancelTransaction(second.transaction.id, input.actor);
+    expect(state.compartment.lastIssuedAt).toEqual(first.transaction.createdAt);
+    expect(tx.inventoryTransaction.findFirst).toHaveBeenLastCalledWith(expect.objectContaining({ where: { compartmentId: 'compartment-1', action: 'ISSUE', id: { not: second.transaction.id }, reversedBy: { is: null } } }));
+    const third = await service.processTransaction(input);
+    await service.cancelTransaction(third.transaction.id, input.actor);
+    expect(state.compartment.lastIssuedAt).toEqual(first.transaction.createdAt);
+  });
+
+  it('clears last issue when the only issue is cancelled and preserves it on restock cancellation', async () => {
+    const { state, db } = inventoryState();
+    const service = new ItemInventoryService(db as never);
+    const input = { compartmentId: 'compartment-1', quantity: 2, actor: { clientId: 'terminal-1' } };
+    const issue = await service.processTouchTransaction(input);
+    await service.cancelTransaction(issue.transaction.id, input.actor);
+    expect(state.compartment.lastIssuedAt).toBeNull();
+    const nextIssue = await service.processTouchTransaction(input);
+    const restock = await service.processTouchTransaction({ ...input, restock: true });
+    await service.cancelTransaction(restock.transaction.id, input.actor);
+    expect(state.compartment.lastIssuedAt).toEqual(nextIssue.transaction.createdAt);
+  });
+
+  it('processes touch issue and restock without looking up tags and replays before balance checks', async () => {
+    const { state, tx, db } = inventoryState();
+    const service = new ItemInventoryService(db as never);
+    const input = { compartmentId: 'compartment-1', quantity: 3, expectedBeforeQuantity: 10, idempotencyKey: 'touch-1', actor: { clientId: 'terminal-1' } };
+    const issue = await service.processTouchTransaction(input);
+    const replay = await service.processTouchTransaction(input);
+    expect(issue).toMatchObject({ replayed: false, transaction: { action: 'ISSUE', quantityTagId: null, delta: -3, beforeQuantity: 10, afterQuantity: 7, details: { source: 'touch' } } });
+    expect(state.compartment.lastIssuedAt).toEqual(issue.transaction.createdAt);
+    expect(replay).toEqual({ transaction: issue.transaction, replayed: true });
+    const restock = await service.processTouchTransaction({ compartmentId: input.compartmentId, quantity: 999999, restock: true });
+    expect(restock.transaction).toMatchObject({ action: 'RESTOCK', delta: 999999, beforeQuantity: 7, afterQuantity: 1000006, details: { source: 'touch' } });
+    expect(state.compartment.lastIssuedAt).toEqual(issue.transaction.createdAt);
+    expect(tx.inventoryNfcTag.findUnique).not.toHaveBeenCalled();
+    expect(state.transactions).toHaveLength(2);
+  });
+
+  it('rejects touch stock shortages and stale balances without mutation', async () => {
+    const { tx, db } = inventoryState(1);
+    const service = new ItemInventoryService(db as never);
+    await expect(service.processTouchTransaction({ compartmentId: 'compartment-1', quantity: 2 })).rejects.toThrow('在庫が不足しています');
+    await expect(service.processTouchTransaction({ compartmentId: 'compartment-1', quantity: 1, expectedBeforeQuantity: 0 })).rejects.toThrow('在庫が変わりました');
+    expect(tx.inventoryCompartment.update).not.toHaveBeenCalled();
+    expect(tx.inventoryTransaction.create).not.toHaveBeenCalled();
+  });
+
+  it.each([0, -1, 1.5, 1000000])('rejects invalid touch quantity %s', async (quantity) => {
+    const { tx, db } = inventoryState();
+    await expect(new ItemInventoryService(db as never).processTouchTransaction({ compartmentId: 'compartment-1', quantity })).rejects.toMatchObject({ statusCode: 400 });
+    expect(tx.inventoryCompartment.update).not.toHaveBeenCalled();
   });
 
   it('rejects insufficient stock without updating the balance or writing history', async () => {
@@ -658,8 +736,8 @@ describe('inventory item list order data', () => {
         findMany: vi.fn().mockResolvedValue([{
           id: 'item-1', itemCode: 'RI-1', name: 'A', model: null, usage: null, category: null, area: null, note: null, unit: null, photos: [],
           compartments: [
-            { id: 'c-1', stockQuantity: 1, drawer: { drawerNumber: 1, shelf: { area: 'X 北', shelfNumber: 1 } }, itemTag: null },
-            { id: 'c-2', stockQuantity: 2, drawer: { drawerNumber: 2, shelf: { area: 'X 北', shelfNumber: 1 } }, itemTag: null },
+            { id: 'c-1', stockQuantity: 1, lastIssuedAt: null, drawer: { drawerNumber: 1, shelf: { area: 'X 北', shelfNumber: 1 } }, itemTag: null },
+            { id: 'c-2', stockQuantity: 2, lastIssuedAt: new Date('2026-09-29T01:00:00Z'), drawer: { drawerNumber: 2, shelf: { area: 'X 北', shelfNumber: 1 } }, itemTag: null },
           ],
         }]),
       },
@@ -670,7 +748,7 @@ describe('inventory item list order data', () => {
     const [item] = await service.listItems();
 
     expect(item.compartments.map((compartment) => compartment.lastIssuedAt)).toEqual([null, '2026-09-29T01:00:00.000Z']);
-    expect(db.inventoryTransaction.groupBy.mock.calls[0][0].where.action).toBe('ISSUE');
+    expect(db.inventoryTransaction.groupBy).not.toHaveBeenCalled();
   });
 });
 
@@ -734,5 +812,110 @@ describe('inventory tool field values', () => {
 
     await expect(service.deleteToolFieldValue('usage', '上面')).rejects.toThrow('2件');
     expect(deleteMany).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('inventory item list photo projection', () => {
+  it('selects every photo column except sha256 and sourcePayloadId', async () => {
+    const photo = { id: 'photo', inventoryItemId: 'item', photoUrl: '/photos/p.jpg', originalFilename: 'p.jpg', photoIndex: 1, createdAt: new Date() };
+    const findMany = vi.fn().mockResolvedValue([{ id: 'item', photos: [photo], compartments: [] }]);
+    const service = new ItemInventoryService({ inventoryItem: { findMany } } as never);
+    const [item] = await service.listItems();
+    expect(item.photos).toEqual([photo]);
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ include: expect.objectContaining({ photos: {
+      orderBy: [{ photoIndex: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true, inventoryItemId: true, photoUrl: true, originalFilename: true, photoIndex: true, createdAt: true },
+    } }) }));
+  });
+});
+
+describe('ItemInventoryService setup deletion and candidate status', () => {
+  function setupDb() {
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      inventoryDrawer: { findUnique: vi.fn().mockResolvedValue({ id: 'd', _count: { compartments: 0 } }), delete: vi.fn() },
+      inventoryShelf: { findUnique: vi.fn().mockResolvedValue({ id: 's', _count: { drawers: 0 } }), delete: vi.fn() },
+      inventoryNfcTag: { findUnique: vi.fn().mockResolvedValue({ id: 't', kind: 'QUANTITY', compartmentId: null }), delete: vi.fn() },
+      inventoryImportPayload: { findUnique: vi.fn().mockResolvedValue({ id: 'p' }), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    };
+    const db = { $transaction: vi.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)) };
+    return { tx, service: new ItemInventoryService(db as never) };
+  }
+
+  it('deletes empty drawers and shelves only after locking and checking their children', async () => {
+    const { tx, service } = setupDb();
+    await expect(service.deleteDrawer('d')).resolves.toEqual({ id: 'd' });
+    await expect(service.deleteShelf('s')).resolves.toEqual({ id: 's' });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(tx.inventoryDrawer.findUnique).toHaveBeenCalledWith({ where: { id: 'd' }, include: { _count: { select: { compartments: true } } } });
+    expect(tx.inventoryShelf.findUnique).toHaveBeenCalledWith({ where: { id: 's' }, include: { _count: { select: { drawers: true } } } });
+    expect(tx.inventoryDrawer.delete).toHaveBeenCalledWith({ where: { id: 'd' } });
+    expect(tx.inventoryShelf.delete).toHaveBeenCalledWith({ where: { id: 's' } });
+  });
+
+  it('refuses nonempty drawers and shelves without deleting anything', async () => {
+    const { tx, service } = setupDb();
+    tx.inventoryDrawer.findUnique.mockResolvedValue({ id: 'd', _count: { compartments: 1 } });
+    tx.inventoryShelf.findUnique.mockResolvedValue({ id: 's', _count: { drawers: 1 } });
+    await expect(service.deleteDrawer('d')).rejects.toThrow('品物が入っている');
+    await expect(service.deleteShelf('s')).rejects.toThrow('引き出しがある');
+    expect(tx.inventoryDrawer.delete).not.toHaveBeenCalled();
+    expect(tx.inventoryShelf.delete).not.toHaveBeenCalled();
+  });
+
+  it.each(['QUANTITY', 'RESTOCK'])('deletes a %s tag', async (kind) => {
+    const { tx, service } = setupDb();
+    tx.inventoryNfcTag.findUnique.mockResolvedValue({ id: 't', kind, compartmentId: null });
+    await expect(service.deleteTag('t')).resolves.toEqual({ id: 't' });
+    expect(tx.inventoryNfcTag.delete).toHaveBeenCalledWith({ where: { id: 't' } });
+  });
+
+  it('refuses even an unbound ITEM tag', async () => {
+    const { tx, service } = setupDb();
+    tx.inventoryNfcTag.findUnique.mockResolvedValue({ id: 't', kind: 'ITEM', compartmentId: null });
+    await expect(service.deleteTag('t')).rejects.toThrow('タグ交換');
+    expect(tx.inventoryNfcTag.delete).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 for missing setup targets', async () => {
+    const { tx, service } = setupDb();
+    tx.inventoryDrawer.findUnique.mockResolvedValue(null as never);
+    tx.inventoryShelf.findUnique.mockResolvedValue(null as never);
+    tx.inventoryNfcTag.findUnique.mockResolvedValue(null as never);
+    tx.inventoryImportPayload.findUnique.mockResolvedValue(null as never);
+    for (const result of [service.deleteDrawer('d'), service.deleteShelf('s'), service.deleteTag('t'), service.dismissImport('p'), service.restoreImport('p')]) {
+      await expect(result).rejects.toMatchObject({ statusCode: 404 });
+    }
+  });
+
+  it('dismisses and restores only the expected current status', async () => {
+    let status = 'PENDING';
+    const { tx, service } = setupDb();
+    tx.inventoryImportPayload.updateMany.mockImplementation(async (input: any) => {
+      if (input.where.status !== status) return { count: 0 };
+      status = input.data.status;
+      return { count: 1 };
+    });
+    await expect(service.dismissImport('p')).resolves.toEqual({ id: 'p', status: 'DISMISSED' });
+    await expect(service.dismissImport('p')).rejects.toThrow('状態が変わっています');
+    await expect(service.restoreImport('p')).resolves.toEqual({ id: 'p', status: 'PENDING' });
+    await expect(service.restoreImport('p')).rejects.toThrow('状態が変わっています');
+    status = 'REGISTERED';
+    await expect(service.dismissImport('p')).rejects.toThrow('状態が変わっています');
+    await expect(service.restoreImport('p')).rejects.toThrow('状態が変わっています');
+  });
+
+  it('keeps dismissed candidates out of both pending lists', async () => {
+    const candidates = [
+      { id: 'p', status: 'PENDING', photos: [], _count: { photos: 0 } },
+      { id: 'd', status: 'DISMISSED', photos: [], _count: { photos: 0 } },
+    ];
+    const findMany = vi.fn(async ({ where }: { where: { status: string } }) => candidates.filter((candidate) => candidate.status === where.status));
+    const service = new ItemInventoryService({ inventoryImportPayload: { findMany } } as never);
+    expect((await service.listPendingImports()).map((candidate) => candidate.id)).toEqual(['p']);
+    expect((await service.listPendingImportSummaries()).map((candidate) => candidate.id)).toEqual(['p']);
+    expect(findMany).toHaveBeenCalledTimes(2);
+    for (const [args] of findMany.mock.calls) expect(args.where).toEqual({ status: 'PENDING' });
   });
 });
