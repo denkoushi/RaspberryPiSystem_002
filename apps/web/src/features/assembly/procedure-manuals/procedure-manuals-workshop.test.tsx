@@ -228,8 +228,11 @@ describe('procedure-manuals workshop', () => {
     const modelList = within(modelColumn).getByRole('region', { name: '機種候補' });
     const tenkey = within(modelColumn).getByRole('group', { name: '機種テンキー' });
     expect(tenkey.parentElement?.parentElement).toBe(modelList.parentElement);
-    expect(modelList.parentElement).toHaveClass('grid-cols-[200px_minmax(0,1fr)]');
-    for (const key of within(tenkey).getAllByRole('button')) expect(key).toHaveClass('h-[52px]');
+    expect(modelList.parentElement).toHaveClass('grid-cols-[64px_minmax(0,1fr)]');
+    expect(tenkey).toHaveClass('grid-cols-1');
+    const keys = within(tenkey).getAllByRole('button');
+    expect(keys.map(key => key.textContent)).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '⌫']);
+    for (const key of keys) { expect(key).toHaveClass('h-12'); expect(key).not.toHaveClass('col-span-2'); }
     expect(await screen.findByRole('button', { name: 'DFD1' })).toHaveAttribute('aria-current', 'true');
     const model = within(modelColumn).getByRole('button', { name: 'DFD1' });
     expect(model).toHaveClass('font-mono', 'text-[18px]');

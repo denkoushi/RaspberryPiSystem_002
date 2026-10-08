@@ -71,11 +71,12 @@ export function AssemblyProcedurePreviewDialog({
             {pages.map((page) => (
               <figure key={page.pageIndex} className="rounded border border-slate-300 bg-white p-2 shadow-sm">
                 <figcaption className="mb-2 text-sm font-bold text-slate-700">{page.pageIndex + 1}ページ目</figcaption>
-                <div className="relative">
+                {/* Shrink-wrap the image so overlays share the page box, not the letterboxed column. */}
+                <div className="relative mx-auto w-fit max-w-full">
                   <KioskDocumentPageImage
                     pageUrl={page.imageRelativePath}
                     alt={`${currentDocument.name} ${page.pageIndex + 1}ページ目`}
-                    className="max-h-[62vh] w-full object-contain"
+                    className="block max-h-[62vh] w-auto max-w-full"
                     loadingFallback={<p className="p-6 text-center text-sm text-slate-500">画像を読み込み中…</p>}
                     errorFallback={<p className="p-6 text-center text-sm text-red-600">画像を読み込めません。</p>}
                   />

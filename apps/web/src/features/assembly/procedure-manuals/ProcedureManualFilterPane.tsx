@@ -42,9 +42,9 @@ export function ProcedureManualFilterPane({ processes, items, models, modelCodeK
     </div>
     <h2 className="text-base font-bold tracking-widest text-[#9fadb9]">機種</h2>
     <Input type="search" aria-label="機種検索" placeholder="型番で検索" maxLength={120} value={search} onChange={event => onSearchChange(event.target.value)} className="h-12 shrink-0 text-[21px]" />
-    <div className="grid min-h-0 flex-1 grid-cols-[200px_minmax(0,1fr)] gap-3">
-      <div><output aria-label="数字検索" className="block h-[26px] text-xl">{digitQuery}</output>
-        <ProcedureManualModelTenkey value={digitQuery} onChange={onDigitQueryChange} />
+    <div className="grid min-h-0 flex-1 grid-cols-[64px_minmax(0,1fr)] gap-3">
+      <div className="min-w-0"><output aria-label="数字検索" className="block h-[26px] truncate text-xl">{digitQuery}</output>
+        <ProcedureManualModelTenkey value={digitQuery} onChange={onDigitQueryChange} column />
       </div>
       <section aria-label="機種候補" className="flex min-h-0 min-w-0 flex-col gap-0.5 overflow-auto">
         {loading ? <p role="status">検索中…</p> : error ? <p role="alert" className="text-red-400">{error}</p> : visibleModels.length === 0 ? <p className="text-[#9fadb9]">該当する機種がありません</p> : null}

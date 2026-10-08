@@ -11,6 +11,8 @@ type Props = {
   resetClassName?: string;
   showReset?: boolean;
   showBackspace?: boolean;
+  /** Key order override, e.g. ascending digits for a single-column layout. */
+  digits?: readonly string[];
 };
 
 const defaultKeyClassName =
@@ -28,7 +30,8 @@ export function KioskDigitTenkey({
   keyClassName = defaultKeyClassName,
   resetClassName = defaultResetClassName,
   showReset = true,
-  showBackspace = false
+  showBackspace = false,
+  digits
 }: Props) {
   return (
     <div
@@ -36,11 +39,11 @@ export function KioskDigitTenkey({
       aria-label={ariaLabel}
       className={className ?? 'grid grid-cols-3 gap-2'}
     >
-      {DIGIT_KEYS.map((digit) => (
+      {(digits ?? DIGIT_KEYS).map((digit) => (
         <button
           key={digit}
           type="button"
-          className={`${keyClassName}${showBackspace && digit === '0' ? ' col-span-2' : ''}`}
+          className={`${keyClassName}${showBackspace && !digits && digit === '0' ? ' col-span-2' : ''}`}
           disabled={disabled || value.length >= maxLength}
           onClick={() => onChange(`${value}${digit}`)}
         >
