@@ -175,7 +175,10 @@ import type { CSSProperties, ReactNode } from 'react';
 function ContextControls({ value }: { value: HermesPageContext }) {
   const { setPageContext, clearPageContext } = useHermesPageContext();
   useEffect(() => { setPageContext(value); return clearPageContext; }, [value, setPageContext, clearPageContext]);
-  return <button onClick={clearPageContext}>clear page context</button>;
+  return <>
+    <button onClick={clearPageContext}>clear page context</button>
+    <button onClick={() => setPageContext({ ...value, entity: { ...value.entity, value: 'FH002' } })}>change page context</button>
+  </>;
 }
 
 function GuideRouteControls() {
@@ -479,6 +482,136 @@ describe('HermesFloatingChat', () => {
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
     expect(JSON.parse((await screen.findByTestId('record-display')).textContent!)).toEqual(display);
     expect(screen.getByText('元の回答')).toBeInTheDocument();
+  });
+
+  it.each([
+    { enabled: true, kind: 'partNumber' as const, visible: true },
+    { enabled: false, kind: 'partNumber' as const, visible: false },
+    ...(['drawingNumber', 'nonconformityNo', 'procedureId'] as const).map(kind => ({ enabled: true, kind, visible: false })),
+    { enabled: true, kind: undefined, visible: false },
+  ])('gates part shortcuts by context and scope: $kind / $enabled', async ({ enabled, kind, visible }) => {
+    mocks.getTrialScope.mockResolvedValue({ enabled });
+    const pageContext = kind ? { path: '/kiosk/part-measurement/edit/sheet-1', entity: { kind, value: 'FH001' } } : undefined;
+    renderChat(pageContext?.path, pageContext);
+    const launcher = screen.getByRole('button', { name: /業務Hermesチャットを開く/ });
+    expect(launcher.querySelector('.hermes-floating-trigger__context-dot') !== null).toBe(kind === 'partNumber');
+    expect(screen.queryByRole('group', { name: '品番ショートカット' })).not.toBeInTheDocument();
+    expect(mocks.getTrialScope).not.toHaveBeenCalled();
+    expect(mocks.sendTrialAnswer).not.toHaveBeenCalled();
+    fireEvent.click(launcher);
+    await waitFor(() => expect(mocks.getTrialScope).toHaveBeenCalledOnce());
+    await screen.findByTestId('hermes-panel');
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'JEV記録' }) !== null).toBe(enabled));
+    expect(screen.queryByRole('group', { name: '品番ショートカット' }) !== null).toBe(visible);
+    expect(launcher.querySelector('.hermes-floating-trigger__context-dot') !== null).toBe(kind === 'partNumber' && enabled);
+    expect(mocks.sendTrialAnswer).not.toHaveBeenCalled();
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.createConsultation).not.toHaveBeenCalled();
+    expect(mocks.knowledgeGet).not.toHaveBeenCalled();
+    expect(mocks.listConsultations).toHaveBeenCalledOnce();
+    if (visible) {
+      expect(screen.getByText('FH001')).toBeInTheDocument();
+      expect(launcher).toHaveAttribute('title', 'この品番で検索できます');
+      fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+      expect(screen.queryByRole('group', { name: '品番ショートカット' })).not.toBeInTheDocument();
+    }
+  });
+
+  it.each(['不適合', '手順書'])('sends %s once via record-pilot immediately after switching and disables shortcuts while busy', async label => {
+    mocks.getTrialScope.mockResolvedValue({ enabled: true });
+    mocks.send.mockResolvedValue({ status: 'ready', message: '以前の回答', evidence: [] });
+    let resolveAnswer!: (value: { status: string; answer: string; recordIds: string[]; elapsedMs: number }) => void;
+    mocks.sendTrialAnswer.mockImplementation(() => new Promise(resolve => { resolveAnswer = resolve; }));
+    const pageContext = { path: '/kiosk/part-measurement/edit/sheet-1', entity: { kind: 'partNumber' as const, value: 'FH001' } };
+    renderChat(pageContext.path, pageContext);
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    const shortcut = await screen.findByRole('button', { name: label });
+    expect(mocks.sendTrialAnswer).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '以前の質問' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    await screen.findByText('以前の回答');
+    fireEvent.click(shortcut);
+    expect(mocks.sendTrialAnswer).toHaveBeenCalledOnce();
+    expect(mocks.sendTrialAnswer.mock.calls[0][0]).toMatchObject({ question: `この品番の${label}`, pageContext });
+    expect(screen.getByRole('button', { name: 'JEV記録' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(`この品番の${label}`)).toBeInTheDocument();
+    expect(screen.queryByText('以前の質問')).not.toBeInTheDocument();
+    expect(screen.queryByText('以前の回答')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '不適合' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '手順書' })).toBeDisabled();
+    fireEvent.click(shortcut);
+    expect(mocks.sendTrialAnswer).toHaveBeenCalledOnce();
+    expect(mocks.send).toHaveBeenCalledOnce();
+    expect(mocks.createConsultation).not.toHaveBeenCalled();
+    expect(mocks.sendConsultationMessage).not.toHaveBeenCalled();
+    expect(mocks.knowledgeGet).not.toHaveBeenCalled();
+    expect(mocks.getTrialScope).toHaveBeenCalledOnce();
+    await act(async () => resolveAnswer({ status: 'completed', answer: '回答', recordIds: [], elapsedMs: 1 }));
+    expect(screen.getByRole('button', { name: '不適合' })).not.toBeDisabled();
+    fireEvent.click(screen.getByText('clear page context'));
+    expect(screen.queryByRole('group', { name: '品番ショートカット' })).not.toBeInTheDocument();
+    expect(mocks.sendTrialAnswer).toHaveBeenCalledOnce();
+    expect(mocks.getTrialScope).toHaveBeenCalledOnce();
+    expect(mocks.listConsultations).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the conversation when a shortcut is pressed in record-pilot mode', async () => {
+    mocks.getTrialScope.mockResolvedValue({ enabled: true });
+    mocks.sendTrialAnswer.mockResolvedValue({ status: 'completed', answer: '最初の回答', recordIds: [], elapsedMs: 1 });
+    const pageContext = { path: '/page', entity: { kind: 'partNumber' as const, value: 'FH001' } };
+    renderChat(pageContext.path, pageContext);
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '不適合' }));
+    await screen.findByText('最初の回答');
+    fireEvent.click(screen.getByRole('button', { name: '手順書' }));
+    await waitFor(() => expect(mocks.sendTrialAnswer).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('この品番の不適合')).toBeInTheDocument();
+    expect(screen.getByText('この品番の手順書')).toBeInTheDocument();
+    expect(mocks.send).not.toHaveBeenCalled();
+  });
+
+  it('sends a shortcut while the ordinary consultation list is still loading', async () => {
+    mocks.listConsultations.mockImplementation(() => new Promise(() => undefined));
+    mocks.getTrialScope.mockResolvedValue({ enabled: true });
+    mocks.sendTrialAnswer.mockResolvedValue({ status: 'completed', answer: '回答', recordIds: [], elapsedMs: 1 });
+    const pageContext = { path: '/page', entity: { kind: 'partNumber' as const, value: 'FH001' } };
+    renderChat(pageContext.path, pageContext);
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '手順書' }));
+    await screen.findByText('回答');
+    expect(mocks.sendTrialAnswer).toHaveBeenCalledOnce();
+    expect(mocks.sendTrialAnswer.mock.calls[0][0]).toMatchObject({ question: 'この品番の手順書', pageContext });
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.createConsultation).not.toHaveBeenCalled();
+    expect(screen.queryByText('相談を準備しています。少し待ってから送信してください。')).not.toBeInTheDocument();
+  });
+
+  it('does not fetch on part changes or reopening and sends the current part only on a tap', async () => {
+    mocks.getTrialScope.mockResolvedValue({ enabled: true });
+    mocks.sendTrialAnswer.mockResolvedValue({ status: 'completed', answer: '回答', recordIds: [], elapsedMs: 1 });
+    const pageContext = { path: '/page', entity: { kind: 'partNumber' as const, value: 'FH001' } };
+    renderChat(pageContext.path, pageContext);
+    fireEvent.click(screen.getByText('change page context'));
+    expect(mocks.getTrialScope).not.toHaveBeenCalled();
+    expect(mocks.listConsultations).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    await screen.findByRole('group', { name: '品番ショートカット' });
+    fireEvent.click(screen.getByText('clear page context'));
+    fireEvent.click(screen.getByText('change page context'));
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    await screen.findByRole('group', { name: '品番ショートカット' });
+    expect(mocks.getTrialScope).toHaveBeenCalledOnce();
+    expect(mocks.listConsultations).toHaveBeenCalledOnce();
+    expect(mocks.sendTrialAnswer).not.toHaveBeenCalled();
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.knowledgeGet).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '不適合' }));
+    await screen.findByText('回答');
+    expect(mocks.sendTrialAnswer).toHaveBeenCalledOnce();
+    expect(mocks.sendTrialAnswer.mock.calls[0][0]).toMatchObject({ question: 'この品番の不適合', pageContext: {
+      ...pageContext, entity: { kind: 'partNumber', value: 'FH002' },
+    } });
   });
 
   it('sends the latest page context only in JEV record mode and omits it after clearing', async () => {
