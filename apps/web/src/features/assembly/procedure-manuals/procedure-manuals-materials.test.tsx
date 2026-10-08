@@ -8,7 +8,7 @@ import { saveProcedureEditorAccess } from '../procedureEditorAccess';
 import { ProcedureManualWorkshop } from './ProcedureManualWorkshop';
 import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
 
-const mocks = vi.hoisted(() => ({ thumbnail: vi.fn(), knowledgeThumbnail: vi.fn(), workInstructionThumbnail: vi.fn(), createDocument: vi.fn(), count: vi.fn(), list: vi.fn(), ingest: vi.fn(), file: vi.fn(), discard: vi.fn(), restore: vi.fn(), unplace: vi.fn(), knowledge: vi.fn(), knowledgeImage: vi.fn(), importKnowledge: vi.fn(), workInstructions: vi.fn(), workInstructionImage: vi.fn(), importWorkInstructions: vi.fn() }));
+const mocks = vi.hoisted(() => ({ semantic: vi.fn(), thumbnail: vi.fn(), knowledgeThumbnail: vi.fn(), workInstructionThumbnail: vi.fn(), createDocument: vi.fn(), count: vi.fn(), list: vi.fn(), ingest: vi.fn(), file: vi.fn(), discard: vi.fn(), restore: vi.fn(), unplace: vi.fn(), knowledge: vi.fn(), knowledgeImage: vi.fn(), importKnowledge: vi.fn(), workInstructions: vi.fn(), workInstructionImage: vi.fn(), importWorkInstructions: vi.fn() }));
 vi.mock('../../../api/client', () => ({
   listProcedureVideos: async () => [],
   getProcedureManualOverview: async () => ({ processes: [] }),
@@ -17,7 +17,7 @@ vi.mock('../../../api/client', () => ({
   getAssemblyProcedureDocumentRevisions: vi.fn(), getKioskDocuments: vi.fn(), replaceProcedureManualAssignments: vi.fn(),
   listProcedureMaterials: (params: { q?: string }) => params.q === undefined ? mocks.count(params) : mocks.list(params), ingestProcedureMaterialsGmail: mocks.ingest, getProcedureMaterialFile: mocks.file, getProcedureMaterialThumbnail: mocks.thumbnail, getProcedureKnowledgeThumbnail: mocks.knowledgeThumbnail, getProcedureWorkInstructionThumbnail: mocks.workInstructionThumbnail,
   listProcedureKnowledgeCandidates: mocks.knowledge, getProcedureKnowledgeImage: mocks.knowledgeImage, importProcedureKnowledge: mocks.importKnowledge,
-  createProcedureMaterialDocument: mocks.createDocument,
+  createProcedureMaterialDocument: mocks.createDocument, semanticSearchProcedureMaterials: mocks.semantic,
   listProcedureWorkInstructionCandidates: mocks.workInstructions, getProcedureWorkInstructionImage: mocks.workInstructionImage, importProcedureWorkInstructions: mocks.importWorkInstructions,
   discardProcedureMaterial: mocks.discard, restoreProcedureMaterial: mocks.restore, unplaceProcedureMaterial: mocks.unplace,
 }));
@@ -35,10 +35,186 @@ describe('procedure-manuals material shelf', () => {
     mocks.workInstructions.mockResolvedValue({ items: [] });
     mocks.workInstructionImage.mockResolvedValue(new Blob(['work-instruction'])); mocks.workInstructionThumbnail.mockResolvedValue(new Blob(['work-thumbnail'])); mocks.thumbnail.mockResolvedValue(new Blob(['thumbnail']));
     mocks.importWorkInstructions.mockResolvedValue({ imported: 2, duplicate: 0, failed: [] });
+    mocks.semantic.mockResolvedValue({ available: true, mode: 'semantic', items: [] });
     mocks.discard.mockResolvedValue(undefined); mocks.restore.mockResolvedValue(undefined);
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:photo'); vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
   });
   afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+  const enterQuery = async (value = '締付') => {
+    await screen.findAllByRole('checkbox', { name: 'DFD1 組立' });
+    fireEvent.change(screen.getByRole('searchbox', { name: '素材を探す' }), { target: { value } });
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledWith({ state: 'unplaced', q: value.trim(), limit: 500 }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '意味で探す' })).toBeEnabled());
+  };
+  it('calls semantic search only on click, shows loading, preserves API order and filters the returned items', async () => {
+    let resolve!: (result: unknown) => void;
+    mocks.semantic.mockReturnValue(new Promise((done) => { resolve = done; }));
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    await enterQuery('  締付  ');
+    expect(mocks.semantic).not.toHaveBeenCalled();
+    const button = screen.getByRole('button', { name: '意味で探す' });
+    expect(button.querySelector('[aria-hidden="true"]')).toHaveTextContent('✦');
+    fireEvent.click(button);
+    expect(mocks.semantic).toHaveBeenCalledExactlyOnceWith({ q: '締付', state: 'unplaced' });
+    expect(button).toBeDisabled();
+    const list = screen.getByLabelText('素材一覧');
+    expect(within(list).getByRole('status')).toHaveTextContent('✦ 探しています…');
+    expect(within(list).queryByRole('checkbox')).not.toBeInTheDocument();
+    await act(async () => resolve({ available: true, mode: 'semantic', items: [
+      { ...text, id: 'near', subjectHint: '近い文章', receivedAt: '2026-10-01T00:00:00Z', gmailMessageId: 'same' },
+      { ...photo, id: 'far', subjectHint: '次の写真', receivedAt: '2026-10-06T00:00:00Z', gmailMessageId: 'same' },
+    ] }));
+    expect(within(list).getAllByRole('checkbox').map((item) => item.getAttribute('aria-label'))).toEqual(['近い文章', '次の写真']);
+    expect(within(list).queryByRole('button', { name: /束を全部選ぶ/ })).not.toBeInTheDocument();
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+    expect(button).toHaveClass('h-11', 'bg-[#e2b44c]', 'text-[#1f1703]');
+    expect(screen.getByRole('status', { name: '一致件数' })).toHaveTextContent('2 件✦ 近い順');
+    expect(screen.getByRole('tab', { name: /^未配置/ })).toHaveTextContent('2');
+    fireEvent.click(within(screen.getByLabelText('素材の絞り込み')).getByRole('button', { name: '写真' }));
+    expect(within(list).getAllByRole('checkbox').map((item) => item.getAttribute('aria-label'))).toEqual(['次の写真']);
+    expect(mocks.semantic).toHaveBeenCalledOnce();
+  });
+  it('returns to lexical results on a second click or a query change without another semantic request', async () => {
+    mocks.semantic.mockResolvedValue({ available: true, mode: 'semantic', items: [{ ...photo, subjectHint: '関連写真' }] });
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    await enterQuery();
+    const button = screen.getByRole('button', { name: '意味で探す' });
+    fireEvent.click(button);
+    await screen.findByRole('checkbox', { name: '関連写真' });
+    fireEvent.click(button);
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getAllByRole('checkbox', { name: 'DFD1 組立' })).toHaveLength(2);
+    expect(mocks.semantic).toHaveBeenCalledOnce();
+    fireEvent.click(button);
+    await screen.findByRole('checkbox', { name: '関連写真' });
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '組立' } });
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByRole('checkbox', { name: '関連写真' })).not.toBeInTheDocument();
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledWith({ state: 'unplaced', q: '組立', limit: 500 }));
+    expect(mocks.semantic).toHaveBeenCalledTimes(2);
+  });
+  it.each([
+    ['unavailable', null, '意味で探すは今使えません'],
+    ['network', new Error('network'), '意味で探すは今使えません'],
+    ['rate limit', { isAxiosError: true, response: { status: 429 } }, '少し待ってからもう一度押してください'],
+  ])('keeps lexical results and shows an alert on %s', async (_, error, message) => {
+    if (error) mocks.semantic.mockRejectedValue(error);
+    else mocks.semantic.mockResolvedValue({ available: false, mode: 'unavailable', items: [] });
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    await enterQuery();
+    fireEvent.click(screen.getByRole('button', { name: '意味で探す' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+    expect(screen.getAllByRole('checkbox', { name: 'DFD1 組立' })).toHaveLength(2);
+    expect(screen.getByRole('button', { name: '意味で探す' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByRole('status', { name: '一致件数' })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '組立' } });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+  it('disables semantic search for short queries, IME composition, busy operations and unsupported tabs', async () => {
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    const button = screen.getByRole('button', { name: '意味で探す' });
+    expect(button).toBeDisabled();
+    await screen.findAllByRole('checkbox', { name: 'DFD1 組立' });
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: ' 締 ' } });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    await enterQuery();
+    fireEvent.compositionStart(screen.getByRole('searchbox'));
+    expect(button).toBeDisabled();
+    fireEvent.compositionEnd(screen.getByRole('searchbox'));
+    expect(button).toBeEnabled();
+    for (const name of [/^ナレッジから/, /^加工の写真/]) {
+      fireEvent.click(screen.getByRole('tab', { name }));
+      expect(button).toBeDisabled();
+    }
+    fireEvent.click(screen.getByRole('button', { name: '捨てた素材' }));
+    expect(button).toBeDisabled();
+    fireEvent.click(screen.getByRole('tab', { name: /^未配置/ }));
+    mocks.ingest.mockReturnValue(new Promise(() => {}));
+    fireEvent.click(screen.getByRole('button', { name: '今すぐ取り込む' }));
+    expect(button).toBeDisabled();
+    expect(mocks.semantic).not.toHaveBeenCalled();
+  });
+  it('offers the same semantic search button inside an empty lexical list', async () => {
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    await screen.findAllByRole('checkbox', { name: 'DFD1 組立' });
+    mocks.list.mockResolvedValue([]);
+    mocks.semantic.mockResolvedValue({ available: true, mode: 'semantic', items: [photo] });
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '締付' } });
+    const list = screen.getByLabelText('素材一覧');
+    const button = await within(list).findByRole('button', { name: '意味で探す' });
+    expect(within(list).getByText('見つかりません')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: '意味で探す' })).toHaveLength(2);
+    fireEvent.click(button);
+    await within(list).findByRole('checkbox', { name: 'DFD1 組立' });
+    expect(mocks.semantic).toHaveBeenCalledExactlyOnceWith({ q: '締付', state: 'unplaced' });
+  });
+  it('marks only semantic-only cards, using the same visible text targets as highlighting', async () => {
+    mocks.semantic.mockResolvedValue({ available: true, mode: 'semantic', items: [
+      { ...photo, id: 'meaning', subjectHint: '関連写真', originalFileName: '締付.jpg' },
+      { ...photo, id: 'title', subjectHint: '締付写真' },
+      { ...photo, id: 'part', subjectHint: '品名一致', partName: '締付部品' },
+      { ...text, id: 'body', subjectHint: '本文一致' },
+      { ...photo, id: 'work', subjectHint: '加工一致', origin: 'WORK_INSTRUCTION', workInstructionRef: { partNumber: 'MH-1', shootingTarget: '外径', step: 1, memo: '締付' } },
+      { ...photo, id: 'attachment', subjectHint: 'メール本文一致', gmailMessageId: 'mail' },
+      { ...text, id: 'mail', subjectHint: 'メール本文', gmailMessageId: 'mail' },
+    ] });
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    await enterQuery();
+    fireEvent.click(screen.getByRole('button', { name: '意味で探す' }));
+    const meaning = await screen.findByRole('checkbox', { name: '関連写真' });
+    expect(within(meaning.closest('li')!).getByText('意味')).toHaveTextContent('✦ 意味');
+    for (const name of ['締付写真', '品名一致', '本文一致', '加工一致', 'メール本文一致', 'メール本文']) {
+      expect(within(screen.getByRole('checkbox', { name }).closest('li')!).queryByText('意味')).not.toBeInTheDocument();
+    }
+  });
+  it('treats a lexical fallback as unpressed without semantic badges or a rank label', async () => {
+    mocks.semantic.mockResolvedValue({ available: true, mode: 'lexical', items: [{ ...photo, subjectHint: '言葉の一致' }] });
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    await enterQuery();
+    fireEvent.click(screen.getByRole('button', { name: '意味で探す' }));
+    await screen.findByRole('checkbox', { name: '言葉の一致' });
+    expect(screen.getByRole('button', { name: '意味で探す' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByText('意味')).not.toBeInTheDocument();
+    expect(screen.queryByText('✦ 近い順')).not.toBeInTheDocument();
+  });
+  it('resets across material tabs without refetching semantic results and retains selection for placement', async () => {
+    const related = { ...photo, id: 'related', subjectHint: '関連写真' };
+    mocks.semantic.mockResolvedValue({ available: true, mode: 'semantic', items: [related] });
+    const onSelect = vi.fn().mockResolvedValue(undefined);
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} onSelect={onSelect} />);
+    await enterQuery();
+    fireEvent.click(screen.getByRole('button', { name: '意味で探す' }));
+    await screen.findByRole('checkbox', { name: '関連写真' });
+    fireEvent.click(screen.getByRole('tab', { name: /^配置済み/ }));
+    expect(screen.getByRole('button', { name: '意味で探す' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByRole('checkbox', { name: '関連写真' })).not.toBeInTheDocument();
+    expect(mocks.semantic).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: '意味で探す' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: '関連写真' }));
+    expect(mocks.semantic).toHaveBeenLastCalledWith({ q: '締付', state: 'placed' });
+    fireEvent.click(screen.getByRole('button', { name: '現在ページに配置' }));
+    await waitFor(() => expect(onSelect).toHaveBeenCalledExactlyOnceWith(related));
+  });
+  it.each(['query', 'tab'])('discards a stale response after a %s change while allowing a newer search', async (change) => {
+    let resolve!: (result: unknown) => void;
+    mocks.semantic.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+    mocks.semantic.mockResolvedValue({ available: true, mode: 'semantic', items: [{ ...photo, subjectHint: '新しい結果' }] });
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    await enterQuery();
+    fireEvent.click(screen.getByRole('button', { name: '意味で探す' }));
+    if (change === 'query') {
+      fireEvent.change(screen.getByRole('searchbox'), { target: { value: '組立' } });
+      await waitFor(() => expect(mocks.list).toHaveBeenCalledWith({ state: 'unplaced', q: '組立', limit: 500 }));
+    } else fireEvent.click(screen.getByRole('tab', { name: /^配置済み/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '意味で探す' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '意味で探す' }));
+    await screen.findByRole('checkbox', { name: '新しい結果' });
+    await act(async () => resolve({ available: true, mode: 'semantic', items: [{ ...photo, subjectHint: '古い結果' }] }));
+    expect(screen.queryByRole('checkbox', { name: '古い結果' })).not.toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: '新しい結果' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '意味で探す' })).toHaveAttribute('aria-pressed', 'true');
+  });
   it('loads only the active list without filters, then fetches four tabs in parallel and reuses queries across tabs', async () => {
     render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
     await screen.findAllByRole('checkbox', { name: 'DFD1 組立' });
