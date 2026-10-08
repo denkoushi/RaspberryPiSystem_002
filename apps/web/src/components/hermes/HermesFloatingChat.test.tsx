@@ -56,7 +56,7 @@ vi.mock('../../features/hermes-knowledge/useKnowledgePoster', () => ({
 vi.mock('./HermesChatPanel', () => ({
   default: (props: {
     mode?: 'legacy' | 'consultations';
-    messages: Array<{ id: string; content: string; evidence?: ReadonlyArray<{ id: string; title: string }> }>;
+    messages: Array<{ id: string; content: string; display?: { records: Array<{ sourceLabel: string }> }; evidence?: ReadonlyArray<{ id: string; title: string }> }>;
     draft: string;
     isBusy: boolean;
     isConsultationsLoading?: boolean;
@@ -135,6 +135,7 @@ vi.mock('./HermesChatPanel', () => ({
       {props.messages.map((message) => (
         <div key={message.id}>
           <p>{message.content}</p>
+          {message.display ? <output data-testid="record-display">{JSON.stringify(message.display)}</output> : null}
           {message.evidence?.map((evidence) => <p key={evidence.id}>{evidence.title}</p>)}
         </div>
       ))}
@@ -464,6 +465,20 @@ describe('HermesFloatingChat', () => {
     expect(await screen.findByText('工程：旋盤加工。現象：外径が規格上限を0.12 mm超過。処置：再加工を実施。原因は記載なし。')).toBeInTheDocument();
     expect(mocks.send).not.toHaveBeenCalled();
     expect(mocks.sendConsultationMessage).not.toHaveBeenCalled();
+  });
+
+  it('keeps the record display in the assistant message sent to the panel', async () => {
+    const display = { records: [{ sourceLabel: '不適合情報', fields: [{ label: '本文', value: '原文。', role: 'body' }] }],
+      notices: ['件数案内'], dataAsOf: '2026-10-08 06:30' };
+    mocks.getTrialScope.mockResolvedValue({ enabled: true });
+    mocks.sendTrialAnswer.mockResolvedValue({ status: 'completed', answer: '元の回答', recordIds: ['1'], elapsedMs: 1, display });
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'JEV記録' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '記録を探して' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    expect(JSON.parse((await screen.findByTestId('record-display')).textContent!)).toEqual(display);
+    expect(screen.getByText('元の回答')).toBeInTheDocument();
   });
 
   it('sends the latest page context only in JEV record mode and omits it after clearing', async () => {

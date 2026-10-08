@@ -188,18 +188,21 @@ function confirmationPending(question, clarification, answer) {
 
 function formatRecords(results, catalog) {
   const entries = catalogEntries(catalog);
-  return (results ?? []).map((result) => {
+  const records = (results ?? []).flatMap((result) => {
     const entry = entries.find((entry) => entry.id === result.sourceId);
-    if (!entry) return '';
-    const fields = entry.fields.filter((field) => ANSWER_ROLES.has(field.role));
-    const lines = entries.length > 1 ? [`【${entry.label}】`] : [];
-    for (const field of fields) {
+    if (!entry) return [];
+    const fields = entry.fields.filter((field) => ANSWER_ROLES.has(field.role)).flatMap((field) => {
       const value = result?.fields?.[field.key];
-      if (typeof value !== 'string') continue;
-      lines.push(`${field.label}: ${value}`);
-    }
+      return typeof value === 'string' ? [{ label: field.label, value, role: field.role }] : [];
+    });
+    return entries.length > 1 || fields.length ? [{ sourceLabel: entry.label, fields }] : [];
+  });
+  const answer = records.map((record) => {
+    const lines = entries.length > 1 ? [`【${record.sourceLabel}】`] : [];
+    for (const field of record.fields) lines.push(`${field.label}: ${field.value}`);
     return lines.join('\n');
   }).filter(Boolean).join('\n\n');
+  return { answer, records };
 }
 
 function applyEnrichment(view, enrichmentById, catalog, learnedById) {
@@ -311,7 +314,7 @@ function publicRecordId(sourceId, recordId) {
   return sourceId ? `${sourceId}:${id}` : id;
 }
 
-function trialResult({ status, answer, recordIds, elapsedMs, confirmation, previousPlan, dataAsOf, coverage = null, receipt = null, shownIds = [], candidateIds = null }) {
+function trialResult({ status, answer, recordIds, elapsedMs, confirmation, previousPlan, dataAsOf, display, coverage = null, receipt = null, shownIds = [], candidateIds = null }) {
   const stamped = stampAnswer(answer, dataAsOf);
   return {
     status,
@@ -319,6 +322,7 @@ function trialResult({ status, answer, recordIds, elapsedMs, confirmation, previ
     recordIds,
     elapsedMs,
     dataAsOf: stamped.dataAsOf,
+    ...(display ? { display: { ...display, dataAsOf: stamped.dataAsOf } } : {}),
     confirmationPending: confirmation ?? null,
     session: sessionOf(previousPlan, shownIds),
     ...(coverage ? { coverage } : {}),
@@ -560,13 +564,18 @@ export function createRetrievalAnswering({
       if (usesDense && (vectorStatus === 'timeout' || vectorStatus === 'failed')) {
         noteDenseFallback(vectorStatus);
       }
-      const body = formatRecords(executed.results, visibleCatalog);
+      const formatted = formatRecords(executed.results, visibleCatalog);
+      const body = formatted.answer;
       const notice = formatCoverageNotice(executed.coverage);
       let answer = executed.insufficient && body ? `${body}\n\n${INSUFFICIENT_NOTICE}` : body;
       if (notice) answer = answer ? `${answer}\n\n${notice}` : notice;
       return trialResult({
         status: 'completed',
         answer,
+        ...(formatted.records.length ? { display: {
+          records: formatted.records,
+          notices: [...(executed.insufficient && body ? [INSUFFICIENT_NOTICE] : []), ...(notice ? [notice] : [])],
+        } } : {}),
         recordIds: executed.results.map((result) => publicRecordId(result.sourceId, result.recordId)),
         elapsedMs: elapsed(),
         previousPlan: sessionPlan,

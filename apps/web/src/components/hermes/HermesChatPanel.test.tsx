@@ -31,6 +31,46 @@ describe('HermesChatPanel evidence cards', () => {
 
   afterEach(() => vi.restoreAllMocks());
 
+  it('renders record display as cards with metadata, body lists and footer without duplicate answer', () => {
+    const heading = 'M8締付訓練 / 長さ30 mm / 治具JIG-01';
+    const record = { sourceLabel: '従業員の訓練集計', fields: [
+      { label: '社員コード', value: '0123', role: 'identifier' as const },
+      { label: '最終訓練日', value: '2026-10-04', role: 'date' as const },
+      { label: '部署', value: '製造部', role: 'organization' as const },
+      { label: '条件ごとの内訳', value: `${heading}: 訓練12セッション。締付60回。`, role: 'body' as const },
+      { label: '空の本文', value: ' \n　', role: 'body' as const },
+      { label: '空の番号', value: ' ', role: 'identifier' as const },
+      { label: '空の日付', value: ' ', role: 'date' as const },
+    ] };
+    render(<HermesChatPanel messages={[{ id: 'record-answer', role: 'assistant', content: '従来の回答文字列',
+      display: { records: [record, { sourceLabel: '不適合情報', fields: [{ label: '内容', value: '補修済み。', role: 'body' }] }],
+        notices: ['該当14件のうち、新しい順に2件を表示しています。'], dataAsOf: '2026-10-08 06:30' } }]}
+      draft="" isBusy={false} error={null} authRequired={null} onDraftChange={vi.fn()} onSend={vi.fn()} onReset={vi.fn()} onClose={vi.fn()} />);
+    const cards = screen.getAllByRole('article');
+    expect(cards).toHaveLength(2);
+    expect(within(cards[0]).getByText('従業員の訓練集計')).toHaveClass('hermes-chat-panel__answer-source');
+    expect(within(cards[0]).getByText('社員コード 0123')).toHaveClass('hermes-chat-panel__answer-id');
+    expect(within(cards[0]).getByText('最終訓練日 2026-10-04')).toHaveClass('hermes-chat-panel__answer-meta');
+    expect(within(cards[0]).getByText('部署 製造部')).toBeInTheDocument();
+    expect(within(cards[0]).getByRole('heading', { name: '条件ごとの内訳' })).toBeInTheDocument();
+    expect(within(cards[0]).getByRole('heading', { name: heading })).toHaveClass('hermes-chat-panel__answer-sub');
+    expect(within(cards[0]).getAllByRole('listitem').map(item => item.textContent)).toEqual(['訓練12セッション', '締付60回']);
+    expect(screen.queryByText('空の本文')).not.toBeInTheDocument();
+    expect(screen.queryByText('空の番号')).not.toBeInTheDocument();
+    expect(screen.queryByText('空の日付')).not.toBeInTheDocument();
+    expect(screen.getByText('該当14件のうち、新しい順に2件を表示しています。').closest('footer')).toHaveClass('hermes-chat-panel__answer-foot');
+    expect(screen.getByText('データ時点 2026-10-08 06:30')).toBeInTheDocument();
+    expect(screen.queryByText('従来の回答文字列')).not.toBeInTheDocument();
+  });
+
+  it.each([undefined, { records: [], notices: [], dataAsOf: null }])('falls back to text for missing or empty display', display => {
+    render(<HermesChatPanel messages={[{ id: 'old-answer', role: 'assistant', content: '**見出し**\n従来の本文', display }]}
+      draft="" isBusy={false} error={null} authRequired={null} onDraftChange={vi.fn()} onSend={vi.fn()} onReset={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByText('見出し')).toHaveClass('hermes-chat-panel__message-heading');
+    expect(screen.getByText('従来の本文')).toBeInTheDocument();
+    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+  });
+
   it('renders local guide choices inside the search panel with the normal question composer', () => {
     const onChoose = vi.fn();
     render(<HermesChatPanel messages={[]} draft="" isBusy={false} error={null} authRequired={null}

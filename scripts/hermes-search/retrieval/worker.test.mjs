@@ -738,3 +738,60 @@ test('answer takes a vector budget for night scoring; the day budget still appli
   const night = await answering.answer('surface scratchの記録', null, { stageDump: true, vectorBudgetMs: 5000 });
   assert.equal(night.receipt.timings.vectorStatus, 'ok');
 });
+
+
+test('record display uses exactly the answer fields and order for multiple and single sources', async () => {
+  for (const selectedCatalog of [mixedCatalog, [mixedCatalog[1]]]) {
+    const selectedRecords = mixedRecords.filter(record => selectedCatalog.some(entry => entry.id === record.sourceId));
+    const rows = [...selectedRecords, { ...selectedRecords[0], id: 'extra',
+      [selectedRecords[0].sourceId === 'nonconformity' ? 'condition' : 'stepsText']: 'ブラケット溶接。2回目: 9.8 N·m。\n\n全期間: 訓練12セッション。' }, { ...selectedRecords[0], id: 'extra-2' }];
+    const answering = createRetrievalAnswering({ records: rows, catalog: selectedCatalog,
+      planner: fixedPlanner(selectedCatalog.map(entry => entry.id), { limit: 2,
+        display: selectedCatalog.flatMap(entry => entry.fields.map(field => field.key)) }), evaluate: mixedEvaluate });
+    await answering.replaceCorpus({ mode: 'full', records: rows, asOf: '2026-10-08T00:30:00.000Z' });
+    const result = await answering.answer('ブラケット溶接');
+    assert.ok(result.display.records.length >= 2);
+    const expectedRecords = result.recordIds.map(id => {
+      const row = rows.find(record => `${record.sourceId}:${record.id}` === id);
+      const entry = selectedCatalog.find(entry => entry.id === row.sourceId);
+      return { sourceLabel: entry.label, fields: entry.fields
+        .filter(field => ['identifier', 'date', 'organization', 'body'].includes(field.role))
+        .filter(field => typeof row[field.key] === 'string')
+        .map(field => ({ label: field.label, value: row[field.key], role: field.role })) };
+    });
+    assert.deepEqual(result.display.records, expectedRecords);
+    const body = expectedRecords.map(record => [
+      ...(selectedCatalog.length > 1 ? [`【${record.sourceLabel}】`] : []),
+      ...record.fields.map(field => `${field.label}: ${field.value}`),
+    ].join('\n')).join('\n\n');
+    assert.deepEqual(result.display.notices, [formatCoverageNotice(result.coverage)].filter(Boolean));
+    assert.equal(result.display.dataAsOf, '2026-10-08 09:30');
+    assert.equal(result.display.dataAsOf, result.dataAsOf);
+    assert.equal(result.answer, `${[body, ...result.display.notices].join('\n\n')}\nデータ時点: 2026-10-08 09:30`);
+  }
+});
+
+test('record display includes insufficient notice and a null stamp without changing answer', async () => {
+  const answering = createRetrievalAnswering({ records: mixedRecords, catalog: mixedCatalog,
+    planner: fixedPlanner(mixedCatalog.map(entry => entry.id), { limit: 5, diagnostics: { limitExplicit: true } }), evaluate: mixedEvaluate });
+  const result = await answering.answer('ブラケット溶接');
+  assert.equal(result.display.records.length, 2);
+  assert.equal(result.display.dataAsOf, null);
+  assert.ok(result.display.notices.includes('見つかった件数は、指定された件数より少ないです。'));
+  for (const notice of result.display.notices) assert.ok(result.answer.includes(notice));
+  assert.ok(result.display.notices.every(notice => !notice.includes('データ時点')));
+});
+
+test('answers without records do not carry display', async () => {
+  const options = { catalog: mixedCatalog, evaluate: mixedEvaluate };
+  const outside = await createRetrievalAnswering({ ...options, records: mixedRecords,
+    planner: fixedPlanner([], { diagnostics: { scope: 'out_of_scope' } }) }).answer('weather');
+  const empty = await createRetrievalAnswering({ ...options, records: [],
+    planner: fixedPlanner(['nonconformity']) }).answer('ブラケット溶接');
+  const clarification = await createRetrievalAnswering({ ...options, records: mixedRecords,
+    planner: { plan: async () => ({ plan: null, unresolved: [{ id: 'scope', label: '種類', type: 'choice', candidates: [] }] }) } }).answer('どれ');
+  for (const result of [outside, empty, clarification]) {
+    assert.equal(Object.hasOwn(result, 'display'), false);
+    assert.equal(result.recordIds.length, 0);
+  }
+});
