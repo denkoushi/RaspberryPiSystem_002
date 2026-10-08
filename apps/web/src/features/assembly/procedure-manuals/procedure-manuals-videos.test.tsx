@@ -23,6 +23,7 @@ vi.mock('../../../api/client', () => ({
   getProcedureManualModelOverview: async () => ({ modelCode: 'DFD1', modelCodeKey: 'DFD1', processes: [{ processId: 'p', count: 0, items: [] }] }),
   getProcedureManualAssignments: mocks.detail,
   listProcedureMaterials: async () => [],
+  getProcedureManualOverview: async () => ({ processes: [{ processId: 'p', count: 0, items: [] }] }),
 }));
 vi.mock('../AssemblyProcedureSequenceViewer', () => ({
   AssemblyProcedureSequenceViewer: ({ sequence, onCurrentPageChange, onCurrentStepChange }: { onCurrentStepChange?: (step: null, index: number, total: number) => void; sequence: AssemblyProcedureSequenceDto; onCurrentPageChange?: (page: AssemblyProcedureSequencePageDto | null) => void }) => {
@@ -149,7 +150,7 @@ describe('procedure-manuals videos', () => {
     mocks.detail.mockResolvedValue({ assignments: [], sequence: { documents: [{ assemblyProcedureDocumentId: 'doc', pages }] } });
     localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
     fireEvent.click(await screen.findByRole('button', { name: 'DFD1' }));
-    fireEvent.click(screen.getByRole('button', { name: '組立工程 › 検査工程' }));
+    fireEvent.click(screen.getByRole('button', { name: '検査' }));
     const strip = await screen.findByRole('region', { name: 'このページの動画' });
     expect(within(strip).getByRole('button', { name: '締付動画' })).toBeInTheDocument(); expect(within(strip).queryByText('受付動画')).not.toBeInTheDocument();
     fireEvent.click(within(strip).getByRole('button', { name: /締付動画/ }));

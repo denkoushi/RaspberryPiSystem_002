@@ -123,6 +123,79 @@ describe('procedure-manual service', () => {
     expect(single).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])('batches cross-model overview and returns only public rows and revision data in published mode (%s)', async published => {
+    vi.spyOn(prisma.procedureManualProcess, 'findMany').mockResolvedValue([
+      { id: 'parent', parentId: null }, { id: 'assembly', parentId: 'parent' },
+      { id: 'inspection', parentId: 'parent' }, { id: 'empty', parentId: 'parent' }
+    ] as never);
+    const rows = [
+      assignment('one'),
+      { ...assignment('two'), modelCode: 'DFD2', modelCodeKey: 'DFD2' },
+      { ...assignment('draft', 'draft-root'), processId: 'inspection' },
+      { ...assignment('missing', 'disabled'), modelCode: 'DFD2', modelCodeKey: 'DFD2', processId: 'inspection' },
+      { ...assignment('pdf', null), kioskDocumentId: pdfId, kioskDocument: { title: 'PDF', enabled: true, pageCount: 2 } },
+      { ...assignment('disabled-pdf', null), kioskDocumentId: 'off', kioskDocument: { title: 'OFF', enabled: false } },
+      { ...assignment('parent-assignment'), processId: 'parent' },
+      { ...assignment('inactive-process'), processId: 'inactive' }
+    ];
+    const assignments = vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue(rows as never);
+    const documents = vi.spyOn(prisma.assemblyProcedureDocument, 'findMany').mockResolvedValue([
+      document(), { ...document('draft-root'), status: 'DRAFT' }, { ...document('disabled'), isActive: false },
+      { ...document('draft-v2'), status: 'DRAFT', revisionMetadata: { revisionRootId: rootId, revisionNumber: 2, supersedesDocumentId: rootId, isRevisionHead: true },
+        editLease: { holderLabel: '佐藤', acquiredAt: now, expiresAt: new Date('2099-01-01') } }
+    ] as never);
+    const resolveSingle = vi.spyOn(prisma.assemblyProcedureDocumentRevision, 'findFirst');
+    const result = await new ProcedureManualService().getOverview(undefined, published);
+    expect(result.processes.map(process => [process.processId, process.count])).toEqual(published
+      ? [['assembly', 3], ['inspection', 0], ['empty', 0]]
+      : [['assembly', 4], ['inspection', 2], ['empty', 0]]);
+    const items = result.processes.flatMap(process => process.items);
+    expect(items.filter(item => item.modelCodeKey === 'DFD1')).toHaveLength(published ? 2 : 4);
+    expect(items.filter(item => item.modelCodeKey === 'DFD2')).toHaveLength(published ? 1 : 2);
+    expect(items[0]).toMatchObject({ modelCode: 'ｄｆｄ１', modelCodeKey: 'DFD1', processId: 'assembly', status: 'published', documentId: rootId });
+    if (published) {
+      expect(items.every(item => item.status === 'published' && item.draftRevision === null)).toBe(true);
+      expect(items.map(item => item.assignmentId)).toEqual(['one', 'two', 'pdf']);
+      expect(JSON.stringify(result)).not.toContain('draft-root');
+      expect(JSON.stringify(result)).not.toContain('draft-v2');
+      expect(JSON.stringify(result)).not.toContain('佐藤');
+    } else {
+      expect(items[0].draftRevision).toMatchObject({ documentId: 'draft-v2', editLease: { holderLabel: '佐藤' } });
+      expect(items.find(item => item.assignmentId === 'draft')).toMatchObject({ status: 'draft', documentId: 'draft-root' });
+      expect(items.find(item => item.assignmentId === 'missing')).toMatchObject({ status: 'unavailable', unavailableReason: 'no_published_revision' });
+      expect(items.find(item => item.assignmentId === 'disabled-pdf')).toMatchObject({ status: 'unavailable', unavailableReason: 'disabled' });
+    }
+    expect(items.find(item => item.assignmentId === 'pdf')).toMatchObject({ status: 'published', kind: 'kiosk_document', pageCount: 2 });
+    expect(assignments).toHaveBeenCalledTimes(2);
+    expect(documents).toHaveBeenCalledOnce();
+    expect(resolveSingle).not.toHaveBeenCalled();
+  });
+
+  it('filters cross-model overview assignments and process counts by process ID', async () => {
+    vi.spyOn(prisma.procedureManualProcess, 'findMany').mockResolvedValue([
+      { id: 'assembly', parentId: 'parent' }, { id: 'inspection', parentId: 'parent' }
+    ] as never);
+    const query = vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([
+      { ...assignment('one'), processId: 'inspection' },
+      { ...assignment('two'), modelCode: 'DFD2', modelCodeKey: 'DFD2', processId: 'inspection' }
+    ] as never);
+    vi.spyOn(prisma.assemblyProcedureDocument, 'findMany').mockResolvedValue([document()] as never);
+    const result = await new ProcedureManualService().getOverview('inspection');
+    expect(query).toHaveBeenNthCalledWith(1, expect.objectContaining({ where: { processId: 'inspection' } }));
+    expect(result.processes).toHaveLength(1);
+    expect(result.processes[0]).toMatchObject({ processId: 'inspection', count: 2 });
+    expect(result.processes[0].items.map(item => [item.modelCodeKey, item.processId])).toEqual([['DFD1', 'inspection'], ['DFD2', 'inspection']]);
+  });
+
+  it('returns empty cross-model counts without querying document families', async () => {
+    vi.spyOn(prisma.procedureManualProcess, 'findMany').mockResolvedValue([{ id: 'assembly', parentId: 'parent' }] as never);
+    const assignments = vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([]);
+    const documents = vi.spyOn(prisma.assemblyProcedureDocument, 'findMany');
+    expect(await new ProcedureManualService().getOverview()).toEqual({ processes: [{ processId: 'assembly', count: 0, items: [] }] });
+    expect(assignments).toHaveBeenCalledOnce();
+    expect(documents).not.toHaveBeenCalled();
+  });
+
   it.each(['班長', null])('batches the latest approval of the displayed published revision (position=%s)', async positionName => {
     vi.spyOn(prisma.procedureManualProcess, 'findMany').mockResolvedValue([{ id: 'assembly', parentId: 'parent' }] as never);
     vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([

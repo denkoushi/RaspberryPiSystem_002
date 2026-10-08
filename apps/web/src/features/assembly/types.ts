@@ -733,6 +733,12 @@ export type ProcedureManualOverviewItemDto = {
   thumbnailPageUrl: string | null;
 };
 
+export type ProcedureManualAssignmentOverviewItemDto = ProcedureManualOverviewItemDto & ProcedureManualModelDto & { processId: string };
+
+export type ProcedureManualOverviewDto = {
+  processes: { processId: string; count: number; items: ProcedureManualAssignmentOverviewItemDto[] }[];
+};
+
 export type ProcedureManualModelOverviewDto = ProcedureManualModelDto & {
   processes: { processId: string; count: number; items: ProcedureManualOverviewItemDto[] }[];
 };

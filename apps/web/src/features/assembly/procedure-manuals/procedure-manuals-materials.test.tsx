@@ -11,6 +11,7 @@ import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
 const mocks = vi.hoisted(() => ({ thumbnail: vi.fn(), knowledgeThumbnail: vi.fn(), workInstructionThumbnail: vi.fn(), createDocument: vi.fn(), count: vi.fn(), list: vi.fn(), ingest: vi.fn(), file: vi.fn(), discard: vi.fn(), restore: vi.fn(), unplace: vi.fn(), knowledge: vi.fn(), knowledgeImage: vi.fn(), importKnowledge: vi.fn(), workInstructions: vi.fn(), workInstructionImage: vi.fn(), importWorkInstructions: vi.fn() }));
 vi.mock('../../../api/client', () => ({
   listProcedureVideos: async () => [],
+  getProcedureManualOverview: async () => ({ processes: [] }),
   listProcedureManualModels: async () => [], listProcedureManualProcesses: async () => [],
   getProcedureManualAssignments: vi.fn(), listAssemblyProcedureDocumentSummaries: vi.fn(),
   getAssemblyProcedureDocumentRevisions: vi.fn(), getKioskDocuments: vi.fn(), replaceProcedureManualAssignments: vi.fn(),

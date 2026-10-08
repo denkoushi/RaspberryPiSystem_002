@@ -1,23 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
-import { deleteAssemblyProcedureDocument, verifyAssemblyTemplateAccessPassword, getProcedureManualAssignments, getProcedureManualModelOverview, listAssemblyMachineNameCandidates, listProcedureManualModels, listProcedureManualProcesses, listProcedureMaterials, listProcedureVideos, replaceProcedureManualAssignments } from '../../../api/client';
+import { deleteAssemblyProcedureDocument, verifyAssemblyTemplateAccessPassword, getProcedureManualAssignments, getProcedureManualOverview, getAssemblyProcedureDocument, listAssemblyMachineNameCandidates, listProcedureManualModels, listProcedureManualProcesses, listProcedureMaterials, listProcedureVideos, replaceProcedureManualAssignments } from '../../../api/client';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
+import { Dialog } from '../../../components/ui/Dialog';
 import { IconActionTooltip } from '../../../components/ui/IconActionTooltip';
-import { Input } from '../../../components/ui/Input';
-import { useProtectedImageBlobUrl } from '../../../hooks/useProtectedImageBlobUrl';
 import { KioskPinDialog, kioskPinErrorResult } from '../../kiosk/KioskPinDialog';
+import { AssemblyProcedurePreviewDialog } from '../AssemblyProcedurePreviewDialog';
+import { AssemblyProcedureSequenceViewer } from '../AssemblyProcedureSequenceViewer';
 import { kioskAssemblyManualsPath, kioskAssemblyManualsWorkshopPath, kioskAssemblyProcedureDocumentEditPath, kioskAssemblyTemplateNewPath } from '../assemblyRoutes';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 import { PROCEDURE_EDITOR_ACCESS_HOURS, readProcedureEditorAccess, saveProcedureEditorAccess, subscribeProcedureEditorAccess } from '../procedureEditorAccess';
 
+import { ManualThumbnail } from './ManualThumbnail';
 import { ProcedureManualAssignmentDialog, procedureManualModelKey } from './ProcedureManualAssignmentDialog';
 import { ProcedureManualBlankDialog } from './ProcedureManualBlankDialog';
-import { ProcedureManualModelMatch, ProcedureManualModelTenkey } from './ProcedureManualModelSearch';
+import { ProcedureManualFilterPane } from './ProcedureManualFilterPane';
 import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
 import { ProcedureVideoShelfDialog } from './ProcedureVideoShelfDialog';
 
-import type { ProcedureManualModelDto, ProcedureManualModelOverviewDto, ProcedureManualOverviewItemDto, ProcedureManualProcessDto } from '../types';
+import type { ProcedureManualModelDto, AssemblyProcedureDocumentDto, AssemblyProcedureSequenceDto, ProcedureManualAssignmentOverviewItemDto, ProcedureManualOverviewItemDto, ProcedureManualProcessDto } from '../types';
 
 const action = 'inline-flex min-h-12 items-center justify-center rounded-lg border border-[#344252] px-4 text-xl font-bold disabled:opacity-40';
 const yellowAction = `${action} border-[#f6b93b] bg-[#f6b93b] text-[#0b1a12]`;
@@ -27,30 +29,6 @@ const statusFilters = ['全て', '公開', '下書き', '改版中'] as const;
 const usageLabel = (assignments: ProcedureManualOverviewItemDto['otherAssignments']) => assignments.map(row => `${row.modelCode} · ${row.processName}`).join('、');
 const canDelete = (item: ProcedureManualOverviewItemDto) => item.kind === 'assembly_procedure_document' && item.status === 'draft' && !item.draftRevision && item.otherAssignments.length === 0;
 const shortName = (process?: ProcedureManualProcessDto) => process?.name.replace(/工程/g, '') ?? '';
-
-function ManualThumbnailImage({ url }: { url: string }) {
-  const { blobUrl } = useProtectedImageBlobUrl(url);
-  return blobUrl ? <img src={blobUrl} alt="1ページ目" className="h-full w-full object-contain" /> : null;
-}
-
-function ManualThumbnail({ url }: { url: string | null }) {
-  const thumbnailRef = useRef<HTMLDivElement>(null);
-  const [requested, setRequested] = useState(() => typeof IntersectionObserver === 'undefined');
-  useEffect(() => {
-    if (requested || !url) return;
-    const observer = new IntersectionObserver(entries => {
-      if (entries.some(entry => entry.isIntersecting)) {
-        setRequested(true);
-        observer.disconnect();
-      }
-    }, { rootMargin: '200px' });
-    if (thumbnailRef.current) observer.observe(thumbnailRef.current);
-    return () => observer.disconnect();
-  }, [requested, url]);
-  return <div ref={thumbnailRef} className="h-[26px] w-9 overflow-hidden rounded-[3px] border border-[#777] bg-white">
-    {requested && url ? <ManualThumbnailImage url={url} /> : null}
-  </div>;
-}
 
 export function ProcedureManualWorkshop() {
   const navigate = useNavigate();
@@ -64,7 +42,11 @@ export function ProcedureManualWorkshop() {
   const [models, setModels] = useState<ProcedureManualModelDto[]>([]);
   const [candidates, setCandidates] = useState<ProcedureManualModelDto[]>([]);
   const [processes, setProcesses] = useState<ProcedureManualProcessDto[]>([]);
-  const [overview, setOverview] = useState<ProcedureManualModelOverviewDto | null>(null);
+  const [items, setItems] = useState<ProcedureManualAssignmentOverviewItemDto[]>([]);
+  const [preview, setPreview] = useState<AssemblyProcedureDocumentDto | null>(null);
+  const [previewSequence, setPreviewSequence] = useState<AssemblyProcedureSequenceDto | null>(null);
+  const [previewTitle, setPreviewTitle] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(true);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -77,8 +59,8 @@ export function ProcedureManualWorkshop() {
   const [videoOpen, setVideoOpen] = useState(false);
   const [materialCount, setMaterialCount] = useState<number | null>(null);
   const [videoCount, setVideoCount] = useState<number | null>(null);
-  const [removing, setRemoving] = useState<ProcedureManualOverviewItemDto | null>(null);
-  const [deleting, setDeleting] = useState<ProcedureManualOverviewItemDto | null>(null);
+  const [removing, setRemoving] = useState<ProcedureManualAssignmentOverviewItemDto | null>(null);
+  const [deleting, setDeleting] = useState<ProcedureManualAssignmentOverviewItemDto | null>(null);
   const [operationMessage, setOperationMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const requestSequence = useRef(0);
@@ -122,13 +104,12 @@ export function ProcedureManualWorkshop() {
   }, [search, digitQuery, version]);
   useEffect(() => {
     let cancelled = false;
-    setOverview(null); setError(null); setOverviewLoading(Boolean(modelCodeKey));
-    if (!modelCodeKey) return;
-    void getProcedureManualModelOverview(modelCodeKey).then(next => { if (!cancelled) setOverview(next); })
+    setItems([]); setError(null); setOverviewLoading(true);
+    void getProcedureManualOverview().then(next => { if (!cancelled) setItems(next.processes.flatMap(row => row.items)); })
       .catch(e => { if (!cancelled) setError(readAssemblyApiErrorMessage(e, '要領書を取得できません')); })
       .finally(() => { if (!cancelled) setOverviewLoading(false); });
     return () => { cancelled = true; };
-  }, [modelCodeKey, version]);
+  }, [version]);
   useEffect(() => {
     let cancelled = false;
     void listProcedureMaterials({ state: 'unplaced', limit: 500 }).then(rows => { if (!cancelled) setMaterialCount(rows.length); })
@@ -148,36 +129,53 @@ export function ProcedureManualWorkshop() {
     setParams(next, { replace: true });
   };
   const process = processes.find(row => row.id === processId && row.parentId);
-  const processName = process ? `${shortName(processes.find(row => row.id === process.parentId))} › ${shortName(process)}` : '';
-  const modelCode = overview?.modelCode ?? candidates.find(row => row.modelCodeKey === modelCodeKey)?.modelCode ?? modelCodeKey;
-  const selected = overview?.processes.find(row => row.processId === processId);
+  const modelCode = items.find(row => row.modelCodeKey === modelCodeKey)?.modelCode ?? candidates.find(row => row.modelCodeKey === modelCodeKey)?.modelCode ?? modelCodeKey;
   const normalizedNameFilter = nameFilter.normalize('NFKC').trim().toLocaleLowerCase();
-  const filteredItems = selected?.items.filter(item => {
+  const filteredItems = items.filter(item => {
     const matchesStatus = statusFilter === '全て'
       || (statusFilter === '公開' && item.status === 'published')
       || (statusFilter === '下書き' && item.status === 'draft' && !item.draftRevision)
       || (statusFilter === '改版中' && Boolean(item.draftRevision));
-    return matchesStatus && (item.label || item.title).normalize('NFKC').toLocaleLowerCase().includes(normalizedNameFilter);
-  }) ?? [];
-  const openEditor = (item: ProcedureManualOverviewItemDto) => navigate(kioskAssemblyProcedureDocumentEditPath(item.draftRevision?.documentId ?? item.documentId), {
-    state: { returnTo: kioskAssemblyManualsWorkshopPath({ model: modelCodeKey, process: processId }),
-      context: { modelCode, modelCodeKey, processId, processName, mode: 'fix' } }
+    return (!modelCodeKey || item.modelCodeKey === modelCodeKey) && (!processId || item.processId === processId) && matchesStatus && (item.label || item.title).normalize('NFKC').toLocaleLowerCase().includes(normalizedNameFilter);
   });
-  const fix = (item: ProcedureManualOverviewItemDto) => { if (checkAccess()) openEditor(item); };
-  const remove = async (item: ProcedureManualOverviewItemDto, deleteDocument = false) => {
+  const rowProcessName = (item: ProcedureManualAssignmentOverviewItemDto) => {
+    const child = processes.find(row => row.id === item.processId);
+    return `${shortName(processes.find(row => row.id === child?.parentId))} › ${shortName(child)}`;
+  };
+  const openEditor = (item: ProcedureManualAssignmentOverviewItemDto) => navigate(kioskAssemblyProcedureDocumentEditPath(item.draftRevision?.documentId ?? item.documentId), {
+    state: { returnTo: kioskAssemblyManualsWorkshopPath({ model: modelCodeKey, process: processId }),
+      context: { modelCode: item.modelCode, modelCodeKey: item.modelCodeKey, processId: item.processId, processName: rowProcessName(item), mode: 'fix' } }
+  });
+  const fix = (item: ProcedureManualAssignmentOverviewItemDto) => { if (checkAccess()) openEditor(item); };
+  const view = async (item: ProcedureManualAssignmentOverviewItemDto) => {
+    setPreviewLoading(true); setError(null);
+    try {
+      if (item.kind === 'assembly_procedure_document') {
+        setPreview(await getAssemblyProcedureDocument(item.documentId));
+      } else {
+        const detail = await getProcedureManualAssignments(item.modelCodeKey, item.processId);
+        const documents = detail.sequence.documents.filter(row => row.kioskDocumentId === item.documentId);
+        if (!documents.length) throw new Error('文書を表示できません');
+        setPreviewTitle(item.label || item.title);
+        setPreviewSequence({ ...detail.sequence, documents, steps: detail.sequence.steps?.filter(row => row.kioskDocumentId === item.documentId) });
+      }
+    } catch (cause) { setError(readAssemblyApiErrorMessage(cause, '文書を表示できません')); }
+    finally { setPreviewLoading(false); }
+  };
+  const remove = async (item: ProcedureManualAssignmentOverviewItemDto, deleteDocument = false) => {
     if (!checkAccess()) return;
     setBusy(true); setError(null); setOperationMessage(null);
     let unassigned = false;
     try {
       // Preserve root references, labels and unavailable entries from the existing contract.
-      const detail = await getProcedureManualAssignments(modelCodeKey, processId);
+      const detail = await getProcedureManualAssignments(item.modelCodeKey, item.processId);
       if (!detail.assignments.some(row => row.id === item.assignmentId)) {
         setVersion(value => value + 1);
         setOperationMessage('割り当てが更新されました。もう一度確認してください');
         return;
       }
-      await replaceProcedureManualAssignments(modelCodeKey, processId, {
-        modelCode, assignments: detail.assignments.filter(row => row.id !== item.assignmentId).map((row, sortOrder) => ({
+      await replaceProcedureManualAssignments(item.modelCodeKey, item.processId, {
+        modelCode: item.modelCode, assignments: detail.assignments.filter(row => row.id !== item.assignmentId).map((row, sortOrder) => ({
           kioskDocumentId: row.kioskDocumentId, assemblyProcedureDocumentId: row.assemblyProcedureDocumentId, label: row.label, sortOrder
         }))
       });
@@ -203,44 +201,37 @@ export function ProcedureManualWorkshop() {
       </div>
     </header>
     <div className="grid min-h-0 grid-cols-[460px_minmax(0,1fr)]">
-      <section aria-label="機種一覧" className="flex min-h-0 flex-col gap-2.5 overflow-auto border-r border-[#27313b] bg-[#161c22] p-4">
-        <h2 className="text-base font-bold tracking-widest text-[#9fadb9]">機種</h2>
-        <Input type="search" aria-label="機種検索" placeholder="型番で検索" maxLength={120} value={search} onChange={event => setSearch(event.target.value)} className="h-12 shrink-0 text-[21px]" />
-        <output aria-label="数字検索" className="text-xl">{digitQuery}</output>
-        <div className="grid shrink-0 grid-cols-[200px_minmax(0,1fr)] items-start gap-3">
-          <ProcedureManualModelTenkey value={digitQuery} onChange={setDigitQuery} />
-          <section aria-label="工程一覧" className="flex min-w-0 flex-col gap-1">
-            <h2 className="text-base font-bold tracking-widest text-[#9fadb9]">工程</h2>
-            {overview?.processes.map(row => {
-              const child = processes.find(p => p.id === row.processId);
-              return <button key={row.processId} aria-current={processId === row.processId ? 'true' : undefined} className={`flex min-h-[46px] shrink-0 items-center rounded-lg px-3 text-left text-[19px] font-bold ${processId === row.processId ? 'bg-[#27313b]' : 'hover:bg-[#27313b]'}`} onClick={() => select(modelCodeKey, row.processId)}>
-                {shortName(processes.find(p => p.id === child?.parentId))} › {shortName(child)}<span className="ml-auto pl-2 font-mono text-[17px] font-normal text-[#9fadb9]">{row.count || '—'}</span>
-              </button>;
-            })}
-          </section>
-        </div>
-        {searchLoading ? <p role="status">検索中…</p> : searchError ? <p role="alert" className="text-red-400">{searchError}</p> : candidates.length === 0 ? <p className="text-[#9fadb9]">該当する機種がありません</p> : null}
-        {candidates.map(row => <button key={row.modelCodeKey} aria-label={row.modelCodeKey} aria-current={row.modelCodeKey === modelCodeKey ? 'true' : undefined} className={`min-h-12 shrink-0 rounded-lg px-3 text-left font-mono text-[18px] font-bold break-all ${row.modelCodeKey === modelCodeKey ? 'bg-[#27313b]' : 'hover:bg-[#27313b]'}`} onClick={() => select(row.modelCodeKey)}><ProcedureManualModelMatch code={row.modelCodeKey} search={digitQuery || procedureManualModelKey(search)} /></button>)}
-        {hasMore ? <p className="text-[#9fadb9]">数字を追加</p> : null}
-      </section>
+      <ProcedureManualFilterPane processes={processes} items={items} models={candidates} modelCodeKey={modelCodeKey} processId={processId}
+        search={search} digitQuery={digitQuery} onSearchChange={setSearch} onDigitQueryChange={setDigitQuery}
+        onModelSelect={key => select(key === modelCodeKey ? '' : key, processId)} onProcessSelect={id => select(modelCodeKey, id)}
+        loading={searchLoading} error={searchError} hasMore={hasMore} />
       <section aria-label="要領書一覧" className="grid min-h-0 min-w-0 content-start overflow-auto px-4 py-3">
-        {!modelCodeKey ? <p className="text-[#9fadb9]">機種を選択</p> : !process ? <p className="text-[#9fadb9]">工程を選択</p> : <>
+        <>
           <div className="mb-1.5 flex min-h-[52px] min-w-max items-center gap-3">
-            <h2 className="text-[22px] font-black">{modelCodeKey} › {processName}</h2>
+            <h2 aria-label={`${modelCodeKey || '全機種'} › ${process ? shortName(process) : '全工程'}`} className="flex items-center gap-2 text-[22px] font-black">
+              <span className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-[#344252] pl-3 ${modelCodeKey ? '' : 'border-dashed pr-3 text-[#9fadb9]'}`}>
+                {modelCodeKey || '全機種'}{modelCodeKey ? <IconActionTooltip label="機種の絞り込みを外す"><button aria-label="機種の絞り込みを外す" className={symbolAction} onClick={() => select('', processId)}>×</button></IconActionTooltip> : null}
+              </span> ›
+              <span className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-[#344252] pl-3 ${process ? '' : 'border-dashed pr-3 text-[#9fadb9]'}`}>
+                {process ? shortName(process) : '全工程'}{process ? <IconActionTooltip label="工程の絞り込みを外す"><button aria-label="工程の絞り込みを外す" className={symbolAction} onClick={() => select(modelCodeKey)}>×</button></IconActionTooltip> : null}
+              </span>
+            </h2>
             <span className="font-mono text-lg text-[#9fadb9]">{filteredItems.length} 件</span>
             <div className="ml-3 flex gap-1.5" role="group" aria-label="状態で絞り込み">
               {statusFilters.map(filter => <button key={filter} aria-pressed={statusFilter === filter} className={`h-11 rounded-full border border-[#344252] px-3 text-[17px] font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7cc4ff] ${statusFilter === filter ? 'bg-[#27313b] text-[#eef3f6]' : 'text-[#9fadb9]'}`} onClick={() => setStatusFilter(filter)}>{filter}</button>)}
             </div>
             <input type="search" aria-label="名前で絞り込み" placeholder="名前で絞り込み" value={nameFilter} onChange={event => setNameFilter(event.target.value)} className="h-11 w-[260px] rounded-lg border border-[#344252] bg-white px-3 text-lg text-[#0f1317] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7cc4ff]" />
-            <button className={`${yellowAction} ml-auto shrink-0`} disabled={busy} onClick={() => { if (checkAccess()) setBlankOpen(true); }}><svg aria-hidden="true" className="mr-2 h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>作る</button>
+            <button className={`${yellowAction} ml-auto shrink-0`} disabled={busy || !modelCodeKey || !process} onClick={() => { if (checkAccess()) setBlankOpen(true); }}><svg aria-hidden="true" className="mr-2 h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>作る</button>
           </div>
-          <div role="table" aria-label={processName} className="min-w-[1100px]">
+          <div role="table" aria-label={process ? shortName(process) : '全工程'} className="min-w-[1100px]">
           <div role="row" className="sr-only">
-            {['サムネイル', '名前', '状態', '他の使用先', '担当・承認', 'ページ', '操作'].map(label => <div role="columnheader" key={label}>{label}</div>)}
+            {['サムネイル', '名前', ...(!modelCodeKey ? ['機種'] : []), ...(!processId ? ['工程'] : []), '状態', '他の使用先', '担当・承認', 'ページ', '操作'].map(label => <div role="columnheader" key={label}>{label}</div>)}
           </div>
-          {filteredItems.map(item => <div role="row" key={item.assignmentId} aria-label={item.label || item.title} className="grid h-14 grid-cols-[36px_minmax(220px,1fr)_150px_230px_150px_50px_140px] items-center gap-3 border-b border-[#27313b] px-2.5 hover:bg-[#1b222a]">
+          {filteredItems.map(item => <div role="row" key={item.assignmentId} aria-label={item.label || item.title} style={{ gridTemplateColumns: `36px minmax(220px,1fr) ${!modelCodeKey ? '160px ' : ''}${!processId ? '90px ' : ''}150px 180px 150px 50px 188px` }} className="grid h-14 items-center gap-3 border-b border-[#27313b] px-2.5 hover:bg-[#1b222a]">
             <div role="cell"><ManualThumbnail url={item.thumbnailPageUrl} /></div>
             <div role="cell" className="truncate font-mono text-xl font-bold" title={item.label || item.title}>{item.label || item.title}</div>
+            {!modelCodeKey ? <div role="cell" className="truncate font-mono text-[17px] font-bold">{item.modelCode}</div> : null}
+            {!processId ? <div role="cell" className="truncate text-[17px] font-bold">{shortName(processes.find(row => row.id === item.processId))}</div> : null}
             <div role="cell">
                 <span className={`${badge} ${item.status === 'published' ? 'border-[#3ba776] text-[#3ba776]' : item.status === 'draft' ? 'border-[#f6b93b] text-[#f6b93b]' : 'border-[#e5484d] text-[#e5484d]'}`}>
                   {item.status === 'published' ? item.publishedRevisionNumber == null ? '公開' : `公開 第${item.publishedRevisionNumber}版` : item.status === 'draft' ? '下書き' : '無効'}
@@ -252,14 +243,16 @@ export function ProcedureManualWorkshop() {
             </div>
             <div role="cell" className="text-right font-mono text-base text-[#9fadb9]">{item.pageCount ?? '—'}{item.pageCount != null ? <span className="sr-only"> ページ</span> : null}</div>
             <div role="cell" className="flex gap-1">
+              {item.status !== 'unavailable' ? <IconActionTooltip label="見る" disabled={previewLoading}><button aria-label="見る" className={`${symbolAction} !border-[#344252] !text-[#eef3f6]`} disabled={previewLoading} onClick={() => void view(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg></button></IconActionTooltip> : null}
               {item.kind === 'assembly_procedure_document' && item.status !== 'unavailable' ? <IconActionTooltip label="直す" disabled={busy}><button aria-label="直す" className={`${symbolAction} !border-[#f6b93b] !text-[#f6b93b]`} disabled={busy} onClick={() => fix(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg></button></IconActionTooltip> : null}
               {item.kind === 'assembly_procedure_document' && item.status === 'published' ? <IconActionTooltip label="使う"><Link aria-label="使う" className={symbolAction} to={kioskAssemblyTemplateNewPath({ procedureDocumentId: item.documentId })}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="9" /><path d="M8 12l3 3 5-6" /></svg></Link></IconActionTooltip> : null}
               {canDelete(item) ? <IconActionTooltip label="削除" disabled={busy}><button aria-label="削除" className={symbolAction} disabled={busy} onClick={() => { if (checkAccess()) setDeleting(item); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13" /></svg></button></IconActionTooltip> : <IconActionTooltip label="外す" disabled={busy}><button aria-label="外す" className={symbolAction} disabled={busy} onClick={() => { if (checkAccess()) setRemoving(item); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="9" /><path d="M8 12h8" /></svg></button></IconActionTooltip>}
             </div>
           </div>)}
           </div>
-          <button className="mt-2.5 min-h-12 rounded-[10px] border border-dashed border-[#344252] text-lg text-[#9fadb9] disabled:opacity-40" disabled={busy || overviewLoading || !selected} onClick={() => { if (checkAccess()) setAssignmentOpen(true); }}>＋ 既存の要領書を割り当てる</button>
-        </>}
+          {!overviewLoading && filteredItems.length === 0 ? <p className="p-4 text-lg text-[#9fadb9]">該当する要領書がありません</p> : null}
+          {modelCodeKey && process ? <button className="mt-2.5 min-h-12 rounded-[10px] border border-dashed border-[#344252] text-lg text-[#9fadb9] disabled:opacity-40" disabled={busy || overviewLoading} onClick={() => { if (checkAccess()) setAssignmentOpen(true); }}>＋ 既存の要領書を割り当てる</button> : null}
+        </>
         {overviewLoading ? <p role="status" className="text-[#9fadb9]">読込中…</p> : null}
         {error ? <p role="alert" className="text-red-400">{error}</p> : null}
         {operationMessage ? <p role="alert" className="text-amber-300">{operationMessage}</p> : null}
@@ -281,6 +274,11 @@ export function ProcedureManualWorkshop() {
       navigate(kioskAssemblyProcedureDocumentEditPath(documentId), { state: { returnTo: kioskAssemblyManualsWorkshopPath({ model: modelCodeKey, process: processId }) } });
     }} /> : null}
     {videoOpen ? <ProcedureVideoShelfDialog onClose={() => setVideoOpen(false)} /> : null}
+    <AssemblyProcedurePreviewDialog document={preview} isOpen={Boolean(preview)} onClose={() => setPreview(null)} />
+    {previewSequence ? <Dialog isOpen onClose={() => setPreviewSequence(null)} title={previewTitle} size="full">
+      <AssemblyProcedureSequenceViewer sequence={previewSequence} showCurrentMarkerButton={false} className="min-h-0 flex-1" />
+      <button className={`${action} mt-3 self-end`} onClick={() => setPreviewSequence(null)}>閉じる</button>
+    </Dialog> : null}
     <ConfirmDialog isOpen={Boolean(removing)} title="この工程から外す" description={removing ? `${removing.label || removing.title}。${removing.otherAssignments.length ? `他の使用先に残ります：${usageLabel(removing.otherAssignments)}` : '手順書一覧に「未使用」で残ります'}` : undefined} confirmLabel="外す" buttonClassName="min-h-11" onCancel={() => setRemoving(null)} onConfirm={() => { if (removing) void remove(removing); setRemoving(null); }} />
     <ConfirmDialog isOpen={Boolean(deleting)} title="下書きを削除" description={deleting ? `${deleting.label || deleting.title}。元に戻せません` : undefined} confirmLabel="削除" tone="danger" buttonClassName="min-h-11" onCancel={() => setDeleting(null)} onConfirm={() => { if (deleting) void remove(deleting, true); setDeleting(null); }} />
   </div>;

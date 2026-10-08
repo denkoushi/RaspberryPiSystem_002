@@ -17,18 +17,19 @@ describe('procedure-manual routes', () => {
   let app: ReturnType<typeof Fastify>;
   afterEach(async () => { await app?.close(); vi.restoreAllMocks(); });
 
-  function harness(writeDenied = false) {
+  function harness(writeDenied = false, viewDenied = false) {
     const service = {
       listProcesses: vi.fn().mockResolvedValue([{ id: 'assembly' }]),
       listModels: vi.fn().mockResolvedValue([{ modelCode: 'ｄｆｄ１', modelCodeKey: 'DFD1' }]),
       getModelOverview: vi.fn(),
+      getOverview: vi.fn(),
       getAssignments: vi.fn().mockResolvedValue({ assignments: [{ unavailableReason: 'no_published_revision' }], sequence: {
         mode: 'configured', source: 'primary_fallback', machineName: 'ｄｆｄ１', machineNameKey: 'DFD1',
         documents: [], steps: [], stepSource: 'document_expansion', fallbackProcedureDocument: null
       } }),
       replaceAssignments: vi.fn().mockResolvedValue(undefined)
     };
-    const view = vi.fn(async () => undefined);
+    const view = vi.fn(async () => { if (viewDenied) throw new ApiError(403, '権限がありません'); });
     app = Fastify();
     registerErrorHandler(app);
     registerProcedureManualRoutes(app, {
@@ -65,6 +66,71 @@ describe('procedure-manual routes', () => {
     expect(response.json()).toEqual(overview);
     expect(service.getModelOverview).toHaveBeenCalledWith('DFD1');
     expect(view).toHaveBeenCalledOnce();
+  });
+
+  it.each([undefined, 'assembly'])('returns the cross-model overview through allowView (process=%s)', async processId => {
+    const { service, view } = harness();
+    const overview = { processes: [{ processId: 'assembly', count: 1, items: [{
+      modelCode: 'ｄｆｄ１', modelCodeKey: 'DFD1', processId: 'assembly',
+      assignmentId: 'one', sortOrder: 0, label: null, kind: 'assembly_procedure_document', documentId,
+      title: '組立', status: 'published', publishedRevisionNumber: 1, approval: null,
+      draftRevision: null, unavailableReason: null, pageCount: 1, thumbnailPageUrl: null, otherAssignments: []
+    }] }] };
+    service.getOverview.mockResolvedValue(overview);
+    const response = await app.inject({ method: 'GET', url: `/assembly/procedure-manuals/overview${processId ? `?processId=${processId}` : ''}` });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(overview);
+    expect(service.getOverview).toHaveBeenCalledWith(processId, false);
+    expect(view).toHaveBeenCalledOnce();
+  });
+
+  it('validates the optional overview process query before calling the service', async () => {
+    const { service } = harness();
+    for (const processId of ['', 'x'.repeat(201)]) {
+      expect((await app.inject({ method: 'GET', url: `/assembly/procedure-manuals/overview?processId=${processId}` })).statusCode).toBe(400);
+    }
+    expect(service.getOverview).not.toHaveBeenCalled();
+  });
+
+  it.each(['', '1', 'yes', 'TRUE', 'true&published=false'])('rejects invalid published overview queries (%s)', async published => {
+    const { service } = harness();
+    expect((await app.inject({ method: 'GET', url: `/assembly/procedure-manuals/overview?published=${published}` })).statusCode).toBe(400);
+    expect(service.getOverview).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, 'assembly'])('returns public counts without draft rows or draft revision data (process=%s)', async processId => {
+    const { service } = harness();
+    vi.spyOn(prisma.procedureManualProcess, 'findMany').mockResolvedValue([{ id: 'assembly', parentId: 'parent' }] as never);
+    vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([
+      { id: 'published', modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', assemblyProcedureDocumentId: documentId },
+      { id: 'initial-draft', modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', assemblyProcedureDocumentId: 'draft-root' }
+    ] as never);
+    const document = { name: '公開文書', isActive: true, pages: [], procedureManualApprovals: [] };
+    vi.spyOn(prisma.assemblyProcedureDocument, 'findMany').mockResolvedValue([
+      { ...document, id: documentId, status: 'PUBLISHED' },
+      { ...document, id: 'draft-root', name: '初版下書き', status: 'DRAFT' },
+      { ...document, id: 'draft-v2', name: '改版下書き', status: 'DRAFT',
+        revisionMetadata: { revisionRootId: documentId, revisionNumber: 2, supersedesDocumentId: documentId, isRevisionHead: true } }
+    ] as never);
+    const realService = new ProcedureManualService();
+    service.getOverview.mockImplementation((id, published) => realService.getOverview(id, published));
+    const response = await app.inject({ method: 'GET', url: `/assembly/procedure-manuals/overview?published=true${processId ? `&processId=${processId}` : ''}` });
+    expect(response.statusCode).toBe(200);
+    expect(service.getOverview).toHaveBeenCalledWith(processId, true);
+    const process = response.json().processes[0];
+    expect(process.count).toBe(1);
+    expect(process.items).toHaveLength(1);
+    expect(process.items[0]).toMatchObject({ assignmentId: 'published', status: 'published', draftRevision: null });
+    expect(response.body).not.toContain('draft-root');
+    expect(response.body).not.toContain('draft-v2');
+    expect(response.body).not.toContain('下書き');
+  });
+
+  it('rejects cross-model viewing without allowView permission', async () => {
+    const { service, view } = harness(false, true);
+    expect((await app.inject({ method: 'GET', url: '/assembly/procedure-manuals/overview' })).statusCode).toBe(403);
+    expect(view).toHaveBeenCalledOnce();
+    expect(service.getOverview).not.toHaveBeenCalled();
   });
 
   it('saves the complete list and rejects a model key mismatch or invalid document choice', async () => {

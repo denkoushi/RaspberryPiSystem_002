@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
-import { getProcedureManualAssignments, getProcedureManualModelOverview, listProcedureManualModels, listProcedureManualProcesses } from '../../../api/client';
-import { Input } from '../../../components/ui/Input';
+import { getProcedureManualAssignments, getProcedureManualOverview, listProcedureManualModels, listProcedureManualProcesses } from '../../../api/client';
 import { AssemblyProcedureSequenceViewer } from '../AssemblyProcedureSequenceViewer';
 import { kioskAssemblyManualsWorkshopPath } from '../assemblyRoutes';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
+import { ManualThumbnail } from './ManualThumbnail';
 import { procedureManualModelKey } from './ProcedureManualAssignmentDialog';
-import { ProcedureManualModelMatch, ProcedureManualModelTenkey } from './ProcedureManualModelSearch';
+import { ProcedureManualFilterPane } from './ProcedureManualFilterPane';
 import { ProcedureManualPageRail } from './ProcedureManualPageRail';
 import { ProcedurePageVideoStrip } from './ProcedurePageVideoStrip';
 
-import type { AssemblyProcedureSequencePageDto, ProcedureManualDetailDto, ProcedureManualModelDto, ProcedureManualModelOverviewDto, ProcedureManualProcessDto } from '../types';
+import type { AssemblyProcedureSequencePageDto, ProcedureManualDetailDto, ProcedureManualAssignmentOverviewItemDto, ProcedureManualModelDto, ProcedureManualProcessDto } from '../types';
 
 const shortName = (process?: ProcedureManualProcessDto) => process?.name.replace(/工程/g, '') ?? '';
 
@@ -33,7 +33,8 @@ export function ProcedureManualBrowser() {
   const [modelCodeKey, setModelCodeKey] = useState(() => procedureManualModelKey(params.get('model') ?? ''));
   const [processId, setProcessId] = useState(() => params.get('process') ?? '');
   const [userSelectedModel, setUserSelectedModel] = useState(false);
-  const [overview, setOverview] = useState<ProcedureManualModelOverviewDto | null>(null);
+  const [initialDocumentId, setInitialDocumentId] = useState<string>();
+  const [items, setItems] = useState<ProcedureManualAssignmentOverviewItemDto[]>([]);
   const [search, setSearch] = useState('');
   const [detail, setDetail] = useState<ProcedureManualDetailDto | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,27 +45,18 @@ export function ProcedureManualBrowser() {
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([listProcedureManualModels(), listProcedureManualProcesses()]).then(([nextModels, nextProcesses]) => {
-      if (!cancelled) { setModels(nextModels); setProcesses(nextProcesses); }
+    void Promise.all([listProcedureManualModels(), listProcedureManualProcesses(), getProcedureManualOverview(undefined, true)]).then(([nextModels, nextProcesses, nextOverview]) => {
+      if (!cancelled) { setModels(nextModels); setProcesses(nextProcesses); setItems(nextOverview.processes.flatMap(process => process.items)); }
     }).catch((e: unknown) => { if (!cancelled) setError(readAssemblyApiErrorMessage(e, '一覧を取得できません')); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    setOverview(null);
-    if (!modelCodeKey) return;
-    void getProcedureManualModelOverview(modelCodeKey).then(next => {
-      if (cancelled) return;
-      setOverview(next);
-      const available = next.processes.filter(process => process.count > 0);
-      if (userSelectedModel && available.length === 1) {
-        setProcessId(current => current || available[0].processId);
-      }
-    }).catch(() => { /* Counts are optional; keep browsing available. */ });
-    return () => { cancelled = true; };
-  }, [modelCodeKey, userSelectedModel]);
+    if (!modelCodeKey || !userSelectedModel) return;
+    const available = [...new Set(items.filter(item => item.modelCodeKey === modelCodeKey).map(item => item.processId))];
+    if (available.length === 1) setProcessId(current => current || available[0]);
+  }, [items, modelCodeKey, userSelectedModel]);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,6 +70,9 @@ export function ProcedureManualBrowser() {
   }, [modelCodeKey, processId]);
 
   const visibleModels = models.filter((m) => m.modelCodeKey.includes(procedureManualModelKey(search)));
+  const visibleItems = items.filter(item => (!modelCodeKey || item.modelCodeKey === modelCodeKey)
+    && (!processId || item.processId === processId));
+  const showOverview = listOpen && (!modelCodeKey || !processId);
   const toolClass = 'inline-flex h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-[#344252] px-3.5 text-[19px] font-bold disabled:opacity-40';
   return (
     <div className={`grid min-h-0 flex-1 ${listOpen ? 'grid-cols-[460px_minmax(0,1fr)]' : 'grid-cols-[minmax(0,1fr)]'} bg-[#0f1317] text-[#eef3f6]`} data-open={listOpen} data-pages={twoPages ? 2 : 1} data-testid="procedure-manuals-split">
@@ -89,26 +84,16 @@ export function ProcedureManualBrowser() {
             <Link to="/kiosk/assembly" className={`${toolClass} border-transparent text-[#9fadb9]`}>組立へ戻る</Link>
           </div>
         </header>
-        {error ? <p role="alert" className="px-3 py-2 text-sm text-red-400">{error}</p> : null}
-        <section aria-label="機種一覧" className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-auto p-4">
-            <h2 className="text-base font-bold tracking-widest text-[#9fadb9]">機種</h2>
-            <Input type="search" aria-label="機種検索" placeholder="型番で検索" className="h-12 shrink-0 text-[21px]" value={search} onChange={(e) => setSearch(e.target.value)} />
-            <div className="grid shrink-0 grid-cols-[200px_minmax(0,1fr)] items-start gap-3">
-              <ProcedureManualModelTenkey value={search} onChange={setSearch} />
-              <section aria-label="工程一覧" className="flex min-w-0 flex-col gap-1">
-                <h2 className="text-base font-bold tracking-widest text-[#9fadb9]">工程</h2>
-                {!modelCodeKey ? <p className="text-sm text-[#9fadb9]">機種を選択</p> : processes.filter((p) => p.parentId).map((process) => {
-                  const parent = processes.find((p) => p.id === process.parentId);
-                  const count = overview?.processes.find(row => row.processId === process.id)?.count;
-                  return <button key={process.id} aria-label={`${parent?.name ?? ''} › ${process.name}`} className={`flex min-h-[46px] shrink-0 items-center rounded-lg px-3 text-left text-[19px] font-bold ${processId === process.id ? 'bg-[#27313b]' : 'hover:bg-[#27313b]'} ${count === 0 ? 'text-[#6b7885]' : ''}`} aria-pressed={processId === process.id} onClick={() => setProcessId(process.id)}>
-                    {shortName(parent)} › {shortName(process)}<span aria-hidden="true" className={`ml-auto pl-2 font-mono text-[17px] ${count && count > 0 ? 'font-bold text-[#eef3f6]' : 'font-normal text-[#9fadb9]'}`}>{count && count > 0 ? count : '—'}</span>
-                  </button>;
-                })}
-              </section>
-            </div>
-            {loading ? <p role="status" className="mt-2 text-sm">読込中…</p> : visibleModels.length === 0 ? <p className="mt-2 text-sm text-[#9fadb9]">機種がありません</p> : null}
-            {visibleModels.map((model) => <button key={model.modelCodeKey} className={`min-h-12 shrink-0 rounded-lg px-3 text-left font-mono text-[18px] font-bold break-all ${modelCodeKey === model.modelCodeKey ? 'bg-[#27313b]' : 'hover:bg-[#27313b]'}`} aria-label={model.modelCodeKey} aria-pressed={modelCodeKey === model.modelCodeKey} onClick={() => { setUserSelectedModel(true); setModelCodeKey(model.modelCodeKey); setProcessId(''); }}><ProcedureManualModelMatch code={model.modelCodeKey} search={procedureManualModelKey(search)} /></button>)}
-        </section>
+        <ProcedureManualFilterPane processes={processes} items={items} models={visibleModels}
+          modelCodeKey={modelCodeKey} processId={processId} search={search} digitQuery={search}
+          onSearchChange={setSearch} onDigitQueryChange={setSearch}
+          onModelSelect={(key) => {
+            setInitialDocumentId(undefined);
+            const next = key === modelCodeKey ? '' : key;
+            setUserSelectedModel(Boolean(next)); setModelCodeKey(next);
+            if (modelCodeKey && next) setProcessId('');
+          }}
+          onProcessSelect={(id) => { setInitialDocumentId(undefined); setProcessId(id); }} loading={loading} error={error} />
         <div className="max-h-[40%] shrink-0 overflow-auto px-4">
           {detail?.assignments.filter((a) => a.unavailableReason).map((item) => <p key={item.id} role="status" className="shrink-0 border-t border-[#27313b] p-2 text-sm text-[#f6b93b]">{item.label || `${item.sortOrder + 1}番目の文書`}: {item.unavailableReason === 'no_published_revision' ? '公開版なし' : '文書は無効です'}</p>)}
           {currentPage ? <section aria-label="承認・動画" className="shrink-0 space-y-2 border-t border-[#27313b] py-2.5 text-[17px] text-[#9fadb9]">
@@ -119,10 +104,22 @@ export function ProcedureManualBrowser() {
         </div>
       </div>
       <section aria-label="要領書" className="relative flex min-h-0 min-w-0 flex-col overflow-hidden bg-[#0a0d10]">
-        {!processId ? <p className="p-2 text-sm text-[#9fadb9]">工程を選択</p> : !detail && !error ? <p role="status">読込中…</p> : null}
+        {showOverview ? <section aria-label="要領書一覧" className="min-h-0 flex-1 overflow-auto pr-16">
+          <div className="grid grid-cols-[64px_minmax(0,1fr)_180px_130px_70px] items-center gap-3 border-b border-[#27313b] px-5 py-3 text-[17px] font-bold text-[#9fadb9]">
+            <span aria-hidden="true" /><span>名前</span><span>機種</span><span>工程</span><span>ページ数</span>
+          </div>
+          {visibleItems.map(item => <button type="button" key={item.assignmentId} aria-label={item.title}
+            className="grid min-h-[72px] w-full grid-cols-[64px_minmax(0,1fr)_180px_130px_70px] items-center gap-3 border-b border-[#27313b] px-5 py-3 text-left text-[19px] hover:bg-[#1b222a]"
+            onClick={() => { setInitialDocumentId(item.documentId); setUserSelectedModel(true); setModelCodeKey(item.modelCodeKey); setProcessId(item.processId); }}>
+            <ManualThumbnail url={item.thumbnailPageUrl} /><span className="min-w-0 truncate font-bold">{item.title}</span>
+            <span className="truncate font-mono">{item.modelCode}</span><span>{shortName(processes.find(process => process.id === item.processId))}</span>
+            <span className="text-center font-mono">{item.pageCount ?? '—'}</span>
+          </button>)}
+          {loading ? <p role="status" className="p-5 text-[17px] text-[#9fadb9]">読込中…</p> : visibleItems.length === 0 ? <p className="p-5 text-[17px] text-[#9fadb9]">該当する要領書がありません</p> : null}
+        </section> : !processId ? <p className="p-2 text-sm text-[#9fadb9]">工程を選択</p> : !detail && !error ? <p role="status">読込中…</p> : null}
 
-        {detail && detail.sequence.documents.length > 0 ? <AssemblyProcedureSequenceViewer key={`${modelCodeKey}:${processId}`} sequence={detail.sequence} layout="manuals" showCurrentMarkerButton={false} onCurrentPageChange={onPageChange} listOpen={listOpen} onToggleList={toggleList} twoPages={twoPages} onToggleTwoPages={() => setTwoPages(!twoPages)} className="min-h-0 flex-1" /> : detail ? <p className="p-2 text-sm text-[#9fadb9]">表示できる文書がありません</p> : null}
-        {!detail || detail.sequence.documents.length === 0 ? <ProcedureManualPageRail listOpen={listOpen} onToggleList={toggleList} /> : null}
+        {!showOverview && detail && detail.sequence.documents.length > 0 ? <AssemblyProcedureSequenceViewer key={`${modelCodeKey}:${processId}`} sequence={detail.sequence} initialDocumentId={initialDocumentId} layout="manuals" showCurrentMarkerButton={false} onCurrentPageChange={onPageChange} listOpen={listOpen} onToggleList={toggleList} twoPages={twoPages} onToggleTwoPages={() => setTwoPages(!twoPages)} className="min-h-0 flex-1" /> : !showOverview && detail ? <p className="p-2 text-sm text-[#9fadb9]">表示できる文書がありません</p> : null}
+        {showOverview || !detail || detail.sequence.documents.length === 0 ? <ProcedureManualPageRail listOpen={listOpen} onToggleList={toggleList} /> : null}
       </section>
     </div>
   );
