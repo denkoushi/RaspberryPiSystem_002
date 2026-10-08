@@ -14,6 +14,7 @@ import { AssemblyProcedureDocumentEditorInspector } from './AssemblyProcedureDoc
 import { AssemblyProcedureDocumentEditorPageList } from './AssemblyProcedureDocumentEditorPageList';
 import { AssemblyProcedureDocumentEditorPartsPane } from './AssemblyProcedureDocumentEditorPartsPane';
 import { AssemblyProcedureDocumentPublishDialog } from './AssemblyProcedureDocumentPublishDialog';
+import { AssemblyProcedureLayoutSuggestionPanel } from './AssemblyProcedureLayoutSuggestionPanel';
 import { AssemblyProcedureOverlayTypeDialog } from './AssemblyProcedureOverlayTypeDialog';
 import { AssemblyProcedureTextCandidateDialog } from './AssemblyProcedureTextCandidateDialog';
 
@@ -115,6 +116,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           selectedPageIndex={selectedPage.pageIndex}
           onSelect={controller.setSelectedPageIndex}
           onAddBlankPage={() => void controller.addBlankPage()}
+          locked={controller.layoutSuggestions.locked}
           disabled={controller.readOnly || controller.busy || controller.conflict}
         />
         {partsPaneOpen ? <AssemblyProcedureDocumentEditorPartsPane
@@ -130,17 +132,19 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           onToggleHidden={toggleHidden}
           readOnly={controller.readOnly}
           busy={controller.busy}
+          locked={controller.layoutSuggestions.locked}
         /> : null}
-        <button type="button" aria-label={partsPaneOpen ? '部品を閉じる' : '部品を開く'} onClick={togglePartsPane} className={`absolute top-1/2 z-50 grid h-[72px] w-[22px] -translate-y-1/2 place-items-center rounded-r-lg border border-l-0 border-[#344252] bg-[#161c22] text-[#9fadb9] ${partsPaneOpen ? 'left-[400px]' : 'left-[120px]'}`}>
+        <button type="button" disabled={controller.layoutSuggestions.locked} aria-label={partsPaneOpen ? '部品を閉じる' : '部品を開く'} onClick={togglePartsPane} className={`absolute top-1/2 z-50 grid h-[72px] w-[22px] -translate-y-1/2 place-items-center rounded-r-lg border border-l-0 border-[#344252] bg-[#161c22] text-[#9fadb9] ${partsPaneOpen ? 'left-[400px]' : 'left-[120px]'}`}>
           <span aria-hidden="true">{partsPaneOpen ? '<' : '>'}</span>
         </button>
         <section className={`relative col-start-3 min-h-0 min-w-0 overflow-hidden p-4 ${controller.selectedElement ? 'pr-[372px]' : ''}`} aria-label="手順書キャンバス">
           <AssemblyProcedureDocumentEditorCanvas
             pageUrl={selectedPage.imageRelativePath}
             pageIndex={selectedPage.pageIndex}
-            elements={controller.selectedPageElements.filter(element => !hiddenOverlayIds.has(element.id))}
+            elements={controller.layoutSuggestions.previewElements ?? (controller.layoutSuggestions.locked ? controller.selectedPageElements : controller.selectedPageElements.filter(element => !hiddenOverlayIds.has(element.id)))}
             selectionMode={controller.selectionMode}
             editable={!controller.readOnly}
+            locked={controller.layoutSuggestions.locked}
             selectedOverlayId={controller.selectedOverlayId}
             onSelectOverlay={controller.setSelectedOverlayId}
             onNudgeOverlay={controller.nudgeElement}
@@ -151,6 +155,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
             assets={controller.document?.assets}
             className="h-full w-full !bg-[#0a0d10]"
           />
+          <AssemblyProcedureLayoutSuggestionPanel suggestions={controller.layoutSuggestions} />
           <div className="absolute left-4 top-3 z-40 flex h-9 max-w-[70%] items-center gap-2.5 rounded-lg border border-[#344252] bg-[#161c22d9] px-3 text-lg text-[#9fadb9]">
             <b className="truncate text-[#eef3f6]">{context ? [context.modelCode, context.processName, controller.document?.name ?? '要領書'].filter(Boolean).join(' › ') : controller.document?.name ?? '手順書'}</b>
             {context ? <span className={`inline-flex h-[26px] shrink-0 items-center rounded-full border px-2.5 text-[15px] font-bold ${context.mode === 'make' ? 'border-[#3ba776] text-[#3ba776]' : 'border-[#f6b93b] text-[#f6b93b]'}`}>

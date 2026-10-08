@@ -66,6 +66,11 @@ function makeController(
 ): AssemblyProcedureDocumentEditorController {
   const selectedPage = editorDocument.pages[0]!;
   return {
+    layoutSuggestions: {
+      state: { status: 'idle' }, locked: false, canSuggest: false,
+      start: vi.fn(async () => undefined), cancel: vi.fn(), apply: vi.fn(),
+      previewElements: null, selectPlan: vi.fn(), showBefore: vi.fn()
+    },
     onEditLeaseError: vi.fn(() => false),
     beginOverlayDrag: vi.fn(),
     endOverlayDrag: vi.fn(),
@@ -459,11 +464,52 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
   });
 
 
+  it('shows pending arranging in a small panel and locks page and tool actions', () => {
+    const c = makeController({ readOnly: true });
+    c.layoutSuggestions = { ...c.layoutSuggestions, locked: true, state: { status: 'pending', seconds: 7 } };
+    renderScreen(c);
+    expect(screen.getByText('配置を考えています 7秒')).toBeInTheDocument();
+    for (const button of within(screen.getByRole('navigation', { name: 'エディタ操作' })).getAllByRole('button')) expect(button).toBeDisabled();
+    expect(screen.getByRole('button', { name: '1ページ目（選択中）' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '部品を閉じる' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'やめる' }));
+    expect(c.layoutSuggestions.cancel).toHaveBeenCalledOnce();
+  });
+
+  it('shows proposals on the canvas and routes before/after, plan, apply and cancel actions', () => {
+    const c = makeController({ readOnly: true });
+    const proposed: AssemblyProcedureOverlayElement[] = [{ id: 'proposal', kind: 'TEXT', pageIndex: 0, text: '手順', zIndex: 0, bbox: { xRatio: 0.1, yRatio: 0.1, widthRatio: 0.8, heightRatio: 0.2 } }];
+    c.layoutSuggestions = { ...c.layoutSuggestions, locked: true, previewElements: proposed, state: { status: 'preview', planKey: 'standard', before: false, plans: [{ key: 'standard', elements: proposed }, { key: 'largePhoto', elements: proposed }] } };
+    renderScreen(c);
+    expect(screen.getByTestId('editor-canvas')).toHaveAttribute('data-elements', 'proposal');
+    expect(screen.getByText('余白・写真の幅・文字の大きさをそろえ、1手順を1行にしました')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '案2 写真大きめ' }));
+    expect(c.layoutSuggestions.selectPlan).toHaveBeenCalledWith('largePhoto');
+    fireEvent.click(screen.getByRole('button', { name: '前', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '後', exact: true }));
+    expect(c.layoutSuggestions.showBefore).toHaveBeenNthCalledWith(1, true);
+    expect(c.layoutSuggestions.showBefore).toHaveBeenNthCalledWith(2, false);
+    fireEvent.click(screen.getByRole('button', { name: 'これにする' }));
+    expect(c.layoutSuggestions.apply).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: 'やめる' }));
+    expect(c.layoutSuggestions.cancel).toHaveBeenCalledOnce();
+  });
+
+  it('shows arranging failures next to the canvas and closes them', () => {
+    const c = makeController();
+    c.layoutSuggestions.state = { status: 'error', message: 'このページは1枚に収まりません' };
+    renderScreen(c);
+    expect(screen.getByRole('alert')).toHaveTextContent('このページは1枚に収まりません');
+    fireEvent.click(screen.getByRole('button', { name: '閉じる', exact: true }));
+    expect(c.layoutSuggestions.cancel).toHaveBeenCalledOnce();
+  });
+
   it('exposes the rail actions, selected tools and floating inspector close action', () => {
     const c = makeController({ canSave: true, canUndo: true, canRedo: true, selectionMode: true, selectedElement: { id: 'text', kind: 'TEXT', pageIndex: 0, text: '文字', zIndex: 0, bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.2, heightRatio: 0.2 } } });
     renderScreen(c);
     const rail = screen.getByRole('navigation', { name: 'エディタ操作' });
-    expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['保存する', '公開する', '素材を置く', '動画をつなぐ', '文字を置く', '図形を置く', '範囲を選ぶ', '元に戻す', 'やり直す', '削除する', '一覧へ戻る']);
+    expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['保存する', '公開する', '素材を置く', '動画をつなぐ', '文字を置く', '図形を置く', '範囲を選ぶ', '整える', '元に戻す', 'やり直す', '削除する', '一覧へ戻る']);
+    expect(screen.getByRole('button', { name: '整える' })).toHaveClass('!border-[#5fc3e8]', '!text-[#5fc3e8]');
     expect(rail).toHaveClass('pb-[84px]');
     for (const button of within(rail).getAllByRole('button')) expect(button).not.toHaveAttribute('title');
     expect(screen.getByRole('button', { name: '一覧へ戻る' })).toHaveClass('!border-transparent', '!text-[#9fadb9]');

@@ -1,3 +1,5 @@
+import { procedureLayoutSuggestionRequestSchema, procedureLayoutSuggestionResponseSchema } from '@raspi-system/shared-types';
+
 import { api } from '../http';
 
 import type {
@@ -27,10 +29,19 @@ import type {
   AssemblyWorkUnitInvalidationInput,
 } from '../../features/assembly/types';
 import type { A2uiMessage } from '@a2ui/web_core/v0_9';
-import type { AssemblyProcedureOverlayElement, OverlayRegionImage } from '@raspi-system/shared-types';
+import type { AssemblyProcedureOverlayElement, OverlayRegionImage, ProcedureLayoutSuggestionRequest } from '@raspi-system/shared-types';
 
 function procedureEditHeaders(holderToken?: string | null) {
   return { headers: holderToken ? { 'x-procedure-edit-token': holderToken } : {} };
+}
+
+export async function suggestAssemblyProcedureLayout(input: ProcedureLayoutSuggestionRequest & { id: string; accessPassword: string; holderToken?: string | null; signal: AbortSignal }) {
+  const { data } = await api.post(
+    `/assembly/procedure-documents/${encodeURIComponent(input.id)}/layout-suggestions`,
+    { ...procedureLayoutSuggestionRequestSchema.parse({ pageIndex: input.pageIndex, elements: input.elements }), accessPassword: input.accessPassword },
+    { ...procedureEditHeaders(input.holderToken), signal: input.signal }
+  );
+  return procedureLayoutSuggestionResponseSchema.parse(data);
 }
 
 export async function listAssemblySeibanCandidates(params: { prefix: string; limit?: number }) {

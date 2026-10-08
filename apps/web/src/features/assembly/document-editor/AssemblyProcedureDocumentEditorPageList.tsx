@@ -9,7 +9,8 @@ export function AssemblyProcedureDocumentEditorPageList({
   selectedPageIndex,
   onSelect,
   onAddBlankPage,
-  disabled
+  disabled,
+  locked = false
 }: {
   pages: AssemblyProcedureDocumentPageDto[];
   assets?: Record<string, AssemblyProcedureOverlayAssetDto>;
@@ -17,6 +18,7 @@ export function AssemblyProcedureDocumentEditorPageList({
   onSelect: (pageIndex: number) => void;
   onAddBlankPage: () => void;
   disabled: boolean;
+  locked?: boolean;
 }) {
   return (
     <aside className="flex min-h-0 flex-col items-center gap-2 overflow-auto border-r border-[#27313b] bg-[#161c22] px-2 py-2.5" aria-label="手順書ページ一覧">
@@ -27,6 +29,7 @@ export function AssemblyProcedureDocumentEditorPageList({
             <button
               key={page.pageIndex}
               type="button"
+              disabled={locked}
               className={`relative block w-[100px] shrink-0 overflow-hidden rounded border-2 bg-white text-left ${selected ? 'border-[#5fc3e8]' : 'border-transparent'}`}
               aria-current={selected ? 'true' : undefined}
               aria-label={`${page.pageIndex + 1}ページ目${selected ? '（選択中）' : ''}`}

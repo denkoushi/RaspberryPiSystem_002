@@ -8,6 +8,7 @@ import type {
 
 export type OverlayDraftAction =
   | { type: 'replace'; elements: AssemblyProcedureOverlayElement[]; preserveHistory?: boolean }
+  | { type: 'applyLayout'; pageIndex: number; elements: AssemblyProcedureOverlayElement[] }
   | { type: 'add'; element: AssemblyProcedureOverlayElement }
   | { type: 'duplicate'; sourceId: string; id: string; pageIndex: number }
   | { type: 'update'; element: AssemblyProcedureOverlayElement }
@@ -63,6 +64,10 @@ export function overlayDraftReducer(
   action: OverlayDraftAction
 ): AssemblyProcedureOverlayElement[] {
   switch (action.type) {
+    case 'applyLayout': {
+      const proposed = new Map(action.elements.map(element => [element.id, element]));
+      return state.map(element => element.pageIndex === action.pageIndex ? { ...proposed.get(element.id)! } : element);
+    }
     case 'replace':
       return action.elements.map((element) => ({ ...element }));
     case 'add':
