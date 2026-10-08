@@ -1,4 +1,4 @@
-import { videosForPage, type ProcedureVideoSummary } from '../../services/assembly/procedure-video.service.js';
+import { videosForPage, type ProcedureVideoPageLink } from '../../services/assembly/procedure-video.service.js';
 import { serializeLastProcedureManualApproval, type ProcedureManualApprovalSnapshot } from '../../services/assembly/assembly-procedure-document-revision.serializer.js';
 import type { MultipartFile } from '@fastify/multipart';
 import type { AssemblyProcedureAsset } from '@prisma/client';
@@ -49,7 +49,7 @@ type ProcedureDocumentLike = {
     imageRelativePath: string;
   }>;
   overlayElements?: Parameters<typeof serializeAssemblyProcedureOverlayElement>[0][];
-  procedureVideoLinks?: Array<{ pageIndex: number; video: ProcedureVideoSummary & { discardedAt?: Date | null } }>;
+  procedureVideoLinks?: ProcedureVideoPageLink[];
   ownedAssets?: Array<Pick<AssemblyProcedureAsset, 'id' | 'storageKey' | 'contentType' | 'byteSize'>>;
 };
 

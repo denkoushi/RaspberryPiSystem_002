@@ -62,7 +62,7 @@ function harness() {
     expect(inTransaction).toBe(!key.includes('/incoming/'));
     events.push('delete');
   }) };
-  const transcoder = { probe: vi.fn().mockResolvedValue({ durationSeconds: 12, width: 640, height: 360 }), transcode: vi.fn(async (input: string, output: string, poster: string, _heartbeat?: () => Promise<void>) => {
+  const transcoder = { posterAt: vi.fn(), probe: vi.fn().mockResolvedValue({ durationSeconds: 12, width: 640, height: 360 }), transcode: vi.fn(async (input: string, output: string, poster: string, _heartbeat?: () => Promise<void>) => {
     expect(inTransaction).toBe(false);
     expect(await readFile(input, 'utf8')).toBe('original');
     await writeFile(output, 'converted'); await writeFile(poster, 'poster');
