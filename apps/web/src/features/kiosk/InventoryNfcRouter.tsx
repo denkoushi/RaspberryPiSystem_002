@@ -12,7 +12,8 @@ const INVENTORY_ROUTING_OFF_PATHS = new Set(['/kiosk/inventory/settings', '/kios
 export function InventoryNfcRouter() {
   const location = useLocation();
   const inventoryQueryClient = useQueryClient();
-  useInventoryTags(300_000);
+  // The tag table is loaded on the inventory screens only; elsewhere a scan uses what is cached or asks the server.
+  useInventoryTags(300_000, location.pathname.startsWith('/kiosk/inventory'));
   const event = useNfcStream(!INVENTORY_ROUTING_OFF_PATHS.has(location.pathname), undefined, { role: 'inventory', inventoryQueryClient });
   const navigate = useNavigate();
   const lastRoutedEventKeyRef = useRef<string | null>(null);
