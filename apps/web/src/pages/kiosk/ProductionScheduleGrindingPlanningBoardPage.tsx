@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   useKioskProductionScheduleResources,
   useKioskGrindingPlanningBoardProgressive,
+  useKioskGrindingPlanningBoardLoad,
   useKioskGrindingPlanningBoardSeibanCandidates,
   useKioskGrindingPlanningBoardDueDetail,
   useUpdateKioskGrindingPlanningBoardOverrides,
@@ -40,7 +41,6 @@ import type {
   GrindingPlanningBoardItem,
   GrindingPlanningBoardOverrideItemRequest,
   GrindingPlanningBoardResourceOrderPlacement,
-  GrindingPlanningBoardResponse,
   GrindingPlanningBoardDueRequest,
   GrindingPlanningBoardSpecialDueKind
 } from '@raspi-system/shared-types';
@@ -149,7 +149,6 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     items: GrindingPlanningBoardItem[];
     sourceRevision: string;
     resources: string[];
-    load: GrindingPlanningBoardResponse['load'];
   } | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const editorGenerationRef = useRef(0);
@@ -181,6 +180,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     { category, view, completionFilter: status },
     { refetchIntervalMs: editorOpen ? false : undefined }
   );
+  const loadQuery = useKioskGrindingPlanningBoardLoad(category);
   const candidateQuery = useKioskGrindingPlanningBoardSeibanCandidates({
     category,
     completionFilter: showCompletedCandidates ? 'all' : 'incomplete'
@@ -447,8 +447,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     setEditorSnapshot({
       items: [...target],
       sourceRevision: data.sourceRevision,
-      resources: [...data.resources],
-      load: data.load
+      resources: [...data.resources]
     });
     setResourceChoice('unchanged');
     setDueMode('none');
@@ -765,7 +764,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     : selectedVisibleItems;
   const editorResources = editorSnapshot?.resources ?? [];
   const projectedLoad = (resource: string) => {
-    const summary = editorSnapshot?.load.find((entry) => entry.resourceCd === resource);
+    const summary = loadQuery.data?.load.find((entry) => entry.resourceCd === resource);
     const base = allocation === 'original' ? summary?.originalRequiredMinutes : summary?.alternateRequiredMinutes;
     const baseUnknown = allocation === 'original' ? summary?.originalUnknownItemCount : summary?.alternateUnknownItemCount;
     let delta = 0;
@@ -989,7 +988,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
               <button type="button" className={`min-h-11 rounded-md border px-3 text-sm ${resourceChoice === 'unchanged' ? 'border-emerald-600 bg-emerald-100 text-emerald-950' : 'border-slate-300'}`} onClick={() => setResourceChoice('unchanged')}>変更なし</button>
               <button type="button" className={`min-h-11 rounded-md border px-3 text-sm ${resourceChoice === 'restore' ? 'border-emerald-600 bg-emerald-100 text-emerald-950' : 'border-slate-300'}`} onClick={() => setResourceChoice('restore')}>元に戻す</button>
               {editorResources.map((resource) => {
-                const summary = editorSnapshot?.load.find((entry) => entry.resourceCd === resource);
+                const summary = loadQuery.data?.load.find((entry) => entry.resourceCd === resource);
                 return (
                   <button
                     key={resource}
@@ -999,12 +998,12 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
                     onClick={() => setResourceChoice(resource)}
                   >
                     <span className="block">{resource}</span>
-                    <span className="block text-[10px] font-sans opacity-75">{formatPlanningBoardResourceLoad(summary, allocation)}</span>
+                    <span className="block text-[10px] font-sans opacity-75">{loadQuery.data ? formatPlanningBoardResourceLoad(summary, allocation) : '…'}</span>
                   </button>
                 );
               })}
             </div>
-            {resourceChoice !== 'unchanged' ? (
+            {loadQuery.data && resourceChoice !== 'unchanged' ? (
               <p className="mt-2 text-xs text-slate-600">
                 {resourceChoice === 'restore'
                   ? `復帰後負荷: ${[...new Set(editorItems.map((item) => item.originalResourceCd).filter((resource): resource is string => Boolean(resource)))].map((resource) => `${resource} ${projectedLoad(resource)}`).join(' / ') || '0分'}`

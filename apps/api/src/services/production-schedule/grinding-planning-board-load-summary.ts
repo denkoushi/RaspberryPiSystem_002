@@ -1,10 +1,13 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type {
   GrindingPlanningBoardCategory,
-  GrindingPlanningBoardLoad
+  GrindingPlanningBoardLoad,
+  GrindingPlanningBoardLoadResponse
 } from '@raspi-system/shared-types';
 
+import { ApiError } from '../../lib/errors.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import type { GrindingPlanningBoardPerformance } from './grinding-planning-board-performance.js';
 import {
   buildGrindingPlanningBoardRowItemId
 } from './grinding-planning-board-projection.js';
@@ -25,10 +28,7 @@ export type GrindingPlanningBoardLoadSummaryRow = {
   isCompleted: boolean;
 };
 
-export type GrindingPlanningBoardLoadSummary = {
-  load: GrindingPlanningBoardLoad[];
-  unknownRequiredMinutesCount: number;
-};
+export type GrindingPlanningBoardLoadSummary = GrindingPlanningBoardLoadResponse;
 
 export type GrindingPlanningBoardLoadSummaryDbClient = Pick<PrismaClient, '$queryRaw'>;
 
@@ -43,6 +43,11 @@ export type ReadGrindingPlanningBoardLoadSummaryParams = {
   category: GrindingPlanningBoardCategory;
   splitEnabled: boolean;
   isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => boolean;
+  cache?: {
+    generationToken: string;
+    readGenerationToken: () => Promise<string>;
+    performance: GrindingPlanningBoardPerformance;
+  };
 };
 
 type LoadSummarySourceRow = {
@@ -86,6 +91,21 @@ type LoadSummaryAggregateRow = {
 
 const SOURCE_ROW_CHUNK_SIZE = 900;
 const SPLIT_PREFIX = 'split:';
+const MAX_LOAD_SUMMARY_CACHE_ENTRIES = 128;
+// The generation token does not see every input (e.g. pruned supplement rows),
+// so a completed aggregate is also dropped after a fixed age.
+const LOAD_SUMMARY_CACHE_TTL_MS = 10 * 60 * 1000;
+type AggregateCacheEntry = {
+  siteKey: string;
+  dashboardId: string;
+  generationToken: string;
+  promise: Promise<LoadSummaryAggregateRow[]>;
+  completedAtMs?: number;
+};
+const aggregateCaches = new WeakMap<GrindingPlanningBoardLoadSummaryDbClient, {
+  completed: Map<string, AggregateCacheEntry>;
+  inFlight: Map<string, AggregateCacheEntry>;
+}>();
 
 function decodeAggregateOverride(row: LoadSummaryOverrideRow): LoadSummaryOverrideBinding | null {
   if (row.itemKey.startsWith(SPLIT_PREFIX)) {
@@ -310,9 +330,7 @@ async function readAggregatedLoadSummary(params: {
   leaderboardMaterializedBaseWhere: Prisma.Sql;
   splitEnabled: boolean;
   overrideRows: readonly LoadSummaryOverrideRow[];
-  category: GrindingPlanningBoardCategory;
-  isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => boolean;
-}): Promise<GrindingPlanningBoardLoadSummary> {
+}): Promise<LoadSummaryAggregateRow[]> {
   const overrideBindings = params.overrideRows.flatMap((row) => {
     const binding = decodeAggregateOverride(row);
     return binding == null ? [] : [binding];
@@ -485,7 +503,77 @@ async function readAggregatedLoadSummary(params: {
     GROUP BY "originalResourceCd", "effectiveResourceCd"
   `);
 
-  return buildGrindingPlanningBoardLoadSummaryFromAggregates(aggregateRows, params);
+  return aggregateRows;
+}
+
+async function readMaterializedLoadAggregates(
+  params: ReadGrindingPlanningBoardLoadSummaryParams & { leaderboardMaterializedBaseWhere: Prisma.Sql },
+  dashboardId: string
+): Promise<LoadSummaryAggregateRow[]> {
+  const compute = async () => {
+    const overrideRows = await params.client.$queryRaw<LoadSummaryOverrideRow[]>(Prisma.sql`
+      SELECT "itemKey", "overrideResourceCd"
+      FROM "ProductionScheduleGrindingPlanningBoardOverride"
+      WHERE "csvDashboardId" = ${dashboardId}
+        AND "siteKey" = ${params.siteKey}
+    `);
+    return readAggregatedLoadSummary({
+      client: params.client, dashboardId,
+      leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere,
+      splitEnabled: params.splitEnabled, overrideRows
+    });
+  };
+  const context = params.cache;
+  if (!context) return compute();
+  let caches = aggregateCaches.get(params.client);
+  if (!caches) {
+    caches = { completed: new Map(), inFlight: new Map() };
+    aggregateCaches.set(params.client, caches);
+  }
+  const { completed, inFlight } = caches;
+  // Only completed entries are purged here: a late request of an older
+  // generation must not evict the newer generation's in-flight aggregate.
+  const now = Date.now();
+  for (const [key, entry] of completed) {
+    const expired = entry.completedAtMs != null && now - entry.completedAtMs > LOAD_SUMMARY_CACHE_TTL_MS;
+    if (expired || (entry.siteKey === params.siteKey && entry.dashboardId === dashboardId && entry.generationToken !== context.generationToken)) {
+      completed.delete(key);
+    }
+  }
+  // The base predicate is dashboard + canonical winner membership. Membership
+  // order is immaterial; normalize it so the resolver's row order cannot miss.
+  const key = JSON.stringify({
+    siteKey: params.siteKey, dashboardId, generationToken: context.generationToken,
+    splitEnabled: params.splitEnabled,
+    baseWhere: {
+      strings: params.leaderboardMaterializedBaseWhere.strings,
+      values: params.leaderboardMaterializedBaseWhere.values.map((value) => Array.isArray(value) ? [...value].sort() : value)
+    }
+  });
+  const existing = completed.get(key) ?? inFlight.get(key);
+  if (existing) return context.performance.measure('loadSummaryCacheHit', () => existing.promise);
+  const entry: AggregateCacheEntry = {
+    siteKey: params.siteKey, dashboardId, generationToken: context.generationToken,
+    promise: context.performance.measure('loadSummaryCompute', async () => {
+      const rows = await compute();
+      if (await context.readGenerationToken() !== context.generationToken) {
+        throw new ApiError(409, '一覧の元データが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_SNAPSHOT');
+      }
+      return rows;
+    })
+  };
+  inFlight.set(key, entry);
+  try {
+    const rows = await entry.promise;
+    if (inFlight.get(key) === entry) {
+      entry.completedAtMs = Date.now();
+      completed.set(key, entry);
+      if (completed.size > MAX_LOAD_SUMMARY_CACHE_ENTRIES) completed.delete(completed.keys().next().value!);
+    }
+    return rows;
+  } finally {
+    if (inFlight.get(key) === entry) inFlight.delete(key);
+  }
 }
 
 /**
@@ -503,21 +591,8 @@ export async function readGrindingPlanningBoardLoadSummary(
   }
   const dashboardId = params.dashboardId ?? PRODUCTION_SCHEDULE_DASHBOARD_ID;
   if (params.leaderboardMaterializedBaseWhere !== undefined) {
-    const overrideRows = await params.client.$queryRaw<LoadSummaryOverrideRow[]>(Prisma.sql`
-      SELECT "itemKey", "overrideResourceCd"
-      FROM "ProductionScheduleGrindingPlanningBoardOverride"
-      WHERE "csvDashboardId" = ${dashboardId}
-        AND "siteKey" = ${params.siteKey}
-    `);
-    return readAggregatedLoadSummary({
-      client: params.client,
-      dashboardId,
-      leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere,
-      splitEnabled: params.splitEnabled,
-      overrideRows,
-      category: params.category,
-      isResourceInCategory: params.isResourceInCategory
-    });
+    const rows = await readMaterializedLoadAggregates({ ...params, leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere }, dashboardId);
+    return buildGrindingPlanningBoardLoadSummaryFromAggregates(rows, params);
   }
   const splitSelect = params.splitEnabled
     ? Prisma.sql`"split"."id" AS "splitId", "split"."splitQuantity" AS "splitQuantity"`
