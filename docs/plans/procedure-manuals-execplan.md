@@ -337,6 +337,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Rationale: 無意味なボタンを増やさない。API 境界を守る。
 - Decision: 「削除」は DRAFT の初版(`supersedesDocumentId` なし)だけに出す。改版 DRAFT は既存の「改版を破棄」、PUBLISHED は紐づけ解除のみ。参照判定はサーバーの既存 DELETE(409)を正とする。
   Rationale: 既存 API は改版 DRAFT の削除を拒むため、押せても失敗するボタンを出さない。
+- Decision: 工房の行に出す操作は「外す」か「削除」のどちらか 1 つにする(2026-10-08、承認済みモックあり)。「削除」は上の条件に加えて、その文書の割り当てがこの機種×工程だけのとき。公開済み、または他の機種×工程でも割り当て中の文書は「外す」だけ。手順書一覧には「使用先」列と「未使用」の絞り込みを足し、割り当て中の文書は削除を押せなくする。
+  Rationale: 同じ行に 2 つ並ぶと利用者が違いを判断できず、外しただけの下書きが一覧に残る理由も分からなかった。
+  Interfaces: 機種オーバービューの item に `otherAssignments`、手順書一覧サマリに `manualAssignments` を追加(どちらも `{ modelCode, modelCodeKey, processId, processName }[]`、追加のみ)。行内アイコンの用途表示は `components/ui/IconActionTooltip.tsx` に切り出し、エディタの `EditorIconButton` と共有する。
 
 - Decision: 構造の整理(2026-10-06)で、組立ホームに「見る/作る・直す/使う」の札の画面を新設せず、ホーム上部の入口を 2 つに整理してホームの作業一覧を「使う」とする。
   Rationale: ホームの一覧がすでに「使う」の本体で、札の画面を挟むと 1 段増える(1 画面完結の方針に反する)。モックの意図(3 つの仕事を分ける)は、閲覧から作成・編集を取り除き工房へ移すことで満たす。

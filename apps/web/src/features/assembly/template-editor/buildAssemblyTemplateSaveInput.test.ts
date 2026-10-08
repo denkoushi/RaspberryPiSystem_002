@@ -41,7 +41,7 @@ function validInput(): AssemblyTemplateSaveInput {
         pages: [{ pageIndex: 0, imageRelativePath: '/api/document-1.png' }],
         createdAt: '2026-08-03T00:00:00.000Z',
         updatedAt: '2026-08-03T00:00:00.000Z',
-        activeTemplateCount: 0,
+        manualAssignments: [], activeTemplateCount: 0,
         totalTemplateCount: 0
       }
     ],

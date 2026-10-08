@@ -30,7 +30,7 @@ const processes = [
   { id: 'assembly', name: '組立工程', parentId: 'parent' },
   { id: 'inspection', name: '検査工程', parentId: 'parent' }
 ];
-const published: ProcedureManualOverviewItemDto = { assignmentId: 'pub', sortOrder: 0, label: null, kind: 'assembly_procedure_document', documentId: 'v2', title: '公開手順', status: 'published', publishedRevisionNumber: 2, approval: null, draftRevision: null, unavailableReason: null, pageCount: 3, thumbnailPageUrl: '/page.png' };
+const published: ProcedureManualOverviewItemDto = { otherAssignments: [], assignmentId: 'pub', sortOrder: 0, label: null, kind: 'assembly_procedure_document', documentId: 'v2', title: '公開手順', status: 'published', publishedRevisionNumber: 2, approval: null, draftRevision: null, unavailableReason: null, pageCount: 3, thumbnailPageUrl: '/page.png' };
 const items: ProcedureManualOverviewItemDto[] = [
   { ...published, draftRevision: { documentId: 'v3', revisionNumber: 3, editLease: { holderLabel: '佐藤', acquiredAt: '2026-10-06T09:12:00' } } },
   { ...published, assignmentId: 'draft', documentId: 'draft1', title: '初版下書き', status: 'draft', publishedRevisionNumber: null },
@@ -61,6 +61,27 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('procedure-manuals workshop', () => {
+  it.each([
+    ['draft', false, '削除'], ['draft', true, '外す'], ['published', false, '外す'], ['published', true, '外す']
+  ] as const)('offers a single destructive action for %s (shared=%s)', async (status, shared, action) => {
+    const otherAssignments = shared ? [
+      { modelCode: 'DFD2', modelCodeKey: 'DFD2', processId: 'inspection', processName: '検査' },
+      { modelCode: 'DFD3', modelCodeKey: 'DFD3', processId: 'cutting', processName: '切削' }
+    ] : [];
+    mocks.overview.mockResolvedValue({ ...overview, processes: [{ processId: 'assembly', count: 1, items: [{ ...published, status, otherAssignments }] }] });
+    show();
+    const row = await screen.findByRole('row', { name: '公開手順' });
+    expect(within(row).getByRole('button', { name: action })).toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: action === '削除' ? '外す' : '削除' })).not.toBeInTheDocument();
+    const usage = within(row).getAllByRole('cell')[3];
+    expect(usage).toHaveTextContent(shared ? 'DFD2 · 検査、DFD3 · 切削' : '—');
+    expect(usage).toHaveClass('truncate'); expect(usage).not.toHaveAttribute('title');
+    fireEvent.click(within(row).getByRole('button', { name: action }));
+    const dialog = screen.getByRole('dialog', { name: action === '削除' ? '下書きを削除' : 'この工程から外す' });
+    expect(dialog).toHaveTextContent('公開手順');
+    expect(dialog).toHaveTextContent(action === '削除' ? '元に戻せません' : shared ? '他の使用先に残ります：DFD2 · 検査、DFD3 · 切削' : '手順書一覧に「未使用」で残ります');
+  });
+
   it('closes the material shelf and opens the created document editor with the workshop return path', async () => {
     show();
     fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
@@ -164,13 +185,13 @@ describe('procedure-manuals workshop', () => {
     expect(mocks.image).toHaveBeenCalledWith('/page.png');
   });
 
-  it('exposes six visually hidden column headers and reads the page count with its unit', async () => {
+  it('exposes seven visually hidden column headers and reads the page count with its unit', async () => {
     show();
     const row = await screen.findByRole('row', { name: '公開手順' });
     const headers = screen.getAllByRole('columnheader');
-    expect(headers.map(header => header.textContent)).toEqual(['サムネイル', '名前', '状態', '担当・承認', 'ページ', '操作']);
+    expect(headers.map(header => header.textContent)).toEqual(['サムネイル', '名前', '状態', '他の使用先', '担当・承認', 'ページ', '操作']);
     expect(headers[0].parentElement).toHaveClass('sr-only');
-    const cell = within(row).getAllByRole('cell')[4];
+    const cell = within(row).getAllByRole('cell')[5];
     expect(cell.textContent).toBe('3 ページ');
     expect(within(cell).getByText('ページ')).toHaveClass('sr-only');
   });
@@ -185,7 +206,7 @@ describe('procedure-manuals workshop', () => {
     const revision = screen.getByRole('row', { name: '改版手順' });
     expect(within(revision).getByText(/改版中 · 佐藤/)).toBeInTheDocument();
     expect(within(revision).queryByText(/承認/)).not.toBeInTheDocument();
-    expect(within(screen.getByRole('row', { name: '承認なし' })).getAllByRole('cell')[3]).toBeEmptyDOMElement();
+    expect(within(screen.getByRole('row', { name: '承認なし' })).getAllByRole('cell')[4]).toBeEmptyDOMElement();
   });
 
   it('uses dense accessible rows, status colors, thumbnails and valid symbol actions', async () => {
@@ -214,7 +235,7 @@ describe('procedure-manuals workshop', () => {
     expect(screen.getByRole('button', { name: '組立 › 検査 —' })).toBeInTheDocument();
     const pub = screen.getByRole('row', { name: '公開手順' });
     expect(pub).toHaveClass('h-14');
-    expect(within(pub).getAllByRole('cell')).toHaveLength(6);
+    expect(within(pub).getAllByRole('cell')).toHaveLength(7);
     expect(within(pub).getByText('公開手順')).toHaveAttribute('title', '公開手順');
     expect(within(pub).getByText('公開手順')).toHaveClass('font-mono', 'truncate');
     expect(within(pub).getByText('公開 第2版')).toHaveClass('text-[#3ba776]');
@@ -236,7 +257,7 @@ describe('procedure-manuals workshop', () => {
       expect(within(row).queryByRole('link', { name: '使う' })).not.toBeInTheDocument();
       expect(within(row).getByRole('button', { name: '外す' })).toBeInTheDocument();
     }
-    expect(within(screen.getByRole('row', { name: '無効手順' })).getByText('—')).toBeInTheDocument();
+    expect(within(screen.getByRole('row', { name: '無効手順' })).getAllByRole('cell')[5]).toHaveTextContent('—');
     for (const control of [within(pub).getByRole('button', { name: '直す' }), within(pub).getByRole('link', { name: '使う' }), within(pub).getByRole('button', { name: '外す' }), within(draft).getByRole('button', { name: '削除' })]) {
       expect(control).toHaveClass('h-11', 'w-11');
       expect(control).toHaveAttribute('aria-label');
@@ -377,10 +398,10 @@ describe('procedure-manuals workshop', () => {
     fireEvent.click(within(pub).getByRole('button', { name: '外す' }));
     expect(mocks.replace).not.toHaveBeenCalled();
     for (const button of within(screen.getByRole('dialog')).getAllByRole('button')) expect(button).toHaveClass('min-h-11');
-    fireEvent.click(within(screen.getByRole('dialog', { name: '割り当てを外す' })).getByRole('button', { name: 'キャンセル' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'この工程から外す' })).getByRole('button', { name: 'キャンセル' }));
     expect(mocks.replace).not.toHaveBeenCalled();
     fireEvent.click(within(pub).getByRole('button', { name: '外す' }));
-    fireEvent.click(within(screen.getByRole('dialog', { name: '割り当てを外す' })).getByRole('button', { name: '外す' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'この工程から外す' })).getByRole('button', { name: '外す' }));
     await waitFor(() => expect(mocks.replace).toHaveBeenCalledExactlyOnceWith('DFD1', 'assembly', { modelCode: 'DFD1', assignments: [
       { assemblyProcedureDocumentId: 'draft1', kioskDocumentId: null, sortOrder: 0, label: '下書き' },
       { assemblyProcedureDocumentId: null, kioskDocumentId: 'pdf', sortOrder: 1, label: 'PDF' }
@@ -390,6 +411,7 @@ describe('procedure-manuals workshop', () => {
 
   it.each(['外す', '削除'])('refreshes changed assignments without PUT or DELETE when the selected ID is missing (%s)', async action => {
     mocks.detail.mockResolvedValue({ assignments: [{ id: 'new-id', assemblyProcedureDocumentId: 'draft1', sortOrder: 0 }] });
+    if (action === '外す') mocks.overview.mockResolvedValue({ ...overview, processes: [{ processId: 'assembly', count: 1, items: [{ ...items[1], otherAssignments: [{ modelCode: 'DFD2', modelCodeKey: 'DFD2', processId: 'inspection', processName: '検査' }] }] }] });
     show(); const draft = await screen.findByRole('row', { name: '初版下書き' });
     fireEvent.click(within(draft).getByRole('button', { name: action }));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: action }));
@@ -404,8 +426,8 @@ describe('procedure-manuals workshop', () => {
     if (outcome === '409') mocks.delete.mockRejectedValue({ response: { status: 409, data: { message: 'テンプレートで使用中の手順書は削除できません' } } });
     show(); const draft = await screen.findByRole('row', { name: '初版下書き' });
     fireEvent.click(within(draft).getByRole('button', { name: '削除' }));
-    const dialog = screen.getByRole('dialog', { name: '要領書を削除' });
-    expect(dialog).toHaveTextContent('割り当てを外して削除します。元に戻せません');
+    const dialog = screen.getByRole('dialog', { name: '下書きを削除' });
+    expect(dialog).toHaveTextContent('初版下書き。元に戻せません');
     for (const button of within(dialog).getAllByRole('button')) expect(button).toHaveClass('min-h-11');
     expect(mocks.replace).not.toHaveBeenCalled(); expect(mocks.delete).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole('button', { name: '削除' }));

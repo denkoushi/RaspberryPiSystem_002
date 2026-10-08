@@ -41,7 +41,7 @@ describe('assembly procedure document routes', () => {
     const document = buildDocument();
     const procedureService = {
       list: vi.fn().mockResolvedValue([document]),
-      listSummary: vi.fn().mockResolvedValue([{ ...document, activeTemplateCount: 1, totalTemplateCount: 2 }]),
+      listSummary: vi.fn().mockResolvedValue([{ ...document, manualAssignments: [{ modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', processName: '組立' }], activeTemplateCount: 1, totalTemplateCount: 2 }]),
       getById: vi.fn().mockResolvedValue(document),
       rename: vi.fn().mockResolvedValue({ ...document, name: '変更後' }),
       getReferenceUsage: vi.fn().mockResolvedValue({ inBoltPageRef: false, inCheckPageRef: false }),
@@ -65,7 +65,7 @@ describe('assembly procedure document routes', () => {
 
     const summaryResponse = await app.inject({ method: 'GET', url: '/assembly/procedure-documents/summary' });
     expect(summaryResponse.statusCode).toBe(200);
-    expect(summaryResponse.json().documents[0]).toMatchObject({ activeTemplateCount: 1, totalTemplateCount: 2 });
+    expect(summaryResponse.json().documents[0]).toMatchObject({ manualAssignments: [{ modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', processName: '組立' }], activeTemplateCount: 1, totalTemplateCount: 2 });
 
     const detailResponse = await app.inject({ method: 'GET', url: `/assembly/procedure-documents/${documentId}` });
     expect(detailResponse.statusCode).toBe(200);

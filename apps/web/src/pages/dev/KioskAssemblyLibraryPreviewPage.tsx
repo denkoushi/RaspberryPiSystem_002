@@ -22,6 +22,10 @@ const previewDocuments: AssemblyProcedureDocumentSummaryDto[] = [
     isActive: true,
     createdAt: now,
     updatedAt: now,
+    manualAssignments: [
+      { modelCode: 'FH-20A', modelCodeKey: 'FH-20A', processId: 'assembly', processName: '組立' },
+      { modelCode: 'FH-25B', modelCodeKey: 'FH-25B', processId: 'inspection', processName: '検査' }
+    ],
     activeTemplateCount: 3,
     totalTemplateCount: 5
   },
@@ -35,6 +39,7 @@ const previewDocuments: AssemblyProcedureDocumentSummaryDto[] = [
     isActive: true,
     createdAt: now,
     updatedAt: now,
+    manualAssignments: [],
     activeTemplateCount: 1,
     totalTemplateCount: 1
   }

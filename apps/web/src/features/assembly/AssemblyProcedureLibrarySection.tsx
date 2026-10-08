@@ -7,6 +7,7 @@ import {
 } from '../../api/client';
 import { KioskFilterCombobox, type KioskFilterOption } from '../../components/kiosk/KioskFilterCombobox';
 import { Button, buttonClassName } from '../../components/ui/Button';
+import { IconActionTooltip } from '../../components/ui/IconActionTooltip';
 import { useProtectedImageBlobUrl } from '../../hooks/useProtectedImageBlobUrl';
 
 import { AssemblyLibraryActionIcon } from './AssemblyLibraryActionIcon';
@@ -26,14 +27,16 @@ import { useAssemblyProcedureLibrary } from './useAssemblyProcedureLibrary';
 import type { AssemblyProcedureDocumentDto, AssemblyProcedureDocumentSummaryDto } from './types';
 import type { MouseEvent, ReactNode } from 'react';
 
+export type AssemblyProcedureLibraryStatusFilter = 'all' | 'published' | 'draft' | 'unused';
+
 type Props = {
   refreshToken?: number;
   toolbarStart?: ReactNode;
   toolbarEnd?: ReactNode;
   initialSearchQuery?: string;
-  initialStatusFilter?: 'all' | 'published' | 'draft';
+  initialStatusFilter?: AssemblyProcedureLibraryStatusFilter;
   onSearchQueryChange?: (query: string) => void;
-  onStatusFilterChange?: (status: 'all' | 'published' | 'draft') => void;
+  onStatusFilterChange?: (status: AssemblyProcedureLibraryStatusFilter) => void;
   onRegisterClick: () => void;
   onImportClick?: () => void;
   importing?: boolean;
@@ -81,8 +84,11 @@ export function AssemblyProcedureLibrarySection({
     return previewDocuments.filter((document) => document.name.toLowerCase().includes(q));
   }, [isPreview, previewDocuments, previewSearchQuery]);
 
-  const documents = (isPreview ? previewFilteredDocuments : apiState.documents).filter(document =>
-    statusFilter === 'all' || (document.isActive && resolveAssemblyDocumentStatus(document) === statusFilter)
+  const availableDocuments = isPreview ? previewFilteredDocuments : apiState.documents;
+  const unusedCount = availableDocuments.filter(document => document.manualAssignments.length === 0).length;
+  const documents = availableDocuments.filter(document =>
+    statusFilter === 'all' || (statusFilter === 'unused' ? document.manualAssignments.length === 0
+      : document.isActive && resolveAssemblyDocumentStatus(document) === statusFilter)
   );
   const searchQuery = isPreview ? previewSearchQuery : apiState.searchQuery;
   const setSearchQuery = isPreview ? setPreviewSearchQuery : apiState.setSearchQuery;
@@ -148,9 +154,9 @@ export function AssemblyProcedureLibrarySection({
             options={filterOptions} loading={apiFilterOptions.loading} optionUpdateMode="live" inputClassName="h-11 min-h-11 px-2 text-sm" />
         </div>
         <div className="flex shrink-0 gap-1" aria-label="手順書の状態">
-          {([['all', '全て'], ['published', '公開'], ['draft', '下書き']] as const).map(([value, label]) => (
+          {([['all', '全て'], ['published', '公開'], ['draft', '下書き'], ['unused', '未使用']] as const).map(([value, label]) => (
             <button key={value} type="button" aria-pressed={statusFilter === value} onClick={() => { setStatusFilter(value); onStatusFilterChange?.(value); }}
-              className={`h-11 rounded-full border px-3 text-sm font-semibold ${statusFilter === value ? 'border-emerald-400 bg-emerald-400/20 text-emerald-100' : 'border-white/20 text-white/60'}`}>{label}</button>
+              className={`h-11 rounded-full border px-3 text-sm font-semibold ${statusFilter === value ? value === 'unused' ? 'border-amber-400 bg-amber-400/20 text-amber-200' : 'border-emerald-400 bg-emerald-400/20 text-emerald-100' : 'border-white/20 text-white/60'}`}>{label}{value === 'unused' ? <span className="ml-2 font-mono">{unusedCount}</span> : null}</button>
           ))}
         </div>
         <Button type="button" data-kiosk-sop-target="assembly-library-refresh" variant="ghostOnDark" className="h-11 w-11 shrink-0 !p-0 text-2xl"
@@ -182,13 +188,13 @@ export function AssemblyProcedureLibrarySection({
               {searchQuery.trim() ? '条件に合う手順書はありません。' : '登録済み手順書はありません。'}
             </p>
           ) : (
-            <table className="w-full min-w-[1080px] table-fixed border-collapse text-left text-base" aria-label="手順書ライブラリ">
+            <table className="w-full min-w-[1280px] table-fixed border-collapse text-left text-base" aria-label="手順書ライブラリ">
               <colgroup>
-                <col className="w-[60px]" /><col /><col className="w-[142px]" /><col className="w-[70px]" />
+                <col className="w-[60px]" /><col /><col className="w-[142px]" /><col className="w-[300px]" /><col className="w-[70px]" />
                 <col className="w-[90px]" /><col className="w-[140px]" /><col className="w-[300px]" />
               </colgroup>
               <thead className="sr-only"><tr>
-                {['サムネイル', '名前', '状態', '頁', 'テンプレ', '更新', '操作'].map(label => <th key={label} scope="col">{label}</th>)}
+                {['サムネイル', '名前', '状態', '使用先', '頁', 'テンプレ', '更新', '操作'].map(label => <th key={label} scope="col">{label}</th>)}
               </tr></thead>
               <tbody>
                 {documents.map((document) => {
@@ -203,34 +209,43 @@ export function AssemblyProcedureLibrarySection({
                       <td className="px-2"><span className={`inline-flex whitespace-nowrap rounded-full border px-2 py-1 text-sm font-semibold ${!document.isActive ? 'border-red-400 text-red-200' : isPublished ? 'border-emerald-400 text-emerald-100' : 'border-amber-400 text-amber-100'}`}>
                         {!document.isActive ? '無効' : isPublished ? `公開 第${document.revisionNumber ?? 1}版` : '下書き'}
                       </span></td>
+                      <td className="px-2"><div className="flex min-w-0 items-center gap-1.5">
+                        {document.manualAssignments.length ? <>
+                          <span className="inline-flex min-w-0 items-center gap-1.5 rounded-md bg-[#1b2530] px-2.5 py-1 text-[15px]">
+                            <span className="truncate"><b className="font-mono">{document.manualAssignments[0].modelCode}</b><span className="text-white/60"> · </span>{document.manualAssignments[0].processName}</span>
+                          </span>
+                          {document.manualAssignments.length > 1 ? <span className="shrink-0 font-mono text-[15px] text-white/60">+{document.manualAssignments.length - 1}</span> : null}
+                        </> : <span className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-amber-400 px-2.5 py-1 text-[15px] font-bold text-amber-400">
+                          <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><circle cx="12" cy="12" r="9" /><path d="M12 7v6M12 16.5v.5" /></svg>未使用
+                        </span>}
+                      </div></td>
                       <td className="px-2 text-right font-mono text-white/60">{pageCount}</td>
                       <td className="px-2 text-right font-mono text-white/60">{document.activeTemplateCount}/{document.totalTemplateCount}</td>
                       <td className="whitespace-nowrap px-2 text-right font-mono text-white/60">{formatAssemblyTimestamp(document.updatedAt)}</td>
                       <td className="px-2"><div className="flex justify-end gap-1">
-                          <Button
+                          <IconActionTooltip label={isPublished ? '内容確認' : '内容確認・公開'} disabled={isPreview || busy}><Button
                             type="button"
                             data-kiosk-sop-target="assembly-procedure-preview"
                             variant="ghostOnDark"
                             aria-label={isPublished ? '内容確認' : '内容確認・公開'}
-                            title={isPublished ? '内容確認' : '内容確認・公開'}
                             className="flex h-11 w-11 shrink-0 items-center justify-center rounded !p-0"
                             disabled={isPreview || busy}
                             onClick={() => onPreviewClick?.(document)}
                           >
                             <AssemblyLibraryActionIcon action="preview" />
-                          </Button>
-                          <Link
+                          </Button></IconActionTooltip>
+                          <IconActionTooltip label={isPublished ? '改版編集' : '編集'}><Link
                             to={kioskAssemblyProcedureDocumentEditPath(document.id)}
                             data-kiosk-sop-target="assembly-procedure-edit"
-                            aria-label={isPublished ? '改版編集' : '編集'} title={isPublished ? '改版編集' : '編集'}
+                            aria-label={isPublished ? '改版編集' : '編集'}
                             className={buttonClassName(
                               'ghostOnDark',
                               'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded !p-0 !border-amber-400 !text-amber-200'
                             )}
                           >
                             <AssemblyLibraryActionIcon action="edit" />
-                          </Link>
-                          <Link
+                          </Link></IconActionTooltip>
+                          <IconActionTooltip label={!isPublished ? '公開後にテンプレート作成できます' : 'テンプレート新規作成'} disabled={!isPublished}><Link
                             to={kioskAssemblyTemplateNewPath({ procedureDocumentId: document.id })}
                             data-kiosk-sop-target="assembly-template-new"
                             className={buttonClassName(
@@ -239,43 +254,41 @@ export function AssemblyProcedureLibrarySection({
                             )}
                             aria-disabled={!isPublished}
                             aria-label="テンプレート新規作成"
-                            title={!isPublished ? '公開後にテンプレート作成できます' : 'テンプレート新規作成'}
                             onClick={(event: MouseEvent<HTMLAnchorElement>) => {
                               if (!isPublished) event.preventDefault();
                             }}
                           >
                             <AssemblyLibraryActionIcon action="create" />
-                          </Link>
+                          </Link></IconActionTooltip>
                           {!isPublished || document.revisionRootId != null ? null : (
-                            <Button
+                            <IconActionTooltip label="公開取消" disabled={isPreview || busy}><Button
                               type="button"
                               variant="ghostOnDark"
                               className="flex h-11 w-11 shrink-0 items-center justify-center rounded !p-0"
                               disabled={isPreview || busy}
-                              aria-label="公開取消" title="公開取消" onClick={() => void handleUnpublish(document)}
+                              aria-label="公開取消" onClick={() => void handleUnpublish(document)}
                             >
                               <AssemblyLibraryActionIcon action="unpublish" />
-                            </Button>
+                            </Button></IconActionTooltip>
                           )}
-                          <Button
+                          <IconActionTooltip label="名前変更" disabled={isPreview || busy}><Button
                             type="button"
                             variant="ghostOnDark"
                             className="flex h-11 w-11 shrink-0 items-center justify-center rounded !p-0"
                             disabled={isPreview || busy}
-                            aria-label="名前変更" title="名前変更" onClick={() => setRenameTarget(document)}
+                            aria-label="名前変更" onClick={() => setRenameTarget(document)}
                           >
                             <AssemblyLibraryActionIcon action="rename" />
-                          </Button>
-                          <Button
+                          </Button></IconActionTooltip>
+                          <IconActionTooltip label={document.manualAssignments.length > 0 ? '使用中は削除できません' : document.totalTemplateCount > 0 ? 'テンプレートで使用中のため削除できません' : '削除'} disabled={isPreview || busy || document.totalTemplateCount > 0 || document.manualAssignments.length > 0}><Button
                             type="button"
                             variant="ghostOnDark"
                             className="flex h-11 w-11 shrink-0 items-center justify-center rounded !border-red-400 !p-0 !text-red-300"
-                            disabled={isPreview || busy || document.totalTemplateCount > 0}
-                            title={document.totalTemplateCount > 0 ? 'テンプレートで使用中のため削除できません' : '削除'}
+                            disabled={isPreview || busy || document.totalTemplateCount > 0 || document.manualAssignments.length > 0}
                             aria-label="削除" onClick={() => void handleDelete(document)}
                           >
                             <AssemblyLibraryActionIcon action="delete" />
-                          </Button>
+                          </Button></IconActionTooltip>
                       </div></td>
                     </tr>
                   );

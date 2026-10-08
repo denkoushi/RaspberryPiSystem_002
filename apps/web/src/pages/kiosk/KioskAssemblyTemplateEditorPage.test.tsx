@@ -76,7 +76,7 @@ function documentFixture(id: string, name: string): AssemblyProcedureDocumentSum
     ],
     createdAt: NOW,
     updatedAt: NOW,
-    activeTemplateCount: 0,
+    manualAssignments: [], activeTemplateCount: 0,
     totalTemplateCount: 0
   };
 }

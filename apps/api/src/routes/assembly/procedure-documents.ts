@@ -123,6 +123,7 @@ export function serializeProcedureDocument(doc: ProcedureDocumentLike) {
 export function serializeProcedureDocumentSummary(doc: AssemblyProcedureDocumentSummary) {
   return {
     ...serializeProcedureDocument(doc),
+    manualAssignments: doc.manualAssignments,
     activeTemplateCount: doc.activeTemplateCount,
     totalTemplateCount: doc.totalTemplateCount
   };

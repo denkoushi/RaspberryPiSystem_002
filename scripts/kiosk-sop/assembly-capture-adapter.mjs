@@ -59,6 +59,7 @@ function revisionDocument({
 
 const procedureSummary = Object.freeze({
   ...procedureDocument,
+  manualAssignments: [{ modelCode: 'FH-20A', modelCodeKey: 'FH-20A', processId: 'assembly', processName: '組立' }],
   activeTemplateCount: 1,
   totalTemplateCount: 1
 });

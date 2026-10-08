@@ -53,7 +53,7 @@ export function KioskAssemblyPage() {
   const [gmailImportMessage, setGmailImportMessage] = useState<string | null>(null);
   const [libraryRefreshToken, setLibraryRefreshToken] = useState(0);
   const [procedureSearchQuery, setProcedureSearchQuery] = useState('');
-  const [procedureStatusFilter, setProcedureStatusFilter] = useState<'all' | 'published' | 'draft'>('all');
+  const [procedureStatusFilter, setProcedureStatusFilter] = useState<'all' | 'published' | 'draft' | 'unused'>('all');
   const [templateRefreshToken, setTemplateRefreshToken] = useState(0);
   const [historyTemplates, setHistoryTemplates] = useState<AssemblyTemplateSummaryDto[]>([]);
   const [historyTitle, setHistoryTitle] = useState('');

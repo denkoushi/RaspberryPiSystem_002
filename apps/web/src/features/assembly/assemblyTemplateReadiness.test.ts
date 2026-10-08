@@ -29,7 +29,7 @@ function documentFixture(): AssemblyProcedureDocumentSummaryDto {
     pages: [{ pageIndex: 0, imageRelativePath: '/api/procedure-1.png' }],
     createdAt: NOW,
     updatedAt: NOW,
-    activeTemplateCount: 0,
+    manualAssignments: [], activeTemplateCount: 0,
     totalTemplateCount: 0
   };
 }
