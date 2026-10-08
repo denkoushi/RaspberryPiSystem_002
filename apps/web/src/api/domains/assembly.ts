@@ -1156,3 +1156,18 @@ export async function getProcedureManualModelOverview(modelCodeKey: string) {
   );
   return data;
 }
+
+export async function getProcedureMaterialThumbnail(id: string) {
+  const { data } = await api.get<Blob>(`/assembly/procedure-materials/${encodeURIComponent(id)}/thumbnail`, { responseType: 'blob' });
+  return data;
+}
+
+export async function getProcedureKnowledgeThumbnail(imageId: string) {
+  const { data } = await api.get<Blob>(`/assembly/procedure-materials/knowledge-candidates/images/${encodeURIComponent(imageId)}/thumbnail`, { responseType: 'blob' });
+  return data;
+}
+
+export async function getProcedureWorkInstructionThumbnail(assetId: string) {
+  const { data } = await api.get<Blob>(`/assembly/procedure-materials/work-instruction-candidates/images/${encodeURIComponent(assetId)}/thumbnail`, { responseType: 'blob' });
+  return data;
+}

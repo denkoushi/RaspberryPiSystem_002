@@ -89,6 +89,35 @@ describe('procedure-material work-instruction routes', () => {
     expect(read.readPublishedGroups).toHaveBeenLastCalledWith({ limit: 500, offset: 500 });
     expect(read.readPublishedGroup).toHaveBeenCalledOnce();
   });
+  it('reads at most six groups concurrently and preserves summary order after reverse completion', async () => {
+    const { read, summary, group, service } = await harness();
+    const summaries = Array.from({ length: 8 }, (_, index) => ({ ...summary, partNumber: `part-${index}`, latestModified: new Date(1000 - index) }));
+    read.readPublishedGroups.mockResolvedValue(summaries);
+    const finish = new Map<string, () => void>();
+    read.readPublishedGroup.mockImplementation((input) => new Promise((resolve) => {
+      finish.set(input.partNumber, () => resolve({ ...group, partNumber: input.partNumber }));
+    }));
+    const result = service.list({ limit: 100 });
+    await vi.waitFor(() => expect(read.readPublishedGroup).toHaveBeenCalledTimes(6));
+    for (let index = 5; index >= 0; index--) finish.get(`part-${index}`)!();
+    await vi.waitFor(() => expect(read.readPublishedGroup).toHaveBeenCalledTimes(8));
+    finish.get('part-7')!(); finish.get('part-6')!();
+    expect(await result).toEqual({ items: summaries.map(({ partNumber }) => ({ candidateKey: key, partNumber, shootingTarget: '外径', step: 1,
+      memo: '公開メモ', assetId, sourceModified: summary.latestModified, alreadyImported: false })) });
+  });
+  it('keeps exclusions and the partial-group limit, ignoring errors beyond the cutoff and stopping new batches', async () => {
+    const { read, summary, group, row, step, service, db } = await harness();
+    read.readPublishedGroups.mockResolvedValue(Array.from({ length: 10 }, (_, index) => ({ ...summary, partNumber: `part-${index}`, latestModified: new Date(1000 - index) })));
+    read.readPublishedGroup.mockImplementation(async (input) => {
+      if (input.partNumber === 'part-0') return null;
+      if (input.partNumber === 'part-3') throw new Error('past cutoff');
+      return { ...group, partNumber: input.partNumber, rows: [{ ...row, steps: [step, { ...step, step: 2 }, ...(input.partNumber === 'part-2' ? [{ ...step, step: 3 }] : [])] }] };
+    });
+    const result = await service.list({ limit: 4 });
+    expect(result.items.map(({ partNumber, step }) => [partNumber, step])).toEqual([['part-1', 1], ['part-1', 2], ['part-2', 1], ['part-2', 2]]);
+    expect(read.readPublishedGroup).toHaveBeenCalledTimes(4);
+    expect(db.procedureMaterial.findMany).toHaveBeenCalledWith({ where: { gmailDedupeKey: { in: result.items.map((item) => item.candidateKey) } }, select: { gmailDedupeKey: true } });
+  });
   it('defaults to 60, caps the route and service at 1000, validates list and import bounds', async () => {
     const { row, step, service } = await harness();
     row.steps = Array.from({ length: 1250 }, (_, i) => ({ ...step, step: i + 1 }));

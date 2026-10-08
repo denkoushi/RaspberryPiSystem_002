@@ -10,6 +10,7 @@ import { ProcedureMaterialKnowledgeService } from '../../services/assembly/proce
 import { ProcedureMaterialWorkInstructionService } from '../../services/assembly/procedure-material-work-instruction.service.js';
 
 import { ProcedureMaterialGcService } from '../../services/assembly/procedure-material-gc.service.js';
+import { ProcedureMaterialThumbnailService } from '../../services/assembly/procedure-material-thumbnail.service.js';
 
 const querySchema = z.object({
   state: z.enum(['unplaced', 'placed', 'discarded', 'all']).default('unplaced'),
@@ -32,6 +33,20 @@ export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
   const path = '/assembly/procedure-materials';
   const knowledge = options.knowledge ?? new ProcedureMaterialKnowledgeService();
   const workInstructions = options.workInstructions ?? new ProcedureMaterialWorkInstructionService();
+  const thumbnails = new ProcedureMaterialThumbnailService();
+  const thumbnailOptions = { preHandler: options.allowView, config: { rateLimit: { max: 600, timeWindow: '1 minute' } } };
+  app.get(`${path}/:id/thumbnail`, thumbnailOptions, async (request, reply) => {
+    const file = await service.readFile(paramsSchema.parse(request.params).id);
+    return reply.header('Cache-Control', 'private, max-age=3600').header('X-Content-Type-Options', 'nosniff').type('image/webp').send(await thumbnails.read(file.bytes));
+  });
+  app.get(`${path}/knowledge-candidates/images/:imageId/thumbnail`, thumbnailOptions, async (request, reply) => {
+    const { imageId } = z.object({ imageId: z.string().regex(/^[a-f0-9]{64}$/) }).parse(request.params);
+    return reply.header('Cache-Control', 'private, max-age=3600').header('X-Content-Type-Options', 'nosniff').type('image/webp').send(await thumbnails.read(await knowledge.readImage(imageId)));
+  });
+  app.get(`${path}/work-instruction-candidates/images/:assetId/thumbnail`, thumbnailOptions, async (request, reply) => {
+    const { assetId } = z.object({ assetId: z.string().uuid() }).parse(request.params);
+    return reply.header('Cache-Control', 'private, max-age=3600').header('X-Content-Type-Options', 'nosniff').type('image/webp').send(await thumbnails.read(await workInstructions.readImage(assetId)));
+  });
   app.get(`${path}/work-instruction-candidates`, { preHandler: options.allowView }, async (request) =>
     workInstructions.list(querySchema.pick({ q: true, limit: true }).extend({ limit: z.coerce.number().int().min(1).max(1000).default(60) }).parse(request.query)));
   app.post(`${path}/import-work-instructions`, { preHandler: options.allowWriteKiosk }, async (request) => {
