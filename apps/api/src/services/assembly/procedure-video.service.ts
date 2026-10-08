@@ -32,7 +32,7 @@ export class ProcedureVideoService {
     const sourceStorageKey = `procedure-videos/incoming/${video.sha256}/original`;
     try {
       return await runAssemblyTransaction(async (tx) => {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${sourceStorageKey}))`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${sourceStorageKey}))`;
         if (await tx.procedureVideo.findUnique({ where: { gmailDedupeKey: video.gmailDedupeKey } })) return false;
         try { await this.store.write({ key: sourceStorageKey, data: video.buffer, mode: 'create', integrity: true }); }
         catch (error) {

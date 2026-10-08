@@ -33,7 +33,7 @@ function harness() {
       return { count: matches.length };
     }), update,
   }, $transaction: vi.fn() };
-  const tx = { $queryRaw: vi.fn().mockResolvedValue([]), procedureVideo: {
+  const tx = { $queryRaw: vi.fn().mockResolvedValue([]), $executeRaw: vi.fn().mockResolvedValue(1), procedureVideo: {
     findMany: vi.fn(async ({ where }) => rows.filter((video) => where.id.in.includes(video.id)).map((video) => ({ ...video, comments: video.comments ?? [] }))),
     findUnique: vi.fn(async ({ where }) => rows.find((video) => video.id === where.id)),
     count: vi.fn(async ({ where }) => rows.filter((video) => 'storageKey' in where ? video.storageKey === where.storageKey : video.sourceStorageKey === where.sourceStorageKey).length),
@@ -93,7 +93,7 @@ describe('procedure-video processing', () => {
     expect(h.row).toMatchObject({ status: 'READY', sourceStorageKey: null, attempts: 0, durationSeconds: 12, sourceDurationSeconds: 12, width: 640, height: 360 });
     expect(h.store.write.mock.calls.map(([request]) => request.key)).toEqual([expect.stringMatching(/procedure-videos\/[a-f0-9]{64}\/video.mp4/), expect.stringMatching(/procedure-videos\/[a-f0-9]{64}\/poster.jpg/)]);
     expect(h.store.delete).toHaveBeenCalledWith('procedure-videos/incoming/hash/original', { integrity: true });
-    expect(h.tx.$queryRaw.mock.calls[1]).toEqual([expect.arrayContaining(['SELECT pg_advisory_xact_lock(hashtext(', '))']), 'procedure-videos/incoming/hash/original']);
+    expect(h.tx.$executeRaw.mock.calls[1]).toEqual([expect.arrayContaining(['SELECT pg_advisory_xact_lock(hashtext(', '))']), 'procedure-videos/incoming/hash/original']);
     expect(h.tx.procedureVideo.update).toHaveBeenCalledWith({ where: { id: 'video' }, data: { sourceStorageKey: null } });
     expect(h.db.procedureVideo.findFirst).toHaveBeenCalledWith({ where: { status: 'PENDING', discardedAt: null }, orderBy: [{ receivedAt: 'asc' }, { id: 'asc' }] });
     expect(h.db.procedureVideo.updateMany).toHaveBeenNthCalledWith(2, { where: { id: 'video', status: 'PENDING', updatedAt: h.row.updatedAt, discardedAt: null }, data: { status: 'PROCESSING', processingToken: expect.stringMatching(/^[0-9a-f-]{36}$/) } });

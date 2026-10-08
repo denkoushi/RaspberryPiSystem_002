@@ -39,7 +39,7 @@ describe('procedure-video Gmail', () => {
     const rows: any[] = [];
     const db = { procedureMaterial: { findMany: vi.fn().mockResolvedValue([]) }, procedureVideo: {
       findMany: vi.fn(async () => rows), findUnique: vi.fn(async ({ where }) => rows.find((row) => row.gmailDedupeKey === where.gmailDedupeKey)), create: vi.fn(async ({ data }) => { rows.push(data); return data; }),
-    }, $transaction: vi.fn(), $queryRaw: vi.fn() };
+    }, $transaction: vi.fn(), $queryRaw: vi.fn(), $executeRaw: vi.fn() };
     db.$transaction.mockImplementation((work) => work(db));
     const gmail = { getAttachment: vi.fn().mockResolvedValue(bytes), searchMessagesAll: vi.fn().mockResolvedValue(['gmail-1']), getMessage: vi.fn().mockResolvedValue(message()), trashMessage: vi.fn() };
     const store = { write: vi.fn() };
@@ -54,12 +54,14 @@ describe('procedure-video Gmail', () => {
     expect(await service.runOnce(options)).toMatchObject({ skipped: 1, saved: 0 });
   });
   it('reuses identical shared original bytes and rejects identity conflicts', async () => {
-    const db = { $queryRaw: vi.fn(), $transaction: vi.fn(), procedureVideo: { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn() } };
+    const db = { $queryRaw: vi.fn(), $executeRaw: vi.fn(), $transaction: vi.fn(), procedureVideo: { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn() } };
     db.$transaction.mockImplementation((work) => work(db));
     const store = { write: vi.fn().mockRejectedValue(new FileStorageAlreadyExistsError()), read: vi.fn().mockResolvedValue(bytes) };
     const video = (await resolveProcedureMaterialGmailPacket({ message: message(), client: { getAttachment: async () => bytes } })).videos[0]!;
     const service = new ProcedureVideoService(db as never, store as never);
     expect(await service.ingest(video, { gmailMessageId: 'gmail-1', fromEmail: null, subjectHint: null, receivedAt: new Date() })).toBe(true);
+    // pg_advisory_xact_lock returns void, which $queryRaw cannot deserialize.
+    expect(db.$executeRaw).toHaveBeenCalledOnce(); expect(db.$queryRaw).not.toHaveBeenCalled();
     store.read.mockResolvedValue(Buffer.from('wrong'));
     await expect(service.ingest(video, { gmailMessageId: 'gmail-1', fromEmail: null, subjectHint: null, receivedAt: new Date() })).rejects.toThrow('identity conflict');
   });
