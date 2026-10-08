@@ -66,9 +66,8 @@ function makeDocument(overrides: Partial<AssemblyProcedureDocumentDto> = {}): As
 
 async function authenticate(result: { current: ReturnType<typeof useAssemblyProcedureDocumentEditorController> }) {
   await waitFor(() => expect(result.current.loading).toBe(false));
-  act(() => result.current.setPasswordInput('1234'));
   await act(async () => {
-    await result.current.verifyEditorPassword();
+    await result.current.verifyEditorPassword('1234');
   });
   expect(result.current.accessGranted).toBe(true);
 }
@@ -218,6 +217,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
       act(() => vi.advanceTimersByTime(8 * 3600000 - 100));
       act(() => hook.result.current.addOverlay('TEXT'));
       const element = hook.result.current.elements[0];
+      const beforeEdit = hook.result.current.elements;
       act(() => hook.result.current.updateElement({ ...element, kind: 'TEXT', text: '失効直前の編集' }));
       act(() => vi.advanceTimersByTime(100));
       expect(hook.result.current.accessGranted).toBe(false);
@@ -227,13 +227,17 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
       const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
       expect(hook.result.current.confirmNavigation()).toBe(false);
       expect(confirm).toHaveBeenCalled(); confirm.mockRestore();
-      act(() => hook.result.current.setPasswordInput('2520'));
-      await act(async () => { await hook.result.current.verifyEditorPassword(); });
+      await act(async () => { await hook.result.current.verifyEditorPassword('2520'); });
       expect(hook.result.current.accessGranted).toBe(true);
       expect(hook.result.current.elements[0]).toMatchObject({ text: '失効直前の編集' });
       expect(hook.result.current.isDirty).toBe(true);
       expect(hook.result.current.conflict).toBe(false);
       expect(hook.result.current.recoveryPending).toBeNull();
+      expect(hook.result.current.passwordInput).toBe('2520');
+      act(() => hook.result.current.undo());
+      expect(hook.result.current.elements).toEqual(beforeEdit);
+      act(() => hook.result.current.redo());
+      expect(hook.result.current.elements[0]).toMatchObject({ text: '失効直前の編集' });
     } finally { vi.useRealTimers(); }
   });
   it('keeps edits after reauthentication and enters conflict handling only when the server version changed', async () => {
@@ -243,8 +247,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     const localElements = hook.result.current.elements;
     act(() => { hook.result.current.onEditLeaseError({ isAxiosError: true, response: { status: 401 } }); });
     apiMocks.createRevision.mockResolvedValue(makeDocument({ editVersion: 2 }));
-    act(() => hook.result.current.setPasswordInput('2520'));
-    await act(async () => { await hook.result.current.verifyEditorPassword(); });
+    await act(async () => { await hook.result.current.verifyEditorPassword('2520'); });
     expect(hook.result.current.elements).toEqual(localElements);
     expect(hook.result.current.conflict).toBe(true);
     expect(hook.result.current.conflictEditVersion).toBe(2);
@@ -388,8 +391,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     const hook = renderEditor(source);
     await act(async () => undefined);
     expect(hook.result.current.loading).toBe(false);
-    act(() => hook.result.current.setPasswordInput('1234'));
-    await act(async () => hook.result.current.verifyEditorPassword());
+    await act(async () => hook.result.current.verifyEditorPassword('1234'));
     expect(hook.result.current.accessGranted).toBe(true);
     try {
       act(() => hook.result.current.handleRangeSelected(range));

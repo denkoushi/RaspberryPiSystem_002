@@ -31,6 +31,7 @@ import type {
 
 type Props = {
   sequence: AssemblyProcedureSequenceDto;
+  initialDocumentId?: string;
   className?: string;
   showCurrentMarkerButton?: boolean;
   layout?: 'session' | 'manuals';
@@ -219,6 +220,7 @@ function AssemblyWorkStepStoryboard({
 
 export function AssemblyProcedureSequenceViewer({
   sequence,
+  initialDocumentId,
   className,
   boltMarkers = [],
   checkMarkers = [],
@@ -239,7 +241,10 @@ export function AssemblyProcedureSequenceViewer({
     () => (sequence.steps && sequence.steps.length > 0 ? sequence.steps : fallbackSteps(sequence)),
     [sequence]
   );
-  const [stepIndex, setStepIndex] = useState(0);
+  const initialStepIndex = initialDocumentId
+    ? Math.max(0, steps.findIndex(step => (step.kioskDocumentId ?? step.assemblyProcedureDocumentId) === initialDocumentId))
+    : 0;
+  const [stepIndex, setStepIndex] = useState(initialStepIndex);
   const [storyboardOpen, setStoryboardOpen] = useState(
     () => layout !== 'manuals' && typeof window !== 'undefined' && window.innerWidth >= 1366
   );
@@ -328,8 +333,8 @@ export function AssemblyProcedureSequenceViewer({
   }, [steps]);
 
   useEffect(() => {
-    setStepIndex(0);
-  }, [sequence.machineNameKey]);
+    setStepIndex(initialStepIndex);
+  }, [sequence.machineNameKey, initialDocumentId, initialStepIndex]);
   useEffect(() => {
     setStepIndex((current) => Math.max(0, Math.min(steps.length - 1, current)));
   }, [steps.length]);

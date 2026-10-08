@@ -503,7 +503,7 @@ describe('procedure-material Gmail ingestion', () => {
   it.each(['[Procedure-material] DFD1 組立', '[Procedure-material]'])('saves three PDF pages once with page metadata for subject %j', async (subject) => {
     const extract = vi.fn(async function* (buffer: Buffer) {
       expect(buffer).toEqual(pdf);
-      for (let pageNumber = 1; pageNumber <= 3; pageNumber++) yield { pageNumber, text: 'unused PDF text', jpeg: pageImage };
+      for (let pageNumber = 1; pageNumber <= 3; pageNumber++) yield { pageNumber, text: `手順 ${pageNumber}\0`, jpeg: pageImage };
     });
     const h = harness([pdfPart()], { extract });
     h.gmail.getAttachment.mockResolvedValue(pdf);
@@ -514,7 +514,7 @@ describe('procedure-material Gmail ingestion', () => {
     const baseKey = `mail-1:${createHash('sha256').update('組立.v1.pdf\npdf-1').digest('hex')}`;
     const pdfHash = createHash('sha256').update(pdf).digest('hex');
     expect(h.rows[0]).toMatchObject({
-      kind: 'PDF', gmailDedupeKey: baseKey, originalFileName: '組立.v1.pdf',
+      kind: 'PDF', gmailDedupeKey: baseKey, originalFileName: '組立.v1.pdf', text: '手順 1\n手順 2\n手順 3',
       storageKey: `procedure-materials/${pdfHash}/original`, sha256: pdfHash, byteSize: pdf.length,
       contentType: 'application/pdf', subjectHint: subject === '[Procedure-material]' ? null : 'DFD1 組立',
       receivedAt: new Date('2026-10-05T03:00:00Z'),
@@ -525,7 +525,7 @@ describe('procedure-material Gmail ingestion', () => {
       kind: 'PHOTO', gmailDedupeKey: `${baseKey}:p${pageNumber}`, originalFileName: `組立.v1 p${pageNumber}.jpg`,
       subjectHint: subject === '[Procedure-material]' ? null : `DFD1 組立 (p${pageNumber}/3)`,
       storageKey: `procedure-materials/${sha256}/original`, sha256, byteSize: pageImage.length,
-      contentType: 'image/jpeg', width: 4, height: 3,
+      contentType: 'image/jpeg', width: 4, height: 3, text: `手順 ${pageNumber}`,
     })));
     expect(h.store.write).toHaveBeenCalledTimes(4);
     expect(h.store.write).toHaveBeenCalledWith({ key: `procedure-materials/${sha256}/original`, data: pageImage, mode: 'create', integrity: true });
@@ -535,6 +535,21 @@ describe('procedure-material Gmail ingestion', () => {
     expect(h.store.write).toHaveBeenCalledTimes(4);
     expect(h.gmail.trashMessage).toHaveBeenCalledTimes(2);
     expect(extract).toHaveBeenCalledTimes(2);
+  });
+  it('saves scan PDFs with null text and bounds page and combined text in page order', async () => {
+    const scan = harness([pdfPart()], { extract: async function* () {
+      yield { pageNumber: 1, text: ' \n\t\0\uD800 ', jpeg: pageImage };
+    } });
+    scan.gmail.getAttachment.mockResolvedValue(pdf);
+    expect(await scan.service.runOnce({ config: scan.config, allowWait: false })).toMatchObject({ saved: 2, retryable: 0, messages: [{ trashed: true }] });
+    expect(scan.rows.map((row) => row.text)).toEqual([null, null]);
+    const h = harness([pdfPart()], { extract: async function* () {
+      for (const pageNumber of [2, 1, 3, 4, 5, 6]) yield { pageNumber, text: String(pageNumber).repeat(4001), jpeg: pageImage };
+    } });
+    h.gmail.getAttachment.mockResolvedValue(pdf);
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: 7, retryable: 0 });
+    expect(h.rows[0].text).toBe([1, 2, 3, 4, 5, 6].map((n) => String(n).repeat(4000)).join('\n').slice(0, 20000));
+    expect(h.rows.slice(1).map((row) => row.text)).toEqual([2, 1, 3, 4, 5, 6].map((n) => String(n).repeat(4000)));
   });
   it.each([
     ['renderer failed', 'PDF を描画できません: renderer failed'],

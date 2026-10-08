@@ -159,6 +159,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     hasAuthenticated: baselineSnapshot != null,
     elements,
     passwordInput,
+    setPasswordInput,
     busy,
     isDirty,
     readOnly,
