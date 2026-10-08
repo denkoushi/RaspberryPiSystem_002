@@ -224,7 +224,8 @@ export async function listAssemblyProcedureDocumentSummaries(params?: {
   const { data } = await api.get<{ documents: AssemblyProcedureDocumentSummaryDto[] }>(
     `/assembly/procedure-documents/summary${suffix}`
   );
-  return data.documents;
+  // 配布途中の古い API は manualAssignments を返さない
+  return data.documents.map(document => ({ ...document, manualAssignments: document.manualAssignments ?? [] }));
 }
 
 export async function uploadAssemblyProcedureDocument(input: { name: string; file: File }) {
@@ -1154,7 +1155,14 @@ export async function getProcedureManualModelOverview(modelCodeKey: string) {
   const { data } = await api.get<import('../../features/assembly/types').ProcedureManualModelOverviewDto>(
     `/assembly/procedure-manuals/models/${encodeURIComponent(modelCodeKey)}/overview`
   );
-  return data;
+  // 配布途中の古い API は otherAssignments を返さない
+  return {
+    ...data,
+    processes: data.processes.map(process => ({
+      ...process,
+      items: process.items.map(item => ({ ...item, otherAssignments: item.otherAssignments ?? [] }))
+    }))
+  };
 }
 
 export async function getProcedureMaterialThumbnail(id: string) {
