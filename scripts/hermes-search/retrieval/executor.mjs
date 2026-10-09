@@ -1,6 +1,6 @@
 import { performance } from 'node:perf_hooks';
 import { catalogEntries, fieldsWithRole } from './catalog.mjs';
-import { RELEVANCE_CANDIDATE_LIMIT } from './relevance-jev.mjs';
+import { RELEVANCE_CANDIDATE_LIMIT, relevanceFailureReason } from './relevance-jev.mjs';
 import { DEFAULT_EMBED_BUDGET_MS, withEmbeddingBudget } from './query-embedding.mjs';
 import { contentQuery, contentTokens, relevanceQuery } from './structural-text.mjs';
 import { hasAppliedHardFilter } from './query-plan.mjs';
@@ -514,6 +514,7 @@ function unavailableResult(reason, timings, plan) {
   return {
     status: 'unavailable',
     reason: safeReason(reason),
+    attempts: timings.attempts ?? 1,
     results: [],
     insufficient: true,
     requested: limit,
@@ -525,6 +526,7 @@ function unavailableResult(reason, timings, plan) {
       vectorStatus: timings.vectorStatus,
       vectorReason: timings.vectorReason,
       relevanceMs: timings.relevanceMs,
+      ...(timings.retried ? { retried: true } : {}),
       filteredCount: timings.filteredCount,
       totalMs: Math.round(performance.now() - timings.started),
     },
@@ -686,6 +688,7 @@ export async function execute(plan, options = {}) {
   let candidatePoolTruncated = poolTruncated;
   let relevanceCut = false;
   let relevanceMs = semanticQuery ? 0 : null;
+  let retried = false;
   // The planner's content span, when present, keeps request wording such as 「…はほかにある」 away from the judge.
   const contentSpan = typeof plan?.diagnostics?.contentSpan === 'string' ? plan.diagnostics.contentSpan : '';
   const judgeQuery = semanticQuery
@@ -720,6 +723,7 @@ export async function execute(plan, options = {}) {
           candidates: batch.map((item) => ({ id: item.record.id, record: item.record })),
           bodyFields,
         });
+        retried ||= judged?.attempts > 1;
         const measured = clock() - batchStarted;
         if (measured > 0) batchEstimateMs = measured;
         if (!judged?.ok || !Array.isArray(judged.ranked)) {
@@ -727,7 +731,7 @@ export async function execute(plan, options = {}) {
             ? judged.relevanceMs
             : Math.round(clock() - relevanceStarted);
           return unavailableResult(judged?.reason ?? 'relevance judgment unavailable', {
-            filterMs, lexicalMs, vectorMs, vectorStatus, vectorReason, relevanceMs, filteredCount: filtered.length, started,
+            filterMs, lexicalMs, vectorMs, vectorStatus, vectorReason, relevanceMs, retried, attempts: judged?.attempts, filteredCount: filtered.length, started,
           }, plan);
         }
         const acceptedIds = new Set(judged.ranked.map((item) => item.id));
@@ -741,8 +745,9 @@ export async function execute(plan, options = {}) {
       ranked = accepted;
     } catch (error) {
       relevanceMs = Number.isFinite(error?.relevanceMs) ? error.relevanceMs : Math.round(clock() - relevanceStarted);
-      return unavailableResult(safeReason(error), {
-        filterMs, lexicalMs, vectorMs, vectorStatus, vectorReason, relevanceMs, filteredCount: filtered.length, started,
+      retried ||= error?.attempts > 1;
+      return unavailableResult(relevanceFailureReason(error), {
+        filterMs, lexicalMs, vectorMs, vectorStatus, vectorReason, relevanceMs, retried, attempts: error?.attempts, filteredCount: filtered.length, started,
       }, plan);
     }
   } else if (semanticQuery && typeof options.rerank === 'function') {
@@ -771,12 +776,13 @@ export async function execute(plan, options = {}) {
         bodyFields,
         poolLimit,
       });
+      retried ||= judged?.attempts > 1;
       relevanceMs = Number.isFinite(judged?.relevanceMs)
         ? judged.relevanceMs
         : Math.round(performance.now() - relevanceStarted);
       if (!judged?.ok || !Array.isArray(judged.ranked)) {
         return unavailableResult(judged?.reason ?? 'relevance judgment unavailable', {
-          filterMs, lexicalMs, vectorMs, vectorStatus, vectorReason, relevanceMs, filteredCount: filtered.length, started,
+          filterMs, lexicalMs, vectorMs, vectorStatus, vectorReason, relevanceMs, retried, attempts: judged?.attempts, filteredCount: filtered.length, started,
         }, plan);
       }
       const probability = new Map(judged.ranked.map((item) => [item.id, Number(item.probability) || 0]));
@@ -785,8 +791,9 @@ export async function execute(plan, options = {}) {
         .map((item) => ({ ...item, score: probability.get(item.record.id) }));
     } catch (error) {
       relevanceMs = Number.isFinite(error?.relevanceMs) ? error.relevanceMs : Math.round(performance.now() - relevanceStarted);
-      return unavailableResult(safeReason(error), {
-        filterMs, lexicalMs, vectorMs, vectorStatus, vectorReason, relevanceMs, filteredCount: filtered.length, started,
+      retried ||= error?.attempts > 1;
+      return unavailableResult(relevanceFailureReason(error), {
+        filterMs, lexicalMs, vectorMs, vectorStatus, vectorReason, relevanceMs, retried, attempts: error?.attempts, filteredCount: filtered.length, started,
       }, plan);
     }
   }
@@ -848,6 +855,7 @@ export async function execute(plan, options = {}) {
       vectorStatus,
       vectorReason,
       relevanceMs,
+      ...(retried ? { retried: true } : {}),
       rerankMs,
       filteredCount: filtered.length,
       totalMs: Math.round(performance.now() - started),

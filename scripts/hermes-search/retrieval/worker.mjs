@@ -336,6 +336,7 @@ function numericTimings(timings) {
   for (const [key, value] of Object.entries(timings ?? {})) {
     if (typeof value === 'number' && Number.isFinite(value)) picked[key] = Math.round(value * 10) / 10;
     else if (typeof value === 'string' && value.length <= 32) picked[key] = value;
+    else if (key === 'retried' && value === true) picked[key] = true;
   }
   return picked;
 }
@@ -530,7 +531,7 @@ export function createRetrievalAnswering({
           elapsedMs: elapsed(),
           previousPlan: sessionPlan,
           shownIds: previouslyShown,
-          receipt: receiptOf('unavailable', { timings: numericTimings(executed.timings) }),
+          receipt: receiptOf('unavailable', { reason: executed.reason, attempts: executed.attempts, timings: numericTimings(executed.timings) }),
           dataAsOf: view.dataAsOf,
         });
       }

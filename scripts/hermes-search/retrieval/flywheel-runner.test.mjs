@@ -46,7 +46,47 @@ const jevEvaluate = async (input) => ({
 });
 
 // Live scorer that always shows the anchor; tests of the stages inject their own.
-const liveShown = async (row) => ({ outcome: 'answer', shown: [row.a], candidates: [row.a, row.b], judged: 30, loss: null, vectorStatus: 'ok', ms: 1 });
+const liveShown = async (row) => ({ outcome: 'answer', reason: null, shown: [row.a], candidates: [row.a, row.b], judged: 30, loss: null, vectorStatus: 'ok', ms: 1 });
+
+test('runner persists live reasons and its own private log across midnight and starts', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
+  const file = questionsPath(dir, '2026-10-03');
+  writeFileSync(file, JSON.stringify({ a: 'a1', question: 'キズの記録', kept: true }) + '\n');
+  writeFileSync(path.join(dir, 'labels.json'), 'invalid json');
+  const lines = [];
+  const reason = 'relevance judgment failed: upstream_http 429';
+  const input = {
+    records, settings: settings(dir, { maxQuestions: 1, labelBudget: 0, realBudget: 0 }),
+    now: () => new Date('2026-10-03T19:30:00Z'), readDense: async () => dense, chat: fakeChat(), jevEvaluate,
+    live: async () => ({ outcome: 'unavailable', loss: 'status', reason, ms: 42 }),
+    log: (line) => lines.push(line),
+  };
+  const status = await runFlywheelNight(input);
+  assert.equal(status.reason, 'budget_reached');
+  assert.equal(JSON.parse(readFileSync(file, 'utf8')).live.reason, reason);
+  const logFile = path.join(dir, 'runner-2026-10-03.log');
+  const logged = readFileSync(logFile, 'utf8').trim().split('\n');
+  assert.equal(logged.length, 3);
+  assert.equal(logged[0], `2026-10-03T19:30:00.000Z hermes retrieval flywheel live id=a1 outcome=unavailable loss=status reason="${reason}" ms=42`);
+  assert.deepEqual(logged.slice(1), lines.map((line) => `2026-10-03T19:30:00.000Z ${line}`));
+  assert.equal(statSync(logFile).mode & 0o777, 0o600);
+  assert.equal(existsSync(path.join(dir, 'runner-2026-10-04.log')), false);
+  await runFlywheelNight(input);
+  assert.equal(readFileSync(logFile, 'utf8').trim().split('\n').length, 5);
+});
+
+test('a night log write failure does not abort scoring or change the callback', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
+  mkdirSync(path.join(dir, 'runner-2026-10-03.log'));
+  writeFileSync(questionsPath(dir, '2026-10-03'), JSON.stringify({ a: 'a1', question: 'キズ', kept: true }) + '\n');
+  const lines = [];
+  const status = await runFlywheelNight({ records, settings: settings(dir, { maxQuestions: 1, labelBudget: 0, realBudget: 0 }),
+    now: night, readDense: async () => dense, chat: fakeChat(), jevEvaluate, live: liveShown, log: (line) => lines.push(line) });
+  assert.equal(status.reason, 'budget_reached');
+  assert.equal(status.shown, 1);
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /^hermes retrieval flywheel reason=budget_reached /u);
+});
 
 test('settings default to off, cap the nightly budget, and follow the enrichment window', () => {
   const off = flywheelSettings({});
