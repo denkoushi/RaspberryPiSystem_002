@@ -151,6 +151,7 @@ def parser() -> Parser:
     value.add_argument("--print-plan", action="store_true")
     value.add_argument("--detach", action="store_true")
     value.add_argument("--torque-cutover", action="store_true")
+    value.add_argument("--skip-kiosk-notice", action="store_true", help="emergency: restart Pi4 kiosk browsers without the save-work notice")
     value.add_argument("--hermes-search-trial-maintenance", choices=("on", "off"))
     value.add_argument("--status")
     value.add_argument("--execute-standard-route", action="store_true", help=argparse.SUPPRESS)
@@ -181,7 +182,7 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     if args.print_plan and args.detach:
         raise UsageError("--print-plan cannot be combined with --detach")
     if args.status:
-        if any((args.branch, args.limit, args.full_fleet, args.print_plan, args.detach, args.torque_cutover, args.hermes_search_trial_maintenance, args.execute_standard_route)):
+        if any((args.branch, args.limit, args.full_fleet, args.print_plan, args.detach, args.torque_cutover, args.skip_kiosk_notice, args.hermes_search_trial_maintenance, args.execute_standard_route)):
             raise UsageError("--status accepts only RUN_ID and optional --inventory")
         if not RUN_ID.fullmatch(args.status):
             raise UsageError("run ID must use YYYYMMDD-HHMMSS-<6 lowercase hex>")
@@ -645,6 +646,8 @@ def remote_script(
     internal = ["python3", "scripts/deploy/standard-ansible-release.py", "--execute-standard-route", "--branch", args.branch, "--inventory", relative, "--sha", sha, "--run-id", run_id, "--profiles", ",".join(profiles)]
     if getattr(args, "torque_cutover", False):
         internal.append("--torque-cutover")
+    if getattr(args, "skip_kiosk_notice", False):
+        internal.append("--skip-kiosk-notice")
     internal.extend(["--limit", args.limit] if args.limit else ["--full-fleet"])
     return "\n".join(("set -euo pipefail", f"cd {shlex.quote(str(remote_root))}", "mkdir -p logs/deploy", "exec 9>>logs/deploy/fleet-release-state.lock", "/usr/bin/flock -n 9 || { echo 'another fleet release is running' >&2; exit 75; }", "test -z \"$(git status --porcelain)\"", f"git fetch --no-tags origin {shlex.quote(args.branch)}", f"test \"$(git rev-parse FETCH_HEAD)\" = {shlex.quote(sha)}", f"git checkout --detach {shlex.quote(sha)}", f"test \"$(git rev-parse HEAD)\" = {shlex.quote(sha)}", "test -z \"$(git status --porcelain)\"", f"exec {shlex.join(internal)}"))
 
@@ -1321,6 +1324,9 @@ def execute_standard_route(args: argparse.Namespace) -> int:
         if maintenance not in {"on", "off"} or args.limit != "raspberrypi5" or requested_selection != (("pi5", ("raspberrypi5",)),):
             raise RuntimeError("Hermes search trial maintenance launch is not Pi5-only")
         variables["release_pi5_trial_maintenance"] = maintenance
+    if getattr(args, "skip_kiosk_notice", False):
+        print("WARNING: --skip-kiosk-notice: Pi4 kiosk browsers restart without the save-work notice", flush=True)
+        variables["release_kiosk_notice_enabled"] = False
     cache_enabled = selected.get('_meta', {}).get('hostvars', {}).get('raspberrypi5', {}).get('business_hermes_answer_cache_enabled', False)
     if 'pi5' in profiles and cache_enabled in (True, 'true'):
         reference = f'ghcr.io/denkoushi/raspisys-hermes-answer-cache:{args.sha}'

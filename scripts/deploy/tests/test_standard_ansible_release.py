@@ -1473,6 +1473,16 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         self.assertIn("cd /opt/RaspberryPiSystem_002-staging", script)
         self.assertNotIn("cd /opt/RaspberryPiSystem_002\n", script)
 
+    def test_skip_kiosk_notice_is_opt_in_and_forwarded_to_the_pi5_route(self) -> None:
+        plain = MODULE.parse_arguments(["main", MODULE.DEFAULT_INVENTORY, "--limit", "pi4-a"])
+        skipped = MODULE.parse_arguments(["main", MODULE.DEFAULT_INVENTORY, "--limit", "pi4-a", "--skip-kiosk-notice"])
+        self.assertFalse(plain.skip_kiosk_notice)
+        self.assertTrue(skipped.skip_kiosk_notice)
+        self.assertNotIn("--skip-kiosk-notice", MODULE.remote_script(plain, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY, ("pi4",)))
+        self.assertIn(" --skip-kiosk-notice --limit pi4-a", MODULE.remote_script(skipped, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY, ("pi4",)))
+        with self.assertRaises(MODULE.UsageError):
+            MODULE.parse_arguments(["--status", RUN_ID, "--skip-kiosk-notice"])
+
     def test_standard_route_contends_with_legacy_global_lock_before_git(self) -> None:
         args = argparse.Namespace(
             branch="main", inventory=MODULE.DEFAULT_INVENTORY, limit="pi4-a",

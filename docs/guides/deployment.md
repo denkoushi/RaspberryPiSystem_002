@@ -112,7 +112,7 @@ scripts/update-all-clients.sh
 成功・ロールバック後は表示を解除し、リリース終了時にもrun単位で一括解除する。torque cutoverは対象外。
 予告とメンテナンスのackをそれぞれ最大30秒確認する。ackがない端末は警告を出して次へ進み、予告の60秒待機は省略する。
 1台あたり追加時間は最大約2分（scheduledAtの待機上限の余裕を含め約125秒）。client ID未設定の端末も警告して従来どおり進む。
-緊急時の無効化変数は `release_kiosk_notice_enabled: false`（既定true、role defaults）。標準wrapperは任意extra-varsを中継しないため、現時点ではrole defaultsで設定する。
+緊急時は `--skip-kiosk-notice` を付けると、その実行だけ予告とメンテナンス表示を出さずに再起動する（入力中の内容は消える。既定は予告あり）。
 予告の表示に失敗した場合は警告を出して予告なしで更新を続け、表示の解除は必ず試みる。
 表示が残っても、開始時刻から30分を超えるとAPIが期限切れと判定し、次のポーリングで通常画面へ戻る。
 それより早い解除と確認は[デプロイ停止・復旧Runbook](../runbooks/deploy-status-recovery.md#キオスクがメンテナンス中のまま)に従う。
