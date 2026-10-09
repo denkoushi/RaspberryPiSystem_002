@@ -372,6 +372,14 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 
 ## Decision Log
 
+### resources API の設備コード TTL キャッシュ（2026-10-09、ローカル実装）
+
+- `GET /api/kiosk/production-schedule/resources` の DISTINCT 結果（設備コード配列）だけを、取得成功から5分間プロセス内で保持する。同時取得は実行中 Promise を共有し、失敗は保持しない。TTL切れ後は再取得を待つ。
+- SQL・winner条件・並び順・応答形式は維持する。キャッシュキーは全スコープ共通で、policy・名称・excluded は毎回取得・計算する。
+- `CsvDashboardPostIngestService.runAfterSuccessfulIngest` の主生産日程dashboard分岐で無効化する。Gmail／手動取り込み共通で、後続の投影が失敗しても無効化済み。無効化前の実行中問い合わせは、新しいキャッシュを上書きしない。
+- 単発の復旧スクリプトが直接 `CsvDashboardIngestor` を呼ぶ経路や別プロセスは、TTLで収束する。
+- 検証: DB不要のキャッシュ単体8件・既存query service 24件・post-ingest 10件、API lint・build用型チェックが成功。routeのresources関連3件は `localhost:5432` に接続できず、fixture準備で失敗したため応答検証は未完了。本番速度の再計測・commit・push・deployは未実施。
+
 ### progressの優先順位（DB操作を優先して完了維持）
 
 **決定**: キオスクで完了にしたら**DB側を優先して完了維持**（次回CSVが空欄でも戻さない）。PowerApps側反映は**将来対応**。

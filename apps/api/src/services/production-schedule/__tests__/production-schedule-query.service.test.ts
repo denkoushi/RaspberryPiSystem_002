@@ -1,3 +1,4 @@
+import { resetProductionScheduleResourceCdsCache } from '../production-schedule-query/resources.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getProductionScheduleOrderUsage,
@@ -90,6 +91,7 @@ vi.mock('../production-schedule-customer-name-enrichment.service.js', () => ({
 
 describe('production-schedule-query.service', () => {
   beforeEach(() => {
+    resetProductionScheduleResourceCdsCache();
     vi.unstubAllEnvs();
     vi.mocked(prisma.$queryRaw).mockReset();
     vi.mocked(prisma.productionScheduleOrderSplit.findMany).mockReset();
