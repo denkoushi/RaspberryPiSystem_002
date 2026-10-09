@@ -187,6 +187,17 @@ Follow-up deploy for header `持出` tab redirect regression:
   `/kiosk/assembly`.
 - Operator real-device check: OK.
 
+Kiosk-side start page setting (dock home button), 2026-10-09:
+
+- Merged commits: `90ce0fcc` (#1892, button, API and route IDs) and
+  `44f2d09f` (#1893, borrow tab mark follows the button).
+- Pi5 deploy runs: `20261009-051634-682d18` and `20261009-054049-5fa538`;
+  each result `failed=0`, `unreachable=0`, API errors 0, `/`, `/admin`,
+  `/kiosk` and `/api/system/health` returned 200.
+- Pi4 and Pi3 were not deployed; no agent or launcher change.
+- Rollback targets: `90ce0fcc`, then `e4817ec9`.
+- Operator real-device check: OK.
+
 ## Operational Checks
 
 To set a device startup route:
