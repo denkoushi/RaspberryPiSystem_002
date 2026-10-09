@@ -1283,6 +1283,7 @@ describe('inventory scan safety boundaries', () => {
 
 describe('inventory device presentation preferences', () => {
   const sizeKey = 'kiosk-inventory-thumbnail-size';
+  const viewKey = 'kiosk-inventory-view-mode';
   const areaKey = 'kiosk-inventory-default-area';
   const area = itemTag.compartment!.area;
   beforeEach(() => {
@@ -1294,6 +1295,51 @@ describe('inventory device presentation preferences', () => {
   afterEach(() => { localStorage.clear(); vi.useRealTimers(); vi.restoreAllMocks(); });
   const mount = () => render(<MemoryRouter><KioskItemInventoryPage /></MemoryRouter>);
   const areas = () => within(screen.getByRole('group', { name: 'エリアで絞る' }));
+
+  it('persists list mode, hides photo size controls, and restores the unchanged size on return', () => {
+    localStorage.setItem(sizeKey, 'large');
+    mount();
+    const toggle = within(screen.getByRole('group', { name: '表示' }));
+    expect(toggle.getByRole('button', { name: 'カード表示' })).toHaveAttribute('aria-pressed', 'true');
+    expect(toggle.getByRole('button', { name: 'リスト表示' })).toHaveAttribute('title', 'リスト表示');
+    fireEvent.click(toggle.getByRole('button', { name: 'リスト表示' }));
+    expect(localStorage.getItem(viewKey)).toBe('list');
+    expect(toggle.getByRole('button', { name: 'リスト表示' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('group', { name: '写真の大きさ' })).not.toBeInTheDocument();
+    expect(screen.queryByText('写真の大きさ')).not.toBeInTheDocument();
+    expect(screen.getByText(`${area}・棚1・引き出し2`)).toBeInTheDocument();
+    expect(localStorage.getItem(sizeKey)).toBe('large');
+    fireEvent.click(toggle.getByRole('button', { name: 'カード表示' }));
+    expect(localStorage.getItem(viewKey)).toBe('card');
+    expect(screen.getByRole('button', { name: '大' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('登録済みアイテム')).toHaveClass('grid-cols-4');
+  });
+
+  it('starts in a stored list mode', () => {
+    localStorage.setItem(viewKey, 'list');
+    mount();
+    expect(screen.getByRole('button', { name: 'リスト表示' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('group', { name: '写真の大きさ' })).not.toBeInTheDocument();
+    expect(screen.getByText(`${area}・棚1・引き出し2`)).toBeInTheDocument();
+  });
+
+  it('falls back to cards for an invalid stored view mode', () => {
+    localStorage.setItem(viewKey, 'invalid');
+    mount();
+    expect(screen.getByRole('button', { name: 'カード表示' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('group', { name: '写真の大きさ' })).toBeInTheDocument();
+    expect(screen.getByLabelText('登録済みアイテム')).toHaveClass('grid-cols-6');
+  });
+
+  it('keeps view switching usable when storage reads and writes fail', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
+    mount();
+    expect(screen.getByRole('button', { name: 'カード表示' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'リスト表示' }));
+    expect(screen.getByRole('button', { name: 'リスト表示' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('group', { name: '写真の大きさ' })).not.toBeInTheDocument();
+  });
 
   it('defaults to medium, persists a size switch, and restores it on another visit', () => {
     const view = mount();

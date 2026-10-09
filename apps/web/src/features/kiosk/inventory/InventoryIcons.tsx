@@ -19,8 +19,11 @@ export const PinIcon = ({ size = 13 }: { size?: number }) => (
 );
 export const BackIcon = () => <Icon><path d="M15 18l-6-6 6-6" /></Icon>;
 export const UndoIcon = () => <Icon><path d="M9 14 4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></Icon>;
-export const GridIcon = () => (
-  <Icon><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></Icon>
+export const GridIcon = ({ size }: { size?: number }) => (
+  <Icon size={size}><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></Icon>
+);
+export const ListIcon = ({ size }: { size?: number }) => (
+  <Icon size={size}><rect x="3" y="4" width="4" height="4" rx="1" /><path d="M10 6h11" /><rect x="3" y="10" width="4" height="4" rx="1" /><path d="M10 12h11" /><rect x="3" y="16" width="4" height="4" rx="1" /><path d="M10 18h11" /></Icon>
 );
 export const ResetIcon = () => <Icon><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" /></Icon>;
 export const EditIcon = ({ size = 15 }: { size?: number }) => <Icon size={size}><path d="M4 20h4L19 9l-4-4L4 16v4z" /></Icon>;

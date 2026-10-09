@@ -201,3 +201,10 @@ A review of every inventory screen for fewer steps and faster response; this is 
 - 写真から読む reads the most recently enlarged candidate photo, otherwise the first displayed candidate photo. 型式/メーカー chips appear only after reading; pressing a chip fills its field and highlights it. No auto-fill. Empty/unavailable results say 読み取れませんでした. Candidate changes clear chips and ignore late responses.
 - Height arithmetic at 1920×1080 (16px root font): surface padding 20+24, title/tab row 49, gap 16, registration top padding 16, selected candidate strip 94 and its gap 12 leave 849px for columns (789px with the 48px banner + 12px gap). New registration's steps 1–3 need at most 102px (mode), 420px (four input rows plus one 44px chip row in both parallel columns) and 202px (unit content capped at 144px), plus 24px column gaps = 748px. This fits with 41px spare even with the banner; the no-chip default adds no height. Existing-item selection may add up to 104px; existing bounded inner choice/field overflow handles that extreme case without page scrolling. The read-failure text takes less space than the chip row.
 - Not checked: real device, real DGX latency or actual photo recognition quality. Device/production checks above refer to PR #1900/#1901, not these additions.
+
+## Updates (2026-10-09, card / list view toggle)
+
+- Icon buttons switch the daily list between cards and compact rows. `kiosk-inventory-view-mode` stores `card` or `list` per terminal (default `card`).
+- List rows show a 56px first-photo thumbnail, location number, name, model/maker, area/shelf/drawer, stock with unit and last issue. Sorting, area/shelf filters and leading unregistered candidates keep the same behaviour; tapping a row opens the same item or candidate.
+- List view hides 写真の大きさ and photo paging. The stored thumbnail size and card photo selection remain available on return to cards; scrolling stays inside the list.
+- Not checked: real device.
