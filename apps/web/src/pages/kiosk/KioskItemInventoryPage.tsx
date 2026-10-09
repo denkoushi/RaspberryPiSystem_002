@@ -87,7 +87,6 @@ export function KioskItemInventoryPage() {
   const [messageKind, setMessageKind] = useState<'info' | 'success' | 'error'>('info');
   const [lastTransaction, setLastTransaction] = useState<InventoryMovementTransaction | null>(null);
   const [lastTransactionUnit, setLastTransactionUnit] = useState('個');
-  const [activeTag, setActiveTag] = useState<InventoryTag | null>(null);
   const [resultTransaction, setResultTransaction] = useState<InventoryMovementTransaction | null>(null);
   const [activity, setActivity] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -128,7 +127,6 @@ export function KioskItemInventoryPage() {
     selectedTagRef.current = tag;
     flowRef.current.selectedTag = tag;
     setSelectedTag(tag);
-    setActiveTag(tag);
   }, []);
 
   const refreshDisplayedStock = async () => {
@@ -214,8 +212,6 @@ export function KioskItemInventoryPage() {
     const flow = flowRef.current;
     flow.restockMode = false;
     flow.restockTagUid = null;
-    flow.selectedTag = null;
-    setActiveTag(null);
     setRestockMode(false);
   };
 
@@ -505,7 +501,7 @@ export function KioskItemInventoryPage() {
   const resultBadge = (
     <p role="status" aria-live="polite" className={`inline-flex h-11 items-center rounded-full border-[1.5px] px-5 text-base font-bold ${messageKind === 'success' ? invSuccess : invError}`}>{message}</p>
   );
-  const prompt = messageKind !== 'info' ? resultBadge : activeTag?.compartment ? (
+  const prompt = messageKind !== 'info' ? resultBadge : selectedTag?.compartment ? (
     <NfcPrompt size="small" label="数を押す か 数量タグ" tone={restockMode ? 'green' : 'amber'} />
   ) : (
     <NfcPrompt size="small" label="アイテムタグ" tone={restockMode ? 'green' : 'sky'} sub={restockMode ? '補充' : undefined} />

@@ -490,8 +490,10 @@ describe('KioskItemInventoryPage UX safeguards', () => {
     expect(screen.queryByRole('button', { name: /取消：|選択をリセット|補充をやめる/ })).not.toBeInTheDocument();
   });
 
-  it('keeps the item visible after issuing but prompts for an item tag, and clears undo on reset', async () => {
-    const transaction = vi.fn().mockResolvedValue({ transaction: historyEntry({ action: 'ISSUE', delta: -2, afterQuantity: 8 }) });
+  it('keeps the item selected after issuing so the next quantity tag works, and clears undo on reset', async () => {
+    const transaction = vi.fn()
+      .mockResolvedValueOnce({ transaction: historyEntry({ action: 'ISSUE', delta: -2, afterQuantity: 8 }) })
+      .mockResolvedValueOnce({ transaction: historyEntry({ id: 'history-next', action: 'ISSUE', delta: -2, beforeQuantity: 8, afterQuantity: 6 }) });
     vi.mocked(useInventoryMutations).mockReturnValue({ transaction: { mutateAsync: transaction }, cancel: { mutateAsync: vi.fn() } } as never);
     vi.useFakeTimers();
     try {
@@ -504,12 +506,13 @@ describe('KioskItemInventoryPage UX safeguards', () => {
       expect(screen.getByRole('button', { name: '取消：治具 -2個' })).toBeInTheDocument();
       expect(screen.getByLabelText('現在庫')).toHaveTextContent('-2');
       await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
-      expect(screen.getByText('アイテムタグ')).toBeInTheDocument();
-      expect(screen.queryByText('数を押す か 数量タグ')).not.toBeInTheDocument();
+      expect(screen.getByText('数を押す か 数量タグ')).toBeInTheDocument();
+      expect(screen.queryByText('アイテムタグ')).not.toBeInTheDocument();
       expect(screen.getByLabelText('現在庫')).toHaveTextContent('8個');
       await scan(quantityTag);
-      expect(screen.getByRole('status')).toHaveTextContent('先にアイテムNFCタグを読み取ってください');
-      expect(transaction).toHaveBeenCalledOnce();
+      expect(transaction).toHaveBeenCalledTimes(2);
+      expect(transaction).toHaveBeenLastCalledWith(expect.objectContaining({ itemTagUid: itemTag.uid, quantityTagUid: quantityTag.uid, restock: false }));
+      expect(screen.getByLabelText('現在庫')).toHaveTextContent('-2');
       fireEvent.click(screen.getByRole('button', { name: '一覧へ' }));
       expect(screen.queryByRole('button', { name: /取消：/ })).not.toBeInTheDocument();
     } finally { vi.useRealTimers(); }

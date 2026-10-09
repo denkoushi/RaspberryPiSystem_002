@@ -58,6 +58,14 @@ Run `20260926-112811-48762d` failed after 3 seconds. The PR for the next milesto
 
 Do not merge to `main` until a standard release run has finished. The next run must re-check CI for the new SHA and re-run `--print-plan`.
 
+## Updates (2026-10-09, quantity tag after a movement)
+
+On the device check, a quantity tag held right after a movement answered 先にアイテムNFCタグを読み取ってください, although the item was still on the screen and the number buttons worked.
+
+- Cause: after a movement the screen kept showing the item but dropped the selection that the quantity tag route reads (`flow.selectedTag`), and changed the prompt to アイテムタグ. The number buttons read another reference, so only the tag was refused.
+- Fix: a movement no longer drops the selection. While an item is shown, both the number buttons and a quantity tag work and the prompt stays 数を押す か 数量タグ. 一覧へ, the 30-second return and a failed check still clear it. Restock mode still ends after one movement, so the next tag is a 払い出し.
+- Not checked: the kiosk itself after the fix.
+
 ## Updates (2026-10-09, crash after a movement)
 
 On the first device check of the 在庫操作 screen the kiosk showed the error screen right after a quantity tag was held. `ClientLog` (`kiosk_ui_error`, `render_crash`, route `/kiosk/inventory`, 2026-10-09 09:23 JST, twice) had `Cannot read properties of undefined (reading 'name')`.
