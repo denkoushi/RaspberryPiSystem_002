@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { ProcedureManualFilterPane } from './ProcedureManualFilterPane';
 
+import type { ProcedureManualPartCandidateDto } from '../../../api/client';
 import type { ProcedureManualProcessDto } from '../types';
 
 const processes = [
@@ -12,7 +13,7 @@ const processes = [
   { id: 'grinding', parentId: 'machining', name: '研削', subjectKind: 'PART' }
 ] as ProcedureManualProcessDto[];
 
-function Pane() {
+function Pane({ partSearchCandidates }: { partSearchCandidates?: ProcedureManualPartCandidateDto[] } = {}) {
   const [kind, setKind] = useState<'MODEL' | 'PART'>('MODEL');
   const [processId, setProcessId] = useState('');
   const [key, setKey] = useState('');
@@ -20,7 +21,7 @@ function Pane() {
   const [digits, setDigits] = useState('');
   const clear = () => { setKey(''); setSearch(''); setDigits(''); };
   return <><ProcedureManualFilterPane processes={processes} items={[]} models={[{ modelCode: 'DFD1', modelCodeKey: 'DFD1' }]}
-    partCandidates={[{ modelCode: 'PART-12', modelCodeKey: 'PART-12' }]} subjectKind={kind} processId={processId} modelCodeKey={key} search={search} digitQuery={digits}
+    partSearchCandidates={partSearchCandidates} partCandidates={[{ modelCode: 'PART-12', modelCodeKey: 'PART-12' }]} subjectKind={kind} processId={processId} modelCodeKey={key} search={search} digitQuery={digits}
     onSearchChange={setSearch} onDigitQueryChange={setDigits} onModelSelect={setKey}
     onKindChange={next => { setKind(next); clear(); }} onProcessSelect={id => { const next = processes.find(row => row.id === id)?.subjectKind ?? kind; if (next !== kind) clear(); setKind(next); setProcessId(id); }} />
     <output data-testid="selected">{key}</output></>;
@@ -79,6 +80,26 @@ describe('procedure manual subject pane', () => {
     for (const button of screen.getAllByRole('button')) {
       expect(button).toHaveClass('min-h-12', 'rounded-lg', 'focus-visible:outline', 'focus-visible:outline-2', 'focus-visible:outline-[#7cc4ff]');
     }
+  });
+
+  it('renders named API candidates without local text/digit filtering and falls back to a single part number', () => {
+    render(<Pane partSearchCandidates={[
+      { partNumber: 'P-1A3', partNumberKey: 'P-1A3', partName: '主軸', hasManual: false },
+      { partNumber: 'P-13', partNumberKey: 'P-13', partName: null, hasManual: false }
+    ]} />);
+    fireEvent.click(screen.getByRole('button', { name: '部品' }));
+    fireEvent.change(screen.getByLabelText('部品検索'), { target: { value: '主軸' } });
+    fireEvent.click(screen.getByRole('button', { name: '1' }));
+    fireEvent.click(screen.getByRole('button', { name: '3' }));
+    const candidate = screen.getByRole('button', { name: 'P-1A3' });
+    expect(candidate).toHaveTextContent('主軸');
+    expect(candidate).toHaveTextContent('P-1A3');
+    expect(candidate.querySelector('.text-sm')).toHaveClass('text-[#9fadb9]');
+    expect(screen.getByRole('button', { name: 'P-13' }).textContent).toBe('P-13—');
+    expect(screen.queryByRole('button', { name: 'PART-12' })).not.toBeInTheDocument();
+    fireEvent.click(candidate);
+    expect(candidate).toHaveAttribute('aria-pressed', 'true');
+    expect(candidate).toHaveClass('min-h-12', 'bg-[#f6b93b]');
   });
 
   it('arms one scan and selects a previously unassigned normalized part', () => {

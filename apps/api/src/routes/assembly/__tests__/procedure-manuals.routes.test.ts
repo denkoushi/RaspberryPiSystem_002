@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { normalizeMachineNameForCompare } from '../../../services/production-schedule/machine-name-compare.js';
 import { ApiError } from '../../../lib/errors.js';
 import { registerErrorHandler } from '../../../plugins/error-handler.js';
+import { ProcedureManualPartCandidatesService } from '../../../services/assembly/procedure-manual-part-candidates.service.js';
 import { ProcedureManualService } from '../../../services/assembly/procedure-manual.service.js';
 import { serializeProcedureSequence } from '../index.js';
 import { registerAssemblyProcedureDocumentRoutes, type AssemblyProcedureDocumentRouteOptions } from '../procedure-documents.js';
@@ -36,16 +37,47 @@ describe('procedure-manual routes', () => {
       } }),
       replaceAssignments: vi.fn().mockResolvedValue(undefined)
     };
+    const partCandidatesService = { list: vi.fn().mockResolvedValue([{ partNumber: 'NEW-1', partNumberKey: 'NEW-1', partName: '軸', hasManual: false }]) };
     const view = vi.fn(async () => { if (viewDenied) throw new ApiError(403, '権限がありません'); });
     app = Fastify();
     registerErrorHandler(app);
     registerProcedureManualRoutes(app, {
       allowView: view,
       allowWriteKiosk: async () => { if (writeDenied) throw new ApiError(403, '権限がありません'); },
+      partCandidatesService: partCandidatesService as unknown as ProcedureManualPartCandidatesService,
       service: service as unknown as ProcedureManualService, serializeSequence: serializeProcedureSequence
     });
-    return { service, view };
+    return { service, view, partCandidatesService };
   }
+
+  it('returns named production part candidates through allowView and forwards both searches', async () => {
+    const { partCandidatesService, view } = harness();
+    const response = await app.inject({ method: 'GET', url: '/assembly/procedure-manuals/part-candidates?q=%E8%BB%B8&digitQuery=1&limit=30' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ parts: [{ partNumber: 'NEW-1', partNumberKey: 'NEW-1', partName: '軸', hasManual: false }] });
+    expect(partCandidatesService.list).toHaveBeenCalledExactlyOnceWith({ q: '軸', digitQuery: '1', limit: 30 });
+    expect(view).toHaveBeenCalledOnce();
+  });
+
+  it('accepts omitted/empty search parameters and the maximum limit', async () => {
+    const { partCandidatesService } = harness();
+    expect((await app.inject('/assembly/procedure-manuals/part-candidates')).statusCode).toBe(200);
+    expect(partCandidatesService.list).toHaveBeenLastCalledWith({});
+    expect((await app.inject('/assembly/procedure-manuals/part-candidates?q=&digitQuery=&limit=50')).statusCode).toBe(200);
+    expect(partCandidatesService.list).toHaveBeenLastCalledWith({ q: '', digitQuery: '', limit: 50 });
+  });
+
+  it.each(['digitQuery=abc', 'digitQuery=%EF%BC%91', 'digitQuery=12.3', `digitQuery=${'1'.repeat(121)}`, `q=${'a'.repeat(121)}`, 'limit=0', 'limit=51', 'limit=1.5', 'limit=abc'])('rejects invalid part candidate query %s', async query => {
+    const { partCandidatesService } = harness();
+    expect((await app.inject(`/assembly/procedure-manuals/part-candidates?${query}`)).statusCode).toBe(400);
+    expect(partCandidatesService.list).not.toHaveBeenCalled();
+  });
+
+  it('rejects part candidate viewing without permission', async () => {
+    const { partCandidatesService } = harness(false, true);
+    expect((await app.inject('/assembly/procedure-manuals/part-candidates?digitQuery=1')).statusCode).toBe(403);
+    expect(partCandidatesService.list).not.toHaveBeenCalled();
+  });
 
   it('serializes the by-part sequence and applies view permission and query validation', async () => {
     const { service, view } = harness();

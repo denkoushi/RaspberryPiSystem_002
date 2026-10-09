@@ -2,6 +2,7 @@ import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { z } from 'zod';
 
 import { ApiError } from '../../lib/errors.js';
+import { ProcedureManualPartCandidatesService } from '../../services/assembly/procedure-manual-part-candidates.service.js';
 import { ProcedureManualService } from '../../services/assembly/procedure-manual.service.js';
 import type { AssemblyProcedureSequence } from '../../services/assembly/assembly-procedure-sequence.service.js';
 
@@ -20,9 +21,19 @@ export function registerProcedureManualRoutes(app: FastifyInstance, options: {
   allowView: preHandlerHookHandler;
   allowWriteKiosk: preHandlerHookHandler;
   service?: ProcedureManualService;
+  partCandidatesService?: ProcedureManualPartCandidatesService;
   serializeSequence: (sequence: AssemblyProcedureSequence) => unknown;
 }) {
   const service = options.service ?? new ProcedureManualService();
+  const partCandidatesService = options.partCandidatesService ?? new ProcedureManualPartCandidatesService();
+  app.get('/assembly/procedure-manuals/part-candidates', { preHandler: options.allowView }, async (request) => {
+    const query = z.object({
+      digitQuery: z.string().regex(/^[0-9]*$/, 'digitQueryは半角数字のみ指定できます').max(120).optional(),
+      q: z.string().max(120).optional(),
+      limit: z.coerce.number().int().min(1).max(50).optional(),
+    }).parse(request.query);
+    return { parts: await partCandidatesService.list(query) };
+  });
   app.get('/assembly/procedure-manuals/processes', { preHandler: options.allowView }, async () => ({ processes: await service.listProcesses() }));
   app.get('/assembly/procedure-manuals/parts', { preHandler: options.allowView }, async () => ({ parts: await service.listParts() }));
   app.get('/assembly/procedure-manuals/models', { preHandler: options.allowView }, async () => ({ models: await service.listModels() }));

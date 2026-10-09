@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
-import { deleteAssemblyProcedureDocument, verifyAssemblyTemplateAccessPassword, getProcedureManualAssignments, getProcedureManualOverview, getAssemblyProcedureDocument, listAssemblyMachineNameCandidates, listProcedureManualModels, listProcedureManualProcesses, listProcedureMaterials, listProcedureVideos, replaceProcedureManualAssignments } from '../../../api/client';
+import { deleteAssemblyProcedureDocument, verifyAssemblyTemplateAccessPassword, getProcedureManualAssignments, getProcedureManualOverview, getAssemblyProcedureDocument, listAssemblyMachineNameCandidates, listProcedureManualPartCandidates, listProcedureManualModels, listProcedureManualProcesses, listProcedureMaterials, listProcedureVideos, replaceProcedureManualAssignments } from '../../../api/client';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Dialog } from '../../../components/ui/Dialog';
 import { IconActionTooltip } from '../../../components/ui/IconActionTooltip';
@@ -21,6 +21,7 @@ import { ProcedureManualFilterPane } from './ProcedureManualFilterPane';
 import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
 import { ProcedureVideoShelfDialog } from './ProcedureVideoShelfDialog';
 
+import type { ProcedureManualPartCandidateDto } from '../../../api/client';
 import type { ProcedureManualModelDto, AssemblyProcedureDocumentDto, AssemblyProcedureSequenceDto, ProcedureManualAssignmentOverviewItemDto, ProcedureManualOverviewItemDto, ProcedureManualProcessDto } from '../types';
 
 const action = `${procedureManualButtonBase} ${procedureManualButtonUnselected} inline-flex items-center justify-center px-4 text-xl font-bold disabled:opacity-40`;
@@ -42,6 +43,7 @@ export function ProcedureManualWorkshop() {
   const [statusFilter, setStatusFilter] = useState<typeof statusFilters[number]>('全て');
   const [digitQuery, setDigitQuery] = useState('');
   const [models, setModels] = useState<ProcedureManualModelDto[]>([]);
+  const [partCandidates, setPartCandidates] = useState<ProcedureManualPartCandidateDto[]>([]);
   const [candidates, setCandidates] = useState<ProcedureManualModelDto[]>([]);
   const [processes, setProcesses] = useState<ProcedureManualProcessDto[]>([]);
   const [allKind, setAllKind] = useState<'MODEL' | 'PART'>(() => params.has('part') ? 'PART' : 'MODEL');
@@ -87,9 +89,12 @@ export function ProcedureManualWorkshop() {
   }, []);
   useEffect(() => {
     const sequence = ++requestSequence.current;
-    if (subjectKind === 'PART') { setSearchLoading(false); setSearchError(null); setHasMore(false); return; }
-    setSearchLoading(true); setSearchError(null); setCandidates([]); setHasMore(false);
-    const load = search || digitQuery
+    setSearchLoading(true); setSearchError(null); setCandidates([]); setPartCandidates([]); setHasMore(false);
+    const load = subjectKind === 'PART'
+      ? listProcedureManualPartCandidates({ digitQuery, q: search, limit: 30 }).then(rows => {
+        if (sequence === requestSequence.current) setPartCandidates(rows);
+      })
+      : search || digitQuery
       ? listAssemblyMachineNameCandidates({ digitQuery, q: search, limit: 30 }).then(result => {
         if (sequence !== requestSequence.current) return;
         setCandidates([...new Set(result.candidates.map(procedureManualModelKey).filter(Boolean))].map(code => ({ modelCode: code, modelCodeKey: code })));
@@ -103,7 +108,7 @@ export function ProcedureManualWorkshop() {
         })).values()].filter(row => row.modelCodeKey);
         setModels(normalized); setCandidates(normalized);
       });
-    void load.catch(e => { if (sequence === requestSequence.current) setSearchError(readAssemblyApiErrorMessage(e, '機種を検索できません')); })
+    void load.catch(e => { if (sequence === requestSequence.current) setSearchError(readAssemblyApiErrorMessage(e, `${subjectKind === 'PART' ? '部品' : '機種'}を検索できません`)); })
       .finally(() => { if (sequence === requestSequence.current) setSearchLoading(false); });
     return () => { requestSequence.current += 1; };
   }, [search, digitQuery, version, subjectKind]);
@@ -214,7 +219,7 @@ export function ProcedureManualWorkshop() {
       </div>
     </header>
     <div className="grid min-h-0 grid-cols-[460px_minmax(0,1fr)]">
-      <ProcedureManualFilterPane allowKindChangeWithProcess subjectKind={subjectKind} onKindChange={kind => { if (kind !== subjectKind) { setSearch(''); setDigitQuery(''); select('', '', kind); } }} processes={processes} items={items} models={candidates} modelCodeKey={modelCodeKey} processId={processId}
+      <ProcedureManualFilterPane allowKindChangeWithProcess subjectKind={subjectKind} onKindChange={kind => { if (kind !== subjectKind) { setSearch(''); setDigitQuery(''); select('', '', kind); } }} processes={processes} items={items} models={candidates} partSearchCandidates={partCandidates} modelCodeKey={modelCodeKey} processId={processId}
         search={search} digitQuery={digitQuery} onSearchChange={setSearch} onDigitQueryChange={setDigitQuery}
         onModelSelect={key => select(key === modelCodeKey ? '' : key, processId)} onProcessSelect={selectProcess}
         loading={searchLoading} error={searchError} hasMore={hasMore} />
@@ -280,7 +285,7 @@ export function ProcedureManualWorkshop() {
       setAccessGranted(true);
       return true;
     }} /> : null}
-    {accessGranted && blankOpen ? <ProcedureManualBlankDialog subjectKind={subjectKind} beforeMutation={checkAccess} models={models} partCandidates={items.filter(row => processes.find(process => process.id === row.processId)?.subjectKind === 'PART')} processes={processes} modelCode={modelCode} processId={processId} onClose={() => setBlankOpen(false)} /> : null}
+    {accessGranted && blankOpen ? <ProcedureManualBlankDialog subjectKind={subjectKind} beforeMutation={checkAccess} models={models} processes={processes} modelCode={modelCode} processId={processId} onClose={() => setBlankOpen(false)} /> : null}
     {accessGranted && assignmentOpen ? <ProcedureManualAssignmentDialog beforeMutation={checkAccess} modelCode={modelCode} processId={processId} processes={processes} onClose={() => setAssignmentOpen(false)} onSaved={(key, id) => { setAssignmentOpen(false); select(key, id); setVersion(value => value + 1); }} /> : null}
     {materialOpen ? <ProcedureMaterialShelfDialog onClose={() => setMaterialOpen(false)} onCreatedDocument={(documentId) => {
       setMaterialOpen(false);

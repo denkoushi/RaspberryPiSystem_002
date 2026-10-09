@@ -1038,6 +1038,23 @@ export async function listProcedureManualParts() {
   return data.parts;
 }
 
+export type ProcedureManualPartCandidateDto = {
+  partNumber: string;
+  partNumberKey: string;
+  partName: string | null;
+  hasManual: boolean;
+};
+
+export async function listProcedureManualPartCandidates(params: { q?: string; digitQuery?: string; limit?: number } = {}) {
+  const qs = new URLSearchParams();
+  if (params.q) qs.set('q', params.q);
+  if (params.digitQuery) qs.set('digitQuery', params.digitQuery);
+  if (params.limit) qs.set('limit', String(params.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  const { data } = await api.get<{ parts: ProcedureManualPartCandidateDto[] }>(`/assembly/procedure-manuals/part-candidates${suffix}`);
+  return data.parts;
+}
+
 function procedureManualPath(modelCodeKey: string, processId: string) {
   return `/assembly/procedure-manuals/models/${encodeURIComponent(modelCodeKey)}/processes/${encodeURIComponent(processId)}`;
 }

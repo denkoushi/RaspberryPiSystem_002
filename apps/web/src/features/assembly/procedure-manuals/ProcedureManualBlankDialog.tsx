@@ -1,25 +1,27 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { createBlankAssemblyProcedureDocument, listAssemblyMachineNameCandidates } from '../../../api/client';
+import { createBlankAssemblyProcedureDocument, listAssemblyMachineNameCandidates, listProcedureManualPartCandidates } from '../../../api/client';
 import { Dialog } from '../../../components/ui/Dialog';
 import { Input } from '../../../components/ui/Input';
 import { normalizeWorkInstructionPartNumber } from '../../../lib/workInstructionRules';
+import { claimKeyboardWedgeScanOwner, releaseKeyboardWedgeScanOwner, useKeyboardWedgeScan } from '../../barcode-scan/useKeyboardWedgeScan';
 import { kioskAssemblyManualsWorkshopPath, kioskAssemblyProcedureDocumentEditPath } from '../assemblyRoutes';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
 import { procedureManualButtonBase, procedureManualButtonSelected, procedureManualButtonUnselected } from './procedure-manual-button-styles';
 import { procedureManualModelKey } from './ProcedureManualAssignmentDialog';
 import { ProcedureManualModelMatch, ProcedureManualModelTenkey } from './ProcedureManualModelSearch';
+import { ProcedureManualPartLabel } from './ProcedureManualPartLabel';
 
+import type { ProcedureManualPartCandidateDto } from '../../../api/client';
 import type { ProcedureManualModelDto, ProcedureManualProcessDto } from '../types';
 
 const shortName = (process?: ProcedureManualProcessDto) => process?.name.replace(/工程/g, '') ?? '';
 
-export function ProcedureManualBlankDialog({ processes, partCandidates, modelCode, processId, onClose, beforeMutation, subjectKind = 'MODEL' }: {
+export function ProcedureManualBlankDialog({ processes, modelCode, processId, onClose, beforeMutation, subjectKind = 'MODEL' }: {
   subjectKind?: 'MODEL' | 'PART';
   beforeMutation?: () => boolean;
-  partCandidates?: ProcedureManualModelDto[];
   models: ProcedureManualModelDto[]; processes: ProcedureManualProcessDto[]; modelCode: string; processId: string; onClose: () => void;
 }) {
   const navigate = useNavigate();
@@ -29,6 +31,8 @@ export function ProcedureManualBlankDialog({ processes, partCandidates, modelCod
   const [modelSearch, setModelSearch] = useState(modelCode);
   const [digitQuery, setDigitQuery] = useState('');
   const [candidates, setCandidates] = useState<string[]>([]);
+  const [partCandidates, setPartCandidates] = useState<ProcedureManualPartCandidateDto[]>([]);
+  const [scanArmed, setScanArmed] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -45,9 +49,19 @@ export function ProcedureManualBlankDialog({ processes, partCandidates, modelCod
   const child = processes.find(process => process.id === childId);
   const isPart = child?.subjectKind === 'PART';
   const unit = isPart ? '部品' : '機種';
-  const builtName = [selectedModel, shortName(parent), shortName(child), supplement.trim()].filter(Boolean).join('_');
+  // Hold the scanner for as long as the dialog is open so the list behind it never receives a scan.
+  useEffect(() => {
+    claimKeyboardWedgeScanOwner('procedure-manual-blank');
+    return () => releaseKeyboardWedgeScanOwner('procedure-manual-blank');
+  }, []);
+  useKeyboardWedgeScan({ owner: 'procedure-manual-blank', active: isPart && !direct && scanArmed, onScan: text => {
+    const key = normalizeWorkInstructionPartNumber(text);
+    setScanArmed(false); setDigitQuery(''); setModelSearch(key); setSelectedModel(key);
+  } });
+  const partName = isPart ? partCandidates.find(row => row.partNumberKey === selectedModel)?.partName?.replace(/_/g, ' ').trim() : null;
+  const builtName = [partName, selectedModel, shortName(parent), shortName(child), supplement.trim()].filter(Boolean).join('_');
   const name = direct ? directName.trim() : builtName;
-  const canCreate = Boolean(name && name.length <= 200 && (direct || (selectedModel && parent && child)));
+  const canCreate = Boolean((!isPart || direct || !loading) && name && name.length <= 200 && (direct || (selectedModel && parent && child)));
   const missing = direct
     ? (!name ? ['名前を入れる'] : [])
     : [...(!selectedModel ? [`${unit}を選ぶ`] : []), ...(!parent ? ['工程を選ぶ'] : []), ...(!child ? ['細分を選ぶ'] : [])];
@@ -57,30 +71,30 @@ export function ProcedureManualBlankDialog({ processes, partCandidates, modelCod
     setLoading(true);
     setSearchError(null);
     setCandidates([]);
+    setPartCandidates([]);
     setHasMore(false);
-    if (isPart) {
-      const typed = normalizeWorkInstructionPartNumber(modelSearch);
-      setCandidates([...new Set([...(partCandidates ?? []).map(row => row.modelCodeKey), typed].filter(Boolean))].filter(key => key.includes(typed) && key.includes(digitQuery)));
-      setLoading(false); return;
-    }
-    void listAssemblyMachineNameCandidates({ digitQuery, q: modelSearch, limit: 30 })
-      .then(result => {
-        if (sequence !== requestSequence.current) return;
-        setCandidates([...new Set(result.candidates.map(procedureManualModelKey))]);
-        setHasMore(result.hasMore);
+    const load = isPart
+      ? listProcedureManualPartCandidates({ digitQuery, q: modelSearch, limit: 30 }).then(rows => {
+        if (sequence === requestSequence.current) setPartCandidates(rows);
       })
-      .catch(() => {
-        if (sequence !== requestSequence.current) return;
-        setSearchError('機種を検索できませんでした');
-      })
+      : listAssemblyMachineNameCandidates({ digitQuery, q: modelSearch, limit: 30 })
+        .then(result => {
+          if (sequence !== requestSequence.current) return;
+          setCandidates([...new Set(result.candidates.map(procedureManualModelKey))]);
+          setHasMore(result.hasMore);
+        });
+    void load.catch(() => {
+      if (sequence !== requestSequence.current) return;
+      setSearchError(`${unit}を検索できませんでした`);
+    })
       .finally(() => {
         if (sequence === requestSequence.current) setLoading(false);
       });
     return () => { requestSequence.current += 1; };
-  }, [digitQuery, modelSearch, isPart, partCandidates]);
+  }, [digitQuery, modelSearch, isPart, unit]);
   const chip = (pressed: boolean) => `${procedureManualButtonBase} px-4 text-xl font-bold ${pressed ? procedureManualButtonSelected : procedureManualButtonUnselected}`;
-  const changeSearch = (value: string) => { setModelSearch(value); setSelectedModel(''); };
-  const changeDigits = (value: string) => { setDigitQuery(value); setSelectedModel(''); };
+  const changeSearch = (value: string) => { setScanArmed(false); setModelSearch(value); setSelectedModel(''); };
+  const changeDigits = (value: string) => { setScanArmed(false); setDigitQuery(value); setSelectedModel(''); };
   const action = `${procedureManualButtonBase} px-[22px] text-[21px] font-bold disabled:opacity-40`;
   const secondaryAction = `${action} ${procedureManualButtonUnselected} text-[#eef3f6]`;
   const create = async () => {
@@ -104,17 +118,17 @@ export function ProcedureManualBlankDialog({ processes, partCandidates, modelCod
       {direct ? <label className="grid gap-2">要領書名<Input aria-label="要領書名" autoFocus maxLength={200} value={directName} onChange={event => setDirectName(event.target.value)} className="h-12 text-xl" /></label> : <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-3">
         <section aria-label="工程と細分の選択" className="grid content-start gap-2">
           <h3 className="font-bold tracking-wider text-[#9fadb9]">工程</h3>
-          <div className="flex flex-wrap gap-2">{processes.filter(process => !process.parentId).map(process => <button type="button" key={process.id} className={chip(parentId === process.id)} aria-pressed={parentId === process.id} onClick={() => { const nextChild = processes.find(child => child.parentId === process.id); if ((nextChild?.subjectKind === 'PART') !== isPart) { setSelectedModel(''); setModelSearch(''); setDigitQuery(''); } setParentId(process.id); setChildId(nextChild?.id ?? ''); }}>{shortName(process)}</button>)}</div>
+          <div className="flex flex-wrap gap-2">{processes.filter(process => !process.parentId).map(process => <button type="button" key={process.id} className={chip(parentId === process.id)} aria-pressed={parentId === process.id} onClick={() => { setScanArmed(false); const nextChild = processes.find(child => child.parentId === process.id); if ((nextChild?.subjectKind === 'PART') !== isPart) { setSelectedModel(''); setModelSearch(''); setDigitQuery(''); } setParentId(process.id); setChildId(nextChild?.id ?? ''); }}>{shortName(process)}</button>)}</div>
           <h3 className="mt-2 font-bold tracking-wider text-[#9fadb9]">細分</h3>
-          <div className="flex flex-wrap gap-2">{processes.filter(process => process.parentId === parentId).map(process => <button type="button" key={process.id} className={chip(childId === process.id)} aria-pressed={childId === process.id} onClick={() => setChildId(process.id)}>{shortName(process)}</button>)}</div>
+          <div className="flex flex-wrap gap-2">{processes.filter(process => process.parentId === parentId).map(process => <button type="button" key={process.id} className={chip(childId === process.id)} aria-pressed={childId === process.id} onClick={() => { setScanArmed(false); if ((process.subjectKind === 'PART') !== isPart) { setSelectedModel(''); setModelSearch(''); setDigitQuery(''); } setChildId(process.id); }}>{shortName(process)}</button>)}</div>
         </section>
         <section aria-label={`${unit}の選択`} className="grid content-start gap-2">
           <h3 className="font-bold tracking-wider text-[#9fadb9]">{unit}</h3>
-          <Input type="search" aria-label={isPart ? '品番で検索' : '型番で検索'} placeholder={isPart ? '品番で検索' : '型番で検索'} autoFocus maxLength={120} value={modelSearch} onChange={event => changeSearch(event.target.value)} className="h-12 text-xl" />
+          <div className="flex gap-2"><Input type="search" aria-label={isPart ? '品番で検索' : '型番で検索'} placeholder={isPart ? '品名・品番で検索' : '型番で検索'} autoFocus maxLength={120} value={modelSearch} onChange={event => changeSearch(event.target.value)} className="h-12 min-w-0 flex-1 text-xl" />{isPart ? <button type="button" aria-label={scanArmed ? 'スキャン中止' : '品番をスキャン'} aria-pressed={scanArmed} className={chip(scanArmed)} onClick={() => setScanArmed(!scanArmed)}>スキャン</button> : null}</div>
           <output aria-label="数字検索" className="min-h-8 text-xl text-[#eef3f6]">数字: {digitQuery || '未指定'}</output>
           <ProcedureManualModelTenkey value={digitQuery} onChange={changeDigits} ariaLabel={`${unit}テンキー`} />
-          {loading ? <p role="status" className="text-[#9fadb9]">検索中…</p> : searchError ? <p role="alert" className="text-red-400">{searchError}</p> : candidates.length === 0 ? <p className="text-[#9fadb9]">該当する{unit}がありません</p> : null}
-          <div className="grid max-h-[220px] gap-1.5 overflow-auto pr-1">{candidates.map(code => <button key={code} type="button" aria-label={code} aria-pressed={selectedModel === code} className={`${procedureManualButtonBase} px-3 text-left font-mono text-xl break-all ${selectedModel === code ? procedureManualButtonSelected : procedureManualButtonUnselected}`} onClick={() => setSelectedModel(code)}><ProcedureManualModelMatch code={code} search={searchKey} /></button>)}</div>
+          {loading ? <p role="status" className="text-[#9fadb9]">検索中…</p> : searchError ? <p role="alert" className="text-red-400">{searchError}</p> : (isPart ? partCandidates.length : candidates.length) === 0 ? <p className="text-[#9fadb9]">該当する{unit}がありません</p> : null}
+          <div className="grid max-h-[220px] gap-1.5 overflow-auto pr-1">{isPart ? partCandidates.map(part => <button key={part.partNumberKey} type="button" aria-label={part.partNumberKey} aria-pressed={selectedModel === part.partNumberKey} className={`${procedureManualButtonBase} px-3 text-left text-xl break-all ${selectedModel === part.partNumberKey ? procedureManualButtonSelected : procedureManualButtonUnselected}`} onClick={() => { setScanArmed(false); setSelectedModel(part.partNumberKey); }}><ProcedureManualPartLabel partNumber={part.partNumber} partName={part.partName} /></button>) : candidates.map(code => <button key={code} type="button" aria-label={code} aria-pressed={selectedModel === code} className={`${procedureManualButtonBase} px-3 text-left font-mono text-xl break-all ${selectedModel === code ? procedureManualButtonSelected : procedureManualButtonUnselected}`} onClick={() => setSelectedModel(code)}><ProcedureManualModelMatch code={code} search={searchKey} /></button>)}</div>
           {hasMore ? <p className="text-[#9fadb9]">他にも候補があります。数字を追加してください</p> : null}
         </section>
         <section aria-label="補足の入力" className="grid content-start gap-2">
@@ -126,7 +140,7 @@ export function ProcedureManualBlankDialog({ processes, partCandidates, modelCod
       </div>}
       <div className="flex flex-wrap items-center justify-between gap-3.5 rounded-[10px] border border-[#27313b] bg-[#1b222a] px-4 py-3.5">
         <div className="min-w-0"><output aria-label="名前のプレビュー" className="break-all text-[26px] font-black text-[#eef3f6]">{name || (isPart ? '品番_工程_細分' : '型番_工程_細分')}</output><p className="mt-1 text-[15px] text-[#9fadb9]">保存名: {name || '未選択'} ・ 同名があれば末尾に -2</p></div>
-        <button type="button" className={secondaryAction} onClick={() => { if (!direct) setDirectName(builtName); setDirect(!direct); }}>{direct ? '名前の組み立てに戻る' : '名前を直接入力'}</button>
+        <button type="button" className={secondaryAction} onClick={() => { setScanArmed(false); if (!direct) setDirectName(builtName); setDirect(!direct); }}>{direct ? '名前の組み立てに戻る' : '名前を直接入力'}</button>
       </div>
       {error ? <p role="alert" className="text-red-400">{error}</p> : null}
       {name.length > 200 ? <p role="alert" className="text-red-400">名前は200文字以内にしてください</p> : null}
