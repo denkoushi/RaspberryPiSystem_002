@@ -57,10 +57,35 @@ describe('procedure manual subject pane', () => {
     expect(screen.queryByRole('button', { name: 'PART-12' })).not.toBeInTheDocument();
   });
 
+  it('uses yellow selection and pressed/current attributes for kind switches and candidates', () => {
+    render(<Pane />);
+    const modelKind = screen.getByRole('button', { name: '機種' });
+    const partKind = screen.getByRole('button', { name: '部品' });
+    expect(modelKind).toHaveAttribute('aria-pressed', 'true');
+    expect(modelKind).toHaveClass('border-[#f6b93b]', 'bg-[#f6b93b]', 'text-[#0b1a12]');
+    expect(partKind).toHaveAttribute('aria-pressed', 'false');
+    expect(partKind).toHaveClass('border-[#344252]');
+    for (const [kindButton, code] of [[modelKind, 'DFD1'], [partKind, 'PART-12']] as const) {
+      fireEvent.click(kindButton);
+      const candidate = screen.getByRole('button', { name: code });
+      expect(candidate).toHaveAttribute('aria-pressed', 'false');
+      expect(candidate).toHaveClass('border-[#344252]');
+      fireEvent.click(candidate);
+      expect(candidate).toHaveAttribute('aria-pressed', 'true');
+      expect(candidate).toHaveAttribute('aria-current', 'true');
+      expect(candidate).toHaveClass('border-[#f6b93b]', 'bg-[#f6b93b]', 'text-[#0b1a12]');
+      expect(kindButton).toHaveClass('bg-[#f6b93b]');
+    }
+    for (const button of screen.getAllByRole('button')) {
+      expect(button).toHaveClass('min-h-12', 'rounded-lg', 'focus-visible:outline', 'focus-visible:outline-2', 'focus-visible:outline-[#7cc4ff]');
+    }
+  });
+
   it('arms one scan and selects a previously unassigned normalized part', () => {
     render(<Pane />);
     fireEvent.click(screen.getByRole('button', { name: '切削' }));
     fireEvent.click(screen.getByRole('button', { name: '品番をスキャン' }));
+    expect(screen.getByRole('button', { name: 'スキャン中止' })).toHaveClass('border-[#f6b93b]', 'bg-[#f6b93b]', 'text-[#0b1a12]');
     for (const key of 'new-123') fireEvent.keyDown(window, { key });
     fireEvent.keyDown(window, { key: 'Enter' });
     expect(screen.getByTestId('selected')).toHaveTextContent('NEW-123');

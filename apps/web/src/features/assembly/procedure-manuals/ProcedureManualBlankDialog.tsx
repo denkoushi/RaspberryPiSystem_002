@@ -8,6 +8,7 @@ import { normalizeWorkInstructionPartNumber } from '../../../lib/workInstruction
 import { kioskAssemblyManualsWorkshopPath, kioskAssemblyProcedureDocumentEditPath } from '../assemblyRoutes';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
+import { procedureManualButtonBase, procedureManualButtonSelected, procedureManualButtonUnselected } from './procedure-manual-button-styles';
 import { procedureManualModelKey } from './ProcedureManualAssignmentDialog';
 import { ProcedureManualModelMatch, ProcedureManualModelTenkey } from './ProcedureManualModelSearch';
 
@@ -15,13 +16,15 @@ import type { ProcedureManualModelDto, ProcedureManualProcessDto } from '../type
 
 const shortName = (process?: ProcedureManualProcessDto) => process?.name.replace(/工程/g, '') ?? '';
 
-export function ProcedureManualBlankDialog({ processes, partCandidates, modelCode, processId, onClose, beforeMutation }: {
+export function ProcedureManualBlankDialog({ processes, partCandidates, modelCode, processId, onClose, beforeMutation, subjectKind = 'MODEL' }: {
+  subjectKind?: 'MODEL' | 'PART';
   beforeMutation?: () => boolean;
   partCandidates?: ProcedureManualModelDto[];
   models: ProcedureManualModelDto[]; processes: ProcedureManualProcessDto[]; modelCode: string; processId: string; onClose: () => void;
 }) {
   const navigate = useNavigate();
-  const initialChild = processes.find(process => process.id === processId && process.parentId);
+  const initialChild = processes.find(process => process.id === processId && process.parentId)
+    ?? (subjectKind === 'PART' ? processes.find(process => process.parentId && process.subjectKind === 'PART') : undefined);
   const initialParent = initialChild?.parentId ?? processes.find(process => process.id === 'procedure-manual-assembly')?.id ?? processes.find(process => !process.parentId)?.id ?? '';
   const [modelSearch, setModelSearch] = useState(modelCode);
   const [digitQuery, setDigitQuery] = useState('');
@@ -45,6 +48,9 @@ export function ProcedureManualBlankDialog({ processes, partCandidates, modelCod
   const builtName = [selectedModel, shortName(parent), shortName(child), supplement.trim()].filter(Boolean).join('_');
   const name = direct ? directName.trim() : builtName;
   const canCreate = Boolean(name && name.length <= 200 && (direct || (selectedModel && parent && child)));
+  const missing = direct
+    ? (!name ? ['名前を入れる'] : [])
+    : [...(!selectedModel ? [`${unit}を選ぶ`] : []), ...(!parent ? ['工程を選ぶ'] : []), ...(!child ? ['細分を選ぶ'] : [])];
   const searchKey = digitQuery || (isPart ? normalizeWorkInstructionPartNumber(modelSearch) : procedureManualModelKey(modelSearch));
   useEffect(() => {
     const sequence = ++requestSequence.current;
@@ -72,11 +78,11 @@ export function ProcedureManualBlankDialog({ processes, partCandidates, modelCod
       });
     return () => { requestSequence.current += 1; };
   }, [digitQuery, modelSearch, isPart, partCandidates]);
-  const chip = (pressed: boolean) => `min-h-12 rounded-full border px-4 text-xl font-bold ${pressed ? 'border-[#3ba776] bg-[#3ba776] text-[#0b1a12]' : 'border-[#6b7c8d] bg-[#27313b] text-[#eef3f6]'}`;
+  const chip = (pressed: boolean) => `${procedureManualButtonBase} px-4 text-xl font-bold ${pressed ? procedureManualButtonSelected : procedureManualButtonUnselected}`;
   const changeSearch = (value: string) => { setModelSearch(value); setSelectedModel(''); };
   const changeDigits = (value: string) => { setDigitQuery(value); setSelectedModel(''); };
-  const action = 'min-h-[52px] rounded-[10px] border px-[22px] text-[21px] font-bold disabled:opacity-40';
-  const secondaryAction = `${action} border-[#6b7c8d] text-[#eef3f6]`;
+  const action = `${procedureManualButtonBase} px-[22px] text-[21px] font-bold disabled:opacity-40`;
+  const secondaryAction = `${action} ${procedureManualButtonUnselected} text-[#eef3f6]`;
   const create = async () => {
     if (beforeMutation && !beforeMutation()) return;
     if (busy || !canCreate) return;
@@ -96,26 +102,26 @@ export function ProcedureManualBlankDialog({ processes, partCandidates, modelCod
   return <Dialog isOpen onClose={() => { if (!busy) onClose(); }} title="白紙から作る" size="full" className="my-auto max-w-[1180px] rounded-[14px] border border-[#344252] bg-[#161c22] px-[26px] py-6 text-[#eef3f6]" titleClassName="text-2xl font-black">
     <form className="mt-[18px] grid gap-[18px]" onSubmit={event => { event.preventDefault(); void create(); }}>
       {direct ? <label className="grid gap-2">要領書名<Input aria-label="要領書名" autoFocus maxLength={200} value={directName} onChange={event => setDirectName(event.target.value)} className="h-12 text-xl" /></label> : <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-3">
-        <section aria-label={`${unit}の選択`} className="grid content-start gap-2">
-          <h3 className="font-bold tracking-wider text-[#9fadb9]">{unit}</h3>
-          <Input type="search" aria-label={isPart ? '品番で検索' : '型番で検索'} placeholder={isPart ? '品番で検索' : '型番で検索'} autoFocus maxLength={120} value={modelSearch} onChange={event => changeSearch(event.target.value)} className="h-12 text-xl" />
-          <output aria-label="数字検索" className="min-h-8 text-xl text-[#eef3f6]">数字: {digitQuery || '未指定'}</output>
-          <ProcedureManualModelTenkey value={digitQuery} onChange={changeDigits} ariaLabel={`${unit}テンキー`} />
-          {loading ? <p role="status" className="text-[#9fadb9]">検索中…</p> : searchError ? <p role="alert" className="text-red-400">{searchError}</p> : candidates.length === 0 ? <p className="text-[#9fadb9]">該当する{unit}がありません</p> : null}
-          <div className="grid max-h-[220px] gap-1.5 overflow-auto pr-1">{candidates.map(code => <button key={code} type="button" aria-label={code} aria-pressed={selectedModel === code} className={`min-h-[46px] rounded-lg px-3 text-left font-mono text-xl break-all hover:bg-[#27313b] ${selectedModel === code ? 'bg-[#27313b]' : ''}`} onClick={() => setSelectedModel(code)}><ProcedureManualModelMatch code={code} search={searchKey} /></button>)}</div>
-          {hasMore ? <p className="text-[#9fadb9]">他にも候補があります。数字を追加してください</p> : null}
-        </section>
         <section aria-label="工程と細分の選択" className="grid content-start gap-2">
           <h3 className="font-bold tracking-wider text-[#9fadb9]">工程</h3>
           <div className="flex flex-wrap gap-2">{processes.filter(process => !process.parentId).map(process => <button type="button" key={process.id} className={chip(parentId === process.id)} aria-pressed={parentId === process.id} onClick={() => { const nextChild = processes.find(child => child.parentId === process.id); if ((nextChild?.subjectKind === 'PART') !== isPart) { setSelectedModel(''); setModelSearch(''); setDigitQuery(''); } setParentId(process.id); setChildId(nextChild?.id ?? ''); }}>{shortName(process)}</button>)}</div>
           <h3 className="mt-2 font-bold tracking-wider text-[#9fadb9]">細分</h3>
           <div className="flex flex-wrap gap-2">{processes.filter(process => process.parentId === parentId).map(process => <button type="button" key={process.id} className={chip(childId === process.id)} aria-pressed={childId === process.id} onClick={() => setChildId(process.id)}>{shortName(process)}</button>)}</div>
         </section>
+        <section aria-label={`${unit}の選択`} className="grid content-start gap-2">
+          <h3 className="font-bold tracking-wider text-[#9fadb9]">{unit}</h3>
+          <Input type="search" aria-label={isPart ? '品番で検索' : '型番で検索'} placeholder={isPart ? '品番で検索' : '型番で検索'} autoFocus maxLength={120} value={modelSearch} onChange={event => changeSearch(event.target.value)} className="h-12 text-xl" />
+          <output aria-label="数字検索" className="min-h-8 text-xl text-[#eef3f6]">数字: {digitQuery || '未指定'}</output>
+          <ProcedureManualModelTenkey value={digitQuery} onChange={changeDigits} ariaLabel={`${unit}テンキー`} />
+          {loading ? <p role="status" className="text-[#9fadb9]">検索中…</p> : searchError ? <p role="alert" className="text-red-400">{searchError}</p> : candidates.length === 0 ? <p className="text-[#9fadb9]">該当する{unit}がありません</p> : null}
+          <div className="grid max-h-[220px] gap-1.5 overflow-auto pr-1">{candidates.map(code => <button key={code} type="button" aria-label={code} aria-pressed={selectedModel === code} className={`${procedureManualButtonBase} px-3 text-left font-mono text-xl break-all ${selectedModel === code ? procedureManualButtonSelected : procedureManualButtonUnselected}`} onClick={() => setSelectedModel(code)}><ProcedureManualModelMatch code={code} search={searchKey} /></button>)}</div>
+          {hasMore ? <p className="text-[#9fadb9]">他にも候補があります。数字を追加してください</p> : null}
+        </section>
         <section aria-label="補足の入力" className="grid content-start gap-2">
           <h3 className="font-bold tracking-wider text-[#9fadb9]">補足(任意)</h3>
           <Input aria-label="補足" placeholder="例: ベアリング圧入" maxLength={200} value={supplement} onChange={event => setSupplement(event.target.value)} className="h-12 text-xl" />
           <h3 className="mt-2 font-bold tracking-wider text-[#9fadb9]">よく使う</h3>
-          <div className="flex flex-wrap gap-2">{['圧入', '配線', '最終確認'].map(value => <button key={value} type="button" aria-pressed={supplement === value} className={`${chip(supplement === value)} border-dashed`} onClick={() => setSupplement(value)}>{value}</button>)}</div>
+          <div className="flex flex-wrap gap-2">{['圧入', '配線', '最終確認'].map(value => <button key={value} type="button" aria-pressed={supplement === value} className={chip(supplement === value)} onClick={() => setSupplement(value)}>{value}</button>)}</div>
         </section>
       </div>}
       <div className="flex flex-wrap items-center justify-between gap-3.5 rounded-[10px] border border-[#27313b] bg-[#1b222a] px-4 py-3.5">
@@ -124,7 +130,7 @@ export function ProcedureManualBlankDialog({ processes, partCandidates, modelCod
       </div>
       {error ? <p role="alert" className="text-red-400">{error}</p> : null}
       {name.length > 200 ? <p role="alert" className="text-red-400">名前は200文字以内にしてください</p> : null}
-      <div className="flex justify-end gap-2.5"><button type="button" className={secondaryAction} disabled={busy} onClick={onClose}>閉じる</button><button type="submit" className={`${action} border-[#3ba776] bg-[#3ba776] text-[#0b1a12]`} disabled={busy || !canCreate}>{busy ? '作成中…' : '作成してエディタへ'}</button></div>
+      <div className="flex flex-wrap items-center justify-end gap-2.5">{!canCreate && missing.length > 0 ? <p role="status" aria-label="作成に必要な項目" className="text-[#9fadb9]">あと: {missing.join('、')}</p> : null}<button type="button" className={secondaryAction} disabled={busy} onClick={onClose}>閉じる</button><button type="submit" className={`${action} border-[#3ba776] bg-[#3ba776] text-[#0b1a12]`} disabled={busy || !canCreate}>{busy ? '作成中…' : '作成してエディタへ'}</button></div>
     </form>
   </Dialog>;
 }

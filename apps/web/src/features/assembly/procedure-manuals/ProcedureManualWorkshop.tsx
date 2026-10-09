@@ -14,6 +14,7 @@ import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 import { PROCEDURE_EDITOR_ACCESS_HOURS, readProcedureEditorAccess, saveProcedureEditorAccess, subscribeProcedureEditorAccess } from '../procedureEditorAccess';
 
 import { ManualThumbnail } from './ManualThumbnail';
+import { procedureManualButtonBase, procedureManualButtonSelected, procedureManualButtonUnselected } from './procedure-manual-button-styles';
 import { ProcedureManualAssignmentDialog, procedureManualModelKey } from './ProcedureManualAssignmentDialog';
 import { ProcedureManualBlankDialog } from './ProcedureManualBlankDialog';
 import { ProcedureManualFilterPane } from './ProcedureManualFilterPane';
@@ -22,10 +23,10 @@ import { ProcedureVideoShelfDialog } from './ProcedureVideoShelfDialog';
 
 import type { ProcedureManualModelDto, AssemblyProcedureDocumentDto, AssemblyProcedureSequenceDto, ProcedureManualAssignmentOverviewItemDto, ProcedureManualOverviewItemDto, ProcedureManualProcessDto } from '../types';
 
-const action = 'inline-flex min-h-12 items-center justify-center rounded-lg border border-[#344252] px-4 text-xl font-bold disabled:opacity-40';
-const yellowAction = `${action} border-[#f6b93b] bg-[#f6b93b] text-[#0b1a12]`;
+const action = `${procedureManualButtonBase} ${procedureManualButtonUnselected} inline-flex items-center justify-center px-4 text-xl font-bold disabled:opacity-40`;
+const primaryAction = `${procedureManualButtonBase} inline-flex items-center justify-center px-4 text-xl font-bold disabled:opacity-40 border-[#3ba776] bg-[#3ba776] text-[#0b1a12]`;
 const badge = 'inline-flex h-[30px] w-max items-center rounded-full border px-2.5 text-base font-bold';
-const symbolAction = 'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-transparent text-[#9fadb9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7cc4ff] disabled:opacity-40';
+const symbolAction = 'inline-flex min-h-12 w-11 shrink-0 items-center justify-center rounded-lg border border-transparent text-[#9fadb9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7cc4ff] disabled:opacity-40';
 const statusFilters = ['全て', '公開', '下書き', '改版中'] as const;
 const usageLabel = (assignments: ProcedureManualOverviewItemDto['otherAssignments']) => assignments.map(row => `${row.modelCode} · ${row.processName}`).join('、');
 const canDelete = (item: ProcedureManualOverviewItemDto) => item.kind === 'assembly_procedure_document' && item.status === 'draft' && !item.draftRevision && item.otherAssignments.length === 0;
@@ -134,6 +135,12 @@ export function ProcedureManualWorkshop() {
     if (process) next.set('process', process);
     setParams(next, { replace: true });
   };
+  const selectProcess = (id: string) => {
+    if (!id && !processId) return;
+    const kind = processes.find(row => row.id === id)?.subjectKind ?? 'MODEL';
+    if (kind !== subjectKind) { setSearch(''); setDigitQuery(''); }
+    select(kind === subjectKind ? modelCodeKey : '', id, kind);
+  };
   const process = processes.find(row => row.id === processId && row.parentId);
   const modelCode = items.find(row => row.modelCodeKey === modelCodeKey)?.modelCode ?? candidates.find(row => row.modelCodeKey === modelCodeKey)?.modelCode ?? modelCodeKey;
   const normalizedNameFilter = nameFilter.normalize('NFKC').trim().toLocaleLowerCase();
@@ -201,15 +208,15 @@ export function ProcedureManualWorkshop() {
       <h1 className="text-[26px] font-black tracking-widest">要領書</h1>
       <span className="inline-flex h-10 items-center gap-2 rounded-full bg-[#f6b93b29] px-3.5 text-[19px] font-bold text-[#f6b93b]"><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>作る・直す</span>
       <div className="ml-auto flex gap-4">
-        <button className={`${action} !min-h-11 gap-2 text-[19px]`} onClick={() => setMaterialOpen(true)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18" /></svg>素材 {materialCount ?? '—'}{materialCount === 500 ? '+' : ''}</button>
-        <button className={`${action} !min-h-11 gap-2 text-[19px]`} onClick={() => setVideoOpen(true)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="3" y="6" width="13" height="12" rx="2" /><path d="M16 10l5-3v10l-5-3z" /></svg>動画 {videoCount ?? '—'}{videoCount === 100 ? '+' : ''}</button>
-        <Link to="/kiosk/assembly" className={`${action} !min-h-11 gap-2 text-[19px]`}>組立へ戻る</Link>
+        <button className={`${action} gap-2 text-[19px]`} onClick={() => setMaterialOpen(true)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18" /></svg>素材 {materialCount ?? '—'}{materialCount === 500 ? '+' : ''}</button>
+        <button className={`${action} gap-2 text-[19px]`} onClick={() => setVideoOpen(true)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="3" y="6" width="13" height="12" rx="2" /><path d="M16 10l5-3v10l-5-3z" /></svg>動画 {videoCount ?? '—'}{videoCount === 100 ? '+' : ''}</button>
+        <Link to="/kiosk/assembly" className={`${action} gap-2 text-[19px]`}>組立へ戻る</Link>
       </div>
     </header>
     <div className="grid min-h-0 grid-cols-[460px_minmax(0,1fr)]">
-      <ProcedureManualFilterPane subjectKind={subjectKind} onKindChange={kind => { setSearch(''); setDigitQuery(''); select('', '', kind); }} processes={processes} items={items} models={candidates} modelCodeKey={modelCodeKey} processId={processId}
+      <ProcedureManualFilterPane allowKindChangeWithProcess subjectKind={subjectKind} onKindChange={kind => { if (kind !== subjectKind) { setSearch(''); setDigitQuery(''); select('', '', kind); } }} processes={processes} items={items} models={candidates} modelCodeKey={modelCodeKey} processId={processId}
         search={search} digitQuery={digitQuery} onSearchChange={setSearch} onDigitQueryChange={setDigitQuery}
-        onModelSelect={key => select(key === modelCodeKey ? '' : key, processId)} onProcessSelect={id => { const kind = processes.find(row => row.id === id)?.subjectKind ?? subjectKind; if (kind !== subjectKind) { setSearch(''); setDigitQuery(''); } select(kind === subjectKind ? modelCodeKey : '', id); }}
+        onModelSelect={key => select(key === modelCodeKey ? '' : key, processId)} onProcessSelect={selectProcess}
         loading={searchLoading} error={searchError} hasMore={hasMore} />
       <section aria-label="要領書一覧" className="grid min-h-0 min-w-0 content-start overflow-auto px-4 py-3">
         <>
@@ -219,15 +226,15 @@ export function ProcedureManualWorkshop() {
                 {modelCodeKey || (subjectKind === 'PART' ? '全部品' : '全機種')}{modelCodeKey ? <IconActionTooltip label={`${subjectKind === 'PART' ? '部品' : '機種'}の絞り込みを外す`}><button aria-label={`${subjectKind === 'PART' ? '部品' : '機種'}の絞り込みを外す`} className={symbolAction} onClick={() => select('', processId)}>×</button></IconActionTooltip> : null}
               </span> ›
               <span className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-[#344252] pl-3 ${process ? '' : 'border-dashed pr-3 text-[#9fadb9]'}`}>
-                {process ? shortName(process) : '全工程'}{process ? <IconActionTooltip label="工程の絞り込みを外す"><button aria-label="工程の絞り込みを外す" className={symbolAction} onClick={() => select(modelCodeKey)}>×</button></IconActionTooltip> : null}
+                {process ? shortName(process) : '全工程'}{process ? <IconActionTooltip label="工程の絞り込みを外す"><button aria-label="工程の絞り込みを外す" className={symbolAction} onClick={() => selectProcess('')}>×</button></IconActionTooltip> : null}
               </span>
             </h2>
             <span className="font-mono text-lg text-[#9fadb9]">{filteredItems.length} 件</span>
             <div className="ml-3 flex gap-1.5" role="group" aria-label="状態で絞り込み">
-              {statusFilters.map(filter => <button key={filter} aria-pressed={statusFilter === filter} className={`h-11 rounded-full border border-[#344252] px-3 text-[17px] font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7cc4ff] ${statusFilter === filter ? 'bg-[#27313b] text-[#eef3f6]' : 'text-[#9fadb9]'}`} onClick={() => setStatusFilter(filter)}>{filter}</button>)}
+              {statusFilters.map(filter => <button key={filter} aria-pressed={statusFilter === filter} className={`${procedureManualButtonBase} px-3 text-[17px] font-bold ${statusFilter === filter ? procedureManualButtonSelected : `${procedureManualButtonUnselected} text-[#9fadb9]`}`} onClick={() => setStatusFilter(filter)}>{filter}</button>)}
             </div>
             <input type="search" aria-label="名前で絞り込み" placeholder="名前で絞り込み" value={nameFilter} onChange={event => setNameFilter(event.target.value)} className="h-11 w-[260px] rounded-lg border border-[#344252] bg-white px-3 text-lg text-[#0f1317] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7cc4ff]" />
-            <button className={`${yellowAction} ml-auto shrink-0`} disabled={busy || !modelCodeKey || !process} onClick={() => { if (checkAccess()) setBlankOpen(true); }}><svg aria-hidden="true" className="mr-2 h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>作る</button>
+            <button className={`${primaryAction} ml-auto shrink-0`} disabled={busy} onClick={() => { if (checkAccess()) setBlankOpen(true); }}><svg aria-hidden="true" className="mr-2 h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>作る</button>
           </div>
           <div role="table" aria-label={process ? shortName(process) : '全工程'} className="min-w-[1100px]">
           <div role="row" className="sr-only">
@@ -250,14 +257,14 @@ export function ProcedureManualWorkshop() {
             <div role="cell" className="text-right font-mono text-base text-[#9fadb9]">{item.pageCount ?? '—'}{item.pageCount != null ? <span className="sr-only"> ページ</span> : null}</div>
             <div role="cell" className="flex gap-1">
               {item.status !== 'unavailable' ? <IconActionTooltip label="見る" disabled={previewLoading}><button aria-label="見る" className={`${symbolAction} !border-[#344252] !text-[#eef3f6]`} disabled={previewLoading} onClick={() => void view(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg></button></IconActionTooltip> : null}
-              {item.kind === 'assembly_procedure_document' && item.status !== 'unavailable' ? <IconActionTooltip label="直す" disabled={busy}><button aria-label="直す" className={`${symbolAction} !border-[#f6b93b] !text-[#f6b93b]`} disabled={busy} onClick={() => fix(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg></button></IconActionTooltip> : null}
+              {item.kind === 'assembly_procedure_document' && item.status !== 'unavailable' ? <IconActionTooltip label="直す" disabled={busy}><button aria-label="直す" className={`${symbolAction} !border-[#3ba776] !text-[#3ba776]`} disabled={busy} onClick={() => fix(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg></button></IconActionTooltip> : null}
               {item.kind === 'assembly_procedure_document' && item.status === 'published' ? <IconActionTooltip label="使う"><Link aria-label="使う" className={symbolAction} to={kioskAssemblyTemplateNewPath({ procedureDocumentId: item.documentId })}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="9" /><path d="M8 12l3 3 5-6" /></svg></Link></IconActionTooltip> : null}
               {canDelete(item) ? <IconActionTooltip label="削除" disabled={busy}><button aria-label="削除" className={symbolAction} disabled={busy} onClick={() => { if (checkAccess()) setDeleting(item); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13" /></svg></button></IconActionTooltip> : <IconActionTooltip label="外す" disabled={busy}><button aria-label="外す" className={symbolAction} disabled={busy} onClick={() => { if (checkAccess()) setRemoving(item); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="9" /><path d="M8 12h8" /></svg></button></IconActionTooltip>}
             </div>
           </div>)}
           </div>
           {!overviewLoading && filteredItems.length === 0 ? <p className="p-4 text-lg text-[#9fadb9]">該当する要領書がありません</p> : null}
-          {modelCodeKey && process ? <button className="mt-2.5 min-h-12 rounded-[10px] border border-dashed border-[#344252] text-lg text-[#9fadb9] disabled:opacity-40" disabled={busy || overviewLoading} onClick={() => { if (checkAccess()) setAssignmentOpen(true); }}>＋ 既存の要領書を割り当てる</button> : null}
+          {modelCodeKey && process ? <button className={`${procedureManualButtonBase} ${procedureManualButtonUnselected} mt-2.5 border-dashed text-lg text-[#9fadb9] disabled:opacity-40`} disabled={busy || overviewLoading} onClick={() => { if (checkAccess()) setAssignmentOpen(true); }}>＋ 既存の要領書を割り当てる</button> : null}
         </>
         {overviewLoading ? <p role="status" className="text-[#9fadb9]">読込中…</p> : null}
         {error ? <p role="alert" className="text-red-400">{error}</p> : null}
@@ -273,7 +280,7 @@ export function ProcedureManualWorkshop() {
       setAccessGranted(true);
       return true;
     }} /> : null}
-    {accessGranted && blankOpen ? <ProcedureManualBlankDialog beforeMutation={checkAccess} models={models} partCandidates={items.filter(row => processes.find(process => process.id === row.processId)?.subjectKind === 'PART')} processes={processes} modelCode={modelCode} processId={processId} onClose={() => setBlankOpen(false)} /> : null}
+    {accessGranted && blankOpen ? <ProcedureManualBlankDialog subjectKind={subjectKind} beforeMutation={checkAccess} models={models} partCandidates={items.filter(row => processes.find(process => process.id === row.processId)?.subjectKind === 'PART')} processes={processes} modelCode={modelCode} processId={processId} onClose={() => setBlankOpen(false)} /> : null}
     {accessGranted && assignmentOpen ? <ProcedureManualAssignmentDialog beforeMutation={checkAccess} modelCode={modelCode} processId={processId} processes={processes} onClose={() => setAssignmentOpen(false)} onSaved={(key, id) => { setAssignmentOpen(false); select(key, id); setVersion(value => value + 1); }} /> : null}
     {materialOpen ? <ProcedureMaterialShelfDialog onClose={() => setMaterialOpen(false)} onCreatedDocument={(documentId) => {
       setMaterialOpen(false);
@@ -285,7 +292,7 @@ export function ProcedureManualWorkshop() {
       <AssemblyProcedureSequenceViewer sequence={previewSequence} showCurrentMarkerButton={false} className="min-h-0 flex-1" />
       <button className={`${action} mt-3 self-end`} onClick={() => setPreviewSequence(null)}>閉じる</button>
     </Dialog> : null}
-    <ConfirmDialog isOpen={Boolean(removing)} title="この工程から外す" description={removing ? `${removing.label || removing.title}。${removing.otherAssignments.length ? `他の使用先に残ります：${usageLabel(removing.otherAssignments)}` : '手順書一覧に「未使用」で残ります'}` : undefined} confirmLabel="外す" buttonClassName="min-h-11" onCancel={() => setRemoving(null)} onConfirm={() => { if (removing) void remove(removing); setRemoving(null); }} />
-    <ConfirmDialog isOpen={Boolean(deleting)} title="下書きを削除" description={deleting ? `${deleting.label || deleting.title}。元に戻せません` : undefined} confirmLabel="削除" tone="danger" buttonClassName="min-h-11" onCancel={() => setDeleting(null)} onConfirm={() => { if (deleting) void remove(deleting, true); setDeleting(null); }} />
+    <ConfirmDialog isOpen={Boolean(removing)} title="この工程から外す" description={removing ? `${removing.label || removing.title}。${removing.otherAssignments.length ? `他の使用先に残ります：${usageLabel(removing.otherAssignments)}` : '手順書一覧に「未使用」で残ります'}` : undefined} confirmLabel="外す" buttonClassName="min-h-12" onCancel={() => setRemoving(null)} onConfirm={() => { if (removing) void remove(removing); setRemoving(null); }} />
+    <ConfirmDialog isOpen={Boolean(deleting)} title="下書きを削除" description={deleting ? `${deleting.label || deleting.title}。元に戻せません` : undefined} confirmLabel="削除" tone="danger" buttonClassName="min-h-12" onCancel={() => setDeleting(null)} onConfirm={() => { if (deleting) void remove(deleting, true); setDeleting(null); }} />
   </div>;
 }

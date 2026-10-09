@@ -1,8 +1,10 @@
 import { KioskDigitTenkey } from '../../kiosk/KioskDigitTenkey';
 
-const keyClass = 'h-[52px] rounded-lg border border-[#344252] bg-[#1b222a] text-2xl font-bold disabled:opacity-35';
+import { procedureManualButtonBase, procedureManualButtonUnselected } from './procedure-manual-button-styles';
 
-const columnKeyClass = 'h-12 rounded-lg border border-[#344252] bg-[#1b222a] text-2xl font-bold disabled:opacity-35';
+const keyClass = `${procedureManualButtonBase} ${procedureManualButtonUnselected} h-[52px] bg-[#1b222a] text-2xl font-bold disabled:opacity-35`;
+
+const columnKeyClass = `${procedureManualButtonBase} ${procedureManualButtonUnselected} h-12 bg-[#1b222a] text-2xl font-bold disabled:opacity-35`;
 const COLUMN_DIGITS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'] as const;
 
 export function ProcedureManualModelTenkey({ value, onChange, column = false, ariaLabel = '機種テンキー' }: { value: string; onChange: (value: string) => void; column?: boolean; ariaLabel?: string }) {
