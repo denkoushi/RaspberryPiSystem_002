@@ -710,3 +710,70 @@ describe('GET /api/kiosk/signage-preview/options + PUT /api/kiosk/signage-previe
     expect(body.selectedClientDeviceId).toBeNull();
   });
 });
+
+describe('PUT /api/kiosk/initial-route', () => {
+  let app: Awaited<ReturnType<typeof buildServer>>;
+  let device: Awaited<ReturnType<typeof createTestClientDevice>>;
+
+  beforeAll(async () => { app = await buildServer(); });
+  beforeEach(async () => { device = await createTestClientDevice(); });
+  afterAll(async () => { await app?.close(); });
+
+  const put = (payload: object, key?: string) => app.inject({
+    method: 'PUT', url: '/api/kiosk/initial-route',
+    headers: key ? { 'x-client-key': key } : {}, payload
+  });
+
+  it('saves only the authenticated device field and returns the same path as config', async () => {
+    const other = await createTestClientDevice();
+    await prisma.clientDevice.update({ where: { id: other.id }, data: { kioskInitialRoute: 'assembly' } });
+    const before = await prisma.clientDevice.findUniqueOrThrow({ where: { id: device.id } });
+    const response = await put({ initialRoute: 'inspection_drawing' }, device.apiKey);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ ok: true, initialKioskRoute: 'inspection_drawing', initialKioskPath: '/kiosk/part-measurement/inspection' });
+    const after = await prisma.clientDevice.findUniqueOrThrow({ where: { id: device.id } });
+    expect(after).toEqual({ ...before, kioskInitialRoute: 'inspection_drawing', updatedAt: after.updatedAt });
+    expect((await prisma.clientDevice.findUniqueOrThrow({ where: { id: other.id } })).kioskInitialRoute).toBe('assembly');
+    const config = await app.inject({ method: 'GET', url: '/api/kiosk/config', headers: { 'x-client-key': device.apiKey } });
+    expect(config.json().initialKioskPath).toBe(response.json().initialKioskPath);
+  });
+
+  it.each(['PHOTO', 'TAG'] as const)('clears the setting with null and falls back to %s', async (mode) => {
+    await prisma.clientDevice.update({ where: { id: device.id }, data: { defaultMode: mode, kioskInitialRoute: 'assembly' } });
+    const response = await put({ initialRoute: null }, device.apiKey);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ ok: true, initialKioskRoute: null, initialKioskPath: mode === 'PHOTO' ? '/kiosk/photo' : '/kiosk/tag' });
+    expect((await prisma.clientDevice.findUniqueOrThrow({ where: { id: device.id } })).kioskInitialRoute).toBeNull();
+  });
+
+  it.each(['unknown', 'tag_desk', 'due_management'])('rejects route %s', async (initialRoute) => {
+    const response = await put({ initialRoute }, device.apiKey);
+    expect(response.statusCode).toBe(400);
+  });
+
+  it.each([{}, { initialRoute: 1 }, { initialRoute: 'assembly', clientId: 'another-device' }, { initialRoute: 'assembly', defaultMode: 'PHOTO' }])('requires a strict body: %j', async (payload) => {
+    expect((await put(payload, device.apiKey)).statusCode).toBe(400);
+  });
+
+  it('rejects a missing key', async () => {
+    const response = await put({ initialRoute: 'assembly' });
+    expect(response.statusCode).toBe(401);
+    expect(response.json().errorCode).toBe('CLIENT_KEY_REQUIRED');
+  });
+
+  it('rejects an unregistered key like other requireClientDevice routes', async () => {
+    const response = await put({ initialRoute: 'assembly' }, 'unregistered-key');
+    expect(response.statusCode).toBe(401);
+    expect(response.json().errorCode).toBe('INVALID_CLIENT_KEY');
+  });
+
+  it('accepts all expanded IDs through both kiosk and admin updates', async () => {
+    const { KIOSK_INITIAL_ROUTE_IDS } = await import('@raspi-system/shared-types');
+    const { token } = await createTestUser('ADMIN');
+    for (const initialRoute of KIOSK_INITIAL_ROUTE_IDS) {
+      expect((await put({ initialRoute }, device.apiKey)).statusCode).toBe(200);
+      const response = await app.inject({ method: 'PUT', url: `/api/clients/${device.id}`, headers: createAuthHeader(token), payload: { kioskInitialRoute: initialRoute } });
+      expect(response.statusCode).toBe(200);
+    }
+  });
+});

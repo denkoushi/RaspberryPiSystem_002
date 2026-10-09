@@ -2,11 +2,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   getKioskConfig,
+  putKioskInitialRoute,
   getKioskNavTabOrderSettings,
   updateKioskNavTabOrderSettings,
   getKioskEmployees,
   getKioskCallTargets
 } from '../client';
+
+import type { KioskConfig } from '../domains/kiosk';
+import type { KioskInitialRouteId } from '@raspi-system/shared-types';
 
 export function useKioskEmployees(clientKey?: string) {
   return useQuery({
@@ -30,6 +34,23 @@ export function useUpdateKioskNavTabOrderSettings() {
     onSuccess: (data) => {
       queryClient.setQueryData(['kiosk-nav-tab-order-settings'], data);
       void queryClient.invalidateQueries({ queryKey: ['kiosk-nav-tab-order-settings'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-config'] });
+    }
+  });
+}
+
+export function useUpdateKioskInitialRoute(clientKey: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (initialRoute: KioskInitialRouteId | null) =>
+      putKioskInitialRoute(initialRoute, clientKey),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['kiosk-config'] });
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData<KioskConfig>(['kiosk-config'], (current) =>
+        current ? { ...current, initialKioskRoute: data.initialKioskRoute, initialKioskPath: data.initialKioskPath } : current
+      );
       void queryClient.invalidateQueries({ queryKey: ['kiosk-config'] });
     }
   });

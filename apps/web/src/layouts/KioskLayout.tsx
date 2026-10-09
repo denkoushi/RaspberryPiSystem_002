@@ -302,6 +302,7 @@ export function KioskLayout() {
           clientId={selfClientId}
           onOpenSupport={() => setShowSupportModal(true)}
           defaultMode={kioskConfig?.defaultMode}
+          initialKioskRoute={kioskConfig?.initialKioskRoute}
           clientStatus={kioskConfig?.clientStatus ?? null}
           pathname={location.pathname}
           navTabOrder={navTabOrder}

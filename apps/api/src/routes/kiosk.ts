@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { registerProductionScheduleRoutes } from './kiosk/production-schedule/index.js';
 import { registerKioskEmployeesRoute } from './kiosk/employees.js';
+import { registerKioskInitialRoute } from './kiosk/initial-route.js';
 import { registerKioskConfigRoute } from './kiosk/config.js';
 import { registerKioskSitesRoute } from './kiosk/sites.js';
 import { registerKioskCallTargetsRoute } from './kiosk/call-targets.js';
@@ -59,6 +60,8 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
   await registerKioskConfigRoute(app, {
     normalizeClientKey
   });
+
+  await registerKioskInitialRoute(app, { requireClientDevice });
 
   await registerKioskSitesRoute(app, {
     requireClientDevice
