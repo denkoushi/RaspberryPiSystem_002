@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
   const sourceRow = {
@@ -323,26 +323,114 @@ describe('grinding planning board service orchestration', () => {
     const snapshotStore = createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 });
     const params = { siteKey: 'site-a', category: 'grinding' as const, view: 'seiban' as const, snapshotStore };
     await getGrindingPlanningBoard(params);
-    mocks.readGrindingPlanningBoardSnapshotGenerationToken.mockResolvedValueOnce('leaderboard-generation-1').mockResolvedValueOnce('changed');
+    mocks.readGrindingPlanningBoardSnapshotGenerationToken.mockResolvedValue('changed').mockResolvedValueOnce('leaderboard-generation-1');
     await expect(getGrindingPlanningBoard(params)).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_SNAPSHOT' });
-    expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(1);
+    expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(2);
   });
 
-  it('rebuilds expired or evicted payloads and keeps IDs isolated between stores', async () => {
+  it('rebuilds after a generation mismatch on the immediate reuse check', async () => {
+    const snapshotStore = createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 });
+    const params = { siteKey: 'site-a', category: 'grinding' as const, view: 'seiban' as const, snapshotStore };
+    await getGrindingPlanningBoard(params);
+    mocks.readGrindingPlanningBoardSnapshotGenerationToken.mockClear();
+    mocks.readGrindingPlanningBoardSnapshotGenerationToken
+      .mockResolvedValueOnce('leaderboard-generation-1').mockResolvedValueOnce('changed');
+
+    await getGrindingPlanningBoard(params);
+    expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(2);
+    expect(mocks.readGrindingPlanningBoardSnapshotGenerationToken).toHaveBeenCalledTimes(3);
+  });
+
+  it('retains payloads after store deletion and keeps them isolated between stores', async () => {
     const snapshotStore = createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 });
     const params = { siteKey: 'site-a', category: 'grinding' as const, view: 'seiban' as const, snapshotStore };
     const first = await getGrindingPlanningBoard(params);
-    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 60_001);
-    try {
-      const next = await getGrindingPlanningBoard(params);
-      expect(next.snapshotId).not.toBe(first.snapshotId);
-      snapshotStore.delete(next.snapshotId!);
-      const afterDelete = await getGrindingPlanningBoard(params);
-      expect(afterDelete.snapshotId).not.toBe(next.snapshotId);
-      const other = await getGrindingPlanningBoard({ ...params, snapshotStore: createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 }) });
-      expect(other.snapshotId).not.toBe(afterDelete.snapshotId);
-      expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(4);
-    } finally { now.mockRestore(); }
+    snapshotStore.delete(first.snapshotId!);
+    const afterDelete = await getGrindingPlanningBoard(params);
+    expect(afterDelete.snapshotId).not.toBe(first.snapshotId);
+    expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(1);
+    const other = await getGrindingPlanningBoard({ ...params, snapshotStore: createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 }) });
+    expect(other.snapshotId).not.toBe(afterDelete.snapshotId);
+    expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(2);
+  });
+
+  describe('completed payload cache lifetime and eviction', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-10-08T14:58:00.000Z'));
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it('reuses across the five-minute store TTL and JST midnight with a fresh pageable snapshot and arrival status', async () => {
+      const projection = mocks.projectGrindingPlanningBoard.getMockImplementation()!();
+      const items = [
+        { ...projection.items[0], fhincd: 'PART-A' },
+        { ...projection.items[0], itemId: 'row:item-b', fhincd: 'PART-B' }
+      ];
+      mocks.projectGrindingPlanningBoard.mockReturnValue({ ...projection, allItems: items, items });
+      const snapshotStore = createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 5 * 60_000 });
+      const params = { siteKey: 'site-a', category: 'grinding' as const, view: 'seiban' as const, pageSize: 1, snapshotStore };
+      const first = await getGrindingPlanningBoard(params);
+      vi.advanceTimersByTime(5 * 60_000 + 1);
+      expect(snapshotStore.get(first.snapshotId!)).toBeUndefined();
+      await expect(getGrindingPlanningBoard({ ...params, snapshotId: first.snapshotId, cursor: 1 }))
+        .rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_SNAPSHOT' });
+      mocks.prisma.$queryRaw.mockClear();
+      mocks.prisma.csvDashboardRow.findMany.mockClear();
+      mocks.readGrindingPlanningBoardSnapshotGenerationToken.mockClear();
+      mocks.findMaterialArrivalStatusByPart.mockResolvedValue(new Map([
+        ['ORDER-A\tPART-A', { status: 'ordered', basis: 'part' }]
+      ]));
+
+      const reused = await getGrindingPlanningBoard(params);
+      expect(reused.snapshotId).not.toBe(first.snapshotId);
+      expect(reused.items[0]).toMatchObject({ materialArrivalStatus: 'ordered', materialArrivalBasis: 'part' });
+      expect(first.items[0]).not.toHaveProperty('materialArrivalStatus');
+      expect(reused.nextCursor).toBe('1');
+      expect(mocks.readGrindingPlanningBoardSnapshotGenerationToken).toHaveBeenCalledTimes(2);
+      const continued = await getGrindingPlanningBoard({ ...params, snapshotId: reused.snapshotId, cursor: 1 });
+      expect(continued.snapshotId).toBe(reused.snapshotId);
+      expect(continued.items).toEqual([items[1]]);
+      expect(continued.nextCursor).toBeNull();
+      expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(1);
+      expect(mocks.prisma.$queryRaw).not.toHaveBeenCalled();
+      expect(mocks.prisma.csvDashboardRow.findMany).not.toHaveBeenCalled();
+      expect(mocks.findMaterialArrivalStatusByPart).toHaveBeenCalledTimes(3);
+    });
+
+    it('rebuilds at twelve hours without extending the deadline on reuse', async () => {
+      const snapshotStore = createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 5 * 60_000 });
+      const params = { siteKey: 'site-a', category: 'grinding' as const, view: 'seiban' as const, snapshotStore };
+      await getGrindingPlanningBoard(params);
+      vi.advanceTimersByTime(12 * 60 * 60_000 - 1);
+      await getGrindingPlanningBoard(params);
+      expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(1);
+      mocks.prisma.$queryRaw.mockClear();
+      vi.advanceTimersByTime(2);
+      await getGrindingPlanningBoard(params);
+      expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(2);
+      expect(mocks.prisma.$queryRaw).toHaveBeenCalled();
+    });
+
+    it.each([false, true])('evicts the least recently used payload on entry seventeen (touch oldest: %s)', async (touchOldest) => {
+      const snapshotStore = createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 5 * 60_000 });
+      const params = { category: 'grinding' as const, view: 'seiban' as const, includeLoad: false, snapshotStore };
+      const first = await getGrindingPlanningBoard({ ...params, siteKey: 'site-0' });
+      for (let index = 1; index < 16; index += 1) {
+        vi.advanceTimersByTime(1);
+        await getGrindingPlanningBoard({ ...params, siteKey: `site-${index}` });
+      }
+      if (touchOldest) await getGrindingPlanningBoard({ ...params, siteKey: 'site-0' });
+      await getGrindingPlanningBoard({ ...params, siteKey: 'site-16' });
+      expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(17);
+      // Evicting a reusable payload must not invalidate active cursors.
+      await getGrindingPlanningBoard({ ...params, siteKey: 'site-0', snapshotId: first.snapshotId });
+      await getGrindingPlanningBoard({ ...params, siteKey: 'site-16' });
+      if (touchOldest) await getGrindingPlanningBoard({ ...params, siteKey: 'site-0' });
+      expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(17);
+      await getGrindingPlanningBoard({ ...params, siteKey: touchOldest ? 'site-1' : 'site-0' });
+      expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(18);
+    });
   });
 
 

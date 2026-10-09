@@ -72,10 +72,17 @@ const PLANNING_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
 const fallbackPlanningSnapshotStore = createInMemoryLeaderboardShellSnapshotStore({
   defaultTtlMs: PLANNING_SNAPSHOT_TTL_MS
 });
-// Keep only a bounded lookup of completed snapshots; the store owns payloads
-// and their original TTL. Different store instances must never share IDs.
-const MAX_REUSABLE_PLANNING_SNAPSHOTS = 128;
-const reusablePlanningSnapshotIds = new WeakMap<LeaderboardShellSnapshotStore, Map<string, string>>();
+// Retain completed payloads independently of cursor TTL, isolated per store.
+const REUSABLE_PLANNING_PAYLOAD_TTL_MS = 12 * 60 * 60 * 1000;
+const MAX_REUSABLE_PLANNING_PAYLOADS = 16;
+type ReusablePlanningPayload = {
+  siteKey: string;
+  generationToken: string;
+  orderedRowIds: readonly string[];
+  payload: PlanningSnapshotPayload;
+  expiresAtMs: number;
+};
+const reusablePlanningPayloads = new WeakMap<LeaderboardShellSnapshotStore, Map<string, ReusablePlanningPayload>>();
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 type RowData = Record<string, unknown>;
@@ -698,22 +705,21 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
   const includeLoad = params.includeLoad !== false;
   const filterFingerprint = JSON.stringify({ siteKey: params.siteKey, category: params.category, view: params.view, fseibans: selected, completionFilter, includeLoad });
   const store = params.snapshotStore ?? fallbackPlanningSnapshotStore;
-  let reusableIds = reusablePlanningSnapshotIds.get(store);
-  if (!reusableIds) {
-    reusableIds = new Map();
-    reusablePlanningSnapshotIds.set(store, reusableIds);
+  let reusablePayloads = reusablePlanningPayloads.get(store);
+  if (!reusablePayloads) {
+    reusablePayloads = new Map();
+    reusablePlanningPayloads.set(store, reusablePayloads);
   }
   let snapshotId = params.snapshotId ?? '';
+  let reusablePayload: ReusablePlanningPayload | undefined;
   if (!snapshotId) {
-    const candidateId = reusableIds.get(filterFingerprint);
-    const candidate = candidateId ? store.get(candidateId) : undefined;
-    if (candidateId && candidate && candidate.siteKey === params.siteKey && candidate.locationKey === params.siteKey &&
-      candidate.filterFingerprint === filterFingerprint && candidate.generationToken === generationBeforeRead.generationToken &&
-      !candidate.partialOrdering && isPlanningSnapshotPayload(candidate.payload)) {
-      snapshotId = candidateId;
-    } else {
-      reusableIds.delete(filterFingerprint);
+    const candidate = reusablePayloads.get(filterFingerprint);
+    if (candidate && candidate.siteKey === params.siteKey && candidate.expiresAtMs > Date.now() &&
+      candidate.generationToken === generationBeforeRead.generationToken) {
+      const generation = await perf.measure('generationSnapshot', () => readPlanningSnapshotGenerationToken(params.siteKey));
+      if (candidate.generationToken === generation) reusablePayload = candidate;
     }
+    if (!reusablePayload) reusablePayloads.delete(filterFingerprint);
   }
   let orderedIds: readonly string[];
   let payload: PlanningSnapshotPayload;
@@ -729,6 +735,9 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
     }
     orderedIds = snapshot.orderedRowIds;
     payload = snapshot.payload;
+  } else if (reusablePayload) {
+    orderedIds = reusablePayload.orderedRowIds;
+    payload = reusablePayload.payload;
   } else {
     const source = await perf.measure('source', () => readPlanningSource({
       siteKey: params.siteKey,
@@ -770,10 +779,17 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
     // Give every first-page request a full cursor lifetime, even when its
     // payload was reused. Keep previous IDs valid for readers already paging.
     snapshotId = store.create({ orderedRowIds: orderedIds, partialOrdering: false, filterFingerprint, generationToken: generationBeforeRead.generationToken, locationKey: params.siteKey, siteKey: params.siteKey, payload });
-    reusableIds.delete(filterFingerprint);
-    reusableIds.set(filterFingerprint, snapshotId);
-    if (reusableIds.size > MAX_REUSABLE_PLANNING_SNAPSHOTS) {
-      reusableIds.delete(reusableIds.keys().next().value!);
+    // Refresh recency without extending the completed payload's fixed age.
+    reusablePayloads.delete(filterFingerprint);
+    reusablePayloads.set(filterFingerprint, reusablePayload ?? {
+      siteKey: params.siteKey,
+      generationToken: generationBeforeRead.generationToken,
+      orderedRowIds: orderedIds,
+      payload,
+      expiresAtMs: Date.now() + REUSABLE_PLANNING_PAYLOAD_TTL_MS
+    });
+    if (reusablePayloads.size > MAX_REUSABLE_PLANNING_PAYLOADS) {
+      reusablePayloads.delete(reusablePayloads.keys().next().value!);
     }
   }
   const byId = new Map(payload.items.map((item) => [item.itemId, item]));
