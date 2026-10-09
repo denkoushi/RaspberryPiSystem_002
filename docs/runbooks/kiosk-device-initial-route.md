@@ -55,6 +55,10 @@ known operational notes needed by the next AI agent.
 - The header `持出` tab must link to a concrete borrow subpath, not `/kiosk`.
   It resolves to `/kiosk/photo` when `defaultMode` is `PHOTO`, otherwise
   `/kiosk/tag`.
+- The header `持出` tab carries the start-page mark only when it leads to the
+  start page: while the tab is open, the current screen (tag or photo) must be
+  the start page; otherwise the tab's link target must be. This keeps the mark
+  in step with the dock's home button.
 - If `kioskInitialRoute` is explicitly set, it takes priority over browser
   `kiosk-last-path`.
 - If `kioskInitialRoute` is null or invalid, the legacy fallback is:
