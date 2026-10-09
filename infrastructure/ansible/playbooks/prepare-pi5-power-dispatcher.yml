@@ -1,0 +1,33 @@
+---
+# The standard release runs the server role in host-config-only mode, which
+# does not install the power dispatcher. Apply this playbook when
+# templates/pi5-power-dispatcher.* change.
+- name: Install the Pi5 kiosk power dispatcher
+  hosts: server
+  gather_facts: false
+  become: true
+  serial: 1
+  vars:
+    repo_path: /opt/RaspberryPiSystem_002
+
+  pre_tasks:
+    - name: Require power dispatcher delivery approval
+      ansible.builtin.assert:
+        that:
+          - pi5_power_dispatcher_delivery_approved | default(false) | bool
+        fail_msg: >-
+          Set pi5_power_dispatcher_delivery_approved=true only for the
+          separately approved power dispatcher delivery.
+
+  tasks:
+    - name: Deploy the power dispatcher script and units
+      ansible.builtin.import_role:
+        name: server
+        tasks_from: power-dispatcher.yml
+
+    # The path unit fires only on a new write. Run the dispatcher once so
+    # requests queued before this delivery are expired instead of waiting.
+    - name: Drain the power action queue with the delivered dispatcher
+      ansible.builtin.systemd:
+        name: pi5-power-dispatcher.service
+        state: started

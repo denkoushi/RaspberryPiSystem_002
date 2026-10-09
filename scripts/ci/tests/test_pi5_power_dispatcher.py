@@ -11,6 +11,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[3]
 TEMPLATE = ROOT / 'infrastructure/ansible/templates/pi5-power-dispatcher.sh.j2'
 PLAYBOOK = ROOT / 'infrastructure/ansible/playbooks/power-control.yml'
+DELIVERY_PLAYBOOK = ROOT / 'infrastructure/ansible/playbooks/prepare-pi5-power-dispatcher.yml'
+SERVER_TASKS = ROOT / 'infrastructure/ansible/roles/server/tasks'
 
 
 class Pi5PowerDispatcherTest(unittest.TestCase):
@@ -151,6 +153,21 @@ sys.exit(codes[count] if count < len(codes) else 0)
         self.assertRegex(text, r'hosts:\s*power_target')
         self.assertIn("groups['clients']", text)
         self.assertNotIn('power_action: "{{ power_action', text)
+
+    def test_dedicated_playbook_delivers_the_dispatcher(self):
+        # The standard release (host-config-only) skips the dispatcher, so the
+        # dedicated playbook must install it unconditionally.
+        delivery = DELIVERY_PLAYBOOK.read_text()
+        self.assertRegex(delivery, r'hosts:\s*server')
+        self.assertIn('pi5_power_dispatcher_delivery_approved', delivery)
+        self.assertIn('tasks_from: power-dispatcher.yml', delivery)
+        tasks = (SERVER_TASKS / 'power-dispatcher.yml').read_text()
+        self.assertNotIn('server_release_mode', tasks)
+        for name in ('sh', 'service', 'path'):
+            self.assertIn(f'templates/pi5-power-dispatcher.{name}.j2', tasks)
+        self.assertRegex(
+            (SERVER_TASKS / 'main.yml').read_text(),
+            r"import_tasks: power-dispatcher\.yml\n\s+when: server_release_mode == 'full'")
 
 
 if __name__ == '__main__':
