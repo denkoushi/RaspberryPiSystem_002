@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, fireEvent, render as testingRender, screen, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,11 +19,17 @@ const mocks = vi.hoisted(() => ({
   cancelConsultation: vi.fn(),
   knowledgeGet: vi.fn(),
   knowledgePost: vi.fn(),
-  pendingReviews: vi.fn()
+  pendingReviews: vi.fn(),
+  inquirySummary: vi.fn(),
+  inquiryList: vi.fn()
 }));
 
 vi.mock('../../api/client', () => ({
   getResolvedClientKey: () => mocks.clientKey,
+  getKioskInquirySummary: mocks.inquirySummary,
+  listKioskInquiries: mocks.inquiryList,
+  openKioskInquiry: vi.fn(),
+  replyToKioskInquiry: vi.fn(),
   cancelBusinessHermesConsultation: mocks.cancelConsultation,
   createBusinessHermesConsultation: mocks.createConsultation,
   getBusinessHermesConsultation: mocks.getConsultation,
@@ -33,6 +40,8 @@ vi.mock('../../api/client', () => ({
   sendHermesSearchTrialAnswer: mocks.sendTrialAnswer,
   updateBusinessHermesConsultation: mocks.updateConsultation
 }));
+
+vi.mock('../../features/kiosk/inventory/setup/useArmedNfcRead', () => ({ useArmedNfcRead: () => null }));
 
 vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => mocks.auth
@@ -55,6 +64,7 @@ vi.mock('../../features/hermes-knowledge/useKnowledgePoster', () => ({
 
 vi.mock('./HermesChatPanel', () => ({
   default: (props: {
+    inquiryMode?: { active: boolean; unreadCount: number; onSelect: () => void };
     mode?: 'legacy' | 'consultations';
     messages: Array<{ id: string; content: string; display?: { records: Array<{ sourceLabel: string }> }; evidence?: ReadonlyArray<{ id: string; title: string }> }>;
     draft: string;
@@ -96,6 +106,7 @@ vi.mock('./HermesChatPanel', () => ({
           <button type="button" aria-pressed={props.knowledgeMode === 'search'} onClick={() => props.onKnowledgeModeChange?.('search')}>検索</button>
           <button type="button" aria-pressed={props.knowledgeMode === 'knowledge'} onClick={() => props.onKnowledgeModeChange?.('knowledge')}>ナレッジ</button>
           {props.recordPilotAvailable ? <button type="button" aria-pressed={props.knowledgeMode === 'record-pilot'} onClick={() => props.onKnowledgeModeChange?.('record-pilot')}>JEV記録</button> : null}
+          {props.inquiryMode ? <button type="button" aria-pressed={props.inquiryMode.active} onClick={props.inquiryMode.onSelect}>お問い合わせ {props.inquiryMode.unreadCount || ''}</button> : null}
         </div>
       ) : null}
       {props.mode === 'consultations' && props.onNewConsultation ? (
@@ -187,6 +198,11 @@ function GuideRouteControls() {
   return <><button onClick={() => navigate('/kiosk/assembly/procedure-documents/example/edit')}>文書を開く</button><span data-testid="guide-route">{location.pathname}</span></>;
 }
 
+function render(ui: ReactNode) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  return testingRender(ui, { wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider> });
+}
+
 function renderChat(path = '/kiosk/assembly', pageContext?: HermesPageContext) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -240,6 +256,8 @@ function consultationResponse(
 describe('HermesFloatingChat', () => {
   beforeEach(() => {
     mocks.clientKey = 'client-key-test';
+    mocks.inquirySummary.mockReset().mockResolvedValue({ isReceiver: false, unreadCount: 0 });
+    mocks.inquiryList.mockReset().mockResolvedValue({ threads: [] });
     mocks.auth.user = null;
     mocks.auth.token = null;
     mocks.send.mockReset();
@@ -259,6 +277,39 @@ describe('HermesFloatingChat', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('opens inquiries from the orange trigger with an unread badge', async () => {
+    mocks.inquirySummary.mockResolvedValue({ isReceiver: true, unreadCount: 2 });
+    renderChat();
+    const trigger = await screen.findByRole('button', { name: 'お問い合わせ 未読 2 件' });
+    expect(trigger).toHaveClass('hermes-floating-trigger--inquiry-unread');
+    expect(trigger.querySelector('.hermes-floating-trigger__inquiry-count')).toHaveTextContent('2');
+    expect(trigger).toHaveTextContent('✉');
+    fireEvent.click(trigger);
+    expect(await screen.findByText('社員証をタッチ')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'お問い合わせ 2' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('textbox', { name: 'Hermesへの質問' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '検索' }));
+    expect(screen.queryByText('社員証をタッチ')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Hermesへの質問' })).toBeInTheDocument();
+  });
+
+  it.each(['/admin/kiosk-settings', '/login', '/signage'])('does not request summary or offer inquiries at %s', async path => {
+    renderChat(path);
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    await screen.findByTestId('hermes-panel');
+    expect(mocks.inquirySummary).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /お問い合わせ/ })).not.toBeInTheDocument();
+  });
+
+  it('does not request summary or offer inquiries without a resolved client key', async () => {
+    mocks.clientKey = '';
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    await screen.findByTestId('hermes-panel');
+    expect(mocks.inquirySummary).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /お問い合わせ/ })).not.toBeInTheDocument();
   });
 
   it.each(['手順書の作り方', '手順書はどうやって作るの?', '手順書を編集したい'])('offers local assembly guides for %s without creating or sending a consultation', async question => {

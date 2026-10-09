@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import { getResolvedClientKey, postKioskSupport } from '../../api/client';
@@ -15,11 +15,41 @@ const requestTypes = [
   { value: 'visit', label: '現場まで来てください。' }
 ];
 
+type SenderEmployee = { id: string; displayName: string; department: string | null };
+
+const DEFAULT_DEPARTMENT_KEYWORD = '機械課';
+const NO_DEPARTMENT = '';
+const NO_DEPARTMENT_LABEL = '部署なし';
+
+const departmentOf = (employee: SenderEmployee) => employee.department?.trim() || NO_DEPARTMENT;
+
+const listDepartments = (employees: SenderEmployee[]) =>
+  Array.from(new Set(employees.map(departmentOf))).sort((a, b) => {
+    if (a === NO_DEPARTMENT) return 1;
+    if (b === NO_DEPARTMENT) return -1;
+    return a.localeCompare(b, 'ja');
+  });
+
+const pickDefaultDepartment = (departments: string[]) =>
+  departments.find((department) => department.includes(DEFAULT_DEPARTMENT_KEYWORD)) ?? departments[0] ?? NO_DEPARTMENT;
+
 export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
   const location = useLocation();
   const resolvedClientKey = getResolvedClientKey();
   const { data: employees, isLoading: isLoadingEmployees } = useKioskEmployees(resolvedClientKey);
   const senderSelectRef = useRef<HTMLSelectElement | null>(null);
+  const senderEmployees = useMemo<SenderEmployee[]>(() => employees ?? [], [employees]);
+  const departments = useMemo(() => listDepartments(senderEmployees), [senderEmployees]);
+  // null は未操作。未操作の間は機械課(無ければ先頭の部署)を選んだ状態にする
+  const [chosenDepartment, setChosenDepartment] = useState<string | null>(null);
+  const selectedDepartment =
+    chosenDepartment !== null && departments.includes(chosenDepartment)
+      ? chosenDepartment
+      : pickDefaultDepartment(departments);
+  const departmentEmployees = useMemo(
+    () => senderEmployees.filter((employee) => departmentOf(employee) === selectedDepartment),
+    [senderEmployees, selectedDepartment]
+  );
   
   // デフォルト日時を現在の日時に設定
   const getDefaultDate = () => {
@@ -63,7 +93,7 @@ export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
     setIsSubmitting(true);
     try {
       // メッセージを組み立て
-      const selectedEmployee = employees?.find((emp: { id: string; displayName: string; department: string | null }) => emp.id === selectedSender);
+      const selectedEmployee = senderEmployees.find((emp) => emp.id === selectedSender);
       const senderName = selectedEmployee?.displayName || '不明';
       const requestTypeLabel = requestTypes.find((rt) => rt.value === requestType)?.label || '';
       
@@ -87,6 +117,7 @@ export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
 
       // 成功後、フォームをリセットして閉じる
       setSelectedSender('');
+      setChosenDepartment(null);
       setRequestType('');
       setMeetingDate('');
       setMeetingTime('');
@@ -128,6 +159,27 @@ export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
       <form onSubmit={handleSubmit} className="space-y-4">
           {/* 送信者選択 */}
           <div>
+            <label htmlFor="sender-department" className="mb-2 block text-sm font-semibold text-slate-700">
+              部署
+            </label>
+            <select
+              id="sender-department"
+              value={selectedDepartment}
+              onChange={(e) => {
+                setChosenDepartment(e.target.value);
+                setSelectedSender('');
+              }}
+              className="w-full rounded-md border-2 border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none"
+              disabled={isSubmitting || isLoadingEmployees}
+            >
+              {departments.map((department) => (
+                <option key={department} value={department}>
+                  {department === NO_DEPARTMENT ? NO_DEPARTMENT_LABEL : department}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
             <label htmlFor="sender" className="mb-2 block text-sm font-semibold text-slate-700">
               送信者 <span className="text-red-500">*</span>
             </label>
@@ -141,9 +193,9 @@ export function KioskSupportModal({ isOpen, onClose }: KioskSupportModalProps) {
               required
             >
               <option value="">選択してください</option>
-              {employees?.map((employee: { id: string; displayName: string; department: string | null }) => (
+              {departmentEmployees.map((employee) => (
                 <option key={employee.id} value={employee.id}>
-                  {employee.displayName} {employee.department ? `(${employee.department})` : ''}
+                  {employee.displayName}
                 </option>
               ))}
             </select>

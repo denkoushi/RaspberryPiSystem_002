@@ -279,3 +279,73 @@ export async function patchToolsPalletMachinePalletCount(machineCd: string, pall
     { palletCount }
   );
 }
+
+export type KioskInquirySummary = { isReceiver: boolean; unreadCount: number };
+export type KioskInquirySide = 'SENDER' | 'RECEIVER';
+export type KioskInquiryThread = {
+  id: string;
+  senderClientDeviceName: string;
+  senderLocation: string | null;
+  page: string;
+  unread: boolean;
+  lastMessageAt: string;
+  lastMessage: { side: KioskInquirySide; body: string; createdAt: string } | null;
+};
+export type KioskInquiryDetail = {
+  thread: KioskInquiryThread;
+  messages: Array<{
+    id: string;
+    side: KioskInquirySide;
+    body: string;
+    createdAt: string;
+    authorDisplayName?: string | null;
+  }>;
+};
+export type KioskInquiryEmployee = { employeeId: string; employeeCode: string; displayName: string };
+export type KioskInquiryReceiverSettings = {
+  devices: Array<{ id: string; name: string; location: string | null; inquiryReceiverEnabled: boolean }>;
+  employees: KioskInquiryEmployee[];
+};
+
+export async function getKioskInquirySummary(signal?: AbortSignal) {
+  const { data } = await api.get<KioskInquirySummary>('/kiosk/inquiries/summary', { signal });
+  return data;
+}
+
+export async function listKioskInquiries(employeeTagUid?: string, signal?: AbortSignal) {
+  const { data } = await api.post<{ threads: KioskInquiryThread[] }>(
+    '/kiosk/inquiries/list', employeeTagUid ? { employeeTagUid } : {}, { signal }
+  );
+  return data;
+}
+
+export async function openKioskInquiry(threadId: string, employeeTagUid?: string, signal?: AbortSignal) {
+  const { data } = await api.post<KioskInquiryDetail>(
+    `/kiosk/inquiries/${encodeURIComponent(threadId)}/open`, employeeTagUid ? { employeeTagUid } : {}, { signal }
+  );
+  return data;
+}
+
+export async function replyToKioskInquiry(threadId: string, body: string, employeeTagUid?: string, signal?: AbortSignal) {
+  const { data } = await api.post<KioskInquiryDetail>(
+    `/kiosk/inquiries/${encodeURIComponent(threadId)}/reply`, { body, ...(employeeTagUid ? { employeeTagUid } : {}) }, { signal }
+  );
+  return data;
+}
+
+export async function getKioskInquiryReceiverSettings() {
+  const { data } = await api.get<{ settings: KioskInquiryReceiverSettings }>('/kiosk-settings/inquiry-receivers');
+  return data;
+}
+
+export async function updateKioskInquiryReceiverSettings(payload: { receiverClientDeviceIds: string[]; employeeCodes: string[] }) {
+  const { data } = await api.put<{ settings: KioskInquiryReceiverSettings }>('/kiosk-settings/inquiry-receivers', payload);
+  return data;
+}
+
+export async function lookupKioskInquiryEmployee(employeeCode: string) {
+  const { data } = await api.get<{ employee: KioskInquiryEmployee }>(
+    '/kiosk-settings/inquiry-receivers/employee-lookup', { params: { employeeCode } }
+  );
+  return data;
+}

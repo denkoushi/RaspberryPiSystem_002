@@ -337,6 +337,10 @@ async function mockAssemblyApis(
       await route.continue();
       return;
     }
+    if (path === '/api/kiosk/inquiries/summary') {
+      await route.fulfill({ json: { isReceiver: false, unreadCount: 0 } });
+      return;
+    }
     if (path === '/api/kiosk/config') {
       await route.fulfill({ json: { kioskInitialRoute: 'assembly', navTabOrder: [] } });
       return;

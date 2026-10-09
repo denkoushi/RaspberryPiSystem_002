@@ -31,6 +31,27 @@ describe('HermesChatPanel evidence cards', () => {
 
   afterEach(() => vi.restoreAllMocks());
 
+  it('selects inquiries with a count and hides AI controls and composer', () => {
+    const onSelect = vi.fn();
+    const onKnowledgeModeChange = vi.fn();
+    render(<HermesChatPanel messages={[]} draft="" isBusy={false} error={null} authRequired="AI auth"
+      mode="consultations" onDraftChange={vi.fn()} onSend={vi.fn()} onReset={vi.fn()} onClose={vi.fn()}
+      onNewConsultation={vi.fn()} onScan={vi.fn()} onKnowledgeModeChange={onKnowledgeModeChange}
+      inquiryMode={{ active: true, unreadCount: 2, onSelect }} composerVisible={false}
+      conversationContent={<p>社員証をタッチ</p>} />);
+    expect(screen.getByRole('button', { name: 'お問い合わせ 2' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '検索' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByRole('button', { name: '新しい相談を始める' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'バーコードをスキャン' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '会話をリセット' })).not.toBeInTheDocument();
+    expect(screen.queryByText('AI auth')).not.toBeInTheDocument();
+    expect(document.querySelector('[contenteditable="true"]')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'お問い合わせ 2' }));
+    expect(onSelect).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: '検索' }));
+    expect(onKnowledgeModeChange).toHaveBeenCalledWith('search');
+  });
+
   it('renders record display as cards with metadata, body lists and footer without duplicate answer', () => {
     const heading = 'M8締付訓練 / 長さ30 mm / 治具JIG-01';
     const record = { sourceLabel: '従業員の訓練集計', fields: [

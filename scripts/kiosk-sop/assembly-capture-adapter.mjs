@@ -142,6 +142,7 @@ async function installApiFixtures(page, sheetId, unexpectedRequests) {
     if (path === '/api/system/deploy-status') return json(route, { isMaintenance: false });
     if (path === '/api/kiosk/config') return json(route, { defaultMode: 'tag', clientStatus: null });
     if (path === '/api/kiosk/call/targets') return json(route, { selfClientId: 'sop-generator', targets: [] });
+    if (path === '/api/kiosk/inquiries/summary') return json(route, { isReceiver: false, unreadCount: 0 });
     if (path === '/api/kiosk/employees') return json(route, { employees: [] });
     if (path === '/api/kiosk/production-schedule/resources') return json(route, { resources: [], resourceNameMap: {} });
     if (path === '/api/assembly/procedure-documents/preview' && request.method() === 'POST') {
