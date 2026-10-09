@@ -70,7 +70,7 @@ ENV HERMES_QMD_ROOT=/opt/hermes-runtime/node_modules/@tobilu/qmd
 ARG NDLOCR_LITE_COMMIT=89f815899f0e85d236a1a90e75da012ca932dc7b
 # Bump the date to invalidate the cached apt layer; otherwise the CI build
 # cache keeps stale OS packages and Trivy fails on already-fixed Debian CVEs.
-ARG APT_CACHE_BUST=2026-10-02
+ARG APT_CACHE_BUST=2026-10-09
 
 RUN echo "apt refresh ${APT_CACHE_BUST}" \
   && apt-get update \
