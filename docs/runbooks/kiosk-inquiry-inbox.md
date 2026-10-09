@@ -26,6 +26,7 @@ update-frequency: medium
 - 件数は 30 秒ごとに更新する。問い合わせるのは `/kiosk` 配下の画面だけで、管理画面やサイネージでは丸ボタンは今までどおり。
 - 一覧は受信端末で新しい順に 50 件、送った端末で 20 件まで。それより古い分は画面に出ない(DB には残る)。
 - この機能を入れる前のお問い合わせ(`ClientLog` だけの行)は受信箱に出ない。
+- 送信フォームの送信者は、先に部署を選んで絞る。開いたときは名前に「機械課」を含む部署が選ばれている(無ければ先頭の部署)。部署が空の社員は「部署なし」にまとまる。
 
 ## 設定(管理コンソール)
 
@@ -49,7 +50,7 @@ update-frequency: medium
 
 - DB: `ClientDevice.inquiryReceiverEnabled`、`KioskInquiryReceiverEmployee`、`KioskInquiryThread`、`KioskInquiryMessage`(migration `20261009090100_add_kiosk_inquiry_inbox`。追加だけで既存の列と行は変えない)
 - API: `apps/api/src/routes/kiosk/inquiries.ts`、`apps/api/src/routes/kiosk-settings.ts`、`apps/api/src/services/kiosk-inquiry/`。スレッドは `POST /kiosk/support` の `ClientLog` 保存と同じトランザクションで作る
-- Web: `apps/web/src/features/kiosk/inquiry/`、入口は `apps/web/src/components/hermes/HermesFloatingChat.tsx`
+- Web: `apps/web/src/features/kiosk/inquiry/`、入口は `apps/web/src/components/hermes/HermesFloatingChat.tsx`。送信フォームは `apps/web/src/components/kiosk/KioskSupportModal.tsx`
 
 ## うまくいかないとき
 
