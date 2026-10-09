@@ -1,3 +1,4 @@
+import { createDeviceReadRateLimit } from '../../../lib/device-read-rate-limit.js';
 import { toLoanResponse } from '../../../lib/loan-response.js';
 import type { FastifyInstance } from 'fastify';
 import { authorizeRoles } from '../../../lib/auth.js';
@@ -7,7 +8,7 @@ import { activeLoanQuerySchema } from './schemas.js';
 export function registerActiveLoansRoute(app: FastifyInstance, loanService: LoanService): void {
   const canView = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
 
-  app.get('/active', { config: { rateLimit: false } }, async (request, reply) => {
+  app.get('/active', { config: { rateLimit: createDeviceReadRateLimit() } }, async (request, reply) => {
     const query = activeLoanQuerySchema.parse(request.query);
 
     // クライアントキーがあれば優先的にデバイス認証とみなす

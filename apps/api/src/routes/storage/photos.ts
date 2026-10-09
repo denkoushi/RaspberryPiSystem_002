@@ -1,3 +1,4 @@
+import { createDeviceReadRateLimit } from '../../lib/device-read-rate-limit.js';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { PhotoStorage } from '../../lib/photo-storage.js';
 import { authorizeRoles } from '../../lib/auth.js';
@@ -21,7 +22,7 @@ export function registerPhotoStorageRoutes(app: FastifyInstance): void {
    * 元画像を配信する
    * パス例: /api/storage/photos/2025/11/20251127_123456_employee-uuid.jpg
    */
-  app.get('/storage/photos/*', async (request: FastifyRequest, reply: FastifyReply) => {
+  app.get('/storage/photos/*', { config: { rateLimit: createDeviceReadRateLimit() } }, async (request: FastifyRequest, reply: FastifyReply) => {
     const headerKey = request.headers['x-client-key'];
     if (headerKey) {
       // client-key が提供されている場合は優先的に検証し、無効な場合はJWTにフォールバック
