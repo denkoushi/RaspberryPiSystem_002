@@ -6,15 +6,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProcedureManualAssignmentDialog } from './ProcedureManualAssignmentDialog';
 import { ProcedureManualBlankDialog } from './ProcedureManualBlankDialog';
 import { ProcedureManualBrowser } from './ProcedureManualBrowser';
+import { ProcedureManualFilterPane } from './ProcedureManualFilterPane';
 import { ProcedureManualPageRail } from './ProcedureManualPageRail';
 
 import type { AssemblyProcedureSequencePageDto, ProcedureManualDetailDto, ProcedureManualOverviewItemDto, ProcedureManualProcessDto } from '../types';
 
 const mocks = vi.hoisted(() => ({
-  overview: vi.fn(), allOverview: vi.fn(), models: vi.fn(), processes: vi.fn(), detail: vi.fn(), documents: vi.fn(), pdfs: vi.fn(), save: vi.fn(), history: vi.fn(), blank: vi.fn(), machineCandidates: vi.fn()
+  overview: vi.fn(), allOverview: vi.fn(), models: vi.fn(), processes: vi.fn(), detail: vi.fn(), documents: vi.fn(), pdfs: vi.fn(), save: vi.fn(), history: vi.fn(), blank: vi.fn(), partCandidates: vi.fn(), machineCandidates: vi.fn()
 }));
 vi.mock('../../../api/client', () => ({
   createBlankAssemblyProcedureDocument: mocks.blank,
+  listProcedureManualPartCandidates: mocks.partCandidates,
   listAssemblyMachineNameCandidates: mocks.machineCandidates,
   listProcedureMaterials: async () => [],
   listProcedureManualParts: async () => [{ partNumber: 'PART-1', partNumberKey: 'PART-1' }],
@@ -68,6 +70,7 @@ describe('procedure-manuals', () => {
     mocks.history.mockResolvedValue([{ id: 'old-published', revisionRootId: 'root-old', name: '改版中の旧公開手順', status: 'published', isActive: true, revisionNumber: 2 }]);
     mocks.pdfs.mockResolvedValue([{ id: 'pdf', title: '検査PDF', enabled: true }]);
     mocks.save.mockResolvedValue(undefined);
+    mocks.partCandidates.mockResolvedValue([{ partNumber: 'PART-1', partNumberKey: 'PART-1', partName: null, hasManual: false }]);
     mocks.machineCandidates.mockResolvedValue({ candidates: ['ｄｆｄ９'], hasMore: false });
   });
   afterEach(() => vi.restoreAllMocks());
@@ -131,6 +134,7 @@ describe('procedure-manuals', () => {
     render(<MemoryRouter initialEntries={['/kiosk/assembly/manuals?part=PART-1&process=cutting']}><ProcedureManualBrowser /></MemoryRouter>);
     await waitFor(() => expect(mocks.detail).toHaveBeenCalledWith('PART-1', 'cutting'));
     expect(await screen.findByLabelText('部品検索')).toBeInTheDocument();
+    expect(mocks.partCandidates).not.toHaveBeenCalled();
     expect(screen.getByRole('link', { name: '作る・直す' })).toHaveAttribute('href', '/kiosk/assembly/manuals/workshop?part=PART-1&process=cutting');
     fireEvent.click(screen.getByRole('button', { name: '品番をスキャン' }));
     for (const key of 'next-1') fireEvent.keyDown(window, { key });
@@ -146,6 +150,7 @@ describe('procedure-manuals', () => {
     expect(screen.getByRole('region', { name: '部品の選択' })).toBeInTheDocument();
     expect(screen.getByLabelText('品番で検索')).toBeInTheDocument();
     expect(mocks.machineCandidates).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByRole('button', { name: '作成してエディタへ' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: '作成してエディタへ' }));
     expect(await screen.findByText('新規エディタ')).toBeInTheDocument();
     expect(mocks.blank).toHaveBeenCalledWith('PART-1_加工_切削', { modelCode: 'PART-1', processId: 'cutting' });
@@ -167,7 +172,7 @@ describe('procedure-manuals', () => {
     expect(mocks.machineCandidates).not.toHaveBeenCalled();
     const create = screen.getByRole('button', { name: '作成してエディタへ' });
     if (modelCode) {
-      expect(create).toBeEnabled();
+      await waitFor(() => expect(create).toBeEnabled());
       fireEvent.click(create);
       await waitFor(() => expect(mocks.blank).toHaveBeenCalledWith('PART-1_加工_切削', { modelCode: 'PART-1', processId: 'cutting' }));
     } else {
@@ -201,12 +206,73 @@ describe('procedure-manuals', () => {
 
   it('keeps part candidates separate when the blank dialog switches from assembly to machining', async () => {
     const allProcesses = [...processes, { id: 'machining', parentId: null, name: '加工', subjectKind: 'MODEL' }, { id: 'cutting', parentId: 'machining', name: '切削', subjectKind: 'PART' }] as ProcedureManualProcessDto[];
-    render(<MemoryRouter><ProcedureManualBlankDialog models={[{ modelCode: 'DFD1', modelCodeKey: 'DFD1' }]} partCandidates={[{ modelCode: 'PART-1', modelCodeKey: 'PART-1' }]} processes={allProcesses} modelCode="DFD1" processId="assembly" onClose={vi.fn()} /></MemoryRouter>);
+    render(<MemoryRouter><ProcedureManualBlankDialog models={[{ modelCode: 'DFD1', modelCodeKey: 'DFD1' }]} processes={allProcesses} modelCode="DFD1" processId="assembly" onClose={vi.fn()} /></MemoryRouter>);
     fireEvent.click(screen.getByRole('button', { name: '加工' }));
-    expect(screen.getByRole('button', { name: 'PART-1' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'PART-1' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'DFD1' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('品番で検索')).toHaveValue('');
     expect(screen.getByRole('button', { name: '作成してエディタへ' })).toBeDisabled();
+  });
+
+  it.each([['主軸', '主軸'], ['  主_軸  ', '主 軸'], [null, null]])('uses the part name %s in a blank manual but saves only the part number', async (partName, cleanName) => {
+    const partProcesses = [...processes, { id: 'machining', parentId: null, name: '加工', subjectKind: 'MODEL' }, { id: 'grinding', parentId: 'machining', name: '研削', subjectKind: 'PART' }] as ProcedureManualProcessDto[];
+    mocks.partCandidates.mockResolvedValue([{ partNumber: 'P-1A3', partNumberKey: 'P-1A3', partName, hasManual: false }]);
+    mocks.blank.mockResolvedValue({ id: 'new-document' });
+    render(<MemoryRouter><ProcedureManualBlankDialog models={[]} processes={partProcesses} modelCode="" processId="grinding" onClose={vi.fn()} /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText('品番で検索'), { target: { value: '主' } });
+    const tenkey = within(screen.getByRole('group', { name: '部品テンキー' }));
+    fireEvent.click(tenkey.getByRole('button', { name: '1' }));
+    fireEvent.click(tenkey.getByRole('button', { name: '3' }));
+    const candidate = await screen.findByRole('button', { name: 'P-1A3' });
+    expect(mocks.partCandidates).toHaveBeenLastCalledWith({ q: '主', digitQuery: '13', limit: 30 });
+    expect(candidate).toHaveTextContent('P-1A3');
+    if (partName) expect(candidate).toHaveTextContent(partName.trim());
+    else expect(candidate.textContent).toBe('P-1A3');
+    fireEvent.click(candidate);
+    const name = [cleanName, 'P-1A3', '加工', '研削'].filter(Boolean).join('_');
+    expect(screen.getByLabelText('名前のプレビュー')).toHaveTextContent(name);
+    expect(candidate).toHaveClass('min-h-12', 'bg-[#f6b93b]');
+    fireEvent.click(screen.getByRole('button', { name: '作成してエディタへ' }));
+    await waitFor(() => expect(mocks.blank).toHaveBeenCalledWith(name, { modelCode: 'P-1A3', processId: 'grinding' }));
+    expect(mocks.machineCandidates).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])('selects one scanned part and looks up its name (known=%s)', async known => {
+    const partProcesses = [...processes, { id: 'machining', parentId: null, name: '加工', subjectKind: 'MODEL' }, { id: 'grinding', parentId: 'machining', name: '研削', subjectKind: 'PART' }] as ProcedureManualProcessDto[];
+    mocks.partCandidates.mockImplementation(async ({ q }: { q: string }) => known && q === 'PART-1' ? [{ partNumber: 'PART-1', partNumberKey: 'PART-1', partName: '主軸', hasManual: false }] : []);
+    mocks.blank.mockResolvedValue({ id: 'new-document' });
+    render(<MemoryRouter><ProcedureManualBlankDialog models={[]} processes={partProcesses} modelCode="" processId="grinding" onClose={vi.fn()} /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: '品番をスキャン' }));
+    expect(screen.getByRole('button', { name: 'スキャン中止' })).toHaveClass('bg-[#f6b93b]');
+    for (const key of 'ｐａｒｔ－①') fireEvent.keyDown(window, { key });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await waitFor(() => expect(screen.getByRole('button', { name: '作成してエディタへ' })).toBeEnabled());
+    expect(mocks.partCandidates).toHaveBeenLastCalledWith({ q: 'PART-1', digitQuery: '', limit: 30 });
+    expect(screen.getByRole('button', { name: '品番をスキャン' })).toHaveAttribute('aria-pressed', 'false');
+    const name = `${known ? '主軸_' : ''}PART-1_加工_研削`;
+    expect(screen.getByLabelText('名前のプレビュー')).toHaveTextContent(name);
+    for (const key of 'other-123') fireEvent.keyDown(window, { key });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(screen.getByLabelText('品番で検索')).toHaveValue('PART-1');
+    fireEvent.change(screen.getByLabelText('補足'), { target: { value: '  仕上げ  ' } });
+    fireEvent.click(screen.getByRole('button', { name: '作成してエディタへ' }));
+    await waitFor(() => expect(mocks.blank).toHaveBeenCalledWith(`${name}_仕上げ`, { modelCode: 'PART-1', processId: 'grinding' }));
+  });
+
+  it('keeps a blank-dialog scan from reaching an armed background filter', async () => {
+    const selectBackground = vi.fn();
+    const partProcesses = [...processes, { id: 'machining', parentId: null, name: '加工' }, { id: 'grinding', parentId: 'machining', name: '研削', subjectKind: 'PART' }] as ProcedureManualProcessDto[];
+    const background = <ProcedureManualFilterPane subjectKind="PART" processes={partProcesses} items={[]} models={[]} modelCodeKey="" processId="grinding" search="" digitQuery="" onKindChange={vi.fn()} onSearchChange={vi.fn()} onDigitQueryChange={vi.fn()} onModelSelect={selectBackground} onProcessSelect={vi.fn()} />;
+    const view = render(<MemoryRouter>{background}</MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: '品番をスキャン' }));
+    view.rerender(<MemoryRouter>{background}<ProcedureManualBlankDialog models={[]} processes={partProcesses} modelCode="" processId="grinding" onClose={vi.fn()} /></MemoryRouter>);
+    const dialog = within(screen.getByRole('dialog', { name: '白紙から作る' }));
+    fireEvent.click(dialog.getByRole('button', { name: '品番をスキャン' }));
+    for (const key of 'part-1') fireEvent.keyDown(window, { key });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await waitFor(() => expect(dialog.getByRole('button', { name: '作成してエディタへ' })).toBeEnabled());
+    expect(dialog.getByLabelText('名前のプレビュー')).toHaveTextContent('PART-1_加工_研削');
+    expect(selectBackground).not.toHaveBeenCalled();
   });
 
   it('assigns existing documents to a normalized part using part labels', async () => {

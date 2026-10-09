@@ -8,9 +8,10 @@ import { ProcedureManualWorkshop } from './ProcedureManualWorkshop';
 
 import type { AssemblyProcedureSequenceDto, ProcedureManualModelOverviewDto, ProcedureManualOverviewItemDto } from '../types';
 
-const mocks = vi.hoisted(() => ({ models: vi.fn(), candidates: vi.fn(), processes: vi.fn(), overview: vi.fn(), allOverview: vi.fn(), document: vi.fn(), detail: vi.fn(), replace: vi.fn(), delete: vi.fn(), materials: vi.fn(), videos: vi.fn(), image: vi.fn(), verify: vi.fn() }));
+const mocks = vi.hoisted(() => ({ partCandidates: vi.fn(), models: vi.fn(), candidates: vi.fn(), processes: vi.fn(), overview: vi.fn(), allOverview: vi.fn(), document: vi.fn(), detail: vi.fn(), replace: vi.fn(), delete: vi.fn(), materials: vi.fn(), videos: vi.fn(), image: vi.fn(), verify: vi.fn() }));
 vi.mock('../../../api/client', () => ({
   verifyAssemblyTemplateAccessPassword: mocks.verify,
+  listProcedureManualPartCandidates: mocks.partCandidates,
   listProcedureManualModels: mocks.models, listAssemblyMachineNameCandidates: mocks.candidates,
   listProcedureManualProcesses: mocks.processes, getProcedureManualModelOverview: mocks.overview, getProcedureManualOverview: mocks.allOverview,
   getAssemblyProcedureDocument: mocks.document,
@@ -48,6 +49,10 @@ beforeEach(() => {
   mocks.verify.mockResolvedValue({ success: true });
   vi.stubGlobal('IntersectionObserver', undefined);
   mocks.image.mockImplementation((url: string) => ({ blobUrl: url }));
+  mocks.partCandidates.mockImplementation(async ({ q, digitQuery }: { q: string; digitQuery: string }) => {
+    const key = q.normalize('NFKC').trim().toUpperCase();
+    return ['PART-12', 'NEW-1'].filter(code => code.includes(key) && code.replace(/\D/g, '').includes(digitQuery)).map(code => ({ partNumber: code, partNumberKey: code, partName: null, hasManual: false }));
+  });
   mocks.models.mockResolvedValue([{ modelCode: 'DFD1', modelCodeKey: 'DFD1' }, { modelCode: 'DFD1', modelCodeKey: 'ｄｆｄ１' }]);
   mocks.processes.mockResolvedValue(processes); mocks.overview.mockResolvedValue(overview);
   mocks.allOverview.mockImplementation(async () => {
@@ -73,10 +78,37 @@ describe('procedure-manuals workshop', () => {
     show('');
     fireEvent.click(await screen.findByRole('button', { name: '切削' }));
     fireEvent.change(screen.getByLabelText('部品検索'), { target: { value: ' ｎｅｗ－① ' } });
-    fireEvent.click(screen.getByRole('button', { name: 'NEW-1' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'NEW-1' }));
     expect(JSON.parse(screen.getByTestId('location').textContent!).search).toBe('?part=NEW-1&process=cutting');
     fireEvent.click(screen.getByRole('button', { name: '作る' }));
     expect(screen.getByRole('dialog', { name: '白紙から作る' })).toHaveTextContent('NEW-1 / cutting');
+  });
+
+  it('searches production parts with the tenkey and text, displays names and selects a part without a manual', async () => {
+    mocks.partCandidates.mockImplementation(async ({ digitQuery }: { digitQuery: string }) => digitQuery === '13' ? [
+      { partNumber: 'P-1A3', partNumberKey: 'P-1A3', partName: '主軸', hasManual: false },
+      { partNumber: 'P-13', partNumberKey: 'P-13', partName: null, hasManual: false }
+    ] : []);
+    mocks.processes.mockResolvedValue([...processes, { id: 'grinding', parentId: 'machining', name: '研削', subjectKind: 'PART' }]);
+    show('');
+    fireEvent.click(await screen.findByRole('button', { name: '研削' }));
+    fireEvent.change(screen.getByLabelText('部品検索'), { target: { value: '主軸' } });
+    const tenkey = within(screen.getByRole('group', { name: '部品テンキー' }));
+    fireEvent.click(tenkey.getByRole('button', { name: '1' }));
+    fireEvent.click(tenkey.getByRole('button', { name: '3' }));
+    const candidate = await screen.findByRole('button', { name: 'P-1A3' });
+    expect(mocks.partCandidates).toHaveBeenLastCalledWith({ q: '主軸', digitQuery: '13', limit: 30 });
+    expect(candidate).toHaveTextContent('主軸');
+    expect(candidate).toHaveTextContent('P-1A3');
+    expect(within(candidate).getByText('P-1A3')).toHaveClass('text-[#9fadb9]', 'text-sm');
+    expect(screen.getByRole('button', { name: 'P-13' })).toHaveTextContent(/^P-13/);
+    fireEvent.click(candidate);
+    expect(candidate).toHaveAttribute('aria-pressed', 'true');
+    expect(candidate).toHaveClass('min-h-12', 'bg-[#f6b93b]');
+    expect(JSON.parse(screen.getByTestId('location').textContent!).search).toBe('?part=P-1A3&process=grinding');
+    fireEvent.click(screen.getByRole('button', { name: '作る' }));
+    expect(screen.getByRole('dialog', { name: '白紙から作る' })).toHaveTextContent('P-1A3 / grinding');
+    expect(mocks.candidates).not.toHaveBeenCalled();
   });
 
   it('opens creation without either filter and passes the default model kind', async () => {
@@ -125,7 +157,7 @@ describe('procedure-manuals workshop', () => {
     await screen.findByRole('button', { name: '組立' });
     fireEvent.click(screen.getByRole('button', { name: '部品' }));
     fireEvent.change(screen.getByLabelText('部品検索'), { target: { value: 'PART-12' } });
-    const candidate = screen.getByRole('button', { name: 'PART-12' });
+    const candidate = await screen.findByRole('button', { name: 'PART-12' });
     fireEvent.click(candidate);
     expect(candidate).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(candidate);
