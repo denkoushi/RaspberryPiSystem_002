@@ -200,7 +200,7 @@ export class EmployeeService {
   /**
    * キオスク向け: アクティブな従業員の基本情報のみ
    */
-  async listActiveForKiosk(): Promise<Array<Pick<Employee, 'id' | 'displayName' | 'department'>>> {
+  async listActiveForKiosk(): Promise<Array<Pick<Employee, 'id' | 'displayName' | 'department' | 'section'>>> {
     return await prisma.employee.findMany({
       where: {
         status: 'ACTIVE'
@@ -208,7 +208,8 @@ export class EmployeeService {
       select: {
         id: true,
         displayName: true,
-        department: true
+        department: true,
+        section: true
       },
       orderBy: {
         displayName: 'asc'
