@@ -61,6 +61,22 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 - **恒久対策（2026-03-01 実装済み）**: server ロールの `power-actions` 作成タスクに `notify: restart api` を追加。Pi5 デプロイ時に `power-actions` が変更された場合、自動で API 再起動される。
 - **`--limit` で Pi4 のみデプロイした場合**: Pi5 の server ロールは実行されず、API 再起動も行われない。過去に `power-actions` が削除・再作成されていた場合、API は古いマウントを参照している可能性がある。その場合は本 Runbook の即時対処を実施する。
 
+## Pi5 power dispatcher の端末照合失敗（2026-08-04〜）
+
+**症状**: ボタンを押しても何も起きない / `pi5-power-dispatcher.service` が failed。
+
+**原因**: clientKey の Vault 化により、`ansible-inventory --list` が返す未展開のテンプレートとの比較では端末を特定できなくなった。失敗時のシェル終了で先頭の要求がキューに残り、後続も処理されなかった。
+
+**修正**: 要求 JSON を Ansible 内で読み、Vault 展開後の値で clients の端末を照合する。一致は必ず1台に限定する。ディスパッチャーは失敗要求を `failed/` に移して後続へ進む。`requestedAt` が欠落・不正、既定300秒より古い、または60秒を超える未来の場合は実行せず `failed/*.expired` に移す（期限は環境変数 `POWER_ACTION_MAX_AGE_SECONDS` で変更可能）。古い要求をキューへ戻して再実行しない。
+
+**診断**: Pi5 上で次を確認する。
+
+- `systemctl status pi5-power-dispatcher.service`: サービスの終了状態。
+- `<repo>/logs/power-actions/dispatcher-debug.log`: 時刻、clientDeviceId、requestId、action と `processed` / `failed rc=N` / `expired age=Ns` / `invalid`。clientKey や要求ファイル名は記録しない。
+- `<repo>/power-actions/failed/`: 失敗要求と `.expired` の有無。JSON とファイル名には認証情報が含まれるため、共有ログへ転記しない。
+
+この修正は2026-10-09にローカルの模擬キューと一時インベントリ（`--check`）で検証済み。本番反映・実機動作の確認は別途必要。
+
 ## 関連 KB
 
 - [KB-288](../knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md): power-actions バインドマウントの削除済み inode 参照

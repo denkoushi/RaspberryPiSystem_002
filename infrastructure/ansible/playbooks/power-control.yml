@@ -1,10 +1,56 @@
 ---
+- name: Resolve power request target
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Read power request
+      ansible.builtin.set_fact:
+        power_request: "{{ lookup('file', power_request_file) | from_json }}"
+      no_log: true
+
+    - name: Validate power request
+      ansible.builtin.assert:
+        that:
+          - power_action in ['reboot', 'poweroff']
+          - power_request.action == power_action
+          - power_request.clientKey is string
+          - power_request.clientKey | length > 0
+      no_log: true
+
+    - name: Initialize matching hosts
+      ansible.builtin.set_fact:
+        power_matching_hosts: []
+
+    - name: Match client credentials in Ansible
+      ansible.builtin.set_fact:
+        power_matching_hosts: "{{ power_matching_hosts + [item] }}"
+      loop: "{{ groups['clients'] | default([]) }}"
+      when: >-
+        (hostvars[item].status_agent_client_key | default('') == power_request.clientKey)
+        or (hostvars[item].nfc_agent_client_secret | default('') == power_request.clientKey)
+      no_log: true
+
+    - name: Require exactly one matching host
+      ansible.builtin.assert:
+        that:
+          - power_matching_hosts | length == 1
+        fail_msg: "Power request matched {{ power_matching_hosts | length }} hosts; expected exactly one"
+
+    - name: Select existing inventory host
+      ansible.builtin.add_host:
+        name: "{{ power_matching_hosts[0] }}"
+        groups: power_target
+
+    - name: Report resolved host
+      ansible.builtin.debug:
+        msg: "Power target: {{ power_matching_hosts[0] }}"
+
 - name: Execute power action on target client
-  hosts: clients
+  hosts: power_target
   gather_facts: false
   become: true
-  vars:
-    power_action: "{{ power_action | default('') }}"
   tasks:
     - name: Validate power_action
       ansible.builtin.assert:
