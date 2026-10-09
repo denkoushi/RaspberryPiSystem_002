@@ -63,7 +63,7 @@ describe('kiosk header reorderable tabs', () => {
   });
 
   it.each([
-    ['borrow', '/kiosk/photo', '持出'],
+    ['borrow', '/kiosk/tag', '持出'],
     ['assembly', '/kiosk/assembly/manuals', '組立'],
     ['rigging_analytics', '/kiosk/rigging-analytics', '集計'],
     ['due_management', '/kiosk/production-schedule/due-management', '納期管理'],
@@ -102,6 +102,18 @@ describe('startup page tab markers and route parity', () => {
   it.each(['TAG', 'PHOTO'] as const)('marks the borrow fallback for unset %s devices', (defaultMode) => {
     render(<MemoryRouter>{renderKioskReorderableHeaderTab('borrow', { ...baseContext, defaultMode, initialKioskRoute: null })}</MemoryRouter>);
     expect(screen.getByRole('link', { name: '開始ページ 持出' })).toHaveAttribute('href', defaultMode === 'PHOTO' ? '/kiosk/photo' : '/kiosk/tag');
+  });
+
+  it.each([
+    ['PHOTO', 'borrow_tag', '/kiosk/photo', false],
+    ['PHOTO', 'borrow_tag', '/kiosk/tag', true],
+    ['PHOTO', 'borrow_tag', '/kiosk/assembly', false],
+    ['TAG', 'borrow_photo', '/kiosk/tag', false],
+    ['TAG', 'borrow_photo', '/kiosk/photo', true],
+    ['TAG', 'borrow_photo', '/kiosk/assembly', false]
+  ] as const)('marks the borrow tab on a %s device with %s at %s only when it leads to the start page', (defaultMode, route, pathname, marked) => {
+    render(<MemoryRouter>{renderKioskReorderableHeaderTab('borrow', { ...baseContext, defaultMode, pathname, initialKioskRoute: route })}</MemoryRouter>);
+    expect(screen.getByRole('link', { name: marked ? '開始ページ 持出' : '持出' })).toBeInTheDocument();
   });
 
   it('does not mark another tab', () => {

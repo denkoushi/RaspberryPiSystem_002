@@ -6,7 +6,7 @@ import { KIOSK_MACHINE_SIGNAL_PATH } from '../../machine-signal/machineSignalRou
 import { KIOSK_INSPECTION_DRAWING_LIBRARY_PATH } from '../../part-measurement/inspection-drawing/kioskInspectionDrawingRoutes';
 
 import { kioskHeaderNavClass } from './kioskHeaderNavClass';
-import { isKioskHeaderTabActive } from './kioskHeaderTabActivity';
+import { isKioskHeaderTabActive, resolveCurrentKioskInitialRoute } from './kioskHeaderTabActivity';
 
 import type { KioskReorderableHeaderTabId } from '@raspi-system/shared-types';
 import type { ReactNode } from 'react';
@@ -47,8 +47,12 @@ export function renderKioskReorderableHeaderTab(
   const isActive = isKioskHeaderTabActive(tabId, ctx.pathname);
   const initialRoute = normalizeKioskInitialRoute(ctx.initialKioskRoute)
     ?? (ctx.defaultMode === 'PHOTO' ? 'borrow_photo' : 'borrow_tag');
-  const initialTab = initialRoute === 'borrow_tag' || initialRoute === 'borrow_photo' ? 'borrow' : initialRoute;
-  const markLabel = (label: string) => initialTab === tabId ? (
+  // 持出は 1 つのタブがタグ/写真の 2 画面を兼ねる。開いている間は今の画面、それ以外はタブの行き先で判定する。
+  const borrowRoute = isActive
+    ? resolveCurrentKioskInitialRoute(ctx.pathname)
+    : (ctx.defaultMode === 'PHOTO' ? 'borrow_photo' : 'borrow_tag');
+  const isInitialTab = tabId === 'borrow' ? initialRoute === borrowRoute : initialRoute === tabId;
+  const markLabel = (label: string) => isInitialTab ? (
     <><KioskHomeIcon filled className={`mr-1.5 h-4 w-4 shrink-0 ${isActive ? 'text-inv-cyan-ink' : 'text-inv-cyan'}`} /><span className="sr-only">開始ページ </span>{label}</>
   ) : label;
 
