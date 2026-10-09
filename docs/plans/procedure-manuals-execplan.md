@@ -670,6 +670,7 @@ UX 改善(2 回目)の変更・追加ファイル一覧(34ファイル。各migr
 - 作り直しの本番反映(2026-10-08): #1879 を main `4a18365f` へ統合(head `be98dfc4`、23:20)、Pi5 へ配布(run `20261008-142826-97b275`、success、failed=0、unreachable=0)。api と web は同じ release で入れ替え、`/`・`/admin`・`/kiosk`・`/api/system/health` は 200。戻し先は `9e97ce2e`(#1878)。本番LLMを通した実測とオーナーの実機確認は未実施。
 - オーナー実機確認(2026-10-08)の結果は良好。足した行は精度不足だが下書きとして有用との評価。
 - 足した行ごとに、下書きdocumentId・pageIndex・elementId・写真assetId、文書名・見出しのスナップショット、AI文・保存後の文・状態・作成/状態変更時刻を記録する。成功した提案で PROPOSED、保存時に同文(前後空白を除く)なら KEPT、変更なら EDITED、適用済みまたは保存済みの行が無ければ DELETED。取消した未適用案は PROPOSED のまま、削除後に戻した行は再判定する。適用してから元に戻した行も保存時は DELETED になる制限を受け入れる。適用IDは文書の編集セッション中に累積し、保存送信は直近200件まで。記録は best-effort で提案/保存を失敗させず、まだ読む処理は無い。後段のモデルは写真ツールラベルギャラリー([KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md))。後の改版は新しいelementIdになるため追跡は公開まで。この記録変更のmain統合・本番デプロイは未実施。
+- 記録の本番反映(2026-10-09): #1882 を main `560a47c8` へ統合(head `6764a5fb`、10:25)、Pi5 へ配布(run `20261009-013334-ff2a8e`、success、failed=0、unreachable=0)。`/`・`/admin`・`/kiosk`・`/api/system/health` は 200。本番 DB で migration `20261009090000_add_procedure_caption_feedback` の完了と表の存在(0 行)を読み取り専用の SQL で確認。戻し先は `6701b5ab`(追加した表は残してよい)。実際の操作で行が入ることの確認は未実施。
 
 ### 動画の場面(非破壊の範囲指定) (2026-10-08)
 
