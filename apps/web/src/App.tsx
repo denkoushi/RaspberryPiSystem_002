@@ -1,6 +1,7 @@
 import { Suspense, lazy, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
+import { useDeployStatus } from './api/hooks';
 import { HermesFloatingChat } from './components/hermes/HermesFloatingChat';
 import { HermesPageContextProvider } from './components/hermes/HermesPageContext';
 import { KioskRedirect } from './components/KioskRedirect';
@@ -9,6 +10,8 @@ import { RouteLoadingScreen } from './components/RouteLoadingScreen';
 import { readProductionBuildConfig } from './config/productionBuildConfig';
 import { kioskAssemblyLibraryPath, parseAssemblyProcedureOrderSettingsSearch } from './features/assembly';
 import { KIOSK_ASSEMBLY_MANUALS_PATH, KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH } from './features/assembly/assemblyRoutes';
+import { kioskLazy } from './features/kiosk/kioskLazyPreload';
+import { useKioskSeamlessWebUpdate } from './features/kiosk/useKioskSeamlessWebUpdate';
 import { INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED } from './features/part-measurement/inspection-drawing/inspectionDrawingPrintConstants';
 import { CallAutoSwitchLayout } from './features/webrtc/components/CallAutoSwitchLayout';
 import { AdminLayout } from './layouts/AdminLayout';
@@ -119,52 +122,52 @@ const KioskInspectionDrawingPrintPreviewPage = lazy(() =>
     default: module.KioskInspectionDrawingPrintPreviewPage
   }))
 );
-const KioskInspectionDrawingCreatePage = lazy(() =>
+const KioskInspectionDrawingCreatePage = kioskLazy(() =>
   import('./pages/kiosk/KioskInspectionDrawingCreatePage').then((module) => ({
     default: module.KioskInspectionDrawingCreatePage
   }))
 );
-const KioskInspectionDrawingEditPage = lazy(() =>
+const KioskInspectionDrawingEditPage = kioskLazy(() =>
   import('./pages/kiosk/KioskInspectionDrawingEditPage').then((module) => ({
     default: module.KioskInspectionDrawingEditPage
   }))
 );
-const KioskInspectionDrawingLibraryPage = lazy(() =>
+const KioskInspectionDrawingLibraryPage = kioskLazy(() =>
   import('./pages/kiosk/KioskInspectionDrawingLibraryPage').then((module) => ({
     default: module.KioskInspectionDrawingLibraryPage
   }))
 );
-const KioskInspectionDrawingPrintPage = lazy(() =>
+const KioskInspectionDrawingPrintPage = kioskLazy(() =>
   import('./pages/kiosk/KioskInspectionDrawingPrintPage').then((module) => ({
     default: module.KioskInspectionDrawingPrintPage
   }))
 );
-const KioskAssemblyTemplateEditorPage = lazy(() =>
+const KioskAssemblyTemplateEditorPage = kioskLazy(() =>
   import('./pages/kiosk/KioskAssemblyTemplateEditorPage').then((module) => ({
     default: module.KioskAssemblyTemplateEditorPage
   }))
 );
-const KioskAssemblyProcedureDocumentEditorPage = lazy(() =>
+const KioskAssemblyProcedureDocumentEditorPage = kioskLazy(() =>
   import('./pages/kiosk/KioskAssemblyProcedureDocumentEditorPage').then((module) => ({
     default: module.KioskAssemblyProcedureDocumentEditorPage
   }))
 );
-const KioskAssemblyWorkSessionPage = lazy(() =>
+const KioskAssemblyWorkSessionPage = kioskLazy(() =>
   import('./pages/kiosk/KioskAssemblyWorkSessionPage').then((module) => ({
     default: module.KioskAssemblyWorkSessionPage
   }))
 );
-const KioskAssemblyTrainingPage = lazy(() =>
+const KioskAssemblyTrainingPage = kioskLazy(() =>
   import('./pages/kiosk/KioskAssemblyTrainingPage').then((module) => ({
     default: module.KioskAssemblyTrainingPage
   }))
 );
-const KioskSelfInspectionSessionPage = lazy(() =>
+const KioskSelfInspectionSessionPage = kioskLazy(() =>
   import('./pages/kiosk/KioskSelfInspectionSessionPage').then((module) => ({
     default: module.KioskSelfInspectionSessionPage
   }))
 );
-const KioskWorkInstructionEditorPage = lazy(() =>
+const KioskWorkInstructionEditorPage = kioskLazy(() =>
   import('./pages/kiosk/KioskWorkInstructionEditorPage').then((module) => ({
     default: module.KioskWorkInstructionEditorPage
   }))
@@ -334,11 +337,11 @@ function App() {
         <>
           <Route
             path="/kiosk/part-measurement/inspection/templates/:templateId/print"
-            element={lazyRouteElement(<KioskInspectionDrawingPrintPage />)}
+            element={<KioskPrintWebUpdate>{lazyRouteElement(<KioskInspectionDrawingPrintPage />)}</KioskPrintWebUpdate>}
           />
           <Route
             path="/kiosk/part-measurement/inspection/paper-reports/:reportId/print"
-            element={lazyRouteElement(<KioskInspectionDrawingPrintPage />)}
+            element={<KioskPrintWebUpdate>{lazyRouteElement(<KioskInspectionDrawingPrintPage />)}</KioskPrintWebUpdate>}
           />
         </>
       ) : null}
@@ -441,6 +444,15 @@ function App() {
 }
 
 export default App;
+
+// Print routes intentionally live outside KioskLayout, but share its update policy.
+function KioskPrintWebUpdate({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  const { data: deployStatus } = useDeployStatus();
+  useKioskSeamlessWebUpdate(location.pathname, deployStatus === undefined || deployStatus.isMaintenance);
+  return <>{children}</>;
+}
+
 function AssemblyProcedureOrderRedirect() {
   const location = useLocation();
   const { machineName } = parseAssemblyProcedureOrderSettingsSearch(location.search);

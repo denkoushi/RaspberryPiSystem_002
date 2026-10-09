@@ -31,6 +31,7 @@ import {
   advanceKioskWebActivation,
   kioskWebNavigation
 } from '../features/kiosk/kioskWebActivation';
+import { useKioskSeamlessWebUpdate } from '../features/kiosk/useKioskSeamlessWebUpdate';
 import {
   proveNfcRuntimeReady,
   resolveNfcRuntimeContract
@@ -51,6 +52,7 @@ export function KioskLayout() {
   const deployDesiredReleaseSha = deployStatus?.desiredReleaseSha;
   const deployVerificationId = deployStatus?.verificationId;
   const location = useLocation();
+  useKioskSeamlessWebUpdate(location.pathname, deployStatus === undefined || deployIsMaintenance);
   const [showSupportModal, setShowSupportModal] = useState(false);
   const acknowledgedRunIdRef = useRef<Record<'notice' | 'maintenance', string | null>>({
     notice: null,

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import {
@@ -36,6 +36,7 @@ import { useKnowledgeIntake } from '../../features/hermes-knowledge/useKnowledge
 import { useKnowledgePoster } from '../../features/hermes-knowledge/useKnowledgePoster';
 import { useKnowledgeWorkspace } from '../../features/hermes-knowledge/useKnowledgeWorkspace';
 import { useKioskInquiryEntry } from '../../features/kiosk/inquiry/useKioskInquiryEntry';
+import { kioskLazy } from '../../features/kiosk/kioskLazyPreload';
 import { OperationGuidePrompt } from '../../features/operation-guide/OperationGuideChoices';
 import { OperationGuideOverlay } from '../../features/operation-guide/OperationGuideOverlay';
 import { useOperationGuide } from '../../features/operation-guide/useOperationGuide';
@@ -48,7 +49,7 @@ import type { BusinessHermesChatEvidence } from '../../api/domains/assembly';
 
 import './hermes-floating-chat.css';
 
-const HermesChatPanel = lazy(() => import('./HermesChatPanel'));
+const HermesChatPanel = kioskLazy(() => import('./HermesChatPanel'));
 
 const INTRO_MESSAGE: HermesPanelMessage = {
   id: 'hermes-intro',

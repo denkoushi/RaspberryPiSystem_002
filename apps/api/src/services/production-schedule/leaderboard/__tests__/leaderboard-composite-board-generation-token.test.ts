@@ -9,6 +9,7 @@ import * as materialization from '../leaderboard-process-change-residual.materia
 import * as residualService from '../leaderboard-process-change-residual.service.js';
 import * as queryService from '../../production-schedule-query.service.js';
 import * as rowResolver from '../../row-resolver/index.js';
+import * as winnerCache from '../leaderboard-materialized-winner-cache.js';
 import * as totalsResolver from '../resolve-leaderboard-board-resource-totals-for-continue.js';
 import { createInMemoryLeaderboardShellSnapshotStore } from '../leaderboard-shell-snapshot.store.js';
 import { buildLeaderboardShellFilterFingerprint } from '../leaderboard-shell-snapshot-fingerprint.js';
@@ -26,7 +27,7 @@ describe('leaderboard-composite-board generation token prefetch', () => {
   });
 
   it('reads snapshot generation token once per board shell request', async () => {
-    vi.spyOn(rowResolver, 'resolveLeaderboardMaterializedBaseWhere').mockResolvedValue(Prisma.empty);
+    vi.spyOn(winnerCache, 'resolveLeaderboardMaterializedBaseWhereWithGenerationCache').mockResolvedValue(Prisma.empty);
     const materializeSpy = vi.spyOn(materialization, 'materializeProcessChangeResidualStrongEvidence').mockResolvedValue({
       keys: new Set<string>(),
       keyArrays: { productNos: [], fkojuns: [], resourceCds: [] },
@@ -83,7 +84,7 @@ describe('leaderboard-composite-board generation token prefetch', () => {
   it('shares winner materialization once per board continue request', async () => {
     const materializedBaseWhere = Prisma.sql`TRUE`;
     const resolveMaterializedSpy = vi
-      .spyOn(rowResolver, 'resolveLeaderboardMaterializedBaseWhere')
+      .spyOn(winnerCache, 'resolveLeaderboardMaterializedBaseWhereWithGenerationCache')
       .mockResolvedValue(materializedBaseWhere);
     vi.spyOn(totalsResolver, 'resolveLeaderboardBoardResourceTotalsForContinue').mockResolvedValue([0, 0, 0]);
     vi.spyOn(materialization, 'materializeProcessChangeResidualStrongEvidence').mockResolvedValue({
@@ -135,7 +136,7 @@ describe('leaderboard-composite-board generation token prefetch', () => {
   });
 
   it('can defer exact shell totals so initial board render does not wait for COUNT', async () => {
-    vi.spyOn(rowResolver, 'resolveLeaderboardMaterializedBaseWhere').mockResolvedValue(Prisma.empty);
+    vi.spyOn(winnerCache, 'resolveLeaderboardMaterializedBaseWhereWithGenerationCache').mockResolvedValue(Prisma.empty);
     vi.spyOn(materialization, 'materializeProcessChangeResidualStrongEvidence').mockResolvedValue({
       keys: new Set<string>(),
       keyArrays: { productNos: [], fkojuns: [], resourceCds: [] },
@@ -196,7 +197,7 @@ describe('leaderboard-composite-board generation token prefetch', () => {
 
   it('skips global winner materialization on machine-only deferred shell with no residual evidence', async () => {
     const resolveMaterializedSpy = vi
-      .spyOn(rowResolver, 'resolveLeaderboardMaterializedBaseWhere')
+      .spyOn(winnerCache, 'resolveLeaderboardMaterializedBaseWhereWithGenerationCache')
       .mockResolvedValue(Prisma.sql`TRUE`);
     const residualSummarySpy = vi.spyOn(residualService, 'fetchLeaderboardProcessChangeResidualSummary');
     vi.spyOn(materialization, 'materializeProcessChangeResidualStrongEvidence').mockResolvedValue({
@@ -272,7 +273,7 @@ describe('leaderboard-composite-board generation token prefetch', () => {
       .spyOn(rowResolver, 'buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProductNoWinner')
       .mockReturnValue(correlatedBaseWhere);
     const resolveMaterializedSpy = vi
-      .spyOn(rowResolver, 'resolveLeaderboardMaterializedBaseWhere')
+      .spyOn(winnerCache, 'resolveLeaderboardMaterializedBaseWhereWithGenerationCache')
       .mockResolvedValue(Prisma.sql`TRUE /* materialized */`);
     vi.spyOn(materialization, 'materializeProcessChangeResidualStrongEvidence').mockResolvedValue({
       keys: new Set<string>(['P1\u0000K1\u0000R1']),
@@ -389,7 +390,7 @@ describe('leaderboard-composite-board generation token prefetch', () => {
   });
 
   it('emits opt-in performance events for board shell phases', async () => {
-    vi.spyOn(rowResolver, 'resolveLeaderboardMaterializedBaseWhere').mockResolvedValue(Prisma.empty);
+    vi.spyOn(winnerCache, 'resolveLeaderboardMaterializedBaseWhereWithGenerationCache').mockResolvedValue(Prisma.empty);
     vi.spyOn(materialization, 'materializeProcessChangeResidualStrongEvidence').mockResolvedValue({
       keys: new Set<string>(),
       keyArrays: { productNos: [], fkojuns: [], resourceCds: [] },
@@ -485,7 +486,7 @@ describe('leaderboard-composite-board generation token prefetch', () => {
 
   it('emits opt-in performance events for board continue phases without double-counting materializedBaseWhere', async () => {
     const materializedBaseWhere = Prisma.sql`TRUE`;
-    vi.spyOn(rowResolver, 'resolveLeaderboardMaterializedBaseWhere').mockResolvedValue(materializedBaseWhere);
+    vi.spyOn(winnerCache, 'resolveLeaderboardMaterializedBaseWhereWithGenerationCache').mockResolvedValue(materializedBaseWhere);
     vi.spyOn(totalsResolver, 'resolveLeaderboardBoardResourceTotalsForContinue').mockResolvedValue([0, 0]);
     vi.spyOn(materialization, 'materializeProcessChangeResidualStrongEvidence').mockResolvedValue({
       keys: new Set<string>(),
@@ -548,7 +549,7 @@ describe('leaderboard-composite-board generation token prefetch', () => {
   });
 
   it('emits processChangeResidualContext subphase events including revision refresh when materialization observes newer revision', async () => {
-    vi.spyOn(rowResolver, 'resolveLeaderboardMaterializedBaseWhere').mockResolvedValue(Prisma.empty);
+    vi.spyOn(winnerCache, 'resolveLeaderboardMaterializedBaseWhereWithGenerationCache').mockResolvedValue(Prisma.empty);
     vi.spyOn(materialization, 'materializeProcessChangeResidualStrongEvidence').mockImplementation(
       async (_prisma, options) => {
         options?.telemetry?.({
@@ -648,7 +649,7 @@ describe('leaderboard-composite-board generation token prefetch', () => {
   });
 
   it('emits failed phase performance events before rethrowing', async () => {
-    vi.spyOn(rowResolver, 'resolveLeaderboardMaterializedBaseWhere').mockRejectedValue(
+    vi.spyOn(winnerCache, 'resolveLeaderboardMaterializedBaseWhereWithGenerationCache').mockRejectedValue(
       Object.assign(new Error('shared memory exhausted'), { code: 'P2034' })
     );
     vi.spyOn(materialization, 'materializeProcessChangeResidualStrongEvidence').mockResolvedValue({
@@ -695,7 +696,7 @@ describe('leaderboard-composite-board generation token prefetch', () => {
   });
 
   it('seeds shell prefix cache with labor-attached rows', async () => {
-    vi.spyOn(rowResolver, 'resolveLeaderboardMaterializedBaseWhere').mockResolvedValue(Prisma.empty);
+    vi.spyOn(winnerCache, 'resolveLeaderboardMaterializedBaseWhereWithGenerationCache').mockResolvedValue(Prisma.empty);
     vi.spyOn(materialization, 'materializeProcessChangeResidualStrongEvidence').mockResolvedValue({
       keys: new Set<string>(),
       keyArrays: { productNos: [], fkojuns: [], resourceCds: [] },
@@ -784,7 +785,7 @@ describe('leaderboard-composite-board generation token prefetch', () => {
         laborRequiredMinutes: 0
       } as any
     ]);
-    vi.spyOn(rowResolver, 'resolveLeaderboardMaterializedBaseWhere').mockResolvedValue(Prisma.empty);
+    vi.spyOn(winnerCache, 'resolveLeaderboardMaterializedBaseWhereWithGenerationCache').mockResolvedValue(Prisma.empty);
     vi.spyOn(totalsResolver, 'resolveLeaderboardBoardResourceTotalsForContinue').mockResolvedValue([2]);
     vi.spyOn(materialization, 'materializeProcessChangeResidualStrongEvidence').mockResolvedValue({
       keys: new Set<string>(),
