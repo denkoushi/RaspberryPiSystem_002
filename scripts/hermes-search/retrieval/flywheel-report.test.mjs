@@ -18,6 +18,21 @@ const rows = [
   { a: 'a8', b: 'b8', seed: { style: 'typo' }, question: null, kept: false, reason: 'ungraded' },
 ];
 
+test('report counts unavailable and failed reasons while supporting older live lines', () => {
+  const failures = [
+    live('status', { outcome: 'unavailable', reason: 'relevance judgment failed: upstream_http 429' }),
+    live('status', { outcome: 'unavailable', reason: 'relevance judgment failed: upstream_http 429' }),
+    live('failed', { outcome: 'failed', reason: 'timeout' }),
+    live('status', { outcome: 'unavailable' }),
+    live(null, { outcome: 'answer', reason: 'ignored' }),
+  ];
+  const summary = summarizeNight(failures.map((live) => ({ question: 'キズ', kept: true, live })));
+  assert.deepEqual(summary.unavailableReasons, { 'upstream_http 429': 2, timeout: 1, unknown: 1 });
+  assert.match(formatReport('2026-10-03', summary), /unavailable reasons: upstream_http 429=2, timeout=1, unknown=1/u);
+  assert.deepEqual(summarizeNight(rows).unavailableReasons, {});
+  assert.doesNotMatch(formatReport('2026-10-03', summarizeNight(rows)), /unavailable reasons/u);
+});
+
 test('real reports count correct, mismatched and unsupported filter questions separately', () => {
   const rows = [
     { source: 'real', kind: 'filter', relevant: [], dayOutcome: 'answer', filterCheck: { supported: true, ok: true }, live: live(null) },

@@ -163,6 +163,21 @@ export async function runFlywheelNight({
   log = (line) => console.info(line),
 }) {
   const status = { schema: 'hermes-flywheel-status/v1', reason: 'started', night: null, generated: 0, kept: 0, shown: 0, dropped: 0, dropReasons: {}, lossStages: {}, pendingLive: 0, labelled: 0, labelPending: 0, real: 0, realPending: 0, updatedAt: null };
+  const nightLog = async (line) => {
+    if (!settings.dir) return;
+    try {
+      const at = now();
+      await appendFile(path.join(settings.dir, `runner-${status.night ?? nightOf(at)}.log`),
+        `${at.toISOString()} ${String(line).replace(/[\r\n]/gu, ' ')}\n`, { mode: 0o600 });
+    } catch {
+      // Diagnostics must never interrupt generation or scoring.
+    }
+  };
+  const writeLog = async (line) => {
+    log(line);
+    await nightLog(line);
+  };
+  const logLive = (id, result) => nightLog(`hermes retrieval flywheel live id=${id} outcome=${result.outcome} loss=${result.loss ?? 'none'} reason=${JSON.stringify(result.reason ?? null)} ms=${result.ms}`);
   const finish = async (reason) => {
     status.reason = reason;
     status.updatedAt = now().toISOString();
@@ -170,7 +185,7 @@ export async function runFlywheelNight({
       await mkdir(settings.dir, { recursive: true, mode: 0o700 });
       await writeJson(path.join(settings.dir, 'flywheel-status.json'), status);
     }
-    log(countLine(status));
+    await writeLog(countLine(status));
     return status;
   };
   if (!settings.enabled) return finish('disabled');
@@ -289,7 +304,9 @@ export async function runFlywheelNight({
     if (row.kept !== true || !row.question || row.live) continue;
     if (!withinWindow(settings.window, now())) break;
     score ??= await makeLive({ records, catalog, evaluate });
-    row.live = await score(row);
+    row.live = { ...await score(row) };
+    row.live.reason ??= null;
+    await logLive(row.a, row.live);
     scored = true;
   }
   if (scored) {
@@ -306,7 +323,7 @@ export async function runFlywheelNight({
     if (!labels || typeof labels !== 'object' || Array.isArray(labels)) labels = {};
   } catch (error) {
     // A missing file starts empty; an unreadable one is replaced rather than stopping the night.
-    if (error.code !== 'ENOENT') log('hermes retrieval flywheel labels unreadable, starting empty');
+    if (error.code !== 'ENOENT') await writeLog('hermes retrieval flywheel labels unreadable, starting empty');
     labels = {};
   }
   // Real-question labels have their own question budget, including partially graded questions.
@@ -368,6 +385,7 @@ export async function runFlywheelNight({
     if (!withinWindow(settings.window, now())) break;
     score ??= await makeLive({ records, catalog, evaluate });
     const live = await score({ a: null, b: null, question: question.question, grades: null });
+    await logLive(question.id, live);
     if (isFilterOnlyPlan(live.plan)) {
       const filterCheck = checkFilterAnswer({ plan: live.plan, shown: live.shown, records: corpus, catalog });
       live.loss = filterCheck.ok === true ? null : filterCheck.ok === false ? 'filter_mismatch' : 'filter_unsupported';
@@ -426,15 +444,17 @@ export async function runFlywheelNight({
     score ??= await makeLive({ records, catalog, evaluate });
     const candidateScore = await makeLive({ records, catalog, evaluate, learned: candidates });
     let expired = false;
-    const inWindow = (scorer) => async (row) => {
+    const inWindow = (scorer, mode) => async (row) => {
       if (!withinWindow(settings.window, now())) {
         expired = true;
         throw new Error('learn_window_expired');
       }
-      return scorer(row);
+      const result = await scorer(row);
+      await logLive(`${mode}:${row.id ?? row.a}`, result);
+      return result;
     };
     try {
-      const check = await evaluateCandidates({ questions, scoreBaseline: inWindow(score), scoreCandidate: inWindow(candidateScore) });
+      const check = await evaluateCandidates({ questions, scoreBaseline: inWindow(score, 'baseline'), scoreCandidate: inWindow(candidateScore, 'candidate') });
       if (withinWindow(settings.window, now())) {
         const decision = activationDecision(check);
         const decidedAt = now().toISOString();

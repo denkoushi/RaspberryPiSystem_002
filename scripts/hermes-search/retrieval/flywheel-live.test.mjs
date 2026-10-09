@@ -48,6 +48,7 @@ test('live scoring sends candidate query maps to lexical ranking and loads activ
   assert.equal(candidate.candidates.length, 4);
   assert.equal(candidate.candidates[0], 'rec-gamma');
   assert.equal(candidate.outcome, 'answer');
+  assert.equal(candidate.reason, null);
   assert.equal(candidate.plan.semanticQuery, query);
   assert.equal(candidate.plan.limit, 5);
   assert.ok(Array.isArray(candidate.plan.filters));
@@ -77,4 +78,38 @@ test('live scoring returns the compact recent plan for a filter-only answer', as
   assert.equal(live.plan.limit, 2);
   assert.equal(live.shown.length, 2);
   assert.equal(live.vectorStatus, 'not_requested');
+});
+
+test('live scoring records the executor reason from the unavailable receipt', async () => {
+  const evaluate = async ({ questions }) => {
+    if (Object.keys(questions).some((key) => key.startsWith('candidate_'))) {
+      throw Object.assign(new Error('private request and response bodies'), {
+        hermesDiagnostic: { provider: 'typesafe-direct', failureCode: 'upstream_http', httpStatus: 403 },
+      });
+    }
+    return { answers: Object.fromEntries(Object.keys(questions).map((key) => [key,
+      key === 'content' ? { type: 'noul', noul: 0.95 }
+        : { type: 'choice', choice: key === 'scope' ? 'nonconformity' : key === 'sort' ? 'relevance' : key === 'limit' ? 'unspecified' : 'none' },
+    ])) };
+  };
+  const score = await createLiveScorer({ records, catalog: loadNonconformityCatalog(), evaluate,
+    env: { HERMES_RETRIEVAL_DENSE_PROVIDER: 'off', HERMES_FLYWHEEL_LEARNED_ENABLED: 'false' } });
+  const live = await score({ a: 'rec-alpha', question: 'surface scratch' });
+  assert.equal(live.outcome, 'unavailable');
+  assert.equal(live.reason, 'relevance judgment failed: upstream_http 403');
+  assert.equal(live.loss, 'status');
+});
+
+test('live scoring sanitizes and truncates thrown errors, retaining their diagnostic', async () => {
+  const error = Object.assign(new Error(`Bearer private-key\n${'x'.repeat(250)}`), {
+    hermesDiagnostic: { provider: 'typesafe-direct', failureCode: 'upstream_http', httpStatus: 429 },
+  });
+  const score = await createLiveScorer({ records, catalog: loadNonconformityCatalog(), evaluate: async () => { throw error; },
+    env: { HERMES_RETRIEVAL_DENSE_PROVIDER: 'off', HERMES_FLYWHEEL_LEARNED_ENABLED: 'false' } });
+  const live = await score({ a: 'rec-alpha', question: 'surface scratch' });
+  assert.equal(live.outcome, 'failed');
+  assert.equal(live.reason, `${('[redacted] ' + 'x'.repeat(250)).slice(0, 200)} (upstream_http 429)`);
+  assert.equal(live.loss, 'failed');
+  assert.equal(live.reason.includes('private-key'), false);
+  assert.equal(live.reason.includes('\n'), false);
 });

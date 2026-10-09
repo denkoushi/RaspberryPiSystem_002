@@ -8,6 +8,7 @@ import { relevancePoolLimit } from './executor.mjs';
 import { RELEVANT } from './flywheel-filter.mjs';
 import { bareId } from './flywheel-pairs.mjs';
 import { learnedQueriesById } from './flywheel-learn.mjs';
+import { relevanceFailureReason } from './relevance-jev.mjs';
 import { createRetrievalAnswering, loadEnrichmentById, loadLearnedQueriesById } from './worker.mjs';
 
 export const LOSS_STAGES = ['status', 'not_in_pool', 'judge_rejected', 'other_shown', 'failed'];
@@ -77,6 +78,7 @@ export async function createLiveScorer({ records, catalog, evaluate, env = proce
       const candidates = (result.candidateIds ?? []).slice(0, judged).map(bareId);
       return {
         outcome,
+        reason: outcome === 'unavailable' || outcome === 'failed' ? result.receipt?.reason ?? result.reason ?? null : null,
         shown,
         candidates,
         judged,
@@ -85,8 +87,13 @@ export async function createLiveScorer({ records, catalog, evaluate, env = proce
         plan: result.receipt?.plan ?? null,
         ms: ms(),
       };
-    } catch {
-      return { outcome: 'failed', shown: [], candidates: [], judged, loss: 'failed', vectorStatus: null, plan: null, ms: ms() };
+    } catch (error) {
+      const message = String(error?.message ?? 'live scoring failed')
+        .replace(/Bearer\s+\S+|(?:api[_-]?key|token|authorization)\s*[:=]\s*\S+/giu, '[redacted]')
+        .replace(/[\u0000-\u001f\u007f]/gu, ' ').slice(0, 200);
+      const diagnostic = relevanceFailureReason(error).replace(/^relevance judgment failed:?\s*/u, '');
+      const reason = diagnostic ? `${message} (${diagnostic})` : message;
+      return { outcome: 'failed', reason, shown: [], candidates: [], judged, loss: 'failed', vectorStatus: null, plan: null, ms: ms() };
     }
   };
 }

@@ -14,9 +14,45 @@ import {
 } from './executor.mjs';
 import { records } from './fixtures/synthetic-records.mjs';
 import { QUERY_PLAN_SCHEMA } from './query-plan.mjs';
+import { createRelevanceJudge } from './relevance-jev.mjs';
 
 const catalog = loadNonconformityCatalog();
 const display = ['nonconformityNo', 'originDepartmentName', 'discoveredOn', 'condition', 'remarks', 'correctiveContent', 'disposition'];
+
+test('both relevance paths preserve diagnostic, attempts and relevanceMs on failure', async () => {
+  for (const sort of ['relevance', { field: 'discoveredOn', direction: 'desc' }]) {
+    const executed = await execute(plan({ semanticQuery: 'surface scratch', sort }), {
+      records, catalog,
+      relevance: async () => {
+        throw Object.assign(new Error('private key and bodies'), {
+          hermesDiagnostic: { provider: 'typesafe-direct', failureCode: 'upstream_http', httpStatus: 429 },
+          attempts: 2, relevanceMs: 123,
+        });
+      },
+    });
+    assert.equal(executed.status, 'unavailable');
+    assert.equal(executed.reason, 'relevance judgment failed: upstream_http 429');
+    assert.equal(executed.attempts, 2);
+    assert.equal(executed.timings.retried, true);
+    assert.equal(executed.timings.relevanceMs, 123);
+    assert.deepEqual(executed.results, []);
+  }
+});
+
+test('executor records a successful judge retry in timings', async () => {
+  let calls = 0;
+  const judge = createRelevanceJudge({
+    sleep: async () => {},
+    evaluate: async ({ questions }) => {
+      if (++calls === 1) throw Object.assign(new Error('timeout'), { hermesDiagnostic: { failureCode: 'timeout' } });
+      return { answers: Object.fromEntries(Object.keys(questions).map((key) => [key, { type: 'noul', noul: 0.9 }])) };
+    },
+  });
+  const result = await execute(plan({ semanticQuery: 'surface scratch' }), { records, catalog, relevance: (input) => judge.judge(input) });
+  assert.equal(result.status, 'answer');
+  assert.equal(result.timings.retried, true);
+  assert.equal(calls, 2);
+});
 
 function plan(overrides = {}) {
   return {

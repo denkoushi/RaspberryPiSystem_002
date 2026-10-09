@@ -56,6 +56,7 @@ export function summarizeNight(rows, { labels = null } = {}) {
     styles: {},
     medianLength: null,
     medianOverlap: null,
+    unavailableReasons: {},
     live: { scored: 0, shown: 0, otherShown: 0, notInPool: 0, judgeRejected: 0, status: 0, failed: 0, notRun: 0, denseFallbacks: 0, labelled: 0 },
   };
   if (labels != null) summary.live.shownAfterLabels = 0;
@@ -79,6 +80,11 @@ export function summarizeNight(rows, { labels = null } = {}) {
       continue;
     }
     summary.live.scored += 1;
+    if (live.outcome === 'unavailable' || live.outcome === 'failed') {
+      const reason = typeof live.reason === 'string' && live.reason.trim()
+        ? live.reason.replace(/^relevance judgment failed:\s*/u, '') : 'unknown';
+      summary.unavailableReasons[reason] = (summary.unavailableReasons[reason] ?? 0) + 1;
+    }
     const shownAfterLabels = labels != null && live.loss === 'other_shown'
       && (live.shown ?? []).some((id) => labels[bareId(row.a)]?.[bareId(id)]?.g === 3);
     if (live.labelled === true) summary.live.labelled += 1;
@@ -164,6 +170,8 @@ export function formatReport(night, summary) {
       + (live.notRun ? `, not run ${live.notRun}` : ''),
   );
   if (live.denseFallbacks) lines.push(`  dense fallbacks: ${live.denseFallbacks}`);
+  const reasons = Object.entries(summary.unavailableReasons ?? {}).sort((left, right) => right[1] - left[1]);
+  if (reasons.length) lines.push(`  unavailable reasons: ${reasons.map(([reason, count]) => `${reason}=${count}`).join(', ')}`);
   return lines.join('\n');
 }
 
