@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { getRoleAuditLogs, mfaActivate, mfaDisable, mfaInitiate } from '../../api/client';
 import { Button } from '../../components/ui/Button';
@@ -10,7 +10,7 @@ import type { RoleAuditLog } from '../../api/types';
 type Status = { message: string; tone: 'info' | 'error' | 'success' } | null;
 
 export function SecurityPage() {
-  const { user } = useAuth();
+  const { user, updateSession } = useAuth();
   const [status, setStatus] = useState<Status>(null);
   const [loading, setLoading] = useState(false);
 
@@ -23,7 +23,8 @@ export function SecurityPage() {
   const [auditLogs, setAuditLogs] = useState<RoleAuditLog[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
 
-  const loadAuditLogs = async () => {
+  const loadAuditLogs = useCallback(async () => {
+    if (user?.mfaSetupRequired) return;
     setAuditLoading(true);
     try {
       const logs = await getRoleAuditLogs(100);
@@ -33,11 +34,11 @@ export function SecurityPage() {
     } finally {
       setAuditLoading(false);
     }
-  };
+  }, [user?.mfaSetupRequired]);
 
   useEffect(() => {
     void loadAuditLogs();
-  }, []);
+  }, [loadAuditLogs]);
 
   const handleInitiate = async () => {
     setLoading(true);
@@ -67,6 +68,7 @@ export function SecurityPage() {
     setLoading(true);
     try {
       const res = await mfaActivate({ secret: mfaSecret, code: codeInput, backupCodes });
+      updateSession(res);
       setBackupCodes(res.backupCodes);
       setStatus({ message: 'MFAを有効化しました。バックアップコードを安全な場所に保管してください。', tone: 'success' });
     } catch (error) {
@@ -104,6 +106,11 @@ export function SecurityPage() {
         <p className="text-sm font-semibold text-slate-700">
           管理画面ログインにワンタイムコードを追加します。TOTPアプリ（例: Google Authenticator）に登録し、バックアップコードを保管してください。
         </p>
+        {user?.mfaSetupRequired && (
+          <p role="alert" className="mt-4 text-sm font-semibold text-orange-800">
+            管理者アカウントは MFA の設定が必須です。設定が終わるまで他の画面は使えません。
+          </p>
+        )}
         <div className="mt-4 grid gap-4 rounded-xl border-2 border-slate-500 bg-slate-100 p-4 shadow-lg">
           <div className="flex gap-3">
             <Button onClick={handleInitiate} disabled={loading}>
@@ -151,27 +158,33 @@ export function SecurityPage() {
               </div>
             </div>
           ) : null}
-          <div className="space-y-2 text-sm font-semibold text-slate-700">
-            <label className="text-sm font-semibold text-slate-700">
-              MFA無効化（パスワード確認）
-              <Input
-                type="password"
-                value={disablePassword}
-                onChange={(e) => setDisablePassword(e.target.value)}
-                placeholder="パスワード"
-              />
-            </label>
-            <Button variant="secondary" onClick={handleDisable} disabled={loading}>
-              MFAを無効化
-            </Button>
-          </div>
+          {user?.mfaRequired ? (
+            <p className="text-sm font-semibold text-slate-700">
+              管理者アカウントの MFA は無効化できません。端末の入れ替えは、有効なままセットアップ情報を生成し直してください。
+            </p>
+          ) : (
+            <div className="space-y-2 text-sm font-semibold text-slate-700">
+              <label className="text-sm font-semibold text-slate-700">
+                MFA無効化（パスワード確認）
+                <Input
+                  type="password"
+                  value={disablePassword}
+                  onChange={(e) => setDisablePassword(e.target.value)}
+                  placeholder="パスワード"
+                />
+              </label>
+              <Button variant="secondary" onClick={handleDisable} disabled={loading}>
+                MFAを無効化
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
       <div>
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold text-slate-900">権限変更の監査ログ</h2>
-          <Button variant="secondary" onClick={() => void loadAuditLogs()} disabled={auditLoading}>
+          <Button variant="secondary" onClick={() => void loadAuditLogs()} disabled={auditLoading || user?.mfaSetupRequired}>
             再読込
           </Button>
         </div>

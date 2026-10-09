@@ -44,6 +44,7 @@ export async function registerTorqueWrenchRoutes(app: FastifyInstance): Promise<
         await canView(request, reply);
         return;
       } catch (error) {
+        if (error instanceof ApiError && error.code === 'MFA_SETUP_REQUIRED') throw error;
         if (!request.headers['x-client-key']) throw error;
       }
     }
@@ -263,6 +264,7 @@ export async function registerTorqueWrenchRoutes(app: FastifyInstance): Promise<
         try {
           await canWrite(request, reply);
         } catch (error) {
+          if (error instanceof ApiError && error.code === 'MFA_SETUP_REQUIRED') throw error;
           if (!request.headers['x-client-key']) throw error;
           const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
           clientDeviceId = clientDevice.id;

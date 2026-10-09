@@ -2,7 +2,7 @@ import type { User, UserRole } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { env } from '../../config/env.js';
-import { signAccessToken, signRefreshToken, type JwtPayload } from '../../lib/auth.js';
+import { isAdminMfaRequired, signAccessToken, signRefreshToken, type JwtPayload } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import {
   generateBackupCodes,
@@ -26,6 +26,8 @@ export type AuthUserDto = {
   username: string;
   role: UserRole;
   mfaEnabled: boolean;
+  mfaSetupRequired: boolean;
+  mfaRequired: boolean;
 };
 
 export type LoginResult = {
@@ -50,7 +52,7 @@ export type MfaActivateInput = {
   backupCodes: string[];
 };
 
-export type MfaActivateResult = {
+export type MfaActivateResult = LoginResult & {
   backupCodes: string[];
 };
 
@@ -83,6 +85,8 @@ function toAuthUserDto(user: Pick<User, 'id' | 'username' | 'role' | 'mfaEnabled
     username: user.username,
     role: user.role,
     mfaEnabled: user.mfaEnabled,
+    mfaSetupRequired: isAdminMfaRequired(user.role) && !user.mfaEnabled,
+    mfaRequired: isAdminMfaRequired(user.role),
   };
 }
 
@@ -178,7 +182,7 @@ export class AuthService {
       throw new ApiError(400, 'MFAコードが正しくありません');
     }
     const hashedCodes = await hashBackupCodes(input.backupCodes);
-    await prisma.user.update({
+    const updatedUser = await prisma.user.update({
       where: { id: user.id },
       data: {
         mfaEnabled: true,
@@ -186,13 +190,20 @@ export class AuthService {
         mfaBackupCodes: hashedCodes,
       },
     });
-    return { backupCodes: input.backupCodes };
+    return {
+      ...buildTokenPair(updatedUser),
+      user: toAuthUserDto(updatedUser),
+      backupCodes: input.backupCodes,
+    };
   }
 
   async disableMfa(userId: string, input: MfaDisableInput): Promise<MfaDisableResult> {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new ApiError(401, 'ユーザーが見つかりません');
+    }
+    if (isAdminMfaRequired(user.role)) {
+      throw new ApiError(403, '管理者アカウントのMFAは無効化できません', undefined, 'MFA_DISABLE_NOT_ALLOWED');
     }
     const ok = await bcrypt.compare(input.password, user.passwordHash);
     if (!ok) {
