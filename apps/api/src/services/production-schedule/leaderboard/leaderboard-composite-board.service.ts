@@ -14,8 +14,7 @@ import {
 } from '../production-schedule-query.service.js';
 import type { Prisma } from '@prisma/client';
 import {
-  buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProductNoWinner,
-  resolveLeaderboardMaterializedBaseWhere
+  buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProductNoWinner
 } from '../row-resolver/index.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { prisma } from '../../../lib/prisma.js';
@@ -40,6 +39,7 @@ import {
   type ProcessChangeResidualStrongEvidenceMaterialization,
   type ProcessChangeResidualStrongEvidenceMaterializationTelemetryEvent
 } from './leaderboard-process-change-residual.materialization.js';
+import { resolveLeaderboardMaterializedBaseWhereWithGenerationCache } from './leaderboard-materialized-winner-cache.js';
 import { readLeaderboardShellSnapshotGenerationTokenDetails } from './leaderboard-shell-snapshot-generation.js';
 import { buildLeaderboardShellFilterFingerprint } from './leaderboard-shell-snapshot-fingerprint.js';
 import {
@@ -399,7 +399,7 @@ export async function fetchLeaderboardCompositeBoardShell(
         phase: 'materializedBaseWhere',
         resourceCount: params.boardResourceCds.length
       },
-      () => resolveLeaderboardMaterializedBaseWhere(prisma)
+      () => resolveLeaderboardMaterializedBaseWhereWithGenerationCache(prisma, { generationToken })
     );
     return leaderboardMaterializedBaseWherePromise;
   };
@@ -716,7 +716,7 @@ export async function continueLeaderboardCompositeBoard(
       resourceCount: params.boardResourceCds.length,
       chunkSize
     },
-    () => resolveLeaderboardMaterializedBaseWhere(prisma)
+    () => resolveLeaderboardMaterializedBaseWhereWithGenerationCache(prisma, { generationToken })
   );
 
   const [totals, contOutputs] = await Promise.all([

@@ -81,6 +81,7 @@ vi.mock('../leaderboard/leaderboard-shell-snapshot-generation.js', () => ({
   readGrindingPlanningBoardSnapshotGenerationToken: mocks.readGrindingPlanningBoardSnapshotGenerationToken
 }));
 
+import { clearLeaderboardMaterializedWinnerCacheForTests } from '../leaderboard/leaderboard-materialized-winner-cache.js';
 import { createInMemoryLeaderboardShellSnapshotStore } from '../leaderboard/leaderboard-shell-snapshot.store.js';
 import {
   getGrindingPlanningBoard,
@@ -174,6 +175,7 @@ function configurePersistence(): void {
 describe('grinding planning board service orchestration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearLeaderboardMaterializedWinnerCacheForTests();
     configurePersistence();
     mocks.findMaterialArrivalStatusByPart.mockResolvedValue(new Map());
   });
@@ -227,7 +229,22 @@ describe('grinding planning board service orchestration', () => {
     expect(load).toEqual({ load: legacy.load, unknownRequiredMinutesCount: legacy.unknownRequiredMinutesCount });
     expect(mocks.prisma.csvDashboardRow.findMany).not.toHaveBeenCalled();
     expect(mocks.projectGrindingPlanningBoard).not.toHaveBeenCalled();
-    expect(mocks.prisma.$queryRaw.mock.calls).toHaveLength(1); // canonical winner ids only
+    expect(mocks.prisma.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('reuses winner materialization across load requests until the leaderboard generation changes', async () => {
+    const params = { siteKey: 'site-a', category: 'grinding' as const };
+    const winnerQueries = () => mocks.prisma.$queryRaw.mock.calls.filter(([sql]) => JSON.stringify(sql).includes('ROW_NUMBER()') && !JSON.stringify(sql).includes('effectiveItems'));
+
+    await getGrindingPlanningBoardLoad(params);
+    await getGrindingPlanningBoardLoad(params);
+    expect(winnerQueries()).toHaveLength(1);
+    expect(mocks.readGrindingPlanningBoardSnapshotGenerationToken).toHaveBeenCalledTimes(5);
+
+    mocks.readGrindingPlanningBoardSnapshotGenerationToken.mockResolvedValue('leaderboard-generation-2');
+    await getGrindingPlanningBoardLoad(params);
+    expect(winnerQueries()).toHaveLength(2);
+    expect(mocks.readGrindingPlanningBoardSnapshotGenerationToken).toHaveBeenCalledTimes(8);
   });
 
   it('shares load SQL across category, view, completion and seiban filters and refreshes after override changes', async () => {
