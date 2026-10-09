@@ -13,10 +13,13 @@ type SnapshotMainAndAuxGenerationRow = {
   orderSplitAssignmentUpdatedAt: Date | null;
   globalRowRankUpdatedAt: Date | null;
   rowNoteUpdatedAt: Date | null;
+  progressCount: bigint;
   progressUpdatedAt: Date | null;
+  externalCompletionCount: bigint;
   externalCompletionUpdatedAt: Date | null;
   fkstUpdatedAt: Date | null;
   fkmailUpdatedAt: Date | null;
+  orderSupplementCount: bigint;
   orderSupplementUpdatedAt: Date | null;
   seibanDueDateUpdatedAt: Date | null;
   seibanProcessingDueDateUpdatedAt: Date | null;
@@ -65,9 +68,15 @@ async function readMainAndAuxGenerationRow(): Promise<SnapshotMainAndAuxGenerati
       (SELECT MAX("updatedAt")
        FROM "ProductionScheduleRowNote"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "rowNoteUpdatedAt",
+      (SELECT COUNT(*)::bigint
+       FROM "ProductionScheduleProgress"
+       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "progressCount",
       (SELECT MAX("updatedAt")
        FROM "ProductionScheduleProgress"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "progressUpdatedAt",
+      (SELECT COUNT(*)::bigint
+       FROM "ProductionScheduleExternalCompletion"
+       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "externalCompletionCount",
       (SELECT MAX("updatedAt")
        FROM "ProductionScheduleExternalCompletion"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "externalCompletionUpdatedAt",
@@ -77,6 +86,9 @@ async function readMainAndAuxGenerationRow(): Promise<SnapshotMainAndAuxGenerati
       (SELECT MAX("updatedAt")
        FROM "ProductionScheduleFkojunstMailStatus"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "fkmailUpdatedAt",
+      (SELECT COUNT(*)::bigint
+       FROM "ProductionScheduleOrderSupplement"
+       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "orderSupplementCount",
       (SELECT MAX("updatedAt")
        FROM "ProductionScheduleOrderSupplement"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "orderSupplementUpdatedAt",
@@ -115,10 +127,13 @@ function buildLeaderboardShellSnapshotGenerationToken(params: {
     orderSplitAssignmentUpdatedAt: normalizeDate(row?.orderSplitAssignmentUpdatedAt),
     globalRowRankUpdatedAt: normalizeDate(row?.globalRowRankUpdatedAt),
     rowNoteUpdatedAt: normalizeDate(row?.rowNoteUpdatedAt),
+    progressCount: String(row?.progressCount ?? 0n),
     progressUpdatedAt: normalizeDate(row?.progressUpdatedAt),
+    externalCompletionCount: String(row?.externalCompletionCount ?? 0n),
     externalCompletionUpdatedAt: normalizeDate(row?.externalCompletionUpdatedAt),
     fkstUpdatedAt: normalizeDate(row?.fkstUpdatedAt),
     fkmailUpdatedAt: normalizeDate(row?.fkmailUpdatedAt),
+    orderSupplementCount: String(row?.orderSupplementCount ?? 0n),
     orderSupplementUpdatedAt: normalizeDate(row?.orderSupplementUpdatedAt),
     seibanDueDateUpdatedAt: normalizeDate(row?.seibanDueDateUpdatedAt),
     seibanProcessingDueDateUpdatedAt: normalizeDate(row?.seibanProcessingDueDateUpdatedAt),
