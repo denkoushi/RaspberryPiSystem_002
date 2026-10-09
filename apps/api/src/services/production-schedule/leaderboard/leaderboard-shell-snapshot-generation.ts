@@ -5,9 +5,7 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { fetchFkojunstStatusMailGenerationRevision } from '../fkojunst-status-mail-generation-revision.js';
 
 type SnapshotMainAndAuxGenerationRow = {
-  rowsCount: bigint;
-  rowsLatestCreatedAt: Date | null;
-  rowsLatestUpdatedAt: Date | null;
+  rowsRevision: bigint | null;
   orderAssignmentUpdatedAt: Date | null;
   orderSplitCount: bigint;
   orderSplitUpdatedAt: Date | null;
@@ -43,9 +41,9 @@ export type LeaderboardShellSnapshotGenerationTokenDetails = {
 async function readMainAndAuxGenerationRow(): Promise<SnapshotMainAndAuxGenerationRow[]> {
   return prisma.$queryRaw<SnapshotMainAndAuxGenerationRow[]>(Prisma.sql`
     SELECT
-      "mainRowStats"."rowsCount",
-      "mainRowStats"."rowsLatestCreatedAt",
-      "mainRowStats"."rowsLatestUpdatedAt",
+      (SELECT "revision"
+       FROM "CsvDashboardRawRevision"
+       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "rowsRevision",
       (SELECT MAX("updatedAt")
        FROM "ProductionScheduleOrderAssignment"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "orderAssignmentUpdatedAt",
@@ -94,14 +92,6 @@ async function readMainAndAuxGenerationRow(): Promise<SnapshotMainAndAuxGenerati
       (SELECT MAX("updatedAt")
        FROM "ProductionScheduleResourceCodeMapping"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "resourceCodeMappingUpdatedAt"
-    FROM (
-      SELECT
-        COUNT(*)::bigint AS "rowsCount",
-        MAX("createdAt") AS "rowsLatestCreatedAt",
-        MAX(COALESCE("updatedAt", "createdAt")) AS "rowsLatestUpdatedAt"
-      FROM "CsvDashboardRow"
-      WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    ) AS "mainRowStats"
   `);
 }
 
@@ -110,10 +100,13 @@ function buildLeaderboardShellSnapshotGenerationToken(params: {
   fkojunstStatusMailRowsRevision: string;
 }): string {
   const { row, fkojunstStatusMailRowsRevision } = params;
+  if (row?.rowsRevision == null) {
+    throw new Error(
+      `[ProductionScheduleGenerationRevision] raw revision row is missing for dashboard ${PRODUCTION_SCHEDULE_DASHBOARD_ID}`
+    );
+  }
   return JSON.stringify({
-    rowsCount: String(row?.rowsCount ?? 0n),
-    rowsLatestCreatedAt: normalizeDate(row?.rowsLatestCreatedAt),
-    rowsLatestUpdatedAt: normalizeDate(row?.rowsLatestUpdatedAt),
+    rowsRevision: String(row.rowsRevision),
     fkojunstStatusMailRowsRevision,
     orderAssignmentUpdatedAt: normalizeDate(row?.orderAssignmentUpdatedAt),
     orderSplitCount: String(row?.orderSplitCount ?? 0n),

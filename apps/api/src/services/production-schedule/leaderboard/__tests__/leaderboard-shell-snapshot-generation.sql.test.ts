@@ -24,8 +24,11 @@ describe('leaderboard-shell-snapshot-generation SQL', () => {
       'utf8'
     );
 
-    expect(source).toContain('rowsLatestUpdatedAt');
-    expect(source).toContain('MAX(COALESCE("updatedAt", "createdAt"))');
+    expect(source).toContain('AS "rowsRevision"');
+    expect(source).toContain('FROM "CsvDashboardRawRevision"');
+    expect(source).not.toContain('FROM "CsvDashboardRow"');
+    expect(source).not.toContain('mainRowStats');
+    expect(source).not.toContain('rowsLatestUpdatedAt');
     expect(source).toContain('fkojunstStatusMailRowsRevision');
     expect(source).toContain('fetchFkojunstStatusMailGenerationRevision(prisma)');
     expect(source).not.toContain('fkojunstStatusMailRowsCount');
