@@ -51,11 +51,27 @@ else
   echo "環境変数から認証情報を取得しました。"
 fi
 
+# MFAの6桁コード（MFAが有効なアカウントでは必須）
+if [ -n "${PI5_ADMIN_TOTP_CODE:-}" ]; then
+  TOTP_CODE="${PI5_ADMIN_TOTP_CODE}"
+else
+  read -p "MFAの6桁コード（MFA未設定なら空のままEnter）: " TOTP_CODE
+fi
+if [ -n "$TOTP_CODE" ] && ! [[ "$TOTP_CODE" =~ ^[0-9]{6}$ ]]; then
+  echo "❌ MFAコードは6桁の数字で入力してください。"
+  exit 1
+fi
+
 # ログインしてトークンを取得
 echo "ログイン中..."
+LOGIN_BODY="{\"username\":\"${USERNAME}\",\"password\":\"${PASSWORD}\""
+if [ -n "$TOTP_CODE" ]; then
+  LOGIN_BODY+=",\"totpCode\":\"${TOTP_CODE}\""
+fi
+LOGIN_BODY+="}"
 LOGIN_RESPONSE=$(curl -s -k -X POST "https://${PI5_HOST}/api/auth/login" \
   -H "Content-Type: application/json" \
-  -d "{\"username\":\"${USERNAME}\",\"password\":\"${PASSWORD}\"}")
+  -d "$LOGIN_BODY")
 
 # トークンを抽出
 ACCESS_TOKEN=$(echo "$LOGIN_RESPONSE" | grep -o '"accessToken":"[^"]*' | cut -d'"' -f4)
@@ -63,6 +79,7 @@ ACCESS_TOKEN=$(echo "$LOGIN_RESPONSE" | grep -o '"accessToken":"[^"]*' | cut -d'
 if [ -z "$ACCESS_TOKEN" ]; then
   echo "❌ ログインに失敗しました。"
   echo "レスポンス: $LOGIN_RESPONSE"
+  echo "MFAが有効なアカウントでは、認証アプリの6桁コードが必要です（環境変数 PI5_ADMIN_TOTP_CODE でも指定できます）。"
   exit 1
 fi
 
