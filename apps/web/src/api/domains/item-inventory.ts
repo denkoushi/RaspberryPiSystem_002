@@ -30,7 +30,7 @@ export type InventoryItem = InventoryItemFields & {
 };
 export type InventoryCompartment = {
   id: string;
-  labelNumber?: number;
+  labelNumber: number;
   stockQuantity: number;
   area: string;
   shelfNumber: number;
@@ -101,6 +101,19 @@ export type InventoryMovementTransaction = Omit<InventoryHistoryEntry, 'inventor
 export async function resolveInventoryTag(uid: string) {
   const { data } = await api.get<{ tag: InventoryTag | null }>('/item-inventory/tags/resolve', { params: { uid } });
   return data.tag;
+}
+
+export async function resolveInventoryLabelNumber(labelNumber: string) {
+  const { data } = await api.get<{ tag: InventoryTag }>(`/item-inventory/compartments/by-label/${labelNumber}`);
+  return data.tag;
+}
+
+export type InventoryToolFieldSuggestion = { model: string[]; maker: string[]; status: 'ok' | 'unavailable' };
+export async function suggestInventoryToolFields(input: { source: 'import'; payloadId: string; photoId: string } | { source: 'item'; itemId: string; photoId: string }, accessPassword?: string) {
+  const { data } = await api.post<InventoryToolFieldSuggestion>('/item-inventory/import-photos/suggest-tool-fields', input, {
+    headers: inventorySettingsHeaders(accessPassword), timeout: 35000,
+  });
+  return data;
 }
 
 export async function getInventoryItems() {
@@ -282,7 +295,7 @@ export async function registerInventoryImport(id: string, input: {
   workMaterial?: string;
   toolSize?: string;
 }, accessPassword?: string) {
-  const { data } = await api.post<{ result: unknown }>(`/item-inventory/imports/${id}/register`, input, {
+  const { data } = await api.post<{ result: { mode: 'NEW_ITEM' | 'EXISTING_ITEM'; item: Omit<InventoryItemSummary, 'photos'>; compartment?: { id: string; labelNumber: number } } }>(`/item-inventory/imports/${id}/register`, input, {
     headers: inventorySettingsHeaders(accessPassword)
   });
   return data.result;

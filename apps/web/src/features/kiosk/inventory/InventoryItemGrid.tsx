@@ -1,9 +1,11 @@
+import { formatInventoryLabelNumber } from '@raspi-system/shared-types';
 import { Fragment, memo, useMemo, useState } from 'react';
 
 import { inventoryThumbnailUrl, type InventoryCompartment, type InventoryImportSummary } from '../../../api/client';
 
 import { issuedLabel, unitLabel } from './inventoryDailyFlow';
 import { LockIcon, PinIcon } from './InventoryIcons';
+import { invLabelNumber } from './inventoryUi';
 
 export type InventoryThumbnailSize = 'small' | 'medium' | 'large';
 const sizes = {
@@ -73,6 +75,7 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
               {issued ? <span className="absolute left-2 top-2 rounded-md bg-inv-bg/75 px-2 py-0.5 text-[11px] font-bold tracking-[0.06em]">{issued} 持出</span> : null}
             </span>
             <span className="line-clamp-2 min-h-[3.05em] px-3 pt-2.5 text-[17px] font-bold leading-[1.35]">{compartment.item.name}</span>
+            <span className="flex px-3 pt-1" aria-label="置き場所の番号"><span className={`${invLabelNumber} text-sm`}>{formatInventoryLabelNumber(compartment.labelNumber)}</span></span>
             <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 px-3 pt-1 text-sm">
               {config.fields.map((field) => compartment.item[field]?.trim() ? <Fragment key={field}><dt className="text-inv-faint">{detailLabels[field]}</dt><dd className="truncate">{compartment.item[field]}</dd></Fragment> : null)}
             </dl>

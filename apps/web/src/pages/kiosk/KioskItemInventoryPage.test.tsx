@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { inventoryThumbnailUrl, resolveInventoryTag, type InventoryItem, type InventoryTag } from '../../api/client';
+import { inventoryThumbnailUrl, resolveInventoryTag, resolveInventoryLabelNumber, type InventoryItem, type InventoryTag } from '../../api/client';
 import { useInventoryCompartmentHistory, useInventoryImportSummaries, useInventoryItems, useInventoryMutations } from '../../api/hooks';
 import { InventoryNfcRouter } from '../../features/kiosk/InventoryNfcRouter';
 import { useNfcStream } from '../../hooks/useNfcStream';
@@ -14,7 +14,7 @@ import { KioskItemInventoryPage } from './KioskItemInventoryPage';
 import type { NfcEvent } from '../../hooks/useNfcStream';
 
 
-vi.mock('../../api/client', () => ({ resolveInventoryTag: vi.fn(), inventoryThumbnailUrl: vi.fn((value: string) => value) }));
+vi.mock('../../api/client', () => ({ resolveInventoryTag: vi.fn(), resolveInventoryLabelNumber: vi.fn(), inventoryThumbnailUrl: vi.fn((value: string) => value) }));
 vi.mock('../../api/hooks/item-inventory', () => ({ useInventoryTags: vi.fn() }));
 vi.mock('../../api/hooks', () => ({
   useInventoryMutations: vi.fn(),
@@ -36,6 +36,7 @@ const itemTag = {
   quantity: null,
   compartment: {
     id: 'compartment-id',
+    labelNumber: 42,
     stockQuantity: 10,
     area: '30007_KSJP-55',
     shelfNumber: 1,
@@ -1388,5 +1389,41 @@ describe('inventory device presentation preferences', () => {
     fireEvent.click(areas().getByRole('button', { name: new RegExp(area) }));
     fireEvent.click(screen.getByRole('button', { name: 'このエリアを最初の表示にする' }));
     expect(screen.getByRole('status', { name: '最初のエリア' })).toHaveTextContent('最初の表示を保存できませんでした');
+  });
+});
+
+
+describe('inventory number keypad', () => {
+  it('opens a number through the item-tag handler, including a detached tag', async () => {
+    vi.mocked(resolveInventoryLabelNumber).mockResolvedValue({ ...itemTag, uid: '', compartment: { ...itemTag.compartment!, itemTagUid: null } });
+    render(<MemoryRouter><KioskItemInventoryPage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: '番号で開く' }));
+    expect(screen.getByLabelText('入力した番号')).toHaveTextContent('____');
+    expect(screen.getByRole('button', { name: '開く' })).toBeDisabled();
+    const keys = screen.getByRole('group', { name: '番号のテンキー' });
+    fireEvent.click(within(keys).getByRole('button', { name: '4' }));
+    fireEvent.click(within(keys).getByRole('button', { name: '2' }));
+    expect(resolveInventoryLabelNumber).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '開く' })); });
+    expect(resolveInventoryLabelNumber).toHaveBeenCalledWith('42');
+    expect(screen.getByLabelText('現在庫')).toHaveTextContent('10');
+    expect(screen.getByText('0042')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '番号入力' })).not.toBeInTheDocument();
+  });
+
+  it('keeps 404 in the keypad and supports clear, backspace and five digits', async () => {
+    vi.mocked(resolveInventoryLabelNumber).mockRejectedValue({ response: { status: 404 } });
+    render(<MemoryRouter><KioskItemInventoryPage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: '番号で開く' }));
+    const keys = screen.getByRole('group', { name: '番号のテンキー' });
+    for (const digit of '12345') fireEvent.click(within(keys).getByRole('button', { name: digit }));
+    expect(screen.getByLabelText('入力した番号')).toHaveTextContent('12345');
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '開く' })); });
+    expect(screen.getByRole('alert')).toHaveTextContent('この番号の品物はありません');
+    fireEvent.click(within(keys).getByRole('button', { name: '←' }));
+    expect(screen.getByLabelText('入力した番号')).toHaveTextContent('1234');
+    fireEvent.click(within(keys).getByRole('button', { name: '消' }));
+    expect(screen.getByLabelText('入力した番号')).toHaveTextContent('____');
+    expect(screen.getByRole('button', { name: '開く' })).toBeDisabled();
   });
 });
