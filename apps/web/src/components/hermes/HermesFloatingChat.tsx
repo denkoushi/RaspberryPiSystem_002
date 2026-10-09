@@ -35,6 +35,7 @@ import { useKnowledgeDestination } from '../../features/hermes-knowledge/useKnow
 import { useKnowledgeIntake } from '../../features/hermes-knowledge/useKnowledgeIntake';
 import { useKnowledgePoster } from '../../features/hermes-knowledge/useKnowledgePoster';
 import { useKnowledgeWorkspace } from '../../features/hermes-knowledge/useKnowledgeWorkspace';
+import { useKioskInquiryEntry } from '../../features/kiosk/inquiry/useKioskInquiryEntry';
 import { OperationGuidePrompt } from '../../features/operation-guide/OperationGuideChoices';
 import { OperationGuideOverlay } from '../../features/operation-guide/OperationGuideOverlay';
 import { useOperationGuide } from '../../features/operation-guide/useOperationGuide';
@@ -173,6 +174,7 @@ export function HermesFloatingChat() {
   knowledgeModeRef.current = knowledgeMode;
   const [clientKey, setClientKey] = useState(() => getResolvedClientKey());
   const clientKeyRef = useRef(clientKey);
+  const inquiry = useKioskInquiryEntry(clientKey, location.pathname, open);
   const iconRef = useRef<HTMLButtonElement | null>(null);
   const scanFocusRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -202,10 +204,10 @@ export function HermesFloatingChat() {
     () => `${token ?? 'anonymous'}:${user?.id ?? 'anonymous'}:${clientKey}:${location.pathname}:${location.search}`,
     [clientKey, location.pathname, location.search, token, user?.id]
   );
-  const knowledge = useKnowledgeIntake(identity, activeConsultation?.id ?? null, open && knowledgeMode === 'knowledge');
-  const knowledgePoster = useKnowledgePoster(open && knowledgeMode === 'knowledge' && knowledge.enabled);
+  const knowledge = useKnowledgeIntake(identity, activeConsultation?.id ?? null, open && !inquiry.active && knowledgeMode === 'knowledge');
+  const knowledgePoster = useKnowledgePoster(open && !inquiry.active && knowledgeMode === 'knowledge' && knowledge.enabled);
   const knowledgeDestination = useKnowledgeDestination(knowledgePoster.poster, knowledgePoster.partNumber, pageContext);
-  const knowledgeWorkspace = useKnowledgeWorkspace(open && knowledgeMode === 'knowledge' && knowledge.enabled, knowledgePoster.poster?.tagUid ?? null, identity);
+  const knowledgeWorkspace = useKnowledgeWorkspace(open && !inquiry.active && knowledgeMode === 'knowledge' && knowledge.enabled, knowledgePoster.poster?.tagUid ?? null, identity);
 
   const invalidateChatRequest = useCallback(() => {
     abortRef.current?.abort();
@@ -368,11 +370,13 @@ export function HermesFloatingChat() {
 
   const toggleOpen = useCallback(() => {
     ensureCurrentClientKey();
+    inquiry.onTrigger();
+    if (!open && inquiry.unreadCount > 0) operationGuide.clear();
     setOpen((current) => {
       if (current) closeScanner();
       return !current;
     });
-  }, [closeScanner, ensureCurrentClientKey]);
+  }, [closeScanner, ensureCurrentClientKey, inquiry, open, operationGuide]);
 
   const handleKnowledgeModeChange = useCallback((mode: HermesKnowledgeMode) => {
     knowledgeModeRevisionRef.current += 1;
@@ -968,8 +972,9 @@ export function HermesFloatingChat() {
   const panelProps: HermesChatPanelProps = {
     knowledgeMode,
     recordPilotAvailable: recordPilotScope.enabled,
-    onKnowledgeModeChange: handleKnowledgeModeChange,
-    conversationContent: knowledgeWorkspace.isOpen ? <KnowledgeWorkspace workspace={knowledgeWorkspace} posterName={knowledgePoster.poster?.name ?? null} /> : undefined,
+    inquiryMode: inquiry.enabled ? { active: inquiry.active, unreadCount: inquiry.unreadCount, onSelect: () => { closeScanner(); operationGuide.clear(); inquiry.select(); } } : undefined,
+    onKnowledgeModeChange: mode => { inquiry.leave(); handleKnowledgeModeChange(mode); },
+    conversationContent: inquiry.content ?? (knowledgeWorkspace.isOpen ? <KnowledgeWorkspace workspace={knowledgeWorkspace} posterName={knowledgePoster.poster?.name ?? null} /> : undefined),
     conversationExtension: <>
       {showPageContextShortcuts && pageContext ? <HermesPageContextShortcuts partNumber={pageContext.entity.value} disabled={isBusy} onChoose={handlePageContextShortcut} /> : null}
       {knowledgeMode === 'search' && operationGuide.question ? <OperationGuidePrompt question={operationGuide.question} onChoose={operationGuide.choose} /> : knowledgeMode === 'record-pilot' && !showPageContextShortcuts ? <p className="hermes-chat-panel__status" role="note">
@@ -984,7 +989,7 @@ export function HermesFloatingChat() {
           triage={{ tagFor: knowledge.tagFor, decided: knowledge.decided, later: knowledge.later, onDecided: knowledge.markDecided, onLater: knowledge.markLater }} />
       </> : null}
     </>,
-    composerVisible: knowledgeMode !== 'knowledge' || !knowledge.enabled || knowledgeDestination.ready,
+    composerVisible: !inquiry.active && (knowledgeMode !== 'knowledge' || !knowledge.enabled || knowledgeDestination.ready),
     attachmentControl: knowledgeMode === 'knowledge' && knowledge.enabled && knowledgeDestination.ready ? <KnowledgeAttachments files={knowledge.files} onChange={knowledge.setFiles} disabled={isBusy || knowledge.busy} onSend={() => void sendMessage()} /> : null,
     mode: knowledgeMode === 'record-pilot' || consultationMode === 'legacy' ? 'legacy' : 'consultations',
     messages,
@@ -1023,9 +1028,9 @@ export function HermesFloatingChat() {
       <button
         ref={iconRef}
         type="button"
-        className={`hermes-floating-trigger${isDocumentVisible ? '' : ' hermes-floating-trigger--paused'}`}
+        className={`hermes-floating-trigger${inquiry.unreadCount > 0 ? ' hermes-floating-trigger--inquiry-unread' : ''}${isDocumentVisible ? '' : ' hermes-floating-trigger--paused'}`}
         style={iconStyle}
-        aria-label="業務Hermesチャットを開く。ドラッグで移動できます"
+        aria-label={inquiry.unreadCount > 0 ? `お問い合わせ 未読 ${inquiry.unreadCount} 件` : "業務Hermesチャットを開く。ドラッグで移動できます"}
         aria-expanded={open}
         title={showPageContextIndicator ? 'この品番で検索できます' : '業務Hermesチャット（ドラッグで移動）'}
         onClick={handleButtonClick}
@@ -1048,8 +1053,9 @@ export function HermesFloatingChat() {
             ))}
           </span>
         </span>
-        <span className="hermes-floating-trigger__glyph" aria-hidden="true">H</span>
-        {showPageContextIndicator ? <span className="hermes-floating-trigger__context-dot" aria-hidden="true" /> : null}
+        <span className="hermes-floating-trigger__glyph" aria-hidden="true">{inquiry.unreadCount > 0 ? '✉' : 'H'}</span>
+        {inquiry.unreadCount > 0 ? <span className="hermes-floating-trigger__inquiry-count" aria-hidden="true">{inquiry.unreadCount}</span> : null}
+        {showPageContextIndicator && inquiry.unreadCount === 0 ? <span className="hermes-floating-trigger__context-dot" aria-hidden="true" /> : null}
       </button>
 
       {open && operationGuide.guide ? <OperationGuideOverlay

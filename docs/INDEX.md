@@ -42,6 +42,10 @@
 - **全損復旧用の独立resticスナップショット**: Dropboxは個別復元、Google DriveはPi 5全損DR。**正本**: [ExecPlan](./plans/google-drive-disaster-recovery-execplan.md) · [ADR](./decisions/ADR-20260820-google-drive-disaster-recovery.md) · [Runbook](./runbooks/google-drive-disaster-recovery.md) · [バックアップ・リストアガイド](./guides/backup-and-restore.md)
 - **Pi4 SDカードの週次バックアップと交換**: Pi5がPi4のSDを週1回Pi5 SSDへ暗号化保存しGoogle Driveへも複製、故障時はPi5から同じ端末用の新しいSDへ復元。**正本**: [Runbook](./runbooks/pi4-sd-card-backup.md) · [ADR](./decisions/ADR-20260930-pi4-sd-card-backup.md) · [ExecPlan](./plans/pi4-sd-card-backup-execplan.md)
 
+### キオスクお問い合わせ受信箱（2026-10-09）
+
+- **お問い合わせを端末で受けて返信**: 指定した端末の丸ボタンが未読でオレンジになり、社員証タッチで読んで返信できる。**正本**: [Runbook](./runbooks/kiosk-inquiry-inbox.md)
+
 ### Deployワークフロー安全短縮 Phase 1–2（2026-07-29 · Phase 2実装済み）
 
 - **リスクベース4段階品質ゲート**: PR Deploy影響表と不足申告validatorを既存schemaVersion 6分類へ軽量接続。**正本**: [ExecPlan](./plans/risk-based-four-stage-quality-gates-execplan.md) · [ADR](./decisions/ADR-20260810-risk-based-deploy-impact-contract.md) · [CI Guide](./guides/ci-branch-protection.md#pr-deploy影響表4段階品質ゲート)

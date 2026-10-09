@@ -8,6 +8,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum KioskInquirySide {
+  SENDER
+  RECEIVER
+}
+
 enum EmployeeStatus {
   ACTIVE
   INACTIVE
@@ -168,6 +173,8 @@ model Employee {
   status                                        EmployeeStatus                                 @default(ACTIVE)
   createdAt                                     DateTime                                       @default(now())
   updatedAt                                     DateTime                                       @updatedAt
+  kioskInquiryReceiver                          KioskInquiryReceiverEmployee?
+  kioskInquiryMessages                          KioskInquiryMessage[]
   loans                                         Loan[]
   inspectionRecords                             InspectionRecord[]
   riggingInspectionRecords                      RiggingInspectionRecord[]
@@ -491,6 +498,9 @@ model ClientDevice {
   site                                          Site?                                          @relation(fields: [siteKey], references: [key], onDelete: Restrict, onUpdate: Cascade)
   /// 他端末の代理操作（手動順番・負荷調整などで対象端末を指定）を許可する端末
   canProxyOtherDevices                          Boolean                                        @default(false)
+  inquiryReceiverEnabled                        Boolean                                        @default(false)
+  kioskInquiryThreads                           KioskInquiryThread[]
+  kioskInquiryMessages                          KioskInquiryMessage[]
   lastSeenAt                                    DateTime?
   createdAt                                     DateTime                                       @default(now())
   updatedAt                                     DateTime                                       @updatedAt
@@ -5501,4 +5511,43 @@ model ProcedureVideoComment {
   video     ProcedureVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
 
   @@index([videoId, sortOrder])
+}
+
+model KioskInquiryReceiverEmployee {
+  id         String   @id @default(uuid())
+  employeeId String   @unique
+  createdAt  DateTime @default(now())
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model KioskInquiryThread {
+  id                   String                @id @default(uuid())
+  senderClientDeviceId String
+  page                 String
+  receiverUnread       Boolean               @default(true)
+  senderUnread         Boolean               @default(false)
+  lastMessageAt        DateTime
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  senderClientDevice   ClientDevice          @relation(fields: [senderClientDeviceId], references: [id], onDelete: Cascade)
+  messages             KioskInquiryMessage[]
+
+  @@index([receiverUnread])
+  @@index([senderClientDeviceId, senderUnread])
+  @@index([lastMessageAt])
+}
+
+model KioskInquiryMessage {
+  id                   String           @id @default(uuid())
+  threadId             String
+  side                 KioskInquirySide
+  body                 String
+  authorClientDeviceId String?
+  authorEmployeeId     String?
+  createdAt            DateTime         @default(now())
+  thread               KioskInquiryThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  authorClientDevice   ClientDevice?    @relation(fields: [authorClientDeviceId], references: [id], onDelete: SetNull)
+  authorEmployee       Employee?        @relation(fields: [authorEmployeeId], references: [id], onDelete: SetNull)
+
+  @@index([threadId, createdAt])
 }
