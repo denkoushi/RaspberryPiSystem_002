@@ -55,8 +55,8 @@
 - ファイル整合性・プロセス・ネットワーク異常をリアルタイムまたは準リアルタイムで検知し、アラートに連携する
 - 権限変更の履歴（誰が/いつ/誰を/どう変更）を保存し、異常な権限昇格を検知する
 
-**実装状況（2025-12-14）**:
-- ✅ MFA: Userに`mfaEnabled`/`totpSecret`/`mfaBackupCodes`を追加し、ログインAPIでパスワード+TOTP検証を実装。管理者向けSecurityページでMFAセットアップUIを実装。30日記憶オプション（remember-me）を実装。統合テスト・実機テスト完了。
+**実装状況（2026-10-09）**:
+- ✅ MFA: パスワード+TOTP検証、バックアップコード、SecurityページのセットアップUI、30日記憶オプションを実装。`ADMIN_MFA_REQUIRED`（API既定`false`）が有効な場合はADMIN / MANAGERに設定を強制し、発行時のMFA状態をJWTに保持する。未設定・旧形式トークンはセットアップAPI以外を403で拒否し、有効化時に新しいトークンを発行する。対象ロールの無効化は禁止。本番Ansibleでは`api_admin_mfa_required`の既定`true`で有効化する。
 - ✅ リアルタイム監視: ファイル整合性（`FILE_HASH_TARGETS`）、必須プロセス（`REQUIRED_PROCESSES`）、許可外ポート（`ALLOWED_LISTEN_PORTS`）の監視を`security-monitor.sh`に統合。bash単体テスト・実機テスト完了。
 - ✅ 権限監査: 監査テーブル（`RoleAuditLog`）を追加し、ロール変更時に履歴保存＋異常パターン（自己変更・ADMIN昇格・業務時間外・短時間に複数のADMIN昇格）でアラートを実装。統合テスト・実機テスト完了。
 

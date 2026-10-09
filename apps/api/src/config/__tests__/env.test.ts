@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('../env/load-dotenv.js', () => ({}));
+
 const ORIGINAL_ENV = { ...process.env };
 
 const loadEnvModule = async () => {
@@ -13,6 +15,25 @@ afterEach(() => {
 });
 
 describe('env secret policy', () => {
+  it.each([['true', true], ['false', false], [' TRUE ', true]])(
+    'parses ADMIN_MFA_REQUIRED=%s', async (raw, expected) => {
+      process.env.ADMIN_MFA_REQUIRED = raw;
+      const { env } = await loadEnvModule();
+      expect(env.ADMIN_MFA_REQUIRED).toBe(expected);
+    }
+  );
+
+  it('defaults ADMIN_MFA_REQUIRED to false', async () => {
+    delete process.env.ADMIN_MFA_REQUIRED;
+    const { env } = await loadEnvModule();
+    expect(env.ADMIN_MFA_REQUIRED).toBe(false);
+  });
+
+  it('rejects ambiguous ADMIN_MFA_REQUIRED', async () => {
+    process.env.ADMIN_MFA_REQUIRED = 'yes';
+    await expect(loadEnvModule()).rejects.toThrow(/ADMIN_MFA_REQUIRED/);
+  });
+
   it.each([
     ['true', true],
     ['1', true],

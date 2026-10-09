@@ -10,6 +10,8 @@ export interface AuthResponse {
     username: string;
     role: 'ADMIN' | 'MANAGER' | 'VIEWER';
     mfaEnabled: boolean;
+    mfaSetupRequired: boolean;
+    mfaRequired: boolean;
   };
 }
 
@@ -19,7 +21,7 @@ export interface MfaInitiateResponse {
   backupCodes: string[];
 }
 
-export interface MfaActivateResponse {
+export interface MfaActivateResponse extends AuthResponse {
   backupCodes: string[];
 }
 
