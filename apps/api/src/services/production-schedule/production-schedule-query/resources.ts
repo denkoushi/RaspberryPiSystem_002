@@ -21,10 +21,34 @@ export type ProductionScheduleResourceListResult = {
   resourceNameMap: ProductionScheduleResourceNameMap;
 };
 
-export async function listProductionScheduleResources(scope: {
-  siteKey?: string;
-  deviceScopeKey?: string;
-}): Promise<ProductionScheduleResourceListResult> {
+const RESOURCE_CDS_CACHE_TTL_MS = 5 * 60 * 1000;
+let resourceCdsCache: { expiresAt: number; value: Promise<string[]> } | undefined;
+
+export function resetProductionScheduleResourceCdsCache(): void {
+  resourceCdsCache = undefined;
+}
+
+async function getResourceCdsWithCache(): Promise<string[]> {
+  if (resourceCdsCache && resourceCdsCache.expiresAt > Date.now()) {
+    return resourceCdsCache.value;
+  }
+
+  // Keep sharing the query until it settles; the TTL starts on success.
+  const entry = { expiresAt: Infinity, value: Promise.resolve([] as string[]) };
+  entry.value = queryResourceCds()
+    .then((resourceCds) => {
+      entry.expiresAt = Date.now() + RESOURCE_CDS_CACHE_TTL_MS;
+      return resourceCds;
+    })
+    .catch((error: unknown) => {
+      if (resourceCdsCache === entry) resetProductionScheduleResourceCdsCache();
+      throw error;
+    });
+  resourceCdsCache = entry;
+  return entry.value;
+}
+
+async function queryResourceCds(): Promise<string[]> {
   const resources = await prisma.$queryRaw<Array<{ resourceCd: string }>>`
     SELECT DISTINCT ("rowData"->>'FSIGENCD') AS "resourceCd"
     FROM "CsvDashboardRow"
@@ -34,7 +58,14 @@ export async function listProductionScheduleResources(scope: {
       AND ("rowData"->>'FSIGENCD') <> ''
     ORDER BY ("rowData"->>'FSIGENCD') ASC
   `;
-  const resourceCds = resources.map((row) => row.resourceCd);
+  return resources.map((row) => row.resourceCd);
+}
+
+export async function listProductionScheduleResources(scope: {
+  siteKey?: string;
+  deviceScopeKey?: string;
+}): Promise<ProductionScheduleResourceListResult> {
+  const resourceCds = [...await getResourceCdsWithCache()];
   const policy = await getResourceCategoryPolicy(scope);
   const resourceNameMap = await getResourceNameMapByResourceCds(resourceCds);
   const resourceItems = resourceCds.map((resourceCd) => ({

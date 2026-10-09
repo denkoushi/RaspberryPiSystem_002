@@ -20,6 +20,7 @@ const syncFromSeibanMachineNameSupplementDashboard = vi.fn();
 const syncFromCustomerScawDashboard = vi.fn();
 const syncFromFkobainoDashboard = vi.fn();
 const syncFromRiggingIngestRun = vi.fn();
+const resetProductionScheduleResourceCdsCache = vi.hoisted(() => vi.fn());
 const resetMachineNameFseibanMatchCaches = vi.hoisted(() => vi.fn());
 const resetSelfInspectionMachineBoardScheduleRowCaches = vi.hoisted(() => vi.fn());
 
@@ -51,6 +52,10 @@ vi.mock('../../production-schedule/seiban-machine-name-supplement-sync.service.j
   ProductionScheduleSeibanMachineNameSupplementSyncService: vi.fn().mockImplementation(function () {
     return { syncFromSupplementDashboard: syncFromSeibanMachineNameSupplementDashboard };
   }),
+}));
+
+vi.mock('../../production-schedule/production-schedule-query/resources.js', () => ({
+  resetProductionScheduleResourceCdsCache,
 }));
 
 vi.mock('../../production-schedule/machine-name-fseiban-match.service.js', () => ({
@@ -251,6 +256,7 @@ describe('CsvDashboardPostIngestService', () => {
     expect(syncFromCurrentStatusMailDashboard).not.toHaveBeenCalled();
     expect(syncFromCustomerScawDashboard).not.toHaveBeenCalled();
     expect(syncFromFkobainoDashboard).not.toHaveBeenCalled();
+    expect(resetProductionScheduleResourceCdsCache).not.toHaveBeenCalled();
     expect(resetMachineNameFseibanMatchCaches).toHaveBeenCalledTimes(1);
     expect(resetSelfInspectionMachineBoardScheduleRowCaches).toHaveBeenCalledTimes(1);
   });
@@ -346,11 +352,11 @@ describe('CsvDashboardPostIngestService', () => {
     expect(syncFromFkobainoDashboard).not.toHaveBeenCalled();
   });
 
-  it('runs external completion sync for the main production schedule dashboard id', async () => {
+  it.each(['manual', 'gmail'] as const)('invalidates resource codes and runs external completion sync after %s production schedule ingest', async (ingestSource) => {
     const svc = new CsvDashboardPostIngestService();
     const hit = await svc.runAfterSuccessfulIngest({
       dashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      ingestSource: 'manual',
+      ingestSource,
       ingestRunId: 'run-production-schedule',
     });
     expect(hit.orderSupplementSync).toBeNull();
@@ -366,8 +372,18 @@ describe('CsvDashboardPostIngestService', () => {
     expect(syncFromSeibanMachineNameSupplementDashboard).not.toHaveBeenCalled();
     expect(syncFromCustomerScawDashboard).not.toHaveBeenCalled();
     expect(syncFromFkobainoDashboard).not.toHaveBeenCalled();
+    expect(resetProductionScheduleResourceCdsCache).toHaveBeenCalledTimes(1);
     expect(resetMachineNameFseibanMatchCaches).toHaveBeenCalledTimes(1);
     expect(resetSelfInspectionMachineBoardScheduleRowCaches).toHaveBeenCalledTimes(1);
+  });
+
+  it('invalidates resource codes even if a later post-ingest projection fails', async () => {
+    syncFromCurrentStatusMailDashboard.mockRejectedValueOnce(new Error('projection failed'));
+    await expect(new CsvDashboardPostIngestService().runAfterSuccessfulIngest({
+      dashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      ingestSource: 'gmail',
+    })).rejects.toThrow('projection failed');
+    expect(resetProductionScheduleResourceCdsCache).toHaveBeenCalledTimes(1);
   });
 
   it('runs rigging inspection sync only for the rigging slings inspection dashboard id', async () => {

@@ -1,3 +1,4 @@
+import { resetProductionScheduleResourceCdsCache } from '../../services/production-schedule/production-schedule-query/resources.js';
 import { randomUUID } from 'node:crypto';
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -102,6 +103,7 @@ describe('Kiosk Production Schedule API', () => {
   });
 
   beforeEach(async () => {
+    resetProductionScheduleResourceCdsCache();
     await prisma.productionScheduleFkojunstStatus.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleFkojunstMailStatus.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleAccessPasswordConfig.deleteMany();

@@ -1,3 +1,4 @@
+import { resetProductionScheduleResourceCdsCache } from '../production-schedule/production-schedule-query/resources.js';
 import { logger } from '../../lib/logger.js';
 import {
   PRODUCTION_SCHEDULE_CUSTOMER_SCAW_DASHBOARD_ID,
@@ -105,6 +106,7 @@ export class CsvDashboardPostIngestService {
     }
 
     if (params.dashboardId === PRODUCTION_SCHEDULE_DASHBOARD_ID) {
+      resetProductionScheduleResourceCdsCache();
       const externalCompletionSync = await this.externalCompletionSyncService.syncFromCurrentStatusMailDashboard();
       logger.info(
         { dashboardId: params.dashboardId, ingestSource: params.ingestSource, syncResult: externalCompletionSync },
