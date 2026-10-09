@@ -9,6 +9,11 @@ import { PhotoStorage } from '../../lib/photo-storage.js';
 import { normalizeInventoryArea, normalizeInventoryUnit } from './inventory-area.js';
 
 const UNIT_NAME_MAX_LENGTH = 20;
+const COMPARTMENT_LOOKUP_INCLUDE = {
+  drawer: { include: { shelf: true } },
+  inventoryItem: { include: { photos: { orderBy: [{ photoIndex: 'asc' }, { createdAt: 'asc' }] } } },
+  itemTag: true,
+} satisfies Prisma.InventoryCompartmentInclude;
 const TRANSACTION_INCLUDE = {
   inventoryItem: true,
   compartment: { include: { drawer: { include: { shelf: true } } } },
@@ -94,6 +99,7 @@ function newItemCode(sourceItemId: number): string {
 
 function locationDto(compartment: {
   id: string;
+  labelNumber: number;
   stockQuantity: number;
   drawer: { drawerNumber: number; shelf: { area: string; shelfNumber: number } };
   itemTag: { uid: string } | null;
@@ -101,6 +107,7 @@ function locationDto(compartment: {
 }) {
   return {
     id: compartment.id,
+    labelNumber: compartment.labelNumber,
     stockQuantity: compartment.stockQuantity,
     area: compartment.drawer.shelf.area,
     shelfNumber: compartment.drawer.shelf.shelfNumber,
@@ -155,13 +162,7 @@ export class ItemInventoryService {
     const tag = await this.db.inventoryNfcTag.findUnique({
       where: { uid: uid.trim() },
       include: {
-        compartment: {
-          include: {
-            drawer: { include: { shelf: true } },
-            inventoryItem: { include: { photos: { orderBy: [{ photoIndex: 'asc' }, { createdAt: 'asc' }] } } },
-            itemTag: true,
-          },
-        },
+        compartment: { include: COMPARTMENT_LOOKUP_INCLUDE },
       },
     });
     if (!tag) return null;
@@ -171,6 +172,21 @@ export class ItemInventoryService {
       kind: tag.kind,
       quantity: tag.quantity,
       compartment: tag.compartment ? locationDto(tag.compartment) : null,
+    };
+  }
+
+  async resolveCompartmentByLabelNumber(labelNumber: number) {
+    const compartment = await this.db.inventoryCompartment.findUnique({
+      where: { labelNumber },
+      include: COMPARTMENT_LOOKUP_INCLUDE,
+    });
+    if (!compartment || compartment.inventoryItem.deletedAt) throw new ApiError(404, '在庫区画が見つかりません');
+    return {
+      id: compartment.itemTag?.id ?? compartment.id,
+      uid: compartment.itemTag?.uid ?? '',
+      kind: InventoryNfcTagKind.ITEM,
+      quantity: null,
+      compartment: locationDto(compartment),
     };
   }
 

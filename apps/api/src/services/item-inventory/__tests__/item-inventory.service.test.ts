@@ -67,12 +67,17 @@ describe('ItemInventoryService safety boundaries', () => {
     };
     const compartment = {
       id: 'compartment-1',
+      labelNumber: 42,
       stockQuantity: 4,
       drawer: { id: 'drawer-1', shelfId: 'shelf-1', drawerNumber: 3, shelf: { area: item.area, shelfNumber: 2 } },
       itemTag: { uid: 'item-uid' },
       inventoryItem: item,
     };
     const db = {
+      inventoryNfcTag: {
+        findUnique: vi.fn().mockResolvedValue({ id: 'tag-1', uid: 'item-uid', kind: 'ITEM', quantity: null, compartment }),
+        findMany: vi.fn().mockResolvedValue([{ id: 'tag-1', uid: 'item-uid', kind: 'ITEM', quantity: null, compartment }]),
+      },
       inventoryItem: { findMany: vi.fn().mockResolvedValue([{ ...item, compartments: [compartment] }]) },
       inventoryTransaction: { groupBy: vi.fn().mockResolvedValue([]) },
       inventoryShelf: {
@@ -90,6 +95,7 @@ describe('ItemInventoryService safety boundaries', () => {
       id: item.id,
       compartments: [{
         id: compartment.id,
+        labelNumber: 42,
         area: item.area,
         shelfNumber: 2,
         drawerNumber: 3,
@@ -100,9 +106,11 @@ describe('ItemInventoryService safety boundaries', () => {
     await expect(service.listLocations()).resolves.toMatchObject([{
       drawers: [{
         shelf: { area: item.area, shelfNumber: 2 },
-        compartments: [{ id: compartment.id, area: item.area, shelfNumber: 2, drawerNumber: 3, itemTagUid: 'item-uid' }],
+        compartments: [{ id: compartment.id, labelNumber: 42, area: item.area, shelfNumber: 2, drawerNumber: 3, itemTagUid: 'item-uid' }],
       }],
     }]);
+    await expect(service.resolveTag('item-uid')).resolves.toMatchObject({ compartment: { labelNumber: 42 } });
+    await expect(service.listTags()).resolves.toMatchObject([{ compartment: { labelNumber: 42 } }]);
   });
 
   it('soft-deletes an item, releases only its item tags, and keeps transaction history attached', async () => {

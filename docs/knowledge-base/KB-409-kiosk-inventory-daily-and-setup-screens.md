@@ -58,6 +58,16 @@ Run `20260926-112811-48762d` failed after 3 seconds. The PR for the next milesto
 
 Do not merge to `main` until a standard release run has finished. The next run must re-check CI for the new SHA and re-run `--print-plan`.
 
+## Updates (2026-10-09, hand-written label number)
+
+Item NFC tags and physical goods can become separated. Each stored location (`InventoryCompartment`, the target of an item tag) now has a globally unique `labelNumber`, so workers can hand-write the same number on the tag and drawer.
+
+- Display numbers with at least 4 digits (`0001`, `0002`, …; `10000` stays `10000`) using the shared `formatInventoryLabelNumber` helper. Numbers are never reused after a compartment is deleted; sequence gaps are allowed.
+- Migration `20261009120000_add_inventory_compartment_label_number` numbers existing rows starting at 1 in `createdAt, id` order, then continues the sequence after the maximum. An empty table starts at 1.
+- `GET /item-inventory/compartments/by-label/:labelNumber` uses the same kiosk client-key/JWT guard and `{ tag }` response shape as tag lookup. Positive integer input (including zero-padded digits) is required; invalid input returns 400, and an unknown compartment or soft-deleted item returns 404. Without an attached tag, the response uses the compartment id, an empty `uid`, and `itemTagUid: null`.
+- API compartment responses add the numeric `labelNumber` field. Older web builds can continue using the existing fields and routes.
+- web display not yet implemented (separate PR).
+
 ## Updates (2026-10-09, quantity tag after a movement)
 
 On the device check, a quantity tag held right after a movement answered 先にアイテムNFCタグを読み取ってください, although the item was still on the screen and the number buttons worked.
