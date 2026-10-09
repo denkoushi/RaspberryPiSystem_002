@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { normalizeDeployStatusResponse } from '../deploy-status.js';
 
 describe('normalizeDeployStatusResponse', () => {
+  afterEach(() => vi.restoreAllMocks());
+
   it('returns metadata only for the matching maintenance client', () => {
     const raw = {
       version: 2,
@@ -10,7 +12,7 @@ describe('normalizeDeployStatusResponse', () => {
           maintenance: true,
           runId: 'run-1',
           phase: 'preparing',
-          startedAt: '2026-07-11T00:00:00Z'
+          startedAt: new Date().toISOString()
         },
         kiosk2: { maintenance: false, runId: 'run-1' }
       }
@@ -19,7 +21,7 @@ describe('normalizeDeployStatusResponse', () => {
       isMaintenance: true,
       runId: 'run-1',
       phase: 'preparing',
-      startedAt: '2026-07-11T00:00:00Z'
+      startedAt: raw.kioskByClient.kiosk1.startedAt
     });
     expect(normalizeDeployStatusResponse(raw, 'kiosk2')).toEqual({ isMaintenance: false });
     expect(normalizeDeployStatusResponse(raw, null)).toEqual({ isMaintenance: false });
@@ -126,5 +128,62 @@ describe('normalizeDeployStatusResponse', () => {
       runId: 'run-notice',
       preNotice: {}
     });
+  });
+});
+
+describe('deploy-status expiry', () => {
+  const now = Date.parse('2026-10-09T12:00:00Z');
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each(['notice', 'preparing', 'deploying', 'failed'])('expires %s after 30 minutes without rewriting state', (phase) => {
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+    const start = new Date(now - 30 * 60 * 1000 - 1).toISOString();
+    const entry = { phase, maintenance: phase !== 'notice', runId: 'run',
+      startedAt: start, noticeStartedAt: start };
+    const before = { ...entry };
+    const raw = { kioskByClient: { kiosk1: entry } };
+    expect(normalizeDeployStatusResponse(raw, 'kiosk1')).toEqual({ isMaintenance: false });
+    expect(raw.kioskByClient.kiosk1).toEqual(before);
+  });
+
+  it('uses noticeStartedAt for notices and startedAt for maintenance, regardless of updatedAt', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+    const stale = new Date(now - 31 * 60 * 1000).toISOString();
+    const fresh = new Date(now).toISOString();
+    for (const entry of [
+      { phase: 'notice', maintenance: false, noticeStartedAt: stale, startedAt: fresh, updatedAt: fresh },
+      { phase: 'deploying', maintenance: true, startedAt: stale, noticeStartedAt: fresh, updatedAt: fresh }
+    ]) {
+      expect(normalizeDeployStatusResponse({ kioskByClient: { kiosk1: entry } }, 'kiosk1'))
+        .toEqual({ isMaintenance: false });
+    }
+  });
+
+  it.each(['notice', 'preparing', 'deploying', 'failed'])('preserves %s at the 30-minute boundary', (phase) => {
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+    const start = new Date(now - 30 * 60 * 1000).toISOString();
+    const raw = { kioskByClient: { kiosk1: { phase, maintenance: phase !== 'notice',
+      startedAt: start, noticeStartedAt: start } } };
+    const response = normalizeDeployStatusResponse(raw, 'kiosk1');
+    if (phase === 'notice') expect(response.preNotice).toEqual({});
+    else expect(response.isMaintenance).toBe(true);
+  });
+
+  it.each([undefined, 'invalid'])('preserves entries with missing/invalid start %s', (start) => {
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+    for (const phase of ['notice', 'preparing', 'deploying', 'failed']) {
+      const raw = { kioskByClient: { kiosk1: { phase, maintenance: phase !== 'notice',
+        startedAt: start, noticeStartedAt: start } } };
+      const response = normalizeDeployStatusResponse(raw, 'kiosk1');
+      if (phase === 'notice') expect(response.preNotice).toEqual({});
+      else expect(response.isMaintenance).toBe(true);
+    }
+  });
+
+  it.each(['verifying', 'ready', 'canary-hold', 'future'])('does not expire %s', (phase) => {
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+    expect(normalizeDeployStatusResponse({ kioskByClient: { kiosk1: {
+      phase, maintenance: true, startedAt: new Date(0).toISOString()
+    } } }, 'kiosk1').isMaintenance).toBe(true);
   });
 });

@@ -827,12 +827,12 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         ), mock.patch.object(
             MODULE, "signage_identity"
         ) as signage_identity, mock.patch.object(
-            MODULE.os, "execvpe"
-        ) as execvpe, redirect_stdout(io.StringIO()) as output:
+            MODULE, "execute_ansible_with_cleanup", return_value=1
+        ) as execute, redirect_stdout(io.StringIO()) as output:
             self.assertEqual(MODULE.execute_standard_route(args), 1)
 
         signage_identity.assert_not_called()
-        command = execvpe.call_args.args[1]
+        command = execute.call_args.args[0]
         self.assertEqual(command[command.index("--tags") + 1], "pi5,pi4")
         self.assertEqual(command[-2:], ["--limit", "pi5:pi4-online"])
         event = json.loads(output.getvalue())
@@ -1159,10 +1159,10 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             MODULE, "preflight_optional_hosts", return_value=(selection, ())
         ), mock.patch.object(
             MODULE, "release_set_artifacts", return_value=artifacts
-        ), mock.patch.object(MODULE.os, "execvpe") as execvpe, redirect_stdout(io.StringIO()):
+        ), mock.patch.object(MODULE, "execute_ansible_with_cleanup", return_value=1) as execute, redirect_stdout(io.StringIO()):
             self.assertEqual(MODULE.execute_standard_route(args), 1)
 
-        command = execvpe.call_args.args[1]
+        command = execute.call_args.args[0]
         variables = json.loads(command[command.index("--extra-vars") + 1])
         self.assertEqual(variables["release_kiosk_torque_image"], torque_reference)
         self.assertEqual(variables["release_torque_protocol_version"], 1)
@@ -1394,6 +1394,29 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             },
         )
 
+    def test_notice_cleanup_preserves_ansible_result_and_runs_on_exception(self) -> None:
+        for outcome in (subprocess.CompletedProcess(['ansible-playbook'], 0),
+                        subprocess.CompletedProcess(['ansible-playbook'], 2),
+                        subprocess.CompletedProcess(['ansible-playbook'], -15),
+                        OSError('cannot launch')):
+            with self.subTest(outcome=outcome), mock.patch.object(
+                MODULE.subprocess, 'run', side_effect=[outcome, subprocess.CompletedProcess([], 0)]
+            ) as execute:
+                if isinstance(outcome, OSError):
+                    with self.assertRaises(OSError):
+                        MODULE.execute_ansible_with_cleanup(['ansible-playbook'], RUN_ID)
+                else:
+                    expected = outcome.returncode if outcome.returncode >= 0 else 128 - outcome.returncode
+                    self.assertEqual(MODULE.execute_ansible_with_cleanup(['ansible-playbook'], RUN_ID), expected)
+                cleanup = execute.call_args_list[-1].args[0]
+                self.assertEqual(cleanup[-3:], ['remove-run', '--run-id', RUN_ID])
+                self.assertEqual(cleanup[2:4], ['--file', str(MODULE.ROOT / 'config/deploy-status.json')])
+        with mock.patch.object(MODULE.subprocess, 'run', side_effect=[
+            subprocess.CompletedProcess([], 2), subprocess.TimeoutExpired('cleanup', 15)
+        ]), mock.patch('sys.stderr', new_callable=io.StringIO) as errors:
+            self.assertEqual(MODULE.execute_ansible_with_cleanup(['ansible-playbook'], RUN_ID), 2)
+            self.assertIn('WARNING', errors.getvalue())
+
     def test_detach_uses_existing_transient_systemd_primitive(self) -> None:
         args = argparse.Namespace(
             branch="main", inventory=MODULE.DEFAULT_INVENTORY, limit="pi4-a",
@@ -1408,6 +1431,8 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         self.assertNotIn("--wait", command)
         self.assertIn("--property=RemainAfterExit=yes", command)
         self.assertIn("--property=Type=exec", command)
+        self.assertIn(f"--property=ExecStopPost=-/usr/bin/python3 {MODULE.REMOTE_ROOT}/scripts/deploy/deploy-status-state.py --file {MODULE.REMOTE_ROOT}/config/deploy-status.json remove-run --run-id {RUN_ID}", command)
+        self.assertIn("--uid=pi", command)
         self.assertIn("git checkout --detach", rendered)
         self.assertIn("--execute-standard-route", rendered)
         self.assertNotIn("rolling-release.py", rendered)
@@ -1444,8 +1469,19 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             "--property=WorkingDirectory=/opt/RaspberryPiSystem_002-staging",
             command,
         )
+        self.assertIn(f"--property=ExecStopPost=-/usr/bin/python3 {remote_root}/scripts/deploy/deploy-status-state.py --file {remote_root}/config/deploy-status.json remove-run --run-id {RUN_ID}", command)
         self.assertIn("cd /opt/RaspberryPiSystem_002-staging", script)
         self.assertNotIn("cd /opt/RaspberryPiSystem_002\n", script)
+
+    def test_skip_kiosk_notice_is_opt_in_and_forwarded_to_the_pi5_route(self) -> None:
+        plain = MODULE.parse_arguments(["main", MODULE.DEFAULT_INVENTORY, "--limit", "pi4-a"])
+        skipped = MODULE.parse_arguments(["main", MODULE.DEFAULT_INVENTORY, "--limit", "pi4-a", "--skip-kiosk-notice"])
+        self.assertFalse(plain.skip_kiosk_notice)
+        self.assertTrue(skipped.skip_kiosk_notice)
+        self.assertNotIn("--skip-kiosk-notice", MODULE.remote_script(plain, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY, ("pi4",)))
+        self.assertIn(" --skip-kiosk-notice --limit pi4-a", MODULE.remote_script(skipped, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY, ("pi4",)))
+        with self.assertRaises(MODULE.UsageError):
+            MODULE.parse_arguments(["--status", RUN_ID, "--skip-kiosk-notice"])
 
     def test_standard_route_contends_with_legacy_global_lock_before_git(self) -> None:
         args = argparse.Namespace(
