@@ -20,8 +20,8 @@ import {
   pickedCompartmentTag,
   unitLabel,
 } from '../../features/kiosk/inventory/inventoryDailyFlow';
-import { BackIcon, EditIcon, LockIcon, UndoIcon } from '../../features/kiosk/inventory/InventoryIcons';
-import { InventoryItemGrid, type InventoryThumbnailSize } from '../../features/kiosk/inventory/InventoryItemGrid';
+import { BackIcon, EditIcon, GridIcon, ListIcon, LockIcon, UndoIcon } from '../../features/kiosk/inventory/InventoryIcons';
+import { InventoryItemGrid, type InventoryThumbnailSize, type InventoryViewMode } from '../../features/kiosk/inventory/InventoryItemGrid';
 import { InventoryPhotoPane } from '../../features/kiosk/inventory/InventoryPhotoPane';
 import { InventoryQuantityPanel } from '../../features/kiosk/inventory/InventoryQuantityPanel';
 import { InventoryRecentHistory } from '../../features/kiosk/inventory/InventoryRecentHistory';
@@ -57,6 +57,7 @@ function isClientError(error: unknown): boolean {
 }
 
 const thumbnailSizeKey = 'kiosk-inventory-thumbnail-size';
+const viewModeKey = 'kiosk-inventory-view-mode';
 const defaultAreaKey = 'kiosk-inventory-default-area';
 function readDefaultArea(): string | null {
   try { return localStorage.getItem(defaultAreaKey)?.trim() || null; } catch { return null; }
@@ -112,6 +113,10 @@ export function KioskItemInventoryPage() {
     try { const saved = localStorage.getItem(thumbnailSizeKey); if (saved === 'small' || saved === 'medium' || saved === 'large') return saved; } catch { /* Storage is optional. */ }
     return 'medium';
   });
+  const [viewMode, setViewMode] = useState<InventoryViewMode>(() => {
+    try { const saved = localStorage.getItem(viewModeKey); if (saved === 'card' || saved === 'list') return saved; } catch { /* Storage is optional. */ }
+    return 'card';
+  });
   const [areaNotice, setAreaNotice] = useState<{ message: string; undo?: { area: string | null } } | null>(null);
   useEffect(() => {
     if (!areaNotice) return;
@@ -121,6 +126,10 @@ export function KioskItemInventoryPage() {
   const changeSize = (size: InventoryThumbnailSize) => {
     setThumbnailSize(size);
     try { localStorage.setItem(thumbnailSizeKey, size); } catch { /* Keep the in-memory choice. */ }
+  };
+  const changeView = (view: InventoryViewMode) => {
+    setViewMode(view);
+    try { localStorage.setItem(viewModeKey, view); } catch { /* Keep the in-memory choice. */ }
   };
   const saveArea = (area: string | null, undo = false) => {
     try {
@@ -637,9 +646,14 @@ export function KioskItemInventoryPage() {
             </div>
             <button type="button" aria-label={homeLabel} title={homeLabel} aria-pressed={isDefaultArea} className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border hover:bg-inv-s2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inv-cyan ${isDefaultArea ? 'border-inv-cyan text-inv-cyan' : 'border-inv-line2 text-inv-text'}`} onClick={() => isDefaultArea ? setAreaNotice({ message: 'このエリアが最初の表示です' }) : saveArea(effectiveArea)}><KioskHomeIcon filled={isDefaultArea} /></button>
             <button type="button" className={invButton} aria-expanded={numberOpen} onClick={() => { numberLookupRef.current += 1; setNumberOpen((open) => !open); setNumberInput(''); setNumberError(null); }}>番号で開く</button>
-            <span className={`${invEyebrow} shrink-0`}>写真の大きさ</span>
-            <div role="group" aria-label="写真の大きさ" className="inline-flex shrink-0 overflow-hidden rounded-xl border border-inv-line2">
-              {([['small', '小'], ['medium', '中'], ['large', '大']] as const).map(([size, label]) => <button key={size} type="button" aria-pressed={thumbnailSize === size} className={`h-12 min-w-14 px-4 font-bold ${thumbnailSize === size ? 'bg-inv-cyan text-inv-cyan-ink' : 'text-inv-muted'}`} onClick={() => changeSize(size)}>{label}</button>)}
+            {viewMode === 'card' ? <>
+              <span className={`${invEyebrow} shrink-0`}>写真の大きさ</span>
+              <div role="group" aria-label="写真の大きさ" className="inline-flex shrink-0 overflow-hidden rounded-xl border border-inv-line2">
+                {([['small', '小'], ['medium', '中'], ['large', '大']] as const).map(([size, label]) => <button key={size} type="button" aria-pressed={thumbnailSize === size} className={`h-12 min-w-14 px-4 font-bold ${thumbnailSize === size ? 'bg-inv-cyan text-inv-cyan-ink' : 'text-inv-muted'}`} onClick={() => changeSize(size)}>{label}</button>)}
+              </div>
+            </> : null}
+            <div role="group" aria-label="表示" className="inline-flex shrink-0 overflow-hidden rounded-xl border border-inv-line2">
+              {([['card', 'カード表示', GridIcon], ['list', 'リスト表示', ListIcon]] as const).map(([view, label, ViewIcon]) => <button key={view} type="button" aria-label={label} title={label} aria-pressed={viewMode === view} className={`flex h-12 min-w-14 items-center justify-center px-4 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-inv-cyan ${viewMode === view ? 'bg-inv-cyan text-inv-cyan-ink' : 'text-inv-muted hover:bg-inv-s2'}`} onClick={() => changeView(view)}><ViewIcon size={24} /></button>)}
             </div>
           </div>
           {effectiveArea !== null ? <div className="flex max-h-28 shrink-0 flex-wrap items-center gap-2 overflow-y-auto" role="group" aria-label="棚で絞る">
@@ -651,6 +665,7 @@ export function KioskItemInventoryPage() {
             {pendingImports.length > 0 ? <><span className={`${invEyebrow} ml-3 text-inv-amber`}>未登録</span><span className="font-black tabular-nums text-inv-amber">{pendingImports.length}</span><span className="text-[13px] text-inv-faint">件</span></> : null}
           </p>
           {itemsQuery.isLoading ? <p className="text-inv-muted">読み込み中…</p> : itemsQuery.isError ? <div className="flex items-center gap-3"><p role="alert" className="text-inv-red">一覧を取得できませんでした</p><button type="button" className={invButtonGhost} onClick={() => void itemsQuery.refetch()}>もう一度</button></div> : <InventoryItemGrid
+            view={viewMode}
             size={thumbnailSize}
             compartments={filteredCompartments}
             onPick={pickCompartment}

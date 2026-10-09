@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { issuedLabel } from './inventoryDailyFlow';
@@ -24,6 +24,58 @@ describe('issuedLabel', () => {
 });
 
 describe('InventoryItemGrid', () => {
+  it('shows one list row per location in recent-issue order and picks that compartment', () => {
+    const a = drawer('a', '治具', null, 1);
+    Object.assign(a.item, { model: ' M1 ', maker: ' OSG ' });
+    const b = { ...a, id: 'b', labelNumber: 42, drawerNumber: 4, stockQuantity: 0, lastIssuedAt: '2026-09-29T01:00:00Z' };
+    const onPick = vi.fn();
+    render(<InventoryItemGrid view="list" compartments={[a, b]} onPick={onPick} />);
+    const rows = screen.getAllByRole('button');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent('0042');
+    expect(rows[1]).toHaveTextContent('0001');
+    expect(rows[0]).toHaveTextContent('治具');
+    expect(rows[0]).toHaveTextContent('M1 ・ OSG');
+    expect(rows[0]).toHaveTextContent('50013_540AP 北・棚2・引き出し4');
+    expect(rows[0]).toHaveTextContent('0 ケース');
+    expect(within(rows[0]).getByText('0 ケース')).toHaveClass('text-inv-amber', 'tabular-nums');
+    expect(rows[1]).toHaveTextContent('3 ケース');
+    expect(within(rows[1]).getByText('—')).toBeInTheDocument();
+    fireEvent.click(rows[0]);
+    expect(onPick).toHaveBeenCalledWith(b);
+  });
+
+  it('keeps unregistered candidates first in list view and picks the tapped candidate', () => {
+    const pending = [
+      { id: 'p5', sourceItemId: 5, area: '工具室', category: '段取工具', createdAt: '2026-09-30T05:45:05Z', photoUrl: '/pending.jpg', photoCount: 1 },
+      { id: 'p4', sourceItemId: 4, area: '1号機', category: null, createdAt: '2026-09-17T05:40:04Z', photoUrl: null, photoCount: 0 },
+    ] satisfies InventoryImportSummary[];
+    const onPickPending = vi.fn();
+    render(<InventoryItemGrid view="list" compartments={[drawer('a', '治具', null)]} onPick={vi.fn()} pending={pending} onPickPending={onPickPending} />);
+    const rows = screen.getAllByRole('button');
+    expect(rows.map((row) => row.getAttribute('aria-label'))).toEqual(['未登録 候補 #5 を登録する', '未登録 候補 #4 を登録する', null]);
+    expect(rows[0].querySelector('img')).toHaveAttribute('src', '/pending.jpg');
+    fireEvent.click(rows[1]);
+    expect(onPickPending).toHaveBeenCalledWith(pending[1]);
+  });
+
+  it('uses the first photo without paging in list view and preserves card paging on return', () => {
+    const a = drawer('a', '治具', null);
+    Object.assign(a.item, { model: ' ', maker: 'OSG', unit: null });
+    a.item.photos = [{ id: 'p1', photoIndex: 1, photoUrl: '/1.jpg', originalFilename: '1' }, { id: 'p2', photoIndex: 2, photoUrl: '/2.jpg', originalFilename: '2' }];
+    const onPick = vi.fn();
+    const view = render(<InventoryItemGrid compartments={[a]} onPick={onPick} />);
+    fireEvent.click(screen.getByRole('button', { name: '次の写真' }));
+    view.rerender(<InventoryItemGrid view="list" compartments={[a]} onPick={onPick} />);
+    expect(screen.queryByRole('button', { name: '次の写真' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(view.container.querySelector('img')).toHaveAttribute('src', '/1.jpg');
+    expect(screen.getByText('OSG')).toBeInTheDocument();
+    expect(screen.getByText('3 個')).toBeInTheDocument();
+    view.rerender(<InventoryItemGrid compartments={[a]} onPick={onPick} />);
+    expect(view.container.querySelector('img')).toHaveAttribute('src', '/2.jpg');
+  });
+
   it('shows each card its own label number, even on small cards', () => {
     const a = drawer('a', '治具', null, 1);
     render(<InventoryItemGrid size="small" compartments={[a, { ...a, id: 'b', labelNumber: 42 }]} onPick={vi.fn()} />);
