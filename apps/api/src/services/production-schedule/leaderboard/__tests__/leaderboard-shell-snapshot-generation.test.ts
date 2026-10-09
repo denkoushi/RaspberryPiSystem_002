@@ -36,10 +36,13 @@ describe('resolveLeaderboardShellSnapshotGenerationToken', () => {
         orderSplitAssignmentUpdatedAt: null,
         globalRowRankUpdatedAt: null,
         rowNoteUpdatedAt: null,
+        progressCount: 0n,
         progressUpdatedAt: null,
+        externalCompletionCount: 0n,
         externalCompletionUpdatedAt: null,
         fkstUpdatedAt: null,
         fkmailUpdatedAt: null,
+        orderSupplementCount: 0n,
         orderSupplementUpdatedAt: null,
         seibanDueDateUpdatedAt: null,
         seibanProcessingDueDateUpdatedAt: null,
@@ -60,8 +63,9 @@ describe('resolveLeaderboardShellSnapshotGenerationToken', () => {
       'rowsRevision', 'fkojunstStatusMailRowsRevision', 'orderAssignmentUpdatedAt',
       'orderSplitCount', 'orderSplitUpdatedAt', 'orderSplitAssignmentCount',
       'orderSplitAssignmentUpdatedAt', 'globalRowRankUpdatedAt', 'rowNoteUpdatedAt',
-      'progressUpdatedAt', 'externalCompletionUpdatedAt', 'fkstUpdatedAt', 'fkmailUpdatedAt',
-      'orderSupplementUpdatedAt', 'seibanDueDateUpdatedAt', 'seibanProcessingDueDateUpdatedAt',
+      'progressCount', 'progressUpdatedAt', 'externalCompletionCount', 'externalCompletionUpdatedAt',
+      'fkstUpdatedAt', 'fkmailUpdatedAt', 'orderSupplementCount', 'orderSupplementUpdatedAt',
+      'seibanDueDateUpdatedAt', 'seibanProcessingDueDateUpdatedAt',
       'resourceCategoryUpdatedAt', 'resourceCodeMappingUpdatedAt'
     ]);
     expect(token).not.toHaveProperty('fkojunstStatusMailRowsCount');
@@ -82,10 +86,13 @@ describe('resolveLeaderboardShellSnapshotGenerationToken', () => {
           orderSplitAssignmentUpdatedAt: new Date('2026-06-19T00:01:00.000Z'),
           globalRowRankUpdatedAt: null,
           rowNoteUpdatedAt: null,
+          progressCount: 0n,
           progressUpdatedAt: null,
+          externalCompletionCount: 0n,
           externalCompletionUpdatedAt: null,
           fkstUpdatedAt: null,
           fkmailUpdatedAt: null,
+          orderSupplementCount: 0n,
           orderSupplementUpdatedAt: null,
           seibanDueDateUpdatedAt: null,
           seibanProcessingDueDateUpdatedAt: null,
@@ -106,6 +113,39 @@ describe('resolveLeaderboardShellSnapshotGenerationToken', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['progressCount', 'progressUpdatedAt', 'ProductionScheduleProgress'],
+    ['externalCompletionCount', 'externalCompletionUpdatedAt', 'ProductionScheduleExternalCompletion'],
+    ['orderSupplementCount', 'orderSupplementUpdatedAt', 'ProductionScheduleOrderSupplement']
+  ])('invalidates when only %s changes after a deletion', async (countKey, updatedAtKey, table) => {
+    const row = {
+      rowsRevision: 1n,
+      progressCount: 0n,
+      externalCompletionCount: 0n,
+      orderSupplementCount: 0n,
+      [countKey]: 2n,
+      [updatedAtKey]: new Date('2026-10-09T00:00:00.000Z')
+    };
+    vi.mocked(prisma.$queryRaw).mockReset();
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([row] as never)
+      .mockResolvedValueOnce([{ ...row, [countKey]: 1n }] as never);
+
+    const options = { fkojunstStatusMailRowsRevision: '37' };
+    const before = await readLeaderboardShellSnapshotGenerationTokenDetails(options);
+    const after = await readLeaderboardShellSnapshotGenerationTokenDetails(options);
+    const beforeToken = JSON.parse(before.generationToken) as Record<string, string>;
+    const afterToken = JSON.parse(after.generationToken) as Record<string, string>;
+
+    expect(beforeToken[countKey]).toBe('2');
+    expect(afterToken).toEqual({ ...beforeToken, [countKey]: '1' });
+    expect(afterToken[updatedAtKey]).toBe('2026-10-09T00:00:00.000Z');
+    expect(after.generationToken).not.toBe(before.generationToken);
+    const sql = vi.mocked(prisma.$queryRaw).mock.calls[0][0] as { sql: string; values: unknown[] };
+    expect(sql.sql).toContain(`(SELECT COUNT(*)::bigint\n       FROM "${table}"\n       WHERE "csvDashboardId" = ?) AS "${countKey}"`);
+    expect(sql.values.every((value) => value === '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01')).toBe(true);
+  });
+
   it('invalidates when a CSV row changes in place without changing count, createdAt or updatedAt', async () => {
     const row = {
       rowsRevision: 1n,
@@ -116,10 +156,13 @@ describe('resolveLeaderboardShellSnapshotGenerationToken', () => {
       orderSplitAssignmentUpdatedAt: null,
       globalRowRankUpdatedAt: null,
       rowNoteUpdatedAt: null,
+      progressCount: 0n,
       progressUpdatedAt: null,
+      externalCompletionCount: 0n,
       externalCompletionUpdatedAt: null,
       fkstUpdatedAt: null,
       fkmailUpdatedAt: null,
+      orderSupplementCount: 0n,
       orderSupplementUpdatedAt: null,
       seibanDueDateUpdatedAt: null,
       seibanProcessingDueDateUpdatedAt: null,
@@ -171,10 +214,13 @@ describe('resolveLeaderboardShellSnapshotGenerationToken', () => {
         orderSplitAssignmentUpdatedAt: null,
         globalRowRankUpdatedAt: null,
         rowNoteUpdatedAt: null,
+        progressCount: 0n,
         progressUpdatedAt: null,
+        externalCompletionCount: 0n,
         externalCompletionUpdatedAt: null,
         fkstUpdatedAt: null,
         fkmailUpdatedAt: null,
+        orderSupplementCount: 0n,
         orderSupplementUpdatedAt: null,
         seibanDueDateUpdatedAt: null,
         seibanProcessingDueDateUpdatedAt: null,

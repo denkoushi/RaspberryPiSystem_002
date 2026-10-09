@@ -92,9 +92,11 @@ type LoadSummaryAggregateRow = {
 const SOURCE_ROW_CHUNK_SIZE = 900;
 const SPLIT_PREFIX = 'split:';
 const MAX_LOAD_SUMMARY_CACHE_ENTRIES = 128;
-// The generation token does not see every input (e.g. pruned supplement rows),
-// so a completed aggregate is also dropped after a fixed age.
-const LOAD_SUMMARY_CACHE_TTL_MS = 10 * 60 * 1000;
+// The generation token sees insert/update/delete on every table the aggregate
+// reads, provided runtime writers advance updatedAt (Prisma does; raw SQL must).
+// Migrations may skip it, but they ship with a restart that drops this cache.
+// The fixed age is only a backstop against a writer that breaks that rule.
+const LOAD_SUMMARY_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 type AggregateCacheEntry = {
   siteKey: string;
   dashboardId: string;

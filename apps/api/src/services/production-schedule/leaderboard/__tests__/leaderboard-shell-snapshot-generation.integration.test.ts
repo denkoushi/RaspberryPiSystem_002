@@ -86,6 +86,47 @@ afterAll(async () => {
 });
 
 describeIntegration('leaderboard shell snapshot generation against dedicated PostgreSQL', () => {
+  it('invalidates a supplement-only deletion while the latest updatedAt stays unchanged', async () => {
+    await ensureDashboard(PRODUCTION_SCHEDULE_DASHBOARD_ID);
+    const rowIds = [randomUUID(), randomUUID()];
+    const supplementIds = [randomUUID(), randomUUID()];
+    fixtures.push({ rowIds, ingestRunIds: [] });
+    await db().csvDashboardRow.createMany({
+      data: rowIds.map((id) => ({
+        id,
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        occurredAt: new Date('2026-10-09T00:00:00.000Z'),
+        rowData: { synthetic: true }
+      }))
+    });
+    await db().productionScheduleOrderSupplement.createMany({
+      data: rowIds.map((csvDashboardRowId, index) => ({
+        id: supplementIds[index],
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        csvDashboardRowId,
+        sourceCsvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        productNo: supplementIds[index].slice(0, 20),
+        resourceCd: '305',
+        processOrder: '1',
+        plannedQuantity: 10,
+        updatedAt: new Date(`2026-10-09T00:0${index}:00.000Z`)
+      }))
+    });
+    const before = await readGeneration()();
+
+    await db().productionScheduleOrderSupplement.delete({ where: { id: supplementIds[0] } });
+    const after = await readGeneration()();
+    const beforeToken = JSON.parse(before.generationToken) as Record<string, string>;
+    const afterToken = JSON.parse(after.generationToken) as Record<string, string>;
+
+    expect(afterToken).toEqual({
+      ...beforeToken,
+      orderSupplementCount: String(BigInt(beforeToken.orderSupplementCount) - 1n)
+    });
+    expect(afterToken.orderSupplementUpdatedAt).toBe(beforeToken.orderSupplementUpdatedAt);
+    expect(after.generationToken).not.toBe(before.generationToken);
+  });
+
   it('invalidates main row writes, ignores other dashboards and ingest runs, and recreates a missing revision', async () => {
     await ensureDashboard(PRODUCTION_SCHEDULE_DASHBOARD_ID);
     const otherDashboardId = randomUUID();

@@ -260,10 +260,13 @@ describe('materialized load aggregate cache', () => {
     const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
     try {
       await readGrindingPlanningBoardLoadSummary(params);
-      now.mockReturnValue(1_000_000 + 10 * 60 * 1000);
+      now.mockReturnValue(1_000_000 + 12 * 60 * 60 * 1000 - 1);
       await readGrindingPlanningBoardLoadSummary(params);
       expect(aggregateCalls()).toBe(1);
-      now.mockReturnValue(1_000_000 + 10 * 60 * 1000 + 1);
+      now.mockReturnValue(1_000_000 + 12 * 60 * 60 * 1000);
+      await readGrindingPlanningBoardLoadSummary(params);
+      expect(aggregateCalls()).toBe(1);
+      now.mockReturnValue(1_000_000 + 12 * 60 * 60 * 1000 + 1);
       await readGrindingPlanningBoardLoadSummary(params);
       expect(aggregateCalls()).toBe(2);
     } finally {
