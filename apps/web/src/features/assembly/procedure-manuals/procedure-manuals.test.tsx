@@ -152,6 +152,53 @@ describe('procedure-manuals', () => {
     expect(JSON.parse(screen.getByTestId('editor-state').textContent!)).toMatchObject({ returnTo: '/kiosk/assembly/manuals/workshop?part=PART-1&process=cutting' });
   });
 
+  it.each(['', ' ｐａｒｔ－① '])('initializes the first PART subdivision without a process (key=%s)', async modelCode => {
+    mocks.blank.mockResolvedValue({ id: 'new-document' });
+    const allProcesses = [...processes,
+      { id: 'machining', parentId: null, name: '加工', subjectKind: 'MODEL' },
+      { id: 'cutting', parentId: 'machining', name: '切削', subjectKind: 'PART' },
+      { id: 'grinding', parentId: 'machining', name: '研削', subjectKind: 'PART' }
+    ] as ProcedureManualProcessDto[];
+    render(<MemoryRouter><ProcedureManualBlankDialog subjectKind="PART" models={[]} processes={allProcesses} modelCode={modelCode} processId="" onClose={vi.fn()} /></MemoryRouter>);
+    expect(screen.getByRole('button', { name: '加工' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '切削' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '研削' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('region', { name: '部品の選択' })).toBeInTheDocument();
+    expect(mocks.machineCandidates).not.toHaveBeenCalled();
+    const create = screen.getByRole('button', { name: '作成してエディタへ' });
+    if (modelCode) {
+      expect(create).toBeEnabled();
+      fireEvent.click(create);
+      await waitFor(() => expect(mocks.blank).toHaveBeenCalledWith('PART-1_加工_切削', { modelCode: 'PART-1', processId: 'cutting' }));
+    } else {
+      expect(create).toBeDisabled();
+      expect(create.parentElement).toHaveTextContent('あと: 部品を選ぶ');
+    }
+  });
+
+  it('shows missing selection/name beside creation and orders process, subject, supplement', async () => {
+    mocks.machineCandidates.mockResolvedValue({ candidates: ['DFD1'], hasMore: false });
+    render(<MemoryRouter><ProcedureManualBlankDialog models={[]} processes={processes} modelCode="" processId="" onClose={vi.fn()} /></MemoryRouter>);
+    const create = screen.getByRole('button', { name: '作成してエディタへ' });
+    expect(create).toBeDisabled();
+    expect(create.parentElement).toHaveTextContent('あと: 機種を選ぶ');
+    const process = screen.getByRole('region', { name: '工程と細分の選択' });
+    expect(Array.from(process.parentElement!.children).map(element => element.getAttribute('aria-label'))).toEqual(['工程と細分の選択', '機種の選択', '補足の入力']);
+    fireEvent.click(await screen.findByRole('button', { name: 'DFD1' }));
+    expect(create).toBeEnabled();
+    expect(screen.queryByText('あと: 機種を選ぶ')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '名前を直接入力' }));
+    fireEvent.change(screen.getByLabelText('要領書名'), { target: { value: '  ' } });
+    expect(create).toBeDisabled();
+    expect(create.parentElement).toHaveTextContent('あと: 名前を入れる');
+    fireEvent.change(screen.getByLabelText('要領書名'), { target: { value: '手順' } });
+    expect(create).toBeEnabled();
+    expect(screen.queryByText('あと: 名前を入れる')).not.toBeInTheDocument();
+    for (const button of within(screen.getByRole('dialog')).getAllByRole('button')) {
+      expect(button).toHaveClass('min-h-12', 'rounded-lg', 'focus-visible:outline', 'focus-visible:outline-2', 'focus-visible:outline-[#7cc4ff]');
+    }
+  });
+
   it('keeps part candidates separate when the blank dialog switches from assembly to machining', async () => {
     const allProcesses = [...processes, { id: 'machining', parentId: null, name: '加工', subjectKind: 'MODEL' }, { id: 'cutting', parentId: 'machining', name: '切削', subjectKind: 'PART' }] as ProcedureManualProcessDto[];
     render(<MemoryRouter><ProcedureManualBlankDialog models={[{ modelCode: 'DFD1', modelCodeKey: 'DFD1' }]} partCandidates={[{ modelCode: 'PART-1', modelCodeKey: 'PART-1' }]} processes={allProcesses} modelCode="DFD1" processId="assembly" onClose={vi.fn()} /></MemoryRouter>);
@@ -303,22 +350,26 @@ describe('procedure-manuals', () => {
     expect(screen.queryByRole('button', { name: '7000' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: '6' })).toHaveLength(1);
     expect(screen.getByRole('region', { name: '機種の選択' }).querySelector('mark')).toHaveTextContent('6');
+    expect(candidate).toHaveAttribute('aria-pressed', 'false');
+    expect(candidate).toHaveClass('border-[#344252]');
     fireEvent.click(candidate);
+    expect(candidate).toHaveAttribute('aria-pressed', 'true');
+    expect(candidate).toHaveClass('border-[#f6b93b]', 'bg-[#f6b93b]', 'text-[#0b1a12]');
     expect(screen.getByLabelText('名前のプレビュー')).toHaveTextContent('6362_組立_組立');
     expect(screen.getByRole('button', { name: '作成してエディタへ' })).toBeEnabled();
     const chosen = screen.getAllByRole('button', { name: '組立' });
-    chosen.forEach(button => expect(button).toHaveClass('border-[#3ba776]', 'bg-[#3ba776]', 'text-[#0b1a12]'));
+    chosen.forEach(button => expect(button).toHaveClass('border-[#f6b93b]', 'bg-[#f6b93b]', 'text-[#0b1a12]'));
     const inspection = screen.getByRole('button', { name: '検査' });
-    expect(inspection).toHaveClass('border-[#6b7c8d]', 'bg-[#27313b]', 'text-[#eef3f6]');
+    expect(inspection).toHaveClass('border-[#344252]');
     expect(inspection.className).not.toContain('aria-pressed:');
     fireEvent.click(inspection);
-    expect(inspection).toHaveClass('bg-[#3ba776]');
-    expect(chosen[1]).toHaveClass('bg-[#27313b]');
+    expect(inspection).toHaveClass('bg-[#f6b93b]');
+    expect(chosen[1]).toHaveClass('border-[#344252]');
     const common = screen.getByRole('button', { name: '圧入' });
-    expect(common).toHaveClass('border-dashed', 'bg-[#27313b]');
+    expect(common).toHaveClass('border-[#344252]');
     fireEvent.click(common);
     expect(common).toHaveAttribute('aria-pressed', 'true');
-    expect(common).toHaveClass('border-dashed', 'bg-[#3ba776]', 'text-[#0b1a12]');
+    expect(common).toHaveClass('border-[#f6b93b]', 'bg-[#f6b93b]', 'text-[#0b1a12]');
   });
 
   it('sends text and digits separately and displays only normalized API candidates', async () => {
@@ -406,15 +457,15 @@ describe('procedure-manuals', () => {
     const strip = preview.closest('.bg-\\[\\#1b222a\\]');
     expect(strip).toBeInTheDocument();
     expect(within(strip as HTMLElement).getByText(/保存名:/)).toHaveClass('text-[#9fadb9]');
-    expect(screen.getByRole('button', { name: '名前を直接入力' })).toHaveClass('text-[#eef3f6]', 'border-[#6b7c8d]');
-    expect(screen.getByRole('button', { name: '閉じる' })).toHaveClass('text-[#eef3f6]', 'border-[#6b7c8d]');
+    expect(screen.getByRole('button', { name: '名前を直接入力' })).toHaveClass('text-[#eef3f6]', 'border-[#344252]');
+    expect(screen.getByRole('button', { name: '閉じる' })).toHaveClass('text-[#eef3f6]', 'border-[#344252]');
     expect(screen.getByRole('button', { name: '作成してエディタへ' })).toHaveClass('text-[#0b1a12]', 'bg-[#3ba776]');
     expect(screen.getByRole('button', { name: '作成してエディタへ' })).toBeEnabled();
     await screen.findByText('該当する機種がありません');
     expect(preview).toHaveTextContent('DFD1_組立_検査');
     fireEvent.click(screen.getByRole('button', { name: '名前を直接入力' }));
     expect(screen.getByLabelText('要領書名')).toHaveValue('DFD1_組立_検査');
-    expect(screen.getByRole('button', { name: '名前の組み立てに戻る' })).toHaveClass('text-[#eef3f6]', 'border-[#6b7c8d]');
+    expect(screen.getByRole('button', { name: '名前の組み立てに戻る' })).toHaveClass('text-[#eef3f6]', 'border-[#344252]');
   });
 
   it('keeps only viewing navigation in the left header and a headerless manuals viewer', async () => {

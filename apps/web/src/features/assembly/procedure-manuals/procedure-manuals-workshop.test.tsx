@@ -20,7 +20,7 @@ vi.mock('../../../api/client', () => ({
 }));
 vi.mock('../../../hooks/useProtectedImageBlobUrl', () => ({ useProtectedImageBlobUrl: mocks.image }));
 vi.mock('../AssemblyProcedureSequenceViewer', () => ({ AssemblyProcedureSequenceViewer: ({ sequence }: { sequence: AssemblyProcedureSequenceDto }) => <div data-testid="pdf-sequence-viewer">{sequence.documents.map(document => <span key={document.orderItemId}>{document.title}</span>)}{(sequence.steps ?? []).map(step => <span key={step.id}>{step.title}</span>)}</div> }));
-vi.mock('./ProcedureManualBlankDialog', () => ({ ProcedureManualBlankDialog: ({ modelCode, processId }: { modelCode: string; processId: string }) => <div role="dialog" aria-label="白紙から作る">{modelCode} / {processId}</div> }));
+vi.mock('./ProcedureManualBlankDialog', () => ({ ProcedureManualBlankDialog: ({ modelCode, processId, subjectKind }: { modelCode: string; processId: string; subjectKind: string }) => <div role="dialog" aria-label="白紙から作る" data-subject-kind={subjectKind}>{modelCode} / {processId}</div> }));
 vi.mock('./ProcedureManualAssignmentDialog', async importOriginal => ({
   ...await importOriginal<typeof import('./ProcedureManualAssignmentDialog')>(),
   ProcedureManualAssignmentDialog: ({ modelCode, processId, onSaved }: { modelCode: string; processId: string; onSaved: (model: string, process: string) => void }) => <div role="dialog" aria-label="割り当て">{modelCode} / {processId}<button onClick={() => onSaved('DFD1', 'assembly')}>保存</button></div>
@@ -77,6 +77,74 @@ describe('procedure-manuals workshop', () => {
     expect(JSON.parse(screen.getByTestId('location').textContent!).search).toBe('?part=NEW-1&process=cutting');
     fireEvent.click(screen.getByRole('button', { name: '作る' }));
     expect(screen.getByRole('dialog', { name: '白紙から作る' })).toHaveTextContent('NEW-1 / cutting');
+  });
+
+  it('opens creation without either filter and passes the default model kind', async () => {
+    show('');
+    await screen.findByRole('button', { name: '組立' });
+    const create = screen.getByRole('button', { name: '作る' });
+    expect(create).toBeEnabled();
+    expect(create).toHaveClass('border-[#3ba776]', 'bg-[#3ba776]', 'text-[#0b1a12]');
+    fireEvent.click(create);
+    expect(screen.getByRole('dialog', { name: '白紙から作る' })).toHaveAttribute('data-subject-kind', 'MODEL');
+    expect(screen.getByRole('dialog', { name: '白紙から作る' })).toHaveTextContent('/');
+  });
+
+  it.each(['切削', '全て', '工程の絞り込みを外す'])('resets to models and clears part input when removing the process via %s', async action => {
+    mocks.processes.mockResolvedValue([...processes, { id: 'cutting', parentId: 'machining', name: '切削', subjectKind: 'PART' }]);
+    show('?part=PART-12&process=cutting');
+    await screen.findByRole('button', { name: '切削' });
+    fireEvent.change(screen.getByLabelText('部品検索'), { target: { value: 'PART' } });
+    fireEvent.click(screen.getByRole('button', { name: '2' }));
+    const button = action === '全て'
+      ? within(screen.getByRole('group', { name: '工程で絞り込み' })).getByRole('button', { name: action })
+      : screen.getByRole('button', { name: action });
+    fireEvent.click(button);
+    expect(screen.getByRole('button', { name: '機種' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('機種検索')).toHaveValue('');
+    expect(screen.getByLabelText('数字検索').textContent).toBe('');
+    expect(JSON.parse(screen.getByTestId('location').textContent!).search).toBe('');
+  });
+
+  it.each([['assembly', '部品'], ['cutting', '機種']])('shows switches with process %s and clears it on the opposite kind', async (process, opposite) => {
+    mocks.processes.mockResolvedValue([...processes, { id: 'cutting', parentId: 'machining', name: '切削', subjectKind: 'PART' }]);
+    show(process === 'cutting' ? '?part=PART-12&process=cutting' : '?model=DFD1&process=assembly');
+    await screen.findByRole('button', { name: '切削' });
+    expect(screen.getByRole('group', { name: '機種か部品か' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(process === 'cutting' ? '部品検索' : '機種検索'), { target: { value: '12' } });
+    fireEvent.click(screen.getByRole('button', { name: '1' }));
+    fireEvent.click(screen.getByRole('button', { name: opposite }));
+    expect(screen.getByRole('button', { name: opposite })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText(`${opposite}検索`)).toHaveValue('');
+    expect(screen.getByLabelText('数字検索').textContent).toBe('');
+    expect(JSON.parse(screen.getByTestId('location').textContent!).search).toBe('');
+  });
+
+  it('keeps manual part kind when selecting and clearing a candidate without a process', async () => {
+    show('');
+    await screen.findByRole('button', { name: '組立' });
+    fireEvent.click(screen.getByRole('button', { name: '部品' }));
+    fireEvent.change(screen.getByLabelText('部品検索'), { target: { value: 'PART-12' } });
+    const candidate = screen.getByRole('button', { name: 'PART-12' });
+    fireEvent.click(candidate);
+    expect(candidate).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(candidate);
+    expect(candidate).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: '部品' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(candidate);
+    fireEvent.click(screen.getByRole('button', { name: '部品の絞り込みを外す' }));
+    expect(screen.getByRole('button', { name: '部品' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '作る' }));
+    expect(screen.getByRole('dialog', { name: '白紙から作る' })).toHaveAttribute('data-subject-kind', 'PART');
+  });
+
+  it('preserves initial part kind from the URL without a process', async () => {
+    show('?part=PART-12');
+    await screen.findByRole('button', { name: '組立' });
+    expect(screen.getByRole('button', { name: '部品' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '作る' }));
+    expect(screen.getByRole('dialog', { name: '白紙から作る' })).toHaveTextContent('PART-12 /');
+    expect(screen.getByRole('dialog', { name: '白紙から作る' })).toHaveAttribute('data-subject-kind', 'PART');
   });
 
   it.each([
@@ -280,12 +348,12 @@ describe('procedure-manuals workshop', () => {
     }
     expect(within(screen.getByRole('row', { name: '無効手順' })).getAllByRole('cell')[5]).toHaveTextContent('—');
     for (const control of [within(pub).getByRole('button', { name: '直す' }), within(pub).getByRole('link', { name: '使う' }), within(pub).getByRole('button', { name: '外す' }), within(draft).getByRole('button', { name: '削除' })]) {
-      expect(control).toHaveClass('h-11', 'w-11');
+      expect(control).toHaveClass('min-h-12', 'w-11');
       expect(control).toHaveAttribute('aria-label');
       expect(control.textContent).toBe('');
       expect(control.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
     }
-    expect(within(pub).getByRole('button', { name: '直す' })).toHaveClass('!border-[#f6b93b]');
+    expect(within(pub).getByRole('button', { name: '直す' })).toHaveClass('!border-[#3ba776]');
     expect(screen.getByRole('button', { name: '＋ 既存の要領書を割り当てる' })).toHaveClass('min-h-12', 'border-dashed');
     expect(screen.getByText('無効')).toHaveClass('text-[#e5484d]');
   });
@@ -308,8 +376,10 @@ describe('procedure-manuals workshop', () => {
       expect(table.getAllByRole('row').filter(row => row.hasAttribute('aria-label')).map(row => row.getAttribute('aria-label'))).toEqual(names);
       expect(screen.getByText(`${names.length} 件`)).toBeInTheDocument();
       for (const button of group.getAllByRole('button')) {
-        expect(button).toHaveClass('h-11');
+        expect(button).toHaveClass('min-h-12', 'rounded-lg');
         expect(button).toHaveAttribute('aria-pressed', String(button.textContent === filter));
+        if (button.textContent === filter) expect(button).toHaveClass('border-[#f6b93b]', 'bg-[#f6b93b]', 'text-[#0b1a12]');
+        else { expect(button).toHaveClass('border-[#344252]'); expect(button).not.toHaveClass('bg-[#f6b93b]'); }
       }
     }
     fireEvent.click(group.getByRole('button', { name: '全て' }));
@@ -382,12 +452,12 @@ describe('procedure-manuals workshop', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('shows assignments in every filter state and enables creation only with both filters', async () => {
+  it('shows assignments in every filter state and keeps creation enabled', async () => {
     show('');
     await screen.findByRole('row', { name: '公開手順' });
     expect(screen.queryByText('機種を選択')).not.toBeInTheDocument();
     expect(screen.queryByText('工程を選択')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '作る' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '作る' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: '＋ 既存の要領書を割り当てる' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(expect.arrayContaining(['機種・部品', '工程']));
     fireEvent.click(screen.getByRole('button', { name: '組立' }));
@@ -490,7 +560,7 @@ describe('procedure-manuals workshop', () => {
     show(); const pub = await screen.findByRole('row', { name: '公開手順' });
     fireEvent.click(within(pub).getByRole('button', { name: '外す' }));
     expect(mocks.replace).not.toHaveBeenCalled();
-    for (const button of within(screen.getByRole('dialog')).getAllByRole('button')) expect(button).toHaveClass('min-h-11');
+    for (const button of within(screen.getByRole('dialog')).getAllByRole('button')) expect(button).toHaveClass('min-h-12');
     fireEvent.click(within(screen.getByRole('dialog', { name: 'この工程から外す' })).getByRole('button', { name: 'キャンセル' }));
     expect(mocks.replace).not.toHaveBeenCalled();
     fireEvent.click(within(pub).getByRole('button', { name: '外す' }));
@@ -521,7 +591,7 @@ describe('procedure-manuals workshop', () => {
     fireEvent.click(within(draft).getByRole('button', { name: '削除' }));
     const dialog = screen.getByRole('dialog', { name: '下書きを削除' });
     expect(dialog).toHaveTextContent('初版下書き。元に戻せません');
-    for (const button of within(dialog).getAllByRole('button')) expect(button).toHaveClass('min-h-11');
+    for (const button of within(dialog).getAllByRole('button')) expect(button).toHaveClass('min-h-12');
     expect(mocks.replace).not.toHaveBeenCalled(); expect(mocks.delete).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole('button', { name: '削除' }));
     await waitFor(() => expect(mocks.delete).toHaveBeenCalledExactlyOnceWith('draft1'));
