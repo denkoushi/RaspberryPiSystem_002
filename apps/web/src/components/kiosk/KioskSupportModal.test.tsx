@@ -5,10 +5,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { KioskSupportModal } from './KioskSupportModal';
 
 const employees = [
-  { id: 'e1', displayName: '組立 一郎', department: '組立課' },
-  { id: 'e2', displayName: '機械 二郎', department: '製造部機械課' },
-  { id: 'e3', displayName: '機械 三郎', department: '製造部機械課' },
-  { id: 'e4', displayName: '無所属 四郎', department: null }
+  { id: 'e1', displayName: '組立 一郎', department: '製造部', section: '組立課' },
+  { id: 'e2', displayName: '機械 二郎', department: '製造部', section: '機械課' },
+  { id: 'e3', displayName: '機械 三郎', department: '製造部', section: '機械課' },
+  { id: 'e4', displayName: '無所属 四郎', department: null, section: null },
+  { id: 'e5', displayName: '総務 五郎', department: '総務部', section: null }
 ];
 
 vi.mock('../../api/client', () => ({
@@ -36,7 +37,7 @@ describe('KioskSupportModal sender filter', () => {
   it('starts with the machining section and lists only its members', () => {
     renderModal();
 
-    expect(screen.getByLabelText('部署')).toHaveValue('製造部機械課');
+    expect(screen.getByLabelText('部署')).toHaveValue('機械課');
     expect(senderNames()).toEqual(['選択してください', '機械 二郎', '機械 三郎']);
   });
 
@@ -48,6 +49,14 @@ describe('KioskSupportModal sender filter', () => {
 
     expect(screen.getByLabelText(/送信者/)).toHaveValue('');
     expect(senderNames()).toEqual(['選択してください', '組立 一郎']);
+  });
+
+  it('falls back to the department for employees without a section', () => {
+    renderModal();
+
+    fireEvent.change(screen.getByLabelText('部署'), { target: { value: '総務部' } });
+
+    expect(senderNames()).toEqual(['選択してください', '総務 五郎']);
   });
 
   it('groups employees without a department under 部署なし', () => {

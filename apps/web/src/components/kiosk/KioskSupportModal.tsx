@@ -15,13 +15,15 @@ const requestTypes = [
   { value: 'visit', label: '現場まで来てください。' }
 ];
 
-type SenderEmployee = { id: string; displayName: string; department: string | null };
+type SenderEmployee = { id: string; displayName: string; department: string | null; section?: string | null };
 
 const DEFAULT_DEPARTMENT_KEYWORD = '機械課';
 const NO_DEPARTMENT = '';
 const NO_DEPARTMENT_LABEL = '部署なし';
 
-const departmentOf = (employee: SenderEmployee) => employee.department?.trim() || NO_DEPARTMENT;
+// 絞り込みは課(section、例: 機械課)で行う。課が空の社員だけ部(department)で代用する
+const departmentOf = (employee: SenderEmployee) =>
+  employee.section?.trim() || employee.department?.trim() || NO_DEPARTMENT;
 
 const listDepartments = (employees: SenderEmployee[]) =>
   Array.from(new Set(employees.map(departmentOf))).sort((a, b) => {
