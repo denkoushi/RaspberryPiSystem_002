@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render as testingRender, screen, waitFor, within, cleanup } from '@testing-library/react';
 import { useEffect } from 'react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { inventoryThumbnailUrl, resolveInventoryTag, type InventoryItem, type InventoryTag } from '../../api/client';
 import { useInventoryCompartmentHistory, useInventoryImportSummaries, useInventoryItems, useInventoryMutations } from '../../api/hooks';
@@ -1276,5 +1276,117 @@ describe('inventory scan safety boundaries', () => {
       vi.unstubAllGlobals();
       vi.unstubAllEnvs();
     }
+  });
+});
+
+
+describe('inventory device presentation preferences', () => {
+  const sizeKey = 'kiosk-inventory-thumbnail-size';
+  const areaKey = 'kiosk-inventory-default-area';
+  const area = itemTag.compartment!.area;
+  beforeEach(() => {
+    localStorage.clear();
+    vi.mocked(useInventoryItems).mockReturnValue({ data: [{ ...itemTag.compartment!.item, compartments: [itemTag.compartment!] }], isLoading: false } as never);
+    vi.mocked(useInventoryImportSummaries).mockReturnValue({ data: [] } as never);
+    vi.mocked(useInventoryMutations).mockReturnValue({ transaction: { mutateAsync: vi.fn() } } as never);
+  });
+  afterEach(() => { localStorage.clear(); vi.useRealTimers(); vi.restoreAllMocks(); });
+  const mount = () => render(<MemoryRouter><KioskItemInventoryPage /></MemoryRouter>);
+  const areas = () => within(screen.getByRole('group', { name: 'エリアで絞る' }));
+
+  it('defaults to medium, persists a size switch, and restores it on another visit', () => {
+    const view = mount();
+    expect(screen.getByRole('button', { name: '中' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '大' }));
+    expect(localStorage.getItem(sizeKey)).toBe('large');
+    expect(screen.getByLabelText('登録済みアイテム')).toHaveClass('grid-cols-4');
+    view.unmount();
+    mount();
+    expect(screen.getByRole('button', { name: '大' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '小' }));
+    expect(localStorage.getItem(sizeKey)).toBe('small');
+  });
+
+  it('ignores an invalid saved size', () => {
+    localStorage.setItem(sizeKey, 'invalid');
+    mount();
+    expect(screen.getByRole('button', { name: '中' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('saves only with the home button, marks the default chip, and undoes without changing the selected area', () => {
+    mount();
+    fireEvent.click(areas().getByRole('button', { name: new RegExp(area) }));
+    expect(localStorage.getItem(areaKey)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'このエリアを最初の表示にする' }));
+    expect(localStorage.getItem(areaKey)).toBe(area);
+    expect(screen.getByRole('status', { name: '最初のエリア' })).toHaveTextContent(`この端末は最初に「${area}」を表示します`);
+    expect(areas().getByRole('button', { name: new RegExp(area) }).querySelector('svg')).toHaveAttribute('fill', 'currentColor');
+    expect(screen.getByRole('button', { name: 'このエリアが最初の表示です' })).toHaveClass('text-inv-cyan');
+    fireEvent.click(screen.getByRole('button', { name: '元に戻す' }));
+    expect(localStorage.getItem(areaKey)).toBeNull();
+    expect(areas().getByRole('button', { name: new RegExp(area) })).toHaveAttribute('aria-pressed', 'true');
+    expect(areas().getByRole('button', { name: /すべて/ }).querySelector('svg')).toHaveAttribute('fill', 'currentColor');
+  });
+
+  it('loads the saved area after data arrives, without reapplying it when chips change', () => {
+    localStorage.setItem(areaKey, area);
+    const loaded = vi.mocked(useInventoryItems).getMockImplementation()!();
+    vi.mocked(useInventoryItems).mockReturnValue({ data: undefined, isLoading: true } as never);
+    const view = mount();
+    vi.mocked(useInventoryItems).mockReturnValue(loaded);
+    view.rerender(<MemoryRouter><KioskItemInventoryPage /></MemoryRouter>);
+    expect(areas().getByRole('button', { name: new RegExp(area) })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(areas().getByRole('button', { name: /すべて/ }));
+    expect(localStorage.getItem(areaKey)).toBe(area);
+    expect(areas().getByRole('button', { name: /すべて/ })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('falls back to all for a removed area and preserves stored preferences', () => {
+    localStorage.setItem(areaKey, 'なくなったエリア');
+    localStorage.setItem(sizeKey, 'small');
+    localStorage.setItem('unrelated', 'keep');
+    mount();
+    expect(areas().getByRole('button', { name: /すべて/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('登録済みアイテム')).toHaveTextContent('治具');
+    expect(localStorage.getItem(areaKey)).toBe('なくなったエリア');
+    expect(localStorage.getItem('unrelated')).toBe('keep');
+    expect(screen.getByRole('button', { name: '小' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('saves all as the default and restores the previous area with undo', () => {
+    localStorage.setItem(areaKey, area);
+    mount();
+    fireEvent.click(areas().getByRole('button', { name: /すべて/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'このエリアを最初の表示にする' }));
+    expect(localStorage.getItem(areaKey)).toBeNull();
+    expect(screen.getByRole('status', { name: '最初のエリア' })).toHaveTextContent('この端末は最初に「すべて」を表示します');
+    fireEvent.click(screen.getByRole('button', { name: '元に戻す' }));
+    expect(localStorage.getItem(areaKey)).toBe(area);
+    expect(areas().getByRole('button', { name: /すべて/ })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('reports an already-default area and expires save undo after six seconds', () => {
+    vi.useFakeTimers();
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'このエリアが最初の表示です' }));
+    expect(screen.getByRole('status', { name: '最初のエリア' })).toHaveTextContent('このエリアが最初の表示です');
+    expect(screen.queryByRole('button', { name: '元に戻す' })).not.toBeInTheDocument();
+    fireEvent.click(areas().getByRole('button', { name: new RegExp(area) }));
+    fireEvent.click(screen.getByRole('button', { name: 'このエリアを最初の表示にする' }));
+    act(() => { vi.advanceTimersByTime(5999); });
+    expect(screen.getByRole('button', { name: '元に戻す' })).toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(screen.queryByRole('button', { name: '元に戻す' })).not.toBeInTheDocument();
+  });
+
+  it('keeps size switching usable when localStorage is unavailable and reports a failed default save', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: '大' }));
+    expect(screen.getByRole('button', { name: '大' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(areas().getByRole('button', { name: new RegExp(area) }));
+    fireEvent.click(screen.getByRole('button', { name: 'このエリアを最初の表示にする' }));
+    expect(screen.getByRole('status', { name: '最初のエリア' })).toHaveTextContent('最初の表示を保存できませんでした');
   });
 });

@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useInventoryImports, useInventoryItems, useInventoryLocations, useInventoryMutations } from '../../../../api/hooks';
+import { useInventoryImports, useInventoryItems, useInventoryLocations, useInventoryMutations, useInventoryToolFieldOptions } from '../../../../api/hooks';
 
 import { InventoryRegistrationTab as RegistrationTab, type RegistrationState } from './InventoryRegistrationTab';
 
@@ -89,11 +89,64 @@ describe('InventoryRegistrationTab', () => {
     } as never);
   });
 
+  it('bounds both columns and scrolls choice groups with manual tag entry and the success banner open', async () => {
+    const originalLocations = vi.mocked(useInventoryLocations).getMockImplementation()!;
+    const originalImports = vi.mocked(useInventoryImports).getMockImplementation()!;
+    const candidate = originalImports().data![0];
+    const shelf = originalLocations().data![0];
+    vi.mocked(useInventoryImports).mockReturnValue({ data: [candidate, { ...candidate, id: 'next', sourceItemId: 3 }], isLoading: false } as never);
+    vi.mocked(useInventoryLocations).mockReturnValue({ data: [
+      ...Array.from({ length: 16 }, (_, index) => ({
+        ...shelf, id: `shelf-${index + 1}`, shelfNumber: index + 1,
+        drawers: Array.from({ length: 16 }, (_, index) => ({ id: `drawer-${index + 1}`, drawerNumber: index + 1, compartments: [] })),
+      })),
+      ...Array.from({ length: 8 }, (_, index) => ({ ...shelf, id: `other-${index}`, area: `別の加工機${index} 北` })),
+    ] } as never);
+    try {
+      render(<InventoryRegistrationTab accessPassword="2520" />);
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '登録しない' })); });
+      fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+      fireEvent.click(screen.getByRole('button', { name: '棚1' }));
+      fireEvent.click(screen.getByRole('button', { name: '引き出し2' }));
+      fireEvent.click(screen.getByRole('button', { name: 'IDを手で入れる' }));
+      expect(screen.getByText('候補 #2 は登録しません')).toBeVisible();
+      expect(screen.getByRole('textbox', { name: 'タグのID' })).toBeVisible();
+      const place = screen.getByRole('region', { name: '置き場所' });
+      expect(place.parentElement).toHaveClass('h-full', 'min-h-0', 'flex-col');
+      expect(place).toHaveClass('min-h-0', 'flex-1');
+      expect(place.firstElementChild).toHaveClass('shrink-0');
+      expect(place.lastElementChild).toHaveClass('min-h-0', 'flex-1');
+      const groups = within(place).getAllByRole('group');
+      expect(groups).toHaveLength(4);
+      for (const group of groups) {
+        expect(group).toHaveClass('min-h-0', 'flex-1', 'content-start', 'overflow-y-auto', '[&>button]:shrink-0');
+        expect(group.parentElement).toHaveClass('min-h-0', 'flex-1');
+      }
+      for (const name of ['アイテムタグ', '最初の数']) {
+        expect(screen.getByRole('region', { name })).toHaveClass('shrink-0');
+      }
+      expect(within(screen.getByRole('group', { name: '最初の数のテンキー' })).getAllByRole('button')).toHaveLength(12);
+      const names = screen.getByRole('region', { name: '名前・工具情報' });
+      expect(names.parentElement).toHaveClass('h-full', 'min-h-0', 'flex-col');
+      expect(names).toHaveClass('min-h-0', 'flex-1');
+      expect(screen.getByRole('textbox', { name: 'アイテム名' }).parentElement?.parentElement).toHaveClass('min-h-0', 'overflow-y-auto');
+      expect(screen.getByRole('region', { name: '新規か既存か' })).toHaveClass('shrink-0');
+      expect(screen.getByRole('region', { name: '単位' })).toHaveClass('shrink-0');
+      expect(screen.getByRole('group', { name: '単位' }).parentElement).toHaveClass('max-h-36', 'overflow-y-auto');
+    } finally {
+      vi.mocked(useInventoryLocations).mockImplementation(originalLocations);
+      vi.mocked(useInventoryImports).mockImplementation(originalImports);
+    }
+  });
+
   it('registers a new item on one screen, ticking the checklist as each part is done', async () => {
     const view = render(<InventoryRegistrationTab accessPassword="2520" />);
     const register = screen.getByRole('button', { name: '登録する' });
     expect(register).toBeDisabled();
     expect(screen.getByText('あと 4 つ')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '単位' })).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: '新規か既存か' })).queryByLabelText('完了')).not.toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: '名前・工具情報' })).getByLabelText('完了')).toHaveTextContent('✓');
 
     fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
     expect(screen.getByLabelText('アイテム名')).toHaveValue('ItemlistRaspi 2');
@@ -102,6 +155,8 @@ describe('InventoryRegistrationTab', () => {
     fireEvent.click(screen.getByRole('button', { name: '引き出し2' }));
     expect(within(screen.getByRole('region', { name: 'アイテムタグ' })).getByRole('status')).toHaveTextContent('30007_KSJP-55 北・棚1・引き出し2');
     expect(screen.getByText('あと 2 つ')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: '置き場所' })).getByLabelText('完了')).toHaveTextContent('✓');
+    expect(screen.getByLabelText('選んだ置き場所')).toHaveTextContent('30007_KSJP-55 北・棚1・引き出し2');
 
     nfc.event = { uid: 'new-item-tag', eventId: 1, timestamp: new Date().toISOString() } as NfcEvent;
     view.rerender(<InventoryRegistrationTab accessPassword="2520" />);
@@ -207,7 +262,8 @@ describe('InventoryRegistrationTab', () => {
     view.rerender(<InventoryRegistrationTab accessPassword="2520" />);
     await screen.findByText('case-tag');
     press('最初の数のテンキー', '3');
-    expect(screen.getByText('3ケース')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: '最初の数' })).toHaveTextContent('3');
+    expect(within(screen.getByRole('region', { name: '最初の数' })).getByText('ケース')).toBeInTheDocument();
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '登録する' })); });
 
     expect(registerImport.mock.calls[0][0].input).toMatchObject({ unit: 'ケース', initialQuantity: 3 });
@@ -260,7 +316,8 @@ describe('InventoryRegistrationTab', () => {
     fireEvent.click(within(within(popup).getByRole('group', { name: 'メーカー' })).getByRole('button', { name: 'OSG' }));
     fireEvent.click(within(within(popup).getByRole('group', { name: '被削材' })).getByRole('button', { name: 'S45C' }));
 
-    expect(screen.getByRole('textbox', { name: 'メーカー' })).toHaveValue('OSG');
+    fireEvent.click(within(within(popup).getByRole('group', { name: 'メーカー' })).getByRole('button', { name: '京セラ' }));
+    expect(screen.getByRole('textbox', { name: 'メーカー' })).toHaveValue('OSG・京セラ');
     expect(screen.getByRole('textbox', { name: '被削材' })).toHaveValue('S45C');
     expect(screen.getByRole('textbox', { name: '工具寸法' })).toHaveValue('φ10');
     fireEvent.click(within(within(popup).getByRole('group', { name: '型式' })).getByRole('button', { name: 'SOMT140520ER-GM / PR1525' }));
@@ -268,9 +325,28 @@ describe('InventoryRegistrationTab', () => {
     expect(screen.getByRole('textbox', { name: '型式' })).toHaveValue('SOMT140520ER-GM / PR1525');
     expect(screen.getByRole('textbox', { name: '用途' })).toHaveValue('側面');
 
-    // A second tap on the chosen value takes it out again.
+    // A second tap removes only that value.
     fireEvent.click(within(within(popup).getByRole('group', { name: 'メーカー' })).getByRole('button', { name: 'OSG' }));
-    expect(screen.getByRole('textbox', { name: 'メーカー' })).toHaveValue('');
+    expect(screen.getByRole('textbox', { name: 'メーカー' })).toHaveValue('京セラ');
+  });
+
+
+  it('offers individual registered values once and toggles a joined field immediately', () => {
+    const original = vi.mocked(useInventoryToolFieldOptions).getMockImplementation()!;
+    vi.mocked(useInventoryToolFieldOptions).mockReturnValue({ data: { ...original().data, workMaterial: ['鋼・SUS', '鋼', 'アルミ'] } } as never);
+    try {
+      render(<InventoryRegistrationTab accessPassword="2520" />);
+      fireEvent.click(screen.getByRole('button', { name: '登録済みから選ぶ' }));
+      const lane = within(within(screen.getByRole('dialog', { name: '名前・工具情報' })).getByRole('group', { name: '被削材' }));
+      expect(lane.getAllByRole('button', { name: '鋼', exact: true })).toHaveLength(1);
+      expect(lane.queryByRole('button', { name: '鋼・SUS' })).not.toBeInTheDocument();
+      fireEvent.click(lane.getByRole('button', { name: '鋼', exact: true }));
+      fireEvent.click(lane.getByRole('button', { name: 'SUS' }));
+      expect(screen.getByRole('textbox', { name: '被削材' })).toHaveValue('鋼・SUS');
+      expect(lane.getByRole('button', { name: '鋼', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      fireEvent.click(lane.getByRole('button', { name: '鋼', exact: true }));
+      expect(screen.getByRole('textbox', { name: '被削材' })).toHaveValue('SUS');
+    } finally { vi.mocked(useInventoryToolFieldOptions).mockImplementation(original); }
   });
 
   it('picks the name from the board, hides the provisional one, and goes back to it on a second tap', async () => {
@@ -368,7 +444,7 @@ describe('InventoryRegistrationTab', () => {
     render(<InventoryRegistrationTab accessPassword="2520" initialImportId="p4" />);
 
     const strip = screen.getByRole('region', { name: 'メールで届いた候補' });
-    const cards = within(strip).getAllByRole('button');
+    const cards = within(strip).getAllByRole('button', { name: /^候補 #/ });
     expect(cards.map((card) => card.getAttribute('aria-label'))).toEqual(['候補 #5', '候補 #4']);
     expect(cards[1]).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText('候補 #4')).toBeInTheDocument();
@@ -399,7 +475,7 @@ describe('InventoryRegistrationTab', () => {
       expect(screen.getByRole('status', { name: '最初の数' })).toHaveTextContent('12');
       expect(screen.getByRole('button', { name: '登録する' })).toBeEnabled();
       expect(screen.queryByRole('button', { name: '写真を確認した' })).not.toBeInTheDocument();
-      expect(within(screen.getByRole('complementary', { name: '登録の進み具合' })).queryByText('写真の確認')).not.toBeInTheDocument();
+      expect(screen.queryByRole('complementary', { name: '登録の進み具合' })).not.toBeInTheDocument();
     } finally { vi.mocked(useInventoryImports).mockImplementation(original); }
   });
 
@@ -467,7 +543,7 @@ describe('InventoryRegistrationTab', () => {
     render(<InventoryRegistrationTab accessPassword="2520" />);
     fireEvent.change(screen.getByLabelText('アイテム名'), { target: { value: '下書き' } });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '登録しない' })); });
-    expect(screen.getByRole('complementary', { name: '登録の進み具合' })).toContainElement(screen.getByRole('alert'));
+    expect(screen.getByRole('button', { name: '登録しない' }).parentElement).toContainElement(screen.getByRole('alert'));
     expect(screen.getByLabelText('アイテム名')).toHaveValue('下書き');
     expect(screen.queryByRole('button', { name: '元に戻す' })).not.toBeInTheDocument();
   });

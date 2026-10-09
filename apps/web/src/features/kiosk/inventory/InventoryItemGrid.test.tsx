@@ -56,4 +56,52 @@ describe('InventoryItemGrid', () => {
     fireEvent.click(cards[0]);
     expect(onPickPending).toHaveBeenCalledWith(pending[0]);
   });
+  it('shows only populated details allowed by the thumbnail size', () => {
+    const compartment = drawer('a', '治具', null);
+    Object.assign(compartment.item, { model: 'M1', maker: 'OSG', toolName: 'ドリル', toolSize: 'φ10', workMaterial: '鋼・SUS', usage: ' ' });
+    const view = render(<InventoryItemGrid size="small" compartments={[compartment]} onPick={vi.fn()} />);
+    expect(screen.getByText('型式')).toBeInTheDocument();
+    expect(screen.queryByText('メーカー')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('登録済みアイテム')).toHaveClass('grid-cols-9');
+    view.rerender(<InventoryItemGrid size="medium" compartments={[compartment]} onPick={vi.fn()} />);
+    expect(screen.getByText('寸法')).toBeInTheDocument();
+    expect(screen.queryByText('工具名')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('登録済みアイテム')).toHaveClass('grid-cols-6');
+    view.rerender(<InventoryItemGrid size="large" compartments={[compartment]} onPick={vi.fn()} />);
+    expect(screen.getByText('被削材')).toBeInTheDocument();
+    expect(screen.queryByText('用途')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('登録済みアイテム')).toHaveClass('grid-cols-4');
+  });
+
+  it('cycles each card photo without opening the item and omits arrows for a single photo', () => {
+    const a = drawer('a', '治具A', null), b = drawer('b', '治具B', null);
+    const photo = (id: string) => ({ id, photoUrl: `/${id}.jpg`, photoIndex: 1, originalFilename: id });
+    a.item.photos = [photo('a1'), photo('a2')];
+    b.item.photos = [photo('b1')];
+    const onPick = vi.fn();
+    const { container } = render(<InventoryItemGrid compartments={[a, b]} onPick={onPick} />);
+    expect(screen.getAllByRole('button', { name: '次の写真' })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: '次の写真' }));
+    expect(screen.getByText('2/2')).toBeInTheDocument();
+    expect(container.querySelector('img[src="/a2.jpg"]')).not.toBeNull();
+    expect(onPick).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '次の写真' }));
+    expect(screen.getByText('1/2')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '前の写真' }));
+    expect(screen.getByText('2/2')).toBeInTheDocument();
+    expect(container.querySelector('img[src="/b1.jpg"]')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /治具A/ }));
+    expect(onPick).toHaveBeenCalledWith(a);
+  });
+
+  it('keeps paging independent when the same item is in two drawers', () => {
+    const a = drawer('a', '治具', null);
+    a.item.photos = [{ id: 'p1', photoIndex: 1, photoUrl: '/1.jpg', originalFilename: '1' }, { id: 'p2', photoIndex: 2, photoUrl: '/2.jpg', originalFilename: '2' }];
+    const b = { ...a, id: 'b', drawerNumber: 2 };
+    render(<InventoryItemGrid compartments={[a, b]} onPick={vi.fn()} />);
+    fireEvent.click(screen.getAllByRole('button', { name: '次の写真' })[0]);
+    expect(screen.getAllByText('2/2')).toHaveLength(1);
+    expect(screen.getAllByText('1/2')).toHaveLength(1);
+  });
+
 });
