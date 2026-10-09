@@ -15,6 +15,12 @@
           - release_kiosk_prepared_torque_image == release_kiosk_torque_image
       when: release_torque_cutover | default(false) | bool
 
+    - name: Notify the Pi4 before switching prepared artifacts
+      ansible.builtin.import_tasks: notice.yml
+      when:
+        - not (release_torque_cutover | default(false) | bool)
+        - release_kiosk_notice_enabled | bool
+
     - name: Switch and verify one Pi4 kiosk
       block:
         - name: Switch the selected Pi4 kiosk to prepared artifacts
@@ -31,6 +37,32 @@
         - name: Restore the selected Pi4 kiosk
           ansible.builtin.import_tasks: rollback.yml
   always:
+    - name: Clear the Pi4 deploy-status display from Pi5
+      ansible.builtin.command:
+        argv:
+          - python3
+          - '{{ release_kiosk_notice_project_dir }}/scripts/deploy/kiosk_release_notice.py'
+          - clear
+          - --project
+          - '{{ release_kiosk_notice_project_dir }}'
+          - --run-id
+          - '{{ release_run_id }}'
+          - --client
+          - '{{ status_agent_client_id }}'
+      delegate_to: localhost
+      become: false
+      register: release_kiosk_notice_clear
+      changed_when: (release_kiosk_notice_clear.rc | default(1)) == 0
+      failed_when: false
+      when:
+        - not (release_torque_cutover | default(false) | bool)
+        - status_agent_client_id | default('') | trim | length > 0
+
+    - name: Warn if the Pi4 deploy-status display could not be cleared
+      ansible.builtin.debug:
+        msg: 'WARNING: kiosk notice cleanup failed; remove-run and the API expiry remain available'
+      when: (release_kiosk_notice_clear.rc | default(0)) != 0
+
     - name: Remove run-scoped Pi4 preparation data
       ansible.builtin.import_tasks: cleanup.yml
       when: not (release_torque_cutover | default(false) | bool)

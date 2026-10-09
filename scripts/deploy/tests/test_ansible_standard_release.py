@@ -1199,6 +1199,36 @@ esac
         self.assertIn("AGGREGATE=False host=kiosk-c", output)
         self.assertNotIn('"msg": "BROWSER_START_MUST_NOT_APPEAR"', output)
 
+    def test_pi4_notice_contract_and_policy_constants(self) -> None:
+        role = ANSIBLE / 'roles/release_kiosk'
+        main = yaml.safe_load((role / 'tasks/main.yml').read_text())[0]
+        imports = [task.get('ansible.builtin.import_tasks') for task in main['block']]
+        notice_index = imports.index('notice.yml')
+        self.assertGreater(notice_index, imports.index('prepare.yml'))
+        self.assertLess(notice_index, next(i for i, task in enumerate(main['block']) if 'block' in task))
+        condition = ' '.join(main['block'][notice_index]['when'])
+        self.assertIn('not (release_torque_cutover', condition)
+        self.assertIn('release_kiosk_notice_enabled', condition)
+        clear = main['always'][0]
+        self.assertIn('clear', clear['ansible.builtin.command']['argv'])
+        self.assertFalse(clear['failed_when'])
+        self.assertIn('not (release_torque_cutover', ' '.join(clear['when']))
+        self.assertIn("status_agent_client_id | default('') | trim | length > 0", clear['when'])
+        self.assertEqual(main['always'][-1]['ansible.builtin.import_tasks'], 'cleanup.yml')
+        notice_tasks = yaml.safe_load((role / 'tasks/notice.yml').read_text())
+        start = next(task for task in notice_tasks if 'ansible.builtin.command' in task)
+        for task in (start, clear):
+            self.assertEqual(task['delegate_to'], 'localhost')
+            self.assertIs(task['become'], False)
+        self.assertIn("status_agent_client_id | default('') | trim | length > 0", start['when'])
+        self.assertIn('WARNING', notice_tasks[0]['ansible.builtin.debug']['msg'])
+        defaults = yaml.safe_load((role / 'defaults/main.yml').read_text())
+        policy = runpy.run_path(str(ROOT / 'scripts/deploy/terminal_notice.py'))
+        self.assertEqual(defaults['release_kiosk_notice_duration_seconds'], policy['NOTICE_DURATION_SECONDS'])
+        self.assertEqual(defaults['release_kiosk_notice_ack_timeout_seconds'], policy['NOTICE_ACK_TIMEOUT_SECONDS'])
+        self.assertIs(defaults['release_kiosk_notice_enabled'], True)
+        self.assertEqual(defaults['release_kiosk_notice_project_dir'], '{{ playbook_dir }}/../../..')
+
     def test_pi4_and_pi3_use_prepare_block_rescue_always(self) -> None:
         for role in ("release_kiosk", "release_signage"):
             main = yaml.safe_load(
@@ -1243,11 +1273,12 @@ esac
                     [
                         task["ansible.builtin.import_tasks"]
                         for task in outer["always"]
+                        if "ansible.builtin.import_tasks" in task
                     ],
                     ["cleanup.yml"],
                 )
                 if role == "release_kiosk":
-                    self.assertIn("release_torque_cutover", outer["always"][0]["when"])
+                    self.assertIn("release_torque_cutover", " ".join(outer["always"][0]["when"]))
 
     def test_pi3_recovers_failures_after_stopping_before_transfer(self) -> None:
         prepare_tasks = yaml.safe_load(

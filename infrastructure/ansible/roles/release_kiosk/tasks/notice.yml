@@ -1,0 +1,40 @@
+---
+- name: Warn when the Pi4 has no deploy-status client identity
+  ansible.builtin.debug:
+    msg: 'WARNING: status_agent_client_id is empty; updating without a kiosk notice'
+  when: status_agent_client_id | default('') | trim | length == 0
+
+- name: Show the Pi4 save-work notice and maintenance screen from Pi5
+  ansible.builtin.command:
+    argv:
+      - python3
+      - '{{ release_kiosk_notice_project_dir }}/scripts/deploy/kiosk_release_notice.py'
+      - start
+      - --project
+      - '{{ release_kiosk_notice_project_dir }}'
+      - --run-id
+      - '{{ release_run_id }}'
+      - --client
+      - '{{ status_agent_client_id }}'
+      - --duration-seconds
+      - '{{ release_kiosk_notice_duration_seconds | string }}'
+      - --ack-timeout-seconds
+      - '{{ release_kiosk_notice_ack_timeout_seconds | string }}'
+  delegate_to: localhost
+  become: false
+  register: release_kiosk_notice_start
+  changed_when: true
+  # The notice is a courtesy to the operator at the kiosk. A broken notice
+  # must not block the release; the always-clear in main.yml still runs.
+  failed_when: false
+  when: status_agent_client_id | default('') | trim | length > 0
+
+- name: Report Pi4 notice warnings from the controller
+  ansible.builtin.debug:
+    msg: '{{ release_kiosk_notice_start.stderr }}'
+  when: release_kiosk_notice_start.stderr | default('') | length > 0
+
+- name: Warn if the Pi4 notice could not be shown
+  ansible.builtin.debug:
+    msg: 'WARNING: kiosk notice failed; updating without the save-work notice'
+  when: (release_kiosk_notice_start.rc | default(0)) != 0
