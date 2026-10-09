@@ -198,7 +198,7 @@ describe('ItemInventoryService safety boundaries', () => {
   it('allows only one of two concurrent registrations to claim the candidate', async () => {
     let claimed = false;
     const itemCreate = vi.fn().mockResolvedValue({ id: 'item-1', itemCode: 'RI-2-TEST' });
-    const compartmentCreate = vi.fn().mockResolvedValue({ id: 'compartment-1', stockQuantity: 0 });
+    const compartmentCreate = vi.fn().mockResolvedValue({ id: 'compartment-1', labelNumber: 42, stockQuantity: 0 });
     const tagCreate = vi.fn().mockResolvedValue({ id: 'tag-1', uid: 'item-uid', kind: 'ITEM', compartmentId: 'compartment-1' });
     const tx = {
       inventoryImportPayload: {
@@ -229,6 +229,7 @@ describe('ItemInventoryService safety boundaries', () => {
     ]);
 
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect((results.find((result) => result.status === 'fulfilled') as PromiseFulfilledResult<unknown>).value).toMatchObject({ compartment: { id: 'compartment-1', labelNumber: 42 } });
     expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
     expect((results.find((result) => result.status === 'rejected') as PromiseRejectedResult).reason).toMatchObject({ statusCode: 409 });
     expect(itemCreate).toHaveBeenCalledTimes(1);

@@ -1,9 +1,11 @@
+import { formatInventoryLabelNumber } from '@raspi-system/shared-types';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import {
   resolveInventoryTag,
+  resolveInventoryLabelNumber,
   type InventoryCompartment,
   type InventoryMovementTransaction,
   type InventoryImportSummary,
@@ -24,6 +26,7 @@ import { InventoryPhotoPane } from '../../features/kiosk/inventory/InventoryPhot
 import { InventoryQuantityPanel } from '../../features/kiosk/inventory/InventoryQuantityPanel';
 import { InventoryRecentHistory } from '../../features/kiosk/inventory/InventoryRecentHistory';
 import {
+  invLabelNumber,
   invButton,
   invButtonDanger,
   invButtonGhost,
@@ -87,6 +90,11 @@ export function KioskItemInventoryPage() {
   const mutations = useInventoryMutations();
   const queryClient = useQueryClient();
   const routeState = location.state as InventoryRouteState | null;
+  const [numberOpen, setNumberOpen] = useState(false);
+  const [numberInput, setNumberInput] = useState('');
+  const [numberError, setNumberError] = useState<string | null>(null);
+  const [numberBusy, setNumberBusy] = useState(false);
+  const numberLookupRef = useRef(0);
   const [restockMode, setRestockMode] = useState(false);
   const [selectedTag, setSelectedTag] = useState<InventoryTag | null>(null);
   const [message, setMessage] = useState('アイテムNFCタグを読み取ってください');
@@ -157,6 +165,8 @@ export function KioskItemInventoryPage() {
       selectionVerificationRef.current = null;
       setRefreshingTag(false);
     }
+    setNumberOpen(false);
+    numberLookupRef.current += 1;
     selectedTagRef.current = tag;
     flowRef.current.selectedTag = tag;
     setSelectedTag(tag);
@@ -422,10 +432,10 @@ export function KioskItemInventoryPage() {
 
   useEffect(() => {
     // Counting or picking by touch can take a while; do not reset under the worker's hands.
-    if (panel !== 'none' || busy || refreshingTag) return;
+    if (panel !== 'none' || busy || refreshingTag || numberOpen) return;
     const timer = window.setTimeout(reset, 30000);
     return () => window.clearTimeout(timer);
-  }, [restockMode, selectedTag, message, panel, activity, reset, busy, refreshingTag]);
+  }, [restockMode, selectedTag, message, panel, activity, reset, busy, refreshingTag, numberOpen]);
 
   useEffect(() => {
     if (messageKind === 'info') return;
@@ -469,6 +479,22 @@ export function KioskItemInventoryPage() {
     setMessage('数を押す か 数量タグ');
     setMessageKind('info');
   }, [selectTag]);
+  const openNumber = async () => {
+    if (numberBusy || !numberInput || flowRef.current.processing) return;
+    const generation = ++numberLookupRef.current;
+    setNumberBusy(true);
+    setNumberError(null);
+    try {
+      const tag = await resolveInventoryLabelNumber(numberInput);
+      if (!mountedRef.current || generation !== numberLookupRef.current) return;
+      if (!tag?.compartment) { setNumberError('この番号の品物はありません'); return; }
+      // Feed the resolved ITEM through exactly the same queue as an item-tag scan.
+      eventQueueRef.current.push({ uid: tag.uid, timestamp: new Date().toISOString(), inventoryTag: tag });
+      await drainEventsRef.current();
+    } catch (error) {
+      if (mountedRef.current && generation === numberLookupRef.current) setNumberError((error as { response?: { status?: number } })?.response?.status === 404 ? 'この番号の品物はありません' : '通信できませんでした');
+    } finally { if (mountedRef.current) setNumberBusy(false); }
+  };
   const pickPending = useCallback((candidate: InventoryImportSummary) => navigate('/kiosk/inventory/settings', { state: { importId: candidate.id } }), [navigate]);
 
   const submitCorrection = async (desiredQuantity: number) => {
@@ -542,7 +568,7 @@ export function KioskItemInventoryPage() {
   const chipClass = (selected: boolean) => `inline-flex h-11 items-center gap-1.5 rounded-full border px-4 text-base font-bold ${selected ? 'border-inv-cyan bg-inv-cyan text-inv-cyan-ink' : 'border-inv-line2 bg-inv-s1'}`;
 
   return (
-    <section className={invSurface} onPointerDownCapture={() => setActivity((current) => current + 1)} onClickCapture={() => setActivity((current) => current + 1)} onKeyDownCapture={() => setActivity((current) => current + 1)}>
+    <section className={`${invSurface} relative`} onPointerDownCapture={() => setActivity((current) => current + 1)} onClickCapture={() => setActivity((current) => current + 1)} onKeyDownCapture={() => setActivity((current) => current + 1)}>
       <div className="flex shrink-0 flex-wrap items-center gap-3">
         {selectedCompartment ? <button type="button" className={`${invButtonGhost} h-12 rounded-xl`} onClick={reset} disabled={busy || refreshingTag}><BackIcon />一覧へ</button> : null}
         <h1 className={invTitle}>在庫操作</h1>
@@ -565,7 +591,7 @@ export function KioskItemInventoryPage() {
           <div className="flex min-h-0 min-w-0 flex-col gap-3.5 overflow-y-auto">
             <div className="shrink-0">
               <h2 title={selectedCompartment.item.name} className="line-clamp-3 break-all text-[30px] font-black leading-tight">{selectedCompartment.item.name}</h2>
-              <p className="min-w-0 break-all text-[17px] text-inv-muted">{selectedCompartment.area}・棚{selectedCompartment.shelfNumber}・引き出し{selectedCompartment.drawerNumber}</p>
+              <p className="min-w-0 break-all text-[17px] text-inv-muted"><span className={`${invLabelNumber} mr-2`}>{formatInventoryLabelNumber(selectedCompartment.labelNumber)}</span>{selectedCompartment.area}・棚{selectedCompartment.shelfNumber}・引き出し{selectedCompartment.drawerNumber}</p>
             </div>
             <dl className={`${invCard} flex shrink-0 flex-wrap items-end gap-2.5 rounded-[18px] px-5 py-4`}>
               <dd aria-label="現在庫" className="flex min-w-0 max-w-full flex-wrap items-end gap-2.5">
@@ -610,6 +636,7 @@ export function KioskItemInventoryPage() {
               {areas.map(({ area, count }) => <button key={area} type="button" className={chipClass(effectiveArea === area)} aria-pressed={effectiveArea === area} onClick={() => { setAreaFilter(effectiveArea === area ? null : area); setShelfFilter(null); }}>{defaultArea === area ? <KioskHomeIcon filled className="h-4 w-4" /> : null}{area} <small className="font-normal opacity-75">{count}</small></button>)}
             </div>
             <button type="button" aria-label={homeLabel} title={homeLabel} aria-pressed={isDefaultArea} className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border hover:bg-inv-s2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inv-cyan ${isDefaultArea ? 'border-inv-cyan text-inv-cyan' : 'border-inv-line2 text-inv-text'}`} onClick={() => isDefaultArea ? setAreaNotice({ message: 'このエリアが最初の表示です' }) : saveArea(effectiveArea)}><KioskHomeIcon filled={isDefaultArea} /></button>
+            <button type="button" className={invButton} aria-expanded={numberOpen} onClick={() => { numberLookupRef.current += 1; setNumberOpen((open) => !open); setNumberInput(''); setNumberError(null); }}>番号で開く</button>
             <span className={`${invEyebrow} shrink-0`}>写真の大きさ</span>
             <div role="group" aria-label="写真の大きさ" className="inline-flex shrink-0 overflow-hidden rounded-xl border border-inv-line2">
               {([['small', '小'], ['medium', '中'], ['large', '大']] as const).map(([size, label]) => <button key={size} type="button" aria-pressed={thumbnailSize === size} className={`h-12 min-w-14 px-4 font-bold ${thumbnailSize === size ? 'bg-inv-cyan text-inv-cyan-ink' : 'text-inv-muted'}`} onClick={() => changeSize(size)}>{label}</button>)}
@@ -636,6 +663,18 @@ export function KioskItemInventoryPage() {
         <span>{areaNotice.message}</span>
         {areaNotice.undo ? <button type="button" className={`${invButtonGhost} text-inv-cyan`} onClick={() => saveArea(areaNotice.undo!.area, true)}>元に戻す</button> : null}
       </div> : null}
+      {numberOpen ? <section aria-label="番号入力" className={`${invCard} absolute right-7 top-24 z-20 flex w-[280px] flex-col gap-3 p-4 shadow-xl`}>
+        <div className="flex items-center justify-between gap-2"><h2 className="font-bold">番号で開く</h2><button type="button" className={invButtonGhost} onClick={() => { numberLookupRef.current += 1; setNumberOpen(false); }}>閉じる</button></div>
+        <output aria-label="入力した番号" className={`text-center font-mono font-bold tabular-nums tracking-[0.14em] text-inv-amber ${numberInput.length > 6 ? 'text-[24px]' : 'text-[36px]'}`}>{numberInput.padEnd(4, '_')}</output>
+        <div role="group" aria-label="番号のテンキー" className="grid grid-cols-3 gap-2">
+          {['1', '2', '3', '4', '5', '6', '7', '8', '9', '消', '0', '←'].map((key) => <button key={key} type="button" className={`${invButton} h-14 px-0 text-xl`} disabled={numberBusy} onClick={() => {
+            setNumberError(null);
+            setNumberInput((value) => key === '消' ? '' : key === '←' ? value.slice(0, -1) : value.length < 10 && Number(value + key) <= 2147483647 ? value + key : value);
+          }}>{key}</button>)}
+        </div>
+        {numberError ? <p role="alert" className="text-sm text-inv-red">{numberError}</p> : null}
+        <button type="button" className={invButton} disabled={numberBusy || numberInput.length === 0} onClick={() => void openNumber()}>{numberBusy ? '確認中…' : '開く'}</button>
+      </section> : null}
     </section>
   );
 }

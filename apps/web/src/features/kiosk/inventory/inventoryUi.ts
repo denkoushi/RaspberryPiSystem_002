@@ -43,3 +43,6 @@ export const invError = 'border-inv-red/70 bg-inv-red/10 text-[#ffd0d0]';
 
 /** Touch targets scoped to setup; shared daily controls keep their existing sizes. */
 export const invSetupTargets = "[&_button]:min-h-11 [&_button]:min-w-11 [&_a]:min-h-11 [&_a]:min-w-11";
+
+/** Hand-written number shared by the tag and its stored location. */
+export const invLabelNumber = 'inline-flex items-center whitespace-nowrap rounded-lg border border-dashed border-inv-amber px-2 py-0.5 font-mono font-bold tabular-nums tracking-[0.08em] text-inv-amber';

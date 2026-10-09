@@ -53,6 +53,7 @@ function press(groupName: string, digits: string) {
 }
 
 describe('InventoryRegistrationTab', () => {
+  const suggestToolFields = vi.fn();
   const dismissImport = vi.fn();
   const restoreImport = vi.fn();
   const registerImport = vi.fn();
@@ -64,15 +65,17 @@ describe('InventoryRegistrationTab', () => {
 
   beforeEach(() => {
     nfc.event = null;
+    suggestToolFields.mockReset().mockResolvedValue({ model: ['EX-EDS', 'EDS'], maker: ['OSG'], status: 'ok' });
     dismissImport.mockReset().mockResolvedValue({});
     restoreImport.mockReset().mockResolvedValue({});
-    registerImport.mockReset().mockResolvedValue({});
+    registerImport.mockReset().mockResolvedValue({ item: { name: 'ItemlistRaspi 2' }, compartment: { id: 'c1', labelNumber: 42 } });
     createShelf.mockReset().mockResolvedValue({});
     createDrawer.mockReset().mockResolvedValue({});
     renameToolFieldValue.mockReset().mockResolvedValue({ field: 'maker', value: 'ミツビシマテリアル', updatedItems: 3 });
     deleteToolFieldValue.mockReset().mockResolvedValue({});
     addToolFieldValue.mockReset().mockResolvedValue({});
     vi.mocked(useInventoryMutations).mockReturnValue({
+      suggestToolFields: { mutateAsync: suggestToolFields, isPending: false },
       dismissImport: { mutateAsync: dismissImport, isPending: false },
       restoreImport: { mutateAsync: restoreImport, isPending: false },
       registerImport: { mutateAsync: registerImport, isPending: false },
@@ -185,6 +188,79 @@ describe('InventoryRegistrationTab', () => {
       },
     });
     await waitFor(() => expect(screen.getByText('候補 #2 を登録しました')).toBeInTheDocument());
+    expect(screen.getByRole('region', { name: '登録完了' })).toHaveTextContent('0042');
+    expect(screen.queryByRole('region', { name: '写真の確認' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '次へ' }));
+    expect(screen.queryByRole('region', { name: '登録完了' })).not.toBeInTheDocument();
+  });
+
+  it('shows photo candidates only after reading and fills only a pressed chip', async () => {
+    render(<InventoryRegistrationTab accessPassword="2520" />);
+    expect(screen.queryByRole('group', { name: '型式の読取候補' })).not.toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '写真から読む' })); });
+    expect(suggestToolFields).toHaveBeenCalledWith({ source: 'import', payloadId: 'import-1', photoId: 'photo-1' });
+    expect(screen.getByLabelText('型式')).toHaveValue('');
+    expect(screen.getByLabelText('メーカー')).toHaveValue('');
+    const models = screen.getByRole('group', { name: '型式の読取候補' });
+    expect(models).toHaveClass('h-11', 'overflow-x-auto');
+    fireEvent.click(within(models).getByRole('button', { name: 'EX-EDS' }));
+    fireEvent.click(within(screen.getByRole('group', { name: 'メーカーの読取候補' })).getByRole('button', { name: 'OSG' }));
+    expect(screen.getByLabelText('型式')).toHaveValue('EX-EDS');
+    expect(screen.getByLabelText('メーカー')).toHaveValue('OSG');
+    expect(within(models).getByRole('button', { name: 'EX-EDS' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('reads the candidate photo most recently enlarged by the operator', async () => {
+    const original = vi.mocked(useInventoryImports).getMockImplementation()!;
+    const candidate = original().data![0];
+    try {
+      vi.mocked(useInventoryImports).mockReturnValue({ data: [{ ...candidate, photos: [...candidate.photos, { ...candidate.photos[0], id: 'photo-2', photoUrl: '/p/2.jpg', photoIndex: 2 }] }], isLoading: false } as never);
+      render(<InventoryRegistrationTab accessPassword="2520" />);
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '写真2を拡大' })); });
+      fireEvent.click(within(screen.getByRole('dialog', { name: '在庫写真' })).getByRole('button', { name: '閉じる' }));
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '写真から読む' })); });
+      expect(suggestToolFields).toHaveBeenCalledWith({ source: 'import', payloadId: 'import-1', photoId: 'photo-2' });
+    } finally { vi.mocked(useInventoryImports).mockImplementation(original); }
+  });
+
+  it.each(['empty', 'unavailable', 'throw'])('shows a nearby read failure for %s', async (kind) => {
+    if (kind === 'throw') suggestToolFields.mockRejectedValue(new Error('network'));
+    else suggestToolFields.mockResolvedValue({ model: [], maker: [], status: kind === 'empty' ? 'ok' : 'unavailable' });
+    render(<InventoryRegistrationTab accessPassword="2520" />);
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '写真から読む' })); });
+    expect(screen.getByText('読み取れませんでした')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: '型式の読取候補' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('型式')).toHaveValue('');
+  });
+
+  it('clears suggestions when the candidate changes', async () => {
+    const original = vi.mocked(useInventoryImports).getMockImplementation()!;
+    const candidate = original().data![0];
+    try {
+      vi.mocked(useInventoryImports).mockReturnValue({ data: [candidate, { ...candidate, id: 'next', sourceItemId: 3 }], isLoading: false } as never);
+      render(<InventoryRegistrationTab accessPassword="2520" />);
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '写真から読む' })); });
+      expect(screen.getByRole('group', { name: '型式の読取候補' })).toBeInTheDocument();
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '登録しない' })); });
+      expect(screen.getByText('候補 #3')).toBeInTheDocument();
+      expect(screen.queryByRole('group', { name: '型式の読取候補' })).not.toBeInTheDocument();
+    } finally { vi.mocked(useInventoryImports).mockImplementation(original); }
+  });
+
+  it('ignores a read that completes after changing candidates', async () => {
+    let finish!: (value: object) => void;
+    suggestToolFields.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const original = vi.mocked(useInventoryImports).getMockImplementation()!;
+    const candidate = original().data![0];
+    try {
+      vi.mocked(useInventoryImports).mockReturnValue({ data: [candidate, { ...candidate, id: 'next', sourceItemId: 3 }], isLoading: false } as never);
+      render(<InventoryRegistrationTab accessPassword="2520" />);
+      fireEvent.click(screen.getByRole('button', { name: '写真から読む' }));
+      expect(screen.getByRole('button', { name: '読み取り中…' })).toBeDisabled();
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '登録しない' })); });
+      await act(async () => { finish({ model: ['OLD'], maker: [], status: 'ok' }); });
+      expect(screen.queryByText('OLD')).not.toBeInTheDocument();
+    } finally { vi.mocked(useInventoryImports).mockImplementation(original); }
   });
 
   it('does not start reading a tag before a drawer is chosen', () => {
@@ -493,7 +569,7 @@ describe('InventoryRegistrationTab', () => {
     } finally { vi.mocked(useInventoryImports).mockImplementation(original); }
   });
 
-  it('advances to the next candidate after registering and clears the completed draft', async () => {
+  it('waits for next after registering, survives tab switches and clears the completed draft', async () => {
     const original = vi.mocked(useInventoryImports).getMockImplementation()!;
     const data = original().data!;
     vi.mocked(useInventoryImports).mockReturnValue({ data: [...data, { ...data[0], id: 'next', sourceItemId: 3, createdAt: '2026-09-01T00:00:00Z' }], isLoading: false } as never);
@@ -504,6 +580,12 @@ describe('InventoryRegistrationTab', () => {
       fireEvent.click(screen.getByRole('button', { name: /既存治具/ }));
       await act(async () => { fireEvent.click(screen.getByRole('button', { name: '登録する' })); });
       expect(registerImport).toHaveBeenCalledWith(expect.objectContaining({ id: 'import-1' }));
+      expect(screen.getByRole('region', { name: '登録完了' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '候補 #3' })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'タブ切替' }));
+      fireEvent.click(screen.getByRole('button', { name: 'タブ切替' }));
+      expect(screen.getByRole('region', { name: '登録完了' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '次へ' }));
       expect(screen.getByRole('button', { name: '候補 #3' })).toHaveAttribute('aria-pressed', 'true');
       expect(screen.getByLabelText('アイテム名')).toHaveValue('ItemlistRaspi 3');
       expect(screen.getByRole('button', { name: '登録する' })).toBeDisabled();

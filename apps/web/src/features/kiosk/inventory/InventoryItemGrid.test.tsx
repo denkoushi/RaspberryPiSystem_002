@@ -9,7 +9,7 @@ import type { InventoryCompartment, InventoryImportSummary } from '../../../api/
 vi.mock('../../../api/client', () => ({ inventoryThumbnailUrl: (value: string) => value }));
 
 function drawer(id: string, name: string, lastIssuedAt: string | null, drawerNumber = 1) {
-  return { id, stockQuantity: 3, area: '50013_540AP 北', shelfNumber: 2, drawerNumber, itemTagUid: 't', lastIssuedAt, item: { id: `i-${id}`, name, unit: 'ケース', photos: [] } } as unknown as InventoryCompartment;
+  return { id, labelNumber: drawerNumber, stockQuantity: 3, area: '50013_540AP 北', shelfNumber: 2, drawerNumber, itemTagUid: 't', lastIssuedAt, item: { id: `i-${id}`, name, unit: 'ケース', photos: [] } } as unknown as InventoryCompartment;
 }
 
 describe('issuedLabel', () => {
@@ -24,6 +24,14 @@ describe('issuedLabel', () => {
 });
 
 describe('InventoryItemGrid', () => {
+  it('shows each card its own label number, even on small cards', () => {
+    const a = drawer('a', '治具', null, 1);
+    render(<InventoryItemGrid size="small" compartments={[a, { ...a, id: 'b', labelNumber: 42 }]} onPick={vi.fn()} />);
+    expect(screen.getByText('0001')).toHaveClass('border-dashed', 'text-inv-amber', 'font-mono', 'tabular-nums');
+    expect(screen.getByText('0042')).toBeInTheDocument();
+    expect(screen.getAllByLabelText('置き場所の番号')).toHaveLength(2);
+  });
+
   it('orders drawers by the latest issue, then never-issued ones by name', () => {
     const sorted = sortByRecentIssue([
       drawer('a', 'ゲージ', null),
