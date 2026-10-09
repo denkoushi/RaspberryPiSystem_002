@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { KioskHeader } from './KioskHeader';
 
 vi.mock('../../api/client', () => ({ postKioskPower: vi.fn() }));
-vi.mock('../../api/hooks', () => ({ useVerifyKioskDueManagementAccessPassword: () => ({ mutateAsync: vi.fn(), isPending: false }) }));
+vi.mock('../../api/hooks', () => ({ useUpdateKioskInitialRoute: () => ({ mutateAsync: vi.fn(), isPending: false }), useVerifyKioskDueManagementAccessPassword: () => ({ mutateAsync: vi.fn(), isPending: false }) }));
 vi.mock('./KioskSignagePreviewModal', () => ({ KioskSignagePreviewModal: () => null }));
 
 function renderHeader(clientStatus: { temperature: number | null; cpuUsage: number } | null = { temperature: 48.24, cpuUsage: 12.4 }) {

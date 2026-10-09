@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ verify: vi.fn() }));
 vi.mock('../../api/client', () => ({ postKioskPower: vi.fn() }));
-vi.mock('../../api/hooks', () => ({ useVerifyKioskDueManagementAccessPassword: () => ({ mutateAsync: mocks.verify, isPending: false }) }));
+vi.mock('../../api/hooks', () => ({ useUpdateKioskInitialRoute: () => ({ mutateAsync: vi.fn(), isPending: false }), useVerifyKioskDueManagementAccessPassword: () => ({ mutateAsync: mocks.verify, isPending: false }) }));
 vi.mock('./KioskSignagePreviewModal', () => ({ KioskSignagePreviewModal: () => null }));
 vi.mock('../../features/kiosk/kioskHeaderTabs/kioskHeaderReorderableTabRenderer', () => ({
   renderKioskReorderableHeaderTab: (_tab: unknown, context: { onDueManagementNavigate: () => void }) => (

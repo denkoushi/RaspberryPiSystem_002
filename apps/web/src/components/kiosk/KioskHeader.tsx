@@ -8,6 +8,7 @@ import { renderKioskReorderableHeaderTab } from '../../features/kiosk/kioskHeade
 import { resolveClientKeyForPower } from '../../lib/client-key';
 
 import { KioskClientStatusChip } from './KioskClientStatusChip';
+import { KioskInitialRouteButton } from './KioskInitialRouteButton';
 import { KioskPowerConfirmModal } from './KioskPowerConfirmModal';
 import { KioskPowerMenuModal } from './KioskPowerMenuModal';
 import { KioskSignagePreviewModal } from './KioskSignagePreviewModal';
@@ -27,6 +28,7 @@ type KioskHeaderProps = {
   clientId: string;
   onOpenSupport: () => void;
   defaultMode?: 'PHOTO' | 'TAG';
+  initialKioskRoute?: string | null;
   clientStatus?: ClientStatus | null;
   pathname: string;
   navTabOrder: readonly KioskReorderableHeaderTabId[];
@@ -55,6 +57,7 @@ export function KioskHeader({
   clientId,
   onOpenSupport,
   defaultMode,
+  initialKioskRoute,
   clientStatus,
   pathname,
   navTabOrder
@@ -124,10 +127,11 @@ export function KioskHeader({
     () => ({
       pathname,
       defaultMode,
+      initialKioskRoute,
       onDueManagementNavigate: handleDueManagementNavigate,
       dueManagementPending: verifyDueManagementAccessPasswordMutation.isPending
     }),
-    [defaultMode, handleDueManagementNavigate, pathname, verifyDueManagementAccessPasswordMutation.isPending]
+    [defaultMode, initialKioskRoute, handleDueManagementNavigate, pathname, verifyDueManagementAccessPasswordMutation.isPending]
   );
 
   return (
@@ -144,6 +148,7 @@ export function KioskHeader({
       </nav>
       <div className="flex shrink-0 flex-col gap-1.5 border-l border-inv-line pl-5">
         <div className="flex h-11 items-center gap-1.5">
+          <KioskInitialRouteButton clientKey={clientKey} pathname={pathname} initialKioskRoute={initialKioskRoute} defaultMode={defaultMode} />
           <button
             type="button"
             onClick={() => setShowSignagePreview(true)}

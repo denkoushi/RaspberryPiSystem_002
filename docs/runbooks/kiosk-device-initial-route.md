@@ -38,7 +38,18 @@ known operational notes needed by the next AI agent.
 - Existing `ClientDevice.defaultMode` stays as legacy fallback.
 - `GET /api/kiosk/config` returns `initialKioskRoute` and `initialKioskPath`.
 - `GET/PUT /api/clients` returns and updates `kioskInitialRoute`.
-- Authorization follows the existing client management rule: `ADMIN` or `MANAGER`.
+- Admin updates require `ADMIN` or `MANAGER` as before.
+- The kiosk dock home button sets the active tab as this device's startup page,
+  without login or PIN. `PUT /api/kiosk/initial-route` uses `x-client-key` and
+  accepts only `{ initialRoute: <ID> | null }`; no device selector is accepted.
+  It updates only the authenticated device's `kioskInitialRoute` and returns
+  `{ ok: true, initialKioskRoute, initialKioskPath }` with the config fallback.
+- PIN tabs `tag_desk` and `due_management`, and paths outside the header tabs,
+  cannot be startup pages. All other tabs are selectable; borrow has two IDs.
+- The dock home icon and tab marker show the effective startup page, including
+  the `defaultMode` fallback. Saving does not navigate. A notification above the
+  dock stays visible when the dock hides; save offers undo (including null) for
+  about 6 seconds, other notices last about 3 seconds.
 - Kiosk auto redirect only evaluates `/` and `/kiosk`; direct subpaths such as
   `/kiosk/tag` are not overwritten.
 - The header `持出` tab must link to a concrete borrow subpath, not `/kiosk`.
@@ -51,25 +62,32 @@ known operational notes needed by the next AI agent.
 
 ## Route IDs
 
-Selectable startup routes:
+All selectable startup routes (existing IDs and paths remain valid):
 
 | ID | Label | Path |
 | --- | --- | --- |
 | `borrow_tag` | `2タグスキャン` | `/kiosk/tag` |
 | `borrow_photo` | `写真撮影持出` | `/kiosk/photo` |
+| `production_schedule` | `生産スケジュール` | `/kiosk/production-schedule` |
 | `leader_order_board` | `順位ボード` | `/kiosk/production-schedule/leader-order-board` |
 | `assembly` | `組立` | `/kiosk/assembly` |
 | `self_inspection` | `自主検査` | `/kiosk/part-measurement/self-inspection` |
-
-Legacy-compatible but no longer selectable in the admin dropdown:
-
-| ID | Label | Path |
-| --- | --- | --- |
-| `production_schedule` | `生産スケジュール` | `/kiosk/production-schedule` |
-
-The legacy ID remains accepted by API validation and path resolution so that
-existing rows do not break. When a row already has a legacy value, the admin
-edit dropdown keeps it visible as `既存設定`.
+| `inventory_settings` | `在庫` | `/kiosk/inventory` |
+| `instruments_borrow` | `計測機器 持出` | `/kiosk/instruments/borrow` |
+| `rigging_borrow` | `吊具 持出` | `/kiosk/rigging/borrow` |
+| `manual_order` | `手動順番` | `/kiosk/production-schedule/manual-order` |
+| `grinding_planning_board` | `製番ボード` | `/kiosk/production-schedule/planning-board` |
+| `progress_overview` | `進捗一覧` | `/kiosk/production-schedule/progress-overview` |
+| `load_balancing` | `負荷調整` | `/kiosk/production-schedule/load-balancing` |
+| `purchase_order_lookup` | `購買照会` | `/kiosk/purchase-order-lookup` |
+| `pallet_visualization` | `パレット` | `/kiosk/pallet-visualization` |
+| `shelf_master` | `棚マスタ` | `/kiosk/mobile-placement/shelf-master` |
+| `documents` | `要領書` | `/kiosk/documents` |
+| `part_measurement` | `部品測定` | `/kiosk/part-measurement` |
+| `inspection_drawing` | `検査図面` | `/kiosk/part-measurement/inspection` |
+| `rigging_analytics` | `集計` | `/kiosk/rigging-analytics` |
+| `machine_signal` | `設備稼働` | `/kiosk/machine-signal` |
+| `call` | `通話` | `/kiosk/call` |
 
 ## Implementation State
 
