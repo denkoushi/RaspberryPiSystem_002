@@ -5,7 +5,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   resolveInventoryTag,
   type InventoryCompartment,
-  type InventoryHistoryEntry,
+  type InventoryMovementTransaction,
   type InventoryImportSummary,
   type InventoryTag,
 } from '../../api/client';
@@ -85,10 +85,10 @@ export function KioskItemInventoryPage() {
   const [selectedTag, setSelectedTag] = useState<InventoryTag | null>(null);
   const [message, setMessage] = useState('アイテムNFCタグを読み取ってください');
   const [messageKind, setMessageKind] = useState<'info' | 'success' | 'error'>('info');
-  const [lastTransaction, setLastTransaction] = useState<InventoryHistoryEntry | null>(null);
+  const [lastTransaction, setLastTransaction] = useState<InventoryMovementTransaction | null>(null);
   const [lastTransactionUnit, setLastTransactionUnit] = useState('個');
   const [activeTag, setActiveTag] = useState<InventoryTag | null>(null);
-  const [resultTransaction, setResultTransaction] = useState<InventoryHistoryEntry | null>(null);
+  const [resultTransaction, setResultTransaction] = useState<InventoryMovementTransaction | null>(null);
   const [activity, setActivity] = useState(0);
   const [busy, setBusy] = useState(false);
   const [panel, setPanel] = useState<'none' | 'correct' | 'quantity'>('none');
@@ -139,7 +139,7 @@ export function KioskItemInventoryPage() {
     if (item && drawer && mountedRef.current) selectTag(pickedCompartmentTag({ ...drawer, item }));
   };
 
-  const applyTransactionStock = async (transaction: InventoryHistoryEntry) => {
+  const applyTransactionStock = async (transaction: InventoryMovementTransaction) => {
     let tag = selectedTagRef.current;
     if (tag?.compartment?.id !== transaction.compartmentId) {
       const findTag = (items: typeof itemsQuery.data) => {
@@ -202,7 +202,7 @@ export function KioskItemInventoryPage() {
     setMessageKind('info');
   }, [selectTag]);
 
-  const completeMovement = async (transaction: InventoryHistoryEntry, restock: boolean) => {
+  const completeMovement = async (transaction: InventoryMovementTransaction, restock: boolean) => {
     const unit = await applyTransactionStock(transaction);
     setLastTransaction(transaction);
     setResultTransaction(transaction);
@@ -497,6 +497,9 @@ export function KioskItemInventoryPage() {
 
   const selectedPhotos = selectedTag?.compartment?.item.photos ?? [];
   const selectedCompartment = selectedTag?.compartment ?? null;
+  const lastTransactionItemName = lastTransaction?.inventoryItem?.name
+    ?? (selectedCompartment?.id === lastTransaction?.compartmentId ? selectedCompartment?.item.name : undefined)
+    ?? itemCompartments.find((entry) => entry.id === lastTransaction?.compartmentId)?.item.name;
 
   // What the worker should do next, as a mark + short word; results replace it for a few seconds.
   const resultBadge = (
@@ -520,7 +523,7 @@ export function KioskItemInventoryPage() {
           <button type="button" aria-pressed={!restockMode} disabled={busy || refreshingTag} onClick={() => switchMode(false)} className={`h-12 px-[18px] font-bold disabled:opacity-40 ${!restockMode ? 'bg-inv-amber text-inv-amber-ink' : 'text-inv-muted'}`}>払い出し</button>
           <button type="button" aria-pressed={restockMode} disabled={busy || refreshingTag} onClick={() => switchMode(true)} className={`h-12 px-[18px] font-bold disabled:opacity-40 ${restockMode ? 'bg-inv-green text-inv-green-ink' : 'text-inv-muted'}`}>補充</button>
         </div>
-        {lastTransaction ? <button type="button" className={`${invButtonDanger} h-12 max-w-[340px] border-inv-red text-inv-red`} onClick={() => void cancelLast()} disabled={busy}><UndoIcon /><span className="min-w-0 truncate">取消：{lastTransaction.inventoryItem.name}</span><span className="shrink-0">{formatSignedDelta(lastTransaction.delta)}{lastTransactionUnit}</span></button> : null}
+        {lastTransaction ? <button type="button" className={`${invButtonDanger} h-12 max-w-[340px] border-inv-red text-inv-red`} onClick={() => void cancelLast()} disabled={busy}><UndoIcon /><span className="min-w-0 truncate">取消{lastTransactionItemName ? `：${lastTransactionItemName}` : ''}</span><span className="shrink-0">{formatSignedDelta(lastTransaction.delta)}{lastTransactionUnit}</span></button> : null}
         <span className="mx-1 h-7 w-px bg-inv-line" />
         <Link to="/kiosk/inventory/settings" className={`${invButton} h-12 rounded-xl`}><LockIcon />在庫の準備</Link>
       </div>

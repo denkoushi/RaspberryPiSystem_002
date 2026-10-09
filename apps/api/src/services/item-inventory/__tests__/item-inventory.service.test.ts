@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../lib/photo-storage.js', () => ({ PhotoStorage: { deletePhoto: vi.fn().mockResolvedValue(undefined) } }));
@@ -411,6 +412,11 @@ function inventoryState(stockQuantity = 10) {
     ]),
     transactions: [] as Array<Record<string, any>>,
   };
+  const withRelations = (transaction: Record<string, any> | null, include?: Prisma.InventoryTransactionInclude) => transaction && ({
+    ...transaction,
+    ...(include?.inventoryItem ? { inventoryItem: { itemCode: 'RI-2-TEST', name: '治具' } } : {}),
+    ...(include?.compartment ? { compartment: { ...state.compartment, drawer: { drawerNumber: 2, shelf: { area: '30007_KSJP-55', shelfNumber: 1 } } } } : {}),
+  });
   const tx = {
     inventoryNfcTag: {
       findUnique: vi.fn(async ({ where }: { where: { uid: string } }) => {
@@ -427,22 +433,22 @@ function inventoryState(stockQuantity = 10) {
     },
     inventoryTransaction: {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) => state.transactions.find((entry) => entry.id === where.id) ?? null),
-      findFirst: vi.fn(async ({ where }: { where: { clientId?: string; idempotencyKey?: string; compartmentId?: string; action?: string; id?: { not: string }; reversedBy?: { is: null } } }) => {
-        if (where.idempotencyKey) return state.transactions.find((entry) => entry.clientId === where.clientId && entry.idempotencyKey === where.idempotencyKey) ?? null;
+      findFirst: vi.fn(async ({ where, include }: { where: { clientId?: string; idempotencyKey?: string; compartmentId?: string; action?: string; id?: { not: string }; reversedBy?: { is: null } }; include?: Prisma.InventoryTransactionInclude }) => {
+        if (where.idempotencyKey) return withRelations(state.transactions.find((entry) => entry.clientId === where.clientId && entry.idempotencyKey === where.idempotencyKey) ?? null, include);
         if (where.compartmentId) return [...state.transactions].reverse().find((entry) => entry.compartmentId === where.compartmentId
           && (!where.action || entry.action === where.action)
           && (!where.id || entry.id !== where.id.not)
           && (!where.reversedBy || !entry.reversedBy)) ?? null;
         return null;
       }),
-      create: vi.fn(async ({ data }: { data: Record<string, any> }) => {
+      create: vi.fn(async ({ data, include }: { data: Record<string, any>; include?: Prisma.InventoryTransactionInclude }) => {
         const transaction = { id: `transaction-${state.transactions.length + 1}`, createdAt: new Date(), ...data, reversedBy: null };
         if (data.reversalOfId) {
           const original = state.transactions.find((entry) => entry.id === data.reversalOfId);
           if (original) original.reversedBy = { id: transaction.id };
         }
         state.transactions.push(transaction);
-        return transaction;
+        return withRelations(transaction, include);
       }),
     },
     $queryRaw: vi.fn().mockResolvedValue([]),
@@ -452,6 +458,49 @@ function inventoryState(stockQuantity = 10) {
 }
 
 describe('ItemInventoryService stock transactions', () => {
+  it.each(['nfc', 'touch'] as const)('returns history relations for fresh %s movements, replays and cancellation', async (source) => {
+    const { state, tx, db } = inventoryState();
+    const service = new ItemInventoryService(db as never);
+    const actor = { clientId: 'terminal-1' };
+    const move = () => source === 'nfc'
+      ? service.processTransaction({ itemTagUid: 'item-uid', quantityTagUid: 'quantity-uid', restock: false, idempotencyKey: 'movement-key', actor })
+      : service.processTouchTransaction({ compartmentId: 'compartment-1', quantity: 2, idempotencyKey: 'movement-key', actor });
+    const fresh = await move();
+    const replay = await move();
+    const cancelled = await service.cancelTransaction(fresh.transaction.id, actor);
+
+    for (const transaction of [fresh.transaction, replay.transaction, cancelled]) {
+      expect(transaction.inventoryItem.name).toBe('治具');
+      expect(transaction.compartment).toMatchObject({ drawer: { drawerNumber: 2, shelf: { area: '30007_KSJP-55', shelfNumber: 1 } } });
+    }
+    expect(replay.replayed).toBe(true);
+    expect(state.compartment.stockQuantity).toBe(10);
+    expect(state.transactions).toHaveLength(2);
+    const include = { inventoryItem: true, compartment: { include: { drawer: { include: { shelf: true } } } } };
+    expect(tx.inventoryTransaction.create).toHaveBeenCalledWith(expect.objectContaining({ include }));
+    expect(tx.inventoryTransaction.findFirst).toHaveBeenCalledWith(expect.objectContaining({ include }));
+  });
+
+  it.each(['nfc', 'touch'] as const)('returns history relations for a %s replay after an idempotency uniqueness race', async (source) => {
+    const { state, db } = inventoryState();
+    const service = new ItemInventoryService(db as never);
+    const actor = { clientId: 'terminal-1' };
+    const move = () => source === 'nfc'
+      ? service.processTransaction({ itemTagUid: 'item-uid', quantityTagUid: 'quantity-uid', restock: false, idempotencyKey: 'race-key', actor })
+      : service.processTouchTransaction({ compartmentId: 'compartment-1', quantity: 2, idempotencyKey: 'race-key', actor });
+    const fresh = await move();
+    db.$transaction.mockRejectedValueOnce(new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002', clientVersion: '5.22.0' }));
+
+    const replay = await move();
+
+    expect(replay.replayed).toBe(true);
+    expect(replay.transaction.id).toBe(fresh.transaction.id);
+    expect(replay.transaction.inventoryItem.name).toBe('治具');
+    expect(replay.transaction.compartment?.drawer.shelf.shelfNumber).toBe(1);
+    expect(state.compartment.stockQuantity).toBe(8);
+    expect(state.transactions).toHaveLength(1);
+  });
+
   it.each(['compartment-1', undefined])('accepts an expected matching compartment or the legacy input: %s', async (expectedCompartmentId) => {
     const { state, db } = inventoryState();
     const result = await new ItemInventoryService(db as never).processTransaction({
@@ -505,6 +554,7 @@ describe('ItemInventoryService stock transactions', () => {
     const input = { itemTagUid: 'item-uid', quantityTagUid: 'quantity-uid', restock: false, actor: { clientId: 'terminal-1' } };
     const first = await service.processTransaction(input);
     first.transaction.createdAt = new Date('2026-10-01T00:00:00Z');
+    state.transactions[0].createdAt = first.transaction.createdAt;
     const second = await service.processTransaction(input);
     await service.cancelTransaction(second.transaction.id, input.actor);
     expect(state.compartment.lastIssuedAt).toEqual(first.transaction.createdAt);
@@ -630,7 +680,7 @@ describe('ItemInventoryService history', () => {
     await service.listHistory(3, { compartmentId: 'compartment-1' });
     await service.listHistory(100);
 
-    expect(findMany.mock.calls[0][0]).toMatchObject({ where: { compartmentId: 'compartment-1' }, take: 3 });
+    expect(findMany.mock.calls[0][0]).toMatchObject({ where: { compartmentId: 'compartment-1' }, take: 3, include: { inventoryItem: true, compartment: { include: { drawer: { include: { shelf: true } } } } } });
     expect(findMany.mock.calls[1][0].where).toBeUndefined();
   });
 });

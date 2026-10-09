@@ -58,6 +58,15 @@ Run `20260926-112811-48762d` failed after 3 seconds. The PR for the next milesto
 
 Do not merge to `main` until a standard release run has finished. The next run must re-check CI for the new SHA and re-run `--print-plan`.
 
+## Updates (2026-10-09, crash after a movement)
+
+On the first device check of the 在庫操作 screen the kiosk showed the error screen right after a quantity tag was held. `ClientLog` (`kiosk_ui_error`, `render_crash`, route `/kiosk/inventory`, 2026-10-09 09:23 JST, twice) had `Cannot read properties of undefined (reading 'name')`.
+
+- Cause: the cancel button shows `取消：<item name>` from the movement response, but `POST /item-inventory/transactions`, `/touch-transactions` and `/transactions/:id/cancel` returned the bare transaction row without `inventoryItem`. Only `GET /item-inventory/history` included it. The web type claimed the field and the web test mocks carried it, so no test failed. The movement itself was saved before the crash.
+- Fix: the three responses (and idempotent replays) include the same relations as history entries through one shared include. The web type for movement responses marks the relations as optional, and the cancel button falls back to the item name of the movement's compartment, or shows no name.
+- Tests: the API tests assert `transaction.inventoryItem.name` on the NFC route, the touch route, a replay and cancel; the web tests run both routes with a response that has no `inventoryItem`.
+- Not checked: the kiosk itself after the fix.
+
 ## Updates (2026-10-08, 在庫の準備 screen)
 
 Fourth part of the review: fewer repeats and dead ends in setup. The four tabs and their panes keep their shape.

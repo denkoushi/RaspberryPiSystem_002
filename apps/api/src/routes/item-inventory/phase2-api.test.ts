@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { inventory, requireClientDeviceMock, verifyPasswordMock } = vi.hoisted(() => ({
   inventory: {
-    processTransaction: vi.fn(),
+    processTransaction: vi.fn(), cancelTransaction: vi.fn(),
     processTouchTransaction: vi.fn(), deleteDrawer: vi.fn(), deleteShelf: vi.fn(), deleteTag: vi.fn(), dismissImport: vi.fn(), restoreImport: vi.fn(),
   },
   requireClientDeviceMock: vi.fn(),
@@ -23,6 +23,11 @@ import { registerItemInventoryRoutes } from './index.js';
 
 const id = '00000000-0000-4000-8000-000000000001';
 const clientHeaders = { 'x-client-key': 'kiosk-key' };
+const transaction = {
+  id, createdAt: new Date('2026-10-08T00:00:00Z'),
+  inventoryItem: { itemCode: 'RI-2-TEST', name: '治具' },
+  compartment: { drawer: { drawerNumber: 2, shelf: { area: '30007_KSJP-55', shelfNumber: 1 } } },
+};
 const setupRoutes = [
   { method: 'DELETE', url: `/item-inventory/drawers/${id}`, handler: inventory.deleteDrawer },
   { method: 'DELETE', url: `/item-inventory/shelves/${id}`, handler: inventory.deleteShelf },
@@ -50,8 +55,9 @@ describe('inventory phase 2 API contracts', () => {
       return { clientDevice: { id: 'terminal-1' } };
     });
     verifyPasswordMock.mockResolvedValue({ success: true });
-    inventory.processTouchTransaction.mockReset().mockResolvedValue({ transaction: { id, createdAt: new Date('2026-10-08T00:00:00Z') }, replayed: false });
-    inventory.processTransaction.mockReset().mockResolvedValue({ transaction: { id, createdAt: new Date('2026-10-08T00:00:00Z') }, replayed: false });
+    inventory.processTouchTransaction.mockReset().mockResolvedValue({ transaction, replayed: false });
+    inventory.processTransaction.mockReset().mockResolvedValue({ transaction, replayed: false });
+    inventory.cancelTransaction.mockReset().mockResolvedValue(transaction);
     for (const route of setupRoutes) route.handler.mockReset().mockResolvedValue({ id });
     inventory.dismissImport.mockResolvedValue({ id, status: 'DISMISSED' });
     inventory.restoreImport.mockResolvedValue({ id, status: 'PENDING' });
@@ -61,6 +67,9 @@ describe('inventory phase 2 API contracts', () => {
     const payload = { itemTagUid: 'item-uid', quantityTagUid: 'quantity-uid', expectedCompartmentId };
     const response = await request('POST', '/item-inventory/transactions', clientHeaders, payload);
     expect(response.statusCode).toBe(200);
+    expect(response.json().transaction.inventoryItem.name).toBe('治具');
+    expect(response.json().transaction.createdAt).toBe('2026-10-08T00:00:00.000Z');
+    expect(response.json().transaction.compartment).toEqual(transaction.compartment);
     expect(inventory.processTransaction).toHaveBeenCalledExactlyOnceWith({
       itemTagUid: 'item-uid', quantityTagUid: 'quantity-uid', ...(expectedCompartmentId ? { expectedCompartmentId } : {}),
       restock: false, actor: { clientId: 'terminal-1', performedByUserId: null },
@@ -102,18 +111,30 @@ describe('inventory phase 2 API contracts', () => {
   it('allows a touch issue with just the client key and defaults restock to false', async () => {
     const response = await request('POST', '/item-inventory/touch-transactions', clientHeaders, { compartmentId: id, quantity: 1 });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ transaction: { id, createdAt: '2026-10-08T00:00:00.000Z' }, replayed: false });
+    expect(response.json()).toEqual({ transaction: { ...transaction, createdAt: '2026-10-08T00:00:00.000Z' }, replayed: false });
     expect(inventory.processTouchTransaction).toHaveBeenCalledWith({ compartmentId: id, quantity: 1, restock: false, actor: { clientId: 'terminal-1', performedByUserId: null } });
+    expect(response.json().transaction.inventoryItem.name).toBe('治具');
     expect(verifyPasswordMock).not.toHaveBeenCalled();
   });
 
   it('accepts touch restock, balance check, and idempotency key and returns replayed', async () => {
-    inventory.processTouchTransaction.mockResolvedValue({ transaction: { id, createdAt: new Date('2026-10-08T00:00:00Z') }, replayed: true });
+    inventory.processTouchTransaction.mockResolvedValue({ transaction, replayed: true });
     const payload = { compartmentId: id, quantity: 999999, restock: true, expectedBeforeQuantity: 0, idempotencyKey: 'touch-key' };
     const response = await request('POST', '/item-inventory/touch-transactions', { ...clientHeaders, authorization: 'Bearer stale' }, payload);
     expect(response.statusCode).toBe(200);
     expect(response.json().replayed).toBe(true);
+    expect(response.json().transaction.inventoryItem.name).toBe('治具');
+    expect(response.json().transaction.compartment).toEqual(transaction.compartment);
     expect(inventory.processTouchTransaction).toHaveBeenCalledWith(expect.objectContaining(payload));
+  });
+
+  it('preserves transaction relations and serializes createdAt on cancellation', async () => {
+    const response = await request('POST', `/item-inventory/transactions/${id}/cancel`, clientHeaders);
+    expect(response.statusCode).toBe(200);
+    expect(response.json().transaction.inventoryItem.name).toBe('治具');
+    expect(response.json().transaction.compartment).toEqual(transaction.compartment);
+    expect(response.json().transaction.createdAt).toBe('2026-10-08T00:00:00.000Z');
+    expect(inventory.cancelTransaction).toHaveBeenCalledExactlyOnceWith(id, { clientId: 'terminal-1', performedByUserId: null }, { allowAnyClient: false });
   });
 
   it.each([{ quantity: 0 }, { quantity: 1000000 }, { quantity: 1.5 }, { quantity: 1, expectedBeforeQuantity: -1 }, { quantity: 1, compartmentId: 'bad' }, { quantity: 1, idempotencyKey: '' }])('rejects invalid touch body %j', async (invalid) => {

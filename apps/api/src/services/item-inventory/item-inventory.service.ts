@@ -9,6 +9,10 @@ import { PhotoStorage } from '../../lib/photo-storage.js';
 import { normalizeInventoryArea, normalizeInventoryUnit } from './inventory-area.js';
 
 const UNIT_NAME_MAX_LENGTH = 20;
+const TRANSACTION_INCLUDE = {
+  inventoryItem: true,
+  compartment: { include: { drawer: { include: { shelf: true } } } },
+} satisfies Prisma.InventoryTransactionInclude;
 
 /** Optional tool information shown and chosen on the kiosk registration screen. */
 export const INVENTORY_TOOL_FIELDS = ['maker', 'toolName', 'workMaterial', 'toolSize'] as const;
@@ -481,7 +485,7 @@ export class ItemInventoryService {
       where: filter.compartmentId ? { compartmentId: filter.compartmentId } : undefined,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: Math.min(Math.max(limit, 1), 500),
-      include: { inventoryItem: true, compartment: { include: { drawer: { include: { shelf: true } } } } },
+      include: TRANSACTION_INCLUDE,
     });
   }
 
@@ -943,7 +947,7 @@ export class ItemInventoryService {
     try {
       result = await this.serializable(async (tx) => {
         if (input.idempotencyKey && input.actor?.clientId) {
-          const prior = await tx.inventoryTransaction.findFirst({ where: { clientId: input.actor.clientId, idempotencyKey: input.idempotencyKey } });
+          const prior = await tx.inventoryTransaction.findFirst({ where: { clientId: input.actor.clientId, idempotencyKey: input.idempotencyKey }, include: TRANSACTION_INCLUDE });
           if (prior) return { transaction: prior, replayed: true };
         }
         const movement = await resolveMovement(tx);
@@ -966,6 +970,7 @@ export class ItemInventoryService {
           data: { stockQuantity: afterQuantity, ...(input.restock ? {} : { lastIssuedAt: createdAt }) },
         });
         const transaction = await tx.inventoryTransaction.create({
+          include: TRANSACTION_INCLUDE,
           data: {
             action,
             inventoryItemId: compartment.inventoryItemId,
@@ -985,7 +990,7 @@ export class ItemInventoryService {
       });
     } catch (error) {
       if (input.idempotencyKey && input.actor?.clientId && error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        const prior = await this.db.inventoryTransaction.findFirst({ where: { clientId: input.actor.clientId, idempotencyKey: input.idempotencyKey } });
+        const prior = await this.db.inventoryTransaction.findFirst({ where: { clientId: input.actor.clientId, idempotencyKey: input.idempotencyKey }, include: TRANSACTION_INCLUDE });
         if (prior) return { transaction: prior, replayed: true };
       }
       throw error;
@@ -1019,6 +1024,7 @@ export class ItemInventoryService {
         data: { stockQuantity: afterQuantity, ...(lastIssue === undefined ? {} : { lastIssuedAt: lastIssue?.createdAt ?? null }) },
       });
       return tx.inventoryTransaction.create({
+        include: TRANSACTION_INCLUDE,
         data: {
           action: InventoryTransactionAction.CANCEL,
           inventoryItemId: original.inventoryItemId,
