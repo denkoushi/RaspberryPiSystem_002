@@ -115,6 +115,7 @@ async function installApiFixtures(page, sheetId, unexpectedRequests) {
     if (path === '/api/system/deploy-status') return route.fulfill({ json: { isMaintenance: false } });
     if (path === '/api/kiosk/config') return route.fulfill({ json: { defaultMode: 'tag', clientStatus: null } });
     if (path === '/api/kiosk/call/targets') return route.fulfill({ json: { selfClientId: 'sop-generator', targets: [] } });
+    if (path === '/api/kiosk/inquiries/summary') return route.fulfill({ json: { isReceiver: false, unreadCount: 0 } });
     if (path === '/api/kiosk/employees') return route.fulfill({ json: { employees: [] } });
     if (path === '/api/kiosk/production-schedule/resources') return route.fulfill({ json: { resources: ['R001', 'R002', 'R003'], resourceNameMap: { R001: ['旋盤1号'], R002: ['旋盤2号'] } } });
     if (path === '/api/part-measurement/inspection-drawing/templates') return route.fulfill({ json: { templates: summariesForSheet(sheetId) } });

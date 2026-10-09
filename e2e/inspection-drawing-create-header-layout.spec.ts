@@ -92,6 +92,10 @@ async function installMarkerDragApiMocks(page: Page) {
       await route.fulfill({ json: { isMaintenance: false } });
       return;
     }
+    if (path === '/api/kiosk/inquiries/summary') {
+      await route.fulfill({ json: { isReceiver: false, unreadCount: 0 } });
+      return;
+    }
     if (path === '/api/kiosk/config') {
       await route.fulfill({ json: { defaultMode: 'tag', clientStatus: null } });
       return;

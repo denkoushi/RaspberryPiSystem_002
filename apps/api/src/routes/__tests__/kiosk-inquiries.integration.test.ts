@@ -296,9 +296,9 @@ describe('Kiosk inquiry inbox API', () => {
     expect(response.statusCode).toBe(200);
     const settings = response.json().settings;
     expect(settings.devices.filter((device: { inquiryReceiverEnabled: boolean }) => device.inquiryReceiverEnabled).map((device: { id: string }) => device.id)).toEqual([sender.id]);
-    expect(settings.devices.map((device: { name: string }) => device.name)).toEqual(
-      [...settings.devices].map((device: { name: string }) => device.name).sort()
-    );
+    // The database collation decides the order, so compare with the database, not with a JS sort.
+    const devicesByName = await prisma.clientDevice.findMany({ orderBy: { name: 'asc' }, select: { name: true } });
+    expect(settings.devices.map((device: { name: string }) => device.name)).toEqual(devicesByName.map(device => device.name));
     expect(settings.employees).toEqual([allowedEmployee, deniedEmployee]
       .sort((a, b) => a.employeeCode.localeCompare(b.employeeCode))
       .map((employee) => ({ employeeId: employee.id, employeeCode: employee.employeeCode, displayName: employee.displayName })));
