@@ -196,3 +196,12 @@ describe('kiosk UI alert policy', () => {
     expect(kioskErrorCountSince(new Date('2026-10-08T01:00:00Z'), startedAt)).toEqual(new Date('2026-10-08T00:50:00Z'));
   });
 });
+
+
+describe('network telemetry is recording only', () => {
+  it.each(['network_health', 'kiosk_net_stats'])('never alerts for %s even at ERROR severity', (category) => {
+    expect(resolveTelemetryAlertDecision('pi4', { level: 'ERROR', message: 'network failure', context: {
+      category, signalDbm: -90, statusPostOk: false, statusPostMs: 99999, failures: 500, count: 500
+    } }, 500)).toBeNull();
+  });
+});

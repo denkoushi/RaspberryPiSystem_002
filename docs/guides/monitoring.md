@@ -280,3 +280,44 @@ ORDER BY "createdAt" DESC;
 ```
 
 `route`・`kind`・`count` で影響を把握し、`requestId` があれば API 構造化ログの同じ ID と照合する。
+
+
+## キオスクの通信品質と応答時間の調査
+
+- `network_health`: Linux status-agent が毎分測定し、通常5分に1行 (`INFO`) を status の `logs` に追加。
+  既定経路の `interface`, `linkType`、Wi-Fi の `signalDbm`, `linkQuality`（ドライバの生値）, `txBitrateMbps`,
+  `frequencyMhz`, `ssid`, `bssid` を取得できる範囲で記録。取得元は `/proc/net/wireless` と sysfs、補完のみ `iw link`。
+  `carrierChangesDelta`, `rxErrorsDelta`, `txErrorsDelta`, `rxDroppedDelta`, `txDroppedDelta` は窓内の増分合計。
+  直前の既存status送信の `statusPostMs`, `statusPostOk` を次回に載せる（追加通信なし）。
+  `samples`, `windowStart`（UNIX秒）, `windowSeconds`, `signalDbmMin/Avg/Max`, `statusPostMsMin/Avg/Max` は窓の集計。
+  -75 dBm以下・carrier変化・送信失敗・3000ms以上はその分に `WARN`。同じ理由は5分抑制。
+  WARNは途中の窓のスナップショットで、通常集計と重複し得る。既存logsが20件なら追加分を省略。
+  `/etc/raspi-status-agent.conf` の `NETWORK_HEALTH_ENABLED=0` で無効化（項目なしは有効）。
+- `kiosk_net_stats`: `/kiosk` のAPI応答をメモリで5分集計し1行 (`INFO`) 送信。0件・送信失敗は捨てる。
+  `route`, `windowStart`（ISO UTC）, `windowSeconds`, `requests`, `failures`（応答なし+5xx）, `p50Ms`, `p95Ms`, `maxMs`,
+  `online`、取得できれば `effectiveType`, `downlinkMbps`, `rttMs`。分位点は最初の最大500件、件数・最大は全件対象。
+  背景タブでタイマーが遅れても5分窓を維持し、送信のみ遅延し得る。端末情報は `clientDeviceId`, `clientDeviceName`、`clientId` をAPIで補正。
+  `/clients/logs`、stream/SSE、WebRTCシグナリングは除外し、URL・クエリ・body・ヘッダ・入力値を記録しない。
+- 両カテゴリはSlack通知なし。30日より古い行を毎日JST 03:20に最大5000行×10バッチ削除（大量残存分は翌日へ）。
+  他カテゴリは削除しない。通信断時はログが欠け得るため、欠測を良好と解釈しない。
+
+管理者認証付きで端末・UTC期間を絞る。画面側は同じURLで `category=kiosk_net_stats` に切り替える。
+
+```text
+GET /api/clients/logs?category=network_health&clientId=raspberrypi4-kiosk1&since=2026-10-08T00:00:00Z
+```
+
+端末ごと・JST時間帯ごとに通常窓の平均電波強度と画面p95を比較するSQL例（保存時刻基準、窓p95の平均/最大）:
+
+```sql
+SELECT "clientId",
+  date_trunc('hour', ("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tokyo') AS hour_jst,
+  avg((context->>'signalDbmAvg')::numeric) FILTER (WHERE context->>'category' = 'network_health') AS signal_dbm_avg,
+  avg((context->>'p95Ms')::numeric) FILTER (WHERE context->>'category' = 'kiosk_net_stats') AS window_p95_ms_avg,
+  max((context->>'p95Ms')::numeric) FILTER (WHERE context->>'category' = 'kiosk_net_stats') AS window_p95_ms_max
+FROM "ClientLog"
+WHERE (context->>'category' = 'kiosk_net_stats'
+  OR (context->>'category' = 'network_health' AND (context->>'windowSeconds')::numeric >= 300))
+  AND "createdAt" >= '2026-10-08T00:00:00'::timestamp
+GROUP BY "clientId", hour_jst ORDER BY "clientId", hour_jst;
+```

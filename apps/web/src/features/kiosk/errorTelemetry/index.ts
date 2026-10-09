@@ -1,9 +1,20 @@
 import { readProductionBuildConfig } from '../../../config/productionBuildConfig';
 
+import { KioskNetworkReporter } from './networkReporter';
 import { KioskErrorReporter, urlPath, type ErrorKind } from './reporter';
 
 let reporter: KioskErrorReporter | undefined;
 let initialized = false;
+let networkReporter: KioskNetworkReporter | undefined;
+function getNetworkReporter() {
+  if (!networkReporter && typeof window !== 'undefined') {
+    networkReporter = new KioskNetworkReporter({
+      route: () => window.location.pathname, online: () => navigator.onLine, now: () => Date.now(),
+      connection: () => (navigator as Navigator & { connection?: { effectiveType?: string; downlink?: number; rtt?: number } }).connection
+    });
+  }
+  return networkReporter;
+}
 function getReporter() {
   if (!reporter && typeof window !== 'undefined') {
     reporter = new KioskErrorReporter({
@@ -22,8 +33,9 @@ export function reportKioskException(kind: 'render_crash' | 'window_error' | 'un
     return getReporter()?.record(kind, { ...data, recoveryDecision });
   } catch { return; }
 }
-export function reportKioskApi(input: { method?: string; url?: string; status?: number; code?: string; apiCode?: unknown; requestId?: unknown; durationMs: number }) {
+export function reportKioskApi(input: { method?: string; url?: string; status?: number; code?: string; apiCode?: unknown; requestId?: unknown; durationMs: number; streaming?: boolean }) {
   try {
+    getNetworkReporter()?.record(input);
     if (!input.url || input.status === 401 || input.code === 'ERR_CANCELED') return;
     let kind: ErrorKind;
     if (input.code === 'ECONNABORTED' || input.code === 'ETIMEDOUT') kind = 'api_timeout';
@@ -35,16 +47,18 @@ export function reportKioskApi(input: { method?: string; url?: string; status?: 
     getReporter()?.record(kind, { ...input, urlPath: urlPath(input.url) });
   } catch { /* Best effort. */ }
 }
-export function initializeKioskErrorTelemetry(send: (payload: { clientId: string; logs: Parameters<KioskErrorReporter['setTransport']>[0] extends (logs: infer L) => Promise<unknown> ? L : never }) => Promise<unknown>) {
+export function initializeKioskErrorTelemetry(send: (payload: { clientId: string; logs: Array<{ level: 'INFO' | 'WARN' | 'ERROR'; message: string; context: Record<string, unknown> }> }) => Promise<unknown>) {
   try {
     if (initialized) return;
     initialized = true;
     const current = getReporter();
     current?.setTransport((logs) => send({ clientId: 'kiosk-web', logs }));
+    const network = getNetworkReporter();
+    network?.setTransport((logs) => send({ clientId: 'kiosk-web', logs }));
     window.addEventListener('error', (event) => reportKioskException('window_error', event.error ?? new Error(event.message)));
     window.addEventListener('unhandledrejection', (event) => reportKioskException('unhandled_rejection', event.reason));
     window.addEventListener('online', () => { void current?.flush(); });
-    window.setInterval(() => { void current?.flush(); }, 5000);
+    window.setInterval(() => { void current?.flush(); void network?.flush(); }, 5000);
     void current?.flush();
   } catch { /* Best effort. */ }
 }

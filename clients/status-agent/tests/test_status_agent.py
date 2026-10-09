@@ -40,6 +40,7 @@ class StatusAgentTest(unittest.TestCase):
 
             config = status_agent.parse_config_file(config_path)
 
+        self.assertEqual(config["NETWORK_HEALTH_ENABLED"], "1")
         self.assertEqual(config["STATUS_AGENT_LOG_SUCCESS"], "0")
         self.assertEqual(config["STORAGE_HEALTH_ENABLED"], "0")
         self.assertEqual(config["STORAGE_HEALTH_DISK_WARN_PCT"], "80")

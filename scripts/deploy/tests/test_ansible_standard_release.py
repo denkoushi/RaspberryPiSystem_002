@@ -2166,6 +2166,7 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
                 "LOCATION": "ラズパイ5 - サーバー",
                 "LOG_FILE": "/var/log/raspi-status-agent.log",
                 "STATUS_AGENT_LOG_SUCCESS": "0",
+                "NETWORK_HEALTH_ENABLED": "1",
                 "REQUEST_TIMEOUT": "10",
                 "TLS_SKIP_VERIFY": "1",
                 "STORAGE_HEALTH_ENABLED": "1",
