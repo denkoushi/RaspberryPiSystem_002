@@ -43,6 +43,8 @@ import {
   retryInventoryImportMessage,
   replaceInventoryItemTag,
   resolveInventoryTag,
+  resolveInventoryLabelNumber,
+  suggestInventoryToolFields,
   setInventoryItemUnit,
   updateInventoryItemDetails,
   type InventoryMovementTransaction,
@@ -102,6 +104,10 @@ export function useInventoryCompartmentHistory(compartmentId: string | null, lim
 }
 export function useResolvedInventoryTag(uid: string, enabled = true) {
   return useQuery({ queryKey: ['inventory-tag', uid], queryFn: () => resolveInventoryTag(uid), enabled: enabled && Boolean(uid), staleTime: 30000 });
+}
+
+export function useResolvedInventoryLabelNumber(labelNumber: string, enabled = true) {
+  return useQuery({ queryKey: ['inventory-label', labelNumber], queryFn: () => resolveInventoryLabelNumber(labelNumber), enabled: enabled && Boolean(labelNumber), retry: false });
 }
 
 function invalidateInventory(queryClient: ReturnType<typeof useQueryClient>) {
@@ -198,6 +204,7 @@ export function useInventoryMutations(accessPassword?: string, setup = false) {
       },
       onSettled: () => { void queryClient.invalidateQueries({ queryKey: inventoryKeys.items }); },
     }),
+    suggestToolFields: useMutation({ mutationFn: (input: Parameters<typeof suggestInventoryToolFields>[0]) => send(() => suggestInventoryToolFields(input, accessPassword)) }),
     registerImport: useMutation({ mutationFn: ({ id, input }: { id: string; input: Parameters<typeof registerInventoryImport>[1] }) => send(() => registerInventoryImport(id, input, accessPassword)), onSuccess: invalidate }),
     dismissImport: useMutation({ mutationFn: (id: string) => send(() => dismissInventoryImport(id, accessPassword)), onSuccess: invalidate }),
     restoreImport: useMutation({ mutationFn: (id: string) => send(() => restoreInventoryImport(id, accessPassword)), onSuccess: async () => { invalidate(); await queryClient.invalidateQueries({ queryKey: importsKey }); } }),

@@ -3,6 +3,8 @@ import { z } from 'zod';
 
 import { authorizeRoles } from '../../lib/auth.js';
 import { authorizeKioskClientKeyOrJwtRoles } from '../../lib/kiosk-document-auth.js';
+import { prisma } from '../../lib/prisma.js';
+import { ToolFieldSuggestionService } from '../../services/item-inventory/tool-field-suggestion.service.js';
 import { ApiError } from '../../lib/errors.js';
 import { requireClientDevice } from '../kiosk/shared.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
@@ -373,6 +375,23 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     } catch (error) {
       mapMutationError(error);
     }
+  });
+
+  app.post('/item-inventory/import-photos/suggest-tool-fields', { preHandler: [authorizeManageOrKiosk] }, async (request, reply) => {
+    const body = z.discriminatedUnion('source', [
+      z.object({ source: z.literal('import'), payloadId: z.string().uuid(), photoId: z.string().uuid() }).strict(),
+      z.object({ source: z.literal('item'), itemId: z.string().uuid(), photoId: z.string().uuid() }).strict(),
+    ]).parse(request.body ?? {});
+    const photo = body.source === 'import'
+      ? await prisma.inventoryImportPhoto.findFirst({ where: { id: body.photoId, payloadId: body.payloadId }, select: { photoUrl: true } })
+      : await prisma.inventoryItemPhoto.findFirst({ where: { id: body.photoId, inventoryItemId: body.itemId, inventoryItem: { deletedAt: null } }, select: { photoUrl: true } });
+    if (!photo) throw new ApiError(404, '写真が見つかりません');
+    const controller = new AbortController();
+    const abort = () => { if (!reply.raw.writableEnded) controller.abort(); };
+    reply.raw.on('close', abort);
+    try {
+      return await new ToolFieldSuggestionService().suggest(photo.photoUrl, controller.signal);
+    } finally { reply.raw.off('close', abort); }
   });
 
   app.post('/item-inventory/imports/:id/register', { preHandler: [authorizeManageOrKiosk] }, async (request) => {

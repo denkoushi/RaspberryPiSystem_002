@@ -1,6 +1,7 @@
+import { formatInventoryLabelNumber } from '@raspi-system/shared-types';
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 
-import { inventoryThumbnailUrl, type InventoryImport, type InventoryItem } from '../../../../api/client';
+import { inventoryThumbnailUrl, type InventoryImport, type InventoryItem, type InventoryToolFieldSuggestion } from '../../../../api/client';
 import {
   useInventoryImportMessages,
   useInventoryImports,
@@ -20,6 +21,7 @@ import {
   invEyebrow,
   invField,
   invLabel,
+  invLabelNumber,
   invPanel,
   invSeg,
   invSegAdd,
@@ -159,7 +161,11 @@ const TEXT_FIELDS: Array<{ key: TextFieldKey; label: string; aria?: string }> = 
   { key: 'toolSize', label: '工具寸法' },
   { key: 'usage', label: '用途' },
 ];
-export type RegistrationState = { selectedId: string | null; draft: Draft | null };
+export type RegistrationState = {
+  selectedId: string | null;
+  draft: Draft | null;
+  completed?: { candidateId: string; labelNumber?: number; name: string; location: string };
+};
 
 export function InventoryRegistrationTab({ accessPassword, registration, setRegistration }: {
   accessPassword: string;
@@ -172,6 +178,10 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
   const mutations = useInventoryMutations(accessPassword, true);
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
   const [undoDismiss, setUndoDismiss] = useState<{ candidate: InventoryImport; draft: Draft } | null>(null);
+  const registered = registration.completed ?? null;
+  const [suggestion, setSuggestion] = useState<{ candidateId: string; photoId: string; result: InventoryToolFieldSuggestion } | null>(null);
+  const [reading, setReading] = useState(false);
+  const suggestionGenerationRef = useRef(0);
   const [working, setWorking] = useState(false);
   const [errorAt, setErrorAt] = useState('register');
   // Newest first, like the unregistered cards on the daily list.
@@ -193,6 +203,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [confirmDeletePhotoId, setConfirmDeletePhotoId] = useState<string | null>(null);
+  const [readPhotoId, setReadPhotoId] = useState<string | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; alt: string } | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -206,19 +217,24 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
   // A different candidate starts over.
   const candidateId = candidate?.id ?? null;
   useEffect(() => {
-    if (candidate && !registration.draft) setRegistration({ selectedId: candidate.id, draft: emptyDraft(candidate) });
-  }, [candidate, registration.draft, setRegistration]);
+    if (!registered && candidate && !registration.draft) setRegistration({ selectedId: candidate.id, draft: emptyDraft(candidate) });
+  }, [candidate, registration.draft, setRegistration, registered]);
 
   // The chosen candidate is gone (registered on another terminal): fall back to the newest one.
   const selectedGone = Boolean(selectedId) && !candidate && importsQuery.data !== undefined && !importsQuery.isFetching;
   useEffect(() => {
-    if (selectedGone) setRegistration({ selectedId: null, draft: null });
-  }, [selectedGone, setRegistration]);
+    if (selectedGone && !registered) setRegistration({ selectedId: null, draft: null });
+  }, [selectedGone, setRegistration, registered]);
 
   useEffect(() => {
     setError(null);
     setConfirmDeletePhotoId(null);
     setManualOpen(false);
+    setSuggestion(null);
+    setReadPhotoId(null);
+    setSelectedPhoto(null);
+    suggestionGenerationRef.current += 1;
+    setReading(false);
     // Only the candidate identity matters here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidateId]);
@@ -338,7 +354,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
     setWorking(true);
     const isNew = draft.mode === 'NEW_ITEM';
     try {
-      await mutations.registerImport.mutateAsync({
+      const result = await mutations.registerImport.mutateAsync({
         id: candidate.id,
         input: {
           mode: draft.mode,
@@ -360,9 +376,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
       setDone(`候補 #${candidate.sourceItemId} を登録しました`);
       setHiddenIds((ids) => [...ids, candidate.id]);
       completedIdRef.current = candidate.id;
-      setRegistration((current) => current.selectedId === candidate.id ? {
-        selectedId: candidates.find((entry) => entry.id !== candidate.id)?.id ?? null, draft: null,
-      } : current);
+      setRegistration({ selectedId: candidate.id, draft, completed: { candidateId: candidate.id, labelNumber: result.compartment?.labelNumber, name: result.item.name, location: isNew ? draft.drawerLabel : '写真を追加しました' } });
     } catch (caught) {
       setError(errorText(caught));
     } finally {
@@ -408,6 +422,22 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
       setWorking(false);
     }
   };
+  const readPhoto = async () => {
+    const photo = candidate?.photos.find((entry) => entry.id === readPhotoId) ?? candidate?.photos[0];
+    if (!candidate || !photo || reading) return;
+    const generation = ++suggestionGenerationRef.current;
+    setReading(true);
+    setSuggestion(null);
+    const unavailable: InventoryToolFieldSuggestion = { model: [], maker: [], status: 'unavailable' };
+    try {
+      const result = await mutations.suggestToolFields.mutateAsync({ source: 'import', payloadId: candidate.id, photoId: photo.id });
+      if (generation === suggestionGenerationRef.current) setSuggestion({ candidateId: candidate.id, photoId: photo.id, result });
+    } catch {
+      if (generation === suggestionGenerationRef.current) setSuggestion({ candidateId: candidate.id, photoId: photo.id, result: unavailable });
+    } finally { if (generation === suggestionGenerationRef.current) setReading(false); }
+  };
+  const visibleSuggestion = suggestion?.candidateId === candidateId ? suggestion.result : null;
+  const suggestionFailed = visibleSuggestion && (visibleSuggestion.status === 'unavailable' || !visibleSuggestion.model.length && !visibleSuggestion.maker.length);
   const localError = (target: string) => <div className="h-8 shrink-0 overflow-hidden text-sm leading-4">{error && errorAt === target ? <p className="line-clamp-2 text-[#ffd0d0]" role="alert">{error}</p> : null}</div>;
 
   const retryPanel = failedMessages.length > 0 ? (
@@ -427,6 +457,18 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
     {undoDismiss ? <button type="button" className={invButtonSmGhost} disabled={working} onClick={() => void restore()}>元に戻す</button> : null}
     {errorAt === 'undo' ? localError('undo') : null}
   </div>;
+
+  if (registered) {
+    return <div className={`${invSetupTargets} flex min-h-0 flex-1 flex-col gap-3 pt-4`}>
+      {doneBanner}
+      <section className={`${invPanel} flex flex-1 flex-col items-center justify-center gap-5 p-6 text-center`} aria-label="登録完了">
+        <h2 className="text-xl font-black">{registered.labelNumber !== undefined ? '登録しました　タグと引き出しに書く番号' : '写真を追加しました'}</h2>
+        {registered.labelNumber !== undefined ? <span className={`${invLabelNumber} border-[3px] px-7 py-2 text-[88px] leading-[1.1]`}>{formatInventoryLabelNumber(registered.labelNumber)}</span> : null}
+        <p className="max-w-full truncate text-inv-muted">{registered.name} ／ {registered.location}</p>
+        <button type="button" className={invButtonGo} onClick={() => { setRegistration({ selectedId: candidates.find((entry) => entry.id !== registered.candidateId)?.id ?? null, draft: null }); }}>次へ</button>
+      </section>
+    </div>;
+  }
 
   if (!candidate) {
     return (
@@ -457,7 +499,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
           <div className="grid min-h-0 flex-1 auto-rows-[calc(50%-0.375rem)] grid-cols-2 gap-3 overflow-y-auto">
             {candidate.photos.map((photo, index) => (
               <figure key={photo.id} className="flex min-h-0 flex-col gap-2">
-                <button type="button" className="block min-h-11 min-w-11 w-full flex-1" aria-label={`写真${index + 1}を拡大`} onClick={() => setSelectedPhoto({ url: photo.photoUrl, alt: photo.filename })}>
+                <button type="button" className="block min-h-11 min-w-11 w-full flex-1" aria-label={`写真${index + 1}を拡大`} onClick={() => { setReadPhotoId(photo.id); setSelectedPhoto({ url: photo.photoUrl, alt: photo.filename }); }}>
                   <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.filename} className="h-full w-full rounded-xl border border-inv-line object-cover" />
                 </button>
                 {confirmDeletePhotoId === photo.id ? (
@@ -506,16 +548,20 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
             done={isDone('names')}
             current={false}
             bounded
-            aside={<button type="button" aria-expanded={optionsOpen} className={`${invButtonSm} self-start border-inv-cyan bg-inv-cyan/[0.12] text-[#dff8ff] hover:bg-inv-cyan/20`} onClick={() => setOptionsOpen((open) => !open)}><ChevronDownIcon />登録済みから選ぶ</button>}
+            aside={<div className="flex gap-2"><button type="button" className={invButtonSm} disabled={reading || !candidate.photos.length} onClick={() => void readPhoto()}>{reading ? '読み取り中…' : '写真から読む'}</button><button type="button" aria-expanded={optionsOpen} className={`${invButtonSm} self-start border-inv-cyan bg-inv-cyan/[0.12] text-[#dff8ff] hover:bg-inv-cyan/20`} onClick={() => setOptionsOpen((open) => !open)}><ChevronDownIcon />登録済みから選ぶ</button></div>}
           >
             <div className="grid min-h-0 flex-1 grid-cols-2 content-start gap-x-3 gap-y-2 overflow-y-auto">
               {TEXT_FIELDS.map((field) => (
-                <label key={field.key} className={`flex min-w-0 flex-col gap-1 ${field.key === 'name' ? 'col-span-2' : ''}`}>
+                <div key={field.key} className={`flex min-w-0 flex-col gap-1 ${field.key === 'name' ? 'col-span-2' : ''}`}>
                   <span className={invLabel}>{field.label}</span>
                   <input aria-label={field.aria ?? field.label} placeholder={field.key === 'name' ? undefined : '省略可'} className={`${invField} h-11 w-full`} value={draft[field.key]} onChange={(event) => update({ [field.key]: event.target.value } as Partial<Draft>)} />
-                </label>
+                  {(field.key === 'model' || field.key === 'maker') && visibleSuggestion?.[field.key].length ? <div className="flex h-11 shrink-0 gap-1.5 overflow-x-auto" role="group" aria-label={`${field.label}の読取候補`}>
+                    {visibleSuggestion[field.key].map((value) => <button key={value} type="button" aria-pressed={draft[field.key] === value} className={`${invSeg(draft[field.key] === value)} h-11 shrink-0 whitespace-nowrap font-mono`} onClick={() => update({ [field.key]: value })}>{value}</button>)}
+                  </div> : null}
+                </div>
               ))}
             </div>
+            {suggestionFailed ? <p role="status" className="shrink-0 text-sm text-inv-red">読み取れませんでした</p> : null}
           </Row>
 
           <Row id="unit" number={next()} title="単位" done current={false}>
@@ -631,7 +677,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
             const selected = entry.id === candidate.id;
             const photo = entry.photos[0];
             return (
-              <button key={entry.id} type="button" aria-pressed={selected} aria-label={`候補 #${entry.sourceItemId}`} className={`flex w-[220px] shrink-0 items-center gap-2 rounded-xl border p-1.5 text-left ${selected ? 'border-2 border-inv-cyan bg-inv-cyan/[0.1]' : 'border-inv-line bg-inv-s2 hover:bg-inv-s3'}`} onClick={() => { setSelectedId(entry.id); setDone(null); }}>
+              <button key={entry.id} type="button" aria-pressed={selected} aria-label={`候補 #${entry.sourceItemId}`} disabled={mutations.registerImport.isPending} className={`flex w-[220px] shrink-0 items-center gap-2 rounded-xl border p-1.5 text-left ${selected ? 'border-2 border-inv-cyan bg-inv-cyan/[0.1]' : 'border-inv-line bg-inv-s2 hover:bg-inv-s3'}`} onClick={() => { setSelectedId(entry.id); setDone(null); }}>
                 <span className="block h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-inv-s3">
                   {photo ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
                 </span>

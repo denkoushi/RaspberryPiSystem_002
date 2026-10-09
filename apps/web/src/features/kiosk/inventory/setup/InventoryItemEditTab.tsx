@@ -1,3 +1,4 @@
+import { formatInventoryLabelNumber } from '@raspi-system/shared-types';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { inventoryThumbnailUrl, resolveInventoryTag, type InventoryCompartment, type InventoryOptionField, type InventoryShelf } from '../../../../api/client';
@@ -19,6 +20,7 @@ import {
   invKey,
   invKeyUtil,
   invPanel,
+  invLabelNumber,
   invSeg,
   invSuccess,
 } from '../inventoryUi';
@@ -351,7 +353,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
               {item.compartments.length === 0 ? <p className="text-inv-faint">置き場所がありません</p> : null}
               <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
                 {item.compartments.map((compartment) => <div key={compartment.id} className="flex shrink-0 items-center gap-2 rounded-lg bg-inv-s2 px-2">
-                  <PinIcon /><span className="min-w-0 flex-1 truncate font-bold">{compartment.area}・棚{compartment.shelfNumber}・引き出し{compartment.drawerNumber}</span>
+                  <PinIcon /><span className="min-w-0 flex-1 truncate font-bold"><span className={invLabelNumber}>{formatInventoryLabelNumber(compartment.labelNumber)}</span> {compartment.area}・棚{compartment.shelfNumber}・引き出し{compartment.drawerNumber}</span>
                   <span className="text-[13px] tabular-nums text-inv-faint">{compartment.stockQuantity}{unitLabel(item)}{compartment.itemTagUid ? '' : '・タグなし'}</span>
                   <button type="button" className={invButtonSmGhost} disabled={pending} onClick={() => { setError(null); setPanel({ kind: 'replace-tag', compartment }); }}>タグを交換</button>
                   <button type="button" className={invButtonSm} aria-label="別の引き出しへ移す" disabled={pending} onClick={() => setPanel({ kind: 'move', compartment })}>移す</button>
