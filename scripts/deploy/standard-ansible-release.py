@@ -987,6 +987,12 @@ def stage_enrichment_ids(inventory: Path, source: Path, destination: Path, user:
 
 def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str, profiles: tuple[str, ...], user: str, remote_root: Path = REMOTE_ROOT, *, hermes_environment: dict[str, str] | None = None) -> list[str]:
     command = ["/usr/bin/sudo", "-n", "/usr/bin/systemd-run", "--quiet", f"--unit={unit_name(run_id)}", f"--uid={user}", f"--setenv=HOME=/home/{user}", f"--setenv=USER={user}", f"--setenv=LOGNAME={user}", "--setenv=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "--property=Type=exec", f"--property=WorkingDirectory={remote_root}", "--property=KillMode=control-group", "--property=Restart=no", "--property=UMask=0077", "--property=StandardOutput=journal", "--property=StandardError=journal"]
+    # Stop/failure cleanup also runs after SIGTERM/SIGKILL. Ignore its exit status
+    # so the Ansible result remains authoritative; User= is inherited by this hook.
+    cleanup = ["/usr/bin/python3", str(remote_root / "scripts/deploy/deploy-status-state.py"),
+               "--file", str(remote_root / "config/deploy-status.json"),
+               "remove-run", "--run-id", run_id]
+    command.append("--property=ExecStopPost=-" + " ".join(cleanup))
     if args.detach:
         command.append("--property=RemainAfterExit=yes")
     else:
@@ -1332,8 +1338,22 @@ def execute_standard_route(args: argparse.Namespace) -> int:
             flush=True,
         )
     command = ansible_argv(relative, effective_limit, profiles, variables, torque_cutover=torque_cutover)
-    os.execvpe(command[0], command, ansible_environment())
-    return 1
+    return execute_ansible_with_cleanup(command, args.run_id)
+
+
+def execute_ansible_with_cleanup(command: list[str], run_id: str) -> int:
+    # Detached units remain active/exited on success, so ExecStopPost alone
+    # would leave unreachable kiosks in maintenance until the unit is stopped.
+    try:
+        result = subprocess.run(command, env=ansible_environment())
+        return result.returncode if result.returncode >= 0 else 128 - result.returncode
+    finally:
+        try:
+            subprocess.run(["/usr/bin/python3", str(ROOT / "scripts/deploy/deploy-status-state.py"),
+                            "--file", str(ROOT / "config/deploy-status.json"),
+                            "remove-run", "--run-id", run_id], check=True, timeout=15)
+        except (OSError, subprocess.SubprocessError) as error:
+            print(f"WARNING: deploy-status remove-run failed: {error}", file=sys.stderr, flush=True)
 
 
 def status(args: argparse.Namespace) -> int:
