@@ -105,12 +105,147 @@ describe('InventoryItemEditTab', () => {
     expect(makers.getByRole('button', { name: 'OSG' })).toHaveAttribute('aria-pressed', 'true');
 
     await act(async () => { fireEvent.click(makers.getByRole('button', { name: '京セラ' })); });
-    expect(mutations.updateItemDetails.mutateAsync).toHaveBeenCalledWith({ itemId: 'item-1', details: { maker: '京セラ' } });
-    expect(screen.getByRole('status')).toHaveTextContent('メーカーを「京セラ」にしました');
+    expect(mutations.updateItemDetails.mutateAsync).toHaveBeenCalledWith({ itemId: 'item-1', details: { maker: 'OSG・京セラ' } });
+    expect(screen.getByRole('status')).toHaveTextContent('メーカーを「OSG・京セラ」にしました');
 
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '元に戻す' })); });
     expect(mutations.updateItemDetails.mutateAsync).toHaveBeenLastCalledWith({ itemId: 'item-1', details: { maker: 'OSG' } });
     expect(screen.queryByRole('button', { name: '元に戻す' })).not.toBeInTheDocument();
+  });
+
+
+  it('pages photos without reordering and keeps deletion and photo actions available', async () => {
+    const original = vi.mocked(useInventoryItems).getMockImplementation()!;
+    const data = original().data!;
+    vi.mocked(useInventoryItems).mockReturnValue({ data: [{ ...data[0], photos: [...data[0].photos, { id: 'photo-2', photoIndex: 2, photoUrl: '/p/2.jpg', originalFilename: 'b.jpg' }] }], isLoading: false } as never);
+    try {
+      render(<InventoryItemEditTab accessPassword="2520" />);
+      fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
+      fireEvent.click(screen.getByRole('button', { name: '次の写真' }));
+      expect(within(screen.getByRole('region', { name: '写真' })).getByAltText('b.jpg')).toBeInTheDocument();
+      expect(screen.getByText('2/2')).toBeInTheDocument();
+      expect(mutations.reorderItemPhotos.mutateAsync).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: 'アイテムを削除' })).toBeVisible();
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '写真2を前へ' })); });
+      expect(mutations.reorderItemPhotos.mutateAsync).toHaveBeenCalledWith({ itemId: 'item-1', photoIds: ['photo-2', 'photo-1'] });
+      fireEvent.click(screen.getByRole('button', { name: '写真2を削除' }));
+      expect(mutations.deleteItemPhoto.mutateAsync).not.toHaveBeenCalled();
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '削除' })); });
+      expect(mutations.deleteItemPhoto.mutateAsync).toHaveBeenCalledWith({ itemId: 'item-1', photoId: 'photo-2' });
+      fireEvent.click(screen.getByRole('button', { name: '次の写真' }));
+      expect(screen.getByText('1/2')).toBeInTheDocument();
+    } finally { vi.mocked(useInventoryItems).mockImplementation(original); }
+  });
+
+
+  it('keeps successive selections while a details save is pending and sends them in order', async () => {
+    let finish!: (value: object) => void;
+    mutations.updateItemDetails.mutateAsync.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    render(<InventoryItemEditTab accessPassword="2520" />);
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
+    const makers = within(screen.getByRole('group', { name: 'メーカー' }));
+    await act(async () => { fireEvent.click(makers.getByRole('button', { name: '京セラ' })); });
+    fireEvent.click(makers.getByRole('button', { name: 'OSG' }));
+    expect(makers.getByRole('textbox', { name: 'メーカーの値' })).toHaveValue('京セラ');
+    expect(mutations.updateItemDetails.mutateAsync).toHaveBeenCalledTimes(1);
+    await act(async () => { finish({}); });
+    expect(mutations.updateItemDetails.mutateAsync.mock.calls.map(([input]) => input.details.maker)).toEqual(['OSG・京セラ', '京セラ']);
+  });
+
+  it('restores the previous field value when saving a toggle fails', async () => {
+    mutations.updateItemDetails.mutateAsync.mockRejectedValueOnce(new Error('保存できません'));
+    render(<InventoryItemEditTab accessPassword="2520" />);
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
+    const makers = within(screen.getByRole('group', { name: 'メーカー' }));
+    await act(async () => { fireEvent.click(makers.getByRole('button', { name: '京セラ' })); });
+    expect(makers.getByRole('textbox', { name: 'メーカーの値' })).toHaveValue('OSG');
+    expect(makers.getByRole('alert')).toHaveTextContent('保存できません');
+  });
+
+  it('keeps a deselection that matches the cache until all saves for that field settle', async () => {
+    const original = vi.mocked(useInventoryItems).getMockImplementation()!;
+    const data = original().data!;
+    const finishes: Array<(value: object) => void> = [];
+    mutations.updateItemDetails.mutateAsync.mockImplementation(() => new Promise((resolve) => { finishes.push(resolve); }));
+    const view = render(<InventoryItemEditTab accessPassword="2520" />);
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
+    const makers = within(screen.getByRole('group', { name: 'メーカー' }));
+    const publishMaker = (maker: string) => {
+      vi.mocked(useInventoryItems).mockReturnValue({ data: [{ ...data[0], maker }, data[1]], isLoading: false } as never);
+      view.rerender(<InventoryItemEditTab accessPassword="2520" />);
+    };
+    try {
+      await act(async () => { fireEvent.click(makers.getByRole('button', { name: '京セラ' })); });
+      fireEvent.click(makers.getByRole('button', { name: '京セラ' }));
+      expect(makers.getByRole('textbox', { name: 'メーカーの値' })).toHaveValue('OSG');
+      expect(mutations.updateItemDetails.mutateAsync).toHaveBeenCalledTimes(1);
+
+      // The first refetch contains the selection that the second queued save removes.
+      publishMaker('OSG・京セラ');
+      await act(async () => { finishes[0]({}); });
+      expect(makers.getByRole('button', { name: '京セラ' })).toHaveAttribute('aria-pressed', 'false');
+      expect(makers.getByRole('textbox', { name: 'メーカーの値' })).toHaveValue('OSG');
+      fireEvent.click(makers.getByRole('button', { name: 'OSG' }));
+      expect(makers.getByRole('textbox', { name: 'メーカーの値' })).toHaveValue('');
+
+      publishMaker('OSG');
+      await act(async () => { finishes[1]({}); });
+      expect(makers.getByRole('textbox', { name: 'メーカーの値' })).toHaveValue('');
+      expect(mutations.updateItemDetails.mutateAsync.mock.calls.map(([input]) => input.details.maker)).toEqual(['OSG・京セラ', 'OSG', '']);
+      publishMaker('');
+      await act(async () => { finishes[2]({}); });
+      // Once settled, later server changes must be visible again.
+      publishMaker('京セラ');
+      expect(makers.getByRole('textbox', { name: 'メーカーの値' })).toHaveValue('京セラ');
+    } finally { vi.mocked(useInventoryItems).mockImplementation(original); }
+  });
+
+  it('drops a failed optimistic field and uses the latest server value', async () => {
+    const original = vi.mocked(useInventoryItems).getMockImplementation()!;
+    const data = original().data!;
+    let fail!: (reason: Error) => void;
+    mutations.updateItemDetails.mutateAsync.mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; }));
+    const view = render(<InventoryItemEditTab accessPassword="2520" />);
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
+    const makers = within(screen.getByRole('group', { name: 'メーカー' }));
+    try {
+      await act(async () => { fireEvent.click(makers.getByRole('button', { name: '京セラ' })); });
+      vi.mocked(useInventoryItems).mockReturnValue({ data: [{ ...data[0], maker: '京セラ' }], isLoading: false } as never);
+      view.rerender(<InventoryItemEditTab accessPassword="2520" />);
+      await act(async () => { fail(new Error('保存できません')); });
+      expect(makers.getByRole('textbox', { name: 'メーカーの値' })).toHaveValue('京セラ');
+      expect(makers.getByRole('alert')).toHaveTextContent('保存できません');
+    } finally { vi.mocked(useInventoryItems).mockImplementation(original); }
+  });
+
+  it('resets optimistic fields when switching items while a save is pending', async () => {
+    let finish!: (value: object) => void;
+    mutations.updateItemDetails.mutateAsync.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    render(<InventoryItemEditTab accessPassword="2520" />);
+    const list = within(screen.getByRole('navigation', { name: 'アイテム一覧' }));
+    fireEvent.click(list.getByRole('button', { name: /治具A/ }));
+    await act(async () => { fireEvent.click(within(screen.getByRole('group', { name: 'メーカー' })).getByRole('button', { name: '京セラ' })); });
+    fireEvent.click(list.getByRole('button', { name: /ItemlistRaspi 7/ }));
+    expect(within(screen.getByRole('group', { name: 'メーカー' })).getByRole('textbox', { name: 'メーカーの値' })).toHaveValue('');
+    await act(async () => { finish({}); });
+    expect(within(screen.getByRole('group', { name: 'メーカー' })).getByRole('textbox', { name: 'メーカーの値' })).toHaveValue('');
+    expect(screen.queryByText('メーカーを「OSG・京セラ」にしました')).not.toBeInTheDocument();
+    fireEvent.click(list.getByRole('button', { name: /治具A/ }));
+    expect(within(screen.getByRole('group', { name: 'メーカー' })).getByRole('textbox', { name: 'メーカーの値' })).toHaveValue('OSG');
+  });
+
+  it('removes a selected component from a joined field', async () => {
+    const original = vi.mocked(useInventoryItems).getMockImplementation()!;
+    const data = original().data!;
+    vi.mocked(useInventoryItems).mockReturnValue({ data: [{ ...data[0], maker: 'OSG・京セラ' }], isLoading: false } as never);
+    try {
+      render(<InventoryItemEditTab accessPassword="2520" />);
+      fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
+      const makers = within(screen.getByRole('group', { name: 'メーカー' }));
+      expect(makers.getByRole('button', { name: '京セラ' })).toHaveAttribute('aria-pressed', 'true');
+      await act(async () => { fireEvent.click(makers.getByRole('button', { name: 'OSG' })); });
+      expect(mutations.updateItemDetails.mutateAsync).toHaveBeenCalledWith({ itemId: 'item-1', details: { maker: '京セラ' } });
+    } finally { vi.mocked(useInventoryItems).mockImplementation(original); }
   });
 
   it('keeps a registered item named: a second tap or an emptied field does not clear the name', async () => {
@@ -150,6 +285,34 @@ describe('InventoryItemEditTab', () => {
 
     expect(mutations.deleteItem.mutateAsync).toHaveBeenCalledWith('item-1');
   });
+
+  it('shows an item deletion failure inside the confirmation overlay', async () => {
+    mutations.deleteItem.mutateAsync.mockRejectedValueOnce(new Error('削除できません'));
+    render(<InventoryItemEditTab accessPassword="2520" />);
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'アイテムを削除' }));
+    const overlay = screen.getByRole('button', { name: '削除する' }).closest('.absolute')!;
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '削除する' })); });
+    expect(within(overlay as HTMLElement).getByRole('alert')).toHaveTextContent('削除できません');
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: '削除する' })).toBeEnabled();
+  });
+
+  it('keeps a photo error visible inside its confirmation overlay', async () => {
+    mutations.reorderItemPhotos.mutateAsync.mockRejectedValueOnce(new Error('写真を変更できません'));
+    const original = vi.mocked(useInventoryItems).getMockImplementation()!;
+    const data = original().data!;
+    vi.mocked(useInventoryItems).mockReturnValue({ data: [{ ...data[0], photos: [...data[0].photos, { ...data[0].photos[0], id: 'photo-2' }] }], isLoading: false } as never);
+    try {
+      render(<InventoryItemEditTab accessPassword="2520" />);
+      fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '写真1を後ろへ' })); });
+      fireEvent.click(screen.getByRole('button', { name: '写真1を削除' }));
+      const overlay = screen.getByRole('button', { name: '削除' }).closest('.absolute')!;
+      expect(within(overlay as HTMLElement).getByRole('alert')).toHaveTextContent('写真を変更できません');
+      expect(screen.getAllByRole('alert')).toHaveLength(1);
+    } finally { vi.mocked(useInventoryItems).mockImplementation(original); }
+  });
   it('opens a registered item by NFC even when it is filtered out', async () => {
     vi.mocked(resolveInventoryTag).mockResolvedValue({ kind: 'ITEM', compartment: { item: { id: 'item-1' } } } as never);
     const view = render(<InventoryItemEditTab accessPassword="2520" />);
@@ -157,7 +320,7 @@ describe('InventoryItemEditTab', () => {
     nfc.event = { uid: 'tag-1', eventId: 1, timestamp: '2026-10-08' } as NfcEvent;
     await act(async () => { view.rerender(<InventoryItemEditTab accessPassword="2520" />); });
     expect(resolveInventoryTag).toHaveBeenCalledWith('tag-1');
-    expect(screen.getByRole('region', { name: '写真' })).toHaveTextContent('治具A');
+    expect(screen.getByRole('heading', { name: '治具A' })).toBeInTheDocument();
     expect(screen.getByText('品物を開きました')).toBeInTheDocument();
   });
   it('ignores a tag lookup that answers after an item was picked by hand', async () => {
@@ -178,7 +341,7 @@ describe('InventoryItemEditTab', () => {
     nfc.event = { uid: 'other-tag', eventId: 1, timestamp: '2026-10-08' } as NfcEvent;
     await act(async () => { view.rerender(<InventoryItemEditTab accessPassword="2520" />); });
     expect(screen.getByText(message)).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: '写真' })).toHaveTextContent('治具A');
+    expect(screen.getByRole('heading', { name: '治具A' })).toBeInTheDocument();
     expect(mutations.replaceTag.mutateAsync).not.toHaveBeenCalled();
   });
 
@@ -219,7 +382,7 @@ describe('InventoryItemEditTab', () => {
       nfc.event = { uid: 'tag-1', eventId: 1, timestamp: '2026-10-08' } as NfcEvent;
       await act(async () => { view.rerender(<InventoryItemEditTab accessPassword="2520" />); });
       expect(refetch).toHaveBeenCalledWith({ throwOnError: true });
-      expect(screen.getByRole('region', { name: '写真' })).toHaveTextContent('治具A');
+      expect(screen.getByRole('heading', { name: '治具A' })).toBeInTheDocument();
     } finally { vi.mocked(useInventoryItems).mockImplementation(original); }
   });
 
@@ -236,7 +399,7 @@ describe('InventoryItemEditTab', () => {
     await act(async () => { view.rerender(<InventoryItemEditTab accessPassword="2520" />); });
     expect(resolveInventoryTag).not.toHaveBeenCalled();
     expect(screen.getByLabelText('入っている数')).toHaveTextContent('5');
-    expect(screen.getByRole('region', { name: '写真' })).toHaveTextContent('治具A');
+    expect(screen.getByRole('heading', { name: '治具A' })).toBeInTheDocument();
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'この引き出しを追加する' })); });
     expect(mutations.bindCompartment.mutateAsync).toHaveBeenCalledWith({ itemId: 'item-1', shelfId: 'shelf-1', drawerId: 'drawer-2', itemTagUid: 'add-tag', initialQuantity: 5 });
   });
@@ -254,7 +417,7 @@ describe('InventoryItemEditTab', () => {
     nfc.event = { uid: 'item-tag', eventId: 1, timestamp: '2026-10-08' } as NfcEvent;
     await act(async () => { view.rerender(<InventoryItemEditTab accessPassword="2520" />); });
     expect(resolveInventoryTag).not.toHaveBeenCalled();
-    expect(screen.getByRole('region', { name: '写真' })).toHaveTextContent('治具A');
+    expect(screen.getByRole('heading', { name: '治具A' })).toBeInTheDocument();
     if (mode === 'add') expect(screen.getByLabelText('入っている数')).toBeInTheDocument();
     else {
       expect(mutations.replaceTag.mutateAsync).toHaveBeenCalledWith({ id: 'comp-1', uid: 'item-tag' });

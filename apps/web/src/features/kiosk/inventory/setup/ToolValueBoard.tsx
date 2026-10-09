@@ -5,6 +5,7 @@ import { CheckIcon, CloseIcon, EditIcon, GridIcon, PlusIcon, TrashIcon } from '.
 import { invError, invEyebrow } from '../inventoryUi';
 
 import { setupErrorText as errorText } from './setupError';
+import { splitToolValues, toggleToolValue, toolValueOptions } from './toolValueSelection';
 
 import type { InventoryOptionField } from '../../../../api/client';
 
@@ -198,6 +199,7 @@ export function ToolValueBoard({ accessPassword, current, onChange, onRenamed, p
       </div>
       <div className={`grid min-h-0 flex-1 gap-2 ${lanes}`}>
         {TOOL_BOARD_COLUMNS.map((column) => {
+          const choices = toolValueOptions(column.key, options.data?.[column.key] ?? []);
           const value = current[column.key];
           const provisional = column.key === 'name' && isProvisionalInventoryName(value);
           const shown = provisional ? '' : value;
@@ -275,16 +277,20 @@ export function ToolValueBoard({ accessPassword, current, onChange, onRenamed, p
                   </>
                 ) : (
                   <>
-                    {(options.data?.[column.key] ?? []).length === 0 ? <span className="px-0.5 py-2 text-[13px] text-inv-faint">まだありません</span> : null}
-                    {(options.data?.[column.key] ?? []).map((option) => {
-                      const on = shown === option;
+                    {choices.length === 0 ? <span className="px-0.5 py-2 text-[13px] text-inv-faint">まだありません</span> : null}
+                    {choices.map((option) => {
+                      const on = column.key === 'name' ? shown === option : splitToolValues(shown).includes(option);
                       return (
                         <button
                           key={option}
                           type="button"
                           aria-pressed={on}
                           className={`${rowClass} text-sm ${on ? 'border-inv-cyan bg-inv-cyan/[0.12] font-bold text-[#dff8ff] shadow-[inset_0_0_0_1px_#39d0f0]' : 'border-inv-line bg-inv-bg hover:border-inv-line2 hover:bg-inv-s2'}`}
-                          onClick={() => (on ? clear(column.key) : onChange(column.key, option))}
+                          onClick={() => {
+                            const next = toggleToolValue(column.key, shown, option);
+                            if (column.key === 'name' && !next) clear(column.key);
+                            else onChange(column.key, next);
+                          }}
                         >
                           <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{option}</span>
                           {on && !dense ? <span className="text-inv-cyan"><CheckIcon /></span> : null}

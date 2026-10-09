@@ -64,7 +64,7 @@ On the device check, a quantity tag held right after a movement answered 先に�
 
 - Cause: after a movement the screen kept showing the item but dropped the selection that the quantity tag route reads (`flow.selectedTag`), and changed the prompt to アイテムタグ. The number buttons read another reference, so only the tag was refused.
 - Fix: a movement no longer drops the selection. While an item is shown, both the number buttons and a quantity tag work and the prompt stays 数を押す か 数量タグ. 一覧へ, the 30-second return and a failed check still clear it. Restock mode still ends after one movement, so the next tag is a 払い出し.
-- Not checked: the kiosk itself after the fix.
+- Device check (2026-10-09, after PR #1896 reached the Pi5, release run `20261009-063655-b7e283`): OK. A quantity tag held right after a movement is accepted.
 
 ## Updates (2026-10-09, crash after a movement)
 
@@ -168,3 +168,13 @@ A review of every inventory screen for fewer steps and faster response; this is 
   - Why: a worker on 2026-09-30 saw a candidate ingested correctly but could not find it, because 登録待ち opened the oldest candidate and the others were small buttons in the right pane.
 - 登録待ち lists candidates newest first in a thumbnail strip under the three panes, not in the right pane.
 - An item screen has a 一覧へ button that returns to the list; the 30-second automatic return stays.
+
+
+## Updates (2026-10-09, round 4 layout)
+
+- Daily cards show populated tool details according to 小/中/大 (9/6/4 columns, 1/3/6 detail rows); multi-photo cards cycle photos without opening the item.
+- Device-local settings: `kiosk-inventory-thumbnail-size` stores `small`, `medium` or `large` (default `medium`). `kiosk-inventory-default-area` stores the area name; an absent key means すべて. Only the home button saves the area, with six-second undo. A missing area falls back to すべて without clearing stored settings.
+- 登録待ち shows steps 1–3 and 4–6 in two columns beside a narrower photo pane. Step marks show ✓; the candidate/action bar shows あと N つ / 登録できます. Finished area-name buttons use the existing `composeArea` semantics; shelf/drawer creation and occupied drawers are unchanged. Default names, units and quantity validation are unchanged.
+- Tool-value lanes split registered strings on `・`, de-duplicate options and toggle multiple values joined with `・`; 名前 remains single. The registration overlay retains its existing immediate application timing. Bulk rename/add/delete still operate on the existing stored strings.
+- アイテム編集 uses a 250px top block with photo paging, unit/photo/location actions and visible item deletion, leaving the lower space for the tool-value lanes. Existing action confirmations and NFC handling remain.
+- Not checked: real device. Browser screenshot check was blocked by the local Chromium launch restriction.

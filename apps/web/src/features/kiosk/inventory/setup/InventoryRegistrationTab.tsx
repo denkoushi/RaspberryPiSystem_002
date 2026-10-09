@@ -93,7 +93,8 @@ export function registrationChecklist(draft: Draft): CheckItem[] {
       done: draft.mode === 'NEW_ITEM' || (draft.mode === 'EXISTING_ITEM' && Boolean(draft.itemId)),
       detail: draft.mode === 'NEW_ITEM' ? '新規' : draft.mode === 'EXISTING_ITEM' ? (draft.itemId ? draft.itemName : '追加先を選ぶ') : 'まだ',
     },
-    { id: 'names', label: '名前・工具情報・単位', done: true, optional: true, detail: `単位 ${draft.unit || '個'}` },
+    { id: 'names', label: '名前・工具情報', done: true, optional: true, detail: draft.name },
+    { id: 'unit', label: '単位', done: true, optional: true, detail: draft.unit || '個' },
   ];
   if (draft.mode === 'EXISTING_ITEM') return items;
   return [
@@ -109,7 +110,7 @@ const keyClass = 'h-11 w-12 rounded-lg border border-inv-line2 bg-inv-s2 text-[1
 const iconSm = `${invButtonSm} w-11 px-0`;
 
 function StepMark({ number, done, current }: { number: number; done: boolean; current: boolean }) {
-  if (done) return <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-inv-green text-inv-green-ink" aria-hidden="true"><CheckIcon size={13} /></span>;
+  if (done) return <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-inv-green text-inv-green-ink" aria-label="完了">✓</span>;
   return (
     <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-xs font-black ${current ? 'border-inv-amber text-inv-amber' : 'border-inv-line2 text-inv-faint'}`} aria-hidden="true">
       {number}
@@ -117,17 +118,17 @@ function StepMark({ number, done, current }: { number: number; done: boolean; cu
   );
 }
 
-function Row({ id, number, title, done, current, alignTop, aside, children }: { id: string; number: number; title: string; done: boolean; current: boolean; alignTop?: boolean; aside?: ReactNode; children: ReactNode }) {
+function Row({ id, number, title, done, current, aside, children, bounded = false }: { id: string; number: number; title: string; done: boolean; current: boolean; aside?: ReactNode; children: ReactNode; bounded?: boolean }) {
   return (
-    <section id={`registration-${id}`} aria-label={title} className={`grid grid-cols-[148px_minmax(0,1fr)] gap-3 border-b border-inv-line py-3 last:border-b-0 ${alignTop ? 'items-start' : 'items-center'}`}>
-      <div className={`flex flex-col gap-2 ${alignTop ? 'pt-2.5' : ''}`}>
+    <section id={`registration-${id}`} aria-label={title} className={`${invPanel} flex min-w-0 flex-col gap-2 p-3 ${bounded ? 'min-h-0 flex-1' : 'shrink-0'}`}>
+      <div className="flex shrink-0 items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <StepMark number={number} done={done} current={current} />
           <h3 className="text-[15px] font-black">{title}</h3>
         </div>
         {aside}
       </div>
-      <div className="min-w-0">{children}</div>
+      <div className={`min-w-0 ${bounded ? 'flex min-h-0 flex-1 flex-col gap-2' : ''}`}>{children}</div>
     </section>
   );
 }
@@ -240,8 +241,6 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
     if (draft.mode !== 'NEW_ITEM' || draft.area || !defaultArea || itemsQuery.isLoading) return;
     setDraft((current) => (current.area ? current : { ...current, area: defaultArea }));
   }, [defaultArea, draft.area, draft.mode, itemsQuery.isLoading, setDraft]);
-  const selectedSplit = splitArea(draft.area);
-  const selectedDirection = selectedSplit.machine === machine ? selectedSplit.direction : null;
   const otherAreas = useMemo(
     () => [...new Set((locationsQuery.data ?? []).map((shelf) => shelf.area))].filter((area) => splitArea(area).machine !== machine).sort((a, b) => a.localeCompare(b, 'ja')),
     [locationsQuery.data, machine],
@@ -444,13 +443,13 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
 
   return (
     <div className={`${invSetupTargets} flex min-h-0 flex-1 flex-col gap-3 pt-4`}>
-      {doneBanner}
+      {done || undoDismiss || errorAt === 'undo' && error ? doneBanner : null}
       {retryPanel}
-      <div className="relative grid min-h-[560px] flex-1 grid-cols-[680px_minmax(0,1fr)_340px] gap-[18px]">
+      <div className="relative grid min-h-0 flex-1 grid-cols-[420px_minmax(0,1fr)_minmax(0,1fr)] gap-4">
         {/* The photos stay in front of the shade so the name can be chosen while looking at them. */}
         <section aria-label="写真の確認" className={`${invPanel} flex min-h-0 flex-col gap-3 p-4 ${optionsOpen ? 'relative z-[45]' : ''}`}>
           <div className="flex items-center gap-2">
-            <h3 className="text-[15px] font-black">写真の確認</h3>
+            <h3 className="text-[15px] font-black">写真の確認</h3><span className="text-sm font-bold">候補 #{candidate.sourceItemId}</span>
             <span className="min-w-0 flex-1 truncate text-xs text-inv-faint">加工機 {candidate.area} ・ 分類 {candidate.category ?? '-'} ・ メモ {candidate.note ?? '-'}</span>
           </div>
           {candidate.photos.length === 0 ? <p className="text-sm text-inv-faint">写真はありません</p> : null}
@@ -481,14 +480,14 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
           {localError('photos')}
         </section>
 
-        <div className={`${invPanel} relative flex min-h-0 flex-col overflow-y-auto px-[18px] py-1`}>
+        <div className="flex h-full min-h-0 min-w-0 flex-col gap-3">
           <Row id="mode" number={next()} title="新規か既存か" done={isDone('mode')} current={currentId === 'mode'}>
             <div className="flex flex-wrap gap-1.5">
               <button type="button" aria-pressed={draft.mode === 'NEW_ITEM'} className={invSeg(draft.mode === 'NEW_ITEM')} onClick={chooseNew}>新規登録</button>
               <button type="button" aria-pressed={draft.mode === 'EXISTING_ITEM'} className={invSeg(draft.mode === 'EXISTING_ITEM')} onClick={() => update({ mode: 'EXISTING_ITEM', shelfId: '', drawerId: '', drawerLabel: '', itemTagUid: '', quantity: '' })}>既存のアイテムに写真を追加</button>
             </div>
             {draft.mode === 'EXISTING_ITEM' ? (
-              <div className="mt-2 flex max-h-44 flex-wrap gap-2 overflow-y-auto" aria-label="追加先のアイテム">
+              <div className="mt-2 flex max-h-24 flex-wrap gap-2 overflow-y-auto" aria-label="追加先のアイテム">
                 {itemsQuery.isLoading ? <p className="text-sm text-inv-faint">読み込み中…</p> : null}
                 {(itemsQuery.data ?? []).map((item) => (
                   <button key={item.id} type="button" aria-pressed={item.id === draft.itemId} className={`flex h-14 w-64 items-center gap-2 rounded-[10px] px-2 text-left ${item.id === draft.itemId ? 'border-2 border-inv-cyan bg-inv-cyan/[0.12]' : 'border border-inv-line bg-inv-bg hover:bg-inv-s2'}`} onClick={() => chooseExisting(item)}>
@@ -506,46 +505,49 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
             title="名前・工具情報"
             done={isDone('names')}
             current={false}
-            alignTop
+            bounded
             aside={<button type="button" aria-expanded={optionsOpen} className={`${invButtonSm} self-start border-inv-cyan bg-inv-cyan/[0.12] text-[#dff8ff] hover:bg-inv-cyan/20`} onClick={() => setOptionsOpen((open) => !open)}><ChevronDownIcon />登録済みから選ぶ</button>}
           >
-            <div className="grid grid-cols-[repeat(2,max-content)] gap-x-[18px] gap-y-2">
+            <div className="grid min-h-0 flex-1 grid-cols-2 content-start gap-x-3 gap-y-2 overflow-y-auto">
               {TEXT_FIELDS.map((field) => (
-                <label key={field.key} className="flex items-center gap-2">
-                  <span className={`${invLabel} w-[60px]`}>{field.label}</span>
-                  <input aria-label={field.aria ?? field.label} placeholder={field.key === 'name' ? undefined : '省略可'} className={`${invField} w-[220px]`} value={draft[field.key]} onChange={(event) => update({ [field.key]: event.target.value } as Partial<Draft>)} />
+                <label key={field.key} className={`flex min-w-0 flex-col gap-1 ${field.key === 'name' ? 'col-span-2' : ''}`}>
+                  <span className={invLabel}>{field.label}</span>
+                  <input aria-label={field.aria ?? field.label} placeholder={field.key === 'name' ? undefined : '省略可'} className={`${invField} h-11 w-full`} value={draft[field.key]} onChange={(event) => update({ [field.key]: event.target.value } as Partial<Draft>)} />
                 </label>
               ))}
             </div>
           </Row>
 
           <Row id="unit" number={next()} title="単位" done current={false}>
+            <div className="max-h-36 overflow-y-auto">
             <InventoryUnitPicker value={draft.unit} onChange={(unit) => update({ unit })} accessPassword={accessPassword} />
+            </div>
           </Row>
 
+        </div>
+        <div className="flex h-full min-h-0 min-w-0 flex-col gap-3">
           {draft.mode !== 'EXISTING_ITEM' ? (
             <>
-              <Row id="place" number={next()} title="置き場所" done={isDone('place')} current={currentId === 'place'} alignTop>
-                <div className="flex flex-col gap-2">
-                  <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="加工機と向き">
-                    <span className={`${invLabel} w-[52px]`}>加工機</span>
-                    <span className="flex h-10 items-center rounded-lg border border-inv-line2 bg-inv-bg px-3 font-black">{machine}</span>
-                    <span className="w-2" />
+              <Row id="place" number={next()} title="置き場所" done={isDone('place')} current={currentId === 'place'} bounded>
+                <div className="flex min-h-0 flex-1 flex-col gap-2">
+                  <p aria-label="選んだ置き場所" className="shrink-0 truncate rounded-xl border border-inv-line2 bg-inv-bg px-3 py-2 text-lg font-black">{draft.area || 'エリア'}・{shelf ? `棚${shelf.shelfNumber}` : '棚'}・{draft.drawerId ? `引き出し${shelf?.drawers.find((drawer) => drawer.id === draft.drawerId)?.drawerNumber ?? '—'}` : '引き出し'}</p>
+                  <div className="flex min-h-0 flex-1 flex-wrap content-start items-center gap-1.5 overflow-y-auto [&>button]:shrink-0" role="group" aria-label="加工機と向き">
+                    <span className={`${invLabel} w-[52px]`}>エリア</span>
                     {AREA_DIRECTIONS.map((direction) => (
-                      <button key={direction} type="button" aria-label={`${machine} ${direction}`} aria-pressed={direction === selectedDirection} className={invSeg(direction === selectedDirection)} onClick={() => chooseArea(composeArea(machine, direction))}>{direction}</button>
+                      <button key={direction} type="button" aria-label={`${machine} ${direction}`} aria-pressed={composeArea(machine, direction) === draft.area} className={invSeg(composeArea(machine, direction) === draft.area)} onClick={() => chooseArea(composeArea(machine, direction))}>{composeArea(machine, direction)}</button>
                     ))}
                     {previousArea && draft.area === previousArea ? <span className="ml-2 text-xs text-inv-faint">前回と同じ</span> : null}
                   </div>
                   {otherAreas.length > 0 ? (
-                    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="ほかの加工機の棚">
+                    <div className="flex min-h-0 flex-1 flex-wrap content-start items-center gap-1.5 overflow-y-auto [&>button]:shrink-0" role="group" aria-label="ほかの加工機の棚">
                       <span className={`${invLabel} w-[52px]`}>ほか</span>
                       {otherAreas.map((area) => (
                         <button key={area} type="button" aria-pressed={area === draft.area} className={`${invSeg(area === draft.area)} h-11 text-sm`} onClick={() => chooseArea(area)}>{area}</button>
                       ))}
                     </div>
                   ) : null}
-                  {draft.area && areaShelves.length === 0 ? <p className="text-xs text-inv-amber">{draft.area} の棚はまだありません</p> : null}
-                  <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="棚">
+                  {draft.area && areaShelves.length === 0 ? <p className="shrink-0 text-xs text-inv-amber">{draft.area} の棚はまだありません</p> : null}
+                  <div className="flex min-h-0 flex-1 flex-wrap content-start items-center gap-1.5 overflow-y-auto [&>button]:shrink-0" role="group" aria-label="棚">
                     <span className={`${invLabel} w-[52px]`}>棚</span>
                     {areaShelves.map((entry) => (
                       <button key={entry.id} type="button" aria-label={`棚${entry.shelfNumber}`} aria-pressed={entry.id === draft.shelfId} className={invSeg(entry.id === draft.shelfId)} onClick={() => update({ shelfId: entry.id, drawerId: '', drawerLabel: '', itemTagUid: '' })}>{entry.shelfNumber}</button>
@@ -553,7 +555,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
                     <button type="button" className={invSegAdd} aria-label={`棚${nextShelfNumber}を作る`} disabled={creating || !draft.area} onClick={() => void createShelf()}><PlusIcon />棚{nextShelfNumber}</button>
                   </div>
                   {shelf ? (
-                    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="引き出し">
+                    <div className="flex min-h-0 flex-1 flex-wrap content-start items-center gap-1.5 overflow-y-auto [&>button]:shrink-0" role="group" aria-label="引き出し">
                       <span className={`${invLabel} w-[52px]`}>引き出し</span>
                       {shelf.drawers.map((drawer) => {
                         const used = drawer.compartments.length > 0;
@@ -593,7 +595,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
                 ) : null}
               </Row>
 
-              <Row id="quantity" number={next()} title="最初の数" done={isDone('quantity')} current={currentId === 'quantity'} alignTop>
+              <Row id="quantity" number={next()} title="最初の数" done={isDone('quantity')} current={currentId === 'quantity'}>
                 <div className="flex items-start gap-4">
                   <div className="flex items-center gap-1.5">
                     <output aria-label="最初の数" className={`${invField} flex w-28 items-center justify-end text-xl font-black tabular-nums`}>{draft.quantity === '' ? '—' : draft.quantity}</output>
@@ -606,29 +608,6 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
           ) : null}
         </div>
 
-        <aside aria-label="登録の進み具合" className={`${invPanel} flex min-h-0 flex-col gap-2 p-[18px]`}>
-          <p className={invEyebrow}>候補 #{candidate.sourceItemId}</p>
-          <h3 className="mb-1 text-lg font-black">登録の進み具合</h3>
-          <ul className="flex flex-col gap-1.5">
-            {checklist.map((entry, index) => {
-              const current = entry.id === currentId;
-              return (
-                <li key={entry.id} className={`flex h-[42px] items-center gap-2.5 rounded-[10px] px-3 ${current ? 'border border-inv-amber/40 bg-inv-amber/[0.12]' : 'bg-inv-s2'}`}>
-                  <StepMark number={index + 1} done={entry.done} current={current} />
-                  <span className={`flex-1 truncate ${entry.done ? 'font-bold' : current ? 'font-bold text-[#ffe8bf]' : 'text-inv-muted'}`}>{entry.label}{entry.done ? '' : <span className="sr-only">（まだ）</span>}</span>
-                  <span className={`max-w-[9rem] truncate text-xs ${current ? 'text-inv-amber' : 'text-inv-faint'}`}>{current ? 'いまここ' : entry.detail}</span>
-                </li>
-              );
-            })}
-          </ul>
-          <div className="flex-1" />
-          <div className="flex h-16 shrink-0 items-center overflow-hidden">{error && errorAt === 'register' ? <p className={`line-clamp-2 rounded-lg border px-3 py-2 text-sm ${invError}`} role="alert">{error}</p> : null}</div>
-          <p className="text-center text-lg font-black tabular-nums" aria-live="polite">{remaining === 0 ? '登録できます' : `あと ${remaining} つ`}</p>
-          <button type="button" className={`${invButtonGo} h-14 text-lg disabled:border-inv-line2 disabled:bg-inv-s2 disabled:text-inv-muted disabled:opacity-100`} disabled={remaining > 0 || working || mutations.registerImport.isPending} onClick={() => void register()}>
-            {mutations.registerImport.isPending ? '登録中…' : '登録する'}
-          </button>
-          <button type="button" className={`${invButtonSmGhost} self-start`} disabled={working} onClick={() => void dismiss()}>登録しない</button>
-        </aside>
         {optionsOpen ? (
           <>
             <div className="fixed inset-0 z-40 bg-[#05080d]/60" aria-hidden="true" onClick={() => setOptionsOpen(false)} />
@@ -639,7 +618,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
               onRenamed={(field, from, to) => setDraft((current) => (current[field] === from ? { ...current, [field]: to } : current))}
               provisionalName={draft.mode === 'EXISTING_ITEM' ? undefined : `ItemlistRaspi ${candidate.sourceItemId}`}
               onClose={() => setOptionsOpen(false)}
-              className="absolute inset-y-0 left-[698px] right-0 z-50 shadow-[0_30px_80px_rgba(0,0,0,0.6),0_0_0_1px_rgba(57,208,240,0.25)]"
+              className="absolute inset-y-0 left-[436px] right-0 z-50 shadow-[0_30px_80px_rgba(0,0,0,0.6),0_0_0_1px_rgba(57,208,240,0.25)]"
             />
           </>
         ) : null}
@@ -647,13 +626,13 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
       {/* Candidates sit in their own strip below the panes so any number of them fits. */}
       <section aria-label="メールで届いた候補" className={`${invPanel} flex shrink-0 items-center gap-3 p-2.5`}>
         <p className="w-20 shrink-0 text-center leading-tight"><span className={invEyebrow}>登録待ち</span><br /><span className="text-2xl font-black tabular-nums">{candidates.length}</span><span className="text-xs text-inv-faint">件</span></p>
-        <div className="flex min-w-0 gap-2.5 overflow-x-auto">
+        <div className="flex min-w-0 flex-1 gap-2.5 overflow-x-auto">
           {candidates.map((entry) => {
             const selected = entry.id === candidate.id;
             const photo = entry.photos[0];
             return (
               <button key={entry.id} type="button" aria-pressed={selected} aria-label={`候補 #${entry.sourceItemId}`} className={`flex w-[220px] shrink-0 items-center gap-2 rounded-xl border p-1.5 text-left ${selected ? 'border-2 border-inv-cyan bg-inv-cyan/[0.1]' : 'border-inv-line bg-inv-s2 hover:bg-inv-s3'}`} onClick={() => { setSelectedId(entry.id); setDone(null); }}>
-                <span className="block h-[88px] w-[88px] shrink-0 overflow-hidden rounded-lg bg-inv-s3">
+                <span className="block h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-inv-s3">
                   {photo ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
                 </span>
                 <span className="min-w-0">
@@ -664,6 +643,12 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
               </button>
             );
           })}
+        </div>
+        <div className="flex shrink-0 items-center gap-3" aria-label="登録操作">
+          {error && errorAt === 'register' ? <p className={`max-w-60 text-sm ${invError}`} role="alert">{error}</p> : null}
+          <button type="button" className={invButtonSmGhost} disabled={working} onClick={() => void dismiss()}>登録しない</button>
+          <p className="whitespace-nowrap text-lg font-black tabular-nums" aria-live="polite">{remaining === 0 ? '登録できます' : `あと ${remaining} つ`}</p>
+          <button type="button" className={`${invButtonGo} h-14 text-lg disabled:border-inv-line2 disabled:bg-inv-s2 disabled:text-inv-muted disabled:opacity-100`} disabled={remaining > 0 || working || mutations.registerImport.isPending} onClick={() => void register()}>{mutations.registerImport.isPending ? '登録中…' : '登録する'}</button>
         </div>
       </section>
       <InventoryPhotoDialog photoUrl={selectedPhoto?.url ?? null} alt={selectedPhoto?.alt ?? ''} onClose={() => setSelectedPhoto(null)} />
