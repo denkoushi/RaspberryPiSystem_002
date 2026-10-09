@@ -1,4 +1,8 @@
-"""Bounded, best-effort network observations; never sends a probe."""
+"""Bounded, best-effort network observations; never sends a probe.
+
+Ships with status-agent.py to Pi4 kiosks (release_kiosk) and Pi3 signage
+(signage release artifact); both need the release set of the deployed SHA.
+"""
 from __future__ import annotations
 
 import json
