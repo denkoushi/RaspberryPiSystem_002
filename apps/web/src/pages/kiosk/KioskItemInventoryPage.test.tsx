@@ -855,6 +855,39 @@ function operationScenario() {
 }
 
 describe('serialized inventory operations', () => {
+  it.each(['nfc', 'touch'] as const)('keeps the screen and cancel button usable after a %s response without inventoryItem', async (source) => {
+    const { tag, quantity, transaction } = operationScenario();
+    const { inventoryItem, ...response } = transaction();
+    const movement = vi.fn().mockResolvedValue({ transaction: response });
+    vi.mocked(useInventoryMutations).mockReturnValue({ transaction: { mutateAsync: movement }, touchTransaction: { mutateAsync: movement } } as never);
+    const scan = renderWithNfc();
+    await scan(tag);
+    if (source === 'nfc') await scan(quantity);
+    else await act(async () => { fireEvent.click(screen.getByRole('button', { name: '1個を払い出す' })); });
+
+    expect(movement).toHaveBeenCalledOnce();
+    expect(screen.getByRole('status')).toHaveTextContent('払い出しました（2個）');
+    expect(screen.getByLabelText('現在庫')).toHaveTextContent('8個');
+    expect(screen.getByRole('button', { name: new RegExp(`取消：${inventoryItem.name}`) })).toBeEnabled();
+  });
+
+  it.each([false, true])('uses only the movement compartment name when inventoryItem is missing (compartment known: %s)', async (known) => {
+    const selected = operationScenario();
+    const moved = operationScenario();
+    const { inventoryItem, ...response } = moved.transaction();
+    const movement = vi.fn().mockResolvedValue({ transaction: response });
+    vi.mocked(useInventoryMutations).mockReturnValue({ transaction: { mutateAsync: movement } } as never);
+    if (known) vi.mocked(useInventoryItems).mockReturnValue({ data: [{ ...moved.tag.compartment!.item, compartments: [moved.tag.compartment!] }] } as never);
+    const scan = renderWithNfc();
+    await scan(selected.tag);
+    await scan(selected.quantity);
+
+    expect(screen.getByRole('status')).toHaveTextContent('払い出しました（2個）');
+    const cancel = screen.getByRole('button', { name: known ? new RegExp(`取消：${inventoryItem.name}`) : /^取消\s*-2個$/ });
+    expect(cancel).toBeEnabled();
+    expect(cancel).not.toHaveTextContent(selected.tag.compartment!.item.name);
+  });
+
   it.each([false, true])('sends a waiting quantity exactly once after same-compartment verification (unknown stock: %s)', async (unknownStock) => {
     const { tag, quantity, transaction } = operationScenario();
     const verification = deferred<InventoryTag | null>();

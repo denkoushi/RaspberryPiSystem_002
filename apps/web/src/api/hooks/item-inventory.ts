@@ -45,7 +45,7 @@ import {
   resolveInventoryTag,
   setInventoryItemUnit,
   updateInventoryItemDetails,
-  type InventoryHistoryEntry,
+  type InventoryMovementTransaction,
   type InventoryImport,
   type InventoryItem,
   type InventoryOptionField,
@@ -117,7 +117,7 @@ export function useInventoryMutations(accessPassword?: string, setup = false) {
   const invalidateStock = () => {
     for (const key of [inventoryKeys.history, inventoryKeys.locations, inventoryKeys.tags]) void queryClient.invalidateQueries({ queryKey: key });
   };
-  const updateStock = ({ transaction }: { transaction: InventoryHistoryEntry }) => {
+  const updateStock = ({ transaction }: { transaction: InventoryMovementTransaction }) => {
     queryClient.setQueryData<InventoryItem[]>(inventoryKeys.items, (items) => items?.map((item) => ({
       ...item,
       compartments: item.compartments.map((compartment) => compartment.id === transaction.compartmentId ? {

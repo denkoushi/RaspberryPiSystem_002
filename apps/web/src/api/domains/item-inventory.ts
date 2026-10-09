@@ -93,6 +93,10 @@ export type InventoryHistoryEntry = {
   compartment: { drawer: { shelf: { area: string; shelfNumber: number }; drawerNumber: number } } | null;
 };
 
+// Older APIs return movement rows without the relations included by history.
+export type InventoryMovementTransaction = Omit<InventoryHistoryEntry, 'inventoryItem' | 'compartment'>
+  & Partial<Pick<InventoryHistoryEntry, 'inventoryItem' | 'compartment'>>;
+
 export async function resolveInventoryTag(uid: string) {
   const { data } = await api.get<{ tag: InventoryTag | null }>('/item-inventory/tags/resolve', { params: { uid } });
   return data.tag;
@@ -339,7 +343,7 @@ export async function processInventoryTransaction(input: {
   restock: boolean;
   idempotencyKey: string;
 }) {
-  const { data } = await api.post<{ transaction: InventoryHistoryEntry; replayed?: boolean }>('/item-inventory/transactions', input);
+  const { data } = await api.post<{ transaction: InventoryMovementTransaction; replayed?: boolean }>('/item-inventory/transactions', input);
   return data;
 }
 
@@ -350,7 +354,7 @@ export async function processInventoryTouchTransaction(input: {
   expectedBeforeQuantity?: number;
   idempotencyKey?: string;
 }) {
-  const { data } = await api.post<{ transaction: InventoryHistoryEntry; replayed: boolean }>('/item-inventory/touch-transactions', input);
+  const { data } = await api.post<{ transaction: InventoryMovementTransaction; replayed: boolean }>('/item-inventory/touch-transactions', input);
   return data;
 }
 
@@ -390,7 +394,7 @@ export async function restoreInventoryImport(id: string, accessPassword?: string
 }
 
 export async function cancelInventoryTransaction(id: string, accessPassword?: string) {
-  const { data } = await api.post<{ transaction: InventoryHistoryEntry }>(`/item-inventory/transactions/${id}/cancel`, undefined, {
+  const { data } = await api.post<{ transaction: InventoryMovementTransaction }>(`/item-inventory/transactions/${id}/cancel`, undefined, {
     headers: inventorySettingsHeaders(accessPassword)
   });
   return data;
