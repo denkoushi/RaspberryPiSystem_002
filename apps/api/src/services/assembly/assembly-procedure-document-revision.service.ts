@@ -31,6 +31,7 @@ import {
   type AssemblyProcedureOverlayElementInput
 } from './assembly-procedure-overlay.persistence.js';
 import { AssemblyTemplateAccessService } from './assembly-template-access.service.js';
+import { resolveProcedureCaptionFeedback } from './procedure-caption-feedback.js';
 import { runAssemblyTransaction } from './assembly-transaction.js';
 import { saveBlankProcedurePage } from './assembly-procedure-document-blank.service.js';
 
@@ -295,6 +296,7 @@ export class AssemblyProcedureDocumentRevisionService {
     documentId: string;
     expectedEditVersion: number;
     elements: AssemblyProcedureOverlayElementInput[];
+    appliedCaptionElementIds?: string[];
     accessPassword?: string;
   }): Promise<AssemblyProcedureDocumentRevisionRecord> {
     await this.accessService.requireAccessPassword(params.accessPassword);
@@ -403,6 +405,18 @@ export class AssemblyProcedureDocumentRevisionService {
       if (!result) throw new ApiError(500, 'overlay保存後の手順書を取得できませんでした');
       return result;
     });
+    // Outside the overlay transaction: feedback failure must never roll back a save.
+    try {
+      const feedback = await prisma.assemblyProcedureCaptionFeedback.findMany({ where: { documentId: params.documentId } });
+      const byId = new Map(normalized.map(element => [element.id, element]));
+      const applied = new Set(params.appliedCaptionElementIds ?? []);
+      for (const row of feedback) {
+        const change = resolveProcedureCaptionFeedback(row, byId.get(row.elementId), applied.has(row.elementId));
+        if (change) await prisma.assemblyProcedureCaptionFeedback.update({ where: { id: row.id }, data: { ...change, resolvedAt: new Date() } });
+      }
+    } catch (error) {
+      logger.warn({ err: error, documentId: params.documentId }, 'assembly_procedure_caption_feedback_save_failed');
+    }
     await this.collectAssets(replacedAssetIds);
     return result;
   }

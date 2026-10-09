@@ -190,7 +190,8 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
         ...await resolveAssemblyProcedureEditWriter(request),
         accessPassword: body.accessPassword,
         expectedEditVersion: body.expectedEditVersion,
-        elements: body.elements
+        elements: body.elements,
+        appliedCaptionElementIds: body.appliedCaptionElementIds
       });
       return { document: serializeAssemblyProcedureDocumentRevision(document) };
     }

@@ -2827,6 +2827,13 @@ enum AssemblyProcedureOverlayShapeKind {
   ARROW
 }
 
+enum AssemblyProcedureCaptionFeedbackOutcome {
+  PROPOSED
+  KEPT
+  EDITED
+  DELETED
+}
+
 enum AssemblyProcedureAssetKind {
   SOURCE
   OVERLAY_IMAGE
@@ -3233,10 +3240,30 @@ model AssemblyProcedureAsset {
   createdAt        DateTime                            @default(now())
   overlayElements  AssemblyProcedureOverlayElement[]
   sourceRevisions  AssemblyProcedureDocumentRevision[]
+  captionFeedback  AssemblyProcedureCaptionFeedback[]
   ownerDocument    AssemblyProcedureDocument?          @relation("AssemblyProcedureAssetOwnerDocument", fields: [ownerDocumentId], references: [id], onDelete: SetNull)
 
   @@index([sha256], map: "AssemblyProcedureAsset_idx_sha256")
   @@index([ownerDocumentId, createdAt], map: "AssemblyProcedureAsset_idx_owner_created")
+}
+
+model AssemblyProcedureCaptionFeedback {
+  id           String                                  @id @default(uuid())
+  documentId   String
+  pageIndex    Int
+  elementId    String
+  assetId      String
+  documentName String
+  contextText  String?
+  aiText       String
+  finalText    String?
+  outcome      AssemblyProcedureCaptionFeedbackOutcome @default(PROPOSED)
+  createdAt    DateTime                                @default(now())
+  resolvedAt   DateTime?
+  asset        AssemblyProcedureAsset                  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, elementId])
+  @@index([assetId])
 }
 
 /// Editable elements owned by one document revision. Coordinates are source

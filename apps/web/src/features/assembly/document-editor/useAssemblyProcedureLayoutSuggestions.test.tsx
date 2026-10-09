@@ -46,4 +46,25 @@ describe('procedure layout suggestions', () => {
     await act(async () => { finish(proposal); await pending; });
     expect(hook.result.current.state.status).toBe('idle'); expect(props.onApply).not.toHaveBeenCalled();
   });
+  it('accumulates applied ids across pages and proposals, retains them on cancel, and resets for another document', async () => {
+    const props = input();
+    const hook = renderHook(next => useAssemblyProcedureLayoutSuggestions(next), { initialProps: props });
+    await act(async () => hook.result.current.start());
+    expect(hook.result.current.appliedCaptionElementIds).toEqual([]);
+    act(() => hook.result.current.cancel());
+    expect(hook.result.current.appliedCaptionElementIds).toEqual([]);
+    await act(async () => hook.result.current.start());
+    act(() => hook.result.current.apply());
+    hook.rerender({ ...props, pageIndex: 1 });
+    expect(hook.result.current.appliedCaptionElementIds).toEqual(['added']);
+    api.suggest.mockResolvedValue({ ...proposal, addedElementIds: ['added', 'second'] });
+    await act(async () => hook.result.current.start());
+    act(() => hook.result.current.apply());
+    expect(hook.result.current.appliedCaptionElementIds).toEqual(['added', 'second']);
+    act(() => hook.result.current.cancel());
+    expect(hook.result.current.appliedCaptionElementIds).toEqual(['added', 'second']);
+    hook.rerender({ ...props, documentId: 'another-document' });
+    expect(hook.result.current.appliedCaptionElementIds).toEqual([]);
+  });
+
 });

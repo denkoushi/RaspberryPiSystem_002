@@ -202,6 +202,7 @@ describe('assembly procedure revision routes', () => {
       payload: {
         accessPassword: '2520',
         expectedEditVersion: 4,
+        appliedCaptionElementIds: ['caption-id'],
         elements: [
           {
             kind: 'TEXT',
@@ -218,7 +219,8 @@ describe('assembly procedure revision routes', () => {
         documentId,
         accessPassword: '2520',
         expectedEditVersion: 4,
-        elements: [expect.objectContaining({ kind: 'TEXT', text: '確認' })]
+        elements: [expect.objectContaining({ kind: 'TEXT', text: '確認' })],
+        appliedCaptionElementIds: ['caption-id']
       })
     );
 

@@ -42,6 +42,7 @@ type StateSetter<T> = Dispatch<SetStateAction<T>>;
 export type AssemblyProcedureDocumentRevisionCommandSession = {
   document: AssemblyProcedureDocumentDto | null;
   elements: AssemblyProcedureOverlayElement[];
+  appliedCaptionElementIds?: string[];
   passwordInput: string;
   setPasswordInput: StateSetter<string>;
   busy: boolean;
@@ -162,7 +163,8 @@ export function useAssemblyProcedureDocumentRevisionCommands(
         id: document.id,
         accessPassword: passwordInput,
         expectedEditVersion: document.editVersion ?? 0,
-        elements
+        elements,
+        ...(session.appliedCaptionElementIds ? { appliedCaptionElementIds: session.appliedCaptionElementIds.slice(-200) } : {})
       });
       const nextElements = selectDocumentOverlayElements(saved);
       setDocument(saved);
@@ -211,7 +213,8 @@ export function useAssemblyProcedureDocumentRevisionCommands(
         id: document.id,
         accessPassword: passwordInput,
         expectedEditVersion: conflictEditVersion,
-        elements
+        elements,
+        ...(session.appliedCaptionElementIds ? { appliedCaptionElementIds: session.appliedCaptionElementIds.slice(-200) } : {})
       });
       const nextElements = selectDocumentOverlayElements(saved);
       setDocument(saved);

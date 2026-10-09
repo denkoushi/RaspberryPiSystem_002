@@ -136,6 +136,28 @@ describe('useAssemblyProcedureDocumentRevisionCommands', () => {
     expect(session.setMessage).toHaveBeenCalledWith('オーバーレイを保存しました。');
   });
 
+
+  it('sends applied caption ids on normal saves and conflict retries without clearing them', async () => {
+    apiMocks.saveOverlays.mockResolvedValue(documentFixture);
+    const session = makeSession({ appliedCaptionElementIds: ['first', 'second'], conflictEditVersion: 4 });
+    const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
+    await act(async () => { await hook.result.current.save(); });
+    expect(apiMocks.saveOverlays).toHaveBeenLastCalledWith(expect.objectContaining({ appliedCaptionElementIds: ['first', 'second'], expectedEditVersion: 2 }));
+    await act(async () => { await hook.result.current.retryConflictSave(); });
+    expect(apiMocks.saveOverlays).toHaveBeenLastCalledWith(expect.objectContaining({ appliedCaptionElementIds: ['first', 'second'], expectedEditVersion: 4 }));
+    expect(session.appliedCaptionElementIds).toEqual(['first', 'second']);
+  });
+
+  it('keeps all session ids while limiting each save payload to the latest 200', async () => {
+    apiMocks.saveOverlays.mockResolvedValue(documentFixture);
+    const ids = Array.from({ length: 201 }, (_, i) => `caption-${i}`);
+    const session = makeSession({ appliedCaptionElementIds: ids });
+    const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
+    await act(async () => { await hook.result.current.save(); });
+    expect(apiMocks.saveOverlays).toHaveBeenLastCalledWith(expect.objectContaining({ appliedCaptionElementIds: ids.slice(1) }));
+    expect(session.appliedCaptionElementIds).toHaveLength(201);
+  });
+
   it('returns mismatch without creating a revision or retaining a wrong PIN', async () => {
     apiMocks.verifyPassword.mockResolvedValue({ success: false });
     const session = makeSession({ passwordInput: '' });

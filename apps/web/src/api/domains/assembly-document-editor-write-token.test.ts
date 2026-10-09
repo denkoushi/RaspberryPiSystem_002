@@ -47,4 +47,11 @@ describe('document editor mutation tokens', () => {
     // The strict API body schemas continue receiving only their declared fields.
     if (typeof call[1] === 'object' && !(call[1] instanceof FormData)) expect(call[1]).not.toHaveProperty('holderToken');
   });
+  it('sends optional caption ids in the overlay save body and omits them for old callers', async () => {
+    await saveAssemblyProcedureDocumentOverlays({ ...input, elements: [], appliedCaptionElementIds: ['caption'] });
+    expect(mocks.put).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ appliedCaptionElementIds: ['caption'] }), expect.any(Object));
+    await saveAssemblyProcedureDocumentOverlays({ ...input, elements: [] });
+    expect(mocks.put.mock.calls.at(-1)?.[1]).not.toHaveProperty('appliedCaptionElementIds');
+  });
+
 });

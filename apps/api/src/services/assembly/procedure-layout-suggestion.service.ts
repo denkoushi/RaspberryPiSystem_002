@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
+import type { Prisma } from '@prisma/client';
 import { procedureLayoutSuggestionResponseSchema, type OverlayTextElement, type ProcedureLayoutSuggestionRequest, type ProcedureLayoutSuggestionResponse } from '@raspi-system/shared-types';
 
 import { ApiError } from '../../lib/errors.js';
+import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
 import { AssemblyProcedureImageStorage } from '../../lib/assembly-procedure-image-storage.js';
 import { getAssemblyProcedureAssetStorage } from '../assembly-procedure-assets/index.js';
@@ -50,7 +52,16 @@ export class ProcedureLayoutSuggestionService {
   async suggest(params: SuggestParams): Promise<ProcedureLayoutSuggestionResponse> {
     try {
       params.signal.throwIfAborted();
-      const result = await this.buildSuggestion(params);
+      const feedback: Prisma.AssemblyProcedureCaptionFeedbackCreateManyInput[] = [];
+      const result = await this.buildSuggestion(params, feedback);
+      params.signal.throwIfAborted();
+      if (feedback.length) {
+        try {
+          await prisma.assemblyProcedureCaptionFeedback.createMany({ data: feedback, skipDuplicates: true });
+        } catch (error) {
+          logger.warn({ err: error, documentId: params.documentId }, 'assembly_procedure_caption_feedback_proposal_failed');
+        }
+      }
       params.signal.throwIfAborted();
       return result;
     } catch (error) {
@@ -59,7 +70,7 @@ export class ProcedureLayoutSuggestionService {
     }
   }
 
-  private async buildSuggestion(params: SuggestParams): Promise<ProcedureLayoutSuggestionResponse> {
+  private async buildSuggestion(params: SuggestParams, feedback: Prisma.AssemblyProcedureCaptionFeedbackCreateManyInput[]): Promise<ProcedureLayoutSuggestionResponse> {
     await this.access.requireAccessPassword(params.accessPassword);
     const document = await prisma.assemblyProcedureDocument.findUnique({
       where: { id: params.documentId },
@@ -158,6 +169,12 @@ export class ProcedureLayoutSuggestionService {
             zIndex: Math.max(0, ...elements.map(element => element.zIndex)) + 1,
             style: { ...representative?.style, fontSizeRatio: representativeFont },
           };
+          const contextText = row.textIds.map(textId => {
+            const original = params.elements.find(element => element.id === textId);
+            return original?.kind === 'TEXT' ? original.text : '';
+          }).join('\n').trim() || null;
+          feedback.push({ documentId: params.documentId, pageIndex: params.pageIndex, elementId: id,
+            assetId: image.assetId, documentName: document.name, contextText, aiText: line, outcome: 'PROPOSED' });
           const insertAt = row.textIds.length ? 1 : 0;
           row.textIds.splice(insertAt, 0, id);
           elements = [...elements, added]; byId.set(id, added); addedElementIds.push(id);

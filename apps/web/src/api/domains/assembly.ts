@@ -135,13 +135,15 @@ export async function saveAssemblyProcedureDocumentOverlays(input: {
   accessPassword: string;
   expectedEditVersion: number;
   elements: AssemblyProcedureOverlayElement[];
+  appliedCaptionElementIds?: string[];
 }) {
   const { data } = await api.put<{ document: AssemblyProcedureDocumentDto }>(
     `/assembly/procedure-documents/${encodeURIComponent(input.id)}/overlays`,
     {
       accessPassword: input.accessPassword,
       expectedEditVersion: input.expectedEditVersion,
-      elements: input.elements
+      elements: input.elements,
+      ...(input.appliedCaptionElementIds ? { appliedCaptionElementIds: input.appliedCaptionElementIds } : {})
     },
     procedureEditHeaders(input.holderToken)
   );
