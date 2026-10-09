@@ -1,3 +1,4 @@
+import { createDeviceReadRateLimit } from '../../lib/device-read-rate-limit.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authorizeRoles } from '../../lib/auth.js';
 import { findClientDeviceByApiKey } from '../../services/clients/client-device-auth.service.js';
@@ -14,7 +15,7 @@ const PART_MEASUREMENT_DRAWING_CACHE_CONTROL = 'private, max-age=86400, immutabl
 export function registerPartMeasurementDrawingStorageRoutes(app: FastifyInstance): void {
   const canView = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
 
-  app.get('/storage/part-measurement-drawings/*', async (request: FastifyRequest, reply: FastifyReply) => {
+  app.get('/storage/part-measurement-drawings/*', { config: { rateLimit: createDeviceReadRateLimit() } }, async (request: FastifyRequest, reply: FastifyReply) => {
     const headerKey = request.headers['x-client-key'];
     if (headerKey) {
       const apiKey = Array.isArray(headerKey) ? headerKey[0] : headerKey;

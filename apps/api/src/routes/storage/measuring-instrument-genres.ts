@@ -1,3 +1,4 @@
+import { createDeviceReadRateLimit } from '../../lib/device-read-rate-limit.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authorizeRoles } from '../../lib/auth.js';
 import { findClientDeviceByApiKey } from '../../services/clients/client-device-auth.service.js';
@@ -7,7 +8,7 @@ import { ApiError } from '../../lib/errors.js';
 export function registerMeasuringInstrumentGenreStorageRoutes(app: FastifyInstance): void {
   const canView = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
 
-  app.get('/storage/measuring-instrument-genres/*', async (request: FastifyRequest, reply: FastifyReply) => {
+  app.get('/storage/measuring-instrument-genres/*', { config: { rateLimit: createDeviceReadRateLimit() } }, async (request: FastifyRequest, reply: FastifyReply) => {
     const headerKey = request.headers['x-client-key'];
     if (headerKey) {
       const apiKey = Array.isArray(headerKey) ? headerKey[0] : headerKey;
