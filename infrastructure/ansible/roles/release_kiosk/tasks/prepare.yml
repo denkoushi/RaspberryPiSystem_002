@@ -330,6 +330,15 @@
     mode: '0644'
   when: release_kiosk_services | length > 0
 
+- name: Stage the status-agent network health module
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../clients/status-agent/network_health.py"
+    dest: "{{ release_kiosk_stage_dir }}/network_health.py"
+    owner: root
+    group: root
+    mode: '0644'
+  when: release_kiosk_services | length > 0
+
 - name: Stage the status-agent terminal health module
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../../../clients/status-agent/terminal_agent_health.py"
@@ -446,6 +455,7 @@
             {'src': release_kiosk_stage_dir ~ '/status-agent.conf', 'dest': '/etc/raspi-status-agent.conf', 'mode': '0600'},
             {'src': release_kiosk_stage_dir ~ '/status-agent.py', 'dest': '/usr/local/lib/raspi-status-agent/status-agent.py', 'mode': '0755'},
             {'src': release_kiosk_stage_dir ~ '/storage_health.py', 'dest': '/usr/local/lib/raspi-status-agent/storage_health.py', 'mode': '0644'},
+            {'src': release_kiosk_stage_dir ~ '/network_health.py', 'dest': '/usr/local/lib/raspi-status-agent/network_health.py', 'mode': '0644'},
             {'src': release_kiosk_stage_dir ~ '/terminal_agent_health.py', 'dest': '/usr/local/lib/raspi-status-agent/terminal_agent_health.py', 'mode': '0644'},
             {'src': release_kiosk_stage_dir ~ '/terminal_device_maintenance.py', 'dest': '/usr/local/lib/raspi-status-agent/terminal_device_maintenance.py', 'mode': '0644'},
             {'src': release_kiosk_stage_dir ~ '/status-agent.service', 'dest': '/etc/systemd/system/status-agent.service', 'mode': '0644'},

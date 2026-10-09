@@ -139,6 +139,7 @@ PI4_KIOSK_RELEASE_FILES = frozenset(
         "scripts/deploy/rolling_release/terminal_device_maintenance.py",
         "clients/status-agent/status-agent.py",
         "clients/status-agent/storage_health.py",
+        "clients/status-agent/network_health.py",
         "clients/status-agent/terminal_agent_health.py",
         "clients/status-agent/status-agent.timer",
         "scripts/client/pi4-storage-maintenance.sh",
@@ -429,6 +430,7 @@ def signage_artifact_for_path(path: str) -> bool:
         in {
             "clients/status-agent/status-agent.py",
             "clients/status-agent/storage_health.py",
+            "clients/status-agent/network_health.py",
             "clients/status-agent/terminal_agent_health.py",
             "clients/status-agent/status-agent.service",
             "clients/status-agent/status-agent.timer",

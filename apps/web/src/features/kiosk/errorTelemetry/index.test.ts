@@ -44,4 +44,19 @@ describe('browser kiosk error collection', () => {
     expect(JSON.stringify(send.mock.calls)).not.toContain('secret');
     expect(JSON.parse(localStorage.getItem(QUEUE_KEY)!).queue).toHaveLength(0);
   });
+  it('shares the existing timer for network windows even while hidden', async () => {
+    vi.spyOn(window, 'addEventListener').mockImplementation(() => undefined);
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+    const interval = vi.spyOn(window, 'setInterval');
+    const send = vi.fn().mockResolvedValue(undefined);
+    const { initializeKioskErrorTelemetry, reportKioskApi } = await import('./index');
+    initializeKioskErrorTelemetry(send); initializeKioskErrorTelemetry(send);
+    reportKioskApi({ url: '/orders?secret=input', status: 200, durationMs: 120 });
+    await vi.advanceTimersByTimeAsync(300000);
+    expect(interval).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0][0].logs[0].context).toMatchObject({ category: 'kiosk_net_stats', requests: 1, p95Ms: 120 });
+    expect(localStorage.getItem(QUEUE_KEY)).toBeNull();
+  });
+
 });

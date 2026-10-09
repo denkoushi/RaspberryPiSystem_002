@@ -16,6 +16,9 @@ import {
   type ClientTelemetryLogEntry
 } from './client-telemetry-alert-policy.js';
 
+const isKioskLog = (entry: ClientTelemetryLogEntry) =>
+  entry.context?.category === 'kiosk_ui_error' || entry.context?.category === 'kiosk_net_stats';
+
 const staleThresholdMs = 1000 * 60 * 60 * 12; // 12 hours
 
 async function createTelemetrySlackAlerts(params: {
@@ -329,14 +332,14 @@ export async function storeClientLogs(params: {
   const clientDevice = await requireRegisteredClientDevice(clientKey, { lastSeenAt: new Date() });
   const kioskClientId = clientDevice.statusClientId ?? clientId;
   for (const entry of logs) {
-    if (entry.context?.category === 'kiosk_ui_error') {
+    if (isKioskLog(entry)) {
       entry.context = { ...entry.context, clientDeviceId: clientDevice.id, clientDeviceName: clientDevice.name };
     }
   }
 
   await prisma.clientLog.createMany({
     data: logs.map((entry) => ({
-      clientId: entry.context?.category === 'kiosk_ui_error' ? kioskClientId : clientId,
+      clientId: isKioskLog(entry) ? kioskClientId : clientId,
       level: entry.level,
       message: entry.message.slice(0, 1000),
       context: entry.context ? (entry.context as Prisma.InputJsonValue) : undefined
