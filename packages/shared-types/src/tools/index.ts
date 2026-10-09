@@ -13,6 +13,7 @@ import type { PhotoToolHumanLabelQuality } from './loan-card-display.js';
 import type { MeasuringInstrument } from '../measuring-instruments/index.js';
 import type { RiggingGear } from '../rigging/index.js';
 export { formatClientDeviceLocationLabel } from './client-device-location.js';
+export { formatInventoryLabelNumber, type InventoryCompartment } from './item-inventory.js';
 export {
   PHOTO_LOAN_CARD_PRIMARY_LABEL,
   resolvePhotoLoanToolDisplayLabel,

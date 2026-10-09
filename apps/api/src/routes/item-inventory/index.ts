@@ -18,6 +18,9 @@ const idParams = z.object({ id: z.string().uuid() });
 const importPhotoParams = z.object({ payloadId: z.string().uuid(), photoId: z.string().uuid() });
 const itemPhotoParams = z.object({ itemId: z.string().uuid(), photoId: z.string().uuid() });
 const compartmentParams = z.object({ id: z.string().uuid() });
+const labelNumberParams = z.object({
+  labelNumber: z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().positive().max(2147483647)),
+});
 const manage = authorizeRoles('ADMIN', 'MANAGER');
 const read = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
   await authorizeKioskClientKeyOrJwtRoles(request, reply, ['ADMIN', 'MANAGER', 'VIEWER']);
@@ -190,6 +193,11 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
   app.get('/item-inventory/tags/resolve', { preHandler: [read] }, async (request) => {
     const query = uidQuery.parse(request.query ?? {});
     return { tag: await services.inventory.resolveTag(query.uid) };
+  });
+
+  app.get('/item-inventory/compartments/by-label/:labelNumber', { preHandler: [read] }, async (request) => {
+    const { labelNumber } = labelNumberParams.parse(request.params);
+    return { tag: await services.inventory.resolveCompartmentByLabelNumber(labelNumber) };
   });
 
   app.get('/item-inventory/tool-field-options', { preHandler: [read] }, async () => ({ options: await services.inventory.listToolFieldOptions() }));

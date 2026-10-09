@@ -30,6 +30,7 @@ export type InventoryItem = InventoryItemFields & {
 };
 export type InventoryCompartment = {
   id: string;
+  labelNumber?: number;
   stockQuantity: number;
   area: string;
   shelfNumber: number;

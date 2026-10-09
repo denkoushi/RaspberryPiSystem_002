@@ -1096,6 +1096,7 @@ model InventoryDrawer {
 
 model InventoryCompartment {
   id              String                 @id @default(uuid())
+  labelNumber     Int                    @unique @default(autoincrement())
   drawerId        String
   inventoryItemId String
   stockQuantity   Int                    @default(0)
