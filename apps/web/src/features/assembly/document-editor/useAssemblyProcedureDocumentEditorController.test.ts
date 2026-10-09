@@ -123,6 +123,14 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
     act(() => hook.result.current.undo());
     expect(hook.result.current.elements).toEqual(initial);
+    expect(hook.result.current.layoutSuggestions.appliedCaptionElementIds).toEqual(['added']);
+    apiMocks.saveOverlays.mockResolvedValue(makeDocument({ editVersion: 1, pages: [
+      { pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [draftText, image] },
+      { pageIndex: 1, imageRelativePath: '/pages/2.png', overlays: [other] }
+    ] }));
+    await act(async () => { await hook.result.current.save(); });
+    expect(apiMocks.saveOverlays).toHaveBeenLastCalledWith(expect.objectContaining({ appliedCaptionElementIds: ['added'], elements: initial }));
+    expect(hook.result.current.layoutSuggestions.appliedCaptionElementIds).toEqual(['added']);
   });
 
   it('cancels preview and pending requests without draft or history changes, including late responses', async () => {

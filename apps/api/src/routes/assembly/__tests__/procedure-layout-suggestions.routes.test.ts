@@ -44,6 +44,7 @@ describe('procedure layout suggestion routes', () => {
     vi.spyOn(AssemblyTemplateAccessService.prototype, 'requireAccessPassword').mockResolvedValue(undefined);
     vi.spyOn(prisma.assemblyProcedureDocument, 'findUnique').mockResolvedValue({ name: '架空の手順書', status: 'DRAFT', isActive: true, revisionMetadata: { revisionRootId: documentId, isRevisionHead: true } } as never);
     vi.spyOn(prisma.assemblyProcedureDocumentPage, 'findUnique').mockResolvedValue({ imageRelativePath: '/page.png' } as never);
+    vi.spyOn(prisma.assemblyProcedureCaptionFeedback, 'createMany').mockResolvedValue({ count: 2 });
     vi.spyOn(prisma.assemblyProcedureAsset, 'findMany').mockResolvedValue([{ id: 'asset-photo', storageKey: 'photo-key' }] as never);
     const buffer = await sharp({ create: { width: 1200, height: 1600, channels: 3, background: '#ffffff' } }).png().toBuffer();
     vi.spyOn(AssemblyProcedureImageStorage, 'readImage').mockResolvedValue({ buffer } as never);
@@ -182,6 +183,12 @@ describe('procedure layout suggestion routes', () => {
     expect(request.userText).toContain('1枚目: 架空の工程');
     expect(vi.mocked(vision.complete).mock.calls[1][0].userText).toContain('の2枚目の写真');
     const result = response.json();
+    expect(prisma.assemblyProcedureCaptionFeedback.createMany).toHaveBeenCalledExactlyOnceWith({
+      skipDuplicates: true,
+      data: result.addedElementIds.map((elementId: string, index: number) => ({ documentId, pageIndex: 0, elementId,
+        assetId: 'asset-photo', documentName: '架空の手順書', contextText: index === 0 ? '架空の工程' : null,
+        aiText: 'ワーク2個を固定する', outcome: 'PROPOSED' }))
+    });
     expect(result.addedElementIds).toHaveLength(2);
     expect(new Set(result.addedElementIds).size).toBe(2);
     expect(result.changes).toContain('写真を読んで 2 行足した');
@@ -189,6 +196,27 @@ describe('procedure layout suggestion routes', () => {
     const heading = result.elements.find((element: { id: string }) => element.id === 't0');
     const added = result.elements.find((element: { id: string }) => element.id === result.addedElementIds[0]);
     expect(added.bbox.yRatio).toBeGreaterThan(heading.bbox.yRatio + heading.bbox.heightRatio);
+  });
+
+  it('returns the same successful proposal when feedback insertion fails', async () => {
+    vi.mocked(text.complete).mockResolvedValue({ rawText: '{"texts":[]}', model: 'test' });
+    vi.mocked(vision.complete).mockResolvedValue({ rawText: 'ワークを固定する' });
+    vi.mocked(prisma.assemblyProcedureCaptionFeedback.createMany).mockRejectedValue(new Error('recording failed'));
+    register();
+    const response = await app.inject({ method: 'POST', url, payload: { pageIndex: 0, elements: rowElements() } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().addedElementIds).toHaveLength(2);
+    expect(response.json().changes).toContain('写真を読んで 2 行足した');
+    expect(prisma.assemblyProcedureCaptionFeedback.createMany).toHaveBeenCalledOnce();
+  });
+
+  it('does not record a built proposal if aborted before recording', async () => {
+    const abort = new AbortController();
+    vi.mocked(text.complete).mockResolvedValue({ rawText: '{"texts":[]}', model: 'test' });
+    vi.mocked(vision.complete).mockResolvedValue({ rawText: 'ワークを固定する' });
+    controller.release.mockImplementationOnce(async () => { abort.abort(); });
+    await expect(new ProcedureLayoutSuggestionService().suggest({ documentId, pageIndex: 0, elements: rowElements(), signal: abort.signal })).rejects.toMatchObject({ statusCode: 499 });
+    expect(prisma.assemblyProcedureCaptionFeedback.createMany).not.toHaveBeenCalled();
   });
 
   it.each(['不明', 'ワークは不明', '', '架'.repeat(31), '\n空の1行目'])('does not add rejected vision text (%s)', async rawText => {

@@ -23,6 +23,7 @@ export function useAssemblyProcedureLayoutSuggestions(input: {
   onEditLeaseError: (error: unknown) => boolean;
 }) {
   const [state, setState] = useState<LayoutSuggestionState>({ status: 'idle' });
+  const [appliedCaptionElementIds, setAppliedCaptionElementIds] = useState<string[]>([]);
   const request = useRef<AbortController | null>(null);
   const locked = state.status === 'pending' || state.status === 'preview';
   const canSuggest = !input.disabled && input.elements.filter(element => element.kind === 'TEXT' || element.kind === 'IMAGE').length >= 2;
@@ -33,6 +34,7 @@ export function useAssemblyProcedureLayoutSuggestions(input: {
   }, []);
   useEffect(() => {
     cancel();
+    setAppliedCaptionElementIds([]);
     return () => { request.current?.abort(); request.current = null; };
   }, [input.documentId, cancel]);
   useEffect(() => { if (input.disabled) cancel(); }, [input.disabled, cancel]);
@@ -65,11 +67,14 @@ export function useAssemblyProcedureLayoutSuggestions(input: {
   const proposal = state.status === 'preview' ? state.suggestion.elements : null;
   const apply = () => {
     if (input.disabled || !proposal) return;
+    if (state.status === 'preview') {
+      setAppliedCaptionElementIds(current => [...new Set([...current, ...state.suggestion.addedElementIds])]);
+    }
     input.onApply(proposal);
     cancel();
   };
   return {
-    state, locked, canSuggest, start, cancel, apply,
+    appliedCaptionElementIds, state, locked, canSuggest, start, cancel, apply,
     // Preview-only mask: the proposal passed to onApply remains ordinary text.
     previewElements: state.status === 'preview' && !state.before ? proposal?.map(element =>
       element.kind === 'TEXT' && state.suggestion.addedElementIds.includes(element.id)

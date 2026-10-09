@@ -168,6 +168,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   });
   const readOnly = baseReadOnly || layoutSuggestions.locked;
   const revisionSession = useMemo(() => ({
+    appliedCaptionElementIds: layoutSuggestions.appliedCaptionElementIds,
     document,
     hasAuthenticated: baselineSnapshot != null,
     elements,
@@ -195,6 +196,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     onNavigateAfterDiscard: input.onNavigateAfterDiscard,
     onNavigateAfterPublish: input.onNavigateAfterPublish
   }), [
+    layoutSuggestions.appliedCaptionElementIds,
     busy,
     baselineSnapshot,
     conflictEditVersion,
