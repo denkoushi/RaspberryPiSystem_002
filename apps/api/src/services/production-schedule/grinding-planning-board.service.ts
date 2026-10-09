@@ -51,6 +51,7 @@ import {
   type GrindingPlanningBoardProjectionRow,
   type GrindingPlanningBoardProjectionRowDetail
 } from './grinding-planning-board-projection.js';
+import { resolveLeaderboardMaterializedBaseWhereWithGenerationCache } from './leaderboard/leaderboard-materialized-winner-cache.js';
 import { readGrindingPlanningBoardLoadSummary } from './grinding-planning-board-load-summary.js';
 import { buildWorkCalendarModeMap, listLoadBalancingWorkCalendarsResolved } from './load-balancing/load-balancing-settings.service.js';
 import { DEFAULT_WORK_CALENDAR_MODE, type WorkCalendarMode } from './load-balancing/work-calendar-policy.js';
@@ -315,7 +316,7 @@ async function readPlanningSource(params: {
   leaderboardGenerationToken?: string;
 }): Promise<PlanningSource> {
   const generationToken = params.leaderboardGenerationToken ?? await readGrindingPlanningBoardSnapshotGenerationToken();
-  const baseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
+  const baseWhere = await resolveLeaderboardMaterializedBaseWhereWithGenerationCache(prisma, { generationToken });
   const order = uniqueFseibans(params.fseibans);
   if (order.length === 0) {
     return { baseWhere, generationToken, rows: [], details: new Map(), progressRows: [] };
@@ -817,9 +818,10 @@ export async function getGrindingPlanningBoardLoad(params: {
   category: GrindingPlanningBoardCategory;
 }): Promise<GrindingPlanningBoardLoadResponse> {
   const perf = createGrindingPlanningBoardPerformance('grinding-planning-board/load');
-  const generationBefore = await perf.measure('generationBefore', () => readPlanningSnapshotGenerationToken(params.siteKey));
+  const generationBeforeRead = await perf.measure('generationBefore', () => readPlanningSnapshotGenerationDetails(params.siteKey));
+  const generationBefore = generationBeforeRead.generationToken;
   const [baseWhere, policy] = await perf.measure('baseWhereAndPolicy', () => Promise.all([
-    resolveLeaderboardMaterializedBaseWhere(prisma),
+    resolveLeaderboardMaterializedBaseWhereWithGenerationCache(prisma, { generationToken: generationBeforeRead.leaderboardGenerationToken }),
     getResourceCategoryPolicy({ siteKey: params.siteKey })
   ]));
   const summary = await perf.measure('loadSummary', () => readGrindingPlanningBoardLoadSummary({
