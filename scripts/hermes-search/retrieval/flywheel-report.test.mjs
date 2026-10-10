@@ -18,6 +18,29 @@ const rows = [
   { a: 'a8', b: 'b8', seed: { style: 'typo' }, question: null, kept: false, reason: 'ungraded' },
 ];
 
+test('synthetic filter reporting leaves content statistics unchanged and lists only ids, templates and values', () => {
+  const outcomes = ['ok', 'mismatch', 'unsupported', 'clarified', 'failed', 'unavailable'];
+  const filters = outcomes.map((outcome, index) => ({
+    id: `f-${index}`, source: 'synthetic', kind: 'filter', kept: true, a: 'hostile-anchor',
+    question: 'QUESTION TEXT MUST NOT BE REPORTED', seed: { template: 'count3', value: 'North Shop' },
+    live: { outcome: outcome === 'clarified' ? 'clarification' : ['failed', 'unavailable'].includes(outcome) ? outcome : 'answer', loss: 'other_shown' },
+    filterCheck: { supported: outcome !== 'unsupported', ok: outcome === 'ok' },
+  }));
+  const { filter, ...content } = summarizeNight([...rows, ...filters]);
+  const { filter: empty, ...baseline } = summarizeNight(rows);
+  assert.deepEqual(content, baseline);
+  assert.equal(empty.questions, 0);
+  assert.deepEqual(filter, { questions: 6, supported: 5, ok: 1, mismatch: 1, unsupported: 1, clarified: 1, failed: 2,
+    issues: [{ id: 'f-1', template: 'count3', value: 'North Shop' }, { id: 'f-2', template: 'count3', value: 'North Shop' }] });
+  for (const input of [[...rows, ...filters], filters]) {
+    const report = formatReport('2026-10-03', summarizeNight(input));
+    assert.match(report, /synthetic filter: questions 6, supported 5, ok 1, mismatch 1, unsupported 1, clarified 1, failed 2/u);
+    assert.match(report, /f-1: template="count3" value="North Shop"/u);
+    assert.match(report, /f-2: template="count3" value="North Shop"/u);
+    assert.doesNotMatch(report, /QUESTION TEXT|hostile-anchor/u);
+  }
+});
+
 test('report counts unavailable and failed reasons while supporting older live lines', () => {
   const failures = [
     live('status', { outcome: 'unavailable', reason: 'relevance judgment failed: upstream_http 429' }),

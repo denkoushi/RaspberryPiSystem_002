@@ -20,6 +20,7 @@ export const NIGHT_VECTOR_BUDGET_MS = 10_000;
 
 /** Ids a kept question may legitimately show: A, and B when both graders also gave it grade 3. */
 export function relevantIds(row) {
+  if (row.kind === 'filter') return [];
   const ids = [bareId(row.a)];
   if (row.b && row.grades?.dgx?.b === RELEVANT && row.grades?.jev?.b === RELEVANT) ids.push(bareId(row.b));
   return ids;

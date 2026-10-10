@@ -37,6 +37,7 @@ export function splitOf(anchorId) {
 export function questionSet(rows) {
   const byAnchor = new Map();
   for (const row of rows) {
+    if (row?.kind === 'filter' && row.source !== 'real') continue;
     if (row?.source === 'real') {
       if (typeof row.question !== 'string' || !row.question || !row.id || byAnchor.has(row.id)) continue;
       if (row.kind === 'filter') {
@@ -95,6 +96,7 @@ export function compareRuns({ questions, baseline, candidate, labels = null }) {
   }
   splits.real = { n: 0, skipped: 0, baselineShown: 0, candidateShown: 0, gained: 0, lost: 0, p: 1 };
   for (const question of questions) {
+    if (question.kind === 'filter' && question.source !== 'real') continue;
     const result = splits[question.split];
     const results = question.source === 'real' ? [result, splits.real] : [result];
     const relevant = labels == null || question.kind === 'filter' ? question.relevant : relevantWithLabels(question, labels);

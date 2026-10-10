@@ -9,6 +9,18 @@ import { parseRunArgs, runCases, scorerEnv } from './flywheel-run.mjs';
 
 const kept = (a, b, extra = {}) => ({ a, b, seed: { style: 'terse' }, question: `q ${a}`, kept: true, reason: null, grades: { dgx: { a: 3, b: 1 }, jev: { a: 3, b: 1 } }, ...extra });
 
+test('synthetic filters never enter gate splits or offline runs even with content-looking fields', async () => {
+  const row = kept('a', 'b', { id: 'f-a', source: 'synthetic', kind: 'filter', filterCheck: { supported: true } });
+  assert.deepEqual(questionSet([row]), []);
+  assert.deepEqual(questionSet([kept('c', 'd'), row]), questionSet([kept('c', 'd')]));
+  const question = { id: 'a', source: 'synthetic', kind: 'filter', split: 'dev', relevant: [], question: 'recent' };
+  const comparison = compareRuns({ questions: [question], baseline: { cases: [] }, candidate: { cases: [] } });
+  assert.equal(comparison.dev.n, 0);
+  assert.equal(comparison.dev.skipped, 0);
+  const run = await runCases({ questions: [question], records: [{ id: 'a' }], score: async () => assert.fail('filter excluded') });
+  assert.deepEqual(run, { cases: [], skipped: 0 });
+});
+
 test('question sets include supported real filters and retain legacy content questions', () => {
   const plan = { filters: [], semanticQuery: '', sort: 'recent', limit: 2 };
   const filter = { source: 'real', kind: 'filter', id: 'r-filter', question: 'recent two', split: 'dev', relevant: [], live: { plan }, filterCheck: { supported: true, ok: false } };

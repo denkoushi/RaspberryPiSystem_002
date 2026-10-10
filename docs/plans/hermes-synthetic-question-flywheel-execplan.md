@@ -31,6 +31,7 @@ To see it working: after the night window, `retrieval/flywheel-report.mjs` on th
 
 ## Surprises & Discoveries
 
+- (2026-10-10) Each night now samples deterministic synthetic department, count, short-name and period filter questions, scores them through the live kiosk path and checks the expected records without LLM grading; their separate report and budget leave content statistics, learned-query proposals and gate splits unchanged.
 - (2026-10-07) Real questions that only name a department or a period (3 of the first night's 8) are now scored on their filters: the shown records must satisfy the plan's `eq`/`in` filters, follow the recent order, and match the count; other operators and sorts are reported as unsupported. The gate counts them next to content questions.
 - (2026-10-07) The runner now holds `runtime/flywheel/runner.lock` (pid and time) for the whole start; a second start logs `already_running` and exits; a lock whose process is gone or older than two hours is taken over. This follows the overlap of 2026-10-06.
 

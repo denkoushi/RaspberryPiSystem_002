@@ -11,6 +11,7 @@ import { LEARNED_SCHEMA, learnedPath, learnedQueriesById, writeLearned } from '.
 const kept = { a: 'nonconformity:a1', b: 'nonconformity:b1', grades: { dgx: { a: 3, b: 1 }, jev: { a: 3, b: 2 } } };
 
 test('relevant ids are the anchor, plus the near miss only when both graders confirm it', () => {
+  assert.deepEqual(relevantIds({ ...kept, kind: 'filter' }), []);
   assert.deepEqual(relevantIds(kept), ['a1']);
   assert.deepEqual(relevantIds({ ...kept, grades: { dgx: { a: 3, b: 3 }, jev: { a: 3, b: 3 } } }), ['a1', 'b1']);
   assert.deepEqual(relevantIds({ ...kept, grades: { dgx: { a: 3, b: 3 }, jev: { a: 3, b: null } } }), ['a1']);
