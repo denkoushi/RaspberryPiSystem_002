@@ -1,3 +1,5 @@
+import { timingSafeEqual } from 'node:crypto';
+
 import type { FastifyInstance } from 'fastify';
 
 import { env } from '../../config/env.js';
@@ -26,6 +28,13 @@ function tokenFromRequest(request: { headers: Record<string, string | string[] |
   return typeof explicit === 'string' ? explicit.trim() || null : null;
 }
 
+function tokenMatches(provided: string | null, expected: string): boolean {
+  if (!provided) return false;
+  const providedBytes = Buffer.from(provided);
+  const expectedBytes = Buffer.from(expected);
+  return providedBytes.length === expectedBytes.length && timingSafeEqual(providedBytes, expectedBytes);
+}
+
 function rpcError(id: JsonRpcRequest['id'], code: number, message: string) {
   return { jsonrpc: '2.0', id: id ?? null, error: { code, message } };
 }
@@ -42,7 +51,7 @@ export async function registerBusinessHermesMcpRoutes(
   app.post('/internal/business-hermes/mcp', async (request, reply) => {
     const expected = deps.apiKey ?? env.BUSINESS_HERMES_MCP_API_KEY;
     if (!expected) throw new ApiError(503, '業務Hermes MCPは設定されていません', undefined, 'BUSINESS_HERMES_MCP_NOT_CONFIGURED');
-    if (tokenFromRequest(request) !== expected) {
+    if (!tokenMatches(tokenFromRequest(request), expected)) {
       throw new ApiError(401, '業務Hermes MCP認証に失敗しました', undefined, 'BUSINESS_HERMES_MCP_UNAUTHORIZED');
     }
     const body = (request.body && typeof request.body === 'object' ? request.body : {}) as JsonRpcRequest;
