@@ -444,3 +444,16 @@ Night of 2026-10-08 (22:02 to 22:16, labels 22:19, learn decision 22:21), the fi
 Caveats: the API container was replaced by the 23:32 release of #1879, so the night's API log is gone for the second night running; the flywheel's live scoring writes no receipts, so the judge errors behind `unavailable` cannot be read back. If the API log is wanted after a release night, the runner should write its own per-night log file. Not a measured change in retrieval; nothing accepted or rejected.
 
 Private files: `work/flywheel/questions-2026-10-08.jsonl`, `real-2026-10-08.jsonl`, `learned-queries.jsonl`, `labels.json`.
+
+### 2026-10-10: seventh night, back to 93% with the judge service answering normally (measurement basis)
+
+Night of 2026-10-09 (22:03 to 22:18, learn decision in the same run), the first after #1889 (judge failure reasons recorded, one retry on 429/5xx/timeout, a per-night runner log). The retry path had nothing to retry: no `unavailable` or `failed` outcome, no batch needed a second attempt, and `reason` is null on all 54 live rows.
+
+- Synthetic: 100 pairs tried, 64 valid, 54 kept, median anchor overlap 0.33. Dropped: 30 copies, 10 anchors not confirmed, 3 too similar, 2 copied words, 1 `dgx_busy` (two short pauses at 22:04 and 22:09). Dense retrieval was available on 54 of 54. Production showed a relevant record for 50 of 54 (93%; 12 known only through the second grader), other records for 3 (all graded not relevant by both graders), nothing for 1 (target outside the judged candidates). Live scoring took a median 1.2 s, max 1.8 s.
+- Against the sixth night (72%), the whole gap was the JEV planner and judge path: no judge error, no clarification with an unresolved term, no failed run. Retrieval-stage losses (1 outside candidates, 3 other records shown) are in line with 2026-10-05 to 10-08.
+- Real: 1 kiosk question of 2026-10-09, a filter question (department and period). Day and night both answered with the same record; the filter check passed.
+- Learned queries: no candidate. 15 active, 1 rejected.
+
+Caveats: the first night with the runner's own log file, so the API-container log no longer matters for this check. The runner writes one status line every 5 minutes while idle (about 350 lines a night); the log should only record state changes. Not a measured change in retrieval; nothing accepted or rejected.
+
+Private files: `work/flywheel/questions-2026-10-09.jsonl`, `real-2026-10-09.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-09.log`.
