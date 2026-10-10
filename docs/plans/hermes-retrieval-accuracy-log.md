@@ -457,3 +457,16 @@ Night of 2026-10-09 (22:03 to 22:18, learn decision in the same run), the first 
 Caveats: the first night with the runner's own log file, so the API-container log no longer matters for this check. The runner writes one status line every 5 minutes while idle (about 350 lines a night); the log should only record state changes. Not a measured change in retrieval; nothing accepted or rejected.
 
 Private files: `work/flywheel/questions-2026-10-09.jsonl`, `real-2026-10-09.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-09.log`.
+
+### 2026-10-10: learned queries on versus off, offline over three nights (kept, no change)
+
+Question: the 15 active learned queries (phrasings proposed from development failures and activated when the held-out and real checks showed no loss, see 2026-10-07) have been on in production since 2026-10-07. Do they still earn their place? Offline run of the kiosk pipeline (`flywheel-run.mjs`, snapshot and dense store of 2026-10-04, enrichment store on, pool 30, JEV through TypeSafe, embeddings through the DGX tunnel) over the kept synthetic questions of the nights of 2026-10-07, 10-08 and 10-09 (179 questions: 134 development, 45 held-out), once with `--learned off` and once with the active rows, then `flywheel-gate.mjs` with the consensus labels.
+
+| Split | n | relevant shown, off | relevant shown, on | gained | lost | p |
+| --- | --- | --- | --- | --- | --- | --- |
+| development | 134 | 115 | 117 | 3 | 1 | 0.625 |
+| held-out | 45 | 36 | 36 | 0 | 0 | 1.000 |
+
+Reading: a small positive effect on development questions and none on held-out, so the learned queries neither help nor harm in a measurable way. As a new change the gate would reject it (development net gain 2 is below the threshold of 3), but the criterion for keeping something already on is no loss on held-out and real questions, and that holds. Decision: keep the 15 active rows and the nightly proposal path; measure again after more nights with questions that postdate the last activation. The absolute rates here (66% offline) are not comparable with the nightly report's rates, because the offline run counts only consensus-labelled records and uses the 2026-10-04 snapshot.
+
+Private files: `runs/flywheel/n1007-09-all-hybrid-learned-{off,on}-20261010.json` and `.log`, `work/flywheel/learned-queries.jsonl`.
