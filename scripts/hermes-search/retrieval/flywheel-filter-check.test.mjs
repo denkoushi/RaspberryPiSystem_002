@@ -50,7 +50,23 @@ test('missing or invalid limits default to five, and zero matches expect no ids'
   assert.deepEqual(expected({ filters: [{ ...plan.filters[0], values: [] }] }), { supported: true, matchedCount: 0, expectedIds: [], limit: 2 });
 });
 
-test('any unsupported op or non-recent sort leaves the answer unscored', () => {
+test('filter-only relevance or missing sort uses the first date field descending', () => {
+  for (const sort of ['relevance', undefined, null]) {
+    for (const semanticQuery of ['', undefined]) {
+      assert.deepEqual(expected({ sort, semanticQuery }), { supported: true, matchedCount: 3, expectedIds: ['a', 'b'], limit: 2 });
+      assert.equal(check(['a', 'b'], { sort, semanticQuery }).ok, true);
+    }
+  }
+});
+
+test('content relevance or missing sort stays unsupported', () => {
+  for (const sort of ['relevance', undefined, null]) {
+    assert.deepEqual(expected({ sort, semanticQuery: 'scratch' }), { supported: false, reason: 'sort' });
+  }
+  assert.deepEqual(expected({ filters: [], sort: 'relevance' }), { supported: false, reason: 'sort' });
+});
+
+test('any unsupported op or ascending sort leaves the answer unscored', () => {
   for (const op of ['gte', 'lte', 'contains', 'not_in']) {
     const extra = { filters: [...plan.filters, { field: 'discoveredOn', op, values: ['2026-10-01'] }] };
     assert.deepEqual(expected(extra), { supported: false, reason: `op:${op}` });
@@ -59,7 +75,7 @@ test('any unsupported op or non-recent sort leaves the answer unscored', () => {
     assert.equal(result.ok, null);
     assert.equal(result.reason, `op:${op}`);
   }
-  for (const sort of [undefined, null, 'relevance', { field: 'discoveredOn', direction: 'asc' }]) {
+  for (const sort of [{ field: 'discoveredOn', direction: 'asc' }]) {
     assert.deepEqual(expected({ sort }), { supported: false, reason: 'sort' });
     assert.equal(check([], { sort }).ok, null);
   }

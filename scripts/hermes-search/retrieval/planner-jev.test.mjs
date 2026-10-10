@@ -5,6 +5,77 @@ import { summarizeAnswers, createPlanner } from './planner-jev.mjs';
 import { buildValueIndex } from './value-index.mjs';
 
 const catalog = loadNonconformityCatalog();
+
+for (const [suffix, residualTokens] of [
+  [' 最近 不適合', []],
+  ['の先月の不適合', []],
+  ['の錆の不適合', ['錆']],
+]) {
+  test(`resolved department with ${suffix} overrides content only when the residual is empty`, async () => {
+    const value = '三島工場管理部生産管理課（製造）';
+    const question = `${value.normalize('NFKC')}${suffix}`;
+    const evaluate = async (input) => {
+      const field = Object.entries(input.questions).find(([key]) => key.startsWith('field_'));
+      const choice = Object.entries(field[1].criteria).find(([, description]) => description === value)[0];
+      return { answers: {
+        scope: { type: 'choice', choice: 'nonconformity' },
+        [field[0]]: { type: 'choice', choice },
+        content: { type: 'noul', noul: true },
+        sort: { type: 'choice', choice: 'relevance' },
+        limit: { type: 'choice', choice: '5' },
+      } };
+    };
+    const { plan } = await createPlanner({ evaluate }).plan({
+      question, catalog, now: '2026-10-10',
+      valueIndex: buildValueIndex([{ id: 'a', originDepartmentName: value }], catalog),
+    });
+    assert.deepEqual(plan.diagnostics.contentDecision.residualTokens, residualTokens);
+    assert.equal(plan.semanticQuery, residualTokens.length ? question : '');
+    assert.equal(plan.diagnostics.contentDecision.jev, residualTokens.length > 0);
+    assert.equal(plan.diagnostics.contentDecision.residualOverride === true, residualTokens.length === 0);
+    assert.deepEqual(plan.sort, residualTokens.length ? 'relevance' : { field: 'discoveredOn', direction: 'desc' });
+    assert.deepEqual(plan.filters[0], { source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: [value] });
+    if (suffix.includes('先月')) {
+      assert.deepEqual(plan.filters[1], { source: 'nonconformity', field: 'discoveredOn', op: 'between', values: ['2026-09-01', '2026-09-30'] });
+    }
+  });
+}
+
+test('residual removal uses both a resolved value and its matched question term', async () => {
+  const value = '三島工場管理部生産管理課（製造）';
+  const term = '三島生管';
+  for (const linked of [false, true]) {
+    const evaluate = async () => ({ answers: {
+      [linked ? 'field_0' : 'term_0']: { type: 'choice', choice: 'v0' },
+      content: { type: 'noul', noul: true },
+      sort: { type: 'choice', choice: 'relevance' },
+      limit: { type: 'choice', choice: '5' },
+    } });
+    const group = { source: 'nonconformity', field: 'originDepartmentName', term, values: [value] };
+    const { plan } = await createPlanner({ evaluate }).plan({
+      question: `${term} ${value}の不適合`, catalog,
+      ...(linked ? { choiceGroups: [group] } : { candidates: [group] }),
+    });
+    assert.equal(plan.semanticQuery, '');
+    assert.equal(plan.diagnostics.contentDecision.residualOverride, true);
+    assert.deepEqual(plan.diagnostics.contentDecision.residualTokens, []);
+  }
+});
+
+test('an empty residual without an applied hard filter does not override content', async () => {
+  const evaluate = async () => ({ answers: {
+    content: { type: 'noul', noul: true },
+    sort: { type: 'choice', choice: 'relevance' },
+    limit: { type: 'choice', choice: '5' },
+  } });
+  const { plan } = await createPlanner({ evaluate }).plan({ question: '最近 不適合', catalog });
+  assert.deepEqual(plan.filters, []);
+  assert.deepEqual(plan.diagnostics.contentDecision.residualTokens, []);
+  assert.equal(plan.diagnostics.contentDecision.jev, true);
+  assert.equal(plan.diagnostics.contentDecision.residualOverride, undefined);
+  assert.equal(plan.semanticQuery, '最近 不適合');
+});
+
 const fixedDescriptions = new Set([
   'この語は絞り込み条件にしない',
   '`request` だけで探す条件が完結している、または `previous_plan` の組織や範囲を外す・置き換える（例: 全部門で、〇〇課の最近の不適合N件、別の不具合の不適合）',
@@ -187,7 +258,7 @@ test('a content noul keeps one call and strips structural words from semanticQue
   assert.equal(calls, 1);
   assert.equal(plan.semanticQuery, 'North Shopのsurface scratchを最新3件見せて');
   assert.equal(plan.diagnostics.contentDecision.final, true);
-  assert.deepEqual(plan.diagnostics.contentDecision.residualTokens, []);
+  assert.deepEqual(plan.diagnostics.contentDecision.residualTokens, ['surface', 'scratch']);
   assert.equal(plan.limit, 3);
   assert.deepEqual(plan.sort, { field: 'discoveredOn', direction: 'desc' });
 });
@@ -215,7 +286,7 @@ test('a false content noul skips relevance and does not search residual tokens',
   assert.equal(plan.semanticQuery, '');
   assert.deepEqual(plan.diagnostics.contentDecision, {
     jev: false,
-    residualTokens: [],
+    residualTokens: ['qxrare'],
     final: false,
   });
 });
@@ -464,12 +535,14 @@ test('a follow-up that does not restate its content keeps the previous content c
   });
   const previousPlan = { sources: ['nonconformity'], filters: [], semanticQuery: 'rust on the table please', contentSpan: 'rust on the table', sort: 'relevance', limit: 5 };
   const candidates = [{ term: 'South Shop', source: 'nonconformity', field: 'originDepartmentName', values: ['South Shop'] }];
-  const refined = await createPlanner({ evaluate }).plan({ question: 'South Shopだけ', previousPlan, catalog, candidates });
+  const refined = await createPlanner({ evaluate }).plan({ question: 'South Shopの不適合', previousPlan, catalog, candidates });
   assert.equal(refined.plan.semanticQuery, 'rust on the table please');
+  assert.deepEqual(refined.plan.diagnostics.contentDecision.residualTokens, []);
+  assert.equal(refined.plan.diagnostics.contentDecision.residualOverride, undefined);
   // The judge reads the same content part as on the previous turn.
   assert.equal(refined.plan.diagnostics.contentSpan, 'rust on the table');
   assert.equal(refined.plan.filters.some((filter) => filter.values[0] === 'South Shop'), true);
-  const fresh = await createPlanner({ evaluate }).plan({ question: 'South Shopだけ', previousPlan: null, catalog, candidates });
+  const fresh = await createPlanner({ evaluate }).plan({ question: 'South Shopの不適合', previousPlan: null, catalog, candidates });
   assert.equal(fresh.plan.semanticQuery, '');
 });
 
@@ -513,7 +586,8 @@ test('each previous condition is kept, replaced, added to, or dropped on its own
   const added = (await run({ add0: 0.9, drop1: 0.9, content: 'new' })).plan;
   assert.deepEqual(values(added, 'originDepartmentName'), ['North Shop', 'South Shop']);
   assert.deepEqual(values(added, 'machineName'), []);
-  assert.equal(added.semanticQuery, 'South Shopでは');
+  assert.equal(added.semanticQuery, '');
+  assert.equal(added.diagnostics.contentDecision.residualOverride, true);
 
   // With no new value, the previous department stays unless the request drops it.
   const kept = (await run({ term: 'none' })).plan;
