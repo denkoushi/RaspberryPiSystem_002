@@ -170,19 +170,20 @@ export async function runFlywheelNight({
   log = (line) => console.info(line),
 }) {
   const status = { schema: 'hermes-flywheel-status/v1', reason: 'started', night: null, generated: 0, kept: 0, shown: 0, dropped: 0, dropReasons: {}, lossStages: {}, pendingLive: 0, labelled: 0, labelPending: 0, real: 0, realPending: 0, filter: { generated: 0, ok: 0, mismatch: 0, unsupported: 0, clarified: 0, failed: 0 }, updatedAt: null };
-  let previousReason = null;
+  let previousLine = null;
+  let previousNight = null;
   if (settings.dir) {
     try {
-      previousReason = JSON.parse(await readFile(path.join(settings.dir, 'flywheel-status.json'), 'utf8'))?.reason ?? null;
+      const previous = JSON.parse(await readFile(path.join(settings.dir, 'flywheel-status.json'), 'utf8'));
+      previousLine = previous?.lastLine ?? null;
+      previousNight = previous?.night ?? (previous?.updatedAt ? nightOf(new Date(previous.updatedAt)) : null);
     } catch {
       // Missing or unreadable status means the next final line must be written.
     }
   }
   const nightLog = async (line, final = false) => {
     if (!settings.dir) return;
-    const worked = [status.generated, status.kept, status.shown, status.dropped, status.labelled, status.real, status.filter.generated,
-      status.learned?.proposed ?? 0, status.learned?.candidates ?? 0].some((count) => count > 0);
-    if (final && !worked && status.reason === previousReason) return;
+    if (final && line === previousLine && (status.night ?? nightOf(now())) === previousNight) return;
     try {
       const at = now();
       await appendFile(path.join(settings.dir, `runner-${status.night ?? nightOf(at)}.log`),
@@ -199,11 +200,12 @@ export async function runFlywheelNight({
   const finish = async (reason) => {
     status.reason = reason;
     status.updatedAt = now().toISOString();
+    status.lastLine = countLine(status);
     if (settings.dir) {
       await mkdir(settings.dir, { recursive: true, mode: 0o700 });
       await writeJson(path.join(settings.dir, 'flywheel-status.json'), status);
     }
-    await writeLog(countLine(status), true);
+    await writeLog(status.lastLine, true);
     return status;
   };
   if (!settings.enabled) return finish('disabled');

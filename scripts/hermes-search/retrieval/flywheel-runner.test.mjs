@@ -177,7 +177,7 @@ test('runner persists live reasons and its own private log across midnight and s
   assert.equal(readFileSync(logFile, 'utf8').trim().split('\n').length, 4);
 });
 
-test('idle status lines are quiet until the reason changes, while work and console lines remain logged', async () => {
+test('identical final status lines are quiet, while changed counts, live and console lines remain logged', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
   const lines = [];
   let time = new Date('2026-10-03T21:00:00Z');
@@ -206,6 +206,31 @@ test('idle status lines are quiet until the reason changes, while work and conso
   assert.match(logged[2], /flywheel live id=a1/u);
   assert.match(logged[3], /reason=budget_reached .*shown=1/u);
   assert.equal(lines.length, 5);
+  const repeated = await runFlywheelNight(input);
+  assert.equal(repeated.shown, 1);
+  assert.equal(readFileSync(logFile, 'utf8').trim().split('\n').length, 4);
+  assert.equal(lines.length, 6);
+  assert.equal(JSON.parse(readFileSync(path.join(dir, 'flywheel-status.json'), 'utf8')).lastLine, lines.at(-1));
+
+  // A completed row changes a count without producing a live or stage line.
+  const row = JSON.parse(readFileSync(questionsPath(dir, '2026-10-03'), 'utf8'));
+  writeFileSync(questionsPath(dir, '2026-10-03'), JSON.stringify({ ...row, kept: false }) + '\n');
+  await runFlywheelNight(input);
+  const changed = readFileSync(logFile, 'utf8').trim().split('\n');
+  assert.equal(changed.length, 5);
+  assert.match(changed[4], /reason=budget_reached .*shown=0/u);
+});
+
+test('identical outside-window lines are logged again on a new night', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
+  let time = new Date('2026-10-03T21:00:00Z');
+  const input = { records, settings: settings(dir), now: () => time, log: () => {} };
+  await runFlywheelNight(input);
+  time = new Date('2026-10-04T21:00:00Z');
+  await runFlywheelNight(input);
+  for (const day of ['2026-10-03', '2026-10-04']) {
+    assert.equal(readFileSync(path.join(dir, `runner-${day}.log`), 'utf8').trim().split('\n').length, 1);
+  }
 });
 
 test('an unreadable previous status does not suppress an idle status line', async () => {

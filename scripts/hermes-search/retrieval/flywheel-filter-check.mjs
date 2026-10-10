@@ -35,7 +35,8 @@ export function expectedFilterResults({ plan, records, catalog }) {
       return { supported: false, reason: `date_bounds:${filter.field}` };
     }
   }
-  if (!recentSort(plan?.sort)) return { supported: false, reason: 'sort' };
+  const defaultRecent = isFilterOnlyPlan(plan) && (plan.sort === 'relevance' || !plan.sort);
+  if (!recentSort(plan?.sort) && !defaultRecent) return { supported: false, reason: 'sort' };
   const dateField = dateFields[0];
   const matched = records.filter((record) => matchesFilters(record, filters));
   matched.sort((left, right) => String(right[dateField] ?? '').localeCompare(String(left[dateField] ?? ''))

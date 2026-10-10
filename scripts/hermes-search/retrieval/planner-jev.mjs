@@ -3,7 +3,7 @@
 import { performance } from 'node:perf_hooks';
 import { catalogEntries, definitionForCatalog } from './catalog.mjs';
 import { QUERY_PLAN_SCHEMA, hasAppliedHardFilter, shouldSkipRelevance } from './query-plan.mjs';
-import { contentSpans } from './structural-text.mjs';
+import { contentSpans, contentTokens, relevanceQuery, stripListedTerms } from './structural-text.mjs';
 import { enumeratedChoiceGroups } from './value-index.mjs';
 import { nextIsoDay, parsePeriods, previousIsoDay, referenceDate } from './period-parse.mjs';
 
@@ -395,6 +395,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
                 values: picked.values,
               });
               resolvedTerms.push(...picked.values);
+              if (mapped.group.term !== mapped.group.field) resolvedTerms.push(mapped.group.term);
             }
             continue;
           }
@@ -411,7 +412,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
             continue;
           }
           selected.push({ source: mapped.group.source, field: mapped.group.field, op: 'eq', values: [value] });
-          resolvedTerms.push(mapped.group.term);
+          resolvedTerms.push(value, mapped.group.term);
         }
       }
       const sortChoice = chosen(answers.sort, ['recent', 'relevance']);
@@ -495,9 +496,12 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       // for example "そのうち三島工場資材課の" after "錆の不適合".
       const carriedQuery = contentCarry === 'same' ? previousQuery : '';
       const previousSpan = carriedQuery && typeof previousPlan?.contentSpan === 'string' ? previousPlan.contentSpan : null;
-      const jev = judged;
+      const residualTokens = contentTokens(relevanceQuery(stripListedTerms(question, resolvedTerms)));
+      const hardFilter = hasAppliedHardFilter({ filters }, catalog);
+      const residualOverride = judged === true && contentCarry !== 'same' && hardFilter && residualTokens.length === 0;
+      const jev = residualOverride ? false : judged;
       const finalContent = jev === true && unresolved.length === 0;
-      const sortMode = resolveSort(question, jev, hasAppliedHardFilter({ filters }, catalog));
+      const sortMode = resolveSort(question, jev, hardFilter);
       const sort = sortMode === 'recent' && recentField
         ? { field: recentField, direction: 'desc' }
         : 'relevance';
@@ -514,7 +518,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         display: entries.flatMap((entry) => entry.fields.map((field) => field.key)),
         unresolved: outOfScope ? [] : unresolved,
         diagnostics: {
-          contentDecision: { jev, residualTokens: [], final: finalContent },
+          contentDecision: { jev, residualTokens, ...(residualOverride ? { residualOverride: true } : {}), final: finalContent },
           scope: outOfScope ? 'out_of_scope' : 'records',
           limitExplicit,
           ...(carriedQuery ? (previousSpan ? { contentSpan: previousSpan } : {}) : (contentSpan ? { contentSpan } : {})),
