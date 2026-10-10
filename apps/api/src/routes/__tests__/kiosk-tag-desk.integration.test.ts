@@ -52,6 +52,19 @@ describe('kiosk tag desk', () => {
     expect(noClient.statusCode).toBe(401);
   });
 
+  it('counts failed passwords per terminal however the client key is spelled', async () => {
+    const key = (await createTestClientDevice()).apiKey;
+    const registry = (clientKeyHeader: string, pin: string) => app.inject({
+      method: 'GET', url: '/api/kiosk/tag-desk/registry?kind=employee',
+      headers: { 'x-client-key': clientKeyHeader, 'x-kiosk-access-password': pin }
+    });
+    for (let i = 0; i < 10; i += 1) {
+      expect((await registry(key, '0000')).statusCode).toBe(403);
+    }
+    const respelled = await registry(JSON.stringify(key), PIN);
+    expect(respelled.statusCode).toBe(429);
+  });
+
   it('verifies the PIN typed on the pad', async () => {
     const ok = await app.inject({ method: 'POST', url: '/api/kiosk/tag-desk/verify-access-password', headers: headers(null), payload: { password: PIN } });
     expect(ok.json()).toEqual({ success: true });

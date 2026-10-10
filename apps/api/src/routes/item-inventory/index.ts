@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
 import { authorizeRoles } from '../../lib/auth.js';
+import { normalizeClientKey } from '../../lib/client-key.js';
 import { authorizeKioskClientKeyOrJwtRoles } from '../../lib/kiosk-document-auth.js';
 import { prisma } from '../../lib/prisma.js';
 import { ToolFieldSuggestionService } from '../../services/item-inventory/tool-field-suggestion.service.js';
@@ -34,8 +35,8 @@ const inventorySettingsFailedAttempts = new Map<string, { count: number; resetAt
 const adminAuthorizedRequests = new WeakSet<FastifyRequest>();
 
 function inventorySettingsAttemptKey(request: FastifyRequest): string {
-  const rawClientKey = request.headers['x-client-key'];
-  const clientKey = typeof rawClientKey === 'string' ? rawClientKey : rawClientKey?.[0] ?? '';
+  // Use the same normalization as the client key lookup, so one terminal has one counter.
+  const clientKey = normalizeClientKey(request.headers['x-client-key']) ?? '';
   return `${request.ip}:${clientKey}`;
 }
 
