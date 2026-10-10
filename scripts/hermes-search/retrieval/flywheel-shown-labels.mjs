@@ -12,7 +12,7 @@ import { GRADE_BATCH, gradeBatch, recordText } from './graded-labels.mjs';
 
 /** Pool unique, unlabelled question-record pairs from the shown ids of every run. */
 export function collectShownPairs({ questions, runs, labels = {} }) {
-  const byId = new Map(questions.map((question) => [bareId(question.id), question]));
+  const byId = new Map(questions.filter((question) => question.kind !== 'filter').map((question) => [bareId(question.id), question]));
   const seen = new Map();
   const pairs = [];
   for (const run of runs) {

@@ -14,7 +14,8 @@ import { catalogEntries, fieldsWithRole, loadNonconformityCatalog } from './cata
 import { denseSettings, readDenseStore } from './dense-dgx.mjs';
 import { enrichmentSettings, withinWindow } from './enrichment-dgx.mjs';
 import { createDgxGrader, createJevPairGrader, filterAndLabel } from './flywheel-filter.mjs';
-import { checkFilterAnswer, isFilterOnlyPlan } from './flywheel-filter-check.mjs';
+import { checkFilterAnswer, filterOutcome, isFilterOnlyPlan } from './flywheel-filter-check.mjs';
+import { sampleFilterQuestions } from './flywheel-filter-questions.mjs';
 import { createDgxChat, generateForPairs, guardChat, probeChat } from './flywheel-generate.mjs';
 import { createLiveScorer, lossStage, relevantIds } from './flywheel-live.mjs';
 import { questionSet, splitOf } from './flywheel-gate.mjs';
@@ -31,12 +32,15 @@ export const DEFAULT_LABEL_BUDGET = 60;
 export const LABEL_BUDGET_CAP = 300;
 export const DEFAULT_REAL_BUDGET = 20;
 export const REAL_BUDGET_CAP = 100;
+export const DEFAULT_FILTER_BUDGET = 10;
+export const FILTER_BUDGET_CAP = 30;
 export const REAL_LABEL_DEPTH = 5;
 
 export function flywheelSettings(env = process.env) {
   const requested = Number.parseInt(env.HERMES_FLYWHEEL_MAX_QUESTIONS ?? '', 10);
   const labelBudget = Number(env.HERMES_FLYWHEEL_LABEL_BUDGET ?? NaN);
   const realBudget = Number(env.HERMES_FLYWHEEL_REAL_BUDGET ?? NaN);
+  const filterBudget = Number(env.HERMES_FLYWHEEL_FILTER_BUDGET ?? NaN);
   const learnBudget = Number(env.HERMES_FLYWHEEL_LEARN_BUDGET ?? NaN);
   const inference = enrichmentSettings(env);
   return {
@@ -44,6 +48,7 @@ export function flywheelSettings(env = process.env) {
     maxQuestions: Number.isInteger(requested) && requested > 0 ? Math.min(requested, MAX_QUESTIONS_CAP) : DEFAULT_MAX_QUESTIONS,
     labelBudget: Number.isInteger(labelBudget) && labelBudget >= 0 && env.HERMES_FLYWHEEL_LABEL_BUDGET?.trim() !== '' ? Math.min(labelBudget, LABEL_BUDGET_CAP) : DEFAULT_LABEL_BUDGET,
     realBudget: Number.isInteger(realBudget) && realBudget >= 0 && env.HERMES_FLYWHEEL_REAL_BUDGET?.trim() !== '' ? Math.min(realBudget, REAL_BUDGET_CAP) : DEFAULT_REAL_BUDGET,
+    filterBudget: Number.isInteger(filterBudget) && filterBudget >= 0 && env.HERMES_FLYWHEEL_FILTER_BUDGET?.trim() !== '' ? Math.min(filterBudget, FILTER_BUDGET_CAP) : DEFAULT_FILTER_BUDGET,
     learnBudget: Number.isInteger(learnBudget) && learnBudget >= 0 && env.HERMES_FLYWHEEL_LEARN_BUDGET?.trim() !== '' ? Math.min(learnBudget, LEARN_BUDGET_CAP) : DEFAULT_LEARN_BUDGET,
     window: env.HERMES_RETRIEVAL_ENRICHMENT_WINDOW || '',
     dir: env.HERMES_FLYWHEEL_DIR || DEFAULT_FLYWHEEL_DIR,
@@ -97,7 +102,7 @@ export async function usedAnchors(dir) {
     return used;
   }
   for (const name of names.filter((item) => /^questions-\d{4}-\d{2}-\d{2}\.jsonl$/u.test(item))) {
-    for (const row of await readLines(path.join(dir, name))) if (row?.a) used.add(row.a);
+    for (const row of await readLines(path.join(dir, name))) if (row?.kind !== 'filter' && row?.a) used.add(row.a);
   }
   return used;
 }
@@ -121,6 +126,7 @@ function countLine(status) {
     `labelled=${status.labelled}`,
     `labelPending=${status.labelPending}`,
     `real=${status.real}`,
+    `filter=${Object.entries(status.filter).map(([key, value]) => `${key}:${value}`).join(',')}`,
     `learned=${status.learned?.proposed ?? 0}/${status.learned?.decision ?? 'pending'}`,
   ].join(' ');
 }
@@ -133,7 +139,7 @@ function shownRelevantWithLabels(row, labels) {
 function unlabelledShownPairs(rows, labels) {
   const groups = new Map();
   for (const row of rows) {
-    if (row.kept !== true || !row.question || row.live?.loss !== 'other_shown') continue;
+    if (row.kind === 'filter' || row.kept !== true || !row.question || row.live?.loss !== 'other_shown') continue;
     const anchor = bareId(row.a);
     const relevant = new Set(relevantIds(row));
     for (const id of (row.live.shown ?? []).map(bareId)) {
@@ -163,7 +169,7 @@ export async function runFlywheelNight({
   seed = null,
   log = (line) => console.info(line),
 }) {
-  const status = { schema: 'hermes-flywheel-status/v1', reason: 'started', night: null, generated: 0, kept: 0, shown: 0, dropped: 0, dropReasons: {}, lossStages: {}, pendingLive: 0, labelled: 0, labelPending: 0, real: 0, realPending: 0, updatedAt: null };
+  const status = { schema: 'hermes-flywheel-status/v1', reason: 'started', night: null, generated: 0, kept: 0, shown: 0, dropped: 0, dropReasons: {}, lossStages: {}, pendingLive: 0, labelled: 0, labelPending: 0, real: 0, realPending: 0, filter: { generated: 0, ok: 0, mismatch: 0, unsupported: 0, clarified: 0, failed: 0 }, updatedAt: null };
   let previousReason = null;
   if (settings.dir) {
     try {
@@ -174,7 +180,7 @@ export async function runFlywheelNight({
   }
   const nightLog = async (line, final = false) => {
     if (!settings.dir) return;
-    const worked = [status.generated, status.kept, status.shown, status.dropped, status.labelled, status.real,
+    const worked = [status.generated, status.kept, status.shown, status.dropped, status.labelled, status.real, status.filter.generated,
       status.learned?.proposed ?? 0, status.learned?.candidates ?? 0].some((count) => count > 0);
     if (final && !worked && status.reason === previousReason) return;
     try {
@@ -206,7 +212,7 @@ export async function runFlywheelNight({
   status.night = nightOf(now());
   await mkdir(settings.dir, { recursive: true, mode: 0o700 });
   const filePath = questionsPath(settings.dir, status.night);
-  const done = (await readLines(filePath)).length;
+  const done = (await readLines(filePath)).filter((row) => row.kind !== 'filter').length;
   const budget = settings.maxQuestions - done;
 
   const catalog = loadNonconformityCatalog();
@@ -325,7 +331,7 @@ export async function runFlywheelNight({
   const rows = await readLines(filePath);
   let scored = false;
   for (const row of rows) {
-    if (row.kept !== true || !row.question || row.live) continue;
+    if (row.kind === 'filter' || row.kept !== true || !row.question || row.live) continue;
     if (!withinWindow(settings.window, now())) break;
     score ??= await makeLive({ records, catalog, evaluate });
     row.live = { ...await score(row) };
@@ -376,7 +382,7 @@ export async function runFlywheelNight({
   }
   let relabelled = false;
   for (const row of rows) {
-    if (row.kept !== true || row.live?.loss !== 'other_shown' || !shownRelevantWithLabels(row, labels)) continue;
+    if (row.kind === 'filter' || row.kept !== true || row.live?.loss !== 'other_shown' || !shownRelevantWithLabels(row, labels)) continue;
     row.live.loss = null;
     row.live.labelled = true;
     relabelled = true;
@@ -387,10 +393,34 @@ export async function runFlywheelNight({
     await rename(temporary, filePath);
   }
   for (const row of rows) {
-    if (row.kept !== true) continue;
+    if (row.kind === 'filter' || row.kept !== true) continue;
     if (!row.live) status.pendingLive += 1;
     else if (row.live.loss == null) status.shown += 1;
     else status.lossStages[row.live.loss] = (status.lossStages[row.live.loss] ?? 0) + 1;
+  }
+  // Filter rows have their own nightly budget and never enter content grading or learning.
+  const filterDone = rows.filter((row) => row.kind === 'filter');
+  const filterIds = new Set(filterDone.map((row) => row.id));
+  const filterTexts = new Set(filterDone.map((row) => row.question));
+  const filterBudget = settings.filterBudget ?? DEFAULT_FILTER_BUDGET;
+  const filterQuestions = sampleFilterQuestions({ records: corpus, catalog, count: filterBudget,
+    random: createRandom(seed ?? Number(status.night.replaceAll('-', ''))), now: now() });
+  let filterRemaining = Math.max(0, filterBudget - filterDone.length);
+  for (const question of filterQuestions) {
+    if (filterRemaining <= 0 || !withinWindow(settings.window, now())) break;
+    if (filterIds.has(question.id) || filterTexts.has(question.question)) continue;
+    score ??= await makeLive({ records, catalog, evaluate });
+    const live = { ...await score({ ...question, kind: 'filter', relevant: [] }) };
+    live.reason ??= null;
+    const filterCheck = checkFilterAnswer({ plan: live.plan, shown: live.shown, records: corpus, catalog });
+    live.loss = filterCheck.ok === true ? null : filterCheck.ok === false ? 'filter_mismatch' : 'filter_unsupported';
+    await logLive(question.id, live);
+    const row = { at: now().toISOString(), source: 'synthetic', kind: 'filter', ...question,
+      relevant: [], labels: {}, live, filterCheck };
+    await appendFile(filePath, `${JSON.stringify(row)}\n`, { mode: 0o600 });
+    filterRemaining -= 1;
+    status.filter.generated += 1;
+    status.filter[filterOutcome(row)] += 1;
   }
   const realFile = realPath(settings.dir, status.night);
   const realDone = (await readLines(realFile)).length;

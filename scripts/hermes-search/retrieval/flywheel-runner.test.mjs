@@ -7,6 +7,8 @@ import { DEFAULT_MAX_QUESTIONS, MAX_QUESTIONS_CAP, REAL_LABEL_DEPTH, acquireRunn
 import { readRealRows, realId, realPath } from './flywheel-real.mjs';
 import { splitOf } from './flywheel-gate.mjs';
 import { learnedPath, readLearned, writeLearned, LEARNED_SCHEMA } from './flywheel-learn.mjs';
+import { expectedFilterResults } from './flywheel-filter-check.mjs';
+import { loadNonconformityCatalog } from './catalog.mjs';
 
 function unit(values) {
   const norm = Math.hypot(...values);
@@ -27,7 +29,7 @@ const dense = [
 const night = () => new Date('2026-10-03T14:30:00Z');
 
 function settings(dir, extra = {}) {
-  return { enabled: true, maxQuestions: 10, learnBudget: 0, window: '22-6', dir, denseStore: 'unused', origin: 'http://dgx', token: 't', egress: '', model: 'm', ...extra };
+  return { enabled: true, maxQuestions: 10, filterBudget: 0, learnBudget: 0, window: '22-6', dir, denseStore: 'unused', origin: 'http://dgx', token: 't', egress: '', model: 'm', ...extra };
 }
 
 function fakeChat({ slowAfter = Infinity } = {}) {
@@ -48,6 +50,105 @@ const jevEvaluate = async (input) => ({
 
 // Live scorer that always shows the anchor; tests of the stages inject their own.
 const liveShown = async (row) => ({ outcome: 'answer', reason: null, shown: [row.a], candidates: [row.a, row.b], judged: 30, loss: null, vectorStatus: 'ok', ms: 1 });
+
+function filterLive(row, corpus = records) {
+  const filters = [{ field: row.seed.field, op: 'eq', values: [row.seed.value] }];
+  if (row.seed.period) filters.push({ field: 'discoveredOn', op: 'between', values: [row.seed.period.from, row.seed.period.to] });
+  const plan = { filters, semanticQuery: '', sort: 'recent', limit: row.seed.template === 'count3' ? 3 : 5 };
+  const shown = expectedFilterResults({ plan, records: corpus, catalog: loadNonconformityCatalog() }).expectedIds;
+  return { outcome: shown.length ? 'answer' : 'no_result', plan, shown, candidates: [], loss: 'other_shown', ms: 1 };
+}
+
+test('synthetic filter rows use live checks without grading and leave content counters and budgets unchanged', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
+  const corpus = [...records, { id: 'other', originDepartmentName: 'South Shop', discoveredOn: '2026-10-01' }];
+  const file = questionsPath(dir, '2026-10-03');
+  writeFileSync(file, JSON.stringify({ a: 'a1', question: 'キズ', kept: true }) + '\n');
+  let calls = 0;
+  const lines = [];
+  const input = { records: corpus, settings: settings(dir, { maxQuestions: 1, filterBudget: 10 }), now: night,
+    readDense: async () => dense, chat: async () => assert.fail('no DGX generation or grading'),
+    jevEvaluate: async () => assert.fail('no JEV grading'),
+    probe: async () => assert.fail('content budget already spent'), seed: 7, log: (line) => lines.push(line),
+    live: async (row) => {
+      if (row.kind !== 'filter') return liveShown(row);
+      assert.deepEqual(row.relevant, []);
+      const live = filterLive(row, corpus);
+      const index = calls++;
+      if (index === 2) live.shown = ['unknown'];
+      if (index === 3) live.outcome = 'out_of_scope';
+      if (index === 4 || index === 5) live.plan.filters.push({ field: 'discoveredOn', op: 'gte', values: ['2026-01-01'] });
+      if (index === 6) live.outcome = 'clarification';
+      if (index === 7) { live.outcome = 'failed'; live.plan = null; live.reason = 'test failure'; }
+      if (index === 8) live.outcome = 'unavailable';
+      if (index === 9) live.outcome = 'failed';
+      return live;
+    } };
+  const status = await runFlywheelNight(input);
+  assert.deepEqual(status.filter, { generated: 10, ok: 2, mismatch: 2, unsupported: 2, clarified: 1, failed: 3 });
+  assert.equal(status.generated, 0);
+  assert.equal(status.kept, 0);
+  assert.equal(status.shown, 1);
+  assert.equal(status.dropped, 0);
+  assert.equal(status.labelled, 0);
+  assert.equal(status.labelPending, 0);
+  assert.deepEqual(status.lossStages, {});
+  assert.equal(status.learned.proposed, 0);
+  const rows = readFileSync(file, 'utf8').trim().split('\n').map(JSON.parse);
+  const filters = rows.filter((row) => row.kind === 'filter');
+  assert.equal(rows.length, 11);
+  assert.equal(new Set(filters.map((row) => row.question)).size, 10);
+  for (const row of filters) {
+    assert.equal(row.source, 'synthetic');
+    assert.match(row.id, /^f-[0-9a-f]{16}$/u);
+    assert.deepEqual(Object.keys(row.seed).sort(), ['field', 'period', 'short', 'template', 'value']);
+    assert.deepEqual(row.relevant, []);
+    assert.deepEqual(row.labels, {});
+    assert.equal(Object.hasOwn(row, 'split'), false);
+    assert.equal(Object.hasOwn(row, 'kept'), false);
+    assert.equal(row.live.loss, row.filterCheck.ok === true ? null : row.filterCheck.ok === false ? 'filter_mismatch' : 'filter_unsupported');
+  }
+  assert.equal(filters[7].live.outcome, 'failed');
+  assert.equal(filters[7].live.reason, 'test failure');
+  assert.match(lines[0], /filter=generated:10,ok:2,mismatch:2,unsupported:2,clarified:1,failed:3/u);
+  assert.deepEqual([...await usedAnchors(dir)], ['a1']);
+  const original = readFileSync(file, 'utf8');
+  const resumed = await runFlywheelNight({ ...input, now: () => new Date('2026-10-03T19:00:00Z') });
+  assert.equal(resumed.reason, 'budget_reached');
+  assert.equal(resumed.filter.generated, 0);
+  assert.equal(calls, 10);
+  assert.equal(readFileSync(file, 'utf8'), original);
+});
+
+test('filter stage respects window, resumes its own budget, and runs after a failed DGX probe', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
+  let time = night();
+  let calls = 0;
+  const input = { records, settings: settings(dir, { filterBudget: 5 }), now: () => time,
+    readDense: async () => dense, chat: async () => assert.fail('failed probe skips generation'),
+    probe: async () => ({ ok: false, reason: 'http_503' }), jevEvaluate: async () => assert.fail('filters need no graders'),
+    live: async (row) => { calls += 1; if (calls === 2) time = new Date('2026-10-03T21:00:00Z'); return filterLive(row); },
+    seed: 7, log: () => {} };
+  const first = await runFlywheelNight(input);
+  assert.equal(first.reason, 'dgx_not_ready');
+  assert.equal(first.filter.generated, 2);
+  time = night();
+  assert.equal((await runFlywheelNight(input)).filter.generated, 3);
+  assert.equal(calls, 5);
+  const rows = readFileSync(questionsPath(dir, '2026-10-03'), 'utf8').trim().split('\n').map(JSON.parse);
+  assert.equal(new Set(rows.map((row) => row.id)).size, 5);
+  assert.equal(new Set(rows.map((row) => row.question)).size, 5);
+});
+
+test('a tripped DGX guard does not stop the synthetic filter stage', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
+  const status = await runFlywheelNight({ records, settings: settings(dir, { filterBudget: 2 }),
+    now: night, readDense: async () => dense, chat: fakeChat({ slowAfter: 0 }), jevEvaluate,
+    live: async (row) => { assert.equal(row.kind, 'filter'); return filterLive(row); }, seed: 7, log: () => {} });
+  assert.equal(status.reason, 'dgx_busy');
+  assert.equal(status.filter.generated, 2);
+  assert.equal(status.filter.ok, 2);
+});
 
 test('runner persists live reasons and its own private log across midnight and starts', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
@@ -181,6 +282,12 @@ test('settings default to off, cap the nightly budget, and follow the enrichment
   assert.equal(off.maxQuestions, DEFAULT_MAX_QUESTIONS);
   assert.equal(off.labelBudget, 60);
   assert.equal(off.realBudget, 20);
+  assert.equal(off.filterBudget, 10);
+  assert.equal(flywheelSettings({ HERMES_FLYWHEEL_FILTER_BUDGET: '9999' }).filterBudget, 30);
+  assert.equal(flywheelSettings({ HERMES_FLYWHEEL_FILTER_BUDGET: '0' }).filterBudget, 0);
+  for (const value of ['x', '', ' ', '-1', '1.5', '10junk']) {
+    assert.equal(flywheelSettings({ HERMES_FLYWHEEL_FILTER_BUDGET: value }).filterBudget, 10);
+  }
   assert.equal(off.learnBudget, 30);
   assert.equal(flywheelSettings({ HERMES_FLYWHEEL_LEARN_BUDGET: '9999' }).learnBudget, 100);
   assert.equal(flywheelSettings({ HERMES_FLYWHEEL_LEARN_BUDGET: '0' }).learnBudget, 0);
@@ -333,7 +440,7 @@ test('a spent budget backfills kept questions in file order and retains nightly 
   assert.equal(status.shown, 1);
   assert.deepEqual(status.lossStages, { judge_rejected: 1 });
   assert.equal(status.pendingLive, 0);
-  assert.match(logs[0], / pending=0 labelled=0 labelPending=0 real=0 learned=0\/pending$/u);
+  assert.match(logs[0], / pending=0 labelled=0 labelPending=0 real=0 filter=generated:0,ok:0,mismatch:0,unsupported:0,clarified:0,failed:0 learned=0\/pending$/u);
   const raw = readFileSync(filePath, 'utf8');
   assert.ok(raw.endsWith('\n'));
   const rows = raw.trim().split('\n').map((line) => JSON.parse(line));
@@ -613,7 +720,7 @@ test('real content questions get consensus labels and corrected loss once across
   assert.equal(status.real, 1);
   assert.equal(status.realPending, 0);
   assert.equal(status.labelled, 0);
-  assert.match(logs[0], / real=1 learned=0\/pending$/u);
+  assert.match(logs[0], / real=1 filter=generated:0,ok:0,mismatch:0,unsupported:0,clarified:0,failed:0 learned=0\/pending$/u);
   assert.equal(statSync(file).mode & 0o777, 0o600);
   assert.equal(readFileSync(file, 'utf8').includes('surface scratch'), false);
   const again = await runFlywheelNight({ ...input, live: async () => assert.fail('already processed') });

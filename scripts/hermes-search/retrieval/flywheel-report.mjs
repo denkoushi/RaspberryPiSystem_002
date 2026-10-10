@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bareId } from './flywheel-pairs.mjs';
+import { filterOutcome } from './flywheel-filter-check.mjs';
 
 export function nightOfFile(filePath) {
   const match = /(?:questions|real)-(\d{4}-\d{2}-\d{2})\.jsonl$/u.exec(path.basename(filePath));
@@ -48,6 +49,8 @@ function formatLearnedReport(summary) {
 }
 
 export function summarizeNight(rows, { labels = null } = {}) {
+  const filterRows = rows.filter((row) => row.kind === 'filter');
+  rows = rows.filter((row) => row.kind !== 'filter');
   const summary = {
     rows: rows.length,
     generated: 0,
@@ -57,6 +60,7 @@ export function summarizeNight(rows, { labels = null } = {}) {
     medianLength: null,
     medianOverlap: null,
     unavailableReasons: {},
+    filter: summarizeSyntheticFilters(filterRows),
     live: { scored: 0, shown: 0, otherShown: 0, notInPool: 0, judgeRejected: 0, status: 0, failed: 0, notRun: 0, denseFallbacks: 0, labelled: 0 },
   };
   if (labels != null) summary.live.shownAfterLabels = 0;
@@ -105,6 +109,29 @@ export function summarizeNight(rows, { labels = null } = {}) {
   overlaps.sort((left, right) => left - right);
   summary.medianOverlap = overlaps.length ? overlaps[overlaps.length >> 1] : null;
   return summary;
+}
+
+export function summarizeSyntheticFilters(rows) {
+  const summary = { questions: 0, supported: 0, ok: 0, mismatch: 0, unsupported: 0, clarified: 0, failed: 0, issues: [] };
+  for (const row of rows) {
+    if (row.source !== 'synthetic' || row.kind !== 'filter') continue;
+    summary.questions += 1;
+    if (row.filterCheck?.supported === true) summary.supported += 1;
+    const outcome = filterOutcome(row);
+    summary[outcome] += 1;
+    if (outcome === 'mismatch' || outcome === 'unsupported') {
+      summary.issues.push({ id: row.id, template: row.seed?.template ?? null, value: row.seed?.value ?? null });
+    }
+  }
+  return summary;
+}
+
+function formatSyntheticFilters(summary) {
+  if (!summary?.questions) return [];
+  return [
+    `  synthetic filter: questions ${summary.questions}, supported ${summary.supported}, ok ${summary.ok}, mismatch ${summary.mismatch}, unsupported ${summary.unsupported}, clarified ${summary.clarified}, failed ${summary.failed}`,
+    ...summary.issues.map(({ id, template, value }) => `    ${id}: template=${JSON.stringify(template)} value=${JSON.stringify(value)}`),
+  ];
 }
 
 function counts(record) {
@@ -159,6 +186,7 @@ export function formatReport(night, summary) {
   ];
   if (live.scored === 0) {
     lines.push(`  live: not run for ${live.notRun} kept questions`);
+    lines.push(...formatSyntheticFilters(summary.filter));
     return lines.join('\n');
   }
   lines.push(
@@ -172,6 +200,7 @@ export function formatReport(night, summary) {
   if (live.denseFallbacks) lines.push(`  dense fallbacks: ${live.denseFallbacks}`);
   const reasons = Object.entries(summary.unavailableReasons ?? {}).sort((left, right) => right[1] - left[1]);
   if (reasons.length) lines.push(`  unavailable reasons: ${reasons.map(([reason, count]) => `${reason}=${count}`).join(', ')}`);
+  lines.push(...formatSyntheticFilters(summary.filter));
   return lines.join('\n');
 }
 

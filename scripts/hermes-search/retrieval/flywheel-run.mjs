@@ -69,6 +69,7 @@ export function scorerEnv(options, base = process.env) {
  * skipped, so an older snapshot can still be used. Injectable scorer for tests.
  */
 export async function runCases({ questions, records, catalog = loadNonconformityCatalog(), score, split = 'dev', limit = null, log = () => {} }) {
+  questions = questions.filter((question) => question.kind !== 'filter' || question.source === 'real');
   const known = new Set(records.map((record) => bareId(record.id)));
   // Real kiosk questions carry a hashed id, not a record id; their relevant records were labelled already.
   const selected = questions.filter((question) => (split === 'all' || question.split === split) && (question.source === 'real' || known.has(question.id)));
