@@ -470,3 +470,17 @@ Question: the 15 active learned queries (phrasings proposed from development fai
 Reading: a small positive effect on development questions and none on held-out, so the learned queries neither help nor harm in a measurable way. As a new change the gate would reject it (development net gain 2 is below the threshold of 3), but the criterion for keeping something already on is no loss on held-out and real questions, and that holds. Decision: keep the 15 active rows and the nightly proposal path; measure again after more nights with questions that postdate the last activation. The absolute rates here (66% offline) are not comparable with the nightly report's rates, because the offline run counts only consensus-labelled records and uses the 2026-10-04 snapshot.
 
 Private files: `runs/flywheel/n1007-09-all-hybrid-learned-{off,on}-20261010.json` and `.log`, `work/flywheel/learned-queries.jsonl`.
+
+### 2026-10-10: pg_trgm candidate recall on the flywheel questions with consensus labels (rejected)
+
+Follow-up to 2026-10-04, where the pg_trgm replacement of the in-process bigram BM25 was held because most candidates were unlabelled. The prototype (`prototypes/pg-trgm-recall.mjs`) now reads the nightly question files and the consensus labels (`--questions`, labels schema `hermes-flywheel-labels/v1`; the anchor record counts as relevant with the grade-3 pooled records). Same snapshot (2026-10-04, 8,209 records), same queries (question text only), PostgreSQL 15 with pg_trgm 1.6 in a throwaway container on the Mac.
+
+| Method | top30 (179) | top200 (179) | dev top30 (134) | held-out top30 (45) | p50 ms | p95 ms |
+| --- | --- | --- | --- | --- | ---: | ---: |
+| bigram BM25 (current) | 139 (77.7%) | 170 (95.0%) | 104 | 35 | 44 | 58 |
+| pg_trgm similarity | 83 (46.4%) | 140 (78.2%) | 63 | 20 | 99 | 113 |
+| pg_trgm word_similarity | 82 (45.8%) | 132 (73.7%) | 58 | 24 | 115 | 137 |
+
+Paired against BM25 at top30: similarity gained 13 questions and lost 69; word_similarity gained 6 and lost 63. Both plans stay `Seq Scan` (the GIN index is not used by a full `ORDER BY`), as on 2026-10-04.
+
+Reading: on the hand-written questions of 2026-10-04 the three methods were within a few questions of each other; on the synthetic questions pg_trgm loses by about 30 points. The generator rejects questions that copy the record (no 8-character run, bigram share at most 0.5), so character-trigram set similarity has little to match, while the IDF-weighted bigram BM25 still finds the rare terms. Real kiosk questions are short and paraphrased in the same way. Decision: pg_trgm as the first-stage candidate source is rejected; the cross-source plan keeps candidate generation in process. Private files: `runs/pg-trgm-recall-flywheel-20261010.json`; draft `prototypes/pg-trgm-recall-20261010.md`.
