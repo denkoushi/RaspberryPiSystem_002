@@ -39,19 +39,20 @@ export function createKioskSettingsPinGuard(options: KioskSettingsPinOptions): K
   // Failed tries per terminal; kept in memory like the inventory setup guard.
   const failedAttempts = new Map<string, { count: number; resetAt: number }>();
 
-  const attemptKey = (request: FastifyRequest) => `${request.ip}:${headerValue(request, 'x-client-key')}`;
+  // Count by the resolved terminal, so differently spelled headers for the same key share one counter.
+  const attemptKey = (request: FastifyRequest, clientDeviceId: string) => `${request.ip}:${clientDeviceId}`;
 
-  const blocked = (request: FastifyRequest) => {
+  const blocked = (request: FastifyRequest, clientDeviceId: string) => {
     const now = Date.now();
     for (const [key, entry] of failedAttempts) {
       if (entry.resetAt <= now) failedAttempts.delete(key);
     }
-    return (failedAttempts.get(attemptKey(request))?.count ?? 0) >= FAILED_ATTEMPT_LIMIT;
+    return (failedAttempts.get(attemptKey(request, clientDeviceId))?.count ?? 0) >= FAILED_ATTEMPT_LIMIT;
   };
 
-  const recordFailure = (request: FastifyRequest) => {
+  const recordFailure = (request: FastifyRequest, clientDeviceId: string) => {
     const now = Date.now();
-    const key = attemptKey(request);
+    const key = attemptKey(request, clientDeviceId);
     const current = failedAttempts.get(key);
     if (!current || current.resetAt <= now) {
       failedAttempts.set(key, { count: 1, resetAt: now + FAILED_ATTEMPT_WINDOW_MS });
@@ -60,29 +61,29 @@ export function createKioskSettingsPinGuard(options: KioskSettingsPinOptions): K
     current.count += 1;
   };
 
-  const check = async (request: FastifyRequest, password: string): Promise<boolean> => {
-    if (blocked(request)) {
+  const check = async (request: FastifyRequest, clientDeviceId: string, password: string): Promise<boolean> => {
+    if (blocked(request, clientDeviceId)) {
       throw new ApiError(429, '操作パスワードの試行回数が上限に達しました。しばらくしてから再試行してください', undefined, options.rateLimitedCode);
     }
     const trimmed = password.trim();
     const ok = /^\d{4}$/.test(trimmed)
       && (await verifyDueManagementAccessPassword({ location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION, password: trimmed })).success;
-    if (ok) failedAttempts.delete(attemptKey(request));
-    else recordFailure(request);
+    if (ok) failedAttempts.delete(attemptKey(request, clientDeviceId));
+    else recordFailure(request, clientDeviceId);
     return ok;
   };
 
   return {
     async authorize(request) {
       const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
-      if (!(await check(request, headerValue(request, KIOSK_SETTINGS_PASSWORD_HEADER)))) {
+      if (!(await check(request, clientDevice.id, headerValue(request, KIOSK_SETTINGS_PASSWORD_HEADER)))) {
         throw new ApiError(403, options.deniedMessage, undefined, options.deniedCode);
       }
       return { clientDeviceId: clientDevice.id };
     },
     async verify(request, password) {
-      await requireKioskClientDevice(request.headers['x-client-key']);
-      return { success: await check(request, password) };
+      const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
+      return { success: await check(request, clientDevice.id, password) };
     }
   };
 }

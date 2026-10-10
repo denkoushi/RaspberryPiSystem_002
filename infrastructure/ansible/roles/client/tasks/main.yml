@@ -47,7 +47,7 @@
     dest: /etc/raspi-status-agent.conf
     owner: root
     group: root
-    mode: '0644'
+    mode: '0600'
   when: status_agent_client_id is defined
   register: status_agent_config_result
   notify: restart status-agent service after release configuration change

@@ -1,16 +1,14 @@
 import { toLoanResponse } from '../../../lib/loan-response.js';
 import type { FastifyInstance } from 'fastify';
+import { redactHeadersForLog } from '../../../lib/log-headers.js';
 import { LoanService } from '../../../services/tools/loan.service.js';
 import { requireLoanClientOrJwt } from './require-loan-auth.js';
 import { cancelSchema } from './schemas.js';
 
 export function registerLoanCancelRoute(app: FastifyInstance, loanService: LoanService): void {
   app.post('/cancel', { config: { rateLimit: false } }, async (request, reply) => {
-    // 機密情報保護: x-client-keyをログから除外
-    const sanitizedHeaders = { ...request.headers };
-    if ('x-client-key' in sanitizedHeaders) {
-      sanitizedHeaders['x-client-key'] = '[REDACTED]';
-    }
+    // 機密情報保護: 認証ヘッダーをログから除外
+    const sanitizedHeaders = redactHeadersForLog(request.headers);
     app.log.info({ body: request.body, headers: sanitizedHeaders }, 'Loan cancel request received');
     try {
       const body = cancelSchema.parse(request.body);
