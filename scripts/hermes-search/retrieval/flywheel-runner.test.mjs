@@ -33,6 +33,7 @@ function settings(dir, extra = {}) {
 function fakeChat({ slowAfter = Infinity } = {}) {
   let calls = 0;
   return async ({ messages, schema }) => {
+    if (!schema) return { ok: true, content: 'OK' };
     calls += 1;
     if (calls > slowAfter) return { ok: false, reason: 'timeout' };
     if (schema.required[0] === 'question') return { ok: true, content: JSON.stringify({ question: `キズ ${calls}` }) };
@@ -72,7 +73,93 @@ test('runner persists live reasons and its own private log across midnight and s
   assert.equal(statSync(logFile).mode & 0o777, 0o600);
   assert.equal(existsSync(path.join(dir, 'runner-2026-10-04.log')), false);
   await runFlywheelNight(input);
-  assert.equal(readFileSync(logFile, 'utf8').trim().split('\n').length, 5);
+  assert.equal(readFileSync(logFile, 'utf8').trim().split('\n').length, 4);
+});
+
+test('idle status lines are quiet until the reason changes, while work and console lines remain logged', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
+  const lines = [];
+  let time = new Date('2026-10-03T21:00:00Z');
+  const input = { records, settings: settings(dir, { maxQuestions: 0 }), now: () => time,
+    readDense: async () => dense, chat: fakeChat(), jevEvaluate, live: liveShown, log: (line) => lines.push(line) };
+  const logFile = path.join(dir, 'runner-2026-10-03.log');
+  await runFlywheelNight(input);
+  time = new Date('2026-10-03T21:05:00Z');
+  await runFlywheelNight(input);
+  assert.equal(readFileSync(logFile, 'utf8').trim().split('\n').length, 1);
+  assert.match(readFileSync(logFile, 'utf8'), /reason=outside_window/u);
+  assert.equal(JSON.parse(readFileSync(path.join(dir, 'flywheel-status.json'), 'utf8')).updatedAt, time.toISOString());
+  assert.equal(lines.length, 2);
+
+  time = night();
+  await runFlywheelNight(input);
+  await runFlywheelNight(input);
+  assert.equal(readFileSync(logFile, 'utf8').trim().split('\n').length, 2);
+  assert.match(readFileSync(logFile, 'utf8'), /reason=budget_reached/u);
+  writeFileSync(questionsPath(dir, '2026-10-03'), JSON.stringify({ a: 'a1', question: 'キズ', kept: true }) + '\n');
+  const worked = await runFlywheelNight(input);
+  assert.equal(worked.reason, 'budget_reached');
+  assert.equal(worked.shown, 1);
+  const logged = readFileSync(logFile, 'utf8').trim().split('\n');
+  assert.equal(logged.length, 4);
+  assert.match(logged[2], /flywheel live id=a1/u);
+  assert.match(logged[3], /reason=budget_reached .*shown=1/u);
+  assert.equal(lines.length, 5);
+});
+
+test('an unreadable previous status does not suppress an idle status line', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
+  const input = { records, settings: settings(dir), now: () => new Date('2026-10-03T21:00:00Z'), log: () => {} };
+  for (const stored of ['invalid json', 'null', '{}']) {
+    writeFileSync(path.join(dir, 'flywheel-status.json'), stored);
+    assert.equal((await runFlywheelNight(input)).reason, 'outside_window');
+  }
+  assert.equal(readFileSync(path.join(dir, 'runner-2026-10-03.log'), 'utf8').trim().split('\n').length, 3);
+});
+
+test('a failed readiness probe leaves anchors unused and the next successful probe generates normally', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
+  const lines = [];
+  const chat = fakeChat();
+  const input = { records, settings: settings(dir, { maxQuestions: 2 }), now: night, readDense: async () => dense,
+    chat, jevEvaluate, live: liveShown, seed: 7, log: (line) => lines.push(line) };
+  let probes = 0;
+  const probe = async (rawChat) => {
+    assert.equal(rawChat, chat);
+    probes += 1;
+    return { ok: false, reason: 'http_503' };
+  };
+  const status = await runFlywheelNight({ ...input, probe });
+  assert.equal(status.reason, 'dgx_not_ready');
+  assert.deepEqual(status.probe, { ok: false, reason: 'http_503' });
+  assert.equal(status.generated, 0);
+  assert.equal(status.dropped, 0);
+  assert.equal(existsSync(questionsPath(dir, '2026-10-03')), false);
+  assert.deepEqual(await usedAnchors(dir), new Set());
+  assert.deepEqual(JSON.parse(readFileSync(path.join(dir, 'flywheel-status.json'), 'utf8')), status);
+  assert.equal(lines[0], 'hermes retrieval flywheel dgx not ready reason=http_503');
+  await runFlywheelNight({ ...input, probe });
+  assert.equal(probes, 2);
+  const logged = readFileSync(path.join(dir, 'runner-2026-10-03.log'), 'utf8');
+  assert.equal(logged.match(/dgx not ready reason=http_503/gu).length, 2);
+  assert.equal(logged.match(/reason=dgx_not_ready/gu).length, 1);
+  const ready = await runFlywheelNight(input);
+  assert.equal(ready.reason, 'completed');
+  assert.deepEqual(ready.probe, { ok: true });
+  assert.equal(ready.generated, 2);
+  assert.equal(ready.kept, 2);
+  assert.equal(ready.shown, 2);
+  assert.equal((await usedAnchors(dir)).size, 2);
+});
+
+test('a readiness probe is not run without a generation budget or unused candidate anchors', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-'));
+  const input = { records, settings: settings(dir, { maxQuestions: 0 }), now: night, readDense: async () => dense,
+    chat: fakeChat(), jevEvaluate, probe: async () => assert.fail('nothing to generate'), log: () => {} };
+  assert.equal((await runFlywheelNight(input)).reason, 'budget_reached');
+  writeFileSync(questionsPath(dir, '2026-10-02'), records.map((record) => JSON.stringify({ a: record.id.replace('nonconformity:', '') })).join('\n') + '\n');
+  assert.equal((await runFlywheelNight({ ...input, settings: settings(dir) })).reason, 'no_pairs');
+  assert.equal((await runFlywheelNight({ ...input, settings: settings(dir), readDense: async () => [] })).reason, 'no_pairs');
 });
 
 test('a night log write failure does not abort scoring or change the callback', async () => {
@@ -484,6 +571,24 @@ function realFixture(extra = {}) {
   } };
 }
 
+test('probe failure still backfills, labels and processes real questions with a fresh guard', async () => {
+  const { dir, input } = realFixture({ maxQuestions: 2, labelBudget: 1 });
+  const file = questionsPath(dir, '2026-10-03');
+  writeFileSync(file, JSON.stringify({ a: 'a1', question: 'キズ', kept: true }) + '\n');
+  const status = await runFlywheelNight({ ...input,
+    probe: async () => ({ ok: false, reason: 'timeout' }),
+    live: async (row) => row.a === null ? input.live(row) : { ...await liveShown(row), shown: ['b1'], loss: 'other_shown' },
+  });
+  assert.equal(status.reason, 'dgx_not_ready');
+  assert.equal(status.generated, 0);
+  assert.equal(status.dropped, 0);
+  assert.equal(status.labelled, 1);
+  assert.equal(status.shown, 1);
+  assert.equal(status.real, 1);
+  assert.equal(status.realPending, 0);
+  assert.equal(readFileSync(file, 'utf8').trim().split('\n').length, 1);
+});
+
 test('real content questions get consensus labels and corrected loss once across starts and nights', async () => {
   const { dir, input } = realFixture();
   const logs = [];
@@ -645,6 +750,18 @@ function learnFixture() {
     jevEvaluate: async () => assert.fail('fake learning scorer does not call JEV'), log: () => {},
   } };
 }
+
+test('probe failure still decides learned queries without adding synthetic rows', async () => {
+  const { dir, heldout, rows, input } = learnFixture();
+  const status = await runFlywheelNight({ ...input, settings: settings(dir, { maxQuestions: 3, learnBudget: 30, realBudget: 0 }),
+    probe: async () => ({ ok: false, reason: 'http_503' }), live: async () => ({ shown: [heldout] }),
+  });
+  assert.equal(status.reason, 'dgx_not_ready');
+  assert.equal(status.generated, 0);
+  assert.equal(status.learned.proposed, 1);
+  assert.equal(status.learned.decision, 'active');
+  assert.equal(readFileSync(questionsPath(dir, '2026-10-03'), 'utf8'), rows.map(JSON.stringify).join('\n') + '\n');
+});
 
 test('stage five activates dev proposals when the injected live scorer gives equal results', async () => {
   const { dir, dev, heldout, rows, input } = learnFixture();
