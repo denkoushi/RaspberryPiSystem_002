@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -128,6 +129,75 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
                 argv = task.get("ansible.builtin.command", {}).get("argv", "")
                 if "'up'" in str(argv):
                     self.assertIn("['--env-file', release_pi5_chat_env_file, 'up'", argv)
+
+    def test_pi5_rollback_executes_after_failures_before_and_after_compose_capture(self) -> None:
+        rollback = ANSIBLE / "roles/release_pi5/tasks/rollback.yml"
+        cases = {
+            # Mirrors run 20260929-021529-37439f: the post-pull load wait failed before any Compose state existed.
+            "before_capture": """
+    - name: Require no Compose state after an early rollback
+      ansible.builtin.assert:
+        that:
+          - release_pi5_compose_environment is not defined
+          - release_pi5_rollback_compose_environment is not defined
+""",
+            "after_capture": """
+    - name: Record captured and candidate Compose state
+      ansible.builtin.set_fact:
+        release_pi5_rollback_compose_environment: {PI5_ENV_FILE: /original.env}
+        release_pi5_compose_environment: {PI5_ENV_FILE: /candidate.env}
+""",
+        }
+        for case, setup in cases.items():
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
+                before_failure = setup if case == "after_capture" else ""
+                after_rollback = (
+                    setup
+                    if case == "before_capture"
+                    else """
+    - name: Require the captured Compose environment after rollback
+      ansible.builtin.assert:
+        that:
+          - release_pi5_compose_environment.PI5_ENV_FILE == '/original.env'
+          - release_pi5_compose_environment | length == 1
+"""
+                )
+                playbook = Path(directory) / "rollback.yml"
+                playbook.write_text(
+                    f"""---
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - block:
+{textwrap.indent(before_failure, "    ")}
+        - name: Fail before the Pi5 traffic switch
+          ansible.builtin.fail:
+            msg: post-pull Pi5 load did not settle
+      rescue:
+        - block:
+            - ansible.builtin.import_tasks: {rollback}
+          rescue:
+            - name: Require rollback to end at the preserved candidate failure
+              ansible.builtin.assert:
+                that:
+                  - ansible_failed_task.name == 'Preserve the original Pi5 candidate failure after rollback'
+                  - not (release_pi5_rolled_back | default(false) | bool)
+{textwrap.indent(after_rollback, "        ")}
+""",
+                    encoding="utf-8",
+                )
+                result = subprocess.run(
+                    ["ansible-playbook", str(playbook)],
+                    cwd=ROOT,
+                    env={key: value for key, value in os.environ.items() if key != "ANSIBLE_CONFIG"},
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertNotIn("is undefined", result.stdout + result.stderr)
 
     def test_shared_torque_inventory_contract_executes_with_complete_settings(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
