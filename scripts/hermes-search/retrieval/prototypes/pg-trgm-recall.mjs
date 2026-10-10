@@ -9,9 +9,27 @@ import { fieldsWithRole, loadNonconformityCatalog } from '../catalog.mjs';
 import { readGold } from '../evaluate.mjs';
 import { buildLexicalIndex } from '../executor.mjs';
 import { caseKey } from '../graded-labels.mjs';
+import { questionSet } from '../flywheel-gate.mjs';
+import { readNightRows } from '../flywheel-report.mjs';
 
 const METHODS = ['bm25', 'trgm', 'trgmWord'];
-const USAGE = 'node retrieval/prototypes/pg-trgm-recall.mjs --gold <file> [--gold <file>] --labels <file> --snapshot <file> --pg <connection> --out <json>';
+const USAGE = 'node retrieval/prototypes/pg-trgm-recall.mjs [--gold <file>] [--questions <file>] (repeatable; at least one required) --labels <file> --snapshot <file> --pg <connection> --out <json>';
+
+export function readLabels(text) {
+  const payload = JSON.parse(text);
+  if (payload.schema !== 'hermes-flywheel-labels/v1') return payload;
+  return Object.fromEntries(Object.entries(payload.labels).map(([id, pool]) => [caseKey('flywheel', id), pool]));
+}
+
+export function readQuestions(text) {
+  // Use the same IDs, first-per-anchor selection and splits as flywheel-run.mjs.
+  const rows = readNightRows(text).filter((row) => row?.kept === true && row.kind !== 'filter');
+  // The anchor record and the consensus-relevant pooled records travel with the row; the
+  // labels file holds only the pooled candidates, so the anchor would otherwise count as unlabelled.
+  return questionSet(rows).map(({ id, question, split, relevant }) => ({
+    caseKey: caseKey('flywheel', id), question, ...(split == null ? {} : { split }), relevant: relevant ?? [],
+  }));
+}
 
 // executor.mjs's private scoreDocument rules, without changing its exports.
 // Keep token averages, single Han/Katakana terms, k1=1.2, b=0.75 and ID ties.
@@ -38,6 +56,11 @@ export function rankBm25(records, bodyFields, question) {
   });
   rows.sort((a, b) => b.score - a.score || String(a.id).localeCompare(String(b.id)));
   return rows.slice(0, 200).map((row) => String(row.id));
+}
+
+/** Labelled pool of one case; relevant ids carried by the question row count as grade 3. */
+export function poolFor(item, labels) {
+  return { ...(labels[item.caseKey] ?? {}), ...Object.fromEntries((item.relevant ?? []).map((id) => [id, { g: 3 }])) };
 }
 
 export function scoreCandidates(ids, labels) {
@@ -67,15 +90,20 @@ function summarize(cases) {
   }));
 }
 
+export function summarizeBySplit(cases) {
+  const splits = [...new Set(cases.map((item) => item.split).filter((split) => split != null))];
+  return Object.fromEntries(splits.map((split) => [split, summarize(cases.filter((item) => item.split === split))]));
+}
+
 function parseArgs(argv) {
-  const args = { gold: [] };
+  const args = { gold: [], questions: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const key = argv[i].slice(2);
-    if (!argv[i].startsWith('--') || !['gold', 'labels', 'snapshot', 'pg', 'out'].includes(key) || !argv[i + 1] || argv[i + 1].startsWith('--')) throw new Error(USAGE);
-    if (key === 'gold') args.gold.push(argv[++i]);
+    if (!argv[i].startsWith('--') || !['gold', 'questions', 'labels', 'snapshot', 'pg', 'out'].includes(key) || !argv[i + 1] || argv[i + 1].startsWith('--')) throw new Error(USAGE);
+    if (key === 'gold' || key === 'questions') args[key].push(argv[++i]);
     else args[key] = argv[++i];
   }
-  if (!args.gold.length || !args.labels || !args.snapshot || !args.pg || !args.out) throw new Error(USAGE);
+  if (!(args.gold.length || args.questions.length) || !args.labels || !args.snapshot || !args.pg || !args.out) throw new Error(USAGE);
   if (args.gold.some((file) => /heldout/iu.test(path.basename(file)))) throw new Error('heldout gold is outside this prototype scope');
   const output = path.join(fs.realpathSync(path.dirname(path.resolve(args.out))), path.basename(args.out));
   const privateRoot = fs.realpathSync(path.join(process.env.HOME, 'Documents/hermes-retrieval-private'));
@@ -151,31 +179,35 @@ function planNodes(plan) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const labels = JSON.parse(fs.readFileSync(args.labels, 'utf8'));
+  const labels = readLabels(fs.readFileSync(args.labels, 'utf8'));
   const { records } = JSON.parse(fs.readFileSync(args.snapshot, 'utf8'));
   if (!Array.isArray(records) || !records.length || records.some((r) => typeof r.id !== 'string' || !r.id) || new Set(records.map((r) => r.id)).size !== records.length) throw new Error('snapshot needs records with unique string ids');
   if (records.some((r) => r.enrichment)) throw new Error('snapshot must contain body fields only, without enrichment');
-  const questions = args.gold.flatMap((file) => readGold(file).map(({ id, question }) => ({ caseKey: caseKey(path.basename(file, '.json'), id), question })));
+  const questions = [
+    ...args.gold.flatMap((file) => readGold(file).map(({ id, question }) => ({ caseKey: caseKey(path.basename(file, '.json'), id), question }))),
+    ...readQuestions(args.questions.map((file) => fs.readFileSync(file, 'utf8')).join('\n')),
+  ];
   if (new Set(questions.map((item) => item.caseKey)).size !== questions.length) throw new Error('duplicate caseKey');
   const bodyFields = fieldsWithRole(loadNonconformityCatalog(), 'body');
   const cases = questions.map((item) => {
-    const pool = labels[item.caseKey] ?? {};
+    const pool = poolFor(item, labels);
     const started = performance.now();
     const ids = rankBm25(records, bodyFields, item.question);
-    return { caseKey: item.caseKey, relevantLabelled: Object.values(pool).filter((label) => label?.g === 3).length, bm25: scoreCandidates(ids, pool), ms: { bm25: performance.now() - started } };
+    return { caseKey: item.caseKey, ...(item.split == null ? {} : { split: item.split }), relevantLabelled: Object.values(pool).filter((label) => label?.g === 3).length, bm25: scoreCandidates(ids, pool), ms: { bm25: performance.now() - started } };
   });
   console.error(`BM25 complete: ${cases.length} cases; measuring PostgreSQL`);
   const pgStarted = performance.now();
   const rows = await runPsql(args.pg, sqlFor(records, bodyFields, questions));
   const pgWallMs = performance.now() - pgStarted;
   const pgCases = new Map(rows.filter((row) => row.kind === 'case').map((row) => [row.caseKey, row]));
+  const questionByKey = new Map(questions.map((item) => [item.caseKey, item]));
   if (pgCases.size !== cases.length) throw new Error('PostgreSQL case count mismatch');
   const plans = { trgm: new Set(), trgmWord: new Set() };
   for (const item of cases) {
     for (const method of ['trgm', 'trgmWord']) {
       const ranked = pgCases.get(item.caseKey)[method];
       if (ranked.ids.length !== Math.min(200, records.length) || new Set(ranked.ids).size !== ranked.ids.length) throw new Error('PostgreSQL candidate count mismatch');
-      item[method] = scoreCandidates(ranked.ids, labels[item.caseKey] ?? {});
+      item[method] = scoreCandidates(ranked.ids, poolFor(questionByKey.get(item.caseKey), labels));
       item.ms[method] = ranked.ms;
       plans[method].add(planNodes(ranked.plan).join(' > '));
     }
@@ -189,11 +221,12 @@ async function main() {
   }]))]));
   const report = {
     schema: 'hermes-pg-trgm-recall-prototype/v1', measuredAt: new Date().toISOString(),
-    inputs: [...args.gold, args.labels, args.snapshot].map((file) => ({ file: path.basename(file), sha256: hashFile(file) })),
+    inputs: [...args.gold, ...args.questions, args.labels, args.snapshot].map((file) => ({ file: path.basename(file), sha256: hashFile(file) })),
     records: records.length, bodyFields,
     methodology: { query: 'raw question; no planner/gold hints/filters/enrichment', relevantGrade: 3, denominator: 'all input questions; false means no known grade-3 hit, not irrelevant', unlabeled: 'grade absent; excluded from relevance judgments', timing: 'one pass; BM25 index build + score + sort; PostgreSQL server plan + rank + aggregate, excludes setup/transport; nearest-rank percentiles', ties: 'BM25 existing localeCompare; PostgreSQL record_id COLLATE C', betterRule: 'top30 hits, then top200 hits, then lower p95' },
     postgres: { ...rows.find((row) => row.kind === 'setup'), pgWallMs, planNodes: Object.fromEntries(Object.entries(plans).map(([key, values]) => [key, [...values]])) },
     summary, bySet: Object.fromEntries([...new Set(cases.map((item) => item.caseKey.split('/')[0]))].map((name) => [name, summarize(cases.filter((item) => item.caseKey.startsWith(`${name}/`)))])),
+    bySplit: summarizeBySplit(cases),
     knownRelevantOnly: summarize(cases.filter((item) => item.relevantLabelled > 0)),
     noRelevantLabelled: cases.filter((item) => item.relevantLabelled === 0).map((item) => item.caseKey),
     betterTrgm: better, paired, cases,
