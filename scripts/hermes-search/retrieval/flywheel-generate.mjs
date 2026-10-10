@@ -155,18 +155,18 @@ export async function generateQuestion({ seed, recordA, recordB, anchorBody, cha
 export function createDgxChat({ origin, token, egress = '', model = 'system-prod-primary', timeoutMs = 50_000, maxTokens = 200, fetchImpl }) {
   if (!origin || !token) throw new Error('inference origin or token is not configured');
   const fetchFn = fetchImpl ?? (egress ? throughEgress(egress) : fetch);
-  return async function chat({ messages, schema, temperature = 0 }) {
+  return async function chat({ messages, schema, temperature = 0, timeoutMs: requestTimeoutMs = timeoutMs, maxTokens: requestMaxTokens = maxTokens }) {
     try {
       const response = await fetchFn(`${origin.replace(/\/$/u, '')}/v1/chat/completions`, {
         method: 'POST',
         redirect: 'error',
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: AbortSignal.timeout(requestTimeoutMs),
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, 'x-llm-token': token },
         body: JSON.stringify({
           model,
           messages,
           temperature,
-          max_tokens: maxTokens,
+          max_tokens: requestMaxTokens,
           chat_template_kwargs: { enable_thinking: false },
           ...(schema ? { response_format: { type: 'json_schema', json_schema: { name: 'flywheel', strict: true, schema } } } : {}),
         }),
@@ -183,6 +183,16 @@ export function createDgxChat({ origin, token, egress = '', model = 'system-prod
       return { ok: false, reason: error?.name === 'TimeoutError' || error?.name === 'AbortError' ? 'timeout' : 'transport' };
     }
   };
+}
+
+/** A tiny readiness request; pass the raw chat so it does not consume guard strikes. */
+export async function probeChat(chat, { timeoutMs = 15_000 } = {}) {
+  try {
+    const reply = await chat({ messages: [{ role: 'user', content: 'Reply OK.' }], maxTokens: 8, timeoutMs });
+    return reply?.ok ? { ok: true } : { ok: false, reason: reply?.reason ?? 'transport' };
+  } catch (error) {
+    return { ok: false, reason: error?.name === 'TimeoutError' || error?.name === 'AbortError' ? 'timeout' : 'transport' };
+  }
 }
 
 /**

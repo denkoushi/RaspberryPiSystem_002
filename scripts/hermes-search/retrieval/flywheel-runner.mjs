@@ -15,7 +15,7 @@ import { denseSettings, readDenseStore } from './dense-dgx.mjs';
 import { enrichmentSettings, withinWindow } from './enrichment-dgx.mjs';
 import { createDgxGrader, createJevPairGrader, filterAndLabel } from './flywheel-filter.mjs';
 import { checkFilterAnswer, isFilterOnlyPlan } from './flywheel-filter-check.mjs';
-import { createDgxChat, generateForPairs, guardChat } from './flywheel-generate.mjs';
+import { createDgxChat, generateForPairs, guardChat, probeChat } from './flywheel-generate.mjs';
 import { createLiveScorer, lossStage, relevantIds } from './flywheel-live.mjs';
 import { questionSet, splitOf } from './flywheel-gate.mjs';
 import { DEFAULT_LEARN_BUDGET, LEARN_BUDGET_CAP, LEARN_EVAL_NIGHTS, activationDecision, evaluateCandidates, learnedPath, proposeLearnedQueries, readLearned, writeLearned } from './flywheel-learn.mjs';
@@ -146,7 +146,7 @@ function unlabelledShownPairs(rows, labels) {
 }
 
 /**
- * One night pass. Injectable: now, readDense, chat (the raw DGX chat), jevEvaluate, live (the
+ * One night pass. Injectable: now, readDense, chat (the raw DGX chat), probe, jevEvaluate, live (the
  * scorer from createLiveScorer), liveFactory, and the random seed. Returns the status that is also written to
  * flywheel-status.json.
  */
@@ -156,6 +156,7 @@ export async function runFlywheelNight({
   now = () => new Date(),
   readDense = readDenseStore,
   chat = null,
+  probe = probeChat,
   jevEvaluate = null,
   live = null,
   liveFactory = null,
@@ -163,8 +164,19 @@ export async function runFlywheelNight({
   log = (line) => console.info(line),
 }) {
   const status = { schema: 'hermes-flywheel-status/v1', reason: 'started', night: null, generated: 0, kept: 0, shown: 0, dropped: 0, dropReasons: {}, lossStages: {}, pendingLive: 0, labelled: 0, labelPending: 0, real: 0, realPending: 0, updatedAt: null };
-  const nightLog = async (line) => {
+  let previousReason = null;
+  if (settings.dir) {
+    try {
+      previousReason = JSON.parse(await readFile(path.join(settings.dir, 'flywheel-status.json'), 'utf8'))?.reason ?? null;
+    } catch {
+      // Missing or unreadable status means the next final line must be written.
+    }
+  }
+  const nightLog = async (line, final = false) => {
     if (!settings.dir) return;
+    const worked = [status.generated, status.kept, status.shown, status.dropped, status.labelled, status.real,
+      status.learned?.proposed ?? 0, status.learned?.candidates ?? 0].some((count) => count > 0);
+    if (final && !worked && status.reason === previousReason) return;
     try {
       const at = now();
       await appendFile(path.join(settings.dir, `runner-${status.night ?? nightOf(at)}.log`),
@@ -173,9 +185,9 @@ export async function runFlywheelNight({
       // Diagnostics must never interrupt generation or scoring.
     }
   };
-  const writeLog = async (line) => {
+  const writeLog = async (line, final = false) => {
     log(line);
-    await nightLog(line);
+    await nightLog(line, final);
   };
   const logLive = (id, result) => nightLog(`hermes retrieval flywheel live id=${id} outcome=${result.outcome} loss=${result.loss ?? 'none'} reason=${JSON.stringify(result.reason ?? null)} ms=${result.ms}`);
   const finish = async (reason) => {
@@ -185,7 +197,7 @@ export async function runFlywheelNight({
       await mkdir(settings.dir, { recursive: true, mode: 0o700 });
       await writeJson(path.join(settings.dir, 'flywheel-status.json'), status);
     }
-    await writeLog(countLine(status));
+    await writeLog(countLine(status), true);
     return status;
   };
   if (!settings.enabled) return finish('disabled');
@@ -214,7 +226,8 @@ export async function runFlywheelNight({
     evaluate = createTypesafeDirectEvaluate();
   }
   let reason = budget <= 0 ? 'budget_reached' : 'completed';
-  const guarded = guardChat(chat ?? createDgxChat({ origin: settings.origin, token: settings.token, egress: settings.egress, model: settings.model }));
+  const rawChat = chat ?? createDgxChat({ origin: settings.origin, token: settings.token, egress: settings.egress, model: settings.model });
+  const guarded = guardChat(rawChat);
   const gradeDgx = createDgxGrader(guarded);
 
   // Both phases use the same consensus rule and persist each finished JEV batch.
@@ -253,9 +266,20 @@ export async function runFlywheelNight({
   }
   if (budget > 0) {
     const random = createRandom(seed ?? Number(status.night.replaceAll('-', '')) + done);
-    const pairs = samplePairs({ records: corpus, denseEntries, count: budget, random, exclude: await usedAnchors(settings.dir) });
-    if (!pairs.length) reason = 'no_pairs';
-    else {
+    const exclude = await usedAnchors(settings.dir);
+    const denseIds = new Set(denseEntries.map((entry) => bareId(entry.id)));
+    const pool = corpus.filter((record) => bodyText(record) && denseIds.has(record.id));
+    if (pool.length > 1 && pool.some((record) => !exclude.has(record.id))) {
+      status.probe = await probe(rawChat);
+      if (!status.probe.ok) {
+        reason = 'dgx_not_ready';
+        await writeLog(`hermes retrieval flywheel dgx not ready reason=${status.probe.reason}`);
+      }
+    }
+    const pairs = reason === 'dgx_not_ready' ? [] : samplePairs({ records: corpus, denseEntries, count: budget, random, exclude });
+    if (!pairs.length) {
+      if (reason !== 'dgx_not_ready') reason = 'no_pairs';
+    } else {
       const gradeJevPair = createJevPairGrader(evaluate);
       for (const pair of pairs) {
         if (!withinWindow(settings.window, now())) {
