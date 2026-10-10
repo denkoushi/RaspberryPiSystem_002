@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { redactHeadersForLog } from '../../lib/log-headers.js';
 
 import { getKioskHeaderTabOrderSettings } from '../../services/kiosk/kiosk-header-tab-order.service.js';
 import { resolveKioskConfigClientState } from '../../services/kiosk/kiosk-config.service.js';
@@ -16,11 +17,8 @@ export async function registerKioskConfigRoute(
     const rawClientKey = request.headers['x-client-key'];
     const clientKey = deps.normalizeClientKey(rawClientKey);
 
-    // 機密情報保護: x-client-keyをログから除外
-    const sanitizedHeaders = { ...request.headers };
-    if ('x-client-key' in sanitizedHeaders) {
-      sanitizedHeaders['x-client-key'] = '[REDACTED]';
-    }
+    // 機密情報保護: 認証ヘッダーをログから除外
+    const sanitizedHeaders = redactHeadersForLog(request.headers);
     app.log.info(
       {
         clientKey: clientKey ? '[REDACTED]' : undefined,
