@@ -1,0 +1,68 @@
+<title>音声入力 モック</title>
+<style>
+:root{color-scheme:dark;--bg:#0b0f13;--panel:#161c22;--line:#344252;--line2:#27313b;--fg:#eef3f6;--mute:#9fadb9;--green:#3ba776;--amber:#f6b93b;--blue:#7cc4ff;--red:#ff8a80}
+html,body{background:#05080b;color:var(--fg);font-family:"Hiragino Sans","Noto Sans JP",system-ui,sans-serif}
+body{padding-inline:16px;padding-block:12px}
+.note{margin-bottom:10px;font-size:14px;color:var(--mute);line-height:1.6}
+#fit{position:relative;overflow:hidden;border:1px solid var(--line2);border-radius:6px}
+#stage{width:1920px;height:1080px;transform-origin:0 0;background:var(--bg);display:grid;grid-template-columns:120px 1fr 64px;position:relative}
+button{font-family:inherit;color:inherit;cursor:pointer}
+.pages{border-right:1px solid var(--line2);padding:12px;display:grid;gap:10px;align-content:start}
+.pages div{height:74px;border:1px solid var(--line);border-radius:6px;background:var(--panel);display:flex;align-items:center;justify-content:center;color:var(--mute);font-size:18px}
+.pages div.on{border-color:var(--blue);color:var(--blue)}
+.canvas{position:relative;display:flex;align-items:center;justify-content:center}
+.sheet{width:1180px;height:835px;background:#f3f1ec;border-radius:4px;position:relative;margin-right:360px}
+.photo{position:absolute;left:60px;top:70px;width:520px;height:390px;background:linear-gradient(135deg,#9aa7b2,#56636f);border-radius:4px}
+.txt{position:absolute;left:620px;top:90px;width:500px;min-height:120px;border:3px solid #2f7fd6;border-radius:4px;padding:14px;color:#14181c;font-size:26px;line-height:1.5;box-sizing:border-box;white-space:pre-wrap;transition:background .5s}
+.txt.ph{color:#8a9199}.txt.flash{background:#bfe8d2}
+.insp{position:absolute;right:20px;top:20px;width:340px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:12px}
+.insp h3{margin:0;font-size:16px;color:var(--mute);letter-spacing:.08em;font-weight:600}
+textarea{height:170px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font-size:19px;line-height:1.5;padding:10px;font-family:inherit;resize:none}
+.vrow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.vb{height:64px;border-radius:8px;border:1px solid var(--blue);background:#7cc4ff1f;color:var(--blue);font-size:20px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:8px}
+.vb.full{grid-column:1/-1}
+.vb.rec{border-color:var(--red);background:var(--red);color:#2a0b08}
+.vb.undo{border-color:var(--line);background:transparent;color:var(--fg);height:48px;font-size:17px}
+.vb svg{width:26px;height:26px}
+.heard{font-size:15px;color:var(--mute);min-height:22px;line-height:1.4}
+.busy{font-size:18px;color:var(--amber);text-align:center;height:64px;display:flex;align-items:center;justify-content:center;grid-column:1/-1}
+.tool{border-left:1px solid var(--line2);padding:10px 8px;display:grid;gap:10px;align-content:start}
+.tool button{width:48px;height:48px;border-radius:8px;border:1px solid var(--line);background:var(--panel);display:flex;align-items:center;justify-content:center}
+.tool button.on{border-color:var(--blue);color:var(--blue);background:#7cc4ff1f}
+.tool svg{width:26px;height:26px}
+.bars{display:flex;gap:3px;align-items:center;height:22px}.bars i{width:4px;background:#2a0b08;border-radius:2px;animation:b .6s infinite alternate}
+.bars i:nth-child(2){animation-delay:.15s}.bars i:nth-child(3){animation-delay:.3s}
+@keyframes b{from{height:6px}to{height:22px}}
+</style>
+<div class="note">モック（1920×1080 を縮小表示）。要領書エディタで文字の枠を選んだ状態です。<br>
+右端のマイクの記号でこの端末の音声入力を入／切。右上のパネルの「話す」→「止める」で文が入ります（声は使わず、見本の文が順に入ります）。</div>
+<div id="fit"><div id="stage">
+  <div class="pages"><div class="on">1</div><div>2</div><div>3</div></div>
+  <div class="canvas"><div class="sheet"><div class="photo"></div><div class="txt ph" id="txt">ここに文章を入力</div></div>
+    <div class="insp"><h3>文字</h3><textarea id="ta" placeholder="ここに文章を入力"></textarea><div class="vrow" id="v"></div><div class="heard" id="heard"></div></div></div>
+  <div class="tool"><button title="文字を置く">Ｔ</button><button title="矢印">↗</button><button title="整える">✦</button>
+    <button id="mic" class="on" title="音声入力" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button></div>
+</div></div>
+<script>
+const MIC='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
+const $=id=>document.getElementById(id);
+let on=true,st='idle',kind=null,prev=null,n={new:0,more:0,fix:0};
+const S={new:[['えーと、道具を棚に直す','道具を棚に戻す。']],
+ more:[['そのあとチップも同じ棚に収める',t=>t+'\nその後、チップも同じ棚に収める。'],['4つのコマをテーブルチャックに並べて上にワークを置く',t=>t+'\n4個のコマをテーブルチャックに並べ、その上にワークを置く。']],
+ fix:[['5番の棚って入れて',t=>t.replace('棚に戻す','5番の棚に戻す')],['もっと短くして',t=>t.split('\n')[0]]]};
+function show(){const t=$('ta').value,x=$('txt');x.textContent=t||'ここに文章を入力';x.classList.toggle('ph',!t)}
+function draw(){$('mic').classList.toggle('on',on);const v=$('v');
+ if(!on){v.innerHTML='';$('heard').textContent='';return}
+ if(st==='rec')v.innerHTML='<button class="vb full rec" data-a="stop"><span class="bars"><i></i><i></i><i></i></span>止める</button>';
+ else if(st==='busy')v.innerHTML='<div class="busy">文にしています…</div>';
+ else v.innerHTML=($('ta').value?`<button class="vb" data-a="more">${MIC}続き</button><button class="vb" data-a="fix">${MIC}直す</button>`:`<button class="vb full" data-a="new">${MIC}話す</button>`)+(prev!==null?'<button class="vb full undo" data-a="undo">戻す</button>':'')}
+document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const a=b.dataset.a;
+ if(b.id==='mic'){on=!on;st='idle';draw()}
+ else if(a==='new'||a==='more'||a==='fix'){kind=a;st='rec';$('heard').textContent='';draw()}
+ else if(a==='stop'){st='busy';draw();setTimeout(()=>{const l=S[kind],[said,out]=l[n[kind]++%l.length],t=$('ta').value;prev=t;
+   $('ta').value=typeof out==='function'?out(t):out;$('heard').textContent='聞き取り: '+said;st='idle';show();draw();const x=$('txt');x.classList.add('flash');setTimeout(()=>x.classList.remove('flash'),700)},1300)}
+ else if(a==='undo'){$('ta').value=prev;prev=null;$('heard').textContent='';show();draw()}});
+$('ta').oninput=()=>{show();if(st==='idle')draw();$('ta').focus()};
+function fit(){const w=$('fit').clientWidth,s=Math.min(1,w/1920);$('stage').style.transform='scale('+s+')';$('fit').style.height=1080*s+'px'}
+addEventListener('resize',fit);draw();fit();
+</script>

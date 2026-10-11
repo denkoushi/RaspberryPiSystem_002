@@ -20,6 +20,16 @@ import { AssemblyProcedureTextCandidateDialog } from './AssemblyProcedureTextCan
 
 export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDocument }: { context?: import('../types').ProcedureManualEditorContext; onNavigateToDocument: (documentId: string) => void }) {
   const controller = useAssemblyProcedureDocumentEditor();
+  const [voiceInputEnabled, setVoiceInputEnabled] = useState(() => {
+    try { return localStorage.getItem('assembly-document-editor-voice-input') === 'on'; }
+    catch { return false; }
+  });
+  const toggleVoiceInput = () => {
+    const enabled = !voiceInputEnabled;
+    setVoiceInputEnabled(enabled);
+    try { localStorage.setItem('assembly-document-editor-voice-input', enabled ? 'on' : 'off'); }
+    catch { /* The editor remains usable when local storage is unavailable. */ }
+  };
   const [partsPaneOpen, setPartsPaneOpen] = useState(() => {
     try { return localStorage.getItem('assembly-document-editor-parts-pane') !== 'closed'; }
     catch { return true; }
@@ -182,9 +192,12 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           ) : null}
         </section>
         <AssemblyProcedureDocumentEditorCanvasToolbar controller={controller} workshop={Boolean(context)} materialCount={materialCount} materialOpen={materialShelfOpen} videoOpen={videoLinkOpen}
+          voiceInputEnabled={voiceInputEnabled} onToggleVoiceInput={toggleVoiceInput}
           onMaterial={() => { setMaterialShelfMode('place'); setMaterialShelfOpen(true); }} onVideo={() => setVideoLinkOpen(true)} onPublish={() => setPublishOpen(true)} onDelete={() => setDeleteOpen(true)} onDiscard={() => setDiscardOpen(true)} />
         {controller.selectedElement ? <div className="absolute right-20 top-4 z-50 max-h-[calc(100%-32px)] w-[340px] overflow-auto rounded-[14px] border border-[#344252] bg-[#161c22f5] p-4">
         <AssemblyProcedureDocumentEditorInspector
+          key={voiceInputEnabled ? `${controller.document?.id}:${controller.selectedElement.id}` : undefined}
+          voiceInputEnabled={voiceInputEnabled}
           element={controller.selectedElement}
           onClose={() => controller.setSelectedOverlayId(null)}
           onDuplicate={controller.duplicateSelectedOverlay}

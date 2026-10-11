@@ -13,14 +13,17 @@ const icons: Record<string, ReactNode> = {
   shape: <><rect x="4" y="4" width="7" height="7" /><circle cx="16.5" cy="16.5" r="3.5" /></>,
   range: <rect x="4" y="4" width="16" height="16" rx="2" strokeDasharray="3 3" />,
   layout: <><rect x="4" y="4" width="6" height="5" rx="1" /><rect x="4" y="13" width="6" height="5" rx="1" /><path d="M14 5h6M14 8h6M14 14h6M14 17h6" /></>,
+  mic: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></>,
   undo: <><path d="M9 5L4 10l5 5M4 10h9a6 6 0 016 6" /></>,
   redo: <><path d="M15 5l5 5-5 5M20 10h-9a6 6 0 00-6 6" /></>,
   delete: <><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5" /></>
 };
 
-export function AssemblyProcedureDocumentEditorCanvasToolbar({ controller: c, workshop, materialCount, materialOpen, videoOpen, onMaterial, onVideo, onPublish, onDelete, onDiscard }: {
+export function AssemblyProcedureDocumentEditorCanvasToolbar({ controller: c, workshop, materialCount, materialOpen, videoOpen, onMaterial, onVideo, onPublish, onDelete, onDiscard, voiceInputEnabled, onToggleVoiceInput }: {
   controller: AssemblyProcedureDocumentEditorController;
   workshop: boolean;
+  voiceInputEnabled: boolean;
+  onToggleVoiceInput: () => void;
   materialCount: number | null;
   materialOpen: boolean;
   videoOpen: boolean;
@@ -43,6 +46,7 @@ export function AssemblyProcedureDocumentEditorCanvasToolbar({ controller: c, wo
     {button('図形を置く', 'shape', () => c.addOverlay('SHAPE'), { disabled, pressed: c.selectedElement?.kind === 'SHAPE' })}
     {button('範囲を選ぶ', 'range', () => c.setSelectionMode(!c.selectionMode), { disabled, pressed: c.selectionMode, target: 'assembly-document-editor-range-add' })}
     {button('整える', 'layout', () => void c.layoutSuggestions.start(), { disabled: disabled || !c.layoutSuggestions.canSuggest, pressed: c.layoutSuggestions.locked, color: '!border-[#5fc3e8] !text-[#5fc3e8]' })}
+    {button('音声入力', 'mic', onToggleVoiceInput, { disabled, pressed: voiceInputEnabled, target: 'assembly-document-editor-voice-input', color: voiceInputEnabled ? '!border-[#7cc4ff] !bg-[#7cc4ff1f] !text-[#7cc4ff]' : undefined })}
     {separator}
     {button('元に戻す', 'undo', c.undo, { disabled: disabled || !c.canUndo })}
     {button('やり直す', 'redo', c.redo, { disabled: disabled || !c.canRedo })}

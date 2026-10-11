@@ -15,6 +15,7 @@ import { enforceAssemblyProcedureEditLease, resolveAssemblyProcedureEditWriter }
 import { ApiError } from '../../lib/errors.js';
 import { AssemblyProcedureDocumentBlankService } from '../../services/assembly/assembly-procedure-document-blank.service.js';
 import { ProcedureMaterialPlacementService } from '../../services/assembly/procedure-material-placement.service.js';
+import { ProcedureDictationRewriteService } from '../../services/assembly/procedure-dictation-rewrite.service.js';
 import { ProcedureLayoutSuggestionService } from '../../services/assembly/procedure-layout-suggestion.service.js';
 
 const idParamsSchema = z.object({ id: z.string().uuid() });
@@ -42,6 +43,26 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
   service = new AssemblyProcedureDocumentRevisionService(),
   assetsService = new AssemblyProcedureDocumentAssetsService()
 ): void {
+  app.post('/assembly/procedure-documents/dictation/rewrite', {
+    preHandler: options.allowWriteKiosk,
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } }
+  }, async (request, reply) => {
+    const body = z.object({
+      mode: z.enum(['new', 'append', 'revise']),
+      spokenText: z.string().trim().min(1).max(2000),
+      currentText: z.string().max(10000).optional()
+    }).refine(body => body.mode !== 'revise' || Boolean(body.currentText?.trim()), {
+      path: ['currentText'], message: 'currentText is required for revise'
+    }).parse(request.body);
+    const abortController = new AbortController();
+    const onClose = () => { if (!reply.raw.writableEnded) abortController.abort(); };
+    reply.raw.once('close', onClose);
+    try {
+      return await new ProcedureDictationRewriteService().rewrite({ ...body, signal: abortController.signal });
+    } finally {
+      reply.raw.off('close', onClose);
+    }
+  });
   app.post('/assembly/procedure-documents/blank', { preHandler: options.allowWriteKiosk }, async (request) => {
     const body = z.object({
       name: z.string().trim().min(1).max(200),

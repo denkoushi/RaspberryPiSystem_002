@@ -35,6 +35,15 @@ function procedureEditHeaders(holderToken?: string | null) {
   return { headers: holderToken ? { 'x-procedure-edit-token': holderToken } : {} };
 }
 
+export type ProcedureDictationMode = 'new' | 'append' | 'revise';
+
+export async function rewriteAssemblyProcedureDictation(input: { mode: ProcedureDictationMode; spokenText: string; currentText?: string; signal: AbortSignal }) {
+  const { signal, ...body } = input;
+  const { data } = await api.post<{ text: string }>('/assembly/procedure-documents/dictation/rewrite', body, { signal });
+  if (typeof data.text !== 'string' || !data.text.trim() || data.text.length > 10000) throw new Error('Invalid dictation response');
+  return data;
+}
+
 export async function suggestAssemblyProcedureLayout(input: ProcedureLayoutSuggestionRequest & { id: string; accessPassword: string; holderToken?: string | null; signal: AbortSignal }) {
   const { data } = await api.post(
     `/assembly/procedure-documents/${encodeURIComponent(input.id)}/layout-suggestions`,
