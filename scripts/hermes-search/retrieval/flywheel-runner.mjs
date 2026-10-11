@@ -196,7 +196,7 @@ export async function runFlywheelNight({
     log(line);
     await nightLog(line, final);
   };
-  const logLive = (id, result) => nightLog(`hermes retrieval flywheel live id=${id} outcome=${result.outcome} loss=${result.loss ?? 'none'} reason=${JSON.stringify(result.reason ?? null)} ms=${result.ms}`);
+  const logLive = (id, result) => nightLog(`hermes retrieval flywheel live id=${id} outcome=${result.outcome} loss=${result.loss ?? 'none'} reason=${JSON.stringify(result.reason ?? null)}${result.unresolved?.length ? ` unresolved=${JSON.stringify(result.unresolved)}` : ''} ms=${result.ms}`);
   const finish = async (reason) => {
     status.reason = reason;
     status.updatedAt = now().toISOString();

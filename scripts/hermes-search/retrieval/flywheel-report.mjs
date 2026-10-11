@@ -60,6 +60,7 @@ export function summarizeNight(rows, { labels = null } = {}) {
     medianLength: null,
     medianOverlap: null,
     unavailableReasons: {},
+    askedBackTerms: {},
     filter: summarizeSyntheticFilters(filterRows),
     live: { scored: 0, shown: 0, otherShown: 0, notInPool: 0, judgeRejected: 0, status: 0, failed: 0, notRun: 0, denseFallbacks: 0, labelled: 0 },
   };
@@ -101,8 +102,12 @@ export function summarizeNight(rows, { labels = null } = {}) {
     else if (live.loss === 'other_shown') summary.live.otherShown += 1;
     else if (live.loss === 'not_in_pool') summary.live.notInPool += 1;
     else if (live.loss === 'judge_rejected') summary.live.judgeRejected += 1;
-    else if (live.loss === 'status') summary.live.status += 1;
-    else summary.live.failed += 1;
+    else if (live.loss === 'status') {
+      summary.live.status += 1;
+      for (const term of Array.isArray(live.unresolved) ? live.unresolved : []) {
+        summary.askedBackTerms[term] = (summary.askedBackTerms[term] ?? 0) + 1;
+      }
+    } else summary.live.failed += 1;
   }
   lengths.sort((left, right) => left - right);
   summary.medianLength = lengths.length ? lengths[lengths.length >> 1] : null;
@@ -198,6 +203,8 @@ export function formatReport(night, summary) {
       + (live.notRun ? `, not run ${live.notRun}` : ''),
   );
   if (live.denseFallbacks) lines.push(`  dense fallbacks: ${live.denseFallbacks}`);
+  const askedBack = Object.entries(summary.askedBackTerms ?? {}).sort((left, right) => right[1] - left[1]);
+  if (askedBack.length) lines.push(`  asked back on: ${askedBack.map(([term, count]) => `${term} ${count}`).join(', ')}`);
   const reasons = Object.entries(summary.unavailableReasons ?? {}).sort((left, right) => right[1] - left[1]);
   if (reasons.length) lines.push(`  unavailable reasons: ${reasons.map(([reason, count]) => `${reason}=${count}`).join(', ')}`);
   lines.push(...formatSyntheticFilters(summary.filter));

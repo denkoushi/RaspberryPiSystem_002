@@ -114,3 +114,16 @@ test('live scoring sanitizes and truncates thrown errors, retaining their diagno
   assert.equal(live.reason.includes('private-key'), false);
   assert.equal(live.reason.includes('\n'), false);
 });
+
+test('live scoring records the unresolved terms behind an ask-back', async () => {
+  const evaluate = async ({ questions }) => ({ answers: Object.fromEntries(Object.keys(questions).map((key) => [key,
+    key === 'content' ? { type: 'choice', choice: 'maybe' }
+      : { type: 'choice', choice: key === 'scope' ? 'nonconformity' : key === 'sort' ? 'relevance' : key === 'limit' ? 'unspecified' : 'none' },
+  ])) });
+  const score = await createLiveScorer({ records, catalog: loadNonconformityCatalog(), evaluate,
+    env: { HERMES_RETRIEVAL_DENSE_PROVIDER: 'off', HERMES_FLYWHEEL_LEARNED_ENABLED: 'false' } });
+  const live = await score({ a: 'rec-alpha', question: 'surface scratch' });
+  assert.equal(live.outcome, 'clarification');
+  assert.equal(live.loss, 'status');
+  assert.deepEqual(live.unresolved, ['content']);
+});
