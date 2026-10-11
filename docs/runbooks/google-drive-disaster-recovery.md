@@ -44,7 +44,7 @@ The runner excludes `.ssh` authority directories, Google OAuth credentials, the 
 2. Prepare the Google Drive remote with the `drive.file` scope. Create a new repository-specific restic password and store it in the approved password manager and an offline medium. Do not reuse the DGX repository password.
 3. Transfer the rclone credential file and password file out of band to the dedicated Pi directory. Confirm `root:root` ownership and `0600` mode. Keep the timer disabled.
 4. Run the dedicated Ansible playbook in check mode with an exact host limit and verify `--list-hosts` contains only `raspberrypi5`. Pass `-e google_drive_dr_timer_enabled=false` in both check mode and the approved initial installation to keep the timer disabled despite the production inventory setting. The playbook must place the runner, non-secret environment, service, and disabled timer without changing the public API, UI, database schema, migrations, or Dropbox settings.
-5. On the Pi, inspect the installed unit and environment paths without printing their values. Confirm the service is `Type=oneshot`, `TimeoutStartSec=9h30m`, `KillMode=control-group`, and has no `RuntimeMaxSec`; confirm the timer has `OnCalendar=*-*-* 21:30:00 Asia/Tokyo`, `Persistent=false`, and is disabled. The explicit calendar timezone makes the schedule independent of the host's local timezone; the playbook neither changes nor rejects the host timezone.
+5. On the Pi, inspect the installed unit and environment paths without printing their values. Confirm the service is `Type=oneshot`, `TimeoutStartSec=8h`, `KillMode=control-group`, and has no `RuntimeMaxSec`; confirm the timer has `OnCalendar=*-*-* 23:00:00 Asia/Tokyo`, `Persistent=false`, and is disabled. The explicit calendar timezone makes the schedule independent of the host's local timezone; the playbook neither changes nor rejects the host timezone.
 
 ## Capacity check
 
@@ -88,9 +88,9 @@ For a full rehearsal, create a new database in the same isolated PostgreSQL test
 
 The service is scheduled only after capacity, manual backup, and isolated restore acceptance. The timer contract is:
 
-- starts daily from the explicit `OnCalendar=*-*-* 21:30:00 Asia/Tokyo` expression, independent of the host's local timezone;
+- starts daily from the explicit `OnCalendar=*-*-* 23:00:00 Asia/Tokyo` expression, independent of the host's local timezone;
 - `Persistent=false`, so a missed run is not replayed during business hours;
-- `Type=oneshot` with `TimeoutStartSec=9h30m` and `KillMode=control-group`;
+- `Type=oneshot` with `TimeoutStartSec=8h` and `KillMode=control-group`;
 - `forget --group-by host,tags` after every successful snapshot with daily 7, weekly 5, monthly 12. The matching `backup --group-by host,tags` keeps each UUID staging path in the single Business Pi 5 tag lane, rather than creating a separate retention group per run; and
 - `prune` on Sunday only, so normal nightly uploads remain bounded.
 
