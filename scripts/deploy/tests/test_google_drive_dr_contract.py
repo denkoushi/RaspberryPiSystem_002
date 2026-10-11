@@ -206,14 +206,14 @@ class GoogleDriveDisasterRecoveryContractTests(unittest.TestCase):
         timer = TIMER_TEMPLATE.read_text(encoding="utf-8")
 
         self.assertNotIn("timedatectl", source)
-        self.assertIn("OnCalendar=*-*-* 21:30:00 Asia/Tokyo", timer)
+        self.assertIn("OnCalendar=*-*-* 23:00:00 Asia/Tokyo", timer)
         self.assertIn("Persistent=false", timer)
         self.assertNotIn("Persistent=true", timer)
 
     def test_service_is_bounded_oneshot_and_never_uses_runtime_max(self) -> None:
         service = SERVICE_TEMPLATE.read_text(encoding="utf-8")
         self.assertIn("Type=oneshot", service)
-        self.assertIn("TimeoutStartSec=9h30m", service)
+        self.assertIn("TimeoutStartSec=8h", service)
         self.assertIn("KillMode=control-group", service)
         self.assertNotIn("RuntimeMaxSec", service)
         self.assertIn("ExecStart=/usr/bin/python3", service)
