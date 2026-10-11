@@ -507,7 +507,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     const c = makeController({ canSave: true, canUndo: true, canRedo: true, selectionMode: true, selectedElement: { id: 'text', kind: 'TEXT', pageIndex: 0, text: '文字', zIndex: 0, bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.2, heightRatio: 0.2 } } });
     renderScreen(c);
     const rail = screen.getByRole('navigation', { name: 'エディタ操作' });
-    expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['保存する', '公開する', '素材を置く', '動画をつなぐ', '文字を置く', '図形を置く', '範囲を選ぶ', '整える', '元に戻す', 'やり直す', '削除する', '一覧へ戻る']);
+    expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['保存する', '公開する', '素材を置く', '動画をつなぐ', '文字を置く', '図形を置く', '範囲を選ぶ', '整える', '音声入力', '元に戻す', 'やり直す', '削除する', '一覧へ戻る']);
     expect(screen.getByRole('button', { name: '整える' })).toHaveClass('!border-[#5fc3e8]', '!text-[#5fc3e8]');
     expect(rail).toHaveClass('pb-[84px]');
     for (const button of within(rail).getAllByRole('button')) expect(button).not.toHaveAttribute('title');
@@ -546,6 +546,30 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
       expect(Boolean(screen.queryByText('通知'))).toBe(messageIsError);
     } finally { vi.useRealTimers(); }
   });
+  it('persists the per-device voice toggle and restores it on remount', () => {
+    localStorage.removeItem('assembly-document-editor-voice-input');
+    const view = renderScreen(makeController());
+    expect(screen.getByRole('button', { name: '音声入力' })).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(screen.getByRole('button', { name: '音声入力' }));
+    expect(localStorage.getItem('assembly-document-editor-voice-input')).toBe('on');
+    view.unmount();
+    renderScreen(makeController());
+    expect(screen.getByRole('button', { name: '音声入力' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '音声入力' }));
+    expect(localStorage.getItem('assembly-document-editor-voice-input')).toBe('off');
+  });
+
+  it('keeps the voice toggle usable when localStorage is unavailable', () => {
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
+    try {
+      renderScreen(makeController());
+      expect(screen.getByRole('button', { name: '音声入力' })).toHaveAttribute('aria-pressed', 'false');
+      fireEvent.click(screen.getByRole('button', { name: '音声入力' }));
+      expect(screen.getByRole('button', { name: '音声入力' })).toHaveAttribute('aria-pressed', 'true');
+    } finally { get.mockRestore(); set.mockRestore(); }
+  });
+
   it('leaves the inspector closed when no element is selected', () => {
     renderScreen(makeController());
     expect(screen.queryByTestId('editor-inspector')).not.toBeInTheDocument();

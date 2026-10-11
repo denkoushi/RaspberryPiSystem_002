@@ -1826,6 +1826,7 @@
 | [ADR-20260228-ibus-kiosk-multilayer-suppression.md](./decisions/ADR-20260228-ibus-kiosk-multilayer-suppression.md) | IBus UI 再発を防ぐ多層抑止とモジュール分離 |
 | [ADR-20260705-dgx-spark-gb10-inference-performance-parameters.md](./decisions/ADR-20260705-dgx-spark-gb10-inference-performance-parameters.md) | DGX Spark GB10 推論性能パラメータ（Marlin/KV f16/chunked prefill無効） |
 | [ADR-20260924-ai-agent-rules-context-slimming.md](./decisions/ADR-20260924-ai-agent-rules-context-slimming.md) | AI向け常時ルールの削減と正本一本化 |
+| [ADR-20261011-procedure-voice-input.md](./decisions/ADR-20261011-procedure-voice-input.md) | 要領書エディタの端末内音声認識と既存LLMによる書き直し |
 
 ### モジュール仕様（modules/）
 
