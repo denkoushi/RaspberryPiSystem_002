@@ -10,6 +10,7 @@ type Props = {
   keyClassName?: string;
   resetClassName?: string;
   showReset?: boolean;
+  resetLabel?: string;
   showBackspace?: boolean;
   /** Key order override, e.g. ascending digits for a single-column layout. */
   digits?: readonly string[];
@@ -30,6 +31,7 @@ export function KioskDigitTenkey({
   keyClassName = defaultKeyClassName,
   resetClassName = defaultResetClassName,
   showReset = true,
+  resetLabel = 'リセット',
   showBackspace = false,
   digits
 }: Props) {
@@ -60,7 +62,7 @@ export function KioskDigitTenkey({
           disabled={disabled || value.length === 0}
           onClick={() => onChange('')}
         >
-          リセット
+          {resetLabel}
         </button>
       ) : null}
     </div>

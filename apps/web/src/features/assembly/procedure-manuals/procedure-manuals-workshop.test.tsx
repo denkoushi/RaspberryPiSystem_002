@@ -8,8 +8,9 @@ import { ProcedureManualWorkshop } from './ProcedureManualWorkshop';
 
 import type { AssemblyProcedureSequenceDto, ProcedureManualModelOverviewDto, ProcedureManualOverviewItemDto } from '../types';
 
-const mocks = vi.hoisted(() => ({ partCandidates: vi.fn(), models: vi.fn(), candidates: vi.fn(), processes: vi.fn(), overview: vi.fn(), allOverview: vi.fn(), document: vi.fn(), detail: vi.fn(), replace: vi.fn(), delete: vi.fn(), materials: vi.fn(), videos: vi.fn(), image: vi.fn(), verify: vi.fn() }));
+const mocks = vi.hoisted(() => ({ rename: vi.fn(), partCandidates: vi.fn(), models: vi.fn(), candidates: vi.fn(), processes: vi.fn(), overview: vi.fn(), allOverview: vi.fn(), document: vi.fn(), detail: vi.fn(), replace: vi.fn(), delete: vi.fn(), materials: vi.fn(), videos: vi.fn(), image: vi.fn(), verify: vi.fn() }));
 vi.mock('../../../api/client', () => ({
+  renameAssemblyProcedureDocument: mocks.rename,
   verifyAssemblyTemplateAccessPassword: mocks.verify,
   listProcedureManualPartCandidates: mocks.partCandidates,
   listProcedureManualModels: mocks.models, listAssemblyMachineNameCandidates: mocks.candidates,
@@ -73,6 +74,51 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('procedure-manuals workshop', () => {
+  it.each([
+    ['PART', 'assembly_procedure_document', 'draft', false, true],
+    ['MODEL', 'assembly_procedure_document', 'draft', false, false],
+    ['PART', 'kiosk_document', 'draft', false, false],
+    ['PART', 'assembly_procedure_document', 'published', false, false],
+    ['PART', 'assembly_procedure_document', 'unavailable', false, false],
+    ['PART', 'assembly_procedure_document', 'draft', true, false]
+  ] as const)('shows reattach only on initial PART document drafts (%s, %s, %s, revision=%s)', async (subjectKind, kind, status, revision, visible) => {
+    mocks.processes.mockResolvedValue([...processes, { id: 'grinding', parentId: 'machining', name: '研削', subjectKind }]);
+    mocks.allOverview.mockResolvedValue({ processes: [{ processId: 'grinding', items: [{ ...published,
+      assignmentId: 'reattach', title: '付け直す対象', kind, status, modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'grinding',
+      draftRevision: revision ? { documentId: 'v3', revisionNumber: 3, editLease: null } : null
+    }] }] });
+    show('');
+    await screen.findByRole('button', { name: '研削' });
+    const row = await screen.findByRole('row', { name: '付け直す対象' });
+    const button = within(row).queryByRole('button', { name: '部品を付け直す' });
+    expect(button !== null).toBe(visible);
+    if (visible) {
+      expect(button).toHaveClass('min-h-12', 'w-11', '!border-[#f6b93b]');
+      expect(within(button!).queryByText('新')).not.toBeInTheDocument();
+      sessionStorage.removeItem('procedure-editor-access');
+      fireEvent.click(button!);
+      expect(screen.queryByRole('dialog', { name: '部品を付け直す' })).not.toBeInTheDocument();
+      expect(screen.getByRole('dialog', { name: '暗証番号' })).toBeInTheDocument();
+    }
+  });
+
+  it('closes reattach, selects the target part, refreshes and displays its success message', async () => {
+    mocks.processes.mockResolvedValue([...processes, { id: 'machining', parentId: null, name: '加工' }, { id: 'grinding', parentId: 'machining', name: '研削', subjectKind: 'PART' }]);
+    mocks.allOverview.mockResolvedValue({ processes: [{ processId: 'grinding', items: [{ ...items[1], modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'grinding' }] }] });
+    mocks.detail.mockImplementation(async (key: string) => ({ assignments: key === 'DFD1' ? [{ id: 'draft', assemblyProcedureDocumentId: 'draft1', kioskDocumentId: null, sortOrder: 0, label: null }] : [] }));
+    mocks.rename.mockResolvedValue({});
+    show('');
+    fireEvent.click(await screen.findByRole('button', { name: '部品を付け直す' }));
+    const dialog = within(screen.getByRole('dialog', { name: '部品を付け直す' }));
+    fireEvent.click(await dialog.findByRole('button', { name: 'PART-12' }));
+    fireEvent.click(dialog.getByRole('button', { name: '付け直す' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '部品を付け直す' })).not.toBeInTheDocument());
+    expect(JSON.parse(screen.getByTestId('location').textContent!).search).toBe('?part=PART-12&process=grinding');
+    expect(screen.getByRole('alert')).toHaveTextContent('付け直しました');
+    expect(mocks.allOverview).toHaveBeenCalledTimes(2);
+    expect(mocks.rename).toHaveBeenCalledExactlyOnceWith('draft1', 'PART-12_加工_研削');
+  });
+
   it('switches machining candidates to parts and allows first creation from a typed part', async () => {
     mocks.processes.mockResolvedValue([...processes, { id: 'cutting', parentId: 'machining', name: '切削', subjectKind: 'PART' }]);
     show('');

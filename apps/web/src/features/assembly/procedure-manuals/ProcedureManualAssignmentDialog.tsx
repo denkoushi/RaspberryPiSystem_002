@@ -41,30 +41,37 @@ export function ProcedureManualAssignmentDialog({ modelCode: initialModel, proce
 
   useEffect(() => {
     let cancelled = false;
+    setChoices([]);
+    setChoiceKey('');
     void Promise.all([
       listAssemblyProcedureDocumentSummaries({ limit: 200 }),
       getKioskDocuments({ hideDisabled: true, fields: 'summary', limit: 200 })
     ]).then(async ([documents, pdfs]) => {
       // The existing summaries list contains revision heads. A draft head may
       // still have an older published revision that can be assigned.
-      const publishedDocuments = await Promise.all(documents.map(async (document) => {
+      const assignableDocuments = await Promise.all(documents.map(async (document) => {
         if (document.status === 'published') return document;
-        if (!document.revisionRootId) return null;
+        const initialDraft = isPart && document.isActive && document.status === 'draft' && !document.publishedAt
+          && (!document.revisionRootId || document.revisionRootId === document.id)
+          && !document.supersedesDocumentId && (document.revisionNumber ?? 1) === 1;
+        if (!document.revisionRootId) return initialDraft ? document : null;
         // One failing history lookup must not hide every other candidate.
-        const history = await getAssemblyProcedureDocumentRevisions(document.id).catch(() => []);
-        return history.filter((revision) => revision.isActive && revision.status === 'published')
-          .sort((a, b) => (b.revisionNumber ?? 1) - (a.revisionNumber ?? 1))[0] ?? null;
+        const history = await getAssemblyProcedureDocumentRevisions(document.id).catch(() => null);
+        if (!history) return null;
+        const published = history.filter((revision) => revision.isActive && revision.status === 'published')
+          .sort((a, b) => (b.revisionNumber ?? 1) - (a.revisionNumber ?? 1))[0];
+        return published ?? (initialDraft && !history.some(revision => revision.status === 'published' || revision.publishedAt) ? document : null);
       }));
       if (cancelled) return;
       setChoices([
-        ...publishedDocuments.flatMap((d) => d && d.isActive ? [{
-          key: `assembly:${d.revisionRootId ?? d.id}`, title: d.name, assemblyProcedureDocumentId: d.revisionRootId ?? d.id
+        ...assignableDocuments.flatMap((d) => d && d.isActive ? [{
+          key: `assembly:${d.revisionRootId ?? d.id}`, title: `${d.name}${d.status === 'draft' ? '（下書き）' : ''}`, assemblyProcedureDocumentId: d.revisionRootId ?? d.id
         }] : []),
         ...pdfs.filter((d) => d.enabled).map((d) => ({ key: `pdf:${d.id}`, title: d.displayTitle || d.title, kioskDocumentId: d.id }))
       ]);
     }).catch((e: unknown) => { if (!cancelled) setError(readAssemblyApiErrorMessage(e, '文書を取得できません')); });
     return () => { cancelled = true; };
-  }, []);
+  }, [isPart]);
 
   useEffect(() => {
     let cancelled = false;

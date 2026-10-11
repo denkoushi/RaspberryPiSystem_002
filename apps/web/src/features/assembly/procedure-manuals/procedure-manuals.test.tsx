@@ -660,6 +660,36 @@ describe('procedure-manuals', () => {
     expect(saved).toHaveBeenCalledWith('DFD1', 'assembly');
   });
 
+  it.each(['PART', 'MODEL'] as const)('offers never-published drafts only for PART processes (selected=%s)', async subjectKind => {
+    const allProcesses = [...processes, { ...processes[1], id: 'cutting', name: '切削', subjectKind: 'PART' as const }];
+    mocks.documents.mockResolvedValue([
+      { id: 'initial', revisionRootId: 'initial', revisionNumber: 1, name: '初版', status: 'draft', isActive: true, publishedAt: null },
+      { id: 'legacy', name: '旧形式下書き', status: 'draft', isActive: true },
+      { id: 'inactive', name: '無効下書き', status: 'draft', isActive: false },
+      { id: 'v3', revisionRootId: 'root', revisionNumber: 3, supersedesDocumentId: 'v2', name: '改版中', status: 'draft', isActive: true }
+    ]);
+    mocks.history.mockImplementation(async (id: string) => id === 'v3' ? [{ id: 'v2', revisionRootId: 'root', name: '旧公開版', status: 'published', isActive: true }] : []);
+    render(<ProcedureManualAssignmentDialog modelCode="PART-1" processId={subjectKind === 'PART' ? 'cutting' : 'assembly'} processes={allProcesses} onClose={vi.fn()} onSaved={vi.fn()} />);
+    await screen.findByRole('option', { name: '旧公開版' });
+    expect(screen.queryByRole('option', { name: '初版（下書き）' }) !== null).toBe(subjectKind === 'PART');
+    expect(screen.queryByRole('option', { name: '旧形式下書き（下書き）' }) !== null).toBe(subjectKind === 'PART');
+    expect(screen.queryByRole('option', { name: /無効下書き|改版中（下書き）/ })).not.toBeInTheDocument();
+    if (subjectKind === 'PART') {
+      fireEvent.change(screen.getByLabelText('文書'), { target: { value: 'assembly:initial' } });
+      fireEvent.click(screen.getByRole('button', { name: '追加' }));
+      fireEvent.click(screen.getByRole('button', { name: '保存' }));
+      await waitFor(() => expect(mocks.save).toHaveBeenCalledWith('PART-1', 'cutting', { modelCode: 'PART-1', assignments: [{ assemblyProcedureDocumentId: 'initial', kioskDocumentId: null, sortOrder: 0, label: null }] }));
+    }
+  });
+
+  it('updates draft choices when switching from a PART to a MODEL process', async () => {
+    render(<ProcedureManualAssignmentDialog modelCode="PART-1" processId="cutting" processes={[...processes, { ...processes[1], id: 'cutting', name: '切削', subjectKind: 'PART' }]} onClose={vi.fn()} onSaved={vi.fn()} />);
+    await screen.findByRole('option', { name: '下書き手順（下書き）' });
+    fireEvent.change(screen.getByLabelText('工程'), { target: { value: 'assembly' } });
+    await screen.findByRole('option', { name: '公開組立手順' });
+    expect(screen.queryByRole('option', { name: '下書き手順（下書き）' })).not.toBeInTheDocument();
+  });
+
   it('reorders and renames an automatically assigned unpublished DRAFT alongside a published document', async () => {
     mocks.detail.mockResolvedValue({ ...emptyDetail, assignments: [
       { kioskDocumentId: null, assemblyProcedureDocumentId: 'root', sortOrder: 0, label: '公開組立手順' },

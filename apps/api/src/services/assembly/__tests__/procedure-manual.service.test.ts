@@ -358,6 +358,41 @@ describe('procedure-manual service', () => {
     expect(remove).not.toHaveBeenCalled(); expect(create).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['PART', true, null, true], ['MODEL', true, null, false], ['PART', false, null, false],
+    ['PART', true, { revisionRootId: rootId, revisionNumber: 1, supersedesDocumentId: null }, true],
+    ['PART', true, { revisionRootId: 'published-root', revisionNumber: 2, supersedesDocumentId: 'published-root' }, false]
+  ] as const)('limits new draft assignments to active initial PART drafts (%s, active=%s, metadata=%j)', async (subjectKind, isActive, revisionMetadata, accepted) => {
+    vi.spyOn(prisma, '$transaction').mockImplementation((async (work: (tx: Prisma.TransactionClient) => Promise<unknown>) => work(prisma)) as never);
+    vi.spyOn(prisma, '$queryRaw').mockResolvedValue([]);
+    vi.spyOn(prisma.procedureManualProcess, 'findFirst').mockResolvedValue({ id: 'cutting', subjectKind } as never);
+    vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([]);
+    vi.spyOn(prisma.assemblyProcedureDocument, 'findUnique').mockResolvedValue({ ...document(), status: 'DRAFT', publishedAt: null, isActive, revisionMetadata } as never);
+    vi.spyOn(prisma.assemblyProcedureDocumentRevision, 'findFirst').mockResolvedValue(null);
+    vi.spyOn(prisma.assemblyProcedureDocument, 'findFirst').mockResolvedValue(null);
+    const remove = vi.spyOn(prisma.procedureManualAssignment, 'deleteMany').mockResolvedValue({ count: 0 });
+    const create = vi.spyOn(prisma.procedureManualAssignment, 'createMany').mockResolvedValue({ count: 1 });
+    const save = new ProcedureManualService().replaceAssignments(' ｐａｒｔ－① ', 'cutting', [{ assemblyProcedureDocumentId: rootId, sortOrder: 0, label: '下書き' }]);
+    if (accepted) {
+      await save;
+      expect(create).toHaveBeenCalledWith({ data: [expect.objectContaining({ modelCodeKey: 'PART-1', assemblyProcedureDocumentId: rootId, label: '下書き' })] });
+    } else {
+      await expect(save).rejects.toThrow('公開版がありません');
+      expect(remove).not.toHaveBeenCalled(); expect(create).not.toHaveBeenCalled();
+    }
+  });
+
+  it('rejects unknown PART documents before replacing assignments', async () => {
+    vi.spyOn(prisma, '$transaction').mockImplementation((async (work: (tx: Prisma.TransactionClient) => Promise<unknown>) => work(prisma)) as never);
+    vi.spyOn(prisma, '$queryRaw').mockResolvedValue([]);
+    vi.spyOn(prisma.procedureManualProcess, 'findFirst').mockResolvedValue({ id: 'cutting', subjectKind: 'PART' } as never);
+    vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([]);
+    vi.spyOn(prisma.assemblyProcedureDocument, 'findUnique').mockResolvedValue(null);
+    const remove = vi.spyOn(prisma.procedureManualAssignment, 'deleteMany');
+    await expect(new ProcedureManualService().replaceAssignments('PART-1', 'cutting', [{ assemblyProcedureDocumentId: 'missing', sortOrder: 0 }])).rejects.toThrow('手順書が見つかりません');
+    expect(remove).not.toHaveBeenCalled();
+  });
+
   it.each(['retained', 'new-model', 'new-process'])('only retains an already assigned disabled PDF while removing another item (%s)', async scope => {
     vi.spyOn(prisma, '$transaction').mockImplementation((async (work: (tx: Prisma.TransactionClient) => Promise<unknown>) => work(prisma)) as never);
     vi.spyOn(prisma, '$queryRaw').mockResolvedValue([{ id: 'assembly' }]);
