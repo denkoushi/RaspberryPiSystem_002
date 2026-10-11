@@ -86,6 +86,10 @@ ALLOW_PROCEDURE_MATERIAL_PDF_ADD_VALUE = re.compile(
     r'^(?i:ALTER)\s+(?i:TYPE)\s+"ProcedureMaterialKind"\s+'
     r"(?i:ADD)\s+(?i:VALUE)\s+'PDF'$"
 )
+ALLOW_PROCEDURE_MANUAL_COMMON_ADD_VALUE = re.compile(
+    r'^(?i:ALTER)\s+(?i:TYPE)\s+"ProcedureManualSubjectKind"\s+'
+    r"(?i:ADD)\s+(?i:VALUE)\s+'COMMON'$"
+)
 ALLOW_KNOWLEDGE_RANK_CHECK_EXPANSION = re.compile(
     r'^(?i:ALTER)\s+(?i:TABLE)\s+"(?P<table>KnowledgePositionRank|KnowledgeProcedureReview)"\s+'
     r'(?:(?i:DROP)\s+(?i:CONSTRAINT)\s+"(?P=table)_rank_check"'
@@ -366,6 +370,9 @@ def validate_statement(
         return
 
     if ALLOW_PROCEDURE_MATERIAL_PDF_ADD_VALUE.fullmatch(statement.text.strip()) is not None:
+        return
+
+    if ALLOW_PROCEDURE_MANUAL_COMMON_ADD_VALUE.fullmatch(statement.text.strip()) is not None:
         return
 
     if ALLOW_KNOWLEDGE_RANK_CHECK_EXPANSION.fullmatch(statement.text.strip()) is not None:

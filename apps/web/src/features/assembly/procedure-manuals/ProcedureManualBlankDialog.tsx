@@ -22,6 +22,7 @@ export function ProcedureManualBlankDialog({ processes, modelCode, processId, on
   beforeMutation?: () => boolean;
   models: ProcedureManualModelDto[]; processes: ProcedureManualProcessDto[]; modelCode: string; processId: string; onClose: () => void;
 }) {
+  processes = processes.filter(process => process.subjectKind !== 'COMMON');
   const navigate = useNavigate();
   const initialChild = processes.find(process => process.id === processId && process.parentId)
     ?? (subjectKind === 'PART' ? processes.find(process => process.parentId && process.subjectKind === 'PART') : undefined);

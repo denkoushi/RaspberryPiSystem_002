@@ -1,3 +1,4 @@
+import { ProcedureManualCommonService } from '../../services/assembly/procedure-manual-common.service.js';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { z } from 'zod';
 
@@ -21,10 +22,33 @@ export function registerProcedureManualRoutes(app: FastifyInstance, options: {
   allowView: preHandlerHookHandler;
   allowWriteKiosk: preHandlerHookHandler;
   service?: ProcedureManualService;
+  commonService?: ProcedureManualCommonService;
   partCandidatesService?: ProcedureManualPartCandidatesService;
   serializeSequence: (sequence: AssemblyProcedureSequence) => unknown;
 }) {
   const service = options.service ?? new ProcedureManualService();
+  const common = options.commonService ?? new ProcedureManualCommonService();
+  const commonPath = '/assembly/procedure-manuals/common';
+  app.get(commonPath, { preHandler: options.allowView }, async request => {
+    const query = z.object({ published: z.enum(['true', 'false']).optional() }).parse(request.query);
+    return common.list(query.published === 'true');
+  });
+  app.post(commonPath, { preHandler: options.allowWriteKiosk }, async request => common.create(z.object({
+    categoryId: z.string().min(1).max(200), target: z.string().trim().min(1).max(179), actionId: z.string().min(1).max(200),
+    kanaRow: z.enum(['あ','か','さ','た','な','は','ま','や','ら','わ']).optional()
+  }).parse(request.body)));
+  const nameSchema = z.object({ name: z.string().trim().min(1).max(20) });
+  const idSchema = z.object({ id: z.string().min(1).max(200) });
+  for (const kind of ['categories', 'actions'] as const) {
+    const save = (name: string, id?: string) => kind === 'categories' ? common.saveCategory(name, id) : common.saveAction(name, id);
+    app.post(`${commonPath}/${kind}`, { preHandler: options.allowWriteKiosk }, async request => save(nameSchema.parse(request.body).name));
+    app.patch(`${commonPath}/${kind}/:id`, { preHandler: options.allowWriteKiosk }, async request => save(nameSchema.parse(request.body).name, idSchema.parse(request.params).id));
+    app.delete(`${commonPath}/${kind}/:id`, { preHandler: options.allowWriteKiosk }, async request => {
+      const { id } = idSchema.parse(request.params);
+      if (kind === 'categories') await common.deleteCategory(id); else await common.deleteAction(id);
+      return { deleted: true };
+    });
+  }
   const partCandidatesService = options.partCandidatesService ?? new ProcedureManualPartCandidatesService();
   app.get('/assembly/procedure-manuals/part-candidates', { preHandler: options.allowView }, async (request) => {
     const query = z.object({
@@ -39,9 +63,10 @@ export function registerProcedureManualRoutes(app: FastifyInstance, options: {
   app.get('/assembly/procedure-manuals/models', { preHandler: options.allowView }, async () => ({ models: await service.listModels() }));
   app.get('/assembly/procedure-manuals/overview', { preHandler: options.allowView }, async (request) => {
     const query = paramsSchema.pick({ processId: true }).partial().extend({
-      published: z.enum(['true', 'false']).optional()
+      published: z.enum(['true', 'false']).optional(),
+      subjectKind: z.enum(['MODEL', 'PART', 'COMMON']).optional()
     }).parse(request.query);
-    return service.getOverview(query.processId, query.published === 'true');
+    return query.subjectKind ? service.getOverview(query.processId, query.published === 'true', query.subjectKind) : service.getOverview(query.processId, query.published === 'true');
   });
   app.get('/assembly/procedure-manuals/models/:modelCodeKey/overview', { preHandler: options.allowView }, async (request) => {
     const params = paramsSchema.pick({ modelCodeKey: true }).parse(request.params);

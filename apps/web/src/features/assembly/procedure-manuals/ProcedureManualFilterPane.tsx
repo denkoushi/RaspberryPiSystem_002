@@ -1,10 +1,11 @@
+import { PROCEDURE_MANUAL_KANA_ROWS } from '@raspi-system/shared-types';
 import { useState } from 'react';
 
 import { Input } from '../../../components/ui/Input';
 import { normalizeWorkInstructionPartNumber } from '../../../lib/workInstructionRules';
 import { useKeyboardWedgeScan } from '../../barcode-scan/useKeyboardWedgeScan';
 
-import { procedureManualButtonBase, procedureManualButtonSelected, procedureManualButtonUnselected } from './procedure-manual-button-styles';
+import { procedureManualCommonSelected, procedureManualKanaSelected, procedureManualButtonBase, procedureManualButtonSelected, procedureManualButtonUnselected } from './procedure-manual-button-styles';
 import { procedureManualModelKey } from './ProcedureManualAssignmentDialog';
 import { ProcedureManualModelMatch, ProcedureManualModelTenkey } from './ProcedureManualModelSearch';
 import { ProcedureManualPartLabel } from './ProcedureManualPartLabel';
@@ -14,8 +15,8 @@ import type { ProcedureManualAssignmentOverviewItemDto, ProcedureManualModelDto,
 
 type Props = {
   allowKindChangeWithProcess?: boolean;
-  subjectKind: 'MODEL' | 'PART';
-  onKindChange: (kind: 'MODEL' | 'PART') => void;
+  subjectKind: 'MODEL' | 'PART' | 'COMMON';
+  onKindChange: (kind: 'MODEL' | 'PART' | 'COMMON') => void;
   partCandidates?: ProcedureManualModelDto[];
   partSearchCandidates?: ProcedureManualPartCandidateDto[];
   processes: ProcedureManualProcessDto[];
@@ -29,13 +30,15 @@ type Props = {
   onDigitQueryChange: (value: string) => void;
   onModelSelect: (value: string) => void;
   onProcessSelect: (value: string) => void;
+  kanaRow?: string;
+  onKanaRowChange?: (value: string) => void;
   loading?: boolean;
   error?: string | null;
   hasMore?: boolean;
 };
 
 export function ProcedureManualFilterPane({ processes, items, models, modelCodeKey, processId, search, digitQuery,
-  onSearchChange, onDigitQueryChange, onModelSelect, onProcessSelect, loading, error, hasMore, subjectKind, onKindChange, partCandidates, partSearchCandidates, allowKindChangeWithProcess = false }: Props) {
+  onSearchChange, onDigitQueryChange, onModelSelect, onProcessSelect, loading, error, hasMore, subjectKind, onKindChange, partCandidates, partSearchCandidates, allowKindChangeWithProcess = false, kanaRow = '', onKanaRowChange }: Props) {
   const isPart = subjectKind === 'PART';
   const unit = isPart ? '部品' : '機種';
   const [scanArmed, setScanArmed] = useState(false);
@@ -47,10 +50,20 @@ export function ProcedureManualFilterPane({ processes, items, models, modelCodeK
   const typedPart = normalizeWorkInstructionPartNumber(search);
   if (typedPart && !partKeys.includes(typedPart)) partKeys.push(typedPart);
   const candidateModels = isPart && partSearchCandidates ? partSearchCandidates.map(row => ({ modelCode: row.partNumber, modelCodeKey: row.partNumberKey, partName: row.partName })) : isPart ? partKeys.filter(key => key.includes(typedPart) && key.includes(digitQuery)).sort().map(key => ({ modelCode: key, modelCodeKey: key })) : models;
-  const inModel = items.filter(item => !modelCodeKey || (item.modelCodeKey === modelCodeKey && (processes.find(process => process.id === item.processId)?.subjectKind ?? 'MODEL') === subjectKind));
+  const inModel = items.filter(item => item.subjectKind !== 'COMMON' && processes.find(process => process.id === item.processId)?.subjectKind !== 'COMMON' && (!modelCodeKey || (item.modelCodeKey === modelCodeKey && (processes.find(process => process.id === item.processId)?.subjectKind ?? 'MODEL') === subjectKind)));
   const inProcess = items.filter(item => (!processId || item.processId === processId) && (processes.find(process => process.id === item.processId)?.subjectKind ?? 'MODEL') === subjectKind);
   const visibleModels = candidateModels.filter(model => !processId || isPart || modelCodeKey || search || digitQuery || inProcess.some(item => item.modelCodeKey === model.modelCodeKey));
-  const buttons = [{ id: '', name: '全て' }, ...processes.filter(row => row.parentId).map(row => ({ id: row.id, name: row.name.replace(/工程/g, '') }))];
+  const buttons = [{ id: '', name: '全て' }, ...processes.filter(row => row.parentId && row.subjectKind !== 'COMMON').map(row => ({ id: row.id, name: row.name.replace(/工程/g, '') }))];
+  const kindToggle = <div role="group" aria-label="機種か部品か" className="grid grid-cols-3 gap-2">{(['MODEL', 'PART', 'COMMON'] as const).map(kind => <button key={kind} aria-pressed={subjectKind === kind} className={`${procedureManualButtonBase} h-14 px-3 text-xl font-bold ${subjectKind === kind ? subjectKind === 'COMMON' ? procedureManualCommonSelected : procedureManualButtonSelected : procedureManualButtonUnselected}`} onClick={() => { setScanArmed(false); onKindChange(kind); }}>{kind === 'COMMON' ? '共通' : kind === 'PART' ? '部品' : '機種'}</button>)}</div>;
+  if (subjectKind === 'COMMON') return <section aria-label="共通一覧" className="flex min-h-0 flex-1 flex-col gap-4 border-r border-[#27313b] bg-[#161c22] p-5">
+    {kindToggle}
+    <h2 className="text-base font-bold tracking-widest text-[#9fadb9]">分類</h2>
+    <div role="group" aria-label="分類で絞り込み" className="grid max-h-[40%] shrink-0 grid-cols-2 gap-2 overflow-auto">{processes.filter(row => row.parentId && row.subjectKind === 'COMMON').map(row => <button key={row.id} aria-label={row.name} aria-pressed={processId === row.id} className={`${procedureManualButtonBase} flex min-h-14 items-center justify-between px-4 text-xl font-bold ${processId === row.id ? procedureManualCommonSelected : procedureManualButtonUnselected}`} onClick={() => onProcessSelect(processId === row.id ? '' : row.id)}>{row.name}<span aria-hidden="true" className="text-[15px] font-normal text-[#9fadb9]">{items.filter(item => item.processId === row.id).length}</span></button>)}</div>
+    <h2 className="text-base font-bold tracking-widest text-[#9fadb9]">さがす</h2>
+    <input type="search" aria-label="共通検索" placeholder="名前で検索" maxLength={200} value={search} onChange={event => onSearchChange(event.target.value)} className="h-14 shrink-0 rounded-lg border border-[#344252] bg-[#0b0f13] px-4 text-xl" />
+    <div role="group" aria-label="かな行で絞り込み" className="grid grid-cols-5 gap-1.5">{PROCEDURE_MANUAL_KANA_ROWS.map(row => <button key={row} aria-pressed={kanaRow === row} className={`${procedureManualButtonBase} h-[52px] text-xl font-bold ${kanaRow === row ? procedureManualKanaSelected : procedureManualButtonUnselected}`} onClick={() => onKanaRowChange?.(kanaRow === row ? '' : row)}>{row}</button>)}</div>
+    {loading ? <p role="status">読込中…</p> : null}{error ? <p role="alert" className="text-red-400">{error}</p> : null}
+  </section>;
   return <section aria-label={`${unit}一覧`} className="flex min-h-0 flex-1 flex-col gap-2.5 border-r border-[#27313b] bg-[#161c22] p-4">
     <h2 className="text-base font-bold tracking-widest text-[#9fadb9]">工程</h2>
     <div role="group" aria-label="工程で絞り込み" className="grid shrink-0 gap-1.5" style={{ gridTemplateColumns: `repeat(${buttons.length}, minmax(0,1fr))` }}>
@@ -63,7 +76,8 @@ export function ProcedureManualFilterPane({ processes, items, models, modelCodeK
         </button>;
       })}
     </div>
-    <h2 className="text-base font-bold tracking-widest text-[#9fadb9]">{unit}{!processId || allowKindChangeWithProcess ? <span role="group" aria-label="機種か部品か" className="ml-3 inline-flex gap-1">{(['MODEL', 'PART'] as const).map(kind => <button key={kind} aria-pressed={subjectKind === kind} className={`${procedureManualButtonBase} px-3 ${subjectKind === kind ? procedureManualButtonSelected : procedureManualButtonUnselected}`} onClick={() => { setScanArmed(false); onKindChange(kind); }}>{kind === 'PART' ? '部品' : '機種'}</button>)}</span> : null}</h2>
+    <h2 className="text-base font-bold tracking-widest text-[#9fadb9]">{unit}</h2>
+    {!processId || allowKindChangeWithProcess ? kindToggle : <button className={`${procedureManualButtonBase} ${procedureManualButtonUnselected}`} onClick={() => onKindChange('COMMON')}>共通</button>}
     <div className="flex shrink-0 gap-2"><Input type="search" aria-label={`${unit}検索`} placeholder={isPart ? (partSearchCandidates ? '品名・品番で検索' : '品番で検索') : '型番で検索'} maxLength={120} value={search} onChange={event => onSearchChange(event.target.value)} className={`h-12 ${isPart ? 'min-w-0 flex-1' : 'shrink-0'} text-[21px]`} />{isPart ? <button aria-label={scanArmed ? 'スキャン中止' : '品番をスキャン'} aria-pressed={scanArmed} className={`${procedureManualButtonBase} w-12 shrink-0 ${scanArmed ? procedureManualButtonSelected : procedureManualButtonUnselected}`} onClick={() => setScanArmed(!scanArmed)}><svg aria-hidden="true" className="mx-auto h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 8V5h3M21 8V5h-3M3 16v3h3M21 16v3h-3M7 8v8M10 8v8M13 8v8M17 8v8" /></svg></button> : null}</div>
     <div className="grid min-h-0 flex-1 grid-cols-[64px_minmax(0,1fr)] gap-3">
       <div className="min-w-0"><output aria-label="数字検索" className="block h-[26px] truncate text-xl">{digitQuery}</output>

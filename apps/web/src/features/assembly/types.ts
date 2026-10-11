@@ -685,7 +685,7 @@ export type AssemblyTraceabilityDetailDto = {
 
 
 export type ProcedureManualProcessDto = {
-  subjectKind: 'MODEL' | 'PART';
+  subjectKind: 'MODEL' | 'PART' | 'COMMON';
   id: string;
   parentId: string | null;
   name: string;
@@ -734,7 +734,7 @@ export type ProcedureManualOverviewItemDto = {
   thumbnailPageUrl: string | null;
 };
 
-export type ProcedureManualAssignmentOverviewItemDto = ProcedureManualOverviewItemDto & ProcedureManualModelDto & { processId: string };
+export type ProcedureManualAssignmentOverviewItemDto = ProcedureManualOverviewItemDto & ProcedureManualModelDto & { processId: string; subjectKind?: 'COMMON'; category?: string; target?: string; kanaRow?: string | null };
 
 export type ProcedureManualOverviewDto = {
   processes: { processId: string; count: number; items: ProcedureManualAssignmentOverviewItemDto[] }[];
@@ -755,4 +755,10 @@ export type ProcedureManualEditorContext = {
 export type ProcedureManualByPartDto = {
   partNumber: string; partNumberKey: string;
   processes: { processId: string; processName: string; sequence: AssemblyProcedureSequenceDto }[];
+};
+
+export type ProcedureManualCommonCatalogDto = {
+  categories: (ProcedureManualProcessDto & { count: number; inUse: boolean })[];
+  actions: { id: string; name: string; sortOrder: number; inUse: boolean }[];
+  subjects: { key: string; name: string; kanaRow: string | null; categoryIds: string[] }[];
 };
