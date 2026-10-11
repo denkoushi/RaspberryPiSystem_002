@@ -360,19 +360,20 @@ export class AssemblyProcedureDocumentService {
     return source?.document ?? null;
   }
 
-  async rename(id: string, name: string, actor: AssemblyProcedureEditActor = {}): Promise<AssemblyProcedureDocumentRecord> {
+  async rename(id: string, name: string, actor: AssemblyProcedureEditActor = {}, transaction?: Prisma.TransactionClient): Promise<AssemblyProcedureDocumentRecord> {
     const trimmed = name.trim();
     if (!trimmed) {
       throw new ApiError(400, '手順書名が必要です');
     }
-    return runAssemblyTransaction(async (tx) => {
+    const rename = async (tx: Prisma.TransactionClient) => {
       const documents = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${id} FOR UPDATE`;
       if (!documents.length) throw new ApiError(404, '手順書が見つかりません');
       await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(id, actor.holderKey ?? null, tx, actor.holderToken ?? null);
       return tx.assemblyProcedureDocument.update({
         where: { id }, data: { name: trimmed.slice(0, 200) }, include: this.includePages
       });
-    });
+    };
+    return transaction ? rename(transaction) : runAssemblyTransaction(rename);
   }
 
   async resolveApprover(tagUid: string): Promise<KnowledgeReviewEmployee> {

@@ -12,6 +12,11 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Progress
 
+- [x] (2026-10-11) 下書きの部品付け直し(#1924)を本番反映。merge `cecfd8a3`、Pi5 標準ローリング更新 run `20261011-122345-232f8e` 成功、戻り先 `c1b80e83`。実機確認は依頼済み。
+- [x] (2026-10-11) COMMON review修正: enum COMMONだけのgate許可を追加。分類名はDB UNIQUE indexを使わず共通lock内で検査し、初期catalogは親行をmarkerとしてruntime transactionで一度だけseedする。作業renameのlock後再確認、正規化キー200文字制限、見る失敗時の可視errorと回帰テストを追加。API対象97件、Web要領書254件、gate34件・両migration validate_sql、両tsc・対象eslint成功。DB適用は未実施。
+- [x] (2026-10-11) 共通要領書をローカル実装。COMMON分類・作業・対象catalog、白紙作成と割り当ての単一transaction、重複409、分類/作業CRUDと作業rename伝播を追加。「見る」「作る・直す」の共有ペインへ共通入口、分類・名前・かな行フィルタ、共通一覧、作成/編集chips・似た手順を追加し、`common=1&process=`で復元。既存MODEL/PARTの工程候補・白紙作成・付け直し・by-partからCOMMONを除外。Prisma validate、API/Web tsc、変更ファイルeslint、API対象116件、Web要領書対象253件、共有正規化19件が成功（必要な対象だけ修正後に再確認）。既存WIPの承認モックは変更していない。migration適用・実機表示・commit・push・PR・merge・deployは未実施。
+- [ ] (2026-10-11) 表示の実ブラウザー検証は環境制約で未完了。1920×1080用の実コンポーネントpreviewはViteでbundleできたが、localhost listenはEPERM、Playwright付属Chromiumは未導入、既存Chromeのheadless起動はSIGABRTで終了。DOM操作はtesting-libraryで検証済み。`kiosk-sop:source-check`は既存の`assembly-procedure-template`がstaleと判定（本タスクでは取説生成物を更新しない）。Git lifecycleのread-only auditもGitHub接続不可で未完了。
+
 - [x] (2026-10-11) PART工程の初版下書きに「部品を付け直す」をローカル実装。既存APIで新しい部品へ追加してから旧割り当てを外し、必要なら既存renameで名前を変更。候補・スキャナー占有・名前組み立てを白紙作成と共有し、PARTの割り当て候補へ初版下書きも追加。Web対象244件、API対象32件、両tsc・対象eslint成功。`kiosk-sop:source-check`は`assembly-procedure-template`がstale（指定により出力更新なし）。実機確認・commit・push・PR・deployは未実施。
 
 - [x] (2026-10-08) 部品単位の要領書をローカル実装: 切削・研削の `subjectKind=PART`、手書きSQL、工程別キー正規化、公開文書だけの by-part API、両画面の部品候補・初回品番・一回スキャン・`part=`リンク、自主検査のチップ統合・件数・資料タブ・正式品番解決・取得失敗表示。PIN gateは維持。承認モック: `docs/design-previews/procedure-manuals-part-unit-mock.html`。
@@ -170,6 +175,11 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Evidence: `infrastructure/docker/docker-compose.server.yml` の API volumes と named volumes。今回の infrastructure 変更禁止により未修正。本番反映前に別依頼で永続マウントを追加する必要がある。
 
 ## Decision Log
+
+- Decision (2026-10-11): 承認モック`docs/design-previews/procedure-common-manuals-mock.html`を共通UIの正本とする。同じ2画面に機種｜部品｜共通を置き、共通では分類2列・名前検索・10かな行だけを表示。一覧は名前・分類・ページ・状態・見る・直す。作成は分類chips、対象入力/既知対象chips、作業chips、似た手順/「これを直す」、名前preview、重複block。分類/作業の編集は同じdialog内、使用中削除はdisabledでAPIも409。既存の素材/動画入口と削除/外す操作は維持するため、モックにない操作を共通一覧/ヘッダーにも残す。
+- Decision (2026-10-11): 分類はCOMMONの`procedure-manual-common`配下、初期6分類と6作業はCOMMONの読取/書込時に共通lock内のtransactionでruntime seedする。親行の存在をseed済みmarkerとし、削除/renameした既定項目は復元しない。分類名はDB UNIQUE indexを設けずcreate/renameとも共通lock内で重複検査する。対象は共有NFKC・trim・空白collapse・Latin uppercaseでキー化し、先頭かな（濁音・半濁音・小書き含む）から行を推定。推定できない新対象だけ「よみ」を1回選択し、既知対象の行を再利用する。assignmentは対象名/キー・分類id・作業label、文書名は`対象_作業`。
+- Decision (2026-10-11): 重複の単位は依頼された「分類・対象キー・作業」であり、分類を問わないモックの簡略判定からここだけ変更する。共通parent行を全catalog/assignment mutationで先にlockし、白紙文書/対象/割り当てを一つのtransactionで作成する。generic replacementでも作業重複を409で拒否。COMMONにはPARTと同じnever-published初版draft条件だけを許可し、MODELは変更しない。作業renameはCOMMON labelだけを更新し、auto名が完全一致する文書familyだけを既存のrevisionを増やさないrename経路で同一transaction内更新する。
+- Decision (2026-10-11): enum追加`20261011120000_add_procedure_manual_common_kind`と新値を使用するcatalogテーブル作成`20261011120100_add_procedure_manual_common_catalog`を別migrationにし、gateはCOMMON追加の完全一致allow規則だけを追加し、migrationにseed INSERTを含めない。検証時も`.env`を読まず、一時directoryのschema/configと検証用DB URLを使う。DB migration、DGX、production設定、Gitの変更操作は本タスクの範囲外。
 
 - Decision (2026-10-11): 下書きの部品付け直しは既存の割り当て置換APIを2回使い、新しい部品への追加を先に行う。既存の対象割り当てがあれば追加を省く。旧割り当てIDが消えていた場合は変更検知で停止し、削除失敗時も新しい割り当てを保持して通知する。名前変更には既存の`renameAssemblyProcedureDocument`を使い、失敗時は付け直し済み・名前未変更と表示する。DB変更やmove/renameの新規endpointは不要。
   Scope: 新規下書き割り当てはPART工程・active DRAFT・自身がroot・初版（supersedesなし）に限定し、MODELの公開版条件を維持する。`getAssignments`のsequenceと`by-part`は引き続きactive PUBLISHEDのみ。旧形式で公開取消済みの文書は`publishedAt`が消去されるため、現行DBでは未公開の旧形式下書きと区別できない。

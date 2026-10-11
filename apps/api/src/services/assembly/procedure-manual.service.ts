@@ -1,3 +1,4 @@
+import { ensureProcedureManualCommonSeeded, ensureProcedureManualCommonSubject, lockProcedureManualCommon, procedureManualCommonKey } from './procedure-manual-common-rules.js';
 import { procedureVideoLinksInclude, videosForPage } from './procedure-video.service.js';
 import { procedureManualApprovalInclude, serializeLastProcedureManualApproval } from './assembly-procedure-document-revision.serializer.js';
 import { Prisma, type ProcedureManualSubjectKind } from '@prisma/client';
@@ -36,7 +37,7 @@ const assemblyDocumentInclude = {
 } satisfies Prisma.AssemblyProcedureDocumentInclude;
 
 function modelKey(modelCode: string, kind: ProcedureManualSubjectKind = 'MODEL'): string {
-  const key = kind === 'PART' ? normalizeWorkInstructionPartNumber(modelCode) : normalizeMachineNameForCompare(modelCode).trim();
+  const key = kind === 'COMMON' ? procedureManualCommonKey(modelCode) : kind === 'PART' ? normalizeWorkInstructionPartNumber(modelCode) : normalizeMachineNameForCompare(modelCode).trim();
   if (!key) throw new ApiError(400, kind === 'PART' ? '品番が必要です' : '型番が必要です');
   return key;
 }
@@ -105,19 +106,23 @@ export class ProcedureManualService {
     const { processes, rows, items } = await this.loadOverview({ modelCodeKey, process: { subjectKind: 'MODEL' } });
     return {
       modelCode: rows[0]?.modelCode ?? modelCodeKey, modelCodeKey,
-      processes: processes.filter(process => process.parentId && process.subjectKind !== 'PART').map(process => {
+      processes: processes.filter(process => process.parentId && (process.subjectKind ?? 'MODEL') === 'MODEL').map(process => {
         const processItems = items.filter(({ row }) => row.processId === process.id).map(({ item }) => item);
         return { processId: process.id, count: processItems.length, items: processItems };
       })
     };
   }
 
-  async getOverview(processId?: string, published = false) {
-    const { processes, items } = await this.loadOverview(processId ? { processId } : {});
+  async getOverview(processId?: string, published = false, subjectKind?: ProcedureManualSubjectKind) {
+    if (subjectKind === 'COMMON') await ensureProcedureManualCommonSeeded();
+    const { processes, items } = await this.loadOverview({ ...(processId ? { processId } : {}), ...(subjectKind ? { process: { subjectKind } } : {}) });
+    const subjects = processes.some(process => process.subjectKind === 'COMMON')
+      ? await prisma.procedureManualCommonSubject.findMany() : [];
     return {
-      processes: processes.filter(process => process.parentId && (!processId || process.id === processId)).map(process => {
+      processes: processes.filter(process => process.parentId && (!processId || process.id === processId) && (!subjectKind || process.subjectKind === subjectKind)).map(process => {
         const processItems = items.filter(({ row, item }) => row.processId === process.id && (!published || item.status === 'published')).map(({ row, item }) => ({
           modelCode: row.modelCode, modelCodeKey: row.modelCodeKey, processId: row.processId, ...item,
+          ...(process.subjectKind === 'COMMON' ? { subjectKind: 'COMMON' as const, category: process.name, target: row.modelCode, kanaRow: subjects.find(subject => subject.key === row.modelCodeKey)?.kanaRow ?? null } : {}),
           draftRevision: published ? null : item.draftRevision
         }));
         return { processId: process.id, count: processItems.length, items: processItems };
@@ -256,6 +261,7 @@ export class ProcedureManualService {
       await tx.$queryRaw`SELECT id FROM "ProcedureManualProcess" WHERE id = ${processId} FOR UPDATE`;
       const process = await tx.procedureManualProcess.findFirst({ where: { id: processId, active: true, parent: { active: true, parentId: null } } });
       if (!process) throw new ApiError(400, '工程が見つかりません');
+      if (process.subjectKind === 'COMMON') throw new ApiError(400, '共通の作成画面から作成してください');
       const modelCodeKey = modelKey(modelCode, process.subjectKind);
       await tx.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${documentId} FOR UPDATE`;
       const document = await tx.assemblyProcedureDocument.findUnique({ where: { id: documentId }, include: { revisionMetadata: true } });
@@ -282,12 +288,24 @@ export class ProcedureManualService {
     }
     await runAssemblyTransaction(async (tx) => {
       // Also serializes replacements of an empty list, where no assignment row exists to lock.
-      await tx.$queryRaw`SELECT id FROM "ProcedureManualProcess" WHERE id = ${processId} FOR UPDATE`;
       const process = await tx.procedureManualProcess.findFirst({
         where: { id: processId, active: true, parent: { active: true, parentId: null } }
       });
+      if (process?.subjectKind === 'COMMON') {
+        await ensureProcedureManualCommonSeeded(tx);
+        await lockProcedureManualCommon(tx);
+        if (!await tx.procedureManualProcess.findFirst({ where: { id: processId, subjectKind: 'COMMON', parentId: 'procedure-manual-common', active: true } })) throw new ApiError(400, '分類が見つかりません');
+      }
+      await tx.$queryRaw`SELECT id FROM "ProcedureManualProcess" WHERE id = ${processId} FOR UPDATE`;
       if (!process) throw new ApiError(400, '工程が見つかりません');
       const modelCodeKey = modelKey(modelCode, process.subjectKind);
+      if (process.subjectKind === 'COMMON' && items.length) {
+        const labels = items.map(item => item.label);
+        if (new Set(labels).size !== labels.length) throw new ApiError(409, '同じ手順があります');
+        const actions = await tx.procedureManualCommonAction.findMany({ where: { name: { in: labels.filter((label): label is string => Boolean(label)) } } });
+        if (labels.some(label => !actions.some(action => action.name === label))) throw new ApiError(400, '作業を選んでください');
+        await ensureProcedureManualCommonSubject(tx, modelCode);
+      }
       // Use a stable order when a replacement references multiple documents.
       const ids = [...new Set(items.flatMap(item => item.assemblyProcedureDocumentId ? [item.assemblyProcedureDocumentId] : []))].sort();
       for (const id of ids) await tx.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${id} FOR UPDATE`;
@@ -303,10 +321,10 @@ export class ProcedureManualService {
           if (!document) throw new ApiError(400, '手順書が見つかりません');
           rootId = document.revisionMetadata?.revisionRootId ?? document.id;
           if (!existingRoots.has(rootId) && !await this.resolvePublished(rootId, tx)) {
-            const initialPartDraft = process.subjectKind === 'PART' && document.isActive && document.status === 'DRAFT'
+            const initialSubjectDraft = (process.subjectKind === 'PART' || process.subjectKind === 'COMMON') && document.isActive && document.status === 'DRAFT'
               && document.id === rootId && !document.publishedAt
               && (!document.revisionMetadata || (document.revisionMetadata.revisionNumber === 1 && !document.revisionMetadata.supersedesDocumentId));
-            if (!initialPartDraft) throw new ApiError(400, '公開版がありません');
+            if (!initialSubjectDraft) throw new ApiError(400, '公開版がありません');
           }
         } else {
           const document = await tx.kioskDocument.findFirst({ where: { id: item.kioskDocumentId!, ...(!existingPdfs.has(item.kioskDocumentId!) ? { enabled: true } : {}) } });

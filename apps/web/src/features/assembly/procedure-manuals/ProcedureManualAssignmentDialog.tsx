@@ -117,7 +117,7 @@ export function ProcedureManualAssignmentDialog({ modelCode: initialModel, proce
         <div className="grid gap-2 sm:grid-cols-2">
           <Input aria-label={isPart ? '品番' : '型番'} placeholder={isPart ? '品番' : '型番'} className="min-h-11" value={modelCode} disabled={busy} onChange={(e) => setModelCode(e.target.value)} />
           <select aria-label="工程" className="min-h-11 rounded-md border border-white/20 bg-[#1f2730] px-2" value={processId} disabled={busy} onChange={(e) => { if ((processes.find(row => row.id === e.target.value)?.subjectKind === 'PART') !== isPart) setModelCode(''); setProcessId(e.target.value); }}>
-            {processes.filter((p) => p.parentId).map((p) => <option key={p.id} value={p.id}>{processes.find((parent) => parent.id === p.parentId)?.name} &gt; {p.name}</option>)}
+            {processes.filter(process => process.subjectKind !== 'COMMON').filter((p) => p.parentId).map((p) => <option key={p.id} value={p.id}>{processes.find((parent) => parent.id === p.parentId)?.name} &gt; {p.name}</option>)}
           </select>
         </div>
         <div className="flex gap-2">
