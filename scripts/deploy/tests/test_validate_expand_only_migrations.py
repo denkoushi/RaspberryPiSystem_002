@@ -137,6 +137,19 @@ class SqlAllowListTests(unittest.TestCase):
             with self.subTest(sql=sql):
                 self.assert_disallowed(sql)
 
+    def test_procedure_manual_common_enum_expansion_is_allowed(self) -> None:
+        self.assert_allowed('ALTER TYPE "ProcedureManualSubjectKind" ADD VALUE \'COMMON\';')
+        for sql in [
+            'ALTER TYPE "OtherKind" ADD VALUE \'COMMON\';',
+            'ALTER TYPE "ProcedureManualSubjectKind" ADD VALUE \'OTHER\';',
+            'ALTER TYPE "ProcedureManualSubjectKind" RENAME VALUE \'MODEL\' TO \'COMMON\';',
+            'ALTER TYPE "ProcedureManualSubjectKind" ADD VALUE \'COMMON\' BEFORE \'MODEL\';',
+            'ALTER TYPE "ProcedureManualSubjectKind" ADD VALUE \'COMMON\' DROP TYPE "OtherKind";',
+            'ALTER TYPE "ProcedureManualSubjectKind" ADD VALUE \'COMMON\'; DROP TYPE "OtherKind";',
+        ]:
+            with self.subTest(sql=sql):
+                self.assert_disallowed(sql)
+
     def test_knowledge_rank_check_expansion_is_allowed(self) -> None:
         path = (
             ROOT

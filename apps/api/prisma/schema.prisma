@@ -5322,6 +5322,7 @@ model KnowledgeProcedureReview {
 enum ProcedureManualSubjectKind {
   MODEL
   PART
+  COMMON
 }
 
 /// Two-level process list for standalone procedure manual browsing.
@@ -5551,4 +5552,18 @@ model KioskInquiryMessage {
   authorEmployee       Employee?        @relation(fields: [authorEmployeeId], references: [id], onDelete: SetNull)
 
   @@index([threadId, createdAt])
+}
+
+model ProcedureManualCommonAction {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ProcedureManualCommonSubject {
+  key     String @id
+  name    String
+  kanaRow String?
 }

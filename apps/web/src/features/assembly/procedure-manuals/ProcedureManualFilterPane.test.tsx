@@ -14,7 +14,7 @@ const processes = [
 ] as ProcedureManualProcessDto[];
 
 function Pane({ partSearchCandidates }: { partSearchCandidates?: ProcedureManualPartCandidateDto[] } = {}) {
-  const [kind, setKind] = useState<'MODEL' | 'PART'>('MODEL');
+  const [kind, setKind] = useState<'MODEL' | 'PART' | 'COMMON'>('MODEL');
   const [processId, setProcessId] = useState('');
   const [key, setKey] = useState('');
   const [search, setSearch] = useState('');
@@ -115,4 +115,12 @@ describe('procedure manual subject pane', () => {
     fireEvent.keyDown(window, { key: 'Enter' });
     expect(screen.getByTestId('selected')).toHaveTextContent('NEW-123');
   });
+});
+
+it('keeps COMMON categories out of legacy process buttons and counts', () => {
+  const allProcesses = [...processes, { id: 'tools', parentId: 'procedure-manual-common', name: '工具', subjectKind: 'COMMON' } as ProcedureManualProcessDto];
+  render(<ProcedureManualFilterPane processes={allProcesses} items={[{ assignmentId: 'common', processId: 'tools', subjectKind: 'COMMON' } as never]} models={[]} subjectKind="MODEL" modelCodeKey="" processId="" search="" digitQuery="" onSearchChange={() => {}} onDigitQueryChange={() => {}} onModelSelect={() => {}} onProcessSelect={() => {}} onKindChange={() => {}} />);
+  const group = screen.getByRole('group', { name: '工程で絞り込み' });
+  expect(group).not.toHaveTextContent('工具');
+  expect(screen.getByRole('button', { name: '全て', exact: true })).toHaveTextContent('—');
 });
