@@ -12,6 +12,8 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Progress
 
+- [x] (2026-10-11) PART工程の初版下書きに「部品を付け直す」をローカル実装。既存APIで新しい部品へ追加してから旧割り当てを外し、必要なら既存renameで名前を変更。候補・スキャナー占有・名前組み立てを白紙作成と共有し、PARTの割り当て候補へ初版下書きも追加。Web対象244件、API対象32件、両tsc・対象eslint成功。`kiosk-sop:source-check`は`assembly-procedure-template`がstale（指定により出力更新なし）。実機確認・commit・push・PR・deployは未実施。
+
 - [x] (2026-10-08) 部品単位の要領書をローカル実装: 切削・研削の `subjectKind=PART`、手書きSQL、工程別キー正規化、公開文書だけの by-part API、両画面の部品候補・初回品番・一回スキャン・`part=`リンク、自主検査のチップ統合・件数・資料タブ・正式品番解決・取得失敗表示。PIN gateは維持。承認モック: `docs/design-previews/procedure-manuals-part-unit-mock.html`。
 - [x] (2026-10-08) 部品単位のfocused検証: API 50件（Prisma mock、DB不要）、Web 143件を対象単位で確認。API/Webのtscとpackage lint成功、修正後の対象lintも成功。Prismaは通常生成がcache権限で失敗し、既存engine指定の `generate --no-engine` で型を生成。取説画面は変更なし、source digestのみrefresh。Gitの状態変更・秘密ファイル参照・DB migrationは行っていない。
 - [x] (2026-10-08) 部品単位の要領書を main 統合・Pi5 配布: #1866 を main `4693d2c7` に統合(main CI 成功)し、run `20261008-094245-17c4c7`(18:42→18:47 JST、success、failed=0)で Pi5 に配布。api/web の image は `4693d2c7`、`/`・`/admin`・`/kiosk`・`/api/system/health` は 200。PR の CI で自主検査の e2e が 1 度失敗した(新しい by-part API が未モックで 404 になり、エラー表示が撮影対象チップの幅を奪った)ため、エラー表示を固定の小さい幅にし、e2e 2 本に by-part のモックを足した。migration `20261008120000_procedure_manual_part_subject` を含むので、前の image へ戻しても `subjectKind` 列と enum は DB に残る(追加のみ)。
@@ -168,6 +170,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
   Evidence: `infrastructure/docker/docker-compose.server.yml` の API volumes と named volumes。今回の infrastructure 変更禁止により未修正。本番反映前に別依頼で永続マウントを追加する必要がある。
 
 ## Decision Log
+
+- Decision (2026-10-11): 下書きの部品付け直しは既存の割り当て置換APIを2回使い、新しい部品への追加を先に行う。既存の対象割り当てがあれば追加を省く。旧割り当てIDが消えていた場合は変更検知で停止し、削除失敗時も新しい割り当てを保持して通知する。名前変更には既存の`renameAssemblyProcedureDocument`を使い、失敗時は付け直し済み・名前未変更と表示する。DB変更やmove/renameの新規endpointは不要。
+  Scope: 新規下書き割り当てはPART工程・active DRAFT・自身がroot・初版（supersedesなし）に限定し、MODELの公開版条件を維持する。`getAssignments`のsequenceと`by-part`は引き続きactive PUBLISHEDのみ。旧形式で公開取消済みの文書は`publishedAt`が消去されるため、現行DBでは未公開の旧形式下書きと区別できない。
 
 - Decision (2026-10-08): 組立・検査はMODEL（機種）、切削・研削はPART（部品）。工程にenum/default MODELを追加し、migrationと参照データで加工の子工程をPARTとする。割り当ての新しい列は追加せず、PARTでは既存 `modelCode/modelCodeKey` に品番/正規化キーを格納する（schema注記）。
   Rationale: 工程が対象の種類を決めるため、既存の一意制約・文書参照・割り当てrouteを保った最小変更で済む。正規化はserviceに集約し、MODELの既存ルールを維持、PARTは加工要領書と同じNFKC/trim/uppercase関数を再利用。PUTも工程の種類で照合する。

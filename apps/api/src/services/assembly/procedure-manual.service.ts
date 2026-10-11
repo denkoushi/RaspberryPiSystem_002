@@ -302,7 +302,12 @@ export class ProcedureManualService {
           });
           if (!document) throw new ApiError(400, '手順書が見つかりません');
           rootId = document.revisionMetadata?.revisionRootId ?? document.id;
-          if (!existingRoots.has(rootId) && !await this.resolvePublished(rootId, tx)) throw new ApiError(400, '公開版がありません');
+          if (!existingRoots.has(rootId) && !await this.resolvePublished(rootId, tx)) {
+            const initialPartDraft = process.subjectKind === 'PART' && document.isActive && document.status === 'DRAFT'
+              && document.id === rootId && !document.publishedAt
+              && (!document.revisionMetadata || (document.revisionMetadata.revisionNumber === 1 && !document.revisionMetadata.supersedesDocumentId));
+            if (!initialPartDraft) throw new ApiError(400, '公開版がありません');
+          }
         } else {
           const document = await tx.kioskDocument.findFirst({ where: { id: item.kioskDocumentId!, ...(!existingPdfs.has(item.kioskDocumentId!) ? { enabled: true } : {}) } });
           if (!document) throw new ApiError(400, 'キオスク文書が見つかりません');

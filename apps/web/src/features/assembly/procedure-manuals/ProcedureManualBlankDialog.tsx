@@ -5,19 +5,17 @@ import { createBlankAssemblyProcedureDocument, listAssemblyMachineNameCandidates
 import { Dialog } from '../../../components/ui/Dialog';
 import { Input } from '../../../components/ui/Input';
 import { normalizeWorkInstructionPartNumber } from '../../../lib/workInstructionRules';
-import { claimKeyboardWedgeScanOwner, releaseKeyboardWedgeScanOwner, useKeyboardWedgeScan } from '../../barcode-scan/useKeyboardWedgeScan';
 import { kioskAssemblyManualsWorkshopPath, kioskAssemblyProcedureDocumentEditPath } from '../assemblyRoutes';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
 import { procedureManualButtonBase, procedureManualButtonSelected, procedureManualButtonUnselected } from './procedure-manual-button-styles';
+import { buildProcedureManualName, procedureManualShortProcessName as shortName } from './procedure-manual-name';
 import { procedureManualModelKey } from './ProcedureManualAssignmentDialog';
 import { ProcedureManualModelMatch, ProcedureManualModelTenkey } from './ProcedureManualModelSearch';
-import { ProcedureManualPartLabel } from './ProcedureManualPartLabel';
+import { ProcedureManualPartCandidateButton, useProcedureManualPartScan } from './ProcedureManualPartPicker';
 
 import type { ProcedureManualPartCandidateDto } from '../../../api/client';
 import type { ProcedureManualModelDto, ProcedureManualProcessDto } from '../types';
-
-const shortName = (process?: ProcedureManualProcessDto) => process?.name.replace(/工程/g, '') ?? '';
 
 export function ProcedureManualBlankDialog({ processes, modelCode, processId, onClose, beforeMutation, subjectKind = 'MODEL' }: {
   subjectKind?: 'MODEL' | 'PART';
@@ -49,17 +47,11 @@ export function ProcedureManualBlankDialog({ processes, modelCode, processId, on
   const child = processes.find(process => process.id === childId);
   const isPart = child?.subjectKind === 'PART';
   const unit = isPart ? '部品' : '機種';
-  // Hold the scanner for as long as the dialog is open so the list behind it never receives a scan.
-  useEffect(() => {
-    claimKeyboardWedgeScanOwner('procedure-manual-blank');
-    return () => releaseKeyboardWedgeScanOwner('procedure-manual-blank');
-  }, []);
-  useKeyboardWedgeScan({ owner: 'procedure-manual-blank', active: isPart && !direct && scanArmed, onScan: text => {
-    const key = normalizeWorkInstructionPartNumber(text);
+  useProcedureManualPartScan('procedure-manual-blank', isPart && !direct && scanArmed, key => {
     setScanArmed(false); setDigitQuery(''); setModelSearch(key); setSelectedModel(key);
-  } });
-  const partName = isPart ? partCandidates.find(row => row.partNumberKey === selectedModel)?.partName?.replace(/_/g, ' ').trim() : null;
-  const builtName = [partName, selectedModel, shortName(parent), shortName(child), supplement.trim()].filter(Boolean).join('_');
+  });
+  const partName = isPart ? partCandidates.find(row => row.partNumberKey === selectedModel)?.partName : null;
+  const builtName = buildProcedureManualName(selectedModel, partName, parent, child, supplement);
   const name = direct ? directName.trim() : builtName;
   const canCreate = Boolean((!isPart || direct || !loading) && name && name.length <= 200 && (direct || (selectedModel && parent && child)));
   const missing = direct
@@ -128,7 +120,7 @@ export function ProcedureManualBlankDialog({ processes, modelCode, processId, on
           <output aria-label="数字検索" className="min-h-8 text-xl text-[#eef3f6]">数字: {digitQuery || '未指定'}</output>
           <ProcedureManualModelTenkey value={digitQuery} onChange={changeDigits} ariaLabel={`${unit}テンキー`} />
           {loading ? <p role="status" className="text-[#9fadb9]">検索中…</p> : searchError ? <p role="alert" className="text-red-400">{searchError}</p> : (isPart ? partCandidates.length : candidates.length) === 0 ? <p className="text-[#9fadb9]">該当する{unit}がありません</p> : null}
-          <div className="grid max-h-[220px] gap-1.5 overflow-auto pr-1">{isPart ? partCandidates.map(part => <button key={part.partNumberKey} type="button" aria-label={part.partNumberKey} aria-pressed={selectedModel === part.partNumberKey} className={`${procedureManualButtonBase} px-3 text-left text-xl break-all ${selectedModel === part.partNumberKey ? procedureManualButtonSelected : procedureManualButtonUnselected}`} onClick={() => { setScanArmed(false); setSelectedModel(part.partNumberKey); }}><ProcedureManualPartLabel partNumber={part.partNumber} partName={part.partName} /></button>) : candidates.map(code => <button key={code} type="button" aria-label={code} aria-pressed={selectedModel === code} className={`${procedureManualButtonBase} px-3 text-left font-mono text-xl break-all ${selectedModel === code ? procedureManualButtonSelected : procedureManualButtonUnselected}`} onClick={() => setSelectedModel(code)}><ProcedureManualModelMatch code={code} search={searchKey} /></button>)}</div>
+          <div className="grid max-h-[220px] gap-1.5 overflow-auto pr-1">{isPart ? partCandidates.map(part => <ProcedureManualPartCandidateButton key={part.partNumberKey} part={part} selected={selectedModel === part.partNumberKey} onSelect={() => { setScanArmed(false); setSelectedModel(part.partNumberKey); }} />) : candidates.map(code => <button key={code} type="button" aria-label={code} aria-pressed={selectedModel === code} className={`${procedureManualButtonBase} px-3 text-left font-mono text-xl break-all ${selectedModel === code ? procedureManualButtonSelected : procedureManualButtonUnselected}`} onClick={() => setSelectedModel(code)}><ProcedureManualModelMatch code={code} search={searchKey} /></button>)}</div>
           {hasMore ? <p className="text-[#9fadb9]">他にも候補があります。数字を追加してください</p> : null}
         </section>
         <section aria-label="補足の入力" className="grid content-start gap-2">
