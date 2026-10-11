@@ -13,6 +13,8 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 ## Progress
 
 - [x] (2026-10-11) 下書きの部品付け直し(#1924)を本番反映。merge `cecfd8a3`、Pi5 標準ローリング更新 run `20261011-122345-232f8e` 成功、戻り先 `c1b80e83`。実機確認は依頼済み。
+- [x] (2026-10-11) 共通手順(#1926)を本番反映。merge `69b6255d`、Pi5 標準ローリング更新 run `20261011-131130-7b93c6` 成功、戻り先 `cecfd8a3`。migration 2 本の適用は本番 DB で直接は未確認(api は新イメージで起動、health 200、エラーログ 0 件)。実機確認は依頼済み。
+- [x] (2026-10-11) 文字枠の音声入力(#1927、ADR-20261011)を本番反映。merge `43655e62`、Pi5 標準ローリング更新 run `20261011-132631-28861c` 成功、戻り先 `69b6255d`。Mac の whisper-server は合成音声の WebM で応答を確認。実マイクと社内 LLM の通し確認は依頼済み。
 - [x] (2026-10-11) COMMON review修正: enum COMMONだけのgate許可を追加。分類名はDB UNIQUE indexを使わず共通lock内で検査し、初期catalogは親行をmarkerとしてruntime transactionで一度だけseedする。作業renameのlock後再確認、正規化キー200文字制限、見る失敗時の可視errorと回帰テストを追加。API対象97件、Web要領書254件、gate34件・両migration validate_sql、両tsc・対象eslint成功。DB適用は未実施。
 - [x] (2026-10-11) 共通要領書をローカル実装。COMMON分類・作業・対象catalog、白紙作成と割り当ての単一transaction、重複409、分類/作業CRUDと作業rename伝播を追加。「見る」「作る・直す」の共有ペインへ共通入口、分類・名前・かな行フィルタ、共通一覧、作成/編集chips・似た手順を追加し、`common=1&process=`で復元。既存MODEL/PARTの工程候補・白紙作成・付け直し・by-partからCOMMONを除外。Prisma validate、API/Web tsc、変更ファイルeslint、API対象116件、Web要領書対象253件、共有正規化19件が成功（必要な対象だけ修正後に再確認）。既存WIPの承認モックは変更していない。migration適用・実機表示・commit・push・PR・merge・deployは未実施。
 - [ ] (2026-10-11) 表示の実ブラウザー検証は環境制約で未完了。1920×1080用の実コンポーネントpreviewはViteでbundleできたが、localhost listenはEPERM、Playwright付属Chromiumは未導入、既存Chromeのheadless起動はSIGABRTで終了。DOM操作はtesting-libraryで検証済み。`kiosk-sop:source-check`は既存の`assembly-procedure-template`がstaleと判定（本タスクでは取説生成物を更新しない）。Git lifecycleのread-only auditもGitHub接続不可で未完了。
