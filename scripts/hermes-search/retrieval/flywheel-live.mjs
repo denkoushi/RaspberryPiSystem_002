@@ -86,6 +86,9 @@ export async function createLiveScorer({ records, catalog, evaluate, env = proce
         loss: lossStage({ relevant: relevantIds(row), outcome, shown, candidates, judged }),
         vectorStatus: result.receipt?.timings?.vectorStatus ?? null,
         plan: result.receipt?.plan ?? null,
+        // The terms the planner could not resolve (field names, or its own questions such as
+        // content, limit, period), so an ask-back can be diagnosed from the row the next morning.
+        unresolved: Array.isArray(result.receipt?.unresolved) ? result.receipt.unresolved.filter((term) => typeof term === 'string' && term) : [],
         ms: ms(),
       };
     } catch (error) {
@@ -94,7 +97,7 @@ export async function createLiveScorer({ records, catalog, evaluate, env = proce
         .replace(/[\u0000-\u001f\u007f]/gu, ' ').slice(0, 200);
       const diagnostic = relevanceFailureReason(error).replace(/^relevance judgment failed:?\s*/u, '');
       const reason = diagnostic ? `${message} (${diagnostic})` : message;
-      return { outcome: 'failed', reason, shown: [], candidates: [], judged, loss: 'failed', vectorStatus: null, plan: null, ms: ms() };
+      return { outcome: 'failed', reason, shown: [], candidates: [], judged, loss: 'failed', vectorStatus: null, plan: null, unresolved: [], ms: ms() };
     }
   };
 }
