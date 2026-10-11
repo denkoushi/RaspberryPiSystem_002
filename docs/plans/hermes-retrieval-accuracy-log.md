@@ -500,3 +500,15 @@ Night of 2026-10-10 (22:04 to 22:18), the first with #1920 (synthetic filter que
 Follow-ups in the same PR as this entry: a deterministic planner guard that turns a question into filter-only when only resolved filter values and generic words remain, the checker accepting a filter-only plan with relevance sort (the executor orders it by date), and the quiet rule comparing the final line with the previous one. Not a measured change in retrieval; the planner guard is measured on the next nights' filter questions.
 
 Private files: `work/flywheel/questions-2026-10-10.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-10.log`.
+
+### 2026-10-12: ninth night, 86% with one ask-back, synthetic filter questions 10 of 10 (measurement basis)
+
+Night of 2026-10-11 (22:02 to 22:13), the first with #1922 (planner residual guard, relevance-sort filter check, quiet repeated runner lines; Pi5 release at 06:37 that morning).
+
+- Synthetic content: 100 pairs tried, 77 generated, 65 kept (median 17 chars, anchor overlap 0.33). Dropped: 18 copied runs, 12 anchors not confirmed, 4 copied words, 1 too similar. The business LLM answered 503 at 22:02 (`dgx_not_ready`), so generation started at 22:12. Production showed a relevant record for 56 of 65 (86%; 13 known only through the second grader), other records for 5, nothing for 4: 2 outside the judged candidates, 1 rejected by the judge, 1 ask-back. The eighth night's five ask-backs did not repeat (one this night), so they were not a lasting regression; the cause stays open until the live row records the unresolved term.
+- Synthetic filter: 10 questions, 10 ok, no mismatch, no unsupported, no ask-back, no failure (eighth night 7 ok, 1 mismatch, 2 unsupported). The planner guard did not fire (`residualOverride` absent in all rows): the LLM planned all ten as filter-only itself, so the guard is still unmeasured on a case it would change.
+- Real: no kiosk question on 2026-10-11.
+- Learned queries: no new proposal; 20 active, 1 rejected.
+- Runner log: 5 final lines for the night instead of the eighth night's 367 (2 `budget_reached`, the rest `outside_window` and `dgx_not_ready`); the quiet rule works.
+
+No change to retrieval. Private files: `work/flywheel/questions-2026-10-11.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-11.log`.
