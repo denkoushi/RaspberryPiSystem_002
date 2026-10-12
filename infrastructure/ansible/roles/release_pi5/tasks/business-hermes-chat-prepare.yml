@@ -126,6 +126,8 @@
     - { key: PHOTO_TOOL_EMBEDDING_MODEL_ID, value: "{{ photo_tool_embedding_model_id | default('') }}" }
     - { key: PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE, value: "{{ photo_tool_similarity_max_cosine_distance | default('0.22') }}" }
     - { key: PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE, value: "{{ photo_tool_label_assist_max_cosine_distance | default('0.14') }}" }
+    # 要領書音声認識の中継フラグ（既定 OFF）。inventory の値はここで渡さないと API に届かない
+    - { key: PROCEDURE_SPEECH_TO_TEXT_ENABLED, value: "{{ procedure_speech_to_text_enabled | default(false) | bool | ternary('true', 'false') }}" }
   no_log: true
 
 - name: Bind consultation Compose paths and persistent candidate environment
