@@ -54,7 +54,8 @@ export function registerProcedureManualRoutes(app: FastifyInstance, options: {
     const query = z.object({
       digitQuery: z.string().regex(/^[0-9]*$/, 'digitQueryは半角数字のみ指定できます').max(120).optional(),
       q: z.string().max(120).optional(),
-      limit: z.coerce.number().int().min(1).max(50).optional(),
+      machineName: z.string().max(120).optional(),
+      limit: z.coerce.number().int().min(1).max(200).optional(),
     }).parse(request.query);
     return { parts: await partCandidatesService.list(query) };
   });
