@@ -240,6 +240,7 @@ describe('procedure-manuals workshop', () => {
     const usage = within(row).getAllByRole('cell')[3];
     expect(usage).toHaveTextContent(shared ? 'DFD2 · 検査、DFD3 · 切削' : '—');
     expect(usage).toHaveClass('truncate'); expect(usage).not.toHaveAttribute('title');
+    expect(row.style.gridTemplateColumns).toContain(shared ? '150px 180px' : '150px 0px');
     fireEvent.click(within(row).getByRole('button', { name: action }));
     const dialog = screen.getByRole('dialog', { name: action === '削除' ? '下書きを削除' : 'この工程から外す' });
     expect(dialog).toHaveTextContent('公開手順');

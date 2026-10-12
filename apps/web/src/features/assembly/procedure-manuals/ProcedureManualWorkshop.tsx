@@ -232,6 +232,9 @@ export function ProcedureManualWorkshop() {
     }
     finally { setBusy(false); }
   };
+  // Columns nobody in the list fills are collapsed so the name gets their width.
+  const usageColumn = filteredItems.some(item => item.otherAssignments.length > 0) ? '180px' : '0px';
+  const approvalColumn = filteredItems.some(item => item.draftRevision || item.approval) ? '150px' : '0px';
   return <div className="grid min-h-0 flex-1 grid-rows-[64px_minmax(0,1fr)] bg-[#0f1317] text-[#eef3f6]" data-testid="procedure-manuals-workshop">
     <header className="flex items-center gap-4 border-b border-[#27313b] bg-[#161c22] px-5">
       <h1 className="text-[26px] font-black tracking-widest">要領書</h1>
@@ -271,7 +274,7 @@ export function ProcedureManualWorkshop() {
           <div role="row" className="sr-only">
             {['サムネイル', '名前', ...(!modelCodeKey ? ['機種・部品'] : []), ...(!processId ? ['工程'] : []), '状態', '他の使用先', '担当・承認', 'ページ', '操作'].map(label => <div role="columnheader" key={label}>{label}</div>)}
           </div>
-          {filteredItems.map(item => <div role="row" key={item.assignmentId} aria-label={item.label || item.title} style={{ gridTemplateColumns: `36px minmax(220px,1fr) ${!modelCodeKey ? '160px ' : ''}${!processId ? '90px ' : ''}150px 180px 150px 50px 188px` }} className="grid h-14 items-center gap-3 border-b border-[#27313b] px-2.5 hover:bg-[#1b222a]">
+          {filteredItems.map(item => <div role="row" key={item.assignmentId} aria-label={item.label || item.title} style={{ gridTemplateColumns: `36px minmax(220px,1fr) ${!modelCodeKey ? '160px ' : ''}${!processId ? '90px ' : ''}150px ${usageColumn} ${approvalColumn} 50px 188px` }} className="grid h-14 items-center gap-3 border-b border-[#27313b] px-2.5 hover:bg-[#1b222a]">
             <div role="cell"><ManualThumbnail url={item.thumbnailPageUrl} /></div>
             <div role="cell" className="truncate font-mono text-xl font-bold" title={item.label || item.title}>{item.label || item.title}</div>
             {!modelCodeKey ? <div role="cell" className="truncate font-mono text-[17px] font-bold">{item.modelCode}</div> : null}
@@ -281,8 +284,8 @@ export function ProcedureManualWorkshop() {
                   {item.status === 'published' ? item.publishedRevisionNumber == null ? '公開' : `公開 第${item.publishedRevisionNumber}版` : item.status === 'draft' ? '下書き' : '無効'}
                 </span>
             </div>
-            <div role="cell" className="truncate text-[15px] text-[#9fadb9]">{usageLabel(item.otherAssignments) || '—'}</div>
-            <div role="cell" className="truncate text-base text-[#9fadb9]">
+            <div role="cell" className="min-w-0 truncate text-[15px] text-[#9fadb9]">{usageLabel(item.otherAssignments) || '—'}</div>
+            <div role="cell" className="min-w-0 truncate text-base text-[#9fadb9]">
               {item.draftRevision ? <span className="rounded-full bg-[#f6b93b1f] px-2.5 py-1 text-[#f6b93b]">改版中{item.draftRevision.editLease ? ` · ${item.draftRevision.editLease.holderLabel} ${new Date(item.draftRevision.editLease.acquiredAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}〜` : ''}</span> : item.approval ? `承認 ${item.approval.employeeName} ${new Date(item.approval.approvedAt).toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit' })}` : null}
             </div>
             <div role="cell" className="text-right font-mono text-base text-[#9fadb9]">{item.pageCount ?? '—'}{item.pageCount != null ? <span className="sr-only"> ページ</span> : null}</div>
