@@ -52,12 +52,10 @@ services:
 {% endif %}
     env_file:
       - {{ (release_kiosk_project_dir ~ '/clients/barcode-agent/.env') | to_json }}
-    volumes:
 {% if client_agents_hardened | default(false) | bool %}
+    volumes:
       # A read-only parent bind survives hotplug; cgroups restrict device I/O.
       - /dev:/dev:ro
-{% else %}
-      - /dev:/dev
 {% endif %}
     restart: unless-stopped
 {% endif %}

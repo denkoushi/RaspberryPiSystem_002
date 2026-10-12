@@ -80,7 +80,7 @@ class ClientAgentContractMatrixTest(unittest.TestCase):
         ).read_text(encoding="utf-8"))
         legacy_mounts = {
             "nfc-agent": ["nfc-agent-data:/data", "/run/pcscd:/run/pcscd:ro"],
-            "barcode-agent": ["/dev:/dev"],
+            "barcode-agent": None,
             "torque-agent": ["torque-agent-data:/data", "/dev/input:/dev/input",
                              "/run/torque-bluetooth-guard:/run/torque-bluetooth-guard"],
         }
@@ -138,13 +138,47 @@ class ClientAgentContractMatrixTest(unittest.TestCase):
                                 self.assertEqual(service, reference)
                                 self.assertIs(service["privileged"], True)
                                 self.assertEqual(service["user"], "0:0")
-                                self.assertEqual(service["volumes"], legacy_mounts[name])
+                                self.assertEqual(service.get("volumes"), legacy_mounts[name])
                                 if name == "nfc-agent":
                                     self.assertEqual(service["devices"], ["/dev/bus/usb:/dev/bus/usb"])
                                 else:
                                     self.assertNotIn("devices", service)
                                 for key in ("cap_drop", "security_opt", "group_add", "device_cgroup_rules"):
                                     self.assertNotIn(key, service)
+
+    def test_default_mode_matches_the_pre_hardening_stanzas_plus_root_user(self) -> None:
+        """The static compose default must equal the previous device contract
+        except for the explicit ``user: "0:0"`` that the USER 10001 images need."""
+        static = yaml.safe_load(self.compose)
+        previous = {
+            "nfc-agent": {
+                "network_mode": "host", "privileged": True,
+                "devices": ["/dev/bus/usb:/dev/bus/usb"],
+                "env_file": ["../../clients/nfc-agent/.env"],
+                "volumes": ["nfc-agent-data:/data", "/run/pcscd:/run/pcscd:ro"],
+                "restart": "unless-stopped",
+            },
+            "barcode-agent": {
+                "network_mode": "host", "privileged": True,
+                "env_file": ["../../clients/barcode-agent/.env"],
+                "restart": "unless-stopped",
+            },
+            "torque-agent": {
+                "network_mode": "host", "privileged": True,
+                "env_file": ["../../clients/torque-agent/.env"],
+                "volumes": ["torque-agent-data:/data", "/dev/input:/dev/input",
+                            "/run/torque-bluetooth-guard:/run/torque-bluetooth-guard"],
+                "restart": "unless-stopped",
+            },
+        }
+        for name, expected in previous.items():
+            with self.subTest(service=name):
+                service = dict(static["services"][name])
+                service.pop("build")
+                service.pop("profiles", None)
+                service.pop("healthcheck", None)
+                self.assertEqual(service.pop("user"), "0:0")
+                self.assertEqual(service, expected)
 
     def test_client_agent_images_run_as_dedicated_users_with_writable_data(self) -> None:
         for name in ("nfc-agent", "barcode-agent", "torque-agent"):

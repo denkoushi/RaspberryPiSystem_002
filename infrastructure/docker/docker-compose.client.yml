@@ -32,8 +32,6 @@ services:
     privileged: true
     env_file:
       - ../../clients/barcode-agent/.env
-    volumes:
-      - /dev:/dev
     restart: unless-stopped
 
   torque-agent:
