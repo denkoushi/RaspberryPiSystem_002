@@ -512,3 +512,16 @@ Night of 2026-10-11 (22:02 to 22:13), the first with #1922 (planner residual gua
 - Runner log: 5 final lines for the night instead of the eighth night's 367 (2 `budget_reached`, the rest `outside_window` and `dgx_not_ready`); the quiet rule works.
 
 No change to retrieval. Private files: `work/flywheel/questions-2026-10-11.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-11.log`.
+
+### 2026-10-13: tenth night, 76% with four ask-backs now explained, and a placeholder department in the filter questions (measurement basis)
+
+Night of 2026-10-12 (22:07 to 22:22), the first with #1930 (unresolved terms recorded on ask-backs; Pi5 release at 08:43 that morning).
+
+- Synthetic content: 100 pairs tried, 69 generated, 62 kept (median 17 chars, anchor overlap 0.33). Dropped: 21 copied runs, 7 anchors not confirmed, 6 copied words, 4 too similar. One `dgx_not_ready` pass at 22:02. Production showed a relevant record for 47 of 62 (76%; 12 known only through the second grader), other records for 5, nothing for 10: 3 outside the judged candidates, 3 rejected by the judge, 4 ask-backs.
+- Ask-backs, now with the unresolved term in the row: 3 on `originDepartmentName` (「設計課 干渉見落とし 原因」, 「設計課が図面書き写す時、継手の型番を修正し忘れて…」, 「マニホールド 設計ミス 穴 過剰」) and 1 on `partName` (「台乗せ落下 傷 作り直し」). The entity linker matched 「設計課」 and 「設計」 to several department values and 「台」 to several part names, and the planner asked for a choice instead of searching. This is the same mechanism as the eighth night's five ask-backs (four of them terse questions with a department-like word). A content question that names a department which exists in several factories should search with the content rather than ask; that is the next change to measure.
+- Synthetic filter: 10 questions, 9 ok, 1 mismatch: 「門 最近 不適合」, the `short` template applied to the placeholder value 「*未設定部門」 (short form 「門」). Not a retrieval failure; the generator now skips placeholder values and one-character short forms (this PR).
+- Real: no kiosk question on 2026-10-12.
+- Learned queries: 3 activated (held-out 1/1, real none); 23 active, 1 rejected.
+- Runner log: 5 final lines.
+
+No change to retrieval. Private files: `work/flywheel/questions-2026-10-12.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-12.log`.

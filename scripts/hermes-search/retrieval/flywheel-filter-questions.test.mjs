@@ -55,3 +55,12 @@ test('Date references share the runner night ids across Tokyo midnight and use t
   assert.deepEqual(before.map((row) => row.id), after.map((row) => row.id));
   assert.equal(after.find((row) => row.seed.template === 'this_year').seed.period.from, '2027-01-01');
 });
+
+test('placeholder values are skipped and one-character short forms are not used', () => {
+  const rows = sample({ records: [...records, { department: '*未設定部門' }, { department: '第三部門' }] });
+  assert.ok(rows.every((row) => row.seed.value !== '*未設定部門'));
+  assert.ok(rows.every((row) => row.question !== '門 最近 不適合'));
+  const short = rows.find((row) => row.seed.template === 'short' && row.seed.value === '第三部門');
+  assert.equal(short.seed.short, null);
+  assert.equal(short.question, '第三部門 最近 不適合');
+});
