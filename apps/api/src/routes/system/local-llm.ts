@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { authorizeRoles } from '../../lib/auth.js';
+import { authorizeKioskClientKeyOrJwtRoles } from '../../lib/kiosk-document-auth.js';
+import { probeBusinessLocalLlmAvailability } from '../../services/system/local-llm-availability.js';
 import { withAdminConsoleChatOnDemandRuntime } from '../../services/system/local-llm-on-demand-runtime.js';
 
 const localLlmChatBodySchema = z.object({
@@ -21,6 +23,25 @@ const localLlmChatBodySchema = z.object({
 
 export function registerLocalLlmRoutes(app: FastifyInstance): void {
   const canManage = authorizeRoles('ADMIN', 'MANAGER');
+  let cachedAvailability: { available: boolean; expiresAt: number } | undefined;
+  let availabilityProbe: Promise<boolean> | undefined;
+
+  app.get('/system/local-llm/availability', {
+    preHandler: async (request, reply) => {
+      await authorizeKioskClientKeyOrJwtRoles(request, reply, ['ADMIN', 'MANAGER', 'VIEWER']);
+    },
+  }, async () => {
+    if (cachedAvailability && Date.now() < cachedAvailability.expiresAt) {
+      return { available: cachedAvailability.available };
+    }
+    availabilityProbe ??= probeBusinessLocalLlmAvailability().then((available) => {
+      cachedAvailability = { available, expiresAt: Date.now() + 10_000 };
+      return available;
+    }).finally(() => {
+      availabilityProbe = undefined;
+    });
+    return { available: await availabilityProbe };
+  });
 
   app.get('/system/local-llm/status', { preHandler: canManage }, async (_request, reply) => {
     const status = await app.localLlmGateway.getStatus();

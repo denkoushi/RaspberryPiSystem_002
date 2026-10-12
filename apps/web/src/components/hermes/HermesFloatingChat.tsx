@@ -20,6 +20,7 @@ import {
   type HermesSearchTrialScope
 } from '../../api/client';
 import { getApiErrorMessage } from '../../api/errors';
+import { useLocalLlmAvailability } from '../../api/hooks/local-llm';
 import { Dialog } from '../../components/ui/Dialog';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -40,6 +41,7 @@ import { kioskLazy } from '../../features/kiosk/kioskLazyPreload';
 import { OperationGuidePrompt } from '../../features/operation-guide/OperationGuideChoices';
 import { OperationGuideOverlay } from '../../features/operation-guide/OperationGuideOverlay';
 import { useOperationGuide } from '../../features/operation-guide/useOperationGuide';
+import { AiUnavailableBadge } from '../ui/AiUnavailableBadge';
 
 import { useHermesPageContext } from './HermesPageContext';
 import { HermesPageContextShortcuts } from './HermesPageContextShortcuts';
@@ -946,6 +948,7 @@ export function HermesFloatingChat() {
     height: panelHeight,
     maxHeight: panelHeight
   };
+  const { unavailable } = useLocalLlmAvailability();
   const iconStyle = { left: position.left, top: position.top };
   const recordFeedback = async (messageId: string, verdict: 'helpful' | 'unhelpful') => {
     if (!activeConsultation || feedbackBusy) return;
@@ -1026,7 +1029,7 @@ export function HermesFloatingChat() {
 
   return (
     <div className="hermes-floating-root">
-      <button
+      <AiUnavailableBadge unavailable={unavailable} positioned ringColor="#0b1a12"><button
         ref={iconRef}
         type="button"
         className={`hermes-floating-trigger${inquiry.unreadCount > 0 ? ' hermes-floating-trigger--inquiry-unread' : ''}${isDocumentVisible ? '' : ' hermes-floating-trigger--paused'}`}
@@ -1057,7 +1060,7 @@ export function HermesFloatingChat() {
         <span className="hermes-floating-trigger__glyph" aria-hidden="true">{inquiry.unreadCount > 0 ? '✉' : 'H'}</span>
         {inquiry.unreadCount > 0 ? <span className="hermes-floating-trigger__inquiry-count" aria-hidden="true">{inquiry.unreadCount}</span> : null}
         {showPageContextIndicator && inquiry.unreadCount === 0 ? <span className="hermes-floating-trigger__context-dot" aria-hidden="true" /> : null}
-      </button>
+      </button></AiUnavailableBadge>
 
       {open && operationGuide.guide ? <OperationGuideOverlay
         guide={operationGuide.guide} index={operationGuide.index} iconRef={iconRef}
