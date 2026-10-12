@@ -29,9 +29,9 @@ done
 docker info >/dev/null 2>&1 || fail 'a running Docker daemon is required'
 
 node -e '
-  const [major, minor] = process.versions.node.split(".").map(Number);
-  if (major < 20 || (major === 20 && minor < 9)) process.exit(1);
-' || fail 'Node 20.9 or newer is required'
+  const [major] = process.versions.node.split(".").map(Number);
+  if (major < 24) process.exit(1);
+' || fail 'Node 24 or newer is required'
 
 if [[ "${WEB_STATIC_ROUTING_SKIP_BUILD:-0}" != 1 ]]; then
   (

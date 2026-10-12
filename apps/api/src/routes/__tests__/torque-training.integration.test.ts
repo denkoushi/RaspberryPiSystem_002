@@ -19,9 +19,11 @@ async function resetTorqueTrainingTestData(): Promise<void> {
   await prisma.assemblyTorqueRecord.deleteMany({});
   await prisma.assemblyTorqueWrenchConfirmation.deleteMany({});
   await prisma.assemblyWorkSessionOperatorAccess.deleteMany({});
+  await prisma.assemblyWorkUnitInvalidation.deleteMany({});
   await prisma.assemblyWorkSession.deleteMany({});
   await prisma.assemblyLotSerial.deleteMany({});
   await prisma.assemblyLot.deleteMany({});
+  await prisma.assemblyFormalIdentifierAssignment.deleteMany({});
   await prisma.assemblyWorkUnitComposition.deleteMany({});
   await prisma.assemblyWorkUnit.deleteMany({});
   await prisma.assemblyTemplateBolt.deleteMany({});

@@ -129,10 +129,8 @@ async function prepareAuditWorkspace(workspace, version) {
   const auditWorkspace = await mkdtemp(join(tmpdir(), 'raspisys-pnpm-audit-'));
   const manifest = JSON.parse(await readFile(join(workspace, 'package.json'), 'utf8'));
 
-  // pnpm 11 is used only as an advisory-protocol client because pnpm 9's audit
-  // endpoint is retired.  Run it against an immutable copy of the resolved
-  // lockfile, not against the pnpm 9 workspace whose exact engine contract it
-  // must (correctly) reject.
+  // pnpm 10 still uses legacy audit endpoints. Keep the pnpm 11 bulk client
+  // against an immutable lockfile copy, isolated from the workspace engine.
   manifest.packageManager = `pnpm@${version}`;
   manifest.engines = { ...manifest.engines, pnpm: version };
   delete manifest.pnpm;

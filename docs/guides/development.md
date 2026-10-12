@@ -47,8 +47,8 @@ Cursor の Application Support / `.cursor` を外部SSD（例: `/Volumes/SSD01/M
 
 ## 前提条件
 
-- Node.js 20以上
-- pnpm 9以上
+- Node.js 24以上
+- pnpm 10.34.6（`package.json` の `packageManager` に合わせる）
 - Python 3.11+
 - Poetry
 - Docker & Docker Compose

@@ -281,11 +281,11 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
     def test_api_runtime_boundary_precedes_application_source_and_provenance(self) -> None:
         runtime_boundary = API_DOCKERFILE.index("FROM api-runtime AS api")
         workspace_boundary = API_DOCKERFILE.index(
-            "FROM node:20-bookworm-slim AS workspace"
+            "FROM node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS workspace"
         )
         build_boundary = API_DOCKERFILE.index("FROM workspace AS build")
         runtime_stage = API_DOCKERFILE.index(
-            "FROM node:20-bookworm-slim AS api-runtime"
+            "FROM node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS api-runtime"
         )
         self.assertLess(workspace_boundary, build_boundary)
         self.assertLess(build_boundary, runtime_stage)
@@ -330,7 +330,7 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
     def test_api_runtime_uses_only_required_production_dependencies(self) -> None:
         runtime_boundary = API_DOCKERFILE.index("FROM api-runtime AS api")
         runtime_stage = API_DOCKERFILE.index(
-            "FROM node:20-bookworm-slim AS api-runtime"
+            "FROM node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS api-runtime"
         )
         runtime_definition = API_DOCKERFILE[runtime_stage:runtime_boundary]
 
@@ -349,7 +349,7 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
         )
         self.assertNotIn("COPY apps/web/package.json", API_DOCKERFILE)
         workspace_start = API_DOCKERFILE.index(
-            "FROM node:20-bookworm-slim AS workspace"
+            "FROM node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS workspace"
         )
         workspace_definition = API_DOCKERFILE[
             workspace_start : API_DOCKERFILE.index("FROM workspace AS build")
