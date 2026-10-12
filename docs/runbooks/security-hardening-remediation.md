@@ -128,6 +128,67 @@ The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #9
 - Operator-visible changes: remote images, external CSS/fonts and scripts in mail HTML no longer appear in the generated PDF.
 - Verify: `pnpm --filter @raspi-system/api exec vitest run src/services/kiosk-documents` (the real-Chromium integration test runs in CI).
 
+## C-13. Pi4 agent least-privilege mode (client_agents_hardened)
+
+`client_agents_hardened` is a per-terminal inventory boolean, defaulting to `false` in both the `client` and `release_kiosk` roles.
+The default uses the legacy privileged device/mount configuration and explicitly runs all three agents as `0:0`, even though the images
+have a default user of `10001:10001`. The static client Compose is the legacy reference; the release template selects the mode.
+
+When enabled, NFC, barcode and torque run as `10001:10001`, drop all capabilities and use `no-new-privileges:true`, with no added
+capabilities. Host networking, service/profile selection, environment files, restart policies and health checks are unchanged.
+
+- NFC adds numeric groups `46` (plugdev) and `104` (input), permits character majors 189 (USB) and 13 (input), and binds `/dev/bus/usb`
+  and `/dev/input` read-only. It retains `/run/pcscd:ro` and mounts its named volume at both `/data` and `/app/nfc-agent/data` to preserve
+  the relative queue-path default, including when using previous images.
+- Barcode adds group `20` (dialout), permits majors 166 (ttyACM) and 188 (ttyUSB), and binds `/dev:ro`. Serial nodes live directly in
+  `/dev`; the parent bind supports unplugged startup, replacement nodes and `/dev/serial` links without container recreation.
+- Torque adds group `104` (input), permits major 13, and binds `/dev/input:ro`. Exact wrench udev rules add `GROUP="input", MODE="0660"`.
+  The root host guard uses group `10001` and runtime directory `root:10001`, mode `0770`, for non-root intent writes.
+- Device cgroup rules allow `rw` without `m`; read-only binds prevent directory changes while allowing permitted device I/O.
+
+Prepare each terminal before enabling:
+
+1. Check `getent group plugdev dialout input` against GIDs `46/20/104`. The repository does not provision these numeric IDs. If they
+   differ, resolve the mismatch before enabling; do not assume group names alone grant access.
+2. Check `stat -Lc '%a %u %g %n'` on the actual USB, input and serial nodes. USB must grant plugdev access, serial must grant dialout
+   access, and torque/optional TS100 HID must grant input access. Do not use world-writable device permissions.
+3. Verify the installed `/run/pcscd/pcscd.comm` socket mode and actual card access as the agent user. The existing polkit rule allows
+   PC/SC access. A socket restricted to `0660` needs its actual numeric GID added to NFC's hardened `group_add` before enabling;
+   retain restricted socket permissions.
+4. Stop the affected agents and back up persistent queues. Identify the actual NFC/torque named volumes with `docker inspect`, without
+   guessing project prefixes. Use a maintenance container to `chown -R 10001:10001 /data` on each existing volume, including SQLite
+   sidecars. New volumes inherit image ownership and mode `0750`; image ownership does not change existing volumes. Preserve any NFC
+   queue held at `./data` inside the old container and copy it into the named volume before recreation covers that path.
+5. For torque, install the updated guard helper and render its unit and wrench udev rules with the terminal's hardened setting.
+   Reload systemd, restart the guard, reload/retrigger udev and verify `/run/torque-bluetooth-guard` is `root:10001`, mode `0770`, and the
+   exact wrench nodes are `input`, mode `0660`, before starting the hardened container. Controller identity selection remains unchanged.
+
+Enable only the prepared terminal by setting `client_agents_hardened: true` in that terminal's inventory host vars. Follow the standard
+release procedure in [deployment.md](../guides/deployment.md), inspect its plan and limit the release to that exact host:
+
+```bash
+scripts/update-all-clients.sh <release-branch> infrastructure/ansible/inventory.yml --print-plan --limit <terminal-host>
+scripts/update-all-clients.sh <release-branch> infrastructure/ansible/inventory.yml --limit <terminal-host>
+```
+
+Verify on that Pi4:
+
+1. Inspect each container: user `10001:10001`, privileged false, `CapDrop` includes `ALL`, no `CapAdd`, and `SecurityOpt` includes
+   `no-new-privileges`. Check the exact supplementary groups, device cgroup rules and read-only binds; confirm queue writes as that user.
+2. Read an NFC card through the host pcscd and confirm kiosk delivery and queue writes. If TS100 is enabled, check its configured
+   `/dev/input/by-id/...` reader too.
+3. Start barcode with the reader unplugged, plug in and scan, then unplug/re-plug and scan without recreating the container. Check the
+   configured ttyACM/ttyUSB and `/dev/serial` paths.
+4. Capture a torque value with exclusive evdev ownership. Verify lease intent updates and guard status, including disconnect and
+   lease-expiry fail-closed behavior. Run `curl -fsS http://127.0.0.1:7073/health` and confirm `ok: true`.
+5. Recreate/restart the agents and repeat hardware checks and queue persistence checks. Exercise release rollback: the release template
+   also renders with previous images, which must work with the selected mode and existing volumes. Record the release run ID and results.
+
+To roll back the mode, set `client_agents_hardened: false` for the same terminal and redeploy with the same exact host limit. Reapply
+its guard/udev templates in legacy mode: the unit omits the group/mode overrides and the helper defaults the runtime directory to `0755`.
+Legacy containers run as root and retain access to volumes owned by `10001:10001`; no reverse chown or volume deletion is needed.
+Preserve queue backups, verify NFC, barcode, torque and health again, and record the rollback run ID and result.
+
 ## Verification checklist (per item)
 
 1. Backup relevant secret/config/DB.

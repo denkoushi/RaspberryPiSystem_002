@@ -955,6 +955,32 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
         self.assertEqual(self.fake.mutation_calls, [])
         self.assertFalse(self.storage.exists())
 
+    def test_capture_and_restore_seal_device_groups_and_hotplug_rules(self):
+        expected = {"GroupAdd": ["20"], "DeviceCgroupRules": ["c 166:* rw", "c 188:* rw"]}
+        self.fake.service_host_config_extra["barcode-agent"].update(expected)
+        self.fake.service_security["barcode-agent"].update({
+            "user": "10001:10001", "networkMode": "host",
+            "capDrop": ["ALL"], "securityOpt": ["no-new-privileges:true"],
+        })
+        prior = image_id("serial-hotplug-contract")
+        self.fake.add_container("barcode-agent", prior, running=True)
+        self.probe_capture(services=["barcode-agent"])
+        captured = self.capture(services=["barcode-agent"])
+        # Same image with changed host permissions must still be recreated.
+        self.fake.service_host_config_extra["barcode-agent"].update({
+            "GroupAdd": [], "DeviceCgroupRules": [],
+        })
+        self.fake.add_container("barcode-agent", prior, running=True)
+        self.fake.service_host_config_extra["barcode-agent"].update(expected)
+        self.restore(captured["manifestSha256"])
+        restored = self.fake.containers[(self.compose["project"], "barcode-agent")]
+        for key, value in expected.items():
+            self.assertEqual(restored["hostConfig"][key], value)
+        self.assertEqual(restored["security"]["user"], "10001:10001")
+        self.assertEqual(restored["security"]["capDrop"], ["ALL"])
+        self.assertEqual(restored["security"]["securityOpt"], ["no-new-privileges:true"])
+        self.assertFalse(restored["security"]["privileged"])
+
     def test_same_image_functional_runtime_drift_is_recreated_from_compose(self):
         prior = image_id("same-image-runtime-config")
         self.fake.add_container("barcode-agent", prior, running=True)

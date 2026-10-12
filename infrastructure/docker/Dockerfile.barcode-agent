@@ -48,7 +48,14 @@ RUN apt-get update \
     done \
     && rm -rf /var/lib/apt/lists/* \
     && python -m pip uninstall --yes pip setuptools wheel
+
+RUN groupadd --gid 10001 agent \
+    && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin agent \
+    && mkdir -p /data \
+    && chown 10001:10001 /data \
+    && chmod 0750 /data
 COPY --from=builder /opt/venv /opt/venv
 COPY clients/barcode-agent ./barcode-agent
 WORKDIR /app/barcode-agent
+USER 10001:10001
 CMD ["python", "-m", "barcode_agent"]
