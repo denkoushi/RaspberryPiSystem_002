@@ -1067,10 +1067,11 @@ export type ProcedureManualPartCandidateDto = {
   hasManual: boolean;
 };
 
-export async function listProcedureManualPartCandidates(params: { q?: string; digitQuery?: string; limit?: number } = {}) {
+export async function listProcedureManualPartCandidates(params: { q?: string; digitQuery?: string; machineName?: string; limit?: number } = {}) {
   const qs = new URLSearchParams();
   if (params.q) qs.set('q', params.q);
   if (params.digitQuery) qs.set('digitQuery', params.digitQuery);
+  if (params.machineName) qs.set('machineName', params.machineName);
   if (params.limit) qs.set('limit', String(params.limit));
   const suffix = qs.toString() ? `?${qs.toString()}` : '';
   const { data } = await api.get<{ parts: ProcedureManualPartCandidateDto[] }>(`/assembly/procedure-manuals/part-candidates${suffix}`);

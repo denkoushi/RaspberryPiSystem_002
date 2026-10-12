@@ -63,11 +63,18 @@ describe('procedure-manual routes', () => {
     const { partCandidatesService } = harness();
     expect((await app.inject('/assembly/procedure-manuals/part-candidates')).statusCode).toBe(200);
     expect(partCandidatesService.list).toHaveBeenLastCalledWith({});
-    expect((await app.inject('/assembly/procedure-manuals/part-candidates?q=&digitQuery=&limit=50')).statusCode).toBe(200);
-    expect(partCandidatesService.list).toHaveBeenLastCalledWith({ q: '', digitQuery: '', limit: 50 });
+    expect((await app.inject('/assembly/procedure-manuals/part-candidates?q=&digitQuery=&machineName=&limit=200')).statusCode).toBe(200);
+    expect(partCandidatesService.list).toHaveBeenLastCalledWith({ q: '', digitQuery: '', machineName: '', limit: 200 });
   });
 
-  it.each(['digitQuery=abc', 'digitQuery=%EF%BC%91', 'digitQuery=12.3', `digitQuery=${'1'.repeat(121)}`, `q=${'a'.repeat(121)}`, 'limit=0', 'limit=51', 'limit=1.5', 'limit=abc'])('rejects invalid part candidate query %s', async query => {
+  it.each(['DAD3350', '　 ', 'a'.repeat(120)])('forwards the optional machine name with combined searches (%s)', async machineName => {
+    const { partCandidatesService } = harness();
+    const query = new URLSearchParams({ machineName, q: '軸', digitQuery: '123', limit: '200' });
+    expect((await app.inject(`/assembly/procedure-manuals/part-candidates?${query}`)).statusCode).toBe(200);
+    expect(partCandidatesService.list).toHaveBeenCalledExactlyOnceWith({ machineName, q: '軸', digitQuery: '123', limit: 200 });
+  });
+
+  it.each(['digitQuery=abc', 'digitQuery=%EF%BC%91', 'digitQuery=12.3', `digitQuery=${'1'.repeat(121)}`, `q=${'a'.repeat(121)}`, `machineName=${'a'.repeat(121)}`, 'limit=0', 'limit=201', 'limit=1.5', 'limit=abc'])('rejects invalid part candidate query %s', async query => {
     const { partCandidatesService } = harness();
     expect((await app.inject(`/assembly/procedure-manuals/part-candidates?${query}`)).statusCode).toBe(400);
     expect(partCandidatesService.list).not.toHaveBeenCalled();

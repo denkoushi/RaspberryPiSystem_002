@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 
-import { getProcedureManualAssignments, listProcedureManualPartCandidates, renameAssemblyProcedureDocument, replaceProcedureManualAssignments } from '../../../api/client';
+import { getProcedureManualAssignments, listAssemblyMachineNameCandidates, listProcedureManualPartCandidates, renameAssemblyProcedureDocument, replaceProcedureManualAssignments } from '../../../api/client';
 import { Dialog } from '../../../components/ui/Dialog';
 import { normalizeWorkInstructionPartNumber } from '../../../lib/workInstructionRules';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
-import { procedureManualButtonBase, procedureManualButtonUnselected } from './procedure-manual-button-styles';
+import { procedureManualButtonBase, procedureManualButtonSelected, procedureManualButtonUnselected } from './procedure-manual-button-styles';
 import { buildProcedureManualName } from './procedure-manual-name';
 import { ProcedureManualModelTenkey } from './ProcedureManualModelSearch';
 import { ProcedureManualPartCandidateButton, useProcedureManualPartScan } from './ProcedureManualPartPicker';
@@ -31,8 +31,15 @@ export function ProcedureManualReattachPartDialog({ item, processes, currentPart
   const child = processes.find(process => process.id === item.processId);
   const parent = processes.find(process => process.id === child?.parentId);
   const [digitQuery, setDigitQuery] = useState('');
+  const [searchTarget, setSearchTarget] = useState<'machine' | 'part'>('machine');
+  const [machineName, setMachineName] = useState('');
+  const [machines, setMachines] = useState<string[]>([]);
+  const [machinesHaveMore, setMachinesHaveMore] = useState(false);
+  const [machinesLoading, setMachinesLoading] = useState(true);
+  const [machineError, setMachineError] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [candidates, setCandidates] = useState<ProcedureManualPartCandidateDto[]>([]);
+  const [partsHaveMore, setPartsHaveMore] = useState(false);
   const [selected, setSelected] = useState<ProcedureManualPartCandidateDto | null>(null);
   const [knownCurrentName, setKnownCurrentName] = useState(currentPartName ?? null);
   const [scanArmed, setScanArmed] = useState(false);
@@ -43,16 +50,36 @@ export function ProcedureManualReattachPartDialog({ item, processes, currentPart
   const [error, setError] = useState<string | null>(null);
   const targetKey = normalizeWorkInstructionPartNumber(selected?.partNumberKey);
   const name = buildProcedureManualName(targetKey, selected?.partName, parent, child);
+  const machineDigits = searchTarget === 'machine' ? digitQuery : '';
+  const partDigits = searchTarget === 'part' ? digitQuery : '';
+  const partLimit = machineName ? 200 : 30;
+  // Keep the chosen machine in view after the digits that found it are cleared.
+  const shownMachines = machineName && !machines.includes(machineName) ? [machineName, ...machines] : machines;
+  const selectMachine = (value: string) => {
+    setMachineName(value); setSearchTarget(value ? 'part' : 'machine');
+    setDigitQuery(''); setQ(''); setSelected(null); setScanArmed(false);
+  };
 
   useProcedureManualPartScan('procedure-manual-reattach-part', scanArmed && !busy, key => {
-    setScanArmed(false); setDigitQuery(''); setQ(key);
+    setScanArmed(false); setMachineName(''); setSearchTarget('part'); setDigitQuery(''); setQ(key);
     setSelected(key && key !== currentKey ? { partNumber: key, partNumberKey: key, partName: null, hasManual: false } : null);
   });
   useEffect(() => {
     let cancelled = false;
-    setLoading(true); setSearchError(null); setCandidates([]);
-    void listProcedureManualPartCandidates({ digitQuery, q, limit: 30 }).then(rows => {
+    setMachinesLoading(true); setMachineError(null); setMachines([]); setMachinesHaveMore(false);
+    void listAssemblyMachineNameCandidates({ digitQuery: machineDigits, limit: 40 }).then(result => {
       if (cancelled) return;
+      setMachines(result.candidates); setMachinesHaveMore(result.hasMore);
+    }).catch(e => { if (!cancelled) setMachineError(readAssemblyApiErrorMessage(e, '機種を検索できません')); })
+      .finally(() => { if (!cancelled) setMachinesLoading(false); });
+    return () => { cancelled = true; };
+  }, [machineDigits]);
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setSearchError(null); setCandidates([]); setPartsHaveMore(false);
+    void listProcedureManualPartCandidates({ digitQuery: partDigits, q, ...(machineName ? { machineName } : {}), limit: partLimit }).then(rows => {
+      if (cancelled) return;
+      setPartsHaveMore(rows.length >= partLimit);
       const current = rows.find(row => normalizeWorkInstructionPartNumber(row.partNumberKey) === currentKey);
       if (current?.partName) setKnownCurrentName(current.partName);
       setCandidates(rows.filter(row => normalizeWorkInstructionPartNumber(row.partNumberKey) !== currentKey));
@@ -60,7 +87,7 @@ export function ProcedureManualReattachPartDialog({ item, processes, currentPart
     }).catch(e => { if (!cancelled) setSearchError(readAssemblyApiErrorMessage(e, '部品を検索できません')); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [digitQuery, q, currentKey]);
+  }, [partDigits, q, machineName, partLimit, currentKey]);
 
   const confirm = async () => {
     if (busy || !targetKey || targetKey === currentKey || loading || (rename && name.length > 200) || !beforeMutation()) return;
@@ -101,11 +128,12 @@ export function ProcedureManualReattachPartDialog({ item, processes, currentPart
       } else setError(readAssemblyApiErrorMessage(e, '付け直せません'));
     } finally { setBusy(false); }
   };
-  return <Dialog isOpen title="部品を付け直す" onClose={() => { if (!busy) onClose(); }} size="full"
-    className="!my-auto !max-w-[860px] !rounded-xl !border !border-[#344252] !bg-[#161c22] !px-6 !py-[22px] !text-[#eef3f6]" titleClassName="text-2xl font-bold">
-    <form className="mt-4 grid gap-4" onSubmit={event => { event.preventDefault(); void confirm(); }}>
-      <div className="flex min-w-0 items-center gap-3">
-        <span className="truncate font-mono text-xl font-bold" title={item.title}>{item.title}</span>
+  return <Dialog isOpen ariaLabel="部品を付け直す" onClose={() => { if (!busy) onClose(); }} size="full"
+    className="!my-auto !max-w-[1320px] overflow-y-auto !rounded-xl !border !border-[#344252] !bg-[#161c22] !px-[26px] !py-[22px] !text-[#eef3f6]">
+    <form className="grid min-w-0 gap-4" onSubmit={event => { event.preventDefault(); void confirm(); }}>
+      <div className="flex min-w-0 flex-wrap items-center gap-3">
+        <h2 className="shrink-0 text-2xl font-bold">部品を付け直す</h2>
+        <span className="ml-auto min-w-0 flex-1 truncate font-mono text-xl font-bold text-[#9fadb9]" title={item.title}>{item.title}</span>
         <span className="inline-flex h-[30px] shrink-0 items-center rounded-full border border-[#f6b93b] px-2.5 text-base font-bold text-[#f6b93b]">下書き</span>
       </div>
       <div className="flex flex-wrap items-center gap-3.5 text-xl">
@@ -118,18 +146,40 @@ export function ProcedureManualReattachPartDialog({ item, processes, currentPart
           {selected?.partName ? <span className="font-mono text-[15px] text-[#9fadb9]">{targetKey}</span> : null}
         </div>
       </div>
-      <div className="grid gap-[22px] min-[900px]:grid-cols-[244px_minmax(0,1fr)]">
+      <div className="grid min-w-0 gap-[22px] min-[900px]:h-[592px] min-[900px]:grid-cols-[252px_300px_minmax(0,1fr)]">
         <div className="grid content-start gap-2">
           <button type="button" aria-pressed={scanArmed} disabled={busy} className={`${action} h-[52px] justify-start gap-2.5 border-transparent bg-[#7cc4ff1f] !px-3 !text-lg text-[#7cc4ff]`} onClick={() => setScanArmed(!scanArmed)}>
             <svg aria-hidden="true" className="h-[30px] w-[30px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M8 9v6M11 9v6M14 9v6M17 9v6" /></svg>移動票をスキャン
           </button>
-          <output aria-label="数字検索" className="flex h-[52px] items-center rounded-lg border border-[#344252] bg-[#0b0f13] px-3.5 font-mono text-[26px] tracking-widest">{digitQuery || <span className="font-sans text-[17px] tracking-normal text-[#5f6d7a]">品番の数字</span>}</output>
-          <ProcedureManualModelTenkey reattach disabled={busy} value={digitQuery} onChange={value => { setScanArmed(false); setQ(''); setDigitQuery(value); setSelected(null); }} ariaLabel="部品テンキー" />
+          <div role="group" aria-label="数字でさがす対象" className="grid grid-cols-2 gap-2">
+            {(['machine', 'part'] as const).map(target => <button key={target} type="button" aria-pressed={searchTarget === target} disabled={busy}
+              className={`${action} ${searchTarget === target ? procedureManualButtonSelected : `${procedureManualButtonUnselected} text-[#9fadb9]`}`}
+              onClick={() => { setSearchTarget(target); setDigitQuery(''); setQ(''); setScanArmed(false); }}>{target === 'machine' ? '機種' : '品番'}</button>)}
+          </div>
+          <output aria-label="数字検索" className="flex h-[52px] items-center overflow-hidden rounded-lg border border-[#344252] bg-[#0b0f13] px-3.5 font-mono text-[26px] tracking-widest">{digitQuery || <span className="font-sans text-[17px] tracking-normal text-[#5f6d7a]">{searchTarget === 'machine' ? '機種の数字' : '品番の数字'}</span>}</output>
+          <ProcedureManualModelTenkey reattach disabled={busy} value={digitQuery} onChange={value => { setScanArmed(false); setQ(''); setDigitQuery(value); if (searchTarget === 'part') setSelected(null); }} ariaLabel="部品テンキー" />
         </div>
-        <section aria-label="部品候補" className="flex h-[388px] flex-col gap-1.5 overflow-auto pr-1">
-          {loading ? <p role="status" className="text-[#9fadb9]">検索中…</p> : searchError ? <p role="alert" className="text-red-400">{searchError}</p> : candidates.length === 0 ? <p className="text-[#9fadb9]">該当する部品がありません</p> : null}
-          {candidates.map(part => <ProcedureManualPartCandidateButton key={part.partNumberKey} part={part} selected={targetKey === normalizeWorkInstructionPartNumber(part.partNumberKey)} disabled={busy}
-            selectedClassName="border-[#3ba776] bg-[#3ba77626]" onSelect={() => { setScanArmed(false); setSelected(part); }} />)}
+        <section aria-label="機種候補" className="flex h-[400px] min-h-0 min-w-0 flex-col gap-2 min-[900px]:h-auto">
+          <h3 className="flex h-[30px] shrink-0 items-center text-[15px] font-bold tracking-widest text-[#9fadb9]">機種</h3>
+          <div className="flex min-h-0 flex-col gap-1.5 overflow-auto pr-1">
+            {machinesLoading ? <p role="status" className="text-[#9fadb9]">検索中…</p> : machineError ? <p role="alert" className="text-red-400">{machineError}</p> : shownMachines.length === 0 ? <p className="text-[#9fadb9]">該当する機種がありません</p> : null}
+            {shownMachines.map(machine => <button key={machine} type="button" aria-pressed={machineName === machine} disabled={busy}
+              className={`${procedureManualButtonBase} min-h-14 shrink-0 break-all px-3.5 text-left font-mono text-[21px] font-bold disabled:opacity-40 ${machineName === machine ? procedureManualButtonSelected : procedureManualButtonUnselected}`}
+              onClick={() => selectMachine(machineName === machine ? '' : machine)}>{machine}</button>)}
+          </div>
+          {machinesHaveMore ? <p className="text-sm text-[#9fadb9]">数字を追加</p> : null}
+        </section>
+        <section aria-label="部品候補" className="flex h-[592px] min-h-0 min-w-0 flex-col gap-2 min-[900px]:h-auto">
+          <h3 className="flex h-[30px] shrink-0 items-center gap-2.5 text-[15px] font-bold tracking-widest text-[#9fadb9]">部品
+            {machineName ? <button type="button" aria-label="機種の絞り込みを外す" disabled={busy} onClick={() => selectMachine('')}
+              className={`${procedureManualButtonBase} ${procedureManualButtonSelected} h-[30px] !min-h-0 min-w-0 truncate !rounded-full px-3 font-mono text-base tracking-normal disabled:opacity-40`}>{machineName} ×</button> : null}
+          </h3>
+          <div className="grid min-h-0 grid-cols-2 content-start gap-2 overflow-auto pr-1 [&>button]:min-h-[72px] [&>button]:px-3.5 [&_.font-bold]:text-[21px] [&_.text-sm]:text-base">
+            {loading ? <p role="status" className="col-span-2 text-[#9fadb9]">検索中…</p> : searchError ? <p role="alert" className="col-span-2 text-red-400">{searchError}</p> : candidates.length === 0 ? <p className="col-span-2 text-[#9fadb9]">該当する部品がありません</p> : null}
+            {candidates.map(part => <ProcedureManualPartCandidateButton key={part.partNumberKey} part={part} selected={targetKey === normalizeWorkInstructionPartNumber(part.partNumberKey)} disabled={busy}
+              selectedClassName="border-[#3ba776] bg-[#3ba77626]" onSelect={() => { setScanArmed(false); setSelected(part); }} />)}
+          </div>
+          {partsHaveMore ? <p className="text-sm text-[#9fadb9]">数字を追加</p> : null}
         </section>
       </div>
       {error ? <p role="alert" className="text-red-400">{error}</p> : null}

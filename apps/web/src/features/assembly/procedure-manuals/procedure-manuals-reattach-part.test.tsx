@@ -7,8 +7,9 @@ import { ProcedureManualReattachPartDialog } from './ProcedureManualReattachPart
 
 import type { ProcedureManualAssignmentDto, ProcedureManualAssignmentOverviewItemDto, ProcedureManualProcessDto } from '../types';
 
-const mocks = vi.hoisted(() => ({ candidates: vi.fn(), detail: vi.fn(), replace: vi.fn(), rename: vi.fn() }));
+const mocks = vi.hoisted(() => ({ candidates: vi.fn(), machines: vi.fn(), detail: vi.fn(), replace: vi.fn(), rename: vi.fn() }));
 vi.mock('../../../api/client', () => ({ listProcedureManualPartCandidates: mocks.candidates, getProcedureManualAssignments: mocks.detail,
+  listAssemblyMachineNameCandidates: mocks.machines,
   replaceProcedureManualAssignments: mocks.replace, renameAssemblyProcedureDocument: mocks.rename }));
 
 const processes: ProcedureManualProcessDto[] = [
@@ -36,6 +37,7 @@ const dialog = () => within(screen.getByRole('dialog', { name: '部品を付け�
 const scan = (text: string) => { for (const key of text) fireEvent.keyDown(window, { key }); fireEvent.keyDown(window, { key: 'Enter' }); };
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.machines.mockResolvedValue({ candidates: ['DAD3350', 'DFD6362'], hasMore: false });
   mocks.candidates.mockResolvedValue([
     { partNumber: 'DFD1', partNumberKey: 'DFD1', partName: '現在の品名', hasManual: true },
     { partNumber: ' ｐａｒｔ－① ', partNumberKey: ' ｐａｒｔ－① ', partName: ' 主_軸 ', hasManual: false },
@@ -154,6 +156,7 @@ describe('reattach a draft to a part', () => {
     let resolve!: (rows: unknown[]) => void;
     mocks.candidates.mockImplementation(({ digitQuery }: { digitQuery: string }) => digitQuery === '1' ? new Promise(done => { resolve = done; }) : Promise.resolve([]));
     show();
+    fireEvent.click(dialog().getByRole('button', { name: '品番', exact: true }));
     const keys = within(dialog().getByRole('group', { name: '部品テンキー' }));
     fireEvent.click(keys.getByRole('button', { name: '1' }));
     expect(mocks.candidates).toHaveBeenLastCalledWith({ digitQuery: '1', q: '', limit: 30 });
@@ -163,6 +166,81 @@ describe('reattach a draft to a part', () => {
     expect(dialog().queryByRole('button', { name: 'STALE' })).not.toBeInTheDocument();
     fireEvent.click(keys.getByRole('button', { name: 'C' }));
     expect(mocks.candidates).toHaveBeenLastCalledWith({ digitQuery: '', q: '', limit: 30 });
+  });
+
+  it.each(['machine', 'chip'])('filters by machine, switches the tenkey to parts and clears via %s', async clear => {
+    show();
+    expect(dialog().getByRole('button', { name: '機種', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    expect(mocks.machines).toHaveBeenLastCalledWith({ digitQuery: '', limit: 40 });
+    const keys = within(dialog().getByRole('group', { name: '部品テンキー' }));
+    fireEvent.click(keys.getByRole('button', { name: '3' }));
+    expect(mocks.machines).toHaveBeenLastCalledWith({ digitQuery: '3', limit: 40 });
+    expect(mocks.candidates).toHaveBeenCalledExactlyOnceWith({ digitQuery: '', q: '', limit: 30 });
+    fireEvent.click(await dialog().findByRole('button', { name: 'DAD3350' }));
+    expect(mocks.candidates).toHaveBeenLastCalledWith({ machineName: 'DAD3350', digitQuery: '', q: '', limit: 200 });
+    expect(dialog().getByRole('button', { name: '品番', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    expect(dialog().getByLabelText('数字検索')).toHaveTextContent('品番の数字');
+    fireEvent.click(await dialog().findByRole('button', { name: 'PART-2' }));
+    fireEvent.click(keys.getByRole('button', { name: '2' }));
+    expect(mocks.candidates).toHaveBeenLastCalledWith({ machineName: 'DAD3350', digitQuery: '2', q: '', limit: 200 });
+    expect(dialog().getByRole('button', { name: '付け直す' })).toBeDisabled();
+    fireEvent.click(await dialog().findByRole('button', { name: clear === 'chip' ? '機種の絞り込みを外す' : 'DAD3350' }));
+    expect(mocks.candidates).toHaveBeenLastCalledWith({ digitQuery: '', q: '', limit: 30 });
+    expect(dialog().getByRole('button', { name: '機種', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    expect(dialog().getByLabelText('数字検索')).toHaveTextContent('機種の数字');
+    expect(dialog().queryByLabelText('機種の絞り込みを外す')).not.toBeInTheDocument();
+    await waitFor(() => expect(dialog().getByRole('button', { name: 'PART-2' })).toBeEnabled());
+    expect(dialog().queryByRole('button', { name: 'DFD1' })).not.toBeInTheDocument();
+  });
+
+  it('ignores stale machine responses and stale parts after clearing a machine', async () => {
+    let resolveMachines!: (result: { candidates: string[]; hasMore: boolean }) => void;
+    let resolveParts!: (rows: unknown[]) => void;
+    mocks.machines.mockImplementation(({ digitQuery }: { digitQuery: string }) => digitQuery === '1' ? new Promise(done => { resolveMachines = done; }) : Promise.resolve({ candidates: ['DAD3350'], hasMore: false }));
+    mocks.candidates.mockImplementation(({ machineName }: { machineName?: string }) => machineName ? new Promise(done => { resolveParts = done; }) : Promise.resolve([]));
+    show();
+    const keys = within(dialog().getByRole('group', { name: '部品テンキー' }));
+    fireEvent.click(keys.getByRole('button', { name: '1' }));
+    fireEvent.click(keys.getByRole('button', { name: '2' }));
+    await act(async () => resolveMachines({ candidates: ['STALE-MACHINE'], hasMore: true }));
+    expect(dialog().queryByRole('button', { name: 'STALE-MACHINE' })).not.toBeInTheDocument();
+    fireEvent.click(await dialog().findByRole('button', { name: 'DAD3350' }));
+    fireEvent.click(dialog().getByRole('button', { name: '機種の絞り込みを外す' }));
+    await act(async () => resolveParts([{ partNumber: 'STALE-PART', partNumberKey: 'STALE-PART', partName: null, hasManual: false }]));
+    expect(dialog().queryByRole('button', { name: 'STALE-PART' })).not.toBeInTheDocument();
+    expect(dialog().queryByText('数字を追加')).not.toBeInTheDocument();
+  });
+
+  it.each([30, 200])('shows short refinement hints at the %s part limit, before excluding the current part', async limit => {
+    mocks.machines.mockResolvedValue({ candidates: ['DAD3350'], hasMore: true });
+    mocks.candidates.mockResolvedValue(Array.from({ length: limit }, (_, i) => ({ partNumber: `PART-${i}`, partNumberKey: i === 0 ? 'DFD1' : `PART-${i}`, partName: '軸', hasManual: false })));
+    show();
+    if (limit === 200) fireEvent.click(await dialog().findByRole('button', { name: 'DAD3350' }));
+    const parts = within(dialog().getByRole('region', { name: '部品候補' }));
+    expect(await parts.findByText('数字を追加')).toBeInTheDocument();
+    expect(within(dialog().getByRole('region', { name: '機種候補' })).getByText('数字を追加')).toBeInTheDocument();
+    expect(parts.queryByRole('button', { name: 'DFD1' })).not.toBeInTheDocument();
+  });
+
+  it('clears a selected machine when scanning and ignores the pending machine part response', async () => {
+    let resolve!: (rows: unknown[]) => void;
+    mocks.candidates.mockImplementation(({ machineName }: { machineName?: string }) => machineName ? new Promise(done => { resolve = done; }) : Promise.resolve([]));
+    show();
+    fireEvent.click(await dialog().findByRole('button', { name: 'DAD3350' }));
+    fireEvent.click(dialog().getByRole('button', { name: '移動票をスキャン' })); scan('PART-9');
+    await waitFor(() => expect(mocks.candidates).toHaveBeenLastCalledWith({ digitQuery: '', q: 'PART-9', limit: 30 }));
+    expect(dialog().queryByLabelText('機種の絞り込みを外す')).not.toBeInTheDocument();
+    await act(async () => resolve([{ partNumber: 'PART-9', partNumberKey: 'PART-9', partName: '古い品名', hasManual: false }]));
+    expect(dialog().getByLabelText('名前のプレビュー')).toHaveTextContent('PART-9_加工_研削');
+    expect(dialog().queryByText('古い品名')).not.toBeInTheDocument();
+    expect(dialog().getByRole('button', { name: '付け直す' })).toBeEnabled();
+  });
+
+  it('reports machine search errors next to the machine list', async () => {
+    mocks.machines.mockRejectedValue(new Error('機種を検索できません'));
+    show();
+    expect(await within(dialog().getByRole('region', { name: '機種候補' })).findByRole('alert')).toHaveTextContent('機種を検索できません');
+    expect(await dialog().findByRole('button', { name: 'PART-2' })).toBeEnabled();
   });
 
   it.each([true, false])('selects a normalized scan and looks up its name (known=%s)', async known => {
