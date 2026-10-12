@@ -110,6 +110,21 @@ the Pi5 afterwards.
   `x-client-key`. No route, authorization, DGX or environment change is required.
   This is a source-level authorization check, not live terminal acceptance.
 
+## Rollout record (2026-10-12)
+
+| PR | Change | Merge SHA | Pi5 run ID | Rollback floor |
+| --- | --- | --- | --- | --- |
+| #1951 | 20-second rewrite limit, silence phrases ignored | `1b55c8432a669273c5e05b8a071ffa49602569c6` | `20261012-094931-e7d310` | `9d1593830c2c6f87e7decf5eaa6eafb557ab4f39` |
+| #1952 | "AI 未起動" badge on in-house LLM actions | `e8e2adea61680963d3b76553521b313f6972bb42` | `20261012-102423-e472bf` | `1b55c8432a669273c5e05b8a071ffa49602569c6` |
+| #1953 | Seiban voice entry on both boards | `7819f97d86bf4960e8d38bb57a7112b13481766f` | `20261012-105011-7d9b1a` | `e8e2adea61680963d3b76553521b313f6972bb42` |
+
+- Each run ended with Result=success and recap failed=0; after each, the Pi5
+  HEAD and api/web images matched the merge SHA, the api was healthy and `/`,
+  `/admin`, `/kiosk` and `/api/system/health` returned 200.
+- Not yet verified on a device: the rewrite limit and silence handling, the
+  badge following the real in-house LLM state, the seiban microphone layout on
+  both boards, and recognition accuracy for spoken digits.
+
 ## Consequences
 
 - whisper-server must be started with `--convert` and ffmpeg must be installed
