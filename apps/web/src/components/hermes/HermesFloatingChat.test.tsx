@@ -4,6 +4,8 @@ import { useEffect } from 'react';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useLocalLlmAvailability } from '../../api/hooks/local-llm';
+
 const mocks = vi.hoisted(() => ({
   clientKey: 'client-key-test',
   poster: { tagUid: 'tag-1', name: '田中' },
@@ -254,7 +256,20 @@ function consultationResponse(
 }
 
 describe('HermesFloatingChat', () => {
+  it('shows an AI badge and still opens chat when unavailable', async () => {
+    vi.mocked(useLocalLlmAvailability).mockReturnValue({ unavailable: true });
+    renderChat();
+    const button = screen.getByRole('button', { name: /業務Hermesチャットを開く/ });
+    expect(button).toHaveAccessibleDescription('AI 未起動');
+    expect(button).toHaveTextContent('!');
+    expect(button).not.toHaveAttribute('title');
+    fireEvent.click(button);
+    expect(await screen.findByTestId('hermes-panel')).toBeInTheDocument();
+    expect(button).toHaveAttribute('aria-expanded', 'true');
+  });
+
   beforeEach(() => {
+    vi.mocked(useLocalLlmAvailability).mockReturnValue({ unavailable: false });
     mocks.clientKey = 'client-key-test';
     mocks.inquirySummary.mockReset().mockResolvedValue({ isReceiver: false, unreadCount: 0 });
     mocks.inquiryList.mockReset().mockResolvedValue({ threads: [] });
@@ -1387,3 +1402,5 @@ describe('HermesFloatingChat', () => {
     await waitFor(() => expect(screen.queryByText('旧identityの詳細')).not.toBeInTheDocument());
   });
 });
+
+vi.mock('../../api/hooks/local-llm', () => ({ useLocalLlmAvailability: vi.fn(() => ({ unavailable: false })) }));
