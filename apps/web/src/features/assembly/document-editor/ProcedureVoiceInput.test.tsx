@@ -2,14 +2,16 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { rewriteAssemblyProcedureDictation } from '../../../api/domains/assembly';
+import { getAssemblyProcedureSpeechToTextAvailability, rewriteAssemblyProcedureDictation, transcribeAssemblyProcedureDictation } from '../../../api/domains/assembly';
 
 import { AssemblyProcedureDocumentEditorInspector } from './AssemblyProcedureDocumentEditorInspector';
 import { PROCEDURE_WHISPER_BASE_URL } from './useProcedureVoiceInput';
 
 import type { OverlayTextElement } from '@raspi-system/shared-types';
 
-vi.mock('../../../api/domains/assembly', () => ({ rewriteAssemblyProcedureDictation: vi.fn() }));
+vi.mock('../../../api/domains/assembly', () => ({ rewriteAssemblyProcedureDictation: vi.fn(), getAssemblyProcedureSpeechToTextAvailability: vi.fn(), transcribeAssemblyProcedureDictation: vi.fn() }));
+const availability = vi.mocked(getAssemblyProcedureSpeechToTextAvailability);
+const transcribe = vi.mocked(transcribeAssemblyProcedureDictation);
 const rewrite = vi.mocked(rewriteAssemblyProcedureDictation);
 const stopTrack = vi.fn();
 const stream = { getTracks: () => [{ stop: stopTrack }] } as unknown as MediaStream;
@@ -17,16 +19,19 @@ const getUserMedia = vi.fn();
 const stt = vi.fn();
 class FakeRecorder {
   static last: FakeRecorder;
+  static isTypeSupported = vi.fn().mockReturnValue(true);
+  static audioSize = 5;
+  options?: MediaRecorderOptions;
   state = 'inactive';
   mimeType = 'audio/webm';
   ondataavailable: ((event: { data: Blob }) => void) | null = null;
   onstop: (() => void) | null = null;
   onerror: (() => void) | null = null;
-  constructor() { FakeRecorder.last = this; }
+  constructor(_stream: MediaStream, options?: MediaRecorderOptions) { FakeRecorder.last = this; this.options = options; }
   start() { this.state = 'recording'; }
   stop() {
     this.state = 'inactive';
-    this.ondataavailable?.({ data: new Blob(['audio'], { type: this.mimeType }) });
+    this.ondataavailable?.({ data: new Blob([new Uint8Array(FakeRecorder.audioSize)], { type: this.mimeType }) });
     this.onstop?.();
   }
 }
@@ -44,6 +49,8 @@ async function record(label: string) {
 }
 beforeEach(() => {
   vi.clearAllMocks();
+  FakeRecorder.audioSize = 5; FakeRecorder.isTypeSupported.mockReturnValue(true);
+  availability.mockResolvedValue(false); transcribe.mockReset().mockResolvedValue({ text: '棚' });
   getUserMedia.mockResolvedValue(stream);
   stt.mockResolvedValue({ ok: true, json: async () => ({ text: '  えーと、棚に直す  ' }) });
   rewrite.mockResolvedValue({ text: '棚に戻す。' });
@@ -209,5 +216,87 @@ describe('procedure voice input', () => {
     await act(async () => vi.advanceTimersByTime(60000));
     expect(FakeRecorder.last.state).toBe('inactive'); expect(stopTrack).toHaveBeenCalled();
     expect(screen.getByRole('textbox')).toHaveValue('棚に戻す。');
+  });
+});
+
+
+const busy = (retryAfter?: string) => ({ isAxiosError: true, response: { status: 429, headers: { 'retry-after': retryAfter } } });
+describe('procedure voice input API relay', () => {
+  it('uses the API when available and starts recording while availability is pending', async () => {
+    let resolve!: (value: boolean) => void;
+    availability.mockReturnValue(new Promise(done => { resolve = done; }));
+    render(<Harness />); await record('話す');
+    expect(availability).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal));
+    expect(transcribe).not.toHaveBeenCalled();
+    await act(async () => resolve(true));
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue('棚に戻す。'));
+    expect(transcribe).toHaveBeenCalledExactlyOnceWith(expect.any(Blob), expect.any(AbortSignal));
+    expect(stt).not.toHaveBeenCalled();
+  });
+  it.each(['unavailable', 'failed'])('uses the unchanged device request when availability is %s', async reason => {
+    if (reason === 'failed') availability.mockRejectedValue(new Error('offline'));
+    render(<Harness />); await record('話す');
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue('棚に戻す。'));
+    expect(transcribe).not.toHaveBeenCalled();
+    const body = stt.mock.calls[0][1].body as FormData;
+    expect([...body.keys()]).toEqual(['file', 'response_format', 'language', 'temperature']);
+    expect((body.get('file') as File).name).toBe('dictation.webm');
+    expect(body.get('response_format')).toBe('json'); expect(body.get('language')).toBe('ja'); expect(body.get('temperature')).toBe('0');
+  });
+  it.each([true, false])('sets the bitrate and supported Opus mime (%s)', async supported => {
+    FakeRecorder.isTypeSupported.mockReturnValue(supported);
+    render(<Harness />); await record('話す');
+    expect(FakeRecorder.isTypeSupported).toHaveBeenCalledWith('audio/webm;codecs=opus');
+    expect(FakeRecorder.last.options).toEqual({ audioBitsPerSecond: 64000, ...(supported ? { mimeType: 'audio/webm;codecs=opus' } : {}) });
+    await screen.findByRole('button', { name: '戻す', exact: true });
+  });
+  it('rejects oversized audio before calling the API', async () => {
+    availability.mockResolvedValue(true); FakeRecorder.audioSize = 2_000_001;
+    render(<Harness />); await record('話す');
+    expect(await screen.findByRole('alert')).toHaveTextContent('長すぎます');
+    expect(transcribe).not.toHaveBeenCalled(); expect(stt).not.toHaveBeenCalled(); expect(rewrite).not.toHaveBeenCalled();
+  });
+  it.each(['network', 'status'])('shows the existing message for API %s errors', async reason => {
+    availability.mockResolvedValue(true);
+    transcribe.mockRejectedValue(reason === 'network' ? new Error('network') : { isAxiosError: true, response: { status: 503 } });
+    render(<Harness />); await record('話す');
+    expect(await screen.findByRole('alert')).toHaveTextContent('音声認識が動いていません');
+    expect(stt).not.toHaveBeenCalled();
+  });
+  it.each([['3', 3], [undefined, 2], ['99', 5], ['bad', 2], ['0', 2]])('retries once after Retry-After %s then succeeds', async (header, seconds) => {
+    vi.useFakeTimers(); availability.mockResolvedValue(true); transcribe.mockRejectedValueOnce(busy(header));
+    render(<Harness />);
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '話す' })));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '止める' })));
+    expect(transcribe).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTimeAsync(Number(seconds) * 1000 - 1));
+    expect(transcribe).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(transcribe).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('textbox')).toHaveValue('棚に戻す。');
+    expect(stt).not.toHaveBeenCalled();
+  });
+  it('shows 混んでいます after two 429 responses', async () => {
+    vi.useFakeTimers(); availability.mockResolvedValue(true); transcribe.mockRejectedValue(busy());
+    render(<Harness />);
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '話す' })));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '止める' })));
+    await act(async () => vi.advanceTimersByTimeAsync(2000));
+    expect(transcribe).toHaveBeenCalledTimes(2); expect(screen.getByRole('alert')).toHaveTextContent('混んでいます');
+    expect(rewrite).not.toHaveBeenCalled();
+  });
+  it.each(['selection', 'unmount', 'edit'])('cancels the retry wait on %s', async action => {
+    vi.useFakeTimers(); availability.mockResolvedValue(true); transcribe.mockRejectedValueOnce(busy());
+    const onUpdate = vi.fn(); const view = render(<Harness onUpdate={onUpdate} />);
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '話す' })));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '止める' })));
+    expect(transcribe).toHaveBeenCalledTimes(1);
+    if (action === 'unmount') view.unmount();
+    else if (action === 'selection') fireEvent.click(screen.getByRole('button', { name: '選択を変える' }));
+    else fireEvent.change(screen.getByRole('textbox'), { target: { value: '手入力' } });
+    expect(transcribe.mock.calls[0][1].aborted).toBe(true);
+    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    expect(transcribe).toHaveBeenCalledTimes(1); expect(onUpdate).toHaveBeenCalledTimes(action === 'edit' ? 1 : 0);
+    expect(rewrite).not.toHaveBeenCalled();
   });
 });

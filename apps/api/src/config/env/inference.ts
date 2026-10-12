@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
 export const inferenceEnvShape = {
+  PROCEDURE_SPEECH_TO_TEXT_ENABLED: z
+    .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false']).default('false'))
+    .transform((v) => v === 'true'),
   /**
    * 推論プロバイダ配列（JSON）。未設定時は LOCAL_LLM_* から id=default を1件合成。
    * 例:
