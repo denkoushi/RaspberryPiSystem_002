@@ -17,7 +17,14 @@ export async function mfaInitiate(): Promise<MfaInitiateResponse> {
   return data;
 }
 
-export async function mfaActivate(body: { secret: string; code: string; backupCodes: string[] }): Promise<MfaActivateResponse> {
+export async function mfaActivate(body: {
+  password: string;
+  currentCode?: string;
+  currentBackupCode?: string;
+  secret: string;
+  code: string;
+  backupCodes: string[];
+}): Promise<MfaActivateResponse> {
   const { data } = await api.post<MfaActivateResponse>('/auth/mfa/activate', body);
   return data;
 }

@@ -1,6 +1,8 @@
+import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useState } from 'react';
 
 import { getRoleAuditLogs, mfaActivate, mfaDisable, mfaInitiate } from '../../api/client';
+import { getApiErrorMessage } from '../../api/errors';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useAuth } from '../../contexts/AuthContext';
@@ -18,6 +20,9 @@ export function SecurityPage() {
   const [otpauthUrl, setOtpauthUrl] = useState<string | null>(null);
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
   const [codeInput, setCodeInput] = useState('');
+  const [activatePassword, setActivatePassword] = useState('');
+  const [currentCode, setCurrentCode] = useState('');
+  const [currentBackupCode, setCurrentBackupCode] = useState('');
   const [disablePassword, setDisablePassword] = useState('');
 
   const [auditLogs, setAuditLogs] = useState<RoleAuditLog[]>([]);
@@ -48,6 +53,10 @@ export function SecurityPage() {
       setMfaSecret(res.secret);
       setOtpauthUrl(res.otpauthUrl);
       setBackupCodes(res.backupCodes);
+      setCodeInput('');
+      setActivatePassword('');
+      setCurrentCode('');
+      setCurrentBackupCode('');
       setStatus({ message: 'MFAのセットアップ情報を生成しました。認証アプリに登録してください。', tone: 'info' });
     } catch (error) {
       setStatus({ message: 'MFAセットアップの初期化に失敗しました', tone: 'error' });
@@ -65,14 +74,31 @@ export function SecurityPage() {
       setStatus({ message: '6桁のコードを入力してください', tone: 'error' });
       return;
     }
+    if (!activatePassword) {
+      setStatus({ message: 'パスワードを入力してください', tone: 'error' });
+      return;
+    }
     setLoading(true);
     try {
-      const res = await mfaActivate({ secret: mfaSecret, code: codeInput, backupCodes });
+      const res = await mfaActivate({
+        secret: mfaSecret, code: codeInput, backupCodes, password: activatePassword,
+        ...(user?.mfaEnabled ? {
+          currentCode: currentCode || undefined,
+          currentBackupCode: currentBackupCode || undefined
+        } : {})
+      });
       updateSession(res);
       setBackupCodes(res.backupCodes);
+      setActivatePassword('');
+      setCurrentCode('');
+      setCurrentBackupCode('');
       setStatus({ message: 'MFAを有効化しました。バックアップコードを安全な場所に保管してください。', tone: 'success' });
     } catch (error) {
-      setStatus({ message: 'MFAの有効化に失敗しました。コードを確認してください。', tone: 'error' });
+      const fallback = 'MFAの有効化に失敗しました。コードを確認してください。';
+      setStatus({
+        message: isAxiosError(error) && error.response?.status === 401 ? getApiErrorMessage(error, fallback) : fallback,
+        tone: 'error'
+      });
     } finally {
       setLoading(false);
     }
@@ -144,6 +170,39 @@ export function SecurityPage() {
               )}
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-semibold text-slate-700">
+                  MFA設定の確認用パスワード
+                  <Input
+                    type="password"
+                    autoComplete="current-password"
+                    value={activatePassword}
+                    onChange={(e) => setActivatePassword(e.target.value)}
+                    placeholder="ログインパスワード"
+                  />
+                </label>
+                {user?.mfaEnabled && (
+                  <>
+                    <p>再設定には、現在の認証アプリのコードまたはバックアップコードが必要です。</p>
+                    <label className="text-sm font-semibold text-slate-700">
+                      現在のMFAコード
+                      <Input
+                        value={currentCode}
+                        onChange={(e) => setCurrentCode(e.target.value)}
+                        placeholder="現在の6桁コード"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                      />
+                    </label>
+                    <label className="text-sm font-semibold text-slate-700">
+                      現在のバックアップコード（MFAコードの代わりに使用）
+                      <Input
+                        value={currentBackupCode}
+                        onChange={(e) => setCurrentBackupCode(e.target.value)}
+                        placeholder="現在のバックアップコード"
+                      />
+                    </label>
+                  </>
+                )}
+                <label className="text-sm font-semibold text-slate-700">
                   認証アプリに表示された6桁コード
                   <Input
                     value={codeInput}
@@ -178,6 +237,19 @@ export function SecurityPage() {
               </Button>
             </div>
           )}
+          {status ? (
+            <div
+              className={`rounded-xl p-3 text-sm ${
+                status.tone === 'error'
+                  ? 'bg-red-900/50 text-red-200'
+                  : status.tone === 'success'
+                  ? 'bg-emerald-900/40 text-emerald-200'
+                  : 'bg-slate-800 text-white'
+              }`}
+            >
+              {status.message}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -220,20 +292,6 @@ export function SecurityPage() {
           </table>
         </div>
       </div>
-
-      {status ? (
-        <div
-          className={`rounded-xl p-3 text-sm ${
-            status.tone === 'error'
-              ? 'bg-red-900/50 text-red-200'
-              : status.tone === 'success'
-              ? 'bg-emerald-900/40 text-emerald-200'
-              : 'bg-slate-800 text-white'
-          }`}
-        >
-          {status.message}
-        </div>
-      ) : null}
     </div>
   );
 }
