@@ -1,9 +1,11 @@
+import { AiUnavailableBadge } from '../../../components/ui/AiUnavailableBadge';
 import { IconTooltipBubble, useIconTooltip } from '../../../components/ui/IconActionTooltip';
 
 import type { ReactNode } from 'react';
 
 type Props = {
   label: string;
+  aiUnavailable?: boolean;
   icon: ReactNode;
   onClick: () => void;
   disabled?: boolean;
@@ -14,9 +16,9 @@ type Props = {
   target?: string;
 };
 
-export function EditorIconButton({ label, icon, onClick, disabled, pressed, className, badge, tipSide, target }: Props) {
+export function EditorIconButton({ label, icon, onClick, disabled, pressed, className, badge, tipSide, target, aiUnavailable }: Props) {
   const { tipVisible, tipPosition, positionTip, releaseTip, onPointerDown } = useIconTooltip(tipSide, disabled);
-  return <button
+  return <AiUnavailableBadge unavailable={aiUnavailable} positioned><button
     type="button"
     aria-label={label}
     aria-pressed={pressed}
@@ -34,6 +36,6 @@ export function EditorIconButton({ label, icon, onClick, disabled, pressed, clas
   >
     <svg aria-hidden="true" className="h-[26px] w-[26px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">{icon}</svg>
     {badge != null && badge > 0 ? <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-[#f6b93b] px-1 text-[13px] font-black text-[#0b1a12]">{badge}</span> : null}
-    <IconTooltipBubble label={label} tipSide={tipSide} tipPosition={tipPosition} />
-  </button>;
+    {!aiUnavailable ? <IconTooltipBubble label={label} tipSide={tipSide} tipPosition={tipPosition} /> : null}
+  </button></AiUnavailableBadge>;
 }

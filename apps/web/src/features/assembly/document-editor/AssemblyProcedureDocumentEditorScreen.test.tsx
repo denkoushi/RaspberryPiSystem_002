@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useLocalLlmAvailability } from '../../../api/hooks/local-llm';
+
 import { AssemblyProcedureDocumentEditorProvider } from './AssemblyProcedureDocumentEditorContext';
 import { AssemblyProcedureDocumentEditorScreen } from './AssemblyProcedureDocumentEditorScreen';
 
@@ -158,7 +160,24 @@ function renderScreen(controller: AssemblyProcedureDocumentEditorController, onN
 }
 
 describe('AssemblyProcedureDocumentEditorScreen', () => {
-  beforeEach(() => { localStorage.clear(); approvalMocks.read = null; approvalMocks.resolve.mockReset(); });
+  it('shows one AI tooltip on 整える and still requests a layout', () => {
+    vi.mocked(useLocalLlmAvailability).mockReturnValue({ unavailable: true });
+    const c = makeController();
+    c.layoutSuggestions.canSuggest = true;
+    renderScreen(c);
+    const button = screen.getByRole('button', { name: '整える', exact: true });
+    expect(button).toHaveAccessibleDescription('AI 未起動');
+    expect(button).toHaveTextContent('!');
+    fireEvent.pointerEnter(button);
+    expect(screen.getAllByRole('tooltip').filter(tip => tip.textContent === 'AI 未起動')).toHaveLength(1);
+    expect(screen.queryByRole('tooltip', { name: '整える' })).not.toBeInTheDocument();
+    fireEvent.click(button);
+    expect(c.layoutSuggestions.start).toHaveBeenCalledOnce();
+    expect(screen.getByRole('button', { name: '音声入力', exact: true })).not.toHaveAccessibleDescription('AI 未起動');
+  });
+
+  beforeEach(() => {
+    vi.mocked(useLocalLlmAvailability).mockReturnValue({ unavailable: false }); localStorage.clear(); approvalMocks.read = null; approvalMocks.resolve.mockReset(); });
   it('closes and reopens the parts pane and persists its state', () => {
     const view = renderScreen(makeController());
     expect(screen.getByRole('listbox', { name: 'このページの部品' })).toBeInTheDocument();
@@ -610,3 +629,5 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     await waitFor(() => expect(takeoverEditLease).toHaveBeenCalledOnce());
   });
 });
+
+vi.mock('../../../api/hooks/local-llm', () => ({ useLocalLlmAvailability: vi.fn(() => ({ unavailable: false })) }));

@@ -67,13 +67,13 @@ export function IconTooltipBubble({ label, tipSide, tipPosition, floating }: Bub
 
 // The wrapper receives pointer events even for disabled buttons/links; the
 // bubble lives outside table overflow so the first row remains readable.
-export function IconActionTooltip({ label, disabled, children }: { label: string; disabled?: boolean; children: ReactNode }) {
+export function IconActionTooltip({ label, disabled, children, displayContents = false }: { label: string; disabled?: boolean; children: ReactNode; displayContents?: boolean }) {
   const tip = useIconTooltip('top');
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const [floating, setFloating] = useState<BubbleProps['floating']>();
   const position = (element: HTMLElement) => {
-    const rect = element.getBoundingClientRect();
+    const rect = (displayContents ? element.firstElementChild ?? element : element).getBoundingClientRect();
     const below = rect.top < 54;
     setFloating({ left: rect.left + rect.width / 2, top: below ? rect.bottom + 6 : rect.top - 46, below });
   };
@@ -83,7 +83,7 @@ export function IconActionTooltip({ label, disabled, children }: { label: string
     window.addEventListener('resize', hide);
     return () => { window.removeEventListener('scroll', hide, true); window.removeEventListener('resize', hide); };
   });
-  return <span className="inline-flex shrink-0 [&>button:disabled]:pointer-events-none" tabIndex={disabled ? 0 : undefined}
+  return <span className={displayContents ? 'contents' : 'inline-flex shrink-0 [&>button:disabled]:pointer-events-none'} tabIndex={disabled ? 0 : undefined}
     onPointerEnter={event => { position(event.currentTarget); setHovered(window.matchMedia?.('(hover: hover)').matches ?? true); }}
     onPointerLeave={() => { setHovered(false); tip.releaseTip(); }}
     onFocus={event => { position(event.currentTarget); setFocused(event.target.matches(':focus-visible')); }}

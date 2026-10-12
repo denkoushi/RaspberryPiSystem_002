@@ -1,3 +1,5 @@
+import { useLocalLlmAvailability } from '../../../api/hooks/local-llm';
+
 import { EditorIconButton } from './EditorIconButton';
 
 import type { AssemblyProcedureDocumentEditorController } from './useAssemblyProcedureDocumentEditorController';
@@ -33,8 +35,9 @@ export function AssemblyProcedureDocumentEditorCanvasToolbar({ controller: c, wo
   onDelete: () => void;
   onDiscard: () => void;
 }) {
+  const { unavailable } = useLocalLlmAvailability();
   const disabled = c.readOnly || c.busy;
-  const button = (label: string, icon: string, onClick: () => void, options: { disabled?: boolean; pressed?: boolean; color?: string; target?: string; badge?: number | null } = {}) => <EditorIconButton key={icon} label={label} icon={icons[icon]} onClick={onClick} disabled={options.disabled} pressed={options.pressed} target={options.target} badge={options.badge} className={options.color} tipSide="left" />;
+  const button = (label: string, icon: string, onClick: () => void, options: { disabled?: boolean; pressed?: boolean; color?: string; target?: string; badge?: number | null } = {}) => <EditorIconButton key={icon} aiUnavailable={icon === 'layout' && unavailable} label={label} icon={icons[icon]} onClick={onClick} disabled={options.disabled} pressed={options.pressed} target={options.target} badge={options.badge} className={options.color} tipSide="left" />;
   const separator = <span aria-hidden="true" className="my-1 h-px w-9 shrink-0 bg-[#344252]" />;
   return <nav aria-label="エディタ操作" className="flex min-h-0 flex-col items-center gap-2 overflow-y-auto border-l border-[#27313b] bg-[#161c22] pb-[84px] pt-2.5">
     {button('保存する', 'save', () => void c.save(), { disabled: disabled || !c.canSave, color: '!border-[#3ba776] !bg-[#3ba776] !text-[#0b1a12]', target: 'assembly-document-editor-save' })}

@@ -341,6 +341,10 @@ async function mockAssemblyApis(
       await route.fulfill({ json: { isReceiver: false, unreadCount: 0 } });
       return;
     }
+    if (path === '/api/system/local-llm/availability') {
+      await route.fulfill({ json: { available: true } });
+      return;
+    }
     if (path === '/api/kiosk/config') {
       await route.fulfill({ json: { kioskInitialRoute: 'assembly', navTabOrder: [] } });
       return;

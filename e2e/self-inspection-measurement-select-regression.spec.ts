@@ -138,6 +138,10 @@ async function installApiMocks(page: import('@playwright/test').Page) {
       await route.fulfill({ json: { isReceiver: false, unreadCount: 0 } });
       return;
     }
+    if (path === '/api/system/local-llm/availability') {
+      await route.fulfill({ json: { available: true } });
+      return;
+    }
     if (path === '/api/kiosk/config') {
       await route.fulfill({
         json: {

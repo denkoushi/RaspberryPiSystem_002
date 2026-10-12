@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getAssemblyProcedureSpeechToTextAvailability, rewriteAssemblyProcedureDictation, transcribeAssemblyProcedureDictation } from '../../../api/domains/assembly';
+import { useLocalLlmAvailability } from '../../../api/hooks/local-llm';
 
 import { AssemblyProcedureDocumentEditorInspector } from './AssemblyProcedureDocumentEditorInspector';
 import { PROCEDURE_DICTATION_REWRITE_TIMEOUT_MS, PROCEDURE_WHISPER_BASE_URL } from './useProcedureVoiceInput';
@@ -48,6 +49,7 @@ async function record(label: string) {
   fireEvent.click(screen.getByRole('button', { name: '止める' }));
 }
 beforeEach(() => {
+    vi.mocked(useLocalLlmAvailability).mockReturnValue({ unavailable: false });
   vi.clearAllMocks();
   FakeRecorder.audioSize = 5; FakeRecorder.isTypeSupported.mockReturnValue(true);
   availability.mockResolvedValue(false); transcribe.mockReset().mockResolvedValue({ text: '棚' });
@@ -61,6 +63,21 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('procedure voice input', () => {
+  it.each([['話す', ''], ['続き', '既存。'], ['直す', '既存。']])('keeps %s clickable with an unavailable badge', async (label, text) => {
+    vi.mocked(useLocalLlmAvailability).mockReturnValue({ unavailable: true });
+    const onUpdate = vi.fn();
+    render(<Harness text={text} onUpdate={onUpdate} />);
+    const button = screen.getByRole('button', { name: label, exact: true });
+    expect(button).toHaveAccessibleDescription('AI 未起動');
+    expect(button).toHaveTextContent('!');
+    fireEvent.click(button);
+    await waitFor(() => expect(FakeRecorder.last.state).toBe('recording'));
+    expect(screen.getByRole('button', { name: '止める' })).not.toHaveAccessibleDescription('AI 未起動');
+    fireEvent.click(screen.getByRole('button', { name: '止める' }));
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledOnce());
+    expect(screen.getByRole('button', { name: '戻す', exact: true })).not.toHaveAccessibleDescription('AI 未起動');
+  });
+
   it('does nothing while off', () => {
     render(<Harness enabled={false} />);
     expect(screen.queryByRole('button', { name: '話す' })).not.toBeInTheDocument();
@@ -319,3 +336,5 @@ describe('procedure voice input API relay', () => {
     expect(rewrite).not.toHaveBeenCalled();
   });
 });
+
+vi.mock('../../../api/hooks/local-llm', () => ({ useLocalLlmAvailability: vi.fn(() => ({ unavailable: false })) }));
