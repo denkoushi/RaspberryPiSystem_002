@@ -30,6 +30,8 @@ export function registerLocalLlmRoutes(app: FastifyInstance): void {
     preHandler: async (request, reply) => {
       await authorizeKioskClientKeyOrJwtRoles(request, reply, ['ADMIN', 'MANAGER', 'VIEWER']);
     },
+    // Each open screen polls twice a minute; this leaves room for many tabs behind one address.
+    config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
   }, async () => {
     if (cachedAvailability && Date.now() < cachedAvailability.expiresAt) {
       return { available: cachedAvailability.available };
