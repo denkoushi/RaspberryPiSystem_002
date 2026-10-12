@@ -14,9 +14,9 @@ history. Some kiosks have no microphone.
 
 ## Decision
 
-1. Speech recognition runs on each device using whisper.cpp `whisper-server` at
-   `http://127.0.0.1:8178/inference`. The browser records at most 60 seconds and
-   sends audio only to this loopback endpoint. Audio never leaves the device.
+1. Speech recognition follows the relay/fallback decision below. The browser
+   records at most 60 seconds; audio stays on the plant network when relayed,
+   or on the device when using whisper.cpp at `http://127.0.0.1:8178/inference`.
 2. Only recognized text is sent to
    `POST /assembly/procedure-documents/dictation/rewrite`. It uses the existing
    layout-suggestion inference path: the text completion port from
@@ -40,8 +40,8 @@ history. Some kiosks have no microphone.
 
 ## Alternatives
 
-- Central speech recognition would require sending device audio over the
-  network and is outside this decision.
+- Central recognition was initially deferred; the Pi5 measurement below
+  led to the plant GPU relay decision.
 - A new inference use case or provider would expand configuration scope; the
   existing layout-suggestion completion path already serves procedure editing.
 
@@ -74,22 +74,23 @@ The same turbo model on the Mac answers in about 7 s. The Pi5 is rejected as
 the recognition host for kiosks. The bench folder and image were removed from
 the Pi5 afterwards.
 
-## Direction for kiosks (2026-10-12, not yet implemented)
+## Direction for kiosks (2026-10-12, implemented behind a flag)
 
-- Recognition for kiosk terminals runs on the plant GPU host. The kiosk
-  browser records from a USB microphone and uploads audio to the Pi5 API;
-  the API forwards it to the GPU host over the existing business path
-  (`:38081`, existing business principal). Audio stays on the plant network.
-- The GPU host side belongs to `denkoushi/DGXSparkControlPlane` and goes
-  first, as a backward-compatible addition with its own ExecPlan, branch and
-  PR. The closest precedent is the business text-embedding endpoint: opt-in,
-  its own unit on loopback, served before inference admission and outside the
-  heavy-compute lease.
-- Open on the GPU host: CPU or GPU for whisper (coexistence with the business
-  LLM pool on unified memory is unproven), latency on that host, and upload
-  size limits through the proxy and gateway.
-- The kiosk screen keeps the approved buttons (話す / 続き / 直す / 戻す). Only
-  the recognition endpoint differs per device.
+- `PROCEDURE_SPEECH_TO_TEXT_ENABLED` defaults to off. With it on and the host
+  healthy, every terminal including the Mac sends audio through the Pi5 API
+  to the plant GPU host: audio stays on the plant network. The API uses the
+  existing `business_hermes` provider origin and business principal, without
+  acquiring an LLM runtime lease. The GPU contract belongs to
+  `denkoushi/DGXSparkControlPlane` and is already deployed.
+- Otherwise (including a failed availability check), terminals fall back to
+  the existing on-device whisper server. Recognition failures after choosing
+  the relay are shown inline; busy responses retry once.
+- Recording limits: 60 seconds, 2,000,000 audio bytes for the relay, 64 kbit/s.
+  WebM/Opus is preferred when supported. Audio is buffered in memory only;
+  audio, filenames and transcripts are never stored or logged by the relay.
+  Existing explicit document saving remains authoritative.
+- Live acceptance is not yet done: real kiosk microphone, Firefox/Ogg
+  recording, and proxy body limits. Buttons and layout are unchanged.
 
 ## Consequences
 
