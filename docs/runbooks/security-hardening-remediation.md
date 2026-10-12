@@ -98,6 +98,17 @@ The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #9
 - Action: accept keys via header only (drop `?key=`/`?clientKey=` in signage/webrtc + kiosk URL); require auth (or localhost) on `/system/metrics` and internal backup health.
 - Risk: signage/webrtc/kiosk bootstrapping may rely on the query param — migrate to header/localStorage first.
 
+## C-10. TalkPlaza vault files tracked in plaintext (Critical)
+
+- Finding (2026-10-12 audit, [security-audit-2026-10-12.md](../security/security-audit-2026-10-12.md)): `infrastructure/ansible/host_vars/talkplaza-{pi5,pi4,signage01}/vault.yml` were committed **unencrypted** to the public repository from `0fd82a2f` (2026-01-14). They hold the TalkPlaza API JWT access/refresh secrets and the per-device `x-client-key` for `talkplaza-pi5-server`, `talkplaza-pi4-kiosk01` (shared by status-agent and NFC agent) and `talkplaza-signage01` (shared by status-agent and signage). Slack/Dropbox entries were empty. All seven values are **leaked**; they stay readable in git history even after this fix, so rotation is the remedy, not history rewriting.
+- Repository fix (branch `fix/talkplaza-vault-encrypt-rotate`): regenerate every value and encrypt the three files with `ansible-vault` via `scripts/security/rotate-talkplaza-vault.sh`; add `vault.yml.example` placeholders; remove the seven TalkPlaza `allowedPlaintext` entries from `security/production-secret-baseline.json` so CI fails closed if a plaintext vault reappears.
+- Host rollout (one device at a time, after the branch is merged):
+  1. On talkplaza-pi5, back up the DB, then rotate the three `ClientDevice` rows with `scripts/security/rotate-client-key.sh <ClientDevice UUID>` (`OLD_CLIENT_KEY` = the leaked value from git history, `NEW_CLIENT_KEY` = `ansible-vault view` of the new file). Order: pi5 server row, signage row, kiosk row.
+  2. Standard release to talkplaza-pi5 with `-i infrastructure/ansible/inventory-talkplaza.yml`. The API picks up the new JWT secrets; every signed-in session is invalidated and users must log in again.
+  3. Standard release to talkplaza-signage01, then talkplaza-pi4 (kiosk URL embeds the client key, so the kiosk browser restarts).
+- Risk: between the DB rotation and each terminal's release, that terminal's status-agent/NFC/signage calls return 401. Keep the window short and do it outside production hours.
+- Verify: old client keys return 401 on `/api/clients/status`; new keys succeed; kiosk borrow/return flow and signage display work; admin login works with a fresh session; `python3 scripts/ci/validate_production_secret_structure.py` passes on main.
+
 ## Verification checklist (per item)
 
 1. Backup relevant secret/config/DB.
