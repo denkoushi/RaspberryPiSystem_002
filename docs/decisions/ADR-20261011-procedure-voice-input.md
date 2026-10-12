@@ -92,6 +92,24 @@ the Pi5 afterwards.
 - Live acceptance is not yet done: real kiosk microphone, Firefox/Ogg
   recording, and proxy body limits. Buttons and layout are unchanged.
 
+## Seiban entry reuse (2026-10-12)
+
+- The leader-order and grinding-planning boards enable the optional 44px
+  microphone in `SeibanSearchRegister`. Recording/transcription, relay selection,
+  one busy retry, silence filtering and cleanup share `voice/voiceTranscription.ts`
+  with the procedure editor; procedure rewriting remains separate and unchanged.
+- Recognition fills the seiban field only. Registration remains explicit, and
+  seiban input never calls the LLM. No availability request occurs on mount.
+  Manual edits, disabling the input and unmounting cancel pending recognition.
+- `normalizeSpokenSeiban` handles width/case, separators, digit-by-digit Japanese
+  readings and descending 千/百/十 notation through 9999. Kana unit readings are
+  limited to せん/ひゃく/じゅう; irregular readings such as さんびゃく and
+  はっせん, 万 and kana alphabet names are rejected. Tests define the boundary.
+- Both existing speech endpoints use `allowWriteKiosk`, which accepts a valid
+  client-device key through `requireClientDevice`; the web HTTP client supplies
+  `x-client-key`. No route, authorization, DGX or environment change is required.
+  This is a source-level authorization check, not live terminal acceptance.
+
 ## Consequences
 
 - whisper-server must be started with `--convert` and ffmpeg must be installed

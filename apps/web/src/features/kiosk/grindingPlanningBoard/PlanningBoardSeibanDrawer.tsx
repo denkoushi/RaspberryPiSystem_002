@@ -260,8 +260,9 @@ export function PlanningBoardSeibanDrawer({
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
           <div className="flex flex-wrap items-start gap-2">
-            <div>
+            <div className="min-w-0 max-w-full">
             <SeibanSearchRegister
+              showVoiceButton
               value={query}
               showKeyboardButton={false}
               onInputFocus={() => setInputTarget('seiban')}
@@ -286,7 +287,7 @@ export function PlanningBoardSeibanDrawer({
                   {onRefreshOrder ? <button type="button" className="min-h-9 shrink-0 rounded border border-rose-300/50 px-2 text-rose-200 hover:bg-rose-950/60" onClick={onRefreshOrder}>最新状態を取得</button> : null}
                 </div>
               ) : null}
-              inputClassName={`min-h-11 w-[10ch] [&::-webkit-search-cancel-button]:appearance-none rounded-md border bg-slate-900 px-2 font-mono text-sm text-white outline-none ${inputTarget === 'seiban' ? 'border-emerald-400 ring-1 ring-emerald-400/20' : 'border-slate-700'}`}
+              inputClassName={`min-h-11 min-w-0 w-[10ch] [&::-webkit-search-cancel-button]:appearance-none rounded-md border bg-slate-900 px-2 font-mono text-sm text-white outline-none ${inputTarget === 'seiban' ? 'border-emerald-400 ring-1 ring-emerald-400/20' : 'border-slate-700'}`}
               keyboardButtonClassName="min-h-11 shrink-0 rounded-md border border-slate-700 bg-slate-900 px-2 text-xs font-semibold text-slate-300 hover:border-emerald-300 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
               registerButtonClassName="min-h-11 shrink-0 rounded-md bg-emerald-400 px-3 text-xs font-bold text-slate-950 hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
             />
