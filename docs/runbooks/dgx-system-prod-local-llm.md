@@ -766,6 +766,97 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 - blue（vLLM）起動例で `--ipc host` を付与する場合、**IPC 名前空間がホストと共有**される。これは性能目的の**意図的なトレード**であり、**仮想マシン相当の厳密分離**ではない。必要なら Runbook / launcher の `BLUE_EXTRA_DOCKER_ARGS` を見直す。
 - **混信（データの混入）**の観点では、**Pi5 用 token / 業務データ path を他用途の Compose に mount しない**こと、**別 tailnet 入口**（ACL で Pi5 から `llm:38081` のみ、等）を維持することが主な防御策である。
 
+
+## `/dev/shm` の残骸と週次掃除（2026-10-12）
+
+- **原因**: blue（vLLM）は `--ipc host` で動くため、コンテナが起動するたびに `psm_*` などの共有メモリファイルがホストの `/dev/shm` に残る。DGX は GPU と CPU でメモリを共有するので、残骸はそのままモデルに使える量を減らす。
+- **実測（2026-10-12）**: 1,544 ファイル、実サイズ 2.2 GiB（ほぼ全部が `psm_*` 269 個）。1 日以上前で未使用の 1,487 件（2,101 MiB）を削除し、110 MiB になった。削除後も `system-prod-trtllm` と `system-prod-embedding` は正常。
+- **掃除スクリプト**: DGX の `/usr/local/sbin/dgx-shm-cleanup`（root 所有、内容は下の「スクリプトとユニットの内容」）。root で実行する。引数なしは一覧表示のみ、`--delete` で削除する。対象は `/dev/shm` 直下のファイルのうち、1 日以上前で、どのプロセスも開いておらずマップもしていないもの。
+- **週次タイマー**: `dgx-shm-cleanup.service` / `dgx-shm-cleanup.timer` を `/etc/systemd/system/` に導入済み。毎週日曜 4:00 に実行し、`Persistent=true` で取りこぼしは次回起動時に実行する。標準デプロイからは配布しない。
+- **確認**: `systemctl list-timers dgx-shm-cleanup.timer`、`journalctl -u dgx-shm-cleanup.service`、`df -h /dev/shm`。
+- **再導入**: スクリプトを `/usr/local/sbin/dgx-shm-cleanup` に `install -o root -g root -m 0755` で置き、ユニット 2 つを `/etc/systemd/system/` に置いて `systemctl daemon-reload && systemctl enable --now dgx-shm-cleanup.timer`。root のタイマーが実行するので、スクリプトを一般ユーザーが書き換えられる場所に置かない。
+- **停止**: `sudo systemctl disable --now dgx-shm-cleanup.timer`。
+
+### スクリプトとユニットの内容
+
+`/usr/local/sbin/dgx-shm-cleanup`:
+
+```bash
+#!/usr/bin/env bash
+# /dev/shm に残った古い共有メモリファイルを消す。
+# 既定は一覧表示のみ。--delete を付けたときだけ削除する。
+# 対象: 1 日以上前のファイルで、どのプロセスも開いておらず、マップもしていないもの。
+set -euo pipefail
+
+if [ "$(id -u)" != 0 ]; then
+  echo "root で実行してください (sudo bash $0 [--delete])" >&2
+  exit 1
+fi
+
+mode=${1:-}
+min_age_min=1440
+inuse=$(mktemp)
+trap 'rm -f "$inuse"' EXIT
+
+# root なら全プロセス(コンテナ内も含む)の fd と maps が見える
+for p in /proc/[0-9]*; do
+  ls -l "$p/fd" 2>/dev/null | grep -o '/dev/shm/[^ ]*' || true
+  grep -o '/dev/shm/[^ ]*' "$p/maps" 2>/dev/null || true
+done | sort -u > "$inuse"
+
+echo "使用中として除外する名前: $(wc -l < "$inuse") 件"
+echo "実行前: $(df -h /dev/shm | tail -1)"
+
+count=0
+kb=0
+skipped=0
+while IFS= read -r -d '' f; do
+  if grep -qxF "$f" "$inuse"; then
+    skipped=$((skipped + 1))
+    continue
+  fi
+  size=$(du -k "$f" | cut -f1)
+  count=$((count + 1))
+  kb=$((kb + size))
+  if [ "$mode" = "--delete" ]; then
+    rm -f -- "$f"
+  fi
+done < <(find /dev/shm -xdev -maxdepth 1 -type f -mmin +"$min_age_min" -print0)
+
+if [ "$mode" = "--delete" ]; then
+  echo "削除: $count 件, $((kb / 1024)) MiB (使用中で除外: $skipped 件)"
+  echo "実行後: $(df -h /dev/shm | tail -1)"
+else
+  echo "削除対象: $count 件, $((kb / 1024)) MiB (使用中で除外: $skipped 件)"
+  echo "まだ何も消していません。消すには --delete を付けて実行してください。"
+fi
+```
+
+`/etc/systemd/system/dgx-shm-cleanup.service`:
+
+```ini
+[Unit]
+Description=Remove stale shared memory files left in /dev/shm by restarted containers
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/dgx-shm-cleanup --delete
+```
+
+`/etc/systemd/system/dgx-shm-cleanup.timer`:
+
+```ini
+[Unit]
+Description=Weekly cleanup of stale /dev/shm files
+
+[Timer]
+OnCalendar=Sun 04:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
 ## トラブルシューティング補足（blue・Pi5 連携）
 
 - **DGX へ SSH / Tailscale が通らない**: cold start 中の高負荷に加え、**ホスト全体の応答不良**でも banner 前で落ちることがある。ローカル LAN や**物理コンソール**を試し、必要なら**再起動**。常に **`docker logs`（vLLM / gateway）**で起動段階を先に追う。
