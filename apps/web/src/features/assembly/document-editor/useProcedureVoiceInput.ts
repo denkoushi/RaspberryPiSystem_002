@@ -7,6 +7,14 @@ import type { ProcedureDictationMode } from '../../../api/domains/assembly';
 import type { OverlayTextElement } from '@raspi-system/shared-types';
 
 export const PROCEDURE_WHISPER_BASE_URL = 'http://127.0.0.1:8178';
+export const PROCEDURE_DICTATION_REWRITE_TIMEOUT_MS = 20000;
+// Whisper returns these stock phrases for silence; treat them as nothing heard.
+const SILENCE_PHRASES = new Set([
+  'ご視聴ありがとうございました', 'ご視聴ありがとうございます', '最後までご視聴ありがとうございました',
+  '最後までご視聴いただきありがとうございます', 'ご清聴ありがとうございました', 'チャンネル登録お願いします',
+  'チャンネル登録よろしくお願いします', '字幕視聴ありがとうございました'
+]);
+const isSilencePhrase = (text: string) => SILENCE_PHRASES.has(text.replace(/[\s、。．.!！?？「」]/g, ''));
 type Session = { abort: AbortController; stream?: MediaStream; recorder?: MediaRecorder; timer?: ReturnType<typeof setTimeout> };
 
 function dispose(session: Session) {
@@ -127,17 +135,26 @@ export function useProcedureVoiceInput(element: OverlayTextElement | null, enabl
           finish(); return;
         }
         if (!active()) return;
-        if (!spokenText) { setError('聞き取れませんでした'); finish(); return; }
+        if (!spokenText || isSilencePhrase(spokenText)) { setError('聞き取れませんでした'); finish(); return; }
         setTranscript(spokenText);
+        // The in-house LLM may still be loading; never keep the operator waiting on it.
+        const limit = new AbortController();
+        const onAbort = () => limit.abort();
+        session.abort.signal.addEventListener('abort', onAbort, { once: true });
+        const limitTimer = setTimeout(onAbort, PROCEDURE_DICTATION_REWRITE_TIMEOUT_MS);
         try {
-          const result = await rewriteAssemblyProcedureDictation({ mode, spokenText, currentText: mode === 'new' ? undefined : original.text, signal: session.abort.signal });
+          const result = await rewriteAssemblyProcedureDictation({ mode, spokenText, currentText: mode === 'new' ? undefined : original.text, signal: limit.signal });
           apply(result.text);
         } catch {
           if (active()) {
             if (mode === 'revise') setError('直せませんでした');
             else if (apply(spokenText)) setError('そのまま入れました');
           }
-        } finally { finish(); }
+        } finally {
+          clearTimeout(limitTimer);
+          session.abort.signal.removeEventListener('abort', onAbort);
+          finish();
+        }
       };
       recorder.start();
       session.timer = setTimeout(() => {
