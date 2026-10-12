@@ -89,6 +89,8 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertIn("photo_tool_embedding_model_id", bindings["PHOTO_TOOL_EMBEDDING_MODEL_ID"])
         self.assertIn("photo_tool_similarity_max_cosine_distance", bindings["PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE"])
         self.assertIn("photo_tool_label_assist_max_cosine_distance", bindings["PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE"])
+        # The procedure speech-to-text flag reaches the API the same way, off unless the inventory sets it
+        self.assertIn("procedure_speech_to_text_enabled | default(false)", bindings["PROCEDURE_SPEECH_TO_TEXT_ENABLED"])
         self.assertTrue(task["no_log"])
         self.assertEqual(task["ansible.builtin.lineinfile"]["mode"], "0600")
 
