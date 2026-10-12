@@ -110,6 +110,22 @@ The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #9
 - Risk: between the DB rotation and each terminal's release, that terminal's status-agent/NFC/signage calls return 401. Keep the window short and do it outside production hours.
 - Verify: old client keys return 401 on `/api/clients/status`; new keys succeed; kiosk borrow/return flow and signage display work; admin login works with a fresh session; `python3 scripts/ci/validate_production_secret_structure.py` passes on main.
 
+## C-11. MFA re-enrollment with only an access token / pre-MFA refresh tokens (High)
+
+- Finding (2026-10-12 security audit, private report): `POST /api/auth/mfa/activate` replaced the TOTP secret and backup codes with nothing but a valid access token, so a stolen access token could take over MFA on an admin account. `POST /api/auth/refresh` also upgraded refresh tokens minted before MFA was enabled into MFA-passed sessions without ever presenting a code.
+- Repository fix: #1938 (merged main `39465206`). `activateMfa` now requires the login password and, when MFA is already enabled, a current TOTP code or backup code (error code `MFA_REAUTH_REQUIRED`). `refresh()` rejects a refresh token whose payload lacks `mfaEnabled` once the user has MFA enabled. The admin Security page collects the extra fields. No migration.
+- Status (2026-10-12): **deployed to Pi5** with the standard release of main `e86016dc` (run `20261012-031115-d47fd4`, systemd active/exited/success, recap failed=0 rescued=0, health 200). Rollback reference: previous Pi5 SHA `9f7aa316`.
+- Operator-visible changes: the MFA setup form asks for the password (and the current code on re-enrollment); admins who set up MFA before this release and still hold an old refresh token must log in again once. Access tokens issued before activation stay valid until they expire (15 min), which is accepted.
+- Verify: `pnpm --filter @raspi-system/api exec vitest run src/routes/__tests__/admin-mfa-enforcement.test.ts`; on the device, re-enrollment without the current code returns 401 `MFA_REAUTH_REQUIRED`.
+
+## C-12. Gmail HTML attachments rendered to PDF with JavaScript and network enabled (High)
+
+- Finding (2026-10-12 security audit, private report): the kiosk-documents Playwright adapter rendered untrusted mail HTML with scripts enabled and no request interception, so anyone who can mail the ingestion mailbox could make the API container fetch arbitrary URLs (SSRF toward the Docker network, the Pi, Tailscale peers).
+- Repository fix: #1937 (merged main `02aa9bb0`). The browser context is created with `javaScriptEnabled: false` and every request is aborted via `context.route('**/*', ...)` before `setContent`; inline content and `data:` URLs still render. The shared Chromium launch flags (`--no-sandbox`) are tracked separately under C-6.
+- Status (2026-10-12): **deployed to Pi5** in the same release as C-11 (main `e86016dc`, run `20261012-031115-d47fd4`).
+- Operator-visible changes: remote images, external CSS/fonts and scripts in mail HTML no longer appear in the generated PDF.
+- Verify: `pnpm --filter @raspi-system/api exec vitest run src/services/kiosk-documents` (the real-Chromium integration test runs in CI).
+
 ## Verification checklist (per item)
 
 1. Backup relevant secret/config/DB.
