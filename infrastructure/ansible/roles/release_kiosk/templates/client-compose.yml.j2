@@ -3,6 +3,7 @@ services:
   nfc-agent:
     image: {{ release_kiosk_compose_images['nfc-agent'] | to_json }}
     network_mode: host
+{% if client_agents_hardened | default(false) | bool %}
     user: "10001:10001"
     security_opt: ["no-new-privileges:true"]
     cap_drop: ["ALL"]
@@ -11,21 +12,32 @@ services:
     device_cgroup_rules:
       - "c 189:* rw"
       - "c 13:* rw"
+{% else %}
+    user: "0:0"
+    privileged: true
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+{% endif %}
     env_file:
       - {{ (release_kiosk_project_dir ~ '/clients/nfc-agent/.env') | to_json }}
     volumes:
       - nfc-agent-data:/data
+{% if client_agents_hardened | default(false) | bool %}
       # Preserve the relative queue default, including previous images on rollback.
       - nfc-agent-data:/app/nfc-agent/data
       - /run/pcscd:/run/pcscd:ro
       - /dev/bus/usb:/dev/bus/usb:ro
       - /dev/input:/dev/input:ro
+{% else %}
+      - /run/pcscd:/run/pcscd:ro
+{% endif %}
     restart: unless-stopped
 {% endif %}
 {% if 'barcode-agent' in release_kiosk_services %}
   barcode-agent:
     image: {{ release_kiosk_compose_images['barcode-agent'] | to_json }}
     network_mode: host
+{% if client_agents_hardened | default(false) | bool %}
     user: "10001:10001"
     security_opt: ["no-new-privileges:true"]
     cap_drop: ["ALL"]
@@ -34,18 +46,26 @@ services:
     device_cgroup_rules:
       - "c 166:* rw"
       - "c 188:* rw"
+{% else %}
+    user: "0:0"
+    privileged: true
+{% endif %}
     env_file:
       - {{ (release_kiosk_project_dir ~ '/clients/barcode-agent/.env') | to_json }}
-    # ttyACM/ttyUSB nodes live directly in /dev; a parent bind survives hotplug.
-    # Read-only prevents directory changes; cgroups allow only serial device I/O.
     volumes:
+{% if client_agents_hardened | default(false) | bool %}
+      # A read-only parent bind survives hotplug; cgroups restrict device I/O.
       - /dev:/dev:ro
+{% else %}
+      - /dev:/dev
+{% endif %}
     restart: unless-stopped
 {% endif %}
 {% if 'torque-agent' in release_kiosk_services %}
   torque-agent:
     image: {{ release_kiosk_compose_images['torque-agent'] | to_json }}
     network_mode: host
+{% if client_agents_hardened | default(false) | bool %}
     user: "10001:10001"
     security_opt: ["no-new-privileges:true"]
     cap_drop: ["ALL"]
@@ -53,11 +73,19 @@ services:
     group_add: ["104"]
     device_cgroup_rules:
       - "c 13:* rw"
+{% else %}
+    user: "0:0"
+    privileged: true
+{% endif %}
     env_file:
       - {{ (release_kiosk_project_dir ~ '/clients/torque-agent/.env') | to_json }}
     volumes:
       - torque-agent-data:/data
+{% if client_agents_hardened | default(false) | bool %}
       - /dev/input:/dev/input:ro
+{% else %}
+      - /dev/input:/dev/input
+{% endif %}
       - /run/torque-bluetooth-guard:/run/torque-bluetooth-guard
     healthcheck:
       test: [CMD, python, -c, "import json,urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:7073/health', timeout=3)); assert data.get('ok') is True"]

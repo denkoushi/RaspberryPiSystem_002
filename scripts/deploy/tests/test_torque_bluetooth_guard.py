@@ -6,6 +6,7 @@ import stat
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -58,18 +59,21 @@ class TorqueBluetoothGuardIntentTests(unittest.TestCase):
         })
         self.assertEqual(MODULE.valid_intent(self.intent, "boot-a", 100), (True, "LEASE_INTENT_VALID"))
 
-    def test_guard_start_preserves_agent_group_write_without_world_write(self) -> None:
+    def test_guard_runtime_mode_defaults_to_legacy_and_honors_hardened_environment(self) -> None:
         boot_id = Path(self.temporary.name) / "boot_id"
         boot_id.write_text("boot-a\n")
         runtime = Path(self.temporary.name) / "run"
-        guard = MODULE.Guard(
-            helper=Path("/unused"), runtime_directory=runtime,
-            boot_id_path=boot_id, poll_seconds=1, command_timeout_seconds=1,
-        )
-        guard.running = False
-        guard.apply = lambda powered, reason: powered
-        guard.run()
-        self.assertEqual(stat.S_IMODE(runtime.stat().st_mode), 0o770)
+        for value, expected in ((None, 0o755), ("0755", 0o755), ("0770", 0o770), (None, 0o755)):
+            environment = {} if value is None else {"TORQUE_GUARD_RUNTIME_MODE": value}
+            with self.subTest(mode=value), mock.patch.dict(MODULE.os.environ, environment, clear=True):
+                guard = MODULE.Guard(
+                    helper=Path("/unused"), runtime_directory=runtime,
+                    boot_id_path=boot_id, poll_seconds=1, command_timeout_seconds=1,
+                )
+                guard.running = False
+                guard.apply = lambda powered, reason: powered
+                guard.run()
+                self.assertEqual(stat.S_IMODE(runtime.stat().st_mode), expected)
 
     def test_reconcile_switches_once_and_turns_off_at_deadline(self) -> None:
         boot_id = Path(self.temporary.name) / "boot_id"

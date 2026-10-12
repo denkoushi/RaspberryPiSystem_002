@@ -6,13 +6,18 @@ Before=docker.service
 
 [Service]
 Type=simple
+{% if client_agents_hardened | default(false) | bool %}
 # Keep the host guard root; only its intent directory is shared with the agent GID.
 Group=10001
+Environment=TORQUE_GUARD_RUNTIME_MODE=0770
+{% endif %}
 ExecStart=/usr/local/libexec/torque-bluetooth-guard --poll-seconds 1 --command-timeout-seconds 4
 Restart=always
 RestartSec=1
 RuntimeDirectory=torque-bluetooth-guard
+{% if client_agents_hardened | default(false) | bool %}
 RuntimeDirectoryMode=0770
+{% endif %}
 TimeoutStopSec=10
 NoNewPrivileges=true
 ProtectHome=true

@@ -4,6 +4,8 @@ import re
 import unittest
 from pathlib import Path
 
+from jinja2 import Environment, StrictUndefined
+
 
 ROOT = Path(__file__).resolve().parents[3]
 CLIENT_ROLE = ROOT / "infrastructure/ansible/roles/client"
@@ -67,8 +69,6 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
             "ExecStart=/usr/local/libexec/torque-bluetooth-guard --poll-seconds 1 --command-timeout-seconds 4",
             "Restart=always",
             "RuntimeDirectory=torque-bluetooth-guard",
-            "Group=10001",
-            "RuntimeDirectoryMode=0770",
             "TimeoutStopSec=10",
         ):
             self.assertIn(fragment, guard_unit)
@@ -85,10 +85,56 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
             'ATTRS{name}=="{{ wrench.name }}"',
             'ATTRS{uniq}=="{{ wrench.uniq }}"',
             'SYMLINK+="input/by-id/{{ wrench.link_name }}"',
-            'GROUP="input", MODE="0660"',
         ):
             self.assertIn(fragment, rule)
         self.assertNotIn('MODE="0666"', rule)
+
+    def test_guard_unit_and_hid_permissions_are_opt_in(self) -> None:
+        environment = Environment(undefined=StrictUndefined, trim_blocks=True, lstrip_blocks=True)
+        environment.filters["bool"] = lambda value: str(value).lower() in {"1", "true", "yes", "on"}
+        unit = environment.from_string((
+            CLIENT_ROLE / "templates/torque-bluetooth-guard.service.j2"
+        ).read_text())
+        rule = environment.from_string((
+            CLIENT_ROLE / "templates/99-torque-wrench-hid.rules.j2"
+        ).read_text())
+        identity = {
+            "vendor_id": "1234", "product_id": "5678", "name": "wrench",
+            "uniq": "AA:BB:CC:DD:EE:FF", "link_name": "fixture-event-kbd",
+        }
+        legacy_unit = unit.render()
+        legacy_rule = rule.render(torque_agent_hid_links=[identity])
+        for value in (None, False, True, "false", "true"):
+            variables = {} if value is None else {"client_agents_hardened": value}
+            hardened = value is True or value == "true"
+            with self.subTest(mode=value):
+                rendered_unit = unit.render(**variables)
+                rendered_rule = rule.render(torque_agent_hid_links=[identity], **variables)
+                if hardened:
+                    for line in (
+                        "Group=10001", "RuntimeDirectoryMode=0770",
+                        "Environment=TORQUE_GUARD_RUNTIME_MODE=0770",
+                    ):
+                        self.assertIn(line + "\n", rendered_unit)
+                        rendered_unit = rendered_unit.replace(line + "\n", "")
+                    rendered_unit = rendered_unit.replace(
+                        "# Keep the host guard root; only its intent directory is shared with the agent GID.\n", ""
+                    )
+                    self.assertEqual(rendered_rule.count('GROUP="input", MODE="0660", '), 2)
+                    rendered_rule = rendered_rule.replace('GROUP="input", MODE="0660", ', "")
+                else:
+                    self.assertNotIn("Group=", rendered_unit)
+                    self.assertNotIn("RuntimeDirectoryMode=", rendered_unit)
+                    self.assertNotIn("TORQUE_GUARD_RUNTIME_MODE", rendered_unit)
+                    self.assertNotIn("GROUP=", rendered_rule)
+                    self.assertNotIn("MODE=", rendered_rule)
+                self.assertEqual(rendered_unit, legacy_unit)
+                self.assertEqual(rendered_rule, legacy_rule)
+                for action in ("add", "change"):
+                    self.assertIn(f'ACTION=="{action}"', rendered_rule)
+                for key in ("id/vendor", "id/product", "name", "uniq"):
+                    self.assertIn(f'ATTRS{{{key}}}==', rendered_rule)
+                self.assertIn('SYMLINK+="input/by-id/fixture-event-kbd"', rendered_rule)
 
     def test_stonebase_inventory_uses_stable_identities_and_verified_parser(self) -> None:
         inventory = (ROOT / "infrastructure/ansible/inventory.yml").read_text()

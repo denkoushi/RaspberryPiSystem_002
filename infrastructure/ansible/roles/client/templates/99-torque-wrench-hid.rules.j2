@@ -1,5 +1,5 @@
 # Ansible managed: stable links for exact torque-wrench HID identities only.
 {% for wrench in torque_agent_hid_links %}
-ACTION=="add", SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/bustype}=="0005", ATTRS{id/vendor}=="{{ wrench.vendor_id }}", ATTRS{id/product}=="{{ wrench.product_id }}", ATTRS{name}=="{{ wrench.name }}", ATTRS{uniq}=="{{ wrench.uniq }}", GROUP="input", MODE="0660", SYMLINK+="input/by-id/{{ wrench.link_name }}"
-ACTION=="change", SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/bustype}=="0005", ATTRS{id/vendor}=="{{ wrench.vendor_id }}", ATTRS{id/product}=="{{ wrench.product_id }}", ATTRS{name}=="{{ wrench.name }}", ATTRS{uniq}=="{{ wrench.uniq }}", GROUP="input", MODE="0660", SYMLINK+="input/by-id/{{ wrench.link_name }}"
+ACTION=="add", SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/bustype}=="0005", ATTRS{id/vendor}=="{{ wrench.vendor_id }}", ATTRS{id/product}=="{{ wrench.product_id }}", ATTRS{name}=="{{ wrench.name }}", ATTRS{uniq}=="{{ wrench.uniq }}", {% if client_agents_hardened | default(false) | bool %}GROUP="input", MODE="0660", {% endif %}SYMLINK+="input/by-id/{{ wrench.link_name }}"
+ACTION=="change", SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/bustype}=="0005", ATTRS{id/vendor}=="{{ wrench.vendor_id }}", ATTRS{id/product}=="{{ wrench.product_id }}", ATTRS{name}=="{{ wrench.name }}", ATTRS{uniq}=="{{ wrench.uniq }}", {% if client_agents_hardened | default(false) | bool %}GROUP="input", MODE="0660", {% endif %}SYMLINK+="input/by-id/{{ wrench.link_name }}"
 {% endfor %}
