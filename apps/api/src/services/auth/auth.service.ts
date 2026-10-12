@@ -47,6 +47,9 @@ export type MfaInitiateResult = {
 };
 
 export type MfaActivateInput = {
+  password: string;
+  currentCode?: string;
+  currentBackupCode?: string;
   secret: string;
   code: string;
   backupCodes: string[];
@@ -148,6 +151,9 @@ export class AuthService {
       if (user.status !== 'ACTIVE') {
         throw new ApiError(403, 'アカウントが無効化されています');
       }
+      if (user.mfaEnabled === true && payload.mfaEnabled !== true) {
+        throw new ApiError(401, 'MFA設定後は再ログインが必要です', undefined, 'MFA_REAUTH_REQUIRED');
+      }
       const tokens = buildTokenPair(user);
       return {
         ...tokens,
@@ -176,6 +182,18 @@ export class AuthService {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new ApiError(401, 'ユーザーが見つかりません');
+    }
+    const passwordOk = await bcrypt.compare(input.password, user.passwordHash);
+    if (!passwordOk) {
+      throw new ApiError(401, 'パスワードが違います');
+    }
+    if (user.mfaEnabled) {
+      const totpOk = user.totpSecret ? verifyTotpCode(user.totpSecret, input.currentCode ?? '') : false;
+      const backupOk = !totpOk && (await matchAndConsumeBackupCode(user.mfaBackupCodes, input.currentBackupCode)).ok;
+      if (!totpOk && !backupOk) {
+        throw new ApiError(401, '現在のMFAコードが必要です', undefined, 'MFA_REAUTH_REQUIRED');
+      }
+      // Successful activation replaces all old backup codes in the single update below.
     }
     const ok = verifyTotpCode(input.secret, input.code);
     if (!ok) {

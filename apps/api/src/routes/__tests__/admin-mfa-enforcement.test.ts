@@ -22,7 +22,7 @@ vi.mock('../../lib/prisma.js', () => ({ prisma: {
 } }));
 vi.mock('../../services/auth/auth-role-admin.service.js', () => ({ AuthRoleAdminService: class {} }));
 
-import { authenticate, authorizeRoles } from '../../lib/auth.js';
+import { authenticate, authorizeRoles, signAccessToken, signRefreshToken } from '../../lib/auth.js';
 import { registerErrorHandler } from '../../plugins/error-handler.js';
 import { registerAuthRoutes } from '../auth.js';
 
@@ -38,8 +38,8 @@ beforeEach(async () => {
   user = {
     id: 'test-user', username: 'admin', role: 'ADMIN', status: 'ACTIVE',
     passwordHash: await bcrypt.hash(password, 4), mfaEnabled: false,
-    totpSecret: null, mfaBackupCodes: []
-  } as User;
+    totpSecret: null, mfaBackupCodes: [], createdAt: new Date(), updatedAt: new Date()
+  };
   mocks.findUnique.mockImplementation(async () => user);
   mocks.update.mockImplementation(async ({ data }: { data: Partial<User> }) => {
     user = { ...user, ...data };
@@ -59,18 +59,123 @@ function expectMfaError(response: Awaited<ReturnType<typeof app.inject>>, code =
   expect(response.json().errorCode).toBe(code);
 }
 
-async function activate(token: string) {
+async function activate(token: string, currentCode?: string) {
   const initiation = await app.inject({ method: 'POST', url: '/api/auth/mfa/initiate', headers: headers(token) });
   expect(initiation.statusCode).toBe(200);
   const setup = initiation.json();
   const response = await app.inject({
     method: 'POST', url: '/api/auth/mfa/activate', headers: headers(token),
-    payload: { secret: setup.secret, code: authenticator.generate(setup.secret), backupCodes: setup.backupCodes }
+    payload: { password, currentCode, secret: setup.secret, code: authenticator.generate(setup.secret), backupCodes: setup.backupCodes }
   });
   expect(response.statusCode).toBe(200);
   expect(response.json().backupCodes).toEqual(setup.backupCodes);
   return response.json();
 }
+
+describe('MFA activation re-authentication', () => {
+  function setupPayload() {
+    const secret = authenticator.generateSecret();
+    return { password, secret, code: authenticator.generate(secret), backupCodes: ['new-backup-code'] };
+  }
+
+  function submit(payload: object) {
+    return app.inject({ method: 'POST', url: '/api/auth/mfa/activate', headers: headers(signAccessToken(user)), payload });
+  }
+
+  it.each([undefined, ''])('rejects missing or empty password (%s) before updating', async (password) => {
+    const response = await submit({ ...setupPayload(), password });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().errorCode).toBe('VALIDATION_ERROR');
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('rejects wrong password when mfaEnabled=%s', async (enabled) => {
+    user.mfaEnabled = enabled;
+    user.totpSecret = authenticator.generateSecret();
+    const response = await submit({ ...setupPayload(), password: 'wrong-password', currentCode: authenticator.generate(user.totpSecret) });
+    expect(response.statusCode).toBe(401);
+    expect(response.json().message).toBe('パスワードが違います');
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it('activates for the first time with password and the new code, returning MFA-enabled tokens', async () => {
+    const payload = setupPayload();
+    const response = await submit(payload);
+    expect(response.statusCode).toBe(200);
+    expect(response.json().user.mfaEnabled).toBe(true);
+    expect(jwt.verify(response.json().accessToken, mocks.env.JWT_ACCESS_SECRET)).toMatchObject({ mfaEnabled: true });
+    expect(jwt.verify(response.json().refreshToken, mocks.env.JWT_REFRESH_SECRET)).toMatchObject({ mfaEnabled: true });
+    expect(user.totpSecret).toBe(payload.secret);
+  });
+
+  it.each(['missing', 'invalid', 'new-secret-code'])('rejects re-enrollment with a %s current factor without updating', async (factor) => {
+    user.mfaEnabled = true;
+    user.totpSecret = authenticator.generateSecret();
+    const payload = setupPayload();
+    // Avoid the rare case where different secrets generate the same six-digit code.
+    while (authenticator.check(payload.code, user.totpSecret)) {
+      Object.assign(payload, setupPayload());
+    }
+    const response = await submit({
+      ...payload,
+      currentCode: factor === 'new-secret-code' ? payload.code : factor === 'invalid' ? 'invalid' : undefined,
+      currentBackupCode: factor === 'invalid' ? 'wrong-backup-code' : undefined
+    });
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({ message: '現在のMFAコードが必要です', errorCode: 'MFA_REAUTH_REQUIRED' });
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it.each(['totp', 'backup'])('re-enrolls with a valid existing %s factor and replaces the secret and backup codes', async (factor) => {
+    user.mfaEnabled = true;
+    user.totpSecret = authenticator.generateSecret();
+    const oldBackupCode = 'old-backup-code';
+    user.mfaBackupCodes = [await bcrypt.hash(oldBackupCode, 4)];
+    const payload = setupPayload();
+    const response = await submit({
+      ...payload,
+      currentCode: factor === 'totp' ? authenticator.generate(user.totpSecret) : 'invalid',
+      currentBackupCode: factor === 'backup' ? oldBackupCode : undefined
+    });
+    expect(response.statusCode).toBe(200);
+    expect(mocks.update).toHaveBeenCalledOnce();
+    expect(user.totpSecret).toBe(payload.secret);
+    expect(user.mfaEnabled).toBe(true);
+    expect(await bcrypt.compare(payload.backupCodes[0], user.mfaBackupCodes[0])).toBe(true);
+    expect(await bcrypt.compare(oldBackupCode, user.mfaBackupCodes[0])).toBe(false);
+    expect(jwt.verify(response.json().refreshToken, mocks.env.JWT_REFRESH_SECRET)).toMatchObject({ mfaEnabled: true });
+  });
+
+  it('does not consume an existing backup code if the new TOTP code is invalid', async () => {
+    user.mfaEnabled = true;
+    user.mfaBackupCodes = [await bcrypt.hash('old-backup-code', 4)];
+    const response = await submit({ ...setupPayload(), code: 'invalid', currentBackupCode: 'old-backup-code' });
+    expect(response.statusCode).toBe(400);
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('refresh MFA session state', () => {
+  it.each([undefined, false, 'true', 1])('rejects pre-MFA or non-boolean refresh claims (%s) after activation', async (mfaEnabled) => {
+    const refreshToken = mfaEnabled === false ? signRefreshToken(user) : jwt.sign({
+      sub: user.id, username: user.username, role: user.role, mfaEnabled
+    }, mocks.env.JWT_REFRESH_SECRET);
+    user.mfaEnabled = true;
+    const response = await app.inject({ method: 'POST', url: '/api/auth/refresh', payload: { refreshToken } });
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({ message: 'MFA設定後は再ログインが必要です', errorCode: 'MFA_REAUTH_REQUIRED' });
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it('refreshes activation tokens using the current database user', async () => {
+    const enabled = await activate(signAccessToken(user));
+    user.username = 'updated-admin';
+    const response = await app.inject({ method: 'POST', url: '/api/auth/refresh', payload: { refreshToken: enabled.refreshToken } });
+    expect(response.statusCode).toBe(200);
+    expect(jwt.verify(response.json().accessToken, mocks.env.JWT_ACCESS_SECRET)).toMatchObject({ mfaEnabled: true, username: user.username });
+    expect(jwt.verify(response.json().refreshToken, mocks.env.JWT_REFRESH_SECRET)).toMatchObject({ mfaEnabled: true, username: user.username });
+  });
+});
 
 describe('admin MFA enforcement', () => {
   it('keeps unconfigured ADMIN access and disabling available when off', async () => {
@@ -101,7 +206,7 @@ describe('admin MFA enforcement', () => {
     // Issued tokens keep their original MFA state even after DB activation.
     expectMfaError(await app.inject({ url: '/api/user-probe', headers: headers(session.accessToken) }));
     const originalSecret = user.totpSecret;
-    await activate(enabled.accessToken);
+    await activate(enabled.accessToken, authenticator.generate(originalSecret!));
     expect(user.mfaEnabled).toBe(true);
     expect(user.totpSecret).not.toBe(originalSecret);
   });

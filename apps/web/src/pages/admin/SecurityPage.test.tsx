@@ -60,8 +60,11 @@ describe('SecurityPage MFA setup', () => {
     fireEvent.click(screen.getByRole('button', { name: 'セットアップ情報を生成' }));
     const input = await screen.findByPlaceholderText('6桁コード');
     fireEvent.change(input, { target: { value: '123456' } });
+    expect(screen.queryByPlaceholderText('現在の6桁コード')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('MFA設定の確認用パスワード'), { target: { value: 'password' } });
     fireEvent.click(screen.getByRole('button', { name: 'コードを確認して有効化' }));
     await screen.findByText('MFAを有効化しました。バックアップコードを安全な場所に保管してください。');
+    expect(mocks.mfaActivate).toHaveBeenCalledWith({ secret: 'test-secret', code: '123456', backupCodes: ['backup-code'], password: 'password' });
     expect(screen.getByText('Current token: new-access')).toBeInTheDocument();
     expect(screen.getByText('MFA有効')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -92,10 +95,54 @@ describe('SecurityPage MFA setup', () => {
     render(<AuthProvider><Harness /></AuthProvider>);
     fireEvent.click(screen.getByRole('button', { name: 'セットアップ情報を生成' }));
     fireEvent.change(await screen.findByPlaceholderText('6桁コード'), { target: { value: '123456' } });
+    fireEvent.change(screen.getByLabelText('MFA設定の確認用パスワード'), { target: { value: 'password' } });
     fireEvent.click(screen.getByRole('button', { name: 'コードを確認して有効化' }));
     await screen.findByText('MFAの有効化に失敗しました。コードを確認してください。');
     expect(screen.getByRole('alert')).toBeInTheDocument();
     expect(screen.getByText('Current token: old-access')).toBeInTheDocument();
     expect(mocks.getRoleAuditLogs).not.toHaveBeenCalled();
+  });
+
+  it('requires the password before submitting activation', async () => {
+    remember();
+    render(<AuthProvider><Harness /></AuthProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'セットアップ情報を生成' }));
+    fireEvent.change(await screen.findByPlaceholderText('6桁コード'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: 'コードを確認して有効化' }));
+    expect(screen.getByText('パスワードを入力してください')).toBeInTheDocument();
+    expect(mocks.mfaActivate).not.toHaveBeenCalled();
+  });
+
+  it.each(['totp', 'backup'])('sends the password and current %s factor for re-enrollment', async (factor) => {
+    remember(activation.user);
+    render(<AuthProvider><Harness /></AuthProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'セットアップ情報を生成' }));
+    fireEvent.change(await screen.findByPlaceholderText('6桁コード'), { target: { value: '123456' } });
+    fireEvent.change(screen.getByLabelText('MFA設定の確認用パスワード'), { target: { value: 'password' } });
+    fireEvent.change(screen.getByPlaceholderText(factor === 'totp' ? '現在の6桁コード' : '現在のバックアップコード'), {
+      target: { value: factor === 'totp' ? '654321' : 'old-backup-code' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'コードを確認して有効化' }));
+    await screen.findByText('MFAを有効化しました。バックアップコードを安全な場所に保管してください。');
+    expect(mocks.mfaActivate).toHaveBeenCalledWith({
+      secret: 'test-secret', code: '123456', backupCodes: ['backup-code'], password: 'password',
+      currentCode: factor === 'totp' ? '654321' : undefined,
+      currentBackupCode: factor === 'backup' ? 'old-backup-code' : undefined
+    });
+    expect(screen.getByLabelText('MFA設定の確認用パスワード')).toHaveValue('');
+    expect(screen.getByPlaceholderText('現在の6桁コード')).toHaveValue('');
+    expect(screen.getByPlaceholderText('現在のバックアップコード')).toHaveValue('');
+  });
+
+  it.each(['パスワードが違います', '現在のMFAコードが必要です'])('shows the API 401 message: %s', async (message) => {
+    remember(activation.user);
+    mocks.mfaActivate.mockRejectedValue({ isAxiosError: true, response: { status: 401, data: { message } } });
+    render(<AuthProvider><Harness /></AuthProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'セットアップ情報を生成' }));
+    fireEvent.change(await screen.findByPlaceholderText('6桁コード'), { target: { value: '123456' } });
+    fireEvent.change(screen.getByLabelText('MFA設定の確認用パスワード'), { target: { value: 'wrong-password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'コードを確認して有効化' }));
+    await screen.findByText(message);
+    expect(screen.getByText('Current token: old-access')).toBeInTheDocument();
   });
 });
