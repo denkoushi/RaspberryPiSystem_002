@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getAssemblyProcedureSpeechToTextAvailability, rewriteAssemblyProcedureDictation, transcribeAssemblyProcedureDictation } from '../../../api/domains/assembly';
 
 import { AssemblyProcedureDocumentEditorInspector } from './AssemblyProcedureDocumentEditorInspector';
-import { PROCEDURE_WHISPER_BASE_URL } from './useProcedureVoiceInput';
+import { PROCEDURE_DICTATION_REWRITE_TIMEOUT_MS, PROCEDURE_WHISPER_BASE_URL } from './useProcedureVoiceInput';
 
 import type { OverlayTextElement } from '@raspi-system/shared-types';
 
@@ -160,6 +160,25 @@ describe('procedure voice input', () => {
     render(<Harness />); await record('話す');
     expect(await screen.findByRole('alert')).toHaveTextContent('聞き取れませんでした');
     expect(rewrite).not.toHaveBeenCalled();
+  });
+  it('treats the stock phrase whisper returns for silence as nothing heard', async () => {
+    stt.mockResolvedValue({ ok: true, json: async () => ({ text: 'ご視聴ありがとうございました。' }) });
+    const onUpdate = vi.fn(); render(<Harness text="既存。" onUpdate={onUpdate} />); await record('続き');
+    expect(await screen.findByRole('alert')).toHaveTextContent('聞き取れませんでした');
+    expect(rewrite).not.toHaveBeenCalled(); expect(onUpdate).not.toHaveBeenCalled();
+  });
+  it('stops waiting for the rewrite after the limit and keeps the recognized text', async () => {
+    const timeout = vi.spyOn(globalThis, 'setTimeout');
+    rewrite.mockImplementation(({ signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(new Error('aborted')))));
+    render(<Harness text="既存。" />); await record('続き');
+    await waitFor(() => expect(rewrite).toHaveBeenCalled());
+    const limit = timeout.mock.calls.find(call => call[1] === PROCEDURE_DICTATION_REWRITE_TIMEOUT_MS);
+    expect(limit).toBeDefined();
+    await act(async () => { (limit![0] as () => void)(); });
+    expect(await screen.findByRole('alert')).toHaveTextContent('そのまま入れました');
+    expect(screen.getByRole('textbox')).toHaveValue('既存。\nえーと、棚に直す');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    timeout.mockRestore();
   });
   it.each([
     ['話す', '', 'えーと、棚に直す', 'そのまま入れました'],
