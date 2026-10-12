@@ -6,11 +6,13 @@ Before=docker.service
 
 [Service]
 Type=simple
+# Keep the host guard root; only its intent directory is shared with the agent GID.
+Group=10001
 ExecStart=/usr/local/libexec/torque-bluetooth-guard --poll-seconds 1 --command-timeout-seconds 4
 Restart=always
 RestartSec=1
 RuntimeDirectory=torque-bluetooth-guard
-RuntimeDirectoryMode=0755
+RuntimeDirectoryMode=0770
 TimeoutStopSec=10
 NoNewPrivileges=true
 ProtectHome=true

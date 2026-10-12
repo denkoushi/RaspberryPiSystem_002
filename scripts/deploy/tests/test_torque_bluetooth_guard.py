@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import stat
 import tempfile
 import unittest
 from pathlib import Path
@@ -56,6 +57,19 @@ class TorqueBluetoothGuardIntentTests(unittest.TestCase):
             "validUntilMonotonic": 101,
         })
         self.assertEqual(MODULE.valid_intent(self.intent, "boot-a", 100), (True, "LEASE_INTENT_VALID"))
+
+    def test_guard_start_preserves_agent_group_write_without_world_write(self) -> None:
+        boot_id = Path(self.temporary.name) / "boot_id"
+        boot_id.write_text("boot-a\n")
+        runtime = Path(self.temporary.name) / "run"
+        guard = MODULE.Guard(
+            helper=Path("/unused"), runtime_directory=runtime,
+            boot_id_path=boot_id, poll_seconds=1, command_timeout_seconds=1,
+        )
+        guard.running = False
+        guard.apply = lambda powered, reason: powered
+        guard.run()
+        self.assertEqual(stat.S_IMODE(runtime.stat().st_mode), 0o770)
 
     def test_reconcile_switches_once_and_turns_off_at_deadline(self) -> None:
         boot_id = Path(self.temporary.name) / "boot_id"

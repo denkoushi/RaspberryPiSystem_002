@@ -2,11 +2,16 @@
 from __future__ import annotations
 
 import importlib.util
+import itertools
+import json
 import re
 import sys
 import unittest
 from pathlib import Path
 from types import ModuleType
+
+import yaml
+from jinja2 import Environment, StrictUndefined
 
 from scripts.deploy.terminal_profile_registry import load_registry
 
@@ -56,6 +61,64 @@ class ClientAgentContractMatrixTest(unittest.TestCase):
         cls.client_main = (
             ROOT / "infrastructure/ansible/roles/client/tasks/main.yml"
         ).read_text(encoding="utf-8")
+
+    def test_client_compose_least_privilege_and_hotplug_contract(self) -> None:
+        static = yaml.safe_load(self.compose)["services"]
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["to_json"] = json.dumps
+        template = environment.from_string((
+            ROOT / "infrastructure/ansible/roles/release_kiosk/templates/client-compose.yml.j2"
+        ).read_text(encoding="utf-8"))
+        expected = {
+            "nfc-agent": (["46", "104"], ["c 189:* rw", "c 13:* rw"],
+                          ["nfc-agent-data:/data", "nfc-agent-data:/app/nfc-agent/data",
+                           "/run/pcscd:/run/pcscd:ro",
+                           "/dev/bus/usb:/dev/bus/usb:ro", "/dev/input:/dev/input:ro"]),
+            "barcode-agent": (["20"], ["c 166:* rw", "c 188:* rw"], ["/dev:/dev:ro"]),
+            "torque-agent": (["104"], ["c 13:* rw"],
+                             ["torque-agent-data:/data", "/dev/input:/dev/input:ro",
+                              "/run/torque-bluetooth-guard:/run/torque-bluetooth-guard"]),
+        }
+        # Render every enabled-service combination, including barcode-only
+        # with its reader unplugged (no static device mapping can require it).
+        for size in range(1, 4):
+            for selected in itertools.combinations(expected, size):
+                rendered = yaml.safe_load(template.render(
+                    release_kiosk_services=selected,
+                    release_kiosk_project_dir=TERMINAL_REPOSITORY,
+                    release_kiosk_compose_images={name: f"fixture/{name}:test" for name in selected},
+                ))["services"]
+                self.assertEqual(set(rendered), set(selected))
+                for name in selected:
+                    groups, rules, mounts = expected[name]
+                    for source, services in (("static", static), ("rendered", rendered)):
+                        with self.subTest(source=source, service=name, selected=selected):
+                            service = services[name]
+                            self.assertNotIn("privileged", service)
+                            self.assertEqual(service["security_opt"], ["no-new-privileges:true"])
+                            self.assertEqual(service["cap_drop"], ["ALL"])
+                            self.assertFalse(service.get("cap_add"))
+                            self.assertNotIn("devices", service)
+                            self.assertEqual(service["network_mode"], "host")
+                            self.assertEqual(service["group_add"], groups)
+                            self.assertEqual(service["device_cgroup_rules"], rules)
+                            self.assertEqual(service["volumes"], mounts)
+                            self.assertEqual(service["user"], "10001:10001")
+                    for key in ("user", "security_opt", "cap_drop", "group_add", "device_cgroup_rules", "volumes", "healthcheck"):
+                        self.assertEqual(static[name].get(key), rendered[name].get(key))
+
+    def test_client_agent_images_run_as_dedicated_users_with_writable_data(self) -> None:
+        for name in ("nfc-agent", "barcode-agent", "torque-agent"):
+            with self.subTest(service=name):
+                dockerfile = (ROOT / f"infrastructure/docker/Dockerfile.{name}").read_text()
+                runtime = dockerfile.split("AS runtime\n", 1)[1]
+                self.assertIn("groupadd --gid 10001 agent", runtime)
+                self.assertIn("useradd --uid 10001 --gid 10001", runtime)
+                self.assertIn("chown 10001:10001 /data", runtime)
+                self.assertIn("chmod 0750 /data", runtime)
+                self.assertIn("USER 10001:10001\n", runtime)
+        nfc = (ROOT / "infrastructure/docker/Dockerfile.nfc-agent").read_text()
+        self.assertIn("chown 10001:10001 /app/nfc-agent/data", nfc)
 
     def test_client_agent_contract_matrix(self) -> None:
         """Report every missing/extra integration in one actionable failure."""

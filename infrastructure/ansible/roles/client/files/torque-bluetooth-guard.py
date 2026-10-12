@@ -131,7 +131,7 @@ class Guard:
 
     def run(self) -> None:
         self.runtime_directory.mkdir(parents=True, exist_ok=True)
-        os.chmod(self.runtime_directory, 0o755)
+        os.chmod(self.runtime_directory, 0o770)
         current_powered = self.apply(False, "GUARD_STARTUP")
         while self.running:
             current_powered = self.reconcile(current_powered, time.monotonic())

@@ -1112,7 +1112,6 @@ def _require_supported_capture_runtime(
         "DnsSearch",
         "Links",
         "VolumesFrom",
-        "GroupAdd",
         "Tmpfs",
         "Sysctls",
         "Ulimits",

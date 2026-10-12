@@ -126,6 +126,56 @@ The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #9
 - Operator-visible changes: remote images, external CSS/fonts and scripts in mail HTML no longer appear in the generated PDF.
 - Verify: `pnpm --filter @raspi-system/api exec vitest run src/services/kiosk-documents` (the real-Chromium integration test runs in CI).
 
+## C-13. Pi4 agents ran privileged as root (High)
+
+- Finding (2026-10-12 security audit): NFC, barcode and torque containers ran as root with `privileged: true`, exposing every Pi4 device and
+  capability to a compromised agent.
+- Repository fix: the static client Compose and `release_kiosk` template remove `privileged`, drop all capabilities and set
+  `no-new-privileges:true`. Each image runs as dedicated UID/GID `10001:10001`. No capabilities are added: PC/SC/libusb (including USB
+  ioctls), serial I/O and evdev exclusive grabs do not need `SYS_RAWIO` or other capabilities. Host networking, profiles, health checks and
+  release selection stay unchanged.
+- Status: repository fix pending merge; not yet deployed.
+- Required groups/devices: NFC adds numeric `plugdev=46` and `input=104`, exposes `/dev/bus/usb` (char major 189) and `/dev/input` (major
+  13) read-only, and keeps `/run/pcscd:ro`. Barcode adds `dialout=20`, permits majors 166 (ttyACM) and 188 (ttyUSB), and binds `/dev:ro`:
+  serial nodes live directly in `/dev`, so a narrower static node bind would fail when unplugged or miss replacement nodes. This also
+  exposes `/dev/serial` links when present. Torque adds `input=104`, binds `/dev/input:ro` and permits major 13. Cgroup rules grant `rw`,
+  without `m`; read-only bind mounts prevent directory changes while allowing device I/O. Torque udev rules now set `GROUP="input",
+  MODE="0660"` for the exact configured wrench identities; controller selection is unchanged.
+- GID assumptions: the repository does not provision/fix these numeric IDs. Before rollout, check `getent group plugdev dialout input` on
+  each Pi4 against 46/20/104 and `stat -Lc '%a %u %g %n'` on the USB/input/serial nodes. USB must grant plugdev and serial must grant
+  dialout access; optional TS100 HID must grant input access. If IDs differ, correct both Compose definitions before deployment. Do not use
+  world-writable device permissions.
+- PC/SC socket: the existing host polkit rule permits PC/SC access; no extra socket group is assumed because the upstream [pcscd socket
+  unit](https://github.com/LudovicRousseau/PCSC/blob/master/etc/pcscd.socket.in) uses mode `0666`. Verify the installed
+  `/run/pcscd/pcscd.comm` mode and actual card access. If the host restricts it to `0660`, add its actual numeric socket GID to NFC's
+  `group_add` in both definitions rather than broadening socket permissions.
+- Storage/guard preparation: new `/data` volumes inherit image ownership `10001:10001`, mode `0750`. Compose also pins UID/GID
+  `10001:10001`, so previous images run with the same queue owner during `release_kiosk` rollback. NFC mounts the same named volume at
+  `/data` and `/app/nfc-agent/data`, keeping the existing relative queue-path default writable even with previous images. Before the first
+  rollout, stop the affected agents, back up queues, identify the actual NFC/torque named volumes with `docker inspect` (do not guess
+  project prefixes), then use a maintenance container to `chown -R 10001:10001 /data` on each existing volume, including SQLite sidecars.
+  Image ownership does not change an existing volume. Verify the deployed NFC queue path: preserve/back up any queue held at `./data` inside
+  the old container and copy it into the named volume before recreation, since the new mount covers that directory. The root host guard now
+  runs with group 10001 and creates `/run/torque-bluetooth-guard` as `root:10001`, mode `0770`, allowing non-root torque intent writes
+  without world write access. Install/restart the updated host guard unit/helper and reload/retrigger the updated wrench udev rules before
+  starting the hardened torque image.
+- Pi4 verification checklist (hardware required):
+  1. Confirm each new container's user is `10001:10001`, privileged is false, `CapDrop` contains `ALL`, `CapAdd` is empty and `SecurityOpt`
+  contains `no-new-privileges`. Check supplementary groups, device cgroup rules and queue directory/file access as that user.
+  2. Read an NFC card through the Sony RC-S300/host pcscd and confirm normal kiosk delivery and queue writes. If TS100 is enabled, verify
+  its configured `/dev/input/by-id/...` reader too.
+  3. Start barcode with the reader unplugged; plug it in and scan, then unplug/re-plug and scan again without recreating the container.
+  Verify ttyACM/ttyUSB and `/dev/serial` paths as configured.
+  4. Capture a torque wrench value with exclusive evdev ownership; verify lease intent updates and Bluetooth guard status, including
+  disconnect/lease-expiry fail-closed behavior. Run `curl -fsS http://127.0.0.1:7073/health` and confirm `ok: true`.
+  5. Recreate/restart the agents and confirm persistent queues and repeat hardware checks. Exercise release rollback on a Pi4:
+  `release_kiosk` renders the current template with previous images, so older images and existing volume permissions must also work
+  together.
+- Rollback: redeploy the previous release using the standard rolling-update procedure in [deployment.md](../guides/deployment.md), restoring
+  its Compose, image and host guard/udev configuration together. The restored previous Compose may run images as root again; full-release
+  rollback restores its original capability settings and retains access to migrated volumes. Do not
+  delete data volumes. Verify NFC, barcode, torque and health again; record the run ID and result before declaring rollout complete.
+
 ## Verification checklist (per item)
 
 1. Backup relevant secret/config/DB.

@@ -6,14 +6,23 @@ services:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.nfc-agent
     network_mode: host
-    privileged: true
-    devices:
-      - "/dev/bus/usb:/dev/bus/usb"
+    user: "10001:10001"
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    # No cap_add: PC/SC, libusb and evdev need no capabilities (including SYS_RAWIO).
+    group_add: ["46", "104"]
+    device_cgroup_rules:
+      - "c 189:* rw"
+      - "c 13:* rw"
     env_file:
       - ../../clients/nfc-agent/.env
     volumes:
       - nfc-agent-data:/data
+      # Preserve the relative queue default, including previous images on rollback.
+      - nfc-agent-data:/app/nfc-agent/data
       - /run/pcscd:/run/pcscd:ro
+      - /dev/bus/usb:/dev/bus/usb:ro
+      - /dev/input:/dev/input:ro
     restart: unless-stopped
 
   # シリアル(CDC ACM)バーコードリーダー用。Ansible が clients/barcode-agent/.env を配布する。
@@ -25,9 +34,20 @@ services:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.barcode-agent
     network_mode: host
-    privileged: true
+    user: "10001:10001"
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    # No cap_add: Serial open/ioctl needs no capabilities; dialout grants device access.
+    group_add: ["20"]
+    device_cgroup_rules:
+      - "c 166:* rw"
+      - "c 188:* rw"
     env_file:
       - ../../clients/barcode-agent/.env
+    # ttyACM/ttyUSB nodes live directly in /dev; a parent bind survives hotplug.
+    # Read-only prevents directory changes; cgroups allow only serial device I/O.
+    volumes:
+      - /dev:/dev:ro
     restart: unless-stopped
 
   torque-agent:
@@ -37,12 +57,18 @@ services:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.torque-agent
     network_mode: host
-    privileged: true
+    user: "10001:10001"
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    # No cap_add: Evdev read/grab needs no capabilities; input grants device access.
+    group_add: ["104"]
+    device_cgroup_rules:
+      - "c 13:* rw"
     env_file:
       - ../../clients/torque-agent/.env
     volumes:
       - torque-agent-data:/data
-      - /dev/input:/dev/input
+      - /dev/input:/dev/input:ro
       - /run/torque-bluetooth-guard:/run/torque-bluetooth-guard
     healthcheck:
       test:

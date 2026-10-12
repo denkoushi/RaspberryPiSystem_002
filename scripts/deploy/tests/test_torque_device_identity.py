@@ -67,6 +67,8 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
             "ExecStart=/usr/local/libexec/torque-bluetooth-guard --poll-seconds 1 --command-timeout-seconds 4",
             "Restart=always",
             "RuntimeDirectory=torque-bluetooth-guard",
+            "Group=10001",
+            "RuntimeDirectoryMode=0770",
             "TimeoutStopSec=10",
         ):
             self.assertIn(fragment, guard_unit)
@@ -83,8 +85,10 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
             'ATTRS{name}=="{{ wrench.name }}"',
             'ATTRS{uniq}=="{{ wrench.uniq }}"',
             'SYMLINK+="input/by-id/{{ wrench.link_name }}"',
+            'GROUP="input", MODE="0660"',
         ):
             self.assertIn(fragment, rule)
+        self.assertNotIn('MODE="0666"', rule)
 
     def test_stonebase_inventory_uses_stable_identities_and_verified_parser(self) -> None:
         inventory = (ROOT / "infrastructure/ansible/inventory.yml").read_text()
