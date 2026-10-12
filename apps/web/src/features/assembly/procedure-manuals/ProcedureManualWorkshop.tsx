@@ -3,12 +3,9 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { listProcedureManualCommon, deleteAssemblyProcedureDocument, verifyAssemblyTemplateAccessPassword, getProcedureManualAssignments, getProcedureManualOverview, getAssemblyProcedureDocument, listAssemblyMachineNameCandidates, listProcedureManualPartCandidates, listProcedureManualModels, listProcedureManualProcesses, listProcedureMaterials, listProcedureVideos, replaceProcedureManualAssignments } from '../../../api/client';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
-import { Dialog } from '../../../components/ui/Dialog';
 import { IconActionTooltip } from '../../../components/ui/IconActionTooltip';
 import { normalizeWorkInstructionPartNumber } from '../../../lib/workInstructionRules';
 import { KioskPinDialog, kioskPinErrorResult } from '../../kiosk/KioskPinDialog';
-import { AssemblyProcedurePreviewDialog } from '../AssemblyProcedurePreviewDialog';
-import { AssemblyProcedureSequenceViewer } from '../AssemblyProcedureSequenceViewer';
 import { kioskAssemblyManualsPath, kioskAssemblyManualsWorkshopPath, kioskAssemblyProcedureDocumentEditPath, kioskAssemblyTemplateNewPath } from '../assemblyRoutes';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 import { PROCEDURE_EDITOR_ACCESS_HOURS, readProcedureEditorAccess, saveProcedureEditorAccess, subscribeProcedureEditorAccess } from '../procedureEditorAccess';
@@ -20,12 +17,13 @@ import { ProcedureManualBlankDialog } from './ProcedureManualBlankDialog';
 import { ProcedureManualCommonDialog } from './ProcedureManualCommonDialog';
 import { ProcedureManualCommonList, filterProcedureManualCommonItems } from './ProcedureManualCommonList';
 import { ProcedureManualFilterPane } from './ProcedureManualFilterPane';
+import { ProcedureManualFullscreenPreview, procedureDocumentToSequence } from './ProcedureManualFullscreenPreview';
 import { ProcedureManualReattachPartDialog } from './ProcedureManualReattachPartDialog';
 import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
 import { ProcedureVideoShelfDialog } from './ProcedureVideoShelfDialog';
 
 import type { ProcedureManualPartCandidateDto } from '../../../api/client';
-import type { ProcedureManualCommonCatalogDto, ProcedureManualModelDto, AssemblyProcedureDocumentDto, AssemblyProcedureSequenceDto, ProcedureManualAssignmentOverviewItemDto, ProcedureManualOverviewItemDto, ProcedureManualProcessDto } from '../types';
+import type { ProcedureManualCommonCatalogDto, ProcedureManualModelDto, AssemblyProcedureSequenceDto, ProcedureManualAssignmentOverviewItemDto, ProcedureManualOverviewItemDto, ProcedureManualProcessDto } from '../types';
 
 const action = `${procedureManualButtonBase} ${procedureManualButtonUnselected} inline-flex items-center justify-center px-4 text-xl font-bold disabled:opacity-40`;
 const primaryAction = `${procedureManualButtonBase} inline-flex items-center justify-center px-4 text-xl font-bold disabled:opacity-40 border-[#3ba776] bg-[#3ba776] text-[#0b1a12]`;
@@ -56,7 +54,6 @@ export function ProcedureManualWorkshop() {
   const [commonCatalog, setCommonCatalog] = useState<ProcedureManualCommonCatalogDto>({ categories: [], actions: [], subjects: [] });
   const commonReturnTo = kioskAssemblyManualsWorkshopPath({ common: '1', process: processId });
   const [items, setItems] = useState<ProcedureManualAssignmentOverviewItemDto[]>([]);
-  const [preview, setPreview] = useState<AssemblyProcedureDocumentDto | null>(null);
   const [previewSequence, setPreviewSequence] = useState<AssemblyProcedureSequenceDto | null>(null);
   const [previewTitle, setPreviewTitle] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -192,13 +189,13 @@ export function ProcedureManualWorkshop() {
   const view = async (item: ProcedureManualAssignmentOverviewItemDto) => {
     setPreviewLoading(true); setError(null);
     try {
+      setPreviewTitle(item.label || item.title);
       if (item.kind === 'assembly_procedure_document') {
-        setPreview(await getAssemblyProcedureDocument(item.documentId));
+        setPreviewSequence(procedureDocumentToSequence(await getAssemblyProcedureDocument(item.documentId)));
       } else {
         const detail = await getProcedureManualAssignments(item.modelCodeKey, item.processId);
         const documents = detail.sequence.documents.filter(row => row.kioskDocumentId === item.documentId);
         if (!documents.length) throw new Error('文書を表示できません');
-        setPreviewTitle(item.label || item.title);
         setPreviewSequence({ ...detail.sequence, documents, steps: detail.sequence.steps?.filter(row => row.kioskDocumentId === item.documentId) });
       }
     } catch (cause) { setError(readAssemblyApiErrorMessage(cause, '文書を表示できません')); }
@@ -326,11 +323,7 @@ export function ProcedureManualWorkshop() {
       navigate(kioskAssemblyProcedureDocumentEditPath(documentId), { state: { returnTo: isCommon ? commonReturnTo : kioskAssemblyManualsWorkshopPath({ [subjectKind === 'PART' ? 'part' : 'model']: modelCodeKey, process: processId }) } });
     }} /> : null}
     {videoOpen ? <ProcedureVideoShelfDialog onClose={() => setVideoOpen(false)} /> : null}
-    <AssemblyProcedurePreviewDialog document={preview} isOpen={Boolean(preview)} onClose={() => setPreview(null)} />
-    {previewSequence ? <Dialog isOpen onClose={() => setPreviewSequence(null)} title={previewTitle} size="full">
-      <AssemblyProcedureSequenceViewer sequence={previewSequence} showCurrentMarkerButton={false} className="min-h-0 flex-1" />
-      <button className={`${action} mt-3 self-end`} onClick={() => setPreviewSequence(null)}>閉じる</button>
-    </Dialog> : null}
+    {previewSequence ? <ProcedureManualFullscreenPreview sequence={previewSequence} title={previewTitle} onClose={() => setPreviewSequence(null)} /> : null}
     <ConfirmDialog isOpen={Boolean(removing)} title="この工程から外す" description={removing ? `${removing.label || removing.title}。${removing.otherAssignments.length ? `他の使用先に残ります：${usageLabel(removing.otherAssignments)}` : '手順書一覧に「未使用」で残ります'}` : undefined} confirmLabel="外す" buttonClassName="min-h-12" onCancel={() => setRemoving(null)} onConfirm={() => { if (removing) void remove(removing); setRemoving(null); }} />
     <ConfirmDialog isOpen={Boolean(deleting)} title="下書きを削除" description={deleting ? `${deleting.label || deleting.title}。元に戻せません` : undefined} confirmLabel="削除" tone="danger" buttonClassName="min-h-12" onCancel={() => setDeleting(null)} onConfirm={() => { if (deleting) void remove(deleting, true); setDeleting(null); }} />
   </div>;

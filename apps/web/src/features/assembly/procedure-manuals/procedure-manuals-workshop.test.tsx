@@ -21,7 +21,7 @@ vi.mock('../../../api/client', () => ({
   listProcedureMaterials: mocks.materials, listProcedureVideos: mocks.videos
 }));
 vi.mock('../../../hooks/useProtectedImageBlobUrl', () => ({ useProtectedImageBlobUrl: mocks.image }));
-vi.mock('../AssemblyProcedureSequenceViewer', () => ({ AssemblyProcedureSequenceViewer: ({ sequence }: { sequence: AssemblyProcedureSequenceDto }) => <div data-testid="pdf-sequence-viewer">{sequence.documents.map(document => <span key={document.orderItemId}>{document.title}</span>)}{(sequence.steps ?? []).map(step => <span key={step.id}>{step.title}</span>)}</div> }));
+vi.mock('../AssemblyProcedureSequenceViewer', () => ({ AssemblyProcedureSequenceViewer: ({ sequence, onClose }: { sequence: AssemblyProcedureSequenceDto; onClose?: () => void }) => <div data-testid="pdf-sequence-viewer"><button onClick={onClose}>閉じる</button>{sequence.documents.map(document => <span key={document.orderItemId}>{document.title}</span>)}{(sequence.steps ?? []).map(step => <span key={step.id}>{step.title}</span>)}</div> }));
 vi.mock('./ProcedureManualBlankDialog', () => ({ ProcedureManualBlankDialog: ({ modelCode, processId, subjectKind }: { modelCode: string; processId: string; subjectKind: string }) => <div role="dialog" aria-label="白紙から作る" data-subject-kind={subjectKind}>{modelCode} / {processId}</div> }));
 vi.mock('./ProcedureManualAssignmentDialog', async importOriginal => ({
   ...await importOriginal<typeof import('./ProcedureManualAssignmentDialog')>(),
@@ -579,13 +579,16 @@ describe('procedure-manuals workshop', () => {
     const row = await screen.findByRole('row', { name: status === 'draft' ? '初版下書き' : '公開手順' });
     sessionStorage.removeItem('procedure-editor-access');
     fireEvent.click(within(row).getByRole('button', { name: '見る' }));
-    const dialog = await screen.findByRole('dialog', { name: /手順書の内容確認/ });
+    const dialog = await screen.findByRole('dialog', { name: status === 'draft' ? '初版下書き' : '公開手順' });
     expect(mocks.document).toHaveBeenCalledExactlyOnceWith(status === 'draft' ? 'draft1' : 'v2');
     expect(within(dialog).queryByRole('button', { name: /公開|新規作成|直す|使う|削除/ })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: '暗証番号' })).not.toBeInTheDocument();
     expect(mocks.verify).not.toHaveBeenCalled();
     expect(within(screen.getByRole('row', { name: '無効手順' })).queryByRole('button', { name: '見る' })).not.toBeInTheDocument();
+    expect(within(dialog).getByTestId('pdf-sequence-viewer')).toHaveTextContent(status === 'draft' ? '初版下書き' : '公開手順');
+    fireEvent.click(within(dialog).getByRole('button', { name: '閉じる' }));
+    expect(dialog).not.toBeInTheDocument();
   });
 
   it('views only the selected kiosk PDF from the assigned sequence', async () => {
@@ -599,6 +602,11 @@ describe('procedure-manuals workshop', () => {
     expect(within(dialog).queryByText('別のPDF')).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: /公開|直す|使う|削除/ })).not.toBeInTheDocument();
     expect(mocks.document).not.toHaveBeenCalled();
+    expect(within(dialog).queryByRole('textbox')).not.toBeInTheDocument();
+    expect(mocks.verify).not.toHaveBeenCalled();
+    expect(within(dialog).getByRole('button', { name: '閉じる' })).toBeInTheDocument();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(dialog).not.toBeInTheDocument();
   });
 
   it('uses each row context when fixing and removing an assignment without a selected model', async () => {

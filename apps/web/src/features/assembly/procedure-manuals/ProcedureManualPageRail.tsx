@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import type { ReactNode } from 'react';
 
 export type ProcedureManualPageRailProps = {
+  onClose?: () => void;
   listOpen?: boolean;
   onToggleList?: () => void;
   twoPages?: boolean;
@@ -18,11 +19,11 @@ export type ProcedureManualPageRailProps = {
   onNext?: () => void;
 };
 
-export function ProcedureManualPageRail({ listOpen = false, onToggleList, twoPages = false, onToggleTwoPages, storyboardOpen = false, onToggleStoryboard, fitMode = 'contain', onFit, fitDisabled = false, index = 0, total = 0, onPrevious, onNext }: ProcedureManualPageRailProps) {
+export function ProcedureManualPageRail({ onClose, listOpen = false, onToggleList, twoPages = false, onToggleTwoPages, storyboardOpen = false, onToggleStoryboard, fitMode = 'contain', onFit, fitDisabled = false, index = 0, total = 0, onPrevious, onNext }: ProcedureManualPageRailProps) {
   const button = (label: string, icon: ReactNode, onClick?: () => void, pressed?: boolean, disabled = false, primary = false) => <button type="button" aria-label={label} title={label} aria-pressed={pressed} disabled={disabled || !onClick} onClick={onClick} className={clsx('grid h-12 w-12 shrink-0 cursor-pointer place-items-center rounded-[10px] border disabled:opacity-35', pressed || primary ? 'border-[#3ba776] bg-[#3ba776] text-[#0b1a12]' : 'border-[#344252] bg-transparent text-[#eef3f6]')}><svg aria-hidden="true" className="h-[26px] w-[26px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={label === '前手順' || label === '次手順' ? 2.4 : 2.2}>{icon}</svg></button>;
   const separator = <span aria-hidden="true" className="my-1 h-px w-9 shrink-0 bg-[#344252]" />;
   return <div role="toolbar" aria-label="ページ操作" className="absolute bottom-0 right-0 top-0 flex w-16 flex-col items-center gap-2 overflow-y-auto border-l border-[#27313b] bg-[#161c22] py-2.5">
-    {button('一覧を開閉', <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></>, onToggleList, listOpen)}
+    {onClose ? button('閉じる', <path d="M6 6l12 12M18 6L6 18" />, onClose) : button('一覧を開閉', <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></>, onToggleList, listOpen)}
     {button('2 ページ表示', <><rect x="3" y="5" width="8" height="14" rx="1" /><rect x="13" y="5" width="8" height="14" rx="1" /></>, onToggleTwoPages, twoPages, listOpen || total === 0)}
     {separator}
     {button('全手順', <><rect x="4" y="4" width="6" height="6" /><rect x="14" y="4" width="6" height="6" /><rect x="4" y="14" width="6" height="6" /><rect x="14" y="14" width="6" height="6" /></>, onToggleStoryboard, storyboardOpen)}
