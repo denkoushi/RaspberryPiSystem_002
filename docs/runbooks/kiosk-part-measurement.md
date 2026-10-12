@@ -976,7 +976,7 @@ cd apps/api && pnpm exec vitest run \
 
 知見:
 
-- `pnpm/action-setup@v5` は `package.json` の `packageManager: pnpm@9.15.9` を読むため、workflow 側で `with.version` を同時指定しない。
+- `pnpm/action-setup@v5` は `package.json` の `packageManager: pnpm@10.34.6` を読むため、workflow 側で `with.version` を同時指定しない。
 - `pnpm audit --audit-level=high` は #939 後に pass。残存 audit は **low 2 / moderate 10** で、high blocker はなし。
 - #940 の Playwright E2E は self-inspection session route を API mock で固定し、`測定値選択`、空 option、旧 `0.1候補` / `候補から選択` / `候補（刻み...` の不在を確認する。
 

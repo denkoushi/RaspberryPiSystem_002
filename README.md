@@ -86,7 +86,7 @@ Codexを指示役、Cursorを実行役としてAI協調する場合は、[Codex/
 
 ## 開発準備
 
-1. Node.js 20.9 以上（推奨: 20.x）と pnpm をインストールし、`corepack enable` を実行
+1. Node.js 24 以上（推奨: 24.x）と pnpm 10.34.6 をインストールし、`corepack enable` を実行
 2. Python 3.11 + Poetry をインストール
 3. ルートで `pnpm install` を実行してワークスペース依存を取得
 4. `poetry install -C clients/nfc-agent` で NFC エージェント依存をセットアップ
@@ -161,9 +161,9 @@ pnpm test:e2e:headed
   curl -fsSL https://get.docker.com | sh
   sudo usermod -aG docker $USER
   ```
-- Node.js 20 系（推奨: `nvm`）
+- Node.js 24 系（推奨: `nvm`）
   - ⚠️ NodeSource（`deb.nodesource.com`）はOS側のGPG/署名ポリシー変更で `apt update` が失敗し、デプロイが中断する場合があります（例: 2026-02-01以降のSHA1拒否。詳細はKB-220）。
-  - `curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -` を使う場合は、`/etc/apt/sources.list.d/nodesource.list` が残り続ける点に注意してください。
+  - `curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -` を使う場合は、`/etc/apt/sources.list.d/nodesource.list` が残り続ける点に注意してください。
 - pnpm (`corepack enable`)
 - Python 3.11 + Poetry（クライアント開発や手元検証用）
 
@@ -199,9 +199,9 @@ pnpm test:e2e:headed
 ### Prisma が `libssl.so.1.1` を要求して落ちる
 
 - **症状**: `PrismaClientInitializationError: libssl.so.1.1: cannot open shared object file`
-- **原因**: Alpine ベースの `node:20-alpine` でビルドした際に OpenSSL 1.1 ライブラリが存在しない
+- **原因**: Alpine ベースの Node.js イメージでビルドした際に OpenSSL 1.1 ライブラリが存在しない
 - **解決策**:
-  1. `infrastructure/docker/Dockerfile.api` のベースを `node:20-bookworm-slim`（Debian/glibc）に固定
+  1. `infrastructure/docker/Dockerfile.api` のベースを `node:24-bookworm-slim`（Debian/glibc）に固定
   2. build / runtime 両方のステージで `apt-get install -y openssl` を実行
   3. Prisma の `binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]` を維持し、`pnpm prisma generate` を忘れない
   4. 変更後は `docker compose -f infrastructure/docker/docker-compose.server.yml build --no-cache api` を実行し、古いレイヤーを使い回さない

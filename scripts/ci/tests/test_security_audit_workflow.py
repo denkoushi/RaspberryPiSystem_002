@@ -15,7 +15,7 @@ class SecurityAuditWorkflowTests(unittest.TestCase):
     def test_bulk_audit_uses_an_isolated_pinned_client_without_fail_open(self) -> None:
         text = WORKFLOW.read_text(encoding="utf-8")
 
-        self.assertIn("node-version: '22'", text)
+        self.assertIn("node-version: '24'", text)
         self.assertIn("AUDIT_PNPM_VERSION: '11.4.0'", text)
         self.assertIn("node scripts/ci/run-pnpm-bulk-audit.mjs", text)
         self.assertNotIn("--ignore-registry-errors", text)

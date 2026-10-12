@@ -161,7 +161,7 @@ class BackupInternalGatewayContractTests(unittest.TestCase):
         )
         self.assertIn("api-green:", compose)
         self.assertIn("volumes: *api-volumes", compose)
-        self.assertIn("FROM node:20-bookworm-slim AS api-runtime", dockerfile)
+        self.assertIn("FROM node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS api-runtime", dockerfile)
         self.assertIn("FROM api-runtime AS api", dockerfile)
 
     def test_plain_mjs_cli_contract(self) -> None:
