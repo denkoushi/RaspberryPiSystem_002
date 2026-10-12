@@ -1,4 +1,5 @@
 # syntax=docker/dockerfile:1
+FROM node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS node-runtime
 FROM mcr.microsoft.com/playwright:v1.56.1-noble@sha256:f1e7e01021efd65dd1a2c56064be399f3e4de00fd021ac561325f2bfbb2b837a
 
 WORKDIR /workspace
@@ -7,7 +8,8 @@ ENV CI=true \
     LANG=ja_JP.UTF-8 \
     LC_ALL=ja_JP.UTF-8
 
-RUN corepack enable
+COPY --from=node-runtime /usr/local/ /usr/local/
+RUN node --version | grep -Eq '^v24\.' && corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
 COPY infrastructure/docker/Dockerfile.kiosk-sop-generator infrastructure/docker/Dockerfile.kiosk-sop-generator
 COPY apps/web/package.json apps/web/package.json

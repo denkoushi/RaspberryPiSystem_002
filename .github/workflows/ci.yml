@@ -122,12 +122,11 @@ jobs:
       - name: Run shelf-layout-core tests
         run: pnpm --filter @raspi-system/shelf-layout-core test
 
-      # pnpm 9 uses npm's retired audit endpoint. Keep the workspace toolchain
-      # unchanged and isolate the bulk-advisory client after all Node 20 work.
+      # pnpm 10 still uses legacy audit endpoints; keep the bulk client isolated.
       - name: Setup Node.js for bulk advisory audit
         uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Security scan (pnpm bulk audit)
         env:

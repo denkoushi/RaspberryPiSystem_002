@@ -32,10 +32,10 @@
     "preview:html-previews": "python3 -m http.server 8765 --directory apps/api/scripts/html-previews"
   },
   "engines": {
-    "node": ">=20.9.0",
-    "pnpm": "9.15.9"
+    "node": ">=24.0.0",
+    "pnpm": "10.34.6"
   },
-  "packageManager": "pnpm@9.15.9",
+  "packageManager": "pnpm@10.34.6",
   "devDependencies": {
     "@playwright/test": "^1.56.1",
     "husky": "^9.1.7",

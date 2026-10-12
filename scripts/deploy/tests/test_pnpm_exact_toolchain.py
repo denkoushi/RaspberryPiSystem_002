@@ -20,8 +20,8 @@ def sha256(path: Path) -> str:
 class ExactPnpmToolchainTests(unittest.TestCase):
     def test_package_manager_and_engine_declare_the_same_exact_version(self) -> None:
         package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
-        self.assertEqual(package["packageManager"], "pnpm@9.15.9")
-        self.assertEqual(package["engines"]["pnpm"], "9.15.9")
+        self.assertEqual(package["packageManager"], "pnpm@10.34.6")
+        self.assertEqual(package["engines"]["pnpm"], "10.34.6")
 
     def test_path_pnpm_is_ignored_and_declared_exact_version_is_used(self) -> None:
         before = {path: sha256(path) for path in LOCK_FILES}
@@ -46,8 +46,8 @@ class ExactPnpmToolchainTests(unittest.TestCase):
             )
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), "9.15.9")
-        self.assertIn("pnpm=9.15.9", result.stderr)
+        self.assertEqual(result.stdout.strip(), "10.34.6")
+        self.assertIn("pnpm=10.34.6", result.stderr)
         self.assertFalse(marker.exists())
         self.assertEqual(before, {path: sha256(path) for path in LOCK_FILES})
 
@@ -61,7 +61,7 @@ class ExactPnpmToolchainTests(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("9.15.9", result.stdout)
+        self.assertIn("10.34.6", result.stdout)
         self.assertNotIn("11.19.0", result.stdout + result.stderr)
 
     def test_canonical_deploy_children_do_not_call_bare_pnpm(self) -> None:

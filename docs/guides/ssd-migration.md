@@ -133,9 +133,9 @@ sudo usermod -aG docker $USER
 sudo apt install -y git
 
 # Node.jsとpnpmのセットアップ
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt install -y nodejs
-sudo npm install -g pnpm
+sudo npm install -g pnpm@10.34.6
 
 # PythonとPoetryのインストール（NFCエージェント用）
 sudo apt install -y python3 python3-pip
