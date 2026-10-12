@@ -15,6 +15,10 @@ const TEMPLATES = [
 
 const normalize = (value) => String(value ?? '').normalize('NFKC').trim();
 const shortName = (value) => value.slice(value.lastIndexOf('部') + 1).trim() || value;
+// Placeholder values such as 「*未設定部門」 are not something a person asks about, and their
+// short form (「門」) is not a department name.
+const isPlaceholder = (value) => value.startsWith('*') || value.startsWith('(') || value.startsWith('（');
+const MIN_SHORT_LENGTH = 2;
 const tokyoDay = (date) => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(date);
@@ -22,7 +26,7 @@ const tokyoDay = (date) => new Intl.DateTimeFormat('en-CA', {
 /** Sample without replacement, including when random always returns the same number. */
 export function sampleFilterQuestions({ records, catalog, count, random = createRandom(), now = new Date() }) {
   const field = fieldsWithRole(catalog, 'organization')[0] ?? 'originDepartmentName';
-  const values = [...new Set(records.map((record) => normalize(record[field])).filter(Boolean))].sort();
+  const values = [...new Set(records.map((record) => normalize(record[field])).filter((value) => value && !isPlaceholder(value)))].sort();
   const shortCounts = new Map();
   for (const value of values) {
     const short = shortName(value);
@@ -39,7 +43,7 @@ export function sampleFilterQuestions({ records, catalog, count, random = create
   const seen = new Set();
   for (const value of values) {
     for (const template of templates) {
-      const short = template.short && shortCounts.get(shortName(value)) === 1 ? shortName(value) : null;
+      const short = template.short && shortName(value).length >= MIN_SHORT_LENGTH && shortCounts.get(shortName(value)) === 1 ? shortName(value) : null;
       const question = template.text.replace('${value}', short ?? value);
       if (seen.has(question)) continue;
       seen.add(question);
