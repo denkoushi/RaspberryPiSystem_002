@@ -57,6 +57,40 @@ history. Some kiosks have no microphone.
   GPU host. This changes the "audio stays on the device" rule to "audio stays
   on the plant network" for those terminals and needs its own ADR update.
 
+## Pi5 measurement (2026-10-12)
+
+whisper.cpp (CPU, 4 threads, built in a Debian trixie container with
+`armv8.2-a+fp16+dotprod`) on the production Pi5, 09:00 with load average
+about 5, synthetic Japanese clips of 5.6 s and 17.0 s. Wall time per clip
+includes model load.
+
+| Model | 5.6 s clip | 17.0 s clip | Text |
+| --- | --- | --- | --- |
+| `ggml-small` | 25.5 s | 25.1 s | wrong words (以内→位内, 砥石→トイシ), missing 句点 |
+| `ggml-large-v3-turbo` q5_0 | 69.5 s | 71.8 s | one wrong word (チャック→チャックス) |
+| `ggml-large-v3-turbo` | 95.4 s | 93.5 s | same as q5_0 |
+
+The same turbo model on the Mac answers in about 7 s. The Pi5 is rejected as
+the recognition host for kiosks. The bench folder and image were removed from
+the Pi5 afterwards.
+
+## Direction for kiosks (2026-10-12, not yet implemented)
+
+- Recognition for kiosk terminals runs on the plant GPU host. The kiosk
+  browser records from a USB microphone and uploads audio to the Pi5 API;
+  the API forwards it to the GPU host over the existing business path
+  (`:38081`, existing business principal). Audio stays on the plant network.
+- The GPU host side belongs to `denkoushi/DGXSparkControlPlane` and goes
+  first, as a backward-compatible addition with its own ExecPlan, branch and
+  PR. The closest precedent is the business text-embedding endpoint: opt-in,
+  its own unit on loopback, served before inference admission and outside the
+  heavy-compute lease.
+- Open on the GPU host: CPU or GPU for whisper (coexistence with the business
+  LLM pool on unified memory is unproven), latency on that host, and upload
+  size limits through the proxy and gateway.
+- The kiosk screen keeps the approved buttons (話す / 続き / 直す / 戻す). Only
+  the recognition endpoint differs per device.
+
 ## Consequences
 
 - whisper-server must be started with `--convert` and ffmpeg must be installed
