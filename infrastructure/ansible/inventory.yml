@@ -70,6 +70,7 @@ all:
           hermes_knowledge_enabled: true
           # Nightly inspection-drawing dimension map on the DGX background lane (00:20-05:20 JST).
           part_measurement_drawing_dimension_map_enabled: true
+          procedure_speech_to_text_enabled: true
           # The answer-cache improvement batch (business-hermes-nightly) is stopped.
           # Chat answers moved to cross-source retrieval on 2026-09-24, which parked
           # the GPTCache answer cache; the cache had no hits after 2026-09-13, while
