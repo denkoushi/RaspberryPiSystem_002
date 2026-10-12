@@ -37,6 +37,7 @@ type Props = {
   layout?: 'session' | 'manuals';
   listOpen?: boolean;
   onToggleList?: () => void;
+  onClose?: () => void;
   twoPages?: boolean;
   onToggleTwoPages?: () => void;
   onCurrentStepChange?: (step: AssemblyProcedureSequenceStepDto | null, index: number, total: number) => void;
@@ -235,7 +236,8 @@ export function AssemblyProcedureSequenceViewer({
   listOpen = false,
   onToggleList,
   twoPages = false,
-  onToggleTwoPages
+  onToggleTwoPages,
+  onClose
 }: Props) {
   const steps = useMemo(
     () => (sequence.steps && sequence.steps.length > 0 ? sequence.steps : fallbackSteps(sequence)),
@@ -359,7 +361,7 @@ export function AssemblyProcedureSequenceViewer({
         <div className="flex h-full min-h-[18rem] items-center justify-center bg-slate-950 text-sm font-semibold text-white/60">
           表示できる要領書ページがありません
         </div>
-        {manuals ? <ProcedureManualPageRail listOpen={listOpen} onToggleList={onToggleList} /> : null}
+        {manuals ? <ProcedureManualPageRail onClose={onClose} listOpen={listOpen} onToggleList={onToggleList} /> : null}
       </div>
     );
   }
@@ -595,7 +597,7 @@ export function AssemblyProcedureSequenceViewer({
           ) : null}
         </div>
       </div>
-      {manuals ? <ProcedureManualPageRail listOpen={listOpen} onToggleList={onToggleList} twoPages={spread} onToggleTwoPages={onToggleTwoPages} storyboardOpen={storyboardOpen} onToggleStoryboard={() => setStoryboardOpen(open => !open)} fitMode={fitMode} fitDisabled={Boolean(crop && !showFullPage)} onFit={mode => setFitChoice({ url: currentStep.pageUrl, mode })} index={stepIndex} total={steps.length} onPrevious={() => setStepIndex(index => Math.max(0, index - (spread ? 2 : 1)))} onNext={() => setStepIndex(index => Math.min(steps.length - 1, index + (spread ? 2 : 1)))} /> : null}
+      {manuals ? <ProcedureManualPageRail onClose={onClose} listOpen={listOpen} onToggleList={onToggleList} twoPages={spread} onToggleTwoPages={onToggleTwoPages} storyboardOpen={storyboardOpen} onToggleStoryboard={() => setStoryboardOpen(open => !open)} fitMode={fitMode} fitDisabled={Boolean(crop && !showFullPage)} onFit={mode => setFitChoice({ url: currentStep.pageUrl, mode })} index={stepIndex} total={steps.length} onPrevious={() => setStepIndex(index => Math.max(0, index - (spread ? 2 : 1)))} onNext={() => setStepIndex(index => Math.min(steps.length - 1, index + (spread ? 2 : 1)))} /> : null}
     </div>
   );
 }
