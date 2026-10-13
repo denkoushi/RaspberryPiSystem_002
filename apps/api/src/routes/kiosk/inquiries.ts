@@ -15,6 +15,9 @@ const employeeTagSchema = z.object({ employeeTagUid: z.string().min(1).optional(
 const replySchema = employeeTagSchema.extend({ body: z.string().min(1).max(1000) }).strict();
 const threadParamsSchema = z.object({ threadId: z.string().min(1) }).strict();
 
+// ログインの検証を行うため無制限にしない。端末と URL ごとに数える(plugins/rate-limit.ts)。
+const inquiryRateLimit = { max: 300, timeWindow: '1 minute' };
+
 async function resolveLoginUser(request: FastifyRequest, reply: FastifyReply) {
   if (!request.headers.authorization) return undefined;
   const statusCode = reply.statusCode;
@@ -28,19 +31,19 @@ async function resolveLoginUser(request: FastifyRequest, reply: FastifyReply) {
 }
 
 export async function registerKioskInquiryRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/kiosk/inquiries/summary', { config: { rateLimit: false } }, async (request, reply) => {
+  app.get('/kiosk/inquiries/summary', { config: { rateLimit: inquiryRateLimit } }, async (request, reply) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     return getKioskInquirySummary(clientDevice, await resolveLoginUser(request, reply));
   });
 
-  app.post('/kiosk/inquiries/list', { config: { rateLimit: false } }, async (request, reply) => {
+  app.post('/kiosk/inquiries/list', { config: { rateLimit: inquiryRateLimit } }, async (request, reply) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const body = employeeTagSchema.parse(request.body === undefined ? {} : request.body);
     const loginUser = body.employeeTagUid ? undefined : await resolveLoginUser(request, reply);
     return listKioskInquiries(clientDevice, body.employeeTagUid, loginUser);
   });
 
-  app.post('/kiosk/inquiries/:threadId/open', { config: { rateLimit: false } }, async (request, reply) => {
+  app.post('/kiosk/inquiries/:threadId/open', { config: { rateLimit: inquiryRateLimit } }, async (request, reply) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const { threadId } = threadParamsSchema.parse(request.params);
     const body = employeeTagSchema.parse(request.body === undefined ? {} : request.body);
@@ -48,7 +51,7 @@ export async function registerKioskInquiryRoutes(app: FastifyInstance): Promise<
     return openKioskInquiry(clientDevice, threadId, body.employeeTagUid, loginUser);
   });
 
-  app.post('/kiosk/inquiries/:threadId/reply', { config: { rateLimit: false } }, async (request, reply) => {
+  app.post('/kiosk/inquiries/:threadId/reply', { config: { rateLimit: inquiryRateLimit } }, async (request, reply) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const { threadId } = threadParamsSchema.parse(request.params);
     const body = replySchema.parse(request.body);
