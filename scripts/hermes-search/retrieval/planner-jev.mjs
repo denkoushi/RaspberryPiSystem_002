@@ -373,10 +373,11 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       const outOfScope = fromIndex && scopeChoice === OUT_OF_SCOPE;
       const selected = [];
       const resolvedTerms = [];
+      const ambiguous = [];
       if (!outOfScope) {
         for (const [key, mapped] of optionMap) {
           if (mapped.clarify) {
-            unresolved.push({ term: mapped.group.field, candidates: [...mapped.group.values] });
+            ambiguous.push({ term: mapped.group.field, candidates: [...mapped.group.values] });
             continue;
           }
           const picked = fromIndex || linked
@@ -384,9 +385,9 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
             : null;
           if (fromIndex || linked) {
             if (picked.kind === 'clarify') {
-              unresolved.push({ term: mapped.group.field, candidates: picked.values });
+              ambiguous.push({ term: mapped.group.field, candidates: picked.values });
             } else if (picked.kind === 'low') {
-              unresolved.push({ term: mapped.group.field, candidates: picked.values.slice(0, 5) });
+              ambiguous.push({ term: mapped.group.field, candidates: picked.values.slice(0, 5) });
             } else if (picked.kind === 'values' && picked.values.length) {
               selected.push({
                 source: mapped.group.source,
@@ -429,6 +430,10 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       const contentSpan = spanChoice ? spans[Number(spanChoice.slice(1))] : null;
       const excludeShown = questions.excludeShown ? chosen(answers.excludeShown, ['true', 'false'], EXCLUDE_SHOWN_ACCEPT_AT) === 'true' : false;
       if (!contentChoice) unresolved.push({ term: 'content', candidates: ['true', 'false'] });
+      const ambiguousDropped = contentChoice === 'true'
+        ? ambiguous.map(({ term, candidates }) => ({ field: term, candidates }))
+        : [];
+      if (contentChoice !== 'true') unresolved.push(...ambiguous);
 
       let plannedSources = outOfScope ? [] : (fromIndex && scopeIds.includes(scopeChoice) ? [scopeChoice] : entries.map((entry) => entry.id));
       // Page identifiers are already known by the screen; their use is gated in code,
@@ -519,6 +524,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         unresolved: outOfScope ? [] : unresolved,
         diagnostics: {
           contentDecision: { jev, residualTokens, ...(residualOverride ? { residualOverride: true } : {}), final: finalContent },
+          ...(ambiguousDropped.length ? { ambiguousDropped } : {}),
           scope: outOfScope ? 'out_of_scope' : 'records',
           limitExplicit,
           ...(carriedQuery ? (previousSpan ? { contentSpan: previousSpan } : {}) : (contentSpan ? { contentSpan } : {})),

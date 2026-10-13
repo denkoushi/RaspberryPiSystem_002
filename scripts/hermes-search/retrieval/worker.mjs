@@ -126,6 +126,11 @@ export function compactPlan(plan) {
     ...(typeof plan.diagnostics?.contentSpan === 'string' && plan.diagnostics.contentSpan
       ? { contentSpan: plan.diagnostics.contentSpan }
       : {}),
+    // Ambiguous linked terms the planner dropped in favour of the content search, so the nightly
+    // log can count them (field names and candidate values only).
+    ...(Array.isArray(plan.diagnostics?.ambiguousDropped) && plan.diagnostics.ambiguousDropped.length
+      ? { ambiguousDropped: plan.diagnostics.ambiguousDropped.map((item) => ({ field: item.field, candidates: [...(item.candidates ?? [])] })) }
+      : {}),
     sort: plan.sort ?? null,
     limit: plan.limit ?? null,
   };

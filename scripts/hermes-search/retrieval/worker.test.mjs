@@ -795,3 +795,17 @@ test('answers without records do not carry display', async () => {
     assert.equal(result.recordIds.length, 0);
   }
 });
+
+test('compactPlan keeps the ambiguous terms the planner dropped for a content search', async () => {
+  const { compactPlan } = await import('./worker.mjs');
+  const compact = compactPlan({
+    sources: ['nonconformity'],
+    filters: [],
+    semanticQuery: '台乗せ落下 傷',
+    sort: 'relevance',
+    limit: 5,
+    diagnostics: { contentDecision: { jev: true }, ambiguousDropped: [{ field: 'partName', candidates: ['台A', '台B'] }] },
+  });
+  assert.deepEqual(compact.ambiguousDropped, [{ field: 'partName', candidates: ['台A', '台B'] }]);
+  assert.equal('ambiguousDropped' in compactPlan({ sources: [], filters: [], semanticQuery: '', diagnostics: {} }), false);
+});
