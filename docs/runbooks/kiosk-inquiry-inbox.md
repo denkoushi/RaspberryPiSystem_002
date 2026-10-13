@@ -2,7 +2,7 @@
 title: キオスクお問い合わせ受信箱 Runbook
 tags: [kiosk, support, inquiry, nfc, admin, slack]
 audience: [operators, developers, ai-agent]
-last-verified: 2026-10-09
+last-verified: 2026-10-13
 related: [../guides/slack-webhook-setup.md, ./kiosk-device-initial-route.md]
 category: runbooks
 update-frequency: medium
@@ -45,6 +45,12 @@ update-frequency: medium
 3. 押して、登録した社員の社員証をタッチすると一覧が出る。登録していない社員証では開けない。
 4. スレッドを開いて「行きます」などを送ると、受信端末の件数が減り、送った端末が 30 秒以内にオレンジになる。
 5. 送った端末で押すと、社員証なしで返信が読め、追記できる。
+
+## 配布と確認の記録
+
+- 2026-10-09: 受信箱と送信者の部署絞り込みを Pi5 へ配布(PR #1898、main `4bf34d61`、release run `20261009-091943-f2e2bb`、success)。Pi4 / Pi3 は対象外。
+- 2026-10-09: 部署の絞り込みを社員マスタの「セクション」(例: 機械課)へ修正して Pi5 へ配布(PR #1907、main `03b256ea`、release run `20261009-104622-abec20`、success)。
+- 2026-10-13: 実機確認の結果は全項目 OK。確認した内容は、送信フォームで機械課が最初から選ばれ送信者がその課の人だけになること、受信端末と社員番号の登録、送信から 30 秒以内に受信端末の丸ボタンがオレンジになること、社員証タッチで開け未登録の社員証では開けないこと、返信で送った端末がオレンジになり社員証なしで読めること。
 
 ## 実装の場所
 
