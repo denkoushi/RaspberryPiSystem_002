@@ -622,31 +622,34 @@ export function KioskItemInventoryPage() {
               <h2 title={selectedCompartment.item.name} className="line-clamp-3 break-all text-[30px] font-black leading-tight">{selectedCompartment.item.name}</h2>
               <p className="min-w-0 break-all text-[17px] text-inv-muted"><span className={`${invLabelNumber} mr-2`}>{formatInventoryLabelNumber(selectedCompartment.labelNumber)}</span>{selectedCompartment.area}・棚{selectedCompartment.shelfNumber}・引き出し{selectedCompartment.drawerNumber}</p>
             </div>
-            <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] gap-4">
-              <dl aria-label="アイテムの情報" className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] content-center items-center gap-x-4 gap-y-2 text-[21px]">
-                {(Object.keys(detailLabels) as (keyof typeof detailLabels)[]).map((field) => selectedCompartment.item[field]?.trim() ? <div key={field} className="contents"><dt className="text-[15px] text-inv-faint">{detailLabels[field]}</dt><dd className="min-w-0 break-all font-bold">{selectedCompartment.item[field]}</dd></div> : null)}
-              </dl>
-            <dl className={`${invCard} flex min-w-[190px] max-w-[320px] flex-col items-center justify-center gap-2 rounded-[18px] px-5 py-3`}>
-              <dd aria-label="現在庫" className="flex min-w-0 max-w-full flex-wrap items-baseline justify-center gap-2">
-                <span className="max-w-full shrink-0 break-all text-[56px] font-black leading-none tracking-[-0.02em] tabular-nums">{Number.isFinite(selectedCompartment.stockQuantity) ? selectedCompartment.stockQuantity : '—'}</span>
-                <span className="min-w-0 break-all text-lg font-bold text-inv-muted">{unitLabel(selectedCompartment.item)}</span>
-                {messageKind === 'success' && resultTransaction?.compartmentId === selectedCompartment.id ? <span className={`text-[26px] font-black tabular-nums ${resultTransaction.action === 'ISSUE' ? 'text-inv-amber' : resultTransaction.action === 'RESTOCK' ? 'text-inv-green' : 'text-inv-muted'}`}>{formatSignedDelta(resultTransaction.delta)}</span> : null}
-              </dd>
-              <dd className="min-w-0">
-                <button type="button" className={`${invButtonGhost} min-h-11 max-w-full !whitespace-normal rounded-xl text-sm`} disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment?.stockQuantity)} onClick={() => { setCorrectionError(null); setPanel('correct'); }}><EditIcon />数が合わないときは直す</button>
-              </dd>
-            </dl>
-            </div>
-            <div className="grid grid-cols-[minmax(0,440px)_minmax(250px,1fr)] items-start gap-4">
-              <div className="flex min-w-0 flex-col gap-2.5">
+            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,432px)] items-start gap-5">
+              <div className="flex min-w-0 flex-col gap-4">
+                <dl aria-label="アイテムの情報" className="flex flex-col">
+                  {(Object.keys(detailLabels) as (keyof typeof detailLabels)[]).map((field) => selectedCompartment.item[field]?.trim() ? <div key={field} className="grid grid-cols-[72px_minmax(0,1fr)] items-baseline gap-3 border-t border-inv-line py-[9px] last:border-b"><dt className="text-base text-inv-faint">{detailLabels[field]}</dt><dd className="min-w-0 break-all text-[21px] font-bold leading-snug">{selectedCompartment.item[field]}</dd></div> : null)}
+                </dl>
+                <div className="w-[250px] max-w-full">
+                  <InventoryRecentHistory key={selectedCompartment.id} compartmentId={selectedCompartment.id} />
+                </div>
+              </div>
+              <div className={`${invCard} flex min-w-0 flex-col gap-2.5 rounded-[18px] p-4`}>
+                <dl className="flex items-baseline gap-2 border-b border-inv-line pb-3">
+                  <dt className={`${invEyebrow} mr-auto self-center`}>現在庫</dt>
+                  <dd aria-label="現在庫" className="flex min-w-0 flex-wrap items-baseline justify-end gap-2">
+                    <span className="max-w-full shrink-0 break-all text-5xl font-black leading-none tracking-[-0.02em] tabular-nums">{Number.isFinite(selectedCompartment.stockQuantity) ? selectedCompartment.stockQuantity : '—'}</span>
+                    <span className="min-w-0 break-all text-lg font-bold text-inv-muted">{unitLabel(selectedCompartment.item)}</span>
+                    {messageKind === 'success' && resultTransaction?.compartmentId === selectedCompartment.id ? <span className={`text-2xl font-black tabular-nums ${resultTransaction.action === 'ISSUE' ? 'text-inv-amber' : resultTransaction.action === 'RESTOCK' ? 'text-inv-green' : 'text-inv-muted'}`}>{formatSignedDelta(resultTransaction.delta)}</span> : null}
+                  </dd>
+                </dl>
                 <p className={invEyebrow}>{restockMode ? '補充する数' : '払い出す数'}</p>
                 <div className="grid grid-cols-5 gap-2" role="group" aria-label={restockMode ? '補充する数' : '払い出す数'}>
-                  {Array.from({ length: 20 }, (_, index) => index + 1).map((quantity) => <button key={quantity} type="button" aria-label={`${quantity}${unitLabel(selectedCompartment.item)}を${restockMode ? '補充' : '払い出す'}`} className={`h-14 rounded-xl border-[1.5px] text-2xl font-black tabular-nums disabled:opacity-40 ${restockMode ? 'border-inv-green bg-inv-green/10' : 'border-inv-amber bg-inv-amber/10'}`} disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment.stockQuantity) || (!restockMode && quantity > selectedCompartment.stockQuantity)} onClick={() => void submitQuantity(quantity)}>{quantity}</button>)}
+                  {Array.from({ length: 20 }, (_, index) => index + 1).map((quantity) => <button key={quantity} type="button" aria-label={`${quantity}${unitLabel(selectedCompartment.item)}を${restockMode ? '補充' : '払い出す'}`} className={`h-[70px] rounded-xl border-[1.5px] text-[28px] font-black tabular-nums disabled:opacity-40 ${restockMode ? 'border-inv-green bg-inv-green/10' : 'border-inv-amber bg-inv-amber/10'}`} disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment.stockQuantity) || (!restockMode && quantity > selectedCompartment.stockQuantity)} onClick={() => void submitQuantity(quantity)}>{quantity}</button>)}
                 </div>
-                <button type="button" className="h-12 self-start rounded-[14px] border-[1.5px] border-inv-line2 bg-inv-s2 px-[18px] text-[17px] font-bold disabled:opacity-40" disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment.stockQuantity)} onClick={() => { setQuantityError(null); setPanel('quantity'); }}>ほかの数</button>
+                <div className="flex items-center gap-2.5">
+                  <button type="button" className="h-12 shrink-0 rounded-xl border border-inv-line2 bg-inv-s2 px-4 text-[15px] font-bold disabled:opacity-40" disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment.stockQuantity)} onClick={() => { setQuantityError(null); setPanel('quantity'); }}>ほかの数</button>
+                  <button type="button" className={`${invButtonGhost} ml-auto min-h-11 min-w-0 !whitespace-normal border-transparent px-1 text-[15px] text-inv-muted underline underline-offset-4`} disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment?.stockQuantity)} onClick={() => { setCorrectionError(null); setPanel('correct'); }}><EditIcon />数が合わないときは直す</button>
+                </div>
                 <div className="h-11 shrink-0" aria-live="polite">{quantityError && panel !== 'quantity' ? <p role="alert" className="text-inv-red">{quantityError}</p> : null}</div>
               </div>
-              <InventoryRecentHistory key={selectedCompartment.id} compartmentId={selectedCompartment.id} />
             </div>
           </div>
           {panel === 'quantity' ? <div className="absolute inset-0 z-10 flex items-center justify-center rounded-[18px] bg-[#05080d]/80">

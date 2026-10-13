@@ -32,8 +32,8 @@ export function InventoryRecentHistory({ compartmentId }: { compartmentId: strin
       {!history.isLoading && entries.length === 0 ? <p className="text-sm text-inv-faint">まだ記録がありません</p> : null}
       <ul className={`flex flex-col gap-1 ${open ? 'max-h-72 overflow-y-auto' : ''}`}>
         {visible.map((entry) => (
-          <li key={entry.id} className="flex h-9 shrink-0 items-center gap-2.5 rounded-lg bg-inv-s2 px-3 text-[13px]">
-            <span className="w-[84px] shrink-0 tabular-nums text-inv-faint">{formatTime(entry.createdAt)}</span>
+          <li key={entry.id} className="flex h-9 shrink-0 items-center gap-2.5 rounded-lg bg-inv-s2 px-2.5 text-[15px]">
+            <span className="w-[100px] shrink-0 tabular-nums text-inv-faint">{formatTime(entry.createdAt)}</span>
             <span className={`font-black tabular-nums ${deltaColour(entry.action, entry.delta)}`}>{formatSignedDelta(entry.delta)}</span>
             <span className="ml-auto tabular-nums text-inv-faint">→{entry.afterQuantity}</span>
           </li>

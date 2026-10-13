@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>在庫 ホバー詳細と登録待ちトレイ</title>
 <style>
 /* Layout: a 1920x1080 kiosk stage scaled to the page width; scene tabs above it. Single dark look = the real inventory palette. */
@@ -99,10 +100,29 @@ button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
 .entry .fix{height:48px;border:1px solid var(--line2);background:transparent;border-radius:12px;font-size:15px;font-weight:700;align-self:flex-start;padding:0 16px}
 .hist{display:flex;flex-direction:column;gap:6px;min-width:0}
 .hist ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
-.hist li{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border-radius:8px;background:var(--s2);font-size:13px;font-variant-numeric:tabular-nums}
-.hist li time{color:var(--faint);width:92px;flex:none;white-space:nowrap}
+.hist li{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border-radius:8px;background:var(--s2);font-size:15px;font-variant-numeric:tabular-nums}
+.hist li time{color:var(--faint);width:100px;flex:none;white-space:nowrap}
 .hist li b{font-weight:900}.hist li b.out{color:var(--amber)}.hist li b.in{color:var(--green)}
 .hist li span{margin-left:auto;color:var(--faint)}
+.deck{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,432px);gap:20px;align-items:stretch}
+.read{display:flex;flex-direction:column;gap:16px;min-width:0;min-height:0}
+.spec{margin:0;display:flex;flex-direction:column}
+.spec>div{display:grid;grid-template-columns:72px minmax(0,1fr);align-items:baseline;gap:12px;padding:9px 0;border-top:1px solid var(--line)}
+.spec>div:last-child{border-bottom:1px solid var(--line)}
+.spec dt{font-size:16px;color:var(--faint)}
+.spec dd{margin:0;min-width:0;font-size:21px;font-weight:700;line-height:1.3;word-break:break-all}
+.read .hist{width:250px}
+.act{display:flex;flex-direction:column;gap:10px;padding:16px;align-self:start}
+.act .now{display:flex;align-items:baseline;gap:8px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.act .now .eyebrow{margin-right:auto;align-self:center}
+.act .now b{font-size:48px;font-weight:900;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.act .now .u{font-size:18px;font-weight:700;color:var(--muted)}
+.act .now em{font-style:normal;font-size:24px;font-weight:900;color:var(--amber);font-variant-numeric:tabular-nums;min-width:0}
+.act .now em:empty{display:none}
+.act .keys button{height:70px;font-size:28px}
+.act .row{display:flex;gap:10px;align-items:center}
+.act .fix{height:48px;border:1px solid var(--line2);background:var(--s2);border-radius:12px;font-size:15px;font-weight:700;padding:0 16px}
+.act .fix.ghost{background:transparent;border-color:transparent;color:var(--muted);padding:0 4px;text-decoration:underline;text-underline-offset:4px}
 .info{margin:10px 0 0;display:grid;grid-template-columns:auto minmax(0,1fr) auto minmax(0,1fr);gap:4px 12px;font-size:15px}
 .info dt{color:var(--faint)}.info dd{margin:0;min-width:0;word-break:break-all}
 .facts{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:stretch;flex:none}
@@ -206,13 +226,17 @@ button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
       <div class="big"><img class="ph contain" alt="" id="op-photo"></div>
       <div class="opr">
         <div><h2>超硬スクエアエンドミル 4枚刃 φ10 ロング刃長</h2><p class="where"><span class="num" style="font-size:15px">000127</span>MC-3・棚2・引き出し4</p></div>
-        <div class="facts"><dl class="info" aria-label="アイテムの情報"><dt>型式</dt><dd>VQMHVD1000</dd><dt>メーカー</dt><dd>三菱マテリアル</dd><dt>工具名</dt><dd>スクエアエンドミル</dd><dt>寸法</dt><dd>φ10×刃長30×全長90</dd><dt>被削材</dt><dd>SUS304・チタン合金</dd><dt>用途</dt><dd>側面加工・溝加工の仕上げ</dd></dl><div class="panel stockcard" aria-label="現在庫"><b id="op-stock">14</b><span>本</span><em id="op-delta"></em></div></div>
-        <div class="work">
-          <div class="entry">
-          <div class="keys" id="keys" role="group" aria-label="払い出す数"></div>
-            <div class="row"><button type="button" class="fix">ほかの数</button><button type="button" class="fix">数が合わないときは直す</button></div>
+        <div class="deck">
+          <div class="read">
+            <dl class="spec" aria-label="アイテムの情報"><div><dt>型式</dt><dd>VQMHVD1000</dd></div><div><dt>メーカー</dt><dd>三菱マテリアル</dd></div><div><dt>工具名</dt><dd>スクエアエンドミル</dd></div><div><dt>寸法</dt><dd>φ10×刃長30×全長90</dd></div><div><dt>被削材</dt><dd>SUS304・チタン合金</dd></div><div><dt>用途</dt><dd>側面加工・溝加工の仕上げ</dd></div></dl>
+            <section class="hist" aria-label="最近の動き"><span class="eyebrow">最近の動き</span><ul id="op-hist"></ul></section>
           </div>
-          <section class="hist" aria-label="最近の動き"><span class="eyebrow">最近の動き</span><ul id="op-hist"></ul></section>
+          <div class="panel act">
+            <div class="now" aria-label="現在庫"><span class="eyebrow">現在庫</span><b id="op-stock">14</b><span class="u">本</span><em id="op-delta"></em></div>
+            <span class="eyebrow">払い出す数</span>
+            <div class="keys" id="keys" role="group" aria-label="払い出す数"></div>
+            <div class="row"><button type="button" class="fix">ほかの数</button><span style="flex:1"></span><button type="button" class="fix ghost">数が合わないときは直す</button></div>
+          </div>
         </div>
       </div>
     </div>
@@ -386,7 +410,7 @@ button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
   drawOp();
 
   /* ---------- scenes ---------- */
-  var hints={a:'カードにマウスを乗せると全情報が出ます(小・中のみ)。黄色の囲みが1行目へ移した大きさ・表示のボタンです。',c:'1〜20 のどれかを押すと、その数をすぐ払い出します。最近の動きは右端の細い列にまとめました。',b:'左下の「登録待ち」を押すと一覧が上に開きます。写真の黄色い枠が全部見えていれば見切れていません。'};
+  var hints={a:'カードにマウスを乗せると全情報が出ます(小・中のみ)。黄色の囲みが1行目へ移した大きさ・表示のボタンです。',c:'左は読むところ(写真・名前・情報・最近の動き)、右は押すところ(現在庫と 1〜20)。数を押すとすぐ払い出し、すぐ上の現在庫が変わります。',b:'左下の「登録待ち」を押すと一覧が上に開きます。写真の黄色い枠が全部見えていれば見切れていません。'};
   function scene(s){
     $('scene-a').hidden=s!=='a';$('scene-b').hidden=s!=='b';$('scene-c').hidden=s!=='c';$('tab-c').setAttribute('aria-pressed',s==='c');
     $('tab-a').setAttribute('aria-pressed',s==='a');$('tab-b').setAttribute('aria-pressed',s==='b');
