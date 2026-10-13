@@ -21,7 +21,7 @@ import {
   unitLabel,
 } from '../../features/kiosk/inventory/inventoryDailyFlow';
 import { BackIcon, EditIcon, GridIcon, ListIcon, LockIcon, UndoIcon } from '../../features/kiosk/inventory/InventoryIcons';
-import { InventoryItemGrid, type InventoryThumbnailSize, type InventoryViewMode } from '../../features/kiosk/inventory/InventoryItemGrid';
+import { detailLabels, InventoryItemGrid, type InventoryThumbnailSize, type InventoryViewMode } from '../../features/kiosk/inventory/InventoryItemGrid';
 import { InventoryPhotoPane } from '../../features/kiosk/inventory/InventoryPhotoPane';
 import { InventoryQuantityPanel } from '../../features/kiosk/inventory/InventoryQuantityPanel';
 import { InventoryRecentHistory } from '../../features/kiosk/inventory/InventoryRecentHistory';
@@ -621,6 +621,9 @@ export function KioskItemInventoryPage() {
             <div className="shrink-0">
               <h2 title={selectedCompartment.item.name} className="line-clamp-3 break-all text-[30px] font-black leading-tight">{selectedCompartment.item.name}</h2>
               <p className="min-w-0 break-all text-[17px] text-inv-muted"><span className={`${invLabelNumber} mr-2`}>{formatInventoryLabelNumber(selectedCompartment.labelNumber)}</span>{selectedCompartment.area}・棚{selectedCompartment.shelfNumber}・引き出し{selectedCompartment.drawerNumber}</p>
+              <dl aria-label="アイテムの情報" className="mt-2 grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[15px]">
+                {(Object.keys(detailLabels) as (keyof typeof detailLabels)[]).map((field) => selectedCompartment.item[field]?.trim() ? <div key={field} className="contents"><dt className="text-inv-faint">{detailLabels[field]}</dt><dd className="min-w-0 break-all">{selectedCompartment.item[field]}</dd></div> : null)}
+              </dl>
             </div>
             <dl className={`${invCard} flex shrink-0 flex-wrap items-end gap-2.5 rounded-[18px] px-5 py-4`}>
               <dd aria-label="現在庫" className="flex min-w-0 max-w-full flex-wrap items-end gap-2.5">

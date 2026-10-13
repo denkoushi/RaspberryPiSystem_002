@@ -344,6 +344,18 @@ describe('KioskItemInventoryPage stock correction and tag-less picking', () => {
     await waitFor(() => expect(transaction).toHaveBeenCalledWith(expect.objectContaining({ itemTagUid: 'item-uid', expectedCompartmentId: itemTag.compartment!.id, quantityTagUid: 'quantity-uid', restock: false })));
   });
 
+  it('shows every filled item field on the operation screen', () => {
+    const compartment = { ...itemTag.compartment!, item: { ...itemTag.compartment!.item, model: 'VQMHVD1000', maker: '三菱', toolName: 'エンドミル', toolSize: 'φ10', workMaterial: null, usage: '側面加工' } };
+    vi.mocked(useInventoryItems).mockReturnValue({ data: [{ ...compartment.item, compartments: [compartment] }], isLoading: false } as never);
+    renderWithNfc();
+
+    fireEvent.click(within(screen.getByLabelText('登録済みアイテム')).getByRole('button', { name: /治具/ }));
+
+    const info = screen.getByLabelText('アイテムの情報');
+    expect(info).toHaveTextContent('型式VQMHVD1000メーカー三菱工具名エンドミル寸法φ10用途側面加工');
+    expect(info).not.toHaveTextContent('被削材');
+  });
+
   it('takes items out of a picked drawer with no item tag using the freshly resolved quantity', async () => {
     const transaction = vi.fn();
     const touch = vi.fn().mockResolvedValue({ transaction: historyEntry({ id: 'untagged-quantity-issue', action: 'ISSUE', delta: -3, afterQuantity: 7 }) });

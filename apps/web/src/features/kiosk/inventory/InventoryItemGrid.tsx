@@ -17,7 +17,7 @@ const sizes = {
   medium: { columns: 'grid-cols-6', photo: 'h-[190px]', fields: ['model', 'maker', 'toolSize'] },
   large: { columns: 'grid-cols-4', photo: 'h-[300px]', fields: ['model', 'maker', 'toolName', 'toolSize', 'workMaterial', 'usage'] },
 } as const;
-const detailLabels = { model: '型式', maker: 'メーカー', toolName: '工具名', toolSize: '寸法', workMaterial: '被削材', usage: '用途' };
+export const detailLabels = { model: '型式', maker: 'メーカー', toolName: '工具名', toolSize: '寸法', workMaterial: '被削材', usage: '用途' };
 
 function InventoryCardTooltip({ id, compartment, rect }: { id: string; compartment: InventoryCompartment; rect: DOMRect }) {
   const ref = useRef<HTMLDivElement>(null);
