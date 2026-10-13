@@ -37,6 +37,20 @@ beforeEach(() => {
 });
 
 describe('KioskInquiryReceiverSettings', () => {
+  it('saves system notices independently and restores their checkbox', async () => {
+    renderSettings();
+    const checkbox = await screen.findByRole('checkbox', { name: '加工キオスク システム通知' });
+    fireEvent.click(checkbox);
+    expect(checkbox).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: '加工キオスク' })).not.toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: '変更を戻す' }));
+    expect(checkbox).not.toBeChecked();
+    fireEvent.click(checkbox);
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith({ receiverClientDeviceIds: ['desk'],
+      systemNoticeReceiverClientDeviceIds: ['site'], employeeCodes: ['0012'] }));
+  });
+
   it('looks up an employee before adding their code and name', async () => {
     renderSettings();
     await add('0034');
@@ -70,7 +84,7 @@ describe('KioskInquiryReceiverSettings', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: '加工キオスク' }));
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     expect(await screen.findByRole('status')).toHaveTextContent('お問い合わせの受信設定を保存しました。');
-    expect(mocks.update).toHaveBeenCalledWith({ receiverClientDeviceIds: ['desk', 'site'], employeeCodes: ['0012', '0034'] });
+    expect(mocks.update).toHaveBeenCalledWith({ receiverClientDeviceIds: ['desk', 'site'], systemNoticeReceiverClientDeviceIds: [], employeeCodes: ['0012', '0034'] });
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeDisabled());
   });
 

@@ -9,7 +9,7 @@ import { useArmedNfcRead } from '../inventory/setup/useArmedNfcRead';
 import { inquiryErrorMessage, isInquiryAccessError } from './inquiryErrors';
 import { KioskInquiryCompose } from './KioskInquiryCompose';
 
-import type { KioskInquiryDetail } from '../../../api/domains/kiosk';
+import type { KioskInquiryDetail, KioskInquiryThread } from '../../../api/domains/kiosk';
 import type { KioskInquiryAccess } from '../../../api/hooks/kiosk';
 
 import './kiosk-inquiry.css';
@@ -17,6 +17,11 @@ import './kiosk-inquiry.css';
 function formatTime(value: string): string {
   return new Intl.DateTimeFormat('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
     .format(new Date(value));
+}
+
+function NoticeTag({ thread }: { thread: KioskInquiryThread }) {
+  return thread.kind === 'SYSTEM_NOTICE'
+    ? <span className="kiosk-inquiry__notice-tag">{thread.noticeResolvedAt ? '復旧' : 'システム'}</span> : null;
 }
 
 export function KioskInquiryInbox({ clientKey, isReceiver }: { clientKey: string; isReceiver: boolean }) {
@@ -144,24 +149,26 @@ export function KioskInquiryInbox({ clientKey, isReceiver }: { clientKey: string
     </div>
   );
 
+  const detailReceiver = detail?.thread.isReceiver ?? isReceiver;
   if (detail) return (
     <div className="kiosk-inquiry" aria-busy={busy}>
       <div className="kiosk-inquiry__thread-header">
         <Button type="button" variant="ghostOnDark" aria-label="一覧へ戻る" disabled={busy}
           onClick={() => { setDetail(null); setDraft(''); setError(null); }}>‹</Button>
-        {isReceiver ? <div className="kiosk-inquiry__who">{detail.thread.senderClientDeviceName}
+        {detailReceiver ? <div className="kiosk-inquiry__who">{detail.thread.kind === 'SYSTEM_NOTICE' ? detail.thread.noticeTitle : detail.thread.senderClientDeviceName}
+          <NoticeTag thread={detail.thread} />
           <small>{detail.thread.senderLocation}</small></div> : null}
       </div>
       <div className="kiosk-inquiry__messages" ref={messagesRef}>
         {detail.messages.map(message => (
-          <div key={message.id} className={`kiosk-inquiry__message${message.side === (isReceiver ? 'RECEIVER' : 'SENDER') ? ' kiosk-inquiry__message--mine' : ''}`}>
+          <div key={message.id} className={`kiosk-inquiry__message${message.side === (detailReceiver ? 'RECEIVER' : 'SENDER') ? ' kiosk-inquiry__message--mine' : ''}`}>
             {message.body}<time dateTime={message.createdAt}>{formatTime(message.createdAt)}</time>
           </div>
         ))}
       </div>
       <div className="kiosk-inquiry__compose">
         <div className="kiosk-inquiry__quick">
-          {(isReceiver ? ['行きます', '了解しました', 'あとで連絡します'] : ['了解です', 'お願いします']).map(text => (
+          {(detailReceiver ? ['行きます', '了解しました', 'あとで連絡します'] : ['了解です', 'お願いします']).map(text => (
             <Button key={text} type="button" variant="ghostOnDark" disabled={busy} onClick={() => void send(text)}>{text}</Button>
           ))}
         </div>
@@ -189,9 +196,9 @@ export function KioskInquiryInbox({ clientKey, isReceiver }: { clientKey: string
             <button type="button" className={`kiosk-inquiry__row${thread.unread ? ' kiosk-inquiry__row--unread' : ''}`}
               disabled={busy} onClick={() => void openThread(thread.id)}>
               <span className="kiosk-inquiry__mark" aria-label={thread.unread ? '未読' : undefined} />
-              <span className="kiosk-inquiry__who">{isReceiver ? thread.senderClientDeviceName : thread.lastMessage?.body}</span>
+              <span className="kiosk-inquiry__who">{thread.kind === 'SYSTEM_NOTICE' ? thread.noticeTitle : (thread.isReceiver ?? isReceiver) ? thread.senderClientDeviceName : thread.lastMessage?.body}<NoticeTag thread={thread} /></span>
               <time dateTime={thread.lastMessageAt}>{formatTime(thread.lastMessageAt)}</time>
-              {isReceiver ? <><span className="kiosk-inquiry__location">{thread.senderLocation}</span>
+              {(thread.isReceiver ?? isReceiver) ? <><span className="kiosk-inquiry__location">{thread.senderLocation}</span>
                 <span className="kiosk-inquiry__preview">{thread.lastMessage?.body}</span></> : null}
             </button>
           </li>

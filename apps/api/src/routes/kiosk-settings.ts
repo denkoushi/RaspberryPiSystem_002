@@ -18,6 +18,7 @@ const navTabOrderBodySchema = z.object({
 
 const inquiryReceiversBodySchema = z.object({
   receiverClientDeviceIds: z.array(z.string().min(1)),
+  systemNoticeReceiverClientDeviceIds: z.array(z.string().min(1)).default([]),
   employeeCodes: z.array(z.string().min(1))
 }).strict();
 const employeeLookupQuerySchema = z.object({ employeeCode: z.string().min(1) }).strict();
@@ -31,7 +32,7 @@ export function registerKioskSettingsRoutes(app: FastifyInstance): void {
 
   app.put('/kiosk-settings/inquiry-receivers', { preHandler: canManage }, async (request) => {
     const body = inquiryReceiversBodySchema.parse(request.body);
-    return { settings: await replaceInquiryReceiverSettings(body.receiverClientDeviceIds, body.employeeCodes) };
+    return { settings: await replaceInquiryReceiverSettings(body.receiverClientDeviceIds, body.employeeCodes, body.systemNoticeReceiverClientDeviceIds) };
   });
 
   app.get('/kiosk-settings/inquiry-receivers/employee-lookup', { preHandler: canManage }, async (request) => {

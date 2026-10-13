@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import { deliverFileAlertNotice, expireFileAlertNotice } from '../kiosk-inquiry/system-notice-sources.js';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
 import { runExclusiveSchedulerTick } from '../../lib/exclusive-scheduler-tick.js';
@@ -174,6 +175,7 @@ export class AlertsIngestor {
       }
 
       try {
+        await expireFileAlertNotice(alert.type, timestamp);
         // Alertをupsert（idで一意化）
         await prisma.alert.upsert({
           where: { id: alert.id },
@@ -204,6 +206,8 @@ export class AlertsIngestor {
             acknowledgedAt: alert.acknowledged ? timestamp : undefined
           }
         });
+
+        await deliverFileAlertNotice(alert.type, timestamp);
 
         // AlertDeliveryを初回作成（既に存在する場合はスキップ）
         const routeKey = resolveRouteKey(alert.type, config.routing);

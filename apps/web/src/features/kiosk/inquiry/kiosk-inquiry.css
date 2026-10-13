@@ -62,3 +62,5 @@
 .kiosk-inquiry__submit { flex: none; padding: 10px 26px; border: 0; border-radius: 10px; color: #082218; background: #9cf1b9; font: inherit; font-weight: 700; cursor: pointer; }
 .kiosk-inquiry__new-form button:disabled, .kiosk-inquiry__new:disabled { opacity: 0.5; cursor: default; }
 .kiosk-inquiry textarea:focus-visible, .kiosk-inquiry summary:focus-visible { outline: 3px solid #ff8a1f; outline-offset: 2px; }
+
+.kiosk-inquiry__notice-tag { display: inline-block; margin-left: 8px; padding: 1px 6px; border: 1px solid #9bc7ac; border-radius: 6px; color: #9bc7ac; font-size: 11px; font-weight: 400; vertical-align: middle; }

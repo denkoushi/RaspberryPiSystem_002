@@ -15,15 +15,17 @@ export function KioskInquiryReceiverSettings() {
   const settingsQuery = useKioskInquiryReceiverSettings();
   const update = useUpdateKioskInquiryReceiverSettings();
   const lookup = useLookupKioskInquiryEmployee();
-  const [draft, setDraft] = useState<{ receiverClientDeviceIds: string[]; employees: KioskInquiryEmployee[] } | null>(null);
+  const [draft, setDraft] = useState<{ receiverClientDeviceIds: string[]; systemNoticeReceiverClientDeviceIds: string[]; employees: KioskInquiryEmployee[] } | null>(null);
   const [employeeCode, setEmployeeCode] = useState('');
   const [addError, setAddError] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; tone: 'success' | 'error' } | null>(null);
   const settings = settingsQuery.data?.settings;
   const savedIds = settings?.devices.filter(device => device.inquiryReceiverEnabled).map(device => device.id) ?? [];
-  const current = draft ?? { receiverClientDeviceIds: savedIds, employees: settings?.employees ?? [] };
+  const savedNoticeIds = settings?.devices.filter(device => device.systemNoticeReceiverEnabled).map(device => device.id) ?? [];
+  const current = draft ?? { receiverClientDeviceIds: savedIds, systemNoticeReceiverClientDeviceIds: savedNoticeIds, employees: settings?.employees ?? [] };
   const signature = (values: string[]) => [...values].sort().join('\0');
   const isDirty = !!settings && (signature(current.receiverClientDeviceIds) !== signature(savedIds)
+    || signature(current.systemNoticeReceiverClientDeviceIds) !== signature(savedNoticeIds)
     || signature(current.employees.map(employee => employee.employeeCode)) !== signature(settings.employees.map(employee => employee.employeeCode)));
   const busy = update.isPending || lookup.isPending;
 
@@ -48,6 +50,7 @@ export function KioskInquiryReceiverSettings() {
     setMessage(null);
     try {
       await update.mutateAsync({ receiverClientDeviceIds: current.receiverClientDeviceIds,
+        systemNoticeReceiverClientDeviceIds: current.systemNoticeReceiverClientDeviceIds,
         employeeCodes: current.employees.map(employee => employee.employeeCode) });
       setDraft(null);
       setMessage({ text: 'お問い合わせの受信設定を保存しました。', tone: 'success' });
@@ -64,7 +67,8 @@ export function KioskInquiryReceiverSettings() {
           <legend className="mb-2 text-sm font-semibold">受け取る端末</legend>
           <div className="flex flex-wrap gap-2">
             {settings.devices.map(device => (
-              <label key={device.id} className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm has-[:checked]:border-emerald-600">
+              <div key={device.id} className="flex flex-wrap items-center gap-3">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm has-[:checked]:border-emerald-600">
                 <input type="checkbox" className="h-4 w-4 accent-emerald-600" checked={current.receiverClientDeviceIds.includes(device.id)}
                   onChange={event => {
                     setMessage(null);
@@ -72,6 +76,16 @@ export function KioskInquiryReceiverSettings() {
                       ? [...current.receiverClientDeviceIds, device.id] : current.receiverClientDeviceIds.filter(id => id !== device.id) });
                   }} />{device.name}
               </label>
+              <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
+                <input type="checkbox" className="h-4 w-4 accent-emerald-600" aria-label={`${device.name} システム通知`}
+                  checked={current.systemNoticeReceiverClientDeviceIds.includes(device.id)} onChange={event => {
+                    setMessage(null);
+                    setDraft({ ...current, systemNoticeReceiverClientDeviceIds: event.target.checked
+                      ? [...current.systemNoticeReceiverClientDeviceIds, device.id]
+                      : current.systemNoticeReceiverClientDeviceIds.filter(id => id !== device.id) });
+                  }} />システム通知
+              </label>
+              </div>
             ))}
           </div>
         </fieldset>
