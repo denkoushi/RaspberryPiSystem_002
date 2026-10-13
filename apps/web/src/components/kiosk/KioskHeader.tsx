@@ -26,7 +26,6 @@ type PowerAction = 'reboot' | 'poweroff';
 type KioskHeaderProps = {
   clientKey: string;
   clientId: string;
-  onOpenSupport: () => void;
   defaultMode?: 'PHOTO' | 'TAG';
   initialKioskRoute?: string | null;
   clientStatus?: ClientStatus | null;
@@ -55,7 +54,6 @@ const PowerIcon = () => (
 export function KioskHeader({
   clientKey,
   clientId,
-  onOpenSupport,
   defaultMode,
   initialKioskRoute,
   clientStatus,
@@ -155,14 +153,6 @@ export function KioskHeader({
             className={utilityClass}
           >
             サイネージ
-          </button>
-          <button
-            type="button"
-            onClick={onOpenSupport}
-            className={utilityClass}
-            aria-label="お問い合わせ"
-          >
-            お問い合わせ
           </button>
         </div>
         <div className="flex h-11 items-center gap-1.5">

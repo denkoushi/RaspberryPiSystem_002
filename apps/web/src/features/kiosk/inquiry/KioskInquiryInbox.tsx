@@ -7,6 +7,7 @@ import { Button } from '../../../components/ui/Button';
 import { useArmedNfcRead } from '../inventory/setup/useArmedNfcRead';
 
 import { inquiryErrorMessage, isInquiryAccessError } from './inquiryErrors';
+import { KioskInquiryCompose } from './KioskInquiryCompose';
 
 import type { KioskInquiryDetail } from '../../../api/domains/kiosk';
 import type { KioskInquiryAccess } from '../../../api/hooks/kiosk';
@@ -27,9 +28,11 @@ export function KioskInquiryInbox({ clientKey, isReceiver }: { clientKey: string
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<KioskInquiryDetail | null>(null);
   const [draft, setDraft] = useState('');
+  const [composing, setComposing] = useState(false);
+  const [sent, setSent] = useState(false);
   const list = useKioskInquiries(clientKey, sessionId, access.current, unlocked);
   const actions = useKioskInquiryActions(clientKey, sessionId, access.current);
-  const read = useArmedNfcRead(isReceiver && !unlocked && !verifying);
+  const read = useArmedNfcRead(isReceiver && !unlocked && !verifying && !composing);
   const messagesRef = useRef<HTMLDivElement>(null);
   const busy = actions.open.isPending || actions.reply.isPending;
 
@@ -104,14 +107,40 @@ export function KioskInquiryInbox({ clientKey, isReceiver }: { clientKey: string
     } catch (failure) { handleFailure(failure, '返信を送信できません'); }
   };
 
+  const afterSent = (threadId: string) => {
+    if (!access.current.active) return;
+    setComposing(false);
+    setSent(true);
+    setError(null);
+    void queryClient.invalidateQueries({ queryKey: ['kiosk-inquiry-summary', clientKey] });
+    if (unlocked) {
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-inquiries', clientKey, sessionId] });
+      if (!isReceiver && threadId) void openThread(threadId);
+    }
+  };
+
+  if (composing) return <KioskInquiryCompose clientKey={clientKey} onBack={() => setComposing(false)} onSent={afterSent} />;
+
+  const toolbar = (
+    <div className="kiosk-inquiry__bar">
+      <strong>お問い合わせ</strong>
+      <button type="button" className="kiosk-inquiry__new" disabled={busy || verifying}
+        onClick={() => { setComposing(true); setSent(false); setError(null); }}>＋ 新規</button>
+    </div>
+  );
+
   if (!unlocked) return (
-    <div className="kiosk-inquiry__lock" aria-busy={verifying}>
-      <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" aria-hidden="true">
-        <rect x="8" y="16" width="34" height="32" rx="5" />
-        <path d="M16 26h12M16 34h18M48 22c5 6 5 14 0 20M54 16c8 10 8 22 0 32" />
-      </svg>
-      <p>社員証をタッチ</p>
-      {error ? <p className="kiosk-inquiry__error" role="alert">{error}</p> : null}
+    <div className="kiosk-inquiry">
+      {toolbar}
+      {sent ? <p className="kiosk-inquiry__status" role="status">送信しました</p> : null}
+      <div className="kiosk-inquiry__lock" aria-busy={verifying}>
+        <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" aria-hidden="true">
+          <rect x="8" y="16" width="34" height="32" rx="5" />
+          <path d="M16 26h12M16 34h18M48 22c5 6 5 14 0 20M54 16c8 10 8 22 0 32" />
+        </svg>
+        <p>社員証をタッチ</p>
+        {error ? <p className="kiosk-inquiry__error" role="alert">{error}</p> : null}
+      </div>
     </div>
   );
 
@@ -149,6 +178,8 @@ export function KioskInquiryInbox({ clientKey, isReceiver }: { clientKey: string
 
   return (
     <div className="kiosk-inquiry" aria-busy={list.isFetching || busy}>
+      {toolbar}
+      {sent ? <p className="kiosk-inquiry__status" role="status">送信しました</p> : null}
       {error ? <p className="kiosk-inquiry__error" role="alert">{error}</p> : null}
       {list.isPending ? <p className="kiosk-inquiry__empty" role="status">読込中…</p> : null}
       {list.data?.threads.length === 0 ? <p className="kiosk-inquiry__empty">お問い合わせはありません</p> : null}

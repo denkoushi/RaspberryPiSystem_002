@@ -79,7 +79,7 @@ export function KioskSettingsPage() {
       <div>
         <h2 className="text-2xl font-bold">キオスク表示設定</h2>
         <p className="mt-1 text-sm text-white/70">
-          キオスクヘッダーの主要タブ順を全端末共通で設定します。サイネージ・管理・お問い合わせは固定です。
+          キオスクヘッダーの主要タブ順を全端末共通で設定します。サイネージ・管理は固定です。
         </p>
       </div>
 

@@ -17,9 +17,9 @@ export type RecordKioskSupportMessageParams = {
 
 export async function recordKioskSupportMessage(
   params: RecordKioskSupportMessageParams
-): Promise<void> {
+): Promise<string> {
   const logMessage = `[SUPPORT] ${params.userMessage}`;
-  await prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx) => {
     await tx.clientLog.create({
       data: {
         clientId: params.clientId,
@@ -36,7 +36,7 @@ export async function recordKioskSupportMessage(
         } as Prisma.InputJsonValue
       }
     });
-    await createKioskInquiryThread({
+    return createKioskInquiryThread({
       clientDeviceId: params.clientDeviceId,
       page: params.page,
       body: params.userMessage

@@ -17,7 +17,7 @@ import { DUE_MANAGEMENT_AUTH_SESSION_KEY, DUE_MANAGEMENT_TOKEN_SESSION_KEY } fro
 import { KioskHeader } from './KioskHeader';
 
 function renderHeader(pathname = '/kiosk/production-schedule/due-management') {
-  return render(<MemoryRouter><KioskHeader clientKey="device" clientId="device" onOpenSupport={() => {}} pathname={pathname} navTabOrder={['due_management']} /></MemoryRouter>);
+  return render(<MemoryRouter><KioskHeader clientKey="device" clientId="device" pathname={pathname} navTabOrder={['due_management']} /></MemoryRouter>);
 }
 
 beforeEach(() => {

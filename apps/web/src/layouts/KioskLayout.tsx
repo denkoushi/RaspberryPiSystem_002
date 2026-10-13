@@ -9,7 +9,6 @@ import { useDeployStatus, useKioskCallTargets, useKioskConfig } from '../api/hoo
 import { KioskDeployPreNotice } from '../components/kiosk/KioskDeployPreNotice';
 import { KioskHeader } from '../components/kiosk/KioskHeader';
 import { KioskMaintenanceScreen } from '../components/kiosk/KioskMaintenanceScreen';
-import { KioskSupportModal } from '../components/kiosk/KioskSupportModal';
 import { KioskRedirect } from '../components/KioskRedirect';
 import { readProductionBuildConfig } from '../config/productionBuildConfig';
 import {
@@ -53,7 +52,6 @@ export function KioskLayout() {
   const deployVerificationId = deployStatus?.verificationId;
   const location = useLocation();
   useKioskSeamlessWebUpdate(location.pathname, deployStatus === undefined || deployIsMaintenance);
-  const [showSupportModal, setShowSupportModal] = useState(false);
   const acknowledgedRunIdRef = useRef<Record<'notice' | 'maintenance', string | null>>({
     notice: null,
     maintenance: null
@@ -65,9 +63,9 @@ export function KioskLayout() {
   const headerRef = useRef<HTMLElement>(null);
   const handleRef = useRef<HTMLButtonElement>(null);
   // キーボードでドック内を操作している間は、マウスが離れても自動では閉じない。
-  const canCloseDock = useCallback((reason: TimedHoverRevealCloseReason = 'manual') => !showSupportModal &&
+  const canCloseDock = useCallback((reason: TimedHoverRevealCloseReason = 'manual') =>
     !headerRef.current?.querySelector('[data-kiosk-dock-overlay="true"]') &&
-    !(reason === 'timer' && headerRef.current?.querySelector(':focus-visible')), [showSupportModal]);
+    !(reason === 'timer' && headerRef.current?.querySelector(':focus-visible')), []);
   const headerReveal = useKioskBottomRightHeaderReveal(true, canCloseDock);
   const closeDock = headerReveal.close;
 
@@ -302,7 +300,6 @@ export function KioskLayout() {
         <KioskHeader
           clientKey={clientKey}
           clientId={selfClientId}
-          onOpenSupport={() => setShowSupportModal(true)}
           defaultMode={kioskConfig?.defaultMode}
           initialKioskRoute={kioskConfig?.initialKioskRoute}
           clientStatus={kioskConfig?.clientStatus ?? null}
@@ -314,7 +311,6 @@ export function KioskLayout() {
         <h1 className="sr-only">キオスク</h1>
         <Outlet />
       </main>
-      <KioskSupportModal isOpen={showSupportModal} onClose={() => setShowSupportModal(false)} />
     </div>
   );
 }

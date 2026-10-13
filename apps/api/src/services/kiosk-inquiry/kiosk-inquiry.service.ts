@@ -73,9 +73,9 @@ async function authorizeReceiver(device: InquiryDevice, employeeTagUid?: string)
 export async function createKioskInquiryThread(
   params: { clientDeviceId: string; page: string; body: string },
   tx: Prisma.TransactionClient
-): Promise<void> {
+): Promise<string> {
   const now = new Date();
-  await tx.kioskInquiryThread.create({
+  const thread = await tx.kioskInquiryThread.create({
     data: {
       senderClientDeviceId: params.clientDeviceId,
       page: params.page,
@@ -83,6 +83,7 @@ export async function createKioskInquiryThread(
       messages: { create: { side: 'SENDER', body: params.body, authorClientDeviceId: params.clientDeviceId, createdAt: now } }
     }
   });
+  return thread.id;
 }
 
 export async function getKioskInquirySummary(device: InquiryDevice) {

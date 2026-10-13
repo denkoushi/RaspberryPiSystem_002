@@ -14,6 +14,11 @@ update-frequency: medium
 
 ## 動き
 
+- 新規送信はフローティングChat(右下の丸ボタン)の「お問い合わせ」→「＋ 新規」から行う。ヘッダーの「お問い合わせ」ボタンは撤去した。
+- 受信端末でも新規送信に社員証は不要。未解錠のまま送信すると「送信しました」と表示してロック画面へ戻り、閲覧には引き続き社員証が必要。
+- 送信者を選んで「送信」を押す。依頼は「現場まで来てください。」固定。「日時・詳細」は任意で、閉じていると日時を送らない。送信失敗時は入力を保持し、その場にエラーを表示する。
+- 送信側端末では送信後に一覧を更新し、送ったスレッドを開く。
+
 | 端末 | 丸ボタン | 開き方 |
 | --- | --- | --- |
 | 受信端末(管理コンソールで指定) | 未読のお問い合わせがあるとオレンジ＋件数 | 押して社員証をタッチ。登録済みの社員番号だけ開ける |
@@ -40,7 +45,7 @@ update-frequency: medium
 
 ## 確認手順(実機)
 
-1. 現場のキオスクから「お問い合わせ」を送る。
+1. 現場のキオスクで丸ボタン→「お問い合わせ」→「＋ 新規」を開き、送信者を選んで送る。
 2. 受信端末の丸ボタンが 30 秒以内にオレンジになり、件数が出る。
 3. 押して、登録した社員の社員証をタッチすると一覧が出る。登録していない社員証では開けない。
 4. スレッドを開いて「行きます」などを送ると、受信端末の件数が減り、送った端末が 30 秒以内にオレンジになる。
@@ -55,8 +60,8 @@ update-frequency: medium
 ## 実装の場所
 
 - DB: `ClientDevice.inquiryReceiverEnabled`、`KioskInquiryReceiverEmployee`、`KioskInquiryThread`、`KioskInquiryMessage`(migration `20261009090100_add_kiosk_inquiry_inbox`。追加だけで既存の列と行は変えない)
-- API: `apps/api/src/routes/kiosk/inquiries.ts`、`apps/api/src/routes/kiosk-settings.ts`、`apps/api/src/services/kiosk-inquiry/`。スレッドは `POST /kiosk/support` の `ClientLog` 保存と同じトランザクションで作る
-- Web: `apps/web/src/features/kiosk/inquiry/`、入口は `apps/web/src/components/hermes/HermesFloatingChat.tsx`。送信フォームは `apps/web/src/components/kiosk/KioskSupportModal.tsx`
+- API: `apps/api/src/routes/kiosk/inquiries.ts`、`apps/api/src/routes/kiosk-settings.ts`、`apps/api/src/services/kiosk-inquiry/`。スレッドは `POST /kiosk/support` の `ClientLog` 保存と同じトランザクションで作り、応答は既存の `requestId` に `threadId` を追加して返す
+- Web: `apps/web/src/features/kiosk/inquiry/`、入口は `apps/web/src/components/hermes/HermesFloatingChat.tsx`。送信フォームは `apps/web/src/features/kiosk/inquiry/KioskInquiryCompose.tsx`
 
 ## うまくいかないとき
 

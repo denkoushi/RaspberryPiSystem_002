@@ -9,10 +9,15 @@ vi.mock('../../api/hooks', () => ({ useUpdateKioskInitialRoute: () => ({ mutateA
 vi.mock('./KioskSignagePreviewModal', () => ({ KioskSignagePreviewModal: () => null }));
 
 function renderHeader(clientStatus: { temperature: number | null; cpuUsage: number } | null = { temperature: 48.24, cpuUsage: 12.4 }) {
-  return render(<MemoryRouter><KioskHeader clientKey="client-key-1234" clientId="call-id-5678" onOpenSupport={vi.fn()} pathname="/kiosk/call" navTabOrder={['call']} clientStatus={clientStatus} /></MemoryRouter>);
+  return render(<MemoryRouter><KioskHeader clientKey="client-key-1234" clientId="call-id-5678" pathname="/kiosk/call" navTabOrder={['call']} clientStatus={clientStatus} /></MemoryRouter>);
 }
 
 describe('KioskHeader status chip', () => {
+  it('does not expose an inquiry button in the header', () => {
+    renderHeader();
+    expect(screen.queryByRole('button', { name: 'お問い合わせ' })).not.toBeInTheDocument();
+  });
+
   it.each([true, false])('shows maintenance details only in the popover (status available: %s)', (hasStatus) => {
     renderHeader(hasStatus ? { temperature: 48.24, cpuUsage: 12.4 } : null);
     expect(screen.queryByText('キオスク端末')).not.toBeInTheDocument();
