@@ -16,7 +16,7 @@ export function useKioskInquiryEntry(clientKey: string | undefined, pathname: st
     enabled, active, unreadCount,
     select: () => setSelected(true),
     leave: () => setSelected(false),
-    onTrigger: () => { if (!open) setSelected(unreadCount > 0); },
+    onTrigger: () => { if (!open) setSelected(true); },
     content: active && clientKey ? summary.data ? (
       <KioskInquiryInbox key={`${clientKey}:${summary.data.isReceiver}`} clientKey={clientKey} isReceiver={summary.data.isReceiver} />
     ) : <p className="kiosk-inquiry__empty" role={summary.isError ? 'alert' : 'status'}>

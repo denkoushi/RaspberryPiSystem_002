@@ -37,6 +37,109 @@ describe('InventoryPhotoReadDialog', () => {
   });
   afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); localStorage.clear(); });
 
+  it('edits controlled values verbatim, marks edited fields and retains them after closing', async () => {
+    const onApply = vi.fn();
+    render(<Harness onApply={onApply} />); load(); await drag();
+    const input = screen.getByRole('textbox', { name: '型式の値' });
+    expect(input.tagName).toBe('TEXTAREA');
+    expect(input).toHaveAttribute('placeholder', '—');
+    fireEvent.click(input);
+    expect(onApply).not.toHaveBeenCalled();
+    fireEvent.compositionStart(input);
+    for (const value of [' に', ' 日本語 ', '']) {
+      fireEvent.change(input, { target: { value } });
+      expect(onApply).toHaveBeenLastCalledWith('model', value);
+      expect(input).toHaveValue(value);
+    }
+    fireEvent.compositionEnd(input);
+    fireEvent.change(input, { target: { value: '修正した型式' } });
+    expect(onApply).toHaveBeenCalledTimes(4);
+    expect(input.parentElement).toHaveClass('border-inv-green');
+    expect(input.parentElement).toHaveTextContent('✓');
+    expect(screen.getByRole('button', { name: '枠を記憶' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '次の写真' }));
+    expect(screen.getByRole('textbox', { name: '型式の値' })).toHaveValue('修正した型式');
+    expect(screen.getByRole('textbox', { name: '型式の値' }).parentElement).toHaveTextContent('✓');
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+    fireEvent.click(screen.getByRole('button', { name: '開く' }));
+    expect(screen.getByRole('textbox', { name: '型式の値' })).toHaveValue('修正した型式');
+    expect(screen.getByRole('textbox', { name: '型式の値' }).parentElement).not.toHaveTextContent('✓');
+  });
+
+  it('keeps editing keys local, blocks line breaks and allows IME confirmation and Tab', () => {
+    render(<Harness />); load();
+    const input = screen.getByRole('textbox', { name: '名前の値' });
+    input.focus();
+    const onKeyDown = vi.fn();
+    window.addEventListener('keydown', onKeyDown);
+    try {
+      for (const key of ['a', 'Backspace', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Escape']) {
+        expect(fireEvent.keyDown(input, { key })).toBe(true);
+      }
+      expect(fireEvent.keyDown(input, { key: 'Enter' })).toBe(false);
+      expect(fireEvent.keyDown(input, { key: 'Enter', isComposing: true })).toBe(true);
+      expect(fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 })).toBe(true);
+      expect(onKeyDown).not.toHaveBeenCalled();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(readInventoryPhotoRegion).not.toHaveBeenCalled();
+      expect(screen.queryByLabelText('読み取り枠')).not.toBeInTheDocument();
+      fireEvent.keyDown(input, { key: 'Tab' });
+      expect(onKeyDown).toHaveBeenCalledTimes(1);
+    } finally { window.removeEventListener('keydown', onKeyDown); }
+    fireEvent.keyDown(screen.getByRole('button', { name: '閉じる' }), { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('resizes textareas to their full content when values change', () => {
+    render(<Harness />);
+    const input = screen.getByRole('textbox', { name: '名前の値' });
+    Object.defineProperty(input, 'scrollHeight', { configurable: true, value: 180 });
+    fireEvent.change(input, { target: { value: '長い名前'.repeat(30) } });
+    expect(input).toHaveStyle({ height: '180px' });
+    Object.defineProperty(input, 'scrollHeight', { configurable: true, value: 46 });
+    fireEvent.change(input, { target: { value: '短い名前' } });
+    expect(input).toHaveStyle({ height: '46px' });
+  });
+
+  it('uses cyan candidates and apply buttons, and gray unedited input rows', async () => {
+    render(<Harness />); load();
+    expect(screen.getByRole('button', { name: '名前に入れる' })).toBeDisabled();
+    await drag();
+    expect(screen.getByRole('button', { name: 'M1' })).toHaveClass('border-2', 'border-inv-cyan', 'bg-inv-cyan', 'text-inv-cyan-ink');
+    expect(screen.getByRole('button', { name: 'M2' })).toHaveClass('border-2', 'border-inv-cyan', 'bg-inv-cyan/10');
+    expect(screen.getByRole('textbox', { name: '名前の値' }).parentElement).toHaveClass('border-inv-line2', 'bg-inv-bg');
+    expect(screen.getByRole('textbox', { name: '名前の値' }).parentElement).not.toHaveClass('border-inv-amber');
+    expect(screen.getByRole('button', { name: '名前に入れる' })).toHaveClass('border-inv-cyan', 'bg-inv-cyan/10', 'min-h-11', 'min-w-11', 'disabled:border-inv-line2');
+  });
+
+  it('deduplicates new and previous candidates and moves repeated text to the top', async () => {
+    render(<Harness />); load(); await drag();
+    vi.mocked(readInventoryPhotoRegion).mockResolvedValueOnce({ candidates: ['M2', 'NEW', 'M2'], status: 'ok' });
+    await drag();
+    expect(within(screen.getByRole('group', { name: '読み取り候補' })).getAllByRole('button').map(button => button.textContent)).toEqual(['M2', 'NEW', 'M1']);
+    expect(screen.getByRole('button', { name: 'M2' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it.each(['empty', 'unavailable', 'failure'] as const)('retains candidates and selection after an %s read', async outcome => {
+    render(<Harness />); load(); await drag();
+    fireEvent.click(screen.getByRole('button', { name: 'M2' }));
+    if (outcome === 'failure') vi.mocked(readInventoryPhotoRegion).mockRejectedValueOnce(new Error('offline'));
+    else vi.mocked(readInventoryPhotoRegion).mockResolvedValueOnce({ candidates: [], status: outcome === 'empty' ? 'ok' : 'unavailable' });
+    await drag();
+    expect(within(screen.getByRole('group', { name: '読み取り候補' })).getAllByRole('button').map(button => button.textContent)).toEqual(['M1', 'M2']);
+    expect(screen.getByRole('button', { name: 'M2' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('status')).toHaveTextContent(outcome === 'empty' ? '文字なし。囲み直す' : '読み取れませんでした');
+  });
+
+  it('keeps the last explicitly applied frame when another field is typed', async () => {
+    render(<Harness />); load(); await drag();
+    fireEvent.click(screen.getByRole('button', { name: '型式に入れる' }));
+    fireEvent.change(screen.getByRole('textbox', { name: '名前の値' }), { target: { value: '手入力' } });
+    expect(screen.getByRole('status')).toHaveTextContent('型式に入れた');
+    fireEvent.click(screen.getByRole('button', { name: '枠を記憶' }));
+    expect(JSON.parse(localStorage.getItem(storageKey)!)).toEqual([{ field: 'model', bbox }]);
+  });
+
   it('drags on the image, selects a candidate and places it into a field', async () => {
     const onApply = vi.fn();
     render(<Harness onApply={onApply} />);
@@ -52,7 +155,7 @@ describe('InventoryPhotoReadDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'M2' }));
     fireEvent.click(screen.getByRole('button', { name: '型式に入れる' }));
     expect(onApply).toHaveBeenCalledWith('model', 'M2');
-    expect(screen.getByRole('button', { name: '型式に入れる' })).toHaveTextContent('M2');
+    expect(screen.getByRole('textbox', { name: '型式の値' })).toHaveValue('M2');
     expect(screen.getByRole('button', { name: '枠を記憶' })).toBeInTheDocument();
   });
 
@@ -68,7 +171,7 @@ describe('InventoryPhotoReadDialog', () => {
     expect(onApply.mock.calls).toEqual([['name', 'M1'], ['model', 'M1'], ['maker', 'M2']]);
     expect(screen.getByRole('status')).toHaveTextContent(/^メーカーに入れた$/);
     for (const label of ['名前', '型式', 'メーカー']) {
-      const field = screen.getByRole('button', { name: `${label}に入れる` });
+      const field = screen.getByRole('textbox', { name: `${label}の値` }).parentElement!;
       expect(field).toHaveTextContent('✓');
       expect(field).toHaveClass('border-inv-green');
     }
@@ -76,32 +179,38 @@ describe('InventoryPhotoReadDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: '枠を記憶' }));
     expect(JSON.parse(localStorage.getItem(storageKey)!)).toEqual([{ field: 'maker', bbox }]);
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '記憶した枠で読む（1）' })); });
-    expect(screen.getByRole('button', { name: 'M2' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'M1' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByRole('button', { name: '用途に入れる' }));
-    expect(onApply).toHaveBeenLastCalledWith('usage', 'M2');
+    expect(onApply).toHaveBeenLastCalledWith('usage', 'M1');
   });
 
-  it('replaces candidates on a new range and keeps marks across photos until closing', async () => {
+  it('prepends candidates and keeps selection and marks across photos until closing', async () => {
     render(<Harness />); load(); await drag();
     fireEvent.click(screen.getByRole('button', { name: '型式に入れる' }));
     vi.mocked(readInventoryPhotoRegion).mockResolvedValueOnce({ candidates: ['NEW'], status: 'ok' });
     await drag();
-    expect(screen.queryByRole('button', { name: 'M1' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'M2' })).not.toBeInTheDocument();
+    expect(within(screen.getByRole('group', { name: '読み取り候補' })).getAllByRole('button').map(button => button.textContent)).toEqual(['NEW', 'M1', 'M2']);
     expect(screen.getByRole('button', { name: 'NEW' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: '枠を記憶' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '名前に入れる' }));
+    expect(screen.getByRole('button', { name: '枠を記憶' })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: '次の写真' })); load();
-    expect(screen.getByRole('group', { name: '読み取り候補' })).toBeEmptyDOMElement();
-    expect(screen.getByRole('button', { name: '型式に入れる' })).toHaveClass('border-inv-green');
+    expect(within(screen.getByRole('group', { name: '読み取り候補' })).getAllByRole('button').map(button => button.textContent)).toEqual(['NEW', 'M1', 'M2']);
+    expect(screen.getByRole('button', { name: 'NEW' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '枠を記憶' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '用途に入れる' }));
+    expect(screen.getByRole('textbox', { name: '用途の値' })).toHaveValue('NEW');
+    expect(screen.getByRole('button', { name: '枠を記憶' })).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: '型式の値' }).parentElement).toHaveClass('border-inv-green');
     expect(screen.getByRole('button', { name: '型式に入れる' })).toHaveTextContent('✓');
     await drag();
     fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '開く' })); load();
     expect(screen.getByRole('group', { name: '読み取り候補' })).toBeEmptyDOMElement();
-    expect(screen.getByRole('button', { name: '型式に入れる' })).toHaveTextContent('M1');
+    expect(screen.getByRole('textbox', { name: '型式の値' })).toHaveValue('M1');
     expect(screen.getByRole('button', { name: '型式に入れる' })).not.toHaveTextContent('✓');
-    expect(screen.getByRole('button', { name: '型式に入れる' })).not.toHaveClass('border-inv-green');
+    expect(screen.getByRole('textbox', { name: '型式の値' }).parentElement).not.toHaveClass('border-inv-green');
   });
 
   it('wraps long candidates and current values without truncating', async () => {
@@ -110,8 +219,10 @@ describe('InventoryPhotoReadDialog', () => {
     render(<Harness />); load(); await drag();
     expect(screen.getByRole('button', { name: value })).toHaveClass('[overflow-wrap:anywhere]');
     fireEvent.click(screen.getByRole('button', { name: '型式に入れる' }));
-    const field = screen.getByRole('button', { name: '型式に入れる' });
-    const current = within(field).getByText(value);
+    const current = screen.getByRole('textbox', { name: '型式の値' });
+    const field = current.parentElement!;
+    expect(current).toHaveValue(value);
+    expect(current).toHaveClass('[field-sizing:content]', 'resize-none');
     expect(current).toHaveClass('[overflow-wrap:anywhere]');
     expect(current).not.toHaveClass('truncate');
     expect(field).not.toHaveClass('truncate');
@@ -176,9 +287,11 @@ describe('InventoryPhotoReadDialog', () => {
     vi.mocked(readInventoryPhotoRegion).mockResolvedValueOnce({ candidates: ['OSG', 'ignored'], status: 'ok' }).mockResolvedValueOnce({ candidates: ['M3'], status: 'ok' });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '記憶した枠で読む（2）' })); });
     expect(onApply).toHaveBeenCalledWith('maker', 'OSG');
-    expect(screen.getByRole('button', { name: 'メーカーに入れる' })).toHaveClass('border-inv-green');
+    expect(screen.getByRole('textbox', { name: 'メーカーの値' }).parentElement).toHaveClass('border-inv-green');
     expect(screen.getByRole('button', { name: 'メーカーに入れる' })).toHaveTextContent('✓');
     expect(onApply).toHaveBeenLastCalledWith('model', 'M3');
+    expect(within(screen.getByRole('group', { name: '読み取り候補' })).getAllByRole('button').map(button => button.textContent)).toEqual(['M3', 'OSG', 'ignored', 'M1', 'M2']);
+    expect(screen.getByRole('button', { name: 'M3' })).toHaveAttribute('aria-pressed', 'true');
     expect(readInventoryPhotoRegion).toHaveBeenLastCalledWith({ source: 'import', payloadId: 'import-1', photoId: 'p2', bbox }, '2520', expect.any(AbortSignal));
     expect(screen.getByRole('status')).toHaveTextContent('2 件入れた');
     fireEvent.click(screen.getByRole('button', { name: 'メーカーの枠を消す' }));
@@ -187,26 +300,35 @@ describe('InventoryPhotoReadDialog', () => {
     expect(screen.getByRole('img')).toHaveAttribute('src', '/1.jpg');
   });
 
-  it('reports no text from remembered frames', async () => {
+  it.each(['empty', 'unavailable', 'failure'] as const)('retains candidates after an %s read from remembered frames', async outcome => {
     localStorage.setItem(storageKey, JSON.stringify([{ field: 'maker', bbox }]));
-    vi.mocked(readInventoryPhotoRegion).mockResolvedValue({ candidates: [], status: 'ok' });
     const onApply = vi.fn();
-    render(<Harness onApply={onApply} />); load();
+    render(<Harness onApply={onApply} />); load(); await drag();
+    fireEvent.click(screen.getByRole('button', { name: 'M2' }));
+    if (outcome === 'failure') vi.mocked(readInventoryPhotoRegion).mockRejectedValueOnce(new Error('offline'));
+    else vi.mocked(readInventoryPhotoRegion).mockResolvedValueOnce({ candidates: [], status: outcome === 'empty' ? 'ok' : 'unavailable' });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '記憶した枠で読む（1）' })); });
-    expect(screen.getByRole('status')).toHaveTextContent('文字なし');
+    expect(screen.getByRole('status')).toHaveTextContent(outcome === 'empty' ? '文字なし' : '読み取れませんでした');
+    expect(within(screen.getByRole('group', { name: '読み取り候補' })).getAllByRole('button').map(button => button.textContent)).toEqual(['M1', 'M2']);
+    expect(screen.getByRole('button', { name: 'M2' })).toHaveAttribute('aria-pressed', 'true');
     expect(onApply).not.toHaveBeenCalled();
   });
 
   it('aborts and ignores late results after changing photos', async () => {
     let resolve!: (value: { candidates: string[]; status: 'ok' }) => void;
-    vi.mocked(readInventoryPhotoRegion).mockImplementation(() => new Promise(done => { resolve = done; }));
     render(<Harness />); load(); await drag();
+    fireEvent.click(screen.getByRole('button', { name: 'M2' }));
+    vi.mocked(readInventoryPhotoRegion).mockImplementation(() => new Promise(done => { resolve = done; }));
+    await drag();
     expect(screen.getByRole('status')).toHaveTextContent('読み取り中…');
-    const signal = vi.mocked(readInventoryPhotoRegion).mock.calls[0][2];
+    expect(screen.getByRole('button', { name: '名前に入れる' })).toBeDisabled();
+    const signal = vi.mocked(readInventoryPhotoRegion).mock.calls[1][2];
     fireEvent.click(screen.getByRole('button', { name: '次の写真' }));
     expect(signal?.aborted).toBe(true);
     await act(async () => { resolve({ candidates: ['old'], status: 'ok' }); });
     expect(screen.queryByRole('button', { name: 'old' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'M1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'M2' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('status')).toHaveTextContent('文字を枠で囲む');
   });
 

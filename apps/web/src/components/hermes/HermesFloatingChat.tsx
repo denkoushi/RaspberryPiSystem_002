@@ -375,7 +375,7 @@ export function HermesFloatingChat() {
   const toggleOpen = useCallback(() => {
     ensureCurrentClientKey();
     inquiry.onTrigger();
-    if (!open && inquiry.unreadCount > 0) operationGuide.clear();
+    if (!open && inquiry.enabled) operationGuide.clear();
     setOpen((current) => {
       if (current) closeScanner();
       return !current;
