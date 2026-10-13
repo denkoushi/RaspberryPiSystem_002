@@ -56,6 +56,16 @@ describe('KioskInquiryCompose', () => {
     expect(screen.getByRole('button', { name: '機械 二郎' })).toHaveAttribute('aria-pressed', 'false');
   });
 
+  it('hides the other senders once one is chosen and shows them again when it is pressed again', () => {
+    renderCompose();
+    selectSender();
+    expect(senderNames()).toEqual(['機械 二郎']);
+    expect(screen.getByRole('button', { name: '機械 二郎' })).toHaveAttribute('aria-pressed', 'true');
+    selectSender();
+    expect(senderNames()).toEqual(['機械 三郎', '機械 二郎']);
+    expect(screen.getByRole('button', { name: '送信' })).toBeDisabled();
+  });
+
   it('falls back from empty section to department, then 部署なし', () => {
     renderCompose();
     fireEvent.click(screen.getByRole('button', { name: '他の部署' }));

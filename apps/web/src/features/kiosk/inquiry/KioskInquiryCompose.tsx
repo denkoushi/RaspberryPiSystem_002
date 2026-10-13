@@ -130,7 +130,7 @@ export function KioskInquiryCompose({ clientKey, onBack, onSent }: {
           <legend>送信者 <span aria-hidden="true">*</span></legend>
           {isLoading ? <p role="status">読込中…</p> : (
             <div className="kiosk-inquiry__people">
-              {senderOrder.order.map(id => {
+              {senderOrder.order.filter(id => !sender || id === selectedSender).map(id => {
                 const employee = departmentEmployees.find(employee => employee.id === id)!;
                 return <button key={id} type="button" className="kiosk-inquiry__chip" aria-pressed={id === selectedSender}
                   data-sender-id={id} aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
@@ -139,7 +139,7 @@ export function KioskInquiryCompose({ clientKey, onBack, onSent }: {
                   onLostPointerCapture={senderOrder.onPointerCancel}
                   onContextMenu={event => event.preventDefault()}
                   onKeyDown={event => senderOrder.onKeyDown(event, id)}
-                  onClick={event => { if (senderOrder.onClick(event)) setSelectedSender(id); }}>{employee.displayName}</button>;
+                  onClick={event => { if (senderOrder.onClick(event)) setSelectedSender(id === selectedSender ? '' : id); }}>{employee.displayName}</button>;
               })}
             </div>
           )}
