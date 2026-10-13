@@ -53,7 +53,7 @@ const notes={
  use:{old:'今: 名前がつながったまま 1 列。',new:'案: 同じ列分け。状態・使用先・操作の列は今のまま右に残す。'}
 };
 let p='view',m='new';
-const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const esc=s=>s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const st=r=>`<span><span class="badge ${r.st}">${r.st==='pub'?'公開 第'+r.rev+'版':'下書き'}</span></span>`;
 function draw(){
   document.getElementById('note').textContent=notes[p][m];
