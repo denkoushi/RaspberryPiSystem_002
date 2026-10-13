@@ -592,6 +592,17 @@ export function KioskItemInventoryPage() {
         <h1 className={invTitle}>在庫操作</h1>
         {prompt}
         <span className="flex-1" />
+        {!selectedCompartment ? <>
+          <button type="button" className={invButton} aria-expanded={numberOpen} onClick={() => { numberLookupRef.current += 1; setNumberOpen((open) => !open); setNumberInput(''); setNumberError(null); }}>番号で開く</button>
+          {viewMode === 'card' ? <>
+            <div role="group" aria-label="写真の大きさ" className="inline-flex shrink-0 overflow-hidden rounded-xl border border-inv-line2">
+              {([['small', '小'], ['medium', '中'], ['large', '大']] as const).map(([size, label]) => <button key={size} type="button" aria-pressed={thumbnailSize === size} className={`h-12 min-w-14 px-4 font-bold ${thumbnailSize === size ? 'bg-inv-cyan text-inv-cyan-ink' : 'text-inv-muted'}`} onClick={() => changeSize(size)}>{label}</button>)}
+            </div>
+          </> : null}
+          <div role="group" aria-label="表示" className="inline-flex shrink-0 overflow-hidden rounded-xl border border-inv-line2">
+            {([['card', 'カード表示', GridIcon], ['list', 'リスト表示', ListIcon]] as const).map(([view, label, ViewIcon]) => <button key={view} type="button" aria-label={label} title={label} aria-pressed={viewMode === view} className={`flex h-12 min-w-14 items-center justify-center px-4 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-inv-cyan ${viewMode === view ? 'bg-inv-cyan text-inv-cyan-ink' : 'text-inv-muted hover:bg-inv-s2'}`} onClick={() => changeView(view)}><ViewIcon size={24} /></button>)}
+          </div>
+        </> : null}
         <div role="group" aria-label="払い出しか補充か" className="inline-flex overflow-hidden rounded-xl border border-inv-line2">
           <button type="button" aria-pressed={!restockMode} disabled={busy || refreshingTag} onClick={() => switchMode(false)} className={`h-12 px-[18px] font-bold disabled:opacity-40 ${!restockMode ? 'bg-inv-amber text-inv-amber-ink' : 'text-inv-muted'}`}>払い出し</button>
           <button type="button" aria-pressed={restockMode} disabled={busy || refreshingTag} onClick={() => switchMode(true)} className={`h-12 px-[18px] font-bold disabled:opacity-40 ${restockMode ? 'bg-inv-green text-inv-green-ink' : 'text-inv-muted'}`}>補充</button>
@@ -621,13 +632,17 @@ export function KioskItemInventoryPage() {
                 <button type="button" className={`${invButtonGhost} min-h-12 max-w-full !whitespace-normal rounded-xl`} disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment?.stockQuantity)} onClick={() => { setCorrectionError(null); setPanel('correct'); }}><EditIcon />数が合わないときは直す</button>
               </dd>
             </dl>
-            <p className={invEyebrow}>{restockMode ? '補充する数' : '払い出す数'}</p>
-            <div className="flex flex-wrap gap-2.5" role="group" aria-label={restockMode ? '補充する数' : '払い出す数'}>
-              {[1, 2, 5, 10, 20].map((quantity) => <button key={quantity} type="button" aria-label={`${quantity}${unitLabel(selectedCompartment.item)}を${restockMode ? '補充' : '払い出す'}`} className={`h-[76px] w-[92px] rounded-[14px] border-[1.5px] text-[30px] font-black tabular-nums disabled:opacity-40 ${restockMode ? 'border-inv-green bg-inv-green/10' : 'border-inv-amber bg-inv-amber/10'}`} disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment?.stockQuantity)} onClick={() => void submitQuantity(quantity)}>{quantity}</button>)}
-              <button type="button" className="h-[76px] rounded-[14px] border-[1.5px] border-inv-line2 bg-inv-s2 px-[18px] text-[17px] font-bold disabled:opacity-40" disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment?.stockQuantity)} onClick={() => { setQuantityError(null); setPanel('quantity'); }}>ほかの数</button>
+            <div className="grid grid-cols-[minmax(0,1fr)_250px] items-start gap-4">
+              <div className="flex min-w-0 flex-col gap-2.5">
+                <p className={invEyebrow}>{restockMode ? '補充する数' : '払い出す数'}</p>
+                <div className="grid grid-cols-5 gap-2.5" role="group" aria-label={restockMode ? '補充する数' : '払い出す数'}>
+                  {Array.from({ length: 20 }, (_, index) => index + 1).map((quantity) => <button key={quantity} type="button" aria-label={`${quantity}${unitLabel(selectedCompartment.item)}を${restockMode ? '補充' : '払い出す'}`} className={`h-[76px] rounded-[14px] border-[1.5px] text-[30px] font-black tabular-nums disabled:opacity-40 ${restockMode ? 'border-inv-green bg-inv-green/10' : 'border-inv-amber bg-inv-amber/10'}`} disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment.stockQuantity) || (!restockMode && quantity > selectedCompartment.stockQuantity)} onClick={() => void submitQuantity(quantity)}>{quantity}</button>)}
+                </div>
+                <button type="button" className="h-12 self-start rounded-[14px] border-[1.5px] border-inv-line2 bg-inv-s2 px-[18px] text-[17px] font-bold disabled:opacity-40" disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment.stockQuantity)} onClick={() => { setQuantityError(null); setPanel('quantity'); }}>ほかの数</button>
+                <div className="h-11 shrink-0" aria-live="polite">{quantityError && panel !== 'quantity' ? <p role="alert" className="text-inv-red">{quantityError}</p> : null}</div>
+              </div>
+              <InventoryRecentHistory key={selectedCompartment.id} compartmentId={selectedCompartment.id} />
             </div>
-            <div className="h-11 shrink-0" aria-live="polite">{quantityError && panel !== 'quantity' ? <p role="alert" className="text-inv-red">{quantityError}</p> : null}</div>
-            <InventoryRecentHistory key={selectedCompartment.id} compartmentId={selectedCompartment.id} />
           </div>
           {panel === 'quantity' ? <div className="absolute inset-0 z-10 flex items-center justify-center rounded-[18px] bg-[#05080d]/80">
             <InventoryQuantityPanel unit={unitLabel(selectedCompartment.item)} restock={restockMode} pending={busy} error={quantityError} onConfirm={(quantity) => void submitQuantity(quantity)} onCancel={() => { setPanel('none'); setQuantityError(null); }} />
@@ -654,16 +669,6 @@ export function KioskItemInventoryPage() {
               {areas.map(({ area, count }) => <button key={area} type="button" className={chipClass(effectiveAreas.includes(area))} aria-pressed={effectiveAreas.includes(area)} onClick={() => { setAreaFilters(effectiveAreas.includes(area) ? effectiveAreas.filter(value => value !== area) : [...effectiveAreas, area]); setShelfFilter(null); }}>{defaultAreas.includes(area) ? <KioskHomeIcon filled className="h-4 w-4" /> : null}{area} <small className="font-normal opacity-75">{count}</small></button>)}
             </div>
             <button type="button" aria-label={homeLabel} title={homeLabel} aria-pressed={isDefaultArea} className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border hover:bg-inv-s2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inv-cyan ${isDefaultArea ? 'border-inv-cyan text-inv-cyan' : 'border-inv-line2 text-inv-text'}`} onClick={() => saveAreas(effectiveAreas)}><KioskHomeIcon filled={isDefaultArea} /></button>
-            <button type="button" className={invButton} aria-expanded={numberOpen} onClick={() => { numberLookupRef.current += 1; setNumberOpen((open) => !open); setNumberInput(''); setNumberError(null); }}>番号で開く</button>
-            {viewMode === 'card' ? <>
-              <span className={`${invEyebrow} shrink-0`}>写真の大きさ</span>
-              <div role="group" aria-label="写真の大きさ" className="inline-flex shrink-0 overflow-hidden rounded-xl border border-inv-line2">
-                {([['small', '小'], ['medium', '中'], ['large', '大']] as const).map(([size, label]) => <button key={size} type="button" aria-pressed={thumbnailSize === size} className={`h-12 min-w-14 px-4 font-bold ${thumbnailSize === size ? 'bg-inv-cyan text-inv-cyan-ink' : 'text-inv-muted'}`} onClick={() => changeSize(size)}>{label}</button>)}
-              </div>
-            </> : null}
-            <div role="group" aria-label="表示" className="inline-flex shrink-0 overflow-hidden rounded-xl border border-inv-line2">
-              {([['card', 'カード表示', GridIcon], ['list', 'リスト表示', ListIcon]] as const).map(([view, label, ViewIcon]) => <button key={view} type="button" aria-label={label} title={label} aria-pressed={viewMode === view} className={`flex h-12 min-w-14 items-center justify-center px-4 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-inv-cyan ${viewMode === view ? 'bg-inv-cyan text-inv-cyan-ink' : 'text-inv-muted hover:bg-inv-s2'}`} onClick={() => changeView(view)}><ViewIcon size={24} /></button>)}
-            </div>
           </div>
           {singleArea !== null ? <div className="flex max-h-28 shrink-0 flex-wrap items-center gap-2 overflow-y-auto" role="group" aria-label="棚で絞る">
             <span className={`${invEyebrow} w-[3.2em]`}>棚</span>

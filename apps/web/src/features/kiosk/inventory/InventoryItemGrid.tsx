@@ -1,5 +1,6 @@
 import { formatInventoryLabelNumber } from '@raspi-system/shared-types';
-import { Fragment, memo, useMemo, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { inventoryThumbnailUrl, type InventoryCompartment, type InventoryImportSummary } from '../../../api/client';
 
@@ -17,6 +18,34 @@ const sizes = {
   large: { columns: 'grid-cols-4', photo: 'h-[300px]', fields: ['model', 'maker', 'toolName', 'toolSize', 'workMaterial', 'usage'] },
 } as const;
 const detailLabels = { model: '型式', maker: 'メーカー', toolName: '工具名', toolSize: '寸法', workMaterial: '被削材', usage: '用途' };
+
+function InventoryCardTooltip({ id, compartment, rect }: { id: string; compartment: InventoryCompartment; rect: DOMRect }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: rect.right + 8, top: rect.top });
+  useLayoutEffect(() => {
+    if (!ref.current) return;
+    const { width, height } = ref.current.getBoundingClientRect();
+    const left = rect.right + 8 + width <= window.innerWidth - 8 ? rect.right + 8 : rect.left - width - 8;
+    const top = rect.top + height <= window.innerHeight - 8 ? rect.top : rect.bottom - height;
+    setPosition({
+      left: Math.max(8, Math.min(left, window.innerWidth - width - 8)),
+      top: Math.max(8, Math.min(top, window.innerHeight - height - 8)),
+    });
+  }, [rect]);
+  const rows = [
+    ['番号', formatInventoryLabelNumber(compartment.labelNumber)],
+    ['名前', compartment.item.name.trim()],
+    ...Object.entries(detailLabels).map(([field, label]) => [label, compartment.item[field as keyof typeof detailLabels]?.trim()]),
+    ['場所', `${compartment.area}・棚${compartment.shelfNumber}-${compartment.drawerNumber}`],
+    ['在庫', `${compartment.stockQuantity} ${unitLabel(compartment.item)}`],
+    ['持出', issuedLabel(compartment.lastIssuedAt, new Date())],
+  ];
+  return createPortal(<div ref={ref} id={id} role="tooltip" style={position} className="pointer-events-none fixed z-50 max-h-[calc(100dvh-16px)] w-[344px] max-w-[calc(100vw-16px)] overflow-hidden rounded-xl border border-inv-line2 bg-inv-s1 p-4 text-sm text-inv-text shadow-xl">
+    <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5">
+      {rows.map(([label, value]) => value ? <Fragment key={label}><dt className="text-inv-faint">{label}</dt><dd className="whitespace-pre-wrap [overflow-wrap:anywhere]">{value}</dd></Fragment> : null)}
+    </dl>
+  </div>, document.body);
+}
 
 const collator = new Intl.Collator('ja');
 
@@ -45,6 +74,30 @@ type InventoryItemGridProps = {
 /** Every registered drawer as one card or row; tapping opens it like scanning its item tag. */
 export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments, onPick, pending = [], onPickPending, size = 'medium', view = 'card' }: InventoryItemGridProps) {
   const [photoIndices, setPhotoIndices] = useState<Record<string, number>>({});
+  const [tooltip, setTooltip] = useState<{ compartment: InventoryCompartment; rect: DOMRect } | null>(null);
+  const tooltipId = useId();
+  const tooltipTimer = useRef<ReturnType<typeof setTimeout>>();
+  const hideTooltip = useCallback(() => { clearTimeout(tooltipTimer.current); setTooltip(null); }, []);
+  useEffect(() => {
+    hideTooltip();
+    window.addEventListener('scroll', hideTooltip, true);
+    window.addEventListener('resize', hideTooltip);
+    window.addEventListener('pointerdown', hideTooltip, true);
+    window.addEventListener('click', hideTooltip, true);
+    return () => {
+      clearTimeout(tooltipTimer.current);
+      window.removeEventListener('scroll', hideTooltip, true);
+      window.removeEventListener('resize', hideTooltip);
+      window.removeEventListener('pointerdown', hideTooltip, true);
+      window.removeEventListener('click', hideTooltip, true);
+    };
+  }, [hideTooltip, size, view, compartments]);
+  const showTooltip = (compartment: InventoryCompartment, element: HTMLElement) => {
+    hideTooltip();
+    if (view !== 'card' || size === 'large') return;
+    const rect = element.getBoundingClientRect();
+    tooltipTimer.current = setTimeout(() => setTooltip({ compartment, rect }), 150);
+  };
   const config = sizes[size];
   const sorted = useMemo(() => sortByRecentIssue(compartments), [compartments]);
   if (sorted.length === 0 && pending.length === 0) return <p className="text-inv-muted">登録済みのアイテムはまだありません</p>;
@@ -107,8 +160,13 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
         const photo = photos[photoIndex];
         const empty = compartment.stockQuantity === 0;
         return (
-          <div key={compartment.id} className="relative min-w-0">
-          <button type="button" className="flex h-full w-full flex-col overflow-hidden rounded-[14px] border border-inv-line bg-inv-s1 text-left text-inv-text hover:border-inv-cyan focus:outline-none focus-visible:border-inv-cyan" onClick={() => onPick(compartment)}>
+          <div key={compartment.id} className="relative min-w-0"
+            onPointerEnter={event => { if (window.matchMedia?.('(hover: hover)').matches ?? true) showTooltip(compartment, event.currentTarget); }}
+            onPointerLeave={hideTooltip}
+            onFocus={event => { if (event.target.matches(':focus-visible')) showTooltip(compartment, event.currentTarget); }}
+            onBlur={hideTooltip}
+          >
+          <button type="button" aria-describedby={tooltip?.compartment.id === compartment.id ? tooltipId : undefined} className="flex h-full w-full flex-col overflow-hidden rounded-[14px] border border-inv-line bg-inv-s1 text-left text-inv-text hover:border-inv-cyan focus:outline-none focus-visible:border-inv-cyan" onClick={() => onPick(compartment)}>
             <span className={`relative block ${config.photo} w-full shrink-0 bg-inv-s3`}>
               {photo ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
               <span className="absolute inset-x-1.5 top-1.5 flex items-start gap-1.5">
@@ -157,6 +215,7 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
           </div>
         );
       })}
+      {tooltip && size !== 'large' ? <InventoryCardTooltip id={tooltipId} {...tooltip} /> : null}
     </div>
   );
 });

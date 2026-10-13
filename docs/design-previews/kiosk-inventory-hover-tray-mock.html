@@ -1,0 +1,392 @@
+<title>在庫 ホバー詳細と登録待ちトレイ</title>
+<style>
+/* Layout: a 1920x1080 kiosk stage scaled to the page width; scene tabs above it. Single dark look = the real inventory palette. */
+:root{
+  color-scheme:dark;
+  --bg:#090d14;--s1:#10161f;--s2:#161e2b;--s3:#1e2839;--line:#263145;--line2:#324059;
+  --text:#eef2f8;--muted:#9aa7ba;--faint:#76839a;
+  --cyan:#39d0f0;--cyan-ink:#032a33;--amber:#f5b544;--green:#35d895;--green-ink:#03281a;--red:#ff6e6e;
+  --page:#05080d;
+  --ui:"Noto Sans JP","Hiragino Sans","Yu Gothic UI",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+body{background:var(--page);color:var(--text);font-family:var(--ui);padding-block:16px;padding-inline:16px}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px}
+.tabs{display:inline-flex;border:1px solid var(--line2);border-radius:10px;overflow:hidden}
+.tabs button{background:transparent;border:0;padding:9px 16px;font-weight:700;color:var(--muted)}
+.tabs button[aria-pressed="true"]{background:var(--cyan);color:var(--cyan-ink)}
+.hint{color:var(--faint);font-size:13px}
+.fit{position:relative;width:100%;max-width:100%;aspect-ratio:16/9;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;font-feature-settings:"palt";display:flex;flex-direction:column}
+.khead{height:56px;flex:none;background:#0d1320;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:22px;padding:0 28px;color:var(--faint);font-weight:700}
+.khead b{color:var(--text)}
+.surface{flex:1;min-height:0;display:flex;flex-direction:column;gap:16px;padding:20px 28px 24px}
+.panel{border:1px solid var(--line);background:var(--s1);border-radius:18px}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.14em;color:var(--faint)}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:12px;overflow:hidden}
+.seg button{height:48px;min-width:56px;padding:0 16px;border:0;background:transparent;font-weight:700;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--cyan);color:var(--cyan-ink)}
+.num{display:inline-flex;align-items:center;white-space:nowrap;border:1px dashed var(--amber);border-radius:8px;padding:2px 8px;font-family:var(--mono);font-weight:700;letter-spacing:.08em;color:var(--amber);font-size:13px}
+.ph{background:var(--s3);display:block;width:100%;height:100%}
+.ph.cover{object-fit:cover}.ph.contain{object-fit:contain}
+
+.surface[hidden],.tray[hidden]{display:none}
+/* scene A */
+.toprow{display:flex;align-items:center;gap:12px;flex:none}
+.toprow h1{margin:0;font-size:24px;font-weight:900;letter-spacing:.02em}
+.nfc{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 18px;border:1.5px solid var(--cyan);border-radius:999px;font-weight:700;color:#dff8ff}
+.mode button[aria-pressed="true"]{background:var(--amber);color:#2e1d00}
+.vbar{width:1px;height:28px;background:var(--line)}
+.btn{display:inline-flex;align-items:center;gap:8px;height:48px;padding:0 16px;border:1px solid var(--line2);background:var(--s2);border-radius:12px;font-size:15px;font-weight:700;white-space:nowrap}
+.areas{display:flex;align-items:flex-start;gap:12px;flex:none}
+.chips{display:flex;flex-wrap:wrap;align-items:center;gap:8px;flex:1;min-width:0}
+.chip{display:inline-flex;align-items:center;gap:6px;height:44px;padding:0 16px;border:1px solid var(--line2);background:var(--s1);border-radius:999px;font-size:16px;font-weight:700}
+.chip.on{background:var(--cyan);border-color:var(--cyan);color:var(--cyan-ink)}
+.chip small{font-weight:400;opacity:.75}
+.moved{box-shadow:0 0 0 2px var(--bg),0 0 0 4px rgb(245 181 68/.7);border-radius:14px;display:inline-flex;gap:12px}
+.grid.large{grid-template-columns:repeat(4,minmax(0,1fr))}
+.large .shot{height:300px}
+.grid{flex:1;min-height:0;display:grid;gap:12px;grid-auto-rows:max-content;overflow-y:auto;padding-bottom:4px}
+.grid.small{grid-template-columns:repeat(9,minmax(0,1fr))}
+.grid.medium{grid-template-columns:repeat(6,minmax(0,1fr))}
+.card{display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--line);background:var(--s1);border-radius:14px;text-align:left;padding:0;min-width:0}
+.card:hover,.card.on{border-color:var(--cyan)}
+.card .shot{position:relative;display:block;width:100%;flex:none}
+.small .shot{height:110px}.medium .shot{height:190px}
+.qty{position:absolute;left:6px;top:6px;display:flex;align-items:baseline;gap:4px;background:rgb(9 13 20/.75);border-radius:8px;padding:4px 8px;font-size:14px;font-weight:700}
+.qty b{font-size:22px;font-weight:900;font-variant-numeric:tabular-nums}
+.qty.zero b{color:var(--amber)}
+.model{position:absolute;right:6px;top:6px;max-width:55%;background:rgb(9 13 20/.75);border-radius:8px;padding:4px 8px;font-size:13px;font-weight:700;text-align:right;overflow-wrap:anywhere}
+.place{position:absolute;left:6px;bottom:6px;display:flex;flex-direction:column;gap:4px;align-items:flex-start;background:rgb(9 13 20/.75);border-radius:8px;padding:4px 8px;font-size:12px;max-width:90%}
+.body{display:flex;flex-direction:column;gap:4px;padding:8px 12px;min-width:0;width:100%;box-sizing:border-box}
+.name{font-size:16px;font-weight:700;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.small .name{min-height:2.6em}
+.line{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.line.m{color:var(--muted)}
+/* the proposal: hover detail */
+.pop{position:absolute;z-index:50;width:344px;box-sizing:border-box;pointer-events:none;border:1px solid var(--line2);background:rgb(16 22 31/.98);border-radius:14px;padding:14px 16px;box-shadow:0 18px 50px rgb(0 0 0/.6),0 0 0 1px rgb(57 208 240/.22)}
+.pop h4{margin:0 0 8px;font-size:18px;font-weight:900;line-height:1.35;overflow-wrap:anywhere}
+.pop .top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.pop .stock{margin-left:auto;font-size:14px;font-weight:700}
+.pop .stock b{font-size:24px;font-weight:900;font-variant-numeric:tabular-nums}
+.pop dl{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:5px 14px;font-size:15px;border-top:1px solid var(--line);padding-top:10px}
+.pop dt{color:var(--faint);font-size:13px;line-height:1.7}
+.pop dd{margin:0;overflow-wrap:anywhere}
+
+/* scene C: after a tag scan */
+.op{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:16px}
+.op .big{border:1px solid var(--line);border-radius:18px;overflow:hidden;background:var(--bg);min-height:0}
+.opr{display:flex;flex-direction:column;gap:14px;min-width:0;min-height:0}
+.opr h2{margin:0;font-size:30px;font-weight:900;line-height:1.2}
+.opr .where{margin:4px 0 0;font-size:17px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.stockcard{display:flex;align-items:flex-end;gap:10px;padding:16px 20px;flex:none}
+.stockcard b{font-size:88px;font-weight:900;line-height:.95;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.stockcard span{font-size:22px;font-weight:700;color:var(--muted);padding-bottom:8px}
+.stockcard em{font-style:normal;font-size:38px;font-weight:900;color:var(--amber);padding-bottom:6px;font-variant-numeric:tabular-nums}
+.work{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:16px;align-items:start}
+.keys{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.keys button:disabled{border-color:var(--line);background:transparent;color:var(--faint);cursor:default}
+.entry .row{display:flex;gap:10px}
+.keys button{height:96px;border:1.5px solid var(--amber);background:rgb(245 181 68/.1);border-radius:14px;font-size:38px;font-weight:900;font-variant-numeric:tabular-nums}
+.keys button.util{border-color:var(--line2);background:var(--s2);font-size:17px;font-weight:700;color:var(--muted)}
+.entry{display:flex;flex-direction:column;gap:12px;min-width:0}
+.entry output{display:flex;align-items:baseline;justify-content:flex-end;gap:8px;height:96px;padding:0 20px;border:1px solid var(--line2);border-radius:14px;background:var(--bg);font-size:64px;font-weight:900;font-variant-numeric:tabular-nums;line-height:96px}
+.entry output small{font-size:22px;color:var(--muted)}
+.entry .ok{height:96px;border:1.5px solid var(--amber);background:var(--amber);color:#2e1d00;border-radius:14px;font-size:28px;font-weight:900}
+.entry .ok:disabled{border-color:var(--line2);background:var(--s2);color:var(--muted);cursor:default}
+.entry .fix{height:48px;border:1px solid var(--line2);background:transparent;border-radius:12px;font-size:15px;font-weight:700;align-self:flex-start;padding:0 16px}
+.hist{display:flex;flex-direction:column;gap:6px;min-width:0}
+.hist ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.hist li{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border-radius:8px;background:var(--s2);font-size:13px;font-variant-numeric:tabular-nums}
+.hist li time{color:var(--faint);width:92px;flex:none;white-space:nowrap}
+.hist li b{font-weight:900}.hist li b.out{color:var(--amber)}.hist li b.in{color:var(--green)}
+.hist li span{margin-left:auto;color:var(--faint)}
+/* scene B */
+.setuptabs{display:flex;gap:6px}
+.setuptabs span{padding:10px 18px;border-radius:10px;font-weight:700;color:var(--muted);border:1px solid transparent}
+.setuptabs span.on{border-color:var(--cyan);color:#dff8ff;background:rgb(57 208 240/.12)}
+.panes{position:relative;flex:1;min-height:0;display:grid;grid-template-columns:420px minmax(0,1fr) minmax(0,1fr);gap:16px}
+.photos{display:flex;flex-direction:column;gap:12px;padding:16px;min-height:0}
+.photos h3{margin:0;font-size:15px;font-weight:900}
+.phead{display:flex;align-items:center;gap:8px}
+.phead small{color:var(--faint);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
+.oldgrid{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:calc(50% - 6px);gap:12px;overflow-y:auto}
+.oldgrid figure{margin:0;display:flex;flex-direction:column;gap:8px;min-height:0}
+.oldgrid .frame{flex:1;min-height:0;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.ctl{display:flex;gap:6px;align-items:center}
+.ic{width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line2);background:var(--s2);border-radius:8px;font-weight:700}
+.ic.del{border-color:rgb(255 110 110/.45);background:transparent;color:#ffb3b3}
+.main{flex:1;min-height:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--bg);padding:0;position:relative}
+.main .count{position:absolute;right:8px;bottom:8px;background:rgb(9 13 20/.75);border-radius:6px;padding:0 8px;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+.thumbs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;flex:none}
+.thumbs button{height:70px;padding:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--bg)}
+.thumbs button[aria-pressed="true"]{border:2px solid var(--cyan)}
+.col{display:flex;flex-direction:column;gap:12px;min-width:0}
+.row{border:1px solid var(--line);background:var(--s1);border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px;color:var(--muted);font-weight:700}
+.row i{font-style:normal;width:28px;height:28px;border-radius:50%;background:var(--s3);display:inline-flex;align-items:center;justify-content:center;font-size:13px;color:var(--text)}
+.row .v{margin-left:auto;height:40px;width:55%;border:1px solid var(--line2);border-radius:8px;background:var(--bg)}
+.strip{flex:none;display:flex;align-items:center;gap:12px;padding:10px;position:relative}
+.wait{display:inline-flex;align-items:center;gap:10px;height:56px;padding:0 14px;border:1px solid var(--line2);background:var(--s2);border-radius:12px;font-weight:700}
+.wait[aria-expanded="true"]{border-color:var(--cyan);background:rgb(57 208 240/.12)}
+.wait b{font-size:24px;font-weight:900;font-variant-numeric:tabular-nums}
+.wait svg{flex:none}
+.step{width:44px;height:56px;border:1px solid var(--line2);background:var(--s2);border-radius:10px;font-size:18px;font-weight:700}
+.cur{display:flex;align-items:center;gap:10px;min-width:0}
+.cur .t{width:56px;height:56px;border-radius:8px;overflow:hidden;flex:none;background:var(--bg)}
+.cur b{display:block;font-size:17px}.cur span{font-size:13px;color:var(--muted)}
+.sp{flex:1}
+.ghost{height:36px;padding:0 12px;border:1px solid var(--line2);background:transparent;border-radius:8px;font-size:13px;font-weight:700}
+.left{font-size:18px;font-weight:900;white-space:nowrap}
+.go{height:56px;padding:0 20px;border:1px solid var(--line2);background:var(--s2);color:var(--muted);border-radius:10px;font-size:18px;font-weight:700}
+.tray{position:absolute;left:0;right:0;bottom:calc(100% + 10px);z-index:40;padding:16px;box-shadow:0 -24px 70px rgb(0 0 0/.65),0 0 0 1px rgb(57 208 240/.25);display:flex;flex-direction:column;gap:12px;max-height:640px}
+.tray .th{display:flex;align-items:center;gap:12px}
+.tray .tg{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:12px;overflow-y:auto}
+.cand{display:flex;flex-direction:column;border:1px solid var(--line);background:var(--s2);border-radius:12px;overflow:hidden;padding:0;text-align:left;min-width:0}
+.cand:hover{background:var(--s3)}
+.cand[aria-pressed="true"]{border:2px solid var(--cyan);background:rgb(57 208 240/.1)}
+.cand .t{height:132px;background:var(--bg);display:block}
+.cand .i{padding:8px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.cand .i b{font-size:16px}.cand .i span{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.shade{position:absolute;inset:0;background:rgb(5 8 13/.55);z-index:30;border:0;padding:0;border-radius:18px}
+</style>
+
+<div class="bar">
+  <div class="tabs" role="group" aria-label="画面">
+    <button type="button" id="tab-a" aria-pressed="true">在庫トップ</button>
+    <button type="button" id="tab-c" aria-pressed="false">タグをスキャン後</button>
+    <button type="button" id="tab-b" aria-pressed="false">在庫の準備</button>
+  </div>
+  <span class="hint" id="hint"></span>
+</div>
+<div class="fit" id="fit"><div class="stage" id="stage">
+  <div class="khead"><b>キオスク</b><span>持出</span><span>計測</span><b>在庫</b><span>要領書</span></div>
+
+  <div class="surface" id="scene-a">
+    <div class="toprow">
+      <h1>在庫操作</h1><span class="nfc">アイテムタグ</span><span class="sp"></span>
+      <span class="moved">
+        <div class="seg" role="group" aria-label="写真の大きさ">
+          <button type="button" id="size-small" aria-pressed="false">小</button>
+          <button type="button" id="size-medium" aria-pressed="true">中</button>
+          <button type="button" id="size-large" aria-pressed="false">大</button>
+        </div>
+        <div class="seg" role="group" aria-label="表示">
+          <button type="button" aria-pressed="true" aria-label="カード表示"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
+          <button type="button" aria-pressed="false" aria-label="リスト表示"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+        </div>
+      </span>
+      <div class="seg mode" role="group" aria-label="払い出しか補充か"><button type="button" aria-pressed="true">払い出し</button><button type="button" aria-pressed="false">補充</button></div>
+      <span class="vbar"></span><span class="btn">在庫の準備</span>
+    </div>
+    <div class="areas">
+      <div class="chips" id="chips"></div>
+      <span class="btn" style="width:44px;height:44px;padding:0;justify-content:center;border-radius:8px" aria-label="ホーム">⌂</span>
+      <span class="btn" style="height:44px;border-radius:10px">番号で開く</span>
+    </div>
+    <div class="grid medium" id="grid"></div>
+    <div class="pop" id="pop" role="tooltip" hidden></div>
+  </div>
+
+  <div class="surface" id="scene-c" hidden>
+    <div class="toprow">
+      <span class="btn">← 一覧へ</span><h1>在庫操作</h1><span class="nfc" style="border-color:var(--amber);color:#ffe9bf">数を押す か 数量タグ</span><span class="sp"></span>
+      <div class="seg mode" role="group" aria-label="払い出しか補充か"><button type="button" aria-pressed="true">払い出し</button><button type="button" aria-pressed="false">補充</button></div>
+      <span class="vbar"></span><span class="btn">在庫の準備</span>
+    </div>
+    <div class="op">
+      <div class="big"><img class="ph contain" alt="" id="op-photo"></div>
+      <div class="opr">
+        <div><h2>超硬スクエアエンドミル 4枚刃 φ10 ロング刃長</h2><p class="where"><span class="num" style="font-size:15px">000127</span>MC-3・棚2・引き出し4</p></div>
+        <div class="panel stockcard" aria-label="現在庫"><b id="op-stock">14</b><span>本</span><em id="op-delta"></em></div>
+        <div class="work">
+          <div class="entry">
+          <div class="keys" id="keys" role="group" aria-label="払い出す数"></div>
+            <div class="row"><button type="button" class="fix">ほかの数</button><button type="button" class="fix">数が合わないときは直す</button></div>
+          </div>
+          <section class="hist" aria-label="最近の動き"><span class="eyebrow">最近の動き</span><ul id="op-hist"></ul></section>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="surface" id="scene-b" hidden>
+    <div style="display:flex;align-items:center;gap:16px">
+      <div class="setuptabs"><span class="on">登録待ち</span><span>アイテム</span><span>棚</span><span>タグ</span></div>
+      <span class="sp"></span>
+      <span class="eyebrow">写真の枠</span>
+      <div class="seg" role="group" aria-label="写真の枠">
+        <button type="button" id="pane-old" aria-pressed="false">今</button>
+        <button type="button" id="pane-new" aria-pressed="true">案</button>
+      </div>
+    </div>
+    <div class="panes">
+      <section class="panel photos" id="photos"></section>
+      <div class="col">
+        <div class="row"><i>1</i>新規か既存か<span class="v"></span></div>
+        <div class="row"><i>2</i>名前<span class="v"></span></div>
+        <div class="row"><i>3</i>型式<span class="v"></span></div>
+        <div class="row"><i>4</i>メーカー<span class="v"></span></div>
+      </div>
+      <div class="col">
+        <div class="row"><i>5</i>置き場所<span class="v"></span></div>
+        <div class="row"><i>6</i>品物タグ<span class="v"></span></div>
+        <div class="row"><i>7</i>数<span class="v"></span></div>
+      </div>
+      <button type="button" class="shade" id="shade" aria-label="閉じる" hidden></button>
+    </div>
+    <section class="panel strip" aria-label="メールで届いた候補">
+      <div class="panel tray" id="tray" hidden>
+        <div class="th"><span class="eyebrow">登録待ち</span><span class="sp"></span><button type="button" class="ghost" id="tray-close">閉じる</button></div>
+        <div class="tg" id="tray-grid"></div>
+      </div>
+      <button type="button" class="wait" id="wait" aria-expanded="false" aria-label="登録待ちの一覧を開く">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        <span>登録待ち</span><b id="wait-n"></b>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10l5-5 5 5"/></svg>
+      </button>
+      <button type="button" class="step" id="prev" aria-label="前の候補">＜</button>
+      <div class="cur" id="cur"></div>
+      <button type="button" class="step" id="next" aria-label="次の候補">＞</button>
+      <span class="sp"></span>
+      <button type="button" class="ghost">登録しない</button>
+      <span class="left">あと 5 つ</span>
+      <button type="button" class="go" disabled>登録する</button>
+    </section>
+  </div>
+</div></div>
+
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var stage=$('stage'),fit=$('fit'),scale=1;
+  function rescale(){scale=fit.clientWidth/1920;stage.style.transform='scale('+scale+')'}
+  window.addEventListener('resize',rescale);rescale();
+
+  // Placeholder photo: the yellow ring sits on the photo's own edge, so a cropped frame hides part of it.
+  function photo(w,h,hue,label){
+    var s='<svg xmlns="http://www.w3.org/2000/svg" width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'">'
+      +'<rect width="100%" height="100%" fill="hsl('+hue+' 22% 26%)"/>'
+      +'<rect x="6" y="6" width="'+(w-12)+'" height="'+(h-12)+'" fill="none" stroke="#f5b544" stroke-width="6"/>'
+      +'<rect x="'+(w*0.18)+'" y="'+(h*0.46)+'" width="'+(w*0.64)+'" height="'+(h*0.09)+'" rx="6" fill="hsl('+hue+' 14% 72%)" transform="rotate(-18 '+(w/2)+' '+(h/2)+')"/>'
+      +'<text x="50%" y="'+(h-22)+'" text-anchor="middle" font-family="sans-serif" font-size="'+Math.round(Math.min(w,h)/9)+'" font-weight="700" fill="#eef2f8">'+label+'</text></svg>';
+    return 'data:image/svg+xml,'+encodeURIComponent(s);
+  }
+
+  /* ---------- scene A ---------- */
+  var items=[
+    ['超硬スクエアエンドミル 4枚刃 φ10 ロング刃長','VF-4MDRB φ10×R1','MOLDINO','エンドミル','φ10×25×75','SKD61 / 焼入れ鋼','金型 仕上げ','MC-3',2,4,'000127',6,'本','2時間前'],
+    ['チップ CNMG120408','CNMG120408-MA VP15TF','三菱マテリアル','旋削チップ','12.7×4.76 R0.8','S45C / SCM','外径 荒〜中仕上げ','NC旋盤-1',1,2,'000044',0,'個','昨日'],
+    ['ハイスドリル φ6.8','SD 6.8','NACHI','ドリル','φ6.8×69×109','SS400','M8 下穴','MC-3',2,1,'000201',12,'本','10/9'],
+    ['スパイラルタップ M8×1.25','SU-SP M8×1.25','OSG','タップ','M8×P1.25','SUS304','止まり穴','MC-5',1,3,'000090',3,'本','35分前'],
+    ['面取りカッター 90°','NC2033 φ12','NS TOOL','面取り','φ12×90°','A5052','C面取り','MC-5',1,1,'000312',1,'本',null],
+    ['ボールエンドミル R3','MSBH230 R3','NS TOOL','エンドミル','R3×6×60','SKD11','3D 仕上げ','MC-3',3,2,'000156',4,'本','今日'],
+    ['リーマ φ8 H7','MTA-CRM φ8','FP TOOL','リーマ','φ8×L100','FC250','ピン穴','MC-1',2,2,'000078',2,'本','10/2'],
+    ['突切りチップ 3mm','GY2M0300F020N-MF','三菱マテリアル','溝入れチップ','W3.0','SUS303','突切り','NC旋盤-2',1,4,'000233',8,'個','4時間前'],
+    ['コレット ER32 φ12','ER32-12','ユキワ精工','コレット','φ12-11','—','工具保持','共通棚',4,1,'000005',5,'個',null]
+  ];
+  var grid=$('grid'),pop=$('pop'),size='medium',timer=null,sceneA=$('scene-a');
+  function esc(t){return String(t).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function drawGrid(){
+    grid.className='grid '+size;grid.textContent='';
+    var n=size==='small'?27:size==='large'?8:18;
+    for(var k=0;k<n;k++){(function(it,k){
+      var b=document.createElement('button');b.type='button';b.className='card';
+      var loc=it[7]+'・棚'+it[8]+'-'+it[9];
+      b.innerHTML='<span class="shot"><img class="ph cover" alt="" src="'+photo(400,300,(k*47)%360,'')+'">'
+        +'<span class="qty'+(it[11]===0?' zero':'')+'"><b>'+it[11]+'</b>'+it[12]+'</span>'
+        +(size!=='small'?'<span class="model">'+esc(it[1])+'</span><span class="place"><span class="num">'+it[10]+'</span><span>'+esc(loc)+'</span></span>':'')
+        +'</span><span class="body"><span class="name">'+esc(it[0])+'</span>'
+        +(size==='small'?'<span class="num" style="align-self:flex-start">'+it[10]+'</span><span class="line m">'+esc(it[1])+'</span>'
+          :'<span class="line">'+esc([it[2],it[3],it[4]].join(' ・ '))+'</span><span class="line m">'+esc([it[5],it[6]].join(' ・ '))+'</span>')
+        +'</span>';
+      b.addEventListener('pointerenter',function(){if(size==='large')return;clearTimeout(timer);timer=setTimeout(function(){show(b,it)},150)});
+      b.addEventListener('pointerleave',hide);
+      b.addEventListener('focus',function(){if(size!=='large')show(b,it)});b.addEventListener('blur',hide);
+      grid.appendChild(b);
+    })(items[k%items.length],k)}
+  }
+  function hide(){clearTimeout(timer);pop.hidden=true;var on=grid.querySelector('.on');if(on)on.classList.remove('on')}
+  function show(card,it){
+    var rows=[['型式',it[1]],['メーカー',it[2]],['工具名',it[3]],['寸法',it[4]],['被削材',it[5]],['用途',it[6]],['場所',it[7]+'・棚'+it[8]+'-'+it[9]],['持出',it[13]||'—']];
+    pop.innerHTML='<h4>'+esc(it[0])+'</h4><div class="top"><span class="num">'+it[10]+'</span>'
+      +'<span class="stock"><b style="color:'+(it[11]===0?'var(--amber)':'inherit')+'">'+it[11]+'</b> '+it[12]+'</span></div><dl>'
+      +rows.map(function(r){return '<dt>'+r[0]+'</dt><dd>'+esc(r[1])+'</dd>'}).join('')+'</dl>';
+    pop.hidden=false;card.classList.add('on');
+    var s=sceneA.getBoundingClientRect(),c=card.getBoundingClientRect();
+    var L=(c.left-s.left)/scale,T=(c.top-s.top)/scale,W=c.width/scale,SW=1920,SH=sceneA.offsetHeight;
+    var left=L+W+10;if(left+344>SW-12)left=L-344-10;
+    var top=Math.max(12,Math.min(T,SH-pop.offsetHeight-12));
+    pop.style.left=left+'px';pop.style.top=top+'px';
+  }
+  grid.addEventListener('scroll',hide);
+  function setSize(s){size=s;['small','medium','large'].forEach(function(v){$('size-'+v).setAttribute('aria-pressed',s===v)});hide();drawGrid()}
+  ['small','medium','large'].forEach(function(v){$('size-'+v).addEventListener('click',function(){setSize(v)})});
+  $('chips').innerHTML='<span class="eyebrow" style="width:3.2em">エリア</span><span class="chip on">すべて <small>148</small></span>'
+    +['MC-1','MC-2','MC-3','MC-5','MC-6','NC旋盤-1','NC旋盤-2','NC旋盤-3','五軸-1','研削盤','放電-1','ワイヤー-1','共通棚','測定室'].map(function(a,k){return '<span class="chip">'+a+' <small>'+(4+(k*5)%17)+'</small></span>'}).join('');
+
+  /* ---------- scene B ---------- */
+  var areas=['MC-3','NC旋盤-1','MC-5','MC-1','NC旋盤-2','共通棚'],cats=['エンドミル','チップ','ドリル','タップ','リーマ'];
+  var cands=[];for(var i=0;i<14;i++){
+    var n=1+(i*7+2)%4,ps=[];
+    for(var j=0;j<n;j++){var tall=(i+j)%2===0;ps.push(photo(tall?600:800,tall?800:600,(i*53+j*29)%360,tall?'縦 3:4':'横 4:3'))}
+    cands.push({id:1042+i,area:areas[i%areas.length],cat:cats[i%cats.length],photos:ps});
+  }
+  var sel=0,pidx=0,pane='new',photos=$('photos'),tray=$('tray'),wait=$('wait'),shade=$('shade');
+  function drawPhotos(){
+    var c=cands[sel];
+    var head='<div class="phead"><h3>写真の確認</h3><b style="font-size:14px">候補 #'+c.id+'</b><small>加工機 '+c.area+' ・ 分類 '+c.cat+'</small></div>';
+    var ctl='<div class="ctl"><span class="ic">←</span><span class="ic">→</span><span class="sp"></span><span class="ic del">✕</span></div>';
+    if(pane==='old'){
+      photos.innerHTML=head+'<div class="oldgrid">'+c.photos.map(function(p){return '<figure><div class="frame"><img class="ph cover" alt="" src="'+p+'"></div>'+ctl+'</figure>'}).join('')+'</div>';
+      return;
+    }
+    photos.innerHTML=head+'<button type="button" class="main" aria-label="写真を拡大"><img class="ph contain" alt="" src="'+c.photos[pidx]+'"><span class="count">'+(pidx+1)+'/'+c.photos.length+'</span></button>'+ctl
+      +(c.photos.length>1?'<div class="thumbs">'+c.photos.map(function(p,k){return '<button type="button" data-k="'+k+'" aria-pressed="'+(k===pidx)+'" aria-label="写真'+(k+1)+'"><img class="ph contain" alt="" src="'+p+'"></button>'}).join('')+'</div>':'');
+  }
+  photos.addEventListener('click',function(e){var b=e.target.closest('[data-k]');if(b){pidx=+b.dataset.k;drawPhotos()}});
+  function drawCur(){
+    var c=cands[sel];
+    $('cur').innerHTML='<span class="t"><img class="ph contain" alt="" src="'+c.photos[0]+'"></span><span><b>#'+c.id+'</b><span>'+c.area+' ・ '+c.cat+' ・ 写真'+c.photos.length+'</span></span>';
+    $('wait-n').textContent=cands.length;
+  }
+  function drawTray(){
+    $('tray-grid').innerHTML=cands.map(function(c,k){return '<button type="button" class="cand" data-c="'+k+'" aria-pressed="'+(k===sel)+'"><span class="t"><img class="ph contain" alt="" src="'+c.photos[0]+'"></span><span class="i"><b>#'+c.id+'</b><span>'+c.area+'</span><span>'+c.cat+' ・ 写真'+c.photos.length+'</span></span></button>'}).join('');
+  }
+  function openTray(open){tray.hidden=!open;shade.hidden=!open;wait.setAttribute('aria-expanded',open);if(open)drawTray()}
+  function pick(k){sel=(k+cands.length)%cands.length;pidx=0;drawPhotos();drawCur();openTray(false)}
+  wait.addEventListener('click',function(){openTray(tray.hidden)});
+  $('tray-close').addEventListener('click',function(){openTray(false)});
+  shade.addEventListener('click',function(){openTray(false)});
+  $('tray-grid').addEventListener('click',function(e){var b=e.target.closest('[data-c]');if(b)pick(+b.dataset.c)});
+  $('prev').addEventListener('click',function(){pick(sel-1)});
+  $('next').addEventListener('click',function(){pick(sel+1)});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')openTray(false)});
+  function setPane(p){pane=p;$('pane-old').setAttribute('aria-pressed',p==='old');$('pane-new').setAttribute('aria-pressed',p==='new');drawPhotos()}
+  $('pane-old').addEventListener('click',function(){setPane('old')});
+  $('pane-new').addEventListener('click',function(){setPane('new')});
+
+  /* ---------- scene C ---------- */
+  $('op-photo').src=photo(800,600,0,'');
+  var stock=14,hist=[['10/13 13:02',-2,14],['10/10 09:41',-1,16],['10/9 16:20',10,17],['10/7 08:15',-3,7],['10/3 14:55',-2,10]];
+  function drawOp(){
+    $('op-stock').textContent=stock;
+    var h='';for(var n=1;n<=20;n++)h+='<button type="button" data-n="'+n+'"'+(n>stock?' disabled':'')+'>'+n+'</button>';$('keys').innerHTML=h;
+    $('op-hist').innerHTML=hist.slice(0,5).map(function(h){return '<li><time>'+h[0]+'</time><b class="'+(h[1]<0?'out':'in')+'">'+(h[1]>0?'+':'')+h[1]+'</b><span>→'+h[2]+'</span></li>'}).join('');
+  }
+  $('keys').addEventListener('click',function(e){var b=e.target.closest('[data-n]');if(!b||b.disabled)return;var n=+b.dataset.n;stock-=n;hist.unshift(['たった今',-n,stock]);$('op-delta').textContent='-'+n;drawOp()});
+  drawOp();
+
+  /* ---------- scenes ---------- */
+  var hints={a:'カードにマウスを乗せると全情報が出ます(小・中のみ)。黄色の囲みが1行目へ移した大きさ・表示のボタンです。',c:'1〜20 のどれかを押すと、その数をすぐ払い出します。最近の動きは右端の細い列にまとめました。',b:'左下の「登録待ち」を押すと一覧が上に開きます。写真の黄色い枠が全部見えていれば見切れていません。'};
+  function scene(s){
+    $('scene-a').hidden=s!=='a';$('scene-b').hidden=s!=='b';$('scene-c').hidden=s!=='c';$('tab-c').setAttribute('aria-pressed',s==='c');
+    $('tab-a').setAttribute('aria-pressed',s==='a');$('tab-b').setAttribute('aria-pressed',s==='b');
+    $('hint').textContent=hints[s];hide();openTray(false);
+  }
+  $('tab-a').addEventListener('click',function(){scene('a')});
+  $('tab-b').addEventListener('click',function(){scene('b')});$('tab-c').addEventListener('click',function(){scene('c')});
+  drawGrid();drawPhotos();drawCur();scene(location.hash==='#prep'?'b':location.hash==='#scan'?'c':'a');
+})();
+</script>

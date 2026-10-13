@@ -422,6 +422,11 @@ describe('KioskItemInventoryPage item list and history', () => {
 
     const history = screen.getByRole('region', { name: '最近の動き' });
     expect(within(history).getAllByRole('listitem')).toHaveLength(5);
+    const row = within(history).getAllByRole('listitem')[0];
+    expect(row.children).toHaveLength(3);
+    expect(within(row).getByText('-1')).toHaveClass('text-inv-amber');
+    expect(within(row).getByText('→19')).toBeInTheDocument();
+    expect(within(history).queryByText('払い出し')).not.toBeInTheDocument();
     fireEvent.click(within(history).getByRole('button', { name: 'あと2件' }));
     expect(within(history).getAllByRole('listitem')).toHaveLength(7);
   });
@@ -582,6 +587,39 @@ it('does not redraw the item grid when a prompt changes or its four-second timer
 });
 
 describe('daily touch movements and inline location filters', () => {
+  it.each([false, true])('offers all 20 one-tap quantities with stock limits only for issues (restock: %s)', async (restock) => {
+    const touch = vi.fn().mockResolvedValue({ transaction: historyEntry({ action: restock ? 'RESTOCK' : 'ISSUE', delta: restock ? 20 : -3, afterQuantity: restock ? 30 : 7 }) });
+    vi.mocked(useInventoryMutations).mockReturnValue({ touchTransaction: { mutateAsync: touch } } as never);
+    const scan = renderWithNfc();
+    await scan(itemTag);
+    if (restock) fireEvent.click(screen.getByRole('button', { name: '補充' }));
+    const buttons = within(screen.getByRole('group', { name: restock ? '補充する数' : '払い出す数' })).getAllByRole('button');
+    expect(buttons.map(button => button.textContent)).toEqual(Array.from({ length: 20 }, (_, index) => String(index + 1)));
+    buttons.forEach((button, index) => {
+      if (!restock && index >= 10) expect(button).toBeDisabled();
+      else expect(button).toBeEnabled();
+    });
+    if (!restock) {
+      fireEvent.click(buttons[10]);
+      expect(touch).not.toHaveBeenCalled();
+    }
+    await act(async () => { fireEvent.click(buttons[restock ? 19 : 2]); });
+    expect(touch).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ quantity: restock ? 20 : 3, restock, expectedBeforeQuantity: 10 }));
+  });
+
+  it('keeps list controls beside the mode switch and hides them after selecting an item', async () => {
+    const scan = renderWithNfc();
+    const mode = screen.getByRole('group', { name: '払い出しか補充か' });
+    for (const label of ['写真の大きさ', '表示']) expect(screen.getByRole('group', { name: label }).parentElement).toBe(mode.parentElement);
+    expect(screen.getByRole('button', { name: '番号で開く' }).parentElement).toBe(mode.parentElement);
+    expect(screen.queryByText('写真の大きさ')).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'エリアで絞る' })).toHaveClass('flex-wrap');
+    await scan(itemTag);
+    expect(screen.queryByRole('group', { name: '写真の大きさ' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: '表示' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '番号で開く' })).not.toBeInTheDocument();
+  });
+
   it('records a tagless drawer immediately, prevents double taps, and supports repeat and undo', async () => {
     let release: (value: unknown) => void = () => undefined;
     const touch = vi.fn().mockImplementationOnce(() => new Promise((resolve) => { release = resolve; })).mockResolvedValue({ transaction: historyEntry({ action: 'ISSUE', delta: -1, afterQuantity: 8 }) });
@@ -651,7 +689,7 @@ describe('daily touch movements and inline location filters', () => {
     vi.mocked(useInventoryMutations).mockReturnValue({ transaction: { mutateAsync: vi.fn() }, touchTransaction: { mutateAsync: touch } } as never);
     const scan = renderWithNfc();
     await scan(itemTag);
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '20個を払い出す' })); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '10個を払い出す' })); });
     const errorRow = screen.getByRole('alert').parentElement;
     expect(screen.getByRole('alert')).toHaveTextContent('在庫が足りません');
     expect(errorRow).toHaveClass('h-11');
