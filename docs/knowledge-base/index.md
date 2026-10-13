@@ -68,6 +68,7 @@ update-frequency: high
 | キオスクのブラウザをChromiumへ（StoneBase01先行検証） | [KB-413](./KB-413-kiosk-chromium-canary-stonebase01.md) | 1件 | 2026-10-02: 表示速度改善のためStoneBase01だけChromiumへ。`--gtk-version=3`追加、実行パスを`/usr/bin/chromium`へフォールバック。証明書無視フラグは全台展開前に要対処 |
 | キオスク日本語入力不可（Firefoxプロファイルに自動操作用設定が残留） | [KB-412](./KB-412-kiosk-firefox-focus-testmode-blocks-ime.md) | 1件 | 2026-10-01: StoneBase01で半角/全角が効かない。`focusmanager.testmode=true`が`prefs.js`に残りIBusへキーが渡らない。ランチャーで起動前に除去 |
 | キオスク製番ボード（資源CD表示×切削の更新ループ） | [KB-411](./KB-411-planning-board-resource-view-update-loop.md) | 1件 | 2026-10-01: 資源CD表示で切削に切り替えるとReact #185でエラー画面。高さ計測のeffect依存を数値に変更 |
+| キオスク製番ボード（再表示が毎回作り直しで遅い） | [KB-418](./KB-418-planning-board-warm-reuse.md) | 1件 | 2026-10-13: 世代が同じ間は結果を保持（#1897 #1902 #1904 #1909）。7分後の再表示 3.5s→0.35s、/load 8s→0.3s |
 | キオスク在庫（毎日のNFC画面と準備画面の分離） | [KB-409](./KB-409-kiosk-inventory-daily-and-setup-screens.md) | 1件 | 2026-09-26: 在庫操作でパスワードなし修正・置き場所選択、在庫の準備はテンキー解除とタブ化。デプロイ中のmainマージ禁止の教訓 |
 | キオスク順位ボード（左ツールスタック背景不透明化リグレッション） | [KB-396](./KB-396-leader-board-left-panel-opacity-regression.md) | 1件 | **`0c57d5a0`**·`kioskPanelClassName` 半透明リグレッション修正·実機未確認 |
 | キオスク順位ボード（`leaderboard-board/continue` 契約と端末キャッシュ履歴） | [KB-374-leaderboard-board-continue-cursor-contract.md](./KB-374-leaderboard-board-continue-cursor-contract.md) | 1件 | continue/cursor、append、端末キャッシュ、過去の `pageSize 80` / `120秒` 履歴。現行値は [KB-392](./KB-392-kiosk-leaderboard-spec-source-of-truth.md)。 |
