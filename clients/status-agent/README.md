@@ -87,6 +87,7 @@ journalctl -u status-agent.service -n 30 -f
 | 兆候 | レベル |
 | --- | --- |
 | root filesystem が read-only (`ro`) | `ERROR` |
+| ext4のroot partitionの `/sys/fs/ext4/<partition>/errors_count` が0より大きい（`ext4_errors_recorded`）。未取得・非ext4は通知しない | `ERROR` |
 | kernel log の `mmc` error / `I/O error` / `EXT4-fs error` / read-only remount | `ERROR` |
 | `/` のディスク使用率またはinode使用率が閾値以上 | `WARN` / `ERROR` |
 | `vcgencmd get_throttled` の現在低電圧 | `ERROR` |

@@ -604,6 +604,31 @@ def read_int_or_none(path: Path) -> Optional[int]:
         return None
 
 
+def evaluate_ext4_errors(
+    mounts_text: str,
+    sys_root: Path,
+    observed_at: Optional[dt.datetime] = None,
+) -> List[LogEntry]:
+    root_mount = next(
+        (parts for line in mounts_text.splitlines()
+         if len(parts := line.split()) >= 3 and decode_mount_field(parts[1]) == "/"),
+        None,
+    )
+    if root_mount is None or root_mount[2] != "ext4":
+        return []
+    source = root_source_from_mounts(mounts_text) or ""
+    device = split_block_device(source)
+    if device is None:
+        return []
+    count = read_int_or_none(sys_root / "fs" / "ext4" / device[1] / "errors_count")
+    if count is None or count <= 0:
+        return []
+    return [build_log_entry(
+        "ERROR", "ext4_errors_recorded", "Root ext4 filesystem has recorded errors",
+        source, count, observed_at,
+    )]
+
+
 def collect_wear_logs(
     config: Mapping[str, str],
     mounts_text: str,
@@ -705,6 +730,8 @@ def collect_storage_health_logs(
         logs.extend(evaluate_root_mount(mounts_text, observed))
     except OSError:
         pass
+
+    logs.extend(evaluate_ext4_errors(mounts_text, sys_root, observed))
 
     try:
         disk_pct = read_root_disk_usage_percent(disk_path)
