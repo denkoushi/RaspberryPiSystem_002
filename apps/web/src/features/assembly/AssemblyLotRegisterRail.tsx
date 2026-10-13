@@ -90,7 +90,7 @@ export function AssemblyLotRegisterRail({
   return (
     <aside
       aria-labelledby="assembly-lot-register-heading"
-      className="flex min-h-[30rem] min-w-0 flex-col gap-2.5 overflow-hidden border-l border-[#27313b] bg-[#161c22] px-3.5 py-3 text-[0.9375rem] leading-tight text-[#eef3f6] xl:min-h-0 xl:pb-[4.5rem]"
+      className="flex min-h-[30rem] min-w-0 flex-col gap-2.5 overflow-hidden border-r border-[#27313b] bg-[#161c22] px-3.5 py-3 text-[0.9375rem] leading-tight text-[#eef3f6] xl:min-h-0 xl:pb-[4.5rem]"
     >
       <h2 id="assembly-lot-register-heading" className="shrink-0 text-sm font-black tracking-widest text-[#9fadb9]">
         ロット登録

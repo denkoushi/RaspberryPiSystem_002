@@ -224,6 +224,18 @@ describe('KioskAssemblyHomePage', () => {
     expect(within(links[3]).getByText('1')).toHaveAttribute('aria-hidden', 'true');
   });
 
+  it('places lot registration before the work board in the left column', async () => {
+    renderPage();
+
+    const main = screen.getByRole('main');
+    const rail = screen.getByRole('complementary', { name: 'ロット登録' });
+    expect(main).toHaveClass('xl:grid-cols-[22rem_minmax(0,1fr)]');
+    expect(main.firstElementChild).toBe(rail);
+    expect(rail).toHaveClass('border-r');
+    expect(rail).not.toHaveClass('border-l');
+    expect(await screen.findByRole('link', { name: 'ASM-START-001・S002 を再開' })).toBeInTheDocument();
+  });
+
   it('selects a seiban candidate and registers a lot with exact serial count', async () => {
     renderPage();
 

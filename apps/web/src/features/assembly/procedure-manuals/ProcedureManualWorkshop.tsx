@@ -244,13 +244,16 @@ export function ProcedureManualWorkshop() {
       </div>
     </header>
     <div className="grid min-h-0 grid-cols-[460px_minmax(0,1fr)]">
-      <ProcedureManualFilterPane allowKindChangeWithProcess subjectKind={subjectKind} onKindChange={kind => { if (kind !== subjectKind) { setSearch(''); setDigitQuery(''); setKanaRow(''); select('', '', kind); } }} processes={processes} items={items} models={candidates} partSearchCandidates={partCandidates} modelCodeKey={modelCodeKey} processId={processId}
+      <ProcedureManualFilterPane topActions={(isCommon ? process?.subjectKind === 'COMMON' : modelCodeKey && process) ? <>
+        <button className={`${primaryAction} h-14 shrink-0`} disabled={busy || (isCommon && previewLoading)} onClick={() => { if (checkAccess()) setBlankOpen(true); }}><svg aria-hidden="true" className="mr-2 h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>作る</button>
+        {!isCommon ? <button aria-label="既存の要領書を割り当てる" className={`${action} h-14 shrink-0`} disabled={busy || overviewLoading} onClick={() => { if (checkAccess()) setAssignmentOpen(true); }}>＋ 既存を割り当てる</button> : null}
+      </> : null} allowKindChangeWithProcess subjectKind={subjectKind} onKindChange={kind => { if (kind !== subjectKind) { setSearch(''); setDigitQuery(''); setKanaRow(''); select('', '', kind); } }} processes={processes} items={items} models={candidates} partSearchCandidates={partCandidates} modelCodeKey={modelCodeKey} processId={processId}
         search={search} digitQuery={digitQuery} onSearchChange={setSearch} onDigitQueryChange={setDigitQuery}
         onModelSelect={key => select(key === modelCodeKey ? '' : key, processId)} onProcessSelect={selectProcess}
         kanaRow={kanaRow} onKanaRowChange={setKanaRow} loading={isCommon ? overviewLoading : searchLoading} error={searchError} hasMore={hasMore} />
       <section aria-label="要領書一覧" className={isCommon ? 'flex min-h-0 min-w-0 flex-col' : 'grid min-h-0 min-w-0 content-start overflow-auto px-4 py-3'}>
         {isCommon ? <ProcedureManualCommonList items={filteredItems} processes={processes} categoryId={processId} kanaRow={kanaRow} busy={busy || previewLoading}
-          onCreate={() => { if (checkAccess()) setBlankOpen(true); }} onView={item => void view(item)} onFix={fix}
+          onView={item => void view(item)} onFix={fix}
           onRemove={(item, deleteDocument) => { if (checkAccess()) { if (deleteDocument) setDeleting(item); else setRemoving(item); } }} /> : <>
           <div className="mb-1.5 flex min-h-[52px] min-w-max items-center gap-3">
             <h2 aria-label={`${modelCodeKey || (subjectKind === 'PART' ? '全部品' : '全機種')} › ${process ? shortName(process) : '全工程'}`} className="flex items-center gap-2 text-[22px] font-black">
@@ -266,7 +269,6 @@ export function ProcedureManualWorkshop() {
               {statusFilters.map(filter => <button key={filter} aria-pressed={statusFilter === filter} className={`${procedureManualButtonBase} px-3 text-[17px] font-bold ${statusFilter === filter ? procedureManualButtonSelected : `${procedureManualButtonUnselected} text-[#9fadb9]`}`} onClick={() => setStatusFilter(filter)}>{filter}</button>)}
             </div>
             <input type="search" aria-label="名前で絞り込み" placeholder="名前で絞り込み" value={nameFilter} onChange={event => setNameFilter(event.target.value)} className="h-11 w-[260px] rounded-lg border border-[#344252] bg-white px-3 text-lg text-[#0f1317] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7cc4ff]" />
-            <button className={`${primaryAction} ml-auto shrink-0`} disabled={busy} onClick={() => { if (checkAccess()) setBlankOpen(true); }}><svg aria-hidden="true" className="mr-2 h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>作る</button>
           </div>
           <div role="table" aria-label={process ? shortName(process) : '全工程'} className="min-w-[1100px]">
           <div role="row" className="sr-only">
@@ -306,7 +308,6 @@ export function ProcedureManualWorkshop() {
           </div>; })}
           </div>
           {!overviewLoading && filteredItems.length === 0 ? <p className="p-4 text-lg text-[#9fadb9]">該当する要領書がありません</p> : null}
-          {modelCodeKey && process ? <button className={`${procedureManualButtonBase} ${procedureManualButtonUnselected} mt-2.5 border-dashed text-lg text-[#9fadb9] disabled:opacity-40`} disabled={busy || overviewLoading} onClick={() => { if (checkAccess()) setAssignmentOpen(true); }}>＋ 既存の要領書を割り当てる</button> : null}
         </>}
         {overviewLoading ? <p role="status" className="text-[#9fadb9]">読込中…</p> : null}
         {error ? <p role="alert" className="text-red-400">{error}</p> : null}

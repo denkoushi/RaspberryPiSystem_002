@@ -11,6 +11,7 @@ const { ingestMock } = vi.hoisted(() => ({
 vi.mock('../../api/client', () => ({
   ingestAssemblyProcedureDocumentsFromGmail: ingestMock,
   listAssemblyTemplateSummaries: vi.fn(async () => []),
+  listAssemblyProcedureDocumentSummaries: vi.fn(async () => []),
   retireAssemblyTemplate: vi.fn()
 }));
 

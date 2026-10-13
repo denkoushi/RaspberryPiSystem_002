@@ -90,9 +90,17 @@ export function AssemblyProcedurePreviewDialog({
           </div>
         </div>
         {error ? <p className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
-        <div className="flex flex-wrap justify-end gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="secondary" className="min-h-11" disabled={busy} onClick={onClose}>
+            閉じる
+          </Button>
+          {!isDraft && onCreateTemplate ? (
+            <Button data-kiosk-sop-target="assembly-template-create-from-procedure" type="button" variant="primary" className="min-h-11" onClick={() => onCreateTemplate(currentDocument)}>
+              この手順書でテンプレートを新規作成
+            </Button>
+          ) : null}
           {isDraft && onPublish ? (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="ml-auto flex flex-wrap items-center gap-2">
               <Input
                 type="password"
                 inputMode="numeric"
@@ -108,14 +116,6 @@ export function AssemblyProcedurePreviewDialog({
               </Button>
             </div>
           ) : null}
-          {!isDraft && onCreateTemplate ? (
-            <Button data-kiosk-sop-target="assembly-template-create-from-procedure" type="button" variant="primary" className="min-h-11" onClick={() => onCreateTemplate(currentDocument)}>
-              この手順書でテンプレートを新規作成
-            </Button>
-          ) : null}
-          <Button type="button" variant="secondary" className="min-h-11" disabled={busy} onClick={onClose}>
-            閉じる
-          </Button>
         </div>
       </div>
     </Dialog>

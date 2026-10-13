@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AssemblyProcedureLibrarySection } from './AssemblyProcedureLibrarySection';
+import { AssemblyProcedurePreviewDialog } from './AssemblyProcedurePreviewDialog';
 import { AssemblyTemplateLibraryTable } from './AssemblyTemplateLibraryTable';
 
 import type { AssemblyProcedureDocumentSummaryDto } from './types';
@@ -40,6 +41,26 @@ function renderProcedures(documents: AssemblyProcedureDocumentSummaryDto[] = [do
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); imageHook.mockClear(); });
 
 describe('assembly dense library', () => {
+  it('keeps close on the left and publication on the right without changing publication', async () => {
+    const draft = { ...document, status: 'draft' as const, imageRelativePath: '', pages: [] };
+    const onClose = vi.fn(), onPublish = vi.fn(async () => ({ ...draft, status: 'published' as const })), onCreateTemplate = vi.fn();
+    render(<AssemblyProcedurePreviewDialog document={draft} isOpen onClose={onClose} onPublish={onPublish} onCreateTemplate={onCreateTemplate} />);
+    const dialog = screen.getByRole('dialog');
+    const close = within(dialog).getByRole('button', { name: '閉じる' });
+    const publish = within(dialog).getByRole('button', { name: '確認して公開' });
+    expect(close.parentElement?.firstElementChild).toBe(close);
+    expect(close.parentElement?.lastElementChild).toContainElement(publish);
+    expect(publish.parentElement).toHaveClass('ml-auto');
+    expect(publish).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('手順書公開の管理パスワード'), { target: { value: '1234' } });
+    fireEvent.click(publish);
+    await waitFor(() => expect(onPublish).toHaveBeenCalledWith(draft, '1234'));
+    fireEvent.click(await screen.findByRole('button', { name: 'この手順書でテンプレートを新規作成' }));
+    expect(onCreateTemplate).toHaveBeenCalledWith({ ...draft, status: 'published' });
+    fireEvent.click(close);
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it('splits manual names, spans legacy names over four columns and searches the original full name', () => {
     const name = '主軸_P-123_加工_研削_仕上げ_確認';
     renderProcedures([document, { ...document, id: 'named', name }, { ...document, id: 'four', name: '軸受_P-456_組立_圧入' }]);
@@ -186,7 +207,7 @@ describe('assembly dense library', () => {
   it('places Gmail import after file register and exposes busy state', () => {
     const onImportClick = vi.fn();
     const view = render(<MemoryRouter><AssemblyProcedureLibrarySection onRegisterClick={vi.fn()} onImportClick={onImportClick} previewDocuments={[document]} /></MemoryRouter>);
-    const register = screen.getByRole('button', { name: 'ファイルから登録' });
+    const register = screen.getByRole('button', { name: '＋ ファイルから登録' });
     const importButton = screen.getByRole('button', { name: 'Gmailから取り込む' });
     expect(register.nextElementSibling).toBe(importButton);
     expect(importButton).toHaveTextContent('Gmail から取込');

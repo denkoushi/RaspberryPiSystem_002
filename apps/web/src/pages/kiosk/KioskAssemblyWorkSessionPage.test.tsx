@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -352,7 +352,7 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     renderPage();
 
     expect(await screen.findByRole('heading', { name: '組立作業' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '組立トップ' })).toHaveAttribute('href', '/kiosk/assembly');
+    expect(screen.getByRole('link', { name: '組立へ戻る' })).toHaveAttribute('href', '/kiosk/assembly');
     expect(screen.queryByRole('link', { name: 'テンプレ' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Excel' })).not.toBeInTheDocument();
     expect(screen.queryByText('要領書 / ページ送り')).not.toBeInTheDocument();
@@ -362,6 +362,41 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     });
     expect(screen.queryByText('BOLT-1')).not.toBeInTheDocument();
     expect(screen.getAllByText('丸数字 1').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('labels the missing-session back link as 組立へ戻る', async () => {
+    mockGetAssemblyWorkSession.mockResolvedValue(null);
+    renderPage();
+
+    expect(await screen.findByRole('link', { name: '組立へ戻る' })).toHaveAttribute('href', '/kiosk/assembly');
+  });
+
+  it('places restart after history and restarts only after confirmation', async () => {
+    mockRestartAssemblyArea.mockResolvedValue(session);
+    renderPage();
+
+    const restart = await screen.findByRole('button', { name: 'やり直し' });
+    expect(restart).toHaveClass('min-h-11', 'self-start', 'border-[#e5484d]');
+    expect(restart.previousElementSibling?.previousElementSibling).toBe(screen.getByRole('heading', { name: '履歴' }));
+    expect(restart.parentElement?.lastElementChild).toBe(restart);
+    fireEvent.click(restart);
+    expect(mockRestartAssemblyArea).not.toHaveBeenCalled();
+    const dialog = within(screen.getByRole('dialog', { name: 'このエリアをやり直しますか？' }));
+    expect(dialog.getAllByRole('button').map((button) => button.textContent)).toEqual(['キャンセル', 'やり直す']);
+    fireEvent.click(dialog.getByRole('button', { name: 'やり直す' }));
+
+    await waitFor(() => expect(mockRestartAssemblyArea).toHaveBeenCalledExactlyOnceWith('session-1', { reason: '画面操作によるエリアやり直し' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('does not restart when confirmation is cancelled', async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'やり直し' }));
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mockRestartAssemblyArea).not.toHaveBeenCalled();
   });
 
   it('falls back to the process position when the current area name is blank', async () => {

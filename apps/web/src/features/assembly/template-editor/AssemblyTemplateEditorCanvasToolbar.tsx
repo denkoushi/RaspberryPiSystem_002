@@ -5,6 +5,7 @@ import { useAssemblyTemplateEditor, useAssemblyTemplateEditorNavigation } from '
 import type { ReactNode } from 'react';
 
 const icons: Record<string, ReactNode> = {
+  back: <><path d="M9 4h11v16H9M14 12H3M6 8l-4 4 4 4" /></>,
   save: <><path d="M5 4h11l3 3v13H5z" /><path d="M8 4v5h7V4M8 20v-6h8v6" /></>,
   bolt: <><circle cx="12" cy="12" r="9" /><path d="M12 7v10M7 12h10" /></>,
   check: <><circle cx="12" cy="12" r="9" /><path d="M8 12l3 3 5-6" /></>,
@@ -33,7 +34,9 @@ export function AssemblyTemplateEditorCanvasToolbar() {
   );
   const separator = <span aria-hidden="true" className="my-1 h-px w-9 shrink-0 bg-[#344252]" />;
   return (
-    <nav aria-label="テンプレート操作" data-testid="assembly-editor-toolbar" className="flex min-h-0 flex-col items-center gap-2 overflow-y-auto border-l border-[#27313b] bg-[#161c22] py-2.5">
+    <nav aria-label="テンプレート操作" data-testid="assembly-editor-toolbar" className="flex min-h-0 flex-col items-center gap-2 overflow-y-auto border-l border-[#27313b] bg-[#161c22] pb-[84px] pt-2.5">
+      {renderLink({ to: KIOSK_ASSEMBLY_LIBRARY_PATH, 'aria-label': '一覧へ戻る', className: `${buttonClass} border-transparent text-[#9fb0c0]`, children: <span title="一覧へ戻る">{icon('back')}</span> })}
+      {separator}
       {button(c.busy ? '保存中…' : c.templateId ? '新しい版で保存' : '保存', 'save', () => void c.saveTemplate(), { disabled: c.busy || c.readOnly || !c.readiness.isReady, color: '!border-[#3ba776] bg-[#3ba776] text-[#0b1a12]', target: 'assembly-editor-save' })}
       {separator}
       {button('締結', 'bolt', () => {
@@ -70,9 +73,6 @@ export function AssemblyTemplateEditorCanvasToolbar() {
       {separator}
       {button('前頁', 'previous', () => c.setSelectedPageKey(c.pageOptions[c.selectedPageIndex - 1]!.key), { disabled: c.selectedPageIndex <= 0 })}
       {button('次頁', 'next', () => c.setSelectedPageKey(c.pageOptions[c.selectedPageIndex + 1]!.key), { disabled: c.selectedPageIndex < 0 || c.selectedPageIndex >= c.pageOptions.length - 1 })}
-      <div className="mt-auto pb-[84px] pt-2">
-        {renderLink({ to: KIOSK_ASSEMBLY_LIBRARY_PATH, 'aria-label': '一覧へ戻る', className: `${buttonClass} border-transparent text-[#9fb0c0]`, children: <span title="一覧へ戻る">{icon('previous')}</span> })}
-      </div>
     </nav>
   );
 }

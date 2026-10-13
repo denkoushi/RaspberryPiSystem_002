@@ -452,15 +452,7 @@ export function KioskAssemblyHomePage() {
         </p>
       ) : null}
 
-      <main className="grid min-h-0 flex-1 grid-cols-1 overflow-auto xl:grid-cols-[minmax(0,1fr)_22rem] xl:overflow-hidden">
-        <AssemblyHomeBoard
-          rows={boardRows}
-          loading={boardLoading}
-          busySerialId={busySerialId}
-          onReload={reloadBoard}
-          onStartSerial={openStartNfcGate}
-          onInvalidate={openInvalidation}
-        />
+      <main className="grid min-h-0 flex-1 grid-cols-1 overflow-auto xl:grid-cols-[22rem_minmax(0,1fr)] xl:overflow-hidden">
         <AssemblyLotRegisterRail
           fseibanInput={fseibanInput}
           normalizedFseiban={normalizedFseiban}
@@ -492,6 +484,14 @@ export function KioskAssemblyHomePage() {
           canRegisterLot={canRegisterLot}
           busy={busy}
           onRegisterLot={() => void registerLot()}
+        />
+        <AssemblyHomeBoard
+          rows={boardRows}
+          loading={boardLoading}
+          busySerialId={busySerialId}
+          onReload={reloadBoard}
+          onStartSerial={openStartNfcGate}
+          onInvalidate={openInvalidation}
         />
       </main>
       <AssemblyOperatorNfcDialog

@@ -12,8 +12,10 @@ import { ProcedureManualPartLabel } from './ProcedureManualPartLabel';
 
 import type { ProcedureManualPartCandidateDto } from '../../../api/client';
 import type { ProcedureManualAssignmentOverviewItemDto, ProcedureManualModelDto, ProcedureManualProcessDto } from '../types';
+import type { ReactNode } from 'react';
 
 type Props = {
+  topActions?: ReactNode;
   allowKindChangeWithProcess?: boolean;
   subjectKind: 'MODEL' | 'PART' | 'COMMON';
   onKindChange: (kind: 'MODEL' | 'PART' | 'COMMON') => void;
@@ -37,7 +39,7 @@ type Props = {
   hasMore?: boolean;
 };
 
-export function ProcedureManualFilterPane({ processes, items, models, modelCodeKey, processId, search, digitQuery,
+export function ProcedureManualFilterPane({ topActions, processes, items, models, modelCodeKey, processId, search, digitQuery,
   onSearchChange, onDigitQueryChange, onModelSelect, onProcessSelect, loading, error, hasMore, subjectKind, onKindChange, partCandidates, partSearchCandidates, allowKindChangeWithProcess = false, kanaRow = '', onKanaRowChange }: Props) {
   const isPart = subjectKind === 'PART';
   const unit = isPart ? '部品' : '機種';
@@ -56,6 +58,7 @@ export function ProcedureManualFilterPane({ processes, items, models, modelCodeK
   const buttons = [{ id: '', name: '全て' }, ...processes.filter(row => row.parentId && row.subjectKind !== 'COMMON').map(row => ({ id: row.id, name: row.name.replace(/工程/g, '') }))];
   const kindToggle = <div role="group" aria-label="機種か部品か" className="grid grid-cols-3 gap-2">{(['MODEL', 'PART', 'COMMON'] as const).map(kind => <button key={kind} aria-pressed={subjectKind === kind} className={`${procedureManualButtonBase} h-14 px-3 text-xl font-bold ${subjectKind === kind ? subjectKind === 'COMMON' ? procedureManualCommonSelected : procedureManualButtonSelected : procedureManualButtonUnselected}`} onClick={() => { setScanArmed(false); onKindChange(kind); }}>{kind === 'COMMON' ? '共通' : kind === 'PART' ? '部品' : '機種'}</button>)}</div>;
   if (subjectKind === 'COMMON') return <section aria-label="共通一覧" className="flex min-h-0 flex-1 flex-col gap-4 border-r border-[#27313b] bg-[#161c22] p-5">
+    {topActions !== undefined ? <div className="flex h-14 shrink-0 items-stretch gap-2">{topActions}</div> : null}
     {kindToggle}
     <h2 className="text-base font-bold tracking-widest text-[#9fadb9]">分類</h2>
     <div role="group" aria-label="分類で絞り込み" className="grid max-h-[40%] shrink-0 grid-cols-2 gap-2 overflow-auto">{processes.filter(row => row.parentId && row.subjectKind === 'COMMON').map(row => <button key={row.id} aria-label={row.name} aria-pressed={processId === row.id} className={`${procedureManualButtonBase} flex min-h-14 items-center justify-between px-4 text-xl font-bold ${processId === row.id ? procedureManualCommonSelected : procedureManualButtonUnselected}`} onClick={() => onProcessSelect(processId === row.id ? '' : row.id)}>{row.name}<span aria-hidden="true" className="text-[15px] font-normal text-[#9fadb9]">{items.filter(item => item.processId === row.id).length}</span></button>)}</div>
@@ -65,6 +68,7 @@ export function ProcedureManualFilterPane({ processes, items, models, modelCodeK
     {loading ? <p role="status">読込中…</p> : null}{error ? <p role="alert" className="text-red-400">{error}</p> : null}
   </section>;
   return <section aria-label={`${unit}一覧`} className="flex min-h-0 flex-1 flex-col gap-2.5 border-r border-[#27313b] bg-[#161c22] p-4">
+    {topActions !== undefined ? <div className="flex h-14 shrink-0 items-stretch gap-2">{topActions}</div> : null}
     <h2 className="text-base font-bold tracking-widest text-[#9fadb9]">工程</h2>
     <div role="group" aria-label="工程で絞り込み" className="grid shrink-0 gap-1.5" style={{ gridTemplateColumns: `repeat(${buttons.length}, minmax(0,1fr))` }}>
       {buttons.map(button => {

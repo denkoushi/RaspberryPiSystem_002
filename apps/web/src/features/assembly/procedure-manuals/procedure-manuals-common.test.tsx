@@ -73,8 +73,27 @@ describe('common mode in the shared screens', () => {
     fireEvent.click(screen.getByRole('button', { name: '工具', exact: true }));
     expect(screen.getByRole('row', { name: '研削盤_使い方' })).toBeInTheDocument();
     expect(screen.getByTestId('location')).toHaveTextContent('?common=1');
-    fireEvent.click(screen.getByRole('button', { name: '＋ 作る' }));
-    expect(screen.getByRole('dialog', { name: '共通の手順を作る' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '作る' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '清掃', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '作る' }));
+    expect(within(screen.getByRole('dialog', { name: '共通の手順を作る' })).getByRole('button', { name: '清掃', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('reserves an empty action row above the kind toggle until a common child category is selected', async () => {
+    showWorkshop();
+    await screen.findByRole('button', { name: '工具', exact: true });
+    const pane = screen.getByRole('region', { name: '共通一覧' });
+    const slot = pane.firstElementChild;
+    expect(slot).toHaveClass('h-14', 'shrink-0');
+    expect(slot).toBeEmptyDOMElement();
+    expect(slot?.nextElementSibling).toBe(screen.getByRole('group', { name: '機種か部品か' }));
+    expect(screen.queryByRole('button', { name: '作る' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '工具', exact: true }));
+    expect(slot).toContainElement(screen.getByRole('button', { name: '作る' }));
+    expect(within(pane).getAllByRole('button', { name: '作る' })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: '既存の要領書を割り当てる' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '工具', exact: true }));
+    expect(slot).toBeEmptyDOMElement();
   });
 
   it('preserves common row delete behavior', async () => {
@@ -90,6 +109,12 @@ describe('common mode in the shared screens', () => {
     api.assignments.mockResolvedValue({ assignments: [], sequence: { documents: [{ id: 'torque' }] } });
     render(<MemoryRouter initialEntries={['/kiosk/assembly/manuals?common=1&process=tools']}><ProcedureManualBrowser /><Location /></MemoryRouter>);
     const row = await screen.findByRole('row', { name: 'トルクレンチ_使い方' });
+    const header = screen.getByRole('banner');
+    expect(header).toHaveClass('h-16');
+    expect(header.parentElement).toHaveClass('grid-rows-[64px_minmax(0,1fr)]');
+    expect(within(header).getAllByRole('link').map(link => link.textContent)).toEqual(['作る・直す', '組立へ戻る']);
+    expect(within(header).getByRole('link', { name: '作る・直す' })).toHaveAttribute('href', '/kiosk/assembly/manuals/workshop?common=1&process=tools');
+    expect(screen.getByRole('region', { name: '共通一覧' }).firstElementChild).toBe(screen.getByRole('group', { name: '機種か部品か' }));
     expect(api.overview).toHaveBeenCalledWith(undefined, true);
     expect(screen.queryByRole('row', { name: 'マイクロメータ_使い方' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '直す' })).not.toBeInTheDocument();
@@ -97,6 +122,8 @@ describe('common mode in the shared screens', () => {
     await waitFor(() => expect(api.assignments).toHaveBeenCalledWith('トルクレンチ', 'tools'));
     expect(await screen.findByText('共通ビューア')).toBeVisible();
     expect(screen.getByTestId('procedure-manuals-left')).not.toBeVisible();
+    expect(header).toBeVisible();
+    expect(screen.getAllByRole('link', { name: '作る・直す' })).toHaveLength(1);
     expect(screen.getByTestId('location')).toHaveTextContent('common=1');
   });
 });

@@ -82,7 +82,9 @@ describe('SelfInspectionTable', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByTestId('self-inspection-row-actions')).toHaveClass('flex', 'flex-wrap');
+    expect(screen.getByTestId('self-inspection-row-actions')).toHaveClass('flex', 'flex-wrap', 'gap-x-6', 'gap-y-6');
+    expect(screen.getAllByRole('button').map(button => button.textContent)).toEqual(['削除', '検査方法を選択']);
+    expect(screen.getByRole('button', { name: '削除' })).toHaveClass('mr-auto');
     for (const action of screen.getAllByRole('button')) {
       expect(action).toHaveClass('!h-[30.8px]', '!min-h-[30.8px]', '!px-1', '!py-0', 'text-sm');
       expect(action).not.toHaveClass('w-full');

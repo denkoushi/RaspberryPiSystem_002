@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -976,11 +976,32 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
     expect(screen.getByRole('button', { name: '研削' })).toBeInTheDocument();
   });
 
+  it('separates delete from candidate selection and keeps its confirmation guard', async () => {
+    scheduleRows = [buildScheduleRow()];
+    renderPage();
+    await scanHidText('0002178005');
+    const select = await screen.findByRole('button', { name: '検査方法を選択' });
+    const actions = select.closest('[data-testid="self-inspection-row-actions"]')!;
+    expect(actions).toHaveClass('gap-x-6', 'gap-y-6');
+    expect(actions.firstElementChild).toBe(within(actions as HTMLElement).getByRole('button', { name: '削除' }));
+    expect(select).toHaveClass('min-h-11');
+    fireEvent.click(within(actions as HTMLElement).getByRole('button', { name: '削除' }));
+    expect(screen.getByRole('dialog', { name: '自主検査アイテムを削除' })).toBeInTheDocument();
+    expect(mockInvalidateSelfInspectionItem).not.toHaveBeenCalled();
+  });
+
   it('requires a password and reason before invalidating a started row', async () => {
     wipSessions = [buildWipSession()];
     renderPage();
 
-    fireEvent.click(screen.getByRole('button', { name: '削除' }));
+    const actions = screen.getByTestId('self-inspection-row-actions');
+    const remove = within(actions).getByRole('button', { name: '削除' });
+    expect(actions.firstElementChild).toBe(remove);
+    expect(actions).toHaveClass('gap-x-6', 'gap-y-6');
+    expect(remove).toHaveClass('mr-auto');
+    expect(within(actions).getByRole('link', { name: '再開' })).toHaveClass('min-h-11');
+    fireEvent.click(remove);
+    expect(mockInvalidateSelfInspectionItem).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog', { name: '自主検査アイテムを削除' })).toBeInTheDocument();
     expect(screen.getByText(/この操作は取り消せません/)).toBeInTheDocument();
     const submit = screen.getByRole('button', { name: '削除する' });

@@ -9,6 +9,7 @@ import {
 } from '../../api/client';
 import { KioskFilterCombobox } from '../../components/kiosk/KioskFilterCombobox';
 import { Button, buttonClassName } from '../../components/ui/Button';
+import { Dialog } from '../../components/ui/Dialog';
 import { Input } from '../../components/ui/Input';
 import {
   AssemblyProcedureLibrarySection,
@@ -25,6 +26,8 @@ import {
   useAssemblyLibraryFilterOptions,
   useAssemblyTemplateLibrary
 } from '../../features/assembly';
+import { resolveAssemblyDocumentStatus } from '../../features/assembly/assemblyTemplateDraft';
+import { useAssemblyProcedureLibrary } from '../../features/assembly/useAssemblyProcedureLibrary';
 import { KioskSopLauncher } from '../../features/kiosk-sop';
 
 import type { AssemblyProcedureDocumentDto, AssemblyTemplateSummaryDto } from '../../features/assembly/types';
@@ -52,7 +55,10 @@ export function KioskAssemblyPage() {
   const [gmailConfirmOpen, setGmailConfirmOpen] = useState(false);
   const [gmailImportMessage, setGmailImportMessage] = useState<string | null>(null);
   const [libraryRefreshToken, setLibraryRefreshToken] = useState(0);
-  const [procedureSearchQuery, setProcedureSearchQuery] = useState('');
+  const [procedurePickerOpen, setProcedurePickerOpen] = useState(false);
+  const procedureLibrary = useAssemblyProcedureLibrary({ refreshToken: libraryRefreshToken });
+  const pickerDocuments = procedureLibrary.documents.filter(document => resolveAssemblyDocumentStatus(document) === 'published'
+    && document.name.toLowerCase().includes(procedureLibrary.searchQuery.trim().toLowerCase()));
   const [procedureStatusFilter, setProcedureStatusFilter] = useState<'all' | 'published' | 'draft' | 'unused'>('all');
   const [templateRefreshToken, setTemplateRefreshToken] = useState(0);
   const [historyTemplates, setHistoryTemplates] = useState<AssemblyTemplateSummaryDto[]>([]);
@@ -151,6 +157,7 @@ export function KioskAssemblyPage() {
 
   const handleCreateTemplateFromProcedure = useCallback((document: AssemblyProcedureDocumentDto) => {
     setProcedurePreview(null);
+    setProcedurePickerOpen(false);
     navigate(kioskAssemblyTemplateNewPath({ procedureDocumentId: document.id }));
   }, [navigate]);
 
@@ -262,13 +269,27 @@ export function KioskAssemblyPage() {
         onCancel={() => setGmailConfirmOpen(false)}
       />
 
+      <Dialog isOpen={procedurePickerOpen} onClose={() => setProcedurePickerOpen(false)} title="手順書から作る" size="md">
+        <Input value={procedureLibrary.searchQuery} onChange={event => procedureLibrary.setSearchQuery(event.target.value)} aria-label="作成元の手順書名で検索" placeholder="名前で検索" className="mt-3 h-11 min-h-11" />
+        <div className="mt-3 max-h-80 overflow-y-auto">
+          {procedureLibrary.error ? <p className="text-sm text-red-600">{procedureLibrary.error}</p> : procedureLibrary.loading ? <p className="text-sm text-slate-600">読込中…</p> : (
+            <ul className="space-y-2">
+              {pickerDocuments.map(document => (
+                <li key={document.id}><Button type="button" variant="ghost" className="min-h-11 max-w-full border border-slate-300 text-left" onClick={() => handleCreateTemplateFromProcedure(document)}>{document.name}</Button></li>
+              ))}
+              {pickerDocuments.length === 0 ? <li className="text-sm text-slate-600">使える手順書はありません。</li> : null}
+            </ul>
+          )}
+        </div>
+        <div className="mt-4 flex justify-start"><Button type="button" variant="ghost" className="min-h-11" onClick={() => setProcedurePickerOpen(false)}>閉じる</Button></div>
+      </Dialog>
+
       {focus === 'procedures' ? (
         <AssemblyProcedureLibrarySection
           toolbarStart={toolbarStart}
           toolbarEnd={toolbarEnd}
-          initialSearchQuery={procedureSearchQuery}
+          libraryState={procedureLibrary}
           initialStatusFilter={procedureStatusFilter}
-          onSearchQueryChange={setProcedureSearchQuery}
           onStatusFilterChange={setProcedureStatusFilter}
           refreshToken={libraryRefreshToken}
           onRegisterClick={() => setUploadOpen(true)}
@@ -284,6 +305,7 @@ export function KioskAssemblyPage() {
           <h2 id="assembly-template-pane-heading" className="sr-only">組立テンプレート</h2>
           <div className="flex min-h-14 shrink-0 flex-wrap items-center gap-1 whitespace-nowrap border-b border-white/15 bg-slate-900 px-3 py-1.5">
             {toolbarStart}
+            <Button type="button" variant="primary" className="h-11 shrink-0 !bg-[#3ba776] !px-3 !py-0 text-sm" onClick={() => setProcedurePickerOpen(true)}>＋ 手順書から作る</Button>
             <div className="min-w-[180px] max-w-[320px] flex-1"><Input value={filters.q} onChange={e => templateLibrary.setQ(e.target.value)} aria-label="全体検索" placeholder="全体検索" className="h-11 min-h-11 px-2 text-sm" /></div>
             <div className="w-[88px] shrink-0"><KioskFilterCombobox value={filters.modelCode} onChange={templateLibrary.setModelCode} placeholder="機種名" ariaLabel="機種名"
               options={modelCodeOptions.options} loading={modelCodeOptions.loading} optionUpdateMode="live" inputClassName="h-11 min-h-11 px-2 text-sm" /></div>

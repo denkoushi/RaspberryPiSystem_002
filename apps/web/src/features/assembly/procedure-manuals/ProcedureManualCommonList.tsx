@@ -12,9 +12,9 @@ export function filterProcedureManualCommonItems(items: ProcedureManualAssignmen
     && normalizeProcedureManualCommonSubject(item.title).includes(query));
 }
 
-export function ProcedureManualCommonList({ items, processes, categoryId, kanaRow, onCreate, onView, onFix, onRemove, busy }: {
+export function ProcedureManualCommonList({ items, processes, categoryId, kanaRow, onView, onFix, onRemove, busy }: {
   items: ProcedureManualAssignmentOverviewItemDto[]; processes: ProcedureManualProcessDto[]; categoryId: string; kanaRow: string;
-  onCreate?: () => void; onView: (item: ProcedureManualAssignmentOverviewItemDto) => void;
+  onView: (item: ProcedureManualAssignmentOverviewItemDto) => void;
   onFix?: (item: ProcedureManualAssignmentOverviewItemDto) => void; onRemove?: (item: ProcedureManualAssignmentOverviewItemDto, deleteDocument: boolean) => void; busy?: boolean;
 }) {
   const category = processes.find(row => row.id === categoryId)?.name;
@@ -22,7 +22,6 @@ export function ProcedureManualCommonList({ items, processes, categoryId, kanaRo
   return <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3.5 p-5 px-7">
     <div className="flex shrink-0 items-center gap-3 text-[19px]">
       <h2 className="rounded-full border border-[#344252] px-3.5 py-1.5 text-lg">共通{category ? ` › ${category}` : ''}{kanaRow ? ` › ${kanaRow}行` : ''}</h2><span>{items.length} 件</span>
-      {onCreate ? <button className={`${procedureManualButtonBase} ml-auto h-14 border-[#3ba776] bg-[#3ba776] px-[26px] text-[21px] font-extrabold text-[#0b1a12]`} disabled={busy} onClick={onCreate}>＋ 作る</button> : null}
     </div>
     <div role="table" aria-label="共通の手順" className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-auto">
       {items.map(item => <div role="row" aria-label={item.title} key={item.assignmentId} className="grid h-[60px] shrink-0 items-center gap-3.5 rounded-lg border border-[#27313b] bg-[#161c22] px-3.5 text-xl" style={{ gridTemplateColumns: `64px minmax(0,1fr) 170px 110px 90px 64px${onFix ? ' 64px' : ''}${onRemove ? ' 56px' : ''}` }}>
