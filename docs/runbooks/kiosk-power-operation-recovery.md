@@ -77,6 +77,10 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 
 この修正は2026-10-09にローカルの模擬キューと一時インベントリ（`--check`）で検証済み。本番反映・実機動作の確認は別途必要。
 
+### `failed rc=1` と `Ansible requires the locale encoding to be UTF-8`（2026-10-13）
+
+`dispatcher-debug.log` が `failed rc=1` で、リクエスト別ログが上記の 1 行だけのときは、dispatcher が `LC_ALL=C` のまま `ansible-playbook` を起動している。修正版は ansible の起動時だけ `LC_ALL=C.UTF-8` を渡す。スクリプトの更新は下の専用 playbook で配置する。
+
 ### dispatcher の配置（標準リリースの対象外）
 
 標準ローリング更新は server ロールを `host-config-only` で実行するため、`/usr/local/bin/pi5-power-dispatcher.sh` と `pi5-power-dispatcher.{service,path}` を配置しない。`infrastructure/ansible/templates/pi5-power-dispatcher.*` を変更したときは、Pi5 の checkout が対象コミットになった後に専用 playbook を適用する。
