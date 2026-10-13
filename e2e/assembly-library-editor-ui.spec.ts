@@ -1053,7 +1053,7 @@ for (const viewport of viewports) {
     await expect(procedureTable).toBeVisible();
     // Dense layout: one 56px row per document; column headers are visually hidden.
     await expect(procedureTable.locator('tbody tr')).toHaveCount(2);
-    await expect(procedureTable.locator('th', { hasText: '名前' })).toHaveCount(1);
+    await expect(procedureTable.locator('th', { hasText: '品名' })).toHaveCount(1);
 
     const combo = page.getByRole('combobox', { name: '手順書名で検索' });
     await combo.click();
