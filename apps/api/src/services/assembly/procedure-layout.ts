@@ -56,6 +56,13 @@ function numbers(text: string): string[] {
   return text.replace(/[０-９]/g, char => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
     .replace(/^[^\S\n]*\d+[.．](?!\d)/gm, '').match(/\d+/g)?.sort() ?? [];
 }
+/** A photo row needs an AI caption when its text is empty, a short heading, or only codes such as a program number. */
+export function procedureRowNeedsCaption(texts: string[]): boolean {
+  const lines = texts.flatMap(text => text.split('\n')).map(line => line.trim()).filter(Boolean);
+  const rest = lines.length && Array.from(lines[0]).length <= 10 ? lines.slice(1) : lines;
+  return rest.every(line => Array.from(line).length <= 20 && /^[\x20-\x7e]+$/.test(line.normalize('NFKC')));
+}
+
 export function isValidProcedureTextRewrite(original: string, rewritten: string): boolean {
   return rewritten.trim().length > 0 && rewritten.length <= Math.min(10_000, original.length * 2 + 20)
     && JSON.stringify(numbers(original)) === JSON.stringify(numbers(rewritten));
