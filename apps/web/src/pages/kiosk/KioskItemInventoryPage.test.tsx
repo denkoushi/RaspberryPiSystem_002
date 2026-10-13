@@ -1311,7 +1311,7 @@ describe('inventory device presentation preferences', () => {
     expect(toggle.getByRole('button', { name: 'リスト表示' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByRole('group', { name: '写真の大きさ' })).not.toBeInTheDocument();
     expect(screen.queryByText('写真の大きさ')).not.toBeInTheDocument();
-    expect(screen.getByText(`${area}・棚1・引き出し2`)).toBeInTheDocument();
+    expect(screen.getByText(`${area}・棚1-2`)).toBeInTheDocument();
     expect(localStorage.getItem(sizeKey)).toBe('large');
     fireEvent.click(toggle.getByRole('button', { name: 'カード表示' }));
     expect(localStorage.getItem(viewKey)).toBe('card');
@@ -1324,7 +1324,7 @@ describe('inventory device presentation preferences', () => {
     mount();
     expect(screen.getByRole('button', { name: 'リスト表示' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByRole('group', { name: '写真の大きさ' })).not.toBeInTheDocument();
-    expect(screen.getByText(`${area}・棚1・引き出し2`)).toBeInTheDocument();
+    expect(screen.getByText(`${area}・棚1-2`)).toBeInTheDocument();
   });
 
   it('falls back to cards for an invalid stored view mode', () => {

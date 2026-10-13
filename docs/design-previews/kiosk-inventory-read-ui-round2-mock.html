@@ -1,0 +1,285 @@
+<title>在庫 読み取り画面 改良モック</title>
+<style>
+/* Single dark look, same tokens as the kiosk inventory screens (inv-*). */
+:root{
+  color-scheme:dark;
+  --bg:#090d14; --s1:#10161f; --s2:#161e2b; --s3:#1e2839;
+  --line:#263145; --line2:#324059;
+  --text:#eef2f8; --muted:#9aa7ba; --faint:#76839a;
+  --cyan:#39d0f0; --cyan-ink:#032a33; --amber:#f5b544; --green:#35d895; --green-ink:#03281a;
+  --ui:"Hiragino Sans","Noto Sans JP","Yu Gothic UI","Meiryo",system-ui,sans-serif;
+}
+html{background:var(--bg)}
+body{background:var(--bg);color:var(--text);font-family:var(--ui);font-size:15px;line-height:1.6}
+.page{max-width:1400px;margin:0 auto;padding-inline:16px;padding-block:20px 48px;display:flex;flex-direction:column;gap:16px}
+h1{font-size:22px;margin:0;line-height:1.3}
+h2{font-size:15px;margin:0;color:var(--muted);font-weight:700}
+.tabs{display:flex;flex-wrap:wrap;gap:8px}
+.tab{min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line2);background:var(--s1);color:var(--text);font:inherit;font-weight:700;cursor:pointer}
+.tab[aria-selected="true"]{background:var(--cyan);border-color:var(--cyan);color:var(--cyan-ink)}
+button{font-family:inherit}
+button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.note{border-left:3px solid var(--amber);padding:2px 0 2px 12px;color:var(--muted);font-size:14px;max-width:80ch;margin:0}
+.note b{color:var(--text)}
+section{display:flex;flex-direction:column;gap:12px}
+
+/* scaled 1920-wide kiosk stage */
+.stagewrap{position:relative;width:100%;overflow:hidden;border:1px solid var(--line2);border-radius:12px;background:var(--bg)}
+.stage{position:absolute;left:0;top:0;width:1920px;transform-origin:0 0}
+
+/* ---- 1: viewer ---- */
+.viewer{height:1080px;display:grid;grid-template-columns:1440px 480px;background:#05080d}
+.photo{position:relative;width:1440px;height:1080px;background:var(--s3);overflow:hidden}
+.photo svg{display:block;width:100%;height:100%}
+.surface{position:absolute;inset:0;cursor:crosshair;touch-action:none}
+.frame{position:absolute;border:3px solid var(--amber);background:rgba(245,181,68,.18);pointer-events:none}
+.frame.saved{border-style:dashed;border-color:var(--cyan);background:rgba(57,208,240,.10)}
+.frame i{position:absolute;left:-3px;top:-30px;font-style:normal;font-size:16px;font-weight:800;padding:2px 10px;border-radius:6px 6px 0 0;background:var(--cyan);color:var(--cyan-ink);white-space:nowrap}
+.side{display:flex;flex-direction:column;gap:14px;padding:18px;background:var(--s1);border-left:1px solid var(--line);min-height:0}
+.srow{display:flex;align-items:center;gap:10px}
+.count{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;min-width:84px;text-align:center}
+.nav{width:72px;height:60px;border-radius:12px;border:1px solid var(--line2);background:var(--s2);color:var(--text);font-size:26px;font-weight:800;cursor:pointer}
+.btn{min-height:56px;padding:0 18px;border-radius:12px;border:1px solid var(--line2);background:var(--s2);color:var(--text);font-size:18px;font-weight:700;cursor:pointer}
+.btn.ghost{background:transparent;margin-left:auto}
+.btn:disabled{opacity:.35;cursor:default}
+.status{font-size:22px;font-weight:800;margin:0;min-height:36px}
+.cands{display:flex;flex-direction:column;gap:8px}
+.cand{min-height:56px;padding:8px 14px;border-radius:12px;border:2px solid var(--line2);background:var(--s2);color:var(--text);font-size:21px;font-weight:800;text-align:left;overflow-wrap:anywhere;cursor:pointer}
+.cand[aria-pressed="true"]{border-color:var(--amber);background:rgba(245,181,68,.12)}
+.fields{display:flex;flex-direction:column;gap:6px}
+.field{display:grid;grid-template-columns:86px minmax(0,1fr) 28px;align-items:center;gap:8px;min-height:56px;padding:6px 12px;border-radius:12px;border:1px solid var(--line2);background:var(--bg);color:var(--text);text-align:left;cursor:pointer}
+.field small{font-size:15px;color:var(--faint)}
+.field span{font-size:19px;font-weight:700;overflow-wrap:anywhere;line-height:1.3}
+.field.ready{border-color:var(--amber)}
+.field.filled{border-color:var(--green)}
+.field b{color:var(--green);font-size:20px}
+.field:disabled{cursor:default}
+.foot{margin-top:auto;display:flex;flex-direction:column;gap:10px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;align-items:center;color:var(--muted);font-size:15px;min-height:30px}
+.chip{border:1px dashed var(--cyan);color:var(--cyan);border-radius:8px;padding:2px 10px;font-weight:700}
+
+/* ---- 2: list ---- */
+.list{padding:20px 28px;display:flex;flex-direction:column;gap:6px}
+.lh,.lr{display:grid;align-items:center;gap:14px;padding:0 14px 0 4px}
+.old .lh,.old .lr{grid-template-columns:56px 80px minmax(0,2fr) minmax(0,1.4fr) minmax(0,1.6fr) 84px 96px}
+.new .lh,.new .lr{grid-template-columns:56px 80px minmax(0,1.5fr) minmax(0,1.5fr) 130px minmax(0,1fr) 120px 110px minmax(0,1fr) 190px 84px 84px}
+.lh{font-size:13px;letter-spacing:.06em;color:var(--faint)}
+.lr{min-height:64px;border:1px solid var(--line);border-radius:10px;background:var(--s1)}
+.lr>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:15px}
+.lr .ph{width:56px;height:56px;border-radius:8px;background:var(--s3)}
+.lr .no{font-family:ui-monospace,Menlo,monospace;font-weight:800;color:var(--cyan);border:1px solid var(--cyan);border-radius:6px;padding:0 8px;justify-self:start;font-size:15px}
+.lr .nm{font-size:18px;font-weight:800;color:var(--text)}
+.lr .md{font-size:16px;font-weight:700;color:var(--text)}
+.lr .st{text-align:right;font-size:20px;font-weight:900;color:var(--text);font-variant-numeric:tabular-nums}
+.lr .st.zero{color:var(--amber)}
+.lr .r{text-align:right}
+.lh .r{text-align:right}
+
+/* ---- 3: cards (real size) ---- */
+.cardrow{display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start}
+.cardcol{display:flex;flex-direction:column;gap:8px;width:300px;max-width:100%}
+.card{border:1px solid var(--line);border-radius:14px;background:var(--s1);overflow:hidden}
+.cphoto{position:relative;height:190px;background:var(--s3)}
+.cphoto svg{display:block;width:100%;height:100%}
+.ov{position:absolute;background:rgba(9,13,20,.75);border-radius:8px;padding:3px 8px;font-weight:800}
+.ov.q{left:6px;top:6px;font-size:14px}.ov.q b{font-size:22px;font-weight:900}
+.ov.m{right:6px;top:6px;max-width:58%;text-align:right;font-size:13px;line-height:1.35;overflow-wrap:anywhere}
+.ov.n{left:6px;bottom:6px;display:flex;gap:4px;padding:0;background:none}
+.ov.n button{width:40px;height:42px;border-radius:8px;border:1px solid var(--line2);background:rgba(9,13,20,.75);color:var(--text);font-size:18px;font-weight:800}
+.ov.p{left:94px;bottom:6px;font-size:12px;font-weight:600;line-height:1.4}
+.ov.p b{display:inline-block;font-family:ui-monospace,Menlo,monospace;color:var(--cyan);border:1px solid var(--cyan);border-radius:5px;padding:0 6px;font-size:13px}
+.ov.c{right:6px;bottom:6px;font-size:14px}
+.cbody{padding:8px 12px 10px;display:flex;flex-direction:column;gap:5px}
+.cname{font-size:16px;font-weight:800;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.cname.reserve{min-height:2.6em}
+.cinfo{display:flex;flex-direction:column}
+.cline.strong{color:var(--text)}
+.cline{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cdl{display:grid;grid-template-columns:auto minmax(0,1fr) auto minmax(0,1fr);gap:2px 8px;font-size:13px;margin:0}
+.cdl dt{color:var(--faint)}
+.cdl dd{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cdl dd.wide{grid-column:2/5}
+</style>
+
+<div class="page">
+  <h1>在庫 読み取り画面ほか 改良モック</h1>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-t="t1">1. 拡大して読む</button>
+    <button class="tab" role="tab" aria-selected="false" data-t="t2">2. リスト表示</button>
+    <button class="tab" role="tab" aria-selected="false" data-t="t3">3. カード(中)</button>
+  </div>
+
+  <section id="t1">
+    <p class="note"><b>写真を画面の高さいっぱいに</b>し、枚数・＜＞・閉じるは右へ移動(黒帯なし)。右の幅は 300 → <b>480</b>、値は折り返して全部見せる。<b>候補は入れても消えない</b>ので、同じ候補や別の候補を続けて他の欄へ入れられる。写真をドラッグして試せます。</p>
+    <div class="stagewrap" data-h="1080"><div class="stage">
+      <div class="viewer">
+        <div class="photo" id="photo">
+          <svg viewBox="0 0 1440 1080" aria-hidden="true">
+            <rect width="1440" height="1080" fill="#2a3446"/>
+            <rect x="150" y="130" width="1140" height="820" rx="26" fill="#c9ced6"/>
+            <rect x="200" y="180" width="1040" height="250" rx="12" fill="#f4f1e6"/>
+            <text x="235" y="262" font-size="50" font-weight="800" fill="#1b2230" font-family="Menlo,monospace">MSTAR-4FL-D10.0-R0.5-L75</text>
+            <text x="235" y="332" font-size="36" fill="#1b2230">超硬ラジアスエンドミル 4枚刃</text>
+            <text x="235" y="392" font-size="32" fill="#44506a">KYOCERA / 鋼・ステンレス用</text>
+            <rect x="330" y="520" width="780" height="92" rx="46" fill="#8b94a3"/>
+            <rect x="330" y="520" width="300" height="92" rx="46" fill="#5e6878"/>
+            <text x="235" y="800" font-size="34" fill="#1b2230" font-family="Menlo,monospace">LOT 26J-0412   φ10 × 75</text>
+          </svg>
+          <div id="frames"></div>
+          <div class="surface" id="surface" aria-label="文字を囲む"></div>
+        </div>
+        <aside class="side">
+          <div class="srow">
+            <button class="nav" aria-label="前の写真">＜</button>
+            <span class="count">2 / 3</span>
+            <button class="nav" aria-label="次の写真">＞</button>
+            <button class="btn ghost">閉じる</button>
+          </div>
+          <p class="status" id="status" role="status">文字を枠で囲む</p>
+          <div class="cands" id="cands" role="group" aria-label="読み取り候補"></div>
+          <div class="fields" id="fields" role="group" aria-label="入れる先"></div>
+          <div class="foot">
+            <div class="chips" id="chips"></div>
+            <div class="srow">
+              <button class="btn" id="save" disabled>枠を記憶</button>
+              <button class="btn" id="runsaved" disabled>記憶した枠で読む</button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div></div>
+  </section>
+
+  <section id="t2" hidden>
+    <p class="note">名前の幅を詰め、<b>型式・メーカー・工具名・寸法・被削材・用途</b>を 1 列ずつ出す。行の高さは今のまま。</p>
+    <h2>今</h2>
+    <div class="stagewrap" data-h="250"><div class="stage"><div class="list old" id="listOld"></div></div></div>
+    <h2>案</h2>
+    <div class="stagewrap" data-h="390"><div class="stage"><div class="list new" id="listNew"></div></div></div>
+  </section>
+
+  <section id="t3" hidden>
+    <p class="note">今は名前に 2 行ぶんの場所を必ず取るので、短い名前だと 1 行が空く。案は<b>その空きをやめて情報を 2 行</b>にする(メーカー・工具名・寸法 / 被削材・用途)。<b>カードの高さは今と同じ</b>。実寸です。</p>
+    <div class="cardrow">
+      <div class="cardcol"><h2>今</h2><div class="card" id="cardOld"></div></div>
+      <div class="cardcol"><h2>案</h2><div class="card" id="cardNew"></div></div>
+      <div class="cardcol"><h2>案(名前が長いとき: 1 行ぶん伸びる)</h2><div class="card" id="cardNew2"></div></div>
+    </div>
+  </section>
+</div>
+
+<script>
+// tabs + stage scaling
+const fit = () => document.querySelectorAll('.stagewrap').forEach(w => {
+  const s = w.clientWidth / 1920;
+  w.style.height = (Number(w.dataset.h) * s) + 'px';
+  w.firstElementChild.style.transform = 'scale(' + s + ')';
+});
+document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(t => t.setAttribute('aria-selected', String(t === tab)));
+  ['t1', 't2', 't3'].forEach(id => { document.getElementById(id).hidden = id !== tab.dataset.t; });
+  fit();
+}));
+addEventListener('resize', fit);
+
+// ---- 1: viewer ----
+const FIELDS = [['name', '名前'], ['model', '型式'], ['maker', 'メーカー'], ['toolName', '工具名'], ['toolSize', '寸法'], ['workMaterial', '被削材'], ['usage', '用途']];
+const values = { name: 'ラジアスエンドミル', model: '', maker: '', toolName: '', toolSize: '', workMaterial: '', usage: '' };
+const filled = new Set();
+let cands = [], selected = 0, bbox = null, lastField = null, saved = [];
+const $ = id => document.getElementById(id);
+// What the fake reader returns depends on where the frame sits on the label.
+const readAt = b => {
+  const y = b.y + b.h / 2;
+  if (y < 0.26) return ['MSTAR-4FL-D10.0-R0.5-L75'];
+  if (y < 0.33) return ['超硬ラジアスエンドミル 4枚刃', 'ラジアスエンドミル'];
+  if (y < 0.42) return ['KYOCERA / 鋼・ステンレス用', 'KYOCERA', '鋼・ステンレス用'];
+  if (y > 0.68 && y < 0.8) return ['LOT 26J-0412 φ10 × 75', 'φ10 × 75'];
+  return [];
+};
+const box = (b, cls, label) => {
+  const d = document.createElement('div');
+  d.className = 'frame ' + cls;
+  d.style.cssText = `left:${b.x * 100}%;top:${b.y * 100}%;width:${b.w * 100}%;height:${b.h * 100}%`;
+  if (label) { const i = document.createElement('i'); i.textContent = label; d.append(i); }
+  return d;
+};
+function draw(preview) {
+  $('frames').replaceChildren(...saved.map(f => box(f.bbox, 'saved', FIELDS.find(x => x[0] === f.field)[1])), ...(bbox ? [box(bbox, '')] : []), ...(preview ? [box(preview, '')] : []));
+  $('cands').replaceChildren(...cands.map((c, i) => {
+    const b = document.createElement('button');
+    b.className = 'cand'; b.textContent = c; b.setAttribute('aria-pressed', String(i === selected));
+    b.onclick = () => { selected = i; draw(); };
+    return b;
+  }));
+  $('fields').replaceChildren(...FIELDS.map(([key, label]) => {
+    const b = document.createElement('button');
+    b.className = 'field' + (filled.has(key) ? ' filled' : cands.length ? ' ready' : '');
+    b.disabled = !cands.length;
+    const s = document.createElement('small'); s.textContent = label;
+    const v = document.createElement('span'); v.textContent = values[key] || '—';
+    const m = document.createElement('b'); m.textContent = filled.has(key) ? '✓' : '';
+    b.append(s, v, m);
+    b.onclick = () => {
+      values[key] = cands[selected]; filled.add(key); lastField = key;
+      $('status').textContent = label + 'に入れた。続けて他の欄へも入れられる';
+      draw();
+    };
+    return b;
+  }));
+  $('save').disabled = !lastField || !bbox;
+  $('runsaved').disabled = !saved.length;
+  $('runsaved').textContent = '記憶した枠で読む' + (saved.length ? `（${saved.length}）` : '');
+  $('chips').replaceChildren(...(saved.length ? ['記憶した枠', ...saved.map(f => { const c = document.createElement('span'); c.className = 'chip'; c.textContent = FIELDS.find(x => x[0] === f.field)[1]; return c; })] : []));
+}
+$('save').onclick = () => {
+  saved = [...saved.filter(f => f.field !== lastField), { field: lastField, bbox }];
+  $('status').textContent = '枠を記憶した'; lastField = null; draw();
+};
+$('runsaved').onclick = () => {
+  let n = 0;
+  saved.forEach(f => { const r = readAt(f.bbox); if (r[0]) { values[f.field] = r[0]; filled.add(f.field); n++; } });
+  $('status').textContent = n ? n + ' 件入れた' : '文字なし'; draw();
+};
+let start = null;
+const point = e => { const r = $('surface').getBoundingClientRect(); return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) }; };
+const norm = (a, b) => ({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) });
+$('surface').addEventListener('pointerdown', e => { start = point(e); $('surface').setPointerCapture(e.pointerId); e.preventDefault(); });
+$('surface').addEventListener('pointermove', e => { if (start) draw(norm(start, point(e))); });
+$('surface').addEventListener('pointerup', e => {
+  if (!start) return;
+  const b = norm(start, point(e)); start = null;
+  if (b.w < 0.01 || b.h < 0.01) { draw(); return; }
+  bbox = b; cands = readAt(b); selected = 0; lastField = null;
+  $('status').textContent = cands.length ? '候補を選んで、入れる先を押す' : '文字なし。囲み直す';
+  draw();
+});
+draw();
+
+// ---- 2: list ----
+const ROWS = [
+  ['S-0142', 'ラジアスエンドミル', 'MSTAR-4FL-D10.0-R0.5-L75', 'KYOCERA', 'エンドミル', 'φ10 × 75', '鋼・SUS', '側面仕上げ', '第2工場・棚3・引き出し2', '12 本', '3日前'],
+  ['S-0143', '超硬ドリル', 'MVS1000X05S100 DP1020', '三菱マテリアル', 'ドリル', 'φ10 × 5D', '鋼', '穴あけ', '第2工場・棚3・引き出し4', '0 本', '今日'],
+  ['S-0207', 'チップ(旋削)', 'CNMG120408-MA VP15TF', '三菱マテリアル', 'チップ', '12 04 08', 'SUS', '外径荒', '第1工場・棚1・引き出し1', '4 ケース', '—'],
+  ['S-0311', '六角レンチセット', '', 'エイト', '', '1.5–10', '', '段取り', '第1工場・棚5・引き出し3', '2 個', '12日前'],
+];
+const cell = (text, cls) => { const s = document.createElement('span'); if (cls) s.className = cls; s.textContent = text; return s; };
+const row = (cells, cls) => { const d = document.createElement('div'); d.className = cls; d.append(...cells); return d; };
+$('listOld').append(
+  row([cell(''), cell('番号'), cell('名前'), cell('型式・メーカー'), cell('場所'), cell('在庫', 'r'), cell('持出', 'r')], 'lh'),
+  ...ROWS.slice(0, 2).map(r => row([cell('', 'ph'), cell(r[0], 'no'), cell(r[1], 'nm'), cell([r[2], r[3]].filter(Boolean).join(' ・ ')), cell(r[8]), cell(r[9], 'st' + (r[9].startsWith('0') ? ' zero' : '')), cell(r[10], 'r')], 'lr')));
+$('listNew').append(
+  row([cell(''), cell('番号'), cell('名前'), cell('型式'), cell('メーカー'), cell('工具名'), cell('寸法'), cell('被削材'), cell('用途'), cell('場所'), cell('在庫', 'r'), cell('持出', 'r')], 'lh'),
+  ...ROWS.map(r => row([cell('', 'ph'), cell(r[0], 'no'), cell(r[1], 'nm'), cell(r[2] || '—', 'md'), cell(r[3] || '—'), cell(r[4] || '—'), cell(r[5] || '—'), cell(r[6] || '—'), cell(r[7] || '—'), cell(r[8].replace('・引き出し', '-').replace('棚', '棚')), cell(r[9], 'st' + (r[9].startsWith('0') ? ' zero' : '')), cell(r[10], 'r')], 'lr')));
+
+// ---- 3: cards ----
+const photoHtml = model => `<div class="cphoto"><svg viewBox="0 0 300 190" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="300" height="190" fill="#2a3446"/><rect x="40" y="78" width="220" height="30" rx="15" fill="#8b94a3"/><rect x="40" y="78" width="86" height="30" rx="15" fill="#5e6878"/></svg>
+  <span class="ov q"><b>12</b> 本</span>${model ? `<span class="ov m">${model}</span>` : ''}
+  <span class="ov n"><button aria-label="前の写真">＜</button><button aria-label="次の写真">＞</button></span>
+  <span class="ov p"><b>S-0142</b><br>第2工場・棚3-2</span><span class="ov c">1/3</span></div>`;
+$('cardOld').innerHTML = photoHtml('MSTAR-4FL-D10.0-R0.5-L75') + `<div class="cbody"><span class="cname reserve">ラジアスエンドミル</span><span class="cline">KYOCERA ・ φ10 × 75</span></div>`;
+const info = (a, b) => `<span class="cinfo"><span class="cline strong">${a}</span><span class="cline">${b}</span></span>`;
+$('cardNew').innerHTML = photoHtml('MSTAR-4FL-D10.0-R0.5-L75') + `<div class="cbody"><span class="cname">ラジアスエンドミル</span>${info('KYOCERA ・ エンドミル ・ φ10 × 75', '鋼・SUS ・ 側面仕上げ')}</div>`;
+$('cardNew2').innerHTML = photoHtml('MVS1000X05S100 DP1020') + `<div class="cbody"><span class="cname">超硬ソリッドドリル クーラント穴付き 5D タイプ</span>${info('三菱マテリアル ・ ドリル ・ φ10 × 5D', '鋼 ・ 穴あけ')}</div>`;
+fit();
+</script>

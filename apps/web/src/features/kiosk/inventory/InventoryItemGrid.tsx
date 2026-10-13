@@ -9,7 +9,7 @@ import { invLabelNumber } from './inventoryUi';
 
 export type InventoryThumbnailSize = 'small' | 'medium' | 'large';
 export type InventoryViewMode = 'card' | 'list';
-const listColumns = 'grid grid-cols-[56px_80px_minmax(0,2fr)_minmax(0,1.4fr)_minmax(0,1.6fr)_84px_96px] items-center gap-3 pl-1 pr-3';
+const listColumns = 'grid grid-cols-[56px_80px_minmax(0,1.5fr)_minmax(0,1.5fr)_130px_minmax(0,1fr)_120px_110px_minmax(0,1fr)_190px_84px_84px] items-center gap-3.5 pl-1 pr-3';
 const listRow = `${listColumns} min-h-16 shrink-0 rounded-[10px] border bg-inv-s1 py-1 text-left text-inv-text focus:outline-none`;
 const sizes = {
   small: { columns: 'grid-cols-9', photo: 'h-[110px]', fields: ['model'] },
@@ -52,7 +52,7 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
   if (view === 'list') return (
     <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pb-1" aria-label="登録済みアイテム">
       <div className={`${listColumns} shrink-0 text-xs tracking-[0.06em] text-inv-faint`}>
-        <span /><span>番号</span><span>名前</span><span>型式・メーカー</span><span>場所</span><span className="text-right">在庫</span><span className="text-right">持出</span>
+        <span /><span>番号</span><span>名前</span><span>型式</span><span>メーカー</span><span>工具名</span><span>寸法</span><span>被削材</span><span>用途</span><span>場所</span><span className="text-right">在庫</span><span className="text-right">持出</span>
       </div>
       {pending.map((candidate) => (
         <button key={candidate.id} type="button" aria-label={`未登録 候補 #${candidate.sourceItemId} を登録する`} className={`${listRow} border-2 border-inv-amber hover:brightness-110 focus-visible:brightness-110`} onClick={() => onPickPending?.(candidate)}>
@@ -61,7 +61,7 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
           </span>
           <span className="inline-flex items-center gap-1 rounded-full bg-inv-amber px-2 py-1 text-xs font-black text-inv-amber-ink"><LockIcon size={14} />未登録</span>
           <span className="truncate text-[17px] font-bold">候補 #{candidate.sourceItemId}</span>
-          <span className="truncate text-sm text-inv-muted">{candidate.category}</span>
+          <span className="col-span-6 truncate text-sm text-inv-muted">{candidate.category}</span>
           <span className="truncate text-sm text-inv-muted">{candidate.area}</span>
           <span className="text-right text-inv-muted">—</span><span className="text-right text-sm text-inv-muted">—</span>
         </button>
@@ -73,11 +73,12 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
             <span className="block h-14 w-14 overflow-hidden rounded-lg bg-inv-s3">
               {photo ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
             </span>
-            <span aria-label="置き場所の番号" className={`${invLabelNumber} justify-self-start text-sm`}>{formatInventoryLabelNumber(compartment.labelNumber)}</span>
-            <span className="truncate text-[17px] font-bold">{compartment.item.name}</span>
-            <span className="truncate text-sm text-inv-muted">{[compartment.item.model, compartment.item.maker].map((value) => value?.trim()).filter(Boolean).join(' ・ ')}</span>
-            <span className="truncate text-sm text-inv-muted">{compartment.area}・棚{compartment.shelfNumber}・引き出し{compartment.drawerNumber}</span>
-            <span className={`text-right text-[19px] font-black tabular-nums ${compartment.stockQuantity === 0 ? 'text-inv-amber' : 'text-inv-text'}`}>{compartment.stockQuantity} {unitLabel(compartment.item)}</span>
+            <span aria-label="置き場所の番号" className={`${invLabelNumber} min-w-0 truncate justify-self-start text-sm`}>{formatInventoryLabelNumber(compartment.labelNumber)}</span>
+            <span className="truncate text-[17px] font-bold">{compartment.item.name.trim() || '—'}</span>
+            <span className="truncate text-base font-bold text-inv-text">{compartment.item.model?.trim() || '—'}</span>
+            {(['maker', 'toolName', 'toolSize', 'workMaterial', 'usage'] as const).map(field => <span key={field} className="truncate text-[15px] text-inv-muted">{compartment.item[field]?.trim() || '—'}</span>)}
+            <span className="truncate text-sm text-inv-muted">{compartment.area}・棚{compartment.shelfNumber}-{compartment.drawerNumber}</span>
+            <span className={`truncate text-right text-[19px] font-black tabular-nums ${compartment.stockQuantity === 0 ? 'text-inv-amber' : 'text-inv-text'}`}>{compartment.stockQuantity} {unitLabel(compartment.item)}</span>
             <span className="truncate text-right text-sm text-inv-muted">{issuedLabel(compartment.lastIssuedAt, now) ?? '—'}</span>
           </button>
         );
@@ -119,12 +120,20 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
               </span>
             </span>
             <span className="flex w-full min-w-0 flex-col gap-1 px-3 pb-2 pt-2">
-              <span className="line-clamp-2 min-h-[2.6em] break-words text-base font-bold leading-[1.3]">{compartment.item.name}</span>
+              <span className={`line-clamp-2 ${size === 'medium' ? '' : 'min-h-[2.6em]'} break-words text-base font-bold leading-[1.3]`}>{compartment.item.name}</span>
               {size === 'small' ? <>
                 <span aria-label="置き場所の番号" className={`${invLabelNumber} self-start text-[13px]`}>{formatInventoryLabelNumber(compartment.labelNumber)}</span>
                 {compartment.item.model?.trim() ? <span className="truncate text-[13px] text-inv-muted">{compartment.item.model}</span> : null}
               </> : size === 'medium' ? (
-                [compartment.item.maker, compartment.item.toolSize].some(value => value?.trim()) ? <span className="truncate text-[13px] text-inv-muted">{[compartment.item.maker, compartment.item.toolSize].map(value => value?.trim()).filter(Boolean).join(' ・ ')}</span> : null
+                <span className="flex min-w-0 flex-col">
+                  {[
+                    [compartment.item.maker, compartment.item.toolName, compartment.item.toolSize],
+                    [compartment.item.workMaterial, compartment.item.usage],
+                  ].map((values, index) => {
+                    const text = values.map(value => value?.trim()).filter(Boolean).join(' ・ ');
+                    return text ? <span key={index} className={`truncate text-[13px] ${index === 0 ? 'text-inv-text' : 'text-inv-muted'}`}>{text}</span> : null;
+                  })}
+                </span>
               ) : <dl className="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] gap-x-2 text-[13px]">
                 {config.fields.filter(field => field !== 'model').map((field) => compartment.item[field]?.trim() ? <Fragment key={field}><dt className="text-inv-faint">{detailLabels[field]}</dt><dd className="truncate">{compartment.item[field]}</dd></Fragment> : null)}
               </dl>}

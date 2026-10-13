@@ -44,12 +44,13 @@ function FrameBox({ bbox, saved = false }: { bbox: OverlayBBox; saved?: boolean 
 }
 
 /** A photo change remounts the session, aborting work and discarding its candidates. */
-function PhotoReadSession({ photo, count, onPrevious, onNext, saved, save, ...props }: Omit<Props, 'photos' | 'initialPhotoId'> & {
+function PhotoReadSession({ photo, count, onPrevious, onNext, saved, save, filled, ...props }: Omit<Props, 'photos' | 'initialPhotoId'> & {
   photo: Photo; count: string | null; onPrevious: () => void; onNext: () => void;
-  saved: Frame[]; save: (frames: Frame[]) => void;
+  saved: Frame[]; save: (frames: Frame[]) => void; filled: Set<InventoryOptionField>;
 }) {
   const { imageUrl, error } = useInventoryFullPhoto(photo.photoUrl);
   const [loaded, setLoaded] = useState(false);
+  const [aspectRatio, setAspectRatio] = useState(4 / 3);
   const [busy, setBusy] = useState(false);
   const [bbox, setBBox] = useState<OverlayBBox | null>(null);
   const [candidates, setCandidates] = useState<string[]>([]);
@@ -60,19 +61,19 @@ function PhotoReadSession({ photo, count, onPrevious, onNext, saved, save, ...pr
   const request = useRef<AbortController | null>(null);
   useEffect(() => () => { request.current?.abort(); }, []);
 
-  const start = () => {
+  const start = (clearCandidates = false) => {
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
     setBusy(true);
-    setCandidates([]);
+    if (clearCandidates) setCandidates([]);
     setLast(null);
     setFailed(false);
     setMessage('読み取り中…');
     return controller;
   };
   const read = async (region: OverlayBBox) => {
-    const controller = start();
+    const controller = start(true);
     setBBox(region);
     try {
       const result = await readInventoryPhotoRegion({ ...props.source, photoId: photo.id, bbox: region }, props.accessPassword, controller.signal);
@@ -87,7 +88,6 @@ function PhotoReadSession({ photo, count, onPrevious, onNext, saved, save, ...pr
   };
   const readSaved = async () => {
     const controller = start();
-    setBBox(null);
     let applied = 0;
     let unavailable = false;
     for (const frame of saved) {
@@ -103,13 +103,14 @@ function PhotoReadSession({ photo, count, onPrevious, onNext, saved, save, ...pr
     setMessage(applied ? `${applied} 件入れた` : unavailable ? '読み取れませんでした' : '文字なし');
   };
 
-  return <div className="grid h-[calc(100dvh-4rem)] grid-cols-[minmax(0,1fr)_300px] grid-rows-[48px_minmax(0,1fr)_76px]">
-    <div className="flex items-center justify-center">
-      {count ? <span aria-label="写真の枚数" className="rounded-lg border border-inv-line2 bg-inv-s2 px-3 text-xl font-bold tabular-nums">{count}</span> : null}
-    </div>
-    <div className="col-start-1 row-start-2 flex min-h-0 min-w-0 items-center justify-center px-3">
-      {imageUrl ? <div className="relative max-w-full" aria-label="読み取り写真">
-        <img src={imageUrl} alt={photo.alt} draggable={false} onLoad={() => setLoaded(true)} className="block max-h-[calc(100dvh-12rem)] max-w-full object-contain" />
+  return <div className="grid h-dvh grid-cols-[minmax(0,1fr)_480px] overflow-hidden">
+    <div className="flex min-h-0 min-w-0 items-center justify-center">
+      {imageUrl ? <div className="relative shrink-0" aria-label="読み取り写真" style={{ width: `min(100%, calc(100dvh * ${aspectRatio}))`, aspectRatio }}>
+        <img src={imageUrl} alt={photo.alt} draggable={false} onLoad={event => {
+          const { naturalWidth, naturalHeight } = event.currentTarget;
+          if (naturalWidth && naturalHeight) setAspectRatio(naturalWidth / naturalHeight);
+          setLoaded(true);
+        }} className="block h-full w-full object-contain" />
         {loaded ? <>
           {saved.map(frame => <FrameBox key={frame.field} bbox={frame.bbox} saved />)}
           {bbox ? <FrameBox bbox={bbox} /> : null}
@@ -119,37 +120,42 @@ function PhotoReadSession({ photo, count, onPrevious, onNext, saved, save, ...pr
       {!imageUrl && !error ? <p role="status" className="text-inv-muted">画像を読み込み中…</p> : null}
       {error ? <p role="alert" className="text-inv-red">画像の取得に失敗しました</p> : null}
     </div>
-    <div className="col-start-1 row-start-3 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 px-3">
-      <button type="button" className={`${invButton} justify-self-start`} disabled={!saved.length || busy || !loaded} onClick={() => void readSaved()}>記憶した枠で読む{saved.length ? `（${saved.length}）` : ''}</button>
-      {count ? <div role="group" aria-label="写真の切り替え" className="flex gap-4">
-        <button type="button" aria-label="前の写真" className={`${invButton} h-14 w-16 text-2xl`} onClick={onPrevious}>＜</button>
-        <button type="button" aria-label="次の写真" className={`${invButton} h-14 w-16 text-2xl`} onClick={onNext}>＞</button>
-      </div> : null}
-      <span />
-    </div>
-    <aside className="col-start-2 row-span-3 row-start-1 flex min-h-0 flex-col gap-2.5 overflow-y-auto border-l border-inv-line bg-inv-s1 p-3.5">
-      <button type="button" className={`${invButtonGhost} self-end`} onClick={props.onClose}>閉じる</button>
-      <p role="status" className={`text-lg font-bold ${failed ? 'text-inv-red' : ''}`}>{message}</p>
-      {failed && message !== '読み取れませんでした' ? <p role="alert" className="text-inv-red">読み取れませんでした</p> : null}
-      <div className="flex flex-col gap-1.5" role="group" aria-label="読み取り候補">
-        {candidates.map((candidate, index) => <button key={candidate} type="button" aria-pressed={selected === index} onClick={() => setSelected(index)} className={`min-h-11 rounded-lg border px-3 py-1 text-left font-bold [overflow-wrap:anywhere] ${selected === index ? 'border-inv-amber bg-inv-amber/10' : 'border-inv-line2 bg-inv-s2'}`}>{candidate}</button>)}
+    <aside className="flex min-h-0 min-w-0 flex-col gap-3.5 overflow-hidden border-l border-inv-line bg-inv-s1 p-[18px]">
+      <div className="flex shrink-0 items-center gap-2.5">
+        {count ? <div role="group" aria-label="写真の切り替え" className="flex items-center gap-2.5">
+          <button type="button" aria-label="前の写真" className={`${invButton} !h-[60px] w-[72px] text-2xl`} onClick={onPrevious}>＜</button>
+          <span aria-label="写真の枚数" className="min-w-[84px] text-center text-2xl font-extrabold tabular-nums">{count}</span>
+          <button type="button" aria-label="次の写真" className={`${invButton} !h-[60px] w-[72px] text-2xl`} onClick={onNext}>＞</button>
+        </div> : null}
+        <button type="button" className={`${invButtonGhost} ml-auto !h-14 !text-lg`} onClick={props.onClose}>閉じる</button>
       </div>
-      <div className="grid grid-cols-2 gap-1.5" role="group" aria-label="入れる先">
-        {fields.map(([field, label]) => <button key={field} type="button" aria-label={`${label}に入れる`} disabled={busy || !candidates.length} className={`min-h-12 min-w-0 rounded-lg border bg-inv-bg px-2.5 py-1 text-left ${candidates.length ? 'border-inv-amber' : 'border-inv-line2'}`} onClick={() => {
-          if (!bbox || !candidates[selected]) return;
-          props.onApply(field, candidates[selected]);
-          setLast({ field, bbox });
-          setCandidates([]);
-          setMessage(`${label}に入れた`);
-        }}><small className="block text-[11px] text-inv-faint">{label}</small><span className="block truncate text-[13px] font-bold">{props.values[field] || '—'}</span></button>)}
+      <div className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto overscroll-contain">
+        <p role="status" className={`min-h-9 shrink-0 text-[22px] font-extrabold ${failed ? 'text-inv-red' : ''}`}>{message}</p>
+        {failed && message !== '読み取れませんでした' ? <p role="alert" className="text-inv-red">読み取れませんでした</p> : null}
+        <div className="flex shrink-0 flex-col gap-2" role="group" aria-label="読み取り候補">
+          {candidates.map((candidate, index) => <button key={candidate} type="button" aria-pressed={selected === index} onClick={() => setSelected(index)} className={`min-h-14 rounded-xl border-2 px-3.5 py-2 text-left text-[21px] font-extrabold [overflow-wrap:anywhere] ${selected === index ? 'border-inv-amber bg-inv-amber/10' : 'border-inv-line2 bg-inv-s2'}`}>{candidate}</button>)}
+        </div>
+        <div className="grid shrink-0 grid-cols-1 gap-1.5" role="group" aria-label="入れる先">
+          {fields.map(([field, label]) => <button key={field} type="button" aria-label={`${label}に入れる`} disabled={busy || !candidates.length} className={`grid min-h-14 min-w-0 grid-cols-[86px_minmax(0,1fr)_28px] items-center gap-2 rounded-xl border bg-inv-bg px-3 py-1.5 text-left ${filled.has(field) ? 'border-inv-green' : candidates.length ? 'border-inv-amber' : 'border-inv-line2'}`} onClick={() => {
+            if (!bbox || !candidates[selected]) return;
+            props.onApply(field, candidates[selected]);
+            setLast({ field, bbox });
+            setMessage(`${label}に入れた`);
+          }}><small className="text-[15px] text-inv-faint">{label}</small><span className="min-w-0 text-[19px] font-bold leading-[1.3] [overflow-wrap:anywhere]">{props.values[field] || '—'}</span><b className="text-xl text-inv-green">{filled.has(field) ? '✓' : ''}</b></button>)}
+        </div>
       </div>
-      {last ? <button type="button" className={invButton} onClick={() => { save([...saved.filter(frame => frame.field !== last.field), last]); setLast(null); setMessage('枠を記憶した'); }}>枠を記憶</button> : null}
-      <div className="mt-auto flex flex-wrap items-center gap-1.5 text-[13px] text-inv-muted" aria-label="記憶した枠の一覧">
-        {saved.length ? '記憶した枠' : null}
-        {saved.map(frame => {
-          const label = fields.find(([field]) => field === frame.field)![1];
-          return <span key={frame.field} className="inline-flex items-center rounded-lg border border-dashed border-inv-cyan pl-2 text-inv-cyan">{label}<button type="button" aria-label={`${label}の枠を消す`} className="h-11 w-11" onClick={() => save(saved.filter(entry => entry.field !== frame.field))}>✕</button></span>;
-        })}
+      <div className="flex shrink-0 flex-col gap-2.5">
+        <div className="flex flex-wrap items-center gap-2 text-[15px] text-inv-muted" aria-label="記憶した枠の一覧">
+          {saved.length ? '記憶した枠' : null}
+          {saved.map(frame => {
+            const label = fields.find(([field]) => field === frame.field)![1];
+            return <span key={frame.field} className="inline-flex items-center rounded-lg border border-dashed border-inv-cyan pl-2 text-inv-cyan">{label}<button type="button" aria-label={`${label}の枠を消す`} className="h-11 w-11" onClick={() => save(saved.filter(entry => entry.field !== frame.field))}>✕</button></span>;
+          })}
+        </div>
+        <div className="flex gap-2.5">
+          <button type="button" className={`${invButton} !h-14 !text-lg`} disabled={!last} onClick={() => { if (!last) return; save([...saved.filter(frame => frame.field !== last.field), last]); setLast(null); setMessage('枠を記憶した'); }}>枠を記憶</button>
+          <button type="button" className={`${invButton} !h-14 !text-lg`} disabled={!saved.length || busy || !loaded} onClick={() => void readSaved()}>記憶した枠で読む{saved.length ? `（${saved.length}）` : ''}</button>
+        </div>
       </div>
     </aside>
   </div>;
@@ -158,6 +164,11 @@ function PhotoReadSession({ photo, count, onPrevious, onNext, saved, save, ...pr
 export function InventoryPhotoReadDialog({ photos, initialPhotoId, ...props }: Props) {
   const [photoId, setPhotoId] = useState(initialPhotoId);
   const [saved, setSaved] = useState(readFrames);
+  const [filled, setFilled] = useState<Set<InventoryOptionField>>(() => new Set());
+  const apply = (field: InventoryOptionField, value: string) => {
+    props.onApply(field, value);
+    setFilled(current => new Set(current).add(field));
+  };
   const index = Math.max(0, photos.findIndex(photo => photo.id === photoId));
   const photo = photos[index];
   const save = (frames: Frame[]) => {
@@ -165,7 +176,7 @@ export function InventoryPhotoReadDialog({ photos, initialPhotoId, ...props }: P
     try { localStorage.setItem(framesKey, JSON.stringify(frames)); } catch { /* Storage is optional. */ }
   };
   const go = (offset: number) => setPhotoId(photos[(index + offset + photos.length) % photos.length].id);
-  return <Dialog isOpen={Boolean(photo)} onClose={props.onClose} ariaLabel="在庫写真" size="full" className="!my-0 !border-inv-line !bg-inv-bg !p-0 !text-inv-text">
-    {photo ? <PhotoReadSession key={photo.id} {...props} photo={photo} count={photos.length > 1 ? `${index + 1} / ${photos.length}` : null} onPrevious={() => go(-1)} onNext={() => go(1)} saved={saved} save={save} /> : null}
+  return <Dialog isOpen={Boolean(photo)} onClose={props.onClose} ariaLabel="在庫写真" size="full" className="!fixed !inset-0 !m-0 !h-dvh !max-h-none !w-full !rounded-none !border-0 !bg-inv-bg !p-0 !text-inv-text overflow-hidden">
+    {photo ? <PhotoReadSession key={photo.id} {...props} onApply={apply} filled={filled} photo={photo} count={photos.length > 1 ? `${index + 1} / ${photos.length}` : null} onPrevious={() => go(-1)} onNext={() => go(1)} saved={saved} save={save} /> : null}
   </Dialog>;
 }
