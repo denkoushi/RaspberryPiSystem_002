@@ -461,6 +461,26 @@ describe('HermesFloatingChat', () => {
     expect(input).toHaveValue('入力中の質問');
   });
 
+  it('widens inquiries only, preserving height and the existing double-size override', async () => {
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    const panel = await screen.findByTestId('hermes-panel');
+    expect(panel.style.width).toBe('380px');
+    fireEvent.click(screen.getByRole('button', { name: /お問い合わせ/ }));
+    expect(panel.style.width).toBe('560px');
+    expect(panel.style.height).toBe('560px');
+    expect(Number.parseFloat(panel.style.left) + 560).toBeLessThanOrEqual(window.innerWidth - 12);
+    fireEvent.click(screen.getByRole('button', { name: '拡大' }));
+    expect(panel.style.width).toBe('760px');
+    expect(panel.style.height).toBe('744px');
+    fireEvent.click(screen.getByRole('button', { name: '標準' }));
+    expect(panel.style.width).toBe('560px');
+    fireEvent.click(screen.getByRole('button', { name: '検索' }));
+    expect(panel.style.width).toBe('380px');
+    fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+    expect(panel.style.width).toBe('380px');
+  });
+
   it('mounts approval chips beside the poster and expands the opened review', async () => {
     mocks.knowledgeGet.mockResolvedValue({ data: { enabled: true, intakes: [] } });
     mocks.pendingReviews.mockResolvedValue({ reviewer: { rank: 'leader' }, reviews: [{
@@ -892,6 +912,8 @@ describe('HermesFloatingChat', () => {
       renderChat();
       fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
       const panel = await screen.findByTestId('hermes-panel');
+      fireEvent.click(screen.getByRole('button', { name: /お問い合わせ/ }));
+      expect(panel.style.width).toBe('296px');
       fireEvent.click(screen.getByRole('button', { name: '拡大' }));
       await waitFor(() => expect(panel.style.width).toBe('296px'));
       expect(panel.style.height).toBe('216px');

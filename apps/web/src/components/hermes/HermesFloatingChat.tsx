@@ -64,6 +64,7 @@ type ConsultationMode = 'loading' | 'available' | 'legacy';
 const ICON_SIZE = 58;
 const VIEWPORT_GUTTER = 12;
 const PANEL_STANDARD_WIDTH = 380;
+const PANEL_INQUIRY_WIDTH = 560;
 const PANEL_STANDARD_HEIGHT = 560;
 const PANEL_EXPANDED_KEY = 'hermes-chat-expanded';
 const HERMES_BARCODE_SCAN_OWNER = 'hermes-floating-chat';
@@ -913,7 +914,7 @@ export function HermesFloatingChat() {
   const panelScale = panelExpanded ? 2 : 1;
   const panelWidth = panelExpanded
     ? Math.min(PANEL_STANDARD_WIDTH * panelScale, Math.max(1, viewport.width - VIEWPORT_GUTTER * 2))
-    : Math.min(PANEL_STANDARD_WIDTH, Math.max(280, viewport.width - VIEWPORT_GUTTER * 2));
+    : Math.min(inquiry.active ? PANEL_INQUIRY_WIDTH : PANEL_STANDARD_WIDTH, Math.max(280, viewport.width - VIEWPORT_GUTTER * 2));
   const spaceAboveIcon = Math.max(180, position.top - VIEWPORT_GUTTER * 2);
   const spaceBelowIcon = Math.max(180, viewport.height - position.top - ICON_SIZE - VIEWPORT_GUTTER * 2);
   const opensAbove = position.top > viewport.height / 2 || spaceAboveIcon >= spaceBelowIcon;
