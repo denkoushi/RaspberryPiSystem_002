@@ -112,6 +112,17 @@ it('shows the assignment error visibly when COMMON 見る fails', async () => {
 });
 
 describe('common create dialog', () => {
+  it('overrides the light full-width panel and gives dark inputs readable text', () => {
+    showDialog();
+    const dialog = screen.getByRole('dialog', { name: '共通の手順を作る' });
+    expect(dialog.firstElementChild).toHaveClass('!bg-[#161c22]', '!text-[#eef3f6]', '!max-w-[1180px]', '!my-auto', '!border', '!border-[#344252]', '!rounded-xl', '!px-7', '!py-6');
+    expect(within(dialog).getByRole('heading', { name: '共通の手順を作る' })).toHaveClass('text-[#eef3f6]');
+    expect(within(dialog).getByLabelText('対象')).toHaveClass('bg-[#0b0f13]', 'text-[#eef3f6]');
+    expect(within(dialog).getByRole('button', { name: '工具', exact: true })).toHaveClass('bg-[#3ba77626]', 'text-[#eef3f6]');
+    fireEvent.click(within(dialog).getByRole('button', { name: '分類を編集' }));
+    expect(within(dialog).getByLabelText('分類の名前')).toHaveClass('bg-[#0b0f13]', 'text-[#eef3f6]');
+  });
+
   it('preselects category, suggests its known targets and blocks an exact duplicate; similar item opens editor', () => {
     showDialog();
     expect(screen.getByRole('button', { name: '工具', exact: true })).toHaveAttribute('aria-pressed', 'true');

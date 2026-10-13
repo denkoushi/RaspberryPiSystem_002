@@ -74,6 +74,38 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('procedure-manuals workshop', () => {
+  it.each(['', '?model=DFD1', '?process=assembly', '?model=DFD1&process=assembly'])('splits names and retains metadata fallbacks in every filter state: %s', async query => {
+    const namedItems = [
+      { ...published, assignmentId: 'named', title: '元タイトル', label: '主軸_P-123_加工_研削_仕上げ_確認' },
+      { ...published, assignmentId: 'four', title: '軸受_P-456_組立_圧入' },
+      { ...published, assignmentId: 'legacy', title: '旧名称' }
+    ];
+    mocks.overview.mockResolvedValue({ ...overview, processes: [{ processId: 'assembly', items: namedItems }] });
+    show(query);
+    const row = await screen.findByRole('row', { name: namedItems[0].label });
+    const cells = within(row).getAllByRole('cell');
+    expect(cells.slice(1, 6).map(cell => cell.textContent)).toEqual(['主軸', 'P-123', '加工', '研削', '仕上げ 確認']);
+    cells.slice(1, 6).forEach(cell => expect(cell).toHaveClass('truncate'));
+    expect(cells[1]).toHaveClass('font-bold');
+    expect(cells[2]).toHaveClass('font-bold', 'font-mono');
+    expect(cells[5]).toHaveClass('text-[#9fadb9]');
+    expect(row).toHaveClass('h-14');
+    expect(row).toHaveAttribute('title', namedItems[0].label);
+    expect(screen.getByRole('table')).toHaveClass('min-w-[1100px]');
+    expect(within(screen.getByRole('row', { name: namedItems[1].title })).getAllByRole('cell').slice(1, 6).map(cell => cell.textContent)).toEqual(['軸受', 'P-456', '組立', '圧入', '—']);
+    expect(within(screen.getByRole('row', { name: '旧名称' })).getAllByRole('cell').slice(1, 6).map(cell => cell.textContent)).toEqual(['旧名称', 'DFD1', '組立', '組立', '—']);
+    expect(screen.queryByRole('columnheader', { name: '名前', exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: '機種・部品' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('columnheader', { name: '工程' })).toHaveLength(1);
+  });
+
+  it('leaves the fallback parent process blank for a root process', async () => {
+    mocks.overview.mockResolvedValue({ ...overview, processes: [{ processId: 'parent', items: [published] }] });
+    show('');
+    const row = await screen.findByRole('row', { name: published.title });
+    expect(within(row).getAllByRole('cell').slice(1, 6).map(cell => cell.textContent)).toEqual([published.title, 'DFD1', '', '組立', '—']);
+  });
+
   it.each([
     ['PART', 'assembly_procedure_document', 'draft', false, true],
     ['MODEL', 'assembly_procedure_document', 'draft', false, false],
@@ -237,7 +269,7 @@ describe('procedure-manuals workshop', () => {
     const row = await screen.findByRole('row', { name: '公開手順' });
     expect(within(row).getByRole('button', { name: action })).toBeInTheDocument();
     expect(within(row).queryByRole('button', { name: action === '削除' ? '外す' : '削除' })).not.toBeInTheDocument();
-    const usage = within(row).getAllByRole('cell')[3];
+    const usage = within(row).getAllByRole('cell')[7];
     expect(usage).toHaveTextContent(shared ? 'DFD2 · 検査、DFD3 · 切削' : '—');
     expect(usage).toHaveClass('truncate'); expect(usage).not.toHaveAttribute('title');
     expect(row.style.gridTemplateColumns).toContain(shared ? '150px 180px' : '150px 0px');
@@ -350,13 +382,13 @@ describe('procedure-manuals workshop', () => {
     expect(mocks.image).toHaveBeenCalledWith('/page.png');
   });
 
-  it('exposes seven visually hidden column headers and reads the page count with its unit', async () => {
+  it('exposes eleven visually hidden column headers and reads the page count with its unit', async () => {
     show();
     const row = await screen.findByRole('row', { name: '公開手順' });
     const headers = screen.getAllByRole('columnheader');
-    expect(headers.map(header => header.textContent)).toEqual(['サムネイル', '名前', '状態', '他の使用先', '担当・承認', 'ページ', '操作']);
+    expect(headers.map(header => header.textContent)).toEqual(['サムネイル', '品名', '品番', '工程', '作業', '補足', '状態', '他の使用先', '担当・承認', 'ページ', '操作']);
     expect(headers[0].parentElement).toHaveClass('sr-only');
-    const cell = within(row).getAllByRole('cell')[5];
+    const cell = within(row).getAllByRole('cell')[9];
     expect(cell.textContent).toBe('3 ページ');
     expect(within(cell).getByText('ページ')).toHaveClass('sr-only');
   });
@@ -371,7 +403,7 @@ describe('procedure-manuals workshop', () => {
     const revision = screen.getByRole('row', { name: '改版手順' });
     expect(within(revision).getByText(/改版中 · 佐藤/)).toBeInTheDocument();
     expect(within(revision).queryByText(/承認/)).not.toBeInTheDocument();
-    expect(within(screen.getByRole('row', { name: '承認なし' })).getAllByRole('cell')[4]).toBeEmptyDOMElement();
+    expect(within(screen.getByRole('row', { name: '承認なし' })).getAllByRole('cell')[8]).toBeEmptyDOMElement();
   });
 
   it('uses dense accessible rows, status colors, thumbnails and valid symbol actions', async () => {
@@ -403,9 +435,9 @@ describe('procedure-manuals workshop', () => {
     expect(screen.getByRole('button', { name: '検査' })).toBeInTheDocument();
     const pub = screen.getByRole('row', { name: '公開手順' });
     expect(pub).toHaveClass('h-14');
-    expect(within(pub).getAllByRole('cell')).toHaveLength(7);
+    expect(within(pub).getAllByRole('cell')).toHaveLength(11);
     expect(within(pub).getByText('公開手順')).toHaveAttribute('title', '公開手順');
-    expect(within(pub).getByText('公開手順')).toHaveClass('font-mono', 'truncate');
+    expect(within(pub).getByText('公開手順')).toHaveClass('font-bold', 'truncate');
     expect(within(pub).getByText('公開 第2版')).toHaveClass('text-[#3ba776]');
     expect(within(pub).getByText('改版中 · 佐藤 09:12〜')).toHaveClass('bg-[#f6b93b1f]');
     expect(within(pub).getByText('3')).toBeInTheDocument();
@@ -425,7 +457,7 @@ describe('procedure-manuals workshop', () => {
       expect(within(row).queryByRole('link', { name: '使う' })).not.toBeInTheDocument();
       expect(within(row).getByRole('button', { name: '外す' })).toBeInTheDocument();
     }
-    expect(within(screen.getByRole('row', { name: '無効手順' })).getAllByRole('cell')[5]).toHaveTextContent('—');
+    expect(within(screen.getByRole('row', { name: '無効手順' })).getAllByRole('cell')[9]).toHaveTextContent('—');
     for (const control of [within(pub).getByRole('button', { name: '直す' }), within(pub).getByRole('link', { name: '使う' }), within(pub).getByRole('button', { name: '外す' }), within(draft).getByRole('button', { name: '削除' })]) {
       expect(control).toHaveClass('min-h-12', 'w-11');
       expect(control).toHaveAttribute('aria-label');
@@ -469,15 +501,19 @@ describe('procedure-manuals workshop', () => {
   });
 
   it('filters displayed names immediately, normalizes case and width, and combines status and name', async () => {
-    const labeledItems = items.map(item => item.assignmentId === 'pub' ? { ...item, label: 'DFD_ＡＢＣ_改版' } : item);
+    const labeledItems = items.map(item => item.assignmentId === 'pub' ? { ...item, label: '主軸_ＡＢＣ_加工_研削_改版_確認' } : item);
     mocks.overview.mockResolvedValue({ ...overview, processes: [{ processId: 'assembly', count: labeledItems.length, items: labeledItems }] });
     show();
-    const row = await screen.findByRole('row', { name: 'DFD_ＡＢＣ_改版' });
-    expect(within(row).getByText('DFD_ＡＢＣ_改版')).toHaveAttribute('title', 'DFD_ＡＢＣ_改版');
+    const row = await screen.findByRole('row', { name: '主軸_ＡＢＣ_加工_研削_改版_確認' });
+    expect(row).toHaveAttribute('title', '主軸_ＡＢＣ_加工_研削_改版_確認');
+    expect(within(row).getByText('改版 確認')).toBeInTheDocument();
     const input = screen.getByRole('searchbox', { name: '名前で絞り込み' });
     expect(input).toHaveClass('w-[260px]', 'h-11');
     fireEvent.change(input, { target: { value: ' abc ' } });
     expect(screen.getAllByRole('row')).toHaveLength(2);
+    fireEvent.change(input, { target: { value: '研削_改版_確認' } });
+    expect(screen.getAllByRole('row')).toHaveLength(2);
+    expect(row).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '下書き' }));
     expect(screen.queryByRole('cell')).not.toBeInTheDocument();
     expect(screen.getByText('0 件')).toBeInTheDocument();
@@ -538,11 +574,11 @@ describe('procedure-manuals workshop', () => {
     expect(screen.queryByText('工程を選択')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '作る' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: '＋ 既存の要領書を割り当てる' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(expect.arrayContaining(['機種・部品', '工程']));
+    expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(['サムネイル', '品名', '品番', '工程', '作業', '補足', '状態', '他の使用先', '担当・承認', 'ページ', '操作']);
     fireEvent.click(screen.getByRole('button', { name: '組立' }));
     expect(screen.getByRole('button', { name: '組立' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('columnheader', { name: '機種・部品' })).toBeInTheDocument();
-    expect(screen.queryByRole('columnheader', { name: '工程' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: '機種・部品' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('columnheader', { name: '工程' })).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: '工程の絞り込みを外す' }));
     expect(screen.getByRole('button', { name: '組立' })).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(screen.getByRole('button', { name: 'DFD1' }));

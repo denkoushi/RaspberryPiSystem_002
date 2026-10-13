@@ -106,7 +106,7 @@ export function ProcedureManualBlankDialog({ processes, modelCode, processId, on
     } catch (e) { setError(readAssemblyApiErrorMessage(e, '白紙の要領書を作成できません')); }
     finally { setBusy(false); }
   };
-  return <Dialog isOpen onClose={() => { if (!busy) onClose(); }} title="白紙から作る" size="full" className="my-auto max-w-[1180px] rounded-[14px] border border-[#344252] bg-[#161c22] px-[26px] py-6 text-[#eef3f6]" titleClassName="text-2xl font-black">
+  return <Dialog isOpen onClose={() => { if (!busy) onClose(); }} title="白紙から作る" size="full" className="!my-auto !max-w-[1180px] !rounded-[14px] !border !border-[#344252] !bg-[#161c22] !px-[26px] !py-6 !text-[#eef3f6]" titleClassName="!text-2xl !font-black text-[#eef3f6]">
     <form className="mt-[18px] grid gap-[18px]" onSubmit={event => { event.preventDefault(); void create(); }}>
       {direct ? <label className="grid gap-2">要領書名<Input aria-label="要領書名" autoFocus maxLength={200} value={directName} onChange={event => setDirectName(event.target.value)} className="h-12 text-xl" /></label> : <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-3">
         <section aria-label="工程と細分の選択" className="grid content-start gap-2">

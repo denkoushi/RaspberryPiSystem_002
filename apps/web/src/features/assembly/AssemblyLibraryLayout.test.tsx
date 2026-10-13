@@ -40,11 +40,39 @@ function renderProcedures(documents: AssemblyProcedureDocumentSummaryDto[] = [do
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); imageHook.mockClear(); });
 
 describe('assembly dense library', () => {
+  it('splits manual names, spans legacy names over four columns and searches the original full name', () => {
+    const name = '主軸_P-123_加工_研削_仕上げ_確認';
+    renderProcedures([document, { ...document, id: 'named', name }, { ...document, id: 'four', name: '軸受_P-456_組立_圧入' }]);
+    const table = screen.getByRole('table', { name: '手順書ライブラリ' });
+    const row = within(table).getByText('主軸').closest('tr')!;
+    const cells = within(row).getAllByRole('cell');
+    expect(cells.slice(1, 6).map(cell => cell.textContent)).toEqual(['主軸', 'P-123', '加工', '研削', '仕上げ 確認']);
+    cells.slice(1, 6).forEach(cell => expect(cell).toHaveClass('truncate'));
+    expect(cells[1]).toHaveClass('font-bold');
+    expect(cells[2]).toHaveClass('font-bold', 'font-mono');
+    expect(cells[5]).toHaveClass('text-white/60');
+    expect(row).toHaveAttribute('title', name);
+    expect(row).toHaveClass('h-14');
+    expect(table).toHaveClass('min-w-[1280px]');
+    const four = within(table).getByText('軸受').closest('tr')!;
+    expect(within(four).getAllByRole('cell').slice(1, 6).map(cell => cell.textContent)).toEqual(['軸受', 'P-456', '組立', '圧入', '—']);
+    const legacy = within(table).getByText(document.name);
+    expect(legacy).toHaveAttribute('colspan', '4');
+    expect(legacy).toHaveClass('truncate', 'font-bold');
+    expect(legacy.nextElementSibling).toHaveTextContent('—');
+    expect(legacy.closest('tr')).toHaveAttribute('title', document.name);
+    expect(within(table).queryByRole('columnheader', { name: '名前', exact: true })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', { name: '手順書名で検索' }), { target: { value: 'p-123_加工_研削_仕上げ_確認' } });
+    expect(within(table).getAllByRole('row')).toHaveLength(2);
+    expect(row).toBeInTheDocument();
+    expect(within(table).queryByText(document.name)).not.toBeInTheDocument();
+  });
+
   it('uses one 56px procedure row with accessible headers and symbol actions', () => {
     renderProcedures();
     const table = screen.getByRole('table', { name: '手順書ライブラリ' });
     expect(within(table).getAllByRole('row')).toHaveLength(2);
-    expect(within(table).getAllByRole('columnheader').map(header => header.textContent)).toEqual(['サムネイル', '名前', '状態', '使用先', '頁', 'テンプレ', '更新', '操作']);
+    expect(within(table).getAllByRole('columnheader').map(header => header.textContent)).toEqual(['サムネイル', '品名', '品番', '工程', '作業', '補足', '状態', '使用先', '頁', 'テンプレ', '更新', '操作']);
     expect(table.querySelector('thead')).toHaveClass('sr-only');
     expect(within(table).getByText(document.name).closest('tr')).toHaveClass('h-14');
     expect(within(table).getByText('公開 第2版')).toBeInTheDocument();

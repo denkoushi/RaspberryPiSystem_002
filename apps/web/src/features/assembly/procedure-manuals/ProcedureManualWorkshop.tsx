@@ -12,6 +12,7 @@ import { PROCEDURE_EDITOR_ACCESS_HOURS, readProcedureEditorAccess, saveProcedure
 
 import { ManualThumbnail } from './ManualThumbnail';
 import { procedureManualButtonBase, procedureManualButtonSelected, procedureManualButtonUnselected } from './procedure-manual-button-styles';
+import { splitProcedureManualName } from './procedure-manual-name';
 import { ProcedureManualAssignmentDialog, procedureManualModelKey } from './ProcedureManualAssignmentDialog';
 import { ProcedureManualBlankDialog } from './ProcedureManualBlankDialog';
 import { ProcedureManualCommonDialog } from './ProcedureManualCommonDialog';
@@ -269,13 +270,22 @@ export function ProcedureManualWorkshop() {
           </div>
           <div role="table" aria-label={process ? shortName(process) : '全工程'} className="min-w-[1100px]">
           <div role="row" className="sr-only">
-            {['サムネイル', '名前', ...(!modelCodeKey ? ['機種・部品'] : []), ...(!processId ? ['工程'] : []), '状態', '他の使用先', '担当・承認', 'ページ', '操作'].map(label => <div role="columnheader" key={label}>{label}</div>)}
+            {['サムネイル', '品名', '品番', '工程', '作業', '補足', '状態', '他の使用先', '担当・承認', 'ページ', '操作'].map(label => <div role="columnheader" key={label}>{label}</div>)}
           </div>
-          {filteredItems.map(item => <div role="row" key={item.assignmentId} aria-label={item.label || item.title} style={{ gridTemplateColumns: `36px minmax(220px,1fr) ${!modelCodeKey ? '160px ' : ''}${!processId ? '90px ' : ''}150px ${usageColumn} ${approvalColumn} 50px 188px` }} className="grid h-14 items-center gap-3 border-b border-[#27313b] px-2.5 hover:bg-[#1b222a]">
+          {filteredItems.map(item => {
+            const fullName = item.label || item.title;
+            const child = processes.find(process => process.id === item.processId);
+            const name = splitProcedureManualName(fullName) ?? {
+              partName: fullName, subjectKey: item.modelCode,
+              process: shortName(processes.find(process => process.id === child?.parentId)), work: shortName(child), supplement: ''
+            };
+            return <div role="row" key={item.assignmentId} aria-label={item.label || item.title} title={fullName} style={{ gridTemplateColumns: `36px minmax(0,1.5fr) minmax(0,1.5fr) minmax(0,1.1fr) minmax(0,1.3fr) minmax(0,1fr) 150px ${usageColumn} ${approvalColumn} 50px 188px` }} className="grid h-14 items-center gap-3 border-b border-[#27313b] px-2.5 hover:bg-[#1b222a]">
             <div role="cell"><ManualThumbnail url={item.thumbnailPageUrl} /></div>
-            <div role="cell" className="truncate font-mono text-xl font-bold" title={item.label || item.title}>{item.label || item.title}</div>
-            {!modelCodeKey ? <div role="cell" className="truncate font-mono text-[17px] font-bold">{item.modelCode}</div> : null}
-            {!processId ? <div role="cell" className="truncate text-[17px] font-bold">{shortName(processes.find(row => row.id === item.processId))}</div> : null}
+            <div role="cell" className="min-w-0 truncate text-xl font-bold" title={fullName}>{name.partName}</div>
+            <div role="cell" className="min-w-0 truncate font-mono text-[17px] font-bold">{name.subjectKey}</div>
+            <div role="cell" className="min-w-0 truncate text-[17px]">{name.process}</div>
+            <div role="cell" className="min-w-0 truncate text-[17px]">{name.work}</div>
+            <div role="cell" className="min-w-0 truncate text-[17px] text-[#9fadb9]">{name.supplement || '—'}</div>
             <div role="cell">
                 <span className={`${badge} ${item.status === 'published' ? 'border-[#3ba776] text-[#3ba776]' : item.status === 'draft' ? 'border-[#f6b93b] text-[#f6b93b]' : 'border-[#e5484d] text-[#e5484d]'}`}>
                   {item.status === 'published' ? item.publishedRevisionNumber == null ? '公開' : `公開 第${item.publishedRevisionNumber}版` : item.status === 'draft' ? '下書き' : '無効'}
@@ -293,7 +303,7 @@ export function ProcedureManualWorkshop() {
               {item.kind === 'assembly_procedure_document' && item.status === 'published' ? <IconActionTooltip label="使う"><Link aria-label="使う" className={symbolAction} to={kioskAssemblyTemplateNewPath({ procedureDocumentId: item.documentId })}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="9" /><path d="M8 12l3 3 5-6" /></svg></Link></IconActionTooltip> : null}
               {canDelete(item) ? <IconActionTooltip label="削除" disabled={busy}><button aria-label="削除" className={symbolAction} disabled={busy} onClick={() => { if (checkAccess()) setDeleting(item); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13" /></svg></button></IconActionTooltip> : <IconActionTooltip label="外す" disabled={busy}><button aria-label="外す" className={symbolAction} disabled={busy} onClick={() => { if (checkAccess()) setRemoving(item); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="9" /><path d="M8 12h8" /></svg></button></IconActionTooltip>}
             </div>
-          </div>)}
+          </div>; })}
           </div>
           {!overviewLoading && filteredItems.length === 0 ? <p className="p-4 text-lg text-[#9fadb9]">該当する要領書がありません</p> : null}
           {modelCodeKey && process ? <button className={`${procedureManualButtonBase} ${procedureManualButtonUnselected} mt-2.5 border-dashed text-lg text-[#9fadb9] disabled:opacity-40`} disabled={busy || overviewLoading} onClick={() => { if (checkAccess()) setAssignmentOpen(true); }}>＋ 既存の要領書を割り当てる</button> : null}
