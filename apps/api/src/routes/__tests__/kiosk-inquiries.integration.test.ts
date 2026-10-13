@@ -76,19 +76,19 @@ describe('Kiosk inquiry inbox API', () => {
     await prisma.user.deleteMany({ where: { id: { in: [admin.user.id, manager.user.id, viewer.user.id] } } });
   });
 
-  const headers = (device: ClientDevice) => ({ 'x-client-key': device.apiKey });
+  const headers = (device: ClientDevice, token?: string) => ({ 'x-client-key': device.apiKey, ...(token ? createAuthHeader(token) : {}) });
   const tag = () => ({ employeeTagUid: allowedEmployee.nfcTagUid! });
-  const summary = (device: ClientDevice) => app.inject({
-    method: 'GET', url: '/api/kiosk/inquiries/summary', headers: headers(device)
+  const summary = (device: ClientDevice, token?: string) => app.inject({
+    method: 'GET', url: '/api/kiosk/inquiries/summary', headers: headers(device, token)
   });
-  const list = (device: ClientDevice, payload: Record<string, unknown> = {}) => app.inject({
-    method: 'POST', url: '/api/kiosk/inquiries/list', headers: headers(device), payload
+  const list = (device: ClientDevice, payload: Record<string, unknown> = {}, token?: string) => app.inject({
+    method: 'POST', url: '/api/kiosk/inquiries/list', headers: headers(device, token), payload
   });
-  const open = (device: ClientDevice, id: string, payload: Record<string, unknown> = {}) => app.inject({
-    method: 'POST', url: `/api/kiosk/inquiries/${id}/open`, headers: headers(device), payload
+  const open = (device: ClientDevice, id: string, payload: Record<string, unknown> = {}, token?: string) => app.inject({
+    method: 'POST', url: `/api/kiosk/inquiries/${id}/open`, headers: headers(device, token), payload
   });
-  const reply = (device: ClientDevice, id: string, payload: Record<string, unknown>) => app.inject({
-    method: 'POST', url: `/api/kiosk/inquiries/${id}/reply`, headers: headers(device), payload
+  const reply = (device: ClientDevice, id: string, payload: Record<string, unknown>, token?: string) => app.inject({
+    method: 'POST', url: `/api/kiosk/inquiries/${id}/reply`, headers: headers(device, token), payload
   });
   const settingsUrl = '/api/kiosk-settings/inquiry-receivers';
   const putSettings = (payload: Record<string, unknown>) => app.inject({
@@ -116,8 +116,8 @@ describe('Kiosk inquiry inbox API', () => {
     expect(thread).toMatchObject({ page: '/kiosk/borrow', receiverUnread: true, senderUnread: false });
     expect(thread.messages).toHaveLength(1);
     expect(thread.messages[0]).toMatchObject({ side: 'SENDER', body: 'お問い合わせ', authorClientDeviceId: sender.id, authorEmployeeId: null });
-    expect((await summary(receiver)).json()).toEqual({ isReceiver: true, unreadCount: before + 1 });
-    expect((await summary(sender)).json()).toEqual({ isReceiver: false, unreadCount: 0 });
+    expect((await summary(receiver)).json()).toEqual({ isReceiver: true, unreadCount: before + 1, loginUnlock: false });
+    expect((await summary(sender)).json()).toEqual({ isReceiver: false, unreadCount: 0, loginUnlock: false });
     expect(await prisma.clientLog.count({ where: { clientId: sender.id, message: { contains: '[SUPPORT]' } } })).toBe(1);
     expect(sendSlackNotification).toHaveBeenCalledOnce();
   });
@@ -135,7 +135,7 @@ describe('Kiosk inquiry inbox API', () => {
     await reply(receiver, own.id, { ...tag(), body: '返信1' });
     await reply(receiver, own.id, { ...tag(), body: '返信2' });
     await reply(receiver, other.id, { ...tag(), body: '別端末への返信' });
-    expect((await summary(sender)).json()).toEqual({ isReceiver: false, unreadCount: 1 });
+    expect((await summary(sender)).json()).toEqual({ isReceiver: false, unreadCount: 1, loginUnlock: false });
     await open(sender, own.id);
     expect((await summary(sender)).json().unreadCount).toBe(0);
     expect((await summary(otherSender)).json().unreadCount).toBe(1);
@@ -148,6 +148,94 @@ describe('Kiosk inquiry inbox API', () => {
       : await reply(receiver, thread.id, { body: '返信' });
     expect(response.statusCode).toBe(401);
     expect(response.json().errorCode).toBe('KIOSK_INQUIRY_EMPLOYEE_TAG_REQUIRED');
+  });
+
+  it('ADMIN can list, open and reply without a card or an employee author', async () => {
+    const thread = await sendSupport();
+    const listed = await list(receiver, {}, admin.token);
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().threads).toEqual(expect.arrayContaining([expect.objectContaining({ id: thread.id })]));
+    const opened = await open(receiver, thread.id, {}, admin.token);
+    expect(opened.statusCode).toBe(200);
+    expect(opened.json().thread.unread).toBe(false);
+    const replied = await reply(receiver, thread.id, { body: '対応します' }, admin.token);
+    expect(replied.statusCode).toBe(200);
+    expect(replied.json().messages[1]).toMatchObject({ side: 'RECEIVER', body: '対応します', authorDisplayName: null });
+    expect(await prisma.kioskInquiryMessage.findFirst({ where: { threadId: thread.id, side: 'RECEIVER' } })).toMatchObject({
+      authorEmployeeId: null, authorClientDeviceId: receiver.id
+    });
+  });
+
+  it('MANAGER can list receiver inquiries without a card', async () => {
+    const thread = await sendSupport();
+    const response = await list(receiver, {}, manager.token);
+    expect(response.statusCode).toBe(200);
+    expect(response.json().threads).toEqual(expect.arrayContaining([expect.objectContaining({ id: thread.id })]));
+  });
+
+  it.each(['viewer', 'invalid'] as const)('requires a card with a %s token on all protected actions', async kind => {
+    const thread = await sendSupport();
+    const token = kind === 'viewer' ? viewer.token : 'invalid-token';
+    for (const response of [
+      await list(receiver, {}, token),
+      await open(receiver, thread.id, {}, token),
+      await reply(receiver, thread.id, { body: '返信' }, token)
+    ]) {
+      expect(response.statusCode).toBe(401);
+      expect(response.json().errorCode).toBe('KIOSK_INQUIRY_EMPLOYEE_TAG_REQUIRED');
+    }
+  });
+
+  it('accepts a valid card despite an invalid token on all protected actions', async () => {
+    const thread = await sendSupport();
+    expect((await list(receiver, tag(), 'invalid-token')).statusCode).toBe(200);
+    expect((await open(receiver, thread.id, tag(), 'invalid-token')).statusCode).toBe(200);
+    const response = await reply(receiver, thread.id, { ...tag(), body: '返信' }, 'invalid-token');
+    expect(response.statusCode).toBe(200);
+    expect(response.json().messages[1].authorDisplayName).toBe(allowedEmployee.displayName);
+  });
+
+  it('does not let ADMIN override an unauthorized card', async () => {
+    const thread = await sendSupport();
+    const payload = { employeeTagUid: deniedEmployee.nfcTagUid! };
+    for (const response of [
+      await list(receiver, payload, admin.token),
+      await open(receiver, thread.id, payload, admin.token),
+      await reply(receiver, thread.id, { ...payload, body: '返信' }, admin.token)
+    ]) {
+      expect(response.statusCode).toBe(403);
+      expect(response.json().errorCode).toBe('KIOSK_INQUIRY_EMPLOYEE_NOT_ALLOWED');
+    }
+  });
+
+  it('summary exposes login unlock only to ADMIN and MANAGER on receivers', async () => {
+    for (const [device, token, loginUnlock] of [
+      [receiver, admin.token, true], [receiver, manager.token, true],
+      [receiver, undefined, false], [receiver, 'invalid-token', false],
+      [receiver, viewer.token, false], [sender, admin.token, false]
+    ] as const) {
+      const response = await summary(device, token);
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ isReceiver: device.id === receiver.id, loginUnlock });
+    }
+  });
+
+  it('ADMIN still needs a client key and cannot access threads from other sender devices', async () => {
+    const thread = await sendSupport(otherSender);
+    expect((await list(sender, {}, admin.token)).json().threads).toEqual([]);
+    for (const response of [
+      await open(sender, thread.id, {}, admin.token),
+      await reply(sender, thread.id, { body: '返信' }, admin.token)
+    ]) expect(response.statusCode).toBe(404);
+    for (const [method, url, payload] of [
+      ['GET', '/api/kiosk/inquiries/summary', undefined],
+      ['POST', '/api/kiosk/inquiries/list', {}],
+      ['POST', `/api/kiosk/inquiries/${thread.id}/open`, {}],
+      ['POST', `/api/kiosk/inquiries/${thread.id}/reply`, { body: '返信' }]
+    ] as const) {
+      const response = await app.inject({ method, url, payload, headers: createAuthHeader(admin.token) });
+      expect(response.statusCode).toBe(401);
+    }
   });
 
   it('list and open without a body require a receiver tag but allow the sender', async () => {

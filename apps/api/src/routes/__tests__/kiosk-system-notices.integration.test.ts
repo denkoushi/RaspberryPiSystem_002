@@ -55,7 +55,7 @@ describe('system notice inbox API', () => {
       await deliverSystemNotice(notice());
       const system = await prisma.kioskInquiryThread.findFirstOrThrow({ where: { noticeKey: key } });
       expect(system.senderClientDeviceId).toBeNull();
-      expect((await call('summary')).json()).toEqual({ isReceiver: receiver,
+      expect((await call('summary')).json()).toEqual({ isReceiver: receiver, loginUnlock: false,
         unreadCount: baseline + Number(inquiryReceiverEnabled) + Number(systemNoticeReceiverEnabled) });
       if (receiver) {
         for (const path of ['list', `${system.id}/open`, `${system.id}/reply`]) {
