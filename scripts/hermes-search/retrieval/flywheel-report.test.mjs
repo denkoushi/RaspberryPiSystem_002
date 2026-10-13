@@ -12,7 +12,7 @@ const rows = [
   { a: 'a2', b: 'b2', seed: { style: 'terse' }, question: 'テーブルの傷', kept: true, reason: null, live: live('not_in_pool', { vectorStatus: 'timeout' }) },
   { a: 'a3', b: 'b3', seed: { style: 'colloquial' }, question: 'テーブルに傷ついたことある？', kept: true, reason: null, live: live('judge_rejected') },
   { a: 'a4', b: 'b4', seed: { style: 'kana' }, question: 'きず', kept: true, reason: null, live: live('status', { outcome: 'clarification', unresolved: ['content'] }) },
-  { a: 'a5', b: 'b5', seed: { style: 'terse' }, question: '塗装 はがれ', kept: true, reason: null, live: live('other_shown', { outcome: 'answer' }) },
+  { a: 'a5', b: 'b5', seed: { style: 'terse' }, question: '塗装 はがれ', kept: true, reason: null, live: live('other_shown', { outcome: 'answer', plan: { ambiguousDropped: [{ field: 'partName', candidates: ['台A', '台B'] }] } }) },
   { a: 'a6', b: 'b6', seed: { style: 'terse' }, question: '昨夜の質問', kept: true, reason: null },
   { a: 'a7', b: 'b7', seed: { style: 'terse' }, question: 'そのまま写した文', kept: false, reason: 'copied_run' },
   { a: 'a8', b: 'b8', seed: { style: 'typo' }, question: null, kept: false, reason: 'ungraded' },
@@ -84,7 +84,9 @@ test('a night summary counts generation, keep decisions, and live loss stages', 
   assert.equal(summary.medianOverlap, 0.3);
   assert.deepEqual(summary.live, { scored: 5, shown: 1, otherShown: 1, notInPool: 1, judgeRejected: 1, status: 1, failed: 0, notRun: 1, denseFallbacks: 1, labelled: 0 });
   assert.deepEqual(summary.askedBackTerms, { content: 1 });
+  assert.deepEqual(summary.ambiguousDroppedTerms, { partName: 1 });
   assert.match(formatReport('2026-10-03', summary), /asked back on: content 1/u);
+  assert.match(formatReport('2026-10-03', summary), /ambiguous filter dropped for content search: partName 1/u);
 });
 
 test('labels count relevant shown records alongside rows already corrected by the runner', () => {

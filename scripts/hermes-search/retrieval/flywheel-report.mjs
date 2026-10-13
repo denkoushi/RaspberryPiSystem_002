@@ -61,6 +61,7 @@ export function summarizeNight(rows, { labels = null } = {}) {
     medianOverlap: null,
     unavailableReasons: {},
     askedBackTerms: {},
+    ambiguousDroppedTerms: {},
     filter: summarizeSyntheticFilters(filterRows),
     live: { scored: 0, shown: 0, otherShown: 0, notInPool: 0, judgeRejected: 0, status: 0, failed: 0, notRun: 0, denseFallbacks: 0, labelled: 0 },
   };
@@ -98,6 +99,10 @@ export function summarizeNight(rows, { labels = null } = {}) {
       summary.live.labelled += 1;
     }
     if (live.vectorStatus === 'timeout' || live.vectorStatus === 'failed') summary.live.denseFallbacks += 1;
+    for (const item of Array.isArray(live.plan?.ambiguousDropped) ? live.plan.ambiguousDropped : []) {
+      if (typeof item?.field !== 'string') continue;
+      summary.ambiguousDroppedTerms[item.field] = (summary.ambiguousDroppedTerms[item.field] ?? 0) + 1;
+    }
     if (live.loss == null || shownAfterLabels) summary.live.shown += 1;
     else if (live.loss === 'other_shown') summary.live.otherShown += 1;
     else if (live.loss === 'not_in_pool') summary.live.notInPool += 1;
@@ -205,6 +210,8 @@ export function formatReport(night, summary) {
   if (live.denseFallbacks) lines.push(`  dense fallbacks: ${live.denseFallbacks}`);
   const askedBack = Object.entries(summary.askedBackTerms ?? {}).sort((left, right) => right[1] - left[1]);
   if (askedBack.length) lines.push(`  asked back on: ${askedBack.map(([term, count]) => `${term} ${count}`).join(', ')}`);
+  const ambiguousDropped = Object.entries(summary.ambiguousDroppedTerms ?? {}).sort((left, right) => right[1] - left[1]);
+  if (ambiguousDropped.length) lines.push(`  ambiguous filter dropped for content search: ${ambiguousDropped.map(([term, count]) => `${term} ${count}`).join(', ')}`);
   const reasons = Object.entries(summary.unavailableReasons ?? {}).sort((left, right) => right[1] - left[1]);
   if (reasons.length) lines.push(`  unavailable reasons: ${reasons.map(([reason, count]) => `${reason}=${count}`).join(', ')}`);
   lines.push(...formatSyntheticFilters(summary.filter));

@@ -490,6 +490,47 @@ test('a content question without recency stays relevance even if JEV picks recen
   assert.equal(plan.sort, 'relevance');
 });
 
+for (const content of [true, false]) {
+  test(`a linked ambiguous department is dropped only for content questions (content=${content})`, async () => {
+    const field = 'originDepartmentName';
+    const values = ['第一設計課', '第二設計課', '第三設計課', '第四設計課'];
+    const question = '設計課 干渉見落とし 原因';
+    const evaluate = async () => ({ answers: {
+      sort: { type: 'choice', choice: 'relevance' },
+      limit: { type: 'choice', choice: '5' },
+      content: { type: 'noul', noul: content },
+    } });
+    const { plan } = await createPlanner({ evaluate }).plan({
+      question,
+      catalog,
+      choiceGroups: [{ source: 'nonconformity', field, term: '設計課', values, decision: 'clarify' }],
+    });
+    assert.equal(plan.filters.some((filter) => filter.field === field), false);
+    assert.deepEqual(plan.unresolved, content ? [] : [{ term: field, candidates: values }]);
+    assert.equal(plan.semanticQuery, content ? question : '');
+    if (content) {
+      assert.deepEqual(plan.diagnostics.ambiguousDropped, [{ field, candidates: values }]);
+      assert.equal(plan.diagnostics.contentDecision.residualTokens.includes('設計課'), true);
+    } else {
+      assert.equal(Object.hasOwn(plan.diagnostics, 'ambiguousDropped'), false);
+    }
+  });
+}
+
+test('a low-confidence department value is dropped for a content question', async () => {
+  const value = '北海工場製造部機械課';
+  const question = '北海の機戒課 干渉見落とし 原因';
+  const { plan } = await createPlanner({ evaluate: departmentAnswers({ value: 0.26, none: 0.29 }, true) }).plan({
+    question,
+    catalog,
+    valueIndex: buildValueIndex([{ id: 'a', originDepartmentName: value }], catalog),
+  });
+  assert.deepEqual(plan.unresolved, []);
+  assert.equal(plan.semanticQuery, question);
+  assert.deepEqual(plan.filters, []);
+  assert.deepEqual(plan.diagnostics.ambiguousDropped, [{ field: 'originDepartmentName', candidates: [value] }]);
+});
+
 test('a low-confidence department value asks for clarification instead of a content search', async () => {
   const records = [{ id: 'a', originDepartmentName: '北海工場製造部機械課' }];
   const valueIndex = buildValueIndex(records, catalog);

@@ -525,3 +525,18 @@ Night of 2026-10-12 (22:07 to 22:22), the first with #1930 (unresolved terms rec
 - Runner log: 5 final lines.
 
 No change to retrieval. Private files: `work/flywheel/questions-2026-10-12.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-12.log`.
+
+### 2026-10-14: eleventh night, 86% with four ask-backs of the same kind; ambiguous linked terms now give way to the content search (change)
+
+Night of 2026-10-13 (22:0x to 22:18), the first with #1958 (placeholder department values skipped in the filter questions; Pi5 release at 09:08 that morning).
+
+- Synthetic content: 100 pairs tried, 70 generated, 63 kept (median 19 chars, anchor overlap 0.33). Dropped: 19 copied runs, 7 anchors not confirmed, 6 too similar, 5 copied words. Production showed a relevant record for 54 of 63 (86%; 11 known only through the second grader), other records for 0, nothing for 9: 4 outside the judged candidates, 1 rejected by the judge, 4 ask-backs.
+- Ask-backs: 3 on `partName` (「Y軸LMガイドの傷、組立時の違和感から発見した類似事例ありますか？」, 「キーブラケットの穴がなかったやつって前にもあった？」, 「ベース面 厚み 削り過ぎ 不適合」) and 1 on `machineName` (「ヘリサート 奥行き 誤り 不適合」). Same mechanism as the eighth and tenth nights (13 ask-backs over three nights): a word in a content question links to several enumerated values and the planner asks for a choice. Three of the four carried a content span; the fourth (「キーブラケットの穴が…」) had no content decision recorded, so it would still ask back under the change below.
+- Synthetic filter: 10 questions, 10 ok (no placeholder values after #1958).
+- Real: one kiosk question on 2026-10-13, 「タグをかざしても反応しない」, no result. It is about the kiosk tag reader, not a nonconformity record; the judge rejecting every candidate is the right outcome.
+- Learned queries: 1 activated (held-out 1/1); 24 active, 1 rejected.
+- Runner log: 5 final lines.
+
+Change in this PR (planner): when the content decision is true and a linked field (department, part, machine) has an ambiguous value (entity-link `clarify`, or the planner's `clarify` / `low` answer), the planner no longer puts the field into `unresolved`. It drops that filter, keeps the whole question as the content query, and records the field and its candidates in `diagnostics.ambiguousDropped`; the worker's compact plan carries it and the morning report prints `ambiguous filter dropped for content search: partName n`. With the content decision false or missing, the field stays unresolved and the ask-back is unchanged, so pure filter questions still ask. Expected effect: the 3 of 4 ask-backs on this night and the 4 on the tenth night become content searches; whether they then show the relevant record is measured from the night of 2026-10-14 (Codex `gpt-6-astra` / `high` for the planner change and its three tests; Claude for the plan, report and log).
+
+Private files: `work/flywheel/questions-2026-10-13.jsonl`, `real-2026-10-13.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-13.log`.
