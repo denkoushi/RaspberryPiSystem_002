@@ -69,6 +69,7 @@ export async function requireKioskClientDevice(rawClientKey: unknown): Promise<{
     siteKey: string | null;
     canProxyOtherDevices: boolean;
     inquiryReceiverEnabled: boolean;
+    systemNoticeReceiverEnabled: boolean;
   };
 }> {
   const clientKey = normalizeClientKey(rawClientKey);

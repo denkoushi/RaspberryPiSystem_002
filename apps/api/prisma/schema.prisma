@@ -8,7 +8,13 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum KioskInquiryKind {
+  INQUIRY
+  SYSTEM_NOTICE
+}
+
 enum KioskInquirySide {
+  SYSTEM
   SENDER
   RECEIVER
 }
@@ -499,6 +505,7 @@ model ClientDevice {
   /// 他端末の代理操作（手動順番・負荷調整などで対象端末を指定）を許可する端末
   canProxyOtherDevices                          Boolean                                        @default(false)
   inquiryReceiverEnabled                        Boolean                                        @default(false)
+  systemNoticeReceiverEnabled                   Boolean                                        @default(false)
   kioskInquiryThreads                           KioskInquiryThread[]
   kioskInquiryMessages                          KioskInquiryMessage[]
   lastSeenAt                                    DateTime?
@@ -5524,16 +5531,21 @@ model KioskInquiryReceiverEmployee {
 
 model KioskInquiryThread {
   id                   String                @id @default(uuid())
-  senderClientDeviceId String
+  senderClientDeviceId String?
+  kind                 KioskInquiryKind      @default(INQUIRY)
+  noticeKey            String?
+  noticeTitle          String?
+  noticeResolvedAt     DateTime?
   page                 String
   receiverUnread       Boolean               @default(true)
   senderUnread         Boolean               @default(false)
   lastMessageAt        DateTime
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
-  senderClientDevice   ClientDevice          @relation(fields: [senderClientDeviceId], references: [id], onDelete: Cascade)
+  senderClientDevice   ClientDevice?         @relation(fields: [senderClientDeviceId], references: [id], onDelete: Cascade)
   messages             KioskInquiryMessage[]
 
+  @@index([kind, noticeKey])
   @@index([receiverUnread])
   @@index([senderClientDeviceId, senderUnread])
   @@index([lastMessageAt])

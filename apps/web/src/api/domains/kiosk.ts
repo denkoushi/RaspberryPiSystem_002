@@ -281,10 +281,14 @@ export async function patchToolsPalletMachinePalletCount(machineCd: string, pall
 }
 
 export type KioskInquirySummary = { isReceiver: boolean; unreadCount: number };
-export type KioskInquirySide = 'SENDER' | 'RECEIVER';
+export type KioskInquirySide = 'SENDER' | 'RECEIVER' | 'SYSTEM';
 export type KioskInquiryThread = {
   id: string;
-  senderClientDeviceName: string;
+  kind: 'INQUIRY' | 'SYSTEM_NOTICE';
+  noticeTitle: string | null;
+  noticeResolvedAt: string | null;
+  isReceiver: boolean;
+  senderClientDeviceName: string | null;
   senderLocation: string | null;
   page: string;
   unread: boolean;
@@ -303,7 +307,7 @@ export type KioskInquiryDetail = {
 };
 export type KioskInquiryEmployee = { employeeId: string; employeeCode: string; displayName: string };
 export type KioskInquiryReceiverSettings = {
-  devices: Array<{ id: string; name: string; location: string | null; inquiryReceiverEnabled: boolean }>;
+  devices: Array<{ id: string; name: string; location: string | null; inquiryReceiverEnabled: boolean; systemNoticeReceiverEnabled: boolean }>;
   employees: KioskInquiryEmployee[];
 };
 
@@ -338,7 +342,7 @@ export async function getKioskInquiryReceiverSettings() {
   return data;
 }
 
-export async function updateKioskInquiryReceiverSettings(payload: { receiverClientDeviceIds: string[]; employeeCodes: string[] }) {
+export async function updateKioskInquiryReceiverSettings(payload: { receiverClientDeviceIds: string[]; systemNoticeReceiverClientDeviceIds: string[]; employeeCodes: string[] }) {
   const { data } = await api.put<{ settings: KioskInquiryReceiverSettings }>('/kiosk-settings/inquiry-receivers', payload);
   return data;
 }

@@ -50,6 +50,19 @@ beforeEach(() => {
 });
 
 describe('KioskInquiryInbox', () => {
+  it.each([null, '2026-10-13T00:00:00Z'])('shows the system notice title and status tag (%s)', async (noticeResolvedAt) => {
+    const notice = { ...thread, kind: 'SYSTEM_NOTICE', noticeTitle: 'StoneBase01 バーコードリーダー', noticeResolvedAt,
+      senderClientDeviceName: null, senderLocation: null, isReceiver: true };
+    mocks.list.mockResolvedValue({ threads: [notice] });
+    mocks.open.mockResolvedValue({ thread: notice, messages: [{ id: 'system', side: 'SYSTEM', body: 'バーコードリーダーが応答しません。', createdAt: thread.lastMessageAt }] });
+    const view = renderInbox(); view.touch();
+    expect(await screen.findByText(noticeResolvedAt ? '復旧' : 'システム')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /StoneBase01 バーコードリーダー/ }));
+    expect(await screen.findByText('バーコードリーダーが応答しません。')).toBeInTheDocument();
+    expect(screen.getByText(noticeResolvedAt ? '復旧' : 'システム')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: '返信' })).toBeEnabled();
+  });
+
   it('sends from a locked receiver without a card and returns to the lock', async () => {
     renderInbox();
     fireEvent.click(screen.getByRole('button', { name: '＋ 新規' }));

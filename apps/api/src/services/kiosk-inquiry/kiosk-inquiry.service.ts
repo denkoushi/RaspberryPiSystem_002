@@ -4,7 +4,7 @@ import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { EmployeeService } from '../tools/employee.service.js';
 
-type InquiryDevice = { id: string; inquiryReceiverEnabled: boolean };
+type InquiryDevice = { id: string; inquiryReceiverEnabled: boolean; systemNoticeReceiverEnabled: boolean };
 const employees = new EmployeeService();
 const threadInclude = {
   senderClientDevice: { select: { name: true, location: true } },
@@ -25,8 +25,12 @@ function presentThread(thread: ListedThread, isReceiver: boolean) {
   const last = thread.messages[0];
   return {
     id: thread.id,
-    senderClientDeviceName: thread.senderClientDevice.name,
-    senderLocation: thread.senderClientDevice.location,
+    kind: thread.kind,
+    noticeTitle: thread.noticeTitle,
+    noticeResolvedAt: thread.noticeResolvedAt,
+    isReceiver,
+    senderClientDeviceName: thread.senderClientDevice?.name ?? null,
+    senderLocation: thread.senderClientDevice?.location ?? null,
     page: thread.page,
     unread: isReceiver ? thread.receiverUnread : thread.senderUnread,
     lastMessageAt: thread.lastMessageAt,
@@ -47,8 +51,19 @@ function presentOpenedThread(thread: OpenedThread, isReceiver: boolean) {
   };
 }
 
-function accessibleThreadWhere(device: InquiryDevice, threadId: string): Prisma.KioskInquiryThreadWhereInput {
-  return { id: threadId, ...(!device.inquiryReceiverEnabled ? { senderClientDeviceId: device.id } : {}) };
+function isReceiver(device: InquiryDevice) {
+  return device.inquiryReceiverEnabled || device.systemNoticeReceiverEnabled;
+}
+
+function receivesThread(device: InquiryDevice, kind: string) {
+  return kind === 'SYSTEM_NOTICE' ? device.systemNoticeReceiverEnabled : device.inquiryReceiverEnabled;
+}
+
+function accessibleThreadWhere(device: InquiryDevice, threadId?: string): Prisma.KioskInquiryThreadWhereInput {
+  return { id: threadId, OR: [
+    { kind: 'INQUIRY', ...(!device.inquiryReceiverEnabled ? { senderClientDeviceId: device.id } : {}) },
+    ...(device.systemNoticeReceiverEnabled ? [{ kind: 'SYSTEM_NOTICE' as const }] : [])
+  ] };
 }
 
 function notFound(): ApiError {
@@ -56,7 +71,7 @@ function notFound(): ApiError {
 }
 
 async function authorizeReceiver(device: InquiryDevice, employeeTagUid?: string): Promise<string | null> {
-  if (!device.inquiryReceiverEnabled) return null;
+  if (!isReceiver(device)) return null;
   if (!employeeTagUid) {
     throw new ApiError(401, '社員証が必要です', undefined, 'KIOSK_INQUIRY_EMPLOYEE_TAG_REQUIRED');
   }
@@ -88,35 +103,40 @@ export async function createKioskInquiryThread(
 
 export async function getKioskInquirySummary(device: InquiryDevice) {
   const unreadCount = await prisma.kioskInquiryThread.count({
-    where: device.inquiryReceiverEnabled
-      ? { receiverUnread: true }
-      : { senderClientDeviceId: device.id, senderUnread: true }
+    where: { OR: [
+      { kind: 'INQUIRY', ...(device.inquiryReceiverEnabled
+        ? { receiverUnread: true } : { senderClientDeviceId: device.id, senderUnread: true }) },
+      ...(device.systemNoticeReceiverEnabled ? [{ kind: 'SYSTEM_NOTICE' as const, receiverUnread: true }] : [])
+    ] }
   });
-  return { isReceiver: device.inquiryReceiverEnabled, unreadCount };
+  return { isReceiver: isReceiver(device), unreadCount };
 }
 
 export async function listKioskInquiries(device: InquiryDevice, employeeTagUid?: string) {
   await authorizeReceiver(device, employeeTagUid);
   const threads = await prisma.kioskInquiryThread.findMany({
-    where: device.inquiryReceiverEnabled ? {} : { senderClientDeviceId: device.id },
+    where: accessibleThreadWhere(device),
     orderBy: { lastMessageAt: 'desc' },
-    take: device.inquiryReceiverEnabled ? 50 : 20,
+    take: isReceiver(device) ? 50 : 20,
     include: threadInclude
   });
-  return { threads: threads.map((thread) => presentThread(thread, device.inquiryReceiverEnabled)) };
+  return { threads: threads.map((thread) => presentThread(thread, receivesThread(device, thread.kind))) };
 }
 
 export async function openKioskInquiry(device: InquiryDevice, threadId: string, employeeTagUid?: string) {
   await authorizeReceiver(device, employeeTagUid);
   return prisma.$transaction(async (tx) => {
+    const accessible = await tx.kioskInquiryThread.findFirst({ where: accessibleThreadWhere(device, threadId), select: { kind: true } });
+    if (!accessible) throw notFound();
+    const receiver = receivesThread(device, accessible.kind);
     // Lock the thread before reading messages so a concurrent reply cannot be marked read unseen.
     const updated = await tx.kioskInquiryThread.updateMany({
       where: accessibleThreadWhere(device, threadId),
-      data: device.inquiryReceiverEnabled ? { receiverUnread: false } : { senderUnread: false }
+      data: receiver ? { receiverUnread: false } : { senderUnread: false }
     });
     if (updated.count === 0) throw notFound();
     const thread = await tx.kioskInquiryThread.findUniqueOrThrow({ where: { id: threadId }, include: openInclude });
-    return presentOpenedThread(thread, device.inquiryReceiverEnabled);
+    return presentOpenedThread(thread, receiver);
   });
 }
 
@@ -128,12 +148,15 @@ export async function replyToKioskInquiry(
 ) {
   const authorEmployeeId = await authorizeReceiver(device, employeeTagUid);
   return prisma.$transaction(async (tx) => {
+    const accessible = await tx.kioskInquiryThread.findFirst({ where: accessibleThreadWhere(device, threadId), select: { kind: true } });
+    if (!accessible) throw notFound();
+    const receiver = receivesThread(device, accessible.kind);
     const now = new Date();
     const updated = await tx.kioskInquiryThread.updateMany({
       where: accessibleThreadWhere(device, threadId),
       data: {
-        receiverUnread: !device.inquiryReceiverEnabled,
-        senderUnread: device.inquiryReceiverEnabled,
+        receiverUnread: !receiver,
+        senderUnread: receiver && accessible.kind === 'INQUIRY',
         lastMessageAt: now
       }
     });
@@ -141,7 +164,7 @@ export async function replyToKioskInquiry(
     await tx.kioskInquiryMessage.create({
       data: {
         threadId,
-        side: device.inquiryReceiverEnabled ? 'RECEIVER' : 'SENDER',
+        side: receiver ? 'RECEIVER' : 'SENDER',
         body,
         authorClientDeviceId: device.id,
         authorEmployeeId,
@@ -149,6 +172,6 @@ export async function replyToKioskInquiry(
       }
     });
     const thread = await tx.kioskInquiryThread.findUniqueOrThrow({ where: { id: threadId }, include: openInclude });
-    return presentOpenedThread(thread, device.inquiryReceiverEnabled);
+    return presentOpenedThread(thread, receiver);
   });
 }

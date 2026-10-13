@@ -1,3 +1,4 @@
+import { getSystemNoticeEvaluator } from '../services/kiosk-inquiry/system-notice-evaluator.js';
 import { getProcedureVideoScheduler } from '../services/assembly/procedure-video.scheduler.js';
 import type { FastifyInstance } from 'fastify';
 import { getKnowledgeRuntime } from '../services/knowledge/knowledge-runtime.js';
@@ -266,6 +267,11 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
       },
     },
     {
+      name: 'system-notice-evaluator',
+      start: () => getSystemNoticeEvaluator().start(),
+      stop: () => getSystemNoticeEvaluator().stop(),
+    },
+    {
       name: 'alerts-ingestor',
       start: async () => {
         await getAlertsIngestor().start();
@@ -317,6 +323,7 @@ export function listPostListenSchedulerNames(): string[] {
     'alerts-dispatcher',
     'client-network-log-retention',
     'client-heartbeat-monitor',
+    'system-notice-evaluator',
     'alerts-ingestor',
     'photo-tool-label',
     'part-measurement-drawing-ocr',

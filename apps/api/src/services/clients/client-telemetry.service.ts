@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { AlertChannel, AlertDeliveryStatus, Prisma } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 
+import { deliverTelemetryNotice } from '../kiosk-inquiry/system-notice-sources.js';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
@@ -49,6 +50,9 @@ async function createTelemetrySlackAlerts(params: {
         recentCount = recentLogs.reduce((sum, row) => sum + kioskErrorCount(row.context as Record<string, unknown> | undefined), 0);
       }
       const decision = resolveTelemetryAlertDecision(params.clientId, entry, recentCount, now);
+      if (entry.context?.category === 'terminal_agent_health' && entry.context.action === 'recovery') {
+        await deliverTelemetryNotice(params.clientId, entry);
+      }
       if (!decision) continue;
 
       const existingOpenAlert = await prisma.alert.findFirst({
@@ -62,7 +66,10 @@ async function createTelemetrySlackAlerts(params: {
         },
         select: { id: true }
       });
-      if (existingOpenAlert) continue;
+      if (existingOpenAlert) {
+        await deliverTelemetryNotice(params.clientId, entry);
+        continue;
+      }
 
       const routeKey = resolveRouteKey(kiosk ? 'terminal-agent-health-kiosk-ui' : decision.type, config.routing);
       await prisma.$transaction(async (tx) => {
@@ -93,6 +100,7 @@ async function createTelemetrySlackAlerts(params: {
           }
         });
       });
+      await deliverTelemetryNotice(params.clientId, entry);
     }
   } catch (error) {
     logger.warn({ err: error, clientId: params.clientId }, '[ClientTelemetry] failed to create telemetry alert');

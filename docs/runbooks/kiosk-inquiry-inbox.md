@@ -41,11 +41,32 @@ update-frequency: medium
 
 `/admin/kiosk-settings` の「お問い合わせの受信」で設定する。権限は ADMIN または MANAGER。
 
-1. 「受け取る端末」で受信端末にチェックを入れる。
+1. 「受け取る端末」で通常のお問い合わせを受ける端末にチェックを入れる。端末ごとの「システム通知」は独立した設定で、両方または片方だけを選べる。
 2. 「開ける人(社員番号)」に社員番号を入れて「追加」。社員マスタにある番号だけ追加でき、氏名が横に出る。
 3. 「保存」を押す。保存は全置換で、端末は次の件数更新(30 秒以内)から切り替わる。
 
-受信端末を 1 台も指定しないと、どの端末もオレンジにならない(送った端末への返信も発生しない)。社員番号を 1 つも登録しないと、受信端末でも誰も開けない。
+両方の受信設定を全端末で外すと、新たな受信通知は出ない。自端末から送ったお問い合わせの返信は引き続き確認できる。社員番号を 1 つも登録しないと、受信端末でも誰も開けない。
+
+## システム通知（phase 1 / Pi5 API）
+
+- 端末の不調は同じ受信箱に短い日本語で表示する。例: `StoneBase01 バーコードリーダー` / `バーコードリーダーが応答しません。`。端末名は `statusClientId` で紐づく `ClientDevice.location`、未設定なら `name` を使う。
+- 未復旧は「システム」、復旧後は「復旧」の小さなタグが付く。復旧時は「復旧しました。」を追記して未読にする。
+- 通常のお問い合わせは従来の受信設定、システム通知は「システム通知」を有効にした端末だけに届く。どちらかが有効なら閲覧・返信に登録済み社員証が必要で、「開ける人」のリストを共用する。
+- 「交換しました」などのメモを返信できる。システム通知とその返信は Slack に送らない。システム通知だけを受信する端末も、自端末から送った通常のお問い合わせは送信者として閲覧・追記できる。
+- 同じ不調では未復旧スレッドを1つだけ保持する。同じ状態が続いても、システムの前回投稿から24時間未満は追記・未読化しない。社員のメモ投稿はこの間隔に影響しない。復旧後の再発は新しいスレッドになる。
+
+| 通知元 | 条件 / 復旧 |
+| --- | --- |
+| 周辺機器の既存Alert | バーコード・社員証リーダー・トルク測定器の不調。端末＋機器＋信号でまとめ、既存の復旧報告で復旧通知する |
+| 保存装置・画面の既存Alert | 既存のAlert判定を利用。保存装置は端末＋信号、画面は端末でまとめる。新しいSDカード判定は追加しない。これらには復旧報告がないため自動復旧しない |
+| ファイルから取り込むAlert | 種類ごとにまとめる。例: 日次の `rkhunter-warning`。最後の発生から48時間再発がなければ、投稿・未読化せず閉じる（表示タグは「復旧」）。同じファイルの再取り込みは再発として数えない |
+| 端末からの連絡 | 最終報告から15分以上で通知、新しい報告で復旧 |
+| 保存領域 | 使用率90%以上で通知、90%未満で復旧 |
+| 端末温度 | 80°C以上で通知、80°C未満で復旧。温度未取得の場合は判定しない |
+
+`ClientStatus` の評価とファイル通知の期限確認は約5分ごと。14日以上報告のない端末は評価しない（既存通知もそのまま残す）。通知の保存失敗はログに残し、端末の報告受信とAlert保存を妨げない。テスト中は定期実行しない。
+
+止めるときは `/admin/kiosk-settings` の対象端末の「システム通知」を外して「保存」する。すべて外せば通知の表示を停止できる。通常のお問い合わせ受信、元のAlert、DB上の通知履歴は残る。Pi4/Pi3、クライアントエージェント、既存Slack配送の変更はない。
 
 ## 確認手順(実機)
 
@@ -66,12 +87,12 @@ update-frequency: medium
 
 ## 実装の場所
 
-- DB: `ClientDevice.inquiryReceiverEnabled`、`KioskInquiryReceiverEmployee`、`KioskInquiryThread`、`KioskInquiryMessage`(migration `20261009090100_add_kiosk_inquiry_inbox`。追加だけで既存の列と行は変えない)
+- DB: `ClientDevice.inquiryReceiverEnabled` / `systemNoticeReceiverEnabled`、`KioskInquiryReceiverEmployee`、`KioskInquiryThread`、`KioskInquiryMessage`(migration `20261009090100_add_kiosk_inquiry_inbox`。追加だけで既存の列と行は変えない)
 - API: `apps/api/src/routes/kiosk/inquiries.ts`、`apps/api/src/routes/kiosk-settings.ts`、`apps/api/src/services/kiosk-inquiry/`。スレッドは `POST /kiosk/support` の `ClientLog` 保存と同じトランザクションで作り、応答は既存の `requestId` に `threadId` を追加して返す
 - Web: `apps/web/src/features/kiosk/inquiry/`、入口は `apps/web/src/components/hermes/HermesFloatingChat.tsx`。送信フォームは `apps/web/src/features/kiosk/inquiry/KioskInquiryCompose.tsx`
 
 ## うまくいかないとき
 
-- オレンジにならない: その端末が「受け取る端末」に入っているか、画面が `/kiosk` 配下かを確認する。API は `GET /api/kiosk/inquiries/summary`(`x-client-key` 付き)で `isReceiver` と `unreadCount` を返す。
+- オレンジにならない: その端末で対象種別の受信チェック（通常のお問い合わせ / システム通知）が有効か、画面が `/kiosk` 配下かを確認する。API は `GET /api/kiosk/inquiries/summary`(`x-client-key` 付き)で `isReceiver` と `unreadCount` を返す。
 - 社員証で開けない: 社員番号が「開ける人」にあるか、その社員が在籍(ACTIVE)か、社員証のタグがその社員に登録されているかを確認する。
 - 元へ戻す: Web と API を前の版へ戻せば受信箱は消える。追加したテーブルと列は残しても既存の動作に影響しない。

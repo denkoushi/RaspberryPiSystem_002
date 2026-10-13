@@ -38,7 +38,7 @@ export async function registerKioskInquiryRoutes(app: FastifyInstance): Promise<
     const { threadId } = threadParamsSchema.parse(request.params);
     const body = replySchema.parse(request.body);
     const result = await replyToKioskInquiry(clientDevice, threadId, body.body, body.employeeTagUid);
-    if (!clientDevice.inquiryReceiverEnabled) {
+    if (result.thread.kind === 'INQUIRY' && !result.thread.isReceiver) {
       sendSlackNotification({
         clientId: clientDevice.id,
         clientName: clientDevice.name,
