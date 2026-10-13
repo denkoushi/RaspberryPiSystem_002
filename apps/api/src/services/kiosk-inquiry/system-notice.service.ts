@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
+import { isMonitoredClient, loadHeartbeatAlertConfig } from '../clients/client-heartbeat-alert-policy.js';
 
 export const SYSTEM_NOTICE_REPEAT_MS = 24 * 60 * 60 * 1000;
 export const FILE_NOTICE_EXPIRY_MS = 48 * 60 * 60 * 1000;
@@ -63,6 +64,37 @@ export async function resolveInactiveFileNotices(now = new Date(), type?: string
           where: { id: thread.id, noticeResolvedAt: null }, data: { noticeResolvedAt: now }
         });
       }
+    });
+  }
+}
+
+export async function resolveUnmonitoredTerminalNotices(now = new Date(), config = loadHeartbeatAlertConfig()): Promise<void> {
+  const threads = await prisma.kioskInquiryThread.findMany({
+    where: { kind: 'SYSTEM_NOTICE', noticeResolvedAt: null },
+    select: { id: true, noticeKey: true }
+  });
+  for (const thread of threads) {
+    const key = thread.noticeKey;
+    if (!key) continue;
+    let clientId: string | undefined;
+    if (key.startsWith('status:')) {
+      const end = key.lastIndexOf(':');
+      if (end > 'status:'.length && end < key.length - 1) clientId = key.slice('status:'.length, end);
+    } else if (key.startsWith('[')) {
+      try {
+        const parts: unknown = JSON.parse(key);
+        if (Array.isArray(parts) && ['terminal_agent_health', 'storage_health', 'kiosk_ui_error'].includes(parts[0])
+          && typeof parts[1] === 'string') clientId = parts[1];
+      } catch {
+        continue;
+      }
+    }
+    if (!clientId || isMonitoredClient(clientId, config)) continue;
+    await prisma.$transaction(async (tx) => {
+      await lockNotice(tx, key);
+      await tx.kioskInquiryThread.updateMany({
+        where: { id: thread.id, noticeResolvedAt: null }, data: { noticeResolvedAt: now }
+      });
     });
   }
 }

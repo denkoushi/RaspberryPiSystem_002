@@ -1,5 +1,6 @@
 import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
+import { isMonitoredClient, loadHeartbeatAlertConfig } from '../clients/client-heartbeat-alert-policy.js';
 import type { ClientTelemetryLogEntry } from '../clients/client-telemetry-alert-policy.js';
 
 import { deliverSystemNotice, resolveInactiveFileNotices, FILE_NOTICE_EXPIRY_MS, FILE_NOTICE_PREFIX } from './system-notice.service.js';
@@ -26,6 +27,7 @@ export async function terminalNoticeLabel(clientId: string): Promise<string> {
 // Called only for stored alerts (or sanitized terminal recovery events), not a second alert policy.
 export async function deliverTelemetryNotice(clientId: string, entry: ClientTelemetryLogEntry): Promise<void> {
   try {
+    if (!isMonitoredClient(clientId, loadHeartbeatAlertConfig())) return;
     const context = entry.context;
     if (!context) return;
     const category = context.category;
