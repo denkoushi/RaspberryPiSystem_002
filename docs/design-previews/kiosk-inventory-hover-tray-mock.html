@@ -85,11 +85,11 @@ button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
 .stockcard b{font-size:88px;font-weight:900;line-height:.95;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .stockcard span{font-size:22px;font-weight:700;color:var(--muted);padding-bottom:8px}
 .stockcard em{font-style:normal;font-size:38px;font-weight:900;color:var(--amber);padding-bottom:6px;font-variant-numeric:tabular-nums}
-.work{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:16px;align-items:start}
-.keys{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.work{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,440px) minmax(250px,1fr);gap:16px;align-items:start}
+.keys{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
 .keys button:disabled{border-color:var(--line);background:transparent;color:var(--faint);cursor:default}
 .entry .row{display:flex;gap:10px}
-.keys button{height:96px;border:1.5px solid var(--amber);background:rgb(245 181 68/.1);border-radius:14px;font-size:38px;font-weight:900;font-variant-numeric:tabular-nums}
+.keys button{height:56px;border:1.5px solid var(--amber);background:rgb(245 181 68/.1);border-radius:12px;font-size:24px;font-weight:900;font-variant-numeric:tabular-nums}
 .keys button.util{border-color:var(--line2);background:var(--s2);font-size:17px;font-weight:700;color:var(--muted)}
 .entry{display:flex;flex-direction:column;gap:12px;min-width:0}
 .entry output{display:flex;align-items:baseline;justify-content:flex-end;gap:8px;height:96px;padding:0 20px;border:1px solid var(--line2);border-radius:14px;background:var(--bg);font-size:64px;font-weight:900;font-variant-numeric:tabular-nums;line-height:96px}
@@ -103,6 +103,13 @@ button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
 .hist li time{color:var(--faint);width:92px;flex:none;white-space:nowrap}
 .hist li b{font-weight:900}.hist li b.out{color:var(--amber)}.hist li b.in{color:var(--green)}
 .hist li span{margin-left:auto;color:var(--faint)}
+.info{margin:10px 0 0;display:grid;grid-template-columns:auto minmax(0,1fr) auto minmax(0,1fr);gap:4px 12px;font-size:15px}
+.info dt{color:var(--faint)}.info dd{margin:0;min-width:0;word-break:break-all}
+.facts{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:stretch;flex:none}
+.facts .info{margin:0;font-size:21px;gap:8px 16px;align-content:center}
+.facts .info dt{font-size:15px;align-self:center}.facts .info dd{font-weight:700}
+.facts .stockcard{padding:10px 20px;align-items:center;min-width:190px;justify-content:center}
+.facts .stockcard b{font-size:56px}.facts .stockcard span{font-size:18px;padding-bottom:0}.facts .stockcard em{font-size:26px;padding-bottom:0}
 /* scene B */
 .setuptabs{display:flex;gap:6px}
 .setuptabs span{padding:10px 18px;border-radius:10px;font-weight:700;color:var(--muted);border:1px solid transparent}
@@ -199,7 +206,7 @@ button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
       <div class="big"><img class="ph contain" alt="" id="op-photo"></div>
       <div class="opr">
         <div><h2>超硬スクエアエンドミル 4枚刃 φ10 ロング刃長</h2><p class="where"><span class="num" style="font-size:15px">000127</span>MC-3・棚2・引き出し4</p></div>
-        <div class="panel stockcard" aria-label="現在庫"><b id="op-stock">14</b><span>本</span><em id="op-delta"></em></div>
+        <div class="facts"><dl class="info" aria-label="アイテムの情報"><dt>型式</dt><dd>VQMHVD1000</dd><dt>メーカー</dt><dd>三菱マテリアル</dd><dt>工具名</dt><dd>スクエアエンドミル</dd><dt>寸法</dt><dd>φ10×刃長30×全長90</dd><dt>被削材</dt><dd>SUS304・チタン合金</dd><dt>用途</dt><dd>側面加工・溝加工の仕上げ</dd></dl><div class="panel stockcard" aria-label="現在庫"><b id="op-stock">14</b><span>本</span><em id="op-delta"></em></div></div>
         <div class="work">
           <div class="entry">
           <div class="keys" id="keys" role="group" aria-label="払い出す数"></div>

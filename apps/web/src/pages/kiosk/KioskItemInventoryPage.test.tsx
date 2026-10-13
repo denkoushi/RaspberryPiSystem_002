@@ -1086,7 +1086,7 @@ describe('serialized inventory operations', () => {
     await scan(second.tag);
     await scan(second.quantity);
     expect(write).not.toHaveBeenCalled();
-    expect(within(screen.getByLabelText('現在庫').closest('div')!).getByRole('heading', { name: first.tag.compartment!.item.name })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { name: first.tag.compartment!.item.name })[0]).toBeInTheDocument();
     await act(async () => { pending.resolve({ transaction: first.transaction({ id: `${first.suffix}-${operation}`, action: operation === 'cancel' ? 'CANCEL' : 'CORRECTION', afterQuantity: 10 }) }); });
     expect(write).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemTagUid: second.tag.uid, quantityTagUid: second.quantity.uid }));
     expect(screen.getByRole('heading', { name: second.tag.compartment!.item.name })).toBeInTheDocument();
@@ -1114,7 +1114,7 @@ describe('serialized inventory operations', () => {
     expect(write).toHaveBeenCalledOnce();
     expect(queryClient.getQueryState(['inventory-tags'])?.isInvalidated).toBe(true);
     expect(screen.getByRole('status')).toHaveTextContent('タグが見つかりません');
-    expect(within(screen.getByLabelText('現在庫').closest('div')!).getByRole('heading', { name: first.tag.compartment!.item.name })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { name: first.tag.compartment!.item.name })[0]).toBeInTheDocument();
   });
 
   it('drops a scan read before a failed operation even after the page was left and reopened', async () => {
