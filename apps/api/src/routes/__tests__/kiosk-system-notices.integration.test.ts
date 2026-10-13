@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
+import { evaluateSystemNotices } from '../../services/kiosk-inquiry/system-notice-evaluator.js';
 import { deliverSystemNotice, resolveInactiveFileNotices, FILE_NOTICE_EXPIRY_MS } from '../../services/kiosk-inquiry/system-notice.service.js';
 import { sendSlackNotification } from '../../services/notifications/slack-webhook.js';
 import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestUser } from './helpers.js';
@@ -30,6 +31,8 @@ describe('system notice inbox API', () => {
     vi.mocked(sendSlackNotification).mockClear();
   });
   afterEach(async () => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     await prisma.kioskInquiryThread.deleteMany({ where: { OR: [{ id: { in: threadIds } }, { noticeKey: key }, { senderClientDeviceId: { in: [device.id, sender.id] } }] } });
     await prisma.alert.deleteMany({ where: { type: key.slice('file:'.length) } });
     await prisma.kioskInquiryReceiverEmployee.deleteMany();
@@ -75,6 +78,65 @@ describe('system notice inbox API', () => {
       expect(sendSlackNotification).not.toHaveBeenCalled();
       expect((await prisma.kioskInquiryThread.findUniqueOrThrow({ where: { id: system.id } })).senderUnread).toBe(false);
     });
+
+  it('hides resolved notices from list and summary but still opens and marks them read', async () => {
+    device = await prisma.clientDevice.update({ where: { id: device.id }, data: { inquiryReceiverEnabled: true, systemNoticeReceiverEnabled: true } });
+    const baseline = (await call('summary')).json().unreadCount;
+    const inquiry = await prisma.kioskInquiryThread.create({ data: {
+      senderClientDeviceId: sender.id, page: '/kiosk', lastMessageAt: new Date(), noticeResolvedAt: new Date()
+    } });
+    await deliverSystemNotice(notice());
+    const resolved = await prisma.kioskInquiryThread.findFirstOrThrow({ where: { noticeKey: key } });
+    await deliverSystemNotice({ ...notice(), state: 'recovered' });
+    await deliverSystemNotice(notice());
+    const open = await prisma.kioskInquiryThread.findFirstOrThrow({ where: { noticeKey: key, noticeResolvedAt: null } });
+    expect((await call('summary')).json().unreadCount).toBe(baseline + 2);
+    const listed = await call('list', tag());
+    expect(listed.statusCode).toBe(200);
+    const ids = listed.json().threads.map((thread: { id: string }) => thread.id);
+    expect(ids).toContain(inquiry.id);
+    expect(ids).toContain(open.id);
+    expect(ids).not.toContain(resolved.id);
+    expect((await prisma.kioskInquiryThread.findUniqueOrThrow({ where: { id: resolved.id } })).receiverUnread).toBe(true);
+    const opened = await call(`${resolved.id}/open`, tag());
+    expect(opened.statusCode).toBe(200);
+    expect(opened.json().thread).toMatchObject({ id: resolved.id, unread: false });
+    expect(opened.json().messages).toHaveLength(2);
+    expect((await prisma.kioskInquiryThread.findUniqueOrThrow({ where: { id: resolved.id } })).receiverUnread).toBe(false);
+  });
+
+  it.each([false, true])('silently closes excluded terminal notices, preserving unread=%s', async (receiverUnread) => {
+    vi.stubEnv('CLIENT_HEARTBEAT_CLIENT_ID_PATTERN', '');
+    vi.spyOn(prisma.clientStatus, 'findMany').mockResolvedValue([]);
+    const now = new Date(); const old = new Date(now.getTime() - 60_000);
+    const keys = [
+      'status:mac-kiosk-1:disk',
+      JSON.stringify(['terminal_agent_health', 'mac-kiosk-1', 'barcode', 'heartbeat']),
+      JSON.stringify(['storage_health', 'zero2w-home', 'io']),
+      JSON.stringify(['kiosk_ui_error', 'mac-kiosk-1', device.id])
+    ];
+    const preserved = ['status:raspi4-stone:disk', JSON.stringify(['storage_health', 'raspi4-stone', 'io']),
+      key, '[invalid', JSON.stringify(['other', 'mac-kiosk-1', 'io'])];
+    for (const noticeKey of [...keys, ...preserved]) {
+      const thread = await prisma.kioskInquiryThread.create({ data: {
+        kind: 'SYSTEM_NOTICE', noticeKey, page: '/kiosk', receiverUnread, lastMessageAt: old,
+        messages: { create: { side: 'SYSTEM', body: '確認してください。', createdAt: old } }
+      } });
+      threadIds.push(thread.id);
+    }
+    key = `file:test-${randomUUID()}`;
+    await prisma.alert.create({ data: { id: randomUUID(), type: key.slice(5), timestamp: now } });
+    await deliverSystemNotice(notice(), now);
+    await evaluateSystemNotices(now);
+    const threads = await prisma.kioskInquiryThread.findMany({ where: { id: { in: threadIds } }, include: { messages: true } });
+    for (const thread of threads) {
+      expect(thread).toMatchObject({ noticeResolvedAt: keys.includes(thread.noticeKey!) ? now : null,
+        receiverUnread, lastMessageAt: old });
+      expect(thread.messages).toHaveLength(1);
+      expect(thread.messages[0].body).toBe('確認してください。');
+    }
+    expect((await prisma.kioskInquiryThread.findFirstOrThrow({ where: { noticeKey: key } })).noticeResolvedAt).toBeNull();
+  });
 
   it('system-only receiver retains sender behavior for its own inquiries', async () => {
     device = await prisma.clientDevice.update({ where: { id: device.id }, data: { systemNoticeReceiverEnabled: true } });

@@ -107,7 +107,7 @@ export async function getKioskInquirySummary(device: InquiryDevice, loginUser?: 
     where: { OR: [
       { kind: 'INQUIRY', ...(device.inquiryReceiverEnabled
         ? { receiverUnread: true } : { senderClientDeviceId: device.id, senderUnread: true }) },
-      ...(device.systemNoticeReceiverEnabled ? [{ kind: 'SYSTEM_NOTICE' as const, receiverUnread: true }] : [])
+      ...(device.systemNoticeReceiverEnabled ? [{ kind: 'SYSTEM_NOTICE' as const, receiverUnread: true, noticeResolvedAt: null }] : [])
     ] }
   });
   return { isReceiver: isReceiver(device), unreadCount,
@@ -117,7 +117,7 @@ export async function getKioskInquirySummary(device: InquiryDevice, loginUser?: 
 export async function listKioskInquiries(device: InquiryDevice, employeeTagUid?: string, loginUser?: Pick<User, 'role'>) {
   await authorizeReceiver(device, employeeTagUid, loginUser);
   const threads = await prisma.kioskInquiryThread.findMany({
-    where: accessibleThreadWhere(device),
+    where: { AND: [accessibleThreadWhere(device), { OR: [{ kind: 'INQUIRY' }, { noticeResolvedAt: null }] }] },
     orderBy: { lastMessageAt: 'desc' },
     take: isReceiver(device) ? 50 : 20,
     include: threadInclude

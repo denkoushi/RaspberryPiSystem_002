@@ -1,9 +1,10 @@
 import { runExclusiveSchedulerTick } from '../../lib/exclusive-scheduler-tick.js';
 import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
+import { isMonitoredClient, loadHeartbeatAlertConfig } from '../clients/client-heartbeat-alert-policy.js';
 
 import { terminalNoticeLabel } from './system-notice-sources.js';
-import { deliverSystemNotice, resolveInactiveFileNotices } from './system-notice.service.js';
+import { deliverSystemNotice, resolveInactiveFileNotices, resolveUnmonitoredTerminalNotices } from './system-notice.service.js';
 
 export const SYSTEM_NOTICE_EVALUATION_MS = 5 * 60 * 1000;
 export const TERMINAL_STALE_MS = 15 * 60 * 1000;
@@ -12,8 +13,11 @@ export const TERMINAL_DISK_PERCENT = 90;
 export const TERMINAL_TEMPERATURE_C = 80;
 
 export async function evaluateSystemNotices(now = new Date()): Promise<void> {
+  const config = loadHeartbeatAlertConfig();
+  await resolveUnmonitoredTerminalNotices(now, config);
   const statuses = await prisma.clientStatus.findMany({ where: { lastSeen: { gt: new Date(now.getTime() - TERMINAL_INACTIVE_MS) } } });
   for (const status of statuses) {
+    if (!isMonitoredClient(status.clientId, config)) continue;
     try {
       const age = now.getTime() - status.lastSeen.getTime();
       if (age >= TERMINAL_INACTIVE_MS) continue;
