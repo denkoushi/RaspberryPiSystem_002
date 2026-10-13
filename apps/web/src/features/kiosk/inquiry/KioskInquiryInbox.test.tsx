@@ -1,13 +1,15 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  list: vi.fn(), open: vi.fn(), reply: vi.fn(), read: null as { uid: string; eventId: number } | null, armed: vi.fn()
+  post: vi.fn(), list: vi.fn(), open: vi.fn(), reply: vi.fn(), read: null as { uid: string; eventId: number } | null, armed: vi.fn()
 }));
 vi.mock('../../../api/client', () => ({
-  listKioskInquiries: mocks.list, openKioskInquiry: mocks.open, replyToKioskInquiry: mocks.reply
+  postKioskSupport: mocks.post, listKioskInquiries: mocks.list, openKioskInquiry: mocks.open, replyToKioskInquiry: mocks.reply
 }));
+vi.mock('../../../api/hooks', () => ({ useKioskEmployees: () => ({ data: [{ id: 'e1', displayName: '機械 一郎', section: '機械課', department: null }], isLoading: false }) }));
 vi.mock('../inventory/setup/useArmedNfcRead', () => ({
   useArmedNfcRead: (armed: boolean) => { mocks.armed(armed); if (!armed) mocks.read = null; return armed ? mocks.read : null; }
 }));
@@ -27,7 +29,7 @@ function renderInbox(isReceiver = true) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   queryClient.setQueryData(['kiosk-inquiry-summary', 'device'], { isReceiver, unreadCount: 1 });
   const ui = <KioskInquiryInbox clientKey="device" isReceiver={isReceiver} />;
-  const view = render(ui, { wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider> });
+  const view = render(ui, { wrapper: ({ children }) => <MemoryRouter initialEntries={['/kiosk/borrow']}><QueryClientProvider client={queryClient}>{children}</QueryClientProvider></MemoryRouter> });
   return { ...view, queryClient, touch: (uid = 'allowed') => {
     mocks.read = { uid, eventId: (mocks.read?.eventId ?? 0) + 1 };
     view.rerender(<KioskInquiryInbox clientKey="device" isReceiver={isReceiver} />);
@@ -36,6 +38,7 @@ function renderInbox(isReceiver = true) {
 const denied = { isAxiosError: true, response: { status: 403, data: { errorCode: 'KIOSK_INQUIRY_EMPLOYEE_NOT_ALLOWED' } } };
 
 beforeEach(() => {
+  mocks.post.mockReset().mockResolvedValue({ requestId: 'req', threadId: 'new-thread' });
   mocks.read = null;
   mocks.armed.mockReset();
   mocks.list.mockReset().mockResolvedValue({ threads: [thread] });
@@ -47,6 +50,52 @@ beforeEach(() => {
 });
 
 describe('KioskInquiryInbox', () => {
+  it('sends from a locked receiver without a card and returns to the lock', async () => {
+    renderInbox();
+    fireEvent.click(screen.getByRole('button', { name: '＋ 新規' }));
+    expect(mocks.armed).toHaveBeenLastCalledWith(false);
+    fireEvent.click(screen.getByRole('button', { name: '機械 一郎' }));
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    expect(await screen.findByText('社員証をタッチ')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('送信しました');
+    expect(mocks.post).toHaveBeenCalledWith({ message: '送信者: 機械 一郎\n依頼内容: 現場まで来てください。', page: '/kiosk/borrow' }, 'device');
+    expect(mocks.list).not.toHaveBeenCalled();
+    expect(mocks.open).not.toHaveBeenCalled();
+    expect(mocks.armed).toHaveBeenLastCalledWith(true);
+  });
+
+  it('returns from compose to the receiver lock without sending', () => {
+    renderInbox();
+    fireEvent.click(screen.getByRole('button', { name: '＋ 新規' }));
+    fireEvent.click(screen.getByRole('button', { name: '一覧へ戻る' }));
+    expect(screen.getByText('社員証をタッチ')).toBeInTheDocument();
+    expect(mocks.post).not.toHaveBeenCalled();
+  });
+
+  it('refreshes the sender list and opens the created thread', async () => {
+    renderInbox(false);
+    await screen.findByText('確認をお願いします');
+    const before = mocks.list.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: '＋ 新規' }));
+    fireEvent.click(screen.getByRole('button', { name: '機械 一郎' }));
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    expect(await screen.findByRole('textbox', { name: '返信' })).toBeInTheDocument();
+    expect(mocks.post).toHaveBeenCalledWith({ message: '送信者: 機械 一郎\n依頼内容: 現場まで来てください。', page: '/kiosk/borrow' }, 'device');
+    expect(mocks.open).toHaveBeenCalledWith('new-thread', undefined, expect.any(AbortSignal));
+    expect(mocks.list.mock.calls.length).toBeGreaterThan(before);
+  });
+
+  it('relocks a receiver when thread access expires', async () => {
+    const view = renderInbox();
+    view.touch();
+    mocks.open.mockRejectedValueOnce(denied);
+    fireEvent.click(await screen.findByRole('button', { name: /加工キオスク/ }));
+    expect(await screen.findByText('社員証をタッチ')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('この社員証では開けません');
+    expect(view.queryClient.getQueriesData({ queryKey: ['kiosk-inquiries'] }).map(([, data]) => data)).toEqual([undefined]);
+    expect(mocks.armed).toHaveBeenLastCalledWith(true);
+  });
+
   it('hides receiver inquiries and arms NFC before an employee card is touched', () => {
     renderInbox();
     expect(screen.getByText('社員証をタッチ')).toBeInTheDocument();

@@ -102,10 +102,11 @@ describe('Kiosk inquiry inbox API', () => {
       payload: { message, page: '/kiosk/borrow' }
     });
     expect(response.statusCode).toBe(200);
-    expect(Object.keys(response.json())).toEqual(['requestId']);
+    expect(response.json()).toEqual({ requestId: expect.any(String), threadId: expect.any(String) });
     const thread = await prisma.kioskInquiryThread.findFirstOrThrow({
       where: { senderClientDeviceId: device.id }, orderBy: { createdAt: 'desc' }, include: { messages: true }
     });
+    expect(response.json().threadId).toBe(thread.id);
     return thread;
   }
 
