@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { readInventoryPhotoRegion } from '../../../../api/client';
 import { useInventoryImports, useInventoryItems, useInventoryLocations, useInventoryMutations, useInventoryToolFieldOptions } from '../../../../api/hooks';
 
 import { InventoryRegistrationTab as RegistrationTab, type RegistrationState } from './InventoryRegistrationTab';
@@ -16,7 +17,8 @@ function InventoryRegistrationTab({ accessPassword, initialImportId = null }: { 
 
 const nfc = vi.hoisted(() => ({ event: null as NfcEvent | null }));
 
-vi.mock('../../../../api/client', () => ({ inventoryThumbnailUrl: (value: string) => value, api: { get: vi.fn() } }));
+vi.mock('../../../../api/client', () => ({ inventoryThumbnailUrl: (value: string) => value, readInventoryPhotoRegion: vi.fn(), api: { get: vi.fn() } }));
+vi.mock('../../../../components/kiosk/useInventoryFullPhoto', () => ({ useInventoryFullPhoto: (url: string) => ({ imageUrl: url, error: false }) }));
 vi.mock('../../../../api/hooks', () => ({
   useInventoryImports: vi.fn(() => ({
     data: [{
@@ -65,6 +67,8 @@ describe('InventoryRegistrationTab', () => {
 
   beforeEach(() => {
     nfc.event = null;
+    vi.stubGlobal('PointerEvent', MouseEvent);
+    vi.mocked(readInventoryPhotoRegion).mockReset().mockResolvedValue({ candidates: ['OCR-MODEL'], status: 'ok' });
     suggestToolFields.mockReset().mockResolvedValue({ model: ['EX-EDS', 'EDS'], maker: ['OSG'], status: 'ok' });
     dismissImport.mockReset().mockResolvedValue({});
     restoreImport.mockReset().mockResolvedValue({});
@@ -90,6 +94,29 @@ describe('InventoryRegistrationTab', () => {
       addToolFieldValue: { mutateAsync: addToolFieldValue, isPending: false },
       deleteToolFieldValue: { mutateAsync: deleteToolFieldValue, isPending: false },
     } as never);
+  });
+
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+  it('puts region text in the form without saving automatically', async () => {
+    render(<InventoryRegistrationTab accessPassword="2520" />);
+
+    fireEvent.click(screen.getByRole('button', { name: '写真1を拡大' }));
+    const dialog = within(screen.getByRole('dialog', { name: '在庫写真' }));
+    fireEvent.load(dialog.getByRole('img'));
+    const surface = dialog.getByRole('application', { name: '文字を囲む' });
+    surface.setPointerCapture = vi.fn();
+    vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 100, height: 100 } as DOMRect);
+    await act(async () => {
+      fireEvent.pointerDown(surface, { button: 0, clientX: 10, clientY: 10 });
+      fireEvent.pointerUp(surface, { clientX: 80, clientY: 40 });
+    });
+    expect(readInventoryPhotoRegion).toHaveBeenCalledWith(expect.objectContaining({ source: 'import', payloadId: 'import-1', photoId: 'photo-1' }), '2520', expect.any(AbortSignal));
+    fireEvent.click(dialog.getByRole('button', { name: '型式に入れる' }));
+    fireEvent.click(dialog.getByRole('button', { name: '閉じる' }));
+    expect(screen.getByLabelText('型式')).toHaveValue('OCR-MODEL');
+    expect(registerImport).not.toHaveBeenCalled();
+    expect(suggestToolFields).not.toHaveBeenCalled();
   });
 
   it('bounds both columns and scrolls choice groups with manual tag entry and the success banner open', async () => {

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { inventoryThumbnailUrl, resolveInventoryTag, type InventoryCompartment, type InventoryOptionField, type InventoryShelf } from '../../../../api/client';
 import { useInventoryItems, useInventoryLocations, useInventoryMutations } from '../../../../api/hooks';
-import { InventoryPhotoDialog } from '../../../../components/kiosk/InventoryPhotoDialog';
+import { InventoryPhotoReadDialog } from '../../../../components/kiosk/InventoryPhotoReadDialog';
 import { KioskDigitTenkey } from '../../KioskDigitTenkey';
 import { compartmentLocationText, unitLabel } from '../inventoryDailyFlow';
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, PinIcon, PlusIcon, TrashIcon } from '../InventoryIcons';
@@ -68,11 +68,12 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
   const [scanPending, setScanPending] = useState(false);
   const scanBusy = useRef(false);
   const [done, setDone] = useState<string | null>(null);
-  const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; alt: string } | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
   const [provisionalOnly, setProvisionalOnly] = useState(false);
   // The last name or tool-information change, shown on the board with a way back.
   const [detailValues, setDetailValues] = useState<Partial<Record<InventoryOptionField, string>>>({});
+  const [readDrafts, setReadDrafts] = useState<Partial<Record<InventoryOptionField, string>>>({});
   const detailQueue = useRef<Promise<void>>(Promise.resolve());
   const detailPending = useRef<Partial<Record<InventoryOptionField, number>>>({});
   // Keep successive taps together while the existing mutation refreshes the item list.
@@ -166,6 +167,8 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
     setDone(null);
     setDetail(null);
     setDetailValues({});
+    setReadDrafts({});
+    setSelectedPhoto(null);
     detailPending.current = {};
   };
 
@@ -240,6 +243,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
   const areas = [...new Set(shelves.map((shelf) => shelf.area))].sort((a, b) => a.localeCompare(b, 'ja'));
   const details = Object.fromEntries(TOOL_BOARD_COLUMNS.map((column) => [column.key, detailValues[column.key] ?? item[column.key] ?? ''])) as Record<InventoryOptionField, string>;
   const changeDetail = async (field: InventoryOptionField, value: string, undoable = true) => {
+    setReadDrafts(current => { const next = { ...current }; delete next[field]; return next; });
     const previous = details[field];
     const generation = openCountRef.current;
     const pendingCounts = detailPending.current;
@@ -294,11 +298,11 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
         <div className="flex min-h-0 min-w-0 flex-col gap-3.5">
         <div className="relative grid h-[250px] shrink-0 grid-cols-[400px_minmax(0,1fr)] gap-3.5">
           <section className={`${invPanel} relative min-h-0 overflow-hidden`} aria-label="写真">
-            {photo ? <button type="button" className="block h-full w-full" aria-label={`写真${index + 1}を拡大`} onClick={() => setSelectedPhoto({ url: photo.photoUrl, alt: photo.originalFilename })}>
+            {photo ? <button type="button" className="block h-full w-full" aria-label={`写真${index + 1}を拡大`} onClick={() => setSelectedPhoto(photo.id)}>
               <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.originalFilename} className="h-full w-full object-cover" />
             </button> : <p className="p-4 text-inv-faint">写真はありません</p>}
             {item.photos.length > 1 ? <>
-              {([-1, 1] as const).map((offset) => <button key={offset} type="button" aria-label={offset === -1 ? '前の写真' : '次の写真'} className={`absolute top-1/2 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-inv-line2 bg-inv-bg/75 text-xl ${offset === -1 ? 'left-2' : 'right-2'}`} onClick={() => { setPhotoIndex((index + offset + item.photos.length) % item.photos.length); setConfirmPhotoId(null); }}>{offset === -1 ? '＜' : '＞'}</button>)}
+              {([-1, 1] as const).map((offset) => <button key={offset} type="button" aria-label={offset === -1 ? '前の写真' : '次の写真'} className={`absolute bottom-2 flex h-11 w-11 items-center justify-center rounded-lg border border-inv-line2 bg-inv-bg/75 text-xl ${offset === -1 ? 'left-2' : 'left-[60px]'}`} onClick={() => { setPhotoIndex((index + offset + item.photos.length) % item.photos.length); setConfirmPhotoId(null); }}>{offset === -1 ? '＜' : '＞'}</button>)}
               <span className="absolute bottom-2 right-2 rounded-md bg-inv-bg/75 px-2 text-sm font-bold tabular-nums">{index + 1}/{item.photos.length}</span>
             </> : null}
           </section>
@@ -445,10 +449,10 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
           </div>
         </div>
         {/* Keyed by item so typed text and the mode never carry over to another item. */}
-        <ToolValueBoard key={item.id} accessPassword={accessPassword} current={details} onChange={(field, value) => void changeDetail(field, value)} status={detailStatus} statusField={detail?.field} className="flex-1" />
+        <ToolValueBoard key={item.id} accessPassword={accessPassword} current={details} draftValues={readDrafts} onChange={(field, value) => void changeDetail(field, value)} status={detailStatus} statusField={detail?.field} className="flex-1" />
         </div>
       </div>
-      <InventoryPhotoDialog photoUrl={selectedPhoto?.url ?? null} alt={selectedPhoto?.alt ?? ''} onClose={() => setSelectedPhoto(null)} />
+      {selectedPhoto ? <InventoryPhotoReadDialog key={item.id} photos={item.photos.map(photo => ({ ...photo, alt: photo.originalFilename }))} initialPhotoId={selectedPhoto} source={{ source: 'item', itemId: item.id }} accessPassword={accessPassword} values={{ ...details, ...readDrafts }} onApply={(field, value) => setReadDrafts(current => ({ ...current, [field]: value }))} onClose={() => setSelectedPhoto(null)} /> : null}
     </div>
   );
 }

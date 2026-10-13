@@ -58,9 +58,17 @@ function isClientError(error: unknown): boolean {
 
 const thumbnailSizeKey = 'kiosk-inventory-thumbnail-size';
 const viewModeKey = 'kiosk-inventory-view-mode';
-const defaultAreaKey = 'kiosk-inventory-default-area';
-function readDefaultArea(): string | null {
-  try { return localStorage.getItem(defaultAreaKey)?.trim() || null; } catch { return null; }
+const defaultAreasKey = 'kiosk-inventory-default-areas';
+function readDefaultAreas(): string[] {
+  try {
+    const saved = localStorage.getItem(defaultAreasKey);
+    if (saved !== null) {
+      const parsed: unknown = JSON.parse(saved);
+      return Array.isArray(parsed) ? [...new Set(parsed.filter((area): area is string => typeof area === 'string' && area.trim().length > 0))] : [];
+    }
+    const legacy = localStorage.getItem('kiosk-inventory-default-area')?.trim();
+    return legacy ? [legacy] : [];
+  } catch { return []; }
 }
 const EMPTY_IMPORTS: InventoryImportSummary[] = [];
 let inventoryAudioContext: AudioContext | null = null;
@@ -107,8 +115,8 @@ export function KioskItemInventoryPage() {
   const [busy, setBusy] = useState(false);
   const [panel, setPanel] = useState<'none' | 'correct' | 'quantity'>('none');
   const [quantityError, setQuantityError] = useState<string | null>(null);
-  const [savedArea, setSavedArea] = useState<string | null>(readDefaultArea);
-  const [areaFilter, setAreaFilter] = useState<string | null>(readDefaultArea);
+  const [savedAreas, setSavedAreas] = useState<string[]>(readDefaultAreas);
+  const [areaFilters, setAreaFilters] = useState<string[]>(readDefaultAreas);
   const [thumbnailSize, setThumbnailSize] = useState<InventoryThumbnailSize>(() => {
     try { const saved = localStorage.getItem(thumbnailSizeKey); if (saved === 'small' || saved === 'medium' || saved === 'large') return saved; } catch { /* Storage is optional. */ }
     return 'medium';
@@ -117,7 +125,7 @@ export function KioskItemInventoryPage() {
     try { const saved = localStorage.getItem(viewModeKey); if (saved === 'card' || saved === 'list') return saved; } catch { /* Storage is optional. */ }
     return 'card';
   });
-  const [areaNotice, setAreaNotice] = useState<{ message: string; undo?: { area: string | null } } | null>(null);
+  const [areaNotice, setAreaNotice] = useState<{ message: string; undo?: { areas: string[] } } | null>(null);
   useEffect(() => {
     if (!areaNotice) return;
     const timer = window.setTimeout(() => setAreaNotice(null), areaNotice.undo ? 6000 : 3000);
@@ -131,12 +139,11 @@ export function KioskItemInventoryPage() {
     setViewMode(view);
     try { localStorage.setItem(viewModeKey, view); } catch { /* Keep the in-memory choice. */ }
   };
-  const saveArea = (area: string | null, undo = false) => {
+  const saveAreas = (selection: string[], undo = false) => {
     try {
-      if (area === null) localStorage.removeItem(defaultAreaKey);
-      else localStorage.setItem(defaultAreaKey, area);
-      setSavedArea(area);
-      setAreaNotice(undo ? { message: '最初の表示を元に戻しました' } : { message: `この端末は最初に「${area ?? 'すべて'}」を表示します`, undo: { area: savedArea } });
+      localStorage.setItem(defaultAreasKey, JSON.stringify(selection));
+      setSavedAreas(selection);
+      setAreaNotice(undo ? { message: '最初の表示を元に戻しました' } : { message: `${selection.join('・') || 'すべて'} を最初の表示にした`, undo: { areas: defaultAreas } });
     } catch { setAreaNotice({ message: '最初の表示を保存できませんでした' }); }
   };
   const [shelfFilter, setShelfFilter] = useState<number | null>(null);
@@ -151,13 +158,15 @@ export function KioskItemInventoryPage() {
     for (const entry of itemCompartments) counts.set(entry.area, (counts.get(entry.area) ?? 0) + 1);
     return [...counts].map(([area, count]) => ({ area, count }));
   }, [itemCompartments]);
-  const effectiveArea = itemsQuery.data && !itemsQuery.isLoading && !areas.some((entry) => entry.area === areaFilter) ? null : areaFilter;
-  const defaultArea = areas.some((entry) => entry.area === savedArea) ? savedArea : null;
-  const isDefaultArea = effectiveArea === defaultArea;
-  const homeLabel = isDefaultArea ? 'このエリアが最初の表示です' : 'このエリアを最初の表示にする';
-  const inArea = useMemo(() => itemCompartments.filter((entry) => effectiveArea === null || entry.area === effectiveArea), [itemCompartments, effectiveArea]);
-  const shelves = useMemo(() => [...new Set(inArea.map((entry) => entry.shelfNumber))].sort((a, b) => a - b), [inArea]);
-  const filteredCompartments = useMemo(() => inArea.filter((entry) => shelfFilter === null || entry.shelfNumber === shelfFilter), [inArea, shelfFilter]);
+  const effectiveAreas = useMemo(() => areaFilters.filter(area => areas.some(entry => entry.area === area)), [areaFilters, areas]);
+  const defaultAreas = savedAreas.filter(area => areas.some(entry => entry.area === area));
+  const isDefaultArea = effectiveAreas.length === defaultAreas.length && effectiveAreas.every(area => defaultAreas.includes(area));
+  const homeLabel = 'この選択を最初の表示にする';
+  const singleArea = effectiveAreas.length === 1 ? effectiveAreas[0] : null;
+  useEffect(() => { setShelfFilter(null); }, [singleArea]);
+  const inArea = useMemo(() => itemCompartments.filter(entry => effectiveAreas.length === 0 || effectiveAreas.includes(entry.area)), [itemCompartments, effectiveAreas]);
+  const shelves = useMemo(() => singleArea === null ? [] : [...new Set(inArea.map((entry) => entry.shelfNumber))].sort((a, b) => a - b), [inArea, singleArea]);
+  const filteredCompartments = useMemo(() => inArea.filter((entry) => singleArea === null || shelfFilter === null || entry.shelfNumber === shelfFilter), [inArea, shelfFilter, singleArea]);
   const flowRef = useRef({ restockMode: false, restockTagUid: null as string | null, selectedTag: null as InventoryTag | null, processing: false });
   const mountedRef = useRef(true);
   const verificationGenerationRef = useRef(0);
@@ -641,10 +650,10 @@ export function KioskItemInventoryPage() {
           <div className="flex shrink-0 items-center gap-3">
             <div className="flex max-h-28 min-w-0 flex-1 flex-wrap items-center gap-2 overflow-y-auto" role="group" aria-label="エリアで絞る">
               <span className={`${invEyebrow} w-[3.2em]`}>エリア</span>
-              <button type="button" className={chipClass(effectiveArea === null)} aria-pressed={effectiveArea === null} onClick={() => { setAreaFilter(null); setShelfFilter(null); }}>{defaultArea === null ? <KioskHomeIcon filled className="h-4 w-4" /> : null}すべて <small className="font-normal opacity-75">{itemCompartments.length}</small></button>
-              {areas.map(({ area, count }) => <button key={area} type="button" className={chipClass(effectiveArea === area)} aria-pressed={effectiveArea === area} onClick={() => { setAreaFilter(effectiveArea === area ? null : area); setShelfFilter(null); }}>{defaultArea === area ? <KioskHomeIcon filled className="h-4 w-4" /> : null}{area} <small className="font-normal opacity-75">{count}</small></button>)}
+              <button type="button" className={chipClass(effectiveAreas.length === 0)} aria-pressed={effectiveAreas.length === 0} onClick={() => { setAreaFilters([]); setShelfFilter(null); }}>{defaultAreas.length === 0 ? <KioskHomeIcon filled className="h-4 w-4" /> : null}すべて <small className="font-normal opacity-75">{itemCompartments.length}</small></button>
+              {areas.map(({ area, count }) => <button key={area} type="button" className={chipClass(effectiveAreas.includes(area))} aria-pressed={effectiveAreas.includes(area)} onClick={() => { setAreaFilters(effectiveAreas.includes(area) ? effectiveAreas.filter(value => value !== area) : [...effectiveAreas, area]); setShelfFilter(null); }}>{defaultAreas.includes(area) ? <KioskHomeIcon filled className="h-4 w-4" /> : null}{area} <small className="font-normal opacity-75">{count}</small></button>)}
             </div>
-            <button type="button" aria-label={homeLabel} title={homeLabel} aria-pressed={isDefaultArea} className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border hover:bg-inv-s2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inv-cyan ${isDefaultArea ? 'border-inv-cyan text-inv-cyan' : 'border-inv-line2 text-inv-text'}`} onClick={() => isDefaultArea ? setAreaNotice({ message: 'このエリアが最初の表示です' }) : saveArea(effectiveArea)}><KioskHomeIcon filled={isDefaultArea} /></button>
+            <button type="button" aria-label={homeLabel} title={homeLabel} aria-pressed={isDefaultArea} className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border hover:bg-inv-s2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inv-cyan ${isDefaultArea ? 'border-inv-cyan text-inv-cyan' : 'border-inv-line2 text-inv-text'}`} onClick={() => saveAreas(effectiveAreas)}><KioskHomeIcon filled={isDefaultArea} /></button>
             <button type="button" className={invButton} aria-expanded={numberOpen} onClick={() => { numberLookupRef.current += 1; setNumberOpen((open) => !open); setNumberInput(''); setNumberError(null); }}>番号で開く</button>
             {viewMode === 'card' ? <>
               <span className={`${invEyebrow} shrink-0`}>写真の大きさ</span>
@@ -656,7 +665,7 @@ export function KioskItemInventoryPage() {
               {([['card', 'カード表示', GridIcon], ['list', 'リスト表示', ListIcon]] as const).map(([view, label, ViewIcon]) => <button key={view} type="button" aria-label={label} title={label} aria-pressed={viewMode === view} className={`flex h-12 min-w-14 items-center justify-center px-4 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-inv-cyan ${viewMode === view ? 'bg-inv-cyan text-inv-cyan-ink' : 'text-inv-muted hover:bg-inv-s2'}`} onClick={() => changeView(view)}><ViewIcon size={24} /></button>)}
             </div>
           </div>
-          {effectiveArea !== null ? <div className="flex max-h-28 shrink-0 flex-wrap items-center gap-2 overflow-y-auto" role="group" aria-label="棚で絞る">
+          {singleArea !== null ? <div className="flex max-h-28 shrink-0 flex-wrap items-center gap-2 overflow-y-auto" role="group" aria-label="棚で絞る">
             <span className={`${invEyebrow} w-[3.2em]`}>棚</span>
             <button type="button" className={chipClass(shelfFilter === null)} aria-pressed={shelfFilter === null} onClick={() => setShelfFilter(null)}>すべて</button>
             {shelves.map((shelf) => <button key={shelf} type="button" className={chipClass(shelfFilter === shelf)} aria-pressed={shelfFilter === shelf} onClick={() => setShelfFilter(shelfFilter === shelf ? null : shelf)}>棚{shelf}</button>)}
@@ -676,7 +685,7 @@ export function KioskItemInventoryPage() {
       )}
       {areaNotice ? <div role="status" aria-label="最初のエリア" className="fixed bottom-36 right-5 z-50 flex items-center gap-4 rounded-xl border border-inv-line2 bg-inv-s3 px-5 py-3 text-lg font-semibold shadow-lg">
         <span>{areaNotice.message}</span>
-        {areaNotice.undo ? <button type="button" className={`${invButtonGhost} text-inv-cyan`} onClick={() => saveArea(areaNotice.undo!.area, true)}>元に戻す</button> : null}
+        {areaNotice.undo ? <button type="button" className={`${invButtonGhost} text-inv-cyan`} onClick={() => saveAreas(areaNotice.undo!.areas, true)}>元に戻す</button> : null}
       </div> : null}
       {numberOpen ? <section aria-label="番号入力" className={`${invCard} absolute right-7 top-24 z-20 flex w-[280px] flex-col gap-3 p-4 shadow-xl`}>
         <div className="flex items-center justify-between gap-2"><h2 className="font-bold">番号で開く</h2><button type="button" className={invButtonGhost} onClick={() => { numberLookupRef.current += 1; setNumberOpen(false); }}>閉じる</button></div>

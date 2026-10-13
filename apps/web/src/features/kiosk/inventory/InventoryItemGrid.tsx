@@ -104,33 +104,47 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
         const photos = compartment.item.photos;
         const photoIndex = (photoIndices[compartment.id] ?? 0) % (photos.length || 1);
         const photo = photos[photoIndex];
-        const issued = issuedLabel(compartment.lastIssuedAt, now);
         const empty = compartment.stockQuantity === 0;
         return (
           <div key={compartment.id} className="relative min-w-0">
           <button type="button" className="flex h-full w-full flex-col overflow-hidden rounded-[14px] border border-inv-line bg-inv-s1 text-left text-inv-text hover:border-inv-cyan focus:outline-none focus-visible:border-inv-cyan" onClick={() => onPick(compartment)}>
             <span className={`relative block ${config.photo} w-full shrink-0 bg-inv-s3`}>
               {photo ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
-              {issued ? <span className="absolute left-2 top-2 rounded-md bg-inv-bg/75 px-2 py-0.5 text-[11px] font-bold tracking-[0.06em]">{issued} 持出</span> : null}
+              <span className="absolute inset-x-1.5 top-1.5 flex items-start gap-1.5">
+                <span className="flex shrink-0 items-baseline gap-1 rounded-lg bg-inv-bg/75 px-2 py-1 text-sm font-bold">
+                  <span className={`text-[22px] font-black tabular-nums ${empty ? 'text-inv-amber' : 'text-inv-text'}`}>{compartment.stockQuantity}</span>
+                  <span>{unitLabel(compartment.item)}</span>
+                </span>
+                {size !== 'small' && compartment.item.model?.trim() ? <span className={`ml-auto min-w-0 line-clamp-2 rounded-lg bg-inv-bg/75 px-2 py-1 text-right font-bold leading-snug [overflow-wrap:anywhere] ${size === 'large' ? 'text-[15px]' : 'text-[13px]'}`}>{compartment.item.model}</span> : null}
+              </span>
             </span>
-            <span className="line-clamp-2 min-h-[3.05em] px-3 pt-2.5 text-[17px] font-bold leading-[1.35]">{compartment.item.name}</span>
-            <span className="flex px-3 pt-1" aria-label="置き場所の番号"><span className={`${invLabelNumber} text-sm`}>{formatInventoryLabelNumber(compartment.labelNumber)}</span></span>
-            <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 px-3 pt-1 text-sm">
-              {config.fields.map((field) => compartment.item[field]?.trim() ? <Fragment key={field}><dt className="text-inv-faint">{detailLabels[field]}</dt><dd className="truncate">{compartment.item[field]}</dd></Fragment> : null)}
-            </dl>
-            <span className="mt-auto flex min-w-0 flex-wrap items-baseline gap-1.5 px-3 pb-3 pt-1 text-base text-inv-muted">
-              <span className={`shrink-0 text-[26px] font-black tabular-nums ${empty ? 'text-inv-amber' : 'text-inv-text'}`}>{compartment.stockQuantity}</span>
-              <span className="min-w-0 break-all">{unitLabel(compartment.item)}</span>
-              <span className="ml-auto min-w-0 break-all text-sm">{compartment.area}・棚{compartment.shelfNumber}-{compartment.drawerNumber}</span>
+            <span className="flex w-full min-w-0 flex-col gap-1 px-3 pb-2 pt-2">
+              <span className="line-clamp-2 min-h-[2.6em] break-words text-base font-bold leading-[1.3]">{compartment.item.name}</span>
+              {size === 'small' ? <>
+                <span aria-label="置き場所の番号" className={`${invLabelNumber} self-start text-[13px]`}>{formatInventoryLabelNumber(compartment.labelNumber)}</span>
+                {compartment.item.model?.trim() ? <span className="truncate text-[13px] text-inv-muted">{compartment.item.model}</span> : null}
+              </> : size === 'medium' ? (
+                [compartment.item.maker, compartment.item.toolSize].some(value => value?.trim()) ? <span className="truncate text-[13px] text-inv-muted">{[compartment.item.maker, compartment.item.toolSize].map(value => value?.trim()).filter(Boolean).join(' ・ ')}</span> : null
+              ) : <dl className="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] gap-x-2 text-[13px]">
+                {config.fields.filter(field => field !== 'model').map((field) => compartment.item[field]?.trim() ? <Fragment key={field}><dt className="text-inv-faint">{detailLabels[field]}</dt><dd className="truncate">{compartment.item[field]}</dd></Fragment> : null)}
+              </dl>}
             </span>
           </button>
-          {photos.length > 1 ? <div className={`pointer-events-none absolute inset-x-0 top-0 ${config.photo}`}>
-            {([-1, 1] as const).map((offset) => <button key={offset} type="button" aria-label={offset === -1 ? '前の写真' : '次の写真'} className={`pointer-events-auto absolute top-1/2 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-inv-line2 bg-inv-bg/75 text-xl text-inv-text ${offset === -1 ? 'left-2' : 'right-2'}`} onClick={(event) => {
-              event.stopPropagation();
-              setPhotoIndices((current) => ({ ...current, [compartment.id]: (photoIndex + offset + photos.length) % photos.length }));
-            }}>{offset === -1 ? '＜' : '＞'}</button>)}
-            <span className="absolute bottom-2 right-2 rounded-md bg-inv-bg/75 px-2 text-sm font-bold tabular-nums text-inv-text">{photoIndex + 1}/{photos.length}</span>
-          </div> : null}
+          <div className={`pointer-events-none absolute inset-x-0 top-0 ${config.photo}`}>
+            <div className="absolute inset-x-1.5 bottom-1.5 flex items-end gap-1.5" aria-label="写真下部">
+              {photos.length > 1 ? <div className="flex shrink-0 gap-1" role="group" aria-label="写真の切り替え">
+                {([-1, 1] as const).map((offset) => <button key={offset} type="button" aria-label={offset === -1 ? '前の写真' : '次の写真'} className="pointer-events-auto flex h-[42px] w-10 items-center justify-center rounded-lg border border-inv-line2 bg-inv-bg/75 text-lg font-bold text-inv-text" onClick={(event) => {
+                  event.stopPropagation();
+                  setPhotoIndices((current) => ({ ...current, [compartment.id]: (photoIndex + offset + photos.length) % photos.length }));
+                }}>{offset === -1 ? '＜' : '＞'}</button>)}
+              </div> : null}
+              {size !== 'small' ? <span className={`flex min-w-0 gap-1 rounded-lg bg-inv-bg/75 px-2 py-1 ${size === 'large' ? 'flex-row items-center' : 'flex-col items-start'}`}>
+                <span aria-label="置き場所の番号" className={`${invLabelNumber} text-[13px]`}>{formatInventoryLabelNumber(compartment.labelNumber)}</span>
+                <span className="max-w-full truncate text-xs text-inv-text">{compartment.area}・棚{compartment.shelfNumber}-{compartment.drawerNumber}</span>
+              </span> : null}
+              {photos.length > 1 ? <span aria-label="写真の枚数" className="ml-auto shrink-0 rounded-md bg-inv-bg/75 px-2 text-sm font-bold tabular-nums text-inv-text">{photoIndex + 1}/{photos.length}</span> : null}
+            </div>
+          </div>
           </div>
         );
       })}

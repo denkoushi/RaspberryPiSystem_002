@@ -32,6 +32,7 @@ The approved visual mockup is the Design canvas "キオスク在庫画面モッ�
 - [x] (2026-09-28 15:33 JST) Existing areas normalized on Pi5 after user approval: dry run listed 4 rows (2 shelves, 1 candidate, 1 item: `30041R_2ＭＦ-Ｐ` → `30041R_2MF-P`, no shelf conflicts); `--apply` with backup `/opt/backups/inventory-area-normalize-20260928.json` (763 bytes); a second dry run reported nothing to change.
 - [ ] Units (個, ケース, …): implemented on `feat/kiosk-inventory-units`; remaining: PR, deploy, kiosk check.
 - [x] (2026-09-30) Brush-up of every inventory screen from the approved canvas boards ㉑〜㉘ (shared `inv` palette and components), pop-up fixes (wider 型式, second tap clears, edit mode with rename-with-items) on `feat/kiosk-inventory-brushup`. Checked at 1920×1080 with a local mock harness; kiosk check pending.
+- [ ] (2026-10-13) Region reading, card layout and multi-area default on `feat/kiosk-inventory-region-ocr` from the approved mock `docs/design-previews/kiosk-inventory-region-ocr-mock.html`: the enlarged photo (登録待ち and アイテム編集) takes a dragged frame, `POST /item-inventory/photos/read-region` crops it and asks the vision model for the text, and a tap puts a candidate into one of the seven fields; frames can be remembered per field on the terminal (`kiosk-inventory-ocr-frames`). Cards carry stock, 型式, the label number, the place and the ＜＞ buttons inside the photo. Area chips are multi-select and the home button remembers the selection (`kiosk-inventory-default-areas`, read from the old single-area key when absent). Remaining: deploy and kiosk check.
 
 ## Surprises & Discoveries
 
@@ -123,6 +124,9 @@ The approved visual mockup is the Design canvas "キオスク在庫画面モッ�
 - Decision (was open; user approved 2026-09-26): In the kiosk registration flow, the 名前など step is optional. It is prefilled with the current default (`ItemlistRaspi <sourceItemId>`), and model and usage are left blank. The step offers the ordinary text input, which works on terminals with a keyboard and IBus. Japanese renaming on keyboard-less terminals is done later on the admin PC page.
   Rationale: The on-screen keyboard cannot type Japanese, and building a kana keyboard is outside this scope. Ask the user before Milestone 4 whether this default is acceptable.
   Date/Author: 2026-09-26 / Claude.
+- Decision: Region reading sends the cropped image to the same vision model as 写真から読む instead of Tesseract, because the labels are engraved or printed on tools at odd angles. The crop is taken from the original before downscaling. In アイテム編集 the text read from a frame is placed in the field as unconfirmed text and is saved by the existing ✓ / Enter, never by itself. The shelf filter works only while exactly one area is selected. On small cards the photo holds only the stock count, ＜＞ and the photo count; the name, label number and 型式 go below.
+  Date/Author: 2026-10-13 / user approved the mock; small-card layout and the unconfirmed-text rule chosen by Claude.
+
 
 ## Outcomes & Retrospective
 
