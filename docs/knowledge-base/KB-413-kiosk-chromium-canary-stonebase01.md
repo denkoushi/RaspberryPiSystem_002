@@ -95,3 +95,21 @@ validation:
 Revert this change's commit (PR #1621) and run the standard release for the host (`scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspi4-kensaku-stonebase01`, after `--print-plan` shows `pi4ReleaseFiles: staged`). The Firefox profile `kiosk-system` is left untouched by this change.
 
 Since 2026-10-02 an `inventory.yml` change is classified as a Pi4 kiosk release file, so setting a kiosk's `kiosk_browser_engine` back to `"firefox"` is delivered by the standard release as well. Always confirm `pi4ReleaseFiles: staged` in the plan and read the launcher on the device afterwards.
+
+## Floating Chat button streaks: one step per second (2026-10-13)
+
+- Follow-up to the idle drawing load found the same day (the eight `hermes-matrix-stream` streaks on the floating Chat button). The user asked for a much lighter motion instead of none.
+- Candidates were applied to the running page on StoneBase01 for 14 s each through the debugging port (a temporary `<style>`, removed afterwards) and read with `top` (8 s average, GPU process / renderer):
+
+| Variant | GPU process | Renderer |
+|---|---|---|
+| As shipped (60 fps, linear, 1.8 s) | 48 to 62 % | 27 to 31 % |
+| Only 2 of 8 streaks | 55 % | 37 % |
+| No `text-shadow` | 51 % | 30 % |
+| `step-end`, one step per second (8 s cycle) | 9 to 18 % | 3 to 7 % |
+| `step-end`, two steps per second (4 s cycle) | 9 to 13 % | 5 to 8 % |
+| No animation | 0 to 4 % | 0 to 1 % |
+
+- The cost follows the number of frames drawn, not the number of streaks or the shadow. Chosen: `step-end`, 8 s cycle, delays in whole seconds so all eight streaks change in the same frame.
+- The readings are noisy (the kiosk was in use and its browser restarted once during the session); two rounds with another page or `apt-get` active were discarded. Treat the table as "about one fifth of the load", not as exact figures.
+- Still running an animation costs more than none. If the idle load matters again, remove the motion entirely.
