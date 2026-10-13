@@ -147,7 +147,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
   const [semanticError, setSemanticError] = useState<string | null>(null);
   const semanticSequence = useRef(0);
   const resetSemantic = useCallback(() => { semanticSequence.current++; setSemanticResult(null); setSemanticLoading(false); setSemanticError(null); }, []);
-  useEffect(() => { resetSemantic(); return resetSemantic; }, [version, resetSemantic]);
+  useEffect(() => { resetSemantic(); return resetSemantic; }, [version, query, resetSemantic]);
   const changeQuery = (value: string) => { resetSemantic(); setQ(value); };
   const changeTab = (value: typeof state) => { resetSemantic(); setState(value); };
   const semanticActive = Boolean(semanticResult && semanticResult.mode !== 'lexical');
@@ -156,14 +156,14 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
   const knowledge = lists.data?.knowledge;
   const workInstructions = lists.data?.workInstructions;
   const loading = lists.loading;
-  const semanticEnabled = (state === 'unplaced' || state === 'placed') && q.trim().length >= 2 && !busy && !composing && !loading && !semanticLoading;
+  const semanticEnabled = (state === 'unplaced' || state === 'placed') && query.length >= 2 && !busy && !semanticLoading;
   const searchSemantic = async () => {
     if (!semanticEnabled || (state !== 'unplaced' && state !== 'placed')) return;
     if (semanticActive) { resetSemantic(); return; }
     const sequence = ++semanticSequence.current;
     setSemanticLoading(true); setSemanticError(null);
     try {
-      const next = await semanticSearchProcedureMaterials({ q: q.trim(), state });
+      const next = await semanticSearchProcedureMaterials({ q: query, state });
       if (sequence !== semanticSequence.current) return;
       if (next.available) setSemanticResult(next);
       else { setSemanticResult(null); setSemanticError('意味で探すは今使えません'); }
