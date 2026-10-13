@@ -81,6 +81,15 @@ validation:
 - Japanese input on Chromium 147 and 149 was not tested before the rollout; check each kiosk with its physical keyboard.
 - To take one kiosk back to Firefox, set its `kiosk_browser_engine` to `"firefox"`, merge, and release with `--limit <host>` once the plan shows `pi4ReleaseFiles: staged`.
 
+## Typing still felt slow (2026-10-13): idle drawing load from the floating Chat button
+
+- Complaint: keyboard input still feels slow, on more than one kiosk. No keystroke timing was taken; the numbers below are the idle load only.
+- Read on all seven kiosks with nobody touching them (`top`, 8 to 10 s average): Chromium GPU process 33 to 56 %, renderer 20 to 33 %, labwc 7 to 14 %, Xwayland 5 to 8 %, load average 1.8 to 3.4. No undervoltage or throttling, 46 to 58 °C, no swap, one `ibus-daemon`.
+- Read on StoneBase01 through the existing debugging port (attached to the running page, no new browser): the only running animations were the eight `hermes-matrix-stream` streaks on the floating Chat button. With them running the page recalculated style about 320 times per 10 s; with them paused for 16 s, once. `top` over the same windows: GPU process 56 % to 7 %, renderer 32 % to 6 %, labwc 11 % to 2 %, Xwayland 8 % to 1 %.
+- The streaks were paused during interaction on the planning board only (commit `590282d2`). They are now paused during pointer, wheel, scroll and key activity on every screen and resume 1.2 s after the last activity.
+- Not settled: whether this removes the typing lag (to be checked on a device after deploy), and whether `--disable-renderer-accessibility` wins over the `--force-renderer-accessibility` that Raspberry Pi OS adds (both are on the command line). StoneBase01 moved from Chromium 142 to 154 by an OS update on 2026-10-02 21:08, after the check recorded above.
+- Measuring a live kiosk: read `/proc`, `top` and the debugging port over SSH. Do not inject keys and do not start a second browser.
+
 ## Rollback
 
 Revert this change's commit (PR #1621) and run the standard release for the host (`scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspi4-kensaku-stonebase01`, after `--print-plan` shows `pi4ReleaseFiles: staged`). The Firefox profile `kiosk-system` is left untouched by this change.

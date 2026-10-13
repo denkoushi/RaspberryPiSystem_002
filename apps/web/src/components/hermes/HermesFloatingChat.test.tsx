@@ -432,7 +432,7 @@ describe('HermesFloatingChat', () => {
     expect(mocks.createConsultation).not.toHaveBeenCalled();
   });
 
-  it('pauses board decoration throughout a held pointer and resumes after inactivity', () => {
+  it('pauses decoration throughout a held pointer and resumes after inactivity', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance'] });
     renderChat('/kiosk/production-schedule/planning-board/');
     const trigger = screen.getByRole('button', { name: /業務Hermesチャットを開く/ });
@@ -465,11 +465,14 @@ describe('HermesFloatingChat', () => {
     expect(trigger).not.toHaveAttribute('data-interacting');
   });
 
-  it('keeps decoration running during interaction outside the board', () => {
+  it('pauses decoration during interaction on every screen', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance'] });
     renderChat();
     const trigger = screen.getByRole('button', { name: /業務Hermesチャットを開く/ });
-    fireEvent.pointerDown(window);
-    fireEvent.wheel(window);
+    expect(trigger).not.toHaveAttribute('data-interacting');
+    fireEvent.keyDown(window, { key: 'a' });
+    expect(trigger).toHaveAttribute('data-interacting', 'true');
+    act(() => vi.advanceTimersByTime(1200));
     expect(trigger).not.toHaveAttribute('data-interacting');
   });
 
