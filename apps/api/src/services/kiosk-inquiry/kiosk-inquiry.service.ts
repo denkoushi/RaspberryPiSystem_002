@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import type { Prisma, User } from '@prisma/client';
 
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
@@ -70,9 +70,10 @@ function notFound(): ApiError {
   return new ApiError(404, 'お問い合わせが見つかりません', undefined, 'KIOSK_INQUIRY_NOT_FOUND');
 }
 
-async function authorizeReceiver(device: InquiryDevice, employeeTagUid?: string): Promise<string | null> {
+async function authorizeReceiver(device: InquiryDevice, employeeTagUid?: string, loginUser?: Pick<User, 'role'>): Promise<string | null> {
   if (!isReceiver(device)) return null;
   if (!employeeTagUid) {
+    if (loginUser?.role === 'ADMIN' || loginUser?.role === 'MANAGER') return null;
     throw new ApiError(401, '社員証が必要です', undefined, 'KIOSK_INQUIRY_EMPLOYEE_TAG_REQUIRED');
   }
   const employee = await employees.findByNfcTagUid(employeeTagUid);
@@ -101,7 +102,7 @@ export async function createKioskInquiryThread(
   return thread.id;
 }
 
-export async function getKioskInquirySummary(device: InquiryDevice) {
+export async function getKioskInquirySummary(device: InquiryDevice, loginUser?: Pick<User, 'role'>) {
   const unreadCount = await prisma.kioskInquiryThread.count({
     where: { OR: [
       { kind: 'INQUIRY', ...(device.inquiryReceiverEnabled
@@ -109,11 +110,12 @@ export async function getKioskInquirySummary(device: InquiryDevice) {
       ...(device.systemNoticeReceiverEnabled ? [{ kind: 'SYSTEM_NOTICE' as const, receiverUnread: true }] : [])
     ] }
   });
-  return { isReceiver: isReceiver(device), unreadCount };
+  return { isReceiver: isReceiver(device), unreadCount,
+    loginUnlock: isReceiver(device) && (loginUser?.role === 'ADMIN' || loginUser?.role === 'MANAGER') };
 }
 
-export async function listKioskInquiries(device: InquiryDevice, employeeTagUid?: string) {
-  await authorizeReceiver(device, employeeTagUid);
+export async function listKioskInquiries(device: InquiryDevice, employeeTagUid?: string, loginUser?: Pick<User, 'role'>) {
+  await authorizeReceiver(device, employeeTagUid, loginUser);
   const threads = await prisma.kioskInquiryThread.findMany({
     where: accessibleThreadWhere(device),
     orderBy: { lastMessageAt: 'desc' },
@@ -123,8 +125,8 @@ export async function listKioskInquiries(device: InquiryDevice, employeeTagUid?:
   return { threads: threads.map((thread) => presentThread(thread, receivesThread(device, thread.kind))) };
 }
 
-export async function openKioskInquiry(device: InquiryDevice, threadId: string, employeeTagUid?: string) {
-  await authorizeReceiver(device, employeeTagUid);
+export async function openKioskInquiry(device: InquiryDevice, threadId: string, employeeTagUid?: string, loginUser?: Pick<User, 'role'>) {
+  await authorizeReceiver(device, employeeTagUid, loginUser);
   return prisma.$transaction(async (tx) => {
     const accessible = await tx.kioskInquiryThread.findFirst({ where: accessibleThreadWhere(device, threadId), select: { kind: true } });
     if (!accessible) throw notFound();
@@ -144,9 +146,10 @@ export async function replyToKioskInquiry(
   device: InquiryDevice,
   threadId: string,
   body: string,
-  employeeTagUid?: string
+  employeeTagUid?: string,
+  loginUser?: Pick<User, 'role'>
 ) {
-  const authorEmployeeId = await authorizeReceiver(device, employeeTagUid);
+  const authorEmployeeId = await authorizeReceiver(device, employeeTagUid, loginUser);
   return prisma.$transaction(async (tx) => {
     const accessible = await tx.kioskInquiryThread.findFirst({ where: accessibleThreadWhere(device, threadId), select: { kind: true } });
     if (!accessible) throw notFound();

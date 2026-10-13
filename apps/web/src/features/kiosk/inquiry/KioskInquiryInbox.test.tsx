@@ -25,14 +25,14 @@ const detail = {
   thread: { ...thread, unread: false },
   messages: [{ id: 'message-1', ...thread.lastMessage }]
 };
-function renderInbox(isReceiver = true) {
+function renderInbox(isReceiver = true, loginUnlock = false) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   queryClient.setQueryData(['kiosk-inquiry-summary', 'device'], { isReceiver, unreadCount: 1 });
-  const ui = <KioskInquiryInbox clientKey="device" isReceiver={isReceiver} />;
+  const ui = <KioskInquiryInbox clientKey="device" isReceiver={isReceiver} loginUnlock={loginUnlock} />;
   const view = render(ui, { wrapper: ({ children }) => <MemoryRouter initialEntries={['/kiosk/borrow']}><QueryClientProvider client={queryClient}>{children}</QueryClientProvider></MemoryRouter> });
   return { ...view, queryClient, touch: (uid = 'allowed') => {
     mocks.read = { uid, eventId: (mocks.read?.eventId ?? 0) + 1 };
-    view.rerender(<KioskInquiryInbox clientKey="device" isReceiver={isReceiver} />);
+    view.rerender(<KioskInquiryInbox clientKey="device" isReceiver={isReceiver} loginUnlock={loginUnlock} />);
   }, ui };
 }
 const denied = { isAxiosError: true, response: { status: 403, data: { errorCode: 'KIOSK_INQUIRY_EMPLOYEE_NOT_ALLOWED' } } };
@@ -116,6 +116,32 @@ describe('KioskInquiryInbox', () => {
     expect(await screen.findByText('社員証をタッチ')).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('この社員証では開けません');
     expect(view.queryClient.getQueriesData({ queryKey: ['kiosk-inquiries'] }).map(([, data]) => data)).toEqual([undefined]);
+    expect(mocks.armed).toHaveBeenLastCalledWith(true);
+  });
+
+  it('opens a login-unlocked receiver list without a card or arming NFC', async () => {
+    renderInbox(true, true);
+    expect(await screen.findByText('加工キオスク')).toBeInTheDocument();
+    expect(screen.queryByText('社員証をタッチ')).not.toBeInTheDocument();
+    expect(mocks.armed).toHaveBeenLastCalledWith(false);
+    expect(mocks.list).toHaveBeenCalledWith(undefined, expect.any(AbortSignal));
+    fireEvent.click(screen.getByRole('button', { name: /加工キオスク/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '行きます' }));
+    await waitFor(() => expect(mocks.reply).toHaveBeenCalledWith('thread-1', '行きます', undefined, expect.any(AbortSignal)));
+    expect(mocks.open).toHaveBeenCalledWith('thread-1', undefined, expect.any(AbortSignal));
+  });
+
+  it.each(['list', 'open', 'reply'] as const)('relocks with a login prompt on login-unlocked %s access errors', async action => {
+    const failure = { isAxiosError: true, response: { status: 401, data: { errorCode: 'KIOSK_INQUIRY_EMPLOYEE_TAG_REQUIRED' } } };
+    if (action === 'list') mocks.list.mockRejectedValueOnce(failure);
+    if (action === 'open') mocks.open.mockRejectedValueOnce(denied);
+    if (action === 'reply') mocks.reply.mockRejectedValueOnce(failure);
+    renderInbox(true, true);
+    if (action !== 'list') fireEvent.click(await screen.findByRole('button', { name: /加工キオスク/ }));
+    if (action === 'reply') fireEvent.click(await screen.findByRole('button', { name: '行きます' }));
+    expect(await screen.findByText('社員証をタッチ')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('ログインし直してください');
+    expect(screen.queryByText('加工キオスク')).not.toBeInTheDocument();
     expect(mocks.armed).toHaveBeenLastCalledWith(true);
   });
 

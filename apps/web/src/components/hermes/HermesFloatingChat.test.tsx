@@ -339,6 +339,15 @@ describe('HermesFloatingChat', () => {
     expect(screen.getByText('社員証をタッチ')).toBeInTheDocument();
   });
 
+  it('opens the receiver list without a card prompt when login unlock is available', async () => {
+    mocks.inquirySummary.mockResolvedValue({ isReceiver: true, unreadCount: 1, loginUnlock: true });
+    renderChat();
+    fireEvent.click(await screen.findByRole('button', { name: 'お問い合わせ 未読 1 件' }));
+    expect(await screen.findByText('お問い合わせはありません')).toBeInTheDocument();
+    expect(screen.queryByText('社員証をタッチ')).not.toBeInTheDocument();
+    expect(mocks.inquiryList).toHaveBeenCalledWith(undefined, expect.any(AbortSignal));
+  });
+
   it('opens inquiries from the orange trigger with an unread badge', async () => {
     mocks.inquirySummary.mockResolvedValue({ isReceiver: true, unreadCount: 2 });
     renderChat();

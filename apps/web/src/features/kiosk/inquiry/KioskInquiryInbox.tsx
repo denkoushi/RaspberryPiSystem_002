@@ -24,11 +24,11 @@ function NoticeTag({ thread }: { thread: KioskInquiryThread }) {
     ? <span className="kiosk-inquiry__notice-tag">{thread.noticeResolvedAt ? '復旧' : 'システム'}</span> : null;
 }
 
-export function KioskInquiryInbox({ clientKey, isReceiver, startComposing = false }: { clientKey: string; isReceiver: boolean; startComposing?: boolean }) {
+export function KioskInquiryInbox({ clientKey, isReceiver, loginUnlock = false, startComposing = false }: { clientKey: string; isReceiver: boolean; loginUnlock?: boolean; startComposing?: boolean }) {
   const queryClient = useQueryClient();
   const [sessionId] = useState(() => crypto.randomUUID());
   const access = useRef<KioskInquiryAccess>({ active: false });
-  const [unlocked, setUnlocked] = useState(!isReceiver);
+  const [unlocked, setUnlocked] = useState(!isReceiver || loginUnlock);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<KioskInquiryDetail | null>(null);
@@ -79,6 +79,7 @@ export function KioskInquiryInbox({ clientKey, isReceiver, startComposing = fals
 
   const handleFailure = useCallback((failure: unknown, fallback: string) => {
     if (!access.current.active) return;
+    const loginExpired = isReceiver && loginUnlock && !access.current.employeeTagUid && isInquiryAccessError(failure);
     if (isReceiver && isInquiryAccessError(failure)) {
       access.current.employeeTagUid = undefined;
       setUnlocked(false);
@@ -86,8 +87,8 @@ export function KioskInquiryInbox({ clientKey, isReceiver, startComposing = fals
       setDraft('');
       queryClient.removeQueries({ queryKey: ['kiosk-inquiries', clientKey, sessionId] });
     }
-    setError(inquiryErrorMessage(failure, fallback));
-  }, [clientKey, isReceiver, queryClient, sessionId]);
+    setError(loginExpired ? 'ログインし直してください' : inquiryErrorMessage(failure, fallback));
+  }, [clientKey, isReceiver, loginUnlock, queryClient, sessionId]);
 
   useEffect(() => {
     if (list.error) handleFailure(list.error, '一覧を取得できません');

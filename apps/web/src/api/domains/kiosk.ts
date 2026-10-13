@@ -280,7 +280,7 @@ export async function patchToolsPalletMachinePalletCount(machineCd: string, pall
   );
 }
 
-export type KioskInquirySummary = { isReceiver: boolean; unreadCount: number };
+export type KioskInquirySummary = { isReceiver: boolean; unreadCount: number; loginUnlock?: boolean };
 export type KioskInquirySide = 'SENDER' | 'RECEIVER' | 'SYSTEM';
 export type KioskInquiryThread = {
   id: string;
