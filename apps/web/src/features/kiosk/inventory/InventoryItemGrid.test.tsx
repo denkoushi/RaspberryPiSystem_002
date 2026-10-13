@@ -26,7 +26,7 @@ describe('issuedLabel', () => {
 describe('InventoryItemGrid', () => {
   it('shows one list row per location in recent-issue order and picks that compartment', () => {
     const a = drawer('a', '治具', null, 1);
-    Object.assign(a.item, { model: ' M1 ', maker: ' OSG ' });
+    Object.assign(a.item, { model: ' M1 ', maker: ' OSG ', toolName: 'ドリル', toolSize: 'φ10', workMaterial: '鋼', usage: '穴あけ' });
     const b = { ...a, id: 'b', labelNumber: 42, drawerNumber: 4, stockQuantity: 0, lastIssuedAt: '2026-09-29T01:00:00Z' };
     const onPick = vi.fn();
     render(<InventoryItemGrid view="list" compartments={[a, b]} onPick={onPick} />);
@@ -35,14 +35,71 @@ describe('InventoryItemGrid', () => {
     expect(rows[0]).toHaveTextContent('0042');
     expect(rows[1]).toHaveTextContent('0001');
     expect(rows[0]).toHaveTextContent('治具');
-    expect(rows[0]).toHaveTextContent('M1 ・ OSG');
-    expect(rows[0]).toHaveTextContent('50013_540AP 北・棚2・引き出し4');
+    expect(within(rows[0]).getByText('M1')).toHaveClass('truncate', 'font-bold', 'text-inv-text');
+    expect(within(rows[0]).getByText('OSG')).toHaveClass('truncate', 'text-inv-muted');
+    expect(rows[0]).toHaveTextContent('50013_540AP 北・棚2-4');
     expect(rows[0]).toHaveTextContent('0 ケース');
     expect(within(rows[0]).getByText('0 ケース')).toHaveClass('text-inv-amber', 'tabular-nums');
     expect(rows[1]).toHaveTextContent('3 ケース');
     expect(within(rows[1]).getByText('—')).toBeInTheDocument();
     fireEvent.click(rows[0]);
     expect(onPick).toHaveBeenCalledWith(b);
+  });
+
+  it('aligns all list headers and values, with dashes for empty fields', () => {
+    const a = drawer('a', '治具', null);
+    Object.assign(a.item, { model: ' M1 ', maker: ' OSG ', toolName: ' ドリル ', toolSize: ' φ10 ', workMaterial: ' 鋼 ', usage: ' 穴あけ ' });
+    const view = render(<InventoryItemGrid view="list" compartments={[a]} onPick={vi.fn()} />);
+    const header = screen.getByText('番号').parentElement!;
+    expect(Array.from(header.children, cell => cell.textContent)).toEqual(['', '番号', '名前', '型式', 'メーカー', '工具名', '寸法', '被削材', '用途', '場所', '在庫', '持出']);
+    const row = screen.getByRole('button');
+    expect(Array.from(row.children, cell => cell.textContent)).toEqual(['', '0001', '治具', 'M1', 'OSG', 'ドリル', 'φ10', '鋼', '穴あけ', '50013_540AP 北・棚2-1', '3 ケース', '—']);
+    expect(row).toHaveClass('min-h-16');
+    expect(header.className.match(/grid-cols-\S+/)?.[0]).toBe(row.className.match(/grid-cols-\S+/)?.[0]);
+    for (const cell of Array.from(row.children).slice(1)) expect(cell).toHaveClass('truncate');
+    Object.assign(a.item, { model: ' ', maker: '', toolName: null, toolSize: undefined, workMaterial: '  ', usage: null });
+    view.rerender(<InventoryItemGrid view="list" compartments={[a]} onPick={vi.fn()} />);
+    expect(Array.from(screen.getByRole('button').children, cell => cell.textContent).slice(3, 9)).toEqual(['—', '—', '—', '—', '—', '—']);
+  });
+
+  it('shows two compact medium-card lines in order without reserving a second name line', () => {
+    const a = drawer('a', '治具', null);
+    Object.assign(a.item, { maker: ' OSG ', toolName: ' ドリル ', toolSize: ' φ10 ', workMaterial: ' 鋼 ', usage: ' 穴あけ ' });
+    render(<InventoryItemGrid size="medium" compartments={[a]} onPick={vi.fn()} />);
+    const name = screen.getByText('治具');
+    expect(name).toHaveClass('line-clamp-2');
+    expect(name.className).not.toMatch(/min-h-/);
+    const first = screen.getByText('OSG ・ ドリル ・ φ10');
+    const second = screen.getByText('鋼 ・ 穴あけ');
+    expect(first).toHaveClass('truncate', 'text-inv-text');
+    expect(second).toHaveClass('truncate', 'text-inv-muted');
+    expect(first.nextElementSibling).toBe(second);
+    expect(name.nextElementSibling).toBe(first.parentElement);
+    expect(first.parentElement).toHaveClass('flex-col');
+    expect(first.parentElement?.className).not.toMatch(/gap-/);
+    expect(screen.queryByText('メーカー')).not.toBeInTheDocument();
+  });
+
+  it('omits blank medium-card fields and whole empty lines', () => {
+    const a = drawer('a', '治具', null);
+    Object.assign(a.item, { maker: ' ', toolName: 'ドリル', toolSize: null, workMaterial: '', usage: '穴あけ' });
+    const view = render(<InventoryItemGrid size="medium" compartments={[a]} onPick={vi.fn()} />);
+    const lines = screen.getByText('治具').nextElementSibling!;
+    expect(Array.from(lines.children, line => line.textContent)).toEqual(['ドリル', '穴あけ']);
+    a.item.toolName = '';
+    view.rerender(<InventoryItemGrid size="medium" compartments={[a]} onPick={vi.fn()} />);
+    expect(Array.from(lines.children, line => line.textContent)).toEqual(['穴あけ']);
+    a.item.toolName = 'ドリル';
+    a.item.usage = ' ';
+    view.rerender(<InventoryItemGrid size="medium" compartments={[a]} onPick={vi.fn()} />);
+    expect(Array.from(lines.children, line => line.textContent)).toEqual(['ドリル']);
+    a.item.toolName = '';
+    view.rerender(<InventoryItemGrid size="medium" compartments={[a]} onPick={vi.fn()} />);
+    expect(lines).toBeEmptyDOMElement();
+    view.rerender(<InventoryItemGrid size="small" compartments={[a]} onPick={vi.fn()} />);
+    expect(screen.getByText('治具')).toHaveClass('min-h-[2.6em]');
+    view.rerender(<InventoryItemGrid size="large" compartments={[a]} onPick={vi.fn()} />);
+    expect(screen.getByText('治具')).toHaveClass('min-h-[2.6em]');
   });
 
   it('keeps unregistered candidates first in list view and picks the tapped candidate', () => {
@@ -55,6 +112,8 @@ describe('InventoryItemGrid', () => {
     const rows = screen.getAllByRole('button');
     expect(rows.map((row) => row.getAttribute('aria-label'))).toEqual(['未登録 候補 #5 を登録する', '未登録 候補 #4 を登録する', null]);
     expect(rows[0].querySelector('img')).toHaveAttribute('src', '/pending.jpg');
+    expect(within(rows[0]).getByText('段取工具')).toHaveClass('col-span-6');
+    expect(Array.from(rows[0].children).slice(4).map(cell => cell.textContent)).toEqual(['工具室', '—', '—']);
     fireEvent.click(rows[1]);
     expect(onPickPending).toHaveBeenCalledWith(pending[1]);
   });
@@ -125,7 +184,8 @@ describe('InventoryItemGrid', () => {
     expect(screen.queryByText('メーカー')).not.toBeInTheDocument();
     expect(screen.getByLabelText('登録済みアイテム')).toHaveClass('grid-cols-9');
     view.rerender(<InventoryItemGrid size="medium" compartments={[compartment]} onPick={vi.fn()} />);
-    expect(screen.getByText('OSG ・ φ10')).toBeInTheDocument();
+    expect(screen.getByText('OSG ・ ドリル ・ φ10')).toBeInTheDocument();
+    expect(screen.getByText('鋼・SUS')).toBeInTheDocument();
     expect(screen.getByText('M1')).toHaveClass('line-clamp-2', 'bg-inv-bg/75');
     expect(screen.queryByText('工具名')).not.toBeInTheDocument();
     expect(screen.getByLabelText('登録済みアイテム')).toHaveClass('grid-cols-6');
