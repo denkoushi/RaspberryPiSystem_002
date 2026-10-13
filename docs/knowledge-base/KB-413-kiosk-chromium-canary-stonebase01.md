@@ -113,3 +113,11 @@ Since 2026-10-02 an `inventory.yml` change is classified as a Pi4 kiosk release 
 - The cost follows the number of frames drawn, not the number of streaks or the shadow. Chosen: `step-end`, 8 s cycle, delays in whole seconds so all eight streaks change in the same frame.
 - The readings are noisy (the kiosk was in use and its browser restarted once during the session); two rounds with another page or `apt-get` active were discarded. Treat the table as "about one fifth of the load", not as exact figures.
 - Still running an animation costs more than none. If the idle load matters again, remove the motion entirely.
+
+## Deploy and device check of the two streak changes (2026-10-13)
+
+- Merged: #1987 (pause during interaction on every screen) as `e3583ac6`, #1988 (one step per second) as `cf73213f`. Both went to Pi5 in one release, run `20261013-085005-4eb4fe`, finished 17:55 JST, failed=0. Rollback floor: `fa1ec1d8`. Pi4 and Pi3 were not redeployed; the kiosks pick the change up from the web app served by Pi5.
+- Read after the deploy through the debugging port (no new browser): StoneBase01, assembly-01 and raspberrypi4 had the new stylesheet loaded and the streaks computed as `steps(1)`, 8 s. The other four kiosks were not read.
+- StoneBase01 idle after the deploy (`top`, 8 s): heaviest Chromium process about 5 %. The page open at that moment (`/kiosk/assembly/manuals/workshop`) reported no running animations, so the load with the stepped streaks moving was not re-read after the deploy.
+- Device check by the user (reported through the tracker session): the streaks step about once per second, they stop while typing and resume about one second later, and typing is no longer slow. All three OK.
+- Keystroke timing in milliseconds was never taken, before or after. The result rests on the idle-load readings and the user's check. Whether `--disable-renderer-accessibility` wins over `--force-renderer-accessibility` remains unchecked.
