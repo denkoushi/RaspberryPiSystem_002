@@ -46,11 +46,28 @@ Done on 2026-10-07:
 | The standard Pi5 release installs `unattended-upgrades`: Debian security origin only, no automatic reboot, Docker, Tailscale, kernel, firmware and Chromium excluded | #1788 | `69d0199c` | released (run `20261007-034510-c5ed02`); dry run shows the single allowed origin, the exclusion list and nothing pending; first automatic run 2026-10-08 06:03 JST |
 | Reboot-requiring packages applied on the Pi5 by hand after the nightly off-site backup finished (21:39 JST), with the owner at the device: kernel 6.12.47 to 6.18.50, boot firmware `1:1.20260915-1`, `rpi-eeprom` 28.33-1, Docker 29.8.2, Compose plugin 5.6.0, containerd 2.3.6, Tailscale 1.102.5; package run 21:47 to 21:53, reboot 21:54, back at 21:55. The bootloader EEPROM itself was not flashed | none | none | yes |
 
+Done on 2026-10-13, by the owner at the Pi5 with scripts kept in the deploy user's home on the Pi5 (`offline-dr-copy.sh`, `rotate-dr-password.sh`; neither is in this repository):
+
+- Offline copy. The encrypted Google Drive repository `business-pi5` was copied to a USB stick (231 GB, FAT32) and the stick was removed and stored away from the Pi5. First run 10:13 to 11:34 JST: 529 files, about 8.5 GB.
+- Password replaced. The repository password had no copy outside the Pi5, and while one was being made the value was shown in an assistant session. A new password was generated on the Pi5 (never displayed), added as a second key, the password file switched, and the old key removed with hard delete so that it does not stay in the Drive trash (13:18 JST). The new value was moved to the owner's password manager through the clipboard and compared by hash. Only this repository uses the password file today; the Pi4 SD-card lane, which would share it, is not installed.
+- Stick refreshed after the replacement (13:29 JST). The copy script now mirrors the `keys/` folder, so the old key file was deleted from the stick as well.
+
+Monthly offline copy (owner at the Pi5; do not start it while the nightly backup runs or within two hours before it):
+
+1. Plug the stick into the Pi5. It must be the only USB disk besides the system disk.
+2. `sudo systemd-run --unit=offline-dr-copy-<n> /home/<deploy user>/offline-dr-copy.sh`
+3. Wait for the unit to finish and read `/root/offline-dr/latest.log`: it must end with `RESULT=OK`, after `0 differences found` and `no errors were found`.
+4. The script unmounts the stick. Remove it and store it away from the Pi5, and not together with the password.
+
+The script only reads Google Drive, copies without deleting (except stale key files on the stick), verifies every pack with `restic check --read-data` and lists the snapshots.
+
 ## Prevention
 
 - Force the locale in every check that parses command output, and read results, not schedules.
 - A job that verifies something must alert when it fails; otherwise it only produces a log.
 - Host configuration that matters for safety should be converged by the standard release where the existing role split allows it, so it cannot drift. What only the server role delivers must be applied on purpose after each change to it.
+- A secret shown on a screen that an assistant session can read counts as disclosed. Move secrets through the clipboard or a file, compare by hash, and replace the secret if it was shown.
+- Replacing a restic password does not change the repository master key: remove the old key file with hard delete, check the storage trash, and refresh every offline copy, or the old password still opens them.
 - Applying a large backlog of OS packages: keep back the kernel, boot firmware, the container runtime and the remote-access agent unless a reboot is planned with someone at the device; copy the boot partition first; run the package step as a detached unit, because the remote-access agent restarts under it; start after the nightly backup, not across it; expect passwordless `sudo` to be briefly unavailable while its packages are replaced.
 
 ## Validation
@@ -59,10 +76,11 @@ Done on 2026-10-07:
 - Reboot-requiring update: the package plan removed nothing; after the reboot the kernel was `6.18.50+rpt-rpi-2712`, nine of nine containers were up with every health check passing, the API and web images and the API retrieval-source setting were the same as before, the listening sockets were unchanged, the firewall was active, the API health check returned 200, no package was pending and the nightly backup and automatic-update timers were scheduled. The boot partition copy from before the run is in `/root/os-update-20261007/` on the Pi5.
 - Releases after the package run: `20261007-032350-30ac43` (`failed=0`) and `20261007-034510-c5ed02` (`failed=0 rescued=0`), all four entry URLs 200.
 - Local test runs before each PR: #1786 14, #1787 18 API and 12 contract, #1788 76, #1792 20 (one skipped).
+- Offline copy and password replacement (2026-10-13): first copy `rclone check` 0 differences, `restic check --read-data` no errors, 13 snapshots (latest 2026-10-12 23:03). Replacement: one key left in the repository, 13 snapshots readable with the new password, the old password rejected, no key file in the Drive trash, password file `root:root` `0600`. Refresh: 512 packs read with no errors using the new password, 0 differences, one file deleted from the stick's `keys/` folder, stick unmounted.
 
 ## Open Items
 
-- An off-site or offline backup copy that cannot be deleted with credentials held on the Pi5. This is the largest remaining gap for the stated goal.
+- The offline copy exists (2026-10-13) but is refreshed by hand. Open: an alert when the last successful offline copy is older than 35 days, and moving the two Pi5 scripts into this repository. The owner has no paper copy of the repository password yet (password manager only).
 - The Pi5 bootloader EEPROM update is still offered and not applied. The OS package backlog on the Pi4 kiosks and the Pi3 is also open; there the kiosk browser version is being moved deliberately ([KB-413](./KB-413-kiosk-chromium-canary-stonebase01.md)).
 - Applying the server role and the snapshot playbook for #1786, #1787 (unit files) and #1792, after a dry run that shows the application environment files are not rewritten.
 - A "no successful backup for N hours" alert, because a run that is skipped does not fail; a reboot-required notice; extending automatic security updates to the kiosks.
