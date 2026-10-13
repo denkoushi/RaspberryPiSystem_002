@@ -18,7 +18,7 @@ export function useKioskInquiryEntry(clientKey: string | undefined, pathname: st
     leave: () => setSelected(false),
     onTrigger: () => { if (!open) setSelected(true); },
     content: active && clientKey ? summary.data ? (
-      <KioskInquiryInbox key={`${clientKey}:${summary.data.isReceiver}`} clientKey={clientKey} isReceiver={summary.data.isReceiver} />
+      <KioskInquiryInbox key={`${clientKey}:${summary.data.isReceiver}`} clientKey={clientKey} isReceiver={summary.data.isReceiver} startComposing={summary.data.unreadCount === 0} />
     ) : <p className="kiosk-inquiry__empty" role={summary.isError ? 'alert' : 'status'}>
       {summary.isError ? 'お問い合わせを取得できません' : '読込中…'}
     </p> : undefined
