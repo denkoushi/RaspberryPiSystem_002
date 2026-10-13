@@ -270,7 +270,7 @@ $('listOld').append(
   ...ROWS.slice(0, 2).map(r => row([cell('', 'ph'), cell(r[0], 'no'), cell(r[1], 'nm'), cell([r[2], r[3]].filter(Boolean).join(' ・ ')), cell(r[8]), cell(r[9], 'st' + (r[9].startsWith('0') ? ' zero' : '')), cell(r[10], 'r')], 'lr')));
 $('listNew').append(
   row([cell(''), cell('番号'), cell('名前'), cell('型式'), cell('メーカー'), cell('工具名'), cell('寸法'), cell('被削材'), cell('用途'), cell('場所'), cell('在庫', 'r'), cell('持出', 'r')], 'lh'),
-  ...ROWS.map(r => row([cell('', 'ph'), cell(r[0], 'no'), cell(r[1], 'nm'), cell(r[2] || '—', 'md'), cell(r[3] || '—'), cell(r[4] || '—'), cell(r[5] || '—'), cell(r[6] || '—'), cell(r[7] || '—'), cell(r[8].replace('・引き出し', '-').replace('棚', '棚')), cell(r[9], 'st' + (r[9].startsWith('0') ? ' zero' : '')), cell(r[10], 'r')], 'lr')));
+  ...ROWS.map(r => row([cell('', 'ph'), cell(r[0], 'no'), cell(r[1], 'nm'), cell(r[2] || '—', 'md'), cell(r[3] || '—'), cell(r[4] || '—'), cell(r[5] || '—'), cell(r[6] || '—'), cell(r[7] || '—'), cell(r[8].replace('・引き出し', '-')), cell(r[9], 'st' + (r[9].startsWith('0') ? ' zero' : '')), cell(r[10], 'r')], 'lr')));
 
 // ---- 3: cards ----
 const photoHtml = model => `<div class="cphoto"><svg viewBox="0 0 300 190" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="300" height="190" fill="#2a3446"/><rect x="40" y="78" width="220" height="30" rx="15" fill="#8b94a3"/><rect x="40" y="78" width="86" height="30" rx="15" fill="#5e6878"/></svg>
