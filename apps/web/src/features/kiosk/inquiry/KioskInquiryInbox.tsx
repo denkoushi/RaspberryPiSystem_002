@@ -24,7 +24,7 @@ function NoticeTag({ thread }: { thread: KioskInquiryThread }) {
     ? <span className="kiosk-inquiry__notice-tag">{thread.noticeResolvedAt ? '復旧' : 'システム'}</span> : null;
 }
 
-export function KioskInquiryInbox({ clientKey, isReceiver }: { clientKey: string; isReceiver: boolean }) {
+export function KioskInquiryInbox({ clientKey, isReceiver, startComposing = false }: { clientKey: string; isReceiver: boolean; startComposing?: boolean }) {
   const queryClient = useQueryClient();
   const [sessionId] = useState(() => crypto.randomUUID());
   const access = useRef<KioskInquiryAccess>({ active: false });
@@ -33,7 +33,7 @@ export function KioskInquiryInbox({ clientKey, isReceiver }: { clientKey: string
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<KioskInquiryDetail | null>(null);
   const [draft, setDraft] = useState('');
-  const [composing, setComposing] = useState(false);
+  const [composing, setComposing] = useState(startComposing);
   const [sent, setSent] = useState(false);
   const list = useKioskInquiries(clientKey, sessionId, access.current, unlocked);
   const actions = useKioskInquiryActions(clientKey, sessionId, access.current);

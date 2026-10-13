@@ -77,6 +77,16 @@ describe('KioskInquiryInbox', () => {
     expect(mocks.armed).toHaveBeenLastCalledWith(true);
   });
 
+  it('starts on the send form when asked, without arming NFC, and returns to the lock', () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<KioskInquiryInbox clientKey="device" isReceiver startComposing />, { wrapper: ({ children }) => <MemoryRouter initialEntries={['/kiosk/borrow']}><QueryClientProvider client={queryClient}>{children}</QueryClientProvider></MemoryRouter> });
+    expect(screen.queryByText('社員証をタッチ')).not.toBeInTheDocument();
+    expect(mocks.armed).toHaveBeenLastCalledWith(false);
+    fireEvent.click(screen.getByRole('button', { name: '一覧へ戻る' }));
+    expect(screen.getByText('社員証をタッチ')).toBeInTheDocument();
+    expect(mocks.armed).toHaveBeenLastCalledWith(true);
+  });
+
   it('returns from compose to the receiver lock without sending', () => {
     renderInbox();
     fireEvent.click(screen.getByRole('button', { name: '＋ 新規' }));
