@@ -189,15 +189,35 @@ describe('procedure-manuals workshop', () => {
     expect(mocks.candidates).not.toHaveBeenCalled();
   });
 
-  it('opens creation without either filter and passes the default model kind', async () => {
+  it('reserves the top action row and only offers creation and assignment with model and process selected', async () => {
     show('');
     await screen.findByRole('button', { name: '組立' });
+    const pane = screen.getByRole('region', { name: '機種一覧' });
+    const slot = pane.firstElementChild;
+    expect(slot).toHaveClass('h-14', 'shrink-0');
+    expect(slot).toBeEmptyDOMElement();
+    expect(slot?.nextElementSibling).toHaveTextContent('工程');
+    expect(screen.queryByRole('button', { name: '作る' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '既存の要領書を割り当てる' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'DFD1' }));
+    expect(slot).toBeEmptyDOMElement();
+    fireEvent.click(screen.getByRole('button', { name: '組立' }));
     const create = screen.getByRole('button', { name: '作る' });
-    expect(create).toBeEnabled();
-    expect(create).toHaveClass('border-[#3ba776]', 'bg-[#3ba776]', 'text-[#0b1a12]');
-    fireEvent.click(create);
+    const assign = screen.getByRole('button', { name: '既存の要領書を割り当てる' });
+    expect(slot).toContainElement(create);
+    expect(create.nextElementSibling).toBe(assign);
+    expect(assign).toHaveTextContent('＋ 既存を割り当てる');
+    expect(create).toHaveClass('h-14', 'border-[#3ba776]', 'bg-[#3ba776]', 'text-[#0b1a12]');
+    expect(assign).toHaveClass('h-14');
+    fireEvent.click(screen.getByRole('button', { name: '機種の絞り込みを外す' }));
+    expect(slot).toBeEmptyDOMElement();
+    fireEvent.click(screen.getByRole('button', { name: 'DFD1' }));
+    fireEvent.click(within(screen.getByRole('group', { name: '工程で絞り込み' })).getByRole('button', { name: '全て' }));
+    expect(slot).toBeEmptyDOMElement();
+    fireEvent.click(screen.getByRole('button', { name: '組立' }));
+    fireEvent.click(screen.getByRole('button', { name: '作る' }));
     expect(screen.getByRole('dialog', { name: '白紙から作る' })).toHaveAttribute('data-subject-kind', 'MODEL');
-    expect(screen.getByRole('dialog', { name: '白紙から作る' })).toHaveTextContent('/');
+    expect(screen.getByRole('dialog', { name: '白紙から作る' })).toHaveTextContent('DFD1 / assembly');
   });
 
   it.each(['切削', '全て', '工程の絞り込みを外す'])('resets to models and clears part input when removing the process via %s', async action => {
@@ -244,16 +264,19 @@ describe('procedure-manuals workshop', () => {
     fireEvent.click(candidate);
     fireEvent.click(screen.getByRole('button', { name: '部品の絞り込みを外す' }));
     expect(screen.getByRole('button', { name: '部品' })).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.click(screen.getByRole('button', { name: '作る' }));
-    expect(screen.getByRole('dialog', { name: '白紙から作る' })).toHaveAttribute('data-subject-kind', 'PART');
+    expect(screen.queryByRole('button', { name: '作る' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '既存の要領書を割り当てる' })).not.toBeInTheDocument();
   });
 
   it('preserves initial part kind from the URL without a process', async () => {
+    mocks.processes.mockResolvedValue([...processes, { id: 'cutting', parentId: 'machining', name: '切削', subjectKind: 'PART' }]);
     show('?part=PART-12');
     await screen.findByRole('button', { name: '組立' });
     expect(screen.getByRole('button', { name: '部品' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: '作る' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '切削' }));
     fireEvent.click(screen.getByRole('button', { name: '作る' }));
-    expect(screen.getByRole('dialog', { name: '白紙から作る' })).toHaveTextContent('PART-12 /');
+    expect(screen.getByRole('dialog', { name: '白紙から作る' })).toHaveTextContent('PART-12 / cutting');
     expect(screen.getByRole('dialog', { name: '白紙から作る' })).toHaveAttribute('data-subject-kind', 'PART');
   });
 
@@ -331,7 +354,7 @@ describe('procedure-manuals workshop', () => {
     });
     expect(screen.getByRole('dialog', { name: '暗証番号' })).toBeInTheDocument();
   });
-  it.each(['作る', '＋ 既存の要領書を割り当てる', '外す', '削除'])('rechecks expired access before %s', async action => {
+  it.each(['作る', '既存の要領書を割り当てる', '外す', '削除'])('rechecks expired access before %s', async action => {
     show(); await screen.findByRole('button', { name: '作る' });
     sessionStorage.removeItem('procedure-editor-access');
     fireEvent.click(screen.getAllByRole('button', { name: action })[0]);
@@ -465,7 +488,7 @@ describe('procedure-manuals workshop', () => {
       expect(control.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
     }
     expect(within(pub).getByRole('button', { name: '直す' })).toHaveClass('!border-[#3ba776]');
-    expect(screen.getByRole('button', { name: '＋ 既存の要領書を割り当てる' })).toHaveClass('min-h-12', 'border-dashed');
+    expect(screen.getByRole('button', { name: '既存の要領書を割り当てる' })).toHaveClass('h-14', 'border-[#344252]');
     expect(screen.getByText('無効')).toHaveClass('text-[#e5484d]');
   });
 
@@ -517,7 +540,7 @@ describe('procedure-manuals workshop', () => {
     fireEvent.click(screen.getByRole('button', { name: '下書き' }));
     expect(screen.queryByRole('cell')).not.toBeInTheDocument();
     expect(screen.getByText('0 件')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '＋ 既存の要領書を割り当てる' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '既存の要領書を割り当てる' })).toBeEnabled();
     fireEvent.change(input, { target: { value: '初版' } });
     expect(screen.getByRole('row', { name: '初版下書き' })).toBeInTheDocument();
     fireEvent.click(within(screen.getByRole('group', { name: '状態で絞り込み' })).getByRole('button', { name: '全て' }));
@@ -567,13 +590,13 @@ describe('procedure-manuals workshop', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('shows assignments in every filter state and keeps creation enabled', async () => {
+  it('shows assignments in every filter state and enables creation after selecting both filters', async () => {
     show('');
     await screen.findByRole('row', { name: '公開手順' });
     expect(screen.queryByText('機種を選択')).not.toBeInTheDocument();
     expect(screen.queryByText('工程を選択')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '作る' })).toBeEnabled();
-    expect(screen.queryByRole('button', { name: '＋ 既存の要領書を割り当てる' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '作る' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '既存の要領書を割り当てる' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(['サムネイル', '品名', '品番', '工程', '作業', '補足', '状態', '他の使用先', '担当・承認', 'ページ', '操作']);
     fireEvent.click(screen.getByRole('button', { name: '組立' }));
     expect(screen.getByRole('button', { name: '組立' })).toHaveAttribute('aria-pressed', 'true');
@@ -663,7 +686,7 @@ describe('procedure-manuals workshop', () => {
     fireEvent.click(await screen.findByRole('button', { name: '作る' }));
     expect(screen.getByRole('dialog', { name: '白紙から作る' })).toHaveTextContent('DFD1 / assembly');
     view.unmount(); show();
-    fireEvent.click(await screen.findByRole('button', { name: '＋ 既存の要領書を割り当てる' }));
+    fireEvent.click(await screen.findByRole('button', { name: '既存の要領書を割り当てる' }));
     expect(screen.getByRole('dialog', { name: '割り当て' })).toHaveTextContent('DFD1 / assembly');
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(mocks.allOverview).toHaveBeenCalledTimes(3));

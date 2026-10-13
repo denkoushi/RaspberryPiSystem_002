@@ -92,20 +92,13 @@ export function ProcedureManualBrowser() {
   }, [subjectKind, modelCodeKey, processId, setParams]);
   const toolClass = 'inline-flex h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-[#344252] px-3.5 text-[19px] font-bold disabled:opacity-40';
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-[#0b0f13] text-[#eef3f6]">
-      {subjectKind === 'COMMON' && listOpen ? <header className="flex h-16 shrink-0 items-center gap-4 border-b border-[#27313b] px-6">
+    <div className="grid min-h-0 flex-1 grid-rows-[64px_minmax(0,1fr)] bg-[#0b0f13] text-[#eef3f6]">
+      <header className="flex h-16 shrink-0 items-center gap-4 border-b border-[#27313b] px-6">
         <h1 className="text-[26px] font-bold">要領書</h1><span className="rounded-full border border-[#f6b93b] px-3.5 py-0.5 text-[17px] text-[#f6b93b]">見る</span>
-        <Link to={commonReturnTo} className={`${toolClass} ml-auto`}>作る・直す</Link><Link to="/kiosk/assembly" className={toolClass}>組立へ戻る</Link>
-      </header> : null}
+        <Link to={subjectKind === 'COMMON' ? commonReturnTo : kioskAssemblyManualsWorkshopPath({ [subjectKind === 'PART' ? 'part' : 'model']: modelCodeKey, process: processId })} className={`${toolClass} ml-auto`}>作る・直す</Link><Link to="/kiosk/assembly" className={toolClass}>組立へ戻る</Link>
+      </header>
     <div className={`grid min-h-0 flex-1 ${listOpen ? 'grid-cols-[460px_minmax(0,1fr)]' : 'grid-cols-[minmax(0,1fr)]'} bg-[#0f1317] text-[#eef3f6]`} data-open={listOpen} data-pages={twoPages ? 2 : 1} data-testid="procedure-manuals-split">
       <div hidden={!listOpen} className={`${listOpen ? 'flex' : 'hidden'} min-h-0 flex-col border-r border-[#27313b] bg-[#161c22]`} data-testid="procedure-manuals-left">
-        <header hidden={subjectKind === 'COMMON'} className={`${subjectKind === 'COMMON' ? 'hidden' : 'grid'} shrink-0 gap-2 border-b border-[#27313b] px-3.5 py-3`}>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="mr-2.5 text-2xl font-black tracking-widest">要領書</h1>
-            <Link to={subjectKind === 'COMMON' ? commonReturnTo : kioskAssemblyManualsWorkshopPath({ [subjectKind === 'PART' ? 'part' : 'model']: modelCodeKey, process: processId })} className={toolClass}>作る・直す</Link>
-            <Link to="/kiosk/assembly" className={`${toolClass} border-transparent text-[#9fadb9]`}>組立へ戻る</Link>
-          </div>
-        </header>
         <ProcedureManualFilterPane subjectKind={subjectKind} partCandidates={partCandidates} onKindChange={kind => { setAllKind(kind); setModelCodeKey(''); setSearch(''); setPartDigits(''); setUserSelectedModel(false); setKanaRow(''); if (kind === 'COMMON' || subjectKind === 'COMMON') setProcessId(''); }} processes={processes} items={items} models={visibleModels}
           modelCodeKey={modelCodeKey} processId={processId} search={search} digitQuery={subjectKind === 'PART' ? partDigits : search}
           onSearchChange={setSearch} onDigitQueryChange={subjectKind === 'PART' ? setPartDigits : setSearch}

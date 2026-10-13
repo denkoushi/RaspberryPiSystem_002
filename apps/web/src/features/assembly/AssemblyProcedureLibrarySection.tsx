@@ -32,6 +32,7 @@ export type AssemblyProcedureLibraryStatusFilter = 'all' | 'published' | 'draft'
 
 type Props = {
   refreshToken?: number;
+  libraryState?: ReturnType<typeof useAssemblyProcedureLibrary>;
   toolbarStart?: ReactNode;
   toolbarEnd?: ReactNode;
   initialSearchQuery?: string;
@@ -50,6 +51,7 @@ type Props = {
 
 export function AssemblyProcedureLibrarySection({
   refreshToken,
+  libraryState,
   toolbarStart,
   toolbarEnd,
   initialSearchQuery = '',
@@ -71,7 +73,8 @@ export function AssemblyProcedureLibrarySection({
   const [renameTarget, setRenameTarget] = useState<AssemblyProcedureDocumentSummaryDto | null>(null);
   const [busyDocumentId, setBusyDocumentId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const apiState = useAssemblyProcedureLibrary({ refreshToken, enabled: !isPreview, initialSearchQuery });
+  const localApiState = useAssemblyProcedureLibrary({ refreshToken, enabled: !isPreview && !libraryState, initialSearchQuery });
+  const apiState = libraryState ?? localApiState;
   const apiFilterOptions = useAssemblyLibraryFilterOptions({
     field: 'procedureDocumentName',
     query: isPreview ? '' : apiState.searchQuery,
@@ -148,8 +151,11 @@ export function AssemblyProcedureLibrarySection({
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-labelledby="assembly-procedure-library-heading">
       <h2 id="assembly-procedure-library-heading" className="sr-only">手順書ライブラリ</h2>
-      <div className="flex h-14 shrink-0 items-center gap-2 whitespace-nowrap border-b border-white/15 bg-slate-900 px-3">
+      <div className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 whitespace-nowrap border-b border-white/15 bg-slate-900 px-3 py-1.5">
         {toolbarStart}
+        <Button type="button" data-kiosk-sop-target="assembly-file-register" variant="primary" className="h-11 shrink-0 !bg-[#3ba776] !px-3 !py-0 text-sm" onClick={onRegisterClick}>＋ ファイルから登録</Button>
+        {onImportClick ? <Button type="button" data-kiosk-sop-target="assembly-gmail-import" variant="ghostOnDark" className="h-11 shrink-0 !px-3 !py-0 text-sm"
+          disabled={importing} onClick={onImportClick} aria-label={importing ? '取込中…' : 'Gmailから取り込む'} title="Gmailから取り込む">{importing ? '取込中…' : 'Gmail から取込'}</Button> : null}
         <div className="w-80 shrink-0">
           <KioskFilterCombobox value={searchQuery} onChange={query => { setSearchQuery(query); onSearchQueryChange?.(query); }} placeholder="名前で検索" ariaLabel="手順書名で検索"
             options={filterOptions} loading={apiFilterOptions.loading} optionUpdateMode="live" inputClassName="h-11 min-h-11 px-2 text-sm" />
@@ -163,9 +169,6 @@ export function AssemblyProcedureLibrarySection({
         <Button type="button" data-kiosk-sop-target="assembly-library-refresh" variant="ghostOnDark" className="h-11 w-11 shrink-0 !p-0 text-2xl"
           aria-label={loading ? '更新中…' : '再読込'} title="再読込" disabled={loading} onClick={() => reload()}><span aria-hidden="true">↻</span></Button>
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          <Button type="button" data-kiosk-sop-target="assembly-file-register" variant="ghostOnDark" className="h-11 !px-2 !py-0 text-sm" onClick={onRegisterClick}>ファイルから登録</Button>
-          {onImportClick ? <Button type="button" data-kiosk-sop-target="assembly-gmail-import" variant="ghostOnDark" className="h-11 !px-2 !py-0 text-sm"
-            disabled={importing} onClick={onImportClick} aria-label={importing ? '取込中…' : 'Gmailから取り込む'} title="Gmailから取り込む">{importing ? '取込中…' : 'Gmail から取込'}</Button> : null}
           {toolbarEnd}
         </div>
       </div>

@@ -286,9 +286,9 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     expect(screen.getByText('DFD1 › 組立 › 組立 › 組立手順書')).toBeInTheDocument();
     expect(screen.getByText(label)).toHaveClass(color);
     const actions = within(screen.getByRole('navigation', { name: 'エディタ操作' })).getAllByRole('button');
-    expect(actions[0]).toHaveAttribute('aria-label', '保存する');
-    expect(actions.at(-1)).toHaveAttribute('aria-label', '工房へ戻る');
-    expect(actions.at(-2)).toHaveAttribute('aria-label', supersedesDocumentId ? '改版を破棄する' : '削除する');
+    expect(actions[0]).toHaveAttribute('aria-label', '工房へ戻る');
+    expect(actions[1]).toHaveAttribute('aria-label', '保存する');
+    expect(actions.at(-1)).toHaveAttribute('aria-label', supersedesDocumentId ? '改版を破棄する' : '削除する');
   });
 
   it.each([401, 403])('connects video link save failure %s to controller revocation', async status => {
@@ -522,11 +522,11 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     expect(c.layoutSuggestions.cancel).toHaveBeenCalledOnce();
   });
 
-  it('exposes the rail actions, selected tools and floating inspector close action', () => {
+  it('keeps back first, delete last and chat clearance while exposing selected tools and the inspector close action', () => {
     const c = makeController({ canSave: true, canUndo: true, canRedo: true, selectionMode: true, selectedElement: { id: 'text', kind: 'TEXT', pageIndex: 0, text: '文字', zIndex: 0, bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.2, heightRatio: 0.2 } } });
     renderScreen(c);
     const rail = screen.getByRole('navigation', { name: 'エディタ操作' });
-    expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['保存する', '公開する', '素材を置く', '動画をつなぐ', '文字を置く', '図形を置く', '範囲を選ぶ', '整える', '音声入力', '元に戻す', 'やり直す', '削除する', '一覧へ戻る']);
+    expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['一覧へ戻る', '保存する', '公開する', '素材を置く', '動画をつなぐ', '文字を置く', '図形を置く', '範囲を選ぶ', '整える', '音声入力', '元に戻す', 'やり直す', '削除する']);
     expect(screen.getByRole('button', { name: '整える' })).toHaveClass('!border-[#5fc3e8]', '!text-[#5fc3e8]');
     expect(rail).toHaveClass('pb-[84px]');
     for (const button of within(rail).getAllByRole('button')) expect(button).not.toHaveAttribute('title');
@@ -546,13 +546,14 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: '属性を閉じる' }));
     expect(c.setSelectedOverlayId).toHaveBeenCalledWith(null);
   });
-  it('keeps the return action last and the chat clearance for published documents', () => {
+  it('keeps back first and chat clearance without a delete action for published documents', () => {
     renderScreen(makeController({ document: { ...editorDocument, status: 'published' }, readOnly: true }));
     const rail = screen.getByRole('navigation', { name: 'エディタ操作' });
     const actions = within(rail).getAllByRole('button');
-    expect(actions[0]).toHaveAttribute('aria-label', '保存する');
-    expect(actions.at(-1)).toHaveAttribute('aria-label', '一覧へ戻る');
-    expect(actions.at(-1)).toBeEnabled();
+    expect(actions[0]).toHaveAttribute('aria-label', '一覧へ戻る');
+    expect(actions[1]).toHaveAttribute('aria-label', '保存する');
+    expect(actions.at(-1)).toHaveAttribute('aria-label', 'やり直す');
+    expect(actions[0]).toBeEnabled();
     expect(rail).toHaveClass('pb-[84px]');
     expect(within(rail).queryByRole('button', { name: '削除する' })).not.toBeInTheDocument();
   });

@@ -994,6 +994,20 @@ describe('HermesFloatingChat', () => {
     });
     expect(screen.queryByTestId('hermes-panel')).not.toBeInTheDocument();
     await waitFor(() => expect(trigger.style.left).not.toBe(initialLeft));
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('hermes-chat-icon-position') ?? 'null')).toEqual({ left: parseFloat(trigger.style.left), top: parseFloat(trigger.style.top) }));
+    localStorage.removeItem('hermes-chat-icon-position');
+  });
+
+  it('restores the icon position the user left it at on this device', () => {
+    localStorage.setItem('hermes-chat-icon-position', JSON.stringify({ left: 40, top: 60 }));
+    try {
+      renderChat();
+      const trigger = screen.getByRole('button', { name: /業務Hermesチャットを開く/ });
+      expect(trigger.style.left).toBe('40px');
+      expect(trigger.style.top).toBe('60px');
+    } finally {
+      localStorage.removeItem('hermes-chat-icon-position');
+    }
   });
 
   it('sends plain text history and drops an in-flight response after reset', async () => {

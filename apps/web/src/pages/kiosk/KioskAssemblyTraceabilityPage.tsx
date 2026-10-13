@@ -12,7 +12,7 @@ import {
   verifyKioskAssemblyTraceabilityAccessPassword
 } from '../../api/client';
 import { Button, buttonClassName } from '../../components/ui/Button';
-import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { Dialog } from '../../components/ui/Dialog';
 import { Input } from '../../components/ui/Input';
 import {
   formatAssemblyTimestamp,
@@ -193,26 +193,31 @@ export function KioskAssemblyTraceabilityPage() {
     }
   };
 
+  const closePendingAction = () => {
+    setPendingAction(null);
+    setReason('');
+    setReassignParentWorkId('');
+  };
+  const missingActionFields = [
+    pendingAction?.kind === 'reassign' && !reassignParentWorkId.trim() ? '変更先を入力' : null,
+    !reason.trim() ? '理由を入力' : null
+  ].filter(Boolean).join('・');
+
   const confirmPendingAction = async () => {
-    if (!accessPassword || !pendingAction || !reason.trim()) return;
+    if (!accessPassword || !pendingAction || busy || missingActionFields) return;
     setBusy(true);
     try {
       if (pendingAction.kind === 'unlink') {
         await unlinkAssemblyWorkUnits(pendingAction.linkId, { accessPassword, reason });
         setMessage(`${pendingAction.workId} の構成を解除しました。`);
       } else if (pendingAction.kind === 'reassign') {
-        if (!reassignParentWorkId.trim()) {
-          setMessage('変更先の親作業用IDを入力してください。');
-          return;
-        }
         await reassignAssemblyWorkUnit(pendingAction.linkId, { parentWorkId: reassignParentWorkId, accessPassword, reason });
         setMessage(`${pendingAction.workId} の親を変更しました。`);
       } else {
         await correctAssemblyFormalIdentifier(pendingAction.assignmentId, { formalId, accessPassword, reason });
         setMessage(`正式ID ${pendingAction.formalId} を訂正しました。`);
       }
-      setPendingAction(null);
-      setReason('');
+      closePendingAction();
       await refresh();
     } catch (error: unknown) {
       setMessage(readAssemblyApiErrorMessage(error, '変更を保存できませんでした。'));
@@ -303,15 +308,11 @@ export function KioskAssemblyTraceabilityPage() {
                 <div key={linkId} className="flex flex-wrap items-center justify-between gap-2 rounded border border-white/10 bg-slate-950/45 p-2">
                   <span className="text-sm font-semibold">{workUnitCaption(workUnit)}</span>
                   <div className="flex gap-2">
-                    <Button type="button" variant="ghostOnDark" className="min-h-10 text-xs" onClick={() => setPendingAction({ kind: 'reassign', linkId, workId: workUnit.workId })}>親変更</Button>
-                    <Button type="button" variant="ghostOnDark" className="min-h-10 text-xs" onClick={() => setPendingAction({ kind: 'unlink', linkId, workId: workUnit.workId })}>解除</Button>
+                    <Button type="button" variant="ghostOnDark" className="min-h-11 text-xs" onClick={() => setPendingAction({ kind: 'reassign', linkId, workId: workUnit.workId })}>親変更</Button>
+                    <Button type="button" variant="ghostOnDark" className="min-h-11 text-xs" onClick={() => setPendingAction({ kind: 'unlink', linkId, workId: workUnit.workId })}>解除</Button>
                   </div>
                 </div>
               ))}
-              <Input value={reassignParentWorkId} onChange={(event) => setReassignParentWorkId(event.target.value)} placeholder="親変更時の変更先 親作業用ID" className="min-h-11" />
-              <label className="grid gap-1 text-xs font-semibold text-white/70">親変更・解除・正式ID訂正の理由
-                <Input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="履歴に残す理由" className="min-h-11" />
-              </label>
             </section>
 
             <section className="grid gap-2 rounded border border-white/10 p-2">
@@ -338,15 +339,27 @@ export function KioskAssemblyTraceabilityPage() {
         </section>
       </main>
 
-      <ConfirmDialog
+      <Dialog
         isOpen={pendingAction != null}
         title={pendingAction?.kind === 'unlink' ? '構成を解除しますか？' : pendingAction?.kind === 'reassign' ? '親を変更しますか？' : '正式IDを訂正しますか？'}
         description="理由を記録し、履歴は削除されません。"
-        confirmLabel="確定する"
-        tone="danger"
-        onCancel={() => { setPendingAction(null); setReason(''); }}
-        onConfirm={() => void confirmPendingAction()}
-      />
+        onClose={closePendingAction}
+        size="md"
+      >
+        <div className="mt-3 grid gap-3">
+          {pendingAction?.kind === 'reassign' ? <label className="grid gap-1 text-sm font-semibold">変更先 親作業用ID
+            <Input value={reassignParentWorkId} onChange={(event) => setReassignParentWorkId(event.target.value)} className="min-h-11" />
+          </label> : null}
+          <label className="grid gap-1 text-sm font-semibold">理由
+            <Input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="履歴に残す理由" className="min-h-11" />
+          </label>
+          {missingActionFields ? <p role="status" className="text-sm">{missingActionFields}</p> : null}
+        </div>
+        <div className="mt-4 flex gap-2">
+          <Button type="button" variant="ghost" className="min-h-11 flex-1 !text-slate-700 hover:!text-slate-900" onClick={closePendingAction}>キャンセル</Button>
+          <Button type="button" className="min-h-11 flex-1 bg-[#e5484d] text-white hover:bg-[#e5484d]/90" disabled={busy || !accessPassword || Boolean(missingActionFields)} onClick={() => void confirmPendingAction()}>確定する</Button>
+        </div>
+      </Dialog>
     </div>
   );
 }

@@ -67,6 +67,16 @@ const PANEL_STANDARD_WIDTH = 380;
 const PANEL_INQUIRY_WIDTH = 560;
 const PANEL_STANDARD_HEIGHT = 560;
 const PANEL_EXPANDED_KEY = 'hermes-chat-expanded';
+const ICON_POSITION_KEY = 'hermes-chat-icon-position';
+
+function readStoredIconPosition() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(ICON_POSITION_KEY) ?? 'null') as { left?: unknown; top?: unknown } | null;
+    return stored && Number.isFinite(stored.left) && Number.isFinite(stored.top) ? { left: stored.left as number, top: stored.top as number } : null;
+  } catch {
+    return null;
+  }
+}
 const HERMES_BARCODE_SCAN_OWNER = 'hermes-floating-chat';
 
 function clampPosition(left: number, top: number, viewport: { width: number; height: number }) {
@@ -143,8 +153,16 @@ export function HermesFloatingChat() {
   const [viewport, setViewport] = useState(getViewport);
   const [position, setPosition] = useState(() => {
     const initialViewport = getViewport();
+    const stored = readStoredIconPosition();
+    if (stored) return clampPosition(stored.left, stored.top, initialViewport);
     return clampPosition(initialViewport.width - ICON_SIZE - 22, initialViewport.height - ICON_SIZE - 22, initialViewport);
   });
+  const movedByUserRef = useRef(false);
+  useEffect(() => {
+    if (!movedByUserRef.current) return;
+    movedByUserRef.current = false;
+    try { localStorage.setItem(ICON_POSITION_KEY, JSON.stringify(position)); } catch { /* position stays for this session */ }
+  }, [position]);
   const [open, setOpen] = useState(false);
   const [knowledgeMode, setKnowledgeMode] = useState<HermesKnowledgeMode>('search');
   const [recordPilotScope, setRecordPilotScope] = useState<HermesSearchTrialScope & { loaded: boolean }>({ enabled: false, loaded: false });
@@ -417,6 +435,7 @@ export function HermesFloatingChat() {
     const deltaY = event.clientY - drag.startY;
     if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) drag.moved = true;
     if (!drag.moved) return;
+    movedByUserRef.current = true;
     setPosition(clampPosition(drag.startLeft + deltaX, drag.startTop + deltaY, viewport));
   }, [viewport]);
 
@@ -455,6 +474,7 @@ export function HermesFloatingChat() {
         ArrowUp: { left: 0, top: -distance },
         ArrowDown: { left: 0, top: distance }
       }[event.key];
+      if (delta) movedByUserRef.current = true;
       if (delta) setPosition((current) => clampPosition(current.left + delta.left, current.top + delta.top, viewport));
       return;
     }

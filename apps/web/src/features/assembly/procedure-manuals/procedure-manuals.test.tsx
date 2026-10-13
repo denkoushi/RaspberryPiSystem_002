@@ -566,17 +566,32 @@ describe('procedure-manuals', () => {
     expect(screen.getByRole('button', { name: '名前の組み立てに戻る' })).toHaveClass('text-[#eef3f6]', 'border-[#344252]');
   });
 
-  it('keeps only viewing navigation in the left header and a headerless manuals viewer', async () => {
-    render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
+  it.each([
+    ['', '/kiosk/assembly/manuals/workshop'],
+    ['?part=PART-1&process=cutting', '/kiosk/assembly/manuals/workshop?part=PART-1&process=cutting']
+  ])('keeps viewing navigation in a full-width header with the list open or closed: %s', async (query, workshopPath) => {
+    mocks.processes.mockResolvedValue([...processes, { id: 'cutting', parentId: 'machining', name: '切削', subjectKind: 'PART' }]);
+    render(<MemoryRouter initialEntries={[`/kiosk/assembly/manuals${query}`]}><ProcedureManualBrowser /></MemoryRouter>);
+    await screen.findByRole('button', { name: '切削' });
     const split = screen.getByTestId('procedure-manuals-split');
-    expect(split).toHaveClass('grid-cols-[460px_minmax(0,1fr)]');
+    expect(split).toHaveClass('grid-cols-[460px_minmax(0,1fr)]', 'min-h-0');
     const left = screen.getByTestId('procedure-manuals-left');
-    expect(within(left).getByRole('heading', { name: '要領書' })).toBeInTheDocument();
-    expect(within(left).getByRole('link', { name: '作る・直す' })).toHaveAttribute('href', '/kiosk/assembly/manuals/workshop');
-    expect(within(left).getByRole('link', { name: '組立へ戻る' })).toHaveAttribute('href', '/kiosk/assembly');
-    for (const name of ['白紙から作る', '素材 0', '動画', '割り当て']) expect(within(left).queryByRole('button', { name })).not.toBeInTheDocument();
-    await screen.findByRole('button', { name: 'DFD1' });
-    expect(screen.getByRole('region', { name: '要領書' })).not.toContainElement(screen.getByRole('heading', { name: '要領書' }));
+    const header = screen.getByRole('banner');
+    expect(header).toHaveClass('h-16');
+    expect(header.parentElement).toHaveClass('grid-rows-[64px_minmax(0,1fr)]');
+    expect(header.nextElementSibling).toBe(split);
+    expect(within(header).getByRole('heading', { name: '要領書' })).toBeVisible();
+    expect(within(header).getAllByRole('link').map(link => link.textContent)).toEqual(['作る・直す', '組立へ戻る']);
+    expect(within(header).getByRole('link', { name: '作る・直す' })).toHaveAttribute('href', workshopPath);
+    expect(within(header).getByRole('link', { name: '組立へ戻る' })).toHaveAttribute('href', '/kiosk/assembly');
+    expect(within(left).queryByRole('banner')).not.toBeInTheDocument();
+    expect(within(left).queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: query ? '部品一覧' : '機種一覧' }).firstElementChild).toHaveTextContent('工程');
+    expect(screen.getByRole('region', { name: '要領書' })).not.toContainElement(header);
+    fireEvent.click(screen.getByRole('button', { name: '一覧を開閉' }));
+    expect(left).not.toBeVisible();
+    expect(header).toBeVisible();
+    expect(screen.getAllByRole('link', { name: '作る・直す' })).toHaveLength(1);
   });
 
   it('creates a named blank document and navigates to its editor', async () => {

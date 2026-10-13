@@ -44,6 +44,66 @@ afterEach(() => {
 });
 
 describe('KioskAssemblyPage library switch', () => {
+  it('places registration immediately after tabs and before procedure filters', () => {
+    renderPage();
+    const tabs = screen.getByRole('navigation', { name: '管理一覧の切替' });
+    const register = screen.getByRole('button', { name: '＋ ファイルから登録' });
+    const gmail = screen.getByRole('button', { name: 'Gmailから取り込む' });
+    expect(tabs.nextElementSibling).toBe(register);
+    expect(register).toHaveClass('h-11', '!bg-[#3ba776]');
+    expect(register.nextElementSibling).toBe(gmail);
+    expect(gmail).toHaveClass('h-11');
+    expect(gmail.nextElementSibling).toContainElement(screen.getByRole('combobox', { name: '手順書名で検索' }));
+    expect(screen.getByRole('link', { name: '組立へ戻る' }).nextElementSibling).toBeNull();
+  });
+
+  it('reuses procedure results, searches published sources and navigates from the template picker', async () => {
+    const documents: AssemblyProcedureDocumentSummaryDto[] = [
+      { id: 'source-a', name: '手順書 Alpha', status: 'published', isActive: true, imageRelativePath: '', pages: [], manualAssignments: [], activeTemplateCount: 0, totalTemplateCount: 0, createdAt: '', updatedAt: '' },
+      { id: 'source-b', name: '手順書 Beta', status: 'published', isActive: true, imageRelativePath: '', pages: [], manualAssignments: [], activeTemplateCount: 0, totalTemplateCount: 0, createdAt: '', updatedAt: '' },
+      { id: 'draft', name: '下書き手順', status: 'draft', isActive: true, imageRelativePath: '', pages: [], manualAssignments: [], activeTemplateCount: 0, totalTemplateCount: 0, createdAt: '', updatedAt: '' }
+    ];
+    listDocuments.mockResolvedValueOnce(documents);
+    renderPage();
+    await screen.findByText('手順書 Alpha');
+    fireEvent.click(screen.getByRole('link', { name: 'テンプレート', exact: true }));
+    const create = screen.getByRole('button', { name: '＋ 手順書から作る' });
+    expect(screen.getByRole('navigation', { name: '管理一覧の切替' }).nextElementSibling).toBe(create);
+    expect(create.nextElementSibling).toContainElement(screen.getByRole('textbox', { name: '全体検索' }));
+    expect(create).toHaveClass('h-11', '!bg-[#3ba776]');
+    fireEvent.click(create);
+    const dialog = screen.getByRole('dialog', { name: '手順書から作る' });
+    expect(within(dialog).getByRole('button', { name: '手順書 Alpha' })).toBeVisible();
+    expect(within(dialog).getByRole('button', { name: '手順書 Beta' })).toBeVisible();
+    expect(within(dialog).queryByRole('button', { name: '下書き手順' })).not.toBeInTheDocument();
+    expect(listDocuments).toHaveBeenCalledTimes(1);
+    const close = within(dialog).getByRole('button', { name: '閉じる' });
+    expect(close.parentElement).toHaveClass('justify-start');
+    fireEvent.click(close);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.click(create);
+    fireEvent.change(screen.getByRole('textbox', { name: '作成元の手順書名で検索' }), { target: { value: ' beta ' } });
+    expect(screen.queryByRole('button', { name: '手順書 Alpha' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '手順書 Beta' }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/kiosk/assembly/templates/new?procedureDocumentId=source-b');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('opens the picker directly on the template tab and shows an empty state', async () => {
+    renderPage('?focus=templates');
+    fireEvent.click(screen.getByRole('button', { name: '＋ 手順書から作る' }));
+    expect(await screen.findByText('使える手順書はありません。')).toBeVisible();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('shows procedure load failures in the picker', async () => {
+    listDocuments.mockRejectedValueOnce(new Error('offline'));
+    renderPage('?focus=templates');
+    fireEvent.click(screen.getByRole('button', { name: '＋ 手順書から作る' }));
+    expect(await screen.findByText('手順書ライブラリの取得に失敗しました。')).toBeVisible();
+  });
+
   it('keeps exactly one visible h1 after the assembly-revision capture switches to templates', () => {
     const view = renderPage();
     expect(view.container.querySelectorAll('h1')).toHaveLength(1);
@@ -90,7 +150,7 @@ describe('KioskAssemblyPage library switch', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('/kiosk/assembly/library?focus=templates');
     expect(screen.getByRole('link', { name: 'テンプレート', exact: true })).toHaveAttribute('aria-current', 'page');
     expect(screen.queryByRole('combobox', { name: '手順書名で検索' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'ファイルから登録' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '＋ ファイルから登録' })).not.toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: '全体検索' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '履歴を戻る' }));
     await waitFor(() => expect(screen.getByRole('link', { name: '手順書', exact: true })).toHaveAttribute('aria-current', 'page'));

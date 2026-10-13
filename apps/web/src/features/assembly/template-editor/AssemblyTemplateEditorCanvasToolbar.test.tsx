@@ -36,7 +36,7 @@ function controller(overrides: Record<string, unknown> = {}) {
 describe('template editor symbol rail', () => {
   beforeEach(() => { mocks.controller = controller(); });
 
-  it('keeps the specified order, Japanese accessible names and bottom return link', () => {
+  it('keeps the specified order, Japanese accessible names and top return link', () => {
     render(<AssemblyTemplateEditorCanvasToolbar />);
     const rail = screen.getByRole('navigation', { name: 'テンプレート操作' });
     expect(within(rail).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
@@ -44,7 +44,9 @@ describe('template editor symbol rail', () => {
     ]);
     const back = within(rail).getByRole('link', { name: '一覧へ戻る' });
     expect(back).toHaveAttribute('href', '/kiosk/assembly/library');
-    expect(back.parentElement).toHaveClass('mt-auto', 'pb-[84px]');
+    expect(rail.firstElementChild).toBe(back);
+    expect(back.nextElementSibling).toHaveClass('h-px');
+    expect(back.querySelector('svg')?.innerHTML).not.toBe(screen.getByRole('button', { name: '前頁' }).querySelector('svg')?.innerHTML);
     expect(screen.getByRole('button', { name: '前頁' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '締結' })).toHaveAttribute('aria-pressed', 'true');
   });

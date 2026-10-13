@@ -12,6 +12,7 @@ import {
   restartAssemblyArea
 } from '../../api/client';
 import { Button, buttonClassName } from '../../components/ui/Button';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import {
   AssemblyProcedureSequenceViewer,
   AssemblyBoltConditionPreparationCard,
@@ -61,6 +62,7 @@ export function KioskAssemblyWorkSessionPage() {
   const [torqueSource, setTorqueSource] = useState<'manual' | 'mock'>('manual');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [restartConfirmOpen, setRestartConfirmOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [hermesGuide, setHermesGuide] = useState<BusinessHermesGuideResponse | null>(null);
   const [hermesGuideBusy, setHermesGuideBusy] = useState(false);
@@ -393,8 +395,8 @@ export function KioskAssemblyWorkSessionPage() {
   if (!session) {
     return (
       <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
-        <Link to={KIOSK_ASSEMBLY_HOME_PATH} className={buttonClassName('ghostOnDark', 'inline-flex min-h-10 w-fit items-center')}>
-          組立トップ
+        <Link to={KIOSK_ASSEMBLY_HOME_PATH} className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 w-fit items-center')}>
+          組立へ戻る
         </Link>
         <p className="rounded border border-white/15 bg-slate-900/80 px-3 py-2 text-sm font-semibold text-amber-200">
           {message ?? '作業データが見つかりません。'}
@@ -755,14 +757,6 @@ export function KioskAssemblyWorkSessionPage() {
             >
               作業完了
             </button>
-            <button
-              type="button"
-              className={kioskFlowButtonClass(actionPresentation.restartArea) + ' col-span-2'}
-              disabled={actionPresentation.restartArea.disabled}
-              onClick={() => void runBusy(async () => setSession(await restartAssemblyArea(session.id, { reason: '画面操作によるエリアやり直し' })))}
-            >
-              やり直し
-            </button>
           </div>
           {completeDisabledReason ? (
             <p className="mt-2 text-xs font-semibold text-amber-200">{completeDisabledReason}</p>
@@ -781,8 +775,23 @@ export function KioskAssemblyWorkSessionPage() {
               />
             ))}
           </div>
+          <button type="button" className="mt-3 min-h-11 shrink-0 self-start rounded-md border border-[#e5484d] px-3 text-sm font-semibold text-[#e5484d] hover:bg-[#e5484d]/10 disabled:cursor-not-allowed disabled:opacity-40" disabled={actionPresentation.restartArea.disabled} onClick={() => setRestartConfirmOpen(true)}>やり直し</button>
         </section>
       </main>
+      <ConfirmDialog
+        isOpen={restartConfirmOpen}
+        title="このエリアをやり直しますか？"
+        description="このエリアの記録を消去し、最初からやり直します。"
+        confirmLabel="やり直す"
+        cancelLabel="キャンセル"
+        tone="danger"
+        buttonClassName="min-h-11"
+        onCancel={() => setRestartConfirmOpen(false)}
+        onConfirm={() => {
+          setRestartConfirmOpen(false);
+          void runBusy(async () => setSession(await restartAssemblyArea(session.id, { reason: '画面操作によるエリアやり直し' })));
+        }}
+      />
     </div>
   );
 }
