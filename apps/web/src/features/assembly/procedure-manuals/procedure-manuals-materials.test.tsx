@@ -110,7 +110,21 @@ describe('procedure-manuals material shelf', () => {
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '組立' } });
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
-  it('disables semantic search for short queries, IME composition, busy operations and unsupported tabs', async () => {
+  it('keeps semantic search enabled for a settled query while the IME reports composition or the lexical list is still loading', async () => {
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    const button = screen.getByRole('button', { name: '意味で探す' });
+    await enterQuery();
+    fireEvent.compositionStart(screen.getByRole('searchbox'));
+    expect(button).toBeEnabled();
+    fireEvent.compositionEnd(screen.getByRole('searchbox'));
+    mocks.list.mockReturnValue(new Promise(() => {}));
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '手順' } });
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledWith({ state: 'unplaced', q: '手順', limit: 500 }));
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    await waitFor(() => expect(mocks.semantic).toHaveBeenCalledWith({ q: '手順', state: 'unplaced' }));
+  });
+  it('disables semantic search for short queries, busy operations and unsupported tabs', async () => {
     render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
     const button = screen.getByRole('button', { name: '意味で探す' });
     expect(button).toBeDisabled();
@@ -119,10 +133,6 @@ describe('procedure-manuals material shelf', () => {
     expect(button).toBeDisabled();
     fireEvent.click(button);
     await enterQuery();
-    fireEvent.compositionStart(screen.getByRole('searchbox'));
-    expect(button).toBeDisabled();
-    fireEvent.compositionEnd(screen.getByRole('searchbox'));
-    expect(button).toBeEnabled();
     for (const name of [/^ナレッジから/, /^加工の写真/]) {
       fireEvent.click(screen.getByRole('tab', { name }));
       expect(button).toBeDisabled();
