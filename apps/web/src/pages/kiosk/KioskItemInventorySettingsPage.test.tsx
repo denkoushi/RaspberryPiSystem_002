@@ -162,7 +162,7 @@ describe('KioskItemInventorySettingsPage', () => {
     expect(screen.queryByLabelText('アイテム名')).not.toBeInTheDocument();
     expect(screen.getByText('item-edit-open:2520')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: '登録待ち' }));
-    expect(screen.getByRole('button', { name: '候補 #1' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('選択中の候補')).toHaveTextContent('候補 #1');
     expect(screen.getByLabelText('アイテム名')).toHaveValue('入力中の治具');
     expect(screen.getByLabelText('型式')).toHaveValue('M-12');
   });
@@ -171,7 +171,7 @@ describe('KioskItemInventorySettingsPage', () => {
     verify.mockResolvedValue({ success: true });
     renderPage({ importId: 'already-registered' });
     press('パスワードのテンキー', '2520');
-    expect(await screen.findByRole('button', { name: '候補 #1' })).toHaveAttribute('aria-pressed', 'true');
+    expect(await screen.findByLabelText('選択中の候補')).toHaveTextContent('候補 #1');
     expect(screen.getByRole('button', { name: '登録する' })).toBeInTheDocument();
   });
 
