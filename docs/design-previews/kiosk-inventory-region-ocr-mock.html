@@ -1,0 +1,336 @@
+<title>在庫 枠指定OCR モック</title>
+<style>
+/* Layout: mock notes outside, kiosk UI inside dark panels that reuse the inventory screen's own tokens (inv-*). Single dark look, same as the kiosk. */
+:root{
+  color-scheme:dark;
+  --bg:#090d14; --s1:#10161f; --s2:#161e2b; --s3:#1e2839;
+  --line:#263145; --line2:#324059;
+  --text:#eef2f8; --muted:#9aa7ba; --faint:#76839a;
+  --cyan:#39d0f0; --cyan-ink:#032a33; --amber:#f5b544; --amber-ink:#2e1d00; --green:#35d895; --red:#ff6e6e;
+  --ui:"Hiragino Sans","Noto Sans JP","Yu Gothic UI","Meiryo",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+html{background:var(--bg)}
+body{background:var(--bg);color:var(--text);font-family:var(--ui);font-feature-settings:"palt";font-size:15px;line-height:1.6}
+.page{max-width:1320px;margin:0 auto;padding-inline:16px;padding-block:20px 48px;display:flex;flex-direction:column;gap:16px}
+h1{font-size:22px;margin:0;line-height:1.3;text-wrap:balance}
+h2{font-size:16px;margin:0}
+.lead{color:var(--muted);margin:0;max-width:65ch}
+.tabs{display:flex;flex-wrap:wrap;gap:8px}
+.tab{min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line2);background:var(--s1);color:var(--text);font:inherit;font-weight:700;cursor:pointer}
+.tab[aria-selected="true"]{background:var(--cyan);border-color:var(--cyan);color:var(--cyan-ink)}
+button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.note{border-left:3px solid var(--amber);padding:2px 0 2px 12px;color:var(--muted);font-size:14px;max-width:80ch}
+.note b{color:var(--text)}
+.notes{display:flex;flex-direction:column;gap:8px}
+section{display:flex;flex-direction:column;gap:14px}
+
+/* ---- scaled kiosk stage (1280x720) ---- */
+.stagewrap{position:relative;width:100%;aspect-ratio:16/9;max-width:100%;overflow:hidden;border:1px solid var(--line2);border-radius:12px;background:var(--bg)}
+.stage{position:absolute;left:0;top:0;width:1280px;height:720px;transform-origin:0 0}
+.reg{position:absolute;inset:0;display:grid;grid-template-columns:420px 1fr;gap:16px;padding:20px 28px}
+.reg h3{margin:0 0 10px;font-size:20px}
+.thumbs{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.thumb{display:block;padding:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--s3);aspect-ratio:4/3;cursor:pointer}
+.thumb svg,.cphoto svg{display:block;width:100%;height:100%}
+.flist{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-content:start}
+.frow{border:1px solid var(--line);border-radius:10px;background:var(--s1);padding:8px 12px;min-height:58px}
+.frow small{display:block;color:var(--faint);font-size:12px}
+.frow span{font-weight:700;font-size:17px}
+.frow.new{border-color:var(--green)}
+
+.viewer{position:absolute;inset:0;background:#05080d;display:grid;grid-template-rows:52px 1fr 76px;grid-template-columns:1fr 300px}
+.vtop{grid-column:1/2;display:flex;align-items:center;justify-content:center;position:relative}
+.count{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;background:var(--s2);border:1px solid var(--line2);border-radius:8px;padding:2px 14px}
+.vtop .ptitle{position:absolute;left:24px;color:var(--muted);font-size:14px}
+.vmain{grid-column:1/2;display:flex;align-items:center;justify-content:center;min-height:0}
+.photo{position:relative;width:760px;height:570px;border-radius:6px;overflow:hidden;background:var(--s3)}
+.photo svg{display:block;width:100%;height:100%}
+.surface{position:absolute;inset:0;cursor:crosshair;touch-action:none}
+.frame{position:absolute;border:2px solid var(--amber);background:rgba(245,181,68,.18);pointer-events:none}
+.frame.done{border-color:var(--green);background:rgba(53,216,149,.14)}
+.frame.saved{border-style:dashed;border-color:var(--cyan);background:rgba(57,208,240,.10)}
+.frame i{position:absolute;left:-2px;top:-24px;font-style:normal;font-size:13px;font-weight:800;padding:1px 8px;border-radius:5px 5px 0 0;white-space:nowrap;background:var(--green);color:#03281a}
+.frame.saved i{background:var(--cyan);color:var(--cyan-ink)}
+.vbot{grid-column:1/2;display:flex;align-items:center;justify-content:center;gap:18px;position:relative}
+.nav{width:64px;height:56px;border-radius:12px;border:1px solid var(--line2);background:var(--s2);color:var(--text);font-size:24px;font-weight:800;cursor:pointer}
+.vbot .runsaved{position:absolute;left:24px}
+.btn{min-height:48px;padding:0 16px;border-radius:10px;border:1px solid var(--line2);background:var(--s2);color:var(--text);font:inherit;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.btn.primary{background:var(--cyan);border-color:var(--cyan);color:var(--cyan-ink)}
+.btn:disabled{opacity:.35;cursor:default}
+.side{grid-column:2/3;grid-row:1/4;background:var(--s1);border-left:1px solid var(--line);padding:14px;display:flex;flex-direction:column;gap:10px;min-height:0}
+.side .close{align-self:flex-end}
+.prompt{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:800;min-height:34px}
+.prompt svg{flex:none}
+.cands{display:flex;flex-direction:column;gap:6px;min-height:0}
+.cand{min-height:44px;text-align:left;padding:4px 12px;border-radius:8px;border:1px solid var(--line2);background:var(--s2);color:var(--text);font:inherit;font-weight:700;font-size:16px;cursor:pointer;overflow-wrap:anywhere}
+.cand[aria-pressed="true"]{border-color:var(--amber);background:rgba(245,181,68,.16)}
+.targets{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.target{min-height:46px;border-radius:8px;border:1px solid var(--line2);background:var(--bg);color:var(--text);font:inherit;cursor:pointer;text-align:left;padding:3px 10px;min-width:0}
+.target small{display:block;font-size:11px;color:var(--faint);line-height:1.2}
+.target span{display:block;font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
+.targets.armed .target{border-color:var(--amber)}
+.target.filled{border-color:var(--green)}
+.savedlist{margin-top:auto;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;color:var(--muted)}
+.schip{display:inline-flex;align-items:center;gap:4px;border:1px dashed var(--cyan);color:var(--cyan);border-radius:8px;padding:0 4px 0 10px;font-weight:700;min-height:36px}
+.schip button{width:32px;height:32px;border:0;background:none;color:inherit;font-size:16px;cursor:pointer}
+
+/* ---- cards ---- */
+.compare{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}
+.col{display:flex;flex-direction:column;gap:8px;min-width:0;max-width:100%}
+.cap{font-size:13px;color:var(--muted);display:flex;gap:10px;align-items:baseline}
+.cap b{color:var(--text);font-size:15px}
+.cap em{font-style:normal;color:var(--amber);font-weight:800;font-variant-numeric:tabular-nums}
+.card{position:relative;display:flex;flex-direction:column;overflow:hidden;border-radius:14px;border:1px solid var(--line);background:var(--s1);max-width:100%}
+.card.m{width:300px}.card.l{width:452px}
+.cphoto{position:relative;background:var(--s3);flex:none}
+.m .cphoto{height:190px}.l .cphoto{height:300px}
+.badge{position:absolute;left:8px;top:8px;border-radius:6px;background:rgba(9,13,20,.75);padding:1px 8px;font-size:11px;font-weight:700;letter-spacing:.06em}
+.pcount{position:absolute;right:8px;border-radius:6px;background:rgba(9,13,20,.75);padding:0 8px;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+.label{display:inline-flex;align-items:center;white-space:nowrap;border-radius:8px;border:1px dashed var(--amber);padding:1px 8px;font-family:var(--mono);font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.08em;color:var(--amber);font-size:14px}
+.qty{font-size:26px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1}
+.qty.zero{color:var(--amber)}
+/* old */
+.old .oname{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:3.05em;padding:10px 12px 0;font-size:17px;font-weight:700;line-height:1.35}
+.old .olabel{padding:4px 12px 0}
+.old dl{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:8px;margin:0;padding:4px 12px 0;font-size:14px}
+.old dt{color:var(--faint)}.old dd{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.old .ofoot{display:flex;align-items:baseline;gap:6px;padding:4px 12px 12px;color:var(--muted);font-size:16px}
+.old .ofoot .loc{margin-left:auto;font-size:14px}
+.old .onav{position:absolute;top:95px;transform:translateY(-50%);width:48px;height:48px;border-radius:50%;border:1px solid var(--line2);background:rgba(9,13,20,.75);color:var(--text);font-size:20px;cursor:pointer}
+.old.l .onav{top:150px}
+/* new */
+.new .body{display:flex;flex-direction:column;gap:3px;padding:8px 10px 9px 12px}
+.new .nname{min-height:2.6em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:16px;font-weight:700;line-height:1.3}
+.new .ptop,.new .pnav{position:absolute;left:6px;right:6px;display:flex;gap:6px}
+.new .ptop{top:6px;align-items:flex-start}
+.new .pnav{bottom:6px;align-items:flex-end}
+.new .pnav button{flex:none;width:40px;height:42px;border-radius:9px;border:1px solid var(--line2);background:rgba(9,13,20,.75);color:var(--text);font-size:17px;font-weight:800;cursor:pointer}
+.new .pnav button+button{margin-left:-2px}
+.new .pmodel{margin-left:auto;min-width:0;text-align:right;border-radius:8px;background:rgba(9,13,20,.78);padding:3px 8px;font-size:13px;font-weight:700;line-height:1.35;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.new.l .pmodel{font-size:15px}
+.new .pplace{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:2px;border-radius:8px;background:rgba(9,13,20,.78);padding:3px 7px}
+.new .pplace .loc{font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.new.l .pplace{flex-direction:row;align-items:center;gap:8px;padding:6px 9px}
+.new .pnav .pcount{position:static;margin-left:auto;flex:none}
+.new .spec{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.new dl{display:grid;grid-template-columns:auto minmax(0,1fr) auto minmax(0,1fr);column-gap:8px;margin:0;font-size:13px}
+.new dt{color:var(--faint)}.new dd{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.new .r3{display:flex;align-items:center;gap:8px;min-width:0}
+.new .loc{flex:1;min-width:0;font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.new .pqty{flex:none;display:flex;align-items:baseline;gap:3px;border-radius:8px;background:rgba(9,13,20,.78);padding:3px 9px;font-size:14px;font-weight:700}
+.new .qty{font-size:22px}
+.new .label{font-size:13px}
+
+/* ---- area ---- */
+.kiosk{border:1px solid var(--line2);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:14px;background:var(--bg)}
+.arow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.chip{min-height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--line2);background:var(--s1);color:var(--text);font:inherit;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.chip small{font-weight:400;opacity:.75}
+.chip[aria-pressed="true"]{background:var(--cyan);border-color:var(--cyan);color:var(--cyan-ink)}
+.iconbtn{width:44px;height:44px;border-radius:8px;border:1px solid var(--line2);background:none;color:var(--text);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.iconbtn[aria-pressed="true"]{border-color:var(--cyan);color:var(--cyan)}
+.grid{display:flex;flex-wrap:wrap;gap:12px}
+.msg{color:var(--green);font-weight:700;font-size:14px;min-height:1.6em}
+</style>
+
+<div class="page">
+  <h1>在庫　枠で囲んで読む・カードの小型化・エリアの記憶</h1>
+  <p class="lead">実装前の確認用です。暗い枠の中がキオスクの画面で、実際に操作できます。枠の外の文は説明で、画面には出ません。</p>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tab-ocr" aria-selected="true" data-tab="ocr">1　拡大して枠で読む</button>
+    <button class="tab" role="tab" id="tab-card" aria-selected="false" data-tab="card">2　アイテムカード</button>
+    <button class="tab" role="tab" id="tab-area" aria-selected="false" data-tab="area">3　エリアの記憶</button>
+  </div>
+
+  <section id="p-ocr">
+    <div class="notes">
+      <div class="note"><b>試し方</b>　写真の上を指（マウス）でなぞって文字を囲む → 右に読めた文字が出る → 入れる先の項目を押す。右下の小さいシールの文字や 3 枚目の刻印が、今は読めない場所の例です。</div>
+      <div class="note"><b>＜ ＞ は写真の下、枚数は写真の上</b>に置きました。写真の上には枠以外なにも重なりません。</div>
+      <div class="note"><b>登録待ちでもアイテム編集でも同じ拡大画面</b>を使います。下のボタンで開く元を切り替えられます。アイテム編集では、今入っている値が右に出て、読んだ文字で上書きできます。</div>
+      <div class="note"><b>枠の記憶（任意の案）</b>　項目に入れたあと「枠を記憶」を押すと、枠の位置と入れ先を覚えます。次の写真で「記憶した枠で読む」を押すと、覚えた枠をまとめて読みます。いくつでも覚えられます。</div>
+    </div>
+    <div class="tabs" id="modes" aria-label="どの画面から開くか">
+      <button class="tab" type="button" data-mode="reg" aria-selected="true">登録待ちから開く</button>
+      <button class="tab" type="button" data-mode="edit" aria-selected="false">アイテム編集から開く</button>
+    </div>
+    <div class="stagewrap" id="wrap"><div class="stage" id="stage">
+      <div class="reg" id="reg"></div>
+      <div class="viewer" id="viewer">
+        <div class="vtop"><span class="ptitle" id="ptitle"></span><span class="count" id="count"></span></div>
+        <div class="vmain"><div class="photo"><div id="pimg"></div><div class="surface" id="surface"></div></div></div>
+        <div class="vbot">
+          <button class="btn runsaved" id="runsaved" type="button">記憶した枠で読む</button>
+          <button class="nav" id="prev" type="button" aria-label="前の写真">＜</button>
+          <button class="nav" id="next" type="button" aria-label="次の写真">＞</button>
+        </div>
+        <aside class="side">
+          <button class="btn close" id="vclose" type="button">✕ 閉じる</button>
+          <div class="prompt" id="prompt"></div>
+          <div class="cands" id="cands"></div>
+          <div class="targets" id="targets"></div>
+          <button class="btn" id="pin" type="button" hidden>枠を記憶</button>
+          <div class="savedlist" id="savedlist"></div>
+        </aside>
+      </div>
+    </div></div>
+  </section>
+
+  <section id="p-card" hidden>
+    <div class="notes">
+      <div class="note"><b>写真の大きさは今のまま</b>（中 190px・大 300px）。写真の下だけを詰めました。見出しの「型式」「メーカー」などのラベルを外して 1 行にまとめ、置き場所の番号・棚・在庫数を 1 行に並べています。</div>
+      <div class="note"><b>写真の中の配置</b>　左上＝在庫数（0 は橙色）、上辺の右寄せ＝型式（長いものは 2 行まで）、左下隅＝＜ ＞、その右＝置き場所の番号とエリア・棚、右下隅＝枚数。「○日前 持出」は外しました。写真の下は名前・メーカー・寸法だけです。＜ ＞ と枚数は写真が 2 枚以上のときだけ出ます。</div>
+    </div>
+    <div id="cards"></div>
+  </section>
+
+  <section id="p-area" hidden>
+    <div class="notes">
+      <div class="note"><b>今</b>は、最初に表示するエリアを 1 つだけ覚えられます。<b>案</b>では、エリアをいくつでも選べて、家のボタンでその組み合わせを覚えます。「開き直す」で、覚えた状態から始まることを確かめられます。</div>
+    </div>
+    <div class="kiosk">
+      <div class="arow" id="areas"></div>
+      <div class="msg" id="amsg" aria-live="polite"></div>
+      <div class="grid" id="agrid"></div>
+    </div>
+  </section>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const FIELDS=[['name','名前'],['model','型式'],['maker','メーカー'],['toolName','工具名'],['toolSize','寸法'],['workMaterial','被削材'],['usage','用途']];
+const FL=Object.fromEntries(FIELDS);
+
+/* ---------- drawn sample photos (text regions in 0-1 ratios, like the manuals editor) ---------- */
+const PHOTOS=[
+ {title:'ケース正面',decor:'<rect width="800" height="600" fill="#2b3038"/><rect x="50" y="45" width="700" height="510" rx="16" fill="#d7dbe1"/><rect x="50" y="45" width="700" height="60" rx="16" fill="#b8323a"/><rect x="440" y="400" width="285" height="120" rx="4" fill="#f6f6f2" stroke="#9aa0a8"/>',
+  regions:[{x:.11,y:.215,w:.40,h:.075,t:'KOYO CARBIDE'},{x:.11,y:.33,w:.52,h:.065,t:'超硬スクエアエンドミル'},{x:.11,y:.44,w:.30,h:.05,t:'2枚刃 ロング'},{x:.57,y:.69,w:.30,h:.042,t:'EMS2060-TiAlN',c:'#22262c'},{x:.57,y:.75,w:.24,h:.038,t:'φ6×15×60',c:'#22262c'},{x:.57,y:.81,w:.20,h:.03,t:'LOT 24K0817',c:'#555b63'}]},
+ {title:'ケース側面',decor:'<rect width="800" height="600" fill="#30343b"/><rect x="30" y="190" width="740" height="220" rx="10" fill="#c7ccd4"/><rect x="30" y="190" width="90" height="220" rx="10" fill="#b8323a"/>',
+  regions:[{x:.19,y:.36,w:.36,h:.06,t:'EMS2060-TiAlN'},{x:.19,y:.46,w:.26,h:.045,t:'アルミ・非鉄用'},{x:.19,y:.54,w:.24,h:.045,t:'側面・溝加工'},{x:.66,y:.60,w:.22,h:.032,t:'MADE IN JAPAN',c:'#5a6068'}]},
+ {title:'工具本体',decor:'<rect width="800" height="600" fill="#3a3d42"/><rect x="0" y="380" width="800" height="220" fill="#2a2c30"/><rect x="110" y="262" width="370" height="76" rx="4" fill="#aeb4bc"/><rect x="110" y="262" width="370" height="18" rx="4" fill="#d9dde2"/><rect x="480" y="266" width="210" height="68" rx="3" fill="#6b5a2e"/><path d="M500 266l40 68M545 266l40 68M590 266l40 68M635 266l40 68" stroke="#c9a94f" stroke-width="7"/>',
+  regions:[{x:.17,y:.475,w:.20,h:.036,t:'KC EMS2060',c:'#6a717b'},{x:.40,y:.475,w:.14,h:.036,t:'φ6 h6',c:'#6a717b'}]}
+];
+function photoSvg(i,cover){const p=PHOTOS[i];
+  return '<svg viewBox="0 0 800 600" preserveAspectRatio="xMidYMid '+(cover?'slice':'meet')+'" role="img" aria-label="'+p.title+'の写真">'+p.decor+
+    p.regions.map(r=>'<text x="'+r.x*800+'" y="'+(r.y+r.h*.84)*600+'" font-size="'+r.h*600*.95+'" font-weight="700" font-family="Arial,Hiragino Sans,sans-serif" textLength="'+r.w*800+'" lengthAdjust="spacingAndGlyphs" fill="'+(r.c||'#1b1f24')+'">'+esc(r.t)+'</text>').join('')+'</svg>';}
+
+/* ---------- 1. viewer ---------- */
+const S={cur:0,open:true,values:{maker:'KOYO CARBIDE'},fresh:{},frames:[],pending:null,last:null,saved:[],busy:false,msg:null};
+try{S.saved=JSON.parse(localStorage.getItem('mock-inv-frames')||'[]')}catch(e){}
+const persist=()=>{try{localStorage.setItem('mock-inv-frames',JSON.stringify(S.saved))}catch(e){}};
+const ICON_BOX='<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3"><rect x="3" y="5" width="18" height="14" rx="1"/></svg>';
+const ICON_OK='<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#35d895" stroke-width="3"><path d="M4 12l5 5L20 6"/></svg>';
+const read=(i,b)=>PHOTOS[i].regions.filter(r=>{const cx=r.x+r.w/2,cy=r.y+r.h/2;return cx>=b.x&&cx<=b.x+b.w&&cy>=b.y&&cy<=b.y+b.h}).map(r=>r.t);
+const box=(b,cls,label)=>'<div class="frame '+cls+'" style="left:'+b.x*100+'%;top:'+b.y*100+'%;width:'+b.w*100+'%;height:'+b.h*100+'%">'+(label?'<i>'+esc(label)+'</i>':'')+'</div>';
+
+function renderViewer(){
+  $('viewer').hidden=!S.open;
+  $('reg').innerHTML='<div><h3>'+(S.mode==='edit'?'アイテム編集　A-0123':'登録待ち　候補 #1042')+'</h3><div class="thumbs">'+PHOTOS.map((p,i)=>'<button class="thumb" type="button" data-open="'+i+'" aria-label="'+p.title+'を拡大">'+photoSvg(i,true)+'</button>').join('')+'</div></div>'+
+    '<div><h3>写真を押すと拡大</h3><div class="flist">'+FIELDS.map(([k,l])=>'<div class="frow'+(S.fresh[k]?' new':'')+'"><small>'+l+'</small><span>'+esc(S.values[k]||'—')+'</span></div>').join('')+'</div></div>';
+  $('pimg').innerHTML=photoSvg(S.cur,false);
+  $('count').textContent=(S.cur+1)+' / '+PHOTOS.length;
+  $('ptitle').textContent=PHOTOS[S.cur].title;
+  $('surface').innerHTML=S.saved.map(f=>box(f.b,'saved',FL[f.field])).join('')+S.frames.map(f=>box(f.b,'done',FL[f.field])).join('')+(S.pending?box(S.pending.b,'',''):'');
+  const p=S.pending;let prompt,c='';
+  if(S.busy)prompt=ICON_BOX+'読み取り中…';
+  else if(p&&p.texts.length){prompt='入れる先を押す';c=p.texts.map((t,i)=>'<button class="cand" type="button" data-cand="'+i+'" aria-pressed="'+(i===p.sel)+'">'+esc(t)+'</button>').join('');}
+  else if(p)prompt='文字なし。囲み直す';
+  else if(S.msg)prompt=ICON_OK+esc(S.msg);
+  else prompt=ICON_BOX+'文字を枠で囲む';
+  $('prompt').innerHTML=prompt;$('cands').innerHTML=c;
+  const armed=!!(p&&p.texts.length)&&!S.busy;
+  $('targets').className='targets'+(armed?' armed':'');
+  $('targets').innerHTML=FIELDS.map(([k,l])=>'<button class="target'+(S.fresh[k]?' filled':'')+'" type="button" data-field="'+k+'"'+(armed?'':' disabled')+'><small>'+l+'</small><span>'+esc(S.values[k]||'—')+'</span></button>').join('');
+  $('pin').hidden=!S.last;
+  $('runsaved').disabled=!S.saved.length;
+  $('runsaved').textContent='記憶した枠で読む'+(S.saved.length?'（'+S.saved.length+'）':'');
+  $('savedlist').innerHTML=S.saved.length?'記憶した枠 '+S.saved.map((f,i)=>'<span class="schip">'+FL[f.field]+'<button type="button" data-unsave="'+i+'" aria-label="'+FL[f.field]+'の枠を消す">✕</button></span>').join(''):'';
+}
+function go(d){S.cur=(S.cur+d+PHOTOS.length)%PHOTOS.length;S.frames=[];S.pending=null;S.last=null;S.msg=null;renderViewer();}
+$('modes').onclick=e=>{const b=e.target.closest('[data-mode]');if(!b)return;S.mode=b.dataset.mode;
+  document.querySelectorAll('#modes .tab').forEach(x=>x.setAttribute('aria-selected',x===b));
+  S.values=S.mode==='edit'?{name:'超硬スクエアエンドミル 2枚刃 ロング',maker:'KOYO CARBIDE',toolName:'エンドミル'}:{maker:'KOYO CARBIDE'};
+  S.fresh={};S.frames=[];S.pending=null;S.last=null;S.msg=null;S.cur=0;S.open=true;renderViewer();};
+$('prev').onclick=()=>go(-1);$('next').onclick=()=>go(1);
+$('vclose').onclick=()=>{S.open=false;renderViewer()};
+$('reg').onclick=e=>{const b=e.target.closest('[data-open]');if(b){S.open=true;S.cur=+b.dataset.open;S.frames=[];S.pending=null;S.last=null;S.msg=null;renderViewer();}};
+$('cands').onclick=e=>{const b=e.target.closest('[data-cand]');if(b&&S.pending){S.pending.sel=+b.dataset.cand;renderViewer();}};
+$('targets').onclick=e=>{const b=e.target.closest('[data-field]');const p=S.pending;if(!b||!p||!p.texts.length)return;
+  const k=b.dataset.field;S.values[k]=p.texts[p.sel];S.fresh[k]=true;S.frames.push({b:p.b,field:k});S.last={b:p.b,field:k};S.msg=FL[k]+'に入れた';S.pending=null;renderViewer();};
+$('pin').onclick=()=>{if(!S.last)return;S.saved=S.saved.filter(f=>f.field!==S.last.field).concat([S.last]);S.frames=S.frames.filter(f=>f.field!==S.last.field);S.msg=FL[S.last.field]+'の枠を記憶した';S.last=null;persist();renderViewer();};
+$('savedlist').onclick=e=>{const b=e.target.closest('[data-unsave]');if(b){S.saved.splice(+b.dataset.unsave,1);persist();renderViewer();}};
+$('runsaved').onclick=()=>{let n=0;S.saved.forEach(f=>{const t=read(S.cur,f.b);if(t.length){S.values[f.field]=t.join(' ');S.fresh[f.field]=true;n++;}});S.pending=null;S.last=null;S.msg=n?n+' 件入れた':'文字なし';renderViewer();};
+(function(){const sf=$('surface');let st=null;
+  const pt=e=>{const r=sf.getBoundingClientRect();return{x:Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),y:Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))}};
+  const bb=(a,b)=>({x:Math.min(a.x,b.x),y:Math.min(a.y,b.y),w:Math.abs(a.x-b.x),h:Math.abs(a.y-b.y)});
+  sf.addEventListener('pointerdown',e=>{if(S.busy)return;sf.setPointerCapture(e.pointerId);st=pt(e);S.last=null;S.msg=null;S.pending={b:{x:st.x,y:st.y,w:0,h:0},texts:[],sel:0};S.busy=true;renderViewer();$('prompt').innerHTML=ICON_BOX+'文字を枠で囲む';});
+  sf.addEventListener('pointermove',e=>{if(!st)return;S.pending.b=bb(st,pt(e));const f=sf.querySelector('.frame:not(.done):not(.saved)');const b=S.pending.b;if(f){f.style.left=b.x*100+'%';f.style.top=b.y*100+'%';f.style.width=b.w*100+'%';f.style.height=b.h*100+'%';}});
+  const end=e=>{if(!st)return;const b=bb(st,pt(e));st=null;
+    if(b.w<.01||b.h<.01){S.pending=null;S.busy=false;renderViewer();return;}
+    S.pending.b=b;renderViewer();
+    setTimeout(()=>{const t=read(S.cur,b);if(t.length>1)t.push(t.join(' '));S.pending={b,texts:t,sel:0};S.busy=false;renderViewer();},500);};
+  sf.addEventListener('pointerup',end);sf.addEventListener('pointercancel',end);
+})();
+function fit(){const w=$('wrap').clientWidth;$('stage').style.transform='scale('+w/1280+')';}
+new ResizeObserver(fit).observe($('wrap'));
+
+/* ---------- 2. cards ---------- */
+const ITEMS=[
+ {id:'a',name:'超硬スクエアエンドミル 2枚刃 ロング',label:'A-0123',model:'EMS2060-TiAlN',maker:'KOYO CARBIDE',toolName:'エンドミル',toolSize:'φ6×15×60',workMaterial:'アルミ・非鉄',usage:'側面・溝加工',qty:12,unit:'本',area:'工具室',shelf:'2-3',photos:[0,1,2],issued:'3日前'},
+ {id:'b',name:'ボールエンドミル R3',label:'A-0124',model:'BEM2R3X12X50S6-TIALN-HRC55-LONGNECK',maker:'KOYO CARBIDE',toolName:'ボールエンドミル',toolSize:'R3×12×50',workMaterial:'鋼・SUS',usage:'曲面仕上げ',qty:0,unit:'本',area:'工具室',shelf:'2-4',photos:[1]},
+ {id:'c',name:'スローアウェイチップ CNMG120408',label:'B-0031',model:'CNMG120408-MA',maker:'HIKARI TOOL',toolName:'チップ',toolSize:'12.7×4.76',workMaterial:'鋼',usage:'外径荒加工',qty:40,unit:'個',area:'第1工場',shelf:'1-2',photos:[0,1]},
+ {id:'d',name:'センタードリル 60°',label:'B-0032',model:'CD-2.0',maker:'HIKARI TOOL',toolName:'センタードリル',toolSize:'φ2×60',workMaterial:'鋼',usage:'センター穴',qty:8,unit:'本',area:'第1工場',shelf:'1-3',photos:[2]},
+ {id:'e',name:'ハイスドリル φ8.5',label:'C-0007',model:'SD8.5',maker:'NAGASE',toolName:'ドリル',toolSize:'φ8.5×117',workMaterial:'鋼',usage:'M10下穴',qty:5,unit:'本',area:'第2工場',shelf:'3-1',photos:[2,0]},
+ {id:'f',name:'スパイラルタップ M10×1.5',label:'C-0008',model:'SP-M10',maker:'NAGASE',toolName:'タップ',toolSize:'M10×1.5',workMaterial:'鋼',usage:'止まり穴',qty:6,unit:'本',area:'第2工場',shelf:'3-2',photos:[1]},
+ {id:'g',name:'切削油 水溶性 18L',label:'D-0002',model:'WS-18',maker:'KANTO OIL',toolName:'',toolSize:'18L',workMaterial:'',usage:'',qty:3,unit:'缶',area:'倉庫',shelf:'1-1',photos:[0]}
+];
+const PI={};
+const pidx=(key,it)=>(PI[key]||0)%it.photos.length;
+const DL=[['model','型式'],['maker','メーカー'],['toolName','工具名'],['toolSize','寸法'],['workMaterial','被削材'],['usage','用途']];
+function oldCard(it,size){const key='o'+size+it.id,i=pidx(key,it),n=it.photos.length,fields=size==='l'?DL:[DL[0],DL[1],DL[3]];
+  return '<div class="card old '+size+'"><div class="cphoto">'+photoSvg(it.photos[i],true)+(it.issued?'<span class="badge">'+it.issued+' 持出</span>':'')+(n>1?'<span class="pcount" style="bottom:8px">'+(i+1)+'/'+n+'</span>':'')+'</div>'+
+   (n>1?'<button class="onav" style="left:8px" type="button" data-nav="-1" data-key="'+key+'" data-id="'+it.id+'" aria-label="前の写真">＜</button><button class="onav" style="right:8px" type="button" data-nav="1" data-key="'+key+'" data-id="'+it.id+'" aria-label="次の写真">＞</button>':'')+
+   '<div class="oname">'+esc(it.name)+'</div><div class="olabel"><span class="label">'+it.label+'</span></div><dl>'+fields.filter(([k])=>it[k]).map(([k,l])=>'<dt>'+l+'</dt><dd>'+esc(it[k])+'</dd>').join('')+'</dl>'+
+   '<div class="ofoot"><span class="qty'+(it.qty===0?' zero':'')+'">'+it.qty+'</span><span>'+it.unit+'</span><span class="loc">'+it.area+'・棚'+it.shelf+'</span></div></div>';}
+function newCard(it,size,scope){const key=(scope||'n')+size+it.id,i=pidx(key,it),n=it.photos.length;
+  const spec=size==='l'?'<dl>'+DL.slice(1).filter(([k])=>it[k]).map(([k,l])=>'<dt>'+l+'</dt><dd>'+esc(it[k])+'</dd>').join('')+'</dl>':'<div class="spec">'+[it.maker,it.toolSize].filter(Boolean).map(esc).join(' ・ ')+'</div>';
+  return '<div class="card new '+size+'"><div class="cphoto">'+photoSvg(it.photos[i],true)+'<div class="ptop"><span class="pqty" aria-label="在庫数"><span class="qty'+(it.qty===0?' zero':'')+'">'+it.qty+'</span>'+it.unit+'</span>'+(it.model?'<span class="pmodel" aria-label="型式">'+esc(it.model)+'</span>':'')+'</div>'+
+   '<div class="pnav">'+(n>1?'<button type="button" data-nav="-1" data-key="'+key+'" data-id="'+it.id+'" aria-label="前の写真">＜</button><button type="button" data-nav="1" data-key="'+key+'" data-id="'+it.id+'" aria-label="次の写真">＞</button>':'')+
+   '<span class="pplace"><span class="label">'+it.label+'</span><span class="loc">'+it.area+'・棚'+it.shelf+'</span></span>'+(n>1?'<span class="pcount">'+(i+1)+'/'+n+'</span>':'')+'</div></div>'+
+   '<div class="body"><div class="nname">'+esc(it.name)+'</div>'+spec+'</div></div>';}
+function renderCards(){
+  const pair=(it,size,title)=>'<div class="compare"><div class="col"><div class="cap"><b>今</b>'+title+'<em data-h></em></div>'+oldCard(it,size)+'</div><div class="col"><div class="cap"><b>案</b>'+title+'<em data-h></em></div>'+newCard(it,size)+'</div></div>';
+  $('cards').innerHTML='<div style="display:flex;flex-direction:column;gap:28px">'+pair(ITEMS[0],'m','中（6 列）写真 3 枚')+pair(ITEMS[1],'m','中（6 列）写真 1 枚・在庫 0')+pair(ITEMS[0],'l','大（4 列）')+'</div>';
+  document.querySelectorAll('#cards .col').forEach(c=>{const card=c.querySelector('.card'),ph=card.querySelector('.cphoto');c.querySelector('[data-h]').textContent='写真の下 '+(card.offsetHeight-ph.offsetHeight)+'px';});
+}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-nav]');if(!b)return;const it=ITEMS.find(x=>x.id===b.dataset.id);PI[b.dataset.key]=((PI[b.dataset.key]||0)+(+b.dataset.nav)+it.photos.length)%it.photos.length;
+  if(b.closest('#cards'))renderCards();else renderArea();});
+
+/* ---------- 3. area memory ---------- */
+const AREAS=[...new Set(ITEMS.map(i=>i.area))];
+const HOME='<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l9 8h-3v9h-4v-6h-4v6H6v-9H3z"/></svg>';
+let savedAreas=[];try{savedAreas=JSON.parse(localStorage.getItem('mock-inv-areas')||'[]')}catch(e){}
+let sel=new Set(savedAreas),amsg='';
+const same=()=>savedAreas.length===sel.size&&savedAreas.every(a=>sel.has(a));
+function renderArea(){
+  $('areas').innerHTML='<button class="chip" type="button" data-area="" aria-pressed="'+(sel.size===0)+'">'+(savedAreas.length===0?HOME:'')+'すべて <small>'+ITEMS.length+'</small></button>'+
+    AREAS.map(a=>'<button class="chip" type="button" data-area="'+a+'" aria-pressed="'+sel.has(a)+'">'+(savedAreas.includes(a)?HOME:'')+a+' <small>'+ITEMS.filter(i=>i.area===a).length+'</small></button>').join('')+
+    '<button class="iconbtn" type="button" id="ahome" aria-pressed="'+same()+'" aria-label="この選択を最初の表示にする" title="この選択を最初の表示にする">'+HOME+'</button>'+
+    '<button class="btn" type="button" id="areopen" style="margin-left:auto">開き直す</button>';
+  $('amsg').textContent=amsg;
+  $('agrid').innerHTML=ITEMS.filter(i=>sel.size===0||sel.has(i.area)).map(i=>newCard(i,'m','ar')).join('');
+}
+$('areas').onclick=e=>{const c=e.target.closest('[data-area]');
+  if(c){const a=c.dataset.area;if(!a)sel.clear();else if(sel.has(a))sel.delete(a);else sel.add(a);amsg='';}
+  else if(e.target.closest('#ahome')){savedAreas=[...sel];try{localStorage.setItem('mock-inv-areas',JSON.stringify(savedAreas))}catch(x){}amsg=savedAreas.length?savedAreas.join('・')+' を最初の表示にした':'すべて を最初の表示にした';}
+  else if(e.target.closest('#areopen')){sel=new Set(savedAreas);amsg='開き直した';}
+  else return;renderArea();};
+
+/* ---------- tabs ---------- */
+document.querySelector('.tabs').onclick=e=>{const t=e.target.closest('[data-tab]');if(!t)return;
+  document.querySelectorAll('.tab').forEach(b=>b.setAttribute('aria-selected',b===t));
+  ['ocr','card','area'].forEach(k=>$('p-'+k).hidden=k!==t.dataset.tab);
+  if(t.dataset.tab==='card')renderCards();if(t.dataset.tab==='ocr')fit();};
+renderViewer();renderArea();fit();
+</script>

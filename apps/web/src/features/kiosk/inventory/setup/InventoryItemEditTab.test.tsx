@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { resolveInventoryTag } from '../../../../api/client';
+import { readInventoryPhotoRegion, resolveInventoryTag } from '../../../../api/client';
 import { useInventoryItems, useInventoryMutations } from '../../../../api/hooks';
 
 import { InventoryItemEditTab } from './InventoryItemEditTab';
@@ -11,7 +11,8 @@ import type { NfcEvent } from '../../../../hooks/useNfcStream';
 const nfc = vi.hoisted(() => ({ event: null as NfcEvent | null }));
 const area = '30007_KSJP-55';
 
-vi.mock('../../../../api/client', () => ({ inventoryThumbnailUrl: (value: string) => value, resolveInventoryTag: vi.fn(), api: { get: vi.fn() } }));
+vi.mock('../../../../api/client', () => ({ inventoryThumbnailUrl: (value: string) => value, readInventoryPhotoRegion: vi.fn(), resolveInventoryTag: vi.fn(), api: { get: vi.fn() } }));
+vi.mock('../../../../components/kiosk/useInventoryFullPhoto', () => ({ useInventoryFullPhoto: (url: string) => ({ imageUrl: url, error: false }) }));
 vi.mock('../../../../api/hooks', () => ({
   useInventoryItems: vi.fn(() => ({
     data: [{
@@ -50,6 +51,8 @@ describe('InventoryItemEditTab', () => {
 
   beforeEach(() => {
     nfc.event = null;
+    vi.stubGlobal('PointerEvent', MouseEvent);
+    vi.mocked(readInventoryPhotoRegion).mockReset().mockResolvedValue({ candidates: ['OCR-MODEL'], status: 'ok' });
     vi.mocked(resolveInventoryTag).mockReset().mockResolvedValue(null);
     mutations = {
       replaceTag: mutation(), move: mutation(), bindCompartment: mutation(), deleteItemPhoto: mutation(), reorderItemPhotos: mutation(), deleteItem: mutation(),
@@ -57,6 +60,30 @@ describe('InventoryItemEditTab', () => {
       renameToolFieldValue: mutation(), addToolFieldValue: mutation(), deleteToolFieldValue: mutation(),
     };
     vi.mocked(useInventoryMutations).mockReturnValue(mutations as never);
+  });
+
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+  it('puts region text in the form without saving automatically', async () => {
+    render(<InventoryItemEditTab accessPassword="2520" />);
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
+    fireEvent.click(screen.getByRole('button', { name: '写真1を拡大' }));
+    const dialog = within(screen.getByRole('dialog', { name: '在庫写真' }));
+    fireEvent.load(dialog.getByRole('img'));
+    const surface = dialog.getByRole('application', { name: '文字を囲む' });
+    surface.setPointerCapture = vi.fn();
+    vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 100, height: 100 } as DOMRect);
+    await act(async () => {
+      fireEvent.pointerDown(surface, { button: 0, clientX: 10, clientY: 10 });
+      fireEvent.pointerUp(surface, { clientX: 80, clientY: 40 });
+    });
+    expect(readInventoryPhotoRegion).toHaveBeenCalledWith(expect.objectContaining({ source: 'item', itemId: 'item-1', photoId: 'photo-1' }), '2520', expect.any(AbortSignal));
+    fireEvent.click(dialog.getByRole('button', { name: '型式に入れる' }));
+    fireEvent.click(dialog.getByRole('button', { name: '閉じる' }));
+    expect(screen.getByLabelText('型式の値')).toHaveValue('OCR-MODEL');
+    expect(mutations.updateItemDetails.mutateAsync).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.mouseDown(screen.getByRole('button', { name: '型式を確定' })); });
+    expect(mutations.updateItemDetails.mutateAsync).toHaveBeenCalledWith({ itemId: 'item-1', details: { model: 'OCR-MODEL' } });
   });
 
   it('moves a compartment to a free drawer in the same area', async () => {
@@ -121,6 +148,8 @@ describe('InventoryItemEditTab', () => {
     try {
       render(<InventoryItemEditTab accessPassword="2520" />);
       fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
+      expect(screen.getByRole('button', { name: '前の写真' })).toHaveClass('bottom-2', 'left-2');
+      expect(screen.getByRole('button', { name: '次の写真' })).toHaveClass('bottom-2', 'left-[60px]');
       fireEvent.click(screen.getByRole('button', { name: '次の写真' }));
       expect(within(screen.getByRole('region', { name: '写真' })).getByAltText('b.jpg')).toBeInTheDocument();
       expect(screen.getByText('2/2')).toBeInTheDocument();

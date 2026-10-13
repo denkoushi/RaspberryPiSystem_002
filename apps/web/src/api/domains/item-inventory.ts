@@ -1,5 +1,7 @@
 import { api } from '../http';
 
+import type { OverlayBBox } from '@raspi-system/shared-types';
+
 function inventorySettingsHeaders(accessPassword?: string) {
   return accessPassword ? { 'x-kiosk-access-password': accessPassword } : undefined;
 }
@@ -112,6 +114,15 @@ export type InventoryToolFieldSuggestion = { model: string[]; maker: string[]; s
 export async function suggestInventoryToolFields(input: { source: 'import'; payloadId: string; photoId: string } | { source: 'item'; itemId: string; photoId: string }, accessPassword?: string) {
   const { data } = await api.post<InventoryToolFieldSuggestion>('/item-inventory/import-photos/suggest-tool-fields', input, {
     headers: inventorySettingsHeaders(accessPassword), timeout: 35000,
+  });
+  return data;
+}
+
+export type InventoryPhotoSource = { source: 'import'; payloadId: string } | { source: 'item'; itemId: string };
+export type InventoryPhotoRegionResult = { candidates: string[]; status: 'ok' | 'unavailable' };
+export async function readInventoryPhotoRegion(input: InventoryPhotoSource & { photoId: string; bbox: OverlayBBox }, accessPassword?: string, signal?: AbortSignal) {
+  const { data } = await api.post<InventoryPhotoRegionResult>('/item-inventory/photos/read-region', input, {
+    headers: inventorySettingsHeaders(accessPassword), timeout: 35000, signal,
   });
   return data;
 }

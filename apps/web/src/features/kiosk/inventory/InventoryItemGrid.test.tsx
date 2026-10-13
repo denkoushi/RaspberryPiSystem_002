@@ -94,12 +94,12 @@ describe('InventoryItemGrid', () => {
     expect(sorted.map((entry) => entry.id)).toEqual(['c', 'b', 'd', 'a']);
   });
 
-  it('shows a two-line 17px name and the count, unit and location below', () => {
+  it('shows a two-line name with stock and location over the photo', () => {
     render(<InventoryItemGrid compartments={[drawer('a', '治具', null, 4)]} onPick={vi.fn()} />);
     expect(screen.getByText('治具')).toBeInTheDocument();
     expect(screen.getByText('ケース')).toBeInTheDocument();
     expect(screen.getByText('50013_540AP 北・棚2-4')).toBeInTheDocument();
-    expect(screen.getByText('治具')).toHaveClass('line-clamp-2', 'text-[17px]');
+    expect(screen.getByText('治具')).toHaveClass('line-clamp-2', 'text-base');
     expect(screen.getByRole('button')).toHaveTextContent('3ケース');
   });
 
@@ -120,11 +120,13 @@ describe('InventoryItemGrid', () => {
     const compartment = drawer('a', '治具', null);
     Object.assign(compartment.item, { model: 'M1', maker: 'OSG', toolName: 'ドリル', toolSize: 'φ10', workMaterial: '鋼・SUS', usage: ' ' });
     const view = render(<InventoryItemGrid size="small" compartments={[compartment]} onPick={vi.fn()} />);
-    expect(screen.getByText('型式')).toBeInTheDocument();
+    expect(screen.getByText('M1')).toHaveClass('truncate');
+    expect(screen.queryByText('型式')).not.toBeInTheDocument();
     expect(screen.queryByText('メーカー')).not.toBeInTheDocument();
     expect(screen.getByLabelText('登録済みアイテム')).toHaveClass('grid-cols-9');
     view.rerender(<InventoryItemGrid size="medium" compartments={[compartment]} onPick={vi.fn()} />);
-    expect(screen.getByText('寸法')).toBeInTheDocument();
+    expect(screen.getByText('OSG ・ φ10')).toBeInTheDocument();
+    expect(screen.getByText('M1')).toHaveClass('line-clamp-2', 'bg-inv-bg/75');
     expect(screen.queryByText('工具名')).not.toBeInTheDocument();
     expect(screen.getByLabelText('登録済みアイテム')).toHaveClass('grid-cols-6');
     view.rerender(<InventoryItemGrid size="large" compartments={[compartment]} onPick={vi.fn()} />);
@@ -141,6 +143,11 @@ describe('InventoryItemGrid', () => {
     const onPick = vi.fn();
     const { container } = render(<InventoryItemGrid compartments={[a, b]} onPick={onPick} />);
     expect(screen.getAllByRole('button', { name: '次の写真' })).toHaveLength(1);
+    const nav = screen.getByRole('group', { name: '写真の切り替え' });
+    expect(nav.parentElement).toHaveClass('bottom-1.5', 'items-end');
+    expect(nav.nextElementSibling).toHaveTextContent('0001');
+    expect(nav.parentElement?.lastElementChild).toHaveAttribute('aria-label', '写真の枚数');
+    for (const button of within(nav).getAllByRole('button')) expect(button).toHaveClass('w-10', 'h-[42px]');
     fireEvent.click(screen.getByRole('button', { name: '次の写真' }));
     expect(screen.getByText('2/2')).toBeInTheDocument();
     expect(container.querySelector('img[src="/a2.jpg"]')).not.toBeNull();
@@ -152,6 +159,20 @@ describe('InventoryItemGrid', () => {
     expect(container.querySelector('img[src="/b1.jpg"]')).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /治具A/ }));
     expect(onPick).toHaveBeenCalledWith(a);
+  });
+
+  it('keeps small photo overlays minimal and highlights zero stock without an issue badge', () => {
+    const entry = { ...drawer('a', '治具', '2026-10-01T00:00:00Z'), stockQuantity: 0 };
+    Object.assign(entry.item, { model: 'M1', photos: [{ id: 'p1', photoUrl: '/1.jpg' }] });
+    render(<InventoryItemGrid size="small" compartments={[entry]} onPick={vi.fn()} />);
+    expect(screen.getByText('0')).toHaveClass('text-inv-amber');
+    expect(screen.getByText('0').parentElement).toHaveClass('bg-inv-bg/75');
+    expect(screen.queryByRole('button', { name: '前の写真' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('写真の枚数')).not.toBeInTheDocument();
+    expect(screen.queryByText(/持出/)).not.toBeInTheDocument();
+    expect(screen.getByText('M1')).toHaveClass('truncate');
+    expect(screen.getByText('M1').parentElement).toContainElement(screen.getByLabelText('置き場所の番号'));
+    expect(screen.getByLabelText('写真下部')).toBeEmptyDOMElement();
   });
 
   it('keeps paging independent when the same item is in two drawers', () => {

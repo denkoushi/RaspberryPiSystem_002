@@ -685,9 +685,12 @@ describe('daily touch movements and inline location filters', () => {
     expect(cards()).toHaveLength(3);
     fireEvent.click(shelf);
     fireEvent.click(within(screen.getByRole('group', { name: 'エリアで絞る' })).getByRole('button', { name: /別エリア/ }));
-    expect(cards()).toHaveLength(2);
+    expect(cards()).toHaveLength(4);
     expect(screen.queryByRole('button', { name: '棚2' })).not.toBeInTheDocument();
     fireEvent.click(within(screen.getByRole('group', { name: 'エリアで絞る' })).getByRole('button', { name: /別エリア/ }));
+    expect(cards()).toHaveLength(3);
+    expect(screen.getByRole('group', { name: '棚で絞る' })).toBeInTheDocument();
+    fireEvent.click(area);
     expect(cards()).toHaveLength(4);
     expect(screen.queryByRole('group', { name: '棚で絞る' })).not.toBeInTheDocument();
   });
@@ -1284,7 +1287,8 @@ describe('inventory scan safety boundaries', () => {
 describe('inventory device presentation preferences', () => {
   const sizeKey = 'kiosk-inventory-thumbnail-size';
   const viewKey = 'kiosk-inventory-view-mode';
-  const areaKey = 'kiosk-inventory-default-area';
+  const areaKey = 'kiosk-inventory-default-areas';
+  const legacyAreaKey = 'kiosk-inventory-default-area';
   const area = itemTag.compartment!.area;
   beforeEach(() => {
     localStorage.clear();
@@ -1364,19 +1368,19 @@ describe('inventory device presentation preferences', () => {
     mount();
     fireEvent.click(areas().getByRole('button', { name: new RegExp(area) }));
     expect(localStorage.getItem(areaKey)).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'このエリアを最初の表示にする' }));
-    expect(localStorage.getItem(areaKey)).toBe(area);
-    expect(screen.getByRole('status', { name: '最初のエリア' })).toHaveTextContent(`この端末は最初に「${area}」を表示します`);
+    fireEvent.click(screen.getByRole('button', { name: 'この選択を最初の表示にする' }));
+    expect(localStorage.getItem(areaKey)).toBe(JSON.stringify([area]));
+    expect(screen.getByRole('status', { name: '最初のエリア' })).toHaveTextContent(` ${area} を最初の表示にした`.trim());
     expect(areas().getByRole('button', { name: new RegExp(area) }).querySelector('svg')).toHaveAttribute('fill', 'currentColor');
-    expect(screen.getByRole('button', { name: 'このエリアが最初の表示です' })).toHaveClass('text-inv-cyan');
+    expect(screen.getByRole('button', { name: 'この選択を最初の表示にする' })).toHaveClass('text-inv-cyan');
     fireEvent.click(screen.getByRole('button', { name: '元に戻す' }));
-    expect(localStorage.getItem(areaKey)).toBeNull();
+    expect(localStorage.getItem(areaKey)).toBe('[]');
     expect(areas().getByRole('button', { name: new RegExp(area) })).toHaveAttribute('aria-pressed', 'true');
     expect(areas().getByRole('button', { name: /すべて/ }).querySelector('svg')).toHaveAttribute('fill', 'currentColor');
   });
 
   it('loads the saved area after data arrives, without reapplying it when chips change', () => {
-    localStorage.setItem(areaKey, area);
+    localStorage.setItem(areaKey, JSON.stringify([area]));
     const loaded = vi.mocked(useInventoryItems).getMockImplementation()!();
     vi.mocked(useInventoryItems).mockReturnValue({ data: undefined, isLoading: true } as never);
     const view = mount();
@@ -1384,42 +1388,83 @@ describe('inventory device presentation preferences', () => {
     view.rerender(<MemoryRouter><KioskItemInventoryPage /></MemoryRouter>);
     expect(areas().getByRole('button', { name: new RegExp(area) })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(areas().getByRole('button', { name: /すべて/ }));
-    expect(localStorage.getItem(areaKey)).toBe(area);
+    expect(localStorage.getItem(areaKey)).toBe(JSON.stringify([area]));
     expect(areas().getByRole('button', { name: /すべて/ })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('falls back to all for a removed area and preserves stored preferences', () => {
-    localStorage.setItem(areaKey, 'なくなったエリア');
+    localStorage.setItem(areaKey, JSON.stringify(['なくなったエリア']));
     localStorage.setItem(sizeKey, 'small');
     localStorage.setItem('unrelated', 'keep');
     mount();
     expect(areas().getByRole('button', { name: /すべて/ })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByLabelText('登録済みアイテム')).toHaveTextContent('治具');
-    expect(localStorage.getItem(areaKey)).toBe('なくなったエリア');
+    expect(localStorage.getItem(areaKey)).toBe(JSON.stringify(['なくなったエリア']));
     expect(localStorage.getItem('unrelated')).toBe('keep');
     expect(screen.getByRole('button', { name: '小' })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('saves all as the default and restores the previous area with undo', () => {
-    localStorage.setItem(areaKey, area);
+  it('toggles multiple areas, remembers the combination, and ignores deleted names', () => {
+    const base = itemTag.compartment!;
+    vi.mocked(useInventoryItems).mockReturnValue({ data: [{ ...base.item, compartments: [base, { ...base, id: 'b', area: '別エリア' }, { ...base, id: 'c', area: '第三エリア' }] }], isLoading: false } as never);
+    localStorage.setItem(areaKey, JSON.stringify([area, 'なくなったエリア']));
+    const view = mount();
+    fireEvent.click(areas().getByRole('button', { name: /別エリア/ }));
+    expect(areas().getByRole('button', { name: new RegExp(area) })).toHaveAttribute('aria-pressed', 'true');
+    expect(areas().getByRole('button', { name: /別エリア/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('group', { name: '棚で絞る' })).not.toBeInTheDocument();
+    expect(within(screen.getByLabelText('登録済みアイテム')).getAllByRole('button')).toHaveLength(2);
+    const home = screen.getByRole('button', { name: 'この選択を最初の表示にする' });
+    expect(home).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(home);
+    expect(JSON.parse(localStorage.getItem(areaKey)!)).toEqual([area, '別エリア']);
+    expect(home).toHaveAttribute('aria-pressed', 'true');
+    expect(areas().getByRole('button', { name: /別エリア/ }).querySelector('svg')).not.toBeNull();
+    view.unmount();
     mount();
+    expect(areas().getByRole('button', { name: /別エリア/ })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(areas().getByRole('button', { name: /すべて/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'このエリアを最初の表示にする' }));
-    expect(localStorage.getItem(areaKey)).toBeNull();
-    expect(screen.getByRole('status', { name: '最初のエリア' })).toHaveTextContent('この端末は最初に「すべて」を表示します');
-    fireEvent.click(screen.getByRole('button', { name: '元に戻す' }));
-    expect(localStorage.getItem(areaKey)).toBe(area);
+    expect(within(screen.getByLabelText('登録済みアイテム')).getAllByRole('button')).toHaveLength(3);
+    expect(screen.queryByRole('group', { name: '棚で絞る' })).not.toBeInTheDocument();
+  });
+
+  it('reads the legacy single area only when the new key is absent', () => {
+    localStorage.setItem(legacyAreaKey, area);
+    const view = mount();
+    expect(areas().getByRole('button', { name: new RegExp(area) })).toHaveAttribute('aria-pressed', 'true');
+    view.unmount();
+    localStorage.setItem(areaKey, '[]');
+    mount();
+    expect(areas().getByRole('button', { name: /すべて/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(localStorage.getItem(legacyAreaKey)).toBe(area);
+  });
+
+  it.each(['bad JSON', '{}', '[false,12,null]'])('ignores invalid saved areas: %s', value => {
+    localStorage.setItem(areaKey, value);
+    mount();
     expect(areas().getByRole('button', { name: /すべて/ })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('reports an already-default area and expires save undo after six seconds', () => {
+  it('saves all as the default and restores the previous area with undo', () => {
+    localStorage.setItem(areaKey, JSON.stringify([area]));
+    mount();
+    fireEvent.click(areas().getByRole('button', { name: /すべて/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'この選択を最初の表示にする' }));
+    expect(localStorage.getItem(areaKey)).toBe('[]');
+    expect(screen.getByRole('status', { name: '最初のエリア' })).toHaveTextContent('すべて を最初の表示にした');
+    fireEvent.click(screen.getByRole('button', { name: '元に戻す' }));
+    expect(localStorage.getItem(areaKey)).toBe(JSON.stringify([area]));
+    expect(areas().getByRole('button', { name: /すべて/ })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('keeps the home button pressed for the same selection and expires save undo after six seconds', () => {
     vi.useFakeTimers();
     mount();
-    fireEvent.click(screen.getByRole('button', { name: 'このエリアが最初の表示です' }));
-    expect(screen.getByRole('status', { name: '最初のエリア' })).toHaveTextContent('このエリアが最初の表示です');
-    expect(screen.queryByRole('button', { name: '元に戻す' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'この選択を最初の表示にする' }));
+    expect(screen.getByRole('status', { name: '最初のエリア' })).toHaveTextContent('すべて を最初の表示にした');
+    expect(screen.getByRole('button', { name: 'この選択を最初の表示にする' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(areas().getByRole('button', { name: new RegExp(area) }));
-    fireEvent.click(screen.getByRole('button', { name: 'このエリアを最初の表示にする' }));
+    fireEvent.click(screen.getByRole('button', { name: 'この選択を最初の表示にする' }));
     act(() => { vi.advanceTimersByTime(5999); });
     expect(screen.getByRole('button', { name: '元に戻す' })).toBeInTheDocument();
     act(() => { vi.advanceTimersByTime(1); });
@@ -1433,7 +1478,7 @@ describe('inventory device presentation preferences', () => {
     fireEvent.click(screen.getByRole('button', { name: '大' }));
     expect(screen.getByRole('button', { name: '大' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(areas().getByRole('button', { name: new RegExp(area) }));
-    fireEvent.click(screen.getByRole('button', { name: 'このエリアを最初の表示にする' }));
+    fireEvent.click(screen.getByRole('button', { name: 'この選択を最初の表示にする' }));
     expect(screen.getByRole('status', { name: '最初のエリア' })).toHaveTextContent('最初の表示を保存できませんでした');
   });
 });

@@ -9,7 +9,7 @@ import {
   useInventoryLocations,
   useInventoryMutations,
 } from '../../../../api/hooks';
-import { InventoryPhotoDialog } from '../../../../components/kiosk/InventoryPhotoDialog';
+import { InventoryPhotoReadDialog } from '../../../../components/kiosk/InventoryPhotoReadDialog';
 import { AREA_DIRECTIONS, composeArea, DEFAULT_AREA_DIRECTION, splitArea } from '../areaNaming';
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, ChevronDownIcon, PlusIcon, TrashIcon } from '../InventoryIcons';
 import {
@@ -204,7 +204,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
   const [done, setDone] = useState<string | null>(null);
   const [confirmDeletePhotoId, setConfirmDeletePhotoId] = useState<string | null>(null);
   const [readPhotoId, setReadPhotoId] = useState<string | null>(null);
-  const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; alt: string } | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const itemsQuery = useInventoryItems(draft.mode !== null);
@@ -499,7 +499,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
           <div className="grid min-h-0 flex-1 auto-rows-[calc(50%-0.375rem)] grid-cols-2 gap-3 overflow-y-auto">
             {candidate.photos.map((photo, index) => (
               <figure key={photo.id} className="flex min-h-0 flex-col gap-2">
-                <button type="button" className="block min-h-11 min-w-11 w-full flex-1" aria-label={`写真${index + 1}を拡大`} onClick={() => { setReadPhotoId(photo.id); setSelectedPhoto({ url: photo.photoUrl, alt: photo.filename }); }}>
+                <button type="button" className="block min-h-11 min-w-11 w-full flex-1" aria-label={`写真${index + 1}を拡大`} onClick={() => { setReadPhotoId(photo.id); setSelectedPhoto(photo.id); }}>
                   <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.filename} className="h-full w-full rounded-xl border border-inv-line object-cover" />
                 </button>
                 {confirmDeletePhotoId === photo.id ? (
@@ -697,7 +697,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
           <button type="button" className={`${invButtonGo} h-14 text-lg disabled:border-inv-line2 disabled:bg-inv-s2 disabled:text-inv-muted disabled:opacity-100`} disabled={remaining > 0 || working || mutations.registerImport.isPending} onClick={() => void register()}>{mutations.registerImport.isPending ? '登録中…' : '登録する'}</button>
         </div>
       </section>
-      <InventoryPhotoDialog photoUrl={selectedPhoto?.url ?? null} alt={selectedPhoto?.alt ?? ''} onClose={() => setSelectedPhoto(null)} />
+      {selectedPhoto ? <InventoryPhotoReadDialog key={candidate.id} photos={candidate.photos.map(photo => ({ ...photo, alt: photo.filename }))} initialPhotoId={selectedPhoto} source={{ source: 'import', payloadId: candidate.id }} accessPassword={accessPassword} values={draft} onApply={(field, value) => update({ [field]: value })} onClose={() => setSelectedPhoto(null)} /> : null}
     </div>
   );
 }

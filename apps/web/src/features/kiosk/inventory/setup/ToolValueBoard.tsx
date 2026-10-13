@@ -28,6 +28,8 @@ type Props = {
   accessPassword: string;
   /** Current value of each field of the item being edited. */
   current: Record<InventoryOptionField, string>;
+  /** OCR text remains uncommitted until the existing field confirmation. */
+  draftValues?: Partial<Record<InventoryOptionField, string>>;
   /** Sets one field of that item only. */
   onChange: (field: InventoryOptionField, value: string) => void;
   /** A value was renamed for every item that uses it. */
@@ -54,8 +56,8 @@ const field = 'rounded-lg border bg-inv-bg text-inv-text placeholder:text-inv-fa
  * Typed text is kept here and handed over when the field is left: by Enter, by the ✓ shown while the
  * text differs, or by going elsewhere. `onClear` gives the × shown while the text is the saved value.
  */
-function Slot({ label, value, required, disabled, onCommit, onClear }: { label: string; value: string; required: boolean; disabled: boolean; onCommit: (next: string) => void; onClear?: () => void }) {
-  const [text, setText] = useState(value);
+function Slot({ label, value, draftValue, required, disabled, onCommit, onClear }: { label: string; value: string; draftValue?: string; required: boolean; disabled: boolean; onCommit: (next: string) => void; onClear?: () => void }) {
+  const [text, setText] = useState(draftValue ?? value);
   const input = useRef<HTMLInputElement>(null);
   const commit = () => {
     // Read the field itself: with a Japanese IME the last conversion may not have reached state yet.
@@ -89,7 +91,7 @@ function Slot({ label, value, required, disabled, onCommit, onClear }: { label: 
       />
       {dirty && !disabled ? (
         // Leaving the field is what saves; preventDefault keeps that the only path on browsers that do not focus buttons.
-        <button type="button" tabIndex={-1} className={`${button} absolute right-0 top-0 h-11 w-11 border-inv-cyan bg-inv-cyan text-inv-cyan-ink`} aria-label={`${label}を確定`} onMouseDown={(event) => { event.preventDefault(); input.current?.blur(); }}><CheckIcon /></button>
+        <button type="button" tabIndex={-1} className={`${button} absolute right-0 top-0 h-11 w-11 border-inv-cyan bg-inv-cyan text-inv-cyan-ink`} aria-label={`${label}を確定`} onMouseDown={(event) => { event.preventDefault(); if (document.activeElement === input.current) input.current?.blur(); else commit(); }}><CheckIcon /></button>
       ) : null}
       {!dirty && !disabled && value && onClear ? (
         <button type="button" className={`${iconButton} absolute right-0 top-0 w-11`} aria-label={`${label}を空にする`} onClick={onClear}><CloseIcon /></button>
@@ -103,7 +105,7 @@ function Slot({ label, value, required, disabled, onCommit, onClear }: { label: 
  * A tap or typed text changes this one item. まとめて直す switches to the registered values themselves:
  * renaming one changes every item that uses it, and values no item uses can be added or removed.
  */
-export function ToolValueBoard({ accessPassword, current, onChange, onRenamed, provisionalName, status, statusField, onClose, className = '' }: Props) {
+export function ToolValueBoard({ accessPassword, current, draftValues, onChange, onRenamed, provisionalName, status, statusField, onClose, className = '' }: Props) {
   const [organizing, setOrganizing] = useState(false);
   const options = useInventoryToolFieldOptions(!organizing);
   const values = useInventoryToolFieldValues(accessPassword, organizing, true);
@@ -212,9 +214,10 @@ export function ToolValueBoard({ accessPassword, current, onChange, onRenamed, p
               </div>
               <div className={`relative shrink-0 ${organizing ? 'opacity-[0.34]' : ''}`}>
                 <Slot
-                  key={shown}
+                  key={JSON.stringify([shown, draftValues?.[column.key]])}
                   label={column.label}
                   value={shown}
+                  draftValue={draftValues?.[column.key]}
                   required={column.key === 'name' && !provisionalName}
                   disabled={organizing}
                   onCommit={(next) => (next ? void typed(column.key, next) : clear(column.key))}
