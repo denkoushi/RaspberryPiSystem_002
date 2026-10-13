@@ -344,6 +344,18 @@ describe('KioskItemInventoryPage stock correction and tag-less picking', () => {
     await waitFor(() => expect(transaction).toHaveBeenCalledWith(expect.objectContaining({ itemTagUid: 'item-uid', expectedCompartmentId: itemTag.compartment!.id, quantityTagUid: 'quantity-uid', restock: false })));
   });
 
+  it('shows every filled item field on the operation screen', () => {
+    const compartment = { ...itemTag.compartment!, item: { ...itemTag.compartment!.item, model: 'VQMHVD1000', maker: '三菱', toolName: 'エンドミル', toolSize: 'φ10', workMaterial: null, usage: '側面加工' } };
+    vi.mocked(useInventoryItems).mockReturnValue({ data: [{ ...compartment.item, compartments: [compartment] }], isLoading: false } as never);
+    renderWithNfc();
+
+    fireEvent.click(within(screen.getByLabelText('登録済みアイテム')).getByRole('button', { name: /治具/ }));
+
+    const info = screen.getByLabelText('アイテムの情報');
+    expect(info).toHaveTextContent('型式VQMHVD1000メーカー三菱工具名エンドミル寸法φ10用途側面加工');
+    expect(info).not.toHaveTextContent('被削材');
+  });
+
   it('takes items out of a picked drawer with no item tag using the freshly resolved quantity', async () => {
     const transaction = vi.fn();
     const touch = vi.fn().mockResolvedValue({ transaction: historyEntry({ id: 'untagged-quantity-issue', action: 'ISSUE', delta: -3, afterQuantity: 7 }) });
@@ -422,6 +434,11 @@ describe('KioskItemInventoryPage item list and history', () => {
 
     const history = screen.getByRole('region', { name: '最近の動き' });
     expect(within(history).getAllByRole('listitem')).toHaveLength(5);
+    const row = within(history).getAllByRole('listitem')[0];
+    expect(row.children).toHaveLength(3);
+    expect(within(row).getByText('-1')).toHaveClass('text-inv-amber');
+    expect(within(row).getByText('→19')).toBeInTheDocument();
+    expect(within(history).queryByText('払い出し')).not.toBeInTheDocument();
     fireEvent.click(within(history).getByRole('button', { name: 'あと2件' }));
     expect(within(history).getAllByRole('listitem')).toHaveLength(7);
   });
@@ -582,6 +599,39 @@ it('does not redraw the item grid when a prompt changes or its four-second timer
 });
 
 describe('daily touch movements and inline location filters', () => {
+  it.each([false, true])('offers all 20 one-tap quantities with stock limits only for issues (restock: %s)', async (restock) => {
+    const touch = vi.fn().mockResolvedValue({ transaction: historyEntry({ action: restock ? 'RESTOCK' : 'ISSUE', delta: restock ? 20 : -3, afterQuantity: restock ? 30 : 7 }) });
+    vi.mocked(useInventoryMutations).mockReturnValue({ touchTransaction: { mutateAsync: touch } } as never);
+    const scan = renderWithNfc();
+    await scan(itemTag);
+    if (restock) fireEvent.click(screen.getByRole('button', { name: '補充' }));
+    const buttons = within(screen.getByRole('group', { name: restock ? '補充する数' : '払い出す数' })).getAllByRole('button');
+    expect(buttons.map(button => button.textContent)).toEqual(Array.from({ length: 20 }, (_, index) => String(index + 1)));
+    buttons.forEach((button, index) => {
+      if (!restock && index >= 10) expect(button).toBeDisabled();
+      else expect(button).toBeEnabled();
+    });
+    if (!restock) {
+      fireEvent.click(buttons[10]);
+      expect(touch).not.toHaveBeenCalled();
+    }
+    await act(async () => { fireEvent.click(buttons[restock ? 19 : 2]); });
+    expect(touch).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ quantity: restock ? 20 : 3, restock, expectedBeforeQuantity: 10 }));
+  });
+
+  it('keeps list controls beside the mode switch and hides them after selecting an item', async () => {
+    const scan = renderWithNfc();
+    const mode = screen.getByRole('group', { name: '払い出しか補充か' });
+    for (const label of ['写真の大きさ', '表示']) expect(screen.getByRole('group', { name: label }).parentElement).toBe(mode.parentElement);
+    expect(screen.getByRole('button', { name: '番号で開く' }).parentElement).toBe(mode.parentElement);
+    expect(screen.queryByText('写真の大きさ')).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'エリアで絞る' })).toHaveClass('flex-wrap');
+    await scan(itemTag);
+    expect(screen.queryByRole('group', { name: '写真の大きさ' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: '表示' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '番号で開く' })).not.toBeInTheDocument();
+  });
+
   it('records a tagless drawer immediately, prevents double taps, and supports repeat and undo', async () => {
     let release: (value: unknown) => void = () => undefined;
     const touch = vi.fn().mockImplementationOnce(() => new Promise((resolve) => { release = resolve; })).mockResolvedValue({ transaction: historyEntry({ action: 'ISSUE', delta: -1, afterQuantity: 8 }) });
@@ -651,7 +701,7 @@ describe('daily touch movements and inline location filters', () => {
     vi.mocked(useInventoryMutations).mockReturnValue({ transaction: { mutateAsync: vi.fn() }, touchTransaction: { mutateAsync: touch } } as never);
     const scan = renderWithNfc();
     await scan(itemTag);
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '20個を払い出す' })); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '10個を払い出す' })); });
     const errorRow = screen.getByRole('alert').parentElement;
     expect(screen.getByRole('alert')).toHaveTextContent('在庫が足りません');
     expect(errorRow).toHaveClass('h-11');
@@ -1036,7 +1086,7 @@ describe('serialized inventory operations', () => {
     await scan(second.tag);
     await scan(second.quantity);
     expect(write).not.toHaveBeenCalled();
-    expect(within(screen.getByLabelText('現在庫').closest('div')!).getByRole('heading', { name: first.tag.compartment!.item.name })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { name: first.tag.compartment!.item.name })[0]).toBeInTheDocument();
     await act(async () => { pending.resolve({ transaction: first.transaction({ id: `${first.suffix}-${operation}`, action: operation === 'cancel' ? 'CANCEL' : 'CORRECTION', afterQuantity: 10 }) }); });
     expect(write).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemTagUid: second.tag.uid, quantityTagUid: second.quantity.uid }));
     expect(screen.getByRole('heading', { name: second.tag.compartment!.item.name })).toBeInTheDocument();
@@ -1064,7 +1114,7 @@ describe('serialized inventory operations', () => {
     expect(write).toHaveBeenCalledOnce();
     expect(queryClient.getQueryState(['inventory-tags'])?.isInvalidated).toBe(true);
     expect(screen.getByRole('status')).toHaveTextContent('タグが見つかりません');
-    expect(within(screen.getByLabelText('現在庫').closest('div')!).getByRole('heading', { name: first.tag.compartment!.item.name })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { name: first.tag.compartment!.item.name })[0]).toBeInTheDocument();
   });
 
   it('drops a scan read before a failed operation even after the page was left and reopened', async () => {

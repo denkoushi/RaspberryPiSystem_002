@@ -10,6 +10,7 @@ import {
   useInventoryMutations,
 } from '../../../../api/hooks';
 import { InventoryPhotoReadDialog } from '../../../../components/kiosk/InventoryPhotoReadDialog';
+import { useDismissOnOutside } from '../../../../hooks/useDismissOnOutside';
 import { AREA_DIRECTIONS, composeArea, DEFAULT_AREA_DIRECTION, splitArea } from '../areaNaming';
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, ChevronDownIcon, PlusIcon, TrashIcon } from '../InventoryIcons';
 import {
@@ -18,7 +19,6 @@ import {
   invButtonSm,
   invButtonSmGhost,
   invError,
-  invEyebrow,
   invField,
   invLabel,
   invLabelNumber,
@@ -207,6 +207,16 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const [photoPage, setPhotoPage] = useState(0);
+  const lastPhotoPage = Math.max(0, Math.ceil((candidate?.photos.length ?? 0) / 2) - 1);
+  const currentPhotoPage = Math.min(photoPage, lastPhotoPage);
+  const [candidatesOpen, setCandidatesOpen] = useState(false);
+  const candidatesRef = useRef<HTMLDivElement>(null);
+  const candidatesButtonRef = useRef<HTMLButtonElement>(null);
+  useDismissOnOutside(candidatesRef, candidatesOpen, () => setCandidatesOpen(false));
+  const candidateIndex = candidates.findIndex((entry) => entry.id === candidate?.id);
+  const chooseCandidate = (id: string) => { setSelectedId(id); setDone(null); setCandidatesOpen(false); };
+  useEffect(() => { setPhotoPage((page) => Math.min(page, lastPhotoPage)); }, [lastPhotoPage]);
   const itemsQuery = useInventoryItems(draft.mode !== null);
   const waitingForTag = draft.mode === 'NEW_ITEM' && Boolean(draft.drawerId) && !draft.itemTagUid;
   const read = useArmedNfcRead(waitingForTag);
@@ -232,6 +242,8 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
     setManualOpen(false);
     setSuggestion(null);
     setReadPhotoId(null);
+    setPhotoPage(0);
+    setCandidatesOpen(false);
     setSelectedPhoto(null);
     suggestionGenerationRef.current += 1;
     setReading(false);
@@ -495,30 +507,37 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
             <span className="min-w-0 flex-1 truncate text-xs text-inv-faint">加工機 {candidate.area} ・ 分類 {candidate.category ?? '-'} ・ メモ {candidate.note ?? '-'}</span>
           </div>
           {candidate.photos.length === 0 ? <p className="text-sm text-inv-faint">写真はありません</p> : null}
-          {/* Two rows fill the pane; more than four photos scroll inside it. */}
-          <div className="grid min-h-0 flex-1 auto-rows-[calc(50%-0.375rem)] grid-cols-2 gap-3 overflow-y-auto">
-            {candidate.photos.map((photo, index) => (
-              <figure key={photo.id} className="flex min-h-0 flex-col gap-2">
-                <button type="button" className="block min-h-11 min-w-11 w-full flex-1" aria-label={`写真${index + 1}を拡大`} onClick={() => { setReadPhotoId(photo.id); setSelectedPhoto(photo.id); }}>
-                  <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.filename} className="h-full w-full rounded-xl border border-inv-line object-cover" />
-                </button>
-                {confirmDeletePhotoId === photo.id ? (
-                  <div className="flex items-center gap-1.5">
-                    <span className="flex-1 text-sm text-[#ffb3b3]">この写真を削除しますか？</span>
-                    <button type="button" className={`${invButtonSm} border-inv-red/60 text-[#ffb3b3]`} disabled={photoPending} onClick={() => deletePhoto(photo.id)}>削除</button>
-                    <button type="button" className={invButtonSmGhost} onClick={() => setConfirmDeletePhotoId(null)}>やめる</button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1.5">
-                    <button type="button" className={iconSm} aria-label={`写真${index + 1}を前へ`} disabled={index === 0 || photoPending} onClick={() => movePhoto(index, -1)}><ArrowLeftIcon /></button>
-                    <button type="button" className={iconSm} aria-label={`写真${index + 1}を後ろへ`} disabled={index === candidate.photos.length - 1 || photoPending} onClick={() => movePhoto(index, 1)}><ArrowRightIcon size={16} /></button>
-                    <span className="flex-1" />
-                    <button type="button" className={`${iconSm} border-inv-red/45 bg-transparent text-[#ffb3b3] hover:bg-inv-red/10`} aria-label={`写真${index + 1}を削除`} disabled={photoPending} onClick={() => setConfirmDeletePhotoId(photo.id)}><TrashIcon /></button>
-                  </div>
-                )}
-              </figure>
-            ))}
+          <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-2 gap-3">
+            {candidate.photos.slice(currentPhotoPage * 2, currentPhotoPage * 2 + 2).map((photo, pageIndex) => {
+              const index = currentPhotoPage * 2 + pageIndex;
+              return (
+                <figure key={photo.id} className="flex min-h-0 flex-col gap-2">
+                  <button type="button" className="block min-h-11 min-w-11 w-full flex-1" aria-label={`写真${index + 1}を拡大`} onClick={() => { setReadPhotoId(photo.id); setSelectedPhoto(photo.id); }}>
+                    <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.filename} className="h-full w-full rounded-xl border border-inv-line bg-inv-bg object-contain" />
+                  </button>
+                  {confirmDeletePhotoId === photo.id ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="flex-1 text-sm text-[#ffb3b3]">この写真を削除しますか？</span>
+                      <button type="button" className={`${invButtonSm} border-inv-red/60 text-[#ffb3b3]`} disabled={photoPending} onClick={() => deletePhoto(photo.id)}>削除</button>
+                      <button type="button" className={invButtonSmGhost} onClick={() => setConfirmDeletePhotoId(null)}>やめる</button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <button type="button" className={iconSm} aria-label={`写真${index + 1}を前へ`} disabled={index === 0 || photoPending} onClick={() => movePhoto(index, -1)}><ArrowLeftIcon /></button>
+                      <button type="button" className={iconSm} aria-label={`写真${index + 1}を後ろへ`} disabled={index === candidate.photos.length - 1 || photoPending} onClick={() => movePhoto(index, 1)}><ArrowRightIcon size={16} /></button>
+                      <span className="flex-1" />
+                      <button type="button" className={`${iconSm} border-inv-red/45 bg-transparent text-[#ffb3b3] hover:bg-inv-red/10`} aria-label={`写真${index + 1}を削除`} disabled={photoPending} onClick={() => setConfirmDeletePhotoId(photo.id)}><TrashIcon /></button>
+                    </div>
+                  )}
+                </figure>
+              );
+            })}
           </div>
+          {candidate.photos.length > 2 ? <div className="flex shrink-0 items-center justify-center gap-3" role="group" aria-label="写真のページ">
+            <button type="button" className={iconSm} aria-label="前の写真ページ" disabled={currentPhotoPage === 0} onClick={() => setPhotoPage(currentPhotoPage - 1)}>＜</button>
+            <span className="text-sm tabular-nums">{currentPhotoPage * 2 + 1}–{Math.min(currentPhotoPage * 2 + 2, candidate.photos.length)} / {candidate.photos.length}</span>
+            <button type="button" className={iconSm} aria-label="次の写真ページ" disabled={currentPhotoPage === lastPhotoPage} onClick={() => setPhotoPage(currentPhotoPage + 1)}>＞</button>
+          </div> : null}
           {localError('photos')}
         </section>
 
@@ -669,27 +688,29 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
           </>
         ) : null}
       </div>
-      {/* Candidates sit in their own strip below the panes so any number of them fits. */}
-      <section aria-label="メールで届いた候補" className={`${invPanel} flex shrink-0 items-center gap-3 p-2.5`}>
-        <p className="w-20 shrink-0 text-center leading-tight"><span className={invEyebrow}>登録待ち</span><br /><span className="text-2xl font-black tabular-nums">{candidates.length}</span><span className="text-xs text-inv-faint">件</span></p>
-        <div className="flex min-w-0 flex-1 gap-2.5 overflow-x-auto">
-          {candidates.map((entry) => {
-            const selected = entry.id === candidate.id;
-            const photo = entry.photos[0];
-            return (
-              <button key={entry.id} type="button" aria-pressed={selected} aria-label={`候補 #${entry.sourceItemId}`} disabled={mutations.registerImport.isPending} className={`flex w-[220px] shrink-0 items-center gap-2 rounded-xl border p-1.5 text-left ${selected ? 'border-2 border-inv-cyan bg-inv-cyan/[0.1]' : 'border-inv-line bg-inv-s2 hover:bg-inv-s3'}`} onClick={() => { setSelectedId(entry.id); setDone(null); }}>
-                <span className="block h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-inv-s3">
+      <section aria-label="メールで届いた候補" className={`${invPanel} relative flex shrink-0 items-center gap-3 p-2.5`}>
+        <div ref={candidatesRef}>
+          <button ref={candidatesButtonRef} type="button" className={invButtonSm} aria-expanded={candidatesOpen} onClick={() => setCandidatesOpen((open) => !open)}>登録待ち {candidates.length}</button>
+          {candidatesOpen ? <div role="region" aria-label="登録待ちの一覧" className={`${invPanel} absolute inset-x-0 bottom-full z-50 mb-2 grid max-h-[60dvh] grid-cols-8 gap-2 overflow-y-auto p-3 shadow-xl`}>
+            {candidates.map((entry) => {
+              const selected = entry.id === candidate.id;
+              const photo = entry.photos[0];
+              return <button key={entry.id} type="button" aria-pressed={selected} aria-label={`候補 #${entry.sourceItemId}`} disabled={mutations.registerImport.isPending} className={`flex min-w-0 flex-col gap-2 rounded-xl border p-2 text-left ${selected ? 'border-2 border-inv-cyan bg-inv-cyan/[0.1]' : 'border-inv-line bg-inv-s2 hover:bg-inv-s3'}`} onClick={() => { chooseCandidate(entry.id); candidatesButtonRef.current?.focus(); }}>
+                <span className="block h-20 w-full overflow-hidden rounded-lg bg-inv-s3">
                   {photo ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
                 </span>
-                <span className="min-w-0">
-                  <b className="block">#{entry.sourceItemId}</b>
-                  <span className="line-clamp-2 break-all text-xs text-inv-muted">{entry.area}</span>
-                  <span className="block truncate text-xs text-inv-faint">{entry.category ?? '-'}・写真{entry.photos.length}</span>
-                </span>
-              </button>
-            );
-          })}
+                <b className="max-w-full truncate text-sm">候補 #{entry.sourceItemId}</b>
+                <span className="line-clamp-2 break-all text-xs text-inv-muted">{entry.area}</span>
+              </button>;
+            })}
+          </div> : null}
         </div>
+        <p aria-label="選択中の候補" className="min-w-0 max-w-sm truncate text-sm font-bold">候補 #{candidate.sourceItemId}・{draft.mode === 'EXISTING_ITEM' ? draft.itemName || draft.name : draft.name}</p>
+        <div className="flex shrink-0 gap-2" role="group" aria-label="候補の切り替え">
+          <button type="button" className={iconSm} aria-label="前の候補" disabled={candidateIndex <= 0 || mutations.registerImport.isPending} onClick={() => chooseCandidate(candidates[candidateIndex - 1].id)}>＜</button>
+          <button type="button" className={iconSm} aria-label="次の候補" disabled={candidateIndex >= candidates.length - 1 || mutations.registerImport.isPending} onClick={() => chooseCandidate(candidates[candidateIndex + 1].id)}>＞</button>
+        </div>
+        <span className="flex-1" />
         <div className="flex shrink-0 items-center gap-3" aria-label="登録操作">
           {error && errorAt === 'register' ? <p className={`max-w-60 text-sm ${invError}`} role="alert">{error}</p> : null}
           <button type="button" className={invButtonSmGhost} disabled={working} onClick={() => void dismiss()}>登録しない</button>

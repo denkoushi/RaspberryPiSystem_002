@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { issuedLabel } from './inventoryDailyFlow';
 import { InventoryItemGrid, sortByRecentIssue } from './InventoryItemGrid';
@@ -24,6 +24,89 @@ describe('issuedLabel', () => {
 });
 
 describe('InventoryItemGrid', () => {
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+  it.each(['small', 'medium'] as const)('shows complete details after hovering a %s card, outside the grid', (size) => {
+    vi.useFakeTimers();
+    vi.stubGlobal('matchMedia', undefined);
+    const entry = drawer('a', '治具', new Date().toISOString());
+    Object.assign(entry.item, { model: ' M1 ', maker: 'OSG', toolName: 'ドリル', toolSize: 'φ10', workMaterial: '鋼', usage: '穴あけ' });
+    const { container } = render(<InventoryItemGrid size={size} compartments={[entry]} onPick={vi.fn()} />);
+    const card = screen.getByRole('button');
+    fireEvent.pointerEnter(card.parentElement!);
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(150); });
+    const tooltip = screen.getByRole('tooltip');
+    expect(container).not.toContainElement(tooltip);
+    expect(tooltip.parentElement).toBe(document.body);
+    expect(tooltip).toHaveClass('fixed', 'pointer-events-none');
+    expect(card).toHaveAttribute('aria-describedby', tooltip.id);
+    expect(Array.from(tooltip.querySelectorAll('dt'), cell => cell.textContent)).toEqual(['番号', '名前', '型式', 'メーカー', '工具名', '寸法', '被削材', '用途', '場所', '在庫', '持出']);
+    for (const value of ['0001', '治具', 'M1', 'OSG', 'ドリル', 'φ10', '鋼', '穴あけ', '50013_540AP 北・棚2-1', '3 ケース']) expect(within(tooltip).getByText(value)).toBeInTheDocument();
+    fireEvent.pointerLeave(card.parentElement!);
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+
+  it.each(['large', 'list', 'pending'] as const)('does not show a tooltip for %s', (kind) => {
+    vi.useFakeTimers();
+    render(<InventoryItemGrid size={kind === 'large' ? 'large' : 'small'} view={kind === 'list' ? 'list' : 'card'} compartments={kind === 'pending' ? [] : [drawer('a', '治具', null)]} pending={kind === 'pending' ? [{ id: 'p', sourceItemId: 1, area: '工具室', category: null, createdAt: '', photoUrl: null, photoCount: 0 }] : []} onPick={vi.fn()} />);
+    fireEvent.pointerEnter(screen.getByRole('button').parentElement!);
+    fireEvent.focus(screen.getByRole('button'));
+    act(() => { vi.advanceTimersByTime(200); });
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+
+  it('omits empty rows and supports keyboard focus even without hover support', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false })));
+    render(<InventoryItemGrid size="small" compartments={[drawer('a', '治具', null)]} onPick={vi.fn()} />);
+    const card = screen.getByRole('button');
+    fireEvent.pointerEnter(card.parentElement!);
+    act(() => { vi.advanceTimersByTime(150); });
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    vi.spyOn(card, 'matches').mockImplementation(selector => selector === ':focus-visible');
+    fireEvent.focus(card);
+    act(() => { vi.advanceTimersByTime(150); });
+    const tooltip = screen.getByRole('tooltip');
+    expect(within(tooltip).queryByText('型式')).not.toBeInTheDocument();
+    expect(within(tooltip).queryByText('持出')).not.toBeInTheDocument();
+    fireEvent.blur(card);
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+
+  it('flips the tooltip at the bottom right and clamps it inside the viewport', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('innerWidth', 400);
+    vi.stubGlobal('innerHeight', 300);
+    const rect = { left: 370, right: 390, top: 260, bottom: 280, width: 20, height: 20 } as DOMRect;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return this.getAttribute('role') === 'tooltip' ? { width: 344, height: 200 } as DOMRect : rect;
+    });
+    render(<InventoryItemGrid size="small" compartments={[drawer('a', '治具', null)]} onPick={vi.fn()} />);
+    const wrapper = screen.getByRole('button').parentElement!;
+    fireEvent.pointerEnter(wrapper);
+    act(() => { vi.advanceTimersByTime(150); });
+    expect(screen.getByRole('tooltip')).toHaveStyle({ left: '18px', top: '80px' });
+    fireEvent.pointerLeave(wrapper);
+    Object.assign(rect, { left: 0, right: 300, top: 0, bottom: 20 });
+    fireEvent.pointerEnter(wrapper);
+    act(() => { vi.advanceTimersByTime(150); });
+    expect(screen.getByRole('tooltip')).toHaveStyle({ left: '8px', top: '8px' });
+  });
+
+  it.each(['scroll', 'resize', 'click', 'pointerDown'] as const)('hides the tooltip and cancels pending display on %s', (event) => {
+    vi.useFakeTimers();
+    render(<InventoryItemGrid size="small" compartments={[drawer('a', '治具', null)]} onPick={vi.fn()} />);
+    const wrapper = screen.getByRole('button').parentElement!;
+    for (const wait of [0, 150]) {
+      fireEvent.pointerEnter(wrapper);
+      act(() => { vi.advanceTimersByTime(wait); });
+      fireEvent[event](event === 'resize' ? window : wrapper);
+      act(() => { vi.advanceTimersByTime(200); });
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    }
+  });
+
   it('shows one list row per location in recent-issue order and picks that compartment', () => {
     const a = drawer('a', '治具', null, 1);
     Object.assign(a.item, { model: ' M1 ', maker: ' OSG ', toolName: 'ドリル', toolSize: 'φ10', workMaterial: '鋼', usage: '穴あけ' });
