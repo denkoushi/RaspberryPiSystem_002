@@ -8,7 +8,8 @@ export async function terminalNoticeLabel(clientId: string): Promise<string> {
   const device = await prisma.clientDevice.findFirst({
     where: { statusClientId: clientId }, orderBy: { id: 'asc' }, select: { location: true, name: true }
   });
-  return device?.location?.trim() || device?.name || clientId;
+  // A bare registered name such as "Mac" does not tell staff which machine it is.
+  return device?.location?.trim() || (device?.name ? `${device.name}（${clientId}）` : clientId);
 }
 
 // Called only for stored alerts (or sanitized terminal recovery events), not a second alert policy.

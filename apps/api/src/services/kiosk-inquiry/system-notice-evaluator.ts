@@ -20,8 +20,8 @@ export async function evaluateSystemNotices(now = new Date()): Promise<void> {
       const label = await terminalNoticeLabel(status.clientId);
       const conditions = [
         { signal: 'stale', title: '通信', body: '端末からの連絡が途絶えています。', open: age >= TERMINAL_STALE_MS },
-        { signal: 'disk', title: '空き容量', body: '保存領域の空きが少なくなっています。', open: status.diskUsage >= TERMINAL_DISK_PERCENT },
-        ...(status.temperature === null ? [] : [{ signal: 'temperature', title: '温度', body: '端末の温度が高くなっています。', open: status.temperature >= TERMINAL_TEMPERATURE_C }])
+        { signal: 'disk', title: '空き容量', body: `保存領域の ${Math.round(status.diskUsage)}% を使っています。`, open: status.diskUsage >= TERMINAL_DISK_PERCENT },
+        ...(status.temperature === null ? [] : [{ signal: 'temperature', title: '温度', body: `端末の温度が ${Math.round(status.temperature)}°C です。`, open: status.temperature >= TERMINAL_TEMPERATURE_C }])
       ];
       for (const condition of conditions) {
         await deliverSystemNotice({ key: `status:${status.clientId}:${condition.signal}`, title: `${label} ${condition.title}`,
