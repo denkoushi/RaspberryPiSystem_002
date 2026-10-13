@@ -43,7 +43,7 @@ count = len(calls.read_text().splitlines()) if calls.exists() else 0
 request_files = [arg.split('=', 1)[1] for arg in sys.argv[1:] if arg.startswith('power_request_file=')]
 request_ids = ['requestId=' + json.loads(Path(name).read_text())['requestId'] for name in request_files]
 with calls.open('a') as stream:
-    stream.write(json.dumps(sys.argv[1:] + request_ids) + '\\n')
+    stream.write(json.dumps(sys.argv[1:] + request_ids + ['locale=' + os.environ.get('LC_ALL', '')]) + '\\n')
 codes = json.loads(Path(os.environ['STUB_CODES']).read_text())
 sys.exit(codes[count] if count < len(codes) else 0)
 ''')
@@ -81,6 +81,8 @@ sys.exit(codes[count] if count < len(codes) else 0)
         self.assertEqual(len(calls), 1)
         self.assertIn('power_action=reboot', calls[0])
         self.assertIn('requestId=request-001', calls[0])
+        # Ansible exits before running anything when the locale is not UTF-8.
+        self.assertIn('locale=C.UTF-8', calls[0])
         copies = [arg.split('=', 1)[1] for arg in calls[0] if arg.startswith('power_request_file=')]
         self.assertEqual(len(copies), 1)
         self.assertFalse(Path(copies[0]).exists())

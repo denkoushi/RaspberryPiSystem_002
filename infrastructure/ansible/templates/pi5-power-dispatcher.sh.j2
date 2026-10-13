@@ -17,6 +17,7 @@ mkdir -p "${LOG_DIR}" "${PROCESSED_DIR}" "${FAILED_DIR}" || exit 1
 TRIGGER_PATH="${TRIGGER_PATH:-${QUEUE_DIR}}"
 
 # Globbing under the C locale gives timestamp/name order, also on bash 3.2.
+# Ansible needs a UTF-8 locale, so it gets its own below.
 export LC_ALL=C
 shopt -s nullglob
 QUEUE_FILES=()
@@ -94,6 +95,7 @@ PY
       if REQUEST_COPY=$(mktemp "${TMPDIR:-/tmp}/power-request.XXXXXX") && \
         cp -- "${QUEUE_FILE}" "${REQUEST_COPY}" && \
         (cd "${ANSIBLE_DIR}" && \
+        LC_ALL=C.UTF-8 LANG=C.UTF-8 \
         ANSIBLE_CONFIG="${ANSIBLE_DIR}/ansible.cfg" ANSIBLE_ROLES_PATH="${ANSIBLE_DIR}/roles" \
         ansible-playbook "${PLAYBOOK}" -i "${INVENTORY}" \
           -e "power_action=${ACTION}" -e "power_request_file=${REQUEST_COPY}") \
