@@ -28,7 +28,6 @@ type Drag = {
   slots: Array<{ id: string; button: HTMLButtonElement; rect: DOMRect }>;
   next: string[];
   active: boolean;
-  preventScroll: (event: TouchEvent) => void;
 };
 
 export function useInquirySenderOrder(ids: string[], department: string, disabled: boolean) {
@@ -47,13 +46,19 @@ export function useInquirySenderOrder(ids: string[], department: string, disable
     pending.current = null;
     if (drag.timer !== null) clearTimeout(drag.timer);
     if (drag.frame !== null) cancelAnimationFrame(drag.frame);
-    drag.handle.removeEventListener('touchmove', drag.preventScroll);
     for (const { button } of drag.slots) {
       button.style.transform = '';
       button.removeAttribute('data-reordering');
       button.removeAttribute('data-dragging');
     }
     if (drag.handle.hasPointerCapture?.(drag.pointerId)) drag.handle.releasePointerCapture(drag.pointerId);
+  }, []);
+
+  useEffect(() => {
+    // Registered before any touch starts so the browser waits for it; scrolling stays free until the hold completes.
+    const preventScroll = (event: TouchEvent) => { if (pending.current?.active && event.cancelable) event.preventDefault(); };
+    document.addEventListener('touchmove', preventScroll, { passive: false });
+    return () => document.removeEventListener('touchmove', preventScroll);
   }, []);
 
   useEffect(() => {
@@ -107,12 +112,9 @@ export function useInquirySenderOrder(ids: string[], department: string, disable
     const handle = event.currentTarget;
     const drag: Drag = {
       id, pointerId: event.pointerId, handle, startX: event.clientX, startY: event.clientY,
-      x: event.clientX, y: event.clientY, timer: null, frame: null, slots: [], next: [...order], active: false,
-      preventScroll: event => { if (pending.current?.active && event.cancelable) event.preventDefault(); }
+      x: event.clientX, y: event.clientY, timer: null, frame: null, slots: [], next: [...order], active: false
     };
     pending.current = drag;
-    // Allow ordinary touch scrolling until the hold completes. React's touch listeners are passive.
-    handle.addEventListener('touchmove', drag.preventScroll, { passive: false });
     handle.setPointerCapture?.(event.pointerId);
     drag.timer = setTimeout(() => {
       if (pending.current !== drag) return;
