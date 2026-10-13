@@ -140,7 +140,6 @@ export function HermesFloatingChat() {
   const location = useLocation();
   const operationGuide = useOperationGuide();
   const { pageContext } = useHermesPageContext();
-  const isPlanningBoardRoute = location.pathname.replace(/\/$/, '') === '/kiosk/production-schedule/planning-board';
   const [viewport, setViewport] = useState(getViewport);
   const [position, setPosition] = useState(() => {
     const initialViewport = getViewport();
@@ -271,7 +270,7 @@ export function HermesFloatingChat() {
 
   useEffect(() => {
     const icon = iconRef.current;
-    if (!isPlanningBoardRoute || !isDocumentVisible || !icon) return;
+    if (!isDocumentVisible || !icon) return;
     const idleDelayMs = 1200;
     const pointers = new Set<number>();
     let lastActivity = 0;
@@ -322,7 +321,7 @@ export function HermesFloatingChat() {
       window.clearTimeout(timeoutId);
       delete icon.dataset.interacting;
     };
-  }, [isDocumentVisible, isPlanningBoardRoute]);
+  }, [isDocumentVisible]);
 
   useEffect(() => {
     const updateViewport = () => {
