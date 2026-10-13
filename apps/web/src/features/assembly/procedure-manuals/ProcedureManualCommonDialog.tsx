@@ -37,7 +37,7 @@ export function ProcedureManualCommonDialog({ catalog, items, categoryId, onClos
   const choices = editing === 'categories' ? catalog.categories : catalog.actions;
   const selectedChoice = choices.find(row => row.id === selected);
   const chip = (pressed: boolean) => `${procedureManualButtonBase} min-h-[52px] px-[18px] text-[19px] font-bold ${pressed ? procedureManualCommonSelected : procedureManualButtonUnselected}`;
-  const inputClass = 'h-14 w-full rounded-lg border border-[#344252] bg-[#0b0f13] px-4 text-xl';
+  const inputClass = 'h-14 w-full rounded-lg border border-[#344252] bg-[#0b0f13] px-4 text-xl text-[#eef3f6]';
   const changeEdit = (kind: 'categories' | 'actions') => { setEditing(kind); setSelected(''); setEditName(''); setEditError(null); };
   const mutate = async (remove = false) => {
     if (!editing || busy || !beforeMutation()) return;
@@ -81,7 +81,7 @@ export function ProcedureManualCommonDialog({ catalog, items, categoryId, onClos
     } catch (e) { setError(readAssemblyApiErrorMessage(e, '作成できません')); }
     finally { setBusy(false); }
   };
-  return <Dialog isOpen onClose={() => { if (!busy) onClose(); }} title="共通の手順を作る" size="full" className="my-auto max-w-[1180px] rounded-xl border border-[#344252] bg-[#161c22] px-7 py-6 text-[#eef3f6]" titleClassName="text-[26px] font-bold">
+  return <Dialog isOpen onClose={() => { if (!busy) onClose(); }} title="共通の手順を作る" size="full" className="!my-auto !max-w-[1180px] !rounded-xl !border !border-[#344252] !bg-[#161c22] !px-7 !py-6 !text-[#eef3f6]" titleClassName="!text-[26px] !font-bold text-[#eef3f6]">
     <form className="mt-4 grid gap-4" onSubmit={event => { event.preventDefault(); void create(); }}>
       <div className="grid grid-cols-[minmax(0,1fr)_430px] gap-7">
         <div className="grid content-start gap-3.5">

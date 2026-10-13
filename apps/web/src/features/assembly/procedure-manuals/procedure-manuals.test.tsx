@@ -75,6 +75,34 @@ describe('procedure-manuals', () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
+  it('shows five visible name columns, full names and legacy process fallbacks', async () => {
+    const names = ['主軸_P-123_加工_研削_仕上げ_確認', '軸受_P-456_組立_圧入', '旧名称', '親工程の旧名称'];
+    const rows = names.map((title, index) => ({ ...publishedOverviewItem, title, assignmentId: `name-${index}`, modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: index === 3 ? 'parent' : 'inspection' }));
+    mocks.allOverview.mockResolvedValue({ processes: [{ processId: 'inspection', items: rows }] });
+    render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
+    const list = screen.getByRole('region', { name: '要領書一覧' });
+    const row = await within(list).findByRole('button', { name: names[0] });
+    const cells = Array.from(row.children).slice(1, 6);
+    expect(cells.map(cell => cell.textContent)).toEqual(['主軸', 'P-123', '加工', '研削', '仕上げ 確認']);
+    cells.forEach(cell => expect(cell).toHaveClass('truncate'));
+    expect(cells[0]).toHaveClass('font-bold');
+    expect(cells[1]).toHaveClass('font-bold', 'font-mono');
+    expect(cells[4]).toHaveClass('text-[#9fadb9]');
+    expect(row).toHaveClass('min-h-[72px]');
+    expect(row).toHaveAttribute('title', names[0]);
+    expect(Array.from(list.firstElementChild!.children).slice(1).map(cell => cell.textContent)).toEqual(['品名', '品番', '工程', '作業', '補足', 'ページ数']);
+    expect(list.firstElementChild).not.toHaveClass('sr-only');
+    expect(within(list).queryByText('名前', { exact: true })).not.toBeInTheDocument();
+    expect(within(list).queryByText('機種・部品')).not.toBeInTheDocument();
+    for (const [index, expected] of [
+      [1, ['軸受', 'P-456', '組立', '圧入', '—']],
+      [2, ['旧名称', 'DFD1', '組立', '検査', '—']],
+      [3, ['親工程の旧名称', 'DFD1', '', '組立', '—']]
+    ] as const) {
+      expect(Array.from(within(list).getByRole('button', { name: names[index] }).children).slice(1, 6).map(cell => cell.textContent)).toEqual(expected);
+    }
+  });
+
   it('defaults to a closed list, remembers the toggle and tolerates unavailable storage', async () => {
     localStorage.clear();
     const view = render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
@@ -517,6 +545,10 @@ describe('procedure-manuals', () => {
   it('preserves the initial model and uses explicit readable colors in the name strip and actions', async () => {
     mocks.machineCandidates.mockResolvedValue({ candidates: [], hasMore: false });
     render(<MemoryRouter><ProcedureManualBlankDialog models={[]} processes={processes} modelCode="ｄｆｄ１" processId="inspection" onClose={vi.fn()} /></MemoryRouter>);
+    const dialog = screen.getByRole('dialog', { name: '白紙から作る' });
+    expect(dialog.firstElementChild).toHaveClass('!bg-[#161c22]', '!text-[#eef3f6]', '!max-w-[1180px]', '!my-auto', '!border', '!border-[#344252]', '!rounded-[14px]', '!px-[26px]', '!py-6');
+    expect(within(dialog).getByRole('heading', { name: '白紙から作る' })).toHaveClass('text-[#eef3f6]');
+    expect(within(dialog).getByLabelText('補足')).toHaveClass('bg-white', 'text-slate-900');
     const preview = screen.getByLabelText('名前のプレビュー');
     expect(preview).toHaveTextContent('DFD1_組立_検査');
     expect(preview).toHaveClass('text-[#eef3f6]');

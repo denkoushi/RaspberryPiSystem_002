@@ -8,6 +8,7 @@ import { kioskAssemblyManualsWorkshopPath } from '../assemblyRoutes';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
 import { ManualThumbnail } from './ManualThumbnail';
+import { splitProcedureManualName } from './procedure-manual-name';
 import { procedureManualModelKey } from './ProcedureManualAssignmentDialog';
 import { ProcedureManualCommonList, filterProcedureManualCommonItems } from './ProcedureManualCommonList';
 import { ProcedureManualFilterPane } from './ProcedureManualFilterPane';
@@ -129,16 +130,26 @@ export function ProcedureManualBrowser() {
         {showOverview && subjectKind === 'COMMON' ? <ProcedureManualCommonList items={visibleItems} processes={processes} categoryId={processId} kanaRow={kanaRow} onView={item => {
           setInitialDocumentId(item.documentId); setModelCodeKey(item.modelCodeKey); setProcessId(item.processId); setListOpen(false);
         }} /> : showOverview ? <section aria-label="要領書一覧" className="min-h-0 flex-1 overflow-auto pr-16">
-          <div className="grid grid-cols-[64px_minmax(0,1fr)_180px_130px_70px] items-center gap-3 border-b border-[#27313b] px-5 py-3 text-[17px] font-bold text-[#9fadb9]">
-            <span aria-hidden="true" /><span>名前</span><span>機種・部品</span><span>工程</span><span>ページ数</span>
+          <div className="grid grid-cols-[64px_minmax(0,1.5fr)_minmax(0,1.5fr)_minmax(0,1.1fr)_minmax(0,1.3fr)_minmax(0,1fr)_70px] items-center gap-3 border-b border-[#27313b] px-5 py-3 text-[17px] font-bold text-[#9fadb9]">
+            <span aria-hidden="true" /><span>品名</span><span>品番</span><span>工程</span><span>作業</span><span>補足</span><span>ページ数</span>
           </div>
-          {visibleItems.map(item => <button type="button" key={item.assignmentId} aria-label={item.title}
-            className="grid min-h-[72px] w-full grid-cols-[64px_minmax(0,1fr)_180px_130px_70px] items-center gap-3 border-b border-[#27313b] px-5 py-3 text-left text-[19px] hover:bg-[#1b222a]"
+          {visibleItems.map(item => {
+            const child = processes.find(process => process.id === item.processId);
+            const name = splitProcedureManualName(item.title) ?? {
+              partName: item.title, subjectKey: item.modelCode,
+              process: shortName(processes.find(process => process.id === child?.parentId)), work: shortName(child), supplement: ''
+            };
+            return <button type="button" key={item.assignmentId} aria-label={item.title} title={item.title}
+            className="grid min-h-[72px] w-full grid-cols-[64px_minmax(0,1.5fr)_minmax(0,1.5fr)_minmax(0,1.1fr)_minmax(0,1.3fr)_minmax(0,1fr)_70px] items-center gap-3 border-b border-[#27313b] px-5 py-3 text-left text-[19px] hover:bg-[#1b222a]"
             onClick={() => { setAllKind(processes.find(row => row.id === item.processId)?.subjectKind ?? 'MODEL'); setInitialDocumentId(item.documentId); setUserSelectedModel(true); setModelCodeKey(item.modelCodeKey); setProcessId(item.processId); }}>
-            <ManualThumbnail url={item.thumbnailPageUrl} /><span className="min-w-0 truncate font-bold">{item.title}</span>
-            <span className="truncate font-mono">{item.modelCode}</span><span>{shortName(processes.find(process => process.id === item.processId))}</span>
+            <ManualThumbnail url={item.thumbnailPageUrl} />
+            <span className="min-w-0 truncate font-bold">{name.partName}</span>
+            <span className="min-w-0 truncate font-mono font-bold">{name.subjectKey}</span>
+            <span className="min-w-0 truncate">{name.process}</span>
+            <span className="min-w-0 truncate">{name.work}</span>
+            <span className="min-w-0 truncate text-[#9fadb9]">{name.supplement || '—'}</span>
             <span className="text-center font-mono">{item.pageCount ?? '—'}</span>
-          </button>)}
+          </button>; })}
           {loading ? <p role="status" className="p-5 text-[17px] text-[#9fadb9]">読込中…</p> : visibleItems.length === 0 ? <p className="p-5 text-[17px] text-[#9fadb9]">該当する要領書がありません</p> : null}
         </section> : !processId ? <p className="p-2 text-sm text-[#9fadb9]">工程を選択</p> : !detail && !error ? <p role="status">読込中…</p> : null}
 

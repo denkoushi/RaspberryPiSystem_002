@@ -1,6 +1,6 @@
 {
   "artifacts": {
-    "manual.html": "e57ce26feba3f4bc0fd24ecf3e0d2255897601c195859eb87e41445f3837045f",
+    "manual.html": "46129dc3e1166c4425120c0d982f32a0fb7c0541e09feed8d0909ab12c81675f",
     "screens/assembly-document-editor-auth.png": "daf8667d9ec30a901d7802a9717e553a582a44f57496422d0156008f30de8e93",
     "screens/assembly-document-editor-conflict.png": "f04f9b88ab3a8c45c4bf000a458a63cbbe9b358870c4817bdb9ca03e599e4e2c",
     "screens/assembly-document-editor-image-properties.png": "74bf76af5bc240b754c7f2dd4522340442fa01ca9a46d673d75f0a0ea3e3e851",
@@ -9,10 +9,10 @@
     "screens/assembly-document-editor-shape-properties.png": "28c089602a6d4b1af41bfdde46b5d2123934c2aca39ee96a386f3313693c37eb",
     "screens/assembly-document-editor-text-properties.png": "d2a01453781b04a3090bc48b57ed64564a00f2ddb9a3ea2ae2757ba9fb70ae46",
     "screens/assembly-document-editor-types.png": "5275adb677f07775e01ad127eace8449478a546f0db0881d99ca5af04a40a9b3",
-    "screens/assembly-file-register.png": "3b4946f3f289c1948880e274d12480d2bc8a28107bfee00c0787a7f451078b5e",
-    "screens/assembly-gmail-publish.png": "230447af2c7fa95d80a101976c1e730b33b7e2dfb9caaaef5742ea80af8e83c7",
-    "screens/assembly-overview.png": "0eb4fdb450f554b190e7c600f402b106a7f5f00f02bec84e2b1478e5a55b88c9",
-    "screens/assembly-procedure-edit.png": "0eb4fdb450f554b190e7c600f402b106a7f5f00f02bec84e2b1478e5a55b88c9",
+    "screens/assembly-file-register.png": "5c886d5260834315b941e49a37feef99c178679469ed0eb7548d46b7e55b6fda",
+    "screens/assembly-gmail-publish.png": "dfa75aaf6bd5ee25f4012cc9ebddb72427a25370a6e7f56353fa539c8dcee778",
+    "screens/assembly-overview.png": "9996ec65b2f1ae6a4c844194cbfc0560184db08f4e0ffb2b652f552b0df8d63c",
+    "screens/assembly-procedure-edit.png": "9996ec65b2f1ae6a4c844194cbfc0560184db08f4e0ffb2b652f552b0df8d63c",
     "screens/assembly-revision.png": "983e73170bf3934c47a37c8ea308f5b8409d00c259e7f19af7d2e3ca735b3e79",
     "screens/assembly-template-auth-basics.png": "e3692e0d043153a5faecfeee6a86a6e636d06a937fb36e54ca8689a2926bc65c",
     "screens/assembly-template-documents.png": "e3692e0d043153a5faecfeee6a86a6e636d06a937fb36e54ca8689a2926bc65c",
@@ -27,10 +27,10 @@
     "sheets/assembly-document-editor-shape-properties.png": "e189228b4ac536d532a0ab04c3354e382980a65cf5a09d8dc1db69048f08d540",
     "sheets/assembly-document-editor-text-properties.png": "168370e71d2ab844fc32396ab49a24eb80581888c451aef7c5cec29cb89c062f",
     "sheets/assembly-document-editor-types.png": "0eb8999eaa93f7977e8a5de8fe5ad347e2b5bcf9b9d029592e62fc1a79f74ecd",
-    "sheets/assembly-file-register.png": "145cd846bce22e6cd339925399166da202a6219e26d3100892384edd000a6676",
-    "sheets/assembly-gmail-publish.png": "a118d902940b01fe8181f3aa42d9de83e2c6508507838da7150a9cb76e9ebb45",
-    "sheets/assembly-overview.png": "fecaeed536ac1aace2e4d521ab4ad694015fd17550c67ee38838a7e6b63f7265",
-    "sheets/assembly-procedure-edit.png": "5ae99492a2ce380b39a636a720864fdf3eee410ae24342895e142092cde96d5b",
+    "sheets/assembly-file-register.png": "1d5f21b7ac4d51ef8476f5facc024578373f187fd0c1176afcc35eb87fb6527f",
+    "sheets/assembly-gmail-publish.png": "fe9c023601d7e323b088b31b565da6b7330cf3766df922e1741739f0c7d5e1e7",
+    "sheets/assembly-overview.png": "8849d1f5fd802fe42a81c309ffc858d5b9f3ef232c5c743485cf03807956c90b",
+    "sheets/assembly-procedure-edit.png": "06bc30730637db00c41636e976316fb812a372ff88c92d2b7863e83d8bdb3648",
     "sheets/assembly-revision.png": "b0d44be00e1c2934094b73b1ebcaff68d1c9b725d4caf223a5785140ea879bc3",
     "sheets/assembly-template-auth-basics.png": "3b1eb976b26281f1bf0b7548b177e9c04354a5b8b16c99b9b990986f49268193",
     "sheets/assembly-template-documents.png": "294efbec5f09031a269a7052e5e78948795e03b2c0d2ab17e0e4654f1ec0c6b6",
@@ -499,7 +499,7 @@
       }
     ]
   },
-  "htmlSha256": "e57ce26feba3f4bc0fd24ecf3e0d2255897601c195859eb87e41445f3837045f",
+  "htmlSha256": "46129dc3e1166c4425120c0d982f32a0fb7c0541e09feed8d0909ab12c81675f",
   "schemaVersion": 1,
-  "sourceSha256": "07141357514041b404241f2e7c1b5c447f29a8731ce0f60234982f135eb46878"
+  "sourceSha256": "f46446161dda0a67c2454944a4dc9a1b9abeb4ff3878abee84bb94e286ae207d"
 }

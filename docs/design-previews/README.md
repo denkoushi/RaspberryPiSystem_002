@@ -5,6 +5,7 @@
 | ファイル | 説明 |
 |----------|------|
 | [signage-admin-unification/Main.html](./signage-admin-unification/Main.html) | **サイネージ管理・データボード統合（実装前・静的）** — 暗色の1画面ハブ（端末・放映中・週間予定・素材）、[ページ撮影追加](./signage-admin-unification/WebCapture.html)、[予定編集](./signage-admin-unification/ScheduleEdit.html)、[緊急表示](./signage-admin-unification/Emergency.html)、データボード（[グラフ](./signage-admin-unification/Boards.html)・[CSV表](./signage-admin-unification/BoardsCsv.html)・[新規](./signage-admin-unification/BoardsNew.html)）。1440×900。[ExecPlan](../plans/signage-admin-unification-execplan.md) |
+| [kiosk-manual-name-columns-mock.html](./kiosk-manual-name-columns-mock.html) | **要領書一覧: 名前を列に分けて表示(2026-10-13 採用)** — 見る・作る直す・使うで、つながった名前を 品名 / 品番 / 工程 / 作業 / 補足 の列に置く。画面内も操作可。[Plan](../plans/procedure-manuals-execplan.md) |
 | [kiosk-inventory-read-ui-round2-mock.html](./kiosk-inventory-read-ui-round2-mock.html) | **在庫: 読み取り画面・リスト・カード(中)の改良(2026-10-13 採用)** — 写真を画面いっぱいに、右ペイン 480px、候補は入れても残る。リストに型式・メーカーほかの列。カード(中)は同じ高さで情報 2 行。画面内も操作可。[Plan](../plans/kiosk-inventory-ux-execplan.md) |
 | [kiosk-inventory-region-ocr-mock.html](./kiosk-inventory-region-ocr-mock.html) | **在庫: 枠で囲んで読む・アイテムカード・エリアの記憶(2026-10-13 採用)** — 拡大表示で文字を枠で囲んで項目へ入れる、写真の中に在庫数・型式・置き場所を載せたカード、エリアの複数選択と記憶。画面内も操作可。[Plan](../plans/kiosk-inventory-ux-execplan.md) |
 | [kiosk-work-instruction-editor-uiux-preview.html](./kiosk-work-instruction-editor-uiux-preview.html) | **加工要領書を編集(2026-10-07 採用)** — 写真を見る・注釈を付けるための画面。組立手順書エディタと骨格・配色・記号レール・編集パネルを統一。実寸 1920×1080、13 状態を切替可、画面内も操作可。[Plan](../plans/self-inspection-work-instruction-uiux.md) |

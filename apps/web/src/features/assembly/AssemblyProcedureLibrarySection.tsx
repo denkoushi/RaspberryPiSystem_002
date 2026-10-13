@@ -21,6 +21,7 @@ import {
   formatAssemblyTimestamp,
   readAssemblyApiErrorMessage
 } from './assemblyUiHelpers';
+import { splitProcedureManualName } from './procedure-manuals/procedure-manual-name';
 import { useAssemblyLibraryFilterOptions } from './useAssemblyLibraryFilterOptions';
 import { useAssemblyProcedureLibrary } from './useAssemblyProcedureLibrary';
 
@@ -190,22 +191,31 @@ export function AssemblyProcedureLibrarySection({
           ) : (
             <table className="w-full min-w-[1280px] table-fixed border-collapse text-left text-base" aria-label="手順書ライブラリ">
               <colgroup>
-                <col className="w-[60px]" /><col /><col className="w-[142px]" /><col className="w-[300px]" /><col className="w-[70px]" />
+                <col className="w-[60px]" />
+                {[15, 15, 11, 13, 10].map((weight, index) => <col key={index} style={{ width: `calc((100% - 1102px) * ${weight} / 64)` }} />)}
+                <col className="w-[142px]" /><col className="w-[300px]" /><col className="w-[70px]" />
                 <col className="w-[90px]" /><col className="w-[140px]" /><col className="w-[300px]" />
               </colgroup>
               <thead className="sr-only"><tr>
-                {['サムネイル', '名前', '状態', '使用先', '頁', 'テンプレ', '更新', '操作'].map(label => <th key={label} scope="col">{label}</th>)}
+                {['サムネイル', '品名', '品番', '工程', '作業', '補足', '状態', '使用先', '頁', 'テンプレ', '更新', '操作'].map(label => <th key={label} scope="col">{label}</th>)}
               </tr></thead>
               <tbody>
                 {documents.map((document) => {
+                  const name = splitProcedureManualName(document.name);
                   const status = resolveAssemblyDocumentStatus(document);
                   const pageCount = assemblyProcedureDocumentPageCount(document);
                   const isPublished = status === 'published';
                   const busy = busyDocumentId === document.id;
                   return (
-                    <tr key={document.id} className="h-14 border-b border-white/10">
+                    <tr key={document.id} title={document.name} className="h-14 border-b border-white/10">
                       <td className="px-2"><ProcedureThumbnail url={document.pages?.find(page => page.pageIndex === 0)?.imageRelativePath || document.imageRelativePath} /></td>
-                      <td className="truncate px-2 text-xl font-bold" title={document.name}>{document.name}</td>
+                      {name ? <>
+                        <td className="truncate px-2 text-xl font-bold">{name.partName}</td>
+                        <td className="truncate px-2 font-mono font-bold">{name.subjectKey}</td>
+                        <td className="truncate px-2">{name.process}</td>
+                        <td className="truncate px-2">{name.work}</td>
+                      </> : <td colSpan={4} className="truncate px-2 text-xl font-bold">{document.name}</td>}
+                      <td className="truncate px-2 text-white/60">{name?.supplement || '—'}</td>
                       <td className="px-2"><span className={`inline-flex whitespace-nowrap rounded-full border px-2 py-1 text-sm font-semibold ${!document.isActive ? 'border-red-400 text-red-200' : isPublished ? 'border-emerald-400 text-emerald-100' : 'border-amber-400 text-amber-100'}`}>
                         {!document.isActive ? '無効' : isPublished ? `公開 第${document.revisionNumber ?? 1}版` : '下書き'}
                       </span></td>

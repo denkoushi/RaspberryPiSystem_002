@@ -1,0 +1,79 @@
+<title>要領書一覧 名前の列分け</title>
+<style>
+:root{color-scheme:dark;--bg:#0f1317;--s1:#161c22;--s2:#1b222a;--line:#27313b;--line2:#344252;--text:#eef3f6;--muted:#9fadb9;--cyan:#7cc4ff;--amber:#f6b93b;--green:#3ba776}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:"Noto Sans JP","Hiragino Sans",system-ui,sans-serif;padding-inline:16px;padding-block:14px}
+.wrap{max-width:1500px;margin:auto;display:grid;gap:12px}
+h1{font-size:20px;margin:0}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.bar button{min-height:44px;padding:0 16px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--text);font:inherit;font-size:17px;font-weight:700;cursor:pointer}
+.bar button[aria-pressed=true]{background:var(--cyan);color:#06202f;border-color:var(--cyan)}
+.sep{width:1px;height:28px;background:var(--line2);margin:0 6px}
+.note{color:var(--muted);font-size:14px;margin:0}
+.scr{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--s1)}
+.tbl{min-width:1180px}
+.r{display:grid;align-items:center;gap:12px;padding:0 12px;min-height:56px;border-bottom:1px solid var(--line);font-size:18px}
+.r.h{min-height:40px;color:var(--muted);font-size:15px;font-weight:700;position:sticky;top:0;background:var(--s1)}
+.r:not(.h):hover{background:var(--s2)}
+.r>*{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.th{width:36px;height:36px;border-radius:5px;background:#2a3642}
+.nm{font-family:ui-monospace,monospace;font-weight:700}
+.b{font-weight:700}.mono{font-family:ui-monospace,monospace}.mu{color:var(--muted)}
+.badge{display:inline-block;border:1px solid;border-radius:999px;padding:2px 10px;font-size:14px;font-weight:700}
+.pub{color:var(--green)}.dr{color:var(--amber)}
+.old{grid-template-columns:36px minmax(0,1fr) 170px 110px 130px 60px}
+.new{grid-template-columns:36px minmax(0,1.5fr) 150px 110px 130px minmax(0,1fr) 130px 60px}
+.span{grid-column:2 / 6}
+</style>
+<div class="wrap">
+  <h1>要領書一覧 — 名前を列に分けて表示</h1>
+  <div class="bar" role="group" aria-label="画面">
+    <button data-p="view" aria-pressed="true">見る</button>
+    <button data-p="work" aria-pressed="false">作る・直す</button>
+    <button data-p="use" aria-pressed="false">使う</button>
+    <span class="sep"></span>
+    <button data-m="old" aria-pressed="false">今</button>
+    <button data-m="new" aria-pressed="true">案</button>
+  </div>
+  <p class="note" id="note"></p>
+  <div class="scr"><div class="tbl" id="tbl"></div></div>
+</div>
+<script>
+const rows=[
+ {n:'テーブル ASSY_MH13456_組立_本締め',st:'pub',rev:3,pg:12},
+ {n:'テーブル ASSY_MH13456_組立_芯出し_右勝手',st:'pub',rev:1,pg:8},
+ {n:'主軸ユニット_SP2201_組立_ベアリング圧入',st:'dr',pg:5},
+ {n:'主軸ユニット_SP2201_検査_振れ測定_高速仕様',st:'pub',rev:2,pg:4},
+ {n:'ATC マガジン_AT0457_配線_端子台',st:'pub',rev:1,pg:9},
+ {n:'安全カバー取付要領',st:'pub',rev:1,pg:3},
+];
+const notes={
+ view:{old:'今: 名前に 品名_品番_工程_工程 が全部つながり、右の列にも同じ品番と工程が出ている。',new:'案: 名前を「_」で区切って 品名 / 品番 / 工程 / 作業 / 補足 の列に置く。保存している名前は変えない。重複していた右の列はなくす。'},
+ work:{old:'今: 名前がつながったまま 1 列。',new:'案: 同じ列分け。状態・ページ・操作の列は今のまま右に残す。'},
+ use:{old:'今: 名前がつながったまま 1 列。',new:'案: 同じ列分け。状態・使用先・操作の列は今のまま右に残す。'}
+};
+let p='view',m='new';
+const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const st=r=>`<span><span class="badge ${r.st}">${r.st==='pub'?'公開 第'+r.rev+'版':'下書き'}</span></span>`;
+function draw(){
+  document.getElementById('note').textContent=notes[p][m];
+  let h='';
+  if(m==='old'){
+    h+=`<div class="r h old"><span></span><span>名前</span><span>${p==='view'?'機種・部品':''}</span><span>${p==='view'?'工程':''}</span><span>${p==='view'?'':'状態'}</span><span>ページ</span></div>`;
+    for(const r of rows){const s=r.n.split('_');const std=s.length>=4;
+      h+=`<div class="r old"><span class="th"></span><span class="nm" title="${esc(r.n)}">${esc(r.n)}</span><span class="mono">${p==='view'&&std?esc(s[1]):''}</span><span>${p==='view'&&std?esc(s[3]):''}</span>${p==='view'?'<span></span>':st(r)}<span class="mono">${r.pg}</span></div>`;}
+  }else{
+    h+=`<div class="r h new"><span></span><span>品名</span><span>品番</span><span>工程</span><span>作業</span><span>補足</span><span>${p==='view'?'':'状態'}</span><span>ページ</span></div>`;
+    for(const r of rows){const s=r.n.split('_');const std=s.length>=4;
+      const tail=p==='view'?'<span></span>':st(r);
+      h+=std
+       ?`<div class="r new" title="${esc(r.n)}"><span class="th"></span><span class="b">${esc(s[0])}</span><span class="mono b">${esc(s[1])}</span><span>${esc(s[2])}</span><span>${esc(s[3])}</span><span class="mu">${esc(s.slice(4).join(' ')||'—')}</span>${tail}<span class="mono">${r.pg}</span></div>`
+       :`<div class="r new" title="${esc(r.n)}"><span class="th"></span><span class="b span">${esc(r.n)}</span><span class="mu">—</span>${tail}<span class="mono">${r.pg}</span></div>`;}
+  }
+  document.getElementById('tbl').innerHTML=h;
+  document.querySelectorAll('[data-p]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.p===p));
+  document.querySelectorAll('[data-m]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.m===m));
+}
+document.querySelector('.bar').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.p)p=b.dataset.p;if(b.dataset.m)m=b.dataset.m;draw();});
+draw();
+</script>
