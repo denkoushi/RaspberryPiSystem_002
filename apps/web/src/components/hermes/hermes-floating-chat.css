@@ -57,8 +57,10 @@
   line-height: 11px;
   text-shadow: 0 0 5px rgba(102, 255, 166, 0.92);
   transform: translateY(-16px);
-  animation: hermes-matrix-stream 1.8s linear infinite;
-  animation-delay: calc(var(--hermes-stream-index) * -0.2s);
+  /* Pi4 では毎フレーム動かすと無操作でも描画に 1 コア分近く使う（KB-413）。
+     1 秒に 1 回だけ 1 行ぶん進め、8 本は同じ瞬間に切り替える。 */
+  animation: hermes-matrix-stream 8s step-end infinite;
+  animation-delay: calc(var(--hermes-stream-index) * -1s);
 }
 
 .hermes-floating-trigger__glyph {
@@ -140,10 +142,37 @@
     transform: translateY(-18px);
   }
 
-  20% {
+  12.5% {
     opacity: 0.9;
+    transform: translateY(-6px);
   }
 
+  25% {
+    opacity: 0.8;
+    transform: translateY(6px);
+  }
+
+  37.5% {
+    opacity: 0.62;
+    transform: translateY(18px);
+  }
+
+  50% {
+    opacity: 0.46;
+    transform: translateY(30px);
+  }
+
+  62.5% {
+    opacity: 0.3;
+    transform: translateY(42px);
+  }
+
+  75% {
+    opacity: 0.16;
+    transform: translateY(54px);
+  }
+
+  87.5%,
   100% {
     opacity: 0.05;
     transform: translateY(66px);
