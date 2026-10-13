@@ -29,7 +29,13 @@ export async function deliverSystemNotice(notice: SystemNotice, now = new Date()
       return;
     }
     if (notice.state === 'open' && thread.messages[0]
-      && now.getTime() - thread.messages[0].createdAt.getTime() < SYSTEM_NOTICE_REPEAT_MS) return;
+      && now.getTime() - thread.messages[0].createdAt.getTime() < SYSTEM_NOTICE_REPEAT_MS) {
+      // Keep the terminal label current (renamed device, changed wording) without marking unread.
+      if (thread.noticeTitle !== notice.title) {
+        await tx.kioskInquiryThread.update({ where: { id: thread.id }, data: { noticeTitle: notice.title } });
+      }
+      return;
+    }
     await tx.kioskInquiryThread.update({ where: { id: thread.id }, data: {
       receiverUnread: true, lastMessageAt: now,
       ...(notice.state === 'recovered' ? { noticeResolvedAt: now } : {}),

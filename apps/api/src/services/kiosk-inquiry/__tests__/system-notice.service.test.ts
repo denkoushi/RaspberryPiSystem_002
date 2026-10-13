@@ -23,13 +23,18 @@ describe('system notice delivery', () => {
     expect(data.senderClientDeviceId).toBeUndefined();
   });
   it.each([SYSTEM_NOTICE_REPEAT_MS - 1, SYSTEM_NOTICE_REPEAT_MS])('24h boundary: %i ms', async (age) => {
-    db.kioskInquiryThread.findFirst.mockResolvedValue({ id: 'thread', messages: [{ createdAt: new Date(now.getTime() - age) }] });
+    db.kioskInquiryThread.findFirst.mockResolvedValue({ id: 'thread', noticeTitle: notice.title, messages: [{ createdAt: new Date(now.getTime() - age) }] });
     await deliverSystemNotice(notice, now);
     expect(db.kioskInquiryThread.create).not.toHaveBeenCalled();
     expect(db.kioskInquiryThread.update).toHaveBeenCalledTimes(age < SYSTEM_NOTICE_REPEAT_MS ? 0 : 1);
     expect(db.kioskInquiryThread.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       include: { messages: { where: { side: 'SYSTEM' }, orderBy: { createdAt: 'desc' }, take: 1 } }
     }));
+  });
+  it('refreshes a changed title inside the repeat window without marking unread', async () => {
+    db.kioskInquiryThread.findFirst.mockResolvedValue({ id: 'thread', noticeTitle: 'Mac 空き容量', messages: [{ createdAt: now }] });
+    await deliverSystemNotice(notice, now);
+    expect(db.kioskInquiryThread.update).toHaveBeenCalledWith({ where: { id: 'thread' }, data: { noticeTitle: notice.title } });
   });
   it('recovers immediately, appends a short message and marks unread', async () => {
     db.kioskInquiryThread.findFirst.mockResolvedValue({ id: 'thread', messages: [{ createdAt: now }] });

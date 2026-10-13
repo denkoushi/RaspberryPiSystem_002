@@ -17,7 +17,7 @@ describe('alert notice bridges', () => {
   it('uses terminal plus signal for storage and falls back to device name', async () => {
     mocks.device.mockResolvedValue({ name: '予備端末', location: ' ' });
     await deliverTelemetryNotice('stone', { level: 'WARN', message: '', context: { category: 'storage_health', signal: 'io' } });
-    expect(mocks.deliver).toHaveBeenCalledWith(expect.objectContaining({ key: '["storage_health","stone","io"]', title: '予備端末 保存装置' }));
+    expect(mocks.deliver).toHaveBeenCalledWith(expect.objectContaining({ key: '["storage_health","stone","io"]', title: '予備端末（stone） 保存装置' }));
   });
   it('ignores old files and uses event time, so repeated polling is not recurrence', async () => {
     await deliverFileAlertNotice('rkhunter-warning', new Date(now.getTime() - FILE_NOTICE_EXPIRY_MS), now);
