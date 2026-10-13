@@ -55,6 +55,8 @@
 
 - `apps/web`: `pnpm exec tsc --noEmit -p .`、`pnpm exec eslint src --ext .ts,.tsx`、`pnpm exec vitest run`（525ファイル）。
 - 取説画像: `pnpm kiosk-sop:source-check`。
+- 本番反映: PR #1989、main `05ee35bd`。Pi5 のみ、run `20261013-093458-6e2ec8`（2026-10-13 18:40 完了、failed=0、`/` `/admin` `/kiosk` `/api/system/health` が 200）。戻し先は `cf73213f`。Pi4/Pi3 は対象外。
+- 実機確認: 2026-10-13、利用者がキオスクで確認し「OK」（要領書の「作る」の表示位置、フローティングChatの位置記憶、持出カードの「取消」「返却」）。
 
 ## Open Items
 
