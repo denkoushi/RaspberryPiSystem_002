@@ -5,7 +5,7 @@ type RangeSurfaceProps = {
   selectionMode: boolean;
   pageIndex?: number;
   ariaLabel?: string;
-  sopTarget?: string;
+  'data-kiosk-sop-target'?: string;
   previewTestId?: string;
   previewClassName?: string;
   crop?: OverlayCropRect | null;
@@ -31,7 +31,7 @@ function normalizeBBox(start: { xRatio: number; yRatio: number }, end: { xRatio:
 }
 
 export function OverlayRangeSelectionSurface({ selectionMode, pageIndex, crop, onRangeSelected,
-  ariaLabel = 'オーバーレイ範囲選択面', sopTarget = 'assembly-document-editor-range-surface',
+  ariaLabel = 'オーバーレイ範囲選択面', 'data-kiosk-sop-target': sopTarget,
   previewTestId = 'assembly-document-editor-pending-range', previewClassName = 'border-amber-300 bg-amber-300/20'
 }: RangeSurfaceProps) {
   const pointerRef = useRef<{ pointerId: number; start: { xRatio: number; yRatio: number } } | null>(null);

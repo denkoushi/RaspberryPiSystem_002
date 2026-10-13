@@ -61,7 +61,7 @@ export function AssemblyProcedureDocumentEditorCanvas({
         onInteractionEnd={onInteractionEnd}
         assets={assets}
       />
-      <OverlayRangeSelectionSurface
+      <OverlayRangeSelectionSurface data-kiosk-sop-target="assembly-document-editor-range-surface"
         selectionMode={selectionMode}
         pageIndex={pageIndex}
         crop={crop}

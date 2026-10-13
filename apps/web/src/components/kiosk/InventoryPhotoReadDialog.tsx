@@ -113,7 +113,7 @@ function PhotoReadSession({ photo, count, onPrevious, onNext, saved, save, ...pr
         {loaded ? <>
           {saved.map(frame => <FrameBox key={frame.field} bbox={frame.bbox} saved />)}
           {bbox ? <FrameBox bbox={bbox} /> : null}
-          <OverlayRangeSelectionSurface selectionMode={!busy} onRangeSelected={region => void read(region)} ariaLabel="文字を囲む" sopTarget="inventory-photo-read-range" previewTestId="inventory-photo-read-pending-range" previewClassName="border-inv-amber bg-inv-amber/20" />
+          <OverlayRangeSelectionSurface selectionMode={!busy} onRangeSelected={region => void read(region)} ariaLabel="文字を囲む" data-kiosk-sop-target="inventory-photo-read-range" previewTestId="inventory-photo-read-pending-range" previewClassName="border-inv-amber bg-inv-amber/20" />
         </> : null}
       </div> : null}
       {!imageUrl && !error ? <p role="status" className="text-inv-muted">画像を読み込み中…</p> : null}

@@ -14,7 +14,7 @@ describe('OverlayRangeSelectionSurface assembly contract', () => {
   }
   it('retains assembly DOM hooks, pointer capture and the preview appearance', () => {
     const onRangeSelected = vi.fn();
-    render(<OverlayRangeSelectionSurface selectionMode pageIndex={2} onRangeSelected={onRangeSelected} />);
+    render(<OverlayRangeSelectionSurface data-kiosk-sop-target="assembly-document-editor-range-surface" selectionMode pageIndex={2} onRangeSelected={onRangeSelected} />);
     const element = surface();
     expect(element).toHaveAttribute('data-kiosk-sop-target', 'assembly-document-editor-range-surface');
     expect(element).toHaveAttribute('data-page-index', '2');
