@@ -98,7 +98,7 @@ describe('InventoryRegistrationTab', () => {
 
   afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
-  it('puts region text in the form without saving automatically', async () => {
+  it.each([false, true])('keeps region text in the form without saving automatically (edited: %s)', async edited => {
     render(<InventoryRegistrationTab accessPassword="2520" />);
 
     fireEvent.click(screen.getByRole('button', { name: '写真1を拡大' }));
@@ -113,8 +113,11 @@ describe('InventoryRegistrationTab', () => {
     });
     expect(readInventoryPhotoRegion).toHaveBeenCalledWith(expect.objectContaining({ source: 'import', payloadId: 'import-1', photoId: 'photo-1' }), '2520', expect.any(AbortSignal));
     fireEvent.click(dialog.getByRole('button', { name: '型式に入れる' }));
+    expect(dialog.getByRole('textbox', { name: '型式の値' })).toHaveValue('OCR-MODEL');
+    const value = edited ? '手入力で修正した型式' : 'OCR-MODEL';
+    if (edited) fireEvent.change(dialog.getByRole('textbox', { name: '型式の値' }), { target: { value } });
     fireEvent.click(dialog.getByRole('button', { name: '閉じる' }));
-    expect(screen.getByLabelText('型式')).toHaveValue('OCR-MODEL');
+    expect(screen.getByLabelText('型式')).toHaveValue(value);
     expect(registerImport).not.toHaveBeenCalled();
     expect(suggestToolFields).not.toHaveBeenCalled();
   });

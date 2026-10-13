@@ -43,11 +43,18 @@ section{display:flex;flex-direction:column;gap:12px}
 .btn.ghost{background:transparent;margin-left:auto}
 .btn:disabled{opacity:.35;cursor:default}
 .status{font-size:22px;font-weight:800;margin:0;min-height:36px}
-.cands{display:flex;flex-direction:column;gap:8px}
-.cand{min-height:56px;padding:8px 14px;border-radius:12px;border:2px solid var(--line2);background:var(--s2);color:var(--text);font-size:21px;font-weight:800;text-align:left;overflow-wrap:anywhere;cursor:pointer}
-.cand[aria-pressed="true"]{border-color:var(--amber);background:rgba(245,181,68,.12)}
-.fields{display:flex;flex-direction:column;gap:6px}
-.field{display:grid;grid-template-columns:86px minmax(0,1fr) 28px;align-items:center;gap:8px;min-height:56px;padding:6px 12px;border-radius:12px;border:1px solid var(--line2);background:var(--bg);color:var(--text);text-align:left;cursor:pointer}
+.cands{display:flex;flex-direction:column;gap:8px;flex-shrink:0}
+.cand{min-height:56px;padding:8px 14px;border-radius:12px;border:2px solid var(--cyan);background:rgba(57,208,240,.10);color:var(--text);font-size:21px;font-weight:800;text-align:left;overflow-wrap:anywhere;cursor:pointer}
+.cand[aria-pressed="true"]{background:var(--cyan);color:var(--cyan-ink)}
+.fields{display:flex;flex-direction:column;gap:6px;min-height:0;overflow-y:auto}
+.field{display:grid;grid-template-columns:86px minmax(0,1fr) 76px;align-items:stretch;gap:8px;min-height:56px;padding:4px 4px 4px 12px;border-radius:12px;border:1px solid var(--line2);background:var(--bg);color:var(--text)}
+.field small{align-self:center}
+.field textarea{font:inherit;font-size:19px;font-weight:700;line-height:1.3;color:var(--text);background:transparent;border:0;border-radius:8px;padding:10px 6px;resize:none;overflow:hidden;field-sizing:content;min-height:46px;overflow-wrap:anywhere}
+.field textarea:focus{outline:2px solid var(--cyan);background:var(--s2)}
+.field .put{border-radius:9px;border:1px solid var(--cyan);background:rgba(57,208,240,.10);color:var(--text);font-size:17px;font-weight:800;cursor:pointer}
+.field .put:disabled{border-color:var(--line2);background:transparent;color:var(--faint);cursor:default}
+.field.filled .put{border-color:var(--green)}
+.cands{max-height:300px;overflow-y:auto}
 .field small{font-size:15px;color:var(--faint)}
 .field span{font-size:19px;font-weight:700;overflow-wrap:anywhere;line-height:1.3}
 .field.ready{border-color:var(--amber)}
@@ -110,7 +117,7 @@ section{display:flex;flex-direction:column;gap:12px}
   </div>
 
   <section id="t1">
-    <p class="note"><b>写真を画面の高さいっぱいに</b>し、枚数・＜＞・閉じるは右へ移動(黒帯なし)。右の幅は 300 → <b>480</b>、値は折り返して全部見せる。<b>候補は入れても消えない</b>ので、同じ候補や別の候補を続けて他の欄へ入れられる。写真をドラッグして試せます。</p>
+    <p class="note"><b>写真を画面の高さいっぱいに</b>し、枚数・＜＞・閉じるは右へ移動(黒帯なし)。右の幅は 300 → <b>480</b>、値は折り返して全部見せる。<b>候補は水色、入力欄は灰色の枠</b>で見分ける(選んだ候補は水色の塗り)。<b>読み取った候補は全部たまり、閉じるまで消えない</b>(新しいものが上)。入れた値は<b>その場でキーボードで直せる</b>(欄を押して打つ / 右の「入れる」で候補を入れる)。写真をドラッグして試せます。</p>
     <div class="stagewrap" data-h="1080"><div class="stage">
       <div class="viewer">
         <div class="photo" id="photo">
@@ -213,16 +220,16 @@ function draw(preview) {
     return b;
   }));
   $('fields').replaceChildren(...FIELDS.map(([key, label]) => {
-    const b = document.createElement('button');
-    b.className = 'field' + (filled.has(key) ? ' filled' : cands.length ? ' ready' : '');
-    b.disabled = !cands.length;
+    const b = document.createElement('div');
+    b.className = 'field' + (filled.has(key) ? ' filled' : '');
     const s = document.createElement('small'); s.textContent = label;
-    const v = document.createElement('span'); v.textContent = values[key] || '—';
-    const m = document.createElement('b'); m.textContent = filled.has(key) ? '✓' : '';
+    const v = document.createElement('textarea'); v.rows = 1; v.value = values[key]; v.placeholder = '—'; v.setAttribute('aria-label', label + 'の値');
+    v.oninput = () => { values[key] = v.value; };
+    const m = document.createElement('button'); m.className = 'put'; m.disabled = !cands.length; m.textContent = filled.has(key) ? '✓ 入れる' : '入れる'; m.setAttribute('aria-label', label + 'に入れる');
     b.append(s, v, m);
-    b.onclick = () => {
+    m.onclick = () => {
       values[key] = cands[selected]; filled.add(key); lastField = key;
-      $('status').textContent = label + 'に入れた。続けて他の欄へも入れられる';
+      $('status').textContent = label + 'に入れた';
       draw();
     };
     return b;
@@ -250,8 +257,8 @@ $('surface').addEventListener('pointerup', e => {
   if (!start) return;
   const b = norm(start, point(e)); start = null;
   if (b.w < 0.01 || b.h < 0.01) { draw(); return; }
-  bbox = b; cands = readAt(b); selected = 0; lastField = null;
-  $('status').textContent = cands.length ? '候補を選んで、入れる先を押す' : '文字なし。囲み直す';
+  bbox = b; const found = readAt(b); cands = [...found, ...cands.filter(c => !found.includes(c))]; selected = 0; lastField = null;
+  $('status').textContent = found.length ? '候補を選んで、入れる先を押す' : '文字なし。囲み直す';
   draw();
 });
 draw();

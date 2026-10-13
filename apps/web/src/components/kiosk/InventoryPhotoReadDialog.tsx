@@ -43,44 +43,41 @@ function FrameBox({ bbox, saved = false }: { bbox: OverlayBBox; saved?: boolean 
   return <div aria-label={saved ? '記憶した枠' : '読み取り枠'} className={`pointer-events-none absolute border-2 ${saved ? 'border-dashed border-inv-cyan bg-inv-cyan/10' : 'border-inv-amber bg-inv-amber/10'}`} style={{ left: `${bbox.xRatio * 100}%`, top: `${bbox.yRatio * 100}%`, width: `${bbox.widthRatio * 100}%`, height: `${bbox.heightRatio * 100}%` }} />;
 }
 
-/** A photo change remounts the session, aborting work and discarding its candidates. */
-function PhotoReadSession({ photo, count, onPrevious, onNext, saved, save, filled, ...props }: Omit<Props, 'photos' | 'initialPhotoId'> & {
+/** A photo change remounts the session, aborting work and discarding its current frame. */
+function PhotoReadSession({ photo, count, onPrevious, onNext, saved, save, filled, candidates, selected, setSelected, addCandidates, ...props }: Omit<Props, 'photos' | 'initialPhotoId'> & {
   photo: Photo; count: string | null; onPrevious: () => void; onNext: () => void;
   saved: Frame[]; save: (frames: Frame[]) => void; filled: Set<InventoryOptionField>;
+  candidates: string[]; selected: number; setSelected: (index: number) => void; addCandidates: (values: string[]) => void;
 }) {
   const { imageUrl, error } = useInventoryFullPhoto(photo.photoUrl);
   const [loaded, setLoaded] = useState(false);
   const [aspectRatio, setAspectRatio] = useState(4 / 3);
   const [busy, setBusy] = useState(false);
   const [bbox, setBBox] = useState<OverlayBBox | null>(null);
-  const [candidates, setCandidates] = useState<string[]>([]);
-  const [selected, setSelected] = useState(0);
   const [last, setLast] = useState<Frame | null>(null);
   const [message, setMessage] = useState('文字を枠で囲む');
   const [failed, setFailed] = useState(false);
   const request = useRef<AbortController | null>(null);
   useEffect(() => () => { request.current?.abort(); }, []);
 
-  const start = (clearCandidates = false) => {
+  const start = () => {
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
     setBusy(true);
-    if (clearCandidates) setCandidates([]);
     setLast(null);
     setFailed(false);
     setMessage('読み取り中…');
     return controller;
   };
   const read = async (region: OverlayBBox) => {
-    const controller = start(true);
+    const controller = start();
     setBBox(region);
     try {
       const result = await readInventoryPhotoRegion({ ...props.source, photoId: photo.id, bbox: region }, props.accessPassword, controller.signal);
       if (controller.signal.aborted) return;
       if (result.status === 'unavailable') throw new Error('Unavailable');
-      setCandidates(result.candidates);
-      setSelected(0);
+      addCandidates(result.candidates);
       setMessage(result.candidates.length ? '入れる先を押す' : '文字なし。囲み直す');
     } catch {
       if (!controller.signal.aborted) { setMessage('読み取れませんでした'); setFailed(true); }
@@ -95,7 +92,10 @@ function PhotoReadSession({ photo, count, onPrevious, onNext, saved, save, fille
         const result = await readInventoryPhotoRegion({ ...props.source, photoId: photo.id, bbox: frame.bbox }, props.accessPassword, controller.signal);
         if (controller.signal.aborted) return;
         if (result.status === 'unavailable') unavailable = true;
-        else if (result.candidates[0]) { props.onApply(frame.field, result.candidates[0]); applied += 1; }
+        else {
+          addCandidates(result.candidates);
+          if (result.candidates[0]) { props.onApply(frame.field, result.candidates[0]); applied += 1; }
+        }
       } catch { if (controller.signal.aborted) return; unavailable = true; }
     }
     setBusy(false);
@@ -133,15 +133,32 @@ function PhotoReadSession({ photo, count, onPrevious, onNext, saved, save, fille
         <p role="status" className={`min-h-9 shrink-0 text-[22px] font-extrabold ${failed ? 'text-inv-red' : ''}`}>{message}</p>
         {failed && message !== '読み取れませんでした' ? <p role="alert" className="text-inv-red">読み取れませんでした</p> : null}
         <div className="flex shrink-0 flex-col gap-2" role="group" aria-label="読み取り候補">
-          {candidates.map((candidate, index) => <button key={candidate} type="button" aria-pressed={selected === index} onClick={() => setSelected(index)} className={`min-h-14 rounded-xl border-2 px-3.5 py-2 text-left text-[21px] font-extrabold [overflow-wrap:anywhere] ${selected === index ? 'border-inv-amber bg-inv-amber/10' : 'border-inv-line2 bg-inv-s2'}`}>{candidate}</button>)}
+          {candidates.map((candidate, index) => <button key={candidate} type="button" aria-pressed={selected === index} onClick={() => setSelected(index)} className={`min-h-14 rounded-xl border-2 border-inv-cyan px-3.5 py-2 text-left text-[21px] font-extrabold [overflow-wrap:anywhere] ${selected === index ? 'bg-inv-cyan text-inv-cyan-ink' : 'bg-inv-cyan/10'}`}>{candidate}</button>)}
         </div>
         <div className="grid shrink-0 grid-cols-1 gap-1.5" role="group" aria-label="入れる先">
-          {fields.map(([field, label]) => <button key={field} type="button" aria-label={`${label}に入れる`} disabled={busy || !candidates.length} className={`grid min-h-14 min-w-0 grid-cols-[86px_minmax(0,1fr)_28px] items-center gap-2 rounded-xl border bg-inv-bg px-3 py-1.5 text-left ${filled.has(field) ? 'border-inv-green' : candidates.length ? 'border-inv-amber' : 'border-inv-line2'}`} onClick={() => {
-            if (!bbox || !candidates[selected]) return;
-            props.onApply(field, candidates[selected]);
-            setLast({ field, bbox });
-            setMessage(`${label}に入れた`);
-          }}><small className="text-[15px] text-inv-faint">{label}</small><span className="min-w-0 text-[19px] font-bold leading-[1.3] [overflow-wrap:anywhere]">{props.values[field] || '—'}</span><b className="text-xl text-inv-green">{filled.has(field) ? '✓' : ''}</b></button>)}
+          {fields.map(([field, label]) => <div key={field} className={`grid min-h-14 min-w-0 grid-cols-[86px_minmax(0,1fr)_76px] items-stretch gap-2 rounded-xl border bg-inv-bg p-1 pl-3 text-left ${filled.has(field) ? 'border-inv-green' : 'border-inv-line2'}`}>
+            <small className="self-center text-[15px] text-inv-faint">{label}</small>
+            <textarea aria-label={`${label}の値`} rows={1} placeholder="—" value={props.values[field] ?? ''}
+              ref={element => {
+                if (!element) return;
+                element.style.height = 'auto';
+                element.style.height = `${element.scrollHeight}px`;
+              }}
+              onChange={event => props.onApply(field, event.currentTarget.value)}
+              onKeyDown={event => {
+                // Keep editing (including IME Escape) local, but retain the dialog's Tab focus trap.
+                if (event.key !== 'Tab') event.stopPropagation();
+                if (event.key === 'Enter' && !event.nativeEvent.isComposing && event.keyCode !== 229) event.preventDefault();
+              }}
+              className="min-h-[46px] min-w-0 resize-none overflow-hidden rounded-lg border-0 bg-transparent px-1.5 py-2.5 text-[19px] font-bold leading-[1.3] text-inv-text [field-sizing:content] [overflow-wrap:anywhere] focus:bg-inv-s2 focus:outline focus:outline-2 focus:outline-inv-cyan"
+            />
+            <button type="button" aria-label={`${label}に入れる`} disabled={busy || !candidates.length} className="min-h-11 min-w-11 rounded-[9px] border border-inv-cyan bg-inv-cyan/10 text-[17px] font-extrabold disabled:cursor-default disabled:border-inv-line2 disabled:bg-transparent disabled:text-inv-faint" onClick={() => {
+              if (!candidates[selected]) return;
+              props.onApply(field, candidates[selected]);
+              setLast(bbox ? { field, bbox } : null);
+              setMessage(`${label}に入れた`);
+            }}>{filled.has(field) ? <b className="text-xl text-inv-green">✓ </b> : null}入れる</button>
+          </div>)}
         </div>
       </div>
       <div className="flex shrink-0 flex-col gap-2.5">
@@ -165,6 +182,13 @@ export function InventoryPhotoReadDialog({ photos, initialPhotoId, ...props }: P
   const [photoId, setPhotoId] = useState(initialPhotoId);
   const [saved, setSaved] = useState(readFrames);
   const [filled, setFilled] = useState<Set<InventoryOptionField>>(() => new Set());
+  const [candidates, setCandidates] = useState<string[]>([]);
+  const [selected, setSelected] = useState(0);
+  const addCandidates = (values: string[]) => {
+    if (!values.length) return;
+    setCandidates(current => [...new Set([...values, ...current])]);
+    setSelected(0);
+  };
   const apply = (field: InventoryOptionField, value: string) => {
     props.onApply(field, value);
     setFilled(current => new Set(current).add(field));
@@ -177,6 +201,6 @@ export function InventoryPhotoReadDialog({ photos, initialPhotoId, ...props }: P
   };
   const go = (offset: number) => setPhotoId(photos[(index + offset + photos.length) % photos.length].id);
   return <Dialog isOpen={Boolean(photo)} onClose={props.onClose} ariaLabel="在庫写真" size="full" className="!fixed !inset-0 !m-0 !h-dvh !max-h-none !w-full !rounded-none !border-0 !bg-inv-bg !p-0 !text-inv-text overflow-hidden">
-    {photo ? <PhotoReadSession key={photo.id} {...props} onApply={apply} filled={filled} photo={photo} count={photos.length > 1 ? `${index + 1} / ${photos.length}` : null} onPrevious={() => go(-1)} onNext={() => go(1)} saved={saved} save={save} /> : null}
+    {photo ? <PhotoReadSession key={photo.id} {...props} onApply={apply} filled={filled} candidates={candidates} selected={selected} setSelected={setSelected} addCandidates={addCandidates} photo={photo} count={photos.length > 1 ? `${index + 1} / ${photos.length}` : null} onPrevious={() => go(-1)} onNext={() => go(1)} saved={saved} save={save} /> : null}
   </Dialog>;
 }
