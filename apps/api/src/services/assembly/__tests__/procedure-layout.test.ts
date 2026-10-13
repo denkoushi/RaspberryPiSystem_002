@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { overlayElementSchema, type OverlayElement, type OverlayTextElement, type OverlayImageElement, type OverlayShapeElement } from '@raspi-system/shared-types';
 
-import { arrangeProcedureLayout, assignProcedureLayoutRows, estimateProcedureTextHeight, isValidProcedureTextRewrite, ProcedureLayoutError, rewriteProcedureTexts } from '../procedure-layout.js';
+import { arrangeProcedureLayout, assignProcedureLayoutRows, estimateProcedureTextHeight, isValidProcedureTextRewrite, procedureRowNeedsCaption, ProcedureLayoutError, rewriteProcedureTexts } from '../procedure-layout.js';
 
 const page = { width: 1000, height: 1400 };
 const text = (id: string, y = 0.1, body = '架空ワークを固定する', font = 0.025): OverlayTextElement => ({ id, kind: 'TEXT', pageIndex: 0, text: body, bbox: { xRatio: 0.7, yRatio: y, widthRatio: 0.3, heightRatio: 0.15 }, zIndex: 2, style: { fontSizeRatio: font, color: '#334455' } });
@@ -103,6 +103,17 @@ describe('procedure layout geometry', () => {
 });
 
 describe('procedure layout text validation', () => {
+  it('asks for a caption when a photo row has no text, a short heading, or only codes', () => {
+    expect(procedureRowNeedsCaption([])).toBe(true);
+    expect(procedureRowNeedsCaption(['第二工程'])).toBe(true);
+    expect(procedureRowNeedsCaption(['第二工程', 'O3145'])).toBe(true);
+    expect(procedureRowNeedsCaption(['第二工程\nＯ３１４５\nG54 X-12.5'])).toBe(true);
+    expect(procedureRowNeedsCaption(['O3145', 'O3146'])).toBe(true);
+    expect(procedureRowNeedsCaption(['第一工程', '1. O3140 荒加工後M0でとまる\n2. ジャッキ当て直す。'])).toBe(false);
+    expect(procedureRowNeedsCaption(['ワークを電磁チャックにセットする'])).toBe(false);
+    expect(procedureRowNeedsCaption(['第二工程', 'ジャッキ'])).toBe(false);
+    expect(procedureRowNeedsCaption(['第二工程', 'ABCDEFGHIJKLMNOPQRSTU'])).toBe(false);
+  });
   it.each([
     ['架空ワーク2個、許容0.02', 'ワークを固定する', false],
     ['架空ワーク2個', '架空ワーク2個を3回固定する', false],

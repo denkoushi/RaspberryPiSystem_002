@@ -13,7 +13,7 @@ import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm
 import type { TextCompletionPort } from '../inference/ports/text-completion.port.js';
 import type { VisionCompletionPort } from '../inference/ports/vision-completion.port.js';
 import { AssemblyTemplateAccessService } from './assembly-template-access.service.js';
-import { arrangeProcedureLayout, assignProcedureLayoutRows, median, ProcedureLayoutError, rewriteProcedureTexts } from './procedure-layout.js';
+import { arrangeProcedureLayout, assignProcedureLayoutRows, median, procedureRowNeedsCaption, ProcedureLayoutError, rewriteProcedureTexts } from './procedure-layout.js';
 
 const TEXT_INSTRUCTION = `あなたは工場の手順書を仕上げる編集者です。入力は手順書1ページ分の文章です。各 text を、作業者がすぐ読める最終形に書き直してください。
 規則:
@@ -131,10 +131,7 @@ export class ProcedureLayoutSuggestionService {
     }
     if (rows && llmAvailable) {
       const byId = new Map(elements.map(element => [element.id, element]));
-      const eligible = rows.filter(row => {
-        const lines = row.textIds.flatMap(id => (byId.get(id) as OverlayTextElement).text.split('\n')).map(line => line.trim()).filter(Boolean);
-        return !lines.length || (lines.length === 1 && Array.from(lines[0]).length <= 10);
-      }).slice(0, 6);
+      const eligible = rows.filter(row => procedureRowNeedsCaption(row.textIds.map(id => (byId.get(id) as OverlayTextElement).text))).slice(0, 6);
       // Missing/unreadable assets affect only the optional photo descriptions.
       const assets = eligible.length ? await prisma.assemblyProcedureAsset.findMany({
         where: { id: { in: eligible.map(row => {
