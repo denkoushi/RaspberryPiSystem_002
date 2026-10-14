@@ -4,6 +4,9 @@ import type { Prisma, PrismaClient, UserRole } from '@prisma/client';
 import { env } from '../../config/env.js';
 import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
+import { resolveLocationScopeContext } from '../../lib/location-scope-resolver.js';
+import { createKioskInquiryThread } from '../kiosk-inquiry/kiosk-inquiry.service.js';
+import { sendSlackNotification } from '../notifications/slack-webhook.js';
 import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm-runtime-controller.js';
 import type { LocalLlmRuntimeControllerPort } from '../inference/runtime/local-llm-runtime-control.port.js';
 import { BusinessHermesScanResolver, type BusinessHermesScanResolution } from './business-hermes-scan.service.js';
@@ -64,6 +67,7 @@ export type BusinessHermesOpenJevResponder = {
 export type BusinessHermesOperationGuideDisplay = {
   screen: string;
   sections: Array<{ heading: string; body: string }>;
+  note?: string;
 };
 
 export type BusinessHermesConsultationMessage = {
@@ -207,7 +211,7 @@ const MAX_HISTORY = 40;
 const INTENT_CONFIRMATION_TITLE = '相談の目的';
 const INTENT_SUPPLEMENT = '自分の言葉で補足する';
 const INTENT_SUPPLEMENT_PROMPT = '知りたい内容や対象について、ご自分の言葉で補足してください。';
-const QUESTION_RECIPE_VERSION = '2';
+const QUESTION_RECIPE_VERSION = '3';
 const SIGNAGE_CONFIRMATION_TITLE = 'サイネージ設定の確認';
 const SIGNAGE_APPROVE_OPTION = 'このサイネージ設定を適用する';
 const SIGNAGE_REJECT_OPTION = 'このサイネージ設定は適用しない';
@@ -283,13 +287,24 @@ function signageProposalMessage(preparation: BusinessHermesSignagePreparation): 
   ].filter(Boolean).join('\n');
 }
 
+export function troubleCategory(question: string): 'card_reader' | 'barcode_reader' | 'printer' | 'screen' | 'network' | 'other' | null {
+  if (!/反応しない|反応がない|動かない|動作しない|エラー|固まる|固まった|フリーズ|つながらない|繋がらない|切れた|印刷できない|印刷されない|読めない|読み取れない|表示されない|白い画面|真っ白|起きない|消えた/.test(question)) return null;
+  if (/タグ|社員証|カード|かざし/.test(question)) return 'card_reader';
+  if (/バーコード|QR|スキャナ|読み取り/i.test(question)) return 'barcode_reader';
+  if (/印刷|プリンタ|ラベル/.test(question)) return 'printer';
+  if (/Wi-Fi|WiFi|ネットワーク|通信|つなが|繋が|オフライン/i.test(question)) return 'network';
+  if (/画面|白い|固ま|フリーズ|表示/.test(question)) return 'screen';
+  return 'other';
+}
+
 function questionRecipes(question: string) {
   const subject = question.length <= 70 ? question : `${question.slice(0, 69)}…`;
   return [
     { id: 'record-answer', version: QUESTION_RECIPE_VERSION, option: `記録をもとに回答：${subject}`, prompt: '元の質問の対象と用件を保ち、記録にある答えを短く示す。' },
     { id: 'record-cause', version: QUESTION_RECIPE_VERSION, option: `原因と確認点を調べる：${subject}`, prompt: '元の質問の対象について、記録された原因と確認点を示す。' },
     { id: 'published-procedure', version: QUESTION_RECIPE_VERSION, option: `公開要領の手順を調べる：${subject}`, prompt: '元の質問の対象について、公開作業要領の作業・検査手順を示す。' },
-    { id: 'operation-guide', version: QUESTION_RECIPE_VERSION, option: `操作の方法を調べる：${subject}`, prompt: '元の質問の対象について、system_operation_guide だけを検索し、該当する節の手順を画面名を添えて3行程度で示す。該当が無いときは推測せず「この操作の説明はまだありません。『お問い合わせ』から聞いてください」と返す。' }
+    { id: 'operation-guide', version: QUESTION_RECIPE_VERSION, option: `操作の方法を調べる：${subject}`, prompt: '元の質問の対象について、system_operation_guide だけを検索し、該当する節の手順を画面名を添えて3行程度で示す。該当が無いときは推測せず「この操作の説明はまだありません。『お問い合わせ』から聞いてください」と返す。' },
+    { id: 'trouble-report', version: QUESTION_RECIPE_VERSION, option: `不具合を知らせる：${subject}`, prompt: '端末の不調を既知の通知と照合し、その場の対処と受付結果を示す。' }
   ];
 }
 
@@ -574,7 +589,7 @@ function storedGuide(value: unknown): BusinessHermesOperationGuideDisplay | unde
     if (!section || typeof section !== 'object' || typeof section.heading !== 'string' || typeof section.body !== 'string') return undefined;
     sections.push({ heading: section.heading, body: section.body });
   }
-  return { screen: guide.screen, sections };
+  return { screen: guide.screen, sections, ...(typeof guide.note === 'string' ? { note: guide.note } : {}) };
 }
 
 function storedEvidence(value: unknown): { items: Record<string, unknown>[]; visible: boolean; visibleIds: string[]; recordIds: string[]; recordView?: 'summary' | 'detail'; guide?: BusinessHermesOperationGuideDisplay } {
@@ -786,7 +801,7 @@ export class BusinessHermesConsultationService {
     return Boolean(controller || speculative);
   }
 
-  async chat(input: { consultationId: string; message: string; selection?: BusinessHermesSelection; scanValue?: string; actor?: BusinessHermesConsultationActor; signal?: AbortSignal }): Promise<BusinessHermesConsultationChatResponse> {
+  async chat(input: { consultationId: string; message: string; selection?: BusinessHermesSelection; scanValue?: string; actor?: BusinessHermesConsultationActor; signal?: AbortSignal; clientDeviceId?: string }): Promise<BusinessHermesConsultationChatResponse> {
     const message = cleanMessage(input.message);
     if (!message) return this.failure(input.consultationId, 'HERMES_EMPTY_REQUEST');
     const selection = input.selection ? {
@@ -808,7 +823,7 @@ export class BusinessHermesConsultationService {
       kind: 'business-hermes-learning-v1', timingBoundary: 'server-through-response-assembly-v1', runId: randomUUID(), startedAt: new Date().toISOString(),
       recipeVersion: QUESTION_RECIPE_VERSION, prefetch: 'none', inferences: []
     };
-    const run = this.performChat(input.consultationId, message, selection, scanValue, input.actor, controller.signal, measurement);
+    const run = this.performChat(input.consultationId, message, selection, scanValue, input.actor, controller.signal, measurement, input.clientDeviceId);
     inFlight.set(input.consultationId, run);
     try {
       const result = await run;
@@ -903,7 +918,7 @@ export class BusinessHermesConsultationService {
     };
   }
 
-  private async performChat(consultationId: string, message: string, selection?: BusinessHermesSelection, scanValue?: string, actor?: BusinessHermesConsultationActor, externalSignal?: AbortSignal, measurement?: LearningMeasurement): Promise<BusinessHermesConsultationChatResponse> {
+  private async performChat(consultationId: string, message: string, selection?: BusinessHermesSelection, scanValue?: string, actor?: BusinessHermesConsultationActor, externalSignal?: AbortSignal, measurement?: LearningMeasurement, clientDeviceId?: string): Promise<BusinessHermesConsultationChatResponse> {
     const consultation = await this.get(consultationId);
     if (!consultation) return this.failure(consultationId, 'HERMES_CONSULTATION_NOT_FOUND');
     if (externalSignal?.aborted) return this.failure(consultationId, 'HERMES_TIMEOUT');
@@ -937,8 +952,10 @@ export class BusinessHermesConsultationService {
     }
     const directGuide = Boolean(pendingIntent && selection && intentQuestion
       && questionRecipes(intentQuestion).some((recipe) => recipe.id === 'operation-guide' && recipe.option === selection.option));
+    const directTrouble = Boolean(pendingIntent && selection && intentQuestion
+      && questionRecipes(intentQuestion).some((recipe) => recipe.id === 'trouble-report' && recipe.option === selection.option));
     const candidate = prefetches.get(consultationId);
-    const matchingPrefetch = candidate && !directGuide && !scanValue && selection
+    const matchingPrefetch = candidate && !directGuide && !directTrouble && !scanValue && selection
       && candidate.selection.prompt === selection.prompt && candidate.selection.option === selection.option
       && candidate.snapshot === prefetchSnapshot(consultation)
       && (candidate.finishedAt === undefined || Date.now() - candidate.finishedAt < PREFETCH_RETENTION_MS)
@@ -1014,7 +1031,7 @@ export class BusinessHermesConsultationService {
       : (completingIntent || Boolean(selection)) && intentQuestion
       ? [intentQuestion, message].join('\n')
       : message;
-    const sourceGrounding = scanValue || directGuide ? undefined : this.deps.openJevGrounder
+    const sourceGrounding = scanValue || directGuide || directTrouble ? undefined : this.deps.openJevGrounder
       ? await this.deps.openJevGrounder({ request: groundingRequest, references: storedEvidenceForCase,
         history: consultation.messages.slice(-8).map(({ role, content, recordIds }) => ({ role, content, recordIds })) })
       : firstQuestion && this.deps.openJevIntentSelector ? undefined
@@ -1035,18 +1052,11 @@ export class BusinessHermesConsultationService {
     } });
     if (measurement) measurement.userMessageId = userMessage.id;
     if (externalSignal?.aborted) return this.failure(consultationId, 'HERMES_TIMEOUT');
+    if (directTrouble && intentQuestion) {
+      return this.handleTroubleReport(consultationId, intentQuestion, clientDeviceId, measurement);
+    }
     if (directGuide && intentQuestion) {
-      const top = this.operationGuide.search(intentQuestion, 1).results[0];
-      const detail = top ? this.operationGuide.detail(top.id) : null;
-      const basic = detail?.heading === '基本の手順' ? detail
-        : detail?.siblings.find((section) => section.heading === '基本の手順');
-      // Section IDs end in their document position; siblings belong to the same file.
-      const sections = detail ? [detail, ...(basic && basic.id !== detail.id ? [this.operationGuide.detail(basic.id)] : [])]
-        .filter((section): section is NonNullable<typeof section> => section !== null && section.file === detail.file)
-        .sort((a, b) => Number(a.id.slice(a.id.lastIndexOf('#') + 1)) - Number(b.id.slice(b.id.lastIndexOf('#') + 1))) : [];
-      const guide: BusinessHermesOperationGuideDisplay | undefined = detail ? {
-        screen: detail.screen, sections: sections.map(({ heading, body }) => ({ heading, body }))
-      } : undefined;
+      const guide = this.guideForQuestion(intentQuestion);
       const answer = guide
         ? `${guide.screen}\n\n${guide.sections.map(({ heading, body }) => `**${heading}**\n${body}`).join('\n\n')}`
         : 'この操作の説明はまだありません。『お問い合わせ』から聞いてください。';
@@ -1078,9 +1088,12 @@ export class BusinessHermesConsultationService {
         ? await this.answerCache.candidates?.(message, externalSignal) ?? [] : [];
       if (externalSignal?.aborted) return this.failure(consultationId, 'HERMES_TIMEOUT');
       if (cachedQuestion && measurement) measurement.answerCache = 'offered';
+      const recipes = this.displayedQuestionRecipes(message, clientDeviceId);
+      const trouble = recipes.filter((recipe) => recipe.id === 'trouble-report');
       const confirmation = firstQuestion ? { title: INTENT_CONFIRMATION_TITLE, prompt, options: [
+        ...trouble.map((recipe) => recipe.option),
         ...(cachedQuestion ? [CACHED_QUESTION_PREFIX + cachedQuestion] : []),
-        ...(sourceChoices.length ? sourceChoices : this.displayedQuestionRecipes(message).map((recipe) => recipe.option)), INTENT_SUPPLEMENT] } : undefined;
+        ...(sourceChoices.length ? sourceChoices : recipes.filter((recipe) => recipe.id !== 'trouble-report').map((recipe) => recipe.option)), INTENT_SUPPLEMENT] } : undefined;
       const answer = firstQuestion ? 'まず、知りたい内容を選んでください。' : prompt;
       await this.db.businessHermesConsultationMessage.create({ data: {
         consultationId, role: 'assistant', content: answer, evidence: asJson([]),
@@ -1093,7 +1106,7 @@ export class BusinessHermesConsultationService {
       if (!updated) return this.failure(consultationId, 'HERMES_CONSULTATION_NOT_FOUND');
       if (externalSignal?.aborted) return this.failure(consultationId, 'HERMES_TIMEOUT');
       if (firstQuestion && confirmation && !this.deps.openJevIntentSelector && !cachedQuestion && sourceChoices.length === 0) {
-        this.startPrefetch(updated, message, confirmation, sourceGrounding);
+        this.startPrefetch(updated, message, confirmation, sourceGrounding, clientDeviceId);
         if (measurement) measurement.prefetchStarted = prefetches.has(consultationId);
       }
       if (firstQuestion && confirmation && this.deps.openJevIntentSelector) {
@@ -1103,7 +1116,7 @@ export class BusinessHermesConsultationService {
           options: confirmation.options ?? []
         });
         if (option && confirmation.options?.includes(option)) {
-          return this.performChat(consultationId, message, { prompt, option }, scanValue, actor, externalSignal, measurement);
+          return this.performChat(consultationId, message, { prompt, option }, scanValue, actor, externalSignal, measurement, clientDeviceId);
         }
       }
       return { status: 'ready', message: confirmation ? answer : null, evidence: [], evidenceVisible: false,
@@ -1408,16 +1421,99 @@ export class BusinessHermesConsultationService {
     };
   }
 
+  private guideForQuestion(intentQuestion: string): BusinessHermesOperationGuideDisplay | undefined {
+    const top = this.operationGuide.search(intentQuestion, 1).results[0];
+    const detail = top ? this.operationGuide.detail(top.id) : null;
+    const basic = detail?.heading === '基本の手順' ? detail
+      : detail?.siblings.find((section) => section.heading === '基本の手順');
+    // Section IDs end in their document position; siblings belong to the same file.
+    const sections = detail ? [detail, ...(basic && basic.id !== detail.id ? [this.operationGuide.detail(basic.id)] : [])]
+      .filter((section): section is NonNullable<typeof section> => section !== null && section.file === detail.file)
+      .sort((a, b) => Number(a.id.slice(a.id.lastIndexOf('#') + 1)) - Number(b.id.slice(b.id.lastIndexOf('#') + 1))) : [];
+    const guide: BusinessHermesOperationGuideDisplay | undefined = detail ? {
+      screen: detail.screen, sections: sections.map(({ heading, body }) => ({ heading, body }))
+    } : undefined;
+    return guide;
+  }
+
+  private async handleTroubleReport(consultationId: string, intentQuestion: string, clientDeviceId?: string,
+    measurement?: LearningMeasurement): Promise<BusinessHermesConsultationChatResponse> {
+    const guide = this.guideForQuestion(intentQuestion);
+    const device = clientDeviceId ? await this.db.clientDevice.findUnique({
+      where: { id: clientDeviceId }, select: { id: true, name: true, location: true, statusClientId: true, siteKey: true }
+    }) : null;
+    let known = false;
+    let threadId: string | undefined;
+    let note = '担当者への連絡は『お問い合わせ』から送ってください。';
+    if (device) {
+      const notices = device.statusClientId ? await this.db.kioskInquiryThread.findMany({
+        where: { kind: 'SYSTEM_NOTICE', noticeResolvedAt: null }, select: { noticeKey: true, noticeTitle: true }
+      }) : [];
+      const notice = notices.find(({ noticeKey }) => {
+        if (!noticeKey) return false;
+        if (noticeKey.startsWith(`status:${device.statusClientId}:`)) return true;
+        try {
+          const key: unknown = JSON.parse(noticeKey);
+          return Array.isArray(key) && key[1] === device.statusClientId;
+        } catch {
+          return false;
+        }
+      });
+      if (notice) {
+        known = true;
+        note = `この端末の不調(${notice.noticeTitle ?? "端末"})は既に把握しています。復旧をお待ちください。`;
+      } else {
+        const page = `chat-trouble:${troubleCategory(intentQuestion) ?? 'other'}`;
+        const body = `Chat から自動受付: ${intentQuestion.slice(0, 200)}`;
+        const now = new Date();
+        threadId = await this.db.$transaction(async (tx) => {
+          const existing = await tx.kioskInquiryThread.findFirst({
+            where: { kind: 'INQUIRY', senderClientDeviceId: device.id, page,
+              createdAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) } },
+            orderBy: { createdAt: 'desc' }, select: { id: true }
+          });
+          if (!existing) return createKioskInquiryThread({ clientDeviceId: device.id, page, body }, tx);
+          await tx.kioskInquiryMessage.create({ data: {
+            threadId: existing.id, side: 'SENDER', body, authorClientDeviceId: device.id, createdAt: now
+          } });
+          await tx.kioskInquiryThread.update({ where: { id: existing.id }, data: { lastMessageAt: now, receiverUnread: true } });
+          return existing.id;
+        });
+        void sendSlackNotification({ clientId: device.id, clientName: device.name,
+          location: resolveLocationScopeContext(device).deviceScopeKey, page, message: body, requestId: consultationId
+        }).catch((error) => logger.warn({ err: error, consultationId }, 'Business Hermes trouble notification failed'));
+        note = '担当者に伝えました。受け取る端末の「お問い合わせ」に届いています。';
+      }
+    }
+    if (guide) guide.note = note;
+    const answer = (guide
+      ? `${guide.screen}\n\n${guide.sections.map(({ heading, body }) => `**${heading}**\n${body}`).join('\n\n')}`
+      : 'この不調のその場の対処はまだ書かれていません。') + `\n\n${note}`;
+    const answerMessage = await this.db.businessHermesConsultationMessage.create({ data: {
+      consultationId, role: 'assistant', content: answer,
+      evidence: asJson({ items: [], visible: false, visibleIds: [], recordIds: [], ...(guide ? { guide } : {}) }),
+      searchDiagnostics: asJson([{ kind: 'business-hermes-route-v1', route: 'trouble_report', guideMiss: !guide,
+        direct: true, known, ...(threadId ? { threadId } : {}) }])
+    } });
+    if (measurement) measurement.answerMessageId = answerMessage.id;
+    await this.db.businessHermesConsultation.update({ where: { id: consultationId }, data: { openQuestions: asJson([]) } });
+    const updated = await this.get(consultationId);
+    if (!updated) return this.failure(consultationId, 'HERMES_CONSULTATION_NOT_FOUND');
+    return { status: 'ready', message: answer, evidence: [], evidenceVisible: false, evidenceVisibleIds: [],
+      ...(guide ? { guide } : {}), needsClarification: false, clarificationMessage: null, consultationId, consultation: updated };
+  }
+
   // The operation-guide recipe leads only when the question names a
   // guide screen; a keyword-only hit appends it last so record questions keep their flow.
-  private displayedQuestionRecipes(question: string) {
+  private displayedQuestionRecipes(question: string, clientDeviceId?: string) {
     const recipes = questionRecipes(question);
-    const existing = recipes.filter((recipe) => recipe.id !== 'operation-guide');
+    const existing = recipes.filter((recipe) => recipe.id !== 'operation-guide' && recipe.id !== 'trouble-report');
+    const trouble = clientDeviceId && troubleCategory(question) !== null ? recipes.filter((recipe) => recipe.id === 'trouble-report') : [];
     const guide = recipes.filter((recipe) => recipe.id === 'operation-guide');
     const strength = this.operationGuide.isEnabled() ? this.operationGuide.matchStrength(question) : 'none';
-    if (strength === 'screen') return [...guide, ...existing];
-    if (strength === 'keyword') return [...existing, ...guide];
-    return existing;
+    if (strength === 'screen') return [...trouble, ...guide, ...existing];
+    if (strength === 'keyword') return [...trouble, ...existing, ...guide];
+    return [...trouble, ...existing];
   }
 
   private inferenceInput(consultation: BusinessHermesConsultationDetail, message: string, selection?: BusinessHermesSelection,
@@ -1450,10 +1546,10 @@ export class BusinessHermesConsultationService {
   }
 
   private startPrefetch(consultation: BusinessHermesConsultationDetail, question: string, confirmation: BusinessHermesConsultationConfirmation,
-    sourceGrounding?: BusinessHermesGroundedSearch): void {
+    sourceGrounding?: BusinessHermesGroundedSearch, clientDeviceId?: string): void {
     if (!this.isConfigured() || prefetches.size > 0 || inFlight.size > 1) return;
-    const recipe = this.displayedQuestionRecipes(question)[0]!;
-    if (recipe.id === 'operation-guide') return;
+    const recipe = this.displayedQuestionRecipes(question, clientDeviceId)[0]!;
+    if (recipe.id === 'operation-guide' || recipe.id === 'trouble-report') return;
     const selection = { prompt: confirmation.prompt, option: recipe.option };
     const pending: Prefetch = {
       snapshot: prefetchSnapshot(consultation), selection, conversationKey: randomUUID(), controller: new AbortController(),

@@ -1,10 +1,11 @@
 import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
 import { ZodError } from 'zod';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { env } from '../../../config/env.js';
 import { ApiError } from '../../../lib/errors.js';
+import { prisma } from '../../../lib/prisma.js';
 import { registerBusinessHermesRoutes } from '../business-hermes.js';
 
 function createApp() {
@@ -46,6 +47,7 @@ function createApp() {
 }
 
 describe('business Hermes routes', () => {
+  afterEach(() => vi.restoreAllMocks());
   it('requires a client key and passes server-resolved device identity', async () => {
     const fixture = createApp();
     await registerBusinessHermesRoutes(fixture.app, { requireClientDevice: fixture.requireClientDevice, service: fixture.service });
@@ -176,7 +178,21 @@ describe('business Hermes routes', () => {
       signal: expect.any(AbortSignal)
     }));
     expect((consultationService.chat.mock.calls[0]?.[0] as { signal: AbortSignal }).signal.aborted).toBe(false);
+    expect(consultationService.chat.mock.calls[0]?.[0]).not.toHaveProperty('clientDeviceId');
+    expect(fixture.requireClientDevice).not.toHaveBeenCalled();
     expect(fixture.chat).not.toHaveBeenCalled();
+  });
+
+  it('passes the authenticated kiosk device to consultation chat', async () => {
+    const fixture = createApp();
+    vi.spyOn(prisma.clientDevice, 'findUnique').mockResolvedValue({ id: 'device-a' } as never);
+    const consultationService = { chat: vi.fn().mockResolvedValue({ status: 'ready' }) };
+    await registerBusinessHermesRoutes(fixture.app, { requireClientDevice: fixture.requireClientDevice,
+      service: fixture.service, chatService: fixture.chatService, consultationService: consultationService as never });
+    const response = await fixture.app.inject({ method: 'POST', url: '/assembly/business-hermes/chat', headers: { 'x-client-key': 'device-a' },
+      payload: { consultationId: '00000000-0000-0000-0000-000000000010', message: 'タグが反応しない' } });
+    expect(response.statusCode).toBe(200);
+    expect(consultationService.chat).toHaveBeenCalledWith(expect.objectContaining({ clientDeviceId: 'device-a' }));
   });
 
   it('passes a bounded scan value to the consultation service through the JWT boundary', async () => {

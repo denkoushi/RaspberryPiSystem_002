@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 757,
-    "totalLines": 187938,
-    "totalBytes": 14906529,
+    "totalLines": 187944,
+    "totalBytes": 14909867,
     "withFrontmatter": 363,
     "withStatus": 169,
     "sourceOfTruthDeclared": 116,
@@ -23215,7 +23215,7 @@
     {
       "path": "docs/kiosk-operation-guide/production-schedule-planning-board.md",
       "lineCount": 54,
-      "byteSize": 4930,
+      "byteSize": 5017,
       "hasFrontmatter": true,
       "title": "製番ボード",
       "status": null,
@@ -35903,8 +35903,8 @@
     },
     {
       "path": "docs/plans/kiosk-chat-system-guide-execplan.md",
-      "lineCount": 129,
-      "byteSize": 28168,
+      "lineCount": 133,
+      "byteSize": 30669,
       "hasFrontmatter": false,
       "title": "キオスクの Chat をシステム全体の案内役にする(操作の問い合わせと不具合の受付)",
       "status": null,
@@ -35933,8 +35933,8 @@
     },
     {
       "path": "docs/plans/kiosk-grinding-planning-board.md",
-      "lineCount": 192,
-      "byteSize": 38534,
+      "lineCount": 194,
+      "byteSize": 39284,
       "hasFrontmatter": false,
       "title": "Kiosk grinding planning board",
       "status": null,

@@ -69,6 +69,15 @@ describe('HermesChatPanel evidence cards', () => {
     expect(screen.queryByText('従来の回答文字列')).not.toBeInTheDocument();
   });
 
+  it.each([{ sections: [] }, { sections: [{ heading: '基本の手順', body: '1. 状態を確認する。' }] }])('renders the guide note after any sections ($sections)', ({ sections }) => {
+    const note = '担当者に伝えました。受け取る端末の「お問い合わせ」に届いています。';
+    render(<HermesChatPanel messages={[{ id: 'trouble-answer', role: 'assistant', content: '従来の回答文字列',
+      guide: { screen: '困ったとき', sections, note } }]}
+      draft="" isBusy={false} error={null} authRequired={null} onDraftChange={vi.fn()} onSend={vi.fn()} onReset={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByText(note)).toHaveClass('hermes-chat-panel__guide-answer-note');
+    expect(screen.getByText(note).parentElement?.lastElementChild).toBe(screen.getByText(note));
+  });
+
   it('renders record display as cards with metadata, body lists and footer without duplicate answer', () => {
     const heading = 'M8締付訓練 / 長さ30 mm / 治具JIG-01';
     const record = { sourceLabel: '従業員の訓練集計', fields: [

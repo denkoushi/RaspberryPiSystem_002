@@ -146,7 +146,10 @@ export async function registerBusinessHermesRoutes(
       };
       reply.raw.once('close', onClose);
       try {
+        const clientDeviceId = !request.headers.authorization && request.headers['x-client-key']
+          ? (await deps.requireClientDevice(request.headers['x-client-key'])).clientDevice.id : undefined;
         return await consultationService.chat({
+          ...(clientDeviceId ? { clientDeviceId } : {}),
           consultationId: body.consultationId,
           message: body.message,
           selection: body.selection,
