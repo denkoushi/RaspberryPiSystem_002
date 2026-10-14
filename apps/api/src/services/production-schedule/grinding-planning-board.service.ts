@@ -10,6 +10,7 @@ import type {
   GrindingPlanningBoardOverridesResponse,
   GrindingPlanningBoardRankResponse,
   GrindingPlanningBoardResourceOrderRequest,
+  GrindingPlanningBoardResourceOrderBulkRequest,
   GrindingPlanningBoardResourceOrderResponse,
   GrindingPlanningBoardResponse,
   GrindingPlanningBoardSpecialDueKind,
@@ -1323,6 +1324,63 @@ export async function updateGrindingPlanningBoardResourceOrder(params: {
       return { state: lockedState, items };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
     return { sourceRevision: boardRevision(result.state), items: result.items };
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2034' || error.code === 'P2002')) throw new ApiError(409, '同時更新がありました。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD');
+    throw error;
+  }
+}
+
+export async function updateGrindingPlanningBoardResourceOrderBulk(params: {
+  siteKey: string;
+} & GrindingPlanningBoardResourceOrderBulkRequest): Promise<GrindingPlanningBoardResourceOrderResponse> {
+  const itemIds = params.items.map((item) => item.itemId);
+  if (itemIds.length < 1 || itemIds.length > 500 || new Set(itemIds).size !== itemIds.length) {
+    throw new ApiError(400, '1〜500件の重複しないアイテムを指定してください', undefined, 'INVALID_RESOURCE_ORDER_ITEMS');
+  }
+  const sourceRows = await discoverSourceRows(itemIds);
+  await ensurePlanningBoardState(params.siteKey);
+  const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
+  const resource = params.resourceCd === '未設定' ? null : normalizeProductionScheduleResourceCd(params.resourceCd);
+  try {
+    const result = await prisma.$transaction(async (client) => {
+      const state = await lockState(client, params.siteKey);
+      assertBoardRevision(params.sourceRevision, state);
+      const rowsToLock = [...new Set(sourceRows.values())].sort();
+      for (const sourceRowId of rowsToLock) {
+        await acquireProductionScheduleParentRowLockInTransaction(client, sourceRowId);
+        const locked = await client.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${sourceRowId} AND "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} FOR UPDATE`;
+        if (!locked[0]) throw new ApiError(409, '元行が消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
+      }
+      const current = await resolveCurrentProjectionInTransaction({ client, siteKey: params.siteKey, sourceRowIds: rowsToLock, itemIds, policy });
+      const registered = new Set(stateOrder(state));
+      for (const request of params.items) {
+        const item = current.byItemId.get(request.itemId)!;
+        if (!registered.has(item.fseiban) || item.sourceRowId !== sourceRows.get(item.itemId)) {
+          throw new ApiError(409, '対象アイテムが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
+        }
+        assertItemRevision(request.itemRevision, item, request.overrideVersion);
+        if (item.isCompleted) throw new ApiError(409, '完了済みの工程は並べ替えできません', undefined, 'COMPLETED_ITEM');
+        if ((item.effectiveResourceCd ?? item.originalResourceCd) !== resource) {
+          throw new ApiError(409, '同じ資源CDの中でのみ並べ替えできます', undefined, 'RESOURCE_ORDER_PANE_MISMATCH');
+        }
+      }
+      const overrides = new Map(current.overrides);
+      for (const [index, itemId] of itemIds.entries()) {
+        const previous = current.overrides.get(itemId);
+        const saved = await writeOverrideIfChanged(client, params.siteKey, itemId, previous, {
+          overrideResourceCd: previous?.overrideResourceCd ?? null,
+          overrideDueDate: previous?.overrideDueDate ?? null,
+          dueDateCleared: previous?.dueDateCleared ?? null,
+          alternateRank: index + 1,
+          specialDueKind: previous?.specialDueKind ?? null,
+          specialDueExpiresAt: previous?.specialDueExpiresAt ?? null
+        });
+        if (saved) overrides.set(itemId, saved);
+      }
+      const projected = projectCurrentItems(current, overrides);
+      return { sourceRevision: boardRevision(state), items: itemIds.map((itemId) => projected.get(itemId)!) };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+    return result;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2034' || error.code === 'P2002')) throw new ApiError(409, '同時更新がありました。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD');
     throw error;

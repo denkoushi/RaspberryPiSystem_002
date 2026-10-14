@@ -87,3 +87,60 @@ describe('PlanningBoardGanttView', () => {
     expect(within(group).getByRole('button', { name: '24H' })).toBeDisabled();
   });
 });
+
+describe('forward PlanningBoardGanttView', () => {
+  beforeEach(() => vi.stubGlobal('PointerEvent', TestPointerEvent));
+  afterEach(() => vi.unstubAllGlobals());
+  function forwardProps(items = [item({ requiredMinutes: 60, alternateRank: 1 }), item({ itemId: 'b', fhincd: 'P2', requiredMinutes: 60, alternateRank: 2 })]) {
+    return { ...props(items), scale: 2, onResourceReorder: vi.fn(),
+      layout: buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'],
+        dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T10:00:00+09:00'), scale: 2 }) };
+  }
+  it.each([['a', 'b', 300, 'after'], ['b', 'a', 0, 'before']] as const)('drags %s %s %i %s with a white insertion marker', (source, target, destination, placement) => {
+    const values = forwardProps();
+    render(<PlanningBoardGanttView {...values} />);
+    const bar = screen.getByTestId(`planning-gantt-bar-${source}`);
+    fireEvent.pointerDown(bar, { clientX: 100, button: 0 });
+    fireEvent.pointerMove(bar, { clientX: destination });
+    expect(screen.getByTestId('planning-gantt-insertion')).toHaveClass('bg-white');
+    fireEvent.pointerUp(bar, { clientX: destination });
+    expect(values.onResourceReorder).toHaveBeenCalledWith(expect.objectContaining({ itemId: source }), expect.objectContaining({ itemId: target }), placement);
+    expect(values.onDueDrop).not.toHaveBeenCalled();
+    fireEvent.click(bar);
+    expect(values.onToggleItem).not.toHaveBeenCalled();
+  });
+  it('treats movement under 8px as a tap and displays planned details', () => {
+    const values = forwardProps();
+    render(<PlanningBoardGanttView {...values} />);
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    fireEvent.pointerDown(bar, { clientX: 100, button: 0 });
+    fireEvent.pointerUp(bar, { clientX: 107 });
+    fireEvent.click(bar);
+    expect(values.onResourceReorder).not.toHaveBeenCalled();
+    expect(values.onToggleItem).toHaveBeenCalledWith(expect.objectContaining({ itemId: 'a' }), true);
+    expect(screen.getByText(/着手見込み 10\/14 10:00/)).toBeInTheDocument();
+    expect(screen.getByText(/終了見込み 10\/14 11:00/)).toBeInTheDocument();
+    expect(screen.getByText('2件 · 今日 2.0h')).toBeInTheDocument();
+  });
+  it('blocks reorder when disabled or across special-due bands', () => {
+    const values = forwardProps();
+    const { rerender } = render(<PlanningBoardGanttView {...values} dragDisabled />);
+    const dragBar = () => {
+      const bar = screen.getByTestId('planning-gantt-bar-a');
+      fireEvent.pointerDown(bar, { clientX: 100, button: 0 }); fireEvent.pointerUp(bar, { clientX: 300 });
+    };
+    dragBar();
+    expect(values.onResourceReorder).not.toHaveBeenCalled();
+    const special = forwardProps([item({ specialDue: { kind: 'today', expiresAt: '2026-10-14T15:00:00Z' }, requiredMinutes: 60 }), item({ itemId: 'b', fhincd: 'P2', requiredMinutes: 60 })]);
+    rerender(<PlanningBoardGanttView {...special} />);
+    dragBar();
+    expect(special.onResourceReorder).not.toHaveBeenCalled();
+  });
+  it('shows completed-only guidance and starts the viewport at today', () => {
+    const values = forwardProps([item({ isCompleted: true })]);
+    render(<PlanningBoardGanttView {...values} />);
+    expect(screen.getByText('完了は「納期から」で表示')).toBeInTheDocument();
+    expect(screen.queryByTestId('planning-gantt-bar-a')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('ガントの日付と工程').scrollLeft).toBe(0);
+  });
+});

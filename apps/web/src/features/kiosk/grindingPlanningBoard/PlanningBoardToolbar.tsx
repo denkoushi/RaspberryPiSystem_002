@@ -2,6 +2,7 @@ import clsx from 'clsx';
 
 import { GANTT_SCALES, ganttScaleLabel } from './gantt/usePersistedPlanningBoardGanttScale';
 
+import type { PlanningBoardGanttMode } from './gantt/usePersistedPlanningBoardGanttMode';
 import type { PlanningBoardGanttScale } from './gantt/usePersistedPlanningBoardGanttScale';
 import type { PlanningBoardAllocation, PlanningBoardStatus } from './types';
 import type {
@@ -40,7 +41,7 @@ function SegmentButton({ pressed, children, onClick, ariaLabel, disabled = false
       disabled={disabled}
       onClick={onClick}
       className={clsx(
-        'min-h-11 shrink-0 rounded-md px-3 text-[13px] font-semibold tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-55',
+        'min-h-11 shrink-0 rounded-md px-2 text-[13px] font-semibold tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-55',
         'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300',
         pressed ? SEGMENT_TONE_CLASS[tone].on : SEGMENT_TONE_CLASS[tone].off
       )}
@@ -68,6 +69,14 @@ export type PlanningBoardToolbarProps = {
   onToggleGantt?: () => void;
   ganttScale?: PlanningBoardGanttScale;
   onGanttScaleChange?: (scale: PlanningBoardGanttScale) => void;
+  ganttMode?: PlanningBoardGanttMode;
+  onGanttModeChange?: (mode: PlanningBoardGanttMode) => void;
+  lateCount?: number;
+  onNextLate?: () => void;
+  onSortDue?: () => void;
+  onUndoOrder?: () => void;
+  orderDisabled?: boolean;
+  canUndoOrder?: boolean;
   overlapCount?: number;
   onNextOverlap?: () => void;
   category: GrindingPlanningBoardCategory;
@@ -96,6 +105,8 @@ export function PlanningBoardToolbar({
   onToggleGantt,
   ganttScale = 14,
   onGanttScaleChange,
+  ganttMode = 'forward', onGanttModeChange, lateCount = 0, onNextLate,
+  onSortDue, onUndoOrder, orderDisabled = false, canUndoOrder = false,
   overlapCount = 0,
   onNextOverlap,
   category,
@@ -157,13 +168,24 @@ export function PlanningBoardToolbar({
           </span>
         </SegmentButton>
         {ganttEnabled && <>
+          <div className="flex shrink-0 items-center gap-0.5" role="group" aria-label="並べ方">
+            <span className="px-1 text-[10px] text-slate-400">並べ方</span>
+            <SegmentButton tone="gantt" pressed={ganttMode === 'forward'} onClick={() => onGanttModeChange?.('forward')}>今日から</SegmentButton>
+            <SegmentButton tone="gantt" pressed={ganttMode === 'backward'} onClick={() => onGanttModeChange?.('backward')}>納期から</SegmentButton>
+          </div>
           <div className="ml-1 flex shrink-0 items-center gap-0.5" role="group" aria-label="横軸の幅">
             {GANTT_SCALES.map((days) => <SegmentButton key={days} tone="scale" pressed={ganttScale === days} onClick={() => onGanttScaleChange?.(days)}>{ganttScaleLabel(days)}</SegmentButton>)}
           </div>
-          <button type="button" onClick={onNextOverlap}
-            className={clsx('ml-1 min-h-11 shrink-0 rounded-md px-3 text-[13px] font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300', overlapCount ? 'bg-rose-800 text-white' : 'text-emerald-300')}>
-            {overlapCount ? `⚠ 重なり ${overlapCount}` : '✓ 重なりなし'}
+          <button type="button" onClick={ganttMode === 'forward' ? onNextLate : onNextOverlap}
+            className={clsx('ml-1 min-h-11 shrink-0 rounded-md px-2 text-[13px] font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300', (ganttMode === 'forward' ? lateCount : overlapCount) ? 'bg-rose-800 text-white' : 'text-emerald-300')}>
+            {ganttMode === 'forward' ? (lateCount ? `⚠ 遅れ見込み ${lateCount}` : '✓ 遅れなし') : (overlapCount ? `⚠ 重なり ${overlapCount}` : '✓ 重なりなし')}
           </button>
+          <button type="button" aria-label="⇅ 納期順に並べる" onClick={onSortDue}
+            disabled={ganttMode !== 'forward' || allocation !== 'alternate' || orderDisabled}
+            className="min-h-11 shrink-0 rounded-md bg-emerald-900 px-2 text-[13px] font-bold text-emerald-100 disabled:opacity-40">⇅ 納期順</button>
+          <button type="button" onClick={onUndoOrder}
+            disabled={ganttMode !== 'forward' || allocation !== 'alternate' || orderDisabled || !canUndoOrder}
+            className="min-h-11 shrink-0 rounded-md border border-slate-600 px-2 text-[13px] font-bold text-slate-200 disabled:opacity-40">↶ 戻す</button>
         </>}
       </div>}
       <SegmentGroup label="進捗" ariaLabel="進捗">
@@ -185,7 +207,7 @@ export function PlanningBoardToolbar({
           元割当
         </SegmentButton>
       </SegmentGroup>
-      <div className="h-11 min-w-64 flex-1 overflow-hidden">{feedback}</div>
+      <div className="h-11 min-w-0 flex-1 overflow-hidden">{feedback}</div>
       <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-1">
         {onSpecialDueModeChange ? (
           <div className="flex shrink-0 items-center gap-1" role="group" aria-label="特別納期">
@@ -196,7 +218,7 @@ export function PlanningBoardToolbar({
                   aria-pressed={specialDueMode === mode}
                   disabled={specialDueDisabled}
                   className={clsx(
-                    'min-h-9 shrink-0 rounded-md border px-2 text-[11px] font-semibold transition-colors',
+                    'min-h-11 shrink-0 rounded-md border px-2 text-[11px] font-semibold transition-colors',
                     specialDueMode === mode
                       ? 'border-amber-300 bg-amber-400/25 text-amber-100'
                       : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-amber-300/70 hover:text-white',

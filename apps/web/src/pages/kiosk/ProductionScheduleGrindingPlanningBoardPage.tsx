@@ -12,6 +12,7 @@ import {
   useUpdateKioskGrindingPlanningBoardDueScope,
   useUpdateKioskGrindingPlanningBoardRank,
   useUpdateKioskGrindingPlanningBoardResourceOrder,
+  useUpdateKioskGrindingPlanningBoardResourceOrderBulk,
   useUpdateKioskGrindingPlanningBoardSeibanOrder
 } from '../../api/hooks';
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
@@ -26,6 +27,7 @@ import { PlanningBoardSeibanDrawer } from '../../features/kiosk/grindingPlanning
 import { PlanningBoardSeibanPane } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardSeibanPane';
 import { PlanningBoardToolbar } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardToolbar';
 import {
+  compareProcessOrder,
   resolveGrindingPlanningBoardDueDate,
   resolveGrindingPlanningBoardResource,
   sortGrindingPlanningBoardItems
@@ -46,6 +48,9 @@ import type {
   GrindingPlanningBoardDueRequest,
   GrindingPlanningBoardSpecialDueKind
 } from '@raspi-system/shared-types';
+
+type ResourceOrderSnapshot = { resourceCd: string; itemIds: string[] };
+type ResourceOrderHistory = { id: number; scope: string; orders: ResourceOrderSnapshot[] };
 
 const EMPTY_ITEMS: GrindingPlanningBoardItem[] = [];
 const EMPTY_ORDER: string[] = [];
@@ -167,6 +172,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [feedbackKind, setFeedbackKind] = useState<FeedbackKind>('success');
   const [specialDueMode, setSpecialDueMode] = useState<GrindingPlanningBoardSpecialDueKind | null>(null);
+  const [resourceOrderHistory, setResourceOrderHistory] = useState<ResourceOrderHistory[]>([]);
+  const resourceOrderHistoryId = useRef(0);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [dueDetailFseiban, setDueDetailFseiban] = useState<string | null>(null);
   const [dueDetailTargetFseiban, setDueDetailTargetFseiban] = useState<string | null>(null);
@@ -194,6 +201,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const updateDueScope = useUpdateKioskGrindingPlanningBoardDueScope({ invalidateOnSuccess: false });
   const { mutateAsync: updateRankAsync } = useUpdateKioskGrindingPlanningBoardRank({ invalidateOnSuccess: false });
   const { mutateAsync: updateResourceOrderAsync } = useUpdateKioskGrindingPlanningBoardResourceOrder({ invalidateOnSuccess: false });
+  const { mutateAsync: updateResourceOrderBulkAsync } = useUpdateKioskGrindingPlanningBoardResourceOrderBulk({ invalidateOnSuccess: false });
   const updateOrder = useUpdateKioskGrindingPlanningBoardSeibanOrder({ invalidateOnSuccess: false });
 
   const notify = useCallback((message: string, kind: FeedbackKind) => {
@@ -267,7 +275,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       return result;
     },
     onStart: (label) => notify(`${label}を保存中…`, 'processing'),
-    onSuccess: (label) => notify(`${label}を保存しました。`, 'success'),
+    onSuccess: (label) => notify(label === '納期順' ? '納期の早い順に並べ直しました' : label === '順番を戻す' ? '1つ前の順番に戻しました' : `${label}を保存しました。`, 'success'),
     onError: handleError
   });
   const { enqueue: enqueueWrite, items: displayItems, order: registeredFseibans, hasPendingSeiban, acceptRefreshedState } = writeQueue;
@@ -593,6 +601,19 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       due: { kind: 'date', date } }], '納期');
   }, [allocation, data, enqueueOverrides, rankMutationReady, scopeReady, writeBlocked]);
 
+  const historyScope = `${data?.siteKey ?? ''}:${category}`;
+  const rememberResourceOrder = useCallback((id: number, snapshot: ResourceOrderSnapshot) => {
+    setResourceOrderHistory((history) => {
+      const previous = history.find((entry) => entry.id === id);
+      return previous ? history.map((entry) => entry === previous ? { ...entry, orders: [...entry.orders, snapshot] } : entry)
+        : [...history, { id, scope: historyScope, orders: [snapshot] }].slice(-10);
+    });
+  }, [historyScope]);
+  const snapshotResourceOrder = useCallback((resource: string): ResourceOrderSnapshot => ({ resourceCd: resource,
+    itemIds: sortGrindingPlanningBoardItems(currentItemsRef.current.filter((candidate) => !candidate.isCompleted &&
+      (resolveGrindingPlanningBoardResource(candidate, 'alternate') ?? '未設定') === resource), registeredFseibans, 'resource', 'alternate').map((candidate) => candidate.itemId)
+  }), [registeredFseibans]);
+
   const reorderResourceByDrag = useCallback((item: GrindingPlanningBoardItem, targetItem: GrindingPlanningBoardItem,
     placement: GrindingPlanningBoardResourceOrderPlacement) => {
     const resource = resolveGrindingPlanningBoardResource(item, allocation);
@@ -601,8 +622,14 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       (item.specialDue?.expiresAt ?? null) !== (targetItem.specialDue?.expiresAt ?? null) ||
       hasPendingSeiban(item.fseiban, true) || hasPendingSeiban(targetItem.fseiban, true)) return;
     const affected = currentItemsRef.current.filter((candidate) => resolveGrindingPlanningBoardResource(candidate, allocation) === resource);
+    const before = snapshotResourceOrder(resource);
+    const proposed = before.itemIds.filter((id) => id !== item.itemId);
+    proposed.splice(proposed.indexOf(targetItem.itemId) + (placement === 'after' ? 1 : 0), 0, item.itemId);
+    if (proposed.every((id, index) => id === before.itemIds[index])) return;
+    const historyId = ++resourceOrderHistoryId.current;
     enqueueWrite({ label: '資源CD内の順序', itemIds: affected.map((candidate) => candidate.itemId),
       seibans: [...new Set(affected.map((candidate) => candidate.fseiban))], order: true,
+      onSaved: () => { if (ganttEnabled) rememberResourceOrder(historyId, before); },
       apply: (display) => {
         const source = display.items.find((candidate) => candidate.itemId === item.itemId);
         const target = display.items.find((candidate) => candidate.itemId === targetItem.itemId);
@@ -626,7 +653,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
           alternateRank: ranked.alternateRank, itemRevision: ranked.itemRevision, version: ranked.version })) };
       }
     });
-  }, [allocation, data, enqueueWrite, rankMutationReady, scopeReady, updateResourceOrderAsync, writeBlocked, hasPendingSeiban]);
+  }, [allocation, data, enqueueWrite, rankMutationReady, scopeReady, updateResourceOrderAsync, writeBlocked, hasPendingSeiban, ganttEnabled, rememberResourceOrder, snapshotResourceOrder]);
 
   const refreshAfterConflict = async () => {
     setEditorError('最新状態を取得しています…');
@@ -751,9 +778,54 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   );
   const ganttItems = useMemo(() => view === 'seiban' && focusedFseiban && focusItems.length > 0
     ? focusItems : visibleItems, [view, focusedFseiban, focusItems, visibleItems]);
+  const ganttNow = useMemo(() => new Date(nowMs), [nowMs]);
   const gantt = usePlanningBoardGantt({ enabled: ganttEnabled, items: ganttItems, allocation, view,
     seibanOrder: registeredFseibans, resources: data?.resources ?? EMPTY_ORDER,
-    today: todayJst(), preferenceScope: `${data?.siteKey ?? ''}:${category}` });
+    today: todayJst(), now: ganttNow, preferenceScope: `${data?.siteKey ?? ''}:${category}` });
+  const orderActionsDisabled = !bulkReady || !rankMutationReady || writeBlocked || writeQueue.pending;
+  const lastResourceOrder = resourceOrderHistory.filter((entry) => entry.scope === historyScope).at(-1);
+  const enqueueResourceOrder = (snapshot: ResourceOrderSnapshot, label: string, onSaved: () => void) => {
+    const items = snapshot.itemIds.map((id) => currentItemsRef.current.find((item) => item.itemId === id));
+    if (!items.length || items.length > 500 || items.some((item) => !item || item.isCompleted ||
+      (resolveGrindingPlanningBoardResource(item, 'alternate') ?? '未設定') !== snapshot.resourceCd || hasPendingSeiban(item.fseiban, true))) return false;
+    const members = items as GrindingPlanningBoardItem[];
+    const ranks = new Map(snapshot.itemIds.map((id, index) => [id, index + 1]));
+    return enqueueWrite({ label, itemIds: snapshot.itemIds, seibans: [...new Set(members.map((item) => item.fseiban))], order: true,
+      apply: (display) => ({ ...display, items: display.items.map((item) => ranks.has(item.itemId) ? { ...item, alternateRank: ranks.get(item.itemId)! } : item) }),
+      save: (context) => updateResourceOrderBulkAsync({ sourceRevision: context.sourceRevision, resourceCd: snapshot.resourceCd,
+        items: members.map((original) => { const item = context.item(original); return { itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version }; }) }),
+      onSaved
+    });
+  };
+  const sortResourceOrdersByDue = () => {
+    if (gantt.mode !== 'forward' || allocation !== 'alternate' || orderActionsDisabled) return;
+    const id = ++resourceOrderHistoryId.current;
+    const resources = [...new Set(ganttItems.filter((item) => !item.isCompleted).map((item) => resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定'))];
+    for (const resourceCd of resources) {
+      const visible = sortGrindingPlanningBoardItems(ganttItems.filter((item) => !item.isCompleted &&
+        (resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定') === resourceCd), registeredFseibans, 'resource', allocation);
+      const sorted = [...visible].sort((a, b) => {
+        if (a.specialDue || b.specialDue) return a.specialDue ? b.specialDue ? 0 : -1 : 1;
+        return (resolveGrindingPlanningBoardDueDate(a, allocation) ?? '9999-12-31').localeCompare(resolveGrindingPlanningBoardDueDate(b, allocation) ?? '9999-12-31') ||
+          compareProcessOrder(a.processOrder, b.processOrder) || a.itemId.localeCompare(b.itemId);
+      });
+      if (sorted.every((item, index) => item.itemId === visible[index]!.itemId)) continue;
+      const before = snapshotResourceOrder(resourceCd);
+      if (!enqueueResourceOrder({ resourceCd, itemIds: sorted.map((item) => item.itemId) }, '納期順', () => rememberResourceOrder(id, before))) {
+        notify('並べ替える対象は資源ごとに500件までです。表示を確認してください。', 'error');
+      }
+    }
+  };
+  const undoResourceOrder = () => {
+    if (gantt.mode !== 'forward' || allocation !== 'alternate' || orderActionsDisabled || !lastResourceOrder) return;
+    for (const snapshot of lastResourceOrder.orders) {
+      if (!enqueueResourceOrder(snapshot, '順番を戻す', () => setResourceOrderHistory((history) => history.flatMap((entry) => {
+        if (entry.id !== lastResourceOrder.id) return [entry];
+        const orders = entry.orders.filter((order) => order !== snapshot);
+        return orders.length ? [{ ...entry, orders }] : [];
+      })))) notify('対象の工程が変わったため順番を戻せません。表示を確認してください。', 'error');
+    }
+  };
   const openEditorForItem = useCallback((item: GrindingPlanningBoardItem) => openEditor([item]), [openEditor]);
   const returnFromFocus = useCallback(() => setFocusedFseiban(null), []);
   const toggleFocusAll = useCallback((selected: boolean) => toggleAll(focusItems, selected), [focusItems, toggleAll]);
@@ -811,6 +883,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         onToggleGantt={() => setGanttEnabled((enabled) => !enabled)}
         ganttScale={gantt.scale}
         onGanttScaleChange={gantt.changeScale}
+        ganttMode={gantt.mode} onGanttModeChange={gantt.changeMode}
+        lateCount={gantt.layout.lateCount} onNextLate={gantt.scrollToNextLate}
+        onSortDue={sortResourceOrdersByDue} onUndoOrder={undoResourceOrder}
+        orderDisabled={orderActionsDisabled} canUndoOrder={Boolean(lastResourceOrder)}
         overlapCount={gantt.layout.overlapCount}
         onNextOverlap={gantt.scrollToNextOverlap}
         category={category}
@@ -855,7 +931,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
           resourceView={view === 'resource'} dailyHoursByResource={gantt.dailyHoursByResource}
           resourceNameMap={resourcesQuery.data?.resourceNameMap ?? {}}
           capacityPending={gantt.capacityPending} capacityError={gantt.capacityError} onCapacityChange={gantt.changeCapacity}
-          selectedItemIds={selectedItemIds} onToggleItem={toggleItem} onDueDrop={moveDueByDrag}
+          selectedItemIds={selectedItemIds} onToggleItem={toggleItem} onDueDrop={moveDueByDrag} onResourceReorder={reorderResourceByDrag}
           disabled={interactionLocked} dragDisabled={allocation !== 'alternate' || writeBlocked || interactionLocked || !rankMutationReady} />
       ) : data && view === 'seiban' && focusedFseiban && focusItems.length > 0 ? (
         <div className="mt-2">

@@ -17,6 +17,7 @@ import type {
   GrindingPlanningBoardRankRequest,
   GrindingPlanningBoardRankResponse,
   GrindingPlanningBoardResourceOrderRequest,
+  GrindingPlanningBoardResourceOrderBulkRequest,
   GrindingPlanningBoardResourceOrderResponse,
   GrindingPlanningBoardSeibanOrderRequest,
   GrindingPlanningBoardDueScopeRequest,
@@ -683,6 +684,14 @@ export async function updateKioskGrindingPlanningBoardRank(payload: GrindingPlan
 export async function updateKioskGrindingPlanningBoardResourceOrder(payload: GrindingPlanningBoardResourceOrderRequest) {
   const { data } = await api.put<GrindingPlanningBoardResourceOrderResponse>(
     '/kiosk/production-schedule/grinding-planning-board/resource-order',
+    payload
+  );
+  return data;
+}
+
+export async function updateKioskGrindingPlanningBoardResourceOrderBulk(payload: GrindingPlanningBoardResourceOrderBulkRequest) {
+  const { data } = await api.put<GrindingPlanningBoardResourceOrderResponse>(
+    '/kiosk/production-schedule/grinding-planning-board/resource-order/bulk',
     payload
   );
   return data;

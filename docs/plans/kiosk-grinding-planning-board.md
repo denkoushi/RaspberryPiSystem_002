@@ -192,3 +192,17 @@ Decision: moving a due date earlier is floored at today (JST) and may go earlier
 Toolbar. After the Gantt button was added the user found the toolbar buttons hard to tell apart (2026-10-14), so `PlanningBoardToolbar.tsx` now separates them by role (mock version 3 of the same Artifact): each filter group (工程, 表示, 進捗, 割当) sits in a bordered track with a small label and a white selected state, the Gantt toggle with its scale and overlap button is one sky-coloured track, the 製番 drawer button is a pill with a count badge, and solid emerald is used only for 一括変更. Button labels and accessible names are unchanged.
 
 Follow-up after the first device check (2026-10-14). The user found one week still too wide, so 2-day and 4-day spans were added (`GANTT_SCALES = [2, 4, 7, 14, 28, 56]`, labelled 日 below 7 days). At those spans a day is wide enough to draw dashed 6/12/18 o'clock lines. Changing the span now re-anchors the view at today (at today minus 3 days for spans of a week or more) instead of keeping the previous first day, so a short span never opens on past days. The chart also filled only part of the screen because its height was a fixed `100dvh - 12rem` guess; it now measures its own top edge and fills down to the bottom of the window. Bars are still worked back from the due date (end of the due day minus the required time), as decided earlier.
+
+
+### Forward mode (2026-10-14)
+
+`今日から` is the terminal-persisted default (`kiosk-planning-board-gantt-mode`, schemaVersion 1); `納期から` retains backward placement and due-date drag.
+Forward mode places unfinished visible work in resource order from JST now, splitting across daily windows: 08:00–16:00 for 8H, 08:00–18:00 for 10H, 00:00–24:00 for 24H, weekends included.
+Unknown duration occupies no time. Each part waits for its predecessor across resources; process precedence wins if ranks form a dependency cycle. The axis starts at today's midnight, resource view has one lane per resource, and end after due-date midnight is late (no due date is never late).
+Forward drag changes rank; `⇅ 納期順` keeps special-due work first, then sorts by due date (unknown last), process and item ID. Ranks are shared across terminals.
+`PUT …/resource-order/bulk` validates 1–500 items in one resource, completion and board/item revisions, then saves ranks in one RepeatableRead transaction. `↶ 戻す` restores the prior order from this terminal session's last ten successful drag/sort operations through the write queue. Both actions require 別割当 and unblocked writes.
+
+Validation: web scope 150 passed; API route/service scope 68 passed; shared-types build and web/API type checks passed.
+The 26 database integration cases (six new bulk cases) were skipped without a dedicated test DB; Docker socket access is unavailable.
+1920px browser rendering remains unverified: Playwright's bundled browser is absent, sandboxed Chrome cannot launch, and CUA has no connected browser.
+The toolbar uses shrinkable feedback and compact controls. Web/API lint and `git diff --check` pass; the final touched web view/page rerun passes 66 tests. No commit, push, merge or deployment is included.
