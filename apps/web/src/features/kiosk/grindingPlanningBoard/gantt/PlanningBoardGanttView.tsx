@@ -146,9 +146,10 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
               {showHours && hourTicks.map((hour) => <span key={hour} className="absolute bottom-0 -translate-x-1/2 text-xs font-bold leading-4 opacity-90" style={{ left: `${hour / 24 * 100}%` }}>{hour}時</span>)}
             </div>)}
           </div>
-          {days.map(({ day, weekend }) => <div key={day} className={clsx('pointer-events-none absolute bottom-0 top-9 border-l border-slate-800/70', !forward && weekend && 'bg-slate-950/50')}
+          {/* The forward chart draws no vertical grid so the brighter row lines carry the eye from the machine name to its bars. */}
+          {!forward && days.map(({ day, weekend }) => <div key={day} className={clsx('pointer-events-none absolute bottom-0 top-9 border-l border-slate-800/70', weekend && 'bg-slate-950/50')}
             style={{ left: labelWidth + (day - layout.start) * dayWidth, width: dayWidth }} />)}
-          {showHours && days.flatMap(({ day }) => hourTicks.map((hour) => <div key={`${day}-${hour}`} className="pointer-events-none absolute bottom-0 top-9 border-l border-dashed border-slate-700/60"
+          {!forward && showHours && days.flatMap(({ day }) => hourTicks.map((hour) => <div key={`${day}-${hour}`} className="pointer-events-none absolute bottom-0 top-9 border-l border-dashed border-slate-700/60"
             style={{ left: labelWidth + (day - layout.start + hour / 24) * dayWidth }} />))}
           {!forward && <div className="pointer-events-none absolute bottom-0 top-9 z-[1] w-px bg-emerald-400" style={{ left: labelWidth + (layout.today - layout.start) * dayWidth }} />}
           {layout.completedOnly && <p className="sticky left-0 w-fit p-3 text-sm text-slate-400">完了は「納期から」で表示</p>}

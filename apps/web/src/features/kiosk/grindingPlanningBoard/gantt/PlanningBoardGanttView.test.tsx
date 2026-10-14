@@ -183,7 +183,7 @@ describe('forward PlanningBoardGanttView', () => {
     expect(screen.queryByTestId('planning-gantt-bar-a')).not.toBeInTheDocument();
     expect(screen.getByLabelText('ガントの日付と工程').scrollLeft).toBe(0);
   });
-  it('shades only before and after the working day, not breaks, and wraps bar text to two lines each', () => {
+  it('shades only before and after the working day, not breaks, and wraps the name to two lines and details to three', () => {
     render(<PlanningBoardGanttView {...forwardProps([item({ requiredMinutes: 480 })])} />);
     const shades = Array.from(screen.getByTestId('planning-forward-lane-305').querySelectorAll('.bg-slate-950\\/55'));
     const days = new Set(shades.map(shade => shade.parentElement));
@@ -191,9 +191,11 @@ describe('forward PlanningBoardGanttView', () => {
     expect(shades).toHaveLength(days.size * 2);
     expect(shades.every(shade => !shade.className.includes('z-['))).toBe(true);
     const bar = screen.getByTestId('planning-gantt-bar-a');
-    expect(bar).toHaveClass('top-1.5', 'h-[60px]');
+    expect(bar).toHaveClass('top-[3px]', 'h-[70px]');
+    expect(screen.getByTestId('planning-forward-lane-305')).toHaveClass('border-slate-600');
+    expect(screen.getByTestId('planning-board-gantt').querySelector('.top-9.border-l')).toBeNull();
     expect(bar.querySelector('b')).toHaveClass('line-clamp-2');
-    expect(bar.querySelector('small')).toHaveClass('line-clamp-2');
+    expect(bar.querySelector('small')).toHaveClass('line-clamp-3');
   });
   it('uses two lines at scale 1 and 2 and minutes at other scales, keeping process order only in the accessible label', () => {
     const values = forwardProps([item({ requiredMinutes: 480, processOrder: '987' })]);
