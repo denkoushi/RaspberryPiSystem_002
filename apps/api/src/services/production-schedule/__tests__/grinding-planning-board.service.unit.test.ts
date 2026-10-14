@@ -183,6 +183,38 @@ describe('grinding planning board service orchestration', () => {
   });
 
 
+  it('projects both categories, excludes invalid resources, and retains policy maps in snapshots', async () => {
+    const actual = await vi.importActual<typeof import('../grinding-planning-board-projection.js')>('../grinding-planning-board-projection.js');
+    mocks.projectGrindingPlanningBoard.mockImplementation(actual.projectGrindingPlanningBoard);
+    mocks.isProductionScheduleGrindingResourceCd.mockImplementation((cd: string) => cd === '305' || cd === '581');
+    mocks.isProductionScheduleCuttingResourceCd.mockImplementation((cd: string) => cd === '100');
+    const rows = ['305', '100', '10', null].map((cd, index) => ({ ...mocks.sourceRow, id: `source-${index}`,
+      rowData: { ...mocks.sourceRow.rowData, FSIGENCD: cd } }));
+    const details = await mocks.prisma.csvDashboardRow.findMany();
+    mocks.prisma.csvDashboardRow.findMany.mockResolvedValue(rows.map((row) => ({ ...details[0], id: row.id })));
+    mocks.prisma.$queryRaw.mockImplementation(async (sql: unknown) => {
+      if (JSON.stringify(sql).includes('effectiveItems')) return rows.map((row) => ({
+        originalResourceCd: row.rowData.FSIGENCD, effectiveResourceCd: row.rowData.FSIGENCD,
+        itemCount: 1n, unknownItemCount: 0n, requiredMinutesSum: 30
+      }));
+      if (JSON.stringify(sql).includes('ProductionScheduleGrindingPlanningBoardOverride')) return [];
+      return rows;
+    });
+    const snapshotStore = createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 });
+    const params = { siteKey: 'site-a', category: 'all' as const, view: 'resource' as const, snapshotStore };
+    const result = await getGrindingPlanningBoard(params);
+    expect(result.items.map((item) => item.originalResourceCd).sort()).toEqual(['100', '305']);
+    expect(result.resources).toEqual(['305', '581']);
+    expect(result.resourceCategories).toEqual({ '305': 'grinding', '581': 'grinding', '100': 'cutting' });
+    expect(result.load.map((entry) => entry.resourceCd).sort()).toEqual(['100', '305']);
+    const cached = snapshotStore.get(result.snapshotId)!;
+    delete (cached.payload as { resourceCategories?: unknown }).resourceCategories;
+    const restored = await getGrindingPlanningBoard({ ...params, snapshotId: result.snapshotId });
+    expect(restored.resourceCategories).toEqual(result.resourceCategories);
+    const load = await getGrindingPlanningBoardLoad({ siteKey: 'site-a', category: 'all' });
+    expect(load.load.map((entry) => entry.resourceCd).sort()).toEqual(['100', '305']);
+  });
+
   it.each(['material', 'part'] as const)('keeps the status value and supplies only a substitute basis (%s)', async (basis) => {
     const projection = mocks.projectGrindingPlanningBoard.getMockImplementation()!();
     mocks.projectGrindingPlanningBoard.mockReturnValue({

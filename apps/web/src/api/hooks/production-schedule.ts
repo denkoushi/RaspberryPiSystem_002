@@ -109,6 +109,7 @@ import type {
   GrindingPlanningBoardResourceOrderBulkRequest,
   GrindingPlanningBoardResourceOrderResponse,
   GrindingPlanningBoardSeibanOrderRequest,
+  GrindingPlanningBoardCategory,
   GrindingPlanningBoardResponse,
   GrindingPlanningBoardDueScopeRequest
 } from '@raspi-system/shared-types';
@@ -352,7 +353,7 @@ export function useKioskGrindingPlanningBoard(
   });
 }
 
-export function useKioskGrindingPlanningBoardLoad(category: 'grinding' | 'cutting') {
+export function useKioskGrindingPlanningBoardLoad(category: GrindingPlanningBoardCategory) {
   return useQuery({
     queryKey: ['kiosk-grinding-planning-board', 'load', category],
     queryFn: () => getKioskGrindingPlanningBoardLoad(category),
@@ -530,7 +531,7 @@ export function useKioskGrindingPlanningBoardSnapshot(
 }
 
 export function useKioskGrindingPlanningBoardSeibanCandidates(
-  params: { category: 'grinding' | 'cutting'; completionFilter: 'all' | 'incomplete' } | undefined,
+  params: { category: GrindingPlanningBoardCategory; completionFilter: 'all' | 'incomplete' } | undefined,
   options?: { enabled?: boolean }
 ) {
   return useQuery({

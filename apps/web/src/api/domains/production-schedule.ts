@@ -655,7 +655,7 @@ export async function getKioskGrindingPlanningBoardSnapshot(params: KioskGrindin
 }
 
 export async function getKioskGrindingPlanningBoardSeibanCandidates(params: {
-  category: 'grinding' | 'cutting';
+  category: GrindingPlanningBoardCategory;
   completionFilter?: 'all' | 'incomplete';
 }) {
   const { data } = await api.get<GrindingPlanningBoardSeibanCandidatesResponse>(

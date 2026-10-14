@@ -7,11 +7,13 @@ import {
 import { formatResourceCdWithJapaneseNames } from '../leaderOrderBoard/formatResourceCdWithJapaneseNames';
 
 import { PlanningBoardItemTable } from './PlanningBoardItemTable';
-import { resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } from './sortGrindingPlanningBoardItems';
+import { resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems, sortPlanningBoardResources } from './sortGrindingPlanningBoardItems';
 import { usePlanningBoardPaneOrder } from './usePlanningBoardPaneOrder';
 
 import type { PlanningBoardAllocation } from './types';
 import type {
+  GrindingPlanningBoardCategory,
+  GrindingPlanningBoardResponse,
   GrindingPlanningBoardItem,
   GrindingPlanningBoardResourceOrderPlacement,
   GrindingPlanningBoardSpecialDueKind
@@ -21,6 +23,9 @@ export type PlanningBoardResourceViewProps = {
   items: readonly GrindingPlanningBoardItem[];
   seibanOrder: readonly string[];
   resources: readonly string[];
+  category?: GrindingPlanningBoardCategory;
+  resourceCategories?: GrindingPlanningBoardResponse['resourceCategories'];
+  canMoveResource?: (item: GrindingPlanningBoardItem, target: string) => boolean;
   resourceNameMap: Record<string, string[]>;
   preferenceScope?: string;
   allocation: PlanningBoardAllocation;
@@ -130,6 +135,7 @@ export function PlanningBoardResourceView({
   items,
   seibanOrder,
   resources,
+  category, resourceCategories, canMoveResource,
   resourceNameMap,
   preferenceScope = 'default',
   allocation,
@@ -175,6 +181,10 @@ export function PlanningBoardResourceView({
     pane.style.outlineOffset = '-2px';
   }, [restoreDropPane]);
 
+  const validTargets = useCallback((item: GrindingPlanningBoardItem) => canMoveResource
+    ? new Set(resources.filter((resource) => canMoveResource(item, resource))) : validResources,
+  [canMoveResource, resources, validResources]);
+
   const flushResourceDragFrame = useCallback(() => {
     const drag = pendingResourceDragRef.current;
     if (!drag) return;
@@ -186,7 +196,7 @@ export function PlanningBoardResourceView({
     const pane = resourcePaneAtPoint(
       drag.pendingClientX,
       drag.pendingClientY,
-      validResources
+      validTargets(drag.item)
     );
     setDropPane(drag, pane);
     if (pane?.dataset.resourceCode !== (drag.sourceResource ?? '未設定')) {
@@ -205,7 +215,7 @@ export function PlanningBoardResourceView({
         ? 'before'
         : 'after';
     setDropRow(drag, row, placement);
-  }, [items, setDropPane, validResources]);
+  }, [items, setDropPane, validTargets]);
 
   const scheduleResourceDragFrame = useCallback(() => {
     const drag = pendingResourceDragRef.current;
@@ -342,7 +352,7 @@ export function PlanningBoardResourceView({
     if (!drag || drag.pointerId !== event.pointerId) return;
     const isDrag = drag.dragging;
     const targetPane = isDrag
-      ? resourcePaneAtPoint(event.clientX, event.clientY, validResources)
+      ? resourcePaneAtPoint(event.clientX, event.clientY, validTargets(drag.item))
       : null;
     const targetResource = targetPane?.dataset.resourceCode ?? null;
     const item = drag.item;
@@ -369,7 +379,7 @@ export function PlanningBoardResourceView({
     }
     if (shouldDrop) onResourceDrop?.(item, targetResource);
     else if (shouldReorder && placement != null) onResourceReorder?.(item, targetItem, placement);
-  }, [clearResourceDrag, items, onResourceDrop, onResourceReorder, validResources]);
+  }, [clearResourceDrag, items, onResourceDrop, onResourceReorder, validTargets]);
 
   const handleResourcePointerCancel = useCallback((event: React.PointerEvent<HTMLElement>) => {
     const drag = pendingResourceDragRef.current;
@@ -419,6 +429,7 @@ export function PlanningBoardResourceView({
   const paneResourceSet = useMemo(() => new Set(paneResources), [paneResources]);
   const paneAtPoint = useCallback((x: number, y: number) => resourcePaneAtPoint(x, y, paneResourceSet), [paneResourceSet]);
   const paneOrder = usePlanningBoardPaneOrder(paneResources, preferenceScope, paneAtPoint, disabled);
+  const orderedResources = useMemo(() => sortPlanningBoardResources(paneOrder.order, category, resourceCategories), [paneOrder.order, category, resourceCategories]);
   const groupsByResource = useMemo(() => new Map(groups), [groups]);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const [expanded, setExpanded] = useState<ReadonlyMap<string, { layer: number; height: number }>>(new Map());
@@ -492,7 +503,7 @@ export function PlanningBoardResourceView({
   return (
     <div className="relative isolate min-w-0" style={{ paddingBottom: bottomSpace }}>
       <div ref={gridRef} className="relative grid min-w-0 grid-cols-1 items-start gap-2.5 lg:grid-cols-2 xl:grid-cols-4" data-testid="planning-board-resource-view">
-        {paneOrder.order.map((resource) => {
+        {orderedResources.map((resource) => {
           const resourceItems = groupsByResource.get(resource) ?? [];
           const isExpanded = expanded.has(resource);
           return (

@@ -34,6 +34,18 @@ function props(items: GrindingPlanningBoardItem[] = [item()]) {
 describe('PlanningBoardGanttView', () => {
   beforeEach(() => vi.stubGlobal('PointerEvent', TestPointerEvent));
   afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+  it.each(['backward', 'forward'] as const)('shows one small header per category in %s resource view', (mode) => {
+    const layout = buildPlanningBoardGanttLayout({ items: [item()], allocation: 'alternate', view: 'resource',
+      seibanOrder: [], resources: ['100', '305', '584'], category: 'all', resourceCategories: { '100': 'cutting', '305': 'grinding', '584': 'grinding' },
+      dailyHoursByResource: {}, today: '2026-10-14', scale: 14, mode });
+    const { rerender } = render(<PlanningBoardGanttView {...props()} layout={layout} />);
+    const headers = screen.getAllByTestId('planning-gantt-category-header');
+    expect(headers.map((header) => header.textContent)).toEqual(['研削', '切削']);
+    expect(headers[0]).toHaveClass('h-6', 'bg-slate-800', 'font-bold', 'text-[11px]');
+    expect(headers[0]!.firstChild).toHaveClass('sticky', 'left-0');
+    rerender(<PlanningBoardGanttView {...props()} />);
+    expect(screen.queryByTestId('planning-gantt-category-header')).not.toBeInTheDocument();
+  });
   it('ドラッグはRAFで表示し、今日で止まり、指を離して納期を確定する', async () => {
     const values = props();
     render(<PlanningBoardGanttView {...values} />);

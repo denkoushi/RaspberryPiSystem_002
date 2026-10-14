@@ -115,6 +115,7 @@ function fixture() {
     registeredFseibans: ['26-1041', '26-1042'],
     seibanOrder: ['26-1041', '26-1042'],
     resources: ['305', '584'],
+    resourceCategories: { '305': 'grinding', '584': 'grinding' } as Record<string, 'grinding' | 'cutting'>,
     items: [item('a', '26-1041', '10'), item('b', '26-1041', '20'), item('c', '26-1042', '10'), item('d', '26-1042', '20')],
     load: [
       { resourceCd: '305', originalItemCount: 4, alternateItemCount: 4, originalRequiredMinutes: 80, alternateRequiredMinutes: 80, unfinishedItemCount: 4, requiredMinutes: 80, unknownItemCount: 0, originalUnknownItemCount: 0, alternateUnknownItemCount: 0 }
@@ -196,6 +197,60 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('keeps selections scoped to the derived all category and restores each scope', () => {
+    renderSeibanBoard();
+    selectAllBoardItems();
+    expect(screen.getByText('4件')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '切削' }));
+    expect(mocks.snapshot).toHaveBeenLastCalledWith(expect.objectContaining({ category: 'all' }), expect.anything());
+    expect(mocks.load).toHaveBeenLastCalledWith('all');
+    expect(mocks.candidates).toHaveBeenLastCalledWith(expect.objectContaining({ category: 'all' }), expect.anything());
+    expect(screen.getByRole('button', { name: '一括変更' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '切削' }));
+    expect(screen.getByText('4件')).toBeInTheDocument();
+  });
+
+  it('filters editor targets by original category and disables mixed bulk resource changes', () => {
+    const data = fixture();
+    data.resources = ['100', '305', '584'];
+    data.resourceCategories['100'] = 'cutting';
+    data.items[1]!.originalResourceCd = '100';
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    renderSeibanBoard();
+    fireEvent.click(screen.getByRole('button', { name: '切削' }));
+    fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '資源CD 305を変更' }));
+    let dialog = screen.getByRole('dialog', { name: '一括変更' });
+    expect(within(dialog).getByRole('button', { name: '資源CD 584へ変更' })).toBeEnabled();
+    expect(within(dialog).queryByRole('button', { name: '資源CD 100へ変更' })).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'キャンセル' }));
+    selectAllBoardItems();
+    fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
+    dialog = screen.getByRole('dialog', { name: '一括変更' });
+    expect(within(dialog).getByText('研削と切削が混ざっているため変更できません')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: /資源CD .+へ変更/ })).not.toBeInTheDocument();
+    expect(within(dialog).getAllByRole('button', { name: '元に戻す' })[0]).toBeEnabled();
+    expect(within(dialog).getByRole('button', { name: '指定日' })).toBeEnabled();
+  });
+
+  it.each([true, false])('rejects cross-category drag and orders resource panes (map available: %s)', (hasMap) => {
+    const data = fixture();
+    data.resources = ['100', '584', '305'];
+    data.resourceCategories = hasMap ? { ...data.resourceCategories, '100': 'cutting' } : {};
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: '切削' }));
+    const panes = [...screen.getByTestId('planning-board-resource-view').querySelectorAll<HTMLElement>('[data-resource-code]')];
+    if (hasMap) expect(panes.map((pane) => pane.dataset.resourceCode)).toEqual(['584', '305', '100']);
+    const source = within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '資源CD 305を変更' });
+    const sourcePane = source.closest('[data-planning-board-resource-pane]')!;
+    const targetPane = panes.find((pane) => pane.dataset.resourceCode === '100')!;
+    Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => [targetPane]) });
+    fireEvent.pointerDown(source, { pointerId: 11, button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(sourcePane, { pointerId: 11, clientX: 21, clientY: 10 });
+    fireEvent.pointerUp(sourcePane, { pointerId: 11, clientX: 21, clientY: 10 });
+    expect(mocks.overrides).not.toHaveBeenCalled();
   });
 
   it('sorts forward lanes by due date through the queue and undoes with acknowledged revisions', async () => {

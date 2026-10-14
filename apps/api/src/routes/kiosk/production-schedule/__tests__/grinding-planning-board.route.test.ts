@@ -66,6 +66,17 @@ describe('grinding planning board route scope', () => {
     vi.clearAllMocks();
   });
 
+  it.each(['', '/load'])('accepts category=all for %s', async (suffix) => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    mocks.get.mockResolvedValue({ items: [] });
+    mocks.getLoad.mockResolvedValue({ load: [] });
+    try {
+      const response = await app.inject({ method: 'GET', url: `/kiosk/production-schedule/grinding-planning-board${suffix}?category=all` });
+      expect(response.statusCode).toBe(200);
+      expect(suffix ? mocks.getLoad : mocks.get).toHaveBeenCalledWith(expect.objectContaining({ category: 'all', siteKey: 'site-a' }));
+    } finally { await app.close(); }
+  });
+
   it.each(['true', 'false'])('parses includeLoad=%s without boolean coercion', async (includeLoad) => {
     const app = await createApp(async () => ({ id: 'device-1' }));
     mocks.get.mockResolvedValue({ load: [], unknownRequiredMinutesCount: 0 });

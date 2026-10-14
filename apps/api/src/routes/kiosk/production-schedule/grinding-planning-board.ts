@@ -18,11 +18,11 @@ import {
   getGrindingPlanningBoardResourceCapacity,
   updateGrindingPlanningBoardResourceCapacity
 } from '../../../services/production-schedule/grinding-planning-board-resource-capacity.service.js';
-import type { KioskRouteDeps } from './shared.js';
+import { grindingPlanningBoardCategorySchema, type KioskRouteDeps } from './shared.js';
 
 const querySchema = z.object({
   view: z.enum(['seiban', 'resource']).default('seiban'),
-  category: z.enum(['grinding', 'cutting']).default('grinding'),
+  category: grindingPlanningBoardCategorySchema,
   includeLoad: z.enum(['true', 'false']).default('true').transform((value) => value === 'true'),
   fseibans: z.string().max(4000).optional(),
   cursor: z.coerce.number().int().min(0).optional(),
@@ -160,7 +160,7 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
   app.get('/kiosk/production-schedule/grinding-planning-board/load', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
-    const query = z.object({ category: z.enum(['grinding', 'cutting']).default('grinding') }).parse(request.query);
+    const query = z.object({ category: grindingPlanningBoardCategorySchema }).parse(request.query);
     return getGrindingPlanningBoardLoad({ siteKey: scope.siteKey, category: query.category });
   });
 
