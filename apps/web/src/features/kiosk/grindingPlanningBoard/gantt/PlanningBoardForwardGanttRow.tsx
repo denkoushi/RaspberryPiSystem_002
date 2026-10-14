@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
 
+import { canReorderForwardBars, forwardItemDetails } from './planningBoardForwardQueue';
 import { dateToDay } from './planningBoardGanttLayout';
 import { GANTT_LABEL_WIDTH } from './PlanningBoardGanttRow';
 
@@ -19,6 +20,10 @@ type Props = {
   now: number;
   width: number;
   dayWidth: number;
+  scale: number;
+  onShowQueue: (bar: GanttBar, anchor: HTMLButtonElement) => void;
+  onLeaveQueue: () => void;
+  onCloseQueue: () => void;
   hours: number;
   selectedItemIds: ReadonlySet<string>;
   disabled: boolean;
@@ -28,7 +33,7 @@ type Props = {
   onResourceReorder?: ForwardReorder;
 };
 
-export function PlanningBoardForwardGanttRow({ row, label, start, end, now, width, dayWidth, hours,
+export function PlanningBoardForwardGanttRow({ row, label, start, end, now, width, dayWidth, hours, scale, onShowQueue, onLeaveQueue, onCloseQueue,
   selectedItemIds, disabled, dragDisabled, resourceView, onToggleItem, onResourceReorder }: Props) {
   const track = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
@@ -49,20 +54,19 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
   const findDrop = (clientX: number, source: GanttBar): Drop | null => {
     const x = clientX - (track.current?.getBoundingClientRect().left ?? 0);
     const centre = (bar: GanttBar) => (bar.start! - start) * dayWidth +
-      (bar.unknown ? 72 : Math.max(3, ((bar.segments?.[0]?.end ?? bar.end!) - bar.start!) * dayWidth)) / 2;
+      (bar.unknown ? 70 : Math.max(2, ((bar.segments?.[0]?.end ?? bar.end!) - bar.start!) * dayWidth - 2)) / 2;
     const others = row.bars.filter((bar) => bar.item.itemId !== source.item.itemId).sort((a, b) => centre(a) - centre(b));
     if (!others.length) return null;
     const target = others.find((bar) => x < centre(bar));
     const bar = target ?? others[others.length - 1]!;
-    if (bar.resource !== source.resource || bar.item.isCompleted ||
-      (bar.item.specialDue?.expiresAt ?? null) !== (source.item.specialDue?.expiresAt ?? null)) return null;
+    if (!canReorderForwardBars(source, bar)) return null;
     return { bar, placement: target ? 'before' : 'after', left: ((target ? bar.start! : bar.end!) - start) * dayWidth };
   };
   const move = (event: PointerEvent<HTMLButtonElement>) => {
     const pending = drag.current;
     if (!pending || pending.pointerId !== event.pointerId) return;
     const dx = event.clientX - pending.x;
-    if (Math.abs(dx) >= 8) pending.moved = true;
+    if (!pending.moved && Math.abs(dx) >= 8) { pending.moved = true; onCloseQueue(); }
     if (pending.moved && !disabled && !dragDisabled && resourceView) {
       setPreview({ itemId: pending.bar.item.itemId, dx, drop: findDrop(event.clientX, pending.bar) });
     }
@@ -83,11 +87,11 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
         const segments = bar.unknown ? [{ start: bar.start!, end: bar.end! }] : bar.segments ?? [];
         return <div key={bar.item.itemId}>
           {segments.map((segment, index) => {
-            const segmentWidth = bar.unknown ? 72 : Math.max(3, (segment.end - segment.start) * dayWidth);
+            const segmentWidth = bar.unknown ? 70 : Math.max(2, (segment.end - segment.start) * dayWidth - 2);
             return <button key={index} type="button" data-testid={`planning-gantt-bar-${bar.item.itemId}${index ? `-segment-${index}` : ''}`}
               data-gantt-late={bar.tone === 'late' && index === 0 ? 'true' : undefined}
               aria-label={`${bar.item.fhinmei || bar.item.fhincd} 工順${bar.item.processOrder} ${bar.resource} 納期${bar.due ?? 'なし'}`}
-              aria-pressed={selected} disabled={disabled}
+              aria-pressed={selected} disabled={disabled || bar.item.isCompleted}
               data-drag-disabled={dragDisabled || disabled || !resourceView}
               className={clsx('absolute top-7 h-11 touch-pan-y select-none overflow-hidden whitespace-nowrap rounded text-left text-[11px] font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-white',
                 bar.tone === 'late' ? 'bg-rose-400 text-slate-950' : 'bg-sky-400 text-slate-950',
@@ -96,6 +100,8 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
               style={{ left: (segment.start - start) * dayWidth, width: segmentWidth,
                 transform: preview?.itemId === bar.item.itemId ? `translateX(${preview.dx}px)` : undefined,
                 zIndex: preview?.itemId === bar.item.itemId ? 9 : selected ? 4 : 2 }}
+              onPointerEnter={(event) => { if (event.pointerType === 'mouse' && !drag.current) onShowQueue(bar, event.currentTarget); }}
+              onPointerLeave={(event) => { if (event.pointerType === 'mouse') onLeaveQueue(); }}
               onPointerDown={(event) => {
                 if (event.button !== 0 || event.isPrimary === false || drag.current) return;
                 suppressClick.current = false;
@@ -109,6 +115,7 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
                 const drop = findDrop(event.clientX, pending.bar);
                 suppressClick.current = pending.moved;
                 clear();
+                if (!pending.moved && (event.pointerType === 'touch' || event.pointerType === 'pen')) onShowQueue(bar, event.currentTarget);
                 if (pending.moved && drop && !disabled && !dragDisabled && resourceView) onResourceReorder?.(pending.bar.item, drop.bar.item, drop.placement);
               }}
               onPointerCancel={() => { suppressClick.current = true; clear(); }}
@@ -117,9 +124,10 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
                 if (suppressClick.current) { suppressClick.current = false; return; }
                 onToggleItem(bar.item, !selected);
               }}>
-              {bar.unknown ? `${bar.item.processOrder} 所要不明` : segmentWidth > 46
-                ? <span className="px-1">{bar.item.fhinmei || bar.item.fhincd}<small className="block px-1 font-normal">{bar.item.processOrder} · {bar.item.requiredMinutes}分</small></span>
-                : segmentWidth > 22 ? bar.item.processOrder : null}
+              {bar.unknown ? '所要不明' : segmentWidth >= 48
+                ? <span className="block truncate px-1">{bar.item.fhinmei || bar.item.fhincd}
+                  <small className="block truncate font-normal">{scale === 2 ? forwardItemDetails(bar.item, true) : `${bar.item.requiredMinutes}分`}</small>
+                </span> : null}
             </button>;
           })}
           {selected && bar.due && <span data-testid={`planning-gantt-due-${bar.item.itemId}`} title={`納期 ${bar.due}`} className="pointer-events-none absolute bottom-1 -translate-x-1/2 text-xs text-rose-400"

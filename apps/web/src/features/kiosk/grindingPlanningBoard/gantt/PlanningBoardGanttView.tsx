@@ -5,10 +5,12 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState }
 import { normalizeMachineName } from '../../productionSchedule/machineName';
 
 import { PlanningBoardForwardGanttRow } from './PlanningBoardForwardGanttRow';
+import { PlanningBoardForwardQueuePopover } from './PlanningBoardForwardQueuePopover';
 import { dayLabel, dayToDate } from './planningBoardGanttLayout';
 import { GANTT_HATCH, GANTT_LABEL_WIDTH, PlanningBoardGanttRow } from './PlanningBoardGanttRow';
 
 import type { ForwardReorder } from './PlanningBoardForwardGanttRow';
+import type { ForwardQueueHandle } from './PlanningBoardForwardQueuePopover';
 import type { GanttLayout } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttRowProps } from './PlanningBoardGanttRow';
 import type { GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
@@ -36,6 +38,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const forward = layout.mode === 'forward';
   const [detailItemId, setDetailItemId] = useState<string | null>(null);
   const detail = forward ? layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars)).find((bar) => bar.item.itemId === detailItemId) : undefined;
+  const queuePopover = useRef<ForwardQueueHandle>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const [viewportWidth, setViewportWidth] = useState(1120);
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
@@ -110,7 +113,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   return (
     <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className="mt-2 overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
       {capacityError && <p role="alert" className="px-2 py-1 text-xs text-rose-200">稼働時間を保存できませんでした。</p>}
-      <div ref={viewport} className="relative min-h-48 overflow-auto" style={viewportHeight ? { height: viewportHeight } : undefined} tabIndex={0} aria-label="ガントの日付と工程">
+      <div ref={viewport} onScroll={() => queuePopover.current?.close()} className="relative min-h-48 overflow-auto" style={viewportHeight ? { height: viewportHeight } : undefined} tabIndex={0} aria-label="ガントの日付と工程">
         <div className="relative isolate" style={{ width: GANTT_LABEL_WIDTH + width }}>
           <div className="sticky top-0 z-30 flex h-14 border-b border-slate-700 bg-slate-950">
             <div className="sticky left-0 z-40 flex shrink-0 flex-wrap items-center gap-x-3 bg-slate-950 px-2 text-[10px] text-slate-300" style={{ width: GANTT_LABEL_WIDTH }}>
@@ -149,7 +152,9 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
             {forward ? group.rows.map((row) => {
               const todayHours = row.bars.reduce((sum, bar) => sum + (bar.segments ?? []).reduce((total, segment) => total + Math.max(0, Math.min(segment.end, layout.today + 1) - Math.max(segment.start, layout.today)) * 24, 0), 0);
               const lateCount = row.bars.filter((bar) => bar.tone === 'late').length;
-              return <PlanningBoardForwardGanttRow key={row.key} row={row} start={layout.start} end={layout.end} now={layout.now!} width={width} dayWidth={dayWidth}
+              return <PlanningBoardForwardGanttRow key={row.key} row={row} start={layout.start} end={layout.end} now={layout.now!} width={width} dayWidth={dayWidth} scale={scale}
+                onShowQueue={(bar, anchor) => queuePopover.current?.show(bar, anchor)}
+                onLeaveQueue={() => queuePopover.current?.hideSoon()} onCloseQueue={() => queuePopover.current?.close()}
                 hours={group.resource ? dailyHoursByResource[group.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS : Math.max(...row.bars.map((bar) => dailyHoursByResource[bar.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS), GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS)}
                 {...interaction} onToggleItem={(item, selected) => { setDetailItemId(selected ? item.itemId : null); interaction.onToggleItem(item, selected); }}
                 label={group.resource ? <>{resourceLabel(group.resource, group.label)}<span className="text-slate-400">{row.bars.length}件 · 今日 {todayHours.toFixed(1)}h {lateCount > 0 && <em className="not-italic text-rose-300">遅れ見込み {lateCount}件</em>}</span></> : undefined} />;
@@ -158,6 +163,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
           </div>)}
         </div>
       </div>
+      {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} layout={layout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} />}
       {forward && <div className="flex min-h-[76px] flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-700 px-3 py-2 text-xs" aria-live="polite">
         {detail ? <><strong>品名 {detail.item.fhinmei}</strong><span>品番 {detail.item.fhincd}</span><span>工程 {detail.item.processOrder}</span>
           <span>所要 {detail.unknown ? '不明' : `${detail.item.requiredMinutes}分`}</span><span>納期 {detail.due ?? 'なし'}</span>
