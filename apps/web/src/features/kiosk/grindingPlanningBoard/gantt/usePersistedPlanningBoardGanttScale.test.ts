@@ -25,7 +25,7 @@ describe('usePersistedPlanningBoardGanttScale', () => {
     expect(renderHook(usePersistedPlanningBoardGanttScale).result.current.scale).toBe(2);
   });
   it('7日未満は日、それ以上は週で表記する', () => {
-    expect([2, 4, 7, 56].map((days) => ganttScaleLabel(days as 2 | 4 | 7 | 56))).toEqual(['2日', '4日', '1週', '8週']);
+    expect([1, 2, 4, 7, 56].map((days) => ganttScaleLabel(days as 1 | 2 | 4 | 7 | 56))).toEqual(['1日', '2日', '4日', '1週', '8週']);
   });
   it('ストレージが使えなくても表示と変更ができる', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });

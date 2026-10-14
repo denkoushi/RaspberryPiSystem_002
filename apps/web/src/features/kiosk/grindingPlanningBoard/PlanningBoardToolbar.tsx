@@ -53,12 +53,9 @@ function SegmentButton({ pressed, children, onClick, ariaLabel, disabled = false
 
 const SEGMENT_TRACK_CLASS = 'flex shrink-0 items-center gap-0.5 rounded-[9px] border p-0.5';
 
-function SegmentGroup({ label, ariaLabel, children }: { label: string; ariaLabel: string; children: ReactNode }) {
+function SegmentGroup({ ariaLabel, children }: { ariaLabel: string; children: ReactNode }) {
   return (
     <div className={clsx(SEGMENT_TRACK_CLASS, 'border-slate-700 bg-slate-900')} role="group" aria-label={ariaLabel}>
-      <span className="whitespace-nowrap pl-2 pr-1.5 text-[10px] font-bold tracking-wider text-slate-500" aria-hidden="true">
-        {label}
-      </span>
       {children}
     </div>
   );
@@ -143,7 +140,7 @@ export function PlanningBoardToolbar({
         製番
         <span className="min-w-6 rounded-full bg-slate-950 px-1.5 py-0.5 text-center tabular-nums text-emerald-300">{registeredCount}</span>
       </button>
-      <SegmentGroup label="工程" ariaLabel="工程">
+      <SegmentGroup ariaLabel="工程">
         <SegmentButton disabled={scopeDisabled} pressed={category === 'grinding'} onClick={() => onCategoryChange('grinding')}>
           研削
         </SegmentButton>
@@ -151,7 +148,7 @@ export function PlanningBoardToolbar({
           切削
         </SegmentButton>
       </SegmentGroup>
-      <SegmentGroup label="表示" ariaLabel="表示単位">
+      <SegmentGroup ariaLabel="表示単位">
         <SegmentButton pressed={view === 'seiban'} onClick={() => onViewChange('seiban')}>
           製番
         </SegmentButton>
@@ -178,7 +175,7 @@ export function PlanningBoardToolbar({
           </div>
           <button type="button" onClick={ganttMode === 'forward' ? onNextLate : onNextOverlap}
             className={clsx('ml-1 min-h-11 shrink-0 rounded-md px-2 text-[13px] font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300', (ganttMode === 'forward' ? lateCount : overlapCount) ? 'bg-rose-800 text-white' : 'text-emerald-300')}>
-            {ganttMode === 'forward' ? (lateCount ? `⚠ 遅れ見込み ${lateCount}` : '✓ 遅れなし') : (overlapCount ? `⚠ 重なり ${overlapCount}` : '✓ 重なりなし')}
+            {ganttMode === 'forward' ? (lateCount ? `⚠ 遅れ ${lateCount}` : '✓ 遅れなし') : (overlapCount ? `⚠ 重なり ${overlapCount}` : '✓ 重なりなし')}
           </button>
           <button type="button" aria-label="⇅ 納期順に並べる" onClick={onSortDue}
             disabled={ganttMode !== 'forward' || allocation !== 'alternate' || orderDisabled}
@@ -188,7 +185,7 @@ export function PlanningBoardToolbar({
             className="min-h-11 shrink-0 rounded-md border border-slate-600 px-2 text-[13px] font-bold text-slate-200 disabled:opacity-40">↶ 戻す</button>
         </>}
       </div>}
-      <SegmentGroup label="進捗" ariaLabel="進捗">
+      <SegmentGroup ariaLabel="進捗">
         <SegmentButton disabled={scopeDisabled} pressed={status === 'incomplete'} onClick={() => onStatusChange('incomplete')}>
           未完
         </SegmentButton>
@@ -199,7 +196,7 @@ export function PlanningBoardToolbar({
           完了
         </SegmentButton>
       </SegmentGroup>
-      <SegmentGroup label="割当" ariaLabel="割当">
+      <SegmentGroup ariaLabel="割当">
         <SegmentButton disabled={scopeDisabled} pressed={allocation === 'alternate'} onClick={() => onAllocationChange('alternate')}>
           別割当
         </SegmentButton>
