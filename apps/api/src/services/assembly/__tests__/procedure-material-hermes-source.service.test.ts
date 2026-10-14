@@ -42,7 +42,7 @@ describe('procedure material corpus', () => {
     expect(records).toHaveLength(20000);
     expect(records.at(-1)?.id).toBe('material:19999');
     const sql = queryRaw.mock.calls[0][0].join('?');
-    expect(sql).toContain(`CASE WHEN "kind" = 'TEXT' THEN LEFT("text", ?) ELSE NULL END AS "text"`);
+    expect(sql).toContain(`CASE WHEN "kind" = 'TEXT' THEN LEFT("text", ?::int) ELSE NULL END AS "text"`);
     expect(sql).toContain('WHERE "discardedAt" IS NULL');
     expect(sql).toContain('ORDER BY "receivedAt" DESC, "createdAt" DESC, "id" DESC LIMIT ?');
     expect(sql).not.toContain('fromEmail');

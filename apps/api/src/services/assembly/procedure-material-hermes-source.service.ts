@@ -29,7 +29,7 @@ export async function loadProcedureMaterialRecords() {
   const { prisma } = await import('../../lib/prisma.js');
   const materials = await prisma.$queryRaw<MaterialRow[]>`
     SELECT "id", "gmailMessageId", "kind", "subjectHint", "originalFileName", "discardedAt",
-      CASE WHEN "kind" = 'TEXT' THEN LEFT("text", ${PROCEDURE_MATERIAL_BODY_TEXT_LIMIT}) ELSE NULL END AS "text"
+      CASE WHEN "kind" = 'TEXT' THEN LEFT("text", ${PROCEDURE_MATERIAL_BODY_TEXT_LIMIT}::int) ELSE NULL END AS "text"
     FROM "ProcedureMaterial" WHERE "discardedAt" IS NULL
     ORDER BY "receivedAt" DESC, "createdAt" DESC, "id" DESC LIMIT ${PROCEDURE_MATERIAL_ROW_LIMIT}
   `;
