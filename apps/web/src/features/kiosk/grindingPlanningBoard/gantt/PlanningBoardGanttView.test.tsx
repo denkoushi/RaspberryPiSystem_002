@@ -98,6 +98,138 @@ describe('forward PlanningBoardGanttView', () => {
       layout: buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'],
         dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T09:00:00+09:00'), scale: 2 }) };
   }
+  const chainItems = () => [item({ itemId: 'b', processOrder: '20', originalResourceCd: '306', requiredMinutes: 60 }),
+    item({ processOrder: '2', requiredMinutes: 480 }), item({ itemId: 'c', fhincd: 'P2', requiredMinutes: 60 })];
+  const tap = (bar: HTMLElement) => {
+    fireEvent.pointerDown(bar, { clientX: 100, clientY: 20, button: 0 });
+    fireEvent.pointerUp(bar, { clientX: 107, clientY: 20 });
+    fireEvent.click(bar);
+  };
+  it('focuses a part across resource rows in process order, switches parts and toggles closed', () => {
+    const values = forwardProps(chainItems());
+    render(<PlanningBoardGanttView {...values} resourceNameMap={{ '306': ['306 ＮＣ研削盤'] }} selectedItemIds={new Set(['a', 'c'])} />);
+    const a = screen.getByTestId('planning-gantt-bar-a');
+    const b = screen.getByTestId('planning-gantt-bar-b');
+    expect(a).toHaveClass('outline-emerald-300');
+    expect(screen.getByTestId('planning-gantt-due-a')).toHaveTextContent('▲');
+    tap(b);
+    const strip = screen.getByRole('region', { name: '工程のつながり' });
+    expect(strip).toHaveTextContent('26-1001 · P1 · 2工程');
+    const steps = within(strip).getAllByRole('button');
+    expect(steps[0]).toHaveTextContent('工順2 · 305');
+    expect(steps[1]).toHaveTextContent('工順20 · 306 NC研削盤');
+    expect(a).toHaveClass('outline-white');
+    expect(a).not.toHaveClass('outline-emerald-300');
+    expect(a).toHaveAttribute('aria-pressed', 'true');
+    expect(b).toHaveClass('outline-white');
+    expect(screen.getByTestId('planning-gantt-chain-badge-a')).toHaveTextContent(/^1$/);
+    expect(screen.getByTestId('planning-gantt-chain-badge-b')).toHaveTextContent(/^2$/);
+    expect(screen.getByTestId('planning-gantt-bar-a-segment-1')).toHaveClass('outline-white');
+    expect(within(screen.getByTestId('planning-gantt-bar-a-segment-1')).queryByText(/^1$/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('planning-gantt-bar-c')).toHaveClass('opacity-30', 'outline-emerald-300');
+    expect(values.onToggleItem).not.toHaveBeenCalled();
+    tap(b);
+    expect(screen.queryByTestId('planning-gantt-chain-strip')).not.toBeInTheDocument();
+    tap(a);
+    tap(screen.getByTestId('planning-gantt-bar-c'));
+    expect(screen.getByTestId('planning-gantt-chain-strip')).toHaveTextContent('P2 · 1工程');
+    expect(screen.queryByTestId('planning-gantt-chain-link')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '工程のつながりを閉じる' }));
+    expect(screen.queryByTestId('planning-gantt-chain-strip')).not.toBeInTheDocument();
+  });
+  it.each(['horizontal', 'vertical', 'diagonal', 'cancel', 'capture', 'unmount'] as const)('cancels long press on %s', (reason) => {
+    vi.useFakeTimers();
+    const values = forwardProps();
+    const { unmount } = render(<PlanningBoardGanttView {...values} />);
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    fireEvent.pointerDown(bar, { clientX: 100, clientY: 20, button: 0 });
+    act(() => vi.advanceTimersByTime(499));
+    if (reason === 'cancel') fireEvent.pointerCancel(bar);
+    else if (reason === 'capture') fireEvent.lostPointerCapture(bar);
+    else if (reason === 'unmount') unmount();
+    else fireEvent.pointerMove(bar, { clientX: reason === 'vertical' ? 100 : reason === 'diagonal' ? 106 : 110, clientY: reason === 'horizontal' ? 20 : reason === 'diagonal' ? 26 : 30 });
+    act(() => vi.advanceTimersByTime(501));
+    fireEvent.pointerUp(bar, { clientX: 100, clientY: 20 });
+    fireEvent.click(bar);
+    expect(values.onToggleItem).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('planning-gantt-chain-strip')).not.toBeInTheDocument();
+  });
+  it('selects exactly at 500ms only once and preserves chain focus on long press', () => {
+    vi.useFakeTimers();
+    const values = forwardProps();
+    render(<PlanningBoardGanttView {...values} selectedItemIds={new Set(['b'])} />);
+    tap(screen.getByTestId('planning-gantt-bar-a'));
+    const b = screen.getByTestId('planning-gantt-bar-b');
+    fireEvent.pointerDown(b, { clientX: 100, button: 0 });
+    act(() => vi.advanceTimersByTime(499));
+    expect(values.onToggleItem).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(values.onToggleItem).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemId: 'b' }), false);
+    act(() => vi.advanceTimersByTime(1000));
+    fireEvent.pointerUp(b, { clientX: 100 });
+    fireEvent.click(b);
+    expect(values.onToggleItem).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('planning-gantt-chain-strip')).toHaveTextContent('P1 · 1工程');
+  });
+  it('clears focus when the part disappears or the mode changes', () => {
+    const values = forwardProps();
+    const { rerender } = render(<PlanningBoardGanttView {...values} />);
+    tap(screen.getByTestId('planning-gantt-bar-a'));
+    rerender(<PlanningBoardGanttView {...forwardProps([item({ fhincd: 'P2' })])} />);
+    expect(screen.queryByTestId('planning-gantt-chain-strip')).not.toBeInTheDocument();
+    rerender(<PlanningBoardGanttView {...values} />);
+    expect(screen.queryByTestId('planning-gantt-chain-strip')).not.toBeInTheDocument();
+    tap(screen.getByTestId('planning-gantt-bar-a'));
+    rerender(<PlanningBoardGanttView {...props()} />);
+    expect(screen.queryByTestId('planning-gantt-chain-strip')).not.toBeInTheDocument();
+  });
+  it('measures segment endpoints, remeasures on scale/resize and scrolls to the current step', () => {
+    const values = forwardProps(chainItems());
+    const { rerender } = render(<PlanningBoardGanttView {...values} />);
+    const viewport = screen.getByLabelText('ガントの日付と工程');
+    const content = viewport.firstElementChild as HTMLElement;
+    const rect = (left: number, top: number, width: number, height: number) => ({ left, top, right: left + width, bottom: top + height, width, height } as DOMRect);
+    vi.spyOn(content, 'getBoundingClientRect').mockReturnValue(rect(10, 50, 3000, 500));
+    vi.spyOn(viewport, 'getBoundingClientRect').mockImplementation(() => rect(10, screen.queryByTestId('planning-gantt-chain-strip') ? 180 : 100, 1120, 500));
+    const segments = values.layout.groups.flatMap(group => group.rows.flatMap(row => row.bars)).find(bar => bar.item.itemId === 'a')!.segments!;
+    const last = screen.getByTestId(`planning-gantt-bar-a-segment-${segments.length - 1}`);
+    vi.spyOn(last, 'getBoundingClientRect').mockReturnValue(rect(500, 100, 80, 70));
+    const measureNext = vi.spyOn(screen.getByTestId('planning-gantt-bar-b'), 'getBoundingClientRect').mockReturnValue(rect(700, 300, 40, 70));
+    tap(screen.getByTestId('planning-gantt-bar-a'));
+    expect(viewport).toHaveStyle({ height: `${window.innerHeight - 190}px` });
+    const path = screen.getByTestId('planning-gantt-chain-link');
+    expect(path).toHaveAttribute('d', 'M 570 85 C 630 85, 630 285, 690 285');
+    expect(path).toHaveAttribute('stroke-dasharray', '6 4');
+    expect(path).toHaveAttribute('stroke-width', '2.5');
+    expect(screen.getByTestId('planning-gantt-chain-links').querySelector('circle')).toHaveAttribute('cx', '690');
+    const step = within(screen.getByTestId('planning-gantt-chain-strip')).getByRole('button', { name: /工順20/ });
+    fireEvent.click(step);
+    expect(step).toHaveAttribute('aria-current', 'step');
+    expect(step).toHaveClass('ring-white');
+    expect(viewport.scrollLeft).toBe(66);
+    expect(viewport.scrollTop).toBe(84);
+    const scrollTo = vi.fn();
+    Object.defineProperty(viewport, 'scrollTo', { configurable: true, value: scrollTo });
+    fireEvent.click(step);
+    expect(scrollTo).toHaveBeenCalledWith({ left: 132, top: 168, behavior: 'smooth' });
+    measureNext.mockReturnValue(rect(800, 300, 40, 70));
+    rerender(<PlanningBoardGanttView {...values} scale={4} />);
+    expect(path).toHaveAttribute('d', 'M 570 85 C 680 85, 680 285, 790 285');
+    measureNext.mockReturnValue(rect(900, 300, 40, 70));
+    Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 1000 });
+    fireEvent(window, new Event('resize'));
+    expect(path).toHaveAttribute('d', 'M 570 85 C 730 85, 730 285, 890 285');
+    fireEvent.click(screen.getByRole('button', { name: '工程のつながりを閉じる' }));
+    expect(viewport).toHaveStyle({ height: `${window.innerHeight - 110}px` });
+  });
+  it('formats JST dates and unknown durations in the strip', () => {
+    const values = forwardProps([item({ requiredMinutes: 480, originalDueDate: '2026-10-13' }), item({ itemId: 'b', processOrder: '20', requiredMinutesKnown: false })]);
+    render(<PlanningBoardGanttView {...values} />);
+    tap(screen.getByTestId('planning-gantt-bar-a'));
+    const strip = screen.getByTestId('planning-gantt-chain-strip');
+    expect(within(strip).getByRole('button', { name: /工順10/ })).toHaveTextContent('9:00〜10/15 9:00 遅れ見込み');
+    expect(within(strip).getByRole('button', { name: /工順20/ })).toHaveTextContent('所要不明');
+  });
   it.each([['a', 'b', 300, 'after'], ['b', 'a', 0, 'before']] as const)('drags %s %s %i %s with a white insertion marker', (source, target, destination, placement) => {
     const values = forwardProps();
     render(<PlanningBoardGanttView {...values} />);
@@ -111,15 +243,18 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.click(bar);
     expect(values.onToggleItem).not.toHaveBeenCalled();
   });
-  it('treats movement under 8px as a tap without a detail strip', () => {
+  it('selects on long press with movement under 8px without a chain strip', () => {
+    vi.useFakeTimers();
     const values = forwardProps();
     render(<PlanningBoardGanttView {...values} />);
     const bar = screen.getByTestId('planning-gantt-bar-a');
     fireEvent.pointerDown(bar, { clientX: 100, button: 0 });
+    act(() => vi.advanceTimersByTime(500));
     fireEvent.pointerUp(bar, { clientX: 107 });
     fireEvent.click(bar);
     expect(values.onResourceReorder).not.toHaveBeenCalled();
-    expect(values.onToggleItem).toHaveBeenCalledWith(expect.objectContaining({ itemId: 'a' }), true);
+    expect(values.onToggleItem).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemId: 'a' }), true);
+    expect(screen.queryByTestId('planning-gantt-chain-strip')).not.toBeInTheDocument();
     expect(screen.queryByText(/着手見込み/)).not.toBeInTheDocument();
     expect(screen.queryByText(/件 · 今日/)).not.toBeInTheDocument();
   });
@@ -175,6 +310,53 @@ describe('forward PlanningBoardGanttView', () => {
     expect(viewport.scrollLeft).toBeCloseTo(twoHours);
     rerender(<PlanningBoardGanttView {...values} homeKey={1} />);
     expect(viewport.scrollLeft).toBe(0);
+  });
+  it('reorders machine lanes by holding and dragging the name, and remembers the order on this kiosk', () => {
+    localStorage.clear();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const values = { ...forwardProps(chainItems()), preferenceScope: 'site:grinding' };
+    const { unmount } = render(<PlanningBoardGanttView {...values} />);
+    const lanes = () => [...document.querySelectorAll<HTMLElement>('[data-gantt-lane]')].map((lane) => lane.dataset.resourceCode);
+    expect(lanes()).toEqual(['305', '306']);
+    const target = document.querySelector('[data-resource-code="306"]')!;
+    Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => [target]) });
+    const handle = screen.getByRole('button', { name: '資源CD 305の行を並べ替え' });
+    fireEvent.pointerDown(handle, { pointerId: 3, button: 0, clientX: 40, clientY: 60 });
+    act(() => vi.advanceTimersByTime(450));
+    fireEvent.pointerMove(handle, { pointerId: 3, clientX: 40, clientY: 140 });
+    fireEvent.pointerUp(handle, { pointerId: 3, clientX: 40, clientY: 140 });
+    expect(lanes()).toEqual(['306', '305']);
+    expect(JSON.parse(localStorage.getItem('kiosk.planning-board.resource-panes:site:grinding') ?? '[]')).toEqual(['306', '305']);
+    expect(values.onToggleItem).not.toHaveBeenCalled();
+    unmount();
+    render(<PlanningBoardGanttView {...values} />);
+    expect(lanes()).toEqual(['306', '305']);
+    fireEvent.keyDown(screen.getByRole('button', { name: '資源CD 305の行を並べ替え' }), { key: 'ArrowUp', altKey: true });
+    expect(lanes()).toEqual(['305', '306']);
+    Reflect.deleteProperty(document, 'elementsFromPoint');
+    localStorage.clear();
+  });
+  it('does not start a lane drag from the 8H/10H/24H buttons or a short press', () => {
+    localStorage.clear();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const values = { ...forwardProps(chainItems()), preferenceScope: 'site:grinding' };
+    render(<PlanningBoardGanttView {...values} />);
+    const lanes = () => [...document.querySelectorAll<HTMLElement>('[data-gantt-lane]')].map((lane) => lane.dataset.resourceCode);
+    const target = document.querySelector('[data-resource-code="306"]')!;
+    Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => [target]) });
+    const handle = screen.getByRole('button', { name: '資源CD 305の行を並べ替え' });
+    fireEvent.pointerDown(handle, { pointerId: 4, button: 0, clientX: 40, clientY: 60 });
+    act(() => vi.advanceTimersByTime(200));
+    fireEvent.pointerUp(handle, { pointerId: 4, clientX: 40, clientY: 60 });
+    const hours = within(screen.getByRole('group', { name: '305の1日の稼働時間' })).getByRole('button', { name: '10H' });
+    fireEvent.pointerDown(hours, { pointerId: 5, button: 0, clientX: 40, clientY: 60 });
+    act(() => vi.advanceTimersByTime(450));
+    fireEvent.pointerUp(hours, { pointerId: 5, clientX: 40, clientY: 140 });
+    fireEvent.click(hours);
+    expect(lanes()).toEqual(['305', '306']);
+    expect(values.onCapacityChange).toHaveBeenCalledWith('305', 10);
+    expect(localStorage.getItem('kiosk.planning-board.resource-panes:site:grinding')).toBeNull();
+    Reflect.deleteProperty(document, 'elementsFromPoint');
   });
   it('shows completed-only guidance and starts the viewport at today', () => {
     const values = forwardProps([item({ isCompleted: true })]);
@@ -283,7 +465,7 @@ describe('forward PlanningBoardGanttView', () => {
     act(() => vi.advanceTimersByTime(300));
     expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
   });
-  it.each(['touch', 'pen'])('opens on a %s tap while preserving selection, and closes outside', (pointerType) => {
+  it.each(['touch', 'pen'])('shows the chain on a %s tap without opening the popover or selecting', (pointerType) => {
     vi.useFakeTimers();
     const values = forwardProps();
     render(<PlanningBoardGanttView {...values} />);
@@ -295,8 +477,9 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.pointerLeave(bar, { pointerType });
     act(() => vi.advanceTimersByTime(500));
     fireEvent.click(bar);
-    expect(screen.getByRole('region', { name: /の次にやる順/ })).toBeInTheDocument();
-    expect(values.onToggleItem).toHaveBeenCalledWith(expect.objectContaining({ itemId: 'a' }), true);
+    expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
+    expect(screen.getByTestId('planning-gantt-chain-strip')).toBeInTheDocument();
+    expect(values.onToggleItem).not.toHaveBeenCalled();
     fireEvent.pointerDown(document.body, { pointerType });
     expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
   });
@@ -311,6 +494,7 @@ describe('forward PlanningBoardGanttView', () => {
     open();
     const bar = screen.getByTestId('planning-gantt-bar-a');
     fireEvent.pointerDown(bar, { clientX: 100, button: 0 });
+    expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
     fireEvent.pointerMove(bar, { clientX: 108 });
     expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
     fireEvent.pointerCancel(bar);
