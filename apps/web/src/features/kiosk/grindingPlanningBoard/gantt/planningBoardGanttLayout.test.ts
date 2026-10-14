@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildPlanningBoardGanttLayout, dateToDay, planningBoardPartKey, shiftedDueDate } from './planningBoardGanttLayout';
+import { buildPlanningBoardGanttLayout, dateToDay, planningBoardPartKey, shiftedDueDate, workingPeriods } from './planningBoardGanttLayout';
 
 import type { GanttLayoutOptions } from './planningBoardGanttLayout';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
@@ -88,7 +88,7 @@ describe('planningBoardGanttLayout', () => {
 describe('forward planningBoardGanttLayout', () => {
   const today = dateToDay('2026-10-14');
   const forward = (items: GrindingPlanningBoardItem[], options: Partial<GanttLayoutOptions> = {}) => layout(items, {
-    mode: 'forward', view: 'resource', now: new Date('2026-10-14T10:00:00+09:00'), ...options
+    mode: 'forward', view: 'resource', now: new Date('2026-10-14T13:00:00+09:00'), ...options
   });
   it('starts at JST now and follows resource rank back-to-back, with one lane and today as origin', () => {
     const result = forward([item({ itemId: 'b', fhincd: 'P2', alternateRank: 2, requiredMinutes: 30 }), item({ alternateRank: 1, requiredMinutes: 60 })]);
@@ -96,30 +96,46 @@ describe('forward planningBoardGanttLayout', () => {
     expect(result.start).toBe(today);
     expect(result.groups[0]!.rows).toHaveLength(1);
     expect(a!.item.itemId).toBe('a');
-    expect(a!.start).toBeCloseTo(today + 10 / 24);
-    expect(a!.end).toBeCloseTo(today + 11 / 24);
+    expect(a!.start).toBeCloseTo(today + 13 / 24);
+    expect(a!.end).toBeCloseTo(today + 14 / 24);
     expect(b!.start).toBeCloseTo(a!.end!);
-    expect(b!.end).toBeCloseTo(today + 11.5 / 24);
+    expect(b!.end).toBeCloseTo(today + 14.5 / 24);
   });
   it.each([8, 24] as const)('splits at the %iH window and resumes the next day', (hours) => {
     const result = bars(forward([item({ requiredMinutes: 120 })], {
-      dailyHoursByResource: { '305': hours }, now: new Date(`2026-10-14T${hours === 8 ? '15' : '23'}:00:00+09:00`)
+      dailyHoursByResource: { '305': hours }, now: new Date(`2026-10-14T${hours === 8 ? '16' : '23'}:00:00+09:00`)
     }))[0]!;
     expect(result.segments).toHaveLength(2);
-    expect(result.segments![0]!.end).toBeCloseTo(today + (hours === 8 ? 16 / 24 : 1));
+    expect(result.segments![0]!.end).toBeCloseTo(today + (hours === 8 ? 17 / 24 : 1));
     expect(result.segments![1]!.start).toBeCloseTo(today + 1 + (hours === 8 ? 8 / 24 : 0));
     expect(result.segments![1]!.end - result.segments![1]!.start).toBeCloseTo(1 / 24);
   });
-  it.each([['07', 8, 0, 8], ['16', 8, 1, 8], ['17', 10, 0, 17], ['18', 10, 1, 8]] as const)('normalizes %s:00 in %iH', (hour, hours, day, startHour) => {
+  it.each([['07', 8, 0, 8], ['17', 8, 1, 8], ['18', 10, 0, 18], ['19', 10, 1, 8]] as const)('normalizes %s:00 in %iH', (hour, hours, day, startHour) => {
     const bar = bars(forward([item({ requiredMinutes: 30 })], { dailyHoursByResource: { '305': hours }, now: new Date(`2026-10-14T${hour}:00:00+09:00`) }))[0]!;
     expect(bar.start).toBeCloseTo(today + day + startHour / 24);
+  });
+  it('pauses for the 10:10, 12:10 and 14:50 breaks in 8H and 10H', () => {
+    const at = (hour: string, minutes: number, hours: 8 | 10) => bars(forward([item({ requiredMinutes: minutes })],
+      { dailyHoursByResource: { '305': hours }, now: new Date(`2026-10-14T${hour}+09:00`) }))[0]!;
+    const minutes = (time: number) => Math.round((time - today) * 1440);
+    const morning = at('10:00:00', 30, 8);
+    expect(morning.segments!.map((segment) => [minutes(segment.start), minutes(segment.end)])).toEqual([[600, 640]]);
+    expect(at('10:15:00', 10, 8).start).toBeCloseTo(today + 620 / 1440);
+    expect(minutes(at('12:00:00', 20, 10).end!)).toBe(780);
+    expect(at('14:45:00', 10, 8).end).toBeCloseTo(today + 905 / 1440);
+  });
+  it('ends 8H at 17:00 and 10H at 19:00 after one hour of breaks; 24H has none', () => {
+    expect(workingPeriods(8).at(-1)!.end).toBeCloseTo(17 / 24);
+    expect(workingPeriods(10).at(-1)!.end).toBeCloseTo(19 / 24);
+    expect(workingPeriods(8).reduce((sum, period) => sum + period.end - period.start, 0)).toBeCloseTo(8 / 24);
+    expect(workingPeriods(24)).toEqual([{ start: 0, end: 1 }]);
   });
   it('waits for a predecessor on another resource and draws its gap', () => {
     const result = forward([item({ itemId: 'b', processOrder: '20', alternateRank: 1, originalResourceCd: '584', requiredMinutes: 60 }), item({ alternateRank: 2, requiredMinutes: 120 })]);
     const a = bars(result).find((bar) => bar.item.itemId === 'a')!;
     const b = bars(result).find((bar) => bar.item.itemId === 'b')!;
     expect(b.start).toBeCloseTo(a.end!);
-    expect(b.waitFrom).toBeCloseTo(today + 10 / 24);
+    expect(b.waitFrom).toBeCloseTo(today + 13 / 24);
     expect(b.predecessorEnd).toBe(a.end);
     expect(result.groups.find((group) => group.resource === '584')!.rows[0]!.connectors).toEqual([{ start: b.waitFrom, end: b.start }]);
   });
@@ -127,7 +143,7 @@ describe('forward planningBoardGanttLayout', () => {
     const result = forward([item({ itemId: 'b', processOrder: '20', alternateRank: 1, requiredMinutes: 30 }), item({ alternateRank: 2, requiredMinutes: 60 })]);
     const a = bars(result).find((bar) => bar.item.itemId === 'a')!;
     const b = bars(result).find((bar) => bar.item.itemId === 'b')!;
-    expect(a.start).toBeCloseTo(today + 10 / 24);
+    expect(a.start).toBeCloseTo(today + 13 / 24);
     expect(b.start).toBe(a.end);
   });
   it.each([{ requiredMinutesKnown: false }, { requiredMinutes: null }, { requiredMinutes: 0 }])('unknown work occupies zero time including unassigned resources', (unknown) => {
@@ -145,7 +161,7 @@ describe('forward planningBoardGanttLayout', () => {
   });
   it('end exactly at due midnight is on time; seiban rows retain the same computed segments', () => {
     const value = item({ requiredMinutes: 840 });
-    const options = { dailyHoursByResource: { '305': 24 as const } };
+    const options = { dailyHoursByResource: { '305': 24 as const }, now: new Date('2026-10-14T10:00:00+09:00') };
     const resourceBar = bars(forward([value], options))[0]!;
     const seibanBar = bars(forward([value], { ...options, view: 'seiban' }))[0]!;
     expect(resourceBar.tone).toBe('planned');

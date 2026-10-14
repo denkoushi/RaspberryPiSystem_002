@@ -96,7 +96,7 @@ describe('forward PlanningBoardGanttView', () => {
   function forwardProps(items = [item({ requiredMinutes: 60, alternateRank: 1 }), item({ itemId: 'b', fhincd: 'P2', requiredMinutes: 60, alternateRank: 2 })]) {
     return { ...props(items), scale: 2, onResourceReorder: vi.fn(),
       layout: buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'],
-        dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T10:00:00+09:00'), scale: 2 }) };
+        dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T09:00:00+09:00'), scale: 2 }) };
   }
   it.each([['a', 'b', 300, 'after'], ['b', 'a', 0, 'before']] as const)('drags %s %s %i %s with a white insertion marker', (source, target, destination, placement) => {
     const values = forwardProps();
