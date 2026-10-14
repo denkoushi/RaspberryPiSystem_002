@@ -78,7 +78,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     if (!element || !rows?.length) return;
     flaggedIndex.current = (flaggedIndex.current + 1) % rows.length;
     const row = rows[flaggedIndex.current]!;
-    element.scrollTop += row.getBoundingClientRect().top - element.getBoundingClientRect().top - 56;
+    element.scrollTop += row.getBoundingClientRect().top - element.getBoundingClientRect().top - 36;
     const bar = row.querySelector<HTMLElement>('[data-testid^="planning-gantt-bar-"]');
     if (bar) element.scrollLeft = Math.max(0, parseFloat(bar.style.left) - (viewportWidth - GANTT_LABEL_WIDTH) / 2);
   }, scrollToNextLate: () => {
@@ -115,7 +115,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
       {capacityError && <p role="alert" className="px-2 py-1 text-xs text-rose-200">稼働時間を保存できませんでした。</p>}
       <div ref={viewport} onScroll={() => queuePopover.current?.close()} className="relative min-h-48 overflow-auto" style={viewportHeight ? { height: viewportHeight } : undefined} tabIndex={0} aria-label="ガントの日付と工程">
         <div className="relative isolate" style={{ width: GANTT_LABEL_WIDTH + width }}>
-          <div className="sticky top-0 z-30 flex h-14 border-b border-slate-700 bg-slate-950">
+          <div className="sticky top-0 z-30 flex h-9 border-b border-slate-700 bg-slate-950">
             <div className="sticky left-0 z-40 flex shrink-0 flex-wrap items-center gap-x-3 bg-slate-950 px-2 text-[10px] text-slate-300" style={{ width: GANTT_LABEL_WIDTH }}>
               <span><i className="mr-1 inline-block h-2 w-4 rounded bg-sky-400" />予定</span>
               <span><i className="mr-1 inline-block h-2 w-4 rounded bg-rose-400" />{forward ? '遅れ見込み' : '納期超過'}</span>
@@ -123,17 +123,17 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
                 <span><i className="mr-1 inline-block h-2 w-4 rounded" style={{ background: GANTT_HATCH }} />工程の重なり</span>
                 <span><i className="mr-1 inline-block h-2 w-4 rounded bg-slate-600" />完了</span></>}
             </div>
-            {days.map(({ day, weekday, weekend }) => <div key={day} className={clsx('relative shrink-0 overflow-hidden border-l border-slate-800 py-2 text-center text-[10px] tabular-nums', day === layout.today ? 'bg-emerald-400 font-bold text-slate-950' : weekend ? 'bg-slate-800 text-slate-300' : 'text-slate-300')}
+            {days.map(({ day, weekday, weekend }) => <div key={day} className={clsx('relative shrink-0 overflow-hidden whitespace-nowrap border-l border-slate-800 pt-0.5 text-center text-[11px] leading-4 tabular-nums', day === layout.today ? 'bg-emerald-400 font-bold text-slate-950' : weekend ? 'bg-slate-800 text-slate-300' : 'text-slate-300')}
               style={{ width: dayWidth }} title={dayToDate(day)}>
-              <span className="whitespace-nowrap">{dayWidth >= 26 || weekday === 1 ? dayLabel(day) : ''}</span><small className="block">{WEEKDAYS[weekday]}</small>
-              {showHours && HOUR_TICKS.map((hour) => <span key={hour} className="absolute bottom-0.5 -translate-x-1/2 text-xs font-bold opacity-90" style={{ left: `${hour / 24 * 100}%` }}>{hour}時</span>)}
+              {dayWidth >= 44 || weekday === 1 ? `${dayLabel(day)} ` : ''}{WEEKDAYS[weekday]}
+              {showHours && HOUR_TICKS.map((hour) => <span key={hour} className="absolute bottom-0 -translate-x-1/2 text-xs font-bold leading-4 opacity-90" style={{ left: `${hour / 24 * 100}%` }}>{hour}時</span>)}
             </div>)}
           </div>
-          {days.map(({ day, weekend }) => <div key={day} className={clsx('pointer-events-none absolute bottom-0 top-14 border-l border-slate-800/70', !forward && weekend && 'bg-slate-950/50')}
+          {days.map(({ day, weekend }) => <div key={day} className={clsx('pointer-events-none absolute bottom-0 top-9 border-l border-slate-800/70', !forward && weekend && 'bg-slate-950/50')}
             style={{ left: GANTT_LABEL_WIDTH + (day - layout.start) * dayWidth, width: dayWidth }} />)}
-          {showHours && days.flatMap(({ day }) => HOUR_TICKS.map((hour) => <div key={`${day}-${hour}`} className="pointer-events-none absolute bottom-0 top-14 border-l border-dashed border-slate-700/60"
+          {showHours && days.flatMap(({ day }) => HOUR_TICKS.map((hour) => <div key={`${day}-${hour}`} className="pointer-events-none absolute bottom-0 top-9 border-l border-dashed border-slate-700/60"
             style={{ left: GANTT_LABEL_WIDTH + (day - layout.start + hour / 24) * dayWidth }} />))}
-          {!forward && <div className="pointer-events-none absolute bottom-0 top-14 z-[1] w-px bg-emerald-400" style={{ left: GANTT_LABEL_WIDTH + (layout.today - layout.start) * dayWidth }} />}
+          {!forward && <div className="pointer-events-none absolute bottom-0 top-9 z-[1] w-px bg-emerald-400" style={{ left: GANTT_LABEL_WIDTH + (layout.today - layout.start) * dayWidth }} />}
           {layout.completedOnly && <p className="sticky left-0 w-fit p-3 text-sm text-slate-400">完了は「納期から」で表示</p>}
           {layout.groups.map((group) => <div key={group.key}>
             {!(forward && group.resource) && <div className="relative flex min-h-11 border-b border-slate-700 bg-slate-800">
