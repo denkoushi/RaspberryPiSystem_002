@@ -89,7 +89,7 @@ describe('InventoryItemEditTab', () => {
     expect(mutations.updateItemDetails.mutateAsync).toHaveBeenCalledWith({ itemId: 'item-1', details: { model: value } });
   });
 
-  it('moves a compartment to a free drawer in the same area', async () => {
+  it('moves a compartment to another drawer in the same area', async () => {
     render(<InventoryItemEditTab accessPassword="2520" />);
     fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
     fireEvent.click(screen.getByRole('button', { name: '別の引き出しへ移す' }));
@@ -105,6 +105,7 @@ describe('InventoryItemEditTab', () => {
     const view = render(<InventoryItemEditTab accessPassword="2520" />);
     fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
     fireEvent.click(screen.getByRole('button', { name: '別の引き出しにも置く' }));
+    expect(screen.getByRole('button', { name: '引き出し1' })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: '引き出し2' }));
 
     nfc.event = { uid: 'new-tag', eventId: 5, timestamp: new Date().toISOString() } as NfcEvent;

@@ -194,7 +194,7 @@ describe('InventoryRegistrationTab', () => {
     fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
     expect(screen.getByLabelText('アイテム名')).toHaveValue('ItemlistRaspi 2');
     fireEvent.click(screen.getByRole('button', { name: '棚1' }));
-    expect(screen.getByRole('button', { name: '引き出し1 使用中' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '引き出し1' })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: '引き出し2' }));
     expect(within(screen.getByRole('region', { name: 'アイテムタグ' })).getByRole('status')).toHaveTextContent('30007_KSJP-55 北・棚1・引き出し2');
     expect(screen.getByText('あと 2 つ')).toBeInTheDocument();
