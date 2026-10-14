@@ -5,7 +5,7 @@ import { resolveGrindingPlanningBoardResource } from '../sortGrindingPlanningBoa
 
 import { buildPlanningBoardGanttLayout } from './planningBoardGanttLayout';
 import { usePersistedPlanningBoardGanttMode } from './usePersistedPlanningBoardGanttMode';
-import { usePlanningBoardGanttScale } from './usePlanningBoardGanttScale';
+import { usePlanningBoardGanttScale } from './usePersistedPlanningBoardGanttScale';
 
 import type { GanttLayoutOptions } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttHandle } from './PlanningBoardGanttView';

@@ -1,9 +1,9 @@
 import clsx from 'clsx';
 
-import { GANTT_SCALES, ganttScaleLabel } from './gantt/usePlanningBoardGanttScale';
+import { GANTT_SCALES, ganttScaleLabel } from './gantt/usePersistedPlanningBoardGanttScale';
 
 import type { PlanningBoardGanttMode } from './gantt/usePersistedPlanningBoardGanttMode';
-import type { PlanningBoardGanttScale } from './gantt/usePlanningBoardGanttScale';
+import type { PlanningBoardGanttScale } from './gantt/usePersistedPlanningBoardGanttScale';
 import type { PlanningBoardAllocation, PlanningBoardStatus } from './types';
 import type {
   GrindingPlanningBoardCategory,

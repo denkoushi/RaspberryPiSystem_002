@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { ganttScaleLabel, usePlanningBoardGanttScale } from './usePlanningBoardGanttScale';
+import { ganttScaleLabel, usePlanningBoardGanttScale } from './usePersistedPlanningBoardGanttScale';
 
 describe('usePlanningBoardGanttScale', () => {
   it('毎回1日で開き、前に選んだ幅は引き継がない', () => {
