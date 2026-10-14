@@ -1437,6 +1437,7 @@ model CsvDashboard {
   updatedAt                      DateTime                                          @updatedAt
   ingestRuns                     CsvDashboardIngestRun[]
   rows                           CsvDashboardRow[]
+  grindingPlanningBoardResourceCapacities ProductionScheduleGrindingPlanningBoardResourceCapacity[]
   grindingPlanningBoardStates    ProductionScheduleGrindingPlanningBoardState[]
   grindingPlanningBoardOverrides ProductionScheduleGrindingPlanningBoardOverride[]
   grindingPlanningBoardDueScopes ProductionScheduleGrindingPlanningBoardDueScope[]
@@ -1888,6 +1889,20 @@ model ProductionScheduleGrindingPlanningBoardState {
 
   @@unique([csvDashboardId, siteKey], map: "PSGrindingPlanningState_dashboard_site_key")
   @@index([csvDashboardId, updatedAt], map: "PSGrindingPlanningState_dashboard_updated_idx")
+}
+
+model ProductionScheduleGrindingPlanningBoardResourceCapacity {
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  siteKey        String   @db.VarChar(100)
+  resourceCd     String   @db.VarChar(20)
+  dailyHours     Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  csvDashboard CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade, map: "PSGrindingPlanningCapacity_dashboard_fkey")
+
+  @@unique([csvDashboardId, siteKey, resourceCd], map: "PSGrindingPlanningCapacity_dashboard_site_resource_key")
 }
 
 /// 研削順位ボードの行/分割片 override。元CSV・元順位は保存せず、常に正本から再解決する。

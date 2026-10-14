@@ -221,3 +221,18 @@ export interface GrindingPlanningBoardSeibanCandidatesResponse {
   completionFilter: 'all' | 'incomplete';
   candidates: GrindingPlanningBoardSeibanCandidate[];
 }
+
+/** ガント表示で棒の長さを決める、資源CDごとの1日あたり稼働時間。サイト共有。 */
+export const GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS = [8, 10, 24] as const;
+export type GrindingPlanningBoardResourceDailyHours = (typeof GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS)[number];
+export const GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS: GrindingPlanningBoardResourceDailyHours = 8;
+
+/** 既定値(8時間)以外が保存された資源CDだけを返す。 */
+export interface GrindingPlanningBoardResourceCapacityResponse {
+  dailyHoursByResource: Record<string, GrindingPlanningBoardResourceDailyHours>;
+}
+
+export interface GrindingPlanningBoardResourceCapacityRequest {
+  resourceCd: string;
+  dailyHours: GrindingPlanningBoardResourceDailyHours;
+}

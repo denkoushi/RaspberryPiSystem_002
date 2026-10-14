@@ -192,10 +192,10 @@ export function resolvePlanningBoardDueRequest(params: {
   if (params.request.kind === 'date') {
     if (!isYmd(params.request.date)) throw new ApiError(400, '納期はYYYY-MM-DDで指定してください', undefined, 'INVALID_DUE_DATE');
     if (params.request.date === params.currentEffectiveDueDate) return undefined;
-    if (params.currentEffectiveDueDate != null && params.request.date < params.currentEffectiveDueDate) {
-      throw new ApiError(400, '納期の前倒しは指定できません', undefined, 'PAST_DUE_DATE');
+    if ((params.currentEffectiveDueDate == null || params.request.date < params.currentEffectiveDueDate)
+      && params.request.date < todayJstYmd()) {
+      throw new ApiError(400, '過去の日付は指定できません', undefined, 'PAST_DUE_DATE');
     }
-    if (params.currentEffectiveDueDate == null && params.request.date < todayJstYmd()) throw new ApiError(400, '過去の日付は指定できません', undefined, 'PAST_DUE_DATE');
     return dateFromYmd(params.request.date);
   }
   if (!Number.isSafeInteger(params.request.days) || params.request.days <= 0) {

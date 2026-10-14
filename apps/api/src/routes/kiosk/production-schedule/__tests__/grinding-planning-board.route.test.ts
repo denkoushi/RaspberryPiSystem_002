@@ -5,6 +5,8 @@ import { ZodError } from 'zod';
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   getLoad: vi.fn(),
+  getCapacity: vi.fn(),
+  updateCapacity: vi.fn(),
   updateOverrides: vi.fn(),
   updateRank: vi.fn(),
   updateResourceOrder: vi.fn(),
@@ -18,6 +20,11 @@ vi.mock('../../../../services/production-schedule/grinding-planning-board.servic
   updateGrindingPlanningBoardRank: mocks.updateRank,
   updateGrindingPlanningBoardResourceOrder: mocks.updateResourceOrder,
   updateGrindingPlanningBoardSeibanOrder: mocks.updateOrder
+}));
+
+vi.mock('../../../../services/production-schedule/grinding-planning-board-resource-capacity.service.js', () => ({
+  getGrindingPlanningBoardResourceCapacity: mocks.getCapacity,
+  updateGrindingPlanningBoardResourceCapacity: mocks.updateCapacity
 }));
 
 import { createInMemoryLeaderboardShellSnapshotStore } from '../../../../services/production-schedule/leaderboard/leaderboard-shell-snapshot.store.js';
@@ -187,4 +194,62 @@ describe('grinding planning board route scope', () => {
       await app.close();
     }
   });
+  it('returns resource capacity for the authenticated site', async () => {
+    const requireClientDevice = vi.fn(async () => ({ id: 'device-1' }));
+    const app = await createApp(requireClientDevice);
+    const result = { dailyHoursByResource: { '305': 10, '306': 24 } };
+    mocks.getCapacity.mockResolvedValue(result);
+    try {
+      const response = await app.inject({ method: 'GET', url: '/kiosk/production-schedule/grinding-planning-board/resource-capacity?siteKey=foreign-site', headers: { 'x-client-key': 'key-1' } });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual(result);
+      expect(requireClientDevice).toHaveBeenCalledWith('key-1');
+      expect(mocks.getCapacity).toHaveBeenCalledWith({ siteKey: 'site-a' });
+    } finally { await app.close(); }
+  });
+
+  it.each([8, 10, 24])('accepts %s daily hours and trims resource code using the authenticated site', async (dailyHours) => {
+    const requireClientDevice = vi.fn(async () => ({ id: 'device-1' }));
+    const app = await createApp(requireClientDevice);
+    const result = { dailyHoursByResource: dailyHours === 8 ? {} : { '305': dailyHours } };
+    mocks.updateCapacity.mockResolvedValue(result);
+    try {
+      const response = await app.inject({
+        method: 'PUT', url: '/kiosk/production-schedule/grinding-planning-board/resource-capacity',
+        headers: { 'x-client-key': 'key-1' }, payload: { resourceCd: ' 305 ', dailyHours, siteKey: 'foreign-site' }
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual(result);
+      expect(requireClientDevice).toHaveBeenCalledWith('key-1');
+      expect(mocks.updateCapacity).toHaveBeenCalledWith({ siteKey: 'site-a', resourceCd: '305', dailyHours });
+    } finally { await app.close(); }
+  });
+
+  it.each([
+    { resourceCd: '305', dailyHours: 12 },
+    { resourceCd: '305', dailyHours: '10' },
+    { resourceCd: ' ', dailyHours: 10 },
+    { resourceCd: 'x'.repeat(21), dailyHours: 10 }
+  ])('rejects invalid resource capacity body %j', async (payload) => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    try {
+      const response = await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/grinding-planning-board/resource-capacity', payload });
+      expect(response.statusCode).toBe(400);
+      expect(mocks.updateCapacity).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+
+  it.each(['GET', 'PUT'] as const)('rejects missing client key for resource capacity %s', async (method) => {
+    const app = await createApp(async () => { throw Object.assign(new Error('client key required'), { statusCode: 401 }); });
+    try {
+      const response = await app.inject({
+        method, url: '/kiosk/production-schedule/grinding-planning-board/resource-capacity',
+        ...(method === 'PUT' ? { payload: { resourceCd: '305', dailyHours: 10 } } : {})
+      });
+      expect(response.statusCode).toBe(401);
+      expect(mocks.getCapacity).not.toHaveBeenCalled();
+      expect(mocks.updateCapacity).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+
 });

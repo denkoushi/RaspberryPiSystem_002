@@ -17,6 +17,8 @@ import {
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
+import { PlanningBoardGanttView } from '../../features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttView';
+import { usePlanningBoardGantt } from '../../features/kiosk/grindingPlanningBoard/gantt/usePlanningBoardGantt';
 import { PlanningBoardFocusView } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardFocusView';
 import { formatPlanningBoardLoadSummary, formatPlanningBoardResourceLoad } from '../../features/kiosk/grindingPlanningBoard/planningBoardLoad';
 import { PlanningBoardResourceView } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardResourceView';
@@ -133,6 +135,7 @@ function applyOptimisticOverride(
 
 export function ProductionScheduleGrindingPlanningBoardPage() {
   const [category, setCategory] = useState<'grinding' | 'cutting'>('grinding');
+  const [ganttEnabled, setGanttEnabled] = useState(false);
   const [view, setView] = useState<'seiban' | 'resource'>('seiban');
   const [status, setStatus] = useState<PlanningBoardStatus>('incomplete');
   const [allocation, setAllocation] = useState<PlanningBoardAllocation>('alternate');
@@ -581,6 +584,15 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     enqueueOverrides([item], [{ itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version, resourceCd: targetResource }], '資源CD');
   }, [allocation, data, enqueueOverrides, rankMutationReady, scopeReady]);
 
+  const moveDueByDrag = useCallback((original: GrindingPlanningBoardItem, date: string) => {
+    const item = currentItemsRef.current.find((candidate) => candidate.itemId === original.itemId);
+    if (!item || !data || !scopeReady || !rankMutationReady || writeBlocked || allocation !== 'alternate' || item.isCompleted) return;
+    const before = displayedDue(item, allocation);
+    if (!before || date === before || (date < before && date < todayJst())) return;
+    enqueueOverrides([item], [{ itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version,
+      due: { kind: 'date', date } }], '納期');
+  }, [allocation, data, enqueueOverrides, rankMutationReady, scopeReady, writeBlocked]);
+
   const reorderResourceByDrag = useCallback((item: GrindingPlanningBoardItem, targetItem: GrindingPlanningBoardItem,
     placement: GrindingPlanningBoardResourceOrderPlacement) => {
     const resource = resolveGrindingPlanningBoardResource(item, allocation);
@@ -737,6 +749,11 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     () => focusedFseiban ? sortedItemsBySeiban.get(focusedFseiban) ?? [] : [],
     [focusedFseiban, sortedItemsBySeiban]
   );
+  const ganttItems = useMemo(() => view === 'seiban' && focusedFseiban && focusItems.length > 0
+    ? focusItems : visibleItems, [view, focusedFseiban, focusItems, visibleItems]);
+  const gantt = usePlanningBoardGantt({ enabled: ganttEnabled, items: ganttItems, allocation, view,
+    seibanOrder: registeredFseibans, resources: data?.resources ?? EMPTY_ORDER,
+    today: todayJst(), preferenceScope: `${data?.siteKey ?? ''}:${category}` });
   const openEditorForItem = useCallback((item: GrindingPlanningBoardItem) => openEditor([item]), [openEditor]);
   const returnFromFocus = useCallback(() => setFocusedFseiban(null), []);
   const toggleFocusAll = useCallback((selected: boolean) => toggleAll(focusItems, selected), [focusItems, toggleAll]);
@@ -790,6 +807,12 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   return (
     <main className="min-h-0 w-full shrink-0 overflow-hidden bg-slate-950 px-2 py-2 text-white sm:px-3">
       <PlanningBoardToolbar
+        ganttEnabled={ganttEnabled}
+        onToggleGantt={() => setGanttEnabled((enabled) => !enabled)}
+        ganttScale={gantt.scale}
+        onGanttScaleChange={gantt.changeScale}
+        overlapCount={gantt.layout.overlapCount}
+        onNextOverlap={gantt.scrollToNextOverlap}
         category={category}
         view={view}
         status={status}
@@ -827,7 +850,14 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         specialDueCounts={specialDueCounts}
       />
       {boardQuery.isError ? <p className="p-5 text-sm text-rose-200">一覧を読み込めませんでした。</p> : null}
-      {data && view === 'seiban' && focusedFseiban && focusItems.length > 0 ? (
+      {data && ganttEnabled ? (
+        <PlanningBoardGanttView ref={gantt.viewRef} layout={gantt.layout} scale={gantt.scale}
+          resourceView={view === 'resource'} dailyHoursByResource={gantt.dailyHoursByResource}
+          resourceNameMap={resourcesQuery.data?.resourceNameMap ?? {}}
+          capacityPending={gantt.capacityPending} capacityError={gantt.capacityError} onCapacityChange={gantt.changeCapacity}
+          selectedItemIds={selectedItemIds} onToggleItem={toggleItem} onDueDrop={moveDueByDrag}
+          disabled={interactionLocked} dragDisabled={allocation !== 'alternate' || writeBlocked || interactionLocked || !rankMutationReady} />
+      ) : data && view === 'seiban' && focusedFseiban && focusItems.length > 0 ? (
         <div className="mt-2">
           <PlanningBoardFocusView
             fseiban={focusedFseiban}
