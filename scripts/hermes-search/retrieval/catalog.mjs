@@ -1,7 +1,7 @@
 // Derive a source-neutral catalog entry from a hermes-source-definition/v1
 // document. Explicit numeric roles precede structural key/label rules. Source-specific
 // names stay in the definition data, not in the planner or executor.
-import { sourceDefinitions } from '../hermes-source-definition.mjs';
+import { isConversationalSource, sourceDefinitions } from '../hermes-source-definition.mjs';
 
 // Runtime policy must not add properties to the catalog sent to JEV.
 const definitionsByCatalog = new WeakMap();
@@ -86,6 +86,10 @@ export function catalogEntries(catalog) {
   if (catalog && Array.isArray(catalog.fields) && typeof catalog.id === 'string') return [catalog];
   if (catalog && Array.isArray(catalog.entries)) return catalog.entries;
   throw new TypeError('catalog must be an entry or a list of entries');
+}
+
+export function conversationalEntries(catalog) {
+  return catalogEntries(catalog).filter((entry) => isConversationalSource(definitionForCatalog(entry)));
 }
 
 export function fieldsWithRole(catalog, role) {

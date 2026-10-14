@@ -996,3 +996,24 @@ test('the runner lock admits one holder, takes over dead or stale holders, and r
   assert.ok(again);
   await again.release();
 });
+
+
+test('nightly generation and live learning inputs exclude rank-only rows', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-rank-only-'));
+  const hidden = { id: 'procedure_material:private', kind: 'procedure_material', bodyText: 'PRIVATE-MATERIAL' };
+  let scored = false;
+  const status = await runFlywheelNight({
+    records: [...records, hidden, { ...hidden, kind: undefined, sourceId: 'procedure_material' }],
+    settings: settings(dir, { maxQuestions: 1 }), now: night,
+    readDense: async () => [...dense, { id: hidden.id, vector: unit([1, 0.2, 0]) }],
+    chat: async (input) => { assert.doesNotMatch(JSON.stringify(input), /PRIVATE-MATERIAL|procedure_material/u); return fakeChat()(input); },
+    jevEvaluate, liveFactory: async (input) => {
+      assert.deepEqual(input.records, records);
+      scored = true;
+      return liveShown;
+    }, seed: 7, log: () => {},
+  });
+  assert.equal(status.kept, 1);
+  assert.equal(scored, true);
+  assert.doesNotMatch(readFileSync(questionsPath(dir, '2026-10-03'), 'utf8'), /private|procedure_material/u);
+});

@@ -1,4 +1,5 @@
 // Validate offline enrichment JSON and append it to the private store. Counts only.
+import { isConversationalSource, recordSourceId } from '../hermes-source-definition.mjs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,7 +52,7 @@ export async function ingestEnrichment({
   ]);
   if (!Array.isArray(incoming?.records)) throw new Error('input records must be an array');
   if (!Array.isArray(snapshot?.records)) throw new Error('snapshot records must be an array');
-  const bySnapshotId = new Map(snapshot.records.map((record) => [record?.id, record]));
+  const bySnapshotId = new Map(snapshot.records.filter((record) => isConversationalSource(record?.kind ?? recordSourceId(record))).map((record) => [record?.id, record]));
   const promptSha = sha256Text(instructions);
   const byId = await readEnrichmentStore(storePath);
   const counts = { examined: 0, kept: 0, evidenceDropped: 0, aliasesDropped: 0, aliasesKept: 0, invalid: 0 };

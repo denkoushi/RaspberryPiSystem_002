@@ -236,6 +236,10 @@ test('resource loading honors the default, configured sources and unknown-source
   assert.deepEqual(mixed.catalog, mixedCatalog);
   assert.equal(mixed.lexicalCorpus, null);
   assert.ok(legacy.lexicalCorpus);
+  writeFileSync(snapshot, JSON.stringify({ records: [...mixedRecords, { kind: 'procedure_material', id: 'mail:loaded', bodyText: '素材本文' }] }));
+  const ranked = await loadRetrievalResources({ HERMES_SEARCH_RECORD_SOURCE: snapshot, HERMES_RETRIEVAL_SOURCES: 'nonconformity,procedure_material' });
+  assert.deepEqual(ranked.catalog.map(entry => entry.id), ['nonconformity', 'procedure_material']);
+  assert.deepEqual(ranked.records.map(record => record.id), ['shared', 'mail:loaded']);
   await assert.rejects(loadRetrievalResources({ HERMES_RETRIEVAL_SOURCES: 'missing' }), { message: 'unknown retrieval source: missing' });
   const startup = spawnSync(process.execPath, [new URL('./worker.mjs', import.meta.url).pathname], {
     env: { ...process.env, HERMES_RETRIEVAL_SOURCES: 'missing' }, encoding: 'utf8', timeout: 10000,
@@ -808,4 +812,59 @@ test('compactPlan keeps the ambiguous terms the planner dropped for a content se
   });
   assert.deepEqual(compact.ambiguousDropped, [{ field: 'partName', candidates: ['台A', '台B'] }]);
   assert.equal('ambiguousDropped' in compactPlan({ sources: [], filters: [], semanticQuery: '', diagnostics: {} }), false);
+});
+
+
+test('rank-only sources are absent from all answer inputs, sessions, counts and executions', async () => {
+  const catalog = loadCatalog(['nonconformity', 'procedure_material']);
+  const records = [mixedRecords[0], { id: 'mail:secret', sourceId: 'procedure_material', bodyText: 'SECRET-MATERIAL' }];
+  const hiddenPlan = { sources: ['procedure_material'], filters: [{ source: 'procedure_material', field: 'bodyText', values: ['SECRET-MATERIAL'] }] };
+  for (const principal of [undefined, { kind: 'kiosk' }, { kind: 'admin' }]) {
+    const options = { principal, stageDump: true };
+    const inputs = [];
+    const planner = { plan: async (input) => { inputs.push(input); return fixedPlanner(['nonconformity'], { display: ['condition'] }).plan(); } };
+    const service = createRetrievalAnswering({ catalog, records, planner, evaluate: async () => ({ answers: {} }),
+      denseBySource: { procedure_material: { queryEnabled: true, rank: () => assert.fail('rank-only execution') } } });
+    for (const previousPlan of [hiddenPlan, { ...hiddenPlan, sources: ['nonconformity'] }]) {
+      const result = await service.answer('SECRET-MATERIAL', { previousPlan, shownIds: ['procedure_material:mail:secret', 'nonconformity:old'] }, options);
+      const input = inputs.at(-1);
+      assert.deepEqual(input.catalog, loadCatalog(['nonconformity']));
+      assert.deepEqual(Object.keys(input.valueIndex.values), ['nonconformity']);
+      assert.equal(input.previousPlan, null);
+      assert.equal(input.shownCount, 1);
+      assert.doesNotMatch(JSON.stringify(input.candidates), /procedure_material|SECRET-MATERIAL/u);
+      assert.deepEqual(result.recordIds, []);
+      assert.match(result.answer, /検索対象1件/u);
+      assert.doesNotMatch(JSON.stringify(result), /procedure_material|SECRET-MATERIAL|素材/u);
+      assert.deepEqual(result.session.shownIds, ['nonconformity:old']);
+    }
+    for (const plan of [hiddenPlan, { ...hiddenPlan, sources: ['nonconformity'] }]) {
+      const blocked = createRetrievalAnswering({ catalog, records, planner: { plan: async () => ({ plan }) },
+        evaluate: () => assert.fail('hidden source must not be judged') });
+      const result = await blocked.answer('q', null, options);
+      assert.equal(result.answer, sourceDefinitions.nonconformity.outOfScopeAnswer);
+      assert.deepEqual(result.recordIds, []);
+      assert.equal(result.session.previousPlan, null);
+    }
+    const empty = createRetrievalAnswering({ catalog: loadCatalog(['procedure_material']), records: records.slice(1),
+      planner: { plan: () => assert.fail('empty conversational catalog') } });
+    const result = await empty.answer('q', { previousPlan: hiddenPlan, shownIds: ['procedure_material:mail:secret'] }, options);
+    assert.equal(result.answer, '検索に関する質問として解釈できませんでした。');
+    assert.deepEqual(result.recordIds, []);
+    assert.deepEqual(result.session.shownIds, []);
+    assert.equal(result.session.previousPlan, null);
+  }
+});
+
+test('enabling rank-only materials leaves conversational answers unchanged', async (t) => {
+  t.mock.method(performance, 'now', () => 0);
+  const ids = ['nonconformity', 'knowledge_procedure', 'torque_training_session', 'torque_training_operator', 'torque_training_team'];
+  const run = async (sourceIds) => {
+    const catalog = loadCatalog(sourceIds);
+    const rows = [...mixedRecords, { id: 'private', sourceId: 'procedure_material', bodyText: 'ブラケット溶接' }]
+      .filter(row => sourceIds.includes(row.sourceId));
+    const service = createRetrievalAnswering({ catalog, records: rows, planner: fixedPlanner(['knowledge_procedure']), evaluate: mixedEvaluate });
+    return service.answer('ブラケット溶接', null, { stageDump: true });
+  };
+  assert.deepEqual(await run([...ids, 'procedure_material']), await run(ids));
 });

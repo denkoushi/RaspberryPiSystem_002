@@ -5,7 +5,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
-import { catalogEntries, definitionForCatalog, fieldsWithRole, loadCatalog } from './catalog.mjs';
+import { catalogEntries, conversationalEntries, definitionForCatalog, fieldsWithRole, loadCatalog } from './catalog.mjs';
 import { recordSourceId, sourceIdsFromEnv } from '../hermes-source-definition.mjs';
 import { createDenseRuntime, denseSettings } from './dense-dgx.mjs';
 import { execute, rankCandidates, openQmdVectorRanker, prepareLexicalCorpus } from './executor.mjs';
@@ -212,7 +212,7 @@ function formatRecords(results, catalog) {
 
 function applyEnrichment(view, enrichmentById, catalog, learnedById) {
   let current = view;
-  for (const entry of catalogEntries(catalog)) {
+  for (const entry of conversationalEntries(catalog)) {
     const capabilities = definitionForCatalog(entry).retrieval ?? {};
     const enrichment = capabilities.enrichment ? enrichmentById : null;
     const learned = capabilities.learnedQueries ? learnedById : null;
@@ -365,6 +365,7 @@ export function createRetrievalAnswering({
   const planner = suppliedPlanner ?? createPlanner(typeof evaluate === 'function' ? { evaluate } : {});
   const relevance = createRelevanceJudge(typeof evaluate === 'function' ? { evaluate } : {});
   const entries = catalogEntries(catalog);
+  const answerEntries = conversationalEntries(catalog);
   const semanticEntries = entries.filter((entry) => definitionForCatalog(entry).retrieval?.semanticSearch);
   const denseFor = (sourceId) => denseBySource?.[sourceId] ?? dense;
   const vectorFor = (sourceId) => vectorBySource?.[sourceId] ?? vector;
@@ -407,14 +408,15 @@ export function createRetrievalAnswering({
     // replaces the day's embedding budget; the kiosk never passes either.
     async answer(question, session, options = {}) {
       const view = current;
+      const restricted = options.principal || answerEntries.length !== entries.length;
       const visibleEntries = options.principal
-        ? entries.filter((entry) => entry.visibility.includes(options.principal.kind)) : entries;
+        ? answerEntries.filter((entry) => entry.visibility.includes(options.principal.kind)) : answerEntries;
       const visibleSources = new Set(visibleEntries.map((entry) => entry.id));
-      const visibleCatalog = options.principal ? visibleEntries : catalog;
-      const visibleValueIndex = options.principal
+      const visibleCatalog = restricted ? visibleEntries : catalog;
+      const visibleValueIndex = restricted
         ? { values: Object.fromEntries(visibleEntries.map((entry) => [entry.id, view.valueIndex.values[entry.id]])) }
         : view.valueIndex;
-      const visibleCount = options.principal
+      const visibleCount = restricted
         ? visibleEntries.reduce((count, entry) => count + view.bySource[entry.id].records.length, 0) : view.snapshotCount;
       const outOfScopeAnswer = visibleEntries.length === 1 && definitionForCatalog(visibleEntries[0]).outOfScopeAnswer ? definitionForCatalog(visibleEntries[0]).outOfScopeAnswer
         : `${visibleEntries.length ? `${visibleEntries.map((entry) => entry.label).join('・')}の` : ''}検索に関する質問として解釈できませんでした。`;
@@ -424,10 +426,10 @@ export function createRetrievalAnswering({
       const elapsed = () => Math.round((performance.now() - started) * 10) / 10;
       const storedPlan = session?.previousPlan && typeof session.previousPlan === 'object' ? session.previousPlan : null;
       // A session carried from a wider role must not expose its source values to the planner.
-      const previousPlan = options.principal && storedPlan
+      const previousPlan = restricted && storedPlan
         && (storedPlan.sources?.some((source) => !visibleSources.has(source))
           || storedPlan.filters?.some((filter) => !visibleSources.has(filter.source))) ? null : storedPlan;
-      const previouslyShown = options.principal
+      const previouslyShown = restricted
         ? shownIdsOf(session).filter((id) => visibleEntries.some((entry) => id.startsWith(`${entry.id}:`))) : shownIdsOf(session);
       if (!visibleEntries.length) {
         return trialResult({ status: 'completed', answer: outOfScopeAnswer, recordIds: [], elapsedMs: elapsed(),
@@ -444,7 +446,7 @@ export function createRetrievalAnswering({
         ...(options.pageContext ? { pageContext: options.pageContext } : {}),
       });
       // Reject an unauthorized source even if a supplied planner attempts to select it.
-      if (options.principal && (planned.plan?.sources?.some((source) => !visibleSources.has(source))
+      if (restricted && (planned.plan?.sources?.some((source) => !visibleSources.has(source))
         || planned.plan?.filters?.some((filter) => !visibleSources.has(filter.source)))) {
         return trialResult({ status: 'completed', answer: outOfScopeAnswer, recordIds: [], elapsedMs: elapsed(),
           previousPlan: null, shownIds: previouslyShown, dataAsOf: view.dataAsOf });

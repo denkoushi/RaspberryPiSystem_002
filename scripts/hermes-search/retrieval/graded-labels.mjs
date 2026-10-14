@@ -3,6 +3,7 @@
 // other valid records count as misses. Pooling the candidates of several runs and grading each
 // question-record pair gives a label set that every later run is scored against.
 // The label file holds ids and grades only; record text is never written.
+import { isConversationalSource, recordSourceId } from '../hermes-source-definition.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -185,7 +186,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const pools = buildPools(loadSets(args.sets), { depth: args.depth });
   const snapshot = JSON.parse(fs.readFileSync(args.snapshot, 'utf8'));
-  const recordsById = new Map(snapshot.records.map((record) => [bareId(record.id), record]));
+  const recordsById = new Map(snapshot.records.filter((record) => isConversationalSource(record.kind ?? recordSourceId(record))).map((record) => [bareId(record.id), record]));
   const catalog = loadNonconformityCatalog();
   const bodyFields = fieldsWithRole(catalog, 'body');
   const fieldLabels = Object.fromEntries(catalogEntries(catalog).flatMap((entry) => entry.fields.map((field) => [field.key, field.label])));

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deriveCatalog, loadCatalog, loadNonconformityCatalog } from './catalog.mjs';
+import { conversationalEntries, deriveCatalog, loadCatalog, loadNonconformityCatalog } from './catalog.mjs';
 import { nonconformityDefinition } from '../hermes-source-definition.mjs';
 
 test('loadCatalog preserves source order and derives procedure roles and labels', () => {
@@ -63,4 +63,15 @@ test('declared training numbers are never enumerated as value choices', async ()
       assert.equal(Object.hasOwn(index.values[entry.id], key), false);
     }
   }
+});
+
+
+test('conversational catalog respects opt-outs without changing loading or catalog shape', () => {
+  const entries = loadCatalog(['nonconformity', 'procedure_material', 'knowledge_procedure']);
+  assert.deepEqual(conversationalEntries(entries), [entries[0], entries[2]]);
+  assert.deepEqual(conversationalEntries({ entries }), [entries[0], entries[2]]);
+  assert.deepEqual(conversationalEntries(entries[0]), [entries[0]]);
+  assert.equal(Object.hasOwn(entries[1], 'retrieval'), false);
+  const hidden = deriveCatalog({ ...nonconformityDefinition, id: 'synthetic_rank', retrieval: { conversational: false } });
+  assert.deepEqual(conversationalEntries(hidden), []);
 });

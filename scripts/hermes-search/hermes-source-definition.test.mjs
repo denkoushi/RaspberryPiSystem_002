@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {validateSourceDefinition,nonconformityDefinition,knowledgeProcedureDefinition,sourceDefinitions,sourceIdsFromEnv} from './hermes-source-definition.mjs';
+import {validateSourceDefinition,nonconformityDefinition,knowledgeProcedureDefinition,sourceDefinitions,sourceIdsFromEnv,isConversationalSource} from './hermes-source-definition.mjs';
 import {projectOrganized,validateOrganizedRow} from './hermes-organized-records.mjs';
 import {HermesQmdLocal} from './hermes-qmd-local.mjs';
 
@@ -134,4 +134,22 @@ test('optional numeric and retrieval policy declarations are validated without r
   }
   assert.throws(()=>validateSourceDefinition({...base,outOfScopeAnswer:''},base.id),/out of scope answer/);
   assert.equal(validateSourceDefinition({...base,numericFields:['title'],retrieval:{semanticSearch:true},pageContextAttributes:{entity:null}},base.id).numericFields[0],'title');
+});
+
+
+test('conversational defaults to true and only accepts booleans',()=>{
+  const base=structuredClone(knowledgeProcedureDefinition);
+  assert.equal(isConversationalSource(base),true);
+  assert.equal(isConversationalSource({...base,retrieval:undefined}),true);
+  for(const conversational of [false,true]) {
+    const definition=validateSourceDefinition({...base,retrieval:{conversational}},base.id);
+    assert.equal(isConversationalSource(definition),conversational);
+  }
+  for(const conversational of [null,undefined,0,1,'false','true',[],{}]) {
+    assert.throws(()=>validateSourceDefinition({...base,retrieval:{conversational}},base.id),/retrieval capabilities/);
+  }
+  assert.equal(isConversationalSource('procedure_material'),false);
+  for(const id of ['nonconformity','knowledge_procedure','torque_training_session','torque_training_operator','torque_training_team']) {
+    assert.equal(isConversationalSource(id),true);
+  }
 });

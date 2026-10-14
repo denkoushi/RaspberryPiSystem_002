@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { sourceDefinitions, sourceIdsFromEnv, validateSourceDefinition } from '../hermes-source-definition.mjs';
-import { loadCatalog } from './catalog.mjs';
+import { deriveCatalog, loadCatalog } from './catalog.mjs';
 import { authorizedRecords } from './corpus.mjs';
 import { rankCandidates } from './executor.mjs';
 import { completeRequest, createRetrievalAnswering, dispatchWorkerRequest } from './worker.mjs';
@@ -19,7 +19,7 @@ const answering = (dense) => createRetrievalAnswering({ catalog, records, planne
 
 test('procedure material definition is valid and remains opt-in', () => {
   const definition = validateSourceDefinition(sourceDefinitions.procedure_material, 'procedure_material');
-  assert.deepEqual(definition.retrieval, { semanticSearch: true, enrichment: false, learnedQueries: false, denseStoreSuffix: 'procedure_material' });
+  assert.deepEqual(definition.retrieval, { conversational: false, semanticSearch: true, enrichment: false, learnedQueries: false, denseStoreSuffix: 'procedure_material' });
   assert.deepEqual(sourceIdsFromEnv({}), ['nonconformity']);
   assert.deepEqual(sourceIdsFromEnv({ HERMES_RETRIEVAL_SOURCES: 'nonconformity,procedure_material' }), ['nonconformity', 'procedure_material']);
 });
@@ -90,4 +90,32 @@ test('successful corpus application acknowledges configured sources even for emp
   const result = await answering().replaceCorpus({ mode: 'full', records: [] });
   assert.equal(result.ok, true);
   assert.deepEqual(result.sourceIds, ['nonconformity', 'procedure_material']);
+});
+
+
+test('rank-only source remains visible to principals and dense indexing after refresh', async () => {
+  const scheduled = [];
+  const service = answering({ queryEnabled: false, schedule: (rows) => scheduled.push(rows) });
+  const updated = await service.replaceCorpus({ mode: 'full', records: [
+    { kind: 'procedure_material', id: 'mail:updated', bodyText: request.q },
+  ] });
+  assert.deepEqual(updated.sourceIds, ['nonconformity', 'procedure_material']);
+  assert.equal(updated.memory.bySource.procedure_material, 1);
+  assert.deepEqual(scheduled.map(rows => rows.map(row => row.id)), [['mail:updated']]);
+  for (const principal of [undefined, { kind: 'kiosk' }, { kind: 'viewer' }, { kind: 'admin' }]) {
+    assert.deepEqual((await completeRequest(service, { ...request, principal })).result.recordIds, ['mail:updated']);
+  }
+  assert.ok((await completeRequest(service, { ...request, principal: { kind: 'unknown' } })).workerError);
+});
+
+
+test('rank-only capability prevents learned queries from changing ranked records', async () => {
+  const definition = structuredClone(sourceDefinitions.procedure_material);
+  definition.retrieval.enrichment = true;
+  definition.retrieval.learnedQueries = true;
+  const service = createRetrievalAnswering({ catalog: deriveCatalog(definition), records: records.slice(0, 2),
+    planner: { plan: forbidden }, evaluate: forbidden,
+    learnedById: new Map([['mail:first', ['PRIVATE-LEARNED-QUERY']]]) });
+  assert.deepEqual((await service.rank('PRIVATE-LEARNED-QUERY', { sourceId: 'procedure_material' })).recordIds, []);
+  assert.deepEqual((await service.rank(request.q, { sourceId: 'procedure_material' })).recordIds, ['mail:first']);
 });

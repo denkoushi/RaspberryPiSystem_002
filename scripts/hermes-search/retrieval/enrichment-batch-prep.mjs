@@ -1,4 +1,5 @@
 // Write a private batch of catalog text for offline enrichment. No logging of record text.
+import { isConversationalSource, recordSourceId } from '../hermes-source-definition.mjs';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -55,6 +56,7 @@ export async function writePrepBatch({ snapshotPath, indexes, outPath, catalog =
   for (const index of indexes) {
     const record = payload.records[index];
     if (!record || typeof record.id !== 'string' || !record.id) throw new Error(`missing record at index ${index}`);
+    if (!isConversationalSource(record.kind ?? recordSourceId(record))) throw new Error(`non-conversational record at index ${index}`);
     records.push(slimRecord(record, keys));
   }
   await mkdir(path.dirname(outPath), { recursive: true, mode: 0o700 });

@@ -8,6 +8,7 @@
 // Usage: node retrieval/flywheel-run.mjs --snapshot snapshot.json --questions night.jsonl [more]
 //   --out run.json [--label name] [--split dev|heldout|all] [--enrichment store.jsonl|off]
 //   [--dense store.bin|off] [--learned learned-queries.jsonl|off] [--pool 30] [--limit N]
+import { isConversationalSource, recordSourceId } from '../hermes-source-definition.mjs';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { loadNonconformityCatalog } from './catalog.mjs';
@@ -89,8 +90,9 @@ export async function runCases({ questions, records, catalog = loadNonconformity
 export async function main(argv = process.argv.slice(2)) {
   const options = parseRunArgs(argv);
   const payload = JSON.parse(readFileSync(options.snapshot, 'utf8'));
-  const records = Array.isArray(payload) ? payload : payload.records;
+  let records = Array.isArray(payload) ? payload : payload.records;
   if (!Array.isArray(records)) throw new Error('snapshot records must be an array');
+  records = records.filter((record) => isConversationalSource(record.kind ?? recordSourceId(record)));
   const rows = options.questions.flatMap((file) => readNightRows(readFileSync(file, 'utf8')));
   const questions = questionSet(rows);
   const { createTypesafeDirectEvaluate } = await import('../hermes-jev-record-pilot.mjs');
