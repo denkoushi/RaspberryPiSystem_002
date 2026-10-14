@@ -11,17 +11,17 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 
 | Metric | Count |
 |--------|------:|
-| Documents | 702 |
-| Total lines | 184152 |
-| Total bytes | 14498966 |
-| With frontmatter | 315 |
-| With status | 167 |
-| source_of_truth declared | 115 |
+| Documents | 710 |
+| Total lines | 185843 |
+| Total bytes | 14748123 |
+| With frontmatter | 318 |
+| With status | 169 |
+| source_of_truth declared | 116 |
 | References to EXEC_PLAN.md | 62 |
 | Question-mark corruption documents | 1 |
 | Replacement-character documents | 1 |
-| Long-line documents | 37 |
-| Local links | 5783 |
+| Long-line documents | 39 |
+| Local links | 5811 |
 | Broken local links | 89 |
 | Documents over 1,000 lines | 29 |
 | Documents over 3,000 lines | 6 |
@@ -40,11 +40,11 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | `docs/archive/architecture/deployment-modules-legacy-through-2026-07.md` | 2522 | 128149 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2208 | 137917 |
 | `docs/knowledge-base/infrastructure/signage.md` | 2208 | 190029 |
-| `docs/INDEX.md` | 2069 | 357240 |
+| `docs/INDEX.md` | 2077 | 358317 |
 | `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1951 | 217024 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153539 |
 | `docs/archive/deployments/legacy-operator-guide-through-2026-07.md` | 1600 | 108031 |
-| `docs/runbooks/kiosk-part-measurement.md` | 1529 | 129685 |
+| `docs/runbooks/kiosk-part-measurement.md` | 1529 | 129686 |
 
 ## EXEC_PLAN References
 
@@ -72,7 +72,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 ## Long-Line Documents
 
 - `EXEC_PLAN.md` (23:1093, 31:1026, 44:1017)
-- `docs/INDEX.md` (331:1132, 347:1242, 351:1022)
+- `docs/INDEX.md` (338:1132, 354:1242, 358:1022)
 - `docs/archive/deployments/2026-04.md` (83:1066)
 - `docs/archive/deployments/2026-05.md` (815:25090, 1642:1257, 2471:1119)
 - `docs/decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md` (47:1010, 48:1002, 53:1214)
@@ -90,7 +90,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/plans/dgx-spark-local-llm-migration-execplan.md` (38:1075)
 - `docs/plans/explicit-site-scope-execplan.md` (53:1024, 90:1114, 98:1282)
 - `docs/plans/hermes-background-worker.md` (28:1085)
-- `docs/plans/hermes-cross-source-foundation-execplan.md` (152:1029, 158:1019)
+- `docs/plans/hermes-cross-source-foundation-execplan.md` (154:1029, 160:1019)
 
 ## Broken Local Links
 

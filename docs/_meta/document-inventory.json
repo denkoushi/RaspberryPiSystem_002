@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 702,
-    "totalLines": 184152,
-    "totalBytes": 14498966,
-    "withFrontmatter": 315,
-    "withStatus": 167,
-    "sourceOfTruthDeclared": 115,
+    "documentCount": 710,
+    "totalLines": 185843,
+    "totalBytes": 14748123,
+    "withFrontmatter": 318,
+    "withStatus": 169,
+    "sourceOfTruthDeclared": 116,
     "execPlanReferences": 62,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
-    "longLineDocuments": 37,
-    "localLinkCount": 5783,
+    "longLineDocuments": 39,
+    "localLinkCount": 5811,
     "brokenLocalLinkCount": 89,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
@@ -5742,7 +5742,7 @@
     {
       "path": "README.md",
       "lineCount": 332,
-      "byteSize": 17243,
+      "byteSize": 17252,
       "hasFrontmatter": false,
       "title": "Raspberry Pi NFC 工場持出返却システム",
       "status": null,
@@ -5919,8 +5919,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 2069,
-      "byteSize": 357240,
+      "lineCount": 2077,
+      "byteSize": 358317,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6964,6 +6964,11 @@
         {
           "href": "./decisions/ADR-20261007-photo-tool-gallery-embeddinggemma2.md",
           "targetPath": "docs/decisions/ADR-20261007-photo-tool-gallery-embeddinggemma2.md",
+          "exists": true
+        },
+        {
+          "href": "./decisions/ADR-20261011-procedure-voice-input.md",
+          "targetPath": "docs/decisions/ADR-20261011-procedure-voice-input.md",
           "exists": true
         },
         {
@@ -10532,6 +10537,11 @@
           "exists": true
         },
         {
+          "href": "./plans/hermes-operation-guide-execplan.md",
+          "targetPath": "docs/plans/hermes-operation-guide-execplan.md",
+          "exists": true
+        },
+        {
           "href": "plans/hermes-pi5-search-spark-inference.md",
           "targetPath": "docs/plans/hermes-pi5-search-spark-inference.md",
           "exists": true
@@ -10555,6 +10565,11 @@
           "href": "plans/hermes-source-semantics-pilot.md",
           "targetPath": "docs/plans/hermes-source-semantics-pilot.md",
           "exists": false
+        },
+        {
+          "href": "./plans/hermes-torque-training-source-execplan.md",
+          "targetPath": "docs/plans/hermes-torque-training-source-execplan.md",
+          "exists": true
         },
         {
           "href": "./plans/inspection-drawing-create-layout-and-return-nav.md",
@@ -10609,6 +10624,11 @@
         {
           "href": "./plans/kiosk-assembly-torque-management-mvp.md",
           "targetPath": "docs/plans/kiosk-assembly-torque-management-mvp.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/kiosk-chat-system-guide-execplan.md",
+          "targetPath": "docs/plans/kiosk-chat-system-guide-execplan.md",
           "exists": true
         },
         {
@@ -11142,6 +11162,11 @@
           "exists": true
         },
         {
+          "href": "./runbooks/kiosk-inquiry-inbox.md",
+          "targetPath": "docs/runbooks/kiosk-inquiry-inbox.md",
+          "exists": true
+        },
+        {
           "href": "./runbooks/kiosk-loan-status-repair.md",
           "targetPath": "docs/runbooks/kiosk-loan-status-repair.md",
           "exists": true
@@ -11552,95 +11577,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 331,
+          "line": 338,
           "length": 1132
         },
         {
-          "line": 347,
+          "line": 354,
           "length": 1242
         },
         {
-          "line": 351,
+          "line": 358,
           "length": 1022
         },
         {
-          "line": 366,
+          "line": 373,
           "length": 1065
         },
         {
-          "line": 414,
+          "line": 421,
           "length": 1165
         },
         {
-          "line": 420,
+          "line": 427,
           "length": 1458
         },
         {
-          "line": 432,
+          "line": 439,
           "length": 1083
         },
         {
-          "line": 446,
+          "line": 453,
           "length": 1398
         },
         {
-          "line": 448,
+          "line": 455,
           "length": 1133
         },
         {
-          "line": 452,
+          "line": 459,
           "length": 1399
         },
         {
-          "line": 454,
+          "line": 461,
           "length": 1008
         },
         {
-          "line": 460,
+          "line": 467,
           "length": 1059
         },
         {
-          "line": 468,
+          "line": 475,
           "length": 1129
         },
         {
-          "line": 472,
+          "line": 479,
           "length": 1135
         },
         {
-          "line": 476,
+          "line": 483,
           "length": 1117
         },
         {
-          "line": 591,
+          "line": 598,
           "length": 1013
         },
         {
-          "line": 777,
+          "line": 784,
           "length": 2038
         },
         {
-          "line": 793,
+          "line": 800,
           "length": 1496
         },
         {
-          "line": 799,
+          "line": 806,
           "length": 1177
         },
         {
-          "line": 1141,
+          "line": 1148,
           "length": 1449
         },
         {
-          "line": 1177,
+          "line": 1184,
           "length": 1136
         },
         {
-          "line": 1179,
+          "line": 1186,
           "length": 1239
         },
         {
-          "line": 1215,
+          "line": 1222,
           "length": 1004
         }
       ],
@@ -17347,8 +17372,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260731-kiosk-runtime-chunk-recovery.md",
-      "lineCount": 51,
-      "byteSize": 4780,
+      "lineCount": 59,
+      "byteSize": 6838,
       "hasFrontmatter": true,
       "title": "Bounded kiosk recovery for stale lazy chunks",
       "status": "accepted-implementation-live-rollout-blocked",
@@ -17504,7 +17529,7 @@
     {
       "path": "docs/decisions/ADR-20260820-google-drive-disaster-recovery.md",
       "lineCount": 79,
-      "byteSize": 10773,
+      "byteSize": 11031,
       "hasFrontmatter": true,
       "title": "ADR-20260820: Independent encrypted Google Drive DR repository for Business Pi 5",
       "status": "accepted",
@@ -17737,8 +17762,8 @@
     },
     {
       "path": "docs/decisions/ADR-20261007-photo-tool-gallery-embeddinggemma2.md",
-      "lineCount": 70,
-      "byteSize": 6990,
+      "lineCount": 73,
+      "byteSize": 8077,
       "hasFrontmatter": true,
       "title": "ADR-20261007 写真持出 類似ギャラリーの埋め込みモデルを EmbeddingGemma 2 へ（段階的切り替え）",
       "status": "accepted",
@@ -17762,6 +17787,32 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/decisions/ADR-20261011-procedure-voice-input.md",
+      "lineCount": 145,
+      "byteSize": 8216,
+      "hasFrontmatter": true,
+      "title": "ADR-20261011 Procedure editor voice input on kiosk devices",
+      "status": "accepted",
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "../../apps/api/src/services/assembly/procedure-layout-suggestion.service.ts",
+          "targetPath": "apps/api/src/services/assembly/procedure-layout-suggestion.service.ts",
+          "exists": true
+        },
+        {
+          "href": "../design-previews/procedure-voice-input-mock.html",
+          "targetPath": "docs/design-previews/procedure-voice-input-mock.html",
+          "exists": true
+        }
+      ],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/decisions/_template.md",
       "lineCount": 9,
       "byteSize": 310,
@@ -17778,8 +17829,8 @@
     },
     {
       "path": "docs/design-previews/README.md",
-      "lineCount": 106,
-      "byteSize": 23143,
+      "lineCount": 111,
+      "byteSize": 25579,
       "hasFrontmatter": false,
       "title": "デザインプレビュー（静的 HTML）",
       "status": null,
@@ -17891,6 +17942,26 @@
           "exists": true
         },
         {
+          "href": "./kiosk-inventory-hover-tray-mock.html",
+          "targetPath": "docs/design-previews/kiosk-inventory-hover-tray-mock.html",
+          "exists": true
+        },
+        {
+          "href": "./kiosk-inventory-read-ui-round2-mock.html",
+          "targetPath": "docs/design-previews/kiosk-inventory-read-ui-round2-mock.html",
+          "exists": true
+        },
+        {
+          "href": "./kiosk-inventory-region-ocr-mock.html",
+          "targetPath": "docs/design-previews/kiosk-inventory-region-ocr-mock.html",
+          "exists": true
+        },
+        {
+          "href": "./kiosk-manual-name-columns-mock.html",
+          "targetPath": "docs/design-previews/kiosk-manual-name-columns-mock.html",
+          "exists": true
+        },
+        {
           "href": "./kiosk-part-measurement-header-strip.html",
           "targetPath": "docs/design-previews/kiosk-part-measurement-header-strip.html",
           "exists": true
@@ -17958,6 +18029,11 @@
         {
           "href": "./kiosk-shelf-master-zero2w-dialog-preview.html",
           "targetPath": "docs/design-previews/kiosk-shelf-master-zero2w-dialog-preview.html",
+          "exists": true
+        },
+        {
+          "href": "./kiosk-work-instruction-editor-uiux-preview.html",
+          "targetPath": "docs/design-previews/kiosk-work-instruction-editor-uiux-preview.html",
           "exists": true
         },
         {
@@ -18156,6 +18232,11 @@
           "exists": true
         },
         {
+          "href": "../plans/kiosk-inventory-ux-execplan.md",
+          "targetPath": "docs/plans/kiosk-inventory-ux-execplan.md",
+          "exists": true
+        },
+        {
           "href": "../plans/kiosk-sop-semantic-target-correction-execplan.md",
           "targetPath": "docs/plans/kiosk-sop-semantic-target-correction-execplan.md",
           "exists": true
@@ -18163,6 +18244,16 @@
         {
           "href": "../plans/mobile-placement-main-page-preview-parity.md",
           "targetPath": "docs/plans/mobile-placement-main-page-preview-parity.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/procedure-manuals-execplan.md",
+          "targetPath": "docs/plans/procedure-manuals-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/self-inspection-work-instruction-uiux.md",
+          "targetPath": "docs/plans/self-inspection-work-instruction-uiux.md",
           "exists": true
         },
         {
@@ -18565,8 +18656,8 @@
     },
     {
       "path": "docs/guides/backup-and-restore.md",
-      "lineCount": 784,
-      "byteSize": 38577,
+      "lineCount": 785,
+      "byteSize": 39101,
       "hasFrontmatter": true,
       "title": "バックアップ・リストア手順",
       "status": null,
@@ -19538,8 +19629,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 157,
-      "byteSize": 18363,
+      "lineCount": 168,
+      "byteSize": 19690,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -19547,6 +19638,11 @@
       "localLinks": [
         {
           "href": "../runbooks/deploy-status-recovery.md",
+          "targetPath": "docs/runbooks/deploy-status-recovery.md",
+          "exists": true
+        },
+        {
+          "href": "../runbooks/deploy-status-recovery.md#キオスクがメンテナンス中のまま",
           "targetPath": "docs/runbooks/deploy-status-recovery.md",
           "exists": true
         }
@@ -19560,7 +19656,7 @@
     {
       "path": "docs/guides/development.md",
       "lineCount": 561,
-      "byteSize": 16204,
+      "byteSize": 16261,
       "hasFrontmatter": true,
       "title": "開発ガイド",
       "status": null,
@@ -20552,8 +20648,8 @@
     },
     {
       "path": "docs/guides/mfa-setup-step-by-step.md",
-      "lineCount": 164,
-      "byteSize": 6704,
+      "lineCount": 171,
+      "byteSize": 7801,
       "hasFrontmatter": false,
       "title": "MFAセットアップ ステップバイステップガイド",
       "status": null,
@@ -20573,8 +20669,8 @@
     },
     {
       "path": "docs/guides/monitoring.md",
-      "lineCount": 241,
-      "byteSize": 8794,
+      "lineCount": 323,
+      "byteSize": 15087,
       "hasFrontmatter": true,
       "title": "監視・アラートガイド",
       "status": null,
@@ -21348,7 +21444,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 10,
+      "inboundCount": 11,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -21742,7 +21838,7 @@
     {
       "path": "docs/guides/ssd-migration.md",
       "lineCount": 344,
-      "byteSize": 11546,
+      "byteSize": 11554,
       "hasFrontmatter": true,
       "title": "SDカードからSSDへの移行手順",
       "status": null,
@@ -23017,10 +23113,10 @@
     },
     {
       "path": "docs/knowledge-base/KB-311-kiosk-immersive-header-allowlist.md",
-      "lineCount": 171,
-      "byteSize": 11765,
+      "lineCount": 178,
+      "byteSize": 13134,
       "hasFrontmatter": true,
-      "title": "KB-311 キオスク沉浸式レイアウト（右下ヘッダーリビール）の URL allowlist",
+      "title": "KB-311 キオスク下辺ドックと画面高さ固定の URL allowlist",
       "status": null,
       "source_of_truth": null,
       "localLinks": [
@@ -23363,7 +23459,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 22,
+      "inboundCount": 23,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -23819,7 +23915,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 9,
+      "inboundCount": 10,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -23983,7 +24079,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 4,
+      "inboundCount": 5,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -26768,8 +26864,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-409-kiosk-inventory-daily-and-setup-screens.md",
-      "lineCount": 92,
-      "byteSize": 8689,
+      "lineCount": 211,
+      "byteSize": 26742,
       "hasFrontmatter": true,
       "title": "Kiosk inventory split into a daily NFC screen and a touch setup screen",
       "status": "accepted",
@@ -26856,8 +26952,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-413-kiosk-chromium-canary-stonebase01.md",
-      "lineCount": 88,
-      "byteSize": 9008,
+      "lineCount": 123,
+      "byteSize": 13352,
       "hasFrontmatter": true,
       "title": "Kiosk browser canary on StoneBase01 — Firefox to Chromium for faster screens",
       "status": "active",
@@ -26869,7 +26965,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 1,
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -26902,6 +26998,99 @@
         {
           "href": "./KB-393-security-hardening-audit-2026-07.md",
           "targetPath": "docs/knowledge-base/KB-393-security-hardening-audit-2026-07.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 3,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-416-outside-intrusion-resilience-2026-10.md",
+      "lineCount": 93,
+      "byteSize": 11358,
+      "hasFrontmatter": false,
+      "title": "KB-416: Lowering the risk of an outside intrusion that stops operations (2026-10)",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "./KB-413-kiosk-chromium-canary-stonebase01.md",
+          "targetPath": "docs/knowledge-base/KB-413-kiosk-chromium-canary-stonebase01.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-415-ai-security-scan-2026-10.md",
+          "targetPath": "docs/knowledge-base/KB-415-ai-security-scan-2026-10.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-417-security-audit-fixes-2026-10-10.md",
+      "lineCount": 68,
+      "byteSize": 5558,
+      "hasFrontmatter": false,
+      "title": "KB-417: Security audit fixes of 2026-10-10 (log redaction, backup path, PIN counter, dependency updates)",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "./KB-415-ai-security-scan-2026-10.md",
+          "targetPath": "docs/knowledge-base/KB-415-ai-security-scan-2026-10.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-416-outside-intrusion-resilience-2026-10.md",
+          "targetPath": "docs/knowledge-base/KB-416-outside-intrusion-resilience-2026-10.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-418-planning-board-warm-reuse.md",
+      "lineCount": 75,
+      "byteSize": 4590,
+      "hasFrontmatter": false,
+      "title": "KB-418: 製番ボード (grinding planning board) reopens were rebuilt every time",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-419-kiosk-operation-flow-button-placement.md",
+      "lineCount": 71,
+      "byteSize": 5325,
+      "hasFrontmatter": false,
+      "title": "KB-419: キオスクのボタン配置を操作の順番に合わせて直した（要領書の「作る」ほか）",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "./KB-323-kiosk-return-card-button-layout.md",
+          "targetPath": "docs/knowledge-base/KB-323-kiosk-return-card-button-layout.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-332-kiosk-active-loan-card-modern-surface.md",
+          "targetPath": "docs/knowledge-base/KB-332-kiosk-active-loan-card-modern-surface.md",
           "exists": true
         }
       ],
@@ -28107,8 +28296,8 @@
     },
     {
       "path": "docs/knowledge-base/ci-cd.md",
-      "lineCount": 820,
-      "byteSize": 54546,
+      "lineCount": 829,
+      "byteSize": 57157,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - CI/CD関連",
       "status": null,
@@ -28460,8 +28649,8 @@
     },
     {
       "path": "docs/knowledge-base/index.md",
-      "lineCount": 879,
-      "byteSize": 265634,
+      "lineCount": 883,
+      "byteSize": 266896,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - 索引",
       "status": null,
@@ -31078,6 +31267,26 @@
           "exists": true
         },
         {
+          "href": "./KB-416-outside-intrusion-resilience-2026-10.md",
+          "targetPath": "docs/knowledge-base/KB-416-outside-intrusion-resilience-2026-10.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-417-security-audit-fixes-2026-10-10.md",
+          "targetPath": "docs/knowledge-base/KB-417-security-audit-fixes-2026-10-10.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-418-planning-board-warm-reuse.md",
+          "targetPath": "docs/knowledge-base/KB-418-planning-board-warm-reuse.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-419-kiosk-operation-flow-button-placement.md",
+          "targetPath": "docs/knowledge-base/KB-419-kiosk-operation-flow-button-placement.md",
+          "exists": true
+        },
+        {
           "href": "./KB-investigation-kiosk-ime-and-power-regression.md",
           "targetPath": "docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md",
           "exists": true
@@ -32839,8 +33048,8 @@
     },
     {
       "path": "docs/modules/tools/README.md",
-      "lineCount": 284,
-      "byteSize": 12846,
+      "lineCount": 287,
+      "byteSize": 13394,
       "hasFrontmatter": false,
       "title": "工具管理モジュール",
       "status": null,
@@ -34256,8 +34465,8 @@
     },
     {
       "path": "docs/plans/hermes-cross-source-foundation-execplan.md",
-      "lineCount": 234,
-      "byteSize": 44432,
+      "lineCount": 236,
+      "byteSize": 45611,
       "hasFrontmatter": true,
       "title": "Hermes横断検索の土台（ソース追加の共通口・DB索引・ページ文脈）",
       "status": null,
@@ -34268,11 +34477,11 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 152,
+          "line": 154,
           "length": 1029
         },
         {
-          "line": 158,
+          "line": 160,
           "length": 1019
         }
       ],
@@ -34351,8 +34560,8 @@
     },
     {
       "path": "docs/plans/hermes-knowledge-procedures-execplan.md",
-      "lineCount": 286,
-      "byteSize": 56331,
+      "lineCount": 287,
+      "byteSize": 57199,
       "hasFrontmatter": false,
       "title": "Chatに投げ込んだ素材をAIが手順書に仕立て、Chatで閲覧できるようにする",
       "status": null,
@@ -34384,7 +34593,7 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 277,
+          "line": 278,
           "length": 1070
         }
       ],
@@ -34436,6 +34645,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/hermes-operation-guide-execplan.md",
+      "lineCount": 98,
+      "byteSize": 7365,
+      "hasFrontmatter": false,
+      "title": "Hermes floating Chat operation guide: assembly first slice",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/hermes-pi5-search-spark-inference.md",
       "lineCount": 165,
       "byteSize": 9719,
@@ -34467,8 +34691,8 @@
     },
     {
       "path": "docs/plans/hermes-retrieval-accuracy-log.md",
-      "lineCount": 422,
-      "byteSize": 51697,
+      "lineCount": 542,
+      "byteSize": 72722,
       "hasFrontmatter": false,
       "title": "Hermes retrieval accuracy log",
       "status": null,
@@ -34497,8 +34721,8 @@
     },
     {
       "path": "docs/plans/hermes-synthetic-question-flywheel-execplan.md",
-      "lineCount": 156,
-      "byteSize": 30396,
+      "lineCount": 161,
+      "byteSize": 32650,
       "hasFrontmatter": false,
       "title": "Hermes synthetic question flywheel for nonconformity retrieval",
       "status": null,
@@ -34509,18 +34733,33 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 120,
+          "line": 125,
           "length": 1248
         },
         {
-          "line": 130,
+          "line": 135,
           "length": 1162
         },
         {
-          "line": 132,
+          "line": 137,
           "length": 1021
         }
       ],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/hermes-torque-training-source-execplan.md",
+      "lineCount": 150,
+      "byteSize": 19424,
+      "hasFrontmatter": true,
+      "title": "Hermes torque training retrieval sources",
+      "status": "implementation-verified-in-part",
+      "source_of_truth": "true",
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
       "referencesExecPlan": false
     },
     {
@@ -34582,8 +34821,8 @@
     },
     {
       "path": "docs/plans/inspection-drawing-dgx-dimension-map-execplan.md",
-      "lineCount": 382,
-      "byteSize": 52023,
+      "lineCount": 387,
+      "byteSize": 53256,
       "hasFrontmatter": true,
       "title": "検査図面の夜間寸法解析（DGX）と丸数字の先回り配置",
       "status": "active",
@@ -34736,8 +34975,8 @@
     },
     {
       "path": "docs/plans/kiosk-analytics-bi-dashboard-execplan.md",
-      "lineCount": 55,
-      "byteSize": 3882,
+      "lineCount": 65,
+      "byteSize": 4524,
       "hasFrontmatter": false,
       "title": "ExecPlan: キオスク集計 BI レイアウト（非スクロール・Top N）",
       "status": null,
@@ -34968,8 +35207,8 @@
     },
     {
       "path": "docs/plans/kiosk-grinding-planning-board.md",
-      "lineCount": 169,
-      "byteSize": 30473,
+      "lineCount": 176,
+      "byteSize": 34218,
       "hasFrontmatter": false,
       "title": "Kiosk grinding planning board",
       "status": null,
@@ -35188,17 +35427,26 @@
     },
     {
       "path": "docs/plans/kiosk-inventory-ux-execplan.md",
-      "lineCount": 340,
-      "byteSize": 41292,
+      "lineCount": 348,
+      "byteSize": 46802,
       "hasFrontmatter": false,
       "title": "Kiosk inventory screens: one daily NFC screen and a separate setup screen",
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
-      "inboundCount": 2,
+      "inboundCount": 3,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
-      "longLines": [],
+      "longLines": [
+        {
+          "line": 35,
+          "length": 1035
+        },
+        {
+          "line": 37,
+          "length": 1003
+        }
+      ],
       "referencesExecPlan": false
     },
     {
@@ -36756,17 +37004,28 @@
     },
     {
       "path": "docs/plans/procedure-manuals-execplan.md",
-      "lineCount": 583,
-      "byteSize": 124115,
+      "lineCount": 720,
+      "byteSize": 186872,
       "hasFrontmatter": false,
       "title": "機種×工程ごとの要領書を、組立手順書を正本にして閲覧・作成できるようにする",
       "status": null,
       "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 1,
+      "localLinks": [
+        {
+          "href": "../knowledge-base/KB-319-photo-loan-vlm-tool-label.md",
+          "targetPath": "docs/knowledge-base/KB-319-photo-loan-vlm-tool-label.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
-      "longLines": [],
+      "longLines": [
+        {
+          "line": 15,
+          "length": 1029
+        }
+      ],
       "referencesExecPlan": false
     },
     {
@@ -36852,8 +37111,8 @@
     },
     {
       "path": "docs/plans/production-schedule-kiosk-execplan.md",
-      "lineCount": 631,
-      "byteSize": 66360,
+      "lineCount": 639,
+      "byteSize": 67670,
       "hasFrontmatter": false,
       "title": "生産スケジュールキオスクページ実装 ExecPlan",
       "status": null,
@@ -37392,19 +37651,19 @@
     },
     {
       "path": "docs/plans/self-inspection-work-instruction-uiux.md",
-      "lineCount": 52,
-      "byteSize": 6018,
+      "lineCount": 54,
+      "byteSize": 7344,
       "hasFrontmatter": false,
       "title": "Self-inspection work-instruction UI/UX",
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
-      "inboundCount": 1,
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 52,
+          "line": 54,
           "length": 1057
         }
       ],
@@ -38464,14 +38723,14 @@
     },
     {
       "path": "docs/runbooks/deploy-status-recovery.md",
-      "lineCount": 54,
-      "byteSize": 2827,
+      "lineCount": 70,
+      "byteSize": 4255,
       "hasFrontmatter": true,
       "title": "デプロイ停止・復旧Runbook",
       "status": "active",
       "source_of_truth": null,
       "localLinks": [],
-      "inboundCount": 28,
+      "inboundCount": 29,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -38550,8 +38809,8 @@
     },
     {
       "path": "docs/runbooks/dgx-system-prod-local-llm.md",
-      "lineCount": 1286,
-      "byteSize": 143081,
+      "lineCount": 1377,
+      "byteSize": 147068,
       "hasFrontmatter": false,
       "title": "Runbook: DGX Spark system-prod LocalLLM 段階切替",
       "status": null,
@@ -38941,7 +39200,7 @@
     {
       "path": "docs/runbooks/google-drive-disaster-recovery.md",
       "lineCount": 131,
-      "byteSize": 15098,
+      "byteSize": 15893,
       "hasFrontmatter": true,
       "title": "Business Pi 5 Google Drive disaster-recovery backup Runbook",
       "status": null,
@@ -38955,8 +39214,8 @@
     },
     {
       "path": "docs/runbooks/kiosk-device-initial-route.md",
-      "lineCount": 260,
-      "byteSize": 10629,
+      "lineCount": 293,
+      "byteSize": 13133,
       "hasFrontmatter": true,
       "title": "Runbook: Kiosk Device Initial Route",
       "status": "active",
@@ -39132,6 +39391,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/runbooks/kiosk-inquiry-inbox.md",
+      "lineCount": 113,
+      "byteSize": 16916,
+      "hasFrontmatter": true,
+      "title": "キオスクお問い合わせ受信箱 Runbook",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/runbooks/kiosk-loan-status-repair.md",
       "lineCount": 139,
       "byteSize": 4449,
@@ -39149,7 +39423,7 @@
     {
       "path": "docs/runbooks/kiosk-part-measurement.md",
       "lineCount": 1529,
-      "byteSize": 129685,
+      "byteSize": 129686,
       "hasFrontmatter": false,
       "title": "キオスク: 部品測定記録（part-measurement）",
       "status": null,
@@ -39529,8 +39803,8 @@
     },
     {
       "path": "docs/runbooks/kiosk-power-operation-recovery.md",
-      "lineCount": 68,
-      "byteSize": 3930,
+      "lineCount": 106,
+      "byteSize": 7295,
       "hasFrontmatter": true,
       "title": "Runbook: 電源操作・連打防止オーバーレイ不具合の復旧",
       "status": null,
@@ -39839,8 +40113,8 @@
     },
     {
       "path": "docs/runbooks/photo-tool-similarity-gallery.md",
-      "lineCount": 131,
-      "byteSize": 14637,
+      "lineCount": 133,
+      "byteSize": 14817,
       "hasFrontmatter": false,
       "title": "Runbook: 写真持出 GOOD 類似ギャラリー（埋め込み・バックフィル・シャドー観測）",
       "status": null,
@@ -40417,8 +40691,8 @@
     },
     {
       "path": "docs/runbooks/security-hardening-remediation.md",
-      "lineCount": 107,
-      "byteSize": 8038,
+      "lineCount": 198,
+      "byteSize": 19660,
       "hasFrontmatter": false,
       "title": "Runbook: Security hardening remediation (Batch C — operator actions)",
       "status": null,
@@ -40437,6 +40711,11 @@
         {
           "href": "../guides/deployment.md",
           "targetPath": "docs/guides/deployment.md",
+          "exists": true
+        },
+        {
+          "href": "../guides/quick-start-deployment.md",
+          "targetPath": "docs/guides/quick-start-deployment.md",
           "exists": true
         },
         {
@@ -41747,7 +42026,7 @@
     {
       "path": "docs/security/requirements.md",
       "lineCount": 301,
-      "byteSize": 16691,
+      "byteSize": 16947,
       "hasFrontmatter": false,
       "title": "セキュリティ要件定義",
       "status": null,
