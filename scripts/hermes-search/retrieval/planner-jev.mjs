@@ -501,7 +501,12 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       // for example "そのうち三島工場資材課の" after "錆の不適合".
       const carriedQuery = contentCarry === 'same' ? previousQuery : '';
       const previousSpan = carriedQuery && typeof previousPlan?.contentSpan === 'string' ? previousPlan.contentSpan : null;
-      const residualTokens = contentTokens(relevanceQuery(stripListedTerms(question, resolvedTerms)));
+      // A short department form such as 「機構設計2課(製造)」 is not a listed term, so its pieces
+      // would survive as content tokens; any token inside a selected value is part of the filter.
+      const selectedValues = selected.flatMap((filter) => filter.values)
+        .map((value) => String(value).normalize('NFKC').replace(/\s+/gu, '').toLowerCase());
+      const residualTokens = contentTokens(relevanceQuery(stripListedTerms(question, resolvedTerms)))
+        .filter((token) => !selectedValues.some((value) => value.includes(token)));
       const hardFilter = hasAppliedHardFilter({ filters }, catalog);
       const residualOverride = judged === true && contentCarry !== 'same' && hardFilter && residualTokens.length === 0;
       const jev = residualOverride ? false : judged;
