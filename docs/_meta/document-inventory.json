@@ -15,9 +15,9 @@
     ]
   },
   "summary": {
-    "documentCount": 710,
-    "totalLines": 185843,
-    "totalBytes": 14748123,
+    "documentCount": 711,
+    "totalLines": 185964,
+    "totalBytes": 14771716,
     "withFrontmatter": 318,
     "withStatus": 169,
     "sourceOfTruthDeclared": 116,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 39,
-    "localLinkCount": 5811,
+    "localLinkCount": 5813,
     "brokenLocalLinkCount": 89,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
@@ -5919,8 +5919,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 2077,
-      "byteSize": 358317,
+      "lineCount": 2078,
+      "byteSize": 358580,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -7699,6 +7699,16 @@
         {
           "href": "./investigation/temperature-display-investigation.md",
           "targetPath": "docs/investigation/temperature-display-investigation.md",
+          "exists": true
+        },
+        {
+          "href": "./kiosk-operation-guide/common/troubleshooting.md",
+          "targetPath": "docs/kiosk-operation-guide/common/troubleshooting.md",
+          "exists": true
+        },
+        {
+          "href": "./kiosk-operation-guide/README.md",
+          "targetPath": "docs/kiosk-operation-guide/README.md",
           "exists": true
         },
         {
@@ -11577,95 +11587,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 338,
+          "line": 339,
           "length": 1132
         },
         {
-          "line": 354,
+          "line": 355,
           "length": 1242
         },
         {
-          "line": 358,
+          "line": 359,
           "length": 1022
         },
         {
-          "line": 373,
+          "line": 374,
           "length": 1065
         },
         {
-          "line": 421,
+          "line": 422,
           "length": 1165
         },
         {
-          "line": 427,
+          "line": 428,
           "length": 1458
         },
         {
-          "line": 439,
+          "line": 440,
           "length": 1083
         },
         {
-          "line": 453,
+          "line": 454,
           "length": 1398
         },
         {
-          "line": 455,
+          "line": 456,
           "length": 1133
         },
         {
-          "line": 459,
+          "line": 460,
           "length": 1399
         },
         {
-          "line": 461,
+          "line": 462,
           "length": 1008
         },
         {
-          "line": 467,
+          "line": 468,
           "length": 1059
         },
         {
-          "line": 475,
+          "line": 476,
           "length": 1129
         },
         {
-          "line": 479,
+          "line": 480,
           "length": 1135
         },
         {
-          "line": 483,
+          "line": 484,
           "length": 1117
         },
         {
-          "line": 598,
+          "line": 599,
           "length": 1013
         },
         {
-          "line": 784,
+          "line": 785,
           "length": 2038
         },
         {
-          "line": 800,
+          "line": 801,
           "length": 1496
         },
         {
-          "line": 806,
+          "line": 807,
           "length": 1177
         },
         {
-          "line": 1148,
+          "line": 1149,
           "length": 1449
         },
         {
-          "line": 1184,
+          "line": 1185,
           "length": 1136
         },
         {
-          "line": 1186,
+          "line": 1187,
           "length": 1239
         },
         {
-          "line": 1222,
+          "line": 1223,
           "length": 1004
         }
       ],
@@ -35185,6 +35195,21 @@
       "source_of_truth": null,
       "localLinks": [],
       "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/kiosk-chat-system-guide-execplan.md",
+      "lineCount": 120,
+      "byteSize": 23330,
+      "hasFrontmatter": false,
+      "title": "キオスクの Chat をシステム全体の案内役にする(操作の問い合わせと不具合の受付)",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
