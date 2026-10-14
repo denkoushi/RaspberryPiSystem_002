@@ -13,6 +13,7 @@ import {
   BusinessHermesConsultationService
 } from '../../services/assembly/business-hermes-consultation.service.js';
 import type { requireClientDevice } from '../kiosk/shared.js';
+import { createReceiptLog, type ReceiptLog } from '../../services/assembly/hermes-search-receipt-log.js';
 
 const paramsSchema = z.object({ id: z.string().uuid() });
 const guideBodySchema = z.object({
@@ -46,6 +47,7 @@ const consultationPatchSchema = z.object({ title: z.string().trim().max(200).nul
 type RequireClientDevice = typeof requireClientDevice;
 
 export type BusinessHermesRouteDeps = {
+  receiptLog?: ReceiptLog;
   requireClientDevice: RequireClientDevice;
   service?: BusinessHermesService;
   chatService?: Pick<BusinessHermesChatService, 'chat'>;
@@ -68,7 +70,7 @@ export async function registerBusinessHermesRoutes(
 ): Promise<void> {
   const service = deps.service ?? new BusinessHermesService();
   const chatService = deps.chatService ?? new BusinessHermesChatService({ hermes: service });
-  const consultationService = deps.consultationService ?? new BusinessHermesConsultationService();
+  const consultationService = deps.consultationService ?? new BusinessHermesConsultationService({ receiptLog: deps.receiptLog ?? createReceiptLog() });
 
   app.get('/assembly/business-hermes/consultations', {
     preHandler: async (request, reply) => {

@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 757,
-    "totalLines": 187944,
-    "totalBytes": 14909867,
+    "totalLines": 187947,
+    "totalBytes": 14912864,
     "withFrontmatter": 363,
     "withStatus": 169,
     "sourceOfTruthDeclared": 116,
@@ -35903,8 +35903,8 @@
     },
     {
       "path": "docs/plans/kiosk-chat-system-guide-execplan.md",
-      "lineCount": 133,
-      "byteSize": 30669,
+      "lineCount": 135,
+      "byteSize": 31672,
       "hasFrontmatter": false,
       "title": "キオスクの Chat をシステム全体の案内役にする(操作の問い合わせと不具合の受付)",
       "status": null,
@@ -37730,8 +37730,8 @@
     },
     {
       "path": "docs/plans/procedure-manuals-execplan.md",
-      "lineCount": 721,
-      "byteSize": 188847,
+      "lineCount": 722,
+      "byteSize": 190841,
       "hasFrontmatter": false,
       "title": "機種×工程ごとの要領書を、組立手順書を正本にして閲覧・作成できるようにする",
       "status": null,
