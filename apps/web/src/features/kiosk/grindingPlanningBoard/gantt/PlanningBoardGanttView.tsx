@@ -7,7 +7,7 @@ import { normalizeMachineName } from '../../productionSchedule/machineName';
 import { ganttResourceLabel } from './ganttResourceLabel';
 import { PlanningBoardForwardGanttRow } from './PlanningBoardForwardGanttRow';
 import { PlanningBoardForwardQueuePopover } from './PlanningBoardForwardQueuePopover';
-import { dayLabel, dayToDate } from './planningBoardGanttLayout';
+import { dayLabel, dayToDate, jstDay } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH, GANTT_HATCH, GANTT_LABEL_WIDTH, PlanningBoardGanttRow } from './PlanningBoardGanttRow';
 
 import type { ForwardReorder } from './PlanningBoardForwardGanttRow';
@@ -33,6 +33,10 @@ const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 const GANTT_BOTTOM_GAP = 10;
 // With a 2- or 4-day span a day is wide enough to show where the hours fall.
 const HOUR_TICKS = [8, 17, 20];
+// The one-day scale fits ten hours on screen so short jobs stay readable, with a tick every hour.
+const ONE_DAY_VISIBLE_DAYS = 10 / 24;
+const EVERY_HOUR = Array.from({ length: 24 }, (_, hour) => hour);
+const SHIFT_START_HOUR = 8;
 const HOUR_TICK_MIN_DAY_WIDTH = 160;
 // The ‹ › buttons move the chart by two hours at any scale.
 const NUDGE_DAYS = 2 / 24;
@@ -48,9 +52,10 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const flaggedIndex = useRef(-1);
   const previousAxis = useRef<{ start: number; dayWidth: number; scale: number; forward: boolean; homeKey: number } | null>(null);
   const labelWidth = forward ? GANTT_FORWARD_LABEL_WIDTH : GANTT_LABEL_WIDTH;
-  const dayWidth = Math.max(1, viewportWidth - labelWidth) / scale;
+  const dayWidth = Math.max(1, viewportWidth - labelWidth) / (scale === 1 ? ONE_DAY_VISIBLE_DAYS : scale);
   const width = (layout.end - layout.start) * dayWidth;
   const showHours = dayWidth >= HOUR_TICK_MIN_DAY_WIDTH;
+  const hourTicks = scale === 1 ? EVERY_HOUR : HOUR_TICKS;
   useEffect(() => {
     const element = viewport.current;
     if (!element) return;
@@ -70,12 +75,15 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     if (!viewport.current) return;
     const previous = previousAxis.current;
     // A scale press starts near today so a 2- or 4-day span does not open on past days; data changes keep the position.
+    // The ten-hour day starts an hour before now on the hour, never before the shift starts.
+    const nowHour = ((layout.now ?? jstDay(new Date())) - layout.today) * 24;
+    const home = layout.today + (scale === 1 ? Math.max(SHIFT_START_HOUR, Math.floor(nowHour) - 1) / 24 : forward || scale < 7 ? 0 : -3);
     const firstDay = previous && previous.scale === scale && previous.forward === forward && previous.homeKey === homeKey
       ? previous.start + viewport.current.scrollLeft / previous.dayWidth
-      : layout.today - (forward || scale < 7 ? 0 : 3);
+      : home;
     viewport.current.scrollLeft = Math.max(0, (firstDay - layout.start) * dayWidth);
     previousAxis.current = { start: layout.start, dayWidth, scale, forward, homeKey };
-  }, [dayWidth, layout.start, layout.today, scale, forward, homeKey]);
+  }, [dayWidth, layout.start, layout.today, layout.now, scale, forward, homeKey]);
   const nudge = (direction: 1 | -1) => {
     if (viewport.current) viewport.current.scrollLeft = Math.max(0, viewport.current.scrollLeft + direction * NUDGE_DAYS * dayWidth);
   };
@@ -132,12 +140,12 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
             {days.map(({ day, weekday, weekend }) => <div key={day} className={clsx('relative shrink-0 overflow-hidden whitespace-nowrap border-l border-slate-800 pt-0.5 text-center text-[11px] leading-4 tabular-nums', day === layout.today ? 'bg-emerald-400 font-bold text-slate-950' : weekend ? 'bg-slate-800 text-slate-300' : 'text-slate-300')}
               style={{ width: dayWidth }} title={dayToDate(day)}>
               {dayWidth >= 44 || weekday === 1 ? `${dayLabel(day)} ` : ''}{WEEKDAYS[weekday]}
-              {showHours && HOUR_TICKS.map((hour) => <span key={hour} className="absolute bottom-0 -translate-x-1/2 text-xs font-bold leading-4 opacity-90" style={{ left: `${hour / 24 * 100}%` }}>{hour}時</span>)}
+              {showHours && hourTicks.map((hour) => <span key={hour} className="absolute bottom-0 -translate-x-1/2 text-xs font-bold leading-4 opacity-90" style={{ left: `${hour / 24 * 100}%` }}>{hour}時</span>)}
             </div>)}
           </div>
           {days.map(({ day, weekend }) => <div key={day} className={clsx('pointer-events-none absolute bottom-0 top-9 border-l border-slate-800/70', !forward && weekend && 'bg-slate-950/50')}
             style={{ left: labelWidth + (day - layout.start) * dayWidth, width: dayWidth }} />)}
-          {showHours && days.flatMap(({ day }) => HOUR_TICKS.map((hour) => <div key={`${day}-${hour}`} className="pointer-events-none absolute bottom-0 top-9 border-l border-dashed border-slate-700/60"
+          {showHours && days.flatMap(({ day }) => hourTicks.map((hour) => <div key={`${day}-${hour}`} className="pointer-events-none absolute bottom-0 top-9 border-l border-dashed border-slate-700/60"
             style={{ left: labelWidth + (day - layout.start + hour / 24) * dayWidth }} />))}
           {!forward && <div className="pointer-events-none absolute bottom-0 top-9 z-[1] w-px bg-emerald-400" style={{ left: labelWidth + (layout.today - layout.start) * dayWidth }} />}
           {layout.completedOnly && <p className="sticky left-0 w-fit p-3 text-sm text-slate-400">完了は「納期から」で表示</p>}
