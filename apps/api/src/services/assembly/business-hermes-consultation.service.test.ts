@@ -5,7 +5,7 @@ import { env } from '../../config/env.js';
 import { BusinessHermesConsultationService } from './business-hermes-consultation.service.js';
 import { CACHED_QUESTION_PREFIX, SOURCE_QUESTION_PREFIX } from './business-hermes-answer-cache.js';
 import { projectTrustedEvidence } from './business-hermes-evidence.js';
-import { signageToolProposal } from './business-hermes-responses.js';
+import { modelState, signageToolProposal } from './business-hermes-responses.js';
 
 const consultationId = '00000000-0000-0000-0000-000000000010';
 
@@ -748,7 +748,7 @@ describe('BusinessHermesConsultationService', () => {
     const result = await service.chat({ consultationId, message: selection.option, selection });
     const measurement = (fixture.messages[2]!.searchDiagnostics as Array<Record<string, unknown>>)[0]!;
     expect(measurement).toMatchObject({ phase: 'answer', status: 'ready', recipeId: 'record-answer',
-      recipeVersion: '1', prefetch: 'adopted', question: '検査の対策は？', answerMessageId: fixture.messages[3]!.id });
+      recipeVersion: '2', prefetch: 'adopted', question: '検査の対策は？', answerMessageId: fixture.messages[3]!.id });
     expect(measurement.elapsedMs).toEqual(expect.any(Number));
     expect(measurement.inferences).toEqual([expect.objectContaining({ elapsedMs: expect.any(Number), runtimeReadyMs: expect.any(Number) })]);
     expect(result.consultation.messages.every((entry) => entry.searchDiagnostics.every((item) => item.kind !== 'business-hermes-learning-v1'))).toBe(true);
@@ -837,6 +837,39 @@ describe('BusinessHermesConsultationService', () => {
     expect(runtime.ensureReady).not.toHaveBeenCalled();
   });
 
+  it.each(['screen', 'keyword', 'none'] as const)('offers the operation recipe by match strength and prefetches the displayed first recipe (match=%s)', async (strength) => {
+    const matches = strength === 'screen';
+    const fixture = dbFixture(true);
+    const question = '自主検査の始め方';
+    const state = { message: '画面の手順を確認しました。', needsClarification: false,
+      routeDecision: matches ? 'operation_guide' : 'record_search', ...(matches ? { guideMiss: true } : {}) };
+    const fetchImpl = vi.fn().mockImplementation(async () => new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: JSON.stringify(state) } })}\n\n`));
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
+      operationGuide: { matchStrength: () => strength, isEnabled: () => true },
+      answerCache: { suggest: vi.fn().mockResolvedValue(null), answer: vi.fn().mockResolvedValue(null) },
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+    const first = await service.chat({ consultationId, message: question });
+    expect(first.confirmation?.options).toEqual([
+      ...(strength === 'screen' ? [`操作の方法を調べる：${question}`] : []),
+      `記録をもとに回答：${question}`, `原因と確認点を調べる：${question}`, `公開要領の手順を調べる：${question}`,
+      ...(strength === 'keyword' ? [`操作の方法を調べる：${question}`] : []), '自分の言葉で補足する'
+    ]);
+    const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
+    const answer = await service.chat({ consultationId, message: selection.option, selection });
+    expect(answer.status).toBe('ready');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const payload = JSON.parse(JSON.parse(fetchImpl.mock.calls[0]![1].body).input[0].content);
+    expect(payload.questionRecipe).toMatchObject({ id: matches ? 'operation-guide' : 'record-answer', version: '2', speculative: true });
+    if (matches) expect(payload.questionRecipe.prompt).toContain('system_operation_guide だけを検索');
+    expect(payload.sourceDefinitions.map((source: { kind: string }) => source.kind)).toEqual(['nonconformity', 'work_instruction', 'system_operation_guide']);
+    expect(fixture.messages.at(-1)?.searchDiagnostics).toEqual(expect.arrayContaining([
+      { kind: 'business-hermes-route-v1', route: state.routeDecision, guideMiss: matches }
+    ]));
+    expect(fixture.messages[2]?.searchDiagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ recipeId: matches ? 'operation-guide' : 'record-answer', recipeVersion: '2', prefetch: 'adopted' })
+    ]));
+  });
+
   it('passes the original question and confirmed purpose to the first native Hermes turn', async () => {
     const fixture = dbFixture(true);
     const fetchImpl = vi.fn().mockImplementation(async () => new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: JSON.stringify({ message: '記録の対策を確認しました。', needsClarification: false, openQuestions: [] }) } })}\n\n`));
@@ -847,7 +880,7 @@ describe('BusinessHermesConsultationService', () => {
     const answer = await service.chat({ consultationId, message: selection.option, selection });
     const payload = JSON.parse(JSON.parse(fetchImpl.mock.calls[0]![1].body).input[0].content);
     expect(payload.confirmedIntent).toEqual({ originalQuestion: '穴の裏が膨らんだ事例の対策は？', purpose: selection.option, confirmationComplete: false });
-    expect(payload.questionRecipe).toMatchObject({ id: 'record-answer', version: '1', speculative: true });
+    expect(payload.questionRecipe).toMatchObject({ id: 'record-answer', version: '2', speculative: true });
     expect(payload.sourceDefinitions.map((source: { kind: string }) => source.kind)).toEqual(['nonconformity', 'work_instruction']);
     expect(payload.sourceDefinitions.find((source: { kind: string }) => source.kind === 'nonconformity')).toMatchObject({
       recordUnit: '1行 = 1件の不適合記録',
@@ -2146,5 +2179,23 @@ describe('BusinessHermesConsultationService', () => {
     expect(await service.cancel(consultationId)).toBe(false);
     expect(cancelled.reasonCode).toBe('HERMES_TIMEOUT');
     expect(resolveFetch).toBeDefined();
+  });
+});
+
+
+describe('modelState operation guide routing', () => {
+  it.each(['operation_guide', 'trouble_report', 'record_search', 'handoff'])('accepts %s with camelCase or snake_case keys', (route) => {
+    expect(modelState({ output_text: JSON.stringify({ routeDecision: route, guideMiss: false }) }, ''))
+      .toMatchObject({ routeDecision: route, guideMiss: false });
+    expect(modelState({ output_text: JSON.stringify({ route_decision: route, guide_miss: true }) }, ''))
+      .toMatchObject({ routeDecision: route, guideMiss: true });
+  });
+
+  it('recognizes routing-only state and rejects unknown routes and nonboolean misses', () => {
+    expect(modelState({ output_text: '{"guide_miss":true}' }, '').guideMiss).toBe(true);
+    expect(modelState({ output_text: '{"route_decision":"handoff"}' }, '').routeDecision).toBe('handoff');
+    const state = modelState({ output_text: '{"routeDecision":"invented","guideMiss":"true"}' }, '');
+    expect(state.routeDecision).toBeUndefined();
+    expect(state.guideMiss).toBeUndefined();
   });
 });

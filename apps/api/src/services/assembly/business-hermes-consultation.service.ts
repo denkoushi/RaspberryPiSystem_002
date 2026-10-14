@@ -45,6 +45,8 @@ import {
 import { isSignageCanvasLayout } from '../signage/signage-layout.types.js';
 import { businessHermesSourceDefinition, businessHermesSourceDefinitionList } from './business-hermes-source-adapters.js';
 
+import { kioskOperationGuide, kioskOperationGuideSourceDefinition, type KioskOperationGuideIndex } from './kiosk-operation-guide.service.js';
+
 export type { BusinessHermesConsultationConfirmation } from './business-hermes-responses.js';
 export type { ConsultationEvidence } from './business-hermes-evidence.js';
 
@@ -119,6 +121,7 @@ export type BusinessHermesConsultationChatResponse = {
 };
 
 type ConsultationDeps = {
+  operationGuide?: Pick<KioskOperationGuideIndex, 'matchStrength' | 'isEnabled'>;
   db?: PrismaClient;
   fetchImpl?: FetchLike;
   runtime?: LocalLlmRuntimeControllerPort | null;
@@ -197,7 +200,7 @@ const MAX_HISTORY = 40;
 const INTENT_CONFIRMATION_TITLE = '相談の目的';
 const INTENT_SUPPLEMENT = '自分の言葉で補足する';
 const INTENT_SUPPLEMENT_PROMPT = '知りたい内容や対象について、ご自分の言葉で補足してください。';
-const QUESTION_RECIPE_VERSION = '1';
+const QUESTION_RECIPE_VERSION = '2';
 const SIGNAGE_CONFIRMATION_TITLE = 'サイネージ設定の確認';
 const SIGNAGE_APPROVE_OPTION = 'このサイネージ設定を適用する';
 const SIGNAGE_REJECT_OPTION = 'このサイネージ設定は適用しない';
@@ -278,7 +281,8 @@ function questionRecipes(question: string) {
   return [
     { id: 'record-answer', version: QUESTION_RECIPE_VERSION, option: `記録をもとに回答：${subject}`, prompt: '元の質問の対象と用件を保ち、記録にある答えを短く示す。' },
     { id: 'record-cause', version: QUESTION_RECIPE_VERSION, option: `原因と確認点を調べる：${subject}`, prompt: '元の質問の対象について、記録された原因と確認点を示す。' },
-    { id: 'published-procedure', version: QUESTION_RECIPE_VERSION, option: `公開要領の手順を調べる：${subject}`, prompt: '元の質問の対象について、公開作業要領の作業・検査手順を示す。' }
+    { id: 'published-procedure', version: QUESTION_RECIPE_VERSION, option: `公開要領の手順を調べる：${subject}`, prompt: '元の質問の対象について、公開作業要領の作業・検査手順を示す。' },
+    { id: 'operation-guide', version: QUESTION_RECIPE_VERSION, option: `操作の方法を調べる：${subject}`, prompt: '元の質問の対象について、system_operation_guide だけを検索し、該当する節の手順を画面名を添えて3行程度で示す。該当が無いときは推測せず「この操作の説明はまだありません。『お問い合わせ』から聞いてください」と返す。' }
   ];
 }
 
@@ -652,6 +656,7 @@ export function toConsultationView(row: {
 }
 
 export class BusinessHermesConsultationService {
+  private readonly operationGuide: Pick<KioskOperationGuideIndex, 'matchStrength' | 'isEnabled'>;
   private readonly db: PrismaClient;
   private readonly deps: ConsultationDeps;
   private readonly scanResolver?: Pick<BusinessHermesScanResolver, 'resolve'>;
@@ -661,6 +666,7 @@ export class BusinessHermesConsultationService {
   private readonly signageControl: Pick<BusinessHermesMcpService, 'applySignageProposal' | 'prepareSignageProposal'>;
 
   constructor(deps: ConsultationDeps = {}) {
+    this.operationGuide = deps.operationGuide ?? kioskOperationGuide();
     this.db = deps.db ?? prisma;
     this.deps = deps;
     this.scanResolver = deps.scanResolver;
@@ -1024,7 +1030,7 @@ export class BusinessHermesConsultationService {
       if (cachedQuestion && measurement) measurement.answerCache = 'offered';
       const confirmation = firstQuestion ? { title: INTENT_CONFIRMATION_TITLE, prompt, options: [
         ...(cachedQuestion ? [CACHED_QUESTION_PREFIX + cachedQuestion] : []),
-        ...(sourceChoices.length ? sourceChoices : questionRecipes(message).map((recipe) => recipe.option)), INTENT_SUPPLEMENT] } : undefined;
+        ...(sourceChoices.length ? sourceChoices : this.displayedQuestionRecipes(message).map((recipe) => recipe.option)), INTENT_SUPPLEMENT] } : undefined;
       const answer = firstQuestion ? 'まず、知りたい内容を選んでください。' : prompt;
       await this.db.businessHermesConsultationMessage.create({ data: {
         consultationId, role: 'assistant', content: answer, evidence: asJson([]),
@@ -1237,7 +1243,8 @@ export class BusinessHermesConsultationService {
         // persisting the model's explicit display decision for consultation history.
         evidence: asJson({ items: persistedEvidence, visible: evidenceVisible, visibleIds: evidenceVisibleIds, recordIds, ...(recordView ? { recordView } : {}) }),
         ...(confirmation ? { confirmation: asJson(confirmation) } : {}),
-        searchDiagnostics: asJson([...parsedSearches, ...(experience ? [experience] : [])])
+        searchDiagnostics: asJson([...parsedSearches, ...(experience ? [experience] : []),
+          ...(state.routeDecision !== undefined ? [{ kind: 'business-hermes-route-v1', route: state.routeDecision, guideMiss: state.guideMiss ?? false }] : [])])
       } });
       if (measurement) measurement.answerMessageId = answerMessage.id;
       if (learned?.success) await this.answerCache.remember?.({ id: answerMessage.id, ...learned.data }, controller.signal);
@@ -1351,6 +1358,18 @@ export class BusinessHermesConsultationService {
     };
   }
 
+  // The operation-guide recipe leads (and is prefetched) only when the question names a
+  // guide screen; a keyword-only hit appends it last so record questions keep their flow.
+  private displayedQuestionRecipes(question: string) {
+    const recipes = questionRecipes(question);
+    const existing = recipes.filter((recipe) => recipe.id !== 'operation-guide');
+    const guide = recipes.filter((recipe) => recipe.id === 'operation-guide');
+    const strength = this.operationGuide.isEnabled() ? this.operationGuide.matchStrength(question) : 'none';
+    if (strength === 'screen') return [...guide, ...existing];
+    if (strength === 'keyword') return [...existing, ...guide];
+    return existing;
+  }
+
   private inferenceInput(consultation: BusinessHermesConsultationDetail, message: string, selection?: BusinessHermesSelection,
     intentQuestion?: string, availableEvidence: JsonRecord[] = [], scanResolution?: BusinessHermesScanResolution, speculative = false,
     sourceGrounding?: BusinessHermesGroundedSearch, displayedEvidence: JsonRecord[] = [],
@@ -1359,7 +1378,8 @@ export class BusinessHermesConsultationService {
     return {
       caseState: { title: consultation.title, relatedIdentifiers: consultation.relatedIdentifiers, confirmedFacts: consultation.confirmedFacts,
         openQuestions: speculative ? [] : consultation.openQuestions, summary: consultation.summary },
-      sourceDefinitions: businessHermesSourceDefinitionList(),
+      sourceDefinitions: [...businessHermesSourceDefinitionList(),
+        ...(this.operationGuide.isEnabled() ? [kioskOperationGuideSourceDefinition] : [])],
       availableEvidence,
       displayedEvidence,
       history: consultation.messages.slice(-8).map(({ role, content, recordIds }) => ({ role, content, recordIds })),
@@ -1382,14 +1402,15 @@ export class BusinessHermesConsultationService {
   private startPrefetch(consultation: BusinessHermesConsultationDetail, question: string, confirmation: BusinessHermesConsultationConfirmation,
     sourceGrounding?: BusinessHermesGroundedSearch): void {
     if (!this.isConfigured() || prefetches.size > 0 || inFlight.size > 1) return;
-    const selection = { prompt: confirmation.prompt, option: questionRecipes(question)[0]!.option };
+    const recipe = this.displayedQuestionRecipes(question)[0]!;
+    const selection = { prompt: confirmation.prompt, option: recipe.option };
     const pending: Prefetch = {
       snapshot: prefetchSnapshot(consultation), selection, conversationKey: randomUUID(), controller: new AbortController(),
       result: Promise.resolve(null), measurement: { conversationKey: '', startedAt: new Date().toISOString() }
     };
     pending.measurement.conversationKey = pending.conversationKey;
     prefetches.set(consultation.id, pending);
-    logger.info({ consultationId: consultation.id, event: 'started', recipeId: 'record-answer', recipeVersion: QUESTION_RECIPE_VERSION }, 'Business Hermes prefetch');
+    logger.info({ consultationId: consultation.id, event: 'started', recipeId: recipe.id, recipeVersion: QUESTION_RECIPE_VERSION }, 'Business Hermes prefetch');
     pending.result = this.respond(this.inferenceInput(consultation, selection.option, selection, question, [], undefined, true, sourceGrounding), pending.conversationKey, pending.controller.signal, pending.measurement)
       .then((parsed) => {
         if (pending.controller.signal.aborted || responseStatus(parsed) !== 'completed' || isKnownUpstreamFailureResponse(parsed) || !responseMessage(parsed)) return null;

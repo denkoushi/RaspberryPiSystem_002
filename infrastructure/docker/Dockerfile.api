@@ -48,6 +48,8 @@ COPY scripts/deploy/deploy-status-state.py ./scripts/deploy/deploy-status-state.
 COPY scripts/part-measurement/drawing-local-rapidocr-worker.py ./scripts/part-measurement/drawing-local-rapidocr-worker.py
 COPY scripts/server/add-cert-backup-target.mjs ./scripts/server/add-cert-backup-target.mjs
 COPY scripts/hermes-search ./scripts/hermes-search
+# Kiosk operation guide: read-only business Hermes source (KIOSK_OPERATION_GUIDE_DIR).
+COPY docs/kiosk-operation-guide ./docs/kiosk-operation-guide
 
 WORKDIR /app/packages/shared-types
 RUN nice -n 10 pnpm build
@@ -165,6 +167,7 @@ COPY --from=build --exclude=node_modules /app/packages/shared-types ./packages/s
 COPY --from=build --exclude=node_modules /app/packages/part-search-core ./packages/part-search-core
 COPY --from=build --exclude=node_modules /app/packages/shelf-layout-core ./packages/shelf-layout-core
 COPY --from=build /app/scripts ./scripts
+COPY --from=build /app/docs/kiosk-operation-guide ./docs/kiosk-operation-guide
 
 WORKDIR /app/apps/api
 RUN nice -n 10 pnpm prisma generate

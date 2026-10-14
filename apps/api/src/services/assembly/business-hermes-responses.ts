@@ -297,6 +297,8 @@ export function modelState(response: JsonRecord, answer: string): {
   confirmation?: BusinessHermesConsultationConfirmation;
   signageProposal?: BusinessHermesSignageProposal;
   signageProposalInvalid?: boolean;
+  routeDecision?: 'operation_guide' | 'trouble_report' | 'record_search' | 'handoff';
+  guideMiss?: boolean;
 } {
   const messageTexts = outputItems(response)
     .filter((item) => item.type === 'message' && Array.isArray(item.content))
@@ -310,13 +312,19 @@ export function modelState(response: JsonRecord, answer: string): {
     const parsed = extractEmbeddedJson(candidate, true);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
     const record = parsed as JsonRecord;
-    const hasState = ['title', 'relatedIdentifiers', 'related_identifiers', 'confirmedFacts', 'confirmed_facts', 'openQuestions', 'open_questions', 'summary', 'message', 'showEvidence', 'show_evidence', 'evidenceIds', 'evidence_ids', 'recordIds', 'record_ids', 'recordView', 'record_view', 'needsClarification', 'needs_clarification', 'confirmation', 'signageProposal']
+    const hasState = ['title', 'relatedIdentifiers', 'related_identifiers', 'confirmedFacts', 'confirmed_facts', 'openQuestions', 'open_questions', 'summary', 'message', 'showEvidence', 'show_evidence', 'evidenceIds', 'evidence_ids', 'recordIds', 'record_ids', 'recordView', 'record_view', 'needsClarification', 'needs_clarification', 'confirmation', 'signageProposal', 'routeDecision', 'route_decision', 'guideMiss', 'guide_miss']
       .some((key) => record[key] !== undefined);
     if (!hasState) continue;
     const recordIdValue = record.recordIds !== undefined ? record.recordIds : record.record_ids;
     const parsedRecordIds = recordIdValue !== undefined ? requestedRecordIds(recordIdValue) : { ids: [], invalid: false };
     const signageProposal = parseBusinessHermesSignageProposal(record.signageProposal);
+    const routeDecision = record.routeDecision ?? record.route_decision;
     return {
+      routeDecision: routeDecision === 'operation_guide' || routeDecision === 'trouble_report' || routeDecision === 'record_search' || routeDecision === 'handoff'
+        ? routeDecision : undefined,
+      guideMiss: typeof record.guideMiss === 'boolean'
+        ? record.guideMiss
+        : typeof record.guide_miss === 'boolean' ? record.guide_miss : undefined,
       title: typeof record.title === 'string' ? record.title : undefined,
       relatedIdentifiers: record.relatedIdentifiers !== undefined || record.related_identifiers !== undefined ? asStrings(record.relatedIdentifiers ?? record.related_identifiers) : undefined,
       confirmedFacts: record.confirmedFacts !== undefined || record.confirmed_facts !== undefined ? asStrings(record.confirmedFacts ?? record.confirmed_facts) : undefined,

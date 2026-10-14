@@ -5,7 +5,7 @@ export const BUSINESS_HERMES_SOURCE_DEFINITION_VERSION = 1 as const;
 
 export type BusinessHermesSourceDefinition = {
   version: typeof BUSINESS_HERMES_SOURCE_DEFINITION_VERSION;
-  kind: BusinessHermesSourceKind;
+  kind: BusinessHermesSourceKind | 'system_operation_guide';
   description: string;
   requestHints: ReadonlyArray<string>;
   recordUnit: string;

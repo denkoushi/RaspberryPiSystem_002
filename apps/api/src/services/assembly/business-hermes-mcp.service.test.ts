@@ -1,8 +1,68 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 
 import { BusinessHermesMcpService, groundedAnswerMessage } from './business-hermes-mcp.service.js';
+import { KioskOperationGuideIndex } from './kiosk-operation-guide.service.js';
+import { businessHermesSourceDefinitionList, businessSourceAdapters } from './business-hermes-source-adapters.js';
 
 describe('BusinessHermesMcpService', () => {
+  it('searches and describes an injected operation guide and returns full section detail', async () => {
+    const dir = mkdtempSync(fileURLToPath(new URL('../../../.kiosk-operation-guide-mcp-test-', import.meta.url)));
+    try {
+      const body = `自主検査の開始ボタンを押します。${'確認します。'.repeat(120)}`;
+      writeFileSync(path.join(dir, 'self-inspection.md'), `---
+title: 自主検査
+routes: [/kiosk/self-inspection]
+keywords: [自主検査]
+---
+# 自主検査
+## 基本の手順
+${body}
+## それでも直らないとき
+お問い合わせを使います。`);
+      const service = new BusinessHermesMcpService({ operationGuide: KioskOperationGuideIndex.fromDirectory(dir), db: {} as never, workInstructions: {} as never });
+      const search = JSON.parse((await service.call('business_hermes_search', { kind: 'system_operation_guide', query: '自主検査の始め方', limit: 1 })).content[0]!.text);
+      expect(search).toMatchObject({ kind: 'system_operation_guide', query: '自主検査の始め方', total: 2, hasMore: true, nextCursor: null,
+        results: [{ id: 'self-inspection.md#0', screen: '自主検査', heading: '基本の手順', body: body.slice(0, 600), truncated: true }] });
+      const detail = JSON.parse((await service.call('business_hermes_get_detail', { kind: 'system_operation_guide', id: search.results[0].id })).content[0]!.text);
+      expect(detail).toMatchObject({ kind: 'system_operation_guide', body, siblings: [{ id: 'self-inspection.md#1', heading: 'それでも直らないとき' }] });
+      const sources = JSON.parse((await service.call('business_hermes_describe_sources', {})).content[0]!.text).sources;
+      expect(sources.map((source: { kind: string }) => source.kind)).toEqual(['nonconformity', 'work_instruction', 'system_operation_guide']);
+      expect(sources[2]).toMatchObject({ fields: ['id', 'screen', 'routes', 'heading', 'keywords', 'body'],
+        fieldMeanings: { screen: '画面名' }, fieldDefinitions: expect.arrayContaining([{ name: 'screen', meaning: '画面名', searchable: true }]),
+        candidateFields: [], relationKeys: [], rules: expect.arrayContaining(['該当が無ければ推測で手順を作らない']) });
+      expect(businessHermesSourceDefinitionList().map(({ kind }) => kind)).toEqual(['nonconformity', 'work_instruction']);
+      expect(businessSourceAdapters).not.toHaveProperty('system_operation_guide');
+      for (const [tool, args, error] of [
+        ['business_hermes_search', {}, 'query is required for system_operation_guide'],
+        ['business_hermes_get_detail', {}, 'id is required for system_operation_guide'],
+        ['business_hermes_get_detail', { id: 'missing.md#0' }, 'operation guide section not found']
+      ] as const) {
+        expect(JSON.parse((await service.call(tool, { kind: 'system_operation_guide', ...args })).content[0]!.text)).toEqual({ error });
+      }
+      expect(JSON.parse((await service.call('business_hermes_search', { kind: 'system_operation_guide', query: '自主検査', limit: 0 })).content[0]!.text).results).toHaveLength(1);
+      for (const name of ['business_hermes_search', 'business_hermes_get_detail']) {
+        expect(service.listTools().find((tool) => tool.name === name)?.inputSchema).toMatchObject({
+          properties: { kind: { enum: expect.arrayContaining(['system_operation_guide']) } }
+        });
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('hides and rejects a disabled operation guide', async () => {
+    const service = new BusinessHermesMcpService({ operationGuide: KioskOperationGuideIndex.empty(), db: {} as never, workInstructions: {} as never });
+    for (const name of ['business_hermes_search', 'business_hermes_get_detail'] as const) {
+      const result = await service.call(name, { kind: 'system_operation_guide', query: '自主検査の始め方', id: 'self-inspection.md#0' });
+      expect(JSON.parse(result.content[0]!.text)).toEqual({ error: 'system_operation_guide is not available' });
+    }
+    const sources = JSON.parse((await service.call('business_hermes_describe_sources', {})).content[0]!.text).sources;
+    expect(sources.map((source: { kind: string }) => source.kind)).toEqual(['nonconformity', 'work_instruction']);
+  });
+
   it('resolves an official origin department before applying the requested result limit', async () => {
     const row = {
       id: 'nc-machine', nonconformityNo: '00008196', partNumber: 'MD005195722', partName: 'Ｘ軸ベース', machineName: 'ＤＦＤ',
