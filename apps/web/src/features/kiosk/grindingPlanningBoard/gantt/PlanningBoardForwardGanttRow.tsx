@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { canReorderForwardBars, forwardItemDetails } from './planningBoardForwardQueue';
 import { dateToDay } from './planningBoardGanttLayout';
-import { GANTT_LABEL_WIDTH } from './PlanningBoardGanttRow';
+import { GANTT_FORWARD_LABEL_WIDTH } from './PlanningBoardGanttRow';
 
 import type { GanttBar, GanttRow } from './planningBoardGanttLayout';
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceOrderPlacement } from '@raspi-system/shared-types';
@@ -71,8 +71,8 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
       setPreview({ itemId: pending.bar.item.itemId, dx, drop: findDrop(event.clientX, pending.bar) });
     }
   };
-  return <div className="flex min-h-28 border-b border-slate-800/70" data-testid={`planning-forward-lane-${row.key}`}>
-    <div className="sticky left-0 z-20 flex shrink-0 flex-col justify-center gap-1 border-r border-slate-700 bg-slate-900 px-2 py-1 text-xs" style={{ width: GANTT_LABEL_WIDTH }}>
+  return <div className="flex min-h-[76px] border-b border-slate-800/70" data-testid={`planning-forward-lane-${row.key}`}>
+    <div className="sticky left-0 z-20 flex shrink-0 flex-col justify-center gap-1 border-r border-slate-700 bg-slate-900 px-2 py-1 text-xs" style={{ width: GANTT_FORWARD_LABEL_WIDTH }}>
       {label ?? <><strong className="truncate">{row.label}</strong><span className="truncate text-slate-400">{row.detail}</span></>}
     </div>
     <div ref={track} className="relative shrink-0 overflow-hidden" style={{ width }}>
@@ -81,7 +81,7 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
         <span className="absolute inset-y-0 bg-slate-950/55" style={{ left: (i + (8 + hours) / 24) * dayWidth, width: (16 - hours) / 24 * dayWidth }} />
       </div>)}
       <span data-testid="planning-gantt-now" className="pointer-events-none absolute inset-y-0 z-[3] border-l-2 border-yellow-400" style={{ left: (now - start) * dayWidth }} />
-      {row.connectors.map((link, i) => <span key={i} className="pointer-events-none absolute top-12 border-t-2 border-dotted border-amber-400" style={{ left: (link.start - start) * dayWidth, width: (link.end - link.start) * dayWidth }} />)}
+      {row.connectors.map((link, i) => <span key={i} className="pointer-events-none absolute top-8 border-t-2 border-dotted border-amber-400" style={{ left: (link.start - start) * dayWidth, width: (link.end - link.start) * dayWidth }} />)}
       {row.bars.map((bar) => {
         const selected = selectedItemIds.has(bar.item.itemId);
         const segments = bar.unknown ? [{ start: bar.start!, end: bar.end! }] : bar.segments ?? [];
@@ -93,7 +93,7 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
               aria-label={`${bar.item.fhinmei || bar.item.fhincd} 工順${bar.item.processOrder} ${bar.resource} 納期${bar.due ?? 'なし'}`}
               aria-pressed={selected} disabled={disabled || bar.item.isCompleted}
               data-drag-disabled={dragDisabled || disabled || !resourceView}
-              className={clsx('absolute top-7 h-11 touch-pan-y select-none overflow-hidden whitespace-nowrap rounded text-left text-[11px] font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-white',
+              className={clsx('absolute top-3 h-11 touch-pan-y select-none overflow-hidden whitespace-nowrap rounded text-left text-[11px] font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-white',
                 bar.tone === 'late' ? 'bg-rose-400 text-slate-950' : 'bg-sky-400 text-slate-950',
                 bar.unknown && 'border border-dashed border-slate-200 bg-slate-800 text-slate-200',
                 selected && 'outline outline-2 outline-offset-1 outline-white', index > 0 && 'border-l-2 border-dashed border-slate-950')}
@@ -126,7 +126,7 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
               }}>
               {bar.unknown ? '所要不明' : segmentWidth >= 48
                 ? <span className="block truncate px-1">{bar.item.fhinmei || bar.item.fhincd}
-                  <small className="block truncate font-normal">{scale === 2 ? forwardItemDetails(bar.item, true) : `${bar.item.requiredMinutes}分`}</small>
+                  <small className="block truncate font-normal">{scale <= 2 ? forwardItemDetails(bar.item) : `${bar.item.requiredMinutes}分`}</small>
                 </span> : null}
             </button>;
           })}

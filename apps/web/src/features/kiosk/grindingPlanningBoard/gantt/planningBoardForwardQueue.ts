@@ -1,3 +1,5 @@
+import { normalizeMachineName } from '../../productionSchedule/machineName';
+
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
@@ -11,15 +13,8 @@ export function forwardQueueWindow(layout: GanttLayout, hovered: GanttBar) {
   return queue.slice(from, from + 8).map((bar, i) => ({ bar, position: from + i + 1 }));
 }
 
-export function formatForwardQueueTime(day: number, today: number): string {
-  // Layout days already encode JST wall time; applying the timezone again would add nine hours.
-  const date = new Date(Math.round(day * 1440) * 60_000);
-  const prefix = Math.floor(date.getTime() / 86_400_000) === today ? '' : `${date.getUTCMonth() + 1}/${date.getUTCDate()} `;
-  return `${prefix}${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}`;
-}
-
-export function forwardItemDetails(item: GrindingPlanningBoardItem, includeMachine = false): string {
-  return [item.fhincd, item.plannedQuantity == null ? null : `${item.plannedQuantity}個`, includeMachine ? item.machineName : null]
+export function forwardItemDetails(item: GrindingPlanningBoardItem): string {
+  return [item.fseiban, item.fhincd, item.plannedQuantity == null ? null : `${item.plannedQuantity}個`, normalizeMachineName(item.machineName)]
     .filter((part) => part != null && part.trim() !== '').join(' · ');
 }
 

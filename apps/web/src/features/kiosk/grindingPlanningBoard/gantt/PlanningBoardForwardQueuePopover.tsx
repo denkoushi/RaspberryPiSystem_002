@@ -2,7 +2,10 @@ import clsx from 'clsx';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-import { canReorderForwardBars, formatForwardQueueTime, forwardItemDetails, forwardQueueWindow } from './planningBoardForwardQueue';
+import { normalizeMachineName } from '../../productionSchedule/machineName';
+
+import { ganttResourceLabel } from './ganttResourceLabel';
+import { canReorderForwardBars, forwardQueueWindow } from './planningBoardForwardQueue';
 
 import type { ForwardReorder } from './PlanningBoardForwardGanttRow';
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
@@ -96,11 +99,10 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
     setDrop(next);
     return next;
   };
-  const resourceLabel = [open.bar.resource, ...(resourceNameMap[open.bar.resource] ?? [])].join(' ');
+  const resourceLabel = ganttResourceLabel(open.bar.resource, resourceNameMap[open.bar.resource]);
   return createPortal(<div ref={panel} role="region" aria-label={`${resourceLabel} の次にやる順`}
     className="fixed z-[100] max-h-[calc(100dvh-16px)] max-w-[calc(100vw-16px)] overflow-auto rounded-lg border border-slate-600 bg-slate-900 p-2 text-slate-100 shadow-xl"
     style={position} onPointerEnter={cancelHide} onPointerLeave={(event) => { if (event.pointerType === 'mouse') hideSoon(); }}>
-    <div className="mb-1 text-xs text-slate-300">{resourceLabel} の次にやる順</div>
     <div className="flex gap-1.5 overflow-x-auto p-1">
       {cards.map(({ bar, position: queuePosition }) => <div key={bar.item.itemId} data-queue-position={queuePosition}
         data-testid={`planning-forward-queue-card-${bar.item.itemId}`}
@@ -121,10 +123,10 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
           const rect = panel.current?.getBoundingClientRect();
           if (rect && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) hideSoon();
         }} onPointerCancel={() => { clearDrag(); hideSoon(); }} onLostPointerCapture={() => { if (drag.current) { clearDrag(); hideSoon(); } }}>
-        <div className="text-slate-400">{queuePosition}. {formatForwardQueueTime(bar.start!, layout.today)}〜 · {bar.unknown ? '所要不明' : `${bar.item.requiredMinutes}分`}</div>
+        <div className="truncate text-slate-400">{[bar.item.fseiban, bar.unknown ? '所要不明' : `${bar.item.requiredMinutes}分`, bar.item.plannedQuantity == null ? null : `${bar.item.plannedQuantity}個`].filter((part) => part != null && part !== '').join(' · ')}</div>
         <strong className="my-0.5 block truncate text-sm" title={bar.item.fhinmei || bar.item.fhincd}>{bar.item.fhinmei || bar.item.fhincd}</strong>
-        <div className="truncate text-slate-400">{forwardItemDetails(bar.item)}</div>
-        <div className="truncate text-slate-400">{bar.item.machineName}</div>
+        <div className="truncate text-slate-400">{bar.item.fhincd}</div>
+        <div className="truncate text-slate-400">{normalizeMachineName(bar.item.machineName)}</div>
         {drop?.bar.item.itemId === bar.item.itemId && <span data-testid="planning-forward-queue-insertion"
           className={clsx('pointer-events-none absolute inset-y-0 w-0.5 bg-white', drop.placement === 'before' ? '-left-1.5' : '-right-1')} />}
       </div>)}

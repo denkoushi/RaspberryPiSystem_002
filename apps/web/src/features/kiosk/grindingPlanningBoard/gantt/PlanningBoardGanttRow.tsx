@@ -8,6 +8,8 @@ import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 import type { PointerEvent } from 'react';
 
 export const GANTT_LABEL_WIDTH = 320;
+// 「今日から」 only shows the machine and its daily-hours buttons, so its label column is narrower.
+export const GANTT_FORWARD_LABEL_WIDTH = 168;
 export const GANTT_ROW_HEIGHT = 56;
 export const GANTT_HATCH = 'repeating-linear-gradient(135deg, #fb7185 0 4px, #9f1239 4px 8px)';
 

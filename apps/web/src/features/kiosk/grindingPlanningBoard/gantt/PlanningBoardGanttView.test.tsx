@@ -111,7 +111,7 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.click(bar);
     expect(values.onToggleItem).not.toHaveBeenCalled();
   });
-  it('treats movement under 8px as a tap and displays planned details', () => {
+  it('treats movement under 8px as a tap without a detail strip', () => {
     const values = forwardProps();
     render(<PlanningBoardGanttView {...values} />);
     const bar = screen.getByTestId('planning-gantt-bar-a');
@@ -120,9 +120,8 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.click(bar);
     expect(values.onResourceReorder).not.toHaveBeenCalled();
     expect(values.onToggleItem).toHaveBeenCalledWith(expect.objectContaining({ itemId: 'a' }), true);
-    expect(screen.getByText(/着手見込み 10\/14 10:00/)).toBeInTheDocument();
-    expect(screen.getByText(/終了見込み 10\/14 11:00/)).toBeInTheDocument();
-    expect(screen.getByText('2件 · 今日 2.0h')).toBeInTheDocument();
+    expect(screen.queryByText(/着手見込み/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/件 · 今日/)).not.toBeInTheDocument();
   });
   it('blocks reorder when disabled or across special-due bands', () => {
     const values = forwardProps();
@@ -145,13 +144,15 @@ describe('forward PlanningBoardGanttView', () => {
     expect(screen.queryByTestId('planning-gantt-bar-a')).not.toBeInTheDocument();
     expect(screen.getByLabelText('ガントの日付と工程').scrollLeft).toBe(0);
   });
-  it('uses two lines at scale 2 and minutes at other scales, keeping process order only in the accessible label', () => {
+  it('uses two lines at scale 1 and 2 and minutes at other scales, keeping process order only in the accessible label', () => {
     const values = forwardProps([item({ requiredMinutes: 480, processOrder: '987' })]);
     const { rerender } = render(<PlanningBoardGanttView {...values} />);
     const bar = screen.getByTestId('planning-gantt-bar-a');
-    expect(bar).toHaveTextContent('部品P1 · 1個 · 機種');
+    expect(bar).toHaveTextContent('部品26-1001 · P1 · 1個 · 機種');
     expect(bar).not.toHaveTextContent('987');
     expect(bar).toHaveAccessibleName(/工順987/);
+    rerender(<PlanningBoardGanttView {...values} scale={1} />);
+    expect(bar).toHaveTextContent('部品26-1001 · P1 · 1個 · 機種');
     rerender(<PlanningBoardGanttView {...values} scale={4} />);
     expect(bar).toHaveTextContent('部品480分');
     expect(bar).not.toHaveTextContent('P1');
@@ -162,7 +163,7 @@ describe('forward PlanningBoardGanttView', () => {
     const values = forwardProps([item({ requiredMinutes: 480, plannedQuantity: null, machineName: null }),
       item({ itemId: 'b', fhincd: 'P2', requiredMinutesKnown: false })]);
     render(<PlanningBoardGanttView {...values} />);
-    expect(screen.getByTestId('planning-gantt-bar-a')).toHaveTextContent('部品P1');
+    expect(screen.getByTestId('planning-gantt-bar-a')).toHaveTextContent('部品26-1001 · P1');
     expect(screen.getByTestId('planning-gantt-bar-a')).not.toHaveTextContent('個');
     expect(screen.getByTestId('planning-gantt-bar-b')).toHaveTextContent(/^所要不明$/);
     expect(screen.getByTestId('planning-gantt-bar-b')).toHaveClass('border-dashed');
@@ -171,7 +172,7 @@ describe('forward PlanningBoardGanttView', () => {
     const values = forwardProps([item({ requiredMinutes: 600 }), item({ itemId: 'b', fhincd: 'P2', requiredMinutes: 1 })]);
     render(<PlanningBoardGanttView {...values} />);
     const bars = values.layout.groups[0]!.rows[0]!.bars;
-    const dayWidth = (1120 - 320) / 2;
+    const dayWidth = (1120 - 168) / 2;
     bars[0]!.segments!.forEach((segment, index) => {
       const element = screen.getByTestId(`planning-gantt-bar-a${index ? `-segment-${index}` : ''}`);
       expect(parseFloat(element.style.width)).toBeCloseTo(Math.max(2, (segment.end - segment.start) * dayWidth - 2));
@@ -187,11 +188,13 @@ describe('forward PlanningBoardGanttView', () => {
     const popover = screen.getByRole('region', { name: '305 研削盤 の次にやる順' });
     const cards = within(popover).getAllByTestId(/planning-forward-queue-card-/);
     expect(cards).toHaveLength(8);
-    expect(cards[0]).toHaveTextContent('4. 10:30〜 · 10分');
-    expect(cards[7]).toHaveTextContent('11. 11:40〜 · 10分');
+    expect(cards[0]).toHaveTextContent('26-1001 · 10分 · 1個');
+    expect(cards[7]).toHaveTextContent('26-1001 · 10分 · 1個');
     expect(cards[2]).toHaveClass('outline-amber-400', 'border-rose-400');
     expect(cards[0]).not.toHaveClass('outline-amber-400');
-    expect(cards[2]).toHaveTextContent('P5 · 1個');
+    expect(cards[2]).toHaveTextContent('P5');
+    expect(cards[0]).not.toHaveTextContent('4.');
+    expect(cards[2]).not.toHaveTextContent('〜');
     expect(cards[2]).toHaveTextContent('機種');
     expect(popover).not.toHaveTextContent('遅れ見込み');
     expect(popover.parentElement).toBe(document.body);
@@ -227,7 +230,7 @@ describe('forward PlanningBoardGanttView', () => {
     act(() => vi.advanceTimersByTime(300));
     expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
   });
-  it.each(['touch', 'pen'])('opens on a %s tap while preserving selection and detail, and closes outside', (pointerType) => {
+  it.each(['touch', 'pen'])('opens on a %s tap while preserving selection, and closes outside', (pointerType) => {
     vi.useFakeTimers();
     const values = forwardProps();
     render(<PlanningBoardGanttView {...values} />);
@@ -241,7 +244,6 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.click(bar);
     expect(screen.getByRole('region', { name: /の次にやる順/ })).toBeInTheDocument();
     expect(values.onToggleItem).toHaveBeenCalledWith(expect.objectContaining({ itemId: 'a' }), true);
-    expect(screen.getByText(/着手見込み/)).toBeInTheDocument();
     fireEvent.pointerDown(document.body, { pointerType });
     expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
   });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { canReorderForwardBars, formatForwardQueueTime, forwardItemDetails, forwardQueueWindow } from './planningBoardForwardQueue';
+import { canReorderForwardBars, forwardItemDetails, forwardQueueWindow } from './planningBoardForwardQueue';
 import { dateToDay } from './planningBoardGanttLayout';
 
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
@@ -40,14 +40,11 @@ describe('forward queue helpers', () => {
     expect(forwardQueueWindow(layout(entries), entries[11]!).map(({ position }) => position)).toEqual([10, 11, 12]);
     expect(forwardQueueWindow(layout(entries), bar('missing'))).toEqual([]);
   });
-  it.each([[0, '00:00'], [8 * 60 + 5, '08:05'], [1439, '23:59'], [1440, '10/15 00:00'], [-1, '10/13 23:59']])('formats JST wall-clock minute %i as %s', (minutes, expected) => {
-    expect(formatForwardQueueTime(today + minutes / 1440, today)).toBe(expected);
-  });
   it('omits null/empty parts and preserves zero quantity', () => {
-    expect(forwardItemDetails(item(), true)).toBe('P1 · 1個 · 機種');
-    expect(forwardItemDetails(item())).toBe('P1 · 1個');
-    expect(forwardItemDetails(item({ plannedQuantity: null, machineName: ' ' }), true)).toBe('P1');
-    expect(forwardItemDetails(item({ fhincd: '', plannedQuantity: 0, machineName: null }), true)).toBe('0個');
+    expect(forwardItemDetails(item())).toBe('26-1001 · P1 · 1個 · 機種');
+    expect(forwardItemDetails(item({ plannedQuantity: null, machineName: ' ' }))).toBe('26-1001 · P1');
+    expect(forwardItemDetails(item({ fseiban: '', fhincd: '', plannedQuantity: 0, machineName: null }))).toBe('0個');
+    expect(forwardItemDetails(item({ machineName: 'ｐｓｇ６３　ａ' }))).toBe('26-1001 · P1 · 1個 · PSG63 A');
   });
   it('allows only different unfinished jobs of the same resource and special-due band', () => {
     const source = bar('source');

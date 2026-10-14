@@ -18,7 +18,7 @@ describe('PlanningBoardToolbar forward controls', () => {
     expect(screen.getByRole('button', { name: '今日から' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByRole('button', { name: '納期から' }));
     expect(values.onGanttModeChange).toHaveBeenCalledWith('backward');
-    fireEvent.click(screen.getByRole('button', { name: '⚠ 遅れ見込み 2' }));
+    fireEvent.click(screen.getByRole('button', { name: '⚠ 遅れ 2' }));
     expect(values.onNextLate).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole('button', { name: '⇅ 納期順に並べる' }));
     fireEvent.click(screen.getByRole('button', { name: '↶ 戻す' }));
