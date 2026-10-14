@@ -540,3 +540,18 @@ Night of 2026-10-13 (22:0x to 22:18), the first with #1958 (placeholder departme
 Change in this PR (planner): when the content decision is true and a linked field (department, part, machine) has an ambiguous value (entity-link `clarify`, or the planner's `clarify` / `low` answer), the planner no longer puts the field into `unresolved`. It drops that filter, keeps the whole question as the content query, and records the field and its candidates in `diagnostics.ambiguousDropped`; the worker's compact plan carries it and the morning report prints `ambiguous filter dropped for content search: partName n`. With the content decision false or missing, the field stays unresolved and the ask-back is unchanged, so pure filter questions still ask. Expected effect: the 3 of 4 ask-backs on this night and the 4 on the tenth night become content searches; whether they then show the relevant record is measured from the night of 2026-10-14 (Codex `gpt-6-astra` / `high` for the planner change and its three tests; Claude for the plan, report and log).
 
 Private files: `work/flywheel/questions-2026-10-13.jsonl`, `real-2026-10-13.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-13.log`.
+
+### 2026-10-15: twelfth night, 89% and no ask-back; a short department name no longer keeps a content search (change)
+
+Night of 2026-10-14 (22:0x), the first with #1996 (ambiguous linked terms give way to the content search; Pi5 release the evening before).
+
+- Synthetic content: 100 pairs tried, 61 generated, 56 kept (median 18 chars, anchor overlap 0.38). Dropped: 22 copied runs, 13 too similar, 4 copied words, 4 anchors not confirmed, 1 ungraded. Production showed a relevant record for 50 of 56 (89%; 9 known only through the second grader), other records for 1, nothing for 4 (all outside the judged candidates, none rejected by the judge), and 1 failed (TypeSafe API HTTP 400, one dense fallback).
+- Ask-backs: 0, the first night without one. No row carried `ambiguousDropped`, so the change in #1996 was not exercised on this night; the four ask-back terms of the previous nights did not recur in the sample. Its effect is still to be measured.
+- Synthetic filter: 10 questions, 9 ok, 1 mismatch: 「機構設計2課(製造) 最近 不適合」 (template `short`). The filter resolved to the right department and the sort was recent, but the planner kept the content search: the short name is not a listed term, so 「機構設計2課」 and 「製造」 survived as residual tokens, the content judge dropped two of the newest records, and two older ones filled the five. The same department asked with its full name (「…機構設計2課(製造)の不適合を3件」, one second later) went filter-only and matched. Every `short` question of the previous night was a department without 「部」, so this was the first real short form since #1958.
+- Real: 0 questions; receipts of 2026-10-14 and 2026-10-15 empty, so no operation-inquiry route yet.
+- Learned queries: 2 activated (held-out 1/0 each); 26 active, 1 rejected.
+- Runner log: 178 lines, 6 final lines (completed, budget_reached, 2 dgx_busy, 2 outside_window).
+
+Change in this PR (planner): a residual token that is contained in a selected filter value no longer counts as content. 「機構設計2課(製造) 最近 不適合」 now has an empty residual and becomes filter-only with the recent sort, like the full name; 「機構設計2課(製造)の錆の不適合」 keeps 「錆」 and stays a content search. Three tests in `planner-jev.test.mjs` (Claude directly; 344 tests pass). Measured on the next nights' `short` filter questions.
+
+Private files: `work/flywheel/questions-2026-10-14.jsonl`, `real-2026-10-14.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-14.log`, `receipts-2026-10-14.jsonl`, `receipts-2026-10-15.jsonl`.
