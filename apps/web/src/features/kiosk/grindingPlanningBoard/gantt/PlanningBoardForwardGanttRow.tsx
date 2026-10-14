@@ -76,7 +76,7 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
       setPreview({ itemId: pending.bar.item.itemId, dx, drop: findDrop(event.clientX, pending.bar) });
     }
   };
-  return <div className="flex min-h-[76px] border-b border-slate-800/70" data-testid={`planning-forward-lane-${row.key}`}>
+  return <div className="flex min-h-[76px] border-b border-slate-600" data-testid={`planning-forward-lane-${row.key}`}>
     <div className="sticky left-0 z-20 flex shrink-0 flex-col justify-center gap-1 border-r border-slate-700 bg-slate-900 px-2 py-1 text-xs" style={{ width: GANTT_FORWARD_LABEL_WIDTH }}>
       {label ?? <><strong className="truncate">{row.label}</strong><span className="truncate text-slate-400">{row.detail}</span></>}
     </div>
@@ -98,7 +98,7 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
               aria-label={`${bar.item.fhinmei || bar.item.fhincd} 工順${bar.item.processOrder} ${bar.resource} 納期${bar.due ?? 'なし'}`}
               aria-pressed={selected} disabled={disabled || bar.item.isCompleted}
               data-drag-disabled={dragDisabled || disabled || !resourceView}
-              className={clsx('absolute top-1.5 h-[60px] touch-pan-y select-none overflow-hidden rounded pt-px text-left text-[11px] font-bold leading-[14px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-white',
+              className={clsx('absolute top-[3px] h-[70px] touch-pan-y select-none overflow-hidden rounded text-left text-[11px] font-bold leading-[14px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-white',
                 bar.tone === 'late' ? 'bg-rose-400 text-slate-950' : 'bg-sky-400 text-slate-950',
                 bar.unknown && 'border border-dashed border-slate-200 bg-slate-800 text-slate-200',
                 selected && 'outline outline-2 outline-offset-1 outline-white', index > 0 && 'border-l-2 border-dashed border-slate-950')}
@@ -131,7 +131,7 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
               }}>
               {bar.unknown ? '所要不明' : segmentWidth >= 48
                 ? <span className="block break-all px-1"><b className="line-clamp-2">{bar.item.fhinmei || bar.item.fhincd}</b>
-                  <small className="line-clamp-2 text-[11px] font-normal">{scale <= 2 ? forwardItemDetails(bar.item) : `${bar.item.requiredMinutes}分`}</small>
+                  <small className="line-clamp-3 text-[11px] font-normal">{scale <= 2 ? forwardItemDetails(bar.item) : `${bar.item.requiredMinutes}分`}</small>
                 </span> : null}
             </button>;
           })}
