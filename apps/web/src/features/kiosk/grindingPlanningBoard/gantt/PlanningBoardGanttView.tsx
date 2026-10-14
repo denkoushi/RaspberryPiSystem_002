@@ -29,7 +29,7 @@ export type PlanningBoardGanttHandle = { scrollToNextOverlap: () => void; scroll
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 const GANTT_BOTTOM_GAP = 10;
 // With a 2- or 4-day span a day is wide enough to show where the hours fall.
-const HOUR_TICKS = [6, 12, 18];
+const HOUR_TICKS = [8, 17, 20];
 const HOUR_TICK_MIN_DAY_WIDTH = 160;
 
 export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props>(function PlanningBoardGanttView({
@@ -126,7 +126,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
             {days.map(({ day, weekday, weekend }) => <div key={day} className={clsx('relative shrink-0 overflow-hidden border-l border-slate-800 py-2 text-center text-[10px] tabular-nums', day === layout.today ? 'bg-emerald-400 font-bold text-slate-950' : weekend ? 'bg-slate-800 text-slate-300' : 'text-slate-300')}
               style={{ width: dayWidth }} title={dayToDate(day)}>
               <span className="whitespace-nowrap">{dayWidth >= 26 || weekday === 1 ? dayLabel(day) : ''}</span><small className="block">{WEEKDAYS[weekday]}</small>
-              {showHours && HOUR_TICKS.filter((hour) => hour !== 12).map((hour) => <span key={hour} className="absolute bottom-0.5 -translate-x-1/2 text-xs font-bold opacity-90" style={{ left: `${hour / 24 * 100}%` }}>{hour}時</span>)}
+              {showHours && HOUR_TICKS.map((hour) => <span key={hour} className="absolute bottom-0.5 -translate-x-1/2 text-xs font-bold opacity-90" style={{ left: `${hour / 24 * 100}%` }}>{hour}時</span>)}
             </div>)}
           </div>
           {days.map(({ day, weekend }) => <div key={day} className={clsx('pointer-events-none absolute bottom-0 top-14 border-l border-slate-800/70', !forward && weekend && 'bg-slate-950/50')}

@@ -13,8 +13,8 @@ export function forwardQueueWindow(layout: GanttLayout, hovered: GanttBar) {
   return queue.slice(from, from + 8).map((bar, i) => ({ bar, position: from + i + 1 }));
 }
 
-export function forwardItemDetails(item: GrindingPlanningBoardItem, includeMachine = false): string {
-  return [item.fseiban, item.fhincd, item.plannedQuantity == null ? null : `${item.plannedQuantity}個`, includeMachine ? normalizeMachineName(item.machineName) : null]
+export function forwardItemDetails(item: GrindingPlanningBoardItem): string {
+  return [item.fseiban, item.fhincd, item.plannedQuantity == null ? null : `${item.plannedQuantity}個`, normalizeMachineName(item.machineName)]
     .filter((part) => part != null && part.trim() !== '').join(' · ');
 }
 

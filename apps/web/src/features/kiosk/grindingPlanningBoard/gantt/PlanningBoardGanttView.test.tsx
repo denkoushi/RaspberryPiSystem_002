@@ -189,11 +189,12 @@ describe('forward PlanningBoardGanttView', () => {
     const popover = screen.getByRole('region', { name: '305 研削盤 の次にやる順' });
     const cards = within(popover).getAllByTestId(/planning-forward-queue-card-/);
     expect(cards).toHaveLength(8);
-    expect(cards[0]).toHaveTextContent('4. 10分');
-    expect(cards[7]).toHaveTextContent('11. 10分');
+    expect(cards[0]).toHaveTextContent('26-1001 · 10分 · 1個');
+    expect(cards[7]).toHaveTextContent('26-1001 · 10分 · 1個');
     expect(cards[2]).toHaveClass('outline-amber-400', 'border-rose-400');
     expect(cards[0]).not.toHaveClass('outline-amber-400');
-    expect(cards[2]).toHaveTextContent('26-1001 · P5 · 1個');
+    expect(cards[2]).toHaveTextContent('P5');
+    expect(cards[0]).not.toHaveTextContent('4.');
     expect(cards[2]).not.toHaveTextContent('〜');
     expect(cards[2]).toHaveTextContent('機種');
     expect(popover).not.toHaveTextContent('遅れ見込み');

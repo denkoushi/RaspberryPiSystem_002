@@ -41,11 +41,10 @@ describe('forward queue helpers', () => {
     expect(forwardQueueWindow(layout(entries), bar('missing'))).toEqual([]);
   });
   it('omits null/empty parts and preserves zero quantity', () => {
-    expect(forwardItemDetails(item(), true)).toBe('26-1001 · P1 · 1個 · 機種');
-    expect(forwardItemDetails(item())).toBe('26-1001 · P1 · 1個');
-    expect(forwardItemDetails(item({ plannedQuantity: null, machineName: ' ' }), true)).toBe('26-1001 · P1');
-    expect(forwardItemDetails(item({ fseiban: '', fhincd: '', plannedQuantity: 0, machineName: null }), true)).toBe('0個');
-    expect(forwardItemDetails(item({ machineName: 'ｐｓｇ６３　ａ' }), true)).toBe('26-1001 · P1 · 1個 · PSG63 A');
+    expect(forwardItemDetails(item())).toBe('26-1001 · P1 · 1個 · 機種');
+    expect(forwardItemDetails(item({ plannedQuantity: null, machineName: ' ' }))).toBe('26-1001 · P1');
+    expect(forwardItemDetails(item({ fseiban: '', fhincd: '', plannedQuantity: 0, machineName: null }))).toBe('0個');
+    expect(forwardItemDetails(item({ machineName: 'ｐｓｇ６３　ａ' }))).toBe('26-1001 · P1 · 1個 · PSG63 A');
   });
   it('allows only different unfinished jobs of the same resource and special-due band', () => {
     const source = bar('source');

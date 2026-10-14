@@ -126,7 +126,7 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
               }}>
               {bar.unknown ? '所要不明' : segmentWidth >= 48
                 ? <span className="block truncate px-1">{bar.item.fhinmei || bar.item.fhincd}
-                  <small className="block truncate font-normal">{scale <= 2 ? forwardItemDetails(bar.item, true) : `${bar.item.requiredMinutes}分`}</small>
+                  <small className="block truncate font-normal">{scale <= 2 ? forwardItemDetails(bar.item) : `${bar.item.requiredMinutes}分`}</small>
                 </span> : null}
             </button>;
           })}
