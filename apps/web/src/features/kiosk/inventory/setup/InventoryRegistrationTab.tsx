@@ -631,14 +631,11 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
                   {shelf ? (
                     <div className="flex min-h-0 flex-1 flex-wrap content-start items-center gap-1.5 overflow-y-auto [&>button]:shrink-0" role="group" aria-label="引き出し">
                       <span className={`${invLabel} w-[52px]`}>引き出し</span>
-                      {shelf.drawers.map((drawer) => {
-                        const used = drawer.compartments.length > 0;
-                        return (
-                          <button key={drawer.id} type="button" disabled={used} aria-label={`引き出し${drawer.drawerNumber}${used ? ' 使用中' : ''}`} aria-pressed={drawer.id === draft.drawerId} className={`${invSeg(drawer.id === draft.drawerId)} disabled:!opacity-[0.38]`} onClick={() => update({ drawerId: drawer.id, drawerLabel: `${shelf.area}・棚${shelf.shelfNumber}・引き出し${drawer.drawerNumber}`, itemTagUid: '' })}>
-                            {drawer.drawerNumber}
-                          </button>
-                        );
-                      })}
+                      {shelf.drawers.map((drawer) => (
+                        <button key={drawer.id} type="button" aria-label={`引き出し${drawer.drawerNumber}`} aria-pressed={drawer.id === draft.drawerId} className={invSeg(drawer.id === draft.drawerId)} onClick={() => update({ drawerId: drawer.id, drawerLabel: `${shelf.area}・棚${shelf.shelfNumber}・引き出し${drawer.drawerNumber}`, itemTagUid: '' })}>
+                          {drawer.drawerNumber}
+                        </button>
+                      ))}
                       <button type="button" className={invSegAdd} aria-label={`引き出し${nextDrawerNumber}を作る`} disabled={creating} onClick={() => void createDrawer()}><PlusIcon /></button>
                     </div>
                   ) : null}

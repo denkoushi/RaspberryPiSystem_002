@@ -47,8 +47,9 @@ const DETAIL_LABEL = Object.fromEntries(TOOL_BOARD_COLUMNS.map((column) => [colu
 const provisionalTag = 'shrink-0 rounded-[5px] bg-inv-amber/[0.12] px-1.5 text-[10.5px] font-bold tracking-[0.08em] text-inv-amber';
 const iconSm = `${invButtonSm} w-11 px-0`;
 
-function freeDrawers(shelf: InventoryShelf) {
-  return shelf.drawers.filter((drawer) => drawer.compartments.length === 0);
+// 1つの引き出しに複数のアイテムを置けるので、移す先から外すのはいま入っている引き出しだけ。
+function otherDrawers(shelf: InventoryShelf, compartmentId: string) {
+  return shelf.drawers.filter((drawer) => !drawer.compartments.some((compartment) => compartment.id === compartmentId));
 }
 
 export function InventoryItemEditTab({ accessPassword }: { accessPassword: string }) {
@@ -378,12 +379,11 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
                 {shelves.filter((shelf) => shelf.area === panel.compartment.area).map((shelf) => (
                   <div key={shelf.id} className="flex flex-wrap items-center gap-1.5">
                     <span className="w-12 text-[13px] text-inv-muted">棚{shelf.shelfNumber}</span>
-                    {freeDrawers(shelf).map((drawer) => (
+                    {otherDrawers(shelf, panel.compartment.id).map((drawer) => (
                       <button key={drawer.id} type="button" aria-label={`棚${shelf.shelfNumber} 引き出し${drawer.drawerNumber}`} className={invSeg(false)} disabled={pending} onClick={() => void run(() => mutations.move.mutateAsync({ id: panel.compartment.id, drawerId: drawer.id }), `棚${shelf.shelfNumber} / 引き出し${drawer.drawerNumber} へ移しました`)}>
                         {drawer.drawerNumber}
                       </button>
                     ))}
-                    {freeDrawers(shelf).length === 0 ? <span className="inline-flex min-h-11 min-w-11 items-center text-[13px] text-inv-faint">空きなし</span> : null}
                   </div>
                 ))}
                 <button type="button" className={`${invButtonSmGhost} self-start`} onClick={() => setPanel({ kind: 'none' })}>やめる</button>
@@ -400,10 +400,9 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
                 {shelves.filter((shelf) => shelf.area === panel.area).map((shelf) => (
                   <div key={shelf.id} className="flex flex-wrap items-center gap-1.5">
                     <span className="w-12 text-[13px] text-inv-muted">棚{shelf.shelfNumber}</span>
-                    {freeDrawers(shelf).map((drawer) => (
+                    {shelf.drawers.map((drawer) => (
                       <button key={drawer.id} type="button" aria-label={`引き出し${drawer.drawerNumber}`} className={invSeg(false)} onClick={() => setPanel({ kind: 'add-tag', shelfId: shelf.id, drawerId: drawer.id })}>{drawer.drawerNumber}</button>
                     ))}
-                    {freeDrawers(shelf).length === 0 ? <span className="inline-flex min-h-11 min-w-11 items-center text-[13px] text-inv-faint">空きなし</span> : null}
                   </div>
                 ))}
                 <button type="button" className={`${invButtonSmGhost} self-start`} onClick={() => setPanel({ kind: 'none' })}>やめる</button>
