@@ -61,6 +61,11 @@ export type BusinessHermesOpenJevResponder = {
   generate(input: { request: JsonRecord; conversationKey: string; signal?: AbortSignal }): Promise<JsonRecord>;
 };
 
+export type BusinessHermesOperationGuideDisplay = {
+  screen: string;
+  sections: Array<{ heading: string; body: string }>;
+};
+
 export type BusinessHermesConsultationMessage = {
   id: string;
   role: 'user' | 'assistant';
@@ -70,6 +75,7 @@ export type BusinessHermesConsultationMessage = {
   evidenceVisibleIds?: string[];
   recordIds?: string[];
   recordView?: 'summary' | 'detail';
+  guide?: BusinessHermesOperationGuideDisplay;
   confirmation?: BusinessHermesConsultationConfirmation;
   selection?: BusinessHermesSelection;
   scan?: BusinessHermesScanResolution;
@@ -112,6 +118,7 @@ export type BusinessHermesConsultationChatResponse = {
   evidenceVisibleIds?: string[];
   recordIds?: string[];
   recordView?: 'summary' | 'detail';
+  guide?: BusinessHermesOperationGuideDisplay;
   needsClarification: boolean;
   clarificationMessage: string | null;
   reasonCode?: string;
@@ -121,7 +128,7 @@ export type BusinessHermesConsultationChatResponse = {
 };
 
 type ConsultationDeps = {
-  operationGuide?: Pick<KioskOperationGuideIndex, 'matchStrength' | 'isEnabled'>;
+  operationGuide?: Pick<KioskOperationGuideIndex, 'matchStrength' | 'isEnabled' | 'search' | 'detail'>;
   db?: PrismaClient;
   fetchImpl?: FetchLike;
   runtime?: LocalLlmRuntimeControllerPort | null;
@@ -558,7 +565,19 @@ function asJson(value: unknown): Prisma.InputJsonValue {
   return (value === undefined ? null : value) as Prisma.InputJsonValue;
 }
 
-function storedEvidence(value: unknown): { items: Record<string, unknown>[]; visible: boolean; visibleIds: string[]; recordIds: string[]; recordView?: 'summary' | 'detail' } {
+function storedGuide(value: unknown): BusinessHermesOperationGuideDisplay | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const guide = value as JsonRecord;
+  if (typeof guide.screen !== 'string' || !Array.isArray(guide.sections)) return undefined;
+  const sections: BusinessHermesOperationGuideDisplay['sections'] = [];
+  for (const section of guide.sections) {
+    if (!section || typeof section !== 'object' || typeof section.heading !== 'string' || typeof section.body !== 'string') return undefined;
+    sections.push({ heading: section.heading, body: section.body });
+  }
+  return { screen: guide.screen, sections };
+}
+
+function storedEvidence(value: unknown): { items: Record<string, unknown>[]; visible: boolean; visibleIds: string[]; recordIds: string[]; recordView?: 'summary' | 'detail'; guide?: BusinessHermesOperationGuideDisplay } {
   if (Array.isArray(value)) {
     return {
       items: value.filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object')),
@@ -569,10 +588,12 @@ function storedEvidence(value: unknown): { items: Record<string, unknown>[]; vis
   }
   if (!value || typeof value !== 'object' || Array.isArray(value)) return { items: [], visible: false, visibleIds: [], recordIds: [] };
   const record = value as JsonRecord;
+  const guide = storedGuide(record.guide);
   return {
     items: Array.isArray(record.items)
       ? record.items.filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object'))
       : [],
+    ...(guide ? { guide } : {}),
     visible: record.visible === true,
     visibleIds: asEvidenceIds(record.visibleIds ?? record.visible_ids),
     recordIds: asEvidenceIds(record.recordIds ?? record.record_ids),
@@ -656,7 +677,7 @@ export function toConsultationView(row: {
 }
 
 export class BusinessHermesConsultationService {
-  private readonly operationGuide: Pick<KioskOperationGuideIndex, 'matchStrength' | 'isEnabled'>;
+  private readonly operationGuide: Pick<KioskOperationGuideIndex, 'matchStrength' | 'isEnabled' | 'search' | 'detail'>;
   private readonly db: PrismaClient;
   private readonly deps: ConsultationDeps;
   private readonly scanResolver?: Pick<BusinessHermesScanResolver, 'resolve'>;
@@ -914,8 +935,10 @@ export class BusinessHermesConsultationService {
       || (pendingSourceCandidate.options && !pendingSourceCandidate.options.includes(selection.option)))) {
       return this.failure(consultationId, 'HERMES_INVALID_SELECTION');
     }
+    const directGuide = Boolean(pendingIntent && selection && intentQuestion
+      && questionRecipes(intentQuestion).some((recipe) => recipe.id === 'operation-guide' && recipe.option === selection.option));
     const candidate = prefetches.get(consultationId);
-    const matchingPrefetch = candidate && !scanValue && selection
+    const matchingPrefetch = candidate && !directGuide && !scanValue && selection
       && candidate.selection.prompt === selection.prompt && candidate.selection.option === selection.option
       && candidate.snapshot === prefetchSnapshot(consultation)
       && (candidate.finishedAt === undefined || Date.now() - candidate.finishedAt < PREFETCH_RETENTION_MS)
@@ -991,7 +1014,7 @@ export class BusinessHermesConsultationService {
       : (completingIntent || Boolean(selection)) && intentQuestion
       ? [intentQuestion, message].join('\n')
       : message;
-    const sourceGrounding = scanValue ? undefined : this.deps.openJevGrounder
+    const sourceGrounding = scanValue || directGuide ? undefined : this.deps.openJevGrounder
       ? await this.deps.openJevGrounder({ request: groundingRequest, references: storedEvidenceForCase,
         history: consultation.messages.slice(-8).map(({ role, content, recordIds }) => ({ role, content, recordIds })) })
       : firstQuestion && this.deps.openJevIntentSelector ? undefined
@@ -1012,6 +1035,33 @@ export class BusinessHermesConsultationService {
     } });
     if (measurement) measurement.userMessageId = userMessage.id;
     if (externalSignal?.aborted) return this.failure(consultationId, 'HERMES_TIMEOUT');
+    if (directGuide && intentQuestion) {
+      const top = this.operationGuide.search(intentQuestion, 1).results[0];
+      const detail = top ? this.operationGuide.detail(top.id) : null;
+      const basic = detail?.heading === '基本の手順' ? detail
+        : detail?.siblings.find((section) => section.heading === '基本の手順');
+      // Section IDs end in their document position; siblings belong to the same file.
+      const sections = detail ? [detail, ...(basic && basic.id !== detail.id ? [this.operationGuide.detail(basic.id)] : [])]
+        .filter((section): section is NonNullable<typeof section> => section !== null && section.file === detail.file)
+        .sort((a, b) => Number(a.id.slice(a.id.lastIndexOf('#') + 1)) - Number(b.id.slice(b.id.lastIndexOf('#') + 1))) : [];
+      const guide: BusinessHermesOperationGuideDisplay | undefined = detail ? {
+        screen: detail.screen, sections: sections.map(({ heading, body }) => ({ heading, body }))
+      } : undefined;
+      const answer = guide
+        ? `${guide.screen}\n\n${guide.sections.map(({ heading, body }) => `**${heading}**\n${body}`).join('\n\n')}`
+        : 'この操作の説明はまだありません。『お問い合わせ』から聞いてください。';
+      const answerMessage = await this.db.businessHermesConsultationMessage.create({ data: {
+        consultationId, role: 'assistant', content: answer,
+        evidence: asJson({ items: [], visible: false, visibleIds: [], recordIds: [], ...(guide ? { guide } : {}) }),
+        searchDiagnostics: asJson([{ kind: 'business-hermes-route-v1', route: 'operation_guide', guideMiss: !guide, direct: true }])
+      } });
+      if (measurement) measurement.answerMessageId = answerMessage.id;
+      await this.db.businessHermesConsultation.update({ where: { id: consultationId }, data: { openQuestions: asJson([]) } });
+      const updated = await this.get(consultationId);
+      if (!updated) return this.failure(consultationId, 'HERMES_CONSULTATION_NOT_FOUND');
+      return { status: 'ready', message: answer, evidence: [], evidenceVisible: false, evidenceVisibleIds: [],
+        ...(guide ? { guide } : {}), needsClarification: false, clarificationMessage: null, consultationId, consultation: updated };
+    }
     if (this.deps.openJevGrounder && sourceGrounding && !sourceGrounding.conditions) {
       const candidateConfirmation = sourceCandidateConfirmation(sourceGrounding);
       if (candidateConfirmation) return this.askForSourceCandidate(consultationId, candidateConfirmation);
@@ -1358,7 +1408,7 @@ export class BusinessHermesConsultationService {
     };
   }
 
-  // The operation-guide recipe leads (and is prefetched) only when the question names a
+  // The operation-guide recipe leads only when the question names a
   // guide screen; a keyword-only hit appends it last so record questions keep their flow.
   private displayedQuestionRecipes(question: string) {
     const recipes = questionRecipes(question);
@@ -1403,6 +1453,7 @@ export class BusinessHermesConsultationService {
     sourceGrounding?: BusinessHermesGroundedSearch): void {
     if (!this.isConfigured() || prefetches.size > 0 || inFlight.size > 1) return;
     const recipe = this.displayedQuestionRecipes(question)[0]!;
+    if (recipe.id === 'operation-guide') return;
     const selection = { prompt: confirmation.prompt, option: recipe.option };
     const pending: Prefetch = {
       snapshot: prefetchSnapshot(consultation), selection, conversationKey: randomUUID(), controller: new AbortController(),
@@ -1567,6 +1618,7 @@ export class BusinessHermesConsultationService {
             evidenceVisible: evidence.visible,
             evidenceVisibleIds: evidence.visibleIds,
             recordIds: evidence.recordIds,
+            ...(evidence.guide ? { guide: evidence.guide } : {}),
             ...(evidence.recordView ? { recordView: evidence.recordView } : {})
           };
         })(),

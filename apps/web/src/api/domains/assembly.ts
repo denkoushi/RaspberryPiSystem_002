@@ -855,6 +855,11 @@ export type BusinessHermesScanResolution = {
   matches: BusinessHermesScanMatch[];
 };
 
+export type BusinessHermesOperationGuideDisplay = {
+  screen: string;
+  sections: Array<{ heading: string; body: string }>;
+};
+
 export type BusinessHermesConsultationMessage = {
   feedback?: 'pending' | 'helpful' | 'unhelpful';
   id: string;
@@ -865,6 +870,7 @@ export type BusinessHermesConsultationMessage = {
   evidenceVisibleIds?: string[];
   recordIds?: string[];
   recordView?: 'summary' | 'detail';
+  guide?: BusinessHermesOperationGuideDisplay;
   confirmation?: BusinessHermesConsultationConfirmation;
   selection?: { prompt: string; option: string };
   scan?: BusinessHermesScanResolution;
@@ -890,6 +896,7 @@ export type BusinessHermesConsultationChatResponse = {
   evidenceVisibleIds?: string[];
   recordIds?: string[];
   recordView?: 'summary' | 'detail';
+  guide?: BusinessHermesOperationGuideDisplay;
   needsClarification: boolean;
   clarificationMessage: string | null;
   consultationId: string;

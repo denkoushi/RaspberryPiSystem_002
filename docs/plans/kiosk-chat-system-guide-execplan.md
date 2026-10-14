@@ -16,9 +16,11 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-14) 現状の構造を調査した(下記 Context and Orientation)。
 - [x] (2026-10-14) Milestone 1 を実装(branch `feat/kiosk-chat-guide-m1-operation-docs`): `docs/kiosk-operation-guide/` に画面別の文書と `common/` の共通編、`scripts/docs/check-kiosk-operation-guide.mjs` と単体テスト、CI の `repo-policy` ジョブへの組み込み。文書の下書きは Codex に書かせ、画面の文字列と照合して直した。
 - [x] (2026-10-14) Milestone 2 を実装(branch `feat/kiosk-chat-guide-m2-hermes-source`): API イメージへ `docs/kiosk-operation-guide/` を複製、`KIOSK_OPERATION_GUIDE_DIR` で読み込む節の索引、`business_hermes_search` / `business_hermes_get_detail` の `kind=system_operation_guide`、最初の目的確認に「操作の方法を調べる」の選択肢、SKILL.md.j2 0.5.0 の「システム操作の問い合わせ」。API 実装は Codex に書かせ、Claude が差分とテストを確認した。
+- [x] (2026-10-14) Milestone 2 を main に統合し業務 Pi5 へ配布(#2002、main f59dee7c、run 20261014-021724-3dc455)。実機で「チップの登録手順」に正しい手順が返った。回答まで数十秒かかり、表示も読みにくいと利用者から指摘を受けた。
+- [ ] Milestone 2b(branch `feat/kiosk-chat-guide-m2b-direct-answer`): 「操作の方法を調べる」を選んだときは LLM を通さず、該当する画面の節をそのまま返す(先読みも省く)。回答に `guide`(画面名と節)の表示データを付け、Web は番号付きの手順として描く。
 - [ ] Milestone 3: 不具合の受付道具(システム通知の照合とお問い合わせの自動起票)。
 - [ ] Milestone 4: 入口の一本化(「検索」「JEV記録」の統合と、記録検索への橋渡し)。
-- [ ] Milestone 5: 計測(受領ログの振り分け先と朝の集計)。
+- [ ] Milestone 5: 計測(受領ログの振り分け先と朝の集計)。 操作説明で知識が無かった質問(`guideMiss`)の文面を朝の集計に一覧で出し、文書へ追記する候補にする(利用者が 2026-10-14 に「使うほど賢くなる」仕組みとして要望)。
 - [ ] 各 Milestone の PR、main 統合、Pi5 配布、実機確認。配布と確認は本計画の対象だが、依頼された段階を越えて進めない。
 
 ## Surprises & Discoveries
@@ -44,9 +46,11 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - Decision (Milestone 2): 応答の `routeDecision` と `guideMiss` は応答の解析で受け取り、回答メッセージの `searchDiagnostics` に `business-hermes-route-v1` として保存する。受領ログや朝の集計への反映は Milestone 5 で行う。
 - Decision (Milestone 2): ブラウザ内の既存の「操作ガイド」(`isOperationGuideQuestion`)は「手順書の作り方」などの決まった言い回しだけを横取りするので、「自主検査の始め方」はサーバーへ届く。両者の統合は Milestone 4 で「検索」モードを外すときに扱う。
 
+- Decision (Milestone 2b): 操作ガイドの答えは LLM に 3 行へ要約させず、該当する節(「基本の手順」を必ず含め最大 2 節)を原文のまま返し、構造化した表示データで描く。Rationale: 操作ガイドは固定の文書で、要約のために DGX を 2 往復させると実機で 15〜30 秒かかった。節をそのまま返せば 1〜2 秒で、文言も文書と一致する。不適合記録のような夜間の回答蓄積は不要で、代わりに `guideMiss` の質問を文書追記の候補として集める(Milestone 5)。SKILL.md.j2 の「システム操作の問い合わせ」は、確認後の自由入力が LLM に届く場合のために残す。利用者が 2026-10-14 に承認。
+
 ## Outcomes & Retrospective
 
-(未着手。各 Milestone の配布後に、実機で観察した振る舞いと件数をここに記す。)
+- 2026-10-14 Milestone 2 配布後: キオスクの Chat「検索」で「チップの登録手順」と入れると、「操作の方法を調べる：…」の選択肢が出て、タグ管理の手順が返った(内容は妥当)。回答まで数十秒。表示は段落が詰まって読みにくい。原因は LLM 経由の 2 往復と素朴な整形で、Milestone 2b で直す。
 
 ## Context and Orientation
 

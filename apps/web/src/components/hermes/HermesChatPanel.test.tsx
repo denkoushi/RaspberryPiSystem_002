@@ -52,6 +52,23 @@ describe('HermesChatPanel evidence cards', () => {
     expect(onKnowledgeModeChange).toHaveBeenCalledWith('search');
   });
 
+  it('renders guide steps as an ordered list with section headings and literal text', () => {
+    render(<HermesChatPanel messages={[{ id: 'guide-answer', role: 'assistant', content: '従来の回答文字列',
+      guide: { screen: '自主検査', sections: [{ heading: '基本の手順',
+        body: '説明の一行目。\n説明の二行目。\n\n別の段落。\n1. 「開始」を押す。\n2. 結果を入力する。\n\n- 「中止」は保存しません。\n- <script>も文字として表示。' }] } }]}
+      draft="" isBusy={false} error={null} authRequired={null} onDraftChange={vi.fn()} onSend={vi.fn()} onReset={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByRole('heading', { name: '自主検査', level: 2 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '基本の手順', level: 3 })).toBeInTheDocument();
+    const lists = screen.getAllByRole('list');
+    expect(lists[0].tagName).toBe('OL');
+    expect(within(lists[0]).getAllByRole('listitem').map(item => item.textContent)).toEqual(['「開始」を押す。', '結果を入力する。']);
+    expect(lists[1].tagName).toBe('UL');
+    expect(screen.getByText('<script>も文字として表示。')).toBeInTheDocument();
+    expect(screen.getByText('説明の一行目。 説明の二行目。').tagName).toBe('P');
+    expect(screen.getByText('別の段落。').tagName).toBe('P');
+    expect(screen.queryByText('従来の回答文字列')).not.toBeInTheDocument();
+  });
+
   it('renders record display as cards with metadata, body lists and footer without duplicate answer', () => {
     const heading = 'M8締付訓練 / 長さ30 mm / 治具JIG-01';
     const record = { sourceLabel: '従業員の訓練集計', fields: [
