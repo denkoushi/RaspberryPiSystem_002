@@ -102,7 +102,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     <strong className="truncate" title={label}>{ganttResourceLabel(normalizeMachineName(label), resourceNameMap[resource])}</strong>
     <div className="flex gap-1" role="group" aria-label={`${resource}の1日の稼働時間`}>
       {GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS.map((hours) => <button key={hours} type="button"
-        className={clsx('min-h-11 min-w-11 rounded border px-1 font-mono text-[11px] font-bold',
+        className={clsx('h-7 min-w-10 rounded border px-1 font-mono text-[13px] font-bold leading-none',
           (dailyHoursByResource[resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS) === hours ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 bg-slate-900 text-slate-200')}
         aria-pressed={(dailyHoursByResource[resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS) === hours}
         disabled={resource === '未設定' || capacityPending || interaction.disabled}
@@ -140,7 +140,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
                 <strong className="min-w-0 flex-1 truncate" title={group.label}>{group.resource ? ganttResourceLabel(normalizeMachineName(group.label), resourceNameMap[group.resource]) : normalizeMachineName(group.label)}</strong>
                 {group.resource && group.resource !== '未設定' && <div className="flex shrink-0 gap-1" role="group" aria-label={`${group.resource}の1日の稼働時間`}>
                   {GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS.map((hours) => <button key={hours} type="button"
-                    className={clsx('min-h-11 min-w-11 rounded border px-1 font-mono text-[11px] font-bold',
+                    className={clsx('h-7 min-w-10 rounded border px-1 font-mono text-[13px] font-bold leading-none',
                       (dailyHoursByResource[group.resource!] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS) === hours ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 bg-slate-900 text-slate-200')}
                     aria-pressed={(dailyHoursByResource[group.resource!] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS) === hours}
                     disabled={capacityPending || interaction.disabled}
