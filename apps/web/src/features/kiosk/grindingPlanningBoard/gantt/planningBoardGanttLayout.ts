@@ -141,12 +141,42 @@ export function shiftedDueDate(due: string, delta: number, today: string): strin
 // The axis is a JST wall-clock day number, independent of the browser time zone.
 export const jstDay = (now: Date): number => (now.getTime() + 9 * 3_600_000) / DAY_MS;
 
-function nextWorkingStart(time: number, hours: number): number {
+// 8H/10H count working time only: the shift starts at 8:00 and pauses for these breaks (minutes after midnight).
+const SHIFT_START_MINUTES = 8 * 60;
+const BREAKS_MINUTES: readonly (readonly [number, number])[] = [[10 * 60 + 10, 10 * 60 + 20], [12 * 60 + 10, 12 * 60 + 50], [14 * 60 + 50, 15 * 60]];
+
+/** Working periods of one day as fractions of the day; 24H runs without breaks. */
+export function workingPeriods(hours: number): { start: number; end: number }[] {
+  if (hours >= 24) return [{ start: 0, end: 1 }];
+  const periods: { start: number; end: number }[] = [];
+  let cursor = SHIFT_START_MINUTES;
+  let remaining = hours * 60;
+  for (const [breakStart, breakEnd] of BREAKS_MINUTES) {
+    if (remaining <= 0) break;
+    const take = Math.min(remaining, Math.max(0, breakStart - cursor));
+    if (take > 0) periods.push({ start: cursor, end: cursor + take });
+    remaining -= take;
+    cursor = Math.max(cursor + take, breakEnd);
+  }
+  if (remaining > 0) periods.push({ start: cursor, end: cursor + remaining });
+  return periods.map((period) => ({ start: period.start / 1440, end: period.end / 1440 }));
+}
+
+/** The working period that contains `time`, or the next one after it. */
+function workingPeriodFrom(time: number, hours: number): { start: number; end: number } {
   const day = Math.floor(time + 1e-10);
-  const start = day + (hours === 24 ? 0 : 8 / 24);
-  const end = start + hours / 24;
-  if (time < start) return start;
-  return time >= end - 1e-10 ? start + 1 : time;
+  for (const offset of [0, 1]) {
+    for (const period of workingPeriods(hours)) {
+      const start = day + offset + period.start;
+      const end = day + offset + period.end;
+      if (time < end - 1e-10) return { start: Math.max(time, start), end };
+    }
+  }
+  return { start: day + 1, end: day + 1 };
+}
+
+function nextWorkingStart(time: number, hours: number): number {
+  return workingPeriodFrom(time, hours).start;
 }
 
 function placeForward(time: number, minutes: number, hours: number) {
@@ -155,11 +185,13 @@ function placeForward(time: number, minutes: number, hours: number) {
   let remaining = minutes / 1440;
   const segments: { start: number; end: number }[] = [];
   while (remaining > 1e-10) {
-    cursor = nextWorkingStart(cursor, hours);
-    const windowEnd = Math.floor(cursor + 1e-10) + (hours === 24 ? 1 : (8 + hours) / 24);
-    const take = Math.min(remaining, windowEnd - cursor);
-    segments.push({ start: cursor, end: cursor + take });
-    cursor += take;
+    const period = workingPeriodFrom(cursor, hours);
+    const take = Math.min(remaining, period.end - period.start);
+    const last = segments[segments.length - 1];
+    // A break inside the same day keeps the bar whole (the break is drawn over it); only a new day splits it.
+    if (last && Math.floor(last.start + 1e-10) === Math.floor(period.start + 1e-10)) last.end = period.start + take;
+    else segments.push({ start: period.start, end: period.start + take });
+    cursor = period.start + take;
     remaining -= take;
   }
   return { start, end: cursor, segments };

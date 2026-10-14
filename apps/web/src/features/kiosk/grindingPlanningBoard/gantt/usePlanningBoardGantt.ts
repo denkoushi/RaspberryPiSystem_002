@@ -5,7 +5,7 @@ import { resolveGrindingPlanningBoardResource } from '../sortGrindingPlanningBoa
 
 import { buildPlanningBoardGanttLayout } from './planningBoardGanttLayout';
 import { usePersistedPlanningBoardGanttMode } from './usePersistedPlanningBoardGanttMode';
-import { usePersistedPlanningBoardGanttScale } from './usePersistedPlanningBoardGanttScale';
+import { usePlanningBoardGanttScale } from './usePersistedPlanningBoardGanttScale';
 
 import type { GanttLayoutOptions } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttHandle } from './PlanningBoardGanttView';
@@ -20,7 +20,7 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
 }) {
   const { enabled, preferenceScope, items, resources, seibanOrder, view, allocation, today, now } = options;
   const { mode, changeMode } = usePersistedPlanningBoardGanttMode();
-  const { scale, changeScale } = usePersistedPlanningBoardGanttScale();
+  const { scale, homeKey, changeScale } = usePlanningBoardGanttScale();
   const capacity = useKioskGrindingPlanningBoardResourceCapacity(enabled);
   const { mutate, isPending, isError } = useUpdateKioskGrindingPlanningBoardResourceCapacity();
   const dailyHoursByResource = capacity.data?.dailyHoursByResource ?? DEFAULT_CAPACITY;
@@ -48,6 +48,6 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
   const changeCapacity = useCallback((resourceCd: string, dailyHours: GrindingPlanningBoardResourceDailyHours) => {
     if (!isPending) mutate({ resourceCd, dailyHours });
   }, [isPending, mutate]);
-  return { mode, changeMode, scrollToNextLate, scale, changeScale, layout, viewRef, scrollToNextOverlap, dailyHoursByResource,
+  return { mode, changeMode, scrollToNextLate, scale, homeKey, changeScale, layout, viewRef, scrollToNextOverlap, dailyHoursByResource,
     capacityPending: isPending, capacityError: isError, changeCapacity };
 }

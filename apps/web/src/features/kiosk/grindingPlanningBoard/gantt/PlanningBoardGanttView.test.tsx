@@ -96,7 +96,7 @@ describe('forward PlanningBoardGanttView', () => {
   function forwardProps(items = [item({ requiredMinutes: 60, alternateRank: 1 }), item({ itemId: 'b', fhincd: 'P2', requiredMinutes: 60, alternateRank: 2 })]) {
     return { ...props(items), scale: 2, onResourceReorder: vi.fn(),
       layout: buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'],
-        dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T10:00:00+09:00'), scale: 2 }) };
+        dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T09:00:00+09:00'), scale: 2 }) };
   }
   it.each([['a', 'b', 300, 'after'], ['b', 'a', 0, 'before']] as const)('drags %s %s %i %s with a white insertion marker', (source, target, destination, placement) => {
     const values = forwardProps();
@@ -136,6 +136,21 @@ describe('forward PlanningBoardGanttView', () => {
     rerender(<PlanningBoardGanttView {...special} />);
     dragBar();
     expect(special.onResourceReorder).not.toHaveBeenCalled();
+  });
+  it('moves two hours with the arrow buttons and returns to today on each scale press', () => {
+    const values = forwardProps([item()]);
+    const { rerender } = render(<PlanningBoardGanttView {...values} homeKey={0} />);
+    const viewport = screen.getByLabelText('ガントの日付と工程');
+    const twoHours = (1120 - 168) / 2 / 12;
+    fireEvent.click(screen.getByRole('button', { name: '2時間進む' }));
+    fireEvent.click(screen.getByRole('button', { name: '2時間進む' }));
+    expect(viewport.scrollLeft).toBeCloseTo(twoHours * 2);
+    fireEvent.click(screen.getByRole('button', { name: '2時間戻る' }));
+    expect(viewport.scrollLeft).toBeCloseTo(twoHours);
+    rerender(<PlanningBoardGanttView {...values} homeKey={0} />);
+    expect(viewport.scrollLeft).toBeCloseTo(twoHours);
+    rerender(<PlanningBoardGanttView {...values} homeKey={1} />);
+    expect(viewport.scrollLeft).toBe(0);
   });
   it('shows completed-only guidance and starts the viewport at today', () => {
     const values = forwardProps([item({ isCompleted: true })]);

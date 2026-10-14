@@ -1,8 +1,8 @@
 import clsx from 'clsx';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { canReorderForwardBars, forwardItemDetails } from './planningBoardForwardQueue';
-import { dateToDay } from './planningBoardGanttLayout';
+import { dateToDay, workingPeriods } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH } from './PlanningBoardGanttRow';
 
 import type { GanttBar, GanttRow } from './planningBoardGanttLayout';
@@ -38,6 +38,12 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
   const track = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
   const suppressClick = useRef(false);
+  // Shade everything outside the working periods; breaks sit above the bars so a bar shows where it pauses.
+  const offHours = useMemo(() => workingPeriods(hours).reduce<{ start: number; end: number }[]>((gaps, period, index, periods) => {
+    gaps.push({ start: index === 0 ? 0 : periods[index - 1]!.end, end: period.start });
+    if (index === periods.length - 1) gaps.push({ start: period.end, end: 1 });
+    return gaps;
+  }, []), [hours]);
   const [preview, setPreview] = useState<{ itemId: string; dx: number; drop: Drop | null } | null>(null);
   const clear = () => {
     const pending = drag.current;
@@ -77,8 +83,8 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
     </div>
     <div ref={track} className="relative shrink-0 overflow-hidden" style={{ width }}>
       {hours < 24 && Array.from({ length: end - start }, (_, i) => <div key={i} className="pointer-events-none">
-        <span className="absolute inset-y-0 bg-slate-950/55" style={{ left: i * dayWidth, width: dayWidth / 3 }} />
-        <span className="absolute inset-y-0 bg-slate-950/55" style={{ left: (i + (8 + hours) / 24) * dayWidth, width: (16 - hours) / 24 * dayWidth }} />
+        {offHours.map((gap, index) => <span key={index} className={clsx('absolute inset-y-0 bg-slate-950/55', gap.start > 0 && gap.end < 1 && 'z-[3]')}
+          style={{ left: (i + gap.start) * dayWidth, width: (gap.end - gap.start) * dayWidth }} />)}
       </div>)}
       <span data-testid="planning-gantt-now" className="pointer-events-none absolute inset-y-0 z-[3] border-l-2 border-yellow-400" style={{ left: (now - start) * dayWidth }} />
       {row.connectors.map((link, i) => <span key={i} className="pointer-events-none absolute top-8 border-t-2 border-dotted border-amber-400" style={{ left: (link.start - start) * dayWidth, width: (link.end - link.start) * dayWidth }} />)}

@@ -20,6 +20,8 @@ type Props = Pick<PlanningBoardGanttRowProps, 'disabled' | 'dragDisabled' | 'onT
   onResourceReorder?: ForwardReorder;
   layout: GanttLayout;
   scale: number;
+  /** Changes each time a scale button is pressed, so the chart returns to today even on the current scale. */
+  homeKey?: number;
   dailyHoursByResource: Readonly<Record<string, GrindingPlanningBoardResourceDailyHours>>;
   resourceNameMap: Record<string, string[]>;
   capacityPending: boolean;
@@ -32,9 +34,11 @@ const GANTT_BOTTOM_GAP = 10;
 // With a 2- or 4-day span a day is wide enough to show where the hours fall.
 const HOUR_TICKS = [8, 17, 20];
 const HOUR_TICK_MIN_DAY_WIDTH = 160;
+// The ‹ › buttons move the chart by two hours at any scale.
+const NUDGE_DAYS = 2 / 24;
 
 export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props>(function PlanningBoardGanttView({
-  layout, scale, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, ...interaction
+  layout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, ...interaction
 }, ref) {
   const forward = layout.mode === 'forward';
   const queuePopover = useRef<ForwardQueueHandle>(null);
@@ -42,7 +46,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const [viewportWidth, setViewportWidth] = useState(1120);
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
   const flaggedIndex = useRef(-1);
-  const previousAxis = useRef<{ start: number; dayWidth: number; scale: number; forward: boolean } | null>(null);
+  const previousAxis = useRef<{ start: number; dayWidth: number; scale: number; forward: boolean; homeKey: number } | null>(null);
   const labelWidth = forward ? GANTT_FORWARD_LABEL_WIDTH : GANTT_LABEL_WIDTH;
   const dayWidth = Math.max(1, viewportWidth - labelWidth) / scale;
   const width = (layout.end - layout.start) * dayWidth;
@@ -65,13 +69,16 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   useEffect(() => {
     if (!viewport.current) return;
     const previous = previousAxis.current;
-    // A new scale starts near today so a 2- or 4-day span does not open on past days; data changes keep the position.
-    const firstDay = previous && previous.scale === scale && previous.forward === forward
+    // A scale press starts near today so a 2- or 4-day span does not open on past days; data changes keep the position.
+    const firstDay = previous && previous.scale === scale && previous.forward === forward && previous.homeKey === homeKey
       ? previous.start + viewport.current.scrollLeft / previous.dayWidth
       : layout.today - (forward || scale < 7 ? 0 : 3);
     viewport.current.scrollLeft = Math.max(0, (firstDay - layout.start) * dayWidth);
-    previousAxis.current = { start: layout.start, dayWidth, scale, forward };
-  }, [dayWidth, layout.start, layout.today, scale, forward]);
+    previousAxis.current = { start: layout.start, dayWidth, scale, forward, homeKey };
+  }, [dayWidth, layout.start, layout.today, scale, forward, homeKey]);
+  const nudge = (direction: 1 | -1) => {
+    if (viewport.current) viewport.current.scrollLeft = Math.max(0, viewport.current.scrollLeft + direction * NUDGE_DAYS * dayWidth);
+  };
   useImperativeHandle(ref, () => ({ scrollToNextOverlap: () => {
     const element = viewport.current;
     const rows = element?.querySelectorAll<HTMLElement>('[data-gantt-flagged="true"]');
@@ -110,7 +117,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     </div>
   </>;
   return (
-    <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className="mt-2 overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
+    <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className="relative mt-2 overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
       {capacityError && <p role="alert" className="px-2 py-1 text-xs text-rose-200">稼働時間を保存できませんでした。</p>}
       <div ref={viewport} onScroll={() => queuePopover.current?.close()} className="relative min-h-48 overflow-auto" style={viewportHeight ? { height: viewportHeight } : undefined} tabIndex={0} aria-label="ガントの日付と工程">
         <div className="relative isolate" style={{ width: labelWidth + width }}>
@@ -159,6 +166,11 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
               today={dayToDate(layout.today)} selectedParts={selectedParts} {...interaction} />)}
           </div>)}
         </div>
+      </div>
+      <div className="absolute bottom-5 right-3 z-40 flex gap-1.5" role="group" aria-label="ガントの左右送り">
+        {([[-1, '2時間戻る', '‹'], [1, '2時間進む', '›']] as const).map(([direction, label, mark]) => <button key={direction} type="button" aria-label={label}
+          className="grid h-12 w-12 place-items-center rounded-full border border-slate-500 bg-slate-900/85 pb-0.5 text-2xl font-bold leading-none text-slate-100 shadow-lg shadow-black/50 active:bg-sky-400 active:text-slate-950"
+          onClick={() => nudge(direction)}>{mark}</button>)}
       </div>
       {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} layout={layout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} />}
     </section>
