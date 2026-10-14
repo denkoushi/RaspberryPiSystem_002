@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { dateValue, resolvePlanningBoardDueRequest } from '../grinding-planning-board.service.js';
 
@@ -20,6 +20,12 @@ describe('grinding planning board timestamp parsing', () => {
 });
 
 describe('grinding planning board due requests', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-13T15:00:00.000Z'));
+  });
+  afterEach(() => vi.useRealTimers());
+
   it('adds calendar days from effective then original due date', () => {
     const result = resolvePlanningBoardDueRequest({
       request: { kind: 'offsetDays', days: 2 },
@@ -43,17 +49,46 @@ describe('grinding planning board due requests', () => {
     })).toBeNull();
   });
 
-  it('returns undefined for same exact date and rejects an earlier known due date', () => {
+  it('returns undefined for the same date, including a past date', () => {
     expect(resolvePlanningBoardDueRequest({
       request: { kind: 'date', date: '2026-09-01' },
       currentEffectiveDueDate: '2026-09-01',
       originalDueDate: '2026-08-01'
     })).toBeUndefined();
+  });
+
+  it.each(['2026-10-14', '2026-10-15'])('accepts an earlier due date on or after JST today: %s', (date) => {
+    expect(resolvePlanningBoardDueRequest({
+      request: { kind: 'date', date },
+      currentEffectiveDueDate: '2026-10-20',
+      originalDueDate: null
+    })?.toISOString().slice(0, 10)).toBe(date);
+  });
+
+  it.each(['2026-10-20', null])('rejects a date before JST today when advancing or assigning: %s', (currentEffectiveDueDate) => {
     expect(() => resolvePlanningBoardDueRequest({
+      request: { kind: 'date', date: '2026-10-13' },
+      currentEffectiveDueDate,
+      originalDueDate: null
+    })).toThrowError(expect.objectContaining({
+      statusCode: 400, message: '過去の日付は指定できません', code: 'PAST_DUE_DATE'
+    }));
+  });
+
+  it('accepts postponement even when both dates are in the past', () => {
+    expect(resolvePlanningBoardDueRequest({
       request: { kind: 'date', date: '2026-09-05' },
-      currentEffectiveDueDate: '2026-09-10',
-      originalDueDate: '2026-09-01'
-    })).toThrowError();
+      currentEffectiveDueDate: '2026-09-01',
+      originalDueDate: null
+    })?.toISOString().slice(0, 10)).toBe('2026-09-05');
+  });
+
+  it('accepts JST today with no current due date', () => {
+    expect(resolvePlanningBoardDueRequest({
+      request: { kind: 'date', date: '2026-10-14' },
+      currentEffectiveDueDate: null,
+      originalDueDate: null
+    })?.toISOString().slice(0, 10)).toBe('2026-10-14');
   });
 
   it('uses the original date or JST today for offsets and validates date inputs', () => {

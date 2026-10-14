@@ -1,5 +1,8 @@
 import clsx from 'clsx';
 
+import { GANTT_SCALES } from './gantt/usePersistedPlanningBoardGanttScale';
+
+import type { PlanningBoardGanttScale } from './gantt/usePersistedPlanningBoardGanttScale';
 import type { PlanningBoardAllocation, PlanningBoardStatus } from './types';
 import type {
   GrindingPlanningBoardCategory,
@@ -10,15 +13,25 @@ import type { ReactNode } from 'react';
 
 
 
+type SegmentTone = 'filter' | 'gantt' | 'scale';
+
 type SegmentButtonProps = {
   pressed: boolean;
   children: ReactNode;
   onClick: () => void;
   ariaLabel?: string;
   disabled?: boolean;
+  tone?: SegmentTone;
 };
 
-function SegmentButton({ pressed, children, onClick, ariaLabel, disabled = false }: SegmentButtonProps) {
+// Solid emerald is reserved for the bulk action; a selected filter is white and the Gantt cluster is sky.
+const SEGMENT_TONE_CLASS: Record<SegmentTone, { on: string; off: string }> = {
+  filter: { on: 'bg-slate-100 font-bold text-slate-950', off: 'text-slate-400 hover:bg-slate-800 hover:text-slate-200' },
+  gantt: { on: 'bg-sky-400 font-bold text-slate-950', off: 'font-bold text-sky-400 hover:bg-sky-400/15' },
+  scale: { on: 'text-white ring-2 ring-inset ring-sky-400', off: 'text-sky-300 hover:bg-sky-400/15' }
+};
+
+function SegmentButton({ pressed, children, onClick, ariaLabel, disabled = false, tone = 'filter' }: SegmentButtonProps) {
   return (
     <button
       type="button"
@@ -27,9 +40,9 @@ function SegmentButton({ pressed, children, onClick, ariaLabel, disabled = false
       disabled={disabled}
       onClick={onClick}
       className={clsx(
-        'min-h-11 shrink-0 rounded-md px-2.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-55',
+        'min-h-11 shrink-0 rounded-md px-3 text-[13px] font-semibold tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-55',
         'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300',
-        pressed ? 'bg-emerald-400 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+        pressed ? SEGMENT_TONE_CLASS[tone].on : SEGMENT_TONE_CLASS[tone].off
       )}
     >
       {children}
@@ -37,7 +50,26 @@ function SegmentButton({ pressed, children, onClick, ariaLabel, disabled = false
   );
 }
 
+const SEGMENT_TRACK_CLASS = 'flex shrink-0 items-center gap-0.5 rounded-[9px] border p-0.5';
+
+function SegmentGroup({ label, ariaLabel, children }: { label: string; ariaLabel: string; children: ReactNode }) {
+  return (
+    <div className={clsx(SEGMENT_TRACK_CLASS, 'border-slate-700 bg-slate-900')} role="group" aria-label={ariaLabel}>
+      <span className="whitespace-nowrap pl-2 pr-1.5 text-[10px] font-bold tracking-wider text-slate-500" aria-hidden="true">
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
 export type PlanningBoardToolbarProps = {
+  ganttEnabled?: boolean;
+  onToggleGantt?: () => void;
+  ganttScale?: PlanningBoardGanttScale;
+  onGanttScaleChange?: (scale: PlanningBoardGanttScale) => void;
+  overlapCount?: number;
+  onNextOverlap?: () => void;
   category: GrindingPlanningBoardCategory;
   view: GrindingPlanningBoardView;
   status: PlanningBoardStatus;
@@ -60,6 +92,12 @@ export type PlanningBoardToolbarProps = {
 };
 
 export function PlanningBoardToolbar({
+  ganttEnabled = false,
+  onToggleGantt,
+  ganttScale = 14,
+  onGanttScaleChange,
+  overlapCount = 0,
+  onNextOverlap,
   category,
   view,
   status,
@@ -81,34 +119,54 @@ export function PlanningBoardToolbar({
   specialDueCounts = { overnight: 0, today: 0 }
 }: PlanningBoardToolbarProps) {
   return (
-    <div className="flex min-w-0 flex-nowrap items-center gap-1 overflow-x-auto rounded-lg border border-slate-800 bg-slate-925 px-1.5 py-1.5">
+    <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto rounded-lg border border-slate-800 bg-slate-925 px-2 py-1.5">
       <button
         type="button"
         onClick={onOpenDrawer}
-        className="min-h-11 shrink-0 rounded-md border border-slate-700 bg-slate-900 px-2 text-xs font-bold text-slate-200 hover:border-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
+        className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border border-slate-500 bg-slate-800 pl-3 pr-2 text-[13px] font-bold text-slate-100 hover:border-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
         aria-label="製番登録ペインを開く"
       >
-        製番 {registeredCount}
+        <svg viewBox="0 0 16 16" fill="currentColor" className="h-[15px] w-[15px]" aria-hidden="true">
+          <rect x="1" y="2.5" width="14" height="2" rx="1" /><rect x="1" y="7" width="14" height="2" rx="1" /><rect x="1" y="11.5" width="14" height="2" rx="1" />
+        </svg>
+        製番
+        <span className="min-w-6 rounded-full bg-slate-950 px-1.5 py-0.5 text-center tabular-nums text-emerald-300">{registeredCount}</span>
       </button>
-      <div className="flex shrink-0 items-center gap-1" role="group" aria-label="工程">
+      <SegmentGroup label="工程" ariaLabel="工程">
         <SegmentButton disabled={scopeDisabled} pressed={category === 'grinding'} onClick={() => onCategoryChange('grinding')}>
           研削
         </SegmentButton>
         <SegmentButton disabled={scopeDisabled} pressed={category === 'cutting'} onClick={() => onCategoryChange('cutting')}>
           切削
         </SegmentButton>
-      </div>
-      <span className="h-7 w-px shrink-0 bg-slate-800" aria-hidden="true" />
-      <div className="flex shrink-0 items-center gap-1" role="group" aria-label="表示単位">
+      </SegmentGroup>
+      <SegmentGroup label="表示" ariaLabel="表示単位">
         <SegmentButton pressed={view === 'seiban'} onClick={() => onViewChange('seiban')}>
           製番
         </SegmentButton>
         <SegmentButton pressed={view === 'resource'} onClick={() => onViewChange('resource')}>
           資源CD
         </SegmentButton>
-      </div>
-      <span className="h-7 w-px shrink-0 bg-slate-800" aria-hidden="true" />
-      <div className="flex shrink-0 items-center gap-1" role="group" aria-label="進捗">
+      </SegmentGroup>
+      {onToggleGantt && <div className={clsx(SEGMENT_TRACK_CLASS, 'border-sky-400/55 bg-sky-400/10')}>
+        <SegmentButton tone="gantt" pressed={ganttEnabled} onClick={onToggleGantt}>
+          <span className="inline-flex items-center gap-1.5">
+            <svg viewBox="0 0 16 16" fill="currentColor" className="h-4 w-4" aria-hidden="true">
+              <rect x="1" y="2" width="8" height="3" rx="1" /><rect x="5" y="6.5" width="9" height="3" rx="1" /><rect x="3" y="11" width="6" height="3" rx="1" />
+            </svg>ガント
+          </span>
+        </SegmentButton>
+        {ganttEnabled && <>
+          <div className="ml-1 flex shrink-0 items-center gap-0.5" role="group" aria-label="横軸の幅">
+            {GANTT_SCALES.map((days) => <SegmentButton key={days} tone="scale" pressed={ganttScale === days} onClick={() => onGanttScaleChange?.(days)}>{days / 7}週</SegmentButton>)}
+          </div>
+          <button type="button" onClick={onNextOverlap}
+            className={clsx('ml-1 min-h-11 shrink-0 rounded-md px-3 text-[13px] font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300', overlapCount ? 'bg-rose-800 text-white' : 'text-emerald-300')}>
+            {overlapCount ? `⚠ 重なり ${overlapCount}` : '✓ 重なりなし'}
+          </button>
+        </>}
+      </div>}
+      <SegmentGroup label="進捗" ariaLabel="進捗">
         <SegmentButton disabled={scopeDisabled} pressed={status === 'incomplete'} onClick={() => onStatusChange('incomplete')}>
           未完
         </SegmentButton>
@@ -118,16 +176,15 @@ export function PlanningBoardToolbar({
         <SegmentButton disabled={scopeDisabled} pressed={status === 'complete'} onClick={() => onStatusChange('complete')}>
           完了
         </SegmentButton>
-      </div>
-      <span className="h-7 w-px shrink-0 bg-slate-800" aria-hidden="true" />
-      <div className="flex shrink-0 items-center gap-1" role="group" aria-label="割当">
+      </SegmentGroup>
+      <SegmentGroup label="割当" ariaLabel="割当">
         <SegmentButton disabled={scopeDisabled} pressed={allocation === 'alternate'} onClick={() => onAllocationChange('alternate')}>
           別割当
         </SegmentButton>
         <SegmentButton disabled={scopeDisabled} pressed={allocation === 'original'} onClick={() => onAllocationChange('original')}>
           元割当
         </SegmentButton>
-      </div>
+      </SegmentGroup>
       <div className="h-11 min-w-64 flex-1 overflow-hidden">{feedback}</div>
       <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-1">
         {onSpecialDueModeChange ? (
@@ -167,7 +224,7 @@ export function PlanningBoardToolbar({
           type="button"
           onClick={onOpenDueEditor}
           disabled={bulkDisabled}
-          className="min-h-11 shrink-0 rounded-md bg-emerald-400 px-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
+          className="min-h-11 shrink-0 rounded-md bg-emerald-400 px-4 text-[13px] font-bold text-slate-950 hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
         >
           一括変更
         </button>

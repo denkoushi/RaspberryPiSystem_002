@@ -14,7 +14,7 @@ function compareText(left: string, right: string): number {
   return left.localeCompare(right, 'ja');
 }
 
-function compareProcessOrder(left: string, right: string): number {
+export function compareProcessOrder(left: string, right: string): number {
   const leftNumber = Number(left);
   const rightNumber = Number(right);
   if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber) && leftNumber !== rightNumber) {

@@ -41,6 +41,8 @@ import {
   getKioskProductionScheduleSearchState,
   getKioskProductionScheduleSearchHistory,
   getKioskProductionScheduleHistoryProgress,
+  getKioskGrindingPlanningBoardResourceCapacity,
+  updateKioskGrindingPlanningBoardResourceCapacity,
   getKioskGrindingPlanningBoard,
   getKioskGrindingPlanningBoardLoad,
   getKioskGrindingPlanningBoardSnapshot,
@@ -97,6 +99,8 @@ import {
 
 import type { KioskProductionScheduleListCache } from '../../features/kiosk/productionSchedule/cache/kioskProductionScheduleListCache';
 import type {
+  GrindingPlanningBoardResourceCapacityRequest,
+  GrindingPlanningBoardResourceCapacityResponse,
   GrindingPlanningBoardOverridesRequest,
   GrindingPlanningBoardRankRequest,
   GrindingPlanningBoardRankResponse,
@@ -1623,5 +1627,36 @@ export function useSetKioskProductionScheduleRowCompletion() {
         queryKey: ['kiosk-production-schedule-due-management-manual-order-overview']
       });
     }
+  });
+}
+
+// Independent of board invalidation and progressive snapshots.
+const planningBoardCapacityKey = ['kiosk-planning-board-resource-capacity'] as const;
+
+export function useKioskGrindingPlanningBoardResourceCapacity(enabled: boolean) {
+  return useQuery({
+    queryKey: planningBoardCapacityKey,
+    queryFn: getKioskGrindingPlanningBoardResourceCapacity,
+    enabled,
+    staleTime: 10 * 60_000
+  });
+}
+
+export function useUpdateKioskGrindingPlanningBoardResourceCapacity() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrindingPlanningBoardResourceCapacityRequest) => updateKioskGrindingPlanningBoardResourceCapacity(payload),
+    onMutate: async ({ resourceCd, dailyHours }) => {
+      await queryClient.cancelQueries({ queryKey: planningBoardCapacityKey });
+      const previous = queryClient.getQueryData<GrindingPlanningBoardResourceCapacityResponse>(planningBoardCapacityKey);
+      queryClient.setQueryData<GrindingPlanningBoardResourceCapacityResponse>(planningBoardCapacityKey, {
+        dailyHoursByResource: { ...previous?.dailyHoursByResource, [resourceCd]: dailyHours }
+      });
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      queryClient.setQueryData(planningBoardCapacityKey, context?.previous ?? { dailyHoursByResource: {} });
+    },
+    onSuccess: (response) => queryClient.setQueryData(planningBoardCapacityKey, response)
   });
 }

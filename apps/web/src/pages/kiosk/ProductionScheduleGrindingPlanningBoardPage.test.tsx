@@ -17,6 +17,7 @@ class TestPointerEvent extends MouseEvent {
 }
 
 const mocks = vi.hoisted(() => ({
+  capacity: vi.fn(),
   snapshot: vi.fn(),
   load: vi.fn(),
   refetch: vi.fn(),
@@ -30,6 +31,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../api/hooks', () => ({
+  useKioskGrindingPlanningBoardResourceCapacity: (enabled: boolean) => mocks.capacity(enabled),
+  useUpdateKioskGrindingPlanningBoardResourceCapacity: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
   useKioskProductionScheduleResources: () => ({
     data: {
       resourceNameMap: {
@@ -137,6 +140,9 @@ function chooseResourceRank(fseiban: string, rank: number | null) {
 describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   beforeEach(() => {
     vi.stubGlobal('PointerEvent', TestPointerEvent);
+    localStorage.removeItem('kiosk-planning-board-gantt-scale');
+    mocks.capacity.mockReset();
+    mocks.capacity.mockReturnValue({ data: undefined, isLoading: true });
     mocks.snapshot.mockReset();
     mocks.load.mockReset();
     mocks.load.mockReturnValue({ data: { load: fixture().load, unknownRequiredMinutesCount: 0 } });
@@ -178,6 +184,73 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('ガント切替と縮尺変更でボード取得条件が変わらず、通常表示へ戻る', () => {
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    const args = mocks.snapshot.mock.calls.at(-1);
+    mocks.snapshot.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
+    expect(screen.getByTestId('planning-board-gantt')).toBeInTheDocument();
+    expect(screen.queryByTestId('planning-board-seiban-26-1041')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'ガント' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '2週' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '4週' }));
+    expect(screen.getByRole('button', { name: '4週' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '✓ 重なりなし' })).toBeInTheDocument();
+    expect(mocks.capacity).toHaveBeenLastCalledWith(true);
+    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
+    expect(screen.queryByTestId('planning-board-gantt')).not.toBeInTheDocument();
+    expect(screen.getByTestId('planning-board-seiban-26-1041')).toBeInTheDocument();
+    expect(mocks.capacity).toHaveBeenLastCalledWith(false);
+    for (const call of mocks.snapshot.mock.calls) expect(call).toEqual(args);
+    expect(mocks.refetch).not.toHaveBeenCalled();
+  });
+
+  it('ガントで選択し、離した時だけ指定納期をキュー保存し楽観反映する', async () => {
+    mocks.overrides.mockImplementation(() => new Promise(() => {}));
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    fireEvent.click(bar);
+    expect(bar).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '一括変更' })).toBeEnabled();
+    fireEvent.pointerDown(bar, { pointerId: 1, button: 0, clientX: 100, clientY: 20 });
+    fireEvent.pointerMove(bar, { pointerId: 1, clientX: 214, clientY: 20 });
+    expect(mocks.overrides).not.toHaveBeenCalled();
+    fireEvent.pointerUp(bar, { pointerId: 1, clientX: 214, clientY: 20 });
+    await waitFor(() => expect(mocks.overrides).toHaveBeenCalledWith({ sourceRevision: 'board-1', items: [
+      { itemId: 'a', itemRevision: 'revision-a', overrideVersion: 2, due: { kind: 'date', date: '2026-09-14' } }
+    ] }));
+    expect(screen.getByTestId('planning-gantt-bar-a')).toHaveAttribute('aria-label', expect.stringContaining('納期2026-09-14'));
+  });
+
+  it('元割当はガントのドラッグを無効にし、選択は維持する', () => {
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: '元割当' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    expect(bar).toHaveAttribute('data-drag-disabled', 'true');
+    fireEvent.pointerDown(bar, { pointerId: 1, button: 0, clientX: 100 });
+    fireEvent.pointerMove(bar, { pointerId: 1, clientX: 300 });
+    fireEvent.pointerUp(bar, { pointerId: 1, clientX: 300 });
+    fireEvent.click(bar); // Suppress the synthetic click following a swipe.
+    expect(bar).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(bar);
+    expect(bar).toHaveAttribute('aria-pressed', 'true');
+    expect(mocks.overrides).not.toHaveBeenCalled();
+  });
+
+  it('同日へのドロップとキャンセルでは保存しない', () => {
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    fireEvent.pointerDown(bar, { pointerId: 1, button: 0, clientX: 100 });
+    fireEvent.pointerUp(bar, { pointerId: 1, clientX: 110 });
+    fireEvent.pointerDown(bar, { pointerId: 2, button: 0, clientX: 100 });
+    fireEvent.pointerMove(bar, { pointerId: 2, clientX: 300 });
+    fireEvent.pointerCancel(bar, { pointerId: 2 });
+    expect(mocks.overrides).not.toHaveBeenCalled();
   });
 
   it('負荷未着でも一覧と編集操作を使え、別取得の負荷が開いた編集パネルへ反映される', () => {

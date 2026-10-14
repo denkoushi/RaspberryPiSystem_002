@@ -13,6 +13,10 @@ import {
   getGrindingPlanningBoardDueScope,
   updateGrindingPlanningBoardDueScope
 } from '../../../services/production-schedule/grinding-planning-board-due-scope.service.js';
+import {
+  getGrindingPlanningBoardResourceCapacity,
+  updateGrindingPlanningBoardResourceCapacity
+} from '../../../services/production-schedule/grinding-planning-board-resource-capacity.service.js';
 import type { KioskRouteDeps } from './shared.js';
 
 const querySchema = z.object({
@@ -79,6 +83,11 @@ const orderBodySchema = z.object({
   fseibans: z.array(z.string().min(1).max(100)).max(50)
 });
 
+const resourceCapacityBodySchema = z.object({
+  resourceCd: z.string().trim().min(1).max(20),
+  dailyHours: z.union([z.literal(8), z.literal(10), z.literal(24)])
+});
+
 const dueScopeSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('seiban') }),
   z.object({ kind: z.literal('processing'), processingType: z.string().min(1).max(20) })
@@ -122,6 +131,19 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
       includeLoad: query.includeLoad,
       snapshotStore: deps.leaderboardShellSnapshotStore
     });
+  });
+
+  app.get('/kiosk/production-schedule/grinding-planning-board/resource-capacity', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const scope = deps.resolveLocationScopeContext(clientDevice);
+    return getGrindingPlanningBoardResourceCapacity({ siteKey: scope.siteKey });
+  });
+
+  app.put('/kiosk/production-schedule/grinding-planning-board/resource-capacity', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const scope = deps.resolveLocationScopeContext(clientDevice);
+    const body = resourceCapacityBodySchema.parse(request.body);
+    return updateGrindingPlanningBoardResourceCapacity({ siteKey: scope.siteKey, ...body });
   });
 
   app.get('/kiosk/production-schedule/grinding-planning-board/load', { config: { rateLimit: false } }, async (request) => {

@@ -6,6 +6,8 @@ import type { SelfInspectionStatus } from '../../features/part-measurement/types
 import type {
   MaterialArrivalBasis,
   MaterialArrivalStatus,
+  GrindingPlanningBoardResourceCapacityRequest,
+  GrindingPlanningBoardResourceCapacityResponse,
   GrindingPlanningBoardCategory,
   GrindingPlanningBoardOverridesResponse,
   GrindingPlanningBoardResponse,
@@ -1711,6 +1713,20 @@ export async function postKioskProductionScheduleSeibanMachineNames(payload: { f
   const { data } = await api.post<KioskProductionScheduleSeibanMachineNamesResponse>(
     '/kiosk/production-schedule/seiban-machine-names',
     payload
+  );
+  return data;
+}
+
+export async function getKioskGrindingPlanningBoardResourceCapacity() {
+  const { data } = await api.get<GrindingPlanningBoardResourceCapacityResponse>(
+    '/kiosk/production-schedule/grinding-planning-board/resource-capacity'
+  );
+  return data;
+}
+
+export async function updateKioskGrindingPlanningBoardResourceCapacity(payload: GrindingPlanningBoardResourceCapacityRequest) {
+  const { data } = await api.put<GrindingPlanningBoardResourceCapacityResponse>(
+    '/kiosk/production-schedule/grinding-planning-board/resource-capacity', payload
   );
   return data;
 }
