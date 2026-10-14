@@ -38,12 +38,11 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
   const track = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
   const suppressClick = useRef(false);
-  // Shade everything outside the working periods; breaks sit above the bars so a bar shows where it pauses.
-  const offHours = useMemo(() => workingPeriods(hours).reduce<{ start: number; end: number }[]>((gaps, period, index, periods) => {
-    gaps.push({ start: index === 0 ? 0 : periods[index - 1]!.end, end: period.start });
-    if (index === periods.length - 1) gaps.push({ start: period.end, end: 1 });
-    return gaps;
-  }, []), [hours]);
+  // Shade only the time before and after the working day; breaks still delay the bars but are not drawn.
+  const offHours = useMemo(() => {
+    const periods = workingPeriods(hours);
+    return [{ start: 0, end: periods[0]!.start }, { start: periods[periods.length - 1]!.end, end: 1 }];
+  }, [hours]);
   const [preview, setPreview] = useState<{ itemId: string; dx: number; drop: Drop | null } | null>(null);
   const clear = () => {
     const pending = drag.current;
@@ -83,11 +82,11 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
     </div>
     <div ref={track} className="relative shrink-0 overflow-hidden" style={{ width }}>
       {hours < 24 && Array.from({ length: end - start }, (_, i) => <div key={i} className="pointer-events-none">
-        {offHours.map((gap, index) => <span key={index} className={clsx('absolute inset-y-0 bg-slate-950/55', gap.start > 0 && gap.end < 1 && 'z-[3]')}
+        {offHours.map((gap, index) => <span key={index} className="absolute inset-y-0 bg-slate-950/55"
           style={{ left: (i + gap.start) * dayWidth, width: (gap.end - gap.start) * dayWidth }} />)}
       </div>)}
       <span data-testid="planning-gantt-now" className="pointer-events-none absolute inset-y-0 z-[3] border-l-2 border-yellow-400" style={{ left: (now - start) * dayWidth }} />
-      {row.connectors.map((link, i) => <span key={i} className="pointer-events-none absolute top-8 border-t-2 border-dotted border-amber-400" style={{ left: (link.start - start) * dayWidth, width: (link.end - link.start) * dayWidth }} />)}
+      {row.connectors.map((link, i) => <span key={i} className="pointer-events-none absolute top-9 border-t-2 border-dotted border-amber-400" style={{ left: (link.start - start) * dayWidth, width: (link.end - link.start) * dayWidth }} />)}
       {row.bars.map((bar) => {
         const selected = selectedItemIds.has(bar.item.itemId);
         const segments = bar.unknown ? [{ start: bar.start!, end: bar.end! }] : bar.segments ?? [];
@@ -99,7 +98,7 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
               aria-label={`${bar.item.fhinmei || bar.item.fhincd} 工順${bar.item.processOrder} ${bar.resource} 納期${bar.due ?? 'なし'}`}
               aria-pressed={selected} disabled={disabled || bar.item.isCompleted}
               data-drag-disabled={dragDisabled || disabled || !resourceView}
-              className={clsx('absolute top-3 h-11 touch-pan-y select-none overflow-hidden whitespace-nowrap rounded text-left text-[11px] font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-white',
+              className={clsx('absolute top-1.5 h-[60px] touch-pan-y select-none overflow-hidden rounded pt-px text-left text-[11px] font-bold leading-[14px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-white',
                 bar.tone === 'late' ? 'bg-rose-400 text-slate-950' : 'bg-sky-400 text-slate-950',
                 bar.unknown && 'border border-dashed border-slate-200 bg-slate-800 text-slate-200',
                 selected && 'outline outline-2 outline-offset-1 outline-white', index > 0 && 'border-l-2 border-dashed border-slate-950')}
@@ -131,12 +130,12 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
                 onToggleItem(bar.item, !selected);
               }}>
               {bar.unknown ? '所要不明' : segmentWidth >= 48
-                ? <span className="block truncate px-1">{bar.item.fhinmei || bar.item.fhincd}
-                  <small className="block truncate font-normal">{scale <= 2 ? forwardItemDetails(bar.item) : `${bar.item.requiredMinutes}分`}</small>
+                ? <span className="block break-all px-1"><b className="line-clamp-2">{bar.item.fhinmei || bar.item.fhincd}</b>
+                  <small className="line-clamp-2 text-[11px] font-normal">{scale <= 2 ? forwardItemDetails(bar.item) : `${bar.item.requiredMinutes}分`}</small>
                 </span> : null}
             </button>;
           })}
-          {selected && bar.due && <span data-testid={`planning-gantt-due-${bar.item.itemId}`} title={`納期 ${bar.due}`} className="pointer-events-none absolute bottom-1 -translate-x-1/2 text-xs text-rose-400"
+          {selected && bar.due && <span data-testid={`planning-gantt-due-${bar.item.itemId}`} title={`納期 ${bar.due}`} className="pointer-events-none absolute bottom-0 -translate-x-1/2 text-xs leading-none text-rose-400"
             style={{ left: Math.max(0, (dateToDay(bar.due) + 1 - start) * dayWidth) }}>▲</span>}
         </div>;
       })}
