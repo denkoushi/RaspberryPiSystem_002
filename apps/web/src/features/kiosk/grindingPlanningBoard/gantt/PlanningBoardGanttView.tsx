@@ -4,10 +4,11 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState }
 
 import { normalizeMachineName } from '../../productionSchedule/machineName';
 
+import { ganttResourceLabel } from './ganttResourceLabel';
 import { PlanningBoardForwardGanttRow } from './PlanningBoardForwardGanttRow';
 import { PlanningBoardForwardQueuePopover } from './PlanningBoardForwardQueuePopover';
 import { dayLabel, dayToDate } from './planningBoardGanttLayout';
-import { GANTT_HATCH, GANTT_LABEL_WIDTH, PlanningBoardGanttRow } from './PlanningBoardGanttRow';
+import { GANTT_FORWARD_LABEL_WIDTH, GANTT_HATCH, GANTT_LABEL_WIDTH, PlanningBoardGanttRow } from './PlanningBoardGanttRow';
 
 import type { ForwardReorder } from './PlanningBoardForwardGanttRow';
 import type { ForwardQueueHandle } from './PlanningBoardForwardQueuePopover';
@@ -36,15 +37,14 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   layout, scale, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, ...interaction
 }, ref) {
   const forward = layout.mode === 'forward';
-  const [detailItemId, setDetailItemId] = useState<string | null>(null);
-  const detail = forward ? layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars)).find((bar) => bar.item.itemId === detailItemId) : undefined;
   const queuePopover = useRef<ForwardQueueHandle>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const [viewportWidth, setViewportWidth] = useState(1120);
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
   const flaggedIndex = useRef(-1);
   const previousAxis = useRef<{ start: number; dayWidth: number; scale: number; forward: boolean } | null>(null);
-  const dayWidth = Math.max(1, viewportWidth - GANTT_LABEL_WIDTH) / scale;
+  const labelWidth = forward ? GANTT_FORWARD_LABEL_WIDTH : GANTT_LABEL_WIDTH;
+  const dayWidth = Math.max(1, viewportWidth - labelWidth) / scale;
   const width = (layout.end - layout.start) * dayWidth;
   const showHours = dayWidth >= HOUR_TICK_MIN_DAY_WIDTH;
   useEffect(() => {
@@ -54,14 +54,14 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     const measure = () => {
       if (element.clientWidth > 0) setViewportWidth(element.clientWidth);
       const top = element.getBoundingClientRect().top;
-      if (window.innerHeight > 0) setViewportHeight(Math.max(192, Math.floor(window.innerHeight - top - GANTT_BOTTOM_GAP - (forward ? 76 : 0))));
+      if (window.innerHeight > 0) setViewportHeight(Math.max(192, Math.floor(window.innerHeight - top - GANTT_BOTTOM_GAP)));
     };
     measure();
     window.addEventListener('resize', measure);
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     observer?.observe(element);
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
-  }, [forward]);
+  }, []);
   useEffect(() => {
     if (!viewport.current) return;
     const previous = previousAxis.current;
@@ -80,7 +80,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     const row = rows[flaggedIndex.current]!;
     element.scrollTop += row.getBoundingClientRect().top - element.getBoundingClientRect().top - 36;
     const bar = row.querySelector<HTMLElement>('[data-testid^="planning-gantt-bar-"]');
-    if (bar) element.scrollLeft = Math.max(0, parseFloat(bar.style.left) - (viewportWidth - GANTT_LABEL_WIDTH) / 2);
+    if (bar) element.scrollLeft = Math.max(0, parseFloat(bar.style.left) - (viewportWidth - labelWidth) / 2);
   }, scrollToNextLate: () => {
     const element = viewport.current;
     const bars = element?.querySelectorAll<HTMLElement>('[data-gantt-late="true"]');
@@ -88,8 +88,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     flaggedIndex.current = (flaggedIndex.current + 1) % bars.length;
     const bar = bars[flaggedIndex.current]!;
     element.scrollTop += bar.getBoundingClientRect().top - element.getBoundingClientRect().top - 70;
-    element.scrollLeft = Math.max(0, parseFloat(bar.style.left) - (viewportWidth - GANTT_LABEL_WIDTH) / 2);
-  } }), [viewportWidth]);
+    element.scrollLeft = Math.max(0, parseFloat(bar.style.left) - (viewportWidth - labelWidth) / 2);
+  } }), [viewportWidth, labelWidth]);
   const days = useMemo(() => Array.from({ length: layout.end - layout.start }, (_, i) => {
     const day = layout.start + i;
     const weekday = new Date(day * 86_400_000).getUTCDay();
@@ -99,7 +99,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     row.bars.filter((bar) => interaction.selectedItemIds.has(bar.item.itemId)).map((bar) => bar.partKey)
   ))), [interaction.selectedItemIds, layout]);
   const resourceLabel = (resource: string, label: string) => <>
-    <strong className="truncate" title={label}>{normalizeMachineName(label)}{resourceNameMap[resource]?.length ? ` ${resourceNameMap[resource]!.join('・')}` : ''}</strong>
+    <strong className="truncate" title={label}>{ganttResourceLabel(normalizeMachineName(label), resourceNameMap[resource])}</strong>
     <div className="flex gap-1" role="group" aria-label={`${resource}の1日の稼働時間`}>
       {GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS.map((hours) => <button key={hours} type="button"
         className={clsx('min-h-11 min-w-11 rounded border px-1 font-mono text-[11px] font-bold',
@@ -109,14 +109,13 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
         onClick={() => onCapacityChange(resource, hours)}>{hours}H</button>)}
     </div>
   </>;
-  const formatTime = (day: number) => new Intl.DateTimeFormat('ja-JP', { timeZone: 'UTC', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(Math.round(day * 1440) * 60_000));
   return (
     <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className="mt-2 overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
       {capacityError && <p role="alert" className="px-2 py-1 text-xs text-rose-200">稼働時間を保存できませんでした。</p>}
       <div ref={viewport} onScroll={() => queuePopover.current?.close()} className="relative min-h-48 overflow-auto" style={viewportHeight ? { height: viewportHeight } : undefined} tabIndex={0} aria-label="ガントの日付と工程">
-        <div className="relative isolate" style={{ width: GANTT_LABEL_WIDTH + width }}>
+        <div className="relative isolate" style={{ width: labelWidth + width }}>
           <div className="sticky top-0 z-30 flex h-9 border-b border-slate-700 bg-slate-950">
-            <div className="sticky left-0 z-40 flex shrink-0 flex-wrap items-center gap-x-3 bg-slate-950 px-2 text-[10px] text-slate-300" style={{ width: GANTT_LABEL_WIDTH }}>
+            <div className="sticky left-0 z-40 flex shrink-0 flex-wrap items-center gap-x-3 bg-slate-950 px-2 text-[10px] text-slate-300" style={{ width: labelWidth }}>
               <span><i className="mr-1 inline-block h-2 w-4 rounded bg-sky-400" />予定</span>
               <span><i className="mr-1 inline-block h-2 w-4 rounded bg-rose-400" />{forward ? '遅れ見込み' : '納期超過'}</span>
               {forward ? <><span className="text-amber-300">┄ 前工程待ち</span><span className="text-yellow-300">│ 今</span></> : <>
@@ -130,15 +129,15 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
             </div>)}
           </div>
           {days.map(({ day, weekend }) => <div key={day} className={clsx('pointer-events-none absolute bottom-0 top-9 border-l border-slate-800/70', !forward && weekend && 'bg-slate-950/50')}
-            style={{ left: GANTT_LABEL_WIDTH + (day - layout.start) * dayWidth, width: dayWidth }} />)}
+            style={{ left: labelWidth + (day - layout.start) * dayWidth, width: dayWidth }} />)}
           {showHours && days.flatMap(({ day }) => HOUR_TICKS.map((hour) => <div key={`${day}-${hour}`} className="pointer-events-none absolute bottom-0 top-9 border-l border-dashed border-slate-700/60"
-            style={{ left: GANTT_LABEL_WIDTH + (day - layout.start + hour / 24) * dayWidth }} />))}
-          {!forward && <div className="pointer-events-none absolute bottom-0 top-9 z-[1] w-px bg-emerald-400" style={{ left: GANTT_LABEL_WIDTH + (layout.today - layout.start) * dayWidth }} />}
+            style={{ left: labelWidth + (day - layout.start + hour / 24) * dayWidth }} />))}
+          {!forward && <div className="pointer-events-none absolute bottom-0 top-9 z-[1] w-px bg-emerald-400" style={{ left: labelWidth + (layout.today - layout.start) * dayWidth }} />}
           {layout.completedOnly && <p className="sticky left-0 w-fit p-3 text-sm text-slate-400">完了は「納期から」で表示</p>}
           {layout.groups.map((group) => <div key={group.key}>
             {!(forward && group.resource) && <div className="relative flex min-h-11 border-b border-slate-700 bg-slate-800">
-              <div className="sticky left-0 z-20 flex min-h-11 shrink-0 items-center gap-1 bg-slate-800 px-2 text-xs" style={{ width: GANTT_LABEL_WIDTH }}>
-                <strong className="min-w-0 flex-1 truncate" title={group.label}>{normalizeMachineName(group.label)}{group.resource && resourceNameMap[group.resource]?.length ? ` ${resourceNameMap[group.resource]!.join('・')}` : ''}</strong>
+              <div className="sticky left-0 z-20 flex min-h-11 shrink-0 items-center gap-1 bg-slate-800 px-2 text-xs" style={{ width: labelWidth }}>
+                <strong className="min-w-0 flex-1 truncate" title={group.label}>{group.resource ? ganttResourceLabel(normalizeMachineName(group.label), resourceNameMap[group.resource]) : normalizeMachineName(group.label)}</strong>
                 {group.resource && group.resource !== '未設定' && <div className="flex shrink-0 gap-1" role="group" aria-label={`${group.resource}の1日の稼働時間`}>
                   {GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS.map((hours) => <button key={hours} type="button"
                     className={clsx('min-h-11 min-w-11 rounded border px-1 font-mono text-[11px] font-bold',
@@ -150,28 +149,18 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
               </div>
             </div>}
             {forward ? group.rows.map((row) => {
-              const todayHours = row.bars.reduce((sum, bar) => sum + (bar.segments ?? []).reduce((total, segment) => total + Math.max(0, Math.min(segment.end, layout.today + 1) - Math.max(segment.start, layout.today)) * 24, 0), 0);
-              const lateCount = row.bars.filter((bar) => bar.tone === 'late').length;
               return <PlanningBoardForwardGanttRow key={row.key} row={row} start={layout.start} end={layout.end} now={layout.now!} width={width} dayWidth={dayWidth} scale={scale}
                 onShowQueue={(bar, anchor) => queuePopover.current?.show(bar, anchor)}
                 onLeaveQueue={() => queuePopover.current?.hideSoon()} onCloseQueue={() => queuePopover.current?.close()}
                 hours={group.resource ? dailyHoursByResource[group.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS : Math.max(...row.bars.map((bar) => dailyHoursByResource[bar.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS), GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS)}
-                {...interaction} onToggleItem={(item, selected) => { setDetailItemId(selected ? item.itemId : null); interaction.onToggleItem(item, selected); }}
-                label={group.resource ? <>{resourceLabel(group.resource, group.label)}<span className="text-slate-400">{row.bars.length}件 · 今日 {todayHours.toFixed(1)}h {lateCount > 0 && <em className="not-italic text-rose-300">遅れ見込み {lateCount}件</em>}</span></> : undefined} />;
+                {...interaction}
+                label={group.resource ? resourceLabel(group.resource, group.label) : undefined} />;
             }) : group.rows.map((row) => <PlanningBoardGanttRow key={row.key} row={row} start={layout.start} width={width} dayWidth={dayWidth}
               today={dayToDate(layout.today)} selectedParts={selectedParts} {...interaction} />)}
           </div>)}
         </div>
       </div>
       {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} layout={layout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} />}
-      {forward && <div className="flex min-h-[76px] flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-700 px-3 py-2 text-xs" aria-live="polite">
-        {detail ? <><strong>品名 {detail.item.fhinmei}</strong><span>品番 {detail.item.fhincd}</span><span>工程 {detail.item.processOrder}</span>
-          <span>所要 {detail.unknown ? '不明' : `${detail.item.requiredMinutes}分`}</span><span>納期 {detail.due ?? 'なし'}</span>
-          <span>着手見込み {formatTime(detail.start!)}</span><span>終了見込み {formatTime(detail.end!)}</span>
-          <span className={detail.tone === 'late' ? 'text-rose-300' : 'text-emerald-300'}>{detail.tone === 'late' ? `遅れ見込み${detail.lateDays}日` : '納期内'}</span>
-          {detail.predecessorEnd != null && <span>前工程終了 {formatTime(detail.predecessorEnd)}</span>}
-        </> : <span className="text-slate-400">バーを押すと詳細を表示します。資源CDのバーを左右にドラッグすると順番を変更できます。</span>}
-      </div>}
     </section>
   );
 });

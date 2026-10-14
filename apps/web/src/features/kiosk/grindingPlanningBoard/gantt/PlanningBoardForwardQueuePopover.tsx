@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 
 import { normalizeMachineName } from '../../productionSchedule/machineName';
 
+import { ganttResourceLabel } from './ganttResourceLabel';
 import { canReorderForwardBars, forwardQueueWindow } from './planningBoardForwardQueue';
 
 import type { ForwardReorder } from './PlanningBoardForwardGanttRow';
@@ -98,7 +99,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
     setDrop(next);
     return next;
   };
-  const resourceLabel = [open.bar.resource, ...(resourceNameMap[open.bar.resource] ?? [])].join(' ');
+  const resourceLabel = ganttResourceLabel(open.bar.resource, resourceNameMap[open.bar.resource]);
   return createPortal(<div ref={panel} role="region" aria-label={`${resourceLabel} の次にやる順`}
     className="fixed z-[100] max-h-[calc(100dvh-16px)] max-w-[calc(100vw-16px)] overflow-auto rounded-lg border border-slate-600 bg-slate-900 p-2 text-slate-100 shadow-xl"
     style={position} onPointerEnter={cancelHide} onPointerLeave={(event) => { if (event.pointerType === 'mouse') hideSoon(); }}>
