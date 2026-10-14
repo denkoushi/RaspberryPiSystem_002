@@ -148,6 +148,19 @@ describe('forward PlanningBoardGanttView', () => {
     render(<PlanningBoardGanttView {...at('07:30')} />);
     expect(screen.getByLabelText('ガントの日付と工程').scrollLeft).toBeCloseTo(tenHourDay * 8 / 24);
   });
+  it('returns to the home position when the clock reaches a new hour', () => {
+    const tenHourDay = (1120 - 168) / (10 / 24);
+    const at = (time: string) => ({ ...forwardProps(), scale: 1, layout: buildPlanningBoardGanttLayout({ items: [item()], mode: 'forward', allocation: 'alternate', view: 'resource',
+      seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', now: new Date(`2026-10-14T${time}:00+09:00`), scale: 1 }) });
+    const { rerender } = render(<PlanningBoardGanttView {...at('13:20')} />);
+    const viewport = screen.getByLabelText('ガントの日付と工程');
+    fireEvent.click(screen.getByRole('button', { name: '2時間進む' }));
+    expect(viewport.scrollLeft).toBeCloseTo(tenHourDay * 14 / 24);
+    rerender(<PlanningBoardGanttView {...at('13:50')} />);
+    expect(viewport.scrollLeft).toBeCloseTo(tenHourDay * 14 / 24);
+    rerender(<PlanningBoardGanttView {...at('14:00')} />);
+    expect(viewport.scrollLeft).toBeCloseTo(tenHourDay * 13 / 24);
+  });
   it('moves two hours with the arrow buttons and returns to today on each scale press', () => {
     const values = forwardProps([item()]);
     const { rerender } = render(<PlanningBoardGanttView {...values} homeKey={0} />);
