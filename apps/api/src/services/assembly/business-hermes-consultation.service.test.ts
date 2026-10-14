@@ -118,6 +118,23 @@ describe('troubleCategory', () => {
 describe('deterministic trouble intake', () => {
   afterEach(() => vi.mocked(sendSlackNotification).mockClear());
 
+  it.each([false, true])('logs only the trouble route fields (guideMiss=%s)', async (guideMiss) => {
+    const fixture = troubleFixture();
+    if (guideMiss) fixture.operationGuide.search.mockReturnValue({ results: [], total: 0, hasMore: false });
+    const append = vi.fn().mockResolvedValue(undefined);
+    const service = new BusinessHermesConsultationService({ ...fixture.deps, receiptLog: { append } });
+    const question = troubleQuestion + '。'.repeat(200);
+    expect((await reportTrouble(service, consultationId, question)).status).toBe('ready');
+    expect(append.mock.calls).toEqual([[{ consultationRoute: {
+      route: 'trouble_report', guideMiss, direct: true, question: question.slice(0, 200)
+    } }]]);
+  });
+
+  it('answers a direct route without a receipt log dependency', async () => {
+    const fixture = troubleFixture();
+    expect((await reportTrouble(fixture.service)).status).toBe('ready');
+  });
+
   it.each([
     { question: troubleQuestion, clientDeviceId: 'device-a', offered: true },
     { question: troubleQuestion, clientDeviceId: undefined, offered: false },
@@ -1021,14 +1038,29 @@ describe('BusinessHermesConsultationService', () => {
     expect(runtime.ensureReady).not.toHaveBeenCalled();
   });
 
+  it.each(['handoff', undefined])('logs an LLM route only when present (%s), using the current question', async (routeDecision) => {
+    const fixture = dbFixture();
+    const append = vi.fn().mockResolvedValue(undefined);
+    const question = '相談の続きです。'.repeat(30);
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, receiptLog: { append },
+      openJevResponder: { generate: vi.fn().mockResolvedValue({ status: 'completed', output_text: JSON.stringify({
+        message: '担当者に相談してください。', needsClarification: false, routeDecision
+      }) }) } });
+    expect((await service.chat({ consultationId, message: question })).status).toBe('ready');
+    expect(append.mock.calls).toEqual(routeDecision === undefined ? [] : [[{ consultationRoute: {
+      route: routeDecision, guideMiss: false, direct: false, question: question.slice(0, 200)
+    } }]]);
+  });
+
   it.each(['screen', 'keyword', 'none'] as const)('offers operation recipes and only prefetches non-guide first recipes (match=%s)', async (strength) => {
     const matches = strength === 'screen';
     const fixture = dbFixture(true);
     const question = '自主検査の始め方';
     const state = { message: '画面の手順を確認しました。', needsClarification: false,
       routeDecision: matches ? 'operation_guide' : 'record_search', ...(matches ? { guideMiss: true } : {}) };
+    const append = vi.fn().mockResolvedValue(undefined);
     const fetchImpl = vi.fn().mockImplementation(async () => new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: JSON.stringify(state) } })}\n\n`));
-    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, receiptLog: { append },
       operationGuide: { matchStrength: () => strength, isEnabled: () => true,
         search: () => ({ results: [], total: 0, hasMore: false }), detail: () => null },
       answerCache: { suggest: vi.fn().mockResolvedValue(null), answer: vi.fn().mockResolvedValue(null) },
@@ -1043,6 +1075,9 @@ describe('BusinessHermesConsultationService', () => {
     const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
     const answer = await service.chat({ consultationId, message: selection.option, selection });
     expect(answer.status).toBe('ready');
+    expect(append.mock.calls).toEqual([[{ consultationRoute: {
+      route: state.routeDecision, guideMiss: matches, direct: matches, question
+    } }]]);
     if (matches) {
       expect(fetchImpl).not.toHaveBeenCalled();
       expect(answer.message).toBe('この操作の説明はまだありません。『お問い合わせ』から聞いてください。');
@@ -1082,8 +1117,9 @@ describe('BusinessHermesConsultationService', () => {
       writeFileSync(path.join(dir, 'other.md'), '---\ntitle: 別画面\nroutes: []\nkeywords: [検査]\n---\n## 基本の手順\n別画面の手順。');
       const operationGuide = KioskOperationGuideIndex.fromDirectory(dir);
       const fixture = dbFixture(true);
+      const append = vi.fn().mockResolvedValue(undefined);
       const fetchImpl = vi.fn().mockImplementation(async () => new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: JSON.stringify({ message: '通常の回答', needsClarification: false }) } })}\n\n`));
-      const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, operationGuide,
+      const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, operationGuide, receiptLog: { append },
         answerCache: { suggest: vi.fn().mockResolvedValue(null), answer: vi.fn().mockResolvedValue(null) },
         config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
       const first = await service.chat({ consultationId, message: query });
@@ -1104,6 +1140,9 @@ describe('BusinessHermesConsultationService', () => {
       ] });
       await service.chat({ consultationId, message: 'ほかの相談です' });
       expect(fetchImpl).toHaveBeenCalledOnce();
+      expect(append.mock.calls).toEqual([[{ consultationRoute: {
+        route: 'operation_guide', guideMiss: false, direct: true, question: query
+      } }]]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

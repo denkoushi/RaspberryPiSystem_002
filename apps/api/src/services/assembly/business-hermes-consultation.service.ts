@@ -12,6 +12,7 @@ import type { LocalLlmRuntimeControllerPort } from '../inference/runtime/local-l
 import { BusinessHermesScanResolver, type BusinessHermesScanResolution } from './business-hermes-scan.service.js';
 import { BusinessHermesAnswerCache, CACHED_QUESTION_PREFIX, SOURCE_QUESTION_PREFIX, experienceSchema, EXPERIENCE_KIND } from './business-hermes-answer-cache.js';
 import { BusinessHermesPreparedAnswer } from './business-hermes-prepared-answer.js';
+import type { ReceiptLog } from './hermes-search-receipt-log.js';
 import {
   BusinessHermesMcpService,
   groundedAnswerMessage,
@@ -132,6 +133,7 @@ export type BusinessHermesConsultationChatResponse = {
 };
 
 type ConsultationDeps = {
+  receiptLog?: Pick<ReceiptLog, 'append'>;
   operationGuide?: Pick<KioskOperationGuideIndex, 'matchStrength' | 'isEnabled' | 'search' | 'detail'>;
   db?: PrismaClient;
   fetchImpl?: FetchLike;
@@ -1065,6 +1067,7 @@ export class BusinessHermesConsultationService {
         evidence: asJson({ items: [], visible: false, visibleIds: [], recordIds: [], ...(guide ? { guide } : {}) }),
         searchDiagnostics: asJson([{ kind: 'business-hermes-route-v1', route: 'operation_guide', guideMiss: !guide, direct: true }])
       } });
+      this.appendRouteReceipt('operation_guide', !guide, true, intentQuestion);
       if (measurement) measurement.answerMessageId = answerMessage.id;
       await this.db.businessHermesConsultation.update({ where: { id: consultationId }, data: { openQuestions: asJson([]) } });
       const updated = await this.get(consultationId);
@@ -1309,6 +1312,9 @@ export class BusinessHermesConsultationService {
         searchDiagnostics: asJson([...parsedSearches, ...(experience ? [experience] : []),
           ...(state.routeDecision !== undefined ? [{ kind: 'business-hermes-route-v1', route: state.routeDecision, guideMiss: state.guideMiss ?? false }] : [])])
       } });
+      if (state.routeDecision !== undefined) {
+        this.appendRouteReceipt(state.routeDecision, state.guideMiss ?? false, false, intentQuestion ?? message);
+      }
       if (measurement) measurement.answerMessageId = answerMessage.id;
       if (learned?.success) await this.answerCache.remember?.({ id: answerMessage.id, ...learned.data }, controller.signal);
       await this.db.businessHermesConsultation.update({ where: { id: consultationId }, data: {
@@ -1421,6 +1427,10 @@ export class BusinessHermesConsultationService {
     };
   }
 
+  private appendRouteReceipt(route: string, guideMiss: boolean, direct: boolean, question: string): void {
+    void this.deps.receiptLog?.append({ consultationRoute: { route, guideMiss, direct, question: question.slice(0, 200) } });
+  }
+
   private guideForQuestion(intentQuestion: string): BusinessHermesOperationGuideDisplay | undefined {
     const top = this.operationGuide.search(intentQuestion, 1).results[0];
     const detail = top ? this.operationGuide.detail(top.id) : null;
@@ -1495,6 +1505,7 @@ export class BusinessHermesConsultationService {
       searchDiagnostics: asJson([{ kind: 'business-hermes-route-v1', route: 'trouble_report', guideMiss: !guide,
         direct: true, known, ...(threadId ? { threadId } : {}) }])
     } });
+    this.appendRouteReceipt('trouble_report', !guide, true, intentQuestion);
     if (measurement) measurement.answerMessageId = answerMessage.id;
     await this.db.businessHermesConsultation.update({ where: { id: consultationId }, data: { openQuestions: asJson([]) } });
     const updated = await this.get(consultationId);

@@ -1,9 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { existingRealIds, readRealRows, readReceiptQuestions, realId, realPath } from './flywheel-real.mjs';
+
+test('consultation route rows are not read as receipt questions', async (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-real-routes-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const rows = [
+    ...['record_search', 'operation_guide', 'trouble_report', 'handoff', 'unknown'].map((route) => ({
+      at: '2026-10-14T01:00:00Z', consultationRoute: { route, guideMiss: true, direct: false, question: `相談 ${route}` }
+    })),
+    { at: '2026-10-14T01:01:00Z', recordIds: [], hermesReceipt: { question: '傷の記録', outcome: 'answer', plan: { semanticQuery: '傷' } } },
+  ];
+  writeFileSync(path.join(dir, 'receipts-2026-10-14.jsonl'), rows.map(JSON.stringify).join('\n'));
+  assert.deepEqual((await readReceiptQuestions({ receiptsDir: dir, days: ['2026-10-14'] })).map((row) => row.question), ['傷の記録']);
+});
 
 test('real ids are stable SHA-1 prefixes over trimmed NFKC questions', () => {
   assert.equal(realId('abc'), 'r-a9993e364706816a');

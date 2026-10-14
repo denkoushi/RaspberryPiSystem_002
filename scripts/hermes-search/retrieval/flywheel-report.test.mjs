@@ -7,6 +7,31 @@ import { spawnSync } from 'node:child_process';
 import { formatRealReport, formatReport, nightOfFile, readNightRows, summarizeLearned, summarizeNight, summarizeReal } from './flywheel-report.mjs';
 
 const live = (loss, extra = {}) => ({ outcome: loss == null ? 'answer' : 'no_result', shown: [], candidates: [], judged: 30, loss, vectorStatus: 'ok', ms: 10, ...extra });
+
+test('receipt report CLI prints route counts alongside unchanged synthetic and real reports', (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-report-receipts-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const receiptFile = path.join(dir, 'receipts-2026-10-14.jsonl');
+  const emptyFile = path.join(dir, 'receipts-2026-10-13.jsonl');
+  const syntheticFile = path.join(dir, 'questions-2026-10-14.jsonl');
+  const realFile = path.join(dir, 'real-2026-10-14.jsonl');
+  writeFileSync(receiptFile, [
+    { consultationRoute: { route: 'operation_guide', guideMiss: true, direct: true, question: '印刷の紙が出ない' } },
+    { hermesReceipt: { outcome: 'answer' } },
+  ].map(JSON.stringify).join('\n') + '\n{"torn');
+  for (const file of [emptyFile, syntheticFile, realFile]) writeFileSync(file, '');
+  const cli = spawnSync(process.execPath, [new URL('./flywheel-report.mjs', import.meta.url).pathname,
+    syntheticFile, receiptFile, realFile, emptyFile], { encoding: 'utf8' });
+  assert.equal(cli.status, 0, cli.stderr);
+  assert.equal(nightOfFile('receipts-2026-10-14.jsonl'), '2026-10-14');
+  assert.equal(cli.stdout, [
+    formatReport('2026-10-14', summarizeNight([])),
+    'routes 2026-10-14: 操作説明 1 件(知識なし 1 件: 『印刷の紙が出ない』)',
+    formatRealReport('2026-10-14', summarizeReal([])),
+    'routes 2026-10-13: none', ''
+  ].join('\n'));
+});
+
 const rows = [
   { a: 'a1', b: 'b1', seed: { style: 'terse' }, question: 'キズ 傷', kept: true, reason: null, overlap: 0.3, live: live(null) },
   { a: 'a2', b: 'b2', seed: { style: 'terse' }, question: 'テーブルの傷', kept: true, reason: null, live: live('not_in_pool', { vectorStatus: 'timeout' }) },

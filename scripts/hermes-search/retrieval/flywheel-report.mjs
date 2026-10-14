@@ -8,9 +8,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bareId } from './flywheel-pairs.mjs';
 import { filterOutcome } from './flywheel-filter-check.mjs';
+import { parseReceiptLines, summarizeReceipts, formatRouteReport } from './receipt-report.mjs';
 
 export function nightOfFile(filePath) {
-  const match = /(?:questions|real)-(\d{4}-\d{2}-\d{2})\.jsonl$/u.exec(path.basename(filePath));
+  const match = /(?:questions|real|receipts)-(\d{4}-\d{2}-\d{2})\.jsonl$/u.exec(path.basename(filePath));
   return match ? match[1] : path.basename(filePath);
 }
 
@@ -244,6 +245,10 @@ export function main(argv = process.argv.slice(2)) {
     return;
   }
   for (const file of files) {
+    if (/^receipts-\d{4}-\d{2}-\d{2}\.jsonl$/u.test(path.basename(file))) {
+      console.log(formatRouteReport(nightOfFile(file), summarizeReceipts(parseReceiptLines(readFileSync(file, 'utf8')))));
+      continue;
+    }
     const rows = readNightRows(readFileSync(file, 'utf8'));
     console.log(/^real-\d{4}-\d{2}-\d{2}\.jsonl$/u.test(path.basename(file))
       ? formatRealReport(nightOfFile(file), summarizeReal(rows))
