@@ -29,6 +29,7 @@ import {
 } from '../inventoryUi';
 import { NfcPrompt } from '../NfcPrompt';
 
+import { InventoryExistingItemPicker } from './InventoryExistingItemPicker';
 import { InventoryUnitPicker } from './InventoryUnitPicker';
 import { setupErrorText as errorText } from './setupError';
 import { touchSetupPin } from './setupPinSession';
@@ -218,6 +219,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
   const chooseCandidate = (id: string) => { setSelectedId(id); setDone(null); setCandidatesOpen(false); };
   useEffect(() => { setPhotoPage((page) => Math.min(page, lastPhotoPage)); }, [lastPhotoPage]);
   const itemsQuery = useInventoryItems(draft.mode !== null);
+  const selectedItem = itemsQuery.data?.find((item) => item.id === draft.itemId);
   const waitingForTag = draft.mode === 'NEW_ITEM' && Boolean(draft.drawerId) && !draft.itemTagUid;
   const read = useArmedNfcRead(waitingForTag);
   const handledRef = useRef<NfcEvent | null>(null);
@@ -548,15 +550,11 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
               <button type="button" aria-pressed={draft.mode === 'EXISTING_ITEM'} className={invSeg(draft.mode === 'EXISTING_ITEM')} onClick={() => update({ mode: 'EXISTING_ITEM', shelfId: '', drawerId: '', drawerLabel: '', itemTagUid: '', quantity: '' })}>既存のアイテムに写真を追加</button>
             </div>
             {draft.mode === 'EXISTING_ITEM' ? (
-              <div className="mt-2 flex max-h-24 flex-wrap gap-2 overflow-y-auto" aria-label="追加先のアイテム">
-                {itemsQuery.isLoading ? <p className="text-sm text-inv-faint">読み込み中…</p> : null}
-                {(itemsQuery.data ?? []).map((item) => (
-                  <button key={item.id} type="button" aria-pressed={item.id === draft.itemId} className={`flex h-14 w-64 items-center gap-2 rounded-[10px] px-2 text-left ${item.id === draft.itemId ? 'border-2 border-inv-cyan bg-inv-cyan/[0.12]' : 'border border-inv-line bg-inv-bg hover:bg-inv-s2'}`} onClick={() => chooseExisting(item)}>
-                    {item.photos[0] ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(item.photos[0].photoUrl)} alt="" className="h-10 w-10 rounded object-cover" /> : <span className="h-10 w-10 rounded bg-inv-s3" aria-hidden="true" />}
-                    <span className="min-w-0"><span className="line-clamp-2 break-all text-sm font-bold leading-4">{item.name}</span><span className="text-xs text-inv-faint">{item.itemCode}</span></span>
-                  </button>
-                ))}
-              </div>
+              draft.itemId ? <div className="mt-2 flex h-16 items-center gap-2.5 rounded-xl border-2 border-inv-cyan bg-inv-cyan/[0.12] px-2.5">
+                {selectedItem?.photos[0] ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(selectedItem.photos[0].photoUrl)} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" /> : <span className="h-12 w-12 shrink-0 rounded-lg bg-inv-s3" aria-hidden="true" />}
+                <span className="min-w-0 flex-1 truncate text-base font-black">{draft.itemName}</span>
+                <span className="shrink-0 text-[13px] text-inv-muted">追加先</span>
+              </div> : <div className="mt-2 flex h-16 items-center rounded-xl border border-dashed border-inv-cyan px-3.5 text-base font-bold text-inv-cyan">→ 右の一覧から追加先を選ぶ</div>
             ) : null}
           </Row>
 
@@ -591,7 +589,18 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
 
         </div>
         <div className="flex h-full min-h-0 min-w-0 flex-col gap-3">
-          {draft.mode !== 'EXISTING_ITEM' ? (
+          {draft.mode === 'EXISTING_ITEM' ? (
+            <InventoryExistingItemPicker
+              key={candidate.id}
+              items={itemsQuery.data ?? []}
+              isLoading={itemsQuery.isLoading}
+              machine={splitArea(candidate.area).machine}
+              selectedItem={selectedItem}
+              stepMark={<StepMark number={next()} done={Boolean(draft.itemId)} current={!draft.itemId} />}
+              onChoose={chooseExisting}
+              onClear={() => update({ itemId: '', itemName: '' })}
+            />
+          ) : (
             <>
               <Row id="place" number={next()} title="置き場所" done={isDone('place')} current={currentId === 'place'} bounded>
                 <div className="flex min-h-0 flex-1 flex-col gap-2">
@@ -670,7 +679,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
                 </div>
               </Row>
             </>
-          ) : null}
+          )}
         </div>
 
         {optionsOpen ? (

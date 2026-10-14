@@ -309,6 +309,126 @@ describe('InventoryRegistrationTab', () => {
     expect(within(screen.getByRole('region', { name: 'アイテムタグ' })).queryByRole('status')).not.toBeInTheDocument();
   });
 
+  describe('existing item picker', () => {
+    const pickerItems = [
+      { id: 'local', name: '既存治具', model: 'M-1', maker: 'OSG', itemCode: 'RI-A', unit: 'ケース',
+        photos: [{ id: 'p1', photoUrl: '/existing.jpg' }],
+        compartments: [{ labelNumber: 12, area: '30007_KSJP-55 南', shelfNumber: 2, drawerNumber: 3 }] },
+      { id: 'other', name: '別の加工機の工具', itemCode: 'RI-B', photos: [],
+        compartments: [{ labelNumber: 45, area: 'OTHER 北', shelfNumber: 1, drawerNumber: 1 }] },
+      { id: 'unplaced', name: '置き場所なし', itemCode: 'RI-C', photos: [], compartments: [] },
+    ];
+    let originalItems: typeof useInventoryItems;
+    const openPicker = () => {
+      fireEvent.click(screen.getByRole('button', { name: '既存のアイテムに写真を追加' }));
+      return within(screen.getByRole('region', { name: '追加先のアイテム' }));
+    };
+    beforeEach(() => {
+      originalItems = vi.mocked(useInventoryItems).getMockImplementation()!;
+      vi.mocked(useInventoryItems).mockReturnValue({ data: pickerItems, isLoading: false } as never);
+    });
+    afterEach(() => {
+      vi.mocked(useInventoryItems).mockImplementation(originalItems);
+    });
+
+    it('puts the bounded picker in the right column and clears selection without clearing name fields', () => {
+      render(<InventoryRegistrationTab accessPassword="2520" />);
+      const picker = openPicker();
+      const panel = screen.getByRole('region', { name: '追加先のアイテム' });
+      const mode = screen.getByRole('region', { name: '新規か既存か' });
+      expect(mode.parentElement?.nextElementSibling).toBe(panel.parentElement);
+      expect(within(mode).queryByRole('button', { name: /既存治具/ })).not.toBeInTheDocument();
+      expect(panel).toHaveClass('min-h-0', 'flex-1');
+      const card = picker.getByRole('button', { name: /既存治具/ });
+      expect(card.parentElement).toHaveClass('grid-cols-2', 'overflow-y-auto', 'min-h-0', 'flex-1');
+      expect(picker.getByText('1 件')).toBeVisible();
+      expect(screen.getByText('→ 右の一覧から追加先を選ぶ')).toBeVisible();
+      fireEvent.click(card);
+      expect(card).toHaveAttribute('aria-pressed', 'true');
+      expect(within(mode).getByText('追加先')).toBeVisible();
+      expect(picker.getByText('左の写真と見比べる')).toBeVisible();
+      expect(screen.getByRole('button', { name: '登録する' })).toBeEnabled();
+      fireEvent.change(screen.getByLabelText('アイテム名'), { target: { value: '編集した名前' } });
+      fireEvent.click(picker.getByRole('button', { name: '選び直す' }));
+      expect(card).toHaveAttribute('aria-pressed', 'false');
+      expect(screen.getByText('→ 右の一覧から追加先を選ぶ')).toBeVisible();
+      expect(screen.getByLabelText('アイテム名')).toHaveValue('編集した名前');
+      expect(screen.getByLabelText('型式')).toHaveValue('M-1');
+      expect(screen.getByRole('button', { name: '登録する' })).toBeDisabled();
+    });
+
+    it.each(['既存治具', '0012', '12', '００１２'])('searches by name or label: %s', (query) => {
+      render(<InventoryRegistrationTab accessPassword="2520" />);
+      const picker = openPicker();
+      fireEvent.click(picker.getByRole('button', { name: 'すべて 3' }));
+      fireEvent.change(picker.getByRole('textbox', { name: '追加先を探す' }), { target: { value: query } });
+      expect(picker.getByRole('button', { name: /既存治具/ })).toBeVisible();
+      expect(picker.queryByRole('button', { name: /別の加工機の工具/ })).not.toBeInTheDocument();
+      expect(picker.getByText('1 件')).toBeVisible();
+    });
+
+    it('toggles machine scope and resets search and scope on mode changes', () => {
+      render(<InventoryRegistrationTab accessPassword="2520" />);
+      let picker = openPicker();
+      expect(picker.getByRole('button', { name: 'この加工機 1' })).toHaveAttribute('aria-pressed', 'true');
+      expect(picker.queryByRole('button', { name: /置き場所なし/ })).not.toBeInTheDocument();
+      fireEvent.click(picker.getByRole('button', { name: 'すべて 3' }));
+      expect(picker.getByRole('button', { name: /置き場所なし/ })).toBeVisible();
+      expect(picker.getByRole('button', { name: /別の加工機の工具/ })).toHaveTextContent('OTHER 北・棚1・引き出し1');
+      fireEvent.click(picker.getByRole('button', { name: 'この加工機 1' }));
+      expect(picker.queryByRole('button', { name: /別の加工機の工具/ })).not.toBeInTheDocument();
+      fireEvent.click(picker.getByRole('button', { name: 'すべて 3' }));
+      fireEvent.change(picker.getByRole('textbox'), { target: { value: 'missing' } });
+      expect(picker.getByText('見つかりません')).toBeVisible();
+      fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+      expect(screen.queryByRole('region', { name: '追加先のアイテム' })).not.toBeInTheDocument();
+      picker = openPicker();
+      expect(picker.getByRole('textbox')).toHaveValue('');
+      expect(picker.getByRole('button', { name: 'この加工機 1' })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('resets search and scope when the candidate changes and splits its area machine', () => {
+      const originalImports = vi.mocked(useInventoryImports).getMockImplementation()!;
+      const candidate = originalImports().data![0];
+      vi.mocked(useInventoryImports).mockReturnValue({ data: [candidate, { ...candidate, id: 'next', sourceItemId: 3, area: 'OTHER 南' }], isLoading: false } as never);
+      try {
+        render(<InventoryRegistrationTab accessPassword="2520" />);
+        let picker = openPicker();
+        fireEvent.click(picker.getByRole('button', { name: 'すべて 3' }));
+        fireEvent.change(picker.getByRole('textbox'), { target: { value: '既存治具' } });
+        fireEvent.click(candidateButton('候補 #3'));
+        picker = openPicker();
+        expect(picker.getByRole('textbox')).toHaveValue('');
+        expect(picker.getByRole('button', { name: 'この加工機 1' })).toHaveAttribute('aria-pressed', 'true');
+        expect(picker.getByRole('button', { name: /別の加工機の工具/ })).toBeVisible();
+        expect(picker.queryByRole('button', { name: /既存治具/ })).not.toBeInTheDocument();
+      } finally {
+        vi.mocked(useInventoryImports).mockImplementation(originalImports);
+      }
+    });
+
+    it('defaults to all when no items are on this machine', () => {
+      vi.mocked(useInventoryItems).mockReturnValue({ data: pickerItems.slice(1), isLoading: false } as never);
+      render(<InventoryRegistrationTab accessPassword="2520" />);
+      const picker = openPicker();
+      expect(picker.getByRole('button', { name: 'すべて 2' })).toHaveAttribute('aria-pressed', 'true');
+      expect(picker.getByRole('button', { name: /置き場所なし/ })).toBeVisible();
+      fireEvent.click(picker.getByRole('button', { name: 'この加工機 0' }));
+      expect(picker.getByText('見つかりません')).toBeVisible();
+    });
+
+    it('shows loading and derives the default scope when items arrive', () => {
+      vi.mocked(useInventoryItems).mockReturnValue({ data: undefined, isLoading: true } as never);
+      const view = render(<InventoryRegistrationTab accessPassword="2520" />);
+      const picker = openPicker();
+      expect(picker.getByText('読み込み中…')).toBeVisible();
+      vi.mocked(useInventoryItems).mockReturnValue({ data: pickerItems, isLoading: false } as never);
+      view.rerender(<InventoryRegistrationTab accessPassword="2520" />);
+      expect(picker.queryByText('読み込み中…')).not.toBeInTheDocument();
+      expect(picker.getByRole('button', { name: 'この加工機 1' })).toHaveAttribute('aria-pressed', 'true');
+    });
+  });
+
   it('adds photos to an existing item without a place, tag or quantity', async () => {
     vi.mocked(useInventoryItems).mockReturnValue({
       data: [{ id: 'item-9', itemCode: 'RI-9', name: '既存治具', model: 'M-1', usage: '検査', category: null, area: null, note: null, unit: 'ケース', photos: [], compartments: [] }],
