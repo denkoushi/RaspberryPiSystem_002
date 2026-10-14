@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // One-process gold evaluation. Record text stays out of the summary and the --out file.
+import { isConversationalSource, recordSourceId } from '../hermes-source-definition.mjs';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -226,6 +227,7 @@ export async function evaluateGold(options) {
   const payload = JSON.parse(fs.readFileSync(options.snapshotPath, 'utf8'));
   if (!Array.isArray(payload?.records)) throw new Error('snapshot records must be an array');
   if (!options.allowSubset) assertSnapshotIdentity(payload);
+  payload.records = payload.records.filter((record) => isConversationalSource(record.kind ?? recordSourceId(record)));
   if (!options.noEnrichment && options.enrichmentPaths?.length) {
     payload.records = attachEnrichment(payload.records, readEnrichmentStores(options.enrichmentPaths));
   }

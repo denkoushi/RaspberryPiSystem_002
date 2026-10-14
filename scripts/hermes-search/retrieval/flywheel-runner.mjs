@@ -7,6 +7,7 @@
 // After generation and grading finish, kept questions without live results are answered by the
 // kiosk's own pipeline, recording the shown and judged ids and the loss stage (flywheel-live.mjs).
 // A nightly budget caps the questions, and a busy guard stops calling the model when it is slow.
+import { isConversationalSource, recordSourceId } from '../hermes-source-definition.mjs';
 import { appendFile, mkdir, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -220,7 +221,8 @@ export async function runFlywheelNight({
   const catalog = loadNonconformityCatalog();
   const bodyFields = fieldsWithRole(catalog, 'body');
   const fieldLabels = Object.fromEntries(catalogEntries(catalog).flatMap((entry) => entry.fields.map((field) => [field.key, field.label])));
-  const corpus = (records ?? []).map((record) => ({ ...record, id: bareId(record.id) }));
+  records = (records ?? []).filter((record) => isConversationalSource(record.kind ?? recordSourceId(record)));
+  const corpus = records.map((record) => ({ ...record, id: bareId(record.id) }));
   const recordsById = new Map(corpus.map((record) => [record.id, record]));
   let denseEntries = [];
   try {

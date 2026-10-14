@@ -2,6 +2,7 @@
 // Milestone 3). Each kept question is answered by the pipeline the kiosk uses (planner, hybrid
 // retrieval, relevance judge) inside the runner process, and the outcome is reduced to record ids
 // and a loss stage. The stage says where a question that should have shown its anchor was lost.
+import { isConversationalSource, recordSourceId } from '../hermes-source-definition.mjs';
 import { authorizedRecords } from './corpus.mjs';
 import { DGX_INDEX_TIMEOUT_MS, createDenseRuntime, createDgxEmbedder, denseSettings } from './dense-dgx.mjs';
 import { relevancePoolLimit } from './executor.mjs';
@@ -61,7 +62,7 @@ export async function createLiveScorer({ records, catalog, evaluate, env = proce
   const enrichmentById = await loadEnrichmentById(env);
   const learnedById = learned ? learnedQueriesById(learned, { states: null }) : await loadLearnedQueriesById(env);
   const answering = createRetrievalAnswering({
-    records: authorizedRecords(records),
+    records: authorizedRecords(records).filter((record) => isConversationalSource(record.kind ?? recordSourceId(record))),
     catalog,
     evaluate,
     dense,

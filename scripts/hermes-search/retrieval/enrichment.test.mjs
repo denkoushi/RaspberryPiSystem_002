@@ -17,7 +17,7 @@ import {
 } from './enrichment-contract.mjs';
 import { ENRICHMENT_MAX_TOKENS, withinWindow } from './enrichment-dgx.mjs';
 import {
-  MAX_CONTENT_ATTEMPTS, needsEnrichment, readIdAllowlist, runEnrichmentBatch,
+  MAX_CONTENT_ATTEMPTS, selectRecords, needsEnrichment, readIdAllowlist, runEnrichmentBatch,
 } from './enrichment-runner.mjs';
 import {
   failuresPathFor, readEnrichmentFailures, readEnrichmentStore, writeAtomic, writeEnrichmentStore,
@@ -489,4 +489,10 @@ test('the retrieval worker attaches the agreed enrichment shape when a store ent
   const replaced = await answering.replaceCorpus({ mode: 'full', records: [], asOf: '2026-01-15T00:00:00Z' });
   assert.equal(replaced.ok, true);
   assert.equal(replaced.count, 0);
+});
+
+
+test('enrichment excludes rank-only API rows and snapshot records', () => {
+  const hidden = { id: 'material', bodyText: 'private material' };
+  assert.deepEqual(selectRecords([...records, { ...hidden, kind: 'procedure_material' }, { ...hidden, sourceId: 'procedure_material' }]), records);
 });

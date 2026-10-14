@@ -52,7 +52,7 @@ export function validateSourceDefinition(value,expectedId) {
     if(!value.retrieval||typeof value.retrieval!=='object'||Array.isArray(value.retrieval)
       ||Object.entries(value.retrieval).some(([key,enabled])=>key==='denseStoreSuffix'
         ? typeof enabled!=='string'||!/^[a-z0-9_-]*$/u.test(enabled)
-        : !['semanticSearch','enrichment','learnedQueries'].includes(key)||typeof enabled!=='boolean')) {
+        : !['semanticSearch','enrichment','learnedQueries','conversational'].includes(key)||typeof enabled!=='boolean')) {
       throw new Error('invalid retrieval capabilities');
     }
   }
@@ -100,6 +100,11 @@ export const knowledgeProcedureDefinition=sourceDefinitions.knowledge_procedure;
 export const torqueTrainingSessionDefinition=sourceDefinitions.torque_training_session;
 export const torqueTrainingOperatorDefinition=sourceDefinitions.torque_training_operator;
 export const torqueTrainingTeamDefinition=sourceDefinitions.torque_training_team;
+
+export function isConversationalSource(source) {
+  const definition=typeof source==='string'?sourceDefinitions[source]:source;
+  return definition?.retrieval?.conversational!==false;
+}
 
 // Only this boundary supplies the source identity of legacy untagged records.
 export function recordSourceId(record) {
