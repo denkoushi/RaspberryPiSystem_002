@@ -38,4 +38,6 @@ export const businessHermesEnvShape = {
   BUSINESS_HERMES_NIGHTLY_ENABLED: z.enum(['true', 'false']).default('false'),
   BUSINESS_HERMES_BACKGROUND_ENABLED: z.enum(['true', 'false']).default('false'),
   BUSINESS_HERMES_NIGHTLY_DATA_DIR: optionalTrimmed,
+  /** Directory of docs/kiosk-operation-guide inside the image; unset hides the system_operation_guide source. */
+  KIOSK_OPERATION_GUIDE_DIR: optionalTrimmed,
 } as const;

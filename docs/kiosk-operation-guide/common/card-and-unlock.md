@@ -1,7 +1,7 @@
 ---
 title: 社員証と暗証番号
 routes: []
-keywords: [社員証, タグ, カード, かざす, タッチ, 鍵, ロック, 解錠, PIN, 暗証番号]
+keywords: [社員証, タグ, カード, かざす, タッチ, 鍵, ロック, 解錠, PIN, 暗証番号, ログイン]
 audience: [operators]
 category: kiosk-operation-guide
 last-verified: 2026-10-14

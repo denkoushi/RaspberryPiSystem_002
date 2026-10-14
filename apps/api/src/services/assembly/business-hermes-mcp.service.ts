@@ -32,6 +32,8 @@ import {
   type BusinessHermesSourceKind
 } from './business-hermes-source-adapters.js';
 
+import { kioskOperationGuide, kioskOperationGuideSourceDefinition, type KioskOperationGuideIndex } from './kiosk-operation-guide.service.js';
+
 export const BUSINESS_HERMES_MCP_TOOL_NAMES = [
   'business_hermes_describe_sources',
   'business_hermes_read_signage_source',
@@ -115,6 +117,7 @@ export type BusinessHermesOpenJevSelector = {
 };
 
 type MpcDeps = {
+  operationGuide?: KioskOperationGuideIndex;
   db?: PrismaClient;
   nonconformities?: Pick<ScawStFutekigoReadService, 'readCurrentByPartNumber'>;
   workInstructions?: Pick<WorkInstructionReadService, 'readPublishedGroups' | 'readPublishedGroup' | 'searchPublishedGroups'>;
@@ -354,7 +357,7 @@ const TOOLS: ReadonlyArray<BusinessHermesMcpTool> = [
   },
   {
     name: 'business_hermes_search',
-    description: 'Search active latest nonconformities and PUBLIC work-instruction text using the source contract returned by business_hermes_describe_sources. originDepartmentCode/name are explicit 起因部署 filters; they are not responsibility-department or treatment-owner filters. Spaces are literal characters, not AND keywords. Nonconformity search results include condition, remarks, correctiveContent and disposition, with the same fields as get_detail. kind=both returns both source kinds for the supplied conditions. Results never include private paths or case history.',
+    description: 'Search active latest nonconformities and PUBLIC work-instruction text using the source contract returned by business_hermes_describe_sources. originDepartmentCode/name are explicit 起因部署 filters; they are not responsibility-department or treatment-owner filters. Spaces are literal characters, not AND keywords. Nonconformity search results include condition, remarks, correctiveContent and disposition, with the same fields as get_detail. kind=both returns both source kinds for the supplied conditions. Results never include private paths or case history. kind=system_operation_guide searches the kiosk operation guide (system operation steps, not product work instructions); use only query with it.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -380,7 +383,7 @@ const TOOLS: ReadonlyArray<BusinessHermesMcpTool> = [
           discoveredOn: { type: 'string', maxLength: 10 }
         }, additionalProperties: false, description: 'Exact nonconformity values to exclude while retaining all other exact conditions.' },
         excludeOriginDepartmentNames: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: MAX_QUERY_CHARS }, description: 'Literal origin-department terms to exclude from the live latest-data search.' },
-        kind: { type: 'string', enum: ['nonconformity', 'work_instruction', 'both'] },
+        kind: { type: 'string', enum: ['nonconformity', 'work_instruction', 'both', 'system_operation_guide'] },
         limit: { type: 'integer', minimum: 1, maximum: MAX_LIMIT },
         nonconformityOffset: { type: 'integer', minimum: 0, maximum: 100_000 },
         workInstructionOffset: { type: 'integer', minimum: 0, maximum: 100_000 }
@@ -390,11 +393,11 @@ const TOOLS: ReadonlyArray<BusinessHermesMcpTool> = [
   },
   {
     name: 'business_hermes_get_detail',
-    description: 'Get bounded detail for one active nonconformity or PUBLIC work-instruction record. Nonconformity detail includes condition, remarks, correctiveContent and disposition. Work-instruction detail can include rows, steps and photos.',
+    description: 'Get bounded detail for one active nonconformity or PUBLIC work-instruction record. Nonconformity detail includes condition, remarks, correctiveContent and disposition. Work-instruction detail can include rows, steps and photos. kind=system_operation_guide returns the full guide section by id.',
     inputSchema: {
       type: 'object',
       properties: {
-        kind: { type: 'string', enum: ['nonconformity', 'work_instruction'] },
+        kind: { type: 'string', enum: ['nonconformity', 'work_instruction', 'system_operation_guide'] },
         id: { type: 'string', minLength: 1, maxLength: 200 },
         partNumber: { type: 'string', maxLength: 200 },
         shootingTarget: { type: 'string', maxLength: 200 }
@@ -807,7 +810,7 @@ function buildSourceResolution(
   fields.sort((left, right) => left.kind.localeCompare(right.kind) || left.field.localeCompare(right.field));
   const requestedKinds = businessHermesSourceDefinitionList()
     .filter((definition) => definition.requestHints.some((hint) => request.includes(hint)))
-    .map((definition) => definition.kind);
+    .map((definition) => definition.kind as BusinessHermesSourceKind);
   return {
     version: SOURCE_RESOLUTION_VERSION,
     request,
@@ -1124,6 +1127,7 @@ function workInstructionResult(group: WorkInstructionGroupView) {
 }
 
 export class BusinessHermesMcpService {
+  private readonly operationGuide: KioskOperationGuideIndex;
   private readonly db: PrismaClient;
   private readonly nonconformities: Pick<ScawStFutekigoReadService, 'readCurrentByPartNumber'>;
   private readonly workInstructions: Pick<WorkInstructionReadService, 'readPublishedGroups' | 'readPublishedGroup' | 'searchPublishedGroups'>;
@@ -1132,6 +1136,7 @@ export class BusinessHermesMcpService {
   private readonly openJevSelector?: BusinessHermesOpenJevSelector;
 
   constructor(deps: MpcDeps = {}) {
+    this.operationGuide = deps.operationGuide ?? kioskOperationGuide();
     this.db = deps.db ?? prisma;
     this.nonconformities = deps.nonconformities ?? new ScawStFutekigoReadService();
     this.workInstructions = deps.workInstructions ?? getWorkInstructionServices().read;
@@ -1645,7 +1650,8 @@ export class BusinessHermesMcpService {
 
   private describeSources() {
     return {
-      sources: businessHermesSourceDefinitionList().map((definition) => ({
+      sources: [...businessHermesSourceDefinitionList(),
+        ...(this.operationGuide.isEnabled() ? [kioskOperationGuideSourceDefinition] : [])].map((definition) => ({
         ...definition,
         fields: definition.fields.map((field) => field.name),
         fieldDefinitions: definition.fields,
@@ -1664,6 +1670,13 @@ export class BusinessHermesMcpService {
   }
 
   private async search(args: Record<string, unknown>, maximum = MAX_LIMIT) {
+    if (args.kind === 'system_operation_guide') {
+      if (!this.operationGuide.isEnabled()) return { error: 'system_operation_guide is not available' };
+      const query = text(args.query);
+      if (!query) return { error: 'query is required for system_operation_guide' };
+      return { kind: 'system_operation_guide', query,
+        ...this.operationGuide.search(query, safeLimit(args.limit, maximum)), nextCursor: null };
+    }
     const query = text(args.query);
     const partNumber = normalizeWorkInstructionPartNumber(text(args.partNumber, 200));
     const shootingTarget = normalizeWorkInstructionShootingTarget(text(args.shootingTarget, 200));
@@ -1903,6 +1916,13 @@ export class BusinessHermesMcpService {
   }
 
   private async detail(args: Record<string, unknown>) {
+    if (args.kind === 'system_operation_guide') {
+      if (!this.operationGuide.isEnabled()) return { error: 'system_operation_guide is not available' };
+      const id = text(args.id, 200);
+      if (!id) return { error: 'id is required for system_operation_guide' };
+      const section = this.operationGuide.detail(id);
+      return section ? { kind: 'system_operation_guide', ...section } : { error: 'operation guide section not found' };
+    }
     const kind = args.kind === 'work_instruction' ? args.kind : args.kind === 'nonconformity' ? args.kind : null;
     if (!kind) return { error: 'kind must be nonconformity or work_instruction' };
     const id = text(args.id, 200);

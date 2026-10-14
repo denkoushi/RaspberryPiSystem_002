@@ -48,6 +48,8 @@ services:
       SLACK_KIOSK_SUPPORT_WEBHOOK_URL: ${SLACK_KIOSK_SUPPORT_WEBHOOK_URL:-}
       WEBRTC_ENABLED: ${WEBRTC_ENABLED:-true}
       PI5_SCHEDULER_LEADER_ENABLED: "1"
+      # Operation guide copied into the API image; unset disables the Hermes source.
+      KIOSK_OPERATION_GUIDE_DIR: /app/docs/kiosk-operation-guide
       PI5_SCHEDULER_LEASE_FILE: /app/alerts/.pi5-scheduler-leader
       PI5_SCHEDULER_LEASE_INTERVAL_MS: "2000"
       # ページ撮影（サイネージ）は同じスロットの Web の内部入口を開く。ホストへは公開されない。

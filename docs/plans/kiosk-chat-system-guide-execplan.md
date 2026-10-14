@@ -15,7 +15,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-14) 要件を利用者と合意した。知識の正本はリポジトリの文書、不具合は照合して自動起票、入口は一つに統合して裏で振り分け、計測は朝の集計に件数と知識不足の一覧、最初の知識範囲はキオスク全画面の基本操作とよくある困りごと。
 - [x] (2026-10-14) 現状の構造を調査した(下記 Context and Orientation)。
 - [x] (2026-10-14) Milestone 1 を実装(branch `feat/kiosk-chat-guide-m1-operation-docs`): `docs/kiosk-operation-guide/` に画面別の文書と `common/` の共通編、`scripts/docs/check-kiosk-operation-guide.mjs` と単体テスト、CI の `repo-policy` ジョブへの組み込み。文書の下書きは Codex に書かせ、画面の文字列と照合して直した。
-- [ ] Milestone 2: 操作知識を業務 Hermes の情報源として公開。
+- [x] (2026-10-14) Milestone 2 を実装(branch `feat/kiosk-chat-guide-m2-hermes-source`): API イメージへ `docs/kiosk-operation-guide/` を複製、`KIOSK_OPERATION_GUIDE_DIR` で読み込む節の索引、`business_hermes_search` / `business_hermes_get_detail` の `kind=system_operation_guide`、最初の目的確認に「操作の方法を調べる」の選択肢、SKILL.md.j2 0.5.0 の「システム操作の問い合わせ」。API 実装は Codex に書かせ、Claude が差分とテストを確認した。
 - [ ] Milestone 3: 不具合の受付道具(システム通知の照合とお問い合わせの自動起票)。
 - [ ] Milestone 4: 入口の一本化(「検索」「JEV記録」の統合と、記録検索への橋渡し)。
 - [ ] Milestone 5: 計測(受領ログの振り分け先と朝の集計)。
@@ -26,6 +26,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - Observation: 「人へ引き継ぐ」経路はすでに本番にある。Chat の「お問い合わせ」→「＋ 新規」は受け取る端末と Slack に届き、端末の不調(社員証リーダー、バーコードリーダー、電源、SD カード、空き容量、温度)は「システム通知」として同じ受信箱に自動で出る(`docs/runbooks/kiosk-inquiry-inbox.md`)。足りないのは通知経路ではなく、入力欄に入った文をそこへ回す判断である。
 - Observation: 10/13 の発話は「JEV記録」(AI を使わない決まった手順の検索)に入り、その経路の「記録外」判定(`scripts/hermes-search/retrieval/planner-jev.mjs` の out_of_scope)も働かなかった。決まった手順の判定だけに頼る振り分けでは同じ事例を取りこぼす。
 - Observation: 既存の「操作ガイド」(`apps/web/src/features/operation-guide/`)は「手順書の作り方」など決まった言い回しだけに反応するブラウザ内の仕組みで、一般の操作の質問には何も起きない。
+- Observation: Milestone 2 で、`.dockerignore` は `docs/**` を除外しているため、API イメージへ文書を入れるには `!docs/kiosk-operation-guide/**` の例外と Dockerfile の COPY が要る(小さな build context で複製されることを確認した)。環境変数は Ansible の変数ではなく `docker-compose.phase3.yml` の api 環境に固定値で置いた(イメージ内の経路で秘密ではない)。
 - Observation: Milestone 1 の文書は、ルート 57 件(転送 4 件を除き 53 件)を画面単位の文書約 40 件にまとめると書けた。編集・印刷・セッション詳細などパラメータ付きのルートは親画面の文書に含める方が現場の人の問いに合う。
 - Observation: 要領書(`docs/plans/procedure-manuals-execplan.md`)は「この機種をどう組むか」という製品の作業知識であり、「タグが反応しない」「ログインの仕方」というシステム操作の知識ではない。現場向けのシステム操作の文書は、組立と検査図面の 2 画面分の操作手順(`scripts/kiosk-sop/` の生成物)と管理者向けの `docs/guides/operation-manual.md`(最終確認 2025-12)しか無く、ほぼ新しく書くことになる。
 
@@ -38,6 +39,10 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - Decision: 入力欄は一つにするが、「ナレッジ」(手順書の知識機能)と「お問い合わせ」のボタンは当面残す。Rationale: 「ナレッジ」は素材の投入と承認という別の作業の入口で、文の意図判定では置き換えられない。利用者の合意は「検索」「JEV記録」の統合までであり、「ナレッジ」も統合するかは別途判断する(暫定)。
 - Decision: 私用 Pi5(Hermes/Discord)の情報・設定・経路は一切使わない。案内役は業務 Pi5 の `business-hermes-chat` コンテナだけで動かす。Rationale: 業務系と私用系の分離は長期不変の境界。
 - Decision: 実装は T10(検索精度)とは別の branch と PR で行い、Milestone ごとに 1 つの PR にする。Rationale: 検索精度の計測と切り分けるため。
+- Decision (Milestone 2): `business_hermes_search` / `business_hermes_get_detail` は計画どおり `kind=system_operation_guide` を受けるが、内部は既存の 2 情報源の仕組み(カーソル、根拠キー、`kind=both`、夜間の書き出し)に通さず、関数の先頭で操作ガイドの索引へ分岐する。情報源の定義も `businessHermesSourceDefinitions` には足さず、`describe_sources` と相談の `sourceDefinitions` の 2 か所で、索引が読めたときだけ追加する。Rationale: 定義一覧は検索条件の解決(`requestedKinds`)や夜間の書き出しにも使われており、第 3 の種類を混ぜると不適合・要領書の経路に影響する。
+- Decision (Milestone 2): 新しい相談の最初の「知りたい内容を選んでください」はサーバーが選択肢を組み立てているため、SKILL の変更だけでは操作の質問が記録の選択肢へ流れる。操作ガイドの索引が画面名か keywords で当たる質問にだけ、「操作の方法を調べる：…」の選択肢(型 `operation-guide`)を足す。画面名が当たるときは先頭に置いて先読みもその型で行い、keywords だけが当たるときは末尾に置く(keywords には 品番 などの一般語が含まれ、記録の質問も当たるため)。Rationale: 当たらない質問の選択肢は今までと変えず、記録の相談の先読みを奪わない。
+- Decision (Milestone 2): 応答の `routeDecision` と `guideMiss` は応答の解析で受け取り、回答メッセージの `searchDiagnostics` に `business-hermes-route-v1` として保存する。受領ログや朝の集計への反映は Milestone 5 で行う。
+- Decision (Milestone 2): ブラウザ内の既存の「操作ガイド」(`isOperationGuideQuestion`)は「手順書の作り方」などの決まった言い回しだけを横取りするので、「自主検査の始め方」はサーバーへ届く。両者の統合は Milestone 4 で「検索」モードを外すときに扱う。
 
 ## Outcomes & Retrospective
 
