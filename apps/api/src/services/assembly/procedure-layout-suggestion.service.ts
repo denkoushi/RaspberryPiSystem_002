@@ -13,6 +13,7 @@ import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm
 import type { TextCompletionPort } from '../inference/ports/text-completion.port.js';
 import type { VisionCompletionPort } from '../inference/ports/vision-completion.port.js';
 import { AssemblyTemplateAccessService } from './assembly-template-access.service.js';
+import { ASSEMBLY_SITE_CONTEXT } from './procedure-site-context.js';
 import { arrangeProcedureLayout, assignProcedureLayoutRows, median, procedureRowNeedsCaption, ProcedureLayoutError, rewriteProcedureTexts } from './procedure-layout.js';
 
 const TEXT_INSTRUCTION = `あなたは工場の手順書を仕上げる編集者です。入力は手順書1ページ分の文章です。各 text を、作業者がすぐ読める最終形に書き直してください。
@@ -23,6 +24,9 @@ const TEXT_INSTRUCTION = `あなたは工場の手順書を仕上げる編集者
 - 見出し(第一工程目、使用治具、測定方法など)には番号や・を付けない。
 - 見出しだけの text、すでに読みやすい text はそのまま返す。
 - 1行が長くなっても文の途中では改行しない。
+- 聞き違い・誤変換と分かる語は、下の現場の知識にある語に直す(例: 「車高マン」→「シャコマン」)。意味を取り違えそうなら直さない。
+- 現場の知識にあっても text に無い部品・数値・作業は足さない。
+${ASSEMBLY_SITE_CONTEXT}
 例:
 入力: "加工前ボルトを締めて芯出し\nゲージで端の傾きを0.02以内にする。その後高さが0.5以内なら開始。切り込み5μ"
 出力: "1. ボルトを締めて芯出し\n2. ゲージで端の傾き 0.02 以内\n3. 高さ 0.5 以内なら加工開始\n切り込み 5μ"

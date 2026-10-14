@@ -70,6 +70,7 @@ update-frequency: high
 | キオスク製番ボード（資源CD表示×切削の更新ループ） | [KB-411](./KB-411-planning-board-resource-view-update-loop.md) | 1件 | 2026-10-01: 資源CD表示で切削に切り替えるとReact #185でエラー画面。高さ計測のeffect依存を数値に変更 |
 | キオスク製番ボード（再表示が毎回作り直しで遅い） | [KB-418](./KB-418-planning-board-warm-reuse.md) | 1件 | 2026-10-13: 世代が同じ間は結果を保持（#1897 #1902 #1904 #1909）。7分後の再表示 3.5s→0.35s、/load 8s→0.3s |
 | キオスクのボタン配置を操作の順番に合わせる（要領書の「作る」ほか） | [KB-419](./KB-419-kiosk-operation-flow-button-placement.md) | 1件 | 2026-10-13: 条件を選ぶ場所の近くに置く・危険な操作は離して確認を挟む・確認は やめる左／実行右。12画面の変更一覧とフローティングChatの位置記憶 |
+| 手順書の「整える」に組立の現場の知識を持たせる | [KB-420](./KB-420-procedure-tidy-site-context.md) | 1件 | 2026-10-14: 既存の組立作業標準書21枚から現場の理解（製品の成り立ち・部品の役目・作業の意味・決まり）をまとめ、業務LLMの指示文へ要約を差し込み |
 | キオスク在庫（毎日のNFC画面と準備画面の分離） | [KB-409](./KB-409-kiosk-inventory-daily-and-setup-screens.md) | 1件 | 2026-09-26: 在庫操作でパスワードなし修正・置き場所選択、在庫の準備はテンキー解除とタブ化。デプロイ中のmainマージ禁止の教訓 |
 | キオスク順位ボード（左ツールスタック背景不透明化リグレッション） | [KB-396](./KB-396-leader-board-left-panel-opacity-regression.md) | 1件 | **`0c57d5a0`**·`kioskPanelClassName` 半透明リグレッション修正·実機未確認 |
 | キオスク順位ボード（`leaderboard-board/continue` 契約と端末キャッシュ履歴） | [KB-374-leaderboard-board-continue-cursor-contract.md](./KB-374-leaderboard-board-continue-cursor-contract.md) | 1件 | continue/cursor、append、端末キャッシュ、過去の `pageSize 80` / `120秒` 履歴。現行値は [KB-392](./KB-392-kiosk-leaderboard-spec-source-of-truth.md)。 |
