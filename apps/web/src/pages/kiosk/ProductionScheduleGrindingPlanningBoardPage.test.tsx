@@ -126,6 +126,14 @@ function fixture() {
   };
 }
 
+// The board opens on 資源CD; most cases here exercise the 製番 view.
+function renderSeibanBoard() {
+  const result = render(<ProductionScheduleGrindingPlanningBoardPage />);
+  const seiban = screen.queryByRole('button', { name: '製番', exact: true });
+  if (seiban) fireEvent.click(seiban);
+  return result;
+}
+
 function selectAllBoardItems() {
   fireEvent.click(screen.getByLabelText('製番26-1041を全選択'));
   fireEvent.click(screen.getByLabelText('製番26-1042を全選択'));
@@ -203,7 +211,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
         ...data.items.find((item) => item.itemId === request.itemId), alternateRank: index + 1,
         version: request.overrideVersion + 1, itemRevision: `saved-${request.itemId}-${request.overrideVersion + 1}`
       })) }));
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
     fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
     fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
     expect(screen.getByRole('button', { name: '今日から' })).toHaveAttribute('aria-pressed', 'true');
@@ -221,15 +229,19 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeDisabled();
   });
 
-  it('ガント切替と縮尺変更でボード取得条件が変わらず、通常表示へ戻る', () => {
+  it('資源CDの表示で開く', () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.getByRole('button', { name: '資源CD', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  });
+  it('ガント切替と縮尺変更でボード取得条件が変わらず、通常表示へ戻る', () => {
+    renderSeibanBoard();
     const args = mocks.snapshot.mock.calls.at(-1);
     mocks.snapshot.mockClear();
     fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
     expect(screen.getByTestId('planning-board-gantt')).toBeInTheDocument();
     expect(screen.queryByTestId('planning-board-seiban-26-1041')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'ガント' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: '2週' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '1日' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByRole('button', { name: '4週' }));
     expect(screen.getByRole('button', { name: '4週' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByRole('button', { name: '納期から' }));
@@ -245,9 +257,10 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
   it('ガントで選択し、離した時だけ指定納期をキュー保存し楽観反映する', async () => {
     mocks.overrides.mockImplementation(() => new Promise(() => {}));
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
     fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
     fireEvent.click(screen.getByRole('button', { name: '納期から' }));
+    fireEvent.click(screen.getByRole('button', { name: '2週' }));
     const bar = screen.getByTestId('planning-gantt-bar-a');
     fireEvent.click(bar);
     expect(bar).toHaveAttribute('aria-pressed', 'true');
@@ -263,7 +276,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   });
 
   it('元割当はガントのドラッグを無効にし、選択は維持する', () => {
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
     fireEvent.click(screen.getByRole('button', { name: '元割当' }));
     fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
     const bar = screen.getByTestId('planning-gantt-bar-a');
@@ -279,7 +292,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   });
 
   it('同日へのドロップとキャンセルでは保存しない', () => {
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
     fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
     const bar = screen.getByTestId('planning-gantt-bar-a');
     fireEvent.pointerDown(bar, { pointerId: 1, button: 0, clientX: 100 });
@@ -294,7 +307,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     const board = { ...fixture(), load: [], loadDeferred: true };
     mocks.snapshot.mockReturnValue({ data: board, isLoading: false, isError: false, refetch: mocks.refetch });
     mocks.load.mockReturnValue({ data: undefined, isLoading: true });
-    const page = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    const page = renderSeibanBoard();
     expect(screen.getAllByRole('button', { name: '資源CD 305を変更' })).toHaveLength(4);
     selectAllBoardItems();
     fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
@@ -314,7 +327,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   });
 
   it('通常表示で製番明細を初期展開し、手動で閉じられる', () => {
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     expect(screen.getByTestId('planning-board-seiban-26-1041')).toBeInTheDocument();
     expect(screen.getByTestId('planning-board-seiban-26-1042')).toBeInTheDocument();
@@ -334,7 +347,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
   it('新規登録はactive/openへ追加し、既存の閉じた・除外した状態を変えず、再登録は新規として扱う', () => {
     let current = fixture();
-    const view = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    const view = renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '製番26-1041の明細を閉じる' }));
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
@@ -389,7 +402,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   it('保存中も次のドラッグを即時表示し、確定した版で順番に保存する', async () => {
     const replies: ((value: unknown) => void)[] = [];
     mocks.resourceOrder.mockImplementation(() => new Promise((resolve) => replies.push(resolve)));
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
     fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
     const drag = (from: string, to: string, pointerId: number) => {
       const source = within(screen.getByTestId(`planning-board-item-${from}`)).getByRole('button', { name: '資源CD 305を変更' });
@@ -429,7 +442,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.resourceOrder.mockImplementation(() => new Promise((_resolve, reject) => {
       rejectResourceOrder = reject;
     }));
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
     fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
 
     const resourceView = screen.getByTestId('planning-board-resource-view');
@@ -493,7 +506,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       isFetching: false,
       isError: false
     });
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
@@ -554,7 +567,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       isFetching: false,
       isError: false
     }));
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
@@ -603,7 +616,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       isError: false
     });
     mocks.order.mockRejectedValueOnce(new Error('save failed'));
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     fireEvent.change(screen.getByRole('searchbox', { name: '製番を検索' }), { target: { value: 'CAND' } });
@@ -641,7 +654,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       isFetching: false,
       isError: false
     });
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     fireEvent.change(screen.getByRole('searchbox', { name: '製番を検索' }), { target: { value: 'CAND' } });
@@ -655,7 +668,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   });
 
   it('資源CD表示は資源名を見出しに表示し、部品情報を上下2段にする', () => {
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
 
@@ -690,7 +703,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
         sourceRevision: 'board-4',
         items: [{ ...itemA, specialDue: { kind: 'overnight' as const, expiresAt: '2099-09-13T23:00:00.000Z' }, itemRevision: 'revision-a-special-overnight', version: 5 }]
       });
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
     fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
 
     const todayButton = screen.getByRole('button', { name: '今日中', exact: true });
@@ -734,7 +747,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     const item = fixture().items[0]!;
     let resolveFirst: ((value: unknown) => void) | undefined;
     mocks.overrides.mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }));
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
     fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
     fireEvent.click(screen.getByRole('button', { name: '今日中', exact: true }));
     const row = screen.getByTestId(`planning-board-item-${item.itemId}`);
@@ -758,7 +771,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   it('成功通知は2.5秒で消え、後発通知を古いtimerが消さず、エラーは残る', async () => {
     vi.useFakeTimers();
     try {
-      const view = render(<ProductionScheduleGrindingPlanningBoardPage />);
+      const view = renderSeibanBoard();
       fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
       const selectRank = async (rank: number) => {
         await act(async () => {
@@ -804,7 +817,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       scopeReady: true,
       refetch: mocks.refetch
     });
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     const resourceButton = screen.getAllByRole('button', { name: '資源CD 305を変更' })[0]!;
     expect(resourceButton).not.toBeDisabled();
@@ -820,7 +833,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       version: 3
     };
     mocks.overrides.mockResolvedValueOnce({ sourceRevision: 'board-2', items: [responseItem] });
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
     fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
 
     const source = screen.getAllByRole('button', { name: '資源CD 305を変更' })[0]!;
@@ -846,7 +859,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
   it('資源CD chipのdrag保存失敗時は元のpane表示へ戻す', async () => {
     mocks.overrides.mockRejectedValueOnce(new Error('drag save failed'));
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
     fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
 
     const source = screen.getAllByRole('button', { name: '資源CD 305を変更' })[0]!;
@@ -869,7 +882,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.overrides.mockImplementationOnce(() => new Promise((resolve) => {
       resolveOverrides = resolve;
     }));
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
     selectAllBoardItems();
 
     fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
@@ -887,7 +900,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     const item = fixture().items[1]!;
     let resolveOverride: ((value: unknown) => void) | undefined;
     mocks.overrides.mockImplementationOnce(() => new Promise((resolve) => { resolveOverride = resolve; }));
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
     fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
     fireEvent.click(within(screen.getByTestId('planning-board-item-b')).getByRole('button', { name: '資源CD 305を変更' }));
     const editor = screen.getByRole('dialog', { name: '一括変更' });
@@ -906,7 +919,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
   it('資源CD変更の保存失敗時は元の表示へ戻す', async () => {
     mocks.overrides.mockRejectedValueOnce(new Error('override save failed'));
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
     selectAllBoardItems();
 
     fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
@@ -926,7 +939,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       alternateRank: null
     }));
     mocks.overrides.mockResolvedValueOnce({ sourceRevision: 'board-1', items: responseItems });
-    const view = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    const view = renderSeibanBoard();
     selectAllBoardItems();
 
     fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
@@ -958,7 +971,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
         })
     );
 
-    const view = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    const view = renderSeibanBoard();
     fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
     const rankButton = chooseResourceRank('部品b', 1);
 
@@ -986,7 +999,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
   it('資源CD表示の個別順位は保存失敗時に元の表示へ戻る', async () => {
     mocks.rank.mockRejectedValueOnce(new Error('rank save failed'));
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
     const rankButton = chooseResourceRank('部品b', 1);
@@ -999,7 +1012,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   });
 
   it('保存成功のrevision/versionでGET未完了でも同一行・別行の次操作を送る', async () => {
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
     chooseResourceRank('部品b', 1);
@@ -1021,7 +1034,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   it('確定済み順位を保持したまま次操作の保存失敗を元へ戻す', async () => {
     mocks.rank.mockImplementationOnce(async () => ({ sourceRevision: 'board-1', itemId: 'b', itemRevision: 'revision-b-after-rank-3', overrideVersion: 3, alternateRank: 1 }));
     mocks.rank.mockRejectedValueOnce(new Error('second rank save failed'));
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
     chooseResourceRank('部品b', 1);
@@ -1034,7 +1047,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   it('保存済み順位は古いGETやGETエラーで元へ戻さない', async () => {
     let current = fixture();
     mocks.snapshot.mockImplementation(() => ({ data: current, isLoading: false, isError: false, isPlaceholderData: false, refetch: mocks.refetch }));
-    const view = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    const view = renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
     chooseResourceRank('部品b', 1);
@@ -1051,7 +1064,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
   it('同一scopeの背景再取得中は順位を変更でき、placeholder中は変更しない', async () => {
     mocks.snapshot.mockReturnValue({ data: fixture(), isLoading: false, isFetching: true, isError: false, isPlaceholderData: false, scopeReady: false, refetch: mocks.refetch });
-    const initialView = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    const initialView = renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
     chooseResourceRank('部品b', 1);
@@ -1079,7 +1092,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
           void payload;
         })
     );
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '製番26-1041を広げる' }));
     const rankSelect = screen.getByRole('combobox', { name: '部品bの個別指定' });
@@ -1099,7 +1112,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     const dueSpy = vi.spyOn(planningBoardSorting, 'resolveGrindingPlanningBoardDueDate');
     const resourceSpy = vi.spyOn(planningBoardSorting, 'resolveGrindingPlanningBoardResource');
     try {
-      render(<ProductionScheduleGrindingPlanningBoardPage />);
+      renderSeibanBoard();
       sortSpy.mockClear();
       dueSpy.mockClear();
       resourceSpy.mockClear();
@@ -1139,7 +1152,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
     const dueSpy = vi.spyOn(planningBoardSorting, 'resolveGrindingPlanningBoardDueDate');
     try {
-      render(<ProductionScheduleGrindingPlanningBoardPage />);
+      renderSeibanBoard();
       fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
       dueSpy.mockClear();
       fireEvent.click(screen.getByLabelText('部品aを選択'));
@@ -1151,7 +1164,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   });
 
   it('対象を一括変更すると開いた時点のrevisionとversionを送る', async () => {
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
     selectAllBoardItems();
 
     fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
@@ -1166,7 +1179,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   });
 
   it('左ペインの製番解除後も工程切替時の選択状態を保つ', () => {
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
@@ -1198,7 +1211,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       isError: false,
       refetch: dueRefetch
     });
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
@@ -1248,7 +1261,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       mocks.dueScope.mockImplementationOnce(() => new Promise((resolve) => {
         resolveDue = resolve;
       }));
-      render(<ProductionScheduleGrindingPlanningBoardPage />);
+      renderSeibanBoard();
 
       fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
       const drawer = screen.getByRole('dialog', { name: '製番登録' });
@@ -1286,7 +1299,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       isError: false,
       refetch: vi.fn()
     });
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
     fireEvent.click(screen.getByRole('button', { name: '元割当' }));
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
@@ -1320,7 +1333,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       resolveDue = resolve;
     }));
 
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
     fireEvent.click(within(drawer).getByRole('button', { name: '製番26-1041の納期詳細を開く' }));
@@ -1360,7 +1373,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       refetch: dueRefetch
     });
     mocks.dueScope.mockRejectedValueOnce({ isAxiosError: true, response: { status: 409 } });
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
     fireEvent.click(within(drawer).getAllByRole('button', { name: /^26-1041/ })[0]!);
@@ -1376,7 +1389,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   });
 
   it('元割当表示では共有製番順の変更操作を無効にする', () => {
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '元割当' }));
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
@@ -1388,7 +1401,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
   it('製番順409時は最新状態を明示取得できる', async () => {
     mocks.order.mockRejectedValueOnce({ isAxiosError: true, response: { status: 409 } });
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
@@ -1405,7 +1418,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.order.mockImplementationOnce(() => new Promise((resolve) => {
       resolveOrder = resolve;
     }));
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
@@ -1432,7 +1445,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       mocks.snapshot.mockReturnValue({ data: updated, isLoading: false, isError: false, refetch: mocks.refetch });
       return { sourceRevision: 'board-2', seibanOrder: updated.registeredFseibans };
     });
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
@@ -1465,7 +1478,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
         current.seibanOrder = current.registeredFseibans;
         return { sourceRevision: 'board-3', seibanOrder: current.registeredFseibans };
       });
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
@@ -1491,7 +1504,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.order
       .mockResolvedValueOnce({ sourceRevision: 'board-2', seibanOrder: staleAfterFirst.seibanOrder })
       .mockResolvedValueOnce({ sourceRevision: 'board-3', seibanOrder: ['26-1044', '26-1043', '26-1041', '26-1042'] });
-    const view = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    const view = renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
@@ -1519,7 +1532,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.order.mockImplementationOnce(() => new Promise((resolve) => {
       resolveOrder = resolve;
     }));
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
@@ -1543,7 +1556,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       current.seibanOrder = current.registeredFseibans;
       return { sourceRevision: 'board-2', seibanOrder: current.registeredFseibans };
     });
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
@@ -1576,7 +1589,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       mocks.snapshot.mockReturnValue({ data: refreshed, isLoading: false, isError: false, refetch: mocks.refetch });
       return { data: refreshed, isError: false };
     });
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
@@ -1594,7 +1607,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   });
 
   it('共通数字キーは選択欄へ入力し、常設英字とハイフンは製番へ入力する', () => {
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
     expect(mocks.candidates.mock.calls.at(-1)?.[1]).toEqual({ enabled: false });
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     expect(mocks.candidates.mock.calls.at(-1)?.[1]).toEqual({ enabled: true });
@@ -1622,7 +1635,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   });
 
   it('検索に一致しなくても登録製番は全件表示し、選択状態と並び順を保持する', () => {
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
     const input = within(drawer).getByRole('searchbox', { name: '製番を検索' });
@@ -1647,7 +1660,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
   it('製番登録に失敗した場合は入力値と近傍エラーを保持する', async () => {
     mocks.order.mockRejectedValueOnce(new Error('registration failed'));
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
@@ -1661,7 +1674,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
   it('順位409時も最新状態を明示取得できる', async () => {
     mocks.rank.mockRejectedValueOnce({ isAxiosError: true, response: { status: 409 } });
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
 
     fireEvent.click(screen.getByRole('button', { name: '製番26-1041を広げる' }));
     fireEvent.change(screen.getAllByRole('combobox')[0]!, { target: { value: '1' } });
@@ -1673,7 +1686,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
   it('409時は固定した編集対象を再表示し、再適用を自動実行しない', async () => {
     mocks.overrides.mockRejectedValueOnce({ isAxiosError: true, response: { status: 409 } });
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
     selectAllBoardItems();
 
     fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
@@ -1692,7 +1705,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     const refreshed = fixture();
     refreshed.sourceRevision = 'board-after-refetch';
     mocks.snapshot.mockReturnValue({ data: fixture(), isLoading: false, isError: false, refetch: mocks.refetch });
-    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    renderSeibanBoard();
     selectAllBoardItems();
 
     fireEvent.click(screen.getByRole('button', { name: '一括変更' }));

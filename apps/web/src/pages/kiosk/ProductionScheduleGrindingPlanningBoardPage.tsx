@@ -141,7 +141,7 @@ function applyOptimisticOverride(
 export function ProductionScheduleGrindingPlanningBoardPage() {
   const [category, setCategory] = useState<'grinding' | 'cutting'>('grinding');
   const [ganttEnabled, setGanttEnabled] = useState(false);
-  const [view, setView] = useState<'seiban' | 'resource'>('seiban');
+  const [view, setView] = useState<'seiban' | 'resource'>('resource');
   const [status, setStatus] = useState<PlanningBoardStatus>('incomplete');
   const [allocation, setAllocation] = useState<PlanningBoardAllocation>('alternate');
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -927,7 +927,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       />
       {boardQuery.isError ? <p className="p-5 text-sm text-rose-200">一覧を読み込めませんでした。</p> : null}
       {data && ganttEnabled ? (
-        <PlanningBoardGanttView ref={gantt.viewRef} layout={gantt.layout} scale={gantt.scale}
+        <PlanningBoardGanttView ref={gantt.viewRef} layout={gantt.layout} scale={gantt.scale} homeKey={gantt.homeKey}
           resourceView={view === 'resource'} dailyHoursByResource={gantt.dailyHoursByResource}
           resourceNameMap={resourcesQuery.data?.resourceNameMap ?? {}}
           capacityPending={gantt.capacityPending} capacityError={gantt.capacityError} onCapacityChange={gantt.changeCapacity}

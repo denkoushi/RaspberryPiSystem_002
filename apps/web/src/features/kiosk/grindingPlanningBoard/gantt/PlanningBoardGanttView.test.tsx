@@ -137,6 +137,21 @@ describe('forward PlanningBoardGanttView', () => {
     dragBar();
     expect(special.onResourceReorder).not.toHaveBeenCalled();
   });
+  it('moves two hours with the arrow buttons and returns to today on each scale press', () => {
+    const values = forwardProps([item()]);
+    const { rerender } = render(<PlanningBoardGanttView {...values} homeKey={0} />);
+    const viewport = screen.getByLabelText('ガントの日付と工程');
+    const twoHours = (1120 - 168) / 2 / 12;
+    fireEvent.click(screen.getByRole('button', { name: '2時間進む' }));
+    fireEvent.click(screen.getByRole('button', { name: '2時間進む' }));
+    expect(viewport.scrollLeft).toBeCloseTo(twoHours * 2);
+    fireEvent.click(screen.getByRole('button', { name: '2時間戻る' }));
+    expect(viewport.scrollLeft).toBeCloseTo(twoHours);
+    rerender(<PlanningBoardGanttView {...values} homeKey={0} />);
+    expect(viewport.scrollLeft).toBeCloseTo(twoHours);
+    rerender(<PlanningBoardGanttView {...values} homeKey={1} />);
+    expect(viewport.scrollLeft).toBe(0);
+  });
   it('shows completed-only guidance and starts the viewport at today', () => {
     const values = forwardProps([item({ isCompleted: true })]);
     render(<PlanningBoardGanttView {...values} />);
