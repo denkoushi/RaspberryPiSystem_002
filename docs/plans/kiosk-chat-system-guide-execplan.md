@@ -14,7 +14,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 - [x] (2026-10-14) 要件を利用者と合意した。知識の正本はリポジトリの文書、不具合は照合して自動起票、入口は一つに統合して裏で振り分け、計測は朝の集計に件数と知識不足の一覧、最初の知識範囲はキオスク全画面の基本操作とよくある困りごと。
 - [x] (2026-10-14) 現状の構造を調査した(下記 Context and Orientation)。
-- [ ] Milestone 1: 現場向けの操作知識の文書(`docs/kiosk-operation-guide/`)と画面との対応検査。
+- [x] (2026-10-14) Milestone 1 を実装(branch `feat/kiosk-chat-guide-m1-operation-docs`): `docs/kiosk-operation-guide/` に画面別の文書と `common/` の共通編、`scripts/docs/check-kiosk-operation-guide.mjs` と単体テスト、CI の `repo-policy` ジョブへの組み込み。文書の下書きは Codex に書かせ、画面の文字列と照合して直した。
 - [ ] Milestone 2: 操作知識を業務 Hermes の情報源として公開。
 - [ ] Milestone 3: 不具合の受付道具(システム通知の照合とお問い合わせの自動起票)。
 - [ ] Milestone 4: 入口の一本化(「検索」「JEV記録」の統合と、記録検索への橋渡し)。
@@ -26,6 +26,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - Observation: 「人へ引き継ぐ」経路はすでに本番にある。Chat の「お問い合わせ」→「＋ 新規」は受け取る端末と Slack に届き、端末の不調(社員証リーダー、バーコードリーダー、電源、SD カード、空き容量、温度)は「システム通知」として同じ受信箱に自動で出る(`docs/runbooks/kiosk-inquiry-inbox.md`)。足りないのは通知経路ではなく、入力欄に入った文をそこへ回す判断である。
 - Observation: 10/13 の発話は「JEV記録」(AI を使わない決まった手順の検索)に入り、その経路の「記録外」判定(`scripts/hermes-search/retrieval/planner-jev.mjs` の out_of_scope)も働かなかった。決まった手順の判定だけに頼る振り分けでは同じ事例を取りこぼす。
 - Observation: 既存の「操作ガイド」(`apps/web/src/features/operation-guide/`)は「手順書の作り方」など決まった言い回しだけに反応するブラウザ内の仕組みで、一般の操作の質問には何も起きない。
+- Observation: Milestone 1 の文書は、ルート 57 件(転送 4 件を除き 53 件)を画面単位の文書約 40 件にまとめると書けた。編集・印刷・セッション詳細などパラメータ付きのルートは親画面の文書に含める方が現場の人の問いに合う。
 - Observation: 要領書(`docs/plans/procedure-manuals-execplan.md`)は「この機種をどう組むか」という製品の作業知識であり、「タグが反応しない」「ログインの仕方」というシステム操作の知識ではない。現場向けのシステム操作の文書は、組立と検査図面の 2 画面分の操作手順(`scripts/kiosk-sop/` の生成物)と管理者向けの `docs/guides/operation-manual.md`(最終確認 2025-12)しか無く、ほぼ新しく書くことになる。
 
 ## Decision Log
@@ -56,9 +57,9 @@ Chat の裏側は現在 4 つの経路に分かれている。パネル上部の
 
 ### Milestone 1: 現場向けの操作知識の文書
 
-`docs/kiosk-operation-guide/` を新設し、現場の人が読む短い日本語で書く。共通編として「社員証(タグ)をかざす」「ログインと解錠」「バーコードの読み取り」「お問い合わせの送り方」「困ったとき(タグが反応しない、印刷できない、画面が固まった、通知が消えない)」を置く。画面編として `/kiosk` 配下の画面ごとに 1 ファイルを置き、frontmatter に `route`(例 `/kiosk/self-inspection`)、`title`、`keywords`(現場の言い回し。例 「タグ」「カード」「かざす」)、`last-verified` を持たせる。本文は「この画面でできること」「基本の手順」「よくある困りごととその場の対処」「それでも直らないとき(お問い合わせへ)」の 4 見出しに固定する。管理コンソールとサーバー操作は対象外。
+`docs/kiosk-operation-guide/` を新設し、現場の人が読む短い日本語で書く。共通編として「社員証(タグ)をかざす」「ログインと解錠」「バーコードの読み取り」「お問い合わせの送り方」「困ったとき(タグが反応しない、印刷できない、画面が固まった、通知が消えない)」を置く。画面編として `/kiosk` 配下の画面ごとに 1 ファイルを置き、frontmatter に `routes`(例 `[/kiosk/part-measurement/self-inspection, /kiosk/part-measurement/self-inspection/start]`。編集・印刷などの関連ルートは同じ文書にまとめる)、`title`、`keywords`(現場の言い回し。例 「タグ」「カード」「かざす」)、`last-verified` を持たせる。本文は「この画面でできること」「基本の手順」「よくある困りごととその場の対処」「それでも直らないとき(お問い合わせへ)」の 4 見出しに固定する。管理コンソールとサーバー操作は対象外。
 
-ずれの検査として `scripts/docs/check-kiosk-operation-guide.mjs` を追加し、ルーター定義の `/kiosk` 配下の全ルートに対応する文書があること、frontmatter の必須項目があること、文書の `route` が実在することを確かめる。既存の文書監査(`node scripts/docs/audit-docs.mjs --check`)に通るよう、新しい文書にも frontmatter を付ける。この Milestone の終わりには、文書一式と検査スクリプトが存在し、検査が成功する。
+ずれの検査として `scripts/docs/check-kiosk-operation-guide.mjs` を追加し、ルーター定義の `/kiosk` 配下の全ルート(`Navigate` や `KioskRedirect` で転送するだけのルートを除く)に対応する文書があること、frontmatter の必須項目があること、文書の `routes` が実在すること、4 見出しが順にあることを確かめる。CI では毎回動く `repo-policy` ジョブに置く(文書だけの変更でも画面だけの変更でも走るため)。既存の文書監査(`node scripts/docs/audit-docs.mjs --check`)に通るよう、新しい文書にも frontmatter を付ける。この Milestone の終わりには、文書一式と検査スクリプトが存在し、検査が成功する。
 
 ### Milestone 2: 操作知識を業務 Hermes の情報源として公開
 

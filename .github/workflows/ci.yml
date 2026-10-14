@@ -93,6 +93,12 @@ jobs:
       - name: Validate production secret structure
         run: python3 scripts/ci/validate_production_secret_structure.py
 
+      # Every kiosk screen route must have a floor-facing operation guide the Chat can answer from.
+      - name: Check kiosk operation guide coverage
+        run: |
+          node --test scripts/docs/check-kiosk-operation-guide.test.mjs
+          node scripts/docs/check-kiosk-operation-guide.mjs
+
   # Fast feedback shared by API, Web, and shared-package changes.
   workspace-quality:
     name: workspace-quality
