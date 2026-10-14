@@ -7,6 +7,7 @@ import {
   updateGrindingPlanningBoardOverrides,
   updateGrindingPlanningBoardRank,
   updateGrindingPlanningBoardResourceOrder,
+  updateGrindingPlanningBoardResourceOrderBulk,
   updateGrindingPlanningBoardSeibanOrder
 } from '../../../services/production-schedule/grinding-planning-board.service.js';
 import {
@@ -77,6 +78,16 @@ const resourceOrderBodySchema = z.object({
   targetOverrideVersion: z.number().int().min(0).optional(),
   placement: z.enum(['before', 'after'])
 });
+
+const resourceOrderBulkBodySchema = z.object({
+  sourceRevision: sourceRevisionSchema,
+  resourceCd: z.string().trim().min(1).max(20),
+  items: z.array(z.object({
+    itemId: z.string().min(1).max(2_000),
+    itemRevision: z.string().min(1).max(200),
+    overrideVersion: z.number().int().min(0).optional()
+  })).min(1).max(500)
+}).refine((value) => new Set(value.items.map((item) => item.itemId)).size === value.items.length, { message: 'アイテムIDが重複しています' });
 
 const orderBodySchema = z.object({
   sourceRevision: sourceRevisionSchema,
@@ -187,6 +198,13 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = resourceOrderBodySchema.parse(request.body);
     return updateGrindingPlanningBoardResourceOrder({ siteKey: scope.siteKey, ...body });
+  });
+
+  app.put('/kiosk/production-schedule/grinding-planning-board/resource-order/bulk', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const scope = deps.resolveLocationScopeContext(clientDevice);
+    const body = resourceOrderBulkBodySchema.parse(request.body);
+    return updateGrindingPlanningBoardResourceOrderBulk({ siteKey: scope.siteKey, ...body });
   });
 
   app.put('/kiosk/production-schedule/grinding-planning-board/seiban-order', { config: { rateLimit: false } }, async (request) => {

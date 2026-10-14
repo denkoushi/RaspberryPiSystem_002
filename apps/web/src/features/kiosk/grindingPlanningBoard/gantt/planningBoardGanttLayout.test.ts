@@ -84,3 +84,72 @@ describe('planningBoardGanttLayout', () => {
     expect(shiftedDueDate('2026-10-20', 2, '2026-10-14')).toBe('2026-10-22');
   });
 });
+
+describe('forward planningBoardGanttLayout', () => {
+  const today = dateToDay('2026-10-14');
+  const forward = (items: GrindingPlanningBoardItem[], options: Partial<GanttLayoutOptions> = {}) => layout(items, {
+    mode: 'forward', view: 'resource', now: new Date('2026-10-14T10:00:00+09:00'), ...options
+  });
+  it('starts at JST now and follows resource rank back-to-back, with one lane and today as origin', () => {
+    const result = forward([item({ itemId: 'b', fhincd: 'P2', alternateRank: 2, requiredMinutes: 30 }), item({ alternateRank: 1, requiredMinutes: 60 })]);
+    const [a, b] = bars(result);
+    expect(result.start).toBe(today);
+    expect(result.groups[0]!.rows).toHaveLength(1);
+    expect(a!.item.itemId).toBe('a');
+    expect(a!.start).toBeCloseTo(today + 10 / 24);
+    expect(a!.end).toBeCloseTo(today + 11 / 24);
+    expect(b!.start).toBeCloseTo(a!.end!);
+    expect(b!.end).toBeCloseTo(today + 11.5 / 24);
+  });
+  it.each([8, 24] as const)('splits at the %iH window and resumes the next day', (hours) => {
+    const result = bars(forward([item({ requiredMinutes: 120 })], {
+      dailyHoursByResource: { '305': hours }, now: new Date(`2026-10-14T${hours === 8 ? '15' : '23'}:00:00+09:00`)
+    }))[0]!;
+    expect(result.segments).toHaveLength(2);
+    expect(result.segments![0]!.end).toBeCloseTo(today + (hours === 8 ? 16 / 24 : 1));
+    expect(result.segments![1]!.start).toBeCloseTo(today + 1 + (hours === 8 ? 8 / 24 : 0));
+    expect(result.segments![1]!.end - result.segments![1]!.start).toBeCloseTo(1 / 24);
+  });
+  it.each([['07', 8, 0, 8], ['16', 8, 1, 8], ['17', 10, 0, 17], ['18', 10, 1, 8]] as const)('normalizes %s:00 in %iH', (hour, hours, day, startHour) => {
+    const bar = bars(forward([item({ requiredMinutes: 30 })], { dailyHoursByResource: { '305': hours }, now: new Date(`2026-10-14T${hour}:00:00+09:00`) }))[0]!;
+    expect(bar.start).toBeCloseTo(today + day + startHour / 24);
+  });
+  it('waits for a predecessor on another resource and draws its gap', () => {
+    const result = forward([item({ itemId: 'b', processOrder: '20', alternateRank: 1, originalResourceCd: '584', requiredMinutes: 60 }), item({ alternateRank: 2, requiredMinutes: 120 })]);
+    const a = bars(result).find((bar) => bar.item.itemId === 'a')!;
+    const b = bars(result).find((bar) => bar.item.itemId === 'b')!;
+    expect(b.start).toBeCloseTo(a.end!);
+    expect(b.waitFrom).toBeCloseTo(today + 10 / 24);
+    expect(b.predecessorEnd).toBe(a.end);
+    expect(result.groups.find((group) => group.resource === '584')!.rows[0]!.connectors).toEqual([{ start: b.waitFrom, end: b.start }]);
+  });
+  it('resolves reversed process ranks without repeatedly pushing the schedule forward', () => {
+    const result = forward([item({ itemId: 'b', processOrder: '20', alternateRank: 1, requiredMinutes: 30 }), item({ alternateRank: 2, requiredMinutes: 60 })]);
+    const a = bars(result).find((bar) => bar.item.itemId === 'a')!;
+    const b = bars(result).find((bar) => bar.item.itemId === 'b')!;
+    expect(a.start).toBeCloseTo(today + 10 / 24);
+    expect(b.start).toBe(a.end);
+  });
+  it.each([{ requiredMinutesKnown: false }, { requiredMinutes: null }, { requiredMinutes: 0 }])('unknown work occupies zero time including unassigned resources', (unknown) => {
+    const [a, b] = bars(forward([item({ ...unknown, originalResourceCd: null }), item({ itemId: 'b', processOrder: '20', requiredMinutes: 60, originalResourceCd: null })]));
+    expect(a).toMatchObject({ unknown: true, resource: '未設定', segments: [] });
+    expect(a!.start).toBe(a!.end);
+    expect(b!.start).toBe(a!.end);
+  });
+  it('flags planned-end lateness only with a due date and excludes completed work', () => {
+    const result = forward([item({ originalDueDate: '2026-10-13' }), item({ itemId: 'b', fhincd: 'P2', originalDueDate: null }), item({ itemId: 'c', isCompleted: true })]);
+    expect(bars(result)).toHaveLength(2);
+    expect(bars(result).map((bar) => bar.tone)).toEqual(['late', 'planned']);
+    expect(result.lateCount).toBe(1);
+    expect(forward([item({ isCompleted: true })]).completedOnly).toBe(true);
+  });
+  it('end exactly at due midnight is on time; seiban rows retain the same computed segments', () => {
+    const value = item({ requiredMinutes: 840 });
+    const options = { dailyHoursByResource: { '305': 24 as const } };
+    const resourceBar = bars(forward([value], options))[0]!;
+    const seibanBar = bars(forward([value], { ...options, view: 'seiban' }))[0]!;
+    expect(resourceBar.tone).toBe('planned');
+    expect(resourceBar.end).toBeCloseTo(today + 1);
+    expect(seibanBar.segments).toEqual(resourceBar.segments);
+  });
+});

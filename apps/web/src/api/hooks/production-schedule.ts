@@ -50,6 +50,7 @@ import {
   updateKioskGrindingPlanningBoardOverrides,
   updateKioskGrindingPlanningBoardRank,
   updateKioskGrindingPlanningBoardResourceOrder,
+  updateKioskGrindingPlanningBoardResourceOrderBulk,
   updateKioskGrindingPlanningBoardSeibanOrder,
   type KioskGrindingPlanningBoardQuery,
   postKioskProductionScheduleSeibanMachineNames,
@@ -105,6 +106,7 @@ import type {
   GrindingPlanningBoardRankRequest,
   GrindingPlanningBoardRankResponse,
   GrindingPlanningBoardResourceOrderRequest,
+  GrindingPlanningBoardResourceOrderBulkRequest,
   GrindingPlanningBoardResourceOrderResponse,
   GrindingPlanningBoardSeibanOrderRequest,
   GrindingPlanningBoardResponse,
@@ -570,6 +572,17 @@ export function useUpdateKioskGrindingPlanningBoardResourceOrder(options?: { inv
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: GrindingPlanningBoardResourceOrderRequest) => updateKioskGrindingPlanningBoardResourceOrder(payload),
+    onSuccess: (_result: GrindingPlanningBoardResourceOrderResponse) => {
+      if (options?.invalidateOnSuccess === false) return;
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+    }
+  });
+}
+
+export function useUpdateKioskGrindingPlanningBoardResourceOrderBulk(options?: { invalidateOnSuccess?: boolean }) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrindingPlanningBoardResourceOrderBulkRequest) => updateKioskGrindingPlanningBoardResourceOrderBulk(payload),
     onSuccess: (_result: GrindingPlanningBoardResourceOrderResponse) => {
       if (options?.invalidateOnSuccess === false) return;
       void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });

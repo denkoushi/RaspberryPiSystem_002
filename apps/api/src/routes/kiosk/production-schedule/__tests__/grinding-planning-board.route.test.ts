@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   updateOverrides: vi.fn(),
   updateRank: vi.fn(),
   updateResourceOrder: vi.fn(),
+  updateResourceOrderBulk: vi.fn(),
   updateOrder: vi.fn()
 }));
 
@@ -19,6 +20,7 @@ vi.mock('../../../../services/production-schedule/grinding-planning-board.servic
   updateGrindingPlanningBoardOverrides: mocks.updateOverrides,
   updateGrindingPlanningBoardRank: mocks.updateRank,
   updateGrindingPlanningBoardResourceOrder: mocks.updateResourceOrder,
+  updateGrindingPlanningBoardResourceOrderBulk: mocks.updateResourceOrderBulk,
   updateGrindingPlanningBoardSeibanOrder: mocks.updateOrder
 }));
 
@@ -252,4 +254,35 @@ describe('grinding planning board route scope', () => {
     } finally { await app.close(); }
   });
 
+});
+
+
+describe('bulk resource order route', () => {
+  const payload = { sourceRevision: 'board-1', resourceCd: '305', items: [{ itemId: 'a', itemRevision: 'r1', overrideVersion: 2 }] };
+  it('uses authenticated scope and returns the ordered revisions', async () => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    const result = { sourceRevision: 'board-1', items: [{ itemId: 'a', itemRevision: 'r2', version: 3, alternateRank: 1 }] };
+    mocks.updateResourceOrderBulk.mockResolvedValue(result);
+    try {
+      const response = await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/grinding-planning-board/resource-order/bulk', payload: { ...payload, siteKey: 'foreign' } });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual(result);
+      expect(mocks.updateResourceOrderBulk).toHaveBeenCalledWith({ ...payload, siteKey: 'site-a' });
+    } finally { await app.close(); }
+  });
+  it.each([0, 501, 2])('rejects invalid size or duplicate IDs: %i', async (count) => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    try {
+      const response = await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/grinding-planning-board/resource-order/bulk', payload: { ...payload, items: Array.from({ length: count }, () => payload.items[0]) } });
+      expect(response.statusCode).toBe(400);
+    } finally { await app.close(); }
+  });
+  it.each(['STALE_PLANNING_BOARD_ITEM', 'RESOURCE_ORDER_PANE_MISMATCH'])('propagates concurrency/resource conflict %s', async (code) => {
+    mocks.updateResourceOrderBulk.mockRejectedValueOnce(Object.assign(new Error(code), { statusCode: 409 }));
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    try {
+      const response = await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/grinding-planning-board/resource-order/bulk', payload });
+      expect(response.statusCode).toBe(409);
+    } finally { await app.close(); }
+  });
 });

@@ -194,6 +194,12 @@ export interface GrindingPlanningBoardResourceOrderRequest {
   placement: GrindingPlanningBoardResourceOrderPlacement;
 }
 
+export interface GrindingPlanningBoardResourceOrderBulkRequest {
+  sourceRevision: string;
+  resourceCd: string;
+  items: { itemId: string; itemRevision: string; overrideVersion?: number }[];
+}
+
 export interface GrindingPlanningBoardResourceOrderResponse {
   sourceRevision: string;
   items: GrindingPlanningBoardItem[];

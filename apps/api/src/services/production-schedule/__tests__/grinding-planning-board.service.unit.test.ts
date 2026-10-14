@@ -24,7 +24,7 @@ const mocks = vi.hoisted(() => {
       create: vi.fn(),
       update: vi.fn()
     },
-    productionScheduleGrindingPlanningBoardOverride: { findMany: vi.fn(), aggregate: vi.fn() },
+    productionScheduleGrindingPlanningBoardOverride: { findMany: vi.fn(), aggregate: vi.fn(), upsert: vi.fn() },
     productionScheduleOrderAssignment: { findMany: vi.fn() },
     productionScheduleOrderSplitAssignment: { findMany: vi.fn() },
     productionScheduleResourceMaster: { findMany: vi.fn(), aggregate: vi.fn() },
@@ -72,7 +72,8 @@ vi.mock('../order-split/production-schedule-parent-row-lock.service.js', () => (
 vi.mock('../seiban-machine-display-names.service.js', () => ({
   resolveSeibanMachineDisplayNamesBatched: mocks.resolveSeibanMachineDisplayNamesBatched
 }));
-vi.mock('../grinding-planning-board-projection.js', () => ({
+vi.mock('../grinding-planning-board-projection.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../grinding-planning-board-projection.js')>(),
   projectGrindingPlanningBoard: mocks.projectGrindingPlanningBoard,
   buildGrindingPlanningBoardLogicalKey: mocks.buildGrindingPlanningBoardLogicalKey,
   buildGrindingPlanningBoardRowItemId: mocks.buildGrindingPlanningBoardRowItemId
@@ -86,7 +87,8 @@ import { createInMemoryLeaderboardShellSnapshotStore } from '../leaderboard/lead
 import {
   getGrindingPlanningBoard,
   getGrindingPlanningBoardLoad,
-  updateGrindingPlanningBoardSeibanOrder
+  updateGrindingPlanningBoardSeibanOrder,
+  updateGrindingPlanningBoardResourceOrderBulk
 } from '../grinding-planning-board.service.js';
 
 let databaseGeneration = 0;
@@ -716,5 +718,62 @@ describe('grinding planning board service orchestration', () => {
       fseibans: ['ORDER-A']
     })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_ORDER' });
     expect(mocks.prisma.productionScheduleGrindingPlanningBoardState.update).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('bulk grinding resource order service', () => {
+  const revision = JSON.stringify({ boardVersion: 0, orderHash: createHash('sha256').update(JSON.stringify(['ORDER-A'])).digest('hex') });
+  let items: Array<{ itemId: string; itemRevision: string; version: number; sourceRowId: string; fseiban: string; originalResourceCd: string; effectiveResourceCd: string; isCompleted: boolean }>;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    clearLeaderboardMaterializedWinnerCacheForTests();
+    configurePersistence();
+    const second = { ...mocks.sourceRow, id: 'source-row-2', rowData: { ...mocks.sourceRow.rowData, FHINCD: 'PART-B' } };
+    const rows = [mocks.sourceRow, second];
+    items = rows.map((row) => ({ itemId: mocks.buildGrindingPlanningBoardRowItemId(row.rowData), itemRevision: `revision-${row.id}`,
+      version: 0, sourceRowId: row.id, fseiban: 'ORDER-A', originalResourceCd: '305', effectiveResourceCd: '305', isCompleted: false }));
+    mocks.prisma.$queryRaw.mockImplementation(async (strings: unknown) => {
+      const query = Array.isArray(strings) ? strings.join(' ') : JSON.stringify(strings);
+      return query.includes('ProductionScheduleGrindingPlanningBoardState') ? [mocks.state] : rows;
+    });
+    mocks.prisma.csvDashboardRow.findMany.mockResolvedValue(rows.map((row) => ({ id: row.id, updatedAt: row.updatedAt,
+      rowNotes: [], orderSupplements: [], orderSplits: [], productionScheduleProgress: null, productionScheduleExternalCompletion: null })));
+    mocks.prisma.$transaction.mockImplementation(async (callback: (client: typeof mocks.prisma) => Promise<unknown>) => callback(mocks.prisma));
+    mocks.prisma.productionScheduleGrindingPlanningBoardOverride.upsert.mockImplementation(async ({ create }) => ({ ...create, version: 1 }));
+    mocks.projectGrindingPlanningBoard.mockImplementation(({ overrides }: { overrides: Map<string, { alternateRank: number; version: number }> }) => ({
+      allItems: items.map((item) => {
+        const saved = overrides.get(item.itemId);
+        return saved ? { ...item, alternateRank: saved.alternateRank, version: saved.version, itemRevision: `saved-${item.itemId}` } : item;
+      })
+    }));
+  });
+  const request = () => ({ siteKey: 'site-a', sourceRevision: revision, resourceCd: '305',
+    items: [...items].reverse().map((item) => ({ itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version })) });
+  it('assigns all ranks in one RepeatableRead transaction and returns ordered revisions', async () => {
+    const payload = request();
+    const result = await updateGrindingPlanningBoardResourceOrderBulk(payload);
+    expect(mocks.prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: 'RepeatableRead' });
+    expect(result.sourceRevision).toBe(revision);
+    expect(result.items.map((item) => item.itemId)).toEqual(payload.items.map((item) => item.itemId));
+    expect(result.items.map((item) => item.alternateRank)).toEqual([1, 2]);
+    expect(result.items.every((item) => item.version === 1 && item.itemRevision.startsWith('saved-'))).toBe(true);
+    expect(mocks.prisma.productionScheduleGrindingPlanningBoardOverride.upsert).toHaveBeenCalledTimes(2);
+    expect(mocks.acquireParentRowLock.mock.calls.map((call) => call[1])).toEqual(['source-row-1', 'source-row-2']);
+  });
+  it.each(['resource', 'itemRevision', 'overrideVersion', 'sourceRevision', 'completed'] as const)('rejects %s before any rank is written', async (failure) => {
+    const payload = request();
+    if (failure === 'resource') payload.resourceCd = '581';
+    if (failure === 'sourceRevision') payload.sourceRevision = 'stale';
+    if (failure === 'itemRevision') payload.items[1]!.itemRevision = 'stale';
+    if (failure === 'overrideVersion') payload.items[1]!.overrideVersion = 99;
+    if (failure === 'completed') items[0]!.isCompleted = true;
+    await expect(updateGrindingPlanningBoardResourceOrderBulk(payload)).rejects.toMatchObject({ statusCode: 409 });
+    expect(mocks.prisma.productionScheduleGrindingPlanningBoardOverride.upsert).not.toHaveBeenCalled();
+  });
+  it('rejects duplicate items before a transaction', async () => {
+    const payload = request(); payload.items[1] = payload.items[0]!;
+    await expect(updateGrindingPlanningBoardResourceOrderBulk(payload)).rejects.toMatchObject({ statusCode: 400 });
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
   });
 });

@@ -4,6 +4,7 @@ import { useKioskGrindingPlanningBoardResourceCapacity, useUpdateKioskGrindingPl
 import { resolveGrindingPlanningBoardResource } from '../sortGrindingPlanningBoardItems';
 
 import { buildPlanningBoardGanttLayout } from './planningBoardGanttLayout';
+import { usePersistedPlanningBoardGanttMode } from './usePersistedPlanningBoardGanttMode';
 import { usePersistedPlanningBoardGanttScale } from './usePersistedPlanningBoardGanttScale';
 
 import type { GanttLayoutOptions } from './planningBoardGanttLayout';
@@ -17,7 +18,8 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
   enabled: boolean;
   preferenceScope: string;
 }) {
-  const { enabled, preferenceScope, items, resources, seibanOrder, view, allocation, today } = options;
+  const { enabled, preferenceScope, items, resources, seibanOrder, view, allocation, today, now } = options;
+  const { mode, changeMode } = usePersistedPlanningBoardGanttMode();
   const { scale, changeScale } = usePersistedPlanningBoardGanttScale();
   const capacity = useKioskGrindingPlanningBoardResourceCapacity(enabled);
   const { mutate, isPending, isError } = useUpdateKioskGrindingPlanningBoardResourceCapacity();
@@ -38,13 +40,14 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
     return paneResources;
   }, [enabled, preferenceScope, paneResources]);
   const layout = useMemo(() => buildPlanningBoardGanttLayout({
-    items: enabled ? items : EMPTY_ITEMS, allocation, view, seibanOrder, resources: resourceOrder, dailyHoursByResource, today, scale
-  }), [enabled, items, allocation, view, seibanOrder, resourceOrder, dailyHoursByResource, today, scale]);
+    items: enabled ? items : EMPTY_ITEMS, allocation, view, seibanOrder, resources: resourceOrder, dailyHoursByResource, today, scale, mode, now
+  }), [enabled, items, allocation, view, seibanOrder, resourceOrder, dailyHoursByResource, today, scale, mode, now]);
   const viewRef = useRef<PlanningBoardGanttHandle>(null);
   const scrollToNextOverlap = useCallback(() => viewRef.current?.scrollToNextOverlap(), []);
+  const scrollToNextLate = useCallback(() => viewRef.current?.scrollToNextLate(), []);
   const changeCapacity = useCallback((resourceCd: string, dailyHours: GrindingPlanningBoardResourceDailyHours) => {
     if (!isPending) mutate({ resourceCd, dailyHours });
   }, [isPending, mutate]);
-  return { scale, changeScale, layout, viewRef, scrollToNextOverlap, dailyHoursByResource,
+  return { mode, changeMode, scrollToNextLate, scale, changeScale, layout, viewRef, scrollToNextOverlap, dailyHoursByResource,
     capacityPending: isPending, capacityError: isError, changeCapacity };
 }

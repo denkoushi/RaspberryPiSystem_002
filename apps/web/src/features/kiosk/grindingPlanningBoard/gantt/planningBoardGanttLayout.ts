@@ -39,10 +39,14 @@ export type GanttBar = {
   tone: 'planned' | 'late' | 'completed';
   overlaps: { start: number; end: number }[];
   flagged: boolean;
+  segments?: { start: number; end: number }[];
+  waitFrom?: number;
+  predecessorEnd?: number;
+  lateDays?: number;
 };
 export type GanttRow = { key: string; label: string; detail: string; bars: GanttBar[]; flagged: boolean; connectors: { start: number; end: number }[] };
 export type GanttGroup = { key: string; label: string; resource: string | null; rows: GanttRow[] };
-export type GanttLayout = { groups: GanttGroup[]; start: number; end: number; today: number; overlapCount: number };
+export type GanttLayout = { groups: GanttGroup[]; start: number; end: number; today: number; overlapCount: number; mode?: 'forward' | 'backward'; now?: number; lateCount?: number; completedOnly?: boolean };
 export type GanttLayoutOptions = {
   items: readonly GrindingPlanningBoardItem[];
   allocation: PlanningBoardAllocation;
@@ -52,9 +56,12 @@ export type GanttLayoutOptions = {
   dailyHoursByResource: Readonly<Record<string, GrindingPlanningBoardResourceDailyHours>>;
   today: string;
   scale: number;
+  mode?: 'forward' | 'backward';
+  now?: Date;
 };
 
 export function buildPlanningBoardGanttLayout(options: GanttLayoutOptions): GanttLayout {
+  if (options.mode === 'forward') return buildForwardPlanningBoardGanttLayout(options);
   const { items, allocation, view, seibanOrder, resources, dailyHoursByResource, scale } = options;
   const today = dateToDay(options.today);
   const sorted = sortGrindingPlanningBoardItems(items, seibanOrder, view, allocation);
@@ -129,4 +136,112 @@ export function shiftedDueDate(due: string, delta: number, today: string): strin
   const shifted = original + delta;
   // An already overdue bar cannot jump forward merely because it was dragged left.
   return dayToDate(delta < 0 ? Math.max(shifted, Math.min(original, dateToDay(today))) : shifted);
+}
+
+// The axis is a JST wall-clock day number, independent of the browser time zone.
+export const jstDay = (now: Date): number => (now.getTime() + 9 * 3_600_000) / DAY_MS;
+
+function nextWorkingStart(time: number, hours: number): number {
+  const day = Math.floor(time + 1e-10);
+  const start = day + (hours === 24 ? 0 : 8 / 24);
+  const end = start + hours / 24;
+  if (time < start) return start;
+  return time >= end - 1e-10 ? start + 1 : time;
+}
+
+function placeForward(time: number, minutes: number, hours: number) {
+  const start = nextWorkingStart(time, hours);
+  let cursor = start;
+  let remaining = minutes / 1440;
+  const segments: { start: number; end: number }[] = [];
+  while (remaining > 1e-10) {
+    cursor = nextWorkingStart(cursor, hours);
+    const windowEnd = Math.floor(cursor + 1e-10) + (hours === 24 ? 1 : (8 + hours) / 24);
+    const take = Math.min(remaining, windowEnd - cursor);
+    segments.push({ start: cursor, end: cursor + take });
+    cursor += take;
+    remaining -= take;
+  }
+  return { start, end: cursor, segments };
+}
+
+export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions): GanttLayout {
+  const { allocation, view, seibanOrder, resources, dailyHoursByResource, scale } = options;
+  const now = jstDay(options.now ?? new Date());
+  const today = Math.floor(now);
+  const sorted = sortGrindingPlanningBoardItems(options.items.filter((item) => !item.isCompleted), seibanOrder, 'resource', allocation);
+  const parts = new Map<string, GrindingPlanningBoardItem[]>();
+  for (const item of sorted) {
+    const key = planningBoardPartKey(item);
+    parts.set(key, [...(parts.get(key) ?? []), item]);
+  }
+  const predecessors = new Map<string, string>();
+  for (const chain of parts.values()) {
+    chain.sort((a, b) => compareProcessOrder(a.processOrder, b.processOrder) || a.itemId.localeCompare(b.itemId));
+    for (let i = 1; i < chain.length; i++) predecessors.set(chain[i]!.itemId, chain[i - 1]!.itemId);
+  }
+  const lanes = new Map<string, GrindingPlanningBoardItem[]>();
+  for (const item of sorted) {
+    const resource = resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定';
+    lanes.set(resource, [...(lanes.get(resource) ?? []), item]);
+  }
+  const scheduled = new Map<string, GanttBar>();
+  const cursors = new Map<string, number>();
+  const place = (item: GrindingPlanningBoardItem, resource: string) => {
+    const hours = dailyHoursByResource[resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS;
+    const cursor = nextWorkingStart(cursors.get(resource) ?? now, hours);
+    const predecessor = scheduled.get(predecessors.get(item.itemId) ?? '');
+    const ready = predecessor?.end ?? now;
+    const unknown = !item.requiredMinutesKnown || !item.requiredMinutes;
+    const timing = placeForward(Math.max(cursor, ready), unknown ? 0 : item.requiredMinutes!, hours);
+    const due = resolveGrindingPlanningBoardDueDate(item, allocation);
+    const lateDays = due ? Math.max(0, Math.ceil(timing.end - dateToDay(due) - 1 - 1e-10)) : 0;
+    scheduled.set(item.itemId, { item, resource, due, unknown, ...timing,
+      partKey: planningBoardPartKey(item), tone: lateDays > 0 ? 'late' : 'planned', lateDays,
+      overlaps: [], flagged: false,
+      ...(ready > cursor + 1e-10 ? { waitFrom: cursor, predecessorEnd: ready } : {}) });
+    cursors.set(resource, timing.end);
+  };
+  // Resolve resource heads only after their predecessors. Each pass removes work, so it is bounded.
+  while (scheduled.size < sorted.length) {
+    let progressed = false;
+    for (const [resource, queue] of lanes) {
+      while (queue.length) {
+        const item = queue[0]!;
+        const predecessor = predecessors.get(item.itemId);
+        if (predecessor && !scheduled.has(predecessor)) break;
+        place(item, resource); queue.shift(); progressed = true;
+      }
+    }
+    if (!progressed) {
+      // Conflicting ranks can put a successor ahead of its own predecessor (also across resources).
+      // Prefer process precedence in that cycle, keeping the remaining ranked queue intact.
+      const candidate = [...lanes.entries()].flatMap(([resource, queue]) => queue.map((item) => ({ resource, item })))
+        .find(({ item }) => !predecessors.has(item.itemId) || scheduled.has(predecessors.get(item.itemId)!));
+      if (!candidate) break;
+      place(candidate.item, candidate.resource);
+      const queue = lanes.get(candidate.resource)!;
+      queue.splice(queue.indexOf(candidate.item), 1);
+    }
+  }
+  const bars = sorted.map((item) => scheduled.get(item.itemId)!);
+  const row = (key: string, label: string, detail: string, members: GanttBar[]): GanttRow => ({
+    key, label, detail, bars: members, flagged: false,
+    connectors: members.filter((bar) => bar.waitFrom != null).map((bar) => ({ start: bar.waitFrom!, end: bar.start! }))
+  });
+  const groups: GanttGroup[] = view === 'resource'
+    ? [...new Set([...resources, ...bars.map((bar) => bar.resource)])].map((resource) => ({
+      key: resource, label: resource, resource,
+      rows: [row(resource, resource, '', bars.filter((bar) => bar.resource === resource))]
+    }))
+    : [...new Set([...seibanOrder, ...sorted.map((item) => item.fseiban)])].flatMap((seiban) => {
+      const chains = [...parts.entries()].filter(([, chain]) => chain[0]?.fseiban === seiban);
+      return chains.length ? [{ key: seiban, label: `${seiban} ${chains[0]![1][0]!.machineName ?? ''}`, resource: null,
+        rows: chains.map(([key, chain]) => row(key, chain[0]!.fhinmei || chain[0]!.fhincd,
+          `${chain[0]!.fhincd} · ${chain.length}工程`, chain.map((item) => scheduled.get(item.itemId)!))) }] : [];
+    });
+  return { groups, start: today, today, now, mode: 'forward', overlapCount: 0,
+    end: Math.min(today + 400, Math.max(today + scale + 2, ...bars.map((bar) => Math.ceil(bar.end!) + 1))),
+    lateCount: bars.filter((bar) => bar.tone === 'late').length,
+    completedOnly: options.items.length > 0 && sorted.length === 0 };
 }
