@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 
-import { GANTT_SCALES } from './gantt/usePersistedPlanningBoardGanttScale';
+import { GANTT_SCALES, ganttScaleLabel } from './gantt/usePersistedPlanningBoardGanttScale';
 
 import type { PlanningBoardGanttScale } from './gantt/usePersistedPlanningBoardGanttScale';
 import type { PlanningBoardAllocation, PlanningBoardStatus } from './types';
@@ -158,7 +158,7 @@ export function PlanningBoardToolbar({
         </SegmentButton>
         {ganttEnabled && <>
           <div className="ml-1 flex shrink-0 items-center gap-0.5" role="group" aria-label="横軸の幅">
-            {GANTT_SCALES.map((days) => <SegmentButton key={days} tone="scale" pressed={ganttScale === days} onClick={() => onGanttScaleChange?.(days)}>{days / 7}週</SegmentButton>)}
+            {GANTT_SCALES.map((days) => <SegmentButton key={days} tone="scale" pressed={ganttScale === days} onClick={() => onGanttScaleChange?.(days)}>{ganttScaleLabel(days)}</SegmentButton>)}
           </div>
           <button type="button" onClick={onNextOverlap}
             className={clsx('ml-1 min-h-11 shrink-0 rounded-md px-3 text-[13px] font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300', overlapCount ? 'bg-rose-800 text-white' : 'text-emerald-300')}>
