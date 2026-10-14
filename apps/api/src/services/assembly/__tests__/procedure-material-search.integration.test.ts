@@ -10,6 +10,7 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../production-schedule/cons
 import { readPartNamesByPartNumbers, readPartNumbersByPartName } from '../../work-instructions/repositories/prisma-work-instruction-part-names.js';
 import { PrismaWorkInstructionRepository } from '../../work-instructions/repositories/prisma-work-instruction.repository.js';
 import { WorkInstructionReadService } from '../../work-instructions/work-instruction-read.service.js';
+import { loadProcedureMaterialRecords } from '../procedure-material-hermes-source.service.js';
 import { ProcedureMaterialService } from '../procedure-material.service.js';
 import { ProcedureMaterialWorkInstructionService } from '../procedure-material-work-instruction.service.js';
 
@@ -148,6 +149,16 @@ describe('procedure material search (real PostgreSQL)', () => {
     const hit = await material('multiple', { subjectHint: `(${b}) (${a})` });
     await material('regex-decoy', { subjectHint: `${prefix}-AX11` });
     expect(await fixtureMaterials(`${prefix} 共通品名`)).toEqual([expect.objectContaining({ id: hit.id, partName: `${prefix} 共通品名 A` })]);
+  });
+
+  it('loads the semantic-search corpus through the real query, truncating TEXT bodies on the database side', async () => {
+    const mail = `${prefix}-corpus`;
+    await material('corpus-text', { kind: 'TEXT', gmailMessageId: mail, subjectHint: '組立の件', text: `本文${'あ'.repeat(5000)}` });
+    await material('corpus-photo', { gmailMessageId: mail, originalFileName: 'image001.jpg' });
+    const record = (await loadProcedureMaterialRecords()).find((item) => item.id === `mail:${mail}`);
+    expect(record).toMatchObject({ kind: 'procedure_material' });
+    expect(record?.bodyText.startsWith('組立の件\n本文あ')).toBe(true);
+    expect(record?.bodyText).toHaveLength(4000);
   });
 
   it('does not reverse lookup one character after NFKC and trim', async () => {
