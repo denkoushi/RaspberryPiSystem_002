@@ -4,8 +4,11 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { env } from '../../config/env.js';
+import { sendSlackNotification } from '../notifications/slack-webhook.js';
 
-import { BusinessHermesConsultationService } from './business-hermes-consultation.service.js';
+vi.mock('../notifications/slack-webhook.js', () => ({ sendSlackNotification: vi.fn().mockResolvedValue(undefined) }));
+
+import { BusinessHermesConsultationService, troubleCategory } from './business-hermes-consultation.service.js';
 import { CACHED_QUESTION_PREFIX, SOURCE_QUESTION_PREFIX } from './business-hermes-answer-cache.js';
 import { projectTrustedEvidence } from './business-hermes-evidence.js';
 import { KioskOperationGuideIndex } from './kiosk-operation-guide.service.js';
@@ -52,6 +55,183 @@ function dbFixture(newConsultation = false, fixtureId = consultationId) {
   };
   return { db, row, messages };
 }
+
+function troubleFixture(fixtureId = consultationId) {
+  const fixture = dbFixture(true, fixtureId);
+  const device = { id: 'device-a', name: 'Kiosk A', location: '工場 - A', statusClientId: 'status-a', siteKey: '工場' };
+  type InquiryMessage = { threadId: string; side: string; body: string; authorClientDeviceId: string; createdAt: Date };
+  type Thread = { id: string; kind: string; senderClientDeviceId: string; page: string; createdAt: Date; lastMessageAt: Date; receiverUnread: boolean };
+  const threads: Thread[] = [];
+  const inquiryMessages: InquiryMessage[] = [];
+  const notices: Array<{ kind: string; noticeKey: string | null; noticeTitle: string; noticeResolvedAt: Date | null }> = [];
+  const inquiryDb = {
+    clientDevice: { findUnique: vi.fn(async ({ where }: { where: { id: string } }) => where.id === device.id ? device : null) },
+    kioskInquiryThread: {
+      findMany: vi.fn(async ({ where }: { where: { kind: string; noticeResolvedAt: null } }) => notices.filter(notice => notice.kind === where.kind && notice.noticeResolvedAt === where.noticeResolvedAt)),
+      findFirst: vi.fn(async ({ where }: { where: { kind: string; senderClientDeviceId: string; page: string; createdAt: { gte: Date } } }) => threads.find(thread =>
+        thread.kind === where.kind && thread.senderClientDeviceId === where.senderClientDeviceId && thread.page === where.page && thread.createdAt >= where.createdAt.gte) ?? null),
+      create: vi.fn(async ({ data }: { data: Omit<Thread, 'id' | 'kind' | 'createdAt' | 'receiverUnread'> & { messages: { create: Omit<InquiryMessage, 'threadId'> } } }) => {
+        const { messages, ...fields } = data;
+        const thread = { id: `thread-${threads.length + 1}`, kind: 'INQUIRY', createdAt: new Date(), receiverUnread: true, ...fields };
+        threads.push(thread);
+        inquiryMessages.push({ threadId: thread.id, ...messages.create });
+        return thread;
+      }),
+      update: vi.fn(async ({ where, data }: { where: { id: string }; data: Partial<Thread> }) => Object.assign(threads.find(thread => thread.id === where.id)!, data))
+    },
+    kioskInquiryMessage: { create: vi.fn(async ({ data }: { data: InquiryMessage }) => { inquiryMessages.push(data); return data; }) }
+  };
+  const db = { ...fixture.db, ...inquiryDb, $transaction: vi.fn(async (callback: (tx: typeof inquiryDb) => Promise<string>) => callback(inquiryDb)) };
+  const basic = { id: 'common/troubleshooting.md#1', file: 'common/troubleshooting.md', screen: '困ったとき', routes: [], keywords: ['タグ'], heading: '基本の手順', body: '1. 状態を確認する。' };
+  const trouble = { ...basic, id: 'common/troubleshooting.md#2', heading: 'よくある困りごととその場の対処', body: '1. タグを離してかざし直す。' };
+  const operationGuide = {
+    isEnabled: () => true, matchStrength: () => 'screen' as const,
+    search: vi.fn(() => ({ results: [{ ...trouble, truncated: false }], total: 1, hasMore: false })),
+    detail: vi.fn((id: string) => ({ ...(id === basic.id ? basic : trouble), siblings: [{ id: basic.id, heading: basic.heading }] }))
+  };
+  const fetchImpl = vi.fn();
+  const sourceResolver = { resolveAndSearch: vi.fn().mockResolvedValue({ resolution: { fields: [], unresolvedConditions: [] }, conditions: null, result: null, evidence: [] }) };
+  const answerCache = { suggest: vi.fn().mockResolvedValue(null), candidates: vi.fn().mockResolvedValue([]), answer: vi.fn() };
+  const deps = { db: db as never, operationGuide, fetchImpl, sourceResolver, answerCache,
+    config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } };
+  const service = new BusinessHermesConsultationService(deps);
+  return { ...fixture, db, device, threads, inquiryMessages, notices, operationGuide, fetchImpl, sourceResolver, answerCache, service, deps };
+}
+
+const troubleQuestion = 'タグをかざしても反応しない';
+
+async function reportTrouble(service: BusinessHermesConsultationService, id = consultationId, question = troubleQuestion) {
+  const first = await service.chat({ consultationId: id, message: question, clientDeviceId: 'device-a' });
+  const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
+  return service.chat({ consultationId: id, message: selection.option, selection, clientDeviceId: 'device-a' });
+}
+
+describe('troubleCategory', () => {
+  it.each([
+    [troubleQuestion, 'card_reader'], ['バーコードが読めない', 'barcode_reader'], ['印刷できない', 'printer'],
+    ['Wi-Fiが切れた', 'network'], ['画面が固まった', 'screen'], ['エラーが出る', 'other'], ['自主検査の始め方', null],
+    ['カードとバーコードでエラー', 'card_reader'], ['バーコードのラベルを印刷できない', 'barcode_reader'],
+    ['ネットワークの画面が表示されない', 'network']
+  ])('classifies %s as %s', (question, category) => expect(troubleCategory(question!)).toBe(category));
+});
+
+describe('deterministic trouble intake', () => {
+  afterEach(() => vi.mocked(sendSlackNotification).mockClear());
+
+  it.each([
+    { question: troubleQuestion, clientDeviceId: 'device-a', offered: true },
+    { question: troubleQuestion, clientDeviceId: undefined, offered: false },
+    { question: '自主検査の始め方', clientDeviceId: 'device-a', offered: false }
+  ])('offers trouble first only for device trouble: $question / $clientDeviceId', async ({ question, clientDeviceId, offered }) => {
+    const fixture = troubleFixture();
+    const first = await fixture.service.chat({ consultationId, message: question, clientDeviceId });
+    expect(first.confirmation!.options!.includes(`不具合を知らせる：${question}`)).toBe(offered);
+    if (offered) expect(first.confirmation!.options![0]).toBe(`不具合を知らせる：${question}`);
+    expect(fixture.fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('retains trouble first when cached and source choices replace recipes', async () => {
+    const fixture = troubleFixture();
+    fixture.answerCache.suggest.mockResolvedValue('既存の質問');
+    fixture.answerCache.candidates.mockResolvedValue(['記録の候補']);
+    const first = await fixture.service.chat({ consultationId, message: troubleQuestion, clientDeviceId: fixture.device.id });
+    expect(first.confirmation!.options).toEqual([`不具合を知らせる：${troubleQuestion}`, `${CACHED_QUESTION_PREFIX}既存の質問`, '記録の候補', '自分の言葉で補足する']);
+  });
+
+  it('creates an inquiry, notifies Slack, and persists guide and note without inference', async () => {
+    const fixture = troubleFixture();
+    const result = await reportTrouble(fixture.service);
+    expect(result).toMatchObject({ status: 'ready', needsClarification: false, guide: { screen: '困ったとき', note: expect.stringContaining('担当者に伝えました') } });
+    expect(result.guide!.sections.map(section => section.heading)).toEqual(['基本の手順', 'よくある困りごととその場の対処']);
+    expect(fixture.threads).toHaveLength(1);
+    expect(fixture.threads[0]).toMatchObject({ kind: 'INQUIRY', senderClientDeviceId: fixture.device.id, page: 'chat-trouble:card_reader', receiverUnread: true });
+    expect(fixture.inquiryMessages).toEqual([expect.objectContaining({ side: 'SENDER', body: `Chat から自動受付: ${troubleQuestion}`, authorClientDeviceId: fixture.device.id })]);
+    expect(sendSlackNotification).toHaveBeenCalledWith({ clientId: fixture.device.id, clientName: fixture.device.name, location: fixture.device.location,
+      page: 'chat-trouble:card_reader', message: `Chat から自動受付: ${troubleQuestion}`, requestId: consultationId });
+    expect(result.message).toBe(`困ったとき\n\n${result.guide!.sections.map(section => `**${section.heading}**\n${section.body}`).join('\n\n')}\n\n${result.guide!.note}`);
+    expect(fixture.messages.at(-1)?.evidence).toEqual({ items: [], visible: false, visibleIds: [], recordIds: [], guide: result.guide });
+    expect((await fixture.service.get(consultationId))?.messages.at(-1)).toMatchObject({ guide: result.guide,
+      searchDiagnostics: [{ kind: 'business-hermes-route-v1', route: 'trouble_report', direct: true, known: false, guideMiss: false, threadId: 'thread-1' }] });
+    expect(fixture.row.openQuestions).toEqual([]);
+    expect(fixture.operationGuide.search).toHaveBeenCalledWith(troubleQuestion, 1);
+    expect(fixture.sourceResolver.resolveAndSearch).toHaveBeenCalledTimes(1);
+    expect(fixture.fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('reuses an inquiry within 24h, but creates after expiry (expired=%s)', async (expired) => {
+    const fixture = troubleFixture();
+    await reportTrouble(fixture.service);
+    fixture.threads[0]!.receiverUnread = false;
+    fixture.threads[0]!.createdAt = new Date(Date.now() - (expired ? 25 : 23) * 60 * 60 * 1000);
+    const secondId = '00000000-0000-0000-0000-000000000011';
+    const second = dbFixture(true, secondId);
+    const service = new BusinessHermesConsultationService({ ...fixture.deps, db: { ...fixture.db, ...second.db } as never });
+    const result = await reportTrouble(service, secondId);
+    expect(fixture.threads).toHaveLength(expired ? 2 : 1);
+    expect(fixture.inquiryMessages).toHaveLength(2);
+    expect(fixture.inquiryMessages[1]!.threadId).toBe(expired ? 'thread-2' : 'thread-1');
+    expect(fixture.db.kioskInquiryThread.update).toHaveBeenCalledTimes(expired ? 0 : 1);
+    expect(fixture.threads.at(-1)?.receiverUnread).toBe(true);
+    expect(result.guide!.note).toContain('担当者に伝えました');
+    expect(sendSlackNotification).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['status:status-a:disk', JSON.stringify(['card_reader', 'status-a', 'offline'])])('recognizes an unresolved device notice: %s', async (noticeKey) => {
+    const fixture = troubleFixture();
+    fixture.notices.push({ kind: 'SYSTEM_NOTICE', noticeKey, noticeTitle: 'リーダー停止', noticeResolvedAt: null });
+    const result = await reportTrouble(fixture.service);
+    expect(result.guide!.note).toBe('この端末の不調(リーダー停止)は既に把握しています。復旧をお待ちください。');
+    expect(fixture.db.kioskInquiryThread.create).not.toHaveBeenCalled();
+    expect(fixture.db.kioskInquiryMessage.create).not.toHaveBeenCalled();
+    expect(sendSlackNotification).not.toHaveBeenCalled();
+    expect(fixture.messages.at(-1)?.searchDiagnostics).toEqual([{ kind: 'business-hermes-route-v1', route: 'trouble_report', direct: true, known: true, guideMiss: false }]);
+  });
+
+  it('ignores other devices, resolved notices and malformed notice keys', async () => {
+    const fixture = troubleFixture();
+    for (const noticeKey of ['status:status-a-other:disk', JSON.stringify(['disk', 'status-b']), '{broken', JSON.stringify({ clientId: 'status-a' }), null]) {
+      fixture.notices.push({ kind: 'SYSTEM_NOTICE', noticeKey, noticeTitle: '無関係', noticeResolvedAt: null });
+    }
+    fixture.notices.push({ kind: 'SYSTEM_NOTICE', noticeKey: 'status:status-a:disk', noticeTitle: '復旧済み', noticeResolvedAt: new Date() });
+    expect((await reportTrouble(fixture.service)).guide!.note).toContain('担当者に伝えました');
+    expect(fixture.threads).toHaveLength(1);
+  });
+
+  it('returns the guide and manual contact note when the device disappeared', async () => {
+    const fixture = troubleFixture();
+    fixture.db.clientDevice.findUnique.mockResolvedValue(null);
+    expect((await reportTrouble(fixture.service)).guide!.note).toBe('担当者への連絡は『お問い合わせ』から送ってください。');
+    expect(fixture.threads).toHaveLength(0);
+    expect(sendSlackNotification).not.toHaveBeenCalled();
+  });
+
+  it('reports a guide miss in plain text while still accepting the inquiry', async () => {
+    const fixture = troubleFixture();
+    fixture.operationGuide.search.mockReturnValue({ results: [], total: 0, hasMore: false });
+    const result = await reportTrouble(fixture.service);
+    expect(result.guide).toBeUndefined();
+    expect(result.message).toBe('この不調のその場の対処はまだ書かれていません。\n\n担当者に伝えました。受け取る端末の「お問い合わせ」に届いています。');
+    expect(fixture.messages.at(-1)?.searchDiagnostics).toEqual([expect.objectContaining({ guideMiss: true })]);
+    expect(fixture.threads).toHaveLength(1);
+  });
+
+  it('passes device context through an automatic intent selection', async () => {
+    const fixture = troubleFixture();
+    const service = new BusinessHermesConsultationService({ ...fixture.deps,
+      openJevIntentSelector: { selectIntent: vi.fn(async ({ options }) => options[0]!) } });
+    const result = await service.chat({ consultationId, message: troubleQuestion, clientDeviceId: fixture.device.id });
+    expect(result.guide!.note).toContain('担当者に伝えました');
+    expect(fixture.threads).toHaveLength(1);
+    expect(fixture.fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('keeps the accepted answer when Slack rejects', async () => {
+    const fixture = troubleFixture();
+    vi.mocked(sendSlackNotification).mockRejectedValueOnce(new Error('Slack unavailable'));
+    expect((await reportTrouble(fixture.service)).guide!.note).toContain('担当者に伝えました');
+    expect(fixture.threads).toHaveLength(1);
+  });
+});
 
 function ambiguousSourceGrounding(request: string, values: ReadonlyArray<string>): BusinessHermesGroundedSearch {
   const candidates = values.map((value, index) => ({ kind: 'nonconformity' as const, field: 'originDepartmentName', value,
@@ -752,7 +932,7 @@ describe('BusinessHermesConsultationService', () => {
     const result = await service.chat({ consultationId, message: selection.option, selection });
     const measurement = (fixture.messages[2]!.searchDiagnostics as Array<Record<string, unknown>>)[0]!;
     expect(measurement).toMatchObject({ phase: 'answer', status: 'ready', recipeId: 'record-answer',
-      recipeVersion: '2', prefetch: 'adopted', question: '検査の対策は？', answerMessageId: fixture.messages[3]!.id });
+      recipeVersion: '3', prefetch: 'adopted', question: '検査の対策は？', answerMessageId: fixture.messages[3]!.id });
     expect(measurement.elapsedMs).toEqual(expect.any(Number));
     expect(measurement.inferences).toEqual([expect.objectContaining({ elapsedMs: expect.any(Number), runtimeReadyMs: expect.any(Number) })]);
     expect(result.consultation.messages.every((entry) => entry.searchDiagnostics.every((item) => item.kind !== 'business-hermes-learning-v1'))).toBe(true);
@@ -880,13 +1060,13 @@ describe('BusinessHermesConsultationService', () => {
     }
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const payload = JSON.parse(JSON.parse(fetchImpl.mock.calls[0]![1].body).input[0].content);
-    expect(payload.questionRecipe).toMatchObject({ id: matches ? 'operation-guide' : 'record-answer', version: '2', speculative: true });
+    expect(payload.questionRecipe).toMatchObject({ id: matches ? 'operation-guide' : 'record-answer', version: '3', speculative: true });
     expect(payload.sourceDefinitions.map((source: { kind: string }) => source.kind)).toEqual(['nonconformity', 'work_instruction', 'system_operation_guide']);
     expect(fixture.messages.at(-1)?.searchDiagnostics).toEqual(expect.arrayContaining([
       { kind: 'business-hermes-route-v1', route: state.routeDecision, guideMiss: matches }
     ]));
     expect(fixture.messages[2]?.searchDiagnostics).toEqual(expect.arrayContaining([
-      expect.objectContaining({ recipeId: matches ? 'operation-guide' : 'record-answer', recipeVersion: '2', prefetch: 'adopted' })
+      expect.objectContaining({ recipeId: matches ? 'operation-guide' : 'record-answer', recipeVersion: '3', prefetch: 'adopted' })
     ]));
   });
 
@@ -957,7 +1137,7 @@ describe('BusinessHermesConsultationService', () => {
     const answer = await service.chat({ consultationId, message: selection.option, selection });
     const payload = JSON.parse(JSON.parse(fetchImpl.mock.calls[0]![1].body).input[0].content);
     expect(payload.confirmedIntent).toEqual({ originalQuestion: '穴の裏が膨らんだ事例の対策は？', purpose: selection.option, confirmationComplete: false });
-    expect(payload.questionRecipe).toMatchObject({ id: 'record-answer', version: '2', speculative: true });
+    expect(payload.questionRecipe).toMatchObject({ id: 'record-answer', version: '3', speculative: true });
     expect(payload.sourceDefinitions.map((source: { kind: string }) => source.kind)).toEqual(['nonconformity', 'work_instruction']);
     expect(payload.sourceDefinitions.find((source: { kind: string }) => source.kind === 'nonconformity')).toMatchObject({
       recordUnit: '1行 = 1件の不適合記録',

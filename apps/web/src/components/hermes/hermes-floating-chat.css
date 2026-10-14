@@ -831,6 +831,10 @@
   font-size: 0.9rem;
 }
 
+.hermes-chat-panel__guide-answer-note {
+  font-weight: 600;
+}
+
 .hermes-chat-panel__guide-answer-section {
   min-width: 0;
   display: grid;

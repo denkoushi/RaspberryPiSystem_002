@@ -31,5 +31,6 @@ export function HermesOperationGuideAnswer({ guide }: { guide: BusinessHermesOpe
       <h3>{section.heading}</h3>
       {renderBody(section.body)}
     </section>)}
+    {guide.note && <p className="hermes-chat-panel__guide-answer-note">{guide.note}</p>}
   </article>;
 }

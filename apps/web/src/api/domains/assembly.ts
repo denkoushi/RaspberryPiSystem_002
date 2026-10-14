@@ -857,6 +857,7 @@ export type BusinessHermesScanResolution = {
 
 export type BusinessHermesOperationGuideDisplay = {
   screen: string;
+  note?: string;
   sections: Array<{ heading: string; body: string }>;
 };
 

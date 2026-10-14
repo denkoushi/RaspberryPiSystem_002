@@ -17,8 +17,8 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-14) Milestone 1 を実装(branch `feat/kiosk-chat-guide-m1-operation-docs`): `docs/kiosk-operation-guide/` に画面別の文書と `common/` の共通編、`scripts/docs/check-kiosk-operation-guide.mjs` と単体テスト、CI の `repo-policy` ジョブへの組み込み。文書の下書きは Codex に書かせ、画面の文字列と照合して直した。
 - [x] (2026-10-14) Milestone 2 を実装(branch `feat/kiosk-chat-guide-m2-hermes-source`): API イメージへ `docs/kiosk-operation-guide/` を複製、`KIOSK_OPERATION_GUIDE_DIR` で読み込む節の索引、`business_hermes_search` / `business_hermes_get_detail` の `kind=system_operation_guide`、最初の目的確認に「操作の方法を調べる」の選択肢、SKILL.md.j2 0.5.0 の「システム操作の問い合わせ」。API 実装は Codex に書かせ、Claude が差分とテストを確認した。
 - [x] (2026-10-14) Milestone 2 を main に統合し業務 Pi5 へ配布(#2002、main f59dee7c、run 20261014-021724-3dc455)。実機で「チップの登録手順」に正しい手順が返った。回答まで数十秒かかり、表示も読みにくいと利用者から指摘を受けた。
-- [ ] Milestone 2b(branch `feat/kiosk-chat-guide-m2b-direct-answer`): 「操作の方法を調べる」を選んだときは LLM を通さず、該当する画面の節をそのまま返す(先読みも省く)。回答に `guide`(画面名と節)の表示データを付け、Web は番号付きの手順として描く。
-- [ ] Milestone 3: 不具合の受付道具(システム通知の照合とお問い合わせの自動起票)。
+- [x] (2026-10-14) Milestone 2b を main に統合し業務 Pi5 へ配布(#2008、main 670a9d8e、run 20261014-044056-3281e1)。実機確認は配布後に依頼。内容: 「操作の方法を調べる」を選んだときは LLM を通さず、該当する画面の節をそのまま返す(先読みも省く)。回答に `guide`(画面名と節)の表示データを付け、Web は番号付きの手順として描く。
+- [ ] Milestone 3(branch `feat/kiosk-chat-guide-m3-trouble-intake`): 不具合の受付(システム通知の照合とお問い合わせの自動起票)。MCP の道具ではなく、選択式の型「不具合を知らせる」をサーバー側で確定的に処理する(Decision 参照)。
 - [ ] Milestone 4: 入口の一本化(「検索」「JEV記録」の統合と、記録検索への橋渡し)。
 - [ ] Milestone 5: 計測(受領ログの振り分け先と朝の集計)。 操作説明で知識が無かった質問(`guideMiss`)の文面を朝の集計に一覧で出し、文書へ追記する候補にする(利用者が 2026-10-14 に「使うほど賢くなる」仕組みとして要望)。
 - [ ] 各 Milestone の PR、main 統合、Pi5 配布、実機確認。配布と確認は本計画の対象だが、依頼された段階を越えて進めない。
@@ -48,7 +48,11 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 - Decision (Milestone 2b): 操作ガイドの答えは LLM に 3 行へ要約させず、該当する節(「基本の手順」を必ず含め最大 2 節)を原文のまま返し、構造化した表示データで描く。Rationale: 操作ガイドは固定の文書で、要約のために DGX を 2 往復させると実機で 15〜30 秒かかった。節をそのまま返せば 1〜2 秒で、文言も文書と一致する。不適合記録のような夜間の回答蓄積は不要で、代わりに `guideMiss` の質問を文書追記の候補として集める(Milestone 5)。SKILL.md.j2 の「システム操作の問い合わせ」は、確認後の自由入力が LLM に届く場合のために残す。利用者が 2026-10-14 に承認。
 
+- Decision (Milestone 3): 不具合の受付は MCP の道具 `business_hermes_report_trouble` と SKILL の文面ではなく、質問の型「不具合を知らせる：…」としてサーバーが LLM を通さず処理する。理由は 2 つ。(1) Milestone 2b で操作の質問は LLM を通らなくなり、「タグをかざしても反応しない」は操作ガイドの型が先頭に出て選ばれるため、SKILL に書いた道具呼び出しは本来の受け入れ試験で一度も動かない。(2) MCP 経路は MCP キーだけで認証され相談や端末の文脈を持たないので、道具の実行時に端末を特定できない。処理は、`POST /assembly/business-hermes/chat` が `x-client-key` で呼ばれたとき端末 id を相談に渡し、質問に不調の語(反応しない・動かない・エラー・固まる・つながらない・印刷できない等)があり端末が分かるときだけ型を先頭に出す。選択後は、操作ガイドの該当する節(主に `common/troubleshooting.md`)を Milestone 2b と同じ表示で返し、端末の `statusClientId` に対する未復旧のシステム通知(`status:<clientId>:…` と telemetry の JSON 配列キー)があれば「既に把握しています」、なければ `createKioskInquiryThread` をその端末を送信者として呼び(本文「Chat から自動受付: <質問>」、`page` は `chat-trouble:<category>`、同じ端末・同じ category は 24 時間以内なら既存スレッドへ追記)、既存の Slack 通知関数で配送して「担当者に伝えました」と添える。JWT だけの呼び出しには型を出さない。`business-hermes-route-v1` には `route: 'trouble_report', direct: true, known` を記録する。SKILL/CONTEXT と MCP は変えないので Chat コンテナの再作成は不要。
+
 ## Outcomes & Retrospective
+
+- 2026-10-14 Milestone 3 ローカル実装(PR 作成時点): Decision (Milestone 3) に従い、端末からの不調の質問に「不具合を知らせる」を先頭に出し、LLM を通さず操作ガイドの提示・既知通知の照合・24 時間以内の問い合わせ追記・Slack 通知を実装。配布と実機確認は未実施。
 
 - 2026-10-14 Milestone 2 配布後: キオスクの Chat「検索」で「チップの登録手順」と入れると、「操作の方法を調べる：…」の選択肢が出て、タグ管理の手順が返った(内容は妥当)。回答まで数十秒。表示は段落が詰まって読みにくい。原因は LLM 経由の 2 往復と素朴な整形で、Milestone 2b で直す。
 
