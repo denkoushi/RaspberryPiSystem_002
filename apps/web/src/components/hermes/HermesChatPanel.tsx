@@ -6,10 +6,12 @@ import { renderSignageCanvasPreview } from '../../api/domains/signage';
 import { ProtectedImage } from '../ProtectedImage';
 
 import { HermesA2uiPreview } from './HermesA2uiPreview';
+import { HermesOperationGuideAnswer } from './HermesOperationGuideAnswer';
 import { HermesRecordAnswer } from './HermesRecordAnswer';
 
 import type {
   BusinessHermesChatEvidence,
+  BusinessHermesOperationGuideDisplay,
   BusinessHermesConsultationDetail,
   BusinessHermesConsultationItem,
   BusinessHermesSignageCanvasElement,
@@ -23,6 +25,7 @@ export type HermesPanelMessage = {
   role: 'user' | 'assistant';
   content: string;
   display?: HermesRecordAnswerDisplay;
+  guide?: BusinessHermesOperationGuideDisplay;
   evidence?: readonly BusinessHermesChatEvidence[];
   evidenceVisible?: boolean;
   evidenceVisibleIds?: readonly string[];
@@ -650,7 +653,7 @@ export default function HermesChatPanel({
                           <p className="hermes-chat-panel__message-selection" role="status">「{message.selection.option}」が選択されました。</p>
                         ) : (
                           <div className="hermes-chat-panel__message">{message.role === 'assistant'
-                            ? message.display?.records.length ? <HermesRecordAnswer display={message.display} /> : renderMessageContent(message.content)
+                            ? message.guide ? <HermesOperationGuideAnswer guide={message.guide} /> : message.display?.records.length ? <HermesRecordAnswer display={message.display} /> : renderMessageContent(message.content)
                             : message.content}</div>
                         )}
                         {message.recordIds?.length && message.evidence?.length ? message.recordIds.flatMap((recordId) => {

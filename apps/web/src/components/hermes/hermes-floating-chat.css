@@ -811,6 +811,59 @@
   overflow-wrap: anywhere;
 }
 
+.hermes-chat-panel__guide-answer {
+  min-width: 0;
+  display: grid;
+  gap: 9px;
+  padding: 9px 10px;
+  border: 1px solid rgba(36, 103, 59, 0.28);
+  border-radius: 8px;
+  background: #f4fff5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.hermes-chat-panel__guide-answer h2 {
+  margin: 0;
+  padding-bottom: 7px;
+  border-bottom: 1px solid rgba(36, 103, 59, 0.28);
+  font-size: 0.9rem;
+}
+
+.hermes-chat-panel__guide-answer-section {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.hermes-chat-panel__guide-answer h3 {
+  margin: 0;
+  color: #3d6e50;
+  font-size: 0.82rem;
+}
+
+.hermes-chat-panel__guide-answer p,
+.hermes-chat-panel__guide-answer ol,
+.hermes-chat-panel__guide-answer ul {
+  margin: 0;
+}
+
+.hermes-chat-panel__guide-answer ol,
+.hermes-chat-panel__guide-answer ul {
+  display: grid;
+  gap: 4px;
+  padding-left: 1.6em;
+}
+
+.hermes-chat-panel__guide-answer ol {
+  list-style: decimal;
+}
+
+.hermes-chat-panel__guide-answer ul {
+  list-style: disc;
+}
+
 .hermes-chat-panel__answer-record {
   min-width: 0;
   display: grid;

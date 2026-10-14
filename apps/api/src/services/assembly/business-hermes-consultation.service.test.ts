@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { env } from '../../config/env.js';
@@ -5,6 +8,7 @@ import { env } from '../../config/env.js';
 import { BusinessHermesConsultationService } from './business-hermes-consultation.service.js';
 import { CACHED_QUESTION_PREFIX, SOURCE_QUESTION_PREFIX } from './business-hermes-answer-cache.js';
 import { projectTrustedEvidence } from './business-hermes-evidence.js';
+import { KioskOperationGuideIndex } from './kiosk-operation-guide.service.js';
 import { modelState, signageToolProposal } from './business-hermes-responses.js';
 
 const consultationId = '00000000-0000-0000-0000-000000000010';
@@ -837,7 +841,7 @@ describe('BusinessHermesConsultationService', () => {
     expect(runtime.ensureReady).not.toHaveBeenCalled();
   });
 
-  it.each(['screen', 'keyword', 'none'] as const)('offers the operation recipe by match strength and prefetches the displayed first recipe (match=%s)', async (strength) => {
+  it.each(['screen', 'keyword', 'none'] as const)('offers operation recipes and only prefetches non-guide first recipes (match=%s)', async (strength) => {
     const matches = strength === 'screen';
     const fixture = dbFixture(true);
     const question = '自主検査の始め方';
@@ -845,7 +849,8 @@ describe('BusinessHermesConsultationService', () => {
       routeDecision: matches ? 'operation_guide' : 'record_search', ...(matches ? { guideMiss: true } : {}) };
     const fetchImpl = vi.fn().mockImplementation(async () => new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: JSON.stringify(state) } })}\n\n`));
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
-      operationGuide: { matchStrength: () => strength, isEnabled: () => true },
+      operationGuide: { matchStrength: () => strength, isEnabled: () => true,
+        search: () => ({ results: [], total: 0, hasMore: false }), detail: () => null },
       answerCache: { suggest: vi.fn().mockResolvedValue(null), answer: vi.fn().mockResolvedValue(null) },
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
     const first = await service.chat({ consultationId, message: question });
@@ -854,13 +859,28 @@ describe('BusinessHermesConsultationService', () => {
       `記録をもとに回答：${question}`, `原因と確認点を調べる：${question}`, `公開要領の手順を調べる：${question}`,
       ...(strength === 'keyword' ? [`操作の方法を調べる：${question}`] : []), '自分の言葉で補足する'
     ]);
+    if (matches) expect(fetchImpl).not.toHaveBeenCalled();
     const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
     const answer = await service.chat({ consultationId, message: selection.option, selection });
     expect(answer.status).toBe('ready');
+    if (matches) {
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(answer.message).toBe('この操作の説明はまだありません。『お問い合わせ』から聞いてください。');
+      expect(answer.guide).toBeUndefined();
+      expect(answer.consultation.messages.at(-1)?.guide).toBeUndefined();
+      expect(answer.needsClarification).toBe(false);
+      expect(answer.recordIds).toBeUndefined();
+      expect(fixture.messages.at(-1)?.searchDiagnostics).toEqual([
+        { kind: 'business-hermes-route-v1', route: 'operation_guide', guideMiss: true, direct: true }
+      ]);
+      expect(fixture.messages[0]?.searchDiagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({ prefetchStarted: false })
+      ]));
+      return;
+    }
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const payload = JSON.parse(JSON.parse(fetchImpl.mock.calls[0]![1].body).input[0].content);
     expect(payload.questionRecipe).toMatchObject({ id: matches ? 'operation-guide' : 'record-answer', version: '2', speculative: true });
-    if (matches) expect(payload.questionRecipe.prompt).toContain('system_operation_guide だけを検索');
     expect(payload.sourceDefinitions.map((source: { kind: string }) => source.kind)).toEqual(['nonconformity', 'work_instruction', 'system_operation_guide']);
     expect(fixture.messages.at(-1)?.searchDiagnostics).toEqual(expect.arrayContaining([
       { kind: 'business-hermes-route-v1', route: state.routeDecision, guideMiss: matches }
@@ -868,6 +888,63 @@ describe('BusinessHermesConsultationService', () => {
     expect(fixture.messages[2]?.searchDiagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({ recipeId: matches ? 'operation-guide' : 'record-answer', recipeVersion: '2', prefetch: 'adopted' })
     ]));
+  });
+
+  it.each([
+    { query: '自主検査', headings: ['この画面でできること', '基本の手順'] },
+    { query: '自主検査の基本の手順', headings: ['基本の手順'] },
+    { query: '自主検査の困りごと', headings: ['基本の手順', '困りごと'] }
+  ])('answers $query directly with full sections in document order and persists the guide', async ({ query, headings }) => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'consultation-guide-'));
+    try {
+      const body = `1. 「開始」を押します。\n2. ${'結果を確認します。'.repeat(80)}`;
+      writeFileSync(path.join(dir, 'inspection.md'), `---\ntitle: 自主検査\nroutes: []\nkeywords: [検査]\n---\n## この画面でできること\n画面の説明。\n## 基本の手順\n${body}\n## 困りごと\n担当者に確認します。`);
+      writeFileSync(path.join(dir, 'other.md'), '---\ntitle: 別画面\nroutes: []\nkeywords: [検査]\n---\n## 基本の手順\n別画面の手順。');
+      const operationGuide = KioskOperationGuideIndex.fromDirectory(dir);
+      const fixture = dbFixture(true);
+      const fetchImpl = vi.fn().mockImplementation(async () => new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: JSON.stringify({ message: '通常の回答', needsClarification: false }) } })}\n\n`));
+      const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, operationGuide,
+        answerCache: { suggest: vi.fn().mockResolvedValue(null), answer: vi.fn().mockResolvedValue(null) },
+        config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+      const first = await service.chat({ consultationId, message: query });
+      expect(fetchImpl).not.toHaveBeenCalled();
+      const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
+      expect(selection.option).toBe(`操作の方法を調べる：${query}`);
+      const answer = await service.chat({ consultationId, message: selection.option, selection });
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(answer).toMatchObject({ status: 'ready', needsClarification: false, guide: { screen: '自主検査' } });
+      expect(answer.recordIds).toBeUndefined();
+      expect(answer.guide!.sections.map(section => section.heading)).toEqual(headings);
+      expect(answer.guide!.sections.find(section => section.heading === '基本の手順')?.body).toBe(body);
+      expect(answer.message).toBe(`自主検査\n\n${answer.guide!.sections.map(section => `**${section.heading}**\n${section.body}`).join('\n\n')}`);
+      expect(fixture.messages.at(-1)?.evidence).toEqual({ items: [], visible: false, visibleIds: [], recordIds: [], guide: answer.guide });
+      const reloaded = await service.get(consultationId);
+      expect(reloaded?.messages.at(-1)).toMatchObject({ role: 'assistant', guide: answer.guide, searchDiagnostics: [
+        { kind: 'business-hermes-route-v1', route: 'operation_guide', guideMiss: false, direct: true }
+      ] });
+      await service.chat({ consultationId, message: 'ほかの相談です' });
+      expect(fetchImpl).toHaveBeenCalledOnce();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['record', 'free-text'])('keeps %s input on the LLM path after offering a guide', async (mode) => {
+    const fixture = dbFixture(true);
+    const fetchImpl = vi.fn().mockImplementation(async () => new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: JSON.stringify({ message: '通常の回答', needsClarification: false }) } })}\n\n`));
+    const search = vi.fn(() => ({ results: [], total: 0, hasMore: false }));
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
+      operationGuide: { matchStrength: () => 'screen', isEnabled: () => true, search, detail: () => null },
+      answerCache: { suggest: vi.fn().mockResolvedValue(null), answer: vi.fn().mockResolvedValue(null) },
+      config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+    const first = await service.chat({ consultationId, message: '自主検査の始め方' });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![1]! };
+    const answer = await service.chat({ consultationId, message: mode === 'record' ? selection.option : '関連の記録について知りたい',
+      ...(mode === 'record' ? { selection } : {}) });
+    expect(answer.status).toBe('ready');
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(search).not.toHaveBeenCalled();
   });
 
   it('passes the original question and confirmed purpose to the first native Hermes turn', async () => {

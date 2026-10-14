@@ -15,9 +15,9 @@
     ]
   },
   "summary": {
-    "documentCount": 756,
-    "totalLines": 187810,
-    "totalBytes": 14890742,
+    "documentCount": 757,
+    "totalLines": 187938,
+    "totalBytes": 14906529,
     "withFrontmatter": 363,
     "withStatus": 169,
     "sourceOfTruthDeclared": 116,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 39,
-    "localLinkCount": 5814,
+    "localLinkCount": 5815,
     "brokenLocalLinkCount": 89,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
@@ -23214,8 +23214,8 @@
     },
     {
       "path": "docs/kiosk-operation-guide/production-schedule-planning-board.md",
-      "lineCount": 43,
-      "byteSize": 3418,
+      "lineCount": 54,
+      "byteSize": 4930,
       "hasFrontmatter": true,
       "title": "製番ボード",
       "status": null,
@@ -27792,6 +27792,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/knowledge-base/KB-420-procedure-tidy-site-context.md",
+      "lineCount": 96,
+      "byteSize": 7743,
+      "hasFrontmatter": false,
+      "title": "KB-420: 手順書の「整える」に組立の現場の知識を持たせた",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md",
       "lineCount": 203,
       "byteSize": 12918,
@@ -29340,8 +29355,8 @@
     },
     {
       "path": "docs/knowledge-base/index.md",
-      "lineCount": 883,
-      "byteSize": 266896,
+      "lineCount": 884,
+      "byteSize": 267235,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - 索引",
       "status": null,
@@ -31975,6 +31990,11 @@
         {
           "href": "./KB-419-kiosk-operation-flow-button-placement.md",
           "targetPath": "docs/knowledge-base/KB-419-kiosk-operation-flow-button-placement.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-420-procedure-tidy-site-context.md",
+          "targetPath": "docs/knowledge-base/KB-420-procedure-tidy-site-context.md",
           "exists": true
         },
         {
@@ -35883,8 +35903,8 @@
     },
     {
       "path": "docs/plans/kiosk-chat-system-guide-execplan.md",
-      "lineCount": 125,
-      "byteSize": 26291,
+      "lineCount": 129,
+      "byteSize": 28168,
       "hasFrontmatter": false,
       "title": "キオスクの Chat をシステム全体の案内役にする(操作の問い合わせと不具合の受付)",
       "status": null,
@@ -35913,8 +35933,8 @@
     },
     {
       "path": "docs/plans/kiosk-grinding-planning-board.md",
-      "lineCount": 176,
-      "byteSize": 34218,
+      "lineCount": 192,
+      "byteSize": 38534,
       "hasFrontmatter": false,
       "title": "Kiosk grinding planning board",
       "status": null,
