@@ -42,7 +42,8 @@ function normalize(value: string): string {
   return value.normalize('NFKC').toLowerCase().replace(/\s+/g, '');
 }
 
-const QUESTION_TERM_SYNONYMS = [{ pattern: /.*チップ.*/u, replacement: 'タグ' }];
+// Exact terms only: 超硬チップ (a carbide insert) must not become a tag-screen question.
+const QUESTION_TERM_SYNONYMS: Record<string, string> = { 'チップ': 'タグ', 'icチップ': 'タグ' };
 const HOW_TO_SUFFIXES = ['手順', 'やり方', '方法', '始め方', '使い方'];
 const HOW_TO_SUFFIX_PATTERN = new RegExp(HOW_TO_SUFFIXES.join('|'), 'u');
 const QUESTION_SUFFIX_PATTERN = new RegExp(`(?:教えて|ください|したい|${HOW_TO_SUFFIXES.join('|')}|とは|ですか|できない|しない|ない)+$`, 'u');
@@ -61,7 +62,7 @@ function questionTerms(question: string): string[] {
   const terms = question.normalize('NFKC').toLowerCase()
     .split(QUESTION_TERM_SEPARATOR)
     .map((term) => normalize(term).replace(QUESTION_SUFFIX_PATTERN, ''))
-    .map((term) => QUESTION_TERM_SYNONYMS.reduce((value, { pattern, replacement }) => value.replace(pattern, replacement), term))
+    .map((term) => QUESTION_TERM_SYNONYMS[term] ?? term)
     .filter((term) => term.length >= 2);
   const whole = normalize(question);
   return [...new Set(terms.length ? terms : whole ? [whole] : [])];
@@ -137,21 +138,33 @@ export class KioskOperationGuideIndex {
     total: number;
     hasMore: boolean;
   } {
-    const terms = questionTerms(query);
-    const ranked = this.sections.map((section, index) => ({ section, index, ...scoreSection(section, terms) }))
-      .filter(({ score }) => score > 0)
-      .sort((a, b) => b.score - a.score || a.index - b.index);
+    const ranked = this.rank(query);
     const results = ranked.slice(0, limit).map(({ section, score }) => ({
       ...section, body: section.body.slice(0, 600), truncated: section.body.length > 600, score
     }));
     return { results, total: ranked.length, hasMore: results.length < ranked.length };
   }
 
+  private rank(query: string) {
+    const terms = questionTerms(query);
+    return this.sections.map((section, index) => ({ section, index, ...scoreSection(section, terms) }))
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score || a.index - b.index);
+  }
+
+  /**
+   * The single section to answer with, or null when the question cannot be
+   * attributed to one screen: a keyword-only top score shared with a section of
+   * another file (e.g. 登録 alone). A screen-name hit keeps the first file in
+   * order even when several screen names share the word (持出 and 吊具 持出).
+   */
   bestSection(query: string): KioskOperationGuideSection | null {
-    const { results } = this.search(query, this.sections.length);
-    const top = results[0];
-    if (!top || results.find((section) => section.file !== top.file)?.score === top.score) return null;
-    return this.sections.find((section) => section.id === top.id) ?? null;
+    const ranked = this.rank(query);
+    const top = ranked[0];
+    if (!top) return null;
+    const rival = ranked.find(({ section }) => section.file !== top.section.file);
+    if (!top.screenHit && rival?.score === top.score) return null;
+    return top.section;
   }
 
   detail(id: string): (KioskOperationGuideSection & { siblings: Array<{ id: string; heading: string }> }) | null {

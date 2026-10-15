@@ -77,12 +77,26 @@ describe('KioskOperationGuideIndex', () => {
     expect(index.search('自主検査の始め方', 1)).toMatchObject({ total: 4, hasMore: true, results: [found.results[0]] });
   });
 
-  it.each(['チップの登録', 'icチップの登録', 'ＩＣチップの登録手順', '工具チップの登録', 'チップのやり方'])('maps %s to a tag screen', (question) => {
+  it.each(['チップの登録', 'icチップの登録', 'ＩＣチップの登録手順', 'チップのやり方'])('maps %s to a tag screen', (question) => {
     writeFileSync(path.join(dir, 'tag-desk.md'), screenDocument('タグ管理', 'タグを登録します。'));
     writeFileSync(path.join(dir, 'assembly-library.md'), screenDocument('手順書', '登録します。'));
     const index = KioskOperationGuideIndex.fromDirectory(dir);
     expect(index.search(question, 1).results[0]).toMatchObject({ file: 'tag-desk.md', screen: 'タグ管理' });
     expect(index.matchStrength(question)).toBe('screen');
+  });
+
+  it('keeps a carbide-insert question away from the tag screen', () => {
+    writeFileSync(path.join(dir, 'tag-desk.md'), screenDocument('タグ管理', 'タグを登録します。'));
+    const index = KioskOperationGuideIndex.fromDirectory(dir);
+    expect(index.search('超硬チップの欠け', 1).results).toEqual([]);
+    expect(index.matchStrength('超硬チップの欠け')).toBe('none');
+  });
+
+  it('keeps the first file when several screen names share the word', () => {
+    writeFileSync(path.join(dir, 'borrow-return.md'), screenDocument('持出フロー', '工具を持ち出します。'));
+    writeFileSync(path.join(dir, 'rigging-borrow.md'), screenDocument('吊具 持出', '吊具を持ち出します。'));
+    const index = KioskOperationGuideIndex.fromDirectory(dir);
+    expect(index.bestSection('持出のやり方')).toMatchObject({ file: 'borrow-return.md' });
   });
 
   it('returns null for a top-score tie across files, including after ties within one file', () => {
