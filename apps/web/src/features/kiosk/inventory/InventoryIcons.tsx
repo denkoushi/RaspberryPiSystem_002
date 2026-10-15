@@ -35,3 +35,7 @@ export const ChevronUpIcon = ({ size = 14 }: { size?: number }) => <Icon size={s
 export const ArrowRightIcon = ({ size = 44 }: { size?: number }) => <Icon size={size} width={2}><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></Icon>;
 export const ArrowLeftIcon = ({ size = 16 }: { size?: number }) => <Icon size={size}><path d="M19 12H5" /><path d="M11 6l-6 6 6 6" /></Icon>;
 export const PlusIcon = ({ size = 14 }: { size?: number }) => <Icon size={size} width={2.6}><path d="M12 5v14M5 12h14" /></Icon>;
+
+export const ChartIcon = ({ size }: { size?: number }) => (
+  <Icon size={size}><path d="M4 3v18h17M8 17v-5M13 17V8M18 17V4" /></Icon>
+);

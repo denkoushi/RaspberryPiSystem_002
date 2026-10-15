@@ -1251,6 +1251,7 @@ describe('inventory scan safety boundaries', () => {
     await act(async () => { send(tag); });
     if (operation === 'number') fireEvent.click(screen.getByRole('button', { name: '1個を払い出す' }));
     else await act(async () => { send(quantity); });
+    expect(screen.getByRole('link', { name: '集計' })).toHaveAttribute('href', '/kiosk/inventory/dashboard');
     fireEvent.click(screen.getByRole('link', { name: '在庫の準備' }));
     expect(screen.getByText('移動先')).toBeInTheDocument();
     await act(async () => { verification.resolve(tag); });

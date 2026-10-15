@@ -50,6 +50,7 @@ import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskCallPage } from './pages/kiosk/KioskCallPage';
 import { KioskDocumentsPage } from './pages/kiosk/KioskDocumentsPage';
 import { KioskInstrumentBorrowPage } from './pages/kiosk/KioskInstrumentBorrowPage';
+import { KioskItemInventoryDashboardPage } from './pages/kiosk/KioskItemInventoryDashboardPage';
 import { KioskItemInventoryPage } from './pages/kiosk/KioskItemInventoryPage';
 import { KioskItemInventorySettingsPage } from './pages/kiosk/KioskItemInventorySettingsPage';
 import { KioskMachineSignalPage } from './pages/kiosk/KioskMachineSignalPage';
@@ -196,6 +197,7 @@ function App() {
           <Route path="/kiosk" element={<KioskRedirect />} />
           <Route path="/kiosk/tag" element={<KioskBorrowPage />} />
           <Route path="/kiosk/inventory" element={<KioskItemInventoryPage />} />
+          <Route path="/kiosk/inventory/dashboard" element={<KioskItemInventoryDashboardPage />} />
           <Route path="/kiosk/inventory/settings" element={<KioskItemInventorySettingsPage />} />
           <Route path="/kiosk/tag-desk" element={<KioskTagDeskPage />} />
           <Route path="/kiosk/photo" element={<KioskPhotoBorrowPage />} />
