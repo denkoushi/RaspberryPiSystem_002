@@ -2,10 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { getGrindingPlanningBoardSeibanCandidates } from '../../../services/production-schedule/grinding-planning-board-seiban-candidates.service.js';
-import type { KioskRouteDeps } from './shared.js';
+import { grindingPlanningBoardCategorySchema, type KioskRouteDeps } from './shared.js';
 
 const querySchema = z.object({
-  category: z.enum(['grinding', 'cutting']).default('grinding'),
+  category: grindingPlanningBoardCategorySchema,
   completionFilter: z.enum(['all', 'incomplete']).default('incomplete')
 });
 

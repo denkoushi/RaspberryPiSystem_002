@@ -18,6 +18,15 @@ const layout = (items: GrindingPlanningBoardItem[], options: Partial<GanttLayout
 const bars = (value: ReturnType<typeof layout>) => value.groups.flatMap((group) => group.rows.flatMap((row) => row.bars));
 
 describe('planningBoardGanttLayout', () => {
+  it.each(['backward', 'forward'] as const)('groups all resources grinding first in %s mode', (mode) => {
+    const options = { mode, view: 'resource' as const, resources: ['100', '584', '200', '305'],
+      category: 'all' as const, resourceCategories: { '305': 'grinding', '584': 'grinding', '100': 'cutting', '200': 'cutting' } as const };
+    const result = layout([item(), item({ itemId: 'b', originalResourceCd: '100' })], options);
+    expect(result.groups.map((group) => group.resource)).toEqual(['584', '305', '100', '200']);
+    expect(result.groups.map((group) => group.category)).toEqual(['grinding', 'grinding', 'cutting', 'cutting']);
+    expect(layout([], { ...options, resourceCategories: undefined }).groups.map((group) => group.resource)).toEqual(options.resources);
+    expect(layout([], { ...options, category: 'cutting' }).groups.map((group) => group.resource)).toEqual(options.resources);
+  });
   it.each([8, 10, 24] as const)('%i時間で所要時間を暦日に換算し納期日の終わりへ固定する', (hours) => {
     const bar = bars(layout([item()], { dailyHoursByResource: { '305': hours } }))[0]!;
     expect(bar.end).toBe(dateToDay('2026-10-15'));

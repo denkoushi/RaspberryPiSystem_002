@@ -40,6 +40,7 @@ import { useUnsavedChangesGuard } from '../../features/navigation/useUnsavedChan
 import type { PlanningBoardAllocation, PlanningBoardStatus } from '../../features/kiosk/grindingPlanningBoard/types';
 import type { PlanningBoardDisplayItem } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue';
 import type {
+  GrindingPlanningBoardCategory,
   GrindingPlanningBoardDueScope,
   GrindingPlanningBoardDueScopeSnapshot,
   GrindingPlanningBoardItem,
@@ -139,7 +140,8 @@ function applyOptimisticOverride(
 }
 
 export function ProductionScheduleGrindingPlanningBoardPage() {
-  const [category, setCategory] = useState<'grinding' | 'cutting'>('grinding');
+  const [categories, setCategories] = useState({ grinding: true, cutting: false });
+  const category: GrindingPlanningBoardCategory = categories.grinding && categories.cutting ? 'all' : categories.grinding ? 'grinding' : 'cutting';
   const [ganttEnabled, setGanttEnabled] = useState(false);
   const [view, setView] = useState<'seiban' | 'resource'>('resource');
   const [status, setStatus] = useState<PlanningBoardStatus>('incomplete');
@@ -417,11 +419,22 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     });
   }, [bulkReady, category]);
 
+  const canMoveResource = useCallback((item: GrindingPlanningBoardItem, target: string) => {
+    const originalCategory = data?.resourceCategories?.[item.originalResourceCd ?? ''];
+    const targetCategory = data?.resourceCategories?.[target];
+    return originalCategory && targetCategory ? originalCategory === targetCategory : category !== 'all';
+  }, [category, data?.resourceCategories]);
+
   const enqueueOverrides = useCallback((
     originals: readonly GrindingPlanningBoardItem[], requests: GrindingPlanningBoardOverrideItemRequest[],
     label: string, onFailed?: (error: unknown) => void, capturedSourceRevision?: string
   ) => {
     if (writeBlocked || originals.some((item) => hasPendingSeiban(item.fseiban, true))) return false;
+    if (requests.some((request) => {
+      if (request.resourceCd === undefined) return false;
+      const item = originals.find((candidate) => candidate.itemId === request.itemId);
+      return !item || !canMoveResource(item, request.resourceCd ?? item.originalResourceCd ?? '');
+    })) return false;
     const patches = new Map(requests.map((request) => [request.itemId, request]));
     return enqueueWrite({
       label, itemIds: originals.map((item) => item.itemId), seibans: [...new Set(originals.map((item) => item.fseiban))],
@@ -436,7 +449,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         }) }),
       onFailed
     });
-  }, [enqueueWrite, updateOverridesAsync, writeBlocked, hasPendingSeiban]);
+  }, [enqueueWrite, updateOverridesAsync, writeBlocked, hasPendingSeiban, canMoveResource]);
 
   const updateSpecialDue = useCallback((original: GrindingPlanningBoardItem) => {
     const item = currentItemsRef.current.find((candidate) => candidate.itemId === original.itemId) ?? original;
@@ -458,7 +471,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     setEditorSnapshot({
       items: [...target],
       sourceRevision: data.sourceRevision,
-      resources: [...data.resources]
+      resources: data.resources.filter((resource) => target.every((item) => canMoveResource(item, resource)))
     });
     setResourceChoice('unchanged');
     setDueMode('none');
@@ -468,7 +481,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     setEditorError(null);
     setEditorConflict(false);
     setEditorOpen(true);
-  }, [allocation, clearFeedback, data, scopeReady, writeBlocked, hasPendingSeiban]);
+  }, [allocation, clearFeedback, data, scopeReady, writeBlocked, hasPendingSeiban, canMoveResource]);
 
   const openDueDetail = useCallback((fseiban: string) => {
     dueDetailIdentityRef.current = fseiban;
@@ -575,6 +588,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       ...(due ? { due } : {})
     }));
     if (items.every((item) => !('resourceCd' in item) && !('due' in item))) return;
+    if (resourceChoice !== 'unchanged' && resourceChoice !== 'restore' && editorItems.some((item) => !canMoveResource(item, resourceChoice))) {
+      setEditorError('研削と切削の間では資源CDを変更できません。');
+      return;
+    }
     const editorGeneration = editorGenerationRef.current;
     const accepted = enqueueOverrides(editorItems, items, `${items.length}件の変更`, (error) => {
       if (editorGenerationRef.current !== editorGeneration) return;
@@ -588,9 +605,9 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
 
   const moveResourceByDrag = useCallback((item: GrindingPlanningBoardItem, targetResource: string) => {
     if (!data || !scopeReady || !rankMutationReady || allocation === 'original' || item.isCompleted ||
-      !data.resources.includes(targetResource) || resolveGrindingPlanningBoardResource(item, allocation) === targetResource) return;
+      !data.resources.includes(targetResource) || !canMoveResource(item, targetResource) || resolveGrindingPlanningBoardResource(item, allocation) === targetResource) return;
     enqueueOverrides([item], [{ itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version, resourceCd: targetResource }], '資源CD');
-  }, [allocation, data, enqueueOverrides, rankMutationReady, scopeReady]);
+  }, [allocation, data, enqueueOverrides, rankMutationReady, scopeReady, canMoveResource]);
 
   const moveDueByDrag = useCallback((original: GrindingPlanningBoardItem, date: string) => {
     const item = currentItemsRef.current.find((candidate) => candidate.itemId === original.itemId);
@@ -779,7 +796,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const ganttItems = useMemo(() => view === 'seiban' && focusedFseiban && focusItems.length > 0
     ? focusItems : visibleItems, [view, focusedFseiban, focusItems, visibleItems]);
   const ganttNow = useMemo(() => new Date(nowMs), [nowMs]);
-  const gantt = usePlanningBoardGantt({ enabled: ganttEnabled, items: ganttItems, allocation, view,
+  const gantt = usePlanningBoardGantt({ enabled: ganttEnabled, items: ganttItems, allocation, view, category, resourceCategories: data?.resourceCategories,
     seibanOrder: registeredFseibans, resources: data?.resources ?? EMPTY_ORDER,
     today: todayJst(), now: ganttNow, preferenceScope: `${data?.siteKey ?? ''}:${category}` });
   const orderActionsDisabled = !bulkReady || !rankMutationReady || writeBlocked || writeQueue.pending;
@@ -851,7 +868,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const toolbarSelectedItems = focusedFseiban
     ? selectedVisibleItems.filter((item) => item.fseiban === focusedFseiban)
     : selectedVisibleItems;
-  const editorResources = editorSnapshot?.resources ?? [];
+  const editorResources = (editorSnapshot?.resources ?? []).filter((resource) => editorItems.every((item) => canMoveResource(item, resource)));
+  const editorMixedCategories = new Set(editorItems.map((item) => data?.resourceCategories?.[item.originalResourceCd ?? '']).filter(Boolean)).size > 1;
   const projectedLoad = (resource: string) => {
     const summary = loadQuery.data?.load.find((entry) => entry.resourceCd === resource);
     const base = allocation === 'original' ? summary?.originalRequiredMinutes : summary?.alternateRequiredMinutes;
@@ -889,7 +907,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         orderDisabled={orderActionsDisabled} canUndoOrder={Boolean(lastResourceOrder)}
         overlapCount={gantt.layout.overlapCount}
         onNextOverlap={gantt.scrollToNextOverlap}
-        category={category}
+        categories={categories}
         view={view}
         status={status}
         allocation={allocation}
@@ -898,7 +916,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         bulkDisabled={allocation === 'original' || toolbarSelectedItems.length === 0 || !bulkReady || writeBlocked}
         registeredCount={registeredFseibans.length}
         onOpenDrawer={() => setDrawerOpen(true)}
-        onCategoryChange={(value) => { if (!writeQueue.pending) setCategory(value); }}
+        onCategoriesChange={(value) => { if (!writeQueue.pending && (value.grinding || value.cutting)) setCategories(value); }}
         onViewChange={setView}
         onStatusChange={(value) => { if (!writeQueue.pending) setStatus(value); }}
         onAllocationChange={(value) => { if (!writeQueue.pending) setAllocation(value); }}
@@ -989,6 +1007,9 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
             items={visibleItems}
             seibanOrder={registeredFseibans}
             resources={data.resources}
+            category={category}
+            resourceCategories={data.resourceCategories}
+            canMoveResource={canMoveResource}
             resourceNameMap={resourcesQuery.data?.resourceNameMap ?? {}}
             allocation={allocation}
             selectedItemIds={selectedItemIds}
@@ -1090,6 +1111,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
           {allocation === 'original' ? <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-900">元データ表示中は変更できません。別割当に切り替えてください。</p> : null}
           <fieldset disabled={allocation === 'original' || writeBlocked}>
             <legend className="text-sm font-semibold text-slate-800">資源CD</legend>
+            {editorMixedCategories && <p className="mt-2 text-sm text-slate-600">研削と切削が混ざっているため変更できません</p>}
             <div className="mt-2 flex flex-wrap gap-2">
               <button type="button" className={`min-h-11 rounded-md border px-3 text-sm ${resourceChoice === 'unchanged' ? 'border-emerald-600 bg-emerald-100 text-emerald-950' : 'border-slate-300'}`} onClick={() => setResourceChoice('unchanged')}>変更なし</button>
               <button type="button" className={`min-h-11 rounded-md border px-3 text-sm ${resourceChoice === 'restore' ? 'border-emerald-600 bg-emerald-100 text-emerald-950' : 'border-slate-300'}`} onClick={() => setResourceChoice('restore')}>元に戻す</button>

@@ -66,7 +66,9 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const laneAt = useCallback((x: number, y: number) => laneAtPoint(x, y, new Set(laneResources)), [laneResources]);
   const laneOrder = usePlanningBoardPaneOrder(laneResources, preferenceScope, laneAt, Boolean(interaction.disabled));
   const layout = useMemo(() => laneResources.length < 2 ? sourceLayout : { ...sourceLayout,
-    groups: [...sourceLayout.groups].sort((a, b) => laneOrder.order.indexOf(a.resource!) - laneOrder.order.indexOf(b.resource!)) },
+    // With both 研削 and 切削 shown, lanes move only within their own heading.
+    groups: [...sourceLayout.groups].sort((a, b) => (a.category === 'cutting' ? 1 : 0) - (b.category === 'cutting' ? 1 : 0)
+      || laneOrder.order.indexOf(a.resource!) - laneOrder.order.indexOf(b.resource!)) },
   [sourceLayout, laneResources, laneOrder.order]);
   const laneHandle = (resource: string, text: string, className: string) => <button type="button" title={text}
     className={clsx('touch-none select-none truncate text-left focus-visible:outline focus-visible:outline-emerald-300', className)}
@@ -212,7 +214,14 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
             style={{ left: labelWidth + (day - layout.start + hour / 24) * dayWidth }} />))}
           {!forward && <div className="pointer-events-none absolute bottom-0 top-9 z-[1] w-px bg-emerald-400" style={{ left: labelWidth + (layout.today - layout.start) * dayWidth }} />}
           {layout.completedOnly && <p className="sticky left-0 w-fit p-3 text-sm text-slate-400">完了は「納期から」で表示</p>}
-          {layout.groups.map((group) => <div key={group.key} data-gantt-lane={group.resource ? '' : undefined} data-resource-code={group.resource ?? undefined}>
+          {layout.groups.map((group, index) => <div key={group.key} data-gantt-lane={group.resource ? '' : undefined} data-resource-code={group.resource ?? undefined}>
+            {interaction.resourceView && group.category && group.category !== layout.groups[index - 1]?.category && (
+              <div data-testid="planning-gantt-category-header" className="relative flex h-6 bg-slate-800 text-[11px] font-bold">
+                <div className="sticky left-0 z-20 flex items-center bg-slate-800 px-2" style={{ width: labelWidth }}>
+                  {group.category === 'grinding' ? '研削' : '切削'}
+                </div>
+              </div>
+            )}
             {!(forward && group.resource) && <div className="relative flex min-h-11 border-b border-slate-700 bg-slate-800">
               <div className="sticky left-0 z-20 flex min-h-11 shrink-0 items-center gap-1 bg-slate-800 px-2 text-xs" style={{ width: labelWidth }}>
                 {group.resource ? laneHandle(group.resource, ganttResourceLabel(normalizeMachineName(group.label), resourceNameMap[group.resource]), 'min-h-11 min-w-0 flex-1 font-bold')

@@ -217,7 +217,8 @@ function uniqueFseibans(values: readonly string[]): string[] {
 
 function isCategoryResource(resourceCd: string | null, category: GrindingPlanningBoardCategory, policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>): boolean {
   if (!resourceCd) return false;
-  return category === 'grinding' ? isProductionScheduleGrindingResourceCd(resourceCd, policy) : isProductionScheduleCuttingResourceCd(resourceCd, policy);
+  return (category !== 'cutting' && isProductionScheduleGrindingResourceCd(resourceCd, policy)) ||
+    (category !== 'grinding' && isProductionScheduleCuttingResourceCd(resourceCd, policy));
 }
 
 async function readWinnerRowsByIds(client: DbClient, rowIds: readonly string[]): Promise<WinnerRow[]> {
@@ -338,7 +339,7 @@ async function readPlanningSource(params: {
     productNos: [],
     resourceCds: [],
     assignedOnlyCds: [],
-    resourceCategory: params.category,
+    resourceCategory: params.category === 'all' ? undefined : params.category,
     hasNoteOnly: false,
     hasDueDateOnly: false,
     allowResourceOnly: true,
@@ -601,6 +602,7 @@ type PlanningSnapshotPayload = {
   unknownRequiredMinutesCount: number;
   seibanProgress: Record<string, { completed: number; total: number }>;
   resources: string[];
+  resourceCategories?: GrindingPlanningBoardResponse['resourceCategories'];
 };
 
 function isPlanningSnapshotPayload(value: unknown): value is PlanningSnapshotPayload {
@@ -773,7 +775,10 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
       load: loadSummary.load,
       unknownRequiredMinutesCount: loadSummary.unknownRequiredMinutesCount,
       seibanProgress: progressMapToRecord(projection.progress.bySeiban),
-      resources
+      resources,
+      resourceCategories: Object.fromEntries([...new Set([...resources, ...filtered.flatMap((item) =>
+        [item.originalResourceCd, item.effectiveResourceCd].filter((cd): cd is string => Boolean(cd)))])].map((cd) =>
+        [cd, isProductionScheduleGrindingResourceCd(cd, projection.policy) ? 'grinding' : 'cutting']))
     };
   }
   if (!params.snapshotId) {
@@ -792,6 +797,12 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
     if (reusablePayloads.size > MAX_REUSABLE_PLANNING_PAYLOADS) {
       reusablePayloads.delete(reusablePayloads.keys().next().value!);
     }
+  }
+  if (!payload.resourceCategories) {
+    const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
+    payload.resourceCategories = Object.fromEntries([...new Set([...payload.resources, ...payload.items.flatMap((item) =>
+      [item.originalResourceCd, item.effectiveResourceCd].filter((cd): cd is string => Boolean(cd)))])].map((cd) =>
+      [cd, isProductionScheduleGrindingResourceCd(cd, policy) ? 'grinding' : 'cutting']));
   }
   const byId = new Map(payload.items.map((item) => [item.itemId, item]));
   const orderedItems = orderedIds.map((id) => byId.get(id)).filter((item): item is GrindingPlanningBoardItem => item != null);
@@ -820,6 +831,7 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
     registeredFseibans: order,
     seibanOrder: selected,
     resources: payload.resources,
+    resourceCategories: payload.resourceCategories,
     items: pageWithMaterialArrival,
     ...(includeLoad ? {} : { loadDeferred: true }),
     load: payload.load,

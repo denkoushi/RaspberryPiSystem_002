@@ -1,3 +1,4 @@
+import type { GrindingPlanningBoardCategory } from '@raspi-system/shared-types';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -48,7 +49,7 @@ const baseParams = (overrides: Partial<Parameters<typeof projectGrindingPlanning
   category: 'grinding' as const,
   seibanOrder: ['S-001'],
   machineNameBySeiban: new Map([['S-001', '機種A']]),
-  isResourceInCategory: (resourceCd: string, category: 'grinding' | 'cutting') =>
+  isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) =>
     category === 'grinding' && resourceCd.startsWith('G-'),
   ...overrides
 });

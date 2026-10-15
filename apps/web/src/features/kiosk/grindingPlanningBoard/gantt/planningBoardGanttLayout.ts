@@ -2,13 +2,14 @@ import { GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS } from '@raspi-sys
 
 import {
   compareProcessOrder,
+  sortPlanningBoardResources,
   resolveGrindingPlanningBoardDueDate,
   resolveGrindingPlanningBoardResource,
   sortGrindingPlanningBoardItems
 } from '../sortGrindingPlanningBoardItems';
 
 import type { PlanningBoardAllocation } from '../types';
-import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours, GrindingPlanningBoardView } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardCategory, GrindingPlanningBoardResponse, GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours, GrindingPlanningBoardView } from '@raspi-system/shared-types';
 
 const DAY_MS = 86_400_000;
 export const dateToDay = (date: string): number => {
@@ -45,7 +46,7 @@ export type GanttBar = {
   lateDays?: number;
 };
 export type GanttRow = { key: string; label: string; detail: string; bars: GanttBar[]; flagged: boolean; connectors: { start: number; end: number }[] };
-export type GanttGroup = { key: string; label: string; resource: string | null; rows: GanttRow[] };
+export type GanttGroup = { key: string; label: string; resource: string | null; category?: 'grinding' | 'cutting'; rows: GanttRow[] };
 export type GanttLayout = { groups: GanttGroup[]; start: number; end: number; today: number; overlapCount: number; mode?: 'forward' | 'backward'; now?: number; lateCount?: number; completedOnly?: boolean };
 export type GanttLayoutOptions = {
   items: readonly GrindingPlanningBoardItem[];
@@ -53,6 +54,8 @@ export type GanttLayoutOptions = {
   view: GrindingPlanningBoardView;
   seibanOrder: readonly string[];
   resources: readonly string[];
+  category?: GrindingPlanningBoardCategory;
+  resourceCategories?: GrindingPlanningBoardResponse['resourceCategories'];
   dailyHoursByResource: Readonly<Record<string, GrindingPlanningBoardResourceDailyHours>>;
   today: string;
   scale: number;
@@ -113,9 +116,10 @@ export function buildPlanningBoardGanttLayout(options: GanttLayoutOptions): Gant
           flagged: chain.some((bar) => bar.flagged), connectors: connectors.get(key) ?? [] })) });
     }
   } else {
-    for (const resource of [...new Set([...resources, ...bars.map((bar) => bar.resource)])]) {
+    for (const resource of sortPlanningBoardResources([...new Set([...resources, ...bars.map((bar) => bar.resource)])], options.category, options.resourceCategories)) {
       const members = bars.filter((bar) => bar.resource === resource);
       groups.push({ key: resource, label: resource, resource,
+        category: options.category === 'all' ? options.resourceCategories?.[resource] : undefined,
         rows: members.map((bar) => ({ key: bar.item.itemId, label: bar.item.fhinmei || bar.item.fhincd,
           detail: `${bar.item.fseiban} · ${bar.item.processOrder}`, bars: [bar], flagged: bar.flagged, connectors: [] })) });
     }
@@ -262,8 +266,9 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
     connectors: members.filter((bar) => bar.waitFrom != null).map((bar) => ({ start: bar.waitFrom!, end: bar.start! }))
   });
   const groups: GanttGroup[] = view === 'resource'
-    ? [...new Set([...resources, ...bars.map((bar) => bar.resource)])].map((resource) => ({
+    ? sortPlanningBoardResources([...new Set([...resources, ...bars.map((bar) => bar.resource)])], options.category, options.resourceCategories).map((resource) => ({
       key: resource, label: resource, resource,
+        category: options.category === 'all' ? options.resourceCategories?.[resource] : undefined,
       rows: [row(resource, resource, '', bars.filter((bar) => bar.resource === resource))]
     }))
     : [...new Set([...seibanOrder, ...sorted.map((item) => item.fseiban)])].flatMap((seiban) => {

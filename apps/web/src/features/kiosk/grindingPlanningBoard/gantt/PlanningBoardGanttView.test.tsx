@@ -34,6 +34,18 @@ function props(items: GrindingPlanningBoardItem[] = [item()]) {
 describe('PlanningBoardGanttView', () => {
   beforeEach(() => vi.stubGlobal('PointerEvent', TestPointerEvent));
   afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+  it.each(['backward', 'forward'] as const)('shows one small header per category in %s resource view', (mode) => {
+    const layout = buildPlanningBoardGanttLayout({ items: [item()], allocation: 'alternate', view: 'resource',
+      seibanOrder: [], resources: ['100', '305', '584'], category: 'all', resourceCategories: { '100': 'cutting', '305': 'grinding', '584': 'grinding' },
+      dailyHoursByResource: {}, today: '2026-10-14', scale: 14, mode });
+    const { rerender } = render(<PlanningBoardGanttView {...props()} layout={layout} />);
+    const headers = screen.getAllByTestId('planning-gantt-category-header');
+    expect(headers.map((header) => header.textContent)).toEqual(['研削', '切削']);
+    expect(headers[0]).toHaveClass('h-6', 'bg-slate-800', 'font-bold', 'text-[11px]');
+    expect(headers[0]!.firstChild).toHaveClass('sticky', 'left-0');
+    rerender(<PlanningBoardGanttView {...props()} />);
+    expect(screen.queryByTestId('planning-gantt-category-header')).not.toBeInTheDocument();
+  });
   it('ドラッグはRAFで表示し、今日で止まり、指を離して納期を確定する', async () => {
     const values = props();
     render(<PlanningBoardGanttView {...values} />);
@@ -334,6 +346,18 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.keyDown(screen.getByRole('button', { name: '資源CD 305の行を並べ替え' }), { key: 'ArrowUp', altKey: true });
     expect(lanes()).toEqual(['305', '306']);
     Reflect.deleteProperty(document, 'elementsFromPoint');
+    localStorage.clear();
+  });
+  it('keeps 研削 lanes above 切削 lanes even when the saved order puts a 切削 lane first', () => {
+    localStorage.setItem('kiosk.planning-board.resource-panes:site:all', JSON.stringify(['306', '305']));
+    const items = chainItems();
+    const values = { ...forwardProps(items), preferenceScope: 'site:all',
+      layout: buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305', '306'],
+        dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T09:00:00+09:00'), scale: 2,
+        category: 'all', resourceCategories: { 305: 'grinding', 306: 'cutting' } }) };
+    render(<PlanningBoardGanttView {...values} />);
+    expect([...document.querySelectorAll<HTMLElement>('[data-gantt-lane]')].map((lane) => lane.dataset.resourceCode)).toEqual(['305', '306']);
+    expect(screen.getAllByTestId('planning-gantt-category-header').map((header) => header.textContent)).toEqual(['研削', '切削']);
     localStorage.clear();
   });
   it('does not start a lane drag from the 8H/10H/24H buttons or a short press', () => {

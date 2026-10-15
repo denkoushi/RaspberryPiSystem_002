@@ -1,6 +1,6 @@
 /** キオスク研削順位ボードのページ専用API契約。既存順位ボードの順位・割当とは別管理。 */
 export type GrindingPlanningBoardView = 'seiban' | 'resource';
-export type GrindingPlanningBoardCategory = 'grinding' | 'cutting';
+export type GrindingPlanningBoardCategory = 'grinding' | 'cutting' | 'all';
 
 export type GrindingPlanningBoardDueScope =
   | { kind: 'seiban' }
@@ -137,6 +137,7 @@ export interface GrindingPlanningBoardResponse {
   registeredFseibans: string[];
   seibanOrder: string[];
   resources: string[];
+  resourceCategories?: Record<string, 'grinding' | 'cutting'>;
   items: GrindingPlanningBoardItem[];
   load: GrindingPlanningBoardLoad[];
   unknownRequiredMinutesCount: number;

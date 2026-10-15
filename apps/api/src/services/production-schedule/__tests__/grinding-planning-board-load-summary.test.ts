@@ -1,3 +1,4 @@
+import type { GrindingPlanningBoardCategory } from '@raspi-system/shared-types';
 import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -176,7 +177,7 @@ describe('materialized load aggregate cache', () => {
       client: { $queryRaw: queryRaw } as never,
       siteKey: 'site-a', category: 'grinding' as const, splitEnabled: true,
       leaderboardMaterializedBaseWhere: Prisma.sql`"CsvDashboardRow"."id" = ANY(${['row-2', 'row-1']}::text[])`,
-      isResourceInCategory: (cd: string, category: 'grinding' | 'cutting') => cd.startsWith(category === 'grinding' ? 'G-' : 'C-'),
+      isResourceInCategory: (cd: string, category: GrindingPlanningBoardCategory) => cd.startsWith(category === 'grinding' ? 'G-' : 'C-'),
       cache: { generationToken: 'generation-1', readGenerationToken, performance: {
         async measure<T>(phase: string, work: () => Promise<T>): Promise<T> {
           measure(phase);

@@ -72,7 +72,11 @@ export async function getGrindingPlanningBoardSeibanCandidates(params: {
     resolveLeaderboardMaterializedBaseWhere(prisma),
     getResourceCategoryPolicy({ siteKey: params.siteKey })
   ]));
-  const categoryCondition = buildResourceCategoryCondition(params.category, policy);
+  const normalizedResource = Prisma.sql`NULLIF(UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD')), '')`;
+  const excluded = policy.cuttingExcludedResourceCds.filter((cd) => !policy.grindingResourceCds.includes(cd));
+  const categoryCondition = params.category === 'all'
+    ? Prisma.sql`AND ${normalizedResource} IS NOT NULL ${excluded.length ? Prisma.sql`AND ${normalizedResource} NOT IN (${Prisma.join(excluded)})` : Prisma.empty}`
+    : buildResourceCategoryCondition(params.category, policy);
   const dueExpression = Prisma.sql`COALESCE("seibanDue"."dueDate", "n"."dueDate", "supplement"."plannedEndDate")`;
   const incompleteHaving = completionFilter === 'incomplete'
     ? Prisma.sql`AND SUM(CASE WHEN ${buildProductionScheduleEffectiveCompletedSql()} THEN 1 ELSE 0 END) < COUNT(*)`
