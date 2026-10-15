@@ -54,6 +54,7 @@ export type GrindingPlanningBoardProjectionOverride = {
   overrideResourceCd: string | null;
   overrideDueDate: Date | null;
   dueDateCleared?: boolean | null;
+  orderPinned?: boolean;
   alternateRank: number | null;
   specialDueKind?: string | null;
   specialDueExpiresAt?: Date | null;
@@ -506,6 +507,7 @@ function buildItems(
         inheritedParentOverrideDueDateCleared: parentOverride?.dueDateCleared ?? null,
         effectiveDueDate,
         alternateRank: override?.alternateRank ?? null,
+        orderPinned: override?.orderPinned ?? false,
         specialDueKind: override?.specialDueKind ?? null,
         specialDueExpiresAt: override?.specialDueExpiresAt?.toISOString() ?? null,
         originalRank
@@ -528,6 +530,7 @@ function buildItems(
         effectiveDueDate,
         originalRank,
         alternateRank: override?.alternateRank ?? null,
+        orderPinned: override?.orderPinned ?? false,
         specialDue: specialDueForOverride(override),
         plannedQuantity: displayFields.plannedQuantity ?? null,
         requiredMinutes,

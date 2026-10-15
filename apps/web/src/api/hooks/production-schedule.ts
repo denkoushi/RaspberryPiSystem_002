@@ -48,6 +48,7 @@ import {
   getKioskGrindingPlanningBoardSnapshot,
   getKioskGrindingPlanningBoardSeibanCandidates,
   updateKioskGrindingPlanningBoardOverrides,
+  updateKioskGrindingPlanningBoardPins,
   updateKioskGrindingPlanningBoardRank,
   updateKioskGrindingPlanningBoardResourceOrder,
   updateKioskGrindingPlanningBoardResourceOrderBulk,
@@ -107,6 +108,7 @@ import type {
   GrindingPlanningBoardRankResponse,
   GrindingPlanningBoardResourceOrderRequest,
   GrindingPlanningBoardResourceOrderBulkRequest,
+  GrindingPlanningBoardPinsRequest,
   GrindingPlanningBoardResourceOrderResponse,
   GrindingPlanningBoardSeibanOrderRequest,
   GrindingPlanningBoardCategory,
@@ -551,6 +553,17 @@ export function useUpdateKioskGrindingPlanningBoardOverrides(options?: { invalid
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: GrindingPlanningBoardOverridesRequest) => updateKioskGrindingPlanningBoardOverrides(payload),
+    onSuccess: () => {
+      if (options?.invalidateOnSuccess === false) return;
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+    }
+  });
+}
+
+export function useUpdateKioskGrindingPlanningBoardPins(options?: { invalidateOnSuccess?: boolean }) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrindingPlanningBoardPinsRequest) => updateKioskGrindingPlanningBoardPins(payload),
     onSuccess: () => {
       if (options?.invalidateOnSuccess === false) return;
       void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });

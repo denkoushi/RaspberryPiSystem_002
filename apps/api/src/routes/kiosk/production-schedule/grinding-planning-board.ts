@@ -5,6 +5,7 @@ import {
   getGrindingPlanningBoard,
   getGrindingPlanningBoardLoad,
   updateGrindingPlanningBoardOverrides,
+  updateGrindingPlanningBoardPins,
   updateGrindingPlanningBoardRank,
   updateGrindingPlanningBoardResourceOrder,
   updateGrindingPlanningBoardResourceOrderBulk,
@@ -58,6 +59,16 @@ const overridesBodySchema = z.object({
     due: dueSchema.optional(),
     specialDue: specialDueSchema.nullable().optional()
   })).min(1).max(2_000)
+});
+
+const pinsBodySchema = z.object({
+  sourceRevision: sourceRevisionSchema,
+  items: z.array(z.object({
+    itemId: z.string().min(1).max(2_000),
+    itemRevision: z.string().min(1).max(200),
+    overrideVersion: z.number().int().min(0).optional()
+  })).min(1).max(2_000),
+  pinned: z.boolean()
 });
 
 const rankBodySchema = z.object({
@@ -185,6 +196,13 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = overridesBodySchema.parse(request.body);
     return updateGrindingPlanningBoardOverrides({ siteKey: scope.siteKey, ...body });
+  });
+
+  app.put('/kiosk/production-schedule/grinding-planning-board/pins', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const scope = deps.resolveLocationScopeContext(clientDevice);
+    const body = pinsBodySchema.parse(request.body);
+    return updateGrindingPlanningBoardPins({ siteKey: scope.siteKey, ...body });
   });
 
   app.put('/kiosk/production-schedule/grinding-planning-board/rank', { config: { rateLimit: false } }, async (request) => {

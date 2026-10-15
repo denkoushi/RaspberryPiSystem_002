@@ -1,7 +1,9 @@
 import clsx from 'clsx';
 
+import { PlanningBoardPinIcon } from './gantt/PlanningBoardPinIcon';
 import { GANTT_SCALES, ganttScaleLabel } from './gantt/usePersistedPlanningBoardGanttScale';
 
+import type { PlanningBoardOrderMetrics } from './gantt/planningBoardAutoOrder';
 import type { PlanningBoardGanttMode } from './gantt/usePersistedPlanningBoardGanttMode';
 import type { PlanningBoardGanttScale } from './gantt/usePersistedPlanningBoardGanttScale';
 import type { PlanningBoardAllocation, PlanningBoardStatus } from './types';
@@ -69,7 +71,14 @@ export type PlanningBoardToolbarProps = {
   onGanttModeChange?: (mode: PlanningBoardGanttMode) => void;
   lateCount?: number;
   onNextLate?: () => void;
+  onProposeOrder?: () => void;
   onSortDue?: () => void;
+  pinMode?: boolean;
+  onTogglePinMode?: () => void;
+  orderPreview?: { before: PlanningBoardOrderMetrics; after: PlanningBoardOrderMetrics } | null;
+  previewPending?: boolean;
+  onApplyOrder?: () => void;
+  onCancelOrder?: () => void;
   onUndoOrder?: () => void;
   orderDisabled?: boolean;
   canUndoOrder?: boolean;
@@ -96,13 +105,16 @@ export type PlanningBoardToolbarProps = {
   specialDueCounts?: Record<GrindingPlanningBoardSpecialDueKind, number>;
 };
 
+const formatWait = (minutes: number) => `${Math.floor(minutes / 60)}時間${String(minutes % 60).padStart(2, '0')}分`;
+
 export function PlanningBoardToolbar({
   ganttEnabled = false,
   onToggleGantt,
   ganttScale = 14,
   onGanttScaleChange,
   ganttMode = 'forward', onGanttModeChange, lateCount = 0, onNextLate,
-  onSortDue, onUndoOrder, orderDisabled = false, canUndoOrder = false,
+  pinMode = false, onTogglePinMode, orderPreview, previewPending = false, onApplyOrder, onCancelOrder,
+  onProposeOrder, onSortDue, onUndoOrder, orderDisabled = false, canUndoOrder = false,
   overlapCount = 0,
   onNextOverlap,
   categories,
@@ -130,6 +142,7 @@ export function PlanningBoardToolbar({
       <button
         type="button"
         onClick={onOpenDrawer}
+        disabled={Boolean(orderPreview)}
         className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border border-slate-500 bg-slate-800 pl-3 pr-2 text-[13px] font-bold text-slate-100 hover:border-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
         aria-label="製番登録ペインを開く"
       >
@@ -148,15 +161,15 @@ export function PlanningBoardToolbar({
         </SegmentButton>
       </SegmentGroup>
       <SegmentGroup ariaLabel="表示単位">
-        <SegmentButton pressed={view === 'seiban'} onClick={() => onViewChange('seiban')}>
+        <SegmentButton disabled={Boolean(orderPreview)} pressed={view === 'seiban'} onClick={() => onViewChange('seiban')}>
           製番
         </SegmentButton>
-        <SegmentButton pressed={view === 'resource'} onClick={() => onViewChange('resource')}>
+        <SegmentButton disabled={Boolean(orderPreview)} pressed={view === 'resource'} onClick={() => onViewChange('resource')}>
           資源CD
         </SegmentButton>
       </SegmentGroup>
       {onToggleGantt && <div className={clsx(SEGMENT_TRACK_CLASS, 'border-sky-400/55 bg-sky-400/10')}>
-        <SegmentButton tone="gantt" pressed={ganttEnabled} onClick={onToggleGantt}>
+        <SegmentButton tone="gantt" disabled={Boolean(orderPreview)} pressed={ganttEnabled} onClick={onToggleGantt}>
           <span className="inline-flex items-center gap-1.5">
             <svg viewBox="0 0 16 16" fill="currentColor" className="h-4 w-4" aria-hidden="true">
               <rect x="1" y="2" width="8" height="3" rx="1" /><rect x="5" y="6.5" width="9" height="3" rx="1" /><rect x="3" y="11" width="6" height="3" rx="1" />
@@ -166,8 +179,8 @@ export function PlanningBoardToolbar({
         {ganttEnabled && <>
           <div className="flex shrink-0 items-center gap-0.5" role="group" aria-label="並べ方">
             <span className="px-1 text-[10px] text-slate-400">並べ方</span>
-            <SegmentButton tone="gantt" pressed={ganttMode === 'forward'} onClick={() => onGanttModeChange?.('forward')}>今日から</SegmentButton>
-            <SegmentButton tone="gantt" pressed={ganttMode === 'backward'} onClick={() => onGanttModeChange?.('backward')}>納期から</SegmentButton>
+            <SegmentButton tone="gantt" disabled={Boolean(orderPreview)} pressed={ganttMode === 'forward'} onClick={() => onGanttModeChange?.('forward')}>今日から</SegmentButton>
+            <SegmentButton tone="gantt" disabled={Boolean(orderPreview)} pressed={ganttMode === 'backward'} onClick={() => onGanttModeChange?.('backward')}>納期から</SegmentButton>
           </div>
           <div className="ml-1 flex shrink-0 items-center gap-0.5" role="group" aria-label="横軸の幅">
             {GANTT_SCALES.map((days) => <SegmentButton key={days} tone="scale" pressed={ganttScale === days} onClick={() => onGanttScaleChange?.(days)}>{ganttScaleLabel(days)}</SegmentButton>)}
@@ -176,9 +189,28 @@ export function PlanningBoardToolbar({
             className={clsx('ml-1 min-h-11 shrink-0 rounded-md px-2 text-[13px] font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300', (ganttMode === 'forward' ? lateCount : overlapCount) ? 'bg-rose-800 text-white' : 'text-emerald-300')}>
             {ganttMode === 'forward' ? (lateCount ? `⚠ 遅れ ${lateCount}` : '✓ 遅れなし') : (overlapCount ? `⚠ 重なり ${overlapCount}` : '✓ 重なりなし')}
           </button>
-          <button type="button" aria-label="⇅ 納期順に並べる" onClick={onSortDue}
+          {ganttMode === 'forward' && view === 'resource' && (orderPreview ? <>
+            <div className="flex shrink-0 flex-col rounded-md border border-amber-400 px-2 py-1 text-xs tabular-nums" role="status" aria-label="並べ替えの比較">
+              <span>遅れ {orderPreview.before.lateCount} → <b className={clsx(orderPreview.after.lateCount < orderPreview.before.lateCount && 'text-emerald-300')}>{orderPreview.after.lateCount}</b> 件</span>
+              <span>待ち {formatWait(orderPreview.before.waitMinutes)} → <b className={clsx(orderPreview.after.waitMinutes < orderPreview.before.waitMinutes && 'text-emerald-300')}>{formatWait(orderPreview.after.waitMinutes)}</b></span>
+            </div>
+            <button type="button" onClick={onApplyOrder} disabled={previewPending}
+              className="min-h-11 shrink-0 rounded-md bg-emerald-400 px-3 text-[13px] font-bold text-slate-950 disabled:opacity-40">適用</button>
+            <button type="button" onClick={onCancelOrder} disabled={previewPending}
+              className="min-h-11 shrink-0 rounded-md border border-slate-600 px-3 text-[13px] font-bold text-slate-200 disabled:opacity-40">やめる</button>
+          </> : <>
+            <button type="button" aria-label="固定" aria-pressed={pinMode} onClick={onTogglePinMode} disabled={orderDisabled}
+              className={clsx('grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border disabled:opacity-40', pinMode ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
+              <PlanningBoardPinIcon />
+            </button>
+            <button type="button" onClick={onProposeOrder} disabled={allocation !== 'alternate' || orderDisabled}
+              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-md border border-slate-600 px-2 text-[13px] font-bold text-sky-300 disabled:opacity-40">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true"><path d="M7 20V4m-4 4 4-4 4 4M17 4v16m-4-4 4 4 4-4" /></svg>並べ替え
+            </button>
+          </>)}
+          {!orderPreview && <button type="button" aria-label="⇅ 納期順に並べる" onClick={onSortDue}
             disabled={ganttMode !== 'forward' || allocation !== 'alternate' || orderDisabled}
-            className="min-h-11 shrink-0 rounded-md bg-emerald-900 px-2 text-[13px] font-bold text-emerald-100 disabled:opacity-40">⇅ 納期順</button>
+            className="min-h-11 shrink-0 rounded-md bg-emerald-900 px-2 text-[13px] font-bold text-emerald-100 disabled:opacity-40">⇅ 納期順</button>}
           <button type="button" onClick={onUndoOrder}
             disabled={ganttMode !== 'forward' || allocation !== 'alternate' || orderDisabled || !canUndoOrder}
             className="min-h-11 shrink-0 rounded-md border border-slate-600 px-2 text-[13px] font-bold text-slate-200 disabled:opacity-40">↶ 戻す</button>

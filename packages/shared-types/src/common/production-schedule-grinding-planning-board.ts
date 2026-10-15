@@ -100,6 +100,7 @@ export interface GrindingPlanningBoardItem {
   originalRank: number | null;
   alternateRank: number | null;
   specialDue?: GrindingPlanningBoardSpecialDue | null;
+  orderPinned?: boolean;
   plannedQuantity: number | null;
   requiredMinutes: number | null;
   requiredMinutesKnown: boolean;
@@ -164,6 +165,12 @@ export interface GrindingPlanningBoardOverrideItemRequest {
 export interface GrindingPlanningBoardOverridesRequest {
   sourceRevision: string;
   items: GrindingPlanningBoardOverrideItemRequest[];
+}
+
+export interface GrindingPlanningBoardPinsRequest {
+  sourceRevision: string;
+  items: { itemId: string; itemRevision: string; overrideVersion?: number }[];
+  pinned: boolean;
 }
 
 export interface GrindingPlanningBoardRankRequest {

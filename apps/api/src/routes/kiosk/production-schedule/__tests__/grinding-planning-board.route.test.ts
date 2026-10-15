@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   getCapacity: vi.fn(),
   updateCapacity: vi.fn(),
   updateOverrides: vi.fn(),
+  updatePins: vi.fn(),
   updateRank: vi.fn(),
   updateResourceOrder: vi.fn(),
   updateResourceOrderBulk: vi.fn(),
@@ -18,6 +19,7 @@ vi.mock('../../../../services/production-schedule/grinding-planning-board.servic
   getGrindingPlanningBoard: mocks.get,
   getGrindingPlanningBoardLoad: mocks.getLoad,
   updateGrindingPlanningBoardOverrides: mocks.updateOverrides,
+  updateGrindingPlanningBoardPins: mocks.updatePins,
   updateGrindingPlanningBoardRank: mocks.updateRank,
   updateGrindingPlanningBoardResourceOrder: mocks.updateResourceOrder,
   updateGrindingPlanningBoardResourceOrderBulk: mocks.updateResourceOrderBulk,
@@ -307,6 +309,41 @@ describe('bulk resource order route', () => {
     try {
       const response = await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/grinding-planning-board/resource-order/bulk', payload });
       expect(response.statusCode).toBe(409);
+    } finally { await app.close(); }
+  });
+});
+
+
+describe('grinding planning board pins route', () => {
+  const payload = { sourceRevision: 'board', items: [{ itemId: 'row:a', itemRevision: 'revision', overrideVersion: 2 }], pinned: true };
+  afterEach(() => vi.clearAllMocks());
+  it('uses authenticated site and passes versions and pinned state', async () => {
+    const auth = vi.fn(async () => ({ id: 'device-1' }));
+    const app = await createApp(auth);
+    const result = { sourceRevision: 'board', items: [{ itemId: 'row:a', orderPinned: true, version: 3 }] };
+    mocks.updatePins.mockResolvedValue(result);
+    try {
+      const response = await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/grinding-planning-board/pins', headers: { 'x-client-key': 'device-key' }, payload: { ...payload, siteKey: 'other-site' } });
+      expect(response.statusCode).toBe(200); expect(response.json()).toEqual(result);
+      expect(auth).toHaveBeenCalledWith('device-key');
+      expect(mocks.updatePins).toHaveBeenCalledWith({ ...payload, siteKey: 'site-a' });
+    } finally { await app.close(); }
+  });
+  it.each([{ pinned: 'true' }, { items: [] }, { items: [{ itemId: 'a' }] }])('validates pin requests: %j', async (invalid) => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    try {
+      const response = await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/grinding-planning-board/pins', payload: { ...payload, ...invalid } });
+      expect(response.statusCode).toBe(400); expect(mocks.updatePins).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+  it.each([401, 409])('preserves authentication/conflict status %i', async (statusCode) => {
+    const error = Object.assign(new Error('rejected'), { statusCode });
+    const app = await createApp(async () => { if (statusCode === 401) throw error; return { id: 'device-1' }; });
+    mocks.updatePins.mockRejectedValue(error);
+    try {
+      const response = await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/grinding-planning-board/pins', payload });
+      expect(response.statusCode).toBe(statusCode);
+      if (statusCode === 401) expect(mocks.updatePins).not.toHaveBeenCalled();
     } finally { await app.close(); }
   });
 });

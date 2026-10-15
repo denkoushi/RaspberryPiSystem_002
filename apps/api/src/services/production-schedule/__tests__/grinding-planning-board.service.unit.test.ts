@@ -88,6 +88,7 @@ import {
   getGrindingPlanningBoard,
   getGrindingPlanningBoardLoad,
   updateGrindingPlanningBoardSeibanOrder,
+  updateGrindingPlanningBoardPins,
   updateGrindingPlanningBoardResourceOrderBulk
 } from '../grinding-planning-board.service.js';
 
@@ -773,15 +774,54 @@ describe('bulk grinding resource order service', () => {
       rowNotes: [], orderSupplements: [], orderSplits: [], productionScheduleProgress: null, productionScheduleExternalCompletion: null })));
     mocks.prisma.$transaction.mockImplementation(async (callback: (client: typeof mocks.prisma) => Promise<unknown>) => callback(mocks.prisma));
     mocks.prisma.productionScheduleGrindingPlanningBoardOverride.upsert.mockImplementation(async ({ create }) => ({ ...create, version: 1 }));
-    mocks.projectGrindingPlanningBoard.mockImplementation(({ overrides }: { overrides: Map<string, { alternateRank: number; version: number }> }) => ({
+    mocks.projectGrindingPlanningBoard.mockImplementation(({ overrides }: { overrides: Map<string, { alternateRank: number; version: number; orderPinned?: boolean }> }) => ({
       allItems: items.map((item) => {
         const saved = overrides.get(item.itemId);
-        return saved ? { ...item, alternateRank: saved.alternateRank, version: saved.version, itemRevision: `saved-${item.itemId}` } : item;
+        return saved ? { ...item, alternateRank: saved.alternateRank, orderPinned: saved.orderPinned, version: saved.version, itemRevision: `saved-${item.itemId}` } : item;
       })
     }));
   });
   const request = () => ({ siteKey: 'site-a', sourceRevision: revision, resourceCd: '305',
     items: [...items].reverse().map((item) => ({ itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version })) });
+  it('creates only a pin with null override semantics and returns the acknowledged item', async () => {
+    const payload = request();
+    const result = await updateGrindingPlanningBoardPins({ siteKey: 'site-a', sourceRevision: payload.sourceRevision, items: [payload.items[0]!], pinned: true });
+    expect(result.items[0]).toMatchObject({ orderPinned: true, version: 1 });
+    expect(mocks.prisma.productionScheduleGrindingPlanningBoardOverride.upsert).toHaveBeenCalledWith({
+      where: { csvDashboardId_siteKey_itemKey: { csvDashboardId: expect.any(String), siteKey: 'site-a', itemKey: payload.items[0]!.itemId } },
+      create: expect.objectContaining({ orderPinned: true, overrideResourceCd: null, overrideDueDate: null, dueDateCleared: null, alternateRank: null, specialDueKind: null, specialDueExpiresAt: null }),
+      update: expect.objectContaining({ orderPinned: true, version: { increment: 1 } })
+    });
+    expect(mocks.prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: 'RepeatableRead' });
+  });
+  it('does not create an override for an already unpinned item', async () => {
+    await updateGrindingPlanningBoardPins({ ...request(), pinned: false });
+    expect(mocks.prisma.productionScheduleGrindingPlanningBoardOverride.upsert).not.toHaveBeenCalled();
+  });
+  it('unpins without changing other overrides and resource-order writes preserve pins', async () => {
+    const previous = { itemKey: items[0]!.itemId, version: 0, orderPinned: true, overrideResourceCd: '305',
+      overrideDueDate: new Date('2026-10-19'), dueDateCleared: false, alternateRank: 7, specialDueKind: null, specialDueExpiresAt: null };
+    mocks.prisma.productionScheduleGrindingPlanningBoardOverride.findMany.mockResolvedValue([previous]);
+    // The mocked projection leaves the revision unchanged for the current override.
+    mocks.projectGrindingPlanningBoard.mockReturnValue({ allItems: items });
+    const payload = request();
+    await updateGrindingPlanningBoardPins({ ...payload, items: [payload.items[1]!], pinned: false });
+    expect(mocks.prisma.productionScheduleGrindingPlanningBoardOverride.upsert).toHaveBeenLastCalledWith(expect.objectContaining({
+      update: { orderPinned: false, overrideResourceCd: '305', overrideDueDate: previous.overrideDueDate, dueDateCleared: false,
+        alternateRank: 7, specialDueKind: null, specialDueExpiresAt: null, version: { increment: 1 } }
+    }));
+    await updateGrindingPlanningBoardResourceOrderBulk(payload);
+    expect(mocks.prisma.productionScheduleGrindingPlanningBoardOverride.upsert).toHaveBeenLastCalledWith(expect.objectContaining({ update: expect.objectContaining({ orderPinned: true }) }));
+  });
+  it.each(['itemRevision', 'overrideVersion', 'completed', 'duplicate'] as const)('rejects invalid pins (%s) before any write', async (failure) => {
+    const payload = { ...request(), pinned: true };
+    if (failure === 'itemRevision') payload.items[0]!.itemRevision = 'stale';
+    if (failure === 'overrideVersion') payload.items[0]!.overrideVersion = 99;
+    if (failure === 'completed') items[0]!.isCompleted = true;
+    if (failure === 'duplicate') payload.items[1] = payload.items[0]!;
+    await expect(updateGrindingPlanningBoardPins(payload)).rejects.toMatchObject({ statusCode: failure === 'duplicate' ? 400 : 409 });
+    expect(mocks.prisma.productionScheduleGrindingPlanningBoardOverride.upsert).not.toHaveBeenCalled();
+  });
   it('assigns all ranks in one RepeatableRead transaction and returns ordered revisions', async () => {
     const payload = request();
     const result = await updateGrindingPlanningBoardResourceOrderBulk(payload);

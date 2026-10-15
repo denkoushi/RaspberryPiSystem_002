@@ -18,7 +18,7 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
   enabled: boolean;
   preferenceScope: string;
 }) {
-  const { enabled, preferenceScope, items, resources, seibanOrder, view, allocation, today, now, category, resourceCategories } = options;
+  const { enabled, preferenceScope, items, resources, seibanOrder, view, allocation, today, now, category, resourceCategories, laneOrder } = options;
   const { mode, changeMode } = usePersistedPlanningBoardGanttMode();
   const { scale, homeKey, changeScale } = usePlanningBoardGanttScale();
   const capacity = useKioskGrindingPlanningBoardResourceCapacity(enabled);
@@ -41,8 +41,8 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
     return paneResources;
   }, [enabled, preferenceScope, paneResources]);
   const layout = useMemo(() => buildPlanningBoardGanttLayout({
-    items: enabled ? items : EMPTY_ITEMS, allocation, view, seibanOrder, resources: resourceOrder, dailyHoursByResource, runsThroughBreaks, today, scale, mode, now, category, resourceCategories
-  }), [enabled, items, allocation, view, seibanOrder, resourceOrder, dailyHoursByResource, runsThroughBreaks, today, scale, mode, now, category, resourceCategories]);
+    items: enabled ? items : EMPTY_ITEMS, allocation, view, seibanOrder, resources: resourceOrder, dailyHoursByResource, runsThroughBreaks, today, scale, mode, now, category, resourceCategories, laneOrder
+  }), [enabled, items, allocation, view, seibanOrder, resourceOrder, dailyHoursByResource, runsThroughBreaks, today, scale, mode, now, category, resourceCategories, laneOrder]);
   const viewRef = useRef<PlanningBoardGanttHandle>(null);
   const scrollToNextOverlap = useCallback(() => viewRef.current?.scrollToNextOverlap(), []);
   const scrollToNextLate = useCallback(() => viewRef.current?.scrollToNextLate(), []);

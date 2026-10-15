@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { canReorderForwardBars, forwardItemDetails } from './planningBoardForwardQueue';
 import { dateToDay, workingPeriods } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH } from './PlanningBoardGanttRow';
+import { PlanningBoardPinIcon } from './PlanningBoardPinIcon';
 
 import type { GanttBar, GanttRow } from './planningBoardGanttLayout';
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceOrderPlacement } from '@raspi-system/shared-types';
@@ -32,13 +33,15 @@ type Props = {
   resourceView: boolean;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
   onResourceReorder?: ForwardReorder;
+  pinMode?: boolean;
+  onTogglePin?: (item: GrindingPlanningBoardItem) => void;
   focusedPartKey: string | null;
   chainPositions: ReadonlyMap<string, number>;
   onFocusChain: (bar: GanttBar) => void;
 };
 
 export function PlanningBoardForwardGanttRow({ row, label, start, end, now, width, dayWidth, hours, pausesForBreaks = true, scale, onShowQueue, onLeaveQueue, onCloseQueue,
-  selectedItemIds, disabled, dragDisabled, resourceView, onToggleItem, onResourceReorder, focusedPartKey, chainPositions, onFocusChain }: Props) {
+  selectedItemIds, disabled, dragDisabled, pinMode = false, onTogglePin, resourceView, onToggleItem, onResourceReorder, focusedPartKey, chainPositions, onFocusChain }: Props) {
   const track = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
   const suppressClick = useRef(false);
@@ -68,7 +71,7 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
     window.addEventListener('blur', cancel);
     return () => { cancelLongPress(); window.removeEventListener('blur', cancel); };
   }, []);
-  useEffect(() => { cancelLongPress(); if (drag.current) suppressClick.current = true; drag.current = null; setPreview(null); }, [row, dayWidth, disabled, dragDisabled]);
+  useEffect(() => { cancelLongPress(); if (drag.current) suppressClick.current = true; drag.current = null; setPreview(null); }, [row, dayWidth, disabled, dragDisabled, pinMode]);
   const findDrop = (clientX: number, source: GanttBar): Drop | null => {
     const x = clientX - (track.current?.getBoundingClientRect().left ?? 0);
     const centre = (bar: GanttBar) => (bar.start! - start) * dayWidth +
@@ -94,7 +97,7 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
       onToggleItem(pending.bar.item, pending.selected);
     }
     if (!pending.moved && Math.abs(dx) >= 8) { pending.moved = true; onCloseQueue(); }
-    if (pending.moved && !disabled && !dragDisabled && resourceView) {
+    if (pending.moved && !disabled && !dragDisabled && !pinMode && resourceView) {
       setPreview({ itemId: pending.bar.item.itemId, dx, drop: findDrop(event.clientX, pending.bar) });
     }
   };
@@ -120,17 +123,18 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
           {segments.map((segment, index) => {
             const segmentWidth = bar.unknown ? 70 : Math.max(2, (segment.end - segment.start) * dayWidth - 2);
             return <button key={index} type="button" data-testid={`planning-gantt-bar-${bar.item.itemId}${index ? `-segment-${index}` : ''}`}
+              data-gantt-pinned={bar.item.orderPinned ? 'true' : undefined}
               data-gantt-late={bar.tone === 'late' && index === 0 ? 'true' : undefined}
               aria-label={`${bar.item.fhinmei || bar.item.fhincd} 工順${bar.item.processOrder} ${bar.resource} 納期${bar.due ?? 'なし'}`}
-              aria-pressed={selected} disabled={disabled || bar.item.isCompleted}
-              data-drag-disabled={dragDisabled || disabled || !resourceView}
+              aria-pressed={pinMode ? Boolean(bar.item.orderPinned) : selected} disabled={disabled || bar.item.isCompleted}
+              data-drag-disabled={pinMode || dragDisabled || disabled || !resourceView}
               className={clsx('absolute top-[3px] h-[70px] touch-pan-y select-none rounded text-left text-[11px] font-bold leading-[14px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-white',
                 inChain && index === 0 ? 'overflow-visible' : 'overflow-hidden',
                 bar.tone === 'late' ? 'bg-rose-400 text-slate-950' : 'bg-sky-400 text-slate-950',
                 bar.unknown && 'border border-dashed border-slate-200 bg-slate-800 text-slate-200',
                 inChain ? 'outline outline-2 outline-offset-1 outline-white' : selected && 'outline outline-2 outline-offset-1 outline-emerald-300',
                 focusedPartKey !== null && !inChain && 'opacity-30', index > 0 && 'border-l-2 border-dashed border-slate-950')}
-              style={{ left: (segment.start - start) * dayWidth, width: segmentWidth,
+              style={{ boxShadow: bar.item.orderPinned ? 'inset 0 0 0 3px rgb(251 191 36)' : undefined, left: (segment.start - start) * dayWidth, width: segmentWidth,
                 transform: preview?.itemId === bar.item.itemId ? `translateX(${preview.dx}px)` : undefined,
                 zIndex: preview?.itemId === bar.item.itemId ? 9 : inChain ? 8 : selected ? 4 : 2 }}
               onPointerEnter={(event) => { if (event.pointerType === 'mouse' && !drag.current) onShowQueue(bar, event.currentTarget); }}
@@ -140,7 +144,7 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
                 if (disabled || bar.item.isCompleted || event.button !== 0 || event.isPrimary === false || drag.current) return;
                 suppressClick.current = false;
                 drag.current = { bar, x: event.clientX, y: event.clientY, tapCancelled: false, longPressed: false, selected, pointerId: event.pointerId, element: event.currentTarget, moved: false };
-                longPressTimer.current = setTimeout(() => {
+                if (!pinMode) longPressTimer.current = setTimeout(() => {
                   const pending = drag.current;
                   if (!pending || pending.tapCancelled) return;
                   pending.longPressed = true;
@@ -156,14 +160,15 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
                 const drop = findDrop(event.clientX, pending.bar);
                 suppressClick.current = pending.tapCancelled || pending.longPressed;
                 clear();
-                if (pending.moved && drop && !disabled && !dragDisabled && resourceView) onResourceReorder?.(pending.bar.item, drop.bar.item, drop.placement);
+                if (pending.moved && drop && !disabled && !dragDisabled && !pinMode && resourceView) onResourceReorder?.(pending.bar.item, drop.bar.item, drop.placement);
               }}
               onPointerCancel={() => { suppressClick.current = true; clear(); }}
               onLostPointerCapture={() => { if (drag.current) { suppressClick.current = true; clear(); } }}
               onClick={() => {
                 if (suppressClick.current) { suppressClick.current = false; return; }
-                onFocusChain(bar);
+                if (pinMode) onTogglePin?.(bar.item); else onFocusChain(bar);
               }}>
+              {bar.item.orderPinned && index === 0 && <PlanningBoardPinIcon className="pointer-events-none absolute bottom-1 right-1 h-4 w-4 text-amber-300" />}
               {inChain && index === 0 && <span data-testid={`planning-gantt-chain-badge-${bar.item.itemId}`} className="pointer-events-none absolute right-0 top-0 grid h-[22px] w-[22px] place-items-center rounded-full bg-slate-950 font-mono text-xs font-bold text-white">{chainPositions.get(bar.item.itemId)}</span>}
               {index > 0 ? null : bar.unknown ? '所要不明' : segmentWidth >= 48
                 ? <span className="block break-all px-1"><b className="line-clamp-2">{bar.item.fhinmei || bar.item.fhincd}</b>
