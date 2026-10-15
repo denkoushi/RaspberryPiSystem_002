@@ -1,6 +1,6 @@
 import { AssemblyProcedureDraftImportService } from './assembly-procedure-draft-import.service.js';
 
-import { Prisma } from '@prisma/client';
+import { Prisma, type ProcedureMaterial } from '@prisma/client';
 
 import { ApiError } from '../../lib/errors.js';
 import { prisma as defaultPrisma } from '../../lib/prisma.js';
@@ -12,6 +12,12 @@ import { readPartNamesByPartNumbers, readMaterialMatchesByPartName } from '../wo
 
 function materialPartNumber(ref: Prisma.JsonValue | undefined): string | null {
   return ref && typeof ref === 'object' && !Array.isArray(ref) && typeof ref.partNumber === 'string' ? normalizeWorkInstructionPartNumber(ref.partNumber) : null;
+}
+
+function publicMaterial(material: ProcedureMaterial) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Omit internal description state from API responses.
+  const { imageDescription, imageDescribedAt, imageDescribeAttempts, imageDescribeNextAttemptAt, ...visible } = material;
+  return { ...visible, text: material.kind === 'TEXT' ? material.text : null };
 }
 
 export type ProcedureMaterialState = 'unplaced' | 'placed' | 'discarded' | 'all';
@@ -44,7 +50,7 @@ export class ProcedureMaterialService {
     // PDF and page text exists for search only; keep it out of the list payload.
     const partNumberFor = (material: typeof materials[number]) => materialPartNumber(material.workInstructionRef) ?? matchedParts.get(material.id);
     const partNames = await readPartNamesByPartNumbers(this.db, materials.flatMap((material) => partNumberFor(material) ?? []));
-    return materials.map((material) => ({ ...material, text: material.kind === 'TEXT' ? material.text : null,
+    return materials.map((material) => ({ ...publicMaterial(material),
       partName: partNames.get(partNumberFor(material) ?? '') ?? null }));
   }
 
@@ -55,7 +61,9 @@ export class ProcedureMaterialService {
       select: { id: true, gmailMessageId: true },
       orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
     });
-    return [...new Set(materials.map(row => row.gmailMessageId === null ? `material:${row.id}` : `mail:${row.gmailMessageId}`))];
+    // Allow both corpus versions while workers roll over from mail to material records.
+    return [...new Set(materials.flatMap(row => row.gmailMessageId === null
+      ? [`material:${row.id}`] : [`material:${row.id}`, `mail:${row.gmailMessageId}`]))];
   }
 
   async listRanked(recordIds: string[], options: { state: 'unplaced' | 'placed'; limit: number }) {
@@ -67,19 +75,23 @@ export class ProcedureMaterialService {
       : { OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] };
     const materials = await this.db.procedureMaterial.findMany({
       where: { discardedAt: null, AND: [state, { OR: [
-        { gmailMessageId: { in: mailIds } }, { id: { in: materialIds }, gmailMessageId: null },
+        { gmailMessageId: { in: mailIds } }, { id: { in: materialIds } },
       ] }] },
       orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
     });
     const byRecord = new Map<string, typeof materials>();
     for (const material of materials) {
-      const key = material.gmailMessageId === null ? `material:${material.id}` : `mail:${material.gmailMessageId}`;
+      byRecord.set(`material:${material.id}`, [material]);
+      if (material.gmailMessageId === null) continue;
+      const key = `mail:${material.gmailMessageId}`;
       const group = byRecord.get(key) ?? [];
       group.push(material);
       byRecord.set(key, group);
     }
-    return [...new Set(recordIds)].flatMap(id => byRecord.get(id) ?? []).slice(0, options.limit)
-      .map(material => material.kind === 'TEXT' ? material : { ...material, text: null });
+    const seen = new Set<string>();
+    return [...new Set(recordIds)].flatMap(id => byRecord.get(id) ?? [])
+      .filter(material => !seen.has(material.id) && !!seen.add(material.id)).slice(0, options.limit)
+      .map(publicMaterial);
   }
 
   async readFile(id: string) {

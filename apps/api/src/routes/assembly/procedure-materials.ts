@@ -46,6 +46,7 @@ export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
     const allowedRecordIds = await service.listRankRecordIds(state);
     if (!allowedRecordIds.length) return { available: true, mode: 'lexical', items: [] };
     const ranked = await semanticSearch.rank('procedure_material', q, 100, allowedRecordIds);
+    if (ranked.available && ranked.rankingStats) request.log.info(ranked.rankingStats, 'Procedure material hybrid ranking');
     if (!ranked.available) return { available: false, mode: 'unavailable', items: [] };
     return { available: true, mode: ranked.mode, items: await service.listRanked(ranked.recordIds, { state, limit }) };
   });

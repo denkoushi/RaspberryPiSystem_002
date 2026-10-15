@@ -5404,6 +5404,10 @@ model ProcedureMaterial {
   workInstructionRef Json?
   kind             ProcedureMaterialKind
   text             String?
+  imageDescription String?
+  imageDescribedAt DateTime?
+  imageDescribeAttempts Int @default(0)
+  imageDescribeNextAttemptAt DateTime?
   storageKey       String?
   sha256           String?
   contentType      String?
