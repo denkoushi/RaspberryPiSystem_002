@@ -90,10 +90,16 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     onPointerUp={laneOrder.onPointerUp} onPointerCancel={laneOrder.onPointerCancel} onLostPointerCapture={laneOrder.onPointerCancel}
     onKeyDown={(event) => laneOrder.onKeyDown(event, resource)}>{text}</button>;
   const forward = layout.mode === 'forward';
-  const seibanColors = useMemo(() => colorBySeiban ? new Map(layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars
-    .filter((bar) => forward ? bar.unknown || Boolean(bar.segments?.length) : bar.end != null)
-    .map((bar) => [bar.item.fseiban, planningBoardSeibanColor(bar.item.fseiban, seibanOrder)] as const)))) : undefined,
-  [colorBySeiban, layout, forward, seibanOrder]);
+  const seibanColors = useMemo(() => {
+    if (!colorBySeiban) return undefined;
+    const seibans = [...new Set(layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars
+      .filter((bar) => forward ? bar.unknown || Boolean(bar.segments?.length) : bar.end != null)
+      .map((bar) => bar.item.fseiban))))];
+    // The legend follows the left pane's seiban priority; seibans outside it keep their first-seen order at the end.
+    const rank = (seiban: string) => { const index = seibanOrder.indexOf(seiban); return index < 0 ? seibanOrder.length : index; };
+    seibans.sort((a, b) => rank(a) - rank(b));
+    return new Map(seibans.map((seiban) => [seiban, planningBoardSeibanColor(seiban, seibanOrder)] as const));
+  }, [colorBySeiban, layout, forward, seibanOrder]);
   const [focusedSeiban, setFocusedSeiban] = useState<string | null>(null);
   useEffect(() => {
     if (focusedSeiban !== null && !seibanColors?.has(focusedSeiban)) setFocusedSeiban(null);
