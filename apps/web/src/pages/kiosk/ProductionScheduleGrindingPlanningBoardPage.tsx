@@ -59,7 +59,8 @@ type ResourceOrderSnapshot = { resourceCd: string; itemIds: string[] };
 type OrderPreview = { options: GanttLayoutOptions; sourceRevision: string; current: Record<string, string[]>;
   proposal: Record<string, string[]>; before: PlanningBoardOrderMetrics; after: PlanningBoardOrderMetrics };
 
-type ResourceOrderHistory = { id: number; scope: string; orders: ResourceOrderSnapshot[] };
+type ResourceOrderHistory = { id: number; scope: string; orders: ResourceOrderSnapshot[];
+  restoreResource?: { itemId: string; resourceCd: string | null } };
 
 const EMPTY_ITEMS: GrindingPlanningBoardItem[] = [];
 const EMPTY_ORDER: string[] = [];
@@ -438,7 +439,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
 
   const enqueueOverrides = useCallback((
     originals: readonly GrindingPlanningBoardItem[], requests: GrindingPlanningBoardOverrideItemRequest[],
-    label: string, onFailed?: (error: unknown) => void, capturedSourceRevision?: string
+    label: string, onFailed?: (error: unknown) => void, capturedSourceRevision?: string, orderAction?: { onSaved: () => void }
   ) => {
     if (writeBlocked || originals.some((item) => hasPendingSeiban(item.fseiban, true))) return false;
     if (requests.some((request) => {
@@ -449,6 +450,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     const patches = new Map(requests.map((request) => [request.itemId, request]));
     return enqueueWrite({
       label, itemIds: originals.map((item) => item.itemId), seibans: [...new Set(originals.map((item) => item.fseiban))],
+      order: Boolean(orderAction), onSaved: orderAction?.onSaved,
       apply: (display) => ({ ...display, items: display.items.map((item) => {
         const request = patches.get(item.itemId);
         return request ? applyOptimisticOverride(item, request) : item;
@@ -815,8 +817,9 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     ? buildForwardPlanningBoardGanttLayout({ ...orderPreview.options, scale: gantt.scale, laneOrder: orderPreview.proposal })
     : gantt.layout, [orderPreview, gantt.scale, gantt.layout]);
   const lastResourceOrder = resourceOrderHistory.filter((entry) => entry.scope === historyScope).at(-1);
-  const enqueueResourceOrder = (snapshot: ResourceOrderSnapshot, label: string, onSaved: () => void, preview?: OrderPreview, onFailed?: () => void) => {
-    const items = snapshot.itemIds.map((id) => (preview?.options.items ?? currentItemsRef.current).find((item) => item.itemId === id));
+  const enqueueResourceOrder = (snapshot: ResourceOrderSnapshot, label: string, onSaved: () => void, preview?: OrderPreview, onFailed?: () => void,
+    sourceItems = preview?.options.items ?? currentItemsRef.current) => {
+    const items = snapshot.itemIds.map((id) => sourceItems.find((item) => item.itemId === id));
     if (!items.length || items.length > 500 || items.some((item) => !item || item.isCompleted ||
       (resolveGrindingPlanningBoardResource(item, 'alternate') ?? '未設定') !== snapshot.resourceCd || hasPendingSeiban(item.fseiban, true))) return false;
     const members = items as GrindingPlanningBoardItem[];
@@ -827,6 +830,34 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         items: members.map((original) => { const item = context.item(original); return { itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version }; }) }),
       onSaved, onFailed
     });
+  };
+  const moveResourceInGantt = (original: GrindingPlanningBoardItem, targetResource: string, targetItem: GrindingPlanningBoardItem | null,
+    placement: GrindingPlanningBoardResourceOrderPlacement) => {
+    const item = currentItemsRef.current.find((candidate) => candidate.itemId === original.itemId);
+    if (!item || !data || !scopeReady || !rankMutationReady || writeBlocked || allocation !== 'alternate' || item.isCompleted || orderPreview || pinMode ||
+      !data.resources.includes(targetResource) || !canMoveResource(item, targetResource) || hasPendingSeiban(item.fseiban, true)) return;
+    const previousResource = resolveGrindingPlanningBoardResource(item, allocation);
+    if (previousResource === targetResource) return;
+    const before = [snapshotResourceOrder(previousResource ?? '未設定'), snapshotResourceOrder(targetResource)];
+    const target = targetItem && currentItemsRef.current.find((candidate) => candidate.itemId === targetItem.itemId);
+    if (targetItem && (!target || target.isCompleted || !before[1]!.itemIds.includes(target.itemId))) return;
+    const affected = currentItemsRef.current.filter((candidate) => before.some((snapshot) => snapshot.itemIds.includes(candidate.itemId)));
+    if (affected.some((candidate) => hasPendingSeiban(candidate.fseiban, true))) return;
+    if (before[0]!.itemIds.length > 500 || before[1]!.itemIds.length >= 500) {
+      notify('移動する対象は資源ごとに500件までです。表示を確認してください。', 'error'); return;
+    }
+    const sameBand = !target || (item.specialDue?.expiresAt ?? null) === (target.specialDue?.expiresAt ?? null);
+    const proposed = [...before[1]!.itemIds];
+    proposed.splice(target ? proposed.indexOf(target.itemId) + (placement === 'after' ? 1 : 0) : proposed.length, 0, item.itemId);
+    const id = ++resourceOrderHistoryId.current;
+    const request = { itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version, resourceCd: targetResource };
+    if (!enqueueOverrides([item], [request], '資源CD', undefined, undefined, { onSaved: () => {
+      setResourceOrderHistory((history) => [...history, { id, scope: historyScope, orders: before,
+        restoreResource: { itemId: item.itemId, resourceCd: previousResource } }].slice(-10));
+    } })) return;
+    // A resource change clears alternateRank. Queue the complete destination order after its override acknowledgement.
+    if (sameBand) enqueueResourceOrder({ resourceCd: targetResource, itemIds: proposed }, '資源CDと順番', () => {}, undefined, undefined,
+      currentItemsRef.current.map((candidate) => candidate.itemId === item.itemId ? applyOptimisticOverride(candidate, request) : candidate));
   };
   const sortResourceOrdersByDue = () => {
     if (gantt.mode !== 'forward' || allocation !== 'alternate' || orderActionsDisabled) return;
@@ -894,12 +925,26 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   };
   const undoResourceOrder = () => {
     if (gantt.mode !== 'forward' || allocation !== 'alternate' || orderActionsDisabled || !lastResourceOrder) return;
+    let restoredItems = currentItemsRef.current;
+    if (lastResourceOrder.restoreResource) {
+      const restore = lastResourceOrder.restoreResource;
+      const item = restoredItems.find((candidate) => candidate.itemId === restore.itemId);
+      if (!item || item.isCompleted) { notify('対象の工程が変わったため移動を戻せません。表示を確認してください。', 'error'); return; }
+      const request = { ...restore, itemRevision: item.itemRevision, overrideVersion: item.version };
+      if (!enqueueOverrides([item], [request], '資源CDを戻す', undefined, undefined, { onSaved: () => {
+        setResourceOrderHistory((history) => history.map((entry) => entry.id === lastResourceOrder.id ? { ...entry, restoreResource: undefined } : entry));
+      } })) return;
+      restoredItems = restoredItems.map((candidate) => candidate.itemId === item.itemId ? applyOptimisticOverride(candidate, request) : candidate);
+    }
     for (const snapshot of lastResourceOrder.orders) {
-      if (!enqueueResourceOrder(snapshot, '順番を戻す', () => setResourceOrderHistory((history) => history.flatMap((entry) => {
+      const saved = () => setResourceOrderHistory((history) => history.flatMap((entry) => {
         if (entry.id !== lastResourceOrder.id) return [entry];
         const orders = entry.orders.filter((order) => order !== snapshot);
-        return orders.length ? [{ ...entry, orders }] : [];
-      })))) notify('対象の工程が変わったため順番を戻せません。表示を確認してください。', 'error');
+        return orders.length || entry.restoreResource ? [{ ...entry, orders }] : [];
+      }));
+      if (!snapshot.itemIds.length) { saved(); continue; }
+      if (!enqueueResourceOrder(snapshot, '順番を戻す', saved, undefined, undefined, restoredItems))
+        notify('対象の工程が変わったため順番を戻せません。表示を確認してください。', 'error');
     }
   };
   const openEditorForItem = useCallback((item: GrindingPlanningBoardItem) => openEditor([item]), [openEditor]);
@@ -1014,6 +1059,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
           capacityPending={gantt.capacityPending} capacityError={gantt.capacityError} onCapacityChange={gantt.changeCapacity}
           pinMode={gantt.mode === 'forward' && view === 'resource' && pinMode} onTogglePin={togglePin}
           selectedItemIds={selectedItemIds} onToggleItem={toggleItem} onDueDrop={moveDueByDrag} onResourceReorder={reorderResourceByDrag}
+          onResourceMove={moveResourceInGantt} canMoveResource={(item, resource) => data.resources.includes(resource) && canMoveResource(item, resource)}
           disabled={interactionLocked || (pinMode && writeQueue.pending)} dragDisabled={allocation !== 'alternate' || writeBlocked || interactionLocked || !rankMutationReady} />
       ) : data && view === 'seiban' && focusedFseiban && focusItems.length > 0 ? (
         <div className="mt-2">

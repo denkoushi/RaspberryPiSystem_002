@@ -1,6 +1,7 @@
 import { GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS, GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS } from '@raspi-system/shared-types';
 import clsx from 'clsx';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { normalizeMachineName } from '../../productionSchedule/machineName';
 import { compareProcessOrder } from '../sortGrindingPlanningBoardItems';
@@ -14,7 +15,7 @@ import { PlanningBoardForwardQueuePopover } from './PlanningBoardForwardQueuePop
 import { dayLabel, dayToDate, jstDay } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH, GANTT_LABEL_WIDTH, PlanningBoardGanttRow } from './PlanningBoardGanttRow';
 
-import type { ForwardReorder } from './PlanningBoardForwardGanttRow';
+import type { ForwardDragPreview, ForwardMove, ForwardReorder } from './PlanningBoardForwardGanttRow';
 import type { ForwardQueueHandle } from './PlanningBoardForwardQueuePopover';
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttRowProps } from './PlanningBoardGanttRow';
@@ -22,6 +23,8 @@ import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours
 
 type Props = Pick<PlanningBoardGanttRowProps, 'disabled' | 'dragDisabled' | 'onToggleItem' | 'onDueDrop' | 'selectedItemIds' | 'resourceView'> & {
   onResourceReorder?: ForwardReorder;
+  onResourceMove?: ForwardMove;
+  canMoveResource?: (item: GrindingPlanningBoardItem, resource: string) => boolean;
   pinMode?: boolean;
   onTogglePin?: (item: GrindingPlanningBoardItem) => void;
   runsThroughBreaks?: ReadonlySet<string>;
@@ -82,6 +85,9 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     onPointerUp={laneOrder.onPointerUp} onPointerCancel={laneOrder.onPointerCancel} onLostPointerCapture={laneOrder.onPointerCancel}
     onKeyDown={(event) => laneOrder.onKeyDown(event, resource)}>{text}</button>;
   const forward = layout.mode === 'forward';
+  const [dragPreview, setDragPreview] = useState<ForwardDragPreview | null>(null);
+  const dragLanes = useMemo(() => layout.groups.flatMap((group) => group.resource
+    ? [{ resource: group.resource, bars: group.rows.flatMap((row) => row.bars) }] : []), [layout]);
   const queuePopover = useRef<ForwardQueueHandle>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const pan = useRef<HTMLDivElement | null>(null);
@@ -257,7 +263,11 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
             style={{ left: labelWidth + (day - layout.start + hour / 24) * dayWidth }} />))}
           {!forward && <div className="pointer-events-none absolute bottom-0 top-9 z-[1] w-px bg-emerald-400" style={{ left: labelWidth + (layout.today - layout.start) * dayWidth }} />}
           {layout.completedOnly && <p className="sticky left-0 w-fit p-3 text-sm text-slate-400">完了は「納期から」で表示</p>}
-          {layout.groups.map((group, index) => <div key={group.key} data-gantt-lane={group.resource ? '' : undefined} data-resource-code={group.resource ?? undefined}>
+          {layout.groups.map((group, index) => <div key={group.key} data-gantt-lane={group.resource ? '' : undefined} data-resource-code={group.resource ?? undefined}
+            data-gantt-lane-resource={group.resource ?? undefined}
+            style={{ opacity: dragPreview && group.resource && !dragPreview.allowed.has(group.resource) ? 0.3 : undefined,
+              outline: dragPreview?.drop?.resource === group.resource && group.resource !== dragPreview?.bar.resource ? '3px solid rgb(110 231 183)' : undefined,
+              outlineOffset: -3 }}>
             {interaction.resourceView && group.category && group.category !== layout.groups[index - 1]?.category && (
               <div data-testid="planning-gantt-category-header" className="relative flex h-6 bg-slate-800 text-[11px] font-bold">
                 <div className="sticky left-0 z-20 flex items-center bg-slate-800 px-2" style={{ width: labelWidth }}>
@@ -287,6 +297,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
                 pausesForBreaks={group.resource ? !runsThroughBreaks?.has(group.resource) : row.bars.some((bar) => !runsThroughBreaks?.has(bar.resource))}
                 hours={group.resource ? dailyHoursByResource[group.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS : Math.max(...row.bars.map((bar) => dailyHoursByResource[bar.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS), GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS)}
                 {...interaction}
+                lanes={dragLanes} resource={group.resource ?? undefined} preview={dragPreview} onDragPreview={setDragPreview}
                 focusedPartKey={showChain ? focusedPartKey : null} chainPositions={chainPositions} onFocusChain={focusChain}
                 label={group.resource ? resourceLabel(group.resource, group.label) : undefined} />;
             }) : group.rows.map((row) => <PlanningBoardGanttRow key={row.key} row={row} start={layout.start} width={width} dayWidth={dayWidth}
@@ -296,6 +307,11 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
         </div>
       </div>
       {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} layout={layout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} dragDisabled={interaction.dragDisabled || Boolean(interaction.pinMode)} />}
+      {dragPreview && createPortal(<div data-testid="planning-gantt-drag-ghost"
+        className="pointer-events-none fixed z-[100] rounded border-2 border-amber-400 bg-slate-950 px-2 py-1 text-[13px] text-slate-100"
+        style={{ left: dragPreview.x + 12, top: dragPreview.y + 12 }}>
+        <strong className="font-mono">{dragPreview.bar.resource}</strong> {dragPreview.bar.item.fhinmei || dragPreview.bar.item.fhincd}
+      </div>, document.body)}
     </section>
   );
 });
