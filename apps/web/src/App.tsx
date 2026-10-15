@@ -173,6 +173,10 @@ const KioskWorkInstructionEditorPage = kioskLazy(() =>
   }))
 );
 
+const MobileScanBenchPage = lazy(() =>
+  import('./pages/kiosk/MobileScanBenchPage').then((module) => ({ default: module.MobileScanBenchPage }))
+);
+
 function lazyRouteElement(element: ReactNode) {
   return <Suspense fallback={<RouteLoadingScreen />}>{element}</Suspense>;
 }
@@ -182,6 +186,7 @@ function App() {
   return (
     <HermesPageContextProvider>
       <Routes>
+      <Route path="/kiosk/mobile-placement/scan-bench" element={lazyRouteElement(<MobileScanBenchPage />)} />
       <Route path="/" element={<KioskRedirect />} />
       <Route path="/login" element={<LoginPage />} />
       <Route element={<CallAutoSwitchLayout />}>
