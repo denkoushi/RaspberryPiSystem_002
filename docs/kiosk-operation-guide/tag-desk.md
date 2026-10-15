@@ -1,7 +1,7 @@
 ---
 title: タグ管理
 routes: [/kiosk/tag-desk]
-keywords: [タグ, 社員証, 登録, 工具, 計測機器, 吊具, 付け替え, パスワード, チップ, 紐づけ, 付ける, 外す]
+keywords: [タグ, 社員証, 登録, 工具, 計測機器, 吊具, 付け替え, パスワード, 紐づけ, 付ける, 外す]
 audience: [operators]
 category: kiosk-operation-guide
 last-verified: 2026-10-15
