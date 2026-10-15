@@ -83,6 +83,16 @@ describe('PlanningBoardGanttView', () => {
     expect(late()).not.toHaveClass('bg-amber-400');
     expect(screen.queryByRole('group', { name: '製番の色分け凡例' })).not.toBeInTheDocument();
   });
+  it.each(['backward', 'forward'] as const)('orders legend chips by the left pane seiban priority in %s mode', (mode) => {
+    const items = [item({ itemId: 'x', fseiban: '26-9000', fhincd: 'P9' }), item({ itemId: 'b', fseiban: '26-2000', fhincd: 'P2' }),
+      item({ itemId: 'a', fseiban: '26-1000', fhincd: 'P1' })];
+    const layout = buildPlanningBoardGanttLayout({ items, mode, allocation: 'alternate', view: 'resource',
+      seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', scale: 2 });
+    render(<PlanningBoardGanttView {...props(items)} layout={layout} scale={2} colorBySeiban seibanOrder={['26-1000', '26-2000']} />);
+    const chips = within(screen.getByRole('group', { name: '製番の色分け凡例' })).getAllByRole('button').map((chip) => chip.textContent);
+    expect(chips).toEqual(['26-1000', '26-2000', '26-9000']);
+  });
+
   it.each(['backward', 'forward'] as const)('spotlights a seiban from the legend and clears it in %s mode', (mode) => {
     const items = [item(), item({ itemId: 'b', fseiban: '26-1002', fhincd: 'P2' }),
       item({ itemId: 'c', fhincd: 'P3', isCompleted: true }),
