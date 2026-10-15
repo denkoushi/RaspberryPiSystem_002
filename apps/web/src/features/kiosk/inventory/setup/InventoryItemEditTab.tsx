@@ -334,6 +334,18 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
                 <InventoryUnitPicker value={item.unit} accessPassword={accessPassword} disabled={mutations.setItemUnit.isPending} onChange={(unit) => { if (unit !== unitLabel(item)) void run(() => mutations.setItemUnit.mutateAsync({ itemId: item.id, unit }), `単位を「${unit}」にしました`, { kind: 'none' }, 'unit'); }} />
                 {localError('unit')}
               </section>
+              <form key={`${item.id}:${item.unitPrice}`} className="flex shrink-0 items-center gap-2" onSubmit={(event) => {
+                event.preventDefault();
+                const input = event.currentTarget.elements.namedItem('unitPrice') as HTMLInputElement;
+                const unitPrice = input.value === '' ? null : Number(input.value);
+                if (unitPrice !== (item.unitPrice ?? null)) void run(() => mutations.updateItemDetails.mutateAsync({ itemId: item.id, details: { unitPrice } }), '単価を保存しました', { kind: 'none' }, 'price');
+              }}>
+                <label htmlFor="inventory-unit-price" className={invEyebrow}>単価</label>
+                <input id="inventory-unit-price" name="unitPrice" type="number" inputMode="numeric" min="0" max="10000000" step="1" defaultValue={item.unitPrice ?? ''} placeholder="未設定" className={`${invField} h-11 w-28`} />
+                <span className="text-sm text-inv-muted">円 / {unitLabel(item)}</span>
+                <button type="submit" className={invButtonSm} disabled={mutations.updateItemDetails.isPending}>保存</button>
+                {localError('price')}
+              </form>
               {photo ? <div className="flex shrink-0 items-center gap-1.5" aria-label="写真の操作">
                 <span className={invEyebrow}>写真</span>
                 <button type="button" className={iconSm} aria-label={`写真${index + 1}を前へ`} disabled={index === 0 || pending} onClick={() => movePhoto(index, -1)}><ArrowLeftIcon /></button>

@@ -32,6 +32,10 @@ vi.mock('../../features/kiosk/inventory/setup/InventoryItemEditTab', () => ({
   InventoryItemEditTab: ({ accessPassword }: { accessPassword: string }) => <div>item-edit-open:{accessPassword}</div>
 }));
 
+vi.mock('../../features/kiosk/inventory/setup/InventoryDashboardTab', () => ({
+  InventoryDashboardTab: ({ onEditItems }: { onEditItems: () => void }) => <button onClick={onEditItems}>単価を入れる</button>
+}));
+
 function renderPage(state?: { importId: string }) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const view = render(
@@ -102,7 +106,8 @@ describe('KioskItemInventorySettingsPage', () => {
     expect(await screen.findByRole('tab', { name: '登録待ち' })).toHaveAttribute('aria-selected', 'true');
     expect(useInventoryImports).toHaveBeenCalledWith('2520', true);
     expect(screen.getByRole('button', { name: '登録する' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', { name: 'アイテム編集' }));
+    fireEvent.click(screen.getByRole('tab', { name: '集計' }));
+    fireEvent.click(screen.getByRole('button', { name: '単価を入れる' }));
     expect(screen.getByText('item-edit-open:2520')).toBeInTheDocument();
     prompt.mockRestore();
   });

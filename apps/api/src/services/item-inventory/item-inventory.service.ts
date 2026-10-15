@@ -1,3 +1,6 @@
+import { aggregateInventoryDashboard, dashboardPeriod } from './inventory-dashboard.js';
+import { normalizeToolValue, sortedValuePair, suggestVariantGroups, VARIANT_FIELDS } from './tool-value-variants.js';
+import type { InventoryVariantField } from '@raspi-system/shared-types';
 import { randomUUID } from 'node:crypto';
 import { Prisma, PrismaClient, InventoryImportPayloadStatus, InventoryNfcTagKind, InventoryRegistrationMode, InventoryTransactionAction } from '@prisma/client';
 
@@ -103,7 +106,7 @@ function locationDto(compartment: {
   stockQuantity: number;
   drawer: { drawerNumber: number; shelf: { area: string; shelfNumber: number } };
   itemTag: { uid: string } | null;
-  inventoryItem: { id: string; itemCode: string; name: string; model: string | null; usage: string | null; category: string | null; area: string | null; note: string | null; unit?: string | null; maker?: string | null; toolName?: string | null; workMaterial?: string | null; toolSize?: string | null; photos?: Array<{ id: string; photoIndex: number; photoUrl: string; originalFilename: string }> };
+  inventoryItem: { id: string; itemCode: string; name: string; model: string | null; usage: string | null; category: string | null; area: string | null; note: string | null; unit?: string | null; unitPrice?: number | null; maker?: string | null; toolName?: string | null; workMaterial?: string | null; toolSize?: string | null; photos?: Array<{ id: string; photoIndex: number; photoUrl: string; originalFilename: string }> };
 }) {
   return {
     id: compartment.id,
@@ -123,6 +126,7 @@ function locationDto(compartment: {
       area: compartment.inventoryItem.area,
       note: compartment.inventoryItem.note,
       unit: compartment.inventoryItem.unit ?? null,
+      unitPrice: compartment.inventoryItem.unitPrice ?? null,
       maker: compartment.inventoryItem.maker ?? null,
       toolName: compartment.inventoryItem.toolName ?? null,
       workMaterial: compartment.inventoryItem.workMaterial ?? null,
@@ -553,7 +557,9 @@ export class ItemInventoryService {
 
   /** Rename a choice and every item that uses it, in one transaction. */
   async renameToolFieldValue(field: InventoryOptionField, from: string, to: string) {
-    const source = cleanOptionValue(from);
+    cleanOptionValue(from);
+    // The source is an exact stored spelling (including legacy spaces/full-width text).
+    const source = from;
     const target = cleanOptionValue(to);
     if (source === target) return { field, value: target, updatedItems: 0 };
     return this.db.$transaction(async (tx) => {
@@ -573,6 +579,54 @@ export class ItemInventoryService {
     if (used > 0) throw new InventoryConflictError(`「${clean}」は${used}件のアイテムで使っています`);
     await this.db.inventoryToolFieldPreset.deleteMany({ where: { field, value: clean } });
     return { field, value: clean };
+  }
+
+  async dashboard(weeks: number, machine?: string, now = new Date()) {
+    const period = dashboardPeriod(weeks, now);
+    const [items, issues] = await Promise.all([
+      this.db.inventoryItem.findMany({
+        where: { deletedAt: null },
+        select: { id: true, name: true, toolName: true, maker: true, unit: true, unitPrice: true,
+          compartments: { select: { labelNumber: true, stockQuantity: true, drawer: { select: { shelf: { select: { area: true } } } } } } },
+      }),
+      this.db.inventoryTransaction.findMany({
+        where: { action: 'ISSUE', createdAt: { gte: period.previousStart, lte: period.end }, inventoryItem: { deletedAt: null } },
+        select: { inventoryItemId: true, delta: true, createdAt: true, reversedBy: { select: { id: true } },
+          compartment: { select: { drawer: { select: { shelf: { select: { area: true } } } } } } },
+      }),
+    ]);
+    return aggregateInventoryDashboard(items, issues, weeks, now, machine);
+  }
+
+  async toolValueVariants() {
+    const [values, dismissed] = await Promise.all([
+      this.listToolFieldValues(), this.db.inventoryToolValueDistinct.findMany({ select: { field: true, valueA: true, valueB: true } }),
+    ]);
+    let autoMergedValueCount = 0;
+    const groups = VARIANT_FIELDS.flatMap(field => {
+      const used = values[field].filter(row => row.count > 0);
+      autoMergedValueCount += used.length - new Set(used.map(row => normalizeToolValue(row.value))).size;
+      return suggestVariantGroups(field, used, dismissed);
+    });
+    return { groups, autoMergedValueCount };
+  }
+
+  async mergeToolValueVariants(field: InventoryVariantField, to: string, from: string[]) {
+    let updatedItems = 0;
+    for (const value of new Set(from)) {
+      if (value !== to) updatedItems += (await this.renameToolFieldValue(field, value, to)).updatedItems;
+    }
+    return { updatedItems };
+  }
+
+  async dismissToolValueVariants(field: InventoryVariantField, values: string[]) {
+    const unique = [...new Set(values)];
+    const pairs = unique.flatMap((a, index) => unique.slice(index + 1).map(b => {
+      const [valueA, valueB] = sortedValuePair(a, b);
+      return { field, valueA, valueB };
+    }));
+    await this.db.inventoryToolValueDistinct.createMany({ data: pairs, skipDuplicates: true });
+    return { dismissed: pairs.length };
   }
 
   async listUnits() {
@@ -604,8 +658,14 @@ export class ItemInventoryService {
   }
 
   /** Change one item's name and tool information; fields left out stay as they are. */
-  async updateItemDetails(itemId: string, input: Partial<Record<InventoryOptionField, string>>) {
-    const data: Partial<Record<InventoryOptionField, string | null>> = {};
+  async updateItemDetails(itemId: string, input: Partial<Record<InventoryOptionField, string>> & { unitPrice?: number | null }) {
+    const data: Partial<Record<InventoryOptionField, string | null>> & { unitPrice?: number | null } = {};
+    if (input.unitPrice !== undefined) {
+      if (input.unitPrice !== null && (!Number.isInteger(input.unitPrice) || input.unitPrice < 0 || input.unitPrice > 10_000_000)) {
+        throw new ApiError(400, '単価は0〜10000000円で入力してください');
+      }
+      data.unitPrice = input.unitPrice;
+    }
     for (const field of INVENTORY_OPTION_FIELDS) {
       const value = input[field];
       if (value === undefined) continue;

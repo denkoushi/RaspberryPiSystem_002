@@ -205,6 +205,22 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     return { tag: await services.inventory.resolveCompartmentByLabelNumber(labelNumber) };
   });
 
+  app.get('/item-inventory/dashboard', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const query = z.object({ weeks: z.enum(['4', '12', '26', '52']).default('12'), machine: z.string().trim().min(1).max(400).optional() }).parse(request.query ?? {});
+    return services.inventory.dashboard(Number(query.weeks), query.machine);
+  });
+  const variantField = z.enum(['maker', 'toolName', 'model', 'toolSize', 'workMaterial', 'usage']);
+  const variantValue = z.string().min(1).max(400).refine(value => value.trim().length > 0);
+  app.get('/item-inventory/tool-value-variants', { preHandler: [authorizeManageOrKiosk] }, async () => services.inventory.toolValueVariants());
+  app.post('/item-inventory/tool-value-variants/merge', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const body = z.object({ field: variantField, to: variantValue, from: z.array(variantValue).min(1).max(100) }).parse(request.body ?? {});
+    return services.inventory.mergeToolValueVariants(body.field, body.to, body.from);
+  });
+  app.post('/item-inventory/tool-value-variants/dismiss', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const body = z.object({ field: variantField, values: z.array(variantValue).min(2).max(100) }).parse(request.body ?? {});
+    return services.inventory.dismissToolValueVariants(body.field, body.values);
+  });
+
   app.get('/item-inventory/tool-field-options', { preHandler: [read] }, async () => ({ options: await services.inventory.listToolFieldOptions() }));
   const toolFieldValueBody = z.object({ field: z.enum(INVENTORY_OPTION_FIELDS), value: z.string().max(400) });
   app.get('/item-inventory/tool-field-values', { preHandler: [authorizeManageOrKiosk] }, async () => ({ values: await services.inventory.listToolFieldValues() }));
@@ -235,6 +251,7 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     return { item: await services.inventory.setItemUnit(id, body.unit) };
   });
   const itemDetailsBody = z.object({
+    unitPrice: z.number().int().min(0).max(10_000_000).nullable().optional(),
     name: z.string().max(400).optional(),
     maker: z.string().max(400).optional(),
     toolName: z.string().max(400).optional(),

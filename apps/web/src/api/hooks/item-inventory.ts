@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 
 import { captureSetupPinSession, sendSetupRequest } from '../../features/kiosk/inventory/setup/setupPinSession';
 import {
+  getInventoryDashboard, getInventoryValueVariants, mergeInventoryValueVariants, dismissInventoryValueVariants,
   addInventoryToolFieldValue,
   cancelInventoryTransaction,
   bindInventoryCompartment,
@@ -54,6 +55,8 @@ import {
 } from '../client';
 
 const inventoryKeys = {
+  dashboard: ['inventory-dashboard'],
+  variants: ['inventory-value-variants'],
   items: ['inventory-items'],
   locations: ['inventory-locations'],
   tags: ['inventory-tags'],
@@ -135,6 +138,8 @@ export function useInventoryMutations(accessPassword?: string, setup = false) {
     invalidateStock();
   };
   return {
+    mergeValueVariants: useMutation({ mutationFn: (input: Parameters<typeof mergeInventoryValueVariants>[0]) => send(() => mergeInventoryValueVariants(input, accessPassword ?? '')), onSuccess: invalidate }),
+    dismissValueVariants: useMutation({ mutationFn: (input: Parameters<typeof dismissInventoryValueVariants>[0]) => send(() => dismissInventoryValueVariants(input, accessPassword ?? '')), onSuccess: invalidate }),
     ingest: useMutation({ mutationFn: ingestInventoryMail, onSuccess: invalidate }),
     retryImport: useMutation({ mutationFn: (id: string) => send(() => retryInventoryImportMessage(id, accessPassword)), onSuccess: invalidate }),
     deleteImportPhoto: useMutation({
@@ -240,9 +245,20 @@ export function useInventoryMutations(accessPassword?: string, setup = false) {
     createUnit: useMutation({ mutationFn: (name: string) => send(() => createInventoryUnit(name, accessPassword)), onSuccess: invalidate }),
     setItemUnit: useMutation({ mutationFn: ({ itemId, unit }: { itemId: string; unit: string | null }) => send(() => setInventoryItemUnit(itemId, unit, accessPassword)), onSuccess: invalidate }),
     updateItemDetails: useMutation({
-      mutationFn: ({ itemId, details }: { itemId: string; details: Partial<Record<InventoryOptionField, string>> }) => send(() => updateInventoryItemDetails(itemId, details, accessPassword)),
+      mutationFn: ({ itemId, details }: { itemId: string; details: Partial<Record<InventoryOptionField, string>> & { unitPrice?: number | null } }) => send(() => updateInventoryItemDetails(itemId, details, accessPassword)),
       onSuccess: invalidate,
     }),
     replaceTag: useMutation({ mutationFn: ({ id, uid }: { id: string; uid: string }) => send(() => replaceInventoryItemTag(id, uid, accessPassword)), onSuccess: invalidate }),
   };
+}
+
+export function useInventoryDashboard(weeks: number, machine: string | undefined, accessPassword: string) {
+  const session = useMemo(() => captureSetupPinSession(accessPassword), [accessPassword]);
+  return useQuery({ queryKey: [...inventoryKeys.dashboard, weeks, machine, session.generation], placeholderData: previous => previous,
+    queryFn: () => sendSetupRequest(session, () => getInventoryDashboard(weeks, machine, accessPassword)) });
+}
+export function useInventoryValueVariants(accessPassword: string) {
+  const session = useMemo(() => captureSetupPinSession(accessPassword), [accessPassword]);
+  return useQuery({ queryKey: [...inventoryKeys.variants, session.generation],
+    queryFn: () => sendSetupRequest(session, () => getInventoryValueVariants(accessPassword)) });
 }
