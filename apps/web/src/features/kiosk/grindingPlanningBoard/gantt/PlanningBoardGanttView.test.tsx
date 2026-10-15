@@ -851,6 +851,20 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.pointerDown(document.body, { pointerType });
     expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
   });
+  it('does not open the hover popover while a clicked bar shows its chain', () => {
+    render(<PlanningBoardGanttView {...forwardProps()} />);
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    fireEvent.pointerDown(bar, { pointerType: 'mouse', button: 0 });
+    fireEvent.pointerUp(bar, { pointerType: 'mouse' });
+    fireEvent.click(bar);
+    expect(screen.getByTestId('planning-gantt-chain-strip')).toBeInTheDocument();
+    fireEvent.pointerEnter(bar, { pointerType: 'mouse' });
+    expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
+    fireEvent.click(bar);
+    expect(screen.queryByTestId('planning-gantt-chain-strip')).not.toBeInTheDocument();
+    fireEvent.pointerEnter(bar, { pointerType: 'mouse' });
+    expect(screen.getByRole('region', { name: /の次にやる順/ })).toBeInTheDocument();
+  });
   it('closes on Escape, viewport scroll, bar drag, scale, data and mode changes', () => {
     const values = forwardProps();
     const { rerender } = render(<PlanningBoardGanttView {...values} />);
