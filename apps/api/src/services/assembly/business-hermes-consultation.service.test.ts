@@ -86,7 +86,8 @@ function troubleFixture(fixtureId = consultationId) {
   const trouble = { ...basic, id: 'common/troubleshooting.md#2', heading: 'よくある困りごととその場の対処', body: '1. タグを離してかざし直す。' };
   const operationGuide = {
     isEnabled: () => true, matchStrength: () => 'screen' as const,
-    search: vi.fn(() => ({ results: [{ ...trouble, truncated: false }], total: 1, hasMore: false })),
+    search: vi.fn(() => ({ results: [{ ...trouble, truncated: false, score: 3 }], total: 1, hasMore: false })),
+    bestSection: vi.fn((): typeof trouble | null => trouble),
     detail: vi.fn((id: string) => ({ ...(id === basic.id ? basic : trouble), siblings: [{ id: basic.id, heading: basic.heading }] }))
   };
   const fetchImpl = vi.fn();
@@ -120,7 +121,7 @@ describe('deterministic trouble intake', () => {
 
   it.each([false, true])('logs only the trouble route fields (guideMiss=%s)', async (guideMiss) => {
     const fixture = troubleFixture();
-    if (guideMiss) fixture.operationGuide.search.mockReturnValue({ results: [], total: 0, hasMore: false });
+    if (guideMiss) fixture.operationGuide.bestSection.mockReturnValue(null);
     const append = vi.fn().mockResolvedValue(undefined);
     const service = new BusinessHermesConsultationService({ ...fixture.deps, receiptLog: { append } });
     const question = troubleQuestion + '。'.repeat(200);
@@ -142,8 +143,8 @@ describe('deterministic trouble intake', () => {
   ])('offers trouble first only for device trouble: $question / $clientDeviceId', async ({ question, clientDeviceId, offered }) => {
     const fixture = troubleFixture();
     const first = await fixture.service.chat({ consultationId, message: question, clientDeviceId });
-    expect(first.confirmation!.options!.includes(`不具合を知らせる：${question}`)).toBe(offered);
-    if (offered) expect(first.confirmation!.options![0]).toBe(`不具合を知らせる：${question}`);
+    expect(first.confirmation!.options!.includes('不具合を知らせる')).toBe(offered);
+    if (offered) expect(first.confirmation!.options![0]).toBe('不具合を知らせる');
     expect(fixture.fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -152,7 +153,7 @@ describe('deterministic trouble intake', () => {
     fixture.answerCache.suggest.mockResolvedValue('既存の質問');
     fixture.answerCache.candidates.mockResolvedValue(['記録の候補']);
     const first = await fixture.service.chat({ consultationId, message: troubleQuestion, clientDeviceId: fixture.device.id });
-    expect(first.confirmation!.options).toEqual([`不具合を知らせる：${troubleQuestion}`, `${CACHED_QUESTION_PREFIX}既存の質問`, '記録の候補', '自分の言葉で補足する']);
+    expect(first.confirmation!.options).toEqual(['不具合を知らせる', `${CACHED_QUESTION_PREFIX}既存の質問`, '記録の候補', '自分の言葉で補足する']);
   });
 
   it('creates an inquiry, notifies Slack, and persists guide and note without inference', async () => {
@@ -170,7 +171,7 @@ describe('deterministic trouble intake', () => {
     expect((await fixture.service.get(consultationId))?.messages.at(-1)).toMatchObject({ guide: result.guide,
       searchDiagnostics: [{ kind: 'business-hermes-route-v1', route: 'trouble_report', direct: true, known: false, guideMiss: false, threadId: 'thread-1' }] });
     expect(fixture.row.openQuestions).toEqual([]);
-    expect(fixture.operationGuide.search).toHaveBeenCalledWith(troubleQuestion, 1);
+    expect(fixture.operationGuide.bestSection).toHaveBeenCalledWith(troubleQuestion);
     expect(fixture.sourceResolver.resolveAndSearch).toHaveBeenCalledTimes(1);
     expect(fixture.fetchImpl).not.toHaveBeenCalled();
   });
@@ -224,7 +225,7 @@ describe('deterministic trouble intake', () => {
 
   it('reports a guide miss in plain text while still accepting the inquiry', async () => {
     const fixture = troubleFixture();
-    fixture.operationGuide.search.mockReturnValue({ results: [], total: 0, hasMore: false });
+    fixture.operationGuide.bestSection.mockReturnValue(null);
     const result = await reportTrouble(fixture.service);
     expect(result.guide).toBeUndefined();
     expect(result.message).toBe('この不調のその場の対処はまだ書かれていません。\n\n担当者に伝えました。受け取る端末の「お問い合わせ」に届いています。');
@@ -949,7 +950,7 @@ describe('BusinessHermesConsultationService', () => {
     const result = await service.chat({ consultationId, message: selection.option, selection });
     const measurement = (fixture.messages[2]!.searchDiagnostics as Array<Record<string, unknown>>)[0]!;
     expect(measurement).toMatchObject({ phase: 'answer', status: 'ready', recipeId: 'record-answer',
-      recipeVersion: '3', prefetch: 'adopted', question: '検査の対策は？', answerMessageId: fixture.messages[3]!.id });
+      recipeVersion: '4', prefetch: 'adopted', question: '検査の対策は？', answerMessageId: fixture.messages[3]!.id });
     expect(measurement.elapsedMs).toEqual(expect.any(Number));
     expect(measurement.inferences).toEqual([expect.objectContaining({ elapsedMs: expect.any(Number), runtimeReadyMs: expect.any(Number) })]);
     expect(result.consultation.messages.every((entry) => entry.searchDiagnostics.every((item) => item.kind !== 'business-hermes-learning-v1'))).toBe(true);
@@ -1031,11 +1032,25 @@ describe('BusinessHermesConsultationService', () => {
     const result = await service.chat({ consultationId, message: '不適合番号7943の対策を教えて' });
     expect(result.status).toBe('ready');
     expect(result.needsClarification).toBe(true);
-    expect(result.confirmation?.prompt).toContain('7943');
+    expect(result.confirmation?.prompt).toBe('知りたい内容');
+    expect(result.message).toBe('「不適合番号7943の対策を教えて」について調べます。下から選んでください。');
+    expect(result.confirmation?.options).toEqual([
+      '不適合の記録から答えを探す', '不適合の原因と確認点を見る', '要領書の作業手順を見る', '自分の言葉で補足する'
+    ]);
     expect(result.confirmation?.options).toHaveLength(4);
     expect((await service.get(consultationId))?.messages.at(-1)?.confirmation).toEqual(result.confirmation);
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(runtime.ensureReady).not.toHaveBeenCalled();
+  });
+
+  it('limits the question in the initial bubble to 430 characters and keeps a nonempty prompt', async () => {
+    const fixture = dbFixture(true);
+    const service = new BusinessHermesConsultationService({ db: fixture.db as never });
+    const question = '登録について'.repeat(80);
+    const result = await service.chat({ consultationId, message: question });
+    expect(result.message).toBe(`「${question.slice(0, 430)}」について調べます。下から選んでください。`);
+    expect(result.confirmation?.prompt).toBe('知りたい内容');
+    expect(fixture.messages.at(-1)?.content).toBe(result.message);
   });
 
   it.each(['handoff', undefined])('logs an LLM route only when present (%s), using the current question', async (routeDecision) => {
@@ -1052,24 +1067,27 @@ describe('BusinessHermesConsultationService', () => {
     } }]]);
   });
 
-  it.each(['screen', 'keyword', 'none'] as const)('offers operation recipes and only prefetches non-guide first recipes (match=%s)', async (strength) => {
-    const matches = strength === 'screen';
+  it.each([
+    { strength: 'screen', question: '自主検査', matches: true },
+    { strength: 'keyword', question: 'チップの登録手順', matches: true },
+    { strength: 'keyword', question: '社員証の登録', matches: false },
+    { strength: 'none', question: '未対応の操作方法', matches: false }
+  ] as const)('offers operation recipes and only prefetches non-guide first recipes ($strength / $question)', async ({ strength, question, matches }) => {
     const fixture = dbFixture(true);
-    const question = '自主検査の始め方';
     const state = { message: '画面の手順を確認しました。', needsClarification: false,
       routeDecision: matches ? 'operation_guide' : 'record_search', ...(matches ? { guideMiss: true } : {}) };
     const append = vi.fn().mockResolvedValue(undefined);
     const fetchImpl = vi.fn().mockImplementation(async () => new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: JSON.stringify(state) } })}\n\n`));
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, receiptLog: { append },
       operationGuide: { matchStrength: () => strength, isEnabled: () => true,
-        search: () => ({ results: [], total: 0, hasMore: false }), detail: () => null },
+        search: () => ({ results: [], total: 0, hasMore: false }), bestSection: () => null, detail: () => null },
       answerCache: { suggest: vi.fn().mockResolvedValue(null), answer: vi.fn().mockResolvedValue(null) },
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
     const first = await service.chat({ consultationId, message: question });
     expect(first.confirmation?.options).toEqual([
-      ...(strength === 'screen' ? [`操作の方法を調べる：${question}`] : []),
-      `記録をもとに回答：${question}`, `原因と確認点を調べる：${question}`, `公開要領の手順を調べる：${question}`,
-      ...(strength === 'keyword' ? [`操作の方法を調べる：${question}`] : []), '自分の言葉で補足する'
+      ...(matches ? ['画面の操作方法を見る'] : []),
+      '不適合の記録から答えを探す', '不適合の原因と確認点を見る', '要領書の作業手順を見る',
+      ...(strength === 'keyword' && !matches ? ['画面の操作方法を見る'] : []), '自分の言葉で補足する'
     ]);
     if (matches) expect(fetchImpl).not.toHaveBeenCalled();
     const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
@@ -1095,13 +1113,13 @@ describe('BusinessHermesConsultationService', () => {
     }
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const payload = JSON.parse(JSON.parse(fetchImpl.mock.calls[0]![1].body).input[0].content);
-    expect(payload.questionRecipe).toMatchObject({ id: matches ? 'operation-guide' : 'record-answer', version: '3', speculative: true });
+    expect(payload.questionRecipe).toMatchObject({ id: matches ? 'operation-guide' : 'record-answer', version: '4', speculative: true });
     expect(payload.sourceDefinitions.map((source: { kind: string }) => source.kind)).toEqual(['nonconformity', 'work_instruction', 'system_operation_guide']);
     expect(fixture.messages.at(-1)?.searchDiagnostics).toEqual(expect.arrayContaining([
       { kind: 'business-hermes-route-v1', route: state.routeDecision, guideMiss: matches }
     ]));
     expect(fixture.messages[2]?.searchDiagnostics).toEqual(expect.arrayContaining([
-      expect.objectContaining({ recipeId: matches ? 'operation-guide' : 'record-answer', recipeVersion: '3', prefetch: 'adopted' })
+      expect.objectContaining({ recipeId: matches ? 'operation-guide' : 'record-answer', recipeVersion: '4', prefetch: 'adopted' })
     ]));
   });
 
@@ -1125,7 +1143,7 @@ describe('BusinessHermesConsultationService', () => {
       const first = await service.chat({ consultationId, message: query });
       expect(fetchImpl).not.toHaveBeenCalled();
       const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
-      expect(selection.option).toBe(`操作の方法を調べる：${query}`);
+      expect(selection.option).toBe('画面の操作方法を見る');
       const answer = await service.chat({ consultationId, message: selection.option, selection });
       expect(fetchImpl).not.toHaveBeenCalled();
       expect(answer).toMatchObject({ status: 'ready', needsClarification: false, guide: { screen: '自主検査' } });
@@ -1152,8 +1170,9 @@ describe('BusinessHermesConsultationService', () => {
     const fixture = dbFixture(true);
     const fetchImpl = vi.fn().mockImplementation(async () => new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: JSON.stringify({ message: '通常の回答', needsClarification: false }) } })}\n\n`));
     const search = vi.fn(() => ({ results: [], total: 0, hasMore: false }));
+    const bestSection = vi.fn(() => null);
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
-      operationGuide: { matchStrength: () => 'screen', isEnabled: () => true, search, detail: () => null },
+      operationGuide: { matchStrength: () => 'screen', isEnabled: () => true, search, bestSection, detail: () => null },
       answerCache: { suggest: vi.fn().mockResolvedValue(null), answer: vi.fn().mockResolvedValue(null) },
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
     const first = await service.chat({ consultationId, message: '自主検査の始め方' });
@@ -1164,7 +1183,33 @@ describe('BusinessHermesConsultationService', () => {
     expect(answer.status).toBe('ready');
     expect(fetchImpl).toHaveBeenCalledOnce();
     expect(search).not.toHaveBeenCalled();
+    expect(bestSection).not.toHaveBeenCalled();
   });
+
+  it.each(['記録をもとに回答', '原因と確認点を調べる', '公開要領の手順を調べる', '操作の方法を調べる', '不具合を知らせる'])(
+    'falls back to the LLM for a persisted legacy option: %s', async (label) => {
+      const fixture = dbFixture(true);
+      const question = 'チップの登録手順';
+      const selection = { prompt: `「${question}」について、知りたい内容を選んでください。`, option: `${label}：${question}` };
+      const fetchImpl = vi.fn().mockImplementation(async () => completedResponse('通常の回答'));
+      const bestSection = vi.fn(() => null);
+      const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
+        operationGuide: { matchStrength: () => 'screen', isEnabled: () => true, bestSection,
+          search: () => ({ results: [], total: 0, hasMore: false }), detail: () => null },
+        answerCache: { suggest: vi.fn().mockResolvedValue(null), answer: vi.fn().mockResolvedValue(null) },
+        config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
+      const first = await service.chat({ consultationId, message: question });
+      fixture.messages.at(-1)!.content = 'まず、知りたい内容を選んでください。';
+      fixture.messages.at(-1)!.confirmation = { ...first.confirmation, prompt: selection.prompt, options: [selection.option, '自分の言葉で補足する'] };
+      const result = await service.chat({ consultationId, message: selection.option, selection });
+      expect(result).toMatchObject({ status: 'ready', message: '通常の回答', needsClarification: false });
+      expect(fetchImpl).toHaveBeenCalledOnce();
+      expect(bestSection).not.toHaveBeenCalled();
+      const payload = JSON.parse(JSON.parse(fetchImpl.mock.calls[0]![1].body).input[0].content);
+      expect(payload.questionRecipe).toBeUndefined();
+      expect(payload.confirmedIntent).toMatchObject({ originalQuestion: question, purpose: selection.option, confirmationComplete: true });
+    }
+  );
 
   it('passes the original question and confirmed purpose to the first native Hermes turn', async () => {
     const fixture = dbFixture(true);
@@ -1176,7 +1221,7 @@ describe('BusinessHermesConsultationService', () => {
     const answer = await service.chat({ consultationId, message: selection.option, selection });
     const payload = JSON.parse(JSON.parse(fetchImpl.mock.calls[0]![1].body).input[0].content);
     expect(payload.confirmedIntent).toEqual({ originalQuestion: '穴の裏が膨らんだ事例の対策は？', purpose: selection.option, confirmationComplete: false });
-    expect(payload.questionRecipe).toMatchObject({ id: 'record-answer', version: '3', speculative: true });
+    expect(payload.questionRecipe).toMatchObject({ id: 'record-answer', version: '4', speculative: true });
     expect(payload.sourceDefinitions.map((source: { kind: string }) => source.kind)).toEqual(['nonconformity', 'work_instruction']);
     expect(payload.sourceDefinitions.find((source: { kind: string }) => source.kind === 'nonconformity')).toMatchObject({
       recordUnit: '1行 = 1件の不適合記録',
@@ -1530,7 +1575,7 @@ describe('BusinessHermesConsultationService', () => {
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
     const first = await service.chat({ consultationId, message: '不適合番号7943の再発防止策は？' });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(first.confirmation?.options?.[0]).toContain('7943');
+    expect(first.confirmation?.options?.[0]).toBe('不適合の記録から答えを探す');
     expect(fixture.messages).toHaveLength(2);
     expect(fixture.row.hermesConversationId).toBe('hermes-conversation-1');
     const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };

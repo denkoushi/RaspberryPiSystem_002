@@ -1,10 +1,10 @@
 ---
 title: 持出フロー
 routes: [/kiosk/tag]
-keywords: [持出, 返却, タグ, 社員証, かざす, 工具, 登録, 取消, 反応しない]
+keywords: [持出, 返却, タグ, 社員証, かざす, 工具, 取消, 反応しない]
 audience: [operators]
 category: kiosk-operation-guide
-last-verified: 2026-10-14
+last-verified: 2026-10-15
 ---
 
 # 持出フロー

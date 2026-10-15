@@ -42,10 +42,27 @@ function normalize(value: string): string {
   return value.normalize('NFKC').toLowerCase().replace(/\s+/g, '');
 }
 
+// Exact terms only: 超硬チップ (a carbide insert) must not become a tag-screen question.
+const QUESTION_TERM_SYNONYMS: Record<string, string> = { 'チップ': 'タグ', 'icチップ': 'タグ' };
+const HOW_TO_SUFFIXES = ['手順', 'やり方', '方法', '始め方', '使い方'];
+const HOW_TO_SUFFIX_PATTERN = new RegExp(HOW_TO_SUFFIXES.join('|'), 'u');
+const QUESTION_SUFFIX_PATTERN = new RegExp(`(?:教えて|ください|したい|${HOW_TO_SUFFIXES.join('|')}|とは|ですか|できない|しない|ない)+$`, 'u');
+const QUESTION_TERM_SEPARATOR = /から|まで|より|って|や(?!り方)|[のをがはにでとへ、。？！?!\s・]+/;
+
+export function isOperationHowToQuestion(question: string): boolean {
+  const normalized = question.normalize('NFKC').toLowerCase();
+  return /どうやって|どうすれば|仕方|操作/u.test(normalized)
+    || normalized.split(QUESTION_TERM_SEPARATOR).some((term) => {
+      const removed = normalize(term).match(QUESTION_SUFFIX_PATTERN)?.[0];
+      return removed !== undefined && HOW_TO_SUFFIX_PATTERN.test(removed);
+    });
+}
+
 function questionTerms(question: string): string[] {
   const terms = question.normalize('NFKC').toLowerCase()
-    .split(/から|まで|より|って|[のをがはにでとへや、。？！?!\s・]+/)
-    .map((term) => normalize(term).replace(/(?:教えて|ください|したい|方法|やり方|始め方|使い方|手順|とは|ですか|できない|しない|ない)+$/u, ''))
+    .split(QUESTION_TERM_SEPARATOR)
+    .map((term) => normalize(term).replace(QUESTION_SUFFIX_PATTERN, ''))
+    .map((term) => QUESTION_TERM_SYNONYMS[term] ?? term)
     .filter((term) => term.length >= 2);
   const whole = normalize(question);
   return [...new Set(terms.length ? terms : whole ? [whole] : [])];
@@ -117,18 +134,37 @@ export class KioskOperationGuideIndex {
   }
 
   search(query: string, limit: number): {
-    results: Array<KioskOperationGuideSection & { truncated: boolean }>;
+    results: Array<KioskOperationGuideSection & { truncated: boolean; score: number }>;
     total: number;
     hasMore: boolean;
   } {
-    const terms = questionTerms(query);
-    const ranked = this.sections.map((section, index) => ({ section, index, ...scoreSection(section, terms) }))
-      .filter(({ score }) => score > 0)
-      .sort((a, b) => b.score - a.score || a.index - b.index);
-    const results = ranked.slice(0, limit).map(({ section }) => ({
-      ...section, body: section.body.slice(0, 600), truncated: section.body.length > 600
+    const ranked = this.rank(query);
+    const results = ranked.slice(0, limit).map(({ section, score }) => ({
+      ...section, body: section.body.slice(0, 600), truncated: section.body.length > 600, score
     }));
     return { results, total: ranked.length, hasMore: results.length < ranked.length };
+  }
+
+  private rank(query: string) {
+    const terms = questionTerms(query);
+    return this.sections.map((section, index) => ({ section, index, ...scoreSection(section, terms) }))
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score || a.index - b.index);
+  }
+
+  /**
+   * The single section to answer with, or null when the question cannot be
+   * attributed to one screen: a keyword-only top score shared with a section of
+   * another file (e.g. 登録 alone). A screen-name hit keeps the first file in
+   * order even when several screen names share the word (持出 and 吊具 持出).
+   */
+  bestSection(query: string): KioskOperationGuideSection | null {
+    const ranked = this.rank(query);
+    const top = ranked[0];
+    if (!top) return null;
+    const rival = ranked.find(({ section }) => section.file !== top.section.file);
+    if (!top.screenHit && rival?.score === top.score) return null;
+    return top.section;
   }
 
   detail(id: string): (KioskOperationGuideSection & { siblings: Array<{ id: string; heading: string }> }) | null {

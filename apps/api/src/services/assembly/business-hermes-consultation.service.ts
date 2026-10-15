@@ -49,7 +49,7 @@ import {
 import { isSignageCanvasLayout } from '../signage/signage-layout.types.js';
 import { businessHermesSourceDefinition, businessHermesSourceDefinitionList } from './business-hermes-source-adapters.js';
 
-import { kioskOperationGuide, kioskOperationGuideSourceDefinition, type KioskOperationGuideIndex } from './kiosk-operation-guide.service.js';
+import { isOperationHowToQuestion, kioskOperationGuide, kioskOperationGuideSourceDefinition, type KioskOperationGuideIndex } from './kiosk-operation-guide.service.js';
 
 export type { BusinessHermesConsultationConfirmation } from './business-hermes-responses.js';
 export type { ConsultationEvidence } from './business-hermes-evidence.js';
@@ -134,7 +134,7 @@ export type BusinessHermesConsultationChatResponse = {
 
 type ConsultationDeps = {
   receiptLog?: Pick<ReceiptLog, 'append'>;
-  operationGuide?: Pick<KioskOperationGuideIndex, 'matchStrength' | 'isEnabled' | 'search' | 'detail'>;
+  operationGuide?: Pick<KioskOperationGuideIndex, 'matchStrength' | 'isEnabled' | 'search' | 'detail' | 'bestSection'>;
   db?: PrismaClient;
   fetchImpl?: FetchLike;
   runtime?: LocalLlmRuntimeControllerPort | null;
@@ -213,7 +213,7 @@ const MAX_HISTORY = 40;
 const INTENT_CONFIRMATION_TITLE = '相談の目的';
 const INTENT_SUPPLEMENT = '自分の言葉で補足する';
 const INTENT_SUPPLEMENT_PROMPT = '知りたい内容や対象について、ご自分の言葉で補足してください。';
-const QUESTION_RECIPE_VERSION = '3';
+const QUESTION_RECIPE_VERSION = '4';
 const SIGNAGE_CONFIRMATION_TITLE = 'サイネージ設定の確認';
 const SIGNAGE_APPROVE_OPTION = 'このサイネージ設定を適用する';
 const SIGNAGE_REJECT_OPTION = 'このサイネージ設定は適用しない';
@@ -299,14 +299,13 @@ export function troubleCategory(question: string): 'card_reader' | 'barcode_read
   return 'other';
 }
 
-function questionRecipes(question: string) {
-  const subject = question.length <= 70 ? question : `${question.slice(0, 69)}…`;
+function questionRecipes() {
   return [
-    { id: 'record-answer', version: QUESTION_RECIPE_VERSION, option: `記録をもとに回答：${subject}`, prompt: '元の質問の対象と用件を保ち、記録にある答えを短く示す。' },
-    { id: 'record-cause', version: QUESTION_RECIPE_VERSION, option: `原因と確認点を調べる：${subject}`, prompt: '元の質問の対象について、記録された原因と確認点を示す。' },
-    { id: 'published-procedure', version: QUESTION_RECIPE_VERSION, option: `公開要領の手順を調べる：${subject}`, prompt: '元の質問の対象について、公開作業要領の作業・検査手順を示す。' },
-    { id: 'operation-guide', version: QUESTION_RECIPE_VERSION, option: `操作の方法を調べる：${subject}`, prompt: '元の質問の対象について、system_operation_guide だけを検索し、該当する節の手順を画面名を添えて3行程度で示す。該当が無いときは推測せず「この操作の説明はまだありません。『お問い合わせ』から聞いてください」と返す。' },
-    { id: 'trouble-report', version: QUESTION_RECIPE_VERSION, option: `不具合を知らせる：${subject}`, prompt: '端末の不調を既知の通知と照合し、その場の対処と受付結果を示す。' }
+    { id: 'record-answer', version: QUESTION_RECIPE_VERSION, option: '不適合の記録から答えを探す', prompt: '元の質問の対象と用件を保ち、記録にある答えを短く示す。' },
+    { id: 'record-cause', version: QUESTION_RECIPE_VERSION, option: '不適合の原因と確認点を見る', prompt: '元の質問の対象について、記録された原因と確認点を示す。' },
+    { id: 'published-procedure', version: QUESTION_RECIPE_VERSION, option: '要領書の作業手順を見る', prompt: '元の質問の対象について、公開作業要領の作業・検査手順を示す。' },
+    { id: 'operation-guide', version: QUESTION_RECIPE_VERSION, option: '画面の操作方法を見る', prompt: '元の質問の対象について、system_operation_guide だけを検索し、該当する節の手順を画面名を添えて3行程度で示す。該当が無いときは推測せず「この操作の説明はまだありません。『お問い合わせ』から聞いてください」と返す。' },
+    { id: 'trouble-report', version: QUESTION_RECIPE_VERSION, option: '不具合を知らせる', prompt: '端末の不調を既知の通知と照合し、その場の対処と受付結果を示す。' }
   ];
 }
 
@@ -694,7 +693,7 @@ export function toConsultationView(row: {
 }
 
 export class BusinessHermesConsultationService {
-  private readonly operationGuide: Pick<KioskOperationGuideIndex, 'matchStrength' | 'isEnabled' | 'search' | 'detail'>;
+  private readonly operationGuide: Pick<KioskOperationGuideIndex, 'matchStrength' | 'isEnabled' | 'search' | 'detail' | 'bestSection'>;
   private readonly db: PrismaClient;
   private readonly deps: ConsultationDeps;
   private readonly scanResolver?: Pick<BusinessHermesScanResolver, 'resolve'>;
@@ -953,9 +952,9 @@ export class BusinessHermesConsultationService {
       return this.failure(consultationId, 'HERMES_INVALID_SELECTION');
     }
     const directGuide = Boolean(pendingIntent && selection && intentQuestion
-      && questionRecipes(intentQuestion).some((recipe) => recipe.id === 'operation-guide' && recipe.option === selection.option));
+      && questionRecipes().some((recipe) => recipe.id === 'operation-guide' && recipe.option === selection.option));
     const directTrouble = Boolean(pendingIntent && selection && intentQuestion
-      && questionRecipes(intentQuestion).some((recipe) => recipe.id === 'trouble-report' && recipe.option === selection.option));
+      && questionRecipes().some((recipe) => recipe.id === 'trouble-report' && recipe.option === selection.option));
     const candidate = prefetches.get(consultationId);
     const matchingPrefetch = candidate && !directGuide && !directTrouble && !scanValue && selection
       && candidate.selection.prompt === selection.prompt && candidate.selection.option === selection.option
@@ -966,7 +965,7 @@ export class BusinessHermesConsultationService {
       measurement.question = intentQuestion ?? message;
       measurement.questionStartedAt = intentIndex > 0 ? consultation.messages[intentIndex - 1]?.createdAt : measurement.startedAt;
       measurement.purpose = selection?.option ?? message;
-      measurement.recipeId = intentQuestion && selection ? questionRecipes(intentQuestion).find((entry) => entry.option === selection.option)?.id : undefined;
+      measurement.recipeId = intentQuestion && selection ? questionRecipes().find((entry) => entry.option === selection.option)?.id : undefined;
       measurement.prefetch = matchingPrefetch ? 'matched' : candidate ? 'discarded' : 'none';
     }
     if (!matchingPrefetch) discardPrefetch(consultationId);
@@ -1082,7 +1081,7 @@ export class BusinessHermesConsultationService {
     // Display deterministic question recipes immediately; inference runs independently.
     if ((firstQuestion && !this.deps.openJevGrounder) || supplementRequested) {
       if (measurement) measurement.phase = 'choice';
-      const prompt = firstQuestion ? `「${message.slice(0, 430)}」について、知りたい内容を選んでください。` : INTENT_SUPPLEMENT_PROMPT;
+      const prompt = firstQuestion ? '知りたい内容' : INTENT_SUPPLEMENT_PROMPT;
       const cachedQuestion = firstQuestion && consultation.relatedIdentifiers.length === 0
         && consultation.confirmedFacts.length === 0 && !consultation.summary
         ? await this.answerCache.suggest(message, externalSignal) : null;
@@ -1097,7 +1096,7 @@ export class BusinessHermesConsultationService {
         ...trouble.map((recipe) => recipe.option),
         ...(cachedQuestion ? [CACHED_QUESTION_PREFIX + cachedQuestion] : []),
         ...(sourceChoices.length ? sourceChoices : recipes.filter((recipe) => recipe.id !== 'trouble-report').map((recipe) => recipe.option)), INTENT_SUPPLEMENT] } : undefined;
-      const answer = firstQuestion ? 'まず、知りたい内容を選んでください。' : prompt;
+      const answer = firstQuestion ? `「${message.slice(0, 430)}」について調べます。下から選んでください。` : prompt;
       await this.db.businessHermesConsultationMessage.create({ data: {
         consultationId, role: 'assistant', content: answer, evidence: asJson([]),
         ...(confirmation ? { confirmation: asJson(confirmation) } : {})
@@ -1432,7 +1431,7 @@ export class BusinessHermesConsultationService {
   }
 
   private guideForQuestion(intentQuestion: string): BusinessHermesOperationGuideDisplay | undefined {
-    const top = this.operationGuide.search(intentQuestion, 1).results[0];
+    const top = this.operationGuide.bestSection(intentQuestion);
     const detail = top ? this.operationGuide.detail(top.id) : null;
     const basic = detail?.heading === '基本の手順' ? detail
       : detail?.siblings.find((section) => section.heading === '基本の手順');
@@ -1514,15 +1513,15 @@ export class BusinessHermesConsultationService {
       ...(guide ? { guide } : {}), needsClarification: false, clarificationMessage: null, consultationId, consultation: updated };
   }
 
-  // The operation-guide recipe leads only when the question names a
-  // guide screen; a keyword-only hit appends it last so record questions keep their flow.
+  // The operation-guide recipe follows trouble for screen hits or keyword how-to questions.
+  // Other keyword hits append it last so record questions keep their flow.
   private displayedQuestionRecipes(question: string, clientDeviceId?: string) {
-    const recipes = questionRecipes(question);
+    const recipes = questionRecipes();
     const existing = recipes.filter((recipe) => recipe.id !== 'operation-guide' && recipe.id !== 'trouble-report');
     const trouble = clientDeviceId && troubleCategory(question) !== null ? recipes.filter((recipe) => recipe.id === 'trouble-report') : [];
     const guide = recipes.filter((recipe) => recipe.id === 'operation-guide');
     const strength = this.operationGuide.isEnabled() ? this.operationGuide.matchStrength(question) : 'none';
-    if (strength === 'screen') return [...trouble, ...guide, ...existing];
+    if (strength === 'screen' || (strength === 'keyword' && isOperationHowToQuestion(question))) return [...trouble, ...guide, ...existing];
     if (strength === 'keyword') return [...trouble, ...existing, ...guide];
     return [...trouble, ...existing];
   }
@@ -1531,7 +1530,7 @@ export class BusinessHermesConsultationService {
     intentQuestion?: string, availableEvidence: JsonRecord[] = [], scanResolution?: BusinessHermesScanResolution, speculative = false,
     sourceGrounding?: BusinessHermesGroundedSearch, displayedEvidence: JsonRecord[] = [],
     previousConditions?: Readonly<Record<string, string | number>>): JsonRecord {
-    const recipe = intentQuestion && selection ? questionRecipes(intentQuestion).find((entry) => entry.option === selection.option) : undefined;
+    const recipe = intentQuestion && selection ? questionRecipes().find((entry) => entry.option === selection.option) : undefined;
     return {
       caseState: { title: consultation.title, relatedIdentifiers: consultation.relatedIdentifiers, confirmedFacts: consultation.confirmedFacts,
         openQuestions: speculative ? [] : consultation.openQuestions, summary: consultation.summary },

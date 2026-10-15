@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { env } from '../../config/env.js';
 import { logger } from '../../lib/logger.js';
-import { kioskOperationGuide, KioskOperationGuideIndex, resetKioskOperationGuideForTests } from './kiosk-operation-guide.service.js';
+import { isOperationHowToQuestion, kioskOperationGuide, KioskOperationGuideIndex, resetKioskOperationGuideForTests } from './kiosk-operation-guide.service.js';
 
 vi.mock('../../config/env.js', () => ({ env: { KIOSK_OPERATION_GUIDE_DIR: undefined } }));
 vi.mock('../../lib/logger.js', () => ({ logger: { warn: vi.fn() } }));
@@ -17,6 +17,18 @@ function screenDocument(title: string, body: string): string {
   return `---\ntitle: ${title}\nroutes: ["/kiosk/example"]\nkeywords: ['${title}', 端末, ABC]\naudience: 作業者\ncategory: kiosk-operation-guide\nlast-verified: 2026-10-14\n---\n# ${title}\n`
     + headings.map((heading, index) => `\n## ${heading}\n${index === 1 ? body : '画面を確認してください。'}\n`).join('');
 }
+
+describe('isOperationHowToQuestion', () => {
+  it.each([
+    ['チップの登録手順', true], ['タグのやり方', true], ['登録方法', true],
+    ['自主検査の始め方', true], ['タグの使い方', true], ['登録手順を教えてください', true],
+    ['登録方法教えてください', true], ['どうやって登録する', true], ['どうすれば登録できる', true],
+    ['登録の仕方', true], ['画面操作', true], ['社員証の登録', false],
+    ['不適合の原因', false], ['方法書', false], ['', false]
+  ])('classifies %s as %s', (question, expected) => {
+    expect(isOperationHowToQuestion(question)).toBe(expected);
+  });
+});
 
 describe('KioskOperationGuideIndex', () => {
   let dir: string;
@@ -60,9 +72,49 @@ describe('KioskOperationGuideIndex', () => {
     expect(found.total).toBe(4);
     expect(found.results.every(({ file }) => file === 'self-inspection.md')).toBe(true);
     expect(found.results.map(({ heading }) => heading)).toEqual([headings[1], headings[0], headings[2], headings[3]]);
-    expect(found.results[0]).toMatchObject({ id: 'self-inspection.md#1', body: longBody.slice(0, 600), truncated: true });
+    expect(found.results[0]).toMatchObject({ id: 'self-inspection.md#1', body: longBody.slice(0, 600), truncated: true, score: 10 });
     expect(found.results[1]?.truncated).toBe(false);
     expect(index.search('自主検査の始め方', 1)).toMatchObject({ total: 4, hasMore: true, results: [found.results[0]] });
+  });
+
+  it.each(['チップの登録', 'icチップの登録', 'ＩＣチップの登録手順', 'チップのやり方'])('maps %s to a tag screen', (question) => {
+    writeFileSync(path.join(dir, 'tag-desk.md'), screenDocument('タグ管理', 'タグを登録します。'));
+    writeFileSync(path.join(dir, 'assembly-library.md'), screenDocument('手順書', '登録します。'));
+    const index = KioskOperationGuideIndex.fromDirectory(dir);
+    expect(index.search(question, 1).results[0]).toMatchObject({ file: 'tag-desk.md', screen: 'タグ管理' });
+    expect(index.matchStrength(question)).toBe('screen');
+  });
+
+  it('keeps a carbide-insert question away from the tag screen', () => {
+    writeFileSync(path.join(dir, 'tag-desk.md'), screenDocument('タグ管理', 'タグを登録します。'));
+    const index = KioskOperationGuideIndex.fromDirectory(dir);
+    expect(index.search('超硬チップの欠け', 1).results).toEqual([]);
+    expect(index.matchStrength('超硬チップの欠け')).toBe('none');
+  });
+
+  it('keeps the first file when several screen names share the word', () => {
+    writeFileSync(path.join(dir, 'borrow-return.md'), screenDocument('持出フロー', '工具を持ち出します。'));
+    writeFileSync(path.join(dir, 'rigging-borrow.md'), screenDocument('吊具 持出', '吊具を持ち出します。'));
+    const index = KioskOperationGuideIndex.fromDirectory(dir);
+    expect(index.bestSection('持出のやり方')).toMatchObject({ file: 'borrow-return.md' });
+  });
+
+  it('returns null for a top-score tie across files, including after ties within one file', () => {
+    const index = KioskOperationGuideIndex.fromDirectory(dir);
+    const found = index.search('ABC', 20);
+    expect(found.results.slice(0, 5).map(({ file }) => file)).toEqual([
+      'loan.md', 'loan.md', 'loan.md', 'loan.md', 'self-inspection.md'
+    ]);
+    expect(found.results.every(({ score }) => score === 3)).toBe(true);
+    expect(index.bestSection('ABC')).toBeNull();
+    expect(index.bestSection('該当しない質問')).toBeNull();
+    expect(KioskOperationGuideIndex.empty().bestSection('ABC')).toBeNull();
+  });
+
+  it('returns the first section for a tie within one file and preserves full text', () => {
+    const index = KioskOperationGuideIndex.fromDirectory(dir);
+    expect(index.bestSection('貸出')).toMatchObject({ id: 'loan.md#0' });
+    expect(index.bestSection('自主検査')).toMatchObject({ id: 'self-inspection.md#1', body: longBody });
   });
 
   it('requires title or keyword hits for matching and normalizes case, width and request terms', () => {

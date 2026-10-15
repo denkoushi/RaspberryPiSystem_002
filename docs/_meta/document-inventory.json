@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 757,
-    "totalLines": 187968,
-    "totalBytes": 14916212,
+    "totalLines": 187994,
+    "totalBytes": 14923696,
     "withFrontmatter": 363,
     "withStatus": 169,
     "sourceOfTruthDeclared": 116,
@@ -22855,7 +22855,7 @@
     {
       "path": "docs/kiosk-operation-guide/borrow-return.md",
       "lineCount": 38,
-      "byteSize": 2131,
+      "byteSize": 2123,
       "hasFrontmatter": true,
       "title": "持出フロー",
       "status": null,
@@ -23214,8 +23214,8 @@
     },
     {
       "path": "docs/kiosk-operation-guide/production-schedule-planning-board.md",
-      "lineCount": 59,
-      "byteSize": 5838,
+      "lineCount": 69,
+      "byteSize": 8755,
       "hasFrontmatter": true,
       "title": "製番ボード",
       "status": null,
@@ -23365,7 +23365,7 @@
     {
       "path": "docs/kiosk-operation-guide/tag-desk.md",
       "lineCount": 41,
-      "byteSize": 2413,
+      "byteSize": 2454,
       "hasFrontmatter": true,
       "title": "タグ管理",
       "status": null,
@@ -35402,8 +35402,8 @@
     },
     {
       "path": "docs/plans/hermes-retrieval-accuracy-log.md",
-      "lineCount": 542,
-      "byteSize": 72722,
+      "lineCount": 557,
+      "byteSize": 75350,
       "hasFrontmatter": false,
       "title": "Hermes retrieval accuracy log",
       "status": null,
@@ -35903,8 +35903,8 @@
     },
     {
       "path": "docs/plans/kiosk-chat-system-guide-execplan.md",
-      "lineCount": 137,
-      "byteSize": 32387,
+      "lineCount": 138,
+      "byteSize": 34293,
       "hasFrontmatter": false,
       "title": "キオスクの Chat をシステム全体の案内役にする(操作の問い合わせと不具合の受付)",
       "status": null,
