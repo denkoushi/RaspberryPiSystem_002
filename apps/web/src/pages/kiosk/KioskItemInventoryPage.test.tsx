@@ -484,6 +484,8 @@ describe('KioskItemInventoryPage item list and history', () => {
       </MemoryRouter>,
     );
 
+    expect(screen.queryByRole('button', { name: '未登録 候補 #5 を登録する' })).not.toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole('group', { name: 'エリアで絞る' })).getByRole('button', { name: /^未登録/ }));
     fireEvent.click(screen.getByRole('button', { name: '未登録 候補 #5 を登録する' }));
     expect(screen.getByText('setup p5')).toBeInTheDocument();
     vi.mocked(useInventoryImportSummaries).mockReturnValue({ data: [], isLoading: false } as never);
@@ -714,35 +716,62 @@ describe('daily touch movements and inline location filters', () => {
     expect(touch).toHaveBeenLastCalledWith(expect.objectContaining({ expectedBeforeQuantity: 4 }));
   });
 
-  it('toggles area and shelf in place, resets shelf on area change, and keeps candidates available', () => {
+  it('toggles area and shelf in place, resets shelf on area change, and shows candidates only from the 未登録 chip', () => {
     const base = itemTag.compartment!;
     const drawers = [base, { ...base, id: 'shelf2', shelfNumber: 2 }, { ...base, id: 'other-area', area: '別エリア' }];
     vi.mocked(useInventoryItems).mockReturnValue({ data: [{ ...base.item, compartments: drawers }] } as never);
     vi.mocked(useInventoryImportSummaries).mockReturnValue({ data: [{ id: 'pending', sourceItemId: 42, area: '別エリア', photoUrl: null }] } as never);
     vi.mocked(useInventoryMutations).mockReturnValue({ transaction: { mutateAsync: vi.fn() } } as never);
     renderWithNfc();
-    const area = within(screen.getByRole('group', { name: 'エリアで絞る' })).getByRole('button', { name: /30007_KSJP-55/ });
+    const areaGroup = () => within(screen.getByRole('group', { name: 'エリアで絞る' }));
+    const area = areaGroup().getByRole('button', { name: /30007_KSJP-55/ });
+    const pendingChip = areaGroup().getByRole('button', { name: /^未登録/ });
     const cards = () => within(screen.getByLabelText('登録済みアイテム')).getAllByRole('button');
-    expect(cards()).toHaveLength(4);
+    expect(areaGroup().queryByText('エリア')).not.toBeInTheDocument();
+    expect(pendingChip).toHaveTextContent('未登録 1');
+    expect(pendingChip).toHaveAttribute('aria-pressed', 'false');
+    expect(cards()).toHaveLength(3);
+    expect(screen.queryByRole('button', { name: '未登録 候補 #42 を登録する' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '置き場所から選ぶ' })).not.toBeInTheDocument();
     fireEvent.click(area);
-    expect(cards()).toHaveLength(3);
+    expect(cards()).toHaveLength(2);
     const shelf = within(screen.getByRole('group', { name: '棚で絞る' })).getByRole('button', { name: '棚2' });
     fireEvent.click(shelf);
+    expect(cards()).toHaveLength(1);
+    fireEvent.click(shelf);
     expect(cards()).toHaveLength(2);
+
+    fireEvent.click(pendingChip);
+    expect(pendingChip).toHaveAttribute('aria-pressed', 'true');
+    expect(area).toHaveAttribute('aria-pressed', 'false');
+    expect(cards()).toHaveLength(1);
     expect(cards()[0]).toHaveAccessibleName('未登録 候補 #42 を登録する');
-    fireEvent.click(shelf);
+    expect(screen.queryByRole('group', { name: '棚で絞る' })).not.toBeInTheDocument();
+    fireEvent.click(pendingChip);
+    expect(pendingChip).toHaveAttribute('aria-pressed', 'false');
+    expect(cards()).toHaveLength(2);
+
+    fireEvent.click(pendingChip);
+    fireEvent.click(areaGroup().getByRole('button', { name: /別エリア/ }));
+    expect(pendingChip).toHaveAttribute('aria-pressed', 'false');
     expect(cards()).toHaveLength(3);
-    fireEvent.click(shelf);
-    fireEvent.click(within(screen.getByRole('group', { name: 'エリアで絞る' })).getByRole('button', { name: /別エリア/ }));
-    expect(cards()).toHaveLength(4);
     expect(screen.queryByRole('button', { name: '棚2' })).not.toBeInTheDocument();
-    fireEvent.click(within(screen.getByRole('group', { name: 'エリアで絞る' })).getByRole('button', { name: /別エリア/ }));
-    expect(cards()).toHaveLength(3);
+    fireEvent.click(areaGroup().getByRole('button', { name: /別エリア/ }));
+    expect(cards()).toHaveLength(2);
     expect(screen.getByRole('group', { name: '棚で絞る' })).toBeInTheDocument();
     fireEvent.click(area);
-    expect(cards()).toHaveLength(4);
+    expect(cards()).toHaveLength(3);
     expect(screen.queryByRole('group', { name: '棚で絞る' })).not.toBeInTheDocument();
+  });
+
+  it('disables the 未登録 chip when no candidates are waiting', () => {
+    vi.mocked(useInventoryItems).mockReturnValue({ data: [{ ...itemTag.compartment!.item, compartments: [itemTag.compartment!] }] } as never);
+    vi.mocked(useInventoryImportSummaries).mockReturnValue({ data: [] } as never);
+    vi.mocked(useInventoryMutations).mockReturnValue({ transaction: { mutateAsync: vi.fn() } } as never);
+    renderWithNfc();
+    const pendingChip = within(screen.getByRole('group', { name: 'エリアで絞る' })).getByRole('button', { name: /^未登録/ });
+    expect(pendingChip).toBeDisabled();
+    expect(pendingChip).toHaveTextContent('未登録 0');
   });
 });
 
