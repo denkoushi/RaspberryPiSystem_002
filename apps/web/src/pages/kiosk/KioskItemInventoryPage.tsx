@@ -71,6 +71,7 @@ function readDefaultAreas(): string[] {
   } catch { return []; }
 }
 const EMPTY_IMPORTS: InventoryImportSummary[] = [];
+const EMPTY_COMPARTMENTS: InventoryCompartment[] = [];
 let inventoryAudioContext: AudioContext | null = null;
 
 function playInventoryTone(kind: 'success' | 'restock' | 'error') {
@@ -147,11 +148,14 @@ export function KioskItemInventoryPage() {
     } catch { setAreaNotice({ message: '最初の表示を保存できませんでした' }); }
   };
   const [shelfFilter, setShelfFilter] = useState<number | null>(null);
+  /** Mailed candidates stay out of the list until the 未登録 chip is pressed. */
+  const [showPending, setShowPending] = useState(false);
   const [refreshingTag, setRefreshingTag] = useState(false);
   const [correctionError, setCorrectionError] = useState<string | null>(null);
   const itemsQuery = useInventoryItems();
   const pendingQuery = useInventoryImportSummaries();
   const pendingImports = pendingQuery.data ?? EMPTY_IMPORTS;
+  const pendingShown = showPending && pendingImports.length > 0;
   const itemCompartments = useMemo(() => (itemsQuery.data ?? []).flatMap((item) => item.compartments.map((compartment) => ({ ...compartment, item }))), [itemsQuery.data]);
   const areas = useMemo(() => {
     const counts = new Map<string, number>();
@@ -584,6 +588,7 @@ export function KioskItemInventoryPage() {
     <NfcPrompt size="small" label="アイテムタグ" tone={restockMode ? 'green' : 'sky'} sub={restockMode ? '補充' : undefined} />
   );
   const chipClass = (selected: boolean) => `inline-flex h-11 items-center gap-1.5 rounded-full border px-4 text-base font-bold ${selected ? 'border-inv-cyan bg-inv-cyan text-inv-cyan-ink' : 'border-inv-line2 bg-inv-s1'}`;
+  const pendingChipClass = `inline-flex h-11 items-center gap-1.5 rounded-full border px-4 text-base font-bold disabled:border-inv-line2 disabled:bg-inv-s1 disabled:text-inv-faint ${pendingShown ? 'border-inv-amber bg-inv-amber text-inv-amber-ink' : 'border-inv-amber bg-inv-s1 text-inv-amber'}`;
 
   return (
     <section className={`${invSurface} relative`} onPointerDownCapture={() => setActivity((current) => current + 1)} onClickCapture={() => setActivity((current) => current + 1)} onKeyDownCapture={() => setActivity((current) => current + 1)}>
@@ -672,13 +677,14 @@ export function KioskItemInventoryPage() {
         <>
           <div className="flex shrink-0 items-center gap-3">
             <div className="flex max-h-28 min-w-0 flex-1 flex-wrap items-center gap-2 overflow-y-auto" role="group" aria-label="エリアで絞る">
-              <span className={`${invEyebrow} w-[3.2em]`}>エリア</span>
-              <button type="button" className={chipClass(effectiveAreas.length === 0)} aria-pressed={effectiveAreas.length === 0} onClick={() => { setAreaFilters([]); setShelfFilter(null); }}>{defaultAreas.length === 0 ? <KioskHomeIcon filled className="h-4 w-4" /> : null}すべて <small className="font-normal opacity-75">{itemCompartments.length}</small></button>
-              {areas.map(({ area, count }) => <button key={area} type="button" className={chipClass(effectiveAreas.includes(area))} aria-pressed={effectiveAreas.includes(area)} onClick={() => { setAreaFilters(effectiveAreas.includes(area) ? effectiveAreas.filter(value => value !== area) : [...effectiveAreas, area]); setShelfFilter(null); }}>{defaultAreas.includes(area) ? <KioskHomeIcon filled className="h-4 w-4" /> : null}{area} <small className="font-normal opacity-75">{count}</small></button>)}
+              <button type="button" className={pendingChipClass} aria-pressed={pendingShown} disabled={pendingImports.length === 0} onClick={() => setShowPending(!pendingShown)}>未登録 <small className="font-normal opacity-75">{pendingImports.length}</small></button>
+              <span aria-hidden="true" className="h-7 w-px bg-inv-line" />
+              <button type="button" className={chipClass(!pendingShown && effectiveAreas.length === 0)} aria-pressed={!pendingShown && effectiveAreas.length === 0} onClick={() => { setShowPending(false); setAreaFilters([]); setShelfFilter(null); }}>{defaultAreas.length === 0 ? <KioskHomeIcon filled className="h-4 w-4" /> : null}すべて <small className="font-normal opacity-75">{itemCompartments.length}</small></button>
+              {areas.map(({ area, count }) => <button key={area} type="button" className={chipClass(!pendingShown && effectiveAreas.includes(area))} aria-pressed={!pendingShown && effectiveAreas.includes(area)} onClick={() => { setShowPending(false); setAreaFilters(!pendingShown && effectiveAreas.includes(area) ? effectiveAreas.filter(value => value !== area) : [...effectiveAreas, area]); setShelfFilter(null); }}>{defaultAreas.includes(area) ? <KioskHomeIcon filled className="h-4 w-4" /> : null}{area} <small className="font-normal opacity-75">{count}</small></button>)}
             </div>
             <button type="button" aria-label={homeLabel} title={homeLabel} aria-pressed={isDefaultArea} className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border hover:bg-inv-s2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inv-cyan ${isDefaultArea ? 'border-inv-cyan text-inv-cyan' : 'border-inv-line2 text-inv-text'}`} onClick={() => saveAreas(effectiveAreas)}><KioskHomeIcon filled={isDefaultArea} /></button>
           </div>
-          {singleArea !== null ? <div className="flex max-h-28 shrink-0 flex-wrap items-center gap-2 overflow-y-auto" role="group" aria-label="棚で絞る">
+          {!pendingShown && singleArea !== null ? <div className="flex max-h-28 shrink-0 flex-wrap items-center gap-2 overflow-y-auto" role="group" aria-label="棚で絞る">
             <span className={`${invEyebrow} w-[3.2em]`}>棚</span>
             <button type="button" className={chipClass(shelfFilter === null)} aria-pressed={shelfFilter === null} onClick={() => setShelfFilter(null)}>すべて</button>
             {shelves.map((shelf) => <button key={shelf} type="button" className={chipClass(shelfFilter === shelf)} aria-pressed={shelfFilter === shelf} onClick={() => setShelfFilter(shelfFilter === shelf ? null : shelf)}>棚{shelf}</button>)}
@@ -686,9 +692,9 @@ export function KioskItemInventoryPage() {
           {itemsQuery.isLoading ? <p className="text-inv-muted">読み込み中…</p> : itemsQuery.isError ? <div className="flex items-center gap-3"><p role="alert" className="text-inv-red">一覧を取得できませんでした</p><button type="button" className={invButtonGhost} onClick={() => void itemsQuery.refetch()}>もう一度</button></div> : <InventoryItemGrid
             view={viewMode}
             size={thumbnailSize}
-            compartments={filteredCompartments}
+            compartments={pendingShown ? EMPTY_COMPARTMENTS : filteredCompartments}
             onPick={pickCompartment}
-            pending={pendingImports}
+            pending={pendingShown ? pendingImports : EMPTY_IMPORTS}
             onPickPending={pickPending}
           />}
         </>
