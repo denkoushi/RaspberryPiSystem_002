@@ -979,6 +979,7 @@ model InventoryItem {
   note           String?
   /// Unit name the item is counted in; null means 個.
   unit           String?
+  unitPrice      Int?
   maker          String?
   toolName       String?
   workMaterial   String?
@@ -1004,6 +1005,16 @@ model InventoryToolFieldPreset {
   createdAt DateTime @default(now())
 
   @@unique([field, value])
+}
+
+model InventoryToolValueDistinct {
+  id        String   @id @default(uuid())
+  field     String
+  valueA    String
+  valueB    String
+  createdAt DateTime @default(now())
+
+  @@unique([field, valueA, valueB])
 }
 
 /// Units offered when setting an item's unit (個, ケース, ...). Items store the name.
