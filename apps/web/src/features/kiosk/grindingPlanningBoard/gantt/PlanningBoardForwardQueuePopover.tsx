@@ -3,6 +3,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffec
 import { createPortal } from 'react-dom';
 
 import { normalizeMachineName } from '../../productionSchedule/machineName';
+import { pageZoom } from '../pageZoom';
 
 import { ganttResourceLabel } from './ganttResourceLabel';
 import { canReorderForwardBars, forwardQueueWindow } from './planningBoardForwardQueue';
@@ -78,8 +79,9 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
     if (!open || !panel.current) return;
     const anchor = open.anchor.getBoundingClientRect();
     const rect = panel.current.getBoundingClientRect();
-    setPosition({ left: Math.max(8, Math.min(anchor.left - 40, window.innerWidth - rect.width - 8)),
-      top: Math.max(8, Math.min(anchor.bottom + 8, window.innerHeight - rect.height - 8)) });
+    const zoom = pageZoom();
+    setPosition({ left: Math.max(8, Math.min(anchor.left / zoom - 40, (window.innerWidth - rect.width) / zoom - 8)),
+      top: Math.max(8, Math.min(anchor.bottom / zoom + 8, (window.innerHeight - rect.height) / zoom - 8)) });
   }, [open]);
   if (!open) return null;
   const cards = forwardQueueWindow(layout, open.bar);

@@ -811,4 +811,102 @@ describe('forward PlanningBoardGanttView', () => {
     expect(values.onResourceReorder).not.toHaveBeenCalled();
   });
 
+  describe('at 70% page zoom', () => {
+    beforeEach(() => {
+      document.documentElement.style.zoom = '0.7';
+      // jsdom does not include CSS zoom in computed styles yet.
+      const computedStyle = window.getComputedStyle;
+      vi.spyOn(window, 'getComputedStyle').mockImplementation((element) => {
+        const style = computedStyle(element);
+        if (element === document.documentElement) Object.defineProperty(style, 'zoom', { value: '0.7' });
+        return style;
+      });
+    });
+    afterEach(() => { document.documentElement.style.zoom = ''; vi.restoreAllMocks(); });
+
+    it('fills the remaining height, uses layout width for bars, and pans by the visual pointer distance', () => {
+      render(<PlanningBoardGanttView {...forwardProps()} scale={1} colorBySeiban />);
+      const viewport = screen.getByLabelText('ガントの日付と工程');
+      vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({ top: 140 } as DOMRect);
+      Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 1600 });
+      Object.defineProperty(screen.getByRole('group', { name: '製番の色分け凡例' }), 'offsetHeight', { configurable: true, value: 40 });
+      fireEvent(window, new Event('resize'));
+      expect(viewport.style.height).toBe(`${Math.floor((window.innerHeight - 140) / 0.7 - 10 - 40)}px`);
+      expect(parseFloat(screen.getByTestId('planning-gantt-bar-a').style.width)).toBeCloseTo((1600 - 168) / 8 - 2);
+      viewport.scrollLeft = 200;
+      viewport.scrollTop = 100;
+      fireEvent.pointerDown(viewport, { button: 1, clientX: 70, clientY: 70 });
+      const cover = document.querySelector('[data-planning-gantt-pan-cover]')!;
+      fireEvent.pointerMove(cover, { clientX: 140, clientY: 105 });
+      expect(viewport.scrollLeft).toBe(100);
+      expect(viewport.scrollTop).toBe(50);
+      fireEvent.pointerUp(cover);
+    });
+
+    it('converts backward dragging to whole days before saving the due date', () => {
+      const values = props();
+      render(<PlanningBoardGanttView {...values} />);
+      const bar = screen.getByTestId('planning-gantt-bar-a');
+      // A visual movement of 0.7 * two days must move two days, not one.
+      const end = 100 + (1120 - 320) / 14 * 2 * 0.7;
+      fireEvent.pointerDown(bar, { button: 0, clientX: 100 });
+      fireEvent.pointerMove(bar, { clientX: end });
+      fireEvent.pointerUp(bar, { clientX: end });
+      expect(values.onDueDrop).toHaveBeenCalledWith(expect.objectContaining({ itemId: 'a' }), '2026-10-18');
+    });
+
+    it('hits the visual lane, inserts before the correct bar and positions the ghost at the pointer', () => {
+      const items = [item({ requiredMinutes: 60 }), item({ itemId: 'b', fhincd: 'P2', originalResourceCd: '306', requiredMinutes: 60 }),
+        item({ itemId: 'c', fhincd: 'P3', originalResourceCd: '306', requiredMinutes: 60 })];
+      const values = forwardProps(items);
+      const onResourceMove = vi.fn();
+      render(<PlanningBoardGanttView {...values} onResourceMove={onResourceMove} canMoveResource={() => true} />);
+      const bar = screen.getByTestId('planning-gantt-bar-a');
+      const target = screen.getByTestId('planning-gantt-bar-c');
+      const track = target.closest<HTMLElement>('[data-gantt-track]')!;
+      vi.spyOn(track, 'getBoundingClientRect').mockReturnValue({ left: 140 } as DOMRect);
+      const hit = vi.mocked(document.elementsFromPoint).mockReturnValue([target]);
+      const x = 140 + parseFloat(target.style.left) * 0.7;
+      fireEvent.pointerDown(bar, { button: 0, clientX: 70, clientY: 70 });
+      fireEvent.pointerMove(bar, { clientX: x, clientY: 210 });
+      expect(hit).toHaveBeenLastCalledWith(x, 210);
+      expect(screen.getByTestId('planning-gantt-insertion')).toHaveStyle({ left: target.style.left });
+      const ghost = screen.getByTestId('planning-gantt-drag-ghost');
+      expect(parseFloat(ghost.style.left)).toBeCloseTo(x / 0.7 + 12);
+      expect(parseFloat(ghost.style.top)).toBe(312);
+      fireEvent.pointerUp(bar, { clientX: x, clientY: 210 });
+      expect(onResourceMove).toHaveBeenCalledWith(items[0], '306', items[2], 'before');
+    });
+
+    it('positions the held machine ghost and insertion line in layout pixels while hit testing visual pixels', () => {
+      vi.useFakeTimers();
+      render(<PlanningBoardGanttView {...forwardProps(chainItems())} preferenceScope="zoom-test" />);
+      const viewport = screen.getByLabelText('ガントの日付と工程');
+      viewport.style.overflowY = 'auto';
+      Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 1000 });
+      vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({ left: 70, right: 770, top: 70, bottom: 560 } as DOMRect);
+      const handle = screen.getByRole('button', { name: '資源CD 305の行を並べ替え' });
+      const source = handle.closest('[data-gantt-lane]')!;
+      const target = document.querySelector('[data-resource-code="306"]')!;
+      vi.spyOn(source, 'getBoundingClientRect').mockReturnValue({ top: 140, bottom: 210 } as DOMRect);
+      vi.spyOn(target, 'getBoundingClientRect').mockReturnValue({ top: 210, bottom: 280 } as DOMRect);
+      const hit = vi.mocked(document.elementsFromPoint).mockReturnValue([target]);
+      fireEvent.pointerDown(handle, { button: 0, clientX: 140, clientY: 245 });
+      act(() => { vi.advanceTimersByTime(450); });
+      expect(hit).toHaveBeenLastCalledWith(140, 245);
+      expect(document.querySelector('[data-planning-board-pane-ghost]')).toHaveStyle({ transform: 'translate3d(212px, 362px, 0)' });
+      expect(document.querySelector('[data-planning-board-pane-line]')).toHaveStyle({ width: '1000px', transform: 'translate3d(100px, 398px, 0)' });
+      fireEvent.pointerUp(handle, { clientX: 140, clientY: 245 });
+      expect([...document.querySelectorAll<HTMLElement>('[data-gantt-lane]')].map((lane) => lane.dataset.resourceCode)).toEqual(['306', '305']);
+    });
+
+    it('anchors the queue popover in layout pixels', () => {
+      render(<PlanningBoardGanttView {...forwardProps()} />);
+      const bar = screen.getByTestId('planning-gantt-bar-a');
+      vi.spyOn(bar, 'getBoundingClientRect').mockReturnValue({ left: 140, bottom: 210 } as DOMRect);
+      fireEvent.pointerEnter(bar);
+      expect(screen.getByRole('region', { name: /の次にやる順/ })).toHaveStyle({ left: '160px', top: '308px' });
+    });
+  });
+
 });

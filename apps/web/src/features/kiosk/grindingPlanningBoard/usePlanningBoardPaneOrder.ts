@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { INSPECTION_DRAWING_PLACE_POINTER_MOVE_THRESHOLD_PX } from '../../part-measurement/inspection-drawing/inspectionDrawingCanvasPointer';
 
+import { pageZoom } from './pageZoom';
+
 const HOLD_MS = 450;
 
 function readOrder(key: string): string[] {
@@ -23,8 +25,8 @@ function placeLine(drag: PaneDrag, target: HTMLElement | null) {
     : (target!.querySelector('[data-gantt-lane-label]') ?? target!).getBoundingClientRect().top;
   if (!bounds || !(y >= bounds.top && y <= bounds.bottom)) { line.classList.add('hidden'); return; }
   line.classList.remove('hidden');
-  line.style.width = `${drag.scrollParent?.clientWidth ?? bounds.width}px`;
-  line.style.transform = `translate3d(${bounds.left}px, ${y - 2}px, 0)`;
+  line.style.width = `${drag.scrollParent?.clientWidth ?? bounds.width / pageZoom()}px`;
+  line.style.transform = `translate3d(${bounds.left / pageZoom()}px, ${y / pageZoom() - 2}px, 0)`;
 }
 
 type PaneDrag = {
@@ -124,7 +126,7 @@ export function usePlanningBoardPaneOrder(
     const drag = pending.current;
     if (!drag?.ghost) return;
     drag.frame = null;
-    drag.ghost.style.transform = `translate3d(${drag.x + 12}px, ${drag.y + 12}px, 0)`;
+    drag.ghost.style.transform = `translate3d(${drag.x / pageZoom() + 12}px, ${drag.y / pageZoom() + 12}px, 0)`;
     if (drag.scrollParent) {
       const bounds = drag.scrollParent.getBoundingClientRect();
       const step = drag.y < bounds.top + 40 ? -12 : drag.y > bounds.bottom - 40 ? 12 : 0;

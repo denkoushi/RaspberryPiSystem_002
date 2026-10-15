@@ -12,6 +12,20 @@ const props = (): PlanningBoardToolbarProps => ({
   onOpenDrawer: vi.fn(), onCategoriesChange: vi.fn(), onViewChange: vi.fn(), onStatusChange: vi.fn(), onAllocationChange: vi.fn(), onOpenDueEditor: vi.fn()
 });
 describe('PlanningBoardToolbar forward controls', () => {
+  it.each([false, true])('shows the large-screen toggle at the far right with gantt=%s', (ganttEnabled) => {
+    const onToggleLargeScreen = vi.fn();
+    const values = { ...props(), ganttEnabled, onToggleLargeScreen };
+    const { rerender } = render(<PlanningBoardToolbar {...values} />);
+    const toggle = screen.getByRole('button', { name: '50インチ表示' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect(toggle).toHaveClass('ml-auto', 'h-[46px]', 'w-[46px]');
+    expect(toggle.parentElement?.lastElementChild).toBe(toggle);
+    fireEvent.click(toggle);
+    expect(onToggleLargeScreen).toHaveBeenCalledOnce();
+    rerender(<PlanningBoardToolbar {...values} largeScreen />);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(toggle).toHaveClass('bg-sky-400');
+  });
   it('opens other scales, chooses one, and reflects the hidden selection', () => {
     const onGanttScaleChange = vi.fn();
     const values = { ...props(), ganttScale: 1 as const, onGanttScaleChange };

@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 
 import { PlanningBoardPinIcon } from './gantt/PlanningBoardPinIcon';
 import { GANTT_SCALES, ganttScaleLabel } from './gantt/usePersistedPlanningBoardGanttScale';
+import { pageZoom } from './pageZoom';
 
 import type { PlanningBoardOrderMetrics } from './gantt/planningBoardAutoOrder';
 import type { PlanningBoardGanttMode } from './gantt/usePersistedPlanningBoardGanttMode';
@@ -66,6 +67,8 @@ function SegmentGroup({ ariaLabel, children }: { ariaLabel: string; children: Re
 }
 
 export type PlanningBoardToolbarProps = {
+  largeScreen?: boolean;
+  onToggleLargeScreen?: () => void;
   ganttEnabled?: boolean;
   onToggleGantt?: () => void;
   colorBySeiban?: boolean;
@@ -113,6 +116,7 @@ export type PlanningBoardToolbarProps = {
 const formatWait = (minutes: number) => `${Math.floor(minutes / 60)}時間${String(minutes % 60).padStart(2, '0')}分`;
 
 export function PlanningBoardToolbar({
+  largeScreen = false, onToggleLargeScreen,
   ganttEnabled = false,
   onToggleGantt,
   colorBySeiban = false, onToggleColorBySeiban,
@@ -174,8 +178,9 @@ export function PlanningBoardToolbar({
     if (!scaleOpen || !scaleButton.current || !scalePanel.current) return;
     const anchor = scaleButton.current.getBoundingClientRect();
     const panel = scalePanel.current.getBoundingClientRect();
-    setScalePosition({ left: Math.max(8, Math.min(anchor.left, window.innerWidth - panel.width - 8)),
-      top: Math.max(8, Math.min(anchor.bottom + 4, window.innerHeight - panel.height - 8)) });
+    const zoom = pageZoom();
+    setScalePosition({ left: Math.max(8, Math.min(anchor.left / zoom, (window.innerWidth - panel.width) / zoom - 8)),
+      top: Math.max(8, Math.min(anchor.bottom / zoom + 4, (window.innerHeight - panel.height) / zoom - 8)) });
     (scalePanel.current.querySelector<HTMLButtonElement>('[aria-pressed="true"]') ?? scalePanel.current.querySelector<HTMLButtonElement>('button'))?.focus();
   }, [scaleOpen]);
   return (
@@ -337,6 +342,12 @@ export function PlanningBoardToolbar({
           一括変更
         </button>
       </div>
+      <button type="button" aria-label="50インチ表示" aria-pressed={largeScreen} onClick={onToggleLargeScreen}
+        className={clsx('ml-auto grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border', largeScreen ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true">
+          <rect x="3" y="4" width="18" height="13" rx="2" /><path d="M12 17v4m-4 0h8" />
+        </svg>
+      </button>
     </div>
   );
 }

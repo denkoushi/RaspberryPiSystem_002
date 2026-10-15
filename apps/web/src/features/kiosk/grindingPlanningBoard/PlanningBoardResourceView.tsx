@@ -6,6 +6,7 @@ import {
 } from '../../part-measurement/inspection-drawing/inspectionDrawingCanvasPointer';
 import { formatResourceCdWithJapaneseNames } from '../leaderOrderBoard/formatResourceCdWithJapaneseNames';
 
+import { pageZoom } from './pageZoom';
 import { PlanningBoardItemTable } from './PlanningBoardItemTable';
 import { resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems, sortPlanningBoardResources } from './sortGrindingPlanningBoardItems';
 import { usePlanningBoardPaneOrder } from './usePlanningBoardPaneOrder';
@@ -204,8 +205,8 @@ export function PlanningBoardResourceView({
     drag.frameId = null;
     if (!drag.ghostElement) return;
     drag.ghostElement.style.transform =
-      'translate3d(' + (drag.pendingClientX - drag.ghostOffsetX) + 'px, ' +
-      (drag.pendingClientY - drag.ghostOffsetY) + 'px, 0)';
+      'translate3d(' + ((drag.pendingClientX - drag.ghostOffsetX) / pageZoom()) + 'px, ' +
+      ((drag.pendingClientY - drag.ghostOffsetY) / pageZoom()) + 'px, 0)';
     const pane = resourcePaneAtPoint(
       drag.pendingClientX,
       drag.pendingClientY,
@@ -252,8 +253,8 @@ export function PlanningBoardResourceView({
     ghost.style.pointerEvents = 'none';
     ghost.style.left = '0';
     ghost.style.top = '0';
-    ghost.style.minWidth = Math.max(rect.width, 44) + 'px';
-    ghost.style.minHeight = Math.max(rect.height, 44) + 'px';
+    ghost.style.minWidth = Math.max(rect.width / pageZoom(), 44) + 'px';
+    ghost.style.minHeight = Math.max(rect.height / pageZoom(), 44) + 'px';
     ghost.style.opacity = '0.96';
     drag.ghostOffsetX = Math.min(Math.max(0, drag.startClientX - rect.left), rect.width);
     drag.ghostOffsetY = Math.min(Math.max(0, drag.startClientY - rect.top), rect.height);
@@ -479,10 +480,10 @@ export function PlanningBoardResourceView({
       // Measure only the first seven rows, and leave short panes the same height.
       const bodyHeight = Math.max(315, ...tables.map((table) => {
         const rows = [...table.querySelectorAll<HTMLTableRowElement>('tbody tr')].slice(0, 7);
-        return rows.reduce((height, row) => height + row.getBoundingClientRect().height, 0) + (7 - rows.length) * 45;
+        return rows.reduce((height, row) => height + row.getBoundingClientRect().height / pageZoom(), 0) + (7 - rows.length) * 45;
       }));
       const normal = Math.ceil(bodyHeight) + 46;
-      const expandedHeight = Math.max(normal, (scrollParent?.clientHeight || window.innerHeight) - 20);
+      const expandedHeight = Math.max(normal, (scrollParent?.clientHeight || window.innerHeight / pageZoom()) - 20);
       setHeights((current) => current.normal === normal && current.expanded === expandedHeight
         ? current : { normal, expanded: expandedHeight });
     };
@@ -505,7 +506,7 @@ export function PlanningBoardResourceView({
     const overflow = [...grid.children].reduce((space, slot) => {
       const resource = (slot as HTMLElement).dataset.resourceSlot;
       return resource && expanded.has(resource)
-        ? Math.max(space, slot.getBoundingClientRect().top - gridRect.bottom + Math.max(normalHeight, Math.min(expanded.get(resource)!.height, expandedHeight)))
+        ? Math.max(space, (slot.getBoundingClientRect().top - gridRect.bottom) / pageZoom() + Math.max(normalHeight, Math.min(expanded.get(resource)!.height, expandedHeight)))
         : space;
     }, 0);
     setBottomSpace(Math.ceil(overflow));
@@ -516,7 +517,7 @@ export function PlanningBoardResourceView({
     const opening = !expanded.has(resource);
     const layer = ++topLayerRef.current;
     const paneTop = button.closest('article')?.getBoundingClientRect().top ?? 0;
-    const available = Math.min(heights.expanded, window.innerHeight - Math.max(0, paneTop) - 20);
+    const available = Math.min(heights.expanded, (window.innerHeight - Math.max(0, paneTop)) / pageZoom() - 20);
     const needsScroll = available <= heights.normal;
     const height = needsScroll ? heights.expanded : available;
     setExpanded((current) => {
