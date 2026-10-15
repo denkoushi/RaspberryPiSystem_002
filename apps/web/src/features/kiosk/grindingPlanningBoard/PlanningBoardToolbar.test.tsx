@@ -12,6 +12,52 @@ const props = (): PlanningBoardToolbarProps => ({
   onOpenDrawer: vi.fn(), onCategoriesChange: vi.fn(), onViewChange: vi.fn(), onStatusChange: vi.fn(), onAllocationChange: vi.fn(), onOpenDueEditor: vi.fn()
 });
 describe('PlanningBoardToolbar forward controls', () => {
+  it('opens other scales, chooses one, and reflects the hidden selection', () => {
+    const onGanttScaleChange = vi.fn();
+    const values = { ...props(), ganttScale: 1 as const, onGanttScaleChange };
+    const { rerender } = render(<PlanningBoardToolbar {...values} />);
+    const trigger = screen.getByRole('button', { name: '他の幅' });
+    expect(trigger).toHaveTextContent('⋯');
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: '1日' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '2日' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: '1週' })).not.toBeInTheDocument();
+    fireEvent.click(trigger);
+    expect(screen.getByRole('group', { name: '他の幅' })).toBeVisible();
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '1週' }));
+    expect(onGanttScaleChange).toHaveBeenCalledWith(7);
+    expect(screen.queryByRole('group', { name: '他の幅' })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    rerender(<PlanningBoardToolbar {...values} ganttScale={7} />);
+    expect(trigger).toHaveTextContent('1週 ▾');
+    expect(trigger).toHaveAttribute('aria-pressed', 'true');
+    expect(trigger).toHaveClass('bg-sky-400');
+    fireEvent.click(trigger);
+    fireEvent.pointerDown(screen.getByRole('button', { name: '4日' }));
+    expect(screen.getByRole('group', { name: '他の幅' })).toBeVisible();
+    fireEvent.pointerDown(document.body);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(trigger);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(trigger).toHaveFocus();
+    fireEvent.click(trigger);
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+  it('shows the color toggle state and invokes its callback', () => {
+    const onToggleColorBySeiban = vi.fn();
+    const values = { ...props(), onToggleColorBySeiban };
+    const { rerender } = render(<PlanningBoardToolbar {...values} />);
+    const toggle = screen.getByRole('button', { name: '製番ごとに色分け' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(toggle);
+    expect(onToggleColorBySeiban).toHaveBeenCalledOnce();
+    rerender(<PlanningBoardToolbar {...values} colorBySeiban />);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(toggle).toHaveClass('bg-sky-400');
+  });
   it('toggles categories independently and keeps at least one pressed', () => {
     const values = props();
     const { rerender } = render(<PlanningBoardToolbar {...values} />);

@@ -14,6 +14,7 @@ import { PlanningBoardForwardGanttRow } from './PlanningBoardForwardGanttRow';
 import { PlanningBoardForwardQueuePopover } from './PlanningBoardForwardQueuePopover';
 import { dayLabel, dayToDate, jstDay } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH, GANTT_LABEL_WIDTH, PlanningBoardGanttRow } from './PlanningBoardGanttRow';
+import { planningBoardSeibanColor } from './planningBoardSeibanColor';
 
 import type { ForwardDragPreview, ForwardMove, ForwardReorder } from './PlanningBoardForwardGanttRow';
 import type { ForwardQueueHandle } from './PlanningBoardForwardQueuePopover';
@@ -29,6 +30,8 @@ type Props = Pick<PlanningBoardGanttRowProps, 'disabled' | 'dragDisabled' | 'onT
   onTogglePin?: (item: GrindingPlanningBoardItem) => void;
   runsThroughBreaks?: ReadonlySet<string>;
   onBreaksChange?: (resourceCd: string, runsThroughBreaks: boolean) => void;
+  colorBySeiban?: boolean;
+  seibanOrder?: readonly string[];
   layout: GanttLayout;
   scale: number;
   /** Changes each time a scale button is pressed, so the chart returns to today even on the current scale. */
@@ -65,7 +68,7 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
 
 export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props>(function PlanningBoardGanttView({
   layout: sourceLayout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, runsThroughBreaks, onBreaksChange,
-  preferenceScope = 'default', ...interaction
+  colorBySeiban = false, seibanOrder = [], preferenceScope = 'default', ...interaction
 }, ref) {
   // Dragging a machine name up or down reorders the lanes; the order is kept on this kiosk only.
   const laneResources = useMemo(() => sourceLayout.groups.every((group) => group.resource)
@@ -85,6 +88,11 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     onPointerUp={laneOrder.onPointerUp} onPointerCancel={laneOrder.onPointerCancel} onLostPointerCapture={laneOrder.onPointerCancel}
     onKeyDown={(event) => laneOrder.onKeyDown(event, resource)}>{text}</button>;
   const forward = layout.mode === 'forward';
+  const seibanColors = useMemo(() => colorBySeiban ? new Map(layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars
+    .filter((bar) => forward ? bar.unknown || Boolean(bar.segments?.length) : bar.end != null)
+    .map((bar) => [bar.item.fseiban, planningBoardSeibanColor(bar.item.fseiban, seibanOrder)] as const)))) : undefined,
+  [colorBySeiban, layout, forward, seibanOrder]);
+  const legend = useRef<HTMLDivElement>(null);
   const [dragPreview, setDragPreview] = useState<ForwardDragPreview | null>(null);
   const dragLanes = useMemo(() => layout.groups.flatMap((group) => group.resource
     ? [{ resource: group.resource, bars: group.rows.flatMap((row) => row.bars) }] : []), [layout]);
@@ -150,14 +158,15 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     const measure = () => {
       if (element.clientWidth > 0) setViewportWidth(element.clientWidth);
       const top = element.getBoundingClientRect().top;
-      if (window.innerHeight > 0) setViewportHeight(Math.max(192, Math.floor(window.innerHeight - top - GANTT_BOTTOM_GAP)));
+      if (window.innerHeight > 0) setViewportHeight(Math.max(192, Math.floor(window.innerHeight - top - GANTT_BOTTOM_GAP - (legend.current?.offsetHeight ?? 0))));
     };
     measure();
     window.addEventListener('resize', measure);
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     observer?.observe(element);
+    if (legend.current) observer?.observe(legend.current);
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
-  }, [showChain]);
+  }, [showChain, colorBySeiban]);
   useEffect(() => {
     if (!viewport.current) return;
     const previous = previousAxis.current;
@@ -291,7 +300,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
               </div>
             </div>}
             {forward ? group.rows.map((row) => {
-              return <PlanningBoardForwardGanttRow key={row.key} row={row} start={layout.start} end={layout.end} now={layout.now!} width={width} dayWidth={dayWidth} scale={scale}
+              return <PlanningBoardForwardGanttRow seibanColors={seibanColors} key={row.key} row={row} start={layout.start} end={layout.end} now={layout.now!} width={width} dayWidth={dayWidth} scale={scale}
                 onShowQueue={(bar, anchor) => queuePopover.current?.show(bar, anchor)}
                 onLeaveQueue={() => queuePopover.current?.hideSoon()} onCloseQueue={() => queuePopover.current?.close()}
                 pausesForBreaks={group.resource ? !runsThroughBreaks?.has(group.resource) : row.bars.some((bar) => !runsThroughBreaks?.has(bar.resource))}
@@ -300,12 +309,18 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
                 lanes={dragLanes} resource={group.resource ?? undefined} preview={dragPreview} onDragPreview={setDragPreview}
                 focusedPartKey={showChain ? focusedPartKey : null} chainPositions={chainPositions} onFocusChain={focusChain}
                 label={group.resource ? resourceLabel(group.resource, group.label) : undefined} />;
-            }) : group.rows.map((row) => <PlanningBoardGanttRow key={row.key} row={row} start={layout.start} width={width} dayWidth={dayWidth}
+            }) : group.rows.map((row) => <PlanningBoardGanttRow seibanColors={seibanColors} key={row.key} row={row} start={layout.start} width={width} dayWidth={dayWidth}
               today={dayToDate(layout.today)} selectedParts={selectedParts} {...interaction} />)}
           </div>)}
           {showChain && <PlanningBoardChainLinks bars={chain} content={content} layout={layout} dayWidth={dayWidth} viewportWidth={viewportWidth} viewportHeight={viewportHeight} />}
         </div>
       </div>
+      {seibanColors && <div ref={legend} role="group" aria-label="製番の色分け凡例" className="flex flex-wrap gap-2 border-t border-slate-700 px-2 py-1 text-xs text-slate-200">
+        {[...seibanColors].map(([seiban, color]) => <span key={seiban} className="inline-flex items-center gap-1 rounded bg-slate-800 px-1.5 py-1">
+          <span className={clsx('h-3 w-3 rounded-sm', color)} />{seiban}
+        </span>)}
+        <span className="inline-flex items-center gap-1 rounded bg-slate-800 px-1.5 py-1"><span className="h-3 w-3 rounded-sm border-[3px] border-rose-400" />赤い枠は遅れ</span>
+      </div>}
       {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} layout={layout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} dragDisabled={interaction.dragDisabled || Boolean(interaction.pinMode)} />}
       {dragPreview && createPortal(<div data-testid="planning-gantt-drag-ghost"
         className="pointer-events-none fixed z-[100] rounded border-2 border-amber-400 bg-slate-950 px-2 py-1 text-[13px] text-slate-100"

@@ -1,4 +1,6 @@
 import clsx from 'clsx';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { PlanningBoardPinIcon } from './gantt/PlanningBoardPinIcon';
 import { GANTT_SCALES, ganttScaleLabel } from './gantt/usePersistedPlanningBoardGanttScale';
@@ -44,6 +46,7 @@ function SegmentButton({ pressed, children, onClick, ariaLabel, disabled = false
       className={clsx(
         'min-h-11 shrink-0 rounded-md px-2 text-[13px] font-semibold tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-55',
         'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300',
+        tone === 'scale' && 'min-w-11',
         pressed ? SEGMENT_TONE_CLASS[tone].on : SEGMENT_TONE_CLASS[tone].off
       )}
     >
@@ -65,6 +68,8 @@ function SegmentGroup({ ariaLabel, children }: { ariaLabel: string; children: Re
 export type PlanningBoardToolbarProps = {
   ganttEnabled?: boolean;
   onToggleGantt?: () => void;
+  colorBySeiban?: boolean;
+  onToggleColorBySeiban?: () => void;
   ganttScale?: PlanningBoardGanttScale;
   onGanttScaleChange?: (scale: PlanningBoardGanttScale) => void;
   ganttMode?: PlanningBoardGanttMode;
@@ -110,6 +115,7 @@ const formatWait = (minutes: number) => `${Math.floor(minutes / 60)}時間${Stri
 export function PlanningBoardToolbar({
   ganttEnabled = false,
   onToggleGantt,
+  colorBySeiban = false, onToggleColorBySeiban,
   ganttScale = 14,
   onGanttScaleChange,
   ganttMode = 'forward', onGanttModeChange, lateCount = 0, onNextLate,
@@ -137,6 +143,41 @@ export function PlanningBoardToolbar({
   specialDueDisabled = false,
   specialDueCounts = { overnight: 0, today: 0 }
 }: PlanningBoardToolbarProps) {
+  const [scaleOpen, setScaleOpen] = useState(false);
+  const [scalePosition, setScalePosition] = useState({ left: 8, top: 8 });
+  const scaleButton = useRef<HTMLButtonElement>(null);
+  const scalePanel = useRef<HTMLDivElement>(null);
+  const hiddenScale = ganttScale > 2;
+  useEffect(() => { if (!ganttEnabled) setScaleOpen(false); }, [ganttEnabled]);
+  // Follow the queue popover pattern; a portal avoids the toolbar's scroll clipping.
+  useEffect(() => {
+    if (!scaleOpen) return;
+    const outside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !scalePanel.current?.contains(event.target) && !scaleButton.current?.contains(event.target)) setScaleOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { setScaleOpen(false); scaleButton.current?.focus(); }
+    };
+    const close = () => setScaleOpen(false);
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', escape);
+    window.addEventListener('resize', close);
+    window.addEventListener('scroll', close, true);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', escape);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('scroll', close, true);
+    };
+  }, [scaleOpen]);
+  useLayoutEffect(() => {
+    if (!scaleOpen || !scaleButton.current || !scalePanel.current) return;
+    const anchor = scaleButton.current.getBoundingClientRect();
+    const panel = scalePanel.current.getBoundingClientRect();
+    setScalePosition({ left: Math.max(8, Math.min(anchor.left, window.innerWidth - panel.width - 8)),
+      top: Math.max(8, Math.min(anchor.bottom + 4, window.innerHeight - panel.height - 8)) });
+    (scalePanel.current.querySelector<HTMLButtonElement>('[aria-pressed="true"]') ?? scalePanel.current.querySelector<HTMLButtonElement>('button'))?.focus();
+  }, [scaleOpen]);
   return (
     <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto rounded-lg border border-slate-800 bg-slate-925 px-2 py-1.5">
       <button
@@ -183,8 +224,25 @@ export function PlanningBoardToolbar({
             <SegmentButton tone="gantt" disabled={Boolean(orderPreview)} pressed={ganttMode === 'backward'} onClick={() => onGanttModeChange?.('backward')}>納期から</SegmentButton>
           </div>
           <div className="ml-1 flex shrink-0 items-center gap-0.5" role="group" aria-label="横軸の幅">
-            {GANTT_SCALES.map((days) => <SegmentButton key={days} tone="scale" pressed={ganttScale === days} onClick={() => onGanttScaleChange?.(days)}>{ganttScaleLabel(days)}</SegmentButton>)}
+            {GANTT_SCALES.filter((days) => days <= 2).map((days) => <SegmentButton key={days} tone="scale" pressed={ganttScale === days} onClick={() => onGanttScaleChange?.(days)}>{ganttScaleLabel(days)}</SegmentButton>)}
+            <button ref={scaleButton} type="button" aria-label="他の幅" aria-expanded={scaleOpen} aria-pressed={hiddenScale}
+              onClick={() => setScaleOpen((open) => !open)}
+              className={clsx('grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border text-xs font-bold', hiddenScale ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
+              {hiddenScale ? `${ganttScaleLabel(ganttScale)} ▾` : <span className="text-2xl">⋯</span>}
+            </button>
+            {scaleOpen && createPortal(<div ref={scalePanel} role="group" aria-label="他の幅" style={scalePosition}
+              className="fixed z-[100] flex flex-wrap gap-0.5 rounded-lg border border-slate-600 bg-slate-900 p-1 shadow-xl">
+              {GANTT_SCALES.filter((days) => days > 2).map((days) => <SegmentButton key={days} tone="scale" pressed={ganttScale === days}
+                onClick={() => { onGanttScaleChange?.(days); setScaleOpen(false); scaleButton.current?.focus(); }}>{ganttScaleLabel(days)}</SegmentButton>)}
+            </div>, document.body)}
           </div>
+          <button type="button" aria-label="製番ごとに色分け" aria-pressed={colorBySeiban} onClick={onToggleColorBySeiban}
+            className={clsx('grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border', colorBySeiban ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true">
+              <path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 0-4h-1a1.5 1.5 0 0 1 0-3h3a6 6 0 0 0 0-12Z" />
+              <circle cx="7" cy="10" r="1" /><circle cx="10" cy="6" r="1" /><circle cx="15" cy="6" r="1" /><circle cx="18" cy="10" r="1" />
+            </svg>
+          </button>
           <button type="button" onClick={ganttMode === 'forward' ? onNextLate : onNextOverlap}
             className={clsx('ml-1 min-h-11 shrink-0 rounded-md px-2 text-[13px] font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300', (ganttMode === 'forward' ? lateCount : overlapCount) ? 'bg-rose-800 text-white' : 'text-emerald-300')}>
             {ganttMode === 'forward' ? (lateCount ? `⚠ 遅れ ${lateCount}` : '✓ 遅れなし') : (overlapCount ? `⚠ 重なり ${overlapCount}` : '✓ 重なりなし')}
