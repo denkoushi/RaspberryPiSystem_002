@@ -170,9 +170,9 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
               }}>
               {bar.item.orderPinned && index === 0 && <PlanningBoardPinIcon className="pointer-events-none absolute bottom-1 right-1 h-4 w-4 text-amber-300" />}
               {inChain && index === 0 && <span data-testid={`planning-gantt-chain-badge-${bar.item.itemId}`} className="pointer-events-none absolute right-0 top-0 grid h-[22px] w-[22px] place-items-center rounded-full bg-slate-950 font-mono text-xs font-bold text-white">{chainPositions.get(bar.item.itemId)}</span>}
-              {index > 0 ? null : bar.unknown ? '所要不明' : segmentWidth >= 48
+              {bar.unknown ? '所要不明' : segmentWidth >= 48
                 ? <span className="block break-all px-1"><b className="line-clamp-2">{bar.item.fhinmei || bar.item.fhincd}</b>
-                  <small className="line-clamp-3 text-[11px] font-normal">{scale <= 2 ? forwardItemDetails(bar.item) : `${bar.item.requiredMinutes}分`}</small>
+                  <small className="line-clamp-3 text-[11px] font-normal">{index > 0 ? '続き' : scale <= 2 ? forwardItemDetails(bar.item) : `${bar.item.requiredMinutes}分`}</small>
                 </span> : null}
             </button>;
           })}

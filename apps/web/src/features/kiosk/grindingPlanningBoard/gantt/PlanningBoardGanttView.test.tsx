@@ -189,10 +189,10 @@ describe('forward PlanningBoardGanttView', () => {
     rerender(<PlanningBoardGanttView {...values} capacityPending />);
     expect(toggle).toBeDisabled();
   });
-  it('shows text only on the first working-period segment', () => {
+  it('shows the part name and 続き on later working-period segments', () => {
     render(<PlanningBoardGanttView {...forwardProps([item({ requiredMinutes: 480 })])} scale={1} />);
-    expect(screen.getByTestId('planning-gantt-bar-a')).toHaveTextContent('部品');
-    expect(screen.getByTestId('planning-gantt-bar-a-segment-1')).toBeEmptyDOMElement();
+    expect(screen.getByTestId('planning-gantt-bar-a')).toHaveTextContent('部品26-1001');
+    expect(screen.getByTestId('planning-gantt-bar-a-segment-1')).toHaveTextContent(/^部品続き$/);
     expect(screen.getByTestId('planning-gantt-bar-a-segment-1')).toHaveClass('border-dashed');
   });
   const chainItems = () => [item({ itemId: 'b', processOrder: '20', originalResourceCd: '306', requiredMinutes: 60 }),
