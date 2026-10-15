@@ -46,3 +46,5 @@ export const invSetupTargets = "[&_button]:min-h-11 [&_button]:min-w-11 [&_a]:mi
 
 /** Hand-written number shared by the tag and its stored location. */
 export const invLabelNumber = 'inline-flex items-center whitespace-nowrap rounded-lg border border-dashed border-inv-amber px-2 py-0.5 font-mono font-bold tabular-nums tracking-[0.08em] text-inv-amber';
+
+export const detailLabels = { model: '型式', maker: 'メーカー', toolName: '工具名', toolSize: '寸法', workMaterial: '被削材', usage: '用途' };
