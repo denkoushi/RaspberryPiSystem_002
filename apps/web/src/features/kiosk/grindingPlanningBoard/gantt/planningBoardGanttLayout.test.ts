@@ -123,14 +123,14 @@ describe('forward planningBoardGanttLayout', () => {
     const bar = bars(forward([item({ requiredMinutes: 30 })], { dailyHoursByResource: { '305': hours }, now: new Date(`2026-10-14T${hour}:00:00+09:00`) }))[0]!;
     expect(bar.start).toBeCloseTo(today + day + startHour / 24);
   });
-  it('pauses for the 10:10, 12:10 and 14:50 breaks in 8H and 10H', () => {
+  it('pauses for the 10:00, 12:10 and 14:50 breaks in 8H and 10H', () => {
     const at = (hour: string, minutes: number, hours: 8 | 10) => bars(forward([item({ requiredMinutes: minutes })],
       { dailyHoursByResource: { '305': hours }, now: new Date(`2026-10-14T${hour}+09:00`) }))[0]!;
     const minutes = (time: number) => Math.round((time - today) * 1440);
     const morning = at('10:00:00', 30, 8);
-    expect(morning.segments!.map((segment) => [minutes(segment.start), minutes(segment.end)])).toEqual([[600, 640]]);
-    expect(at('10:15:00', 10, 8).start).toBeCloseTo(today + 620 / 1440);
-    expect(minutes(at('12:00:00', 20, 10).end!)).toBe(780);
+    expect(morning.segments!.map((segment) => [minutes(segment.start), minutes(segment.end)])).toEqual([[610, 640]]);
+    expect(at('10:05:00', 10, 8).start).toBeCloseTo(today + 610 / 1440);
+    expect(at('12:00:00', 20, 10).segments!.map((segment) => [minutes(segment.start), minutes(segment.end)])).toEqual([[720, 730], [770, 780]]);
     expect(at('14:45:00', 10, 8).end).toBeCloseTo(today + 905 / 1440);
   });
   it('ends 8H at 17:00 and 10H at 19:00 after one hour of breaks; 24H has none', () => {
@@ -138,6 +138,18 @@ describe('forward planningBoardGanttLayout', () => {
     expect(workingPeriods(10).at(-1)!.end).toBeCloseTo(19 / 24);
     expect(workingPeriods(8).reduce((sum, period) => sum + period.end - period.start, 0)).toBeCloseTo(8 / 24);
     expect(workingPeriods(24)).toEqual([{ start: 0, end: 1 }]);
+  });
+  it.each([8, 10] as const)('keeps the %iH shift window and uses break minutes when running through', (hours) => {
+    const periods = workingPeriods(hours);
+    expect(periods.map(({ start, end }) => [Math.round(start * 1440), Math.round(end * 1440)]))
+      .toEqual([[480, 600], [610, 730], [770, 890], [900, (hours + 9) * 60]]);
+    expect(periods.reduce((sum, period) => sum + period.end - period.start, 0)).toBeCloseTo(hours / 24);
+    expect(workingPeriods(hours, false)).toEqual([{ start: 8 / 24, end: (hours + 9) / 24 }]);
+    const bar = bars(forward([item({ requiredMinutes: 20 })], { dailyHoursByResource: { '305': hours },
+      runsThroughBreaks: new Set(['305']), now: new Date('2026-10-14T12:00:00+09:00') }))[0]!;
+    expect(bar.segments).toHaveLength(1);
+    expect(bar.start).toBeCloseTo(today + 720 / 1440);
+    expect(bar.end).toBeCloseTo(today + 740 / 1440);
   });
   it('waits for a predecessor on another resource and draws its gap', () => {
     const result = forward([item({ itemId: 'b', processOrder: '20', alternateRank: 1, originalResourceCd: '584', requiredMinutes: 60 }), item({ alternateRank: 2, requiredMinutes: 120 })]);

@@ -948,6 +948,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         <PlanningBoardGanttView ref={gantt.viewRef} layout={gantt.layout} scale={gantt.scale} homeKey={gantt.homeKey}
           resourceView={view === 'resource'} dailyHoursByResource={gantt.dailyHoursByResource} preferenceScope={`${data.siteKey}:${category}`}
           resourceNameMap={resourcesQuery.data?.resourceNameMap ?? {}}
+          runsThroughBreaks={gantt.runsThroughBreaks} onBreaksChange={gantt.changeBreaks}
           capacityPending={gantt.capacityPending} capacityError={gantt.capacityError} onCapacityChange={gantt.changeCapacity}
           selectedItemIds={selectedItemIds} onToggleItem={toggleItem} onDueDrop={moveDueByDrag} onResourceReorder={reorderResourceByDrag}
           disabled={interactionLocked} dragDisabled={allocation !== 'alternate' || writeBlocked || interactionLocked || !rankMutationReady} />
