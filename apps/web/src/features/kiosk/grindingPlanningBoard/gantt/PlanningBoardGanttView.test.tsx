@@ -40,7 +40,7 @@ describe('PlanningBoardGanttView', () => {
     }) });
   });
   afterEach(() => { Reflect.deleteProperty(document, 'elementsFromPoint'); vi.unstubAllGlobals(); vi.useRealTimers(); });
-  it.each(['backward', 'forward'] as const)('colors visible bars and split segments with a legend in %s mode, preserving lateness', (mode) => {
+  it.each(['backward', 'forward'] as const)('colors visible bars and split segments with a legend in %s mode without late badges or outlines', (mode) => {
     const items = [item({ originalDueDate: '2026-10-13' }),
       item({ itemId: 'b', fseiban: '********', fhincd: 'P2' }),
       item({ itemId: 'c', fseiban: 'completed', fhincd: 'P3', isCompleted: true }),
@@ -56,13 +56,13 @@ describe('PlanningBoardGanttView', () => {
     expect(screen.queryByRole('group', { name: '製番の色分け凡例' })).not.toBeInTheDocument();
     rerender(<PlanningBoardGanttView {...viewProps} colorBySeiban />);
     expect(late()).toHaveClass('bg-amber-400', 'text-slate-950');
-    expect(late()).toHaveStyle({ outline: '3px solid rgb(251 113 133)', outlineOffset: '-1px' });
-    expect(within(screen.getByTestId('planning-gantt-bar-a')).getByLabelText('遅れ')).toHaveTextContent('!');
+    expect(late()).not.toHaveStyle({ outline: '3px solid rgb(251 113 133)' });
+    expect(screen.queryByLabelText('遅れ')).not.toBeInTheDocument();
     const legend = screen.getByRole('group', { name: '製番の色分け凡例' });
     expect(within(legend).getAllByText('26-1001')).toHaveLength(1);
     expect(within(legend).getByText('********')).toBeVisible();
     expect(within(legend).queryByText('unused')).not.toBeInTheDocument();
-    expect(within(legend).getByText('赤い枠は遅れ')).toBeVisible();
+    expect(within(legend).queryByText('赤い枠は遅れ')).not.toBeInTheDocument();
     expect(surface(screen.getByTestId('planning-gantt-bar-b'))).toHaveClass('bg-slate-400');
     expect(surface(screen.getByTestId('planning-gantt-bar-d'))).toHaveClass('text-slate-950');
     if (mode === 'backward') expect(surface(screen.getByTestId('planning-gantt-bar-c'))).toHaveClass('bg-slate-600');
@@ -71,16 +71,109 @@ describe('PlanningBoardGanttView', () => {
       expect(segments.length).toBeGreaterThan(0);
       for (const segment of segments) {
         expect(segment).toHaveClass('bg-amber-400');
-        expect(segment).toHaveStyle({ outline: '3px solid rgb(251 113 133)' });
-        expect(within(segment).getByLabelText('遅れ')).toHaveTextContent('!');
+        expect(segment.style.outline).toBe('');
+        expect(within(segment).queryByLabelText('遅れ')).not.toBeInTheDocument();
       }
       fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
-      expect(late()).toHaveStyle({ outline: '3px solid rgb(251 113 133)' });
+      expect(late()).toHaveClass('outline-white');
+      expect(late()).not.toHaveStyle({ outline: '3px solid rgb(251 113 133)' });
     }
     rerender(<PlanningBoardGanttView {...viewProps} />);
     expect(late()).toHaveClass('bg-rose-400');
     expect(late()).not.toHaveClass('bg-amber-400');
     expect(screen.queryByRole('group', { name: '製番の色分け凡例' })).not.toBeInTheDocument();
+  });
+  it.each(['backward', 'forward'] as const)('spotlights a seiban from the legend and clears it in %s mode', (mode) => {
+    const items = [item(), item({ itemId: 'b', fseiban: '26-1002', fhincd: 'P2' }),
+      item({ itemId: 'c', fhincd: 'P3', isCompleted: true }),
+      item({ itemId: 'd', fhincd: 'P4', orderPinned: true })];
+    const layoutFor = (visible: GrindingPlanningBoardItem[]) => buildPlanningBoardGanttLayout({ items: visible, mode,
+      allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', scale: 2 });
+    const viewProps = { ...props(items), layout: layoutFor(items), scale: 2, selectedItemIds: new Set(['b']), colorBySeiban: true };
+    const { rerender } = render(<PlanningBoardGanttView {...viewProps} />);
+    const chip = (seiban: string) => within(screen.getByRole('group', { name: '製番の色分け凡例' })).getByRole('button', { name: seiban });
+    const surfaces = (id: string) => screen.getAllByTestId(new RegExp(`^planning-gantt-bar-${id}(-segment-\\d+)?$`))
+      .map((bar) => mode === 'backward' ? bar.firstElementChild! : bar);
+    const expectClear = () => {
+      expect(chip('26-1001')).toHaveAttribute('aria-pressed', 'false');
+      expect(screen.queryByRole('button', { name: 'すべて表示' })).not.toBeInTheDocument();
+      for (const surface of [...surfaces('a'), ...surfaces('b')]) {
+        expect(surface).not.toHaveClass('ring-2');
+        expect(surface).not.toHaveClass('opacity-20');
+        expect(surface).not.toHaveClass('saturate-[.3]');
+      }
+    };
+    // Existing selection/chain dimming must not dim the spotlighted seiban.
+    if (mode === 'forward') fireEvent.click(screen.getByTestId('planning-gantt-bar-b'));
+    expect(chip('26-1001')).toHaveAttribute('type', 'button');
+    expect(chip('26-1001')).toHaveClass('min-h-[44px]', 'font-mono');
+    expectClear();
+    fireEvent.click(chip('26-1001'));
+    expect(chip('26-1001')).toHaveAttribute('aria-pressed', 'true');
+    expect(chip('26-1002')).toHaveAttribute('aria-pressed', 'false');
+    for (const surface of [...surfaces('a'), ...surfaces('d')]) {
+      expect(surface).toHaveClass('ring-2', 'ring-white');
+      expect(surface).not.toHaveClass('opacity-20');
+      expect(surface).not.toHaveClass('opacity-30');
+    }
+    for (const surface of surfaces('b')) expect(surface).toHaveClass('opacity-20', 'saturate-[.3]');
+    if (mode === 'backward') {
+      expect(surfaces('c')[0]).toHaveClass('bg-slate-600', 'ring-2', 'ring-white');
+      expect(surfaces('c')[0]).not.toHaveClass('opacity-30');
+    } else {
+      expect(screen.getByTestId('planning-gantt-bar-d').style.boxShadow).toContain('var(--tw-ring-shadow');
+    }
+    // Bar taps retain their actions without changing the spotlight.
+    fireEvent.click(screen.getByTestId('planning-gantt-bar-b'));
+    expect(chip('26-1001')).toHaveAttribute('aria-pressed', 'true');
+    if (mode === 'backward') expect(viewProps.onToggleItem).toHaveBeenCalledWith(items[1], false);
+    else expect(screen.queryByTestId('planning-gantt-chain-badge-b')).not.toBeInTheDocument();
+    fireEvent.click(chip('26-1001'));
+    expectClear();
+    fireEvent.click(chip('26-1001'));
+    fireEvent.click(chip('26-1002'));
+    expect(chip('26-1001')).toHaveAttribute('aria-pressed', 'false');
+    expect(chip('26-1002')).toHaveAttribute('aria-pressed', 'true');
+    for (const surface of surfaces('a')) expect(surface).toHaveClass('opacity-20', 'saturate-[.3]');
+    fireEvent.click(screen.getByRole('button', { name: 'すべて表示' }));
+    expectClear();
+    fireEvent.click(chip('26-1001'));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expectClear();
+    fireEvent.click(chip('26-1001'));
+    rerender(<PlanningBoardGanttView {...viewProps} colorBySeiban={false} />);
+    expect(screen.queryByRole('group', { name: '製番の色分け凡例' })).not.toBeInTheDocument();
+    for (const surface of surfaces('a')) expect(surface).not.toHaveClass('ring-2');
+    rerender(<PlanningBoardGanttView {...viewProps} />);
+    expectClear();
+    fireEvent.click(chip('26-1001'));
+    rerender(<PlanningBoardGanttView {...viewProps} layout={layoutFor([items[1]!])} />);
+    expect(chip('26-1002')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByRole('button', { name: 'すべて表示' })).not.toBeInTheDocument();
+    for (const surface of surfaces('b')) expect(surface).not.toHaveClass('opacity-20');
+    rerender(<PlanningBoardGanttView {...viewProps} />);
+    expectClear();
+  });
+  it('remeasures the legend when the reset button changes its height', () => {
+    let measure = () => {};
+    const observe = vi.fn();
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: () => void) { measure = callback; }
+      observe = observe;
+      disconnect = vi.fn();
+    });
+    render(<PlanningBoardGanttView {...props()} colorBySeiban />);
+    const legend = screen.getByRole('group', { name: '製番の色分け凡例' });
+    const viewport = screen.getByLabelText('ガントの日付と工程');
+    expect(observe).toHaveBeenCalledWith(legend);
+    Object.defineProperty(legend, 'offsetHeight', { configurable: true, value: 52 });
+    act(() => measure());
+    expect(viewport).toHaveStyle({ height: `${window.innerHeight - 10 - 52}px` });
+    fireEvent.click(within(legend).getByRole('button', { name: '26-1001' }));
+    expect(within(legend).getByRole('button', { name: 'すべて表示' })).toBeVisible();
+    Object.defineProperty(legend, 'offsetHeight', { configurable: true, value: 104 });
+    act(() => measure());
+    expect(viewport).toHaveStyle({ height: `${window.innerHeight - 10 - 104}px` });
   });
   it.each(['pointerUp', 'pointerCancel', 'lostPointerCapture'] as const)('pans with the middle button and stops on %s', (end) => {
     const values = props();
@@ -403,7 +496,7 @@ describe('forward PlanningBoardGanttView', () => {
       seibanOrder: [], resources: ['305', '306', '100'], dailyHoursByResource: {}, today: '2026-10-14', scale: 2 });
     const onResourceMove = vi.fn();
     const canMoveResource = vi.fn((_item, resource) => resource === '306');
-    render(<PlanningBoardGanttView {...values} layout={layout} onResourceMove={onResourceMove} canMoveResource={canMoveResource} />);
+    render(<PlanningBoardGanttView {...values} layout={layout} onResourceMove={onResourceMove} canMoveResource={canMoveResource} colorBySeiban />);
     const bar = screen.getByTestId('planning-gantt-bar-a');
     const target = screen.getByTestId('planning-gantt-bar-c');
     const lane = target.closest<HTMLElement>('[data-gantt-lane]')!;

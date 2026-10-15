@@ -21,6 +21,7 @@ type InteractionProps = {
   disabled: boolean;
   dragDisabled: boolean;
   seibanColors?: ReadonlyMap<string, string>;
+  focusedSeiban?: string | null;
 };
 type BarProps = InteractionProps & {
   bar: GanttBar;
@@ -34,7 +35,7 @@ type BarProps = InteractionProps & {
 type Drag = { pointerId: number; x: number; y: number; moved: boolean; delta: number; frame: number | null; element: HTMLButtonElement };
 
 const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
-  bar, start, dayWidth, today, selected, sibling, dimmed, disabled, dragDisabled, onToggleItem, onDueDrop, seibanColors
+  bar, start, dayWidth, today, selected, sibling, dimmed, disabled, dragDisabled, onToggleItem, onDueDrop, seibanColors, focusedSeiban = null
 }: BarProps) {
   const pending = useRef<Drag | null>(null);
   const suppressClick = useRef(false);
@@ -74,7 +75,6 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
     });
   };
   const color = bar.tone !== 'completed' ? seibanColors?.get(bar.item.fseiban) : undefined;
-  const coloredLate = Boolean(color && bar.tone === 'late');
   const width = bar.unknown ? 72 : Math.max(5, (bar.end! - bar.start!) * dayWidth);
   return (
     <button
@@ -114,9 +114,8 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
         bar.tone === 'completed' ? 'bg-slate-600 text-slate-300' : color ? `${color} text-slate-950` : bar.tone === 'late' ? 'bg-rose-400 text-slate-950' : 'bg-sky-400 text-slate-950',
         bar.unknown && (seibanColors ? 'border border-dashed border-slate-200' : 'border border-dashed border-slate-200 bg-slate-800 text-slate-200'),
         selected ? 'outline outline-2 outline-offset-1 outline-emerald-300' : sibling && 'outline outline-2 outline-offset-1 outline-white',
-        dimmed && 'opacity-30'
-      )} style={{ width, outline: coloredLate ? '3px solid rgb(251 113 133)' : undefined, outlineOffset: coloredLate ? -1 : undefined }}>
-        {coloredLate && <span aria-label="遅れ" className="mr-1 inline-flex h-3 w-3 items-center justify-center rounded-full bg-rose-400 text-[10px] leading-none text-slate-950">!</span>}
+        focusedSeiban !== null ? focusedSeiban === bar.item.fseiban ? 'ring-2 ring-white' : 'opacity-20 saturate-[.3]' : dimmed && 'opacity-30'
+      )} style={{ width }}>
         {bar.unknown ? `${bar.item.processOrder} 所要不明` : `${bar.item.processOrder} ${bar.resource}`}
         {bar.flagged && bar.overlaps.length === 0 && <i className="absolute inset-y-0 right-0 w-1" style={{ background: GANTT_HATCH }} />}
       </span>

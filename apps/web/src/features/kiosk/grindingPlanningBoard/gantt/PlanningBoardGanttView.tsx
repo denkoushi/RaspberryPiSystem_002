@@ -94,6 +94,16 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     .filter((bar) => forward ? bar.unknown || Boolean(bar.segments?.length) : bar.end != null)
     .map((bar) => [bar.item.fseiban, planningBoardSeibanColor(bar.item.fseiban, seibanOrder)] as const)))) : undefined,
   [colorBySeiban, layout, forward, seibanOrder]);
+  const [focusedSeiban, setFocusedSeiban] = useState<string | null>(null);
+  useEffect(() => {
+    if (focusedSeiban !== null && !seibanColors?.has(focusedSeiban)) setFocusedSeiban(null);
+  }, [focusedSeiban, seibanColors]);
+  useEffect(() => {
+    if (focusedSeiban === null) return;
+    const clear = (event: KeyboardEvent) => { if (event.key === 'Escape') setFocusedSeiban(null); };
+    document.addEventListener('keydown', clear);
+    return () => document.removeEventListener('keydown', clear);
+  }, [focusedSeiban]);
   const legend = useRef<HTMLDivElement>(null);
   const [dragPreview, setDragPreview] = useState<ForwardDragPreview | null>(null);
   const dragLanes = useMemo(() => layout.groups.flatMap((group) => group.resource
@@ -302,7 +312,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
               </div>
             </div>}
             {forward ? group.rows.map((row) => {
-              return <PlanningBoardForwardGanttRow seibanColors={seibanColors} key={row.key} row={row} start={layout.start} end={layout.end} now={layout.now!} width={width} dayWidth={dayWidth} scale={scale}
+              return <PlanningBoardForwardGanttRow seibanColors={seibanColors} focusedSeiban={focusedSeiban} key={row.key} row={row} start={layout.start} end={layout.end} now={layout.now!} width={width} dayWidth={dayWidth} scale={scale}
                 onShowQueue={(bar, anchor) => queuePopover.current?.show(bar, anchor)}
                 onLeaveQueue={() => queuePopover.current?.hideSoon()} onCloseQueue={() => queuePopover.current?.close()}
                 pausesForBreaks={group.resource ? !runsThroughBreaks?.has(group.resource) : row.bars.some((bar) => !runsThroughBreaks?.has(bar.resource))}
@@ -311,17 +321,20 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
                 lanes={dragLanes} resource={group.resource ?? undefined} preview={dragPreview} onDragPreview={setDragPreview}
                 focusedPartKey={showChain ? focusedPartKey : null} chainPositions={chainPositions} onFocusChain={focusChain}
                 label={group.resource ? resourceLabel(group.resource, group.label) : undefined} />;
-            }) : group.rows.map((row) => <PlanningBoardGanttRow seibanColors={seibanColors} key={row.key} row={row} start={layout.start} width={width} dayWidth={dayWidth}
+            }) : group.rows.map((row) => <PlanningBoardGanttRow seibanColors={seibanColors} focusedSeiban={focusedSeiban} key={row.key} row={row} start={layout.start} width={width} dayWidth={dayWidth}
               today={dayToDate(layout.today)} selectedParts={selectedParts} {...interaction} />)}
           </div>)}
           {showChain && <PlanningBoardChainLinks bars={chain} content={content} layout={layout} dayWidth={dayWidth} viewportWidth={viewportWidth} viewportHeight={viewportHeight} />}
         </div>
       </div>
       {seibanColors && <div ref={legend} role="group" aria-label="製番の色分け凡例" className="flex flex-wrap gap-2 border-t border-slate-700 px-2 py-1 text-xs text-slate-200">
-        {[...seibanColors].map(([seiban, color]) => <span key={seiban} className="inline-flex items-center gap-1 rounded bg-slate-800 px-1.5 py-1">
+        {[...seibanColors].map(([seiban, color]) => <button key={seiban} type="button" aria-pressed={focusedSeiban === seiban}
+          onClick={() => setFocusedSeiban(focusedSeiban === seiban ? null : seiban)}
+          className={clsx('inline-flex min-h-[44px] items-center gap-1 rounded bg-slate-800 px-1.5 py-1 font-mono focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300', focusedSeiban === seiban && 'ring-2 ring-white')}>
           <span className={clsx('h-3 w-3 rounded-sm', color)} />{seiban}
-        </span>)}
-        <span className="inline-flex items-center gap-1 rounded bg-slate-800 px-1.5 py-1"><span className="h-3 w-3 rounded-sm border-[3px] border-rose-400" />赤い枠は遅れ</span>
+        </button>)}
+        {focusedSeiban !== null && <button type="button" onClick={() => setFocusedSeiban(null)}
+          className="min-h-[44px] rounded bg-slate-800 px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300">すべて表示</button>}
       </div>}
       {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} layout={layout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} dragDisabled={interaction.dragDisabled || Boolean(interaction.pinMode)} />}
       {dragPreview && createPortal(<div data-testid="planning-gantt-drag-ghost"
