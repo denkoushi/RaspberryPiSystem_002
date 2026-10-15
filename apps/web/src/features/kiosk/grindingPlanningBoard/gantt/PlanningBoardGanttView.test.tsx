@@ -135,6 +135,34 @@ describe('forward PlanningBoardGanttView', () => {
       layout: buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'],
         dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T09:00:00+09:00'), scale: 2 }) };
   }
+  it('toggles pins without chain focus, selection or drag, and marks pinned segments', () => {
+    vi.useFakeTimers();
+    const values = forwardProps([item({ orderPinned: true, requiredMinutes: 600 })]);
+    const onTogglePin = vi.fn();
+    const { rerender } = render(<PlanningBoardGanttView {...values} pinMode onTogglePin={onTogglePin} />);
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    expect(bar).toHaveAttribute('data-gantt-pinned', 'true');
+    expect(bar.style.boxShadow).toBe('inset 0 0 0 3px rgb(251 191 36)');
+    fireEvent.pointerDown(bar, { clientX: 100, button: 0 });
+    act(() => vi.advanceTimersByTime(600));
+    fireEvent.pointerUp(bar, { clientX: 100 });
+    fireEvent.click(bar);
+    expect(onTogglePin).toHaveBeenCalledOnce();
+    expect(values.onToggleItem).not.toHaveBeenCalled();
+    expect(screen.queryByRole('region', { name: '工程のつながり' })).not.toBeInTheDocument();
+    fireEvent.pointerDown(bar, { clientX: 100, button: 0 });
+    fireEvent.pointerUp(bar, { clientX: 400 });
+    fireEvent.click(bar);
+    expect(onTogglePin).toHaveBeenCalledOnce();
+    expect(values.onResourceReorder).not.toHaveBeenCalled();
+    rerender(<PlanningBoardGanttView {...values} onTogglePin={onTogglePin} />);
+    expect(bar).toHaveAttribute('data-gantt-pinned', 'true');
+    fireEvent.click(bar);
+    expect(screen.getByRole('region', { name: '工程のつながり' })).toBeInTheDocument();
+    rerender(<PlanningBoardGanttView {...values} disabled pinMode onTogglePin={onTogglePin} />);
+    fireEvent.click(bar);
+    expect(onTogglePin).toHaveBeenCalledOnce();
+  });
   const chainItems = () => [item({ itemId: 'b', processOrder: '20', originalResourceCd: '306', requiredMinutes: 60 }),
     item({ processOrder: '2', requiredMinutes: 480 }), item({ itemId: 'c', fhincd: 'P2', requiredMinutes: 60 })];
   const tap = (bar: HTMLElement) => {

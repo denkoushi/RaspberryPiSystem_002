@@ -206,3 +206,7 @@ Validation: web scope 150 passed; API route/service scope 68 passed; shared-type
 The 26 database integration cases (six new bulk cases) were skipped without a dedicated test DB; Docker socket access is unavailable.
 1920px browser rendering remains unverified: Playwright's bundled browser is absent, sandboxed Chrome cannot launch, and CUA has no connected browser.
 The toolbar uses shrinkable feedback and compact controls. Web/API lint and `git diff --check` pass; the final touched web view/page rerun passes 66 tests. No commit, push, merge or deployment is included.
+
+## 今日からガントの自動並べ替え
+
+ピン保存・提案比較・適用の実装と検証は [自動並べ替え計画](planning-board-auto-order.md) を参照。

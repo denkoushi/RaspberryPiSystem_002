@@ -18,10 +18,12 @@ import type { ForwardReorder } from './PlanningBoardForwardGanttRow';
 import type { ForwardQueueHandle } from './PlanningBoardForwardQueuePopover';
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttRowProps } from './PlanningBoardGanttRow';
-import type { GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
 
 type Props = Pick<PlanningBoardGanttRowProps, 'disabled' | 'dragDisabled' | 'onToggleItem' | 'onDueDrop' | 'selectedItemIds' | 'resourceView'> & {
   onResourceReorder?: ForwardReorder;
+  pinMode?: boolean;
+  onTogglePin?: (item: GrindingPlanningBoardItem) => void;
   layout: GanttLayout;
   scale: number;
   /** Changes each time a scale button is pressed, so the chart returns to today even on the current scale. */
@@ -116,7 +118,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     .filter((bar) => bar.partKey === focusedPartKey)
     .sort((a, b) => compareProcessOrder(a.item.processOrder, b.item.processOrder) || a.item.itemId.localeCompare(b.item.itemId)) : [], [forward, layout, focusedPartKey]);
   const chainPositions = useMemo(() => new Map(chain.map((bar, index) => [bar.item.itemId, index + 1])), [chain]);
-  const showChain = chain.length > 0;
+  const showChain = chain.length > 0 && !interaction.pinMode;
   useEffect(() => {
     if (!showChain) { setFocusedPartKey(null); setCurrentItemId(null); }
   }, [showChain]);
@@ -282,7 +284,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
           {showChain && <PlanningBoardChainLinks bars={chain} content={content} layout={layout} dayWidth={dayWidth} viewportWidth={viewportWidth} viewportHeight={viewportHeight} />}
         </div>
       </div>
-      {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} layout={layout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} />}
+      {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} layout={layout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} dragDisabled={interaction.dragDisabled || Boolean(interaction.pinMode)} />}
     </section>
   );
 });

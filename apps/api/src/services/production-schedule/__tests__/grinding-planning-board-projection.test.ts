@@ -55,6 +55,17 @@ const baseParams = (overrides: Partial<Parameters<typeof projectGrindingPlanning
 });
 
 describe('grinding-planning-board-projection', () => {
+  it('exposes a pin without changing original resource, due or rank semantics', () => {
+    const input = baseParams();
+    const original = projectGrindingPlanningBoard(input).items[0]!;
+    const pinned = projectGrindingPlanningBoard({ ...input, overrides: new Map([[original.itemId, {
+      overrideResourceCd: null, overrideDueDate: null, dueDateCleared: null, alternateRank: null, orderPinned: true, version: 1
+    }]]) }).items[0]!;
+    expect(original.orderPinned).toBe(false);
+    expect(pinned).toMatchObject({ orderPinned: true, effectiveResourceCd: original.effectiveResourceCd,
+      effectiveDueDate: original.effectiveDueDate, originalRank: original.originalRank, alternateRank: original.alternateRank });
+    expect(pinned.itemRevision).not.toBe(original.itemRevision);
+  });
   it('distinguishes CSV fallback clears from explicit original restores and keeps direct split dates first', () => {
     const originalParentDueDate = new Date('2026-09-21T00:00:00.000Z');
     const plannedEndDate = new Date('2026-09-30T00:00:00.000Z');

@@ -1917,6 +1917,7 @@ model ProductionScheduleGrindingPlanningBoardOverride {
   /// an explicit processing clear falls back to the CSV planned end date.
   dueDateCleared      Boolean?
   alternateRank       Int?
+  orderPinned         Boolean   @default(false)
   specialDueKind      String?   @db.VarChar(20)
   specialDueExpiresAt DateTime?
   version             Int       @default(1)

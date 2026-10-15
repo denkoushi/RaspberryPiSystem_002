@@ -18,6 +18,7 @@ import type {
   GrindingPlanningBoardRankResponse,
   GrindingPlanningBoardResourceOrderRequest,
   GrindingPlanningBoardResourceOrderBulkRequest,
+  GrindingPlanningBoardPinsRequest,
   GrindingPlanningBoardResourceOrderResponse,
   GrindingPlanningBoardSeibanOrderRequest,
   GrindingPlanningBoardDueScopeRequest,
@@ -669,6 +670,13 @@ export async function updateKioskGrindingPlanningBoardOverrides(payload: Grindin
   const { data } = await api.put<GrindingPlanningBoardOverridesResponse>(
     '/kiosk/production-schedule/grinding-planning-board/overrides',
     payload
+  );
+  return data;
+}
+
+export async function updateKioskGrindingPlanningBoardPins(payload: GrindingPlanningBoardPinsRequest): Promise<GrindingPlanningBoardOverridesResponse> {
+  const { data } = await api.put<GrindingPlanningBoardOverridesResponse>(
+    '/kiosk/production-schedule/grinding-planning-board/pins', payload
   );
   return data;
 }
