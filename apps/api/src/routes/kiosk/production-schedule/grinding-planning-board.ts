@@ -107,8 +107,9 @@ const orderBodySchema = z.object({
 
 const resourceCapacityBodySchema = z.object({
   resourceCd: z.string().trim().min(1).max(20),
-  dailyHours: z.union([z.literal(8), z.literal(10), z.literal(24)])
-});
+  dailyHours: z.union([z.literal(8), z.literal(10), z.literal(24)]).optional(),
+  runsThroughBreaks: z.boolean().optional()
+}).refine((body) => body.dailyHours !== undefined || body.runsThroughBreaks !== undefined, { message: '稼働時間または休憩設定を指定してください' });
 
 const dueScopeSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('seiban') }),

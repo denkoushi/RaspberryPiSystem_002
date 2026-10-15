@@ -1673,16 +1673,18 @@ export function useUpdateKioskGrindingPlanningBoardResourceCapacity() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: GrindingPlanningBoardResourceCapacityRequest) => updateKioskGrindingPlanningBoardResourceCapacity(payload),
-    onMutate: async ({ resourceCd, dailyHours }) => {
+    onMutate: async ({ resourceCd, dailyHours, runsThroughBreaks }) => {
       await queryClient.cancelQueries({ queryKey: planningBoardCapacityKey });
       const previous = queryClient.getQueryData<GrindingPlanningBoardResourceCapacityResponse>(planningBoardCapacityKey);
       queryClient.setQueryData<GrindingPlanningBoardResourceCapacityResponse>(planningBoardCapacityKey, {
-        dailyHoursByResource: { ...previous?.dailyHoursByResource, [resourceCd]: dailyHours }
+        dailyHoursByResource: { ...previous?.dailyHoursByResource, ...(dailyHours !== undefined ? { [resourceCd]: dailyHours } : {}) },
+        runsThroughBreaksResources: runsThroughBreaks === undefined ? previous?.runsThroughBreaksResources ?? []
+          : [...(previous?.runsThroughBreaksResources ?? []).filter((resource) => resource !== resourceCd), ...(runsThroughBreaks ? [resourceCd] : [])]
       });
       return { previous };
     },
     onError: (_error, _variables, context) => {
-      queryClient.setQueryData(planningBoardCapacityKey, context?.previous ?? { dailyHoursByResource: {} });
+      queryClient.setQueryData(planningBoardCapacityKey, context?.previous ?? { dailyHoursByResource: {}, runsThroughBreaksResources: [] });
     },
     onSuccess: (response) => queryClient.setQueryData(planningBoardCapacityKey, response)
   });

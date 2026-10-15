@@ -27,7 +27,7 @@ function props(items: GrindingPlanningBoardItem[] = [item()]) {
     layout: buildPlanningBoardGanttLayout({ items, allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'],
       dailyHoursByResource: {}, today: '2026-10-14', scale: 14 }),
     scale: 14, dailyHoursByResource: {}, resourceNameMap: {}, capacityPending: false, capacityError: false,
-    onCapacityChange: vi.fn(), onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
+    onCapacityChange: vi.fn(), onBreaksChange: vi.fn(), onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
     selectedItemIds: new Set<string>(), resourceView: true
   };
 }
@@ -162,6 +162,38 @@ describe('forward PlanningBoardGanttView', () => {
     rerender(<PlanningBoardGanttView {...values} disabled pinMode onTogglePin={onTogglePin} />);
     fireEvent.click(bar);
     expect(onTogglePin).toHaveBeenCalledOnce();
+  });
+  it('draws hatched breaks only in pausing lanes and toggles the per-machine flag', () => {
+    const values = forwardProps();
+    const { rerender } = render(<PlanningBoardGanttView {...values} />);
+    const bands = screen.getAllByTestId('planning-gantt-break');
+    expect(bands.length).toBe((values.layout.end - values.layout.start) * 3);
+    for (const band of bands) {
+      expect(band.closest('[data-testid="planning-forward-lane-305"]')).not.toBeNull();
+      expect(band.style.background).toContain('repeating-linear-gradient');
+      expect(band).toHaveClass('pointer-events-none', 'opacity-80');
+    }
+    const toggle = screen.getByRole('button', { name: '休憩' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(toggle);
+    expect(values.onBreaksChange).toHaveBeenLastCalledWith('305', true);
+    rerender(<PlanningBoardGanttView {...values} runsThroughBreaks={new Set(['305'])} />);
+    expect(screen.queryByTestId('planning-gantt-break')).not.toBeInTheDocument();
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(toggle);
+    expect(values.onBreaksChange).toHaveBeenLastCalledWith('305', false);
+    rerender(<PlanningBoardGanttView {...values} dailyHoursByResource={{ '305': 24 }} />);
+    expect(toggle).toBeDisabled();
+    expect(toggle).toHaveClass('disabled:opacity-40');
+    expect(screen.queryByTestId('planning-gantt-break')).not.toBeInTheDocument();
+    rerender(<PlanningBoardGanttView {...values} capacityPending />);
+    expect(toggle).toBeDisabled();
+  });
+  it('shows text only on the first working-period segment', () => {
+    render(<PlanningBoardGanttView {...forwardProps([item({ requiredMinutes: 480 })])} scale={1} />);
+    expect(screen.getByTestId('planning-gantt-bar-a')).toHaveTextContent('部品');
+    expect(screen.getByTestId('planning-gantt-bar-a-segment-1')).toBeEmptyDOMElement();
+    expect(screen.getByTestId('planning-gantt-bar-a-segment-1')).toHaveClass('border-dashed');
   });
   const chainItems = () => [item({ itemId: 'b', processOrder: '20', originalResourceCd: '306', requiredMinutes: 60 }),
     item({ processOrder: '2', requiredMinutes: 480 }), item({ itemId: 'c', fhincd: 'P2', requiredMinutes: 60 })];
@@ -496,8 +528,8 @@ describe('forward PlanningBoardGanttView', () => {
     expect(screen.queryByTestId('planning-gantt-bar-a')).not.toBeInTheDocument();
     expect(screen.getByLabelText('ガントの日付と工程').scrollLeft).toBe(0);
   });
-  it('shades only before and after the working day, not breaks, and wraps the name to two lines and details to three', () => {
-    render(<PlanningBoardGanttView {...forwardProps([item({ requiredMinutes: 480 })])} />);
+  it('preserves off-hours shading and wraps the name to two lines and details to three', () => {
+    render(<PlanningBoardGanttView {...forwardProps([item({ requiredMinutes: 480 })])} scale={1} />);
     const shades = Array.from(screen.getByTestId('planning-forward-lane-305').querySelectorAll('.bg-slate-950\\/55'));
     const days = new Set(shades.map(shade => shade.parentElement));
     expect(days.size).toBeGreaterThan(0);
@@ -512,6 +544,9 @@ describe('forward PlanningBoardGanttView', () => {
   });
   it('uses two lines at scale 1 and 2 and minutes at other scales, keeping process order only in the accessible label', () => {
     const values = forwardProps([item({ requiredMinutes: 480, processOrder: '987' })]);
+    values.layout = buildPlanningBoardGanttLayout({ items: [item({ requiredMinutes: 480, processOrder: '987' })], mode: 'forward',
+      allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, runsThroughBreaks: new Set(['305']),
+      today: '2026-10-14', now: new Date('2026-10-14T09:00:00+09:00'), scale: 2 });
     const { rerender } = render(<PlanningBoardGanttView {...values} />);
     const bar = screen.getByTestId('planning-gantt-bar-a');
     expect(bar).toHaveTextContent('部品26-1001 · P1 · 1個 · 機種');
@@ -528,7 +563,7 @@ describe('forward PlanningBoardGanttView', () => {
   it('omits missing details and keeps the dashed unknown marker without process order', () => {
     const values = forwardProps([item({ requiredMinutes: 480, plannedQuantity: null, machineName: null }),
       item({ itemId: 'b', fhincd: 'P2', requiredMinutesKnown: false })]);
-    render(<PlanningBoardGanttView {...values} />);
+    render(<PlanningBoardGanttView {...values} scale={1} />);
     expect(screen.getByTestId('planning-gantt-bar-a')).toHaveTextContent('部品26-1001 · P1');
     expect(screen.getByTestId('planning-gantt-bar-a')).not.toHaveTextContent('個');
     expect(screen.getByTestId('planning-gantt-bar-b')).toHaveTextContent(/^所要不明$/);

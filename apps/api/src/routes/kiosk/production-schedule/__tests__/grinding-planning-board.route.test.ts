@@ -212,7 +212,7 @@ describe('grinding planning board route scope', () => {
   it('returns resource capacity for the authenticated site', async () => {
     const requireClientDevice = vi.fn(async () => ({ id: 'device-1' }));
     const app = await createApp(requireClientDevice);
-    const result = { dailyHoursByResource: { '305': 10, '306': 24 } };
+    const result = { dailyHoursByResource: { '305': 10, '306': 24 }, runsThroughBreaksResources: ['305'] };
     mocks.getCapacity.mockResolvedValue(result);
     try {
       const response = await app.inject({ method: 'GET', url: '/kiosk/production-schedule/grinding-planning-board/resource-capacity?siteKey=foreign-site', headers: { 'x-client-key': 'key-1' } });
@@ -240,7 +240,20 @@ describe('grinding planning board route scope', () => {
     } finally { await app.close(); }
   });
 
+  it.each([{ runsThroughBreaks: true }, { runsThroughBreaks: false }, { dailyHours: 8, runsThroughBreaks: true }])('accepts a capacity patch %j', async (patch) => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    mocks.updateCapacity.mockResolvedValue({ dailyHoursByResource: {}, runsThroughBreaksResources: ['305'] });
+    try {
+      const response = await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/grinding-planning-board/resource-capacity',
+        headers: { 'x-client-key': 'key-1' }, payload: { resourceCd: '305', ...patch } });
+      expect(response.statusCode).toBe(200);
+      expect(mocks.updateCapacity).toHaveBeenCalledWith({ siteKey: 'site-a', resourceCd: '305', ...patch });
+    } finally { await app.close(); }
+  });
+
   it.each([
+    { resourceCd: '305' },
+    { resourceCd: '305', runsThroughBreaks: 'true' },
     { resourceCd: '305', dailyHours: 12 },
     { resourceCd: '305', dailyHours: '10' },
     { resourceCd: ' ', dailyHours: 10 },

@@ -50,6 +50,7 @@ import { isSignageCanvasLayout } from '../signage/signage-layout.types.js';
 import { businessHermesSourceDefinition, businessHermesSourceDefinitionList } from './business-hermes-source-adapters.js';
 
 import { isOperationHowToQuestion, kioskOperationGuide, kioskOperationGuideSourceDefinition, type KioskOperationGuideIndex } from './kiosk-operation-guide.service.js';
+import { PrismaSubjectResolver, type AsyncSubjectResolver, type GuideFamily } from './kiosk-operation-guide-subject.js';
 
 export type { BusinessHermesConsultationConfirmation } from './business-hermes-responses.js';
 export type { ConsultationEvidence } from './business-hermes-evidence.js';
@@ -134,7 +135,8 @@ export type BusinessHermesConsultationChatResponse = {
 
 type ConsultationDeps = {
   receiptLog?: Pick<ReceiptLog, 'append'>;
-  operationGuide?: Pick<KioskOperationGuideIndex, 'matchStrength' | 'isEnabled' | 'search' | 'detail' | 'bestSection'>;
+  subjectResolver?: AsyncSubjectResolver;
+  operationGuide?: Pick<KioskOperationGuideIndex, 'matchStrength' | 'isEnabled' | 'search' | 'detail' | 'bestSection' | 'unknownTerms'>;
   db?: PrismaClient;
   fetchImpl?: FetchLike;
   runtime?: LocalLlmRuntimeControllerPort | null;
@@ -693,7 +695,8 @@ export function toConsultationView(row: {
 }
 
 export class BusinessHermesConsultationService {
-  private readonly operationGuide: Pick<KioskOperationGuideIndex, 'matchStrength' | 'isEnabled' | 'search' | 'detail' | 'bestSection'>;
+  private readonly subjectResolver?: AsyncSubjectResolver;
+  private readonly operationGuide: Pick<KioskOperationGuideIndex, 'matchStrength' | 'isEnabled' | 'search' | 'detail' | 'bestSection' | 'unknownTerms'>;
   private readonly db: PrismaClient;
   private readonly deps: ConsultationDeps;
   private readonly scanResolver?: Pick<BusinessHermesScanResolver, 'resolve'>;
@@ -705,6 +708,7 @@ export class BusinessHermesConsultationService {
   constructor(deps: ConsultationDeps = {}) {
     this.operationGuide = deps.operationGuide ?? kioskOperationGuide();
     this.db = deps.db ?? prisma;
+    this.subjectResolver = this.operationGuide.isEnabled() ? deps.subjectResolver ?? new PrismaSubjectResolver(this.db) : undefined;
     this.deps = deps;
     this.scanResolver = deps.scanResolver;
     // Tests and callers with an injected DB can opt into a matching resolver;
@@ -1057,7 +1061,8 @@ export class BusinessHermesConsultationService {
       return this.handleTroubleReport(consultationId, intentQuestion, clientDeviceId, measurement);
     }
     if (directGuide && intentQuestion) {
-      const guide = this.guideForQuestion(intentQuestion);
+      const families = await this.resolveFamilies(intentQuestion);
+      const guide = this.guideForQuestion(intentQuestion, families);
       const answer = guide
         ? `${guide.screen}\n\n${guide.sections.map(({ heading, body }) => `**${heading}**\n${body}`).join('\n\n')}`
         : 'この操作の説明はまだありません。『お問い合わせ』から聞いてください。';
@@ -1090,7 +1095,8 @@ export class BusinessHermesConsultationService {
         ? await this.answerCache.candidates?.(message, externalSignal) ?? [] : [];
       if (externalSignal?.aborted) return this.failure(consultationId, 'HERMES_TIMEOUT');
       if (cachedQuestion && measurement) measurement.answerCache = 'offered';
-      const recipes = this.displayedQuestionRecipes(message, clientDeviceId);
+      const families = firstQuestion ? await this.resolveFamilies(message) : [];
+      const recipes = this.displayedQuestionRecipes(message, clientDeviceId, families);
       const trouble = recipes.filter((recipe) => recipe.id === 'trouble-report');
       const confirmation = firstQuestion ? { title: INTENT_CONFIRMATION_TITLE, prompt, options: [
         ...trouble.map((recipe) => recipe.option),
@@ -1108,7 +1114,7 @@ export class BusinessHermesConsultationService {
       if (!updated) return this.failure(consultationId, 'HERMES_CONSULTATION_NOT_FOUND');
       if (externalSignal?.aborted) return this.failure(consultationId, 'HERMES_TIMEOUT');
       if (firstQuestion && confirmation && !this.deps.openJevIntentSelector && !cachedQuestion && sourceChoices.length === 0) {
-        this.startPrefetch(updated, message, confirmation, sourceGrounding, clientDeviceId);
+        this.startPrefetch(updated, message, confirmation, sourceGrounding, clientDeviceId, families);
         if (measurement) measurement.prefetchStarted = prefetches.has(consultationId);
       }
       if (firstQuestion && confirmation && this.deps.openJevIntentSelector) {
@@ -1430,8 +1436,14 @@ export class BusinessHermesConsultationService {
     void this.deps.receiptLog?.append({ consultationRoute: { route, guideMiss, direct, question: question.slice(0, 200) } });
   }
 
-  private guideForQuestion(intentQuestion: string): BusinessHermesOperationGuideDisplay | undefined {
-    const top = this.operationGuide.bestSection(intentQuestion);
+  private async resolveFamilies(question: string): Promise<GuideFamily[]> {
+    if (!this.subjectResolver) return [];
+    const terms = this.operationGuide.unknownTerms(question);
+    return terms.length ? this.subjectResolver.resolve(terms) : [];
+  }
+
+  private guideForQuestion(intentQuestion: string, families: GuideFamily[]): BusinessHermesOperationGuideDisplay | undefined {
+    const top = this.operationGuide.bestSection(intentQuestion, { families });
     const detail = top ? this.operationGuide.detail(top.id) : null;
     const basic = detail?.heading === '基本の手順' ? detail
       : detail?.siblings.find((section) => section.heading === '基本の手順');
@@ -1447,7 +1459,8 @@ export class BusinessHermesConsultationService {
 
   private async handleTroubleReport(consultationId: string, intentQuestion: string, clientDeviceId?: string,
     measurement?: LearningMeasurement): Promise<BusinessHermesConsultationChatResponse> {
-    const guide = this.guideForQuestion(intentQuestion);
+    const families = await this.resolveFamilies(intentQuestion);
+    const guide = this.guideForQuestion(intentQuestion, families);
     const device = clientDeviceId ? await this.db.clientDevice.findUnique({
       where: { id: clientDeviceId }, select: { id: true, name: true, location: true, statusClientId: true, siteKey: true }
     }) : null;
@@ -1515,12 +1528,12 @@ export class BusinessHermesConsultationService {
 
   // The operation-guide recipe follows trouble for screen hits or keyword how-to questions.
   // Other keyword hits append it last so record questions keep their flow.
-  private displayedQuestionRecipes(question: string, clientDeviceId?: string) {
+  private displayedQuestionRecipes(question: string, clientDeviceId?: string, families: GuideFamily[] = []) {
     const recipes = questionRecipes();
     const existing = recipes.filter((recipe) => recipe.id !== 'operation-guide' && recipe.id !== 'trouble-report');
     const trouble = clientDeviceId && troubleCategory(question) !== null ? recipes.filter((recipe) => recipe.id === 'trouble-report') : [];
     const guide = recipes.filter((recipe) => recipe.id === 'operation-guide');
-    const strength = this.operationGuide.isEnabled() ? this.operationGuide.matchStrength(question) : 'none';
+    const strength = this.operationGuide.isEnabled() ? this.operationGuide.matchStrength(question, { families }) : 'none';
     if (strength === 'screen' || (strength === 'keyword' && isOperationHowToQuestion(question))) return [...trouble, ...guide, ...existing];
     if (strength === 'keyword') return [...trouble, ...existing, ...guide];
     return [...trouble, ...existing];
@@ -1556,9 +1569,9 @@ export class BusinessHermesConsultationService {
   }
 
   private startPrefetch(consultation: BusinessHermesConsultationDetail, question: string, confirmation: BusinessHermesConsultationConfirmation,
-    sourceGrounding?: BusinessHermesGroundedSearch, clientDeviceId?: string): void {
+    sourceGrounding?: BusinessHermesGroundedSearch, clientDeviceId?: string, families: GuideFamily[] = []): void {
     if (!this.isConfigured() || prefetches.size > 0 || inFlight.size > 1) return;
-    const recipe = this.displayedQuestionRecipes(question, clientDeviceId)[0]!;
+    const recipe = this.displayedQuestionRecipes(question, clientDeviceId, families)[0]!;
     if (recipe.id === 'operation-guide' || recipe.id === 'trouble-report') return;
     const selection = { prompt: confirmation.prompt, option: recipe.option };
     const pending: Prefetch = {

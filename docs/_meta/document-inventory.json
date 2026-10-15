@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 757,
-    "totalLines": 187994,
-    "totalBytes": 14923696,
-    "withFrontmatter": 363,
-    "withStatus": 169,
+    "documentCount": 762,
+    "totalLines": 188450,
+    "totalBytes": 15011301,
+    "withFrontmatter": 366,
+    "withStatus": 170,
     "sourceOfTruthDeclared": 116,
     "execPlanReferences": 62,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 39,
-    "localLinkCount": 5815,
+    "localLinkCount": 5820,
     "brokenLocalLinkCount": 89,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
@@ -5919,8 +5919,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 2078,
-      "byteSize": 358580,
+      "lineCount": 2079,
+      "byteSize": 358735,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -10702,6 +10702,11 @@
           "exists": true
         },
         {
+          "href": "./plans/kiosk-operation-guide-accuracy-log.md",
+          "targetPath": "docs/plans/kiosk-operation-guide-accuracy-log.md",
+          "exists": true
+        },
+        {
           "href": "./plans/kiosk-self-inspection-record-view-uiux-execplan.md",
           "targetPath": "docs/plans/kiosk-self-inspection-record-view-uiux-execplan.md",
           "exists": true
@@ -11587,95 +11592,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 339,
+          "line": 340,
           "length": 1132
         },
         {
-          "line": 355,
+          "line": 356,
           "length": 1242
         },
         {
-          "line": 359,
+          "line": 360,
           "length": 1022
         },
         {
-          "line": 374,
+          "line": 375,
           "length": 1065
         },
         {
-          "line": 422,
+          "line": 423,
           "length": 1165
         },
         {
-          "line": 428,
+          "line": 429,
           "length": 1458
         },
         {
-          "line": 440,
+          "line": 441,
           "length": 1083
         },
         {
-          "line": 454,
+          "line": 455,
           "length": 1398
         },
         {
-          "line": 456,
+          "line": 457,
           "length": 1133
         },
         {
-          "line": 460,
+          "line": 461,
           "length": 1399
         },
         {
-          "line": 462,
+          "line": 463,
           "length": 1008
         },
         {
-          "line": 468,
+          "line": 469,
           "length": 1059
         },
         {
-          "line": 476,
+          "line": 477,
           "length": 1129
         },
         {
-          "line": 480,
+          "line": 481,
           "length": 1135
         },
         {
-          "line": 484,
+          "line": 485,
           "length": 1117
         },
         {
-          "line": 599,
+          "line": 600,
           "length": 1013
         },
         {
-          "line": 785,
+          "line": 786,
           "length": 2038
         },
         {
-          "line": 801,
+          "line": 802,
           "length": 1496
         },
         {
-          "line": 807,
+          "line": 808,
           "length": 1177
         },
         {
-          "line": 1149,
+          "line": 1150,
           "length": 1449
         },
         {
-          "line": 1185,
+          "line": 1186,
           "length": 1136
         },
         {
-          "line": 1187,
+          "line": 1188,
           "length": 1239
         },
         {
-          "line": 1223,
+          "line": 1224,
           "length": 1004
         }
       ],
@@ -23215,7 +23220,7 @@
     {
       "path": "docs/kiosk-operation-guide/production-schedule-planning-board.md",
       "lineCount": 69,
-      "byteSize": 8755,
+      "byteSize": 8821,
       "hasFrontmatter": true,
       "title": "製番ボード",
       "status": null,
@@ -23365,7 +23370,37 @@
     {
       "path": "docs/kiosk-operation-guide/tag-desk.md",
       "lineCount": 41,
-      "byteSize": 2454,
+      "byteSize": 2443,
+      "hasFrontmatter": true,
+      "title": "タグ管理",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/kiosk-operation-guide/tag-desk.md",
+      "lineCount": 41,
+      "byteSize": 2443,
+      "hasFrontmatter": true,
+      "title": "タグ管理",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/kiosk-operation-guide/tag-desk.md",
+      "lineCount": 41,
+      "byteSize": 2443,
       "hasFrontmatter": true,
       "title": "タグ管理",
       "status": null,
@@ -35409,7 +35444,7 @@
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
-      "inboundCount": 1,
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -35903,13 +35938,61 @@
     },
     {
       "path": "docs/plans/kiosk-chat-system-guide-execplan.md",
-      "lineCount": 138,
-      "byteSize": 34293,
+      "lineCount": 139,
+      "byteSize": 35485,
       "hasFrontmatter": false,
       "title": "キオスクの Chat をシステム全体の案内役にする(操作の問い合わせと不具合の受付)",
       "status": null,
       "source_of_truth": null,
-      "localLinks": [],
+      "localLinks": [
+        {
+          "href": "./kiosk-operation-guide-accuracy-log.md",
+          "targetPath": "docs/plans/kiosk-operation-guide-accuracy-log.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/kiosk-chat-system-guide-execplan.md",
+      "lineCount": 139,
+      "byteSize": 35485,
+      "hasFrontmatter": false,
+      "title": "キオスクの Chat をシステム全体の案内役にする(操作の問い合わせと不具合の受付)",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "./kiosk-operation-guide-accuracy-log.md",
+          "targetPath": "docs/plans/kiosk-operation-guide-accuracy-log.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/kiosk-chat-system-guide-execplan.md",
+      "lineCount": 139,
+      "byteSize": 35485,
+      "hasFrontmatter": false,
+      "title": "キオスクの Chat をシステム全体の案内役にする(操作の問い合わせと不具合の受付)",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "./kiosk-operation-guide-accuracy-log.md",
+          "targetPath": "docs/plans/kiosk-operation-guide-accuracy-log.md",
+          "exists": true
+        }
+      ],
       "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
@@ -36272,6 +36355,27 @@
         }
       ],
       "inboundCount": 5,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/kiosk-operation-guide-accuracy-log.md",
+      "lineCount": 33,
+      "byteSize": 3069,
+      "hasFrontmatter": true,
+      "title": "キオスク操作案内の当たり率ログ",
+      "status": "living log",
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "./hermes-retrieval-accuracy-log.md",
+          "targetPath": "docs/plans/hermes-retrieval-accuracy-log.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 4,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -37730,8 +37834,8 @@
     },
     {
       "path": "docs/plans/procedure-manuals-execplan.md",
-      "lineCount": 722,
-      "byteSize": 190841,
+      "lineCount": 783,
+      "byteSize": 198119,
       "hasFrontmatter": false,
       "title": "機種×工程ごとの要領書を、組立手順書を正本にして閲覧・作成できるようにする",
       "status": null,

@@ -850,7 +850,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const proposeResourceOrder = () => {
     if (gantt.mode !== 'forward' || view !== 'resource' || allocation !== 'alternate' || orderActionsDisabled) return;
     const options: GanttLayoutOptions = { items: ganttItems, allocation, view, category, resourceCategories: data?.resourceCategories,
-      seibanOrder: registeredFseibans, resources: data?.resources ?? EMPTY_ORDER, dailyHoursByResource: gantt.dailyHoursByResource,
+      seibanOrder: registeredFseibans, resources: data?.resources ?? EMPTY_ORDER, dailyHoursByResource: gantt.dailyHoursByResource, runsThroughBreaks: gantt.runsThroughBreaks,
       today: todayJst(), scale: gantt.scale, now: ganttNow };
     const current = planningBoardLaneOrder(options);
     const proposal = planningBoardAutoOrder(options, new Set(ganttItems.filter((item) => item.orderPinned).map((item) => item.itemId)));
@@ -1010,6 +1010,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         <PlanningBoardGanttView ref={gantt.viewRef} layout={ganttLayout} scale={gantt.scale} homeKey={gantt.homeKey}
           resourceView={view === 'resource'} dailyHoursByResource={orderPreview?.options.dailyHoursByResource ?? gantt.dailyHoursByResource} preferenceScope={`${data.siteKey}:${category}`}
           resourceNameMap={resourcesQuery.data?.resourceNameMap ?? {}}
+          runsThroughBreaks={orderPreview?.options.runsThroughBreaks ?? gantt.runsThroughBreaks} onBreaksChange={gantt.changeBreaks}
           capacityPending={gantt.capacityPending} capacityError={gantt.capacityError} onCapacityChange={gantt.changeCapacity}
           pinMode={gantt.mode === 'forward' && view === 'resource' && pinMode} onTogglePin={togglePin}
           selectedItemIds={selectedItemIds} onToggleItem={toggleItem} onDueDrop={moveDueByDrag} onResourceReorder={reorderResourceByDrag}

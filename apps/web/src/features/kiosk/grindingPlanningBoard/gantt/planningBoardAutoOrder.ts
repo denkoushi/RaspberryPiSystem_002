@@ -44,7 +44,7 @@ export function planningBoardAutoOrder(options: GanttLayoutOptions, pinnedItemId
   const now = jstDay(options.now ?? new Date());
   const due = (item: GrindingPlanningBoardItem) => resolveGrindingPlanningBoardDueDate(item, options.allocation) ?? '9999-12-31';
   while (ends.size < sorted.length) {
-    let best: { item: GrindingPlanningBoardItem; resource: string; start: number; hours: number } | undefined;
+    let best: { item: GrindingPlanningBoardItem; resource: string; start: number; hours: number; pausesForBreaks: boolean } | undefined;
     for (const [resource, lane] of Object.entries(current)) {
       const head = lane[orders[resource]!.length];
       if (!head) continue;
@@ -59,15 +59,16 @@ export function planningBoardAutoOrder(options: GanttLayoutOptions, pinnedItemId
         if (predecessor && !ends.has(predecessor)) continue;
         const item = items.get(id)!;
         const hours = options.dailyHoursByResource[resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS;
-        const start = nextWorkingStart(Math.max(cursors.get(resource) ?? now, ends.get(predecessor ?? '') ?? now), hours);
+        const pausesForBreaks = !options.runsThroughBreaks?.has(resource);
+        const start = nextWorkingStart(Math.max(cursors.get(resource) ?? now, ends.get(predecessor ?? '') ?? now), hours, pausesForBreaks);
         if (!best || start < best.start - 1e-10 || (Math.abs(start - best.start) < 1e-10 &&
           (due(item).localeCompare(due(best.item)) || ranks.get(id)! - ranks.get(best.item.itemId)!) < 0)) {
-          best = { item, resource, start, hours };
+          best = { item, resource, start, hours, pausesForBreaks };
         }
       }
     }
     if (!best) break;
-    const timing = placeForward(best.start, best.item.requiredMinutesKnown ? best.item.requiredMinutes ?? 0 : 0, best.hours);
+    const timing = placeForward(best.start, best.item.requiredMinutesKnown ? best.item.requiredMinutes ?? 0 : 0, best.hours, best.pausesForBreaks);
     orders[best.resource]!.push(best.item.itemId);
     ends.set(best.item.itemId, timing.end);
     cursors.set(best.resource, timing.end);

@@ -56,6 +56,7 @@ export type GanttLayoutOptions = {
   resources: readonly string[];
   category?: GrindingPlanningBoardCategory;
   resourceCategories?: GrindingPlanningBoardResponse['resourceCategories'];
+  runsThroughBreaks?: ReadonlySet<string>;
   dailyHoursByResource: Readonly<Record<string, GrindingPlanningBoardResourceDailyHours>>;
   today: string;
   scale: number;
@@ -148,10 +149,10 @@ export const jstDay = (now: Date): number => (now.getTime() + 9 * 3_600_000) / D
 
 // 8H/10H count working time only: the shift starts at 8:00 and pauses for these breaks (minutes after midnight).
 const SHIFT_START_MINUTES = 8 * 60;
-const BREAKS_MINUTES: readonly (readonly [number, number])[] = [[10 * 60 + 10, 10 * 60 + 20], [12 * 60 + 10, 12 * 60 + 50], [14 * 60 + 50, 15 * 60]];
+const BREAKS_MINUTES: readonly (readonly [number, number])[] = [[10 * 60, 10 * 60 + 10], [12 * 60 + 10, 12 * 60 + 50], [14 * 60 + 50, 15 * 60]];
 
 /** Working periods of one day as fractions of the day; 24H runs without breaks. */
-export function workingPeriods(hours: number): { start: number; end: number }[] {
+export function workingPeriods(hours: number, pausesForBreaks = true): { start: number; end: number }[] {
   if (hours >= 24) return [{ start: 0, end: 1 }];
   const periods: { start: number; end: number }[] = [];
   let cursor = SHIFT_START_MINUTES;
@@ -164,14 +165,15 @@ export function workingPeriods(hours: number): { start: number; end: number }[] 
     cursor = Math.max(cursor + take, breakEnd);
   }
   if (remaining > 0) periods.push({ start: cursor, end: cursor + remaining });
+  if (!pausesForBreaks) return [{ start: SHIFT_START_MINUTES / 1440, end: periods[periods.length - 1]!.end / 1440 }];
   return periods.map((period) => ({ start: period.start / 1440, end: period.end / 1440 }));
 }
 
 /** The working period that contains `time`, or the next one after it. */
-function workingPeriodFrom(time: number, hours: number): { start: number; end: number } {
+function workingPeriodFrom(time: number, hours: number, pausesForBreaks: boolean): { start: number; end: number } {
   const day = Math.floor(time + 1e-10);
   for (const offset of [0, 1]) {
-    for (const period of workingPeriods(hours)) {
+    for (const period of workingPeriods(hours, pausesForBreaks)) {
       const start = day + offset + period.start;
       const end = day + offset + period.end;
       if (time < end - 1e-10) return { start: Math.max(time, start), end };
@@ -180,22 +182,19 @@ function workingPeriodFrom(time: number, hours: number): { start: number; end: n
   return { start: day + 1, end: day + 1 };
 }
 
-export function nextWorkingStart(time: number, hours: number): number {
-  return workingPeriodFrom(time, hours).start;
+export function nextWorkingStart(time: number, hours: number, pausesForBreaks: boolean): number {
+  return workingPeriodFrom(time, hours, pausesForBreaks).start;
 }
 
-export function placeForward(time: number, minutes: number, hours: number) {
-  const start = nextWorkingStart(time, hours);
+export function placeForward(time: number, minutes: number, hours: number, pausesForBreaks: boolean) {
+  const start = nextWorkingStart(time, hours, pausesForBreaks);
   let cursor = start;
   let remaining = minutes / 1440;
   const segments: { start: number; end: number }[] = [];
   while (remaining > 1e-10) {
-    const period = workingPeriodFrom(cursor, hours);
+    const period = workingPeriodFrom(cursor, hours, pausesForBreaks);
     const take = Math.min(remaining, period.end - period.start);
-    const last = segments[segments.length - 1];
-    // A break inside the same day keeps the bar whole (the break is drawn over it); only a new day splits it.
-    if (last && Math.floor(last.start + 1e-10) === Math.floor(period.start + 1e-10)) last.end = period.start + take;
-    else segments.push({ start: period.start, end: period.start + take });
+    segments.push({ start: period.start, end: period.start + take });
     cursor = period.start + take;
     remaining -= take;
   }
@@ -237,11 +236,12 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
   const cursors = new Map<string, number>();
   const place = (item: GrindingPlanningBoardItem, resource: string) => {
     const hours = dailyHoursByResource[resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS;
-    const cursor = nextWorkingStart(cursors.get(resource) ?? now, hours);
+    const pausesForBreaks = !options.runsThroughBreaks?.has(resource);
+    const cursor = nextWorkingStart(cursors.get(resource) ?? now, hours, pausesForBreaks);
     const predecessor = scheduled.get(predecessors.get(item.itemId) ?? '');
     const ready = predecessor?.end ?? now;
     const unknown = !item.requiredMinutesKnown || !item.requiredMinutes;
-    const timing = placeForward(Math.max(cursor, ready), unknown ? 0 : item.requiredMinutes!, hours);
+    const timing = placeForward(Math.max(cursor, ready), unknown ? 0 : item.requiredMinutes!, hours, pausesForBreaks);
     const due = resolveGrindingPlanningBoardDueDate(item, allocation);
     const lateDays = due ? Math.max(0, Math.ceil(timing.end - dateToDay(due) - 1 - 1e-10)) : 0;
     scheduled.set(item.itemId, { item, resource, due, unknown, ...timing,

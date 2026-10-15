@@ -1897,6 +1897,7 @@ model ProductionScheduleGrindingPlanningBoardResourceCapacity {
   siteKey        String   @db.VarChar(100)
   resourceCd     String   @db.VarChar(20)
   dailyHours     Int
+  runsThroughBreaks Boolean @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

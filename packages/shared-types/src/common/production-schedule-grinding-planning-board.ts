@@ -244,9 +244,11 @@ export const GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS: GrindingPlann
 /** 既定値(8時間)以外が保存された資源CDだけを返す。 */
 export interface GrindingPlanningBoardResourceCapacityResponse {
   dailyHoursByResource: Record<string, GrindingPlanningBoardResourceDailyHours>;
+  runsThroughBreaksResources: string[];
 }
 
 export interface GrindingPlanningBoardResourceCapacityRequest {
   resourceCd: string;
-  dailyHours: GrindingPlanningBoardResourceDailyHours;
+  dailyHours?: GrindingPlanningBoardResourceDailyHours;
+  runsThroughBreaks?: boolean;
 }
