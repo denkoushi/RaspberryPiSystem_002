@@ -20,6 +20,8 @@ const answering = (dense) => createRetrievalAnswering({ catalog, records, planne
 test('procedure material definition is valid and remains opt-in', () => {
   const definition = validateSourceDefinition(sourceDefinitions.procedure_material, 'procedure_material');
   assert.deepEqual(definition.retrieval, { conversational: false, semanticSearch: true, enrichment: false, learnedQueries: false, denseStoreSuffix: 'procedure_material' });
+  assert.equal(definition.description, '素材単位の要領書の素材（件名・ファイル名・素材の中の文字）');
+  assert.deepEqual(definition.bodyFields, { bodyText: '素材ごとの件名・ファイル名・素材の中の文字' });
   assert.deepEqual(sourceIdsFromEnv({}), ['nonconformity']);
   assert.deepEqual(sourceIdsFromEnv({ HERMES_RETRIEVAL_SOURCES: 'nonconformity,procedure_material' }), ['nonconformity', 'procedure_material']);
 });
@@ -32,7 +34,7 @@ test('rank bypasses planner and judge and fuses lexical and source-specific dens
   } };
   const emitted = [];
   const result = await dispatchWorkerRequest(answering(dense), request, payload => emitted.push(payload));
-  assert.deepEqual(result.result, { recordIds: ['mail:first', 'material:second'], mode: 'semantic', fallback: false });
+  assert.deepEqual(result.result, { recordIds: ['mail:first', 'material:second'], mode: 'semantic', fallback: false, rankingStats: result.result.rankingStats });
   assert.deepEqual(emitted, [result]);
 });
 
@@ -53,7 +55,7 @@ test('dense missing, disabled, empty, failed and timed out fall back silently to
     { queryEnabled: true, rank: async () => { throw new Error('offline'); } },
     { queryEnabled: true, rank: () => new Promise(() => {}) }]) {
     const result = await completeRequest(answering(dense), request);
-    assert.deepEqual(result.result, { recordIds: ['mail:first'], mode: 'lexical', fallback: true });
+    assert.deepEqual(result.result, { recordIds: ['mail:first'], mode: 'lexical', fallback: true, rankingStats: result.result.rankingStats });
   }
 });
 
@@ -118,4 +120,45 @@ test('rank-only capability prevents learned queries from changing ranked records
     learnedById: new Map([['mail:first', ['PRIVATE-LEARNED-QUERY']]]) });
   assert.deepEqual((await service.rank('PRIVATE-LEARNED-QUERY', { sourceId: 'procedure_material' })).recordIds, []);
   assert.deepEqual((await service.rank(request.q, { sourceId: 'procedure_material' })).recordIds, ['mail:first']);
+});
+
+
+test('procedure material hybrid diagnostics travel in the rank protocol without query text or stderr', async (t) => {
+  const stderr = t.mock.method(process.stderr, 'write', () => true);
+  const rows = Array.from({ length: 12 }, (_, i) => ({ id: `material:${i}`, bodyText: i < 3 ? 'qxneedle' : 'zzzz' }));
+  const cosines = new Map(rows.map((row, i) => [row.id, (12 - i) / 16]));
+  cosines.set('mail:stale', 1);
+  const service = createRetrievalAnswering({ records: authorizedRecords(rows.map(row => ({ ...row, kind: 'procedure_material' })), loadCatalog(['procedure_material'])),
+    catalog: loadCatalog(['procedure_material']),
+    denseBySource: { procedure_material: { queryEnabled: true, rank: async () => ({ ok: true, orderedIds: ['mail:stale', ...rows.map(row => row.id)], cosines }) } },
+  });
+  const response = await completeRequest(service, { ...request, q: 'qxneedle', limit: 2 });
+  const result = response.result;
+  assert.deepEqual(result.recordIds, ['material:0', 'material:1']);
+  assert.deepEqual(result.rankingStats, {
+    event: 'procedure_material_hybrid_ranking', queryLength: 8, recordCount: 12, denseCount: 12,
+    denseTop: 0.75, dense5th: 0.5, dense10th: 0.1875, denseMedian: 0.40625, lexicalContentHitCount: 3,
+  });
+  assert.equal(JSON.stringify(result.rankingStats).includes('qxneedle'), false);
+  assert.equal(stderr.mock.callCount(), 0);
+});
+
+test('hybrid diagnostics handle absent and odd-sized dense results and stay source specific', async () => {
+  const stats = [];
+  const rows = Array.from({ length: 3 }, (_, i) => ({ id: `material:${i}`, bodyText: 'qxneedle' }));
+  for (const count of [0, 1, 3]) {
+    const hits = rows.slice(0, count);
+    const result = await rankCandidates('qxneedle', {
+      sourceId: 'procedure_material', records: rows, catalog: loadCatalog(['procedure_material']),
+      vector: async () => ({ ok: true, orderedIds: hits.map(row => row.id), cosines: new Map(hits.map((row, i) => [row.id, (3 - i) / 4])) }),
+    });
+    stats.push(result.rankingStats);
+  }
+  assert.deepEqual(stats.map(stat => stat.denseMedian), [null, 0.75, 0.5]);
+  assert.deepEqual(stats.map(stat => [stat.dense5th, stat.dense10th]), [[null, null], [null, null], [null, null]]);
+  const fallback = await rankCandidates('qxneedle', { sourceId: 'procedure_material', records: rows, catalog: loadCatalog(['procedure_material']) });
+  assert.equal(fallback.rankingStats.denseTop, null);
+  assert.equal(fallback.rankingStats.denseCount, 0);
+  assert.equal(fallback.rankingStats.lexicalContentHitCount, 3);
+  assert.equal((await rankCandidates('qxneedle', { sourceId: 'nonconformity', records: [], catalog: loadCatalog(['nonconformity']) })).rankingStats, undefined);
 });

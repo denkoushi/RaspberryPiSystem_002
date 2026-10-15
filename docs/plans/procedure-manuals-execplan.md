@@ -429,6 +429,67 @@ API `/assembly/procedure-materials` は Phase 1 と同じ `allowView` / `allowWr
 
 要領書ブラウザ上部の「素材」でダイアログを開き、本文冒頭2行・写真サムネイル・ヒント・受信日時・送信元を表示する。ヒント検索、「今すぐ取り込む」、未配置 / 捨てた素材の切替、「捨てる」 / 「戻す」を提供する。操作部は縮まない構造、ボタンは `min-h-11` とし、配置ボタンは置かない。原本は認証付き Blob で取得して object URL を解放する。テストは件名排他、resolver、保存・ゴミ箱移動の冪等性と失敗、API状態・404・403・破棄復元、スケジュールと管理設定、素材棚の一覧・手動取込を Prisma モックで確認する。
 
+### Procedure material image descriptions (2026-10-15, local implementation)
+
+- Migration `20261015090000_add_procedure_material_image_description` adds nullable `imageDescription` / `imageDescribedAt` and retry state (`imageDescribeAttempts`, `imageDescribeNextAttemptAt`). `text` retains its PDF/sentinel meaning. API list responses omit all four new columns.
+- `PROCEDURE_MATERIAL_IMAGE_DESCRIPTION_ENABLED=true`, `PROCEDURE_MATERIAL_IMAGE_DESCRIPTION_CRON="*/5 * * * *"`, `PROCEDURE_MATERIAL_IMAGE_DESCRIPTION_BATCH_SIZE=3` are the defaults. The post-listen scheduler describes newest eligible PHOTO rows from every origin via existing `photo_label`, with integrity-checked originals resized to JPEG (long edge 1600 px), Japanese visible content/text, 700 output tokens, and 1000 stored Unicode characters.
+- Claims expire after 30 minutes; claiming increments attempts (including crashes), at most 5. Failures retry after 10/20/40/80/160 minutes; completion is fenced by attempt and claim expiry. Empty output marks the row examined. Disabled/unconfigured/unavailable processing logs once and does not crash the API. Runtime readiness failure does not claim rows.
+- New knowledge imports reuse stored source-photo VLM descriptions (also for step photos whose image ID resolves to a source). Existing source imports resolve `knowledgeRef.sourceId/imageId` against stored `KnowledgeProcedureMaterial.organized`; unresolved photos use VLM. Step captions alone do not mark an image described.
+- Backfill: `pnpm --filter api backfill:procedure-material-image-description -- --limit=100` inspects eligible targets by default. Explicit `--dry-run=false` processes them; the `:prod` script uses compiled JS. This respects enabled/configured flags and retry eligibility; it does not reset exhausted attempts.
+- The per-material corpus appends descriptions after filename/text, reserving room within its 4000-character cap. Normal worker refresh (`HERMES_RETRIEVAL_V2_REFRESH_SEC`, default 300 seconds after worker startup) reloads material rows and replaces the full corpus. The existing 20000-newest-live-row corpus limit remains.
+- Dense refresh compares a hash of the first 700 characters of the embedding passage, not just the record ID. Descriptions beyond that prefix may not trigger re-embedding and are only available to lexical matching; queued/failed embedding updates can temporarily retain old vectors. No dense-store behavior changed.
+- Item 0 diagnostics now travel as optional `rankingStats` through rank worker responses and are schema-filtered before API info logging. Query text is excluded; neither stats nor image descriptions are added to HTTP payloads. Only executor/rank tests changed under `scripts/hermes-search` for this item; existing WIP remains intact.
+- Local verification: API focused tests and worker rank tests pass; Prisma validate/generate pass. Validation uses a temporary filesystem preload that blocks `.env` reads. Default `tsc --noEmit` encounters pre-existing TS6059 rootDir/include conflicts; after building the two missing workspace dependency outputs, `tsc -p tsconfig.build.json --noEmit` and touched-file eslint pass. Migration application, inference against DGX, commit/push/PR/deploy are not performed.
+
+Verification commands and output tails (local, no `.env` reads):
+
+```sh
+NODE_OPTIONS='--require=/private/tmp/procedure-material-no-env.cjs' DATABASE_URL='postgresql://test:test@localhost:5432/test' pnpm --filter api exec prisma validate
+# The schema at prisma/schema.prisma is valid 🚀
+NODE_OPTIONS='--require=/private/tmp/procedure-material-no-env.cjs' DATABASE_URL='postgresql://test:test@localhost:5432/test' pnpm --filter api exec prisma generate
+# ✔ Generated Prisma Client (v5.22.0) ... in 979ms
+NODE_OPTIONS='--require=/private/tmp/procedure-material-no-env.cjs' pnpm --filter api exec vitest run src/services/assembly/__tests__/procedure-material-image-description.service.test.ts src/services/assembly/__tests__/procedure-material-hermes-source.service.test.ts src/services/assembly/__tests__/hermes-search-trial.service.test.ts src/routes/assembly/__tests__/procedure-material-knowledge.routes.test.ts src/routes/assembly/__tests__/procedure-material-semantic-search.routes.test.ts src/config/__tests__/procedure-material.env.test.ts src/bootstrap/__tests__/start-post-listen-schedulers.test.ts
+# Test Files  7 passed (7)
+# Tests  124 passed (124)
+# Duration  15.37s
+node --test scripts/hermes-search/retrieval/rank.test.mjs
+# tests 11; pass 11; fail 0; duration_ms 1598.728125
+pnpm --filter api exec tsc --noEmit
+# TS6059: prisma/seed.ts, vitest.config.ts and three scripts are outside rootDir src.
+pnpm --filter @raspi-system/part-search-core build
+pnpm --filter @raspi-system/shelf-layout-core build
+pnpm --filter api exec tsc -p tsconfig.build.json --noEmit
+# No output; exit 0 (after the workspace dependency builds).
+```
+
+After preserving each knowledge source's original preview lookup, the affected route suite was rerun with `NODE_OPTIONS='--require=/private/tmp/procedure-material-no-env.cjs' pnpm --filter api exec vitest run src/routes/assembly/__tests__/procedure-material-knowledge.routes.test.ts`: `Test Files 1 passed (1)`, `Tests 36 passed (36)`, `Duration 4.38s`. Final lint for the adjusted files used `pnpm --filter api exec eslint src/services/assembly/procedure-material-knowledge.service.ts src/services/assembly/procedure-material.service.ts` (no diagnostics, exit 0).
+
+Touched-file lint used `pnpm --filter api exec eslint` with the following exact argument list (exit 0, no diagnostics). The pre-existing integration-test WIP was linted but its real-PostgreSQL suite was not run:
+
+```text
+src/bootstrap/__tests__/start-post-listen-schedulers.test.ts
+src/bootstrap/start-post-listen-schedulers.ts
+src/config/env.ts
+src/routes/assembly/__tests__/procedure-material-knowledge.routes.test.ts
+src/routes/assembly/__tests__/procedure-material-semantic-search.routes.test.ts
+src/routes/assembly/procedure-materials.ts
+src/services/assembly/__tests__/hermes-search-trial.service.test.ts
+src/services/assembly/__tests__/procedure-material-hermes-source.service.test.ts
+src/services/assembly/__tests__/procedure-material-search.integration.test.ts
+src/services/assembly/hermes-search-trial.service.ts
+src/services/assembly/procedure-material-hermes-source.service.ts
+src/services/assembly/procedure-material-knowledge.service.ts
+src/services/assembly/procedure-material.service.ts
+src/config/__tests__/procedure-material.env.test.ts
+src/config/env/procedure-material.ts
+src/scripts/backfill-procedure-material-image-description.ts
+src/services/assembly/__tests__/procedure-material-image-description.service.test.ts
+src/services/assembly/procedure-material-image-description.scheduler.ts
+src/services/assembly/procedure-material-image-description.service.ts
+```
+
+The API files above (except the untouched existing integration-test WIP), `apps/api/package.json`, `apps/api/prisma/schema.prisma`, the new migration, `scripts/hermes-search/retrieval/{executor,rank.test}.mjs`, and this Plan are the task's file scope. Existing `hermes-sources/procedure_material.json` and `dense-dgx.test.mjs` changes were preserved without edits. Existing per-material search WIP in shared touched files was retained.
+
 ### Phase 2b: 白紙ページと素材の配置
 
 既存の文書エディタ(`apps/web/src/features/assembly/document-editor/`)に「白紙ページを追加」と「素材棚から配置」を足す。写真は IMAGE、本文は TEXT オーバーレイとして置き、`documentId` / `placedAt` を更新する。配置先のライフサイクルと素材原本の保持を確認する。素材は組立文書の asset namespace とは独立して保存するため、配置後に文書資産へコピーする場合はその資産の GC 保持判定を既存規則に合わせる。公開経路・共通オーバーレイ型はこの段階で変更しない。

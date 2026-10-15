@@ -1,3 +1,4 @@
+import { getProcedureMaterialImageDescriptionScheduler } from '../services/assembly/procedure-material-image-description.scheduler.js';
 import { getSystemNoticeEvaluator } from '../services/kiosk-inquiry/system-notice-evaluator.js';
 import { getProcedureVideoScheduler } from '../services/assembly/procedure-video.scheduler.js';
 import type { FastifyInstance } from 'fastify';
@@ -291,6 +292,11 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
       },
     },
     {
+      name: 'procedure-material-image-description',
+      start: () => { getProcedureMaterialImageDescriptionScheduler().start(); },
+      stop: () => { getProcedureMaterialImageDescriptionScheduler().stop(); },
+    },
+    {
       name: 'part-measurement-drawing-ocr',
       start: async () => {
         await getPartMeasurementDrawingOcrScheduler().start();
@@ -326,6 +332,7 @@ export function listPostListenSchedulerNames(): string[] {
     'system-notice-evaluator',
     'alerts-ingestor',
     'photo-tool-label',
+    'procedure-material-image-description',
     'part-measurement-drawing-ocr',
   ];
 }

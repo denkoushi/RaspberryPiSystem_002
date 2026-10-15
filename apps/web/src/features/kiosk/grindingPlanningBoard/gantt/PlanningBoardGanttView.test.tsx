@@ -40,24 +40,19 @@ describe('PlanningBoardGanttView', () => {
     const viewport = screen.getByLabelText('ガントの日付と工程');
     viewport.scrollLeft = 200;
     viewport.scrollTop = 100;
-    const capture = vi.fn();
-    const release = vi.fn();
-    Object.defineProperties(viewport, {
-      setPointerCapture: { value: capture }, hasPointerCapture: { value: () => true }, releasePointerCapture: { value: release }
-    });
     const bar = screen.getByTestId('planning-gantt-bar-a');
     expect(fireEvent.pointerDown(bar, { pointerId: 9, button: 1, clientX: 100, clientY: 100 })).toBe(false);
-    expect(capture).toHaveBeenCalledWith(9);
-    expect(viewport).toHaveStyle({ cursor: 'grabbing' });
-    fireEvent.pointerMove(viewport, { pointerId: 10, clientX: 130, clientY: 120 });
+    const cover = document.querySelector<HTMLElement>('[data-planning-gantt-pan-cover]')!;
+    expect(cover).toHaveClass('fixed', 'inset-0', 'cursor-grabbing');
+    expect(viewport.style.cursor).toBe('');
+    fireEvent.pointerMove(cover, { pointerId: 10, clientX: 130, clientY: 120 });
     expect(viewport.scrollLeft).toBe(200);
-    fireEvent.pointerMove(viewport, { pointerId: 9, clientX: 130, clientY: 120 });
+    fireEvent.pointerMove(cover, { pointerId: 9, clientX: 130, clientY: 120 });
     expect(viewport.scrollLeft).toBe(170);
     expect(viewport.scrollTop).toBe(80);
-    fireEvent[end](viewport, { pointerId: 9, button: 1 });
-    expect(release).toHaveBeenCalledWith(9);
-    expect(viewport.style.cursor).toBe('');
-    fireEvent.pointerMove(viewport, { pointerId: 9, clientX: 150, clientY: 150 });
+    fireEvent[end](cover, { pointerId: 9, button: 1 });
+    expect(document.querySelector('[data-planning-gantt-pan-cover]')).toBeNull();
+    fireEvent.pointerMove(cover, { pointerId: 9, clientX: 150, clientY: 150 });
     expect(viewport.scrollLeft).toBe(170);
     expect(viewport.scrollTop).toBe(80);
     expect(fireEvent(viewport, new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 }))).toBe(false);
@@ -384,7 +379,8 @@ describe('forward PlanningBoardGanttView', () => {
     const target = document.querySelector('[data-resource-code="306"]')!;
     Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => [target]) });
     const handle = screen.getByRole('button', { name: '資源CD 305の行を並べ替え' });
-    const source = handle.closest<HTMLElement>('[data-gantt-lane]')!;
+    const source = handle.closest<HTMLElement>('[data-gantt-lane-label]')!;
+    expect(source.closest('[data-gantt-lane]')).toHaveAttribute('data-resource-code', '305');
     source.style.outline = '1px solid blue';
     source.style.outlineOffset = '-1px';
     source.style.backgroundColor = 'red';
@@ -395,10 +391,13 @@ describe('forward PlanningBoardGanttView', () => {
     expect(document.querySelector('[data-planning-board-pane-ghost]')).toBeNull();
     fireEvent.pointerMove(handle, { pointerId: 3, clientX: 40, clientY: 140 });
     expect(source).toHaveAttribute('data-planning-board-drag-source', 'true');
-    expect(source).toHaveStyle({ outline: '3px solid rgb(251 191 36)', outlineOffset: '-3px', backgroundColor: 'rgba(251,191,36,0.12)' });
-    expect(target).toHaveStyle({ outline: '2px solid rgb(110 231 183)' });
+    expect([source.style.outline, source.style.outlineOffset, source.style.backgroundColor]).toEqual(['3px solid rgb(251 191 36)', '-3px', 'red']);
+    expect(source.closest('[data-gantt-lane]')).not.toHaveAttribute('data-planning-board-drag-source');
+    expect((target as HTMLElement).style.outline).toBe('');
+    expect(document.querySelector('[data-planning-board-pane-line]')).not.toHaveClass('hidden');
     expect(document.querySelector('[data-planning-board-pane-ghost]')).toHaveClass('border-2', 'border-amber-400');
     fireEvent.pointerUp(handle, { pointerId: 3, clientX: 40, clientY: 140 });
+    expect(document.querySelector('[data-planning-board-pane-line]')).toBeNull();
     expect(source).not.toHaveAttribute('data-planning-board-drag-source');
     expect(source.style.outline).toBe('1px solid blue');
     expect(source.style.outlineOffset).toBe('-1px');
@@ -414,6 +413,19 @@ describe('forward PlanningBoardGanttView', () => {
     expect(lanes()).toEqual(['305', '306']);
     Reflect.deleteProperty(document, 'elementsFromPoint');
     localStorage.clear();
+  });
+  it('frames the machine name as soon as it is held, without moving', () => {
+    vi.useFakeTimers();
+    render(<PlanningBoardGanttView {...forwardProps(chainItems())} />);
+    const handle = screen.getByRole('button', { name: '資源CD 305の行を並べ替え' });
+    fireEvent.pointerDown(handle, { pointerId: 4, button: 0, clientX: 40, clientY: 60 });
+    expect(document.querySelector('[data-planning-board-pane-ghost]')).toBeNull();
+    act(() => { vi.advanceTimersByTime(450); });
+    expect(handle.closest('[data-gantt-lane-label]')).toHaveAttribute('data-planning-board-drag-source', 'true');
+    expect(document.querySelector('[data-planning-board-pane-ghost]')).not.toBeNull();
+    fireEvent.pointerUp(handle, { pointerId: 4, clientX: 40, clientY: 60 });
+    expect(document.querySelector('[data-planning-board-pane-ghost]')).toBeNull();
+    expect(handle.closest('[data-gantt-lane-label]')).not.toHaveAttribute('data-planning-board-drag-source');
   });
   it('keeps 研削 lanes above 切削 lanes even when the saved order puts a 切削 lane first', () => {
     localStorage.setItem('kiosk.planning-board.resource-panes:site:all', JSON.stringify(['306', '305']));

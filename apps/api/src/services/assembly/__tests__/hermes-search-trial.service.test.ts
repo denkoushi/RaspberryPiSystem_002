@@ -1,3 +1,4 @@
+vi.mock('../../../config/env/load-dotenv.js', () => ({}));
 import { EventEmitter } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { KnowledgeProcedureDocument } from '@raspi-system/shared-types';
@@ -450,8 +451,9 @@ describe('HermesSearchTrialService retrieval switch', () => {
       gate.held[0].release(workerResult); await answer;
       await vi.waitFor(() => expect(gate.held).toHaveLength(2));
       expect(gate.held[1].request).toMatchObject({ type: 'rank', sourceId: 'procedure_material', q: '溶接', limit: 20, allowedRecordIds: ['mail:m1'] });
-      gate.held[1].release({ recordIds: ['mail:m1'], mode: 'semantic', fallback: false });
-      expect(await rank).toEqual({ available: true, mode: 'semantic', recordIds: ['mail:m1'] });
+      const rankingStats = { event: 'procedure_material_hybrid_ranking', queryLength: 2, recordCount: 1, denseCount: 1, lexicalContentHitCount: 1, denseTop: 0.8, dense5th: null, dense10th: null, denseMedian: 0.8 };
+      gate.held[1].release({ recordIds: ['mail:m1'], mode: 'semantic', fallback: false, rankingStats: { ...rankingStats, query: 'must not propagate' } });
+      expect(await rank).toEqual({ available: true, mode: 'semantic', recordIds: ['mail:m1'], rankingStats });
       const lexical = service.rank('procedure_material', 'q');
       await vi.waitFor(() => expect(gate.held).toHaveLength(3));
       gate.held[2].release({ recordIds: [], mode: 'lexical', fallback: true });

@@ -7,6 +7,9 @@ import { registerErrorHandler } from '../../../plugins/error-handler.js';
 import { ProcedureMaterialService } from '../../../services/assembly/procedure-material.service.js';
 import { registerProcedureMaterialRoutes } from '../procedure-materials.js';
 
+// Unit tests use setup-env defaults without loading local credentials.
+vi.mock('../../../config/env/load-dotenv.js', () => ({}));
+
 const url = '/assembly/procedure-materials/semantic-search';
 const payload = { q: '溶接', state: 'unplaced' };
 
@@ -31,7 +34,7 @@ describe('procedure material semantic search route', () => {
       return rows.filter(row => !row.discardedAt
         && (state.OR ? !!(row.documentId || row.placedAt) : !row.documentId && !row.placedAt)
         && (!scope || scope.OR[0].gmailMessageId.in.includes(row.gmailMessageId)
-          || (row.gmailMessageId === null && scope.OR[1].id.in.includes(row.id))));
+          || scope.OR[1].id.in.includes(row.id)));
     });
     const rank = vi.fn().mockResolvedValue({ available: true, mode: 'semantic', recordIds: ['mail:a', 'mail:b', 'material:standalone', 'mail:a', 'mail:removed'] });
     app = Fastify(); registerErrorHandler(app);
@@ -50,16 +53,50 @@ describe('procedure material semantic search route', () => {
     const response = await app.inject({ method: 'POST', url, payload });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ available: true, mode: 'semantic', items: [rows[1], { ...rows[0], text: null }, { ...rows[3], text: null }, { ...rows[2], text: null }] });
-    expect(rank).toHaveBeenCalledWith('procedure_material', '溶接', 100, ['mail:b', 'mail:a', 'material:standalone']);
+    expect(rank).toHaveBeenCalledWith('procedure_material', '溶接', 100, ['material:b2', 'mail:b', 'material:a', 'mail:a', 'material:standalone', 'material:b1']);
     expect(findMany).toHaveBeenNthCalledWith(1, {
       where: { discardedAt: null, documentId: null, placedAt: null }, select: { id: true, gmailMessageId: true },
       orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
     });
     expect(findMany).toHaveBeenCalledWith({
       where: { discardedAt: null, AND: [{ documentId: null, placedAt: null }, { OR: [
-        { gmailMessageId: { in: ['a', 'b', 'a', 'removed'] } }, { id: { in: ['standalone'] }, gmailMessageId: null },
+        { gmailMessageId: { in: ['a', 'b', 'a', 'removed'] } }, { id: { in: ['standalone'] } },
       ] }] }, orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
     });
+  });
+
+  it('logs optional ranking stats at info without exposing them or image descriptions', async () => {
+    const { rank, rows } = await harness();
+    const info = vi.spyOn(app.log, 'info');
+    Object.assign(rows[0], { imageDescription: 'private caption', imageDescribedAt: new Date(), imageDescribeAttempts: 1, imageDescribeNextAttemptAt: null });
+    const rankingStats = { event: 'procedure_material_hybrid_ranking', queryLength: 2, recordCount: 1, denseCount: 1,
+      denseTop: 0.8, dense5th: null, dense10th: null, denseMedian: 0.8, lexicalContentHitCount: 1 };
+    rank.mockResolvedValue({ available: true, mode: 'semantic', recordIds: ['material:b2'], rankingStats });
+    const response = await app.inject({ method: 'POST', url, payload });
+    expect(info).toHaveBeenCalledWith(rankingStats, 'Procedure material hybrid ranking');
+    expect(response.json().rankingStats).toBeUndefined();
+    for (const field of ['imageDescription', 'imageDescribedAt', 'imageDescribeAttempts', 'imageDescribeNextAttemptAt']) expect(response.json().items[0]).not.toHaveProperty(field);
+  });
+
+  it('resolves material ids with or without mail, preserving rank and limit without sibling expansion', async () => {
+    const { rank, rows } = await harness();
+    rank.mockResolvedValue({ available: true, mode: 'semantic', recordIds: [
+      'material:b1', 'material:standalone', 'material:a', 'material:discarded', 'material:placed-at', 'material:missing',
+    ] });
+    const response = await app.inject({ method: 'POST', url, payload });
+    expect(response.json().items).toEqual([{ ...rows[3], text: null }, { ...rows[2], text: null }, rows[1]]);
+    expect((await app.inject({ method: 'POST', url, payload: { ...payload, limit: 2 } })).json().items)
+      .toEqual([{ ...rows[3], text: null }, { ...rows[2], text: null }]);
+    rank.mockResolvedValue({ available: true, mode: 'semantic', recordIds: ['material:document', 'material:placed-at', 'material:a', 'material:discarded'] });
+    expect((await app.inject({ method: 'POST', url, payload: { ...payload, state: 'placed', limit: 1 } })).json().items)
+      .toEqual([{ ...rows[5], text: null }]);
+  });
+
+  it('deduplicates overlapping legacy and material ids at their first ranked occurrence', async () => {
+    const { rank } = await harness();
+    rank.mockResolvedValue({ available: true, mode: 'semantic', recordIds: ['material:b1', 'mail:b', 'material:b2', 'material:a', 'material:b1'] });
+    const response = await app.inject({ method: 'POST', url, payload: { ...payload, limit: 3 } });
+    expect(response.json().items.map((item: { id: string }) => item.id)).toEqual(['b1', 'b2', 'a']);
   });
 
   it('filters placed state and applies item limit after expansion', async () => {
@@ -67,7 +104,7 @@ describe('procedure material semantic search route', () => {
     const response = await app.inject({ method: 'POST', url, payload: { ...payload, state: 'placed', limit: 1 } });
     expect(response.json().items.map((item: { id: string }) => item.id)).toEqual(['placed-at']);
     expect(findMany.mock.calls[0][0].where.OR).toEqual([{ documentId: { not: null } }, { placedAt: { not: null } }]);
-    expect(rank).toHaveBeenCalledWith('procedure_material', '溶接', 100, ['mail:a', 'mail:b']);
+    expect(rank).toHaveBeenCalledWith('procedure_material', '溶接', 100, ['material:placed-at', 'mail:a', 'material:document', 'mail:b']);
     expect((await app.inject({ method: 'POST', url, payload: { ...payload, state: 'placed' } })).json().items.map((item: { id: string }) => item.id)).toEqual(['placed-at', 'document']);
   });
 
