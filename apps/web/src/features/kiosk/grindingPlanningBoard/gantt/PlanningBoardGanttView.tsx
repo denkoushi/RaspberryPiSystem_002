@@ -319,7 +319,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
             </div>}
             {forward ? group.rows.map((row) => {
               return <PlanningBoardForwardGanttRow seibanColors={seibanColors} focusedSeiban={focusedSeiban} key={row.key} row={row} start={layout.start} end={layout.end} now={layout.now!} width={width} dayWidth={dayWidth} scale={scale}
-                onShowQueue={(bar, anchor) => queuePopover.current?.show(bar, anchor)}
+                onShowQueue={(bar, anchor) => { if (!showChain) queuePopover.current?.show(bar, anchor); }}
                 onLeaveQueue={() => queuePopover.current?.hideSoon()} onCloseQueue={() => queuePopover.current?.close()}
                 pausesForBreaks={group.resource ? !runsThroughBreaks?.has(group.resource) : row.bars.some((bar) => !runsThroughBreaks?.has(bar.resource))}
                 hours={group.resource ? dailyHoursByResource[group.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS : Math.max(...row.bars.map((bar) => dailyHoursByResource[bar.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS), GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS)}
