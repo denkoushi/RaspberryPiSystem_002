@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 
 import { canReorderForwardBars, forwardItemDetails } from './planningBoardForwardQueue';
 import { dateToDay, workingPeriods } from './planningBoardGanttLayout';
@@ -11,8 +11,10 @@ import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceOrderPlace
 import type { PointerEvent, ReactNode } from 'react';
 
 export type ForwardReorder = (item: GrindingPlanningBoardItem, target: GrindingPlanningBoardItem, placement: GrindingPlanningBoardResourceOrderPlacement) => void;
-type Drop = { bar: GanttBar; placement: GrindingPlanningBoardResourceOrderPlacement; left: number };
-type Drag = { bar: GanttBar; x: number; y: number; tapCancelled: boolean; longPressed: boolean; selected: boolean; pointerId: number; element: HTMLButtonElement; moved: boolean };
+export type ForwardMove = (item: GrindingPlanningBoardItem, resource: string, target: GrindingPlanningBoardItem | null, placement: GrindingPlanningBoardResourceOrderPlacement) => void;
+type Drop = { resource: string; bar: GanttBar | null; placement: GrindingPlanningBoardResourceOrderPlacement; left: number };
+export type ForwardDragPreview = { bar: GanttBar; x: number; y: number; allowed: ReadonlySet<string>; drop: Drop | null };
+type Drag = { bar: GanttBar; x: number; y: number; tapCancelled: boolean; longPressed: boolean; selected: boolean; pointerId: number; element: HTMLButtonElement; moved: boolean; allowed?: ReadonlySet<string> };
 type Props = {
   row: GanttRow;
   label?: ReactNode;
@@ -33,6 +35,12 @@ type Props = {
   resourceView: boolean;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
   onResourceReorder?: ForwardReorder;
+  onResourceMove?: ForwardMove;
+  canMoveResource?: (item: GrindingPlanningBoardItem, resource: string) => boolean;
+  lanes: readonly { resource: string; bars: GanttBar[] }[];
+  resource?: string;
+  preview: ForwardDragPreview | null;
+  onDragPreview: (preview: ForwardDragPreview | null) => void;
   pinMode?: boolean;
   onTogglePin?: (item: GrindingPlanningBoardItem) => void;
   focusedPartKey: string | null;
@@ -41,7 +49,8 @@ type Props = {
 };
 
 export function PlanningBoardForwardGanttRow({ row, label, start, end, now, width, dayWidth, hours, pausesForBreaks = true, scale, onShowQueue, onLeaveQueue, onCloseQueue,
-  selectedItemIds, disabled, dragDisabled, pinMode = false, onTogglePin, resourceView, onToggleItem, onResourceReorder, focusedPartKey, chainPositions, onFocusChain }: Props) {
+  selectedItemIds, disabled, dragDisabled, pinMode = false, onTogglePin, resourceView, onToggleItem, onResourceReorder, onResourceMove, canMoveResource,
+  lanes, resource, preview, onDragPreview, focusedPartKey, chainPositions, onFocusChain }: Props) {
   const track = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
   const suppressClick = useRef(false);
@@ -58,54 +67,64 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
     const periods = workingPeriods(hours);
     return [{ start: 0, end: periods[0]!.start }, { start: periods[periods.length - 1]!.end, end: 1 }];
   }, [hours]);
-  const [preview, setPreview] = useState<{ itemId: string; dx: number; drop: Drop | null } | null>(null);
   const clear = () => {
     cancelLongPress();
     const pending = drag.current;
     drag.current = null;
-    setPreview(null);
+    onDragPreview(null);
     if (pending?.element.hasPointerCapture?.(pending.pointerId)) pending.element.releasePointerCapture(pending.pointerId);
   };
   useEffect(() => {
-    const cancel = () => { cancelLongPress(); suppressClick.current = true; drag.current = null; setPreview(null); };
+    const cancel = () => { cancelLongPress(); if (drag.current) { suppressClick.current = true; drag.current = null; onDragPreview(null); } };
     window.addEventListener('blur', cancel);
-    return () => { cancelLongPress(); window.removeEventListener('blur', cancel); };
-  }, []);
-  useEffect(() => { cancelLongPress(); if (drag.current) suppressClick.current = true; drag.current = null; setPreview(null); }, [row, dayWidth, disabled, dragDisabled, pinMode]);
-  const findDrop = (clientX: number, source: GanttBar): Drop | null => {
-    const x = clientX - (track.current?.getBoundingClientRect().left ?? 0);
+    return () => { cancel(); window.removeEventListener('blur', cancel); };
+  }, [onDragPreview]);
+  useEffect(() => { cancelLongPress(); if (drag.current) { suppressClick.current = true; drag.current = null; onDragPreview(null); } }, [row, dayWidth, disabled, dragDisabled, pinMode, onDragPreview]);
+  const findDrop = (clientX: number, clientY: number, pending: Drag): Drop | null => {
+    const source = pending.bar;
+    const board = track.current?.closest('[data-testid="planning-board-gantt"]');
+    const lane = (document.elementsFromPoint?.(clientX, clientY) ?? [])
+      .map((element) => element.closest<HTMLElement>('[data-gantt-lane]')).find((element) => element && board?.contains(element));
+    const targetResource = lane?.dataset.resourceCode;
+    if (!targetResource || !pending.allowed?.has(targetResource)) return null;
+    const targetLane = lanes.find((candidate) => candidate.resource === targetResource);
+    const targetTrack = lane.querySelector<HTMLElement>('[data-gantt-track]');
+    if (!targetLane || !targetTrack) return null;
+    const x = clientX - targetTrack.getBoundingClientRect().left;
     const centre = (bar: GanttBar) => (bar.start! - start) * dayWidth +
       (bar.unknown ? 70 : Math.max(2, ((bar.segments?.[0]?.end ?? bar.end!) - bar.start!) * dayWidth - 2)) / 2;
-    const others = row.bars.filter((bar) => bar.item.itemId !== source.item.itemId).sort((a, b) => centre(a) - centre(b));
-    if (!others.length) return null;
+    const others = targetLane.bars.filter((bar) => bar.item.itemId !== source.item.itemId).sort((a, b) => centre(a) - centre(b));
+    if (!others.length) return targetResource === source.resource ? null : { resource: targetResource, bar: null, placement: 'after', left: 0 };
     const target = others.find((bar) => x < centre(bar));
     const bar = target ?? others[others.length - 1]!;
-    if (!canReorderForwardBars(source, bar)) return null;
-    return { bar, placement: target ? 'before' : 'after', left: ((target ? bar.start! : bar.end!) - start) * dayWidth };
+    if (targetResource === source.resource && !canReorderForwardBars(source, bar)) return null;
+    return { resource: targetResource, bar, placement: target ? 'before' : 'after', left: ((target ? bar.start! : bar.end!) - start) * dayWidth };
   };
   const move = (event: PointerEvent<HTMLButtonElement>) => {
     const pending = drag.current;
     if (!pending || pending.pointerId !== event.pointerId) return;
     const dx = event.clientX - pending.x;
-    if (Math.hypot(dx, event.clientY - pending.y) >= 8) {
+    const distance = Math.hypot(dx, event.clientY - pending.y);
+    if (distance >= 8) {
       pending.tapCancelled = true;
       cancelLongPress();
     }
     if (pending.longPressed) {
-      if (Math.abs(dx) < 8) return;
+      if (distance < 8) return;
       pending.longPressed = false;
       onToggleItem(pending.bar.item, pending.selected);
     }
-    if (!pending.moved && Math.abs(dx) >= 8) { pending.moved = true; onCloseQueue(); }
+    if (!pending.moved && distance >= 8) { pending.moved = true; onCloseQueue(); }
     if (pending.moved && !disabled && !dragDisabled && !pinMode && resourceView) {
-      setPreview({ itemId: pending.bar.item.itemId, dx, drop: findDrop(event.clientX, pending.bar) });
+      pending.allowed ??= new Set(lanes.filter((lane) => lane.resource === pending.bar.resource || canMoveResource?.(pending.bar.item, lane.resource)).map((lane) => lane.resource));
+      onDragPreview({ bar: pending.bar, x: event.clientX, y: event.clientY, allowed: pending.allowed, drop: findDrop(event.clientX, event.clientY, pending) });
     }
   };
   return <div className="flex min-h-[76px] border-b border-slate-600" data-testid={`planning-forward-lane-${row.key}`}>
     <div data-gantt-lane-label className="sticky left-0 z-20 flex shrink-0 flex-col justify-center gap-1 border-r border-slate-700 bg-slate-900 px-2 py-1 text-xs" style={{ width: GANTT_FORWARD_LABEL_WIDTH }}>
       {label ?? <><strong className="truncate">{row.label}</strong><span className="truncate text-slate-400">{row.detail}</span></>}
     </div>
-    <div ref={track} className="relative shrink-0 overflow-hidden" style={{ width }}>
+    <div ref={track} data-gantt-track className="relative shrink-0 overflow-hidden" style={{ width }}>
       {hours < 24 && Array.from({ length: end - start }, (_, i) => <div key={i} className="pointer-events-none">
         {offHours.map((gap, index) => <span key={index} className="absolute inset-y-0 bg-slate-950/55"
           style={{ left: (i + gap.start) * dayWidth, width: (gap.end - gap.start) * dayWidth }} />)}
@@ -135,8 +154,10 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
                 inChain ? 'outline outline-2 outline-offset-1 outline-white' : selected && 'outline outline-2 outline-offset-1 outline-emerald-300',
                 focusedPartKey !== null && !inChain && 'opacity-30', index > 0 && 'border-l-2 border-dashed border-slate-950')}
               style={{ boxShadow: bar.item.orderPinned ? 'inset 0 0 0 3px rgb(251 191 36)' : undefined, left: (segment.start - start) * dayWidth, width: segmentWidth,
-                transform: preview?.itemId === bar.item.itemId ? `translateX(${preview.dx}px)` : undefined,
-                zIndex: preview?.itemId === bar.item.itemId ? 9 : inChain ? 8 : selected ? 4 : 2 }}
+                opacity: preview?.bar.item.itemId === bar.item.itemId ? 0.3 : undefined,
+                outline: preview?.bar.item.itemId === bar.item.itemId ? '3px solid rgb(251 191 36)' : undefined,
+                outlineOffset: preview?.bar.item.itemId === bar.item.itemId ? -3 : undefined,
+                zIndex: preview?.bar.item.itemId === bar.item.itemId ? 9 : inChain ? 8 : selected ? 4 : 2 }}
               onPointerEnter={(event) => { if (event.pointerType === 'mouse' && !drag.current) onShowQueue(bar, event.currentTarget); }}
               onPointerLeave={(event) => { if (event.pointerType === 'mouse') onLeaveQueue(); }}
               onPointerDown={(event) => {
@@ -157,10 +178,13 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
                 const pending = drag.current;
                 if (!pending || pending.pointerId !== event.pointerId) return;
                 move(event);
-                const drop = findDrop(event.clientX, pending.bar);
+                const drop = findDrop(event.clientX, event.clientY, pending);
                 suppressClick.current = pending.tapCancelled || pending.longPressed;
                 clear();
-                if (pending.moved && drop && !disabled && !dragDisabled && !pinMode && resourceView) onResourceReorder?.(pending.bar.item, drop.bar.item, drop.placement);
+                if (pending.moved && drop && !disabled && !dragDisabled && !pinMode && resourceView) {
+                  if (drop.resource !== pending.bar.resource) onResourceMove?.(pending.bar.item, drop.resource, drop.bar?.item ?? null, drop.placement);
+                  else if (drop.bar) onResourceReorder?.(pending.bar.item, drop.bar.item, drop.placement);
+                }
               }}
               onPointerCancel={() => { suppressClick.current = true; clear(); }}
               onLostPointerCapture={() => { if (drag.current) { suppressClick.current = true; clear(); } }}
@@ -180,7 +204,7 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
             style={{ left: Math.max(0, (dateToDay(bar.due) + 1 - start) * dayWidth) }}>▲</span>}
         </div>;
       })}
-      {preview?.drop && <span data-testid="planning-gantt-insertion" className="pointer-events-none absolute inset-y-2 z-10 w-0.5 bg-white" style={{ left: preview.drop.left }} />}
+      {preview?.drop && preview.drop.resource === resource && <span data-testid="planning-gantt-insertion" className="pointer-events-none absolute inset-y-2 z-10 w-0.5 bg-emerald-300" style={{ left: preview.drop.left }} />}
     </div>
   </div>;
 }

@@ -5,7 +5,7 @@ import * as planningBoardSorting from '../../features/kiosk/grindingPlanningBoar
 
 import { ProductionScheduleGrindingPlanningBoardPage } from './ProductionScheduleGrindingPlanningBoardPage';
 
-import type { GrindingPlanningBoardRankResponse } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardItem, GrindingPlanningBoardRankResponse } from '@raspi-system/shared-types';
 
 class TestPointerEvent extends MouseEvent {
   readonly pointerId: number;
@@ -296,6 +296,116 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(restored.items.every((item: { itemRevision: string; overrideVersion: number }) => item.overrideVersion === 3 && item.itemRevision.startsWith('saved-'))).toBe(true);
     await waitFor(() => expect(screen.getByText('1つ前の順番に戻しました')).toBeInTheDocument());
     expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeDisabled();
+  });
+
+  it.each(['305', '306'])('moves a gantt bar between target bars and restores resource %s plus both orders', async (previousResource) => {
+    const data = fixture();
+    data.resources.push('306');
+    data.resourceCategories['306'] = 'grinding';
+    data.items[1]!.originalResourceCd = previousResource;
+    data.items[2]!.originalResourceCd = '584';
+    data.items[3]!.originalResourceCd = '584';
+    const items: GrindingPlanningBoardItem[] = data.items.map((item, index) => ({ ...item,
+      effectiveResourceCd: index === 0 ? previousResource : item.originalResourceCd, alternateRank: index === 0 ? 2 : index === 1 ? 1 : index + 1 }));
+    const server = new Map(items.map((item) => [item.itemId, item]));
+    mocks.snapshot.mockReturnValue({ data: { ...data, items }, isLoading: false, isError: false, refetch: mocks.refetch });
+    let finishMove!: () => void;
+    mocks.overrides.mockImplementation(async (payload) => {
+      if (mocks.overrides.mock.calls.length === 1) await new Promise<void>((resolve) => { finishMove = resolve; });
+      return { sourceRevision: 'board-1', items: payload.items.map((request: { itemId: string; resourceCd: string; overrideVersion: number }) => {
+        const saved = { ...server.get(request.itemId)!, effectiveResourceCd: request.resourceCd, alternateRank: null,
+          version: request.overrideVersion + 1, itemRevision: `override-${request.itemId}-${request.overrideVersion + 1}` };
+        server.set(saved.itemId, saved); return saved;
+      }) };
+    });
+    mocks.resourceOrderBulk.mockImplementation(async (payload) => ({ sourceRevision: 'board-1',
+      items: payload.items.map((request: { itemId: string; overrideVersion: number }, index: number) => {
+        const saved = { ...server.get(request.itemId)!, alternateRank: index + 1,
+          version: request.overrideVersion + 1, itemRevision: `rank-${request.itemId}-${request.overrideVersion + 1}` };
+        server.set(saved.itemId, saved); return saved;
+      }) }));
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    const target = screen.getByTestId('planning-gantt-bar-d');
+    Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => [target]) });
+    const x = parseFloat(target.style.left);
+    fireEvent.pointerDown(bar, { pointerId: 41, clientX: x, clientY: 20, button: 0 });
+    fireEvent.pointerUp(bar, { pointerId: 41, clientX: x, clientY: 120 });
+    const laneIds = (resource: string) => [...screen.getByTestId(`planning-forward-lane-${resource}`).querySelectorAll<HTMLElement>('[data-testid^="planning-gantt-bar-"]')]
+      .map((element) => element.dataset.testid!.replace('planning-gantt-bar-', '')).filter((id) => !id.includes('-segment-'));
+    expect(laneIds('584')).toEqual(['c', 'a', 'd']);
+    expect(laneIds(previousResource)).toEqual(['b']);
+    expect(mocks.overrides).toHaveBeenCalledWith(expect.objectContaining({ items: [expect.objectContaining({ itemId: 'a', resourceCd: '584' })] }));
+    expect(mocks.resourceOrderBulk).not.toHaveBeenCalled();
+    await act(async () => finishMove());
+    await waitFor(() => expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeEnabled());
+    expect(mocks.resourceOrderBulk.mock.calls[0]![0]).toMatchObject({ resourceCd: '584', items: [
+      { itemId: 'c' }, { itemId: 'a', itemRevision: 'override-a-3', overrideVersion: 3 }, { itemId: 'd' }
+    ] });
+    fireEvent.click(screen.getByRole('button', { name: '↶ 戻す' }));
+    expect(laneIds(previousResource)).toEqual(['b', 'a']);
+    expect(laneIds('584')).toEqual(['c', 'd']);
+    await waitFor(() => expect(mocks.resourceOrderBulk).toHaveBeenCalledTimes(3));
+    expect(mocks.overrides.mock.calls[1]![0]).toMatchObject({ items: [{ itemId: 'a', resourceCd: previousResource, itemRevision: 'rank-a-4', overrideVersion: 4 }] });
+    expect(mocks.resourceOrderBulk.mock.calls.slice(1).map(([request]) => [request.resourceCd, request.items.map((item: { itemId: string }) => item.itemId)])).toEqual([
+      [previousResource, ['b', 'a']], ['584', ['c', 'd']]
+    ]);
+    expect(mocks.resourceOrderBulk.mock.calls[1]![0].items[1]).toMatchObject({ itemId: 'a', itemRevision: 'override-a-5', overrideVersion: 5 });
+    await waitFor(() => expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeDisabled());
+    expect(laneIds(previousResource)).toEqual(['b', 'a']);
+    expect(laneIds('584')).toEqual(['c', 'd']);
+  });
+
+  it.each(['special band', 'empty lane', 'override failure', 'order failure', 'unlisted resource', 'different category'])('handles gantt resource movement with %s', async (scenario) => {
+    const data = fixture();
+    if (scenario !== 'empty lane') data.items[3]!.originalResourceCd = '584';
+    if (scenario === 'special band') data.items[3]!.specialDue = { kind: 'today', expiresAt: '2099-10-14T15:00:00Z' };
+    if (scenario === 'unlisted resource') data.resources = ['305'];
+    if (scenario === 'different category') data.resourceCategories['584'] = 'cutting';
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    mocks.overrides.mockImplementation(async (payload) => ({ sourceRevision: 'board-1', items: payload.items.map((request: { itemId: string; resourceCd: string; overrideVersion: number }) => ({
+      ...data.items.find((item) => item.itemId === request.itemId)!, effectiveResourceCd: request.resourceCd, alternateRank: null,
+      version: request.overrideVersion + 1, itemRevision: `override-${request.itemId}-${request.overrideVersion + 1}`
+    })) }));
+    mocks.resourceOrderBulk.mockImplementation(async (payload) => ({ sourceRevision: 'board-1', items: payload.items.map((request: { itemId: string; overrideVersion: number }, index: number) => ({
+      ...data.items.find((item) => item.itemId === request.itemId)!, effectiveResourceCd: payload.resourceCd, alternateRank: index + 1,
+      version: request.overrideVersion + 1, itemRevision: `rank-${request.itemId}-${request.overrideVersion + 1}`
+    })) }));
+    if (scenario === 'override failure') mocks.overrides.mockRejectedValueOnce(new Error('move failed'));
+    if (scenario === 'order failure') mocks.resourceOrderBulk.mockRejectedValueOnce(new Error('order failed'));
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
+    const target = screen.getByTestId('planning-forward-lane-584');
+    Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => [target]) });
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    fireEvent.pointerDown(bar, { pointerId: 42, clientX: 0, clientY: 20, button: 0 });
+    fireEvent.pointerMove(bar, { pointerId: 42, clientX: 0, clientY: 120 });
+    if (scenario === 'unlisted resource' || scenario === 'different category') {
+      expect(target.closest('[data-gantt-lane]')).toHaveStyle({ opacity: '0.3' });
+      expect(screen.queryByTestId('planning-gantt-insertion')).not.toBeInTheDocument();
+      fireEvent.pointerUp(bar, { pointerId: 42, clientX: 0, clientY: 120 });
+      expect(mocks.overrides).not.toHaveBeenCalled();
+      expect(mocks.resourceOrderBulk).not.toHaveBeenCalled();
+      return;
+    }
+    fireEvent.pointerUp(bar, { pointerId: 42, clientX: 0, clientY: 120 });
+    if (scenario === 'override failure') {
+      await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('保存できませんでした'));
+      expect(mocks.resourceOrderBulk).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeDisabled();
+      expect(screen.getByTestId('planning-forward-lane-305')).toContainElement(screen.getByTestId('planning-gantt-bar-a'));
+      return;
+    }
+    await waitFor(() => expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeEnabled());
+    if (scenario === 'special band') expect(mocks.resourceOrderBulk).not.toHaveBeenCalled();
+    else if (scenario === 'empty lane') expect(mocks.resourceOrderBulk.mock.calls[0]![0]).toMatchObject({ resourceCd: '584', items: [{ itemId: 'a' }] });
+    else expect(screen.getByRole('status')).toHaveTextContent('保存できませんでした');
+    fireEvent.click(screen.getByRole('button', { name: '↶ 戻す' }));
+    await waitFor(() => expect(mocks.overrides).toHaveBeenCalledTimes(2));
+    expect(mocks.overrides.mock.calls[1]![0]).toMatchObject({ items: [{ itemId: 'a', resourceCd: '305' }] });
+    await waitFor(() => expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeDisabled());
+    expect(screen.getByTestId('planning-forward-lane-305')).toContainElement(screen.getByTestId('planning-gantt-bar-a'));
   });
 
   it('shares optimistic pins through the write queue, blocks pending actions and rolls back a failure', async () => {
