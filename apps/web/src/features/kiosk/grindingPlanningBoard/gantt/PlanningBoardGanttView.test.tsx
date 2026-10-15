@@ -40,6 +40,48 @@ describe('PlanningBoardGanttView', () => {
     }) });
   });
   afterEach(() => { Reflect.deleteProperty(document, 'elementsFromPoint'); vi.unstubAllGlobals(); vi.useRealTimers(); });
+  it.each(['backward', 'forward'] as const)('colors visible bars and split segments with a legend in %s mode, preserving lateness', (mode) => {
+    const items = [item({ originalDueDate: '2026-10-13' }),
+      item({ itemId: 'b', fseiban: '********', fhincd: 'P2' }),
+      item({ itemId: 'c', fseiban: 'completed', fhincd: 'P3', isCompleted: true }),
+      item({ itemId: 'd', fseiban: 'unknown', fhincd: 'P4', requiredMinutesKnown: false, requiredMinutes: null })];
+    const values = props(items);
+    const layout = buildPlanningBoardGanttLayout({ items, mode, allocation: 'alternate', view: 'resource',
+      seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', scale: 2 });
+    const viewProps = { ...values, layout, scale: 2, seibanOrder: ['unused', '26-1001'] };
+    const { rerender } = render(<PlanningBoardGanttView {...viewProps} />);
+    const surface = (bar: HTMLElement) => mode === 'backward' ? bar.firstElementChild! : bar;
+    const late = () => surface(screen.getByTestId('planning-gantt-bar-a'));
+    expect(late()).toHaveClass('bg-rose-400');
+    expect(screen.queryByRole('group', { name: '製番の色分け凡例' })).not.toBeInTheDocument();
+    rerender(<PlanningBoardGanttView {...viewProps} colorBySeiban />);
+    expect(late()).toHaveClass('bg-amber-400', 'text-slate-950');
+    expect(late()).toHaveStyle({ outline: '3px solid rgb(251 113 133)', outlineOffset: '-1px' });
+    expect(within(screen.getByTestId('planning-gantt-bar-a')).getByLabelText('遅れ')).toHaveTextContent('!');
+    const legend = screen.getByRole('group', { name: '製番の色分け凡例' });
+    expect(within(legend).getAllByText('26-1001')).toHaveLength(1);
+    expect(within(legend).getByText('********')).toBeVisible();
+    expect(within(legend).queryByText('unused')).not.toBeInTheDocument();
+    expect(within(legend).getByText('赤い枠は遅れ')).toBeVisible();
+    expect(surface(screen.getByTestId('planning-gantt-bar-b'))).toHaveClass('bg-slate-400');
+    expect(surface(screen.getByTestId('planning-gantt-bar-d'))).toHaveClass('text-slate-950');
+    if (mode === 'backward') expect(surface(screen.getByTestId('planning-gantt-bar-c'))).toHaveClass('bg-slate-600');
+    if (mode === 'forward') {
+      const segments = screen.getAllByTestId(/^planning-gantt-bar-a-segment-/);
+      expect(segments.length).toBeGreaterThan(0);
+      for (const segment of segments) {
+        expect(segment).toHaveClass('bg-amber-400');
+        expect(segment).toHaveStyle({ outline: '3px solid rgb(251 113 133)' });
+        expect(within(segment).getByLabelText('遅れ')).toHaveTextContent('!');
+      }
+      fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
+      expect(late()).toHaveStyle({ outline: '3px solid rgb(251 113 133)' });
+    }
+    rerender(<PlanningBoardGanttView {...viewProps} />);
+    expect(late()).toHaveClass('bg-rose-400');
+    expect(late()).not.toHaveClass('bg-amber-400');
+    expect(screen.queryByRole('group', { name: '製番の色分け凡例' })).not.toBeInTheDocument();
+  });
   it.each(['pointerUp', 'pointerCancel', 'lostPointerCapture'] as const)('pans with the middle button and stops on %s', (end) => {
     const values = props();
     render(<PlanningBoardGanttView {...values} />);

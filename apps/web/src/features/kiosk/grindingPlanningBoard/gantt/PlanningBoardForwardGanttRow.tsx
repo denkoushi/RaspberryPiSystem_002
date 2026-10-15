@@ -17,6 +17,7 @@ export type ForwardDragPreview = { bar: GanttBar; x: number; y: number; allowed:
 type Drag = { bar: GanttBar; x: number; y: number; tapCancelled: boolean; longPressed: boolean; selected: boolean; pointerId: number; element: HTMLButtonElement; moved: boolean; allowed?: ReadonlySet<string> };
 type Props = {
   row: GanttRow;
+  seibanColors?: ReadonlyMap<string, string>;
   label?: ReactNode;
   start: number;
   end: number;
@@ -48,7 +49,7 @@ type Props = {
   onFocusChain: (bar: GanttBar) => void;
 };
 
-export function PlanningBoardForwardGanttRow({ row, label, start, end, now, width, dayWidth, hours, pausesForBreaks = true, scale, onShowQueue, onLeaveQueue, onCloseQueue,
+export function PlanningBoardForwardGanttRow({ row, seibanColors, label, start, end, now, width, dayWidth, hours, pausesForBreaks = true, scale, onShowQueue, onLeaveQueue, onCloseQueue,
   selectedItemIds, disabled, dragDisabled, pinMode = false, onTogglePin, resourceView, onToggleItem, onResourceReorder, onResourceMove, canMoveResource,
   lanes, resource, preview, onDragPreview, focusedPartKey, chainPositions, onFocusChain }: Props) {
   const track = useRef<HTMLDivElement>(null);
@@ -135,6 +136,9 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
       <span data-testid="planning-gantt-now" className="pointer-events-none absolute inset-y-0 z-[3] border-l-2 border-yellow-400" style={{ left: (now - start) * dayWidth }} />
       {row.connectors.map((link, i) => <span key={i} className="pointer-events-none absolute top-9 border-t-2 border-dotted border-amber-400" style={{ left: (link.start - start) * dayWidth, width: (link.end - link.start) * dayWidth }} />)}
       {row.bars.map((bar) => {
+        const color = bar.tone !== 'completed' ? seibanColors?.get(bar.item.fseiban) : undefined;
+        const coloredLate = Boolean(color && bar.tone === 'late');
+        const lateBadge = coloredLate && <span aria-label="遅れ" className="mr-1 inline-flex h-3 w-3 items-center justify-center rounded-full bg-rose-400 text-[10px] leading-none text-slate-950">!</span>;
         const selected = selectedItemIds.has(bar.item.itemId);
         const inChain = focusedPartKey === bar.partKey;
         const segments = bar.unknown ? [{ start: bar.start!, end: bar.end! }] : bar.segments ?? [];
@@ -149,14 +153,14 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
               data-drag-disabled={pinMode || dragDisabled || disabled || !resourceView}
               className={clsx('absolute top-[3px] h-[70px] touch-pan-y select-none rounded text-left text-[11px] font-bold leading-[14px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-white',
                 inChain && index === 0 ? 'overflow-visible' : 'overflow-hidden',
-                bar.tone === 'late' ? 'bg-rose-400 text-slate-950' : 'bg-sky-400 text-slate-950',
-                bar.unknown && 'border border-dashed border-slate-200 bg-slate-800 text-slate-200',
+                seibanColors && bar.tone === 'completed' ? 'bg-slate-600 text-slate-300' : color ? `${color} text-slate-950` : bar.tone === 'late' ? 'bg-rose-400 text-slate-950' : 'bg-sky-400 text-slate-950',
+                bar.unknown && (seibanColors ? 'border border-dashed border-slate-200' : 'border border-dashed border-slate-200 bg-slate-800 text-slate-200'),
                 inChain ? 'outline outline-2 outline-offset-1 outline-white' : selected && 'outline outline-2 outline-offset-1 outline-emerald-300',
                 focusedPartKey !== null && !inChain && 'opacity-30', index > 0 && 'border-l-2 border-dashed border-slate-950')}
               style={{ boxShadow: bar.item.orderPinned ? 'inset 0 0 0 3px rgb(251 191 36)' : undefined, left: (segment.start - start) * dayWidth, width: segmentWidth,
                 opacity: preview?.bar.item.itemId === bar.item.itemId ? 0.3 : undefined,
-                outline: preview?.bar.item.itemId === bar.item.itemId ? '3px solid rgb(251 191 36)' : undefined,
-                outlineOffset: preview?.bar.item.itemId === bar.item.itemId ? -3 : undefined,
+                outline: preview?.bar.item.itemId === bar.item.itemId ? '3px solid rgb(251 191 36)' : coloredLate ? '3px solid rgb(251 113 133)' : undefined,
+                outlineOffset: preview?.bar.item.itemId === bar.item.itemId ? -3 : coloredLate ? -1 : undefined,
                 zIndex: preview?.bar.item.itemId === bar.item.itemId ? 9 : inChain ? 8 : selected ? 4 : 2 }}
               onPointerEnter={(event) => { if (event.pointerType === 'mouse' && !drag.current) onShowQueue(bar, event.currentTarget); }}
               onPointerLeave={(event) => { if (event.pointerType === 'mouse') onLeaveQueue(); }}
@@ -194,10 +198,10 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
               }}>
               {bar.item.orderPinned && index === 0 && <PlanningBoardPinIcon className="pointer-events-none absolute bottom-1 right-1 h-4 w-4 text-amber-300" />}
               {inChain && index === 0 && <span data-testid={`planning-gantt-chain-badge-${bar.item.itemId}`} className="pointer-events-none absolute right-0 top-0 grid h-[22px] w-[22px] place-items-center rounded-full bg-slate-950 font-mono text-xs font-bold text-white">{chainPositions.get(bar.item.itemId)}</span>}
-              {bar.unknown ? '所要不明' : segmentWidth >= 48
-                ? <span className="block break-all px-1"><b className="line-clamp-2">{bar.item.fhinmei || bar.item.fhincd}</b>
+              {bar.unknown ? <>{lateBadge}所要不明</> : segmentWidth >= 48
+                ? <span className="block break-all px-1"><b className="line-clamp-2">{lateBadge}{bar.item.fhinmei || bar.item.fhincd}</b>
                   <small className="line-clamp-3 text-[11px] font-normal">{index > 0 ? '続き' : scale <= 2 ? forwardItemDetails(bar.item) : `${bar.item.requiredMinutes}分`}</small>
-                </span> : null}
+                </span> : lateBadge}
             </button>;
           })}
           {selected && bar.due && <span data-testid={`planning-gantt-due-${bar.item.itemId}`} title={`納期 ${bar.due}`} className="pointer-events-none absolute bottom-0 -translate-x-1/2 text-xs leading-none text-rose-400"

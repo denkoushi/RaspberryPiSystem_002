@@ -519,6 +519,26 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
     expect(screen.getByRole('button', { name: '資源CD', exact: true })).toHaveAttribute('aria-pressed', 'true');
   });
+  it('製番の色分けを切り替えて凡例を表示し、再マウント時はOFFに戻る', () => {
+    const first = renderSeibanBoard();
+    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
+    const toggle = screen.getByRole('button', { name: '製番ごとに色分け' });
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    const originalClass = bar.className;
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('group', { name: '製番の色分け凡例' })).toBeVisible();
+    expect(bar.className).not.toBe(originalClass);
+    fireEvent.click(toggle);
+    expect(bar.className).toBe(originalClass);
+    expect(screen.queryByRole('group', { name: '製番の色分け凡例' })).not.toBeInTheDocument();
+    fireEvent.click(toggle);
+    first.unmount();
+    renderSeibanBoard();
+    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
+    expect(screen.getByRole('button', { name: '製番ごとに色分け' })).toHaveAttribute('aria-pressed', 'false');
+  });
   it('ガント切替と縮尺変更でボード取得条件が変わらず、通常表示へ戻る', () => {
     renderSeibanBoard();
     const args = mocks.snapshot.mock.calls.at(-1);
@@ -528,8 +548,9 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.queryByTestId('planning-board-seiban-26-1041')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'ガント' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: '1日' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '他の幅' }));
     fireEvent.click(screen.getByRole('button', { name: '4週' }));
-    expect(screen.getByRole('button', { name: '4週' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '他の幅' })).toHaveTextContent('4週 ▾');
     fireEvent.click(screen.getByRole('button', { name: '納期から' }));
     expect(screen.getByRole('button', { name: '✓ 重なりなし' })).toBeInTheDocument();
     expect(mocks.capacity).toHaveBeenLastCalledWith(true);
@@ -546,6 +567,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     renderSeibanBoard();
     fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
     fireEvent.click(screen.getByRole('button', { name: '納期から' }));
+    fireEvent.click(screen.getByRole('button', { name: '他の幅' }));
     fireEvent.click(screen.getByRole('button', { name: '2週' }));
     const bar = screen.getByTestId('planning-gantt-bar-a');
     fireEvent.click(bar);

@@ -153,6 +153,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const category: GrindingPlanningBoardCategory = categories.grinding && categories.cutting ? 'all' : categories.grinding ? 'grinding' : 'cutting';
   const [pinMode, setPinMode] = useState(false);
   const [orderPreview, setOrderPreview] = useState<OrderPreview | null>(null);
+  const [colorBySeiban, setColorBySeiban] = useState(false);
   const [ganttEnabled, setGanttEnabled] = useState(false);
   const [view, setView] = useState<'seiban' | 'resource'>('resource');
   const [status, setStatus] = useState<PlanningBoardStatus>('incomplete');
@@ -1001,6 +1002,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   return (
     <main className="min-h-0 w-full shrink-0 overflow-hidden bg-slate-950 px-2 py-2 text-white sm:px-3">
       <PlanningBoardToolbar
+        colorBySeiban={colorBySeiban} onToggleColorBySeiban={() => setColorBySeiban((enabled) => !enabled)}
         ganttEnabled={ganttEnabled}
         onToggleGantt={() => { setPinMode(false); setGanttEnabled((enabled) => !enabled); }}
         ganttScale={gantt.scale}
@@ -1052,7 +1054,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       />
       {boardQuery.isError ? <p className="p-5 text-sm text-rose-200">一覧を読み込めませんでした。</p> : null}
       {data && ganttEnabled ? (
-        <PlanningBoardGanttView ref={gantt.viewRef} layout={ganttLayout} scale={gantt.scale} homeKey={gantt.homeKey}
+        <PlanningBoardGanttView colorBySeiban={colorBySeiban} seibanOrder={registeredFseibans} ref={gantt.viewRef} layout={ganttLayout} scale={gantt.scale} homeKey={gantt.homeKey}
           resourceView={view === 'resource'} dailyHoursByResource={orderPreview?.options.dailyHoursByResource ?? gantt.dailyHoursByResource} preferenceScope={`${data.siteKey}:${category}`}
           resourceNameMap={resourcesQuery.data?.resourceNameMap ?? {}}
           runsThroughBreaks={orderPreview?.options.runsThroughBreaks ?? gantt.runsThroughBreaks} onBreaksChange={gantt.changeBreaks}
