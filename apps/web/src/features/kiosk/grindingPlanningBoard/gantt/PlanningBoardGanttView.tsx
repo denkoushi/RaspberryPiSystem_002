@@ -81,14 +81,14 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const queuePopover = useRef<ForwardQueueHandle>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const pan = useRef<{ pointerId: number; x: number; y: number; left: number; top: number } | null>(null);
-  const [panning, setPanning] = useState(false);
   const startPan = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 1 || event.pointerType !== 'mouse' || pan.current) return;
     event.preventDefault();
     const element = event.currentTarget;
     pan.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: element.scrollLeft, top: element.scrollTop };
     element.setPointerCapture?.(event.pointerId);
-    setPanning(true);
+    // Set the cursor directly: a state update would re-render every bar before the cursor changes.
+    element.style.cursor = 'grabbing';
   };
   const movePan = (event: React.PointerEvent<HTMLDivElement>) => {
     const pending = pan.current;
@@ -100,7 +100,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const endPan = (event: React.PointerEvent<HTMLDivElement>) => {
     if (pan.current?.pointerId !== event.pointerId) return;
     pan.current = null;
-    setPanning(false);
+    event.currentTarget.style.cursor = '';
     if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
   const content = useRef<HTMLDivElement>(null);
@@ -216,7 +216,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
       {showChain && <PlanningBoardChainStrip bars={chain} resourceNameMap={resourceNameMap} currentItemId={currentItemId}
         onStep={scrollToStep} onClose={() => setFocusedPartKey(null)} />}
       <div ref={viewport} onScroll={() => queuePopover.current?.close()} className="relative min-h-48 overflow-auto"
-        style={{ height: viewportHeight ?? undefined, cursor: panning ? 'grabbing' : undefined }} tabIndex={0} aria-label="ガントの日付と工程"
+        style={{ height: viewportHeight ?? undefined }} tabIndex={0} aria-label="ガントの日付と工程"
         onPointerDown={startPan} onPointerMove={movePan} onPointerUp={endPan} onPointerCancel={endPan} onLostPointerCapture={endPan}
         onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }}>
         <div ref={content} className="relative isolate" style={{ width: labelWidth + width }}>
@@ -249,7 +249,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
               </div>
             )}
             {!(forward && group.resource) && <div className="relative flex min-h-11 border-b border-slate-700 bg-slate-800">
-              <div className="sticky left-0 z-20 flex min-h-11 shrink-0 items-center gap-1 bg-slate-800 px-2 text-xs" style={{ width: labelWidth }}>
+              <div data-gantt-lane-label className="sticky left-0 z-20 flex min-h-11 shrink-0 items-center gap-1 bg-slate-800 px-2 text-xs" style={{ width: labelWidth }}>
                 {group.resource ? laneHandle(group.resource, ganttResourceLabel(normalizeMachineName(group.label), resourceNameMap[group.resource]), 'min-h-11 min-w-0 flex-1 font-bold')
                   : <strong className="min-w-0 flex-1 truncate" title={group.label}>{normalizeMachineName(group.label)}</strong>}
                 {group.resource && group.resource !== '未設定' && <div className="flex shrink-0 gap-1" role="group" aria-label={`${group.resource}の1日の稼働時間`}>

@@ -18,8 +18,8 @@ export function PlanningBoardChainStrip({ bars, resourceNameMap, currentItemId, 
   const part = bars[0]!.item;
   return <div data-testid="planning-gantt-chain-strip" role="region" aria-label="工程のつながり" className="flex items-center gap-3 overflow-x-auto border-b border-slate-700 bg-slate-950 p-2 text-xs text-slate-100">
     <div className="shrink-0">
-      <strong className="text-sm">{part.fhinmei || part.fhincd}</strong>
-      <div className="text-[11px] text-slate-400">{part.fseiban} · {part.fhincd} · {bars.length}工程</div>
+      <strong className="text-base">{part.fhinmei || part.fhincd}</strong>
+      <div className="text-sm text-white">{part.fseiban} · {part.fhincd} · {bars.length}工程</div>
     </div>
     {bars.map((bar, index) => <Fragment key={bar.item.itemId}>
       {index > 0 && <span aria-hidden="true" className="text-slate-400">→</span>}
