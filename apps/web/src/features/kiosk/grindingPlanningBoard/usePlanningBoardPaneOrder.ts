@@ -13,6 +13,20 @@ function readOrder(key: string): string[] {
   }
 }
 
+function placeLine(drag: PaneDrag, target: HTMLElement | null) {
+  const line = drag.line!;
+  const lane = target?.getBoundingClientRect();
+  const from = drag.sourceLane?.getBoundingClientRect();
+  const bounds = drag.scrollParent?.getBoundingClientRect() ?? lane;
+  // Moving down lands below the target lane, moving up lands above its machine-name row.
+  const y = !lane || !from || !bounds ? NaN : from.top < lane.top ? lane.bottom
+    : (target!.querySelector('[data-gantt-lane-label]') ?? target!).getBoundingClientRect().top;
+  if (!bounds || !(y >= bounds.top && y <= bounds.bottom)) { line.classList.add('hidden'); return; }
+  line.classList.remove('hidden');
+  line.style.width = `${drag.scrollParent?.clientWidth ?? bounds.width}px`;
+  line.style.transform = `translate3d(${bounds.left}px, ${y - 2}px, 0)`;
+}
+
 type PaneDrag = {
   pointerId: number;
   resource: string;
@@ -32,6 +46,8 @@ type PaneDrag = {
   sourceOutline: string;
   sourceOutlineOffset: string;
   sourceBackground: string;
+  sourceLane: HTMLElement | null;
+  line: HTMLDivElement | null;
 };
 
 export function usePlanningBoardPaneOrder(
@@ -65,6 +81,7 @@ export function usePlanningBoardPaneOrder(
       delete drag.source.dataset.planningBoardDragSource;
     }
     drag.ghost?.remove();
+    drag.line?.remove();
     drag.handle.style.opacity = drag.originalOpacity;
     if (drag.handle.hasPointerCapture?.(drag.pointerId)) drag.handle.releasePointerCapture(drag.pointerId);
   }, []);
@@ -116,16 +133,18 @@ export function usePlanningBoardPaneOrder(
       if (before !== drag.scrollParent.scrollTop) drag.frame = requestAnimationFrame(flush);
     }
     const pane = paneAtPoint(drag.x, drag.y);
-    const target = pane === drag.source ? null : pane;
+    const target = pane === drag.source || pane === drag.sourceLane ? null : pane;
+    if (drag.line) placeLine(drag, target);
     if (target === drag.target) return;
     if (drag.target) drag.target.style.outline = drag.targetOutline;
     drag.target = target;
     drag.targetOutline = target?.style.outline ?? '';
-    if (target) target.style.outline = '2px solid rgb(110 231 183)';
+    if (target && !drag.line) target.style.outline = '2px solid rgb(110 231 183)';
   }, [paneAtPoint]);
 
   const start = useCallback((drag: PaneDrag) => {
     if (pending.current !== drag || drag.ghost) return;
+    if (drag.timer !== null) clearTimeout(drag.timer);
     drag.timer = null;
     const ghost = document.createElement('div');
     ghost.setAttribute('aria-hidden', 'true');
@@ -149,6 +168,16 @@ export function usePlanningBoardPaneOrder(
       if (!label) source.style.backgroundColor = 'rgba(251,191,36,0.12)';
       source.dataset.planningBoardDragSource = 'true';
     }
+    if (label) {
+      drag.sourceLane = label.closest<HTMLElement>('[data-gantt-lane]');
+      // The gantt shows one line where the lane will land instead of framing a whole wide lane.
+      const line = document.createElement('div');
+      line.setAttribute('aria-hidden', 'true');
+      line.dataset.planningBoardPaneLine = '';
+      line.className = 'pointer-events-none fixed left-0 top-0 z-[65] hidden h-1 rounded-full bg-emerald-300 shadow-[0_0_0_2px_rgb(2_6_23)]';
+      document.body.appendChild(line);
+      drag.line = line;
+    }
     flush();
   }, [flush, paneAtPoint]);
 
@@ -161,13 +190,14 @@ export function usePlanningBoardPaneOrder(
       pointerId: event.pointerId, resource, handle,
       startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY,
       timer: null, frame: null, ghost: null, target: null, targetOutline: '', originalOpacity: handle.style.opacity, scrollParent,
-      source: null, sourceOutline: '', sourceOutlineOffset: '', sourceBackground: ''
+      source: null, sourceOutline: '', sourceOutlineOffset: '', sourceBackground: '', sourceLane: null, line: null
     };
     pending.current = drag;
     handle.setPointerCapture?.(event.pointerId);
-    if (!startOnMove) drag.timer = setTimeout(() => start(drag), HOLD_MS);
+    // A hold shows the frame too; with startOnMove, moving earlier starts at once.
+    drag.timer = setTimeout(() => start(drag), HOLD_MS);
     event.stopPropagation();
-  }, [disabled, start, startOnMove]);
+  }, [disabled, start]);
 
   const onPointerMove = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
     const drag = pending.current;
