@@ -1,12 +1,14 @@
 import { formatInventoryLabelNumber } from '@raspi-system/shared-types';
-import { Fragment, memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import { inventoryThumbnailUrl, type InventoryCompartment, type InventoryImportSummary } from '../../../api/client';
 
 import { issuedLabel, unitLabel } from './inventoryDailyFlow';
+import { InventoryHoverCard } from './InventoryHoverCard';
 import { LockIcon, PinIcon } from './InventoryIcons';
-import { invLabelNumber } from './inventoryUi';
+import { detailLabels, invLabelNumber } from './inventoryUi';
+
+export { detailLabels } from './inventoryUi';
 
 export type InventoryThumbnailSize = 'small' | 'medium' | 'large';
 export type InventoryViewMode = 'card' | 'list';
@@ -17,36 +19,6 @@ const sizes = {
   medium: { columns: 'grid-cols-6', photo: 'h-[190px]', fields: ['model', 'maker', 'toolSize'] },
   large: { columns: 'grid-cols-4', photo: 'h-[300px]', fields: ['model', 'maker', 'toolName', 'toolSize', 'workMaterial', 'usage'] },
 } as const;
-export const detailLabels = { model: '型式', maker: 'メーカー', toolName: '工具名', toolSize: '寸法', workMaterial: '被削材', usage: '用途' };
-
-function InventoryCardTooltip({ id, compartment, rect }: { id: string; compartment: InventoryCompartment; rect: DOMRect }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ left: rect.right + 8, top: rect.top });
-  useLayoutEffect(() => {
-    if (!ref.current) return;
-    const { width, height } = ref.current.getBoundingClientRect();
-    const left = rect.right + 8 + width <= window.innerWidth - 8 ? rect.right + 8 : rect.left - width - 8;
-    const top = rect.top + height <= window.innerHeight - 8 ? rect.top : rect.bottom - height;
-    setPosition({
-      left: Math.max(8, Math.min(left, window.innerWidth - width - 8)),
-      top: Math.max(8, Math.min(top, window.innerHeight - height - 8)),
-    });
-  }, [rect]);
-  const rows = [
-    ['番号', formatInventoryLabelNumber(compartment.labelNumber)],
-    ['名前', compartment.item.name.trim()],
-    ...Object.entries(detailLabels).map(([field, label]) => [label, compartment.item[field as keyof typeof detailLabels]?.trim()]),
-    ['場所', `${compartment.area}・棚${compartment.shelfNumber}-${compartment.drawerNumber}`],
-    ['在庫', `${compartment.stockQuantity} ${unitLabel(compartment.item)}`],
-    ['持出', issuedLabel(compartment.lastIssuedAt, new Date())],
-  ];
-  return createPortal(<div ref={ref} id={id} role="tooltip" style={position} className="pointer-events-none fixed z-50 max-h-[calc(100dvh-16px)] w-[344px] max-w-[calc(100vw-16px)] overflow-hidden rounded-xl border border-inv-line2 bg-inv-s1 p-4 text-sm text-inv-text shadow-xl">
-    <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5">
-      {rows.map(([label, value]) => value ? <Fragment key={label}><dt className="text-inv-faint">{label}</dt><dd className="whitespace-pre-wrap [overflow-wrap:anywhere]">{value}</dd></Fragment> : null)}
-    </dl>
-  </div>, document.body);
-}
-
 const collator = new Intl.Collator('ja');
 
 /** Most recently issued first; never-issued drawers follow in name order. */
@@ -94,10 +66,10 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
   }, [hideTooltip, size, view, compartments]);
   const showTooltip = (compartment: InventoryCompartment, element: HTMLElement) => {
     hideTooltip();
-    if (view !== 'card' || size === 'large') return;
     const rect = element.getBoundingClientRect();
     tooltipTimer.current = setTimeout(() => setTooltip({ compartment, rect }), 150);
   };
+  const hoverClass = (id: string) => `transition-[transform,opacity,box-shadow] duration-150 motion-reduce:transition-none ${tooltip?.compartment.id === id ? '-translate-y-0.5 ring-2 ring-inv-cyan shadow-xl' : tooltip ? 'opacity-[.55]' : ''}`;
   const config = sizes[size];
   const sorted = useMemo(() => sortByRecentIssue(compartments), [compartments]);
   if (sorted.length === 0 && pending.length === 0) return <p className="text-inv-muted">登録済みのアイテムはまだありません</p>;
@@ -108,7 +80,7 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
         <span /><span>番号</span><span>名前</span><span>型式</span><span>メーカー</span><span>工具名</span><span>寸法</span><span>被削材</span><span>用途</span><span>場所</span><span className="text-right">在庫</span><span className="text-right">持出</span>
       </div>
       {pending.map((candidate) => (
-        <button key={candidate.id} type="button" aria-label={`未登録 候補 #${candidate.sourceItemId} を登録する`} className={`${listRow} border-2 border-inv-amber hover:brightness-110 focus-visible:brightness-110`} onClick={() => onPickPending?.(candidate)}>
+        <button key={candidate.id} type="button" aria-label={`未登録 候補 #${candidate.sourceItemId} を登録する`} className={`${tooltip ? 'opacity-[.55]' : ''} transition-opacity duration-150 motion-reduce:transition-none ${listRow} border-2 border-inv-amber hover:brightness-110 focus-visible:brightness-110`} onClick={() => onPickPending?.(candidate)}>
           <span className="block h-14 w-14 overflow-hidden rounded-lg bg-inv-s3">
             {candidate.photoUrl ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(candidate.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
           </span>
@@ -122,7 +94,12 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
       {sorted.map((compartment) => {
         const photo = compartment.item.photos[0];
         return (
-          <button key={compartment.id} type="button" className={`${listRow} border-inv-line hover:border-inv-cyan focus-visible:border-inv-cyan`} onClick={() => onPick(compartment)}>
+          <button key={compartment.id} type="button" aria-describedby={tooltip?.compartment.id === compartment.id ? tooltipId : undefined}
+            onPointerEnter={event => { if (event.pointerType !== 'touch' && (window.matchMedia?.('(hover: hover)').matches ?? true)) showTooltip(compartment, event.currentTarget); }}
+            onPointerLeave={hideTooltip}
+            onFocus={event => { if (event.target.matches(':focus-visible')) showTooltip(compartment, event.currentTarget); }}
+            onBlur={hideTooltip}
+            className={`${listRow} border-inv-line hover:border-inv-cyan focus-visible:border-inv-cyan ${hoverClass(compartment.id)}`} onClick={() => onPick(compartment)}>
             <span className="block h-14 w-14 overflow-hidden rounded-lg bg-inv-s3">
               {photo ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
             </span>
@@ -136,12 +113,13 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
           </button>
         );
       })}
+      {tooltip ? <InventoryHoverCard key={tooltip.compartment.id} id={tooltipId} {...tooltip} /> : null}
     </div>
   );
   return (
     <div className={`grid min-h-0 flex-1 auto-rows-max ${config.columns} gap-3 overflow-y-auto pb-1`} aria-label="登録済みアイテム">
       {pending.map((candidate) => (
-        <button key={candidate.id} type="button" aria-label={`未登録 候補 #${candidate.sourceItemId} を登録する`} className="flex flex-col overflow-hidden rounded-[14px] border-2 border-inv-amber bg-inv-s1 text-left text-inv-text hover:brightness-110 focus:outline-none focus-visible:brightness-110" onClick={() => onPickPending?.(candidate)}>
+        <button key={candidate.id} type="button" aria-label={`未登録 候補 #${candidate.sourceItemId} を登録する`} className={`${tooltip ? 'opacity-[.55]' : ''} transition-opacity duration-150 motion-reduce:transition-none flex flex-col overflow-hidden rounded-[14px] border-2 border-inv-amber bg-inv-s1 text-left text-inv-text hover:brightness-110 focus:outline-none focus-visible:brightness-110`} onClick={() => onPickPending?.(candidate)}>
           <span className={`relative block ${config.photo} w-full bg-inv-s3`}>
             {candidate.photoUrl ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(candidate.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
             <span className="absolute left-2 top-2 inline-flex h-8 items-center gap-1.5 rounded-full bg-inv-amber px-3 text-[13px] font-black text-inv-amber-ink"><LockIcon size={14} />未登録</span>
@@ -160,8 +138,8 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
         const photo = photos[photoIndex];
         const empty = compartment.stockQuantity === 0;
         return (
-          <div key={compartment.id} className="relative min-w-0"
-            onPointerEnter={event => { if (window.matchMedia?.('(hover: hover)').matches ?? true) showTooltip(compartment, event.currentTarget); }}
+          <div key={compartment.id} className={`relative min-w-0 rounded-[14px] ${hoverClass(compartment.id)}`}
+            onPointerEnter={event => { if (event.pointerType !== 'touch' && (window.matchMedia?.('(hover: hover)').matches ?? true)) showTooltip(compartment, event.currentTarget); }}
             onPointerLeave={hideTooltip}
             onFocus={event => { if (event.target.matches(':focus-visible')) showTooltip(compartment, event.currentTarget); }}
             onBlur={hideTooltip}
@@ -215,7 +193,7 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
           </div>
         );
       })}
-      {tooltip && size !== 'large' ? <InventoryCardTooltip id={tooltipId} {...tooltip} /> : null}
+      {tooltip ? <InventoryHoverCard key={tooltip.compartment.id} id={tooltipId} {...tooltip} /> : null}
     </div>
   );
 });
