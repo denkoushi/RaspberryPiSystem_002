@@ -25,6 +25,7 @@ type Props = {
   onLeaveQueue: () => void;
   onCloseQueue: () => void;
   hours: number;
+  pausesForBreaks?: boolean;
   selectedItemIds: ReadonlySet<string>;
   disabled: boolean;
   dragDisabled: boolean;
@@ -36,7 +37,7 @@ type Props = {
   onFocusChain: (bar: GanttBar) => void;
 };
 
-export function PlanningBoardForwardGanttRow({ row, label, start, end, now, width, dayWidth, hours, scale, onShowQueue, onLeaveQueue, onCloseQueue,
+export function PlanningBoardForwardGanttRow({ row, label, start, end, now, width, dayWidth, hours, pausesForBreaks = true, scale, onShowQueue, onLeaveQueue, onCloseQueue,
   selectedItemIds, disabled, dragDisabled, resourceView, onToggleItem, onResourceReorder, focusedPartKey, chainPositions, onFocusChain }: Props) {
   const track = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
@@ -46,7 +47,10 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
     if (longPressTimer.current !== null) clearTimeout(longPressTimer.current);
     longPressTimer.current = null;
   };
-  // Shade only the time before and after the working day; breaks still delay the bars but are not drawn.
+  const breaks = useMemo(() => {
+    const periods = workingPeriods(hours, pausesForBreaks);
+    return periods.slice(1).map((period, index) => ({ start: periods[index]!.end, end: period.start }));
+  }, [hours, pausesForBreaks]);
   const offHours = useMemo(() => {
     const periods = workingPeriods(hours);
     return [{ start: 0, end: periods[0]!.start }, { start: periods[periods.length - 1]!.end, end: 1 }];
@@ -102,6 +106,9 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
       {hours < 24 && Array.from({ length: end - start }, (_, i) => <div key={i} className="pointer-events-none">
         {offHours.map((gap, index) => <span key={index} className="absolute inset-y-0 bg-slate-950/55"
           style={{ left: (i + gap.start) * dayWidth, width: (gap.end - gap.start) * dayWidth }} />)}
+        {breaks.map((gap, index) => <span key={`break-${index}`} data-testid="planning-gantt-break" className="pointer-events-none absolute inset-y-0 opacity-80"
+          style={{ left: (i + gap.start) * dayWidth, width: (gap.end - gap.start) * dayWidth,
+            background: 'repeating-linear-gradient(135deg, rgb(51 65 85) 0 4px, transparent 4px 8px)' }} />)}
       </div>)}
       <span data-testid="planning-gantt-now" className="pointer-events-none absolute inset-y-0 z-[3] border-l-2 border-yellow-400" style={{ left: (now - start) * dayWidth }} />
       {row.connectors.map((link, i) => <span key={i} className="pointer-events-none absolute top-9 border-t-2 border-dotted border-amber-400" style={{ left: (link.start - start) * dayWidth, width: (link.end - link.start) * dayWidth }} />)}
@@ -158,7 +165,7 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
                 onFocusChain(bar);
               }}>
               {inChain && index === 0 && <span data-testid={`planning-gantt-chain-badge-${bar.item.itemId}`} className="pointer-events-none absolute right-0 top-0 grid h-[22px] w-[22px] place-items-center rounded-full bg-slate-950 font-mono text-xs font-bold text-white">{chainPositions.get(bar.item.itemId)}</span>}
-              {bar.unknown ? '所要不明' : segmentWidth >= 48
+              {index > 0 ? null : bar.unknown ? '所要不明' : segmentWidth >= 48
                 ? <span className="block break-all px-1"><b className="line-clamp-2">{bar.item.fhinmei || bar.item.fhincd}</b>
                   <small className="line-clamp-3 text-[11px] font-normal">{scale <= 2 ? forwardItemDetails(bar.item) : `${bar.item.requiredMinutes}分`}</small>
                 </span> : null}

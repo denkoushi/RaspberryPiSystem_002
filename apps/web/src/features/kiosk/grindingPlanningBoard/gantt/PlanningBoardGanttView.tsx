@@ -22,6 +22,8 @@ import type { GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shar
 
 type Props = Pick<PlanningBoardGanttRowProps, 'disabled' | 'dragDisabled' | 'onToggleItem' | 'onDueDrop' | 'selectedItemIds' | 'resourceView'> & {
   onResourceReorder?: ForwardReorder;
+  runsThroughBreaks?: ReadonlySet<string>;
+  onBreaksChange?: (resourceCd: string, runsThroughBreaks: boolean) => void;
   layout: GanttLayout;
   scale: number;
   /** Changes each time a scale button is pressed, so the chart returns to today even on the current scale. */
@@ -57,7 +59,7 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
 }
 
 export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props>(function PlanningBoardGanttView({
-  layout: sourceLayout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange,
+  layout: sourceLayout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, runsThroughBreaks, onBreaksChange,
   preferenceScope = 'default', ...interaction
 }, ref) {
   // Dragging a machine name up or down reorders the lanes; the order is kept on this kiosk only.
@@ -205,15 +207,22 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     else { element.scrollLeft = left; element.scrollTop = top; }
     setCurrentItemId(bar.item.itemId);
   };
+  const breaksButton = (resource: string) => <button type="button"
+    className={clsx('h-7 w-9 shrink-0 whitespace-nowrap rounded border px-0 text-[13px] font-bold leading-none disabled:opacity-40',
+      !runsThroughBreaks?.has(resource) ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 bg-slate-900 text-slate-200')}
+    aria-pressed={!runsThroughBreaks?.has(resource)}
+    disabled={resource === '未設定' || dailyHoursByResource[resource] === 24 || capacityPending || interaction.disabled}
+    onClick={() => onBreaksChange?.(resource, !runsThroughBreaks?.has(resource))}>休憩</button>;
   const resourceLabel = (resource: string, label: string) => <>
     {laneHandle(resource, ganttResourceLabel(normalizeMachineName(label), resourceNameMap[resource]), 'min-h-7 font-bold')}
     <div className="flex gap-1" role="group" aria-label={`${resource}の1日の稼働時間`}>
       {GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS.map((hours) => <button key={hours} type="button"
-        className={clsx('h-7 min-w-10 rounded border px-1 font-mono text-[13px] font-bold leading-none',
+        className={clsx('h-7 w-8 shrink-0 rounded border px-0 font-mono text-[13px] font-bold leading-none',
           (dailyHoursByResource[resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS) === hours ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 bg-slate-900 text-slate-200')}
         aria-pressed={(dailyHoursByResource[resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS) === hours}
         disabled={resource === '未設定' || capacityPending || interaction.disabled}
         onClick={() => onCapacityChange(resource, hours)}>{hours}H</button>)}
+      {breaksButton(resource)}
     </div>
   </>;
   return (
@@ -260,11 +269,12 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
                   : <strong className="min-w-0 flex-1 truncate" title={group.label}>{normalizeMachineName(group.label)}</strong>}
                 {group.resource && group.resource !== '未設定' && <div className="flex shrink-0 gap-1" role="group" aria-label={`${group.resource}の1日の稼働時間`}>
                   {GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS.map((hours) => <button key={hours} type="button"
-                    className={clsx('h-7 min-w-10 rounded border px-1 font-mono text-[13px] font-bold leading-none',
+                    className={clsx('h-7 w-8 shrink-0 rounded border px-0 font-mono text-[13px] font-bold leading-none',
                       (dailyHoursByResource[group.resource!] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS) === hours ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 bg-slate-900 text-slate-200')}
                     aria-pressed={(dailyHoursByResource[group.resource!] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS) === hours}
                     disabled={capacityPending || interaction.disabled}
                     onClick={() => onCapacityChange(group.resource!, hours)}>{hours}H</button>)}
+                  {breaksButton(group.resource)}
                 </div>}
               </div>
             </div>}
@@ -272,6 +282,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
               return <PlanningBoardForwardGanttRow key={row.key} row={row} start={layout.start} end={layout.end} now={layout.now!} width={width} dayWidth={dayWidth} scale={scale}
                 onShowQueue={(bar, anchor) => queuePopover.current?.show(bar, anchor)}
                 onLeaveQueue={() => queuePopover.current?.hideSoon()} onCloseQueue={() => queuePopover.current?.close()}
+                pausesForBreaks={group.resource ? !runsThroughBreaks?.has(group.resource) : row.bars.some((bar) => !runsThroughBreaks?.has(bar.resource))}
                 hours={group.resource ? dailyHoursByResource[group.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS : Math.max(...row.bars.map((bar) => dailyHoursByResource[bar.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS), GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS)}
                 {...interaction}
                 focusedPartKey={showChain ? focusedPartKey : null} chainPositions={chainPositions} onFocusChain={focusChain}

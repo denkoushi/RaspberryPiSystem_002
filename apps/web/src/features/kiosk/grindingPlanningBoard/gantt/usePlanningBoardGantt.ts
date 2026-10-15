@@ -14,7 +14,7 @@ import type { GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shar
 const DEFAULT_CAPACITY = {};
 const EMPTY_ITEMS: GanttLayoutOptions['items'] = [];
 
-export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' | 'dailyHoursByResource'> & {
+export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' | 'dailyHoursByResource' | 'runsThroughBreaks'> & {
   enabled: boolean;
   preferenceScope: string;
 }) {
@@ -24,6 +24,7 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
   const capacity = useKioskGrindingPlanningBoardResourceCapacity(enabled);
   const { mutate, isPending, isError } = useUpdateKioskGrindingPlanningBoardResourceCapacity();
   const dailyHoursByResource = capacity.data?.dailyHoursByResource ?? DEFAULT_CAPACITY;
+  const runsThroughBreaks = useMemo(() => new Set(capacity.data?.runsThroughBreaksResources ?? []), [capacity.data?.runsThroughBreaksResources]);
   const paneResources = useMemo(() => [...new Set([...resources,
     ...items.map((item) => resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定')
   ])], [allocation, items, resources]);
@@ -40,14 +41,17 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
     return paneResources;
   }, [enabled, preferenceScope, paneResources]);
   const layout = useMemo(() => buildPlanningBoardGanttLayout({
-    items: enabled ? items : EMPTY_ITEMS, allocation, view, seibanOrder, resources: resourceOrder, dailyHoursByResource, today, scale, mode, now, category, resourceCategories
-  }), [enabled, items, allocation, view, seibanOrder, resourceOrder, dailyHoursByResource, today, scale, mode, now, category, resourceCategories]);
+    items: enabled ? items : EMPTY_ITEMS, allocation, view, seibanOrder, resources: resourceOrder, dailyHoursByResource, runsThroughBreaks, today, scale, mode, now, category, resourceCategories
+  }), [enabled, items, allocation, view, seibanOrder, resourceOrder, dailyHoursByResource, runsThroughBreaks, today, scale, mode, now, category, resourceCategories]);
   const viewRef = useRef<PlanningBoardGanttHandle>(null);
   const scrollToNextOverlap = useCallback(() => viewRef.current?.scrollToNextOverlap(), []);
   const scrollToNextLate = useCallback(() => viewRef.current?.scrollToNextLate(), []);
   const changeCapacity = useCallback((resourceCd: string, dailyHours: GrindingPlanningBoardResourceDailyHours) => {
     if (!isPending) mutate({ resourceCd, dailyHours });
   }, [isPending, mutate]);
-  return { mode, changeMode, scrollToNextLate, scale, homeKey, changeScale, layout, viewRef, scrollToNextOverlap, dailyHoursByResource,
+  const changeBreaks = useCallback((resourceCd: string, runsThroughBreaks: boolean) => {
+    if (!isPending) mutate({ resourceCd, runsThroughBreaks });
+  }, [isPending, mutate]);
+  return { mode, changeMode, scrollToNextLate, scale, homeKey, changeScale, layout, viewRef, scrollToNextOverlap, dailyHoursByResource, runsThroughBreaks, changeBreaks,
     capacityPending: isPending, capacityError: isError, changeCapacity };
 }
