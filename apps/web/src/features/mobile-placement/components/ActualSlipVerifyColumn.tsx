@@ -33,7 +33,7 @@ export type ActualSlipVerifyColumnProps = {
   ocrFeedback: ActualSlipOcrFeedback;
 };
 
-function OcrFeedbackBanner(props: { feedback: ActualSlipOcrFeedback }) {
+function OcrFeedbackBanner(props: { feedback: ActualSlipOcrFeedback; onSelectFseiban: (value: string) => void }) {
   const { feedback } = props;
   if (feedback.status === 'idle') {
     return null;
@@ -51,7 +51,22 @@ function OcrFeedbackBanner(props: { feedback: ActualSlipOcrFeedback }) {
       role="status"
       aria-live="polite"
     >
-      {feedback.message ? <p className="font-medium">{feedback.message}</p> : null}
+      {feedback.fseibanMatch === 'corrected' ? (
+        <p className="font-medium">製番を補正: {feedback.fseibanRaw ?? '—'} → {feedback.fseiban}</p>
+      ) : feedback.fseibanMatch === 'ambiguous' ? (
+        <div>
+          <p className="font-medium">製番を選んでください</p>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {feedback.fseibanCandidates.map((candidate) => (
+              <Button key={candidate} type="button" variant="ghostOnDark"
+                className="min-h-[48px] px-3 font-mono text-sm"
+                onClick={() => props.onSelectFseiban(candidate)}>
+                {candidate}
+              </Button>
+            ))}
+          </div>
+        </div>
+      ) : feedback.message ? <p className="font-medium">{feedback.message}</p> : null}
       {feedback.status === 'success' && (feedback.manufacturingOrder10 || feedback.fseiban) ? (
         <ul className="mt-1 list-inside list-disc text-[10px] text-white/90">
           {feedback.manufacturingOrder10 ? (
@@ -119,7 +134,7 @@ export function ActualSlipVerifyColumn(props: ActualSlipVerifyColumnProps) {
           placeholder={MP_PLACEHOLDER_PART}
           ariaLabel={`現品票 ${MP_PLACEHOLDER_PART}`}
         />
-        <OcrFeedbackBanner feedback={props.ocrFeedback} />
+        <OcrFeedbackBanner feedback={props.ocrFeedback} onSelectFseiban={props.fseibanField.onChange} />
       </div>
     </div>
   );

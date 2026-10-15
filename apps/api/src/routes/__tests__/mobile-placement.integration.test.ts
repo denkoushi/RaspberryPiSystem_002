@@ -1,3 +1,4 @@
+import { resetKnownFseibanCache } from '../../services/mobile-placement/known-fseiban-cache.js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildServer } from '../../app.js';
 import {
@@ -59,6 +60,7 @@ describe('mobile-placement API', () => {
   });
 
   beforeEach(async () => {
+    resetKnownFseibanCache();
     await prisma.orderPlacementBranchState.deleteMany();
     await prisma.orderPlacementEvent.deleteMany();
     await prisma.mobilePlacementEvent.deleteMany();
@@ -352,10 +354,19 @@ describe('mobile-placement API', () => {
     expect(res.json()).toEqual({ ok: true });
   });
 
-  it('POST /api/mobile-placement/parse-actual-slip-image returns parsed fields with stub OCR', async () => {
+  it.each([['BE1N9321', 'exact', false], ['8E1N9321', 'corrected', false], ['8E1N9321', 'corrected', true]] as const)('POST /api/mobile-placement/parse-actual-slip-image snaps %s (%s, neighbour row: %s)', async (raw, match, withNeighbour) => {
+    await prisma.csvDashboard.create({ data: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID, name: 'test schedule', columnDefinitions: {}, templateConfig: {} } });
+    await prisma.csvDashboardRow.create({ data: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, occurredAt: new Date(),
+      rowData: { ProductNo: '0002178005', FSEIBAN: ' BE1N9321 ', FHINCD: 'H-1', FSIGENCD: 'G1', FKOJUN: '1' } } });
     const { apiKey: clientApiKey } = await createTestClientDevice();
+    if (withNeighbour) {
+      await prisma.csvDashboardRow.create({ data: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, occurredAt: new Date(),
+        rowData: { ProductNo: '0002178006', FSEIBAN: 'BE1N9327', FHINCD: 'H-2', FSIGENCD: 'G1', FKOJUN: '1' }
+      } });
+    }
     const prev = process.env.IMAGE_OCR_STUB_TEXT;
-    process.env.IMAGE_OCR_STUB_TEXT = '製造オーダNo 0002178005\n製番 BE1N9321';
+    process.env.IMAGE_OCR_STUB_TEXT = `製造オーダNo 0002178005\n製番 ${raw}`;
     resetImageOcrPortForTests();
     try {
       const { body, contentType } = buildMultipartImageField('image', 't.png', MIN_PNG, 'image/png');
@@ -374,6 +385,7 @@ describe('mobile-placement API', () => {
         manufacturingOrder10: string | null;
         fseiban: string | null;
       };
+      expect(j).toMatchObject({ fseibanRaw: raw, fseibanMatch: match, fseibanCandidates: withNeighbour && match === 'corrected' ? ['BE1N9321', 'BE1N9327'] : ['BE1N9321'] });
       expect(j.engine).toBe('stub');
       expect(j.manufacturingOrder10).toBe('0002178005');
       expect(j.fseiban).toBe('BE1N9321');
