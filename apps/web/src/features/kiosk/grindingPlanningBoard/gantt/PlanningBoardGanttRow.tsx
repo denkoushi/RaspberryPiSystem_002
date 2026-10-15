@@ -1,6 +1,8 @@
 import clsx from 'clsx';
 import { memo, useCallback, useEffect, useRef } from 'react';
 
+import { pageZoom } from '../pageZoom';
+
 import { dateToDay, dayLabel, shiftedDueDate } from './planningBoardGanttLayout';
 
 import type { GanttBar, GanttRow } from './planningBoardGanttLayout';
@@ -58,7 +60,7 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
     if (!drag || drag.pointerId !== event.pointerId) return;
     if (Math.abs(event.clientX - drag.x) > 4 || Math.abs(event.clientY - drag.y) > 4) drag.moved = true;
     if (!drag.moved || dragDisabled || !bar.due) return;
-    const date = shiftedDueDate(bar.due, Math.round((event.clientX - drag.x) / dayWidth), today);
+    const date = shiftedDueDate(bar.due, Math.round((event.clientX - drag.x) / pageZoom() / dayWidth), today);
     drag.delta = dateToDay(date) - dateToDay(bar.due);
     if (drag.frame != null) return;
     drag.frame = requestAnimationFrame(() => {

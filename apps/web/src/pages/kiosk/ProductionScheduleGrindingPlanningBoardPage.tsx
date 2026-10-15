@@ -35,6 +35,7 @@ import {
   resolveGrindingPlanningBoardResource,
   sortGrindingPlanningBoardItems
 } from '../../features/kiosk/grindingPlanningBoard/sortGrindingPlanningBoardItems';
+import { usePlanningBoardLargeScreen } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardLargeScreen';
 import { usePlanningBoardWriteQueue } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue';
 import { LeaderBoardDueAssistPanel } from '../../features/kiosk/leaderOrderBoard/LeaderBoardDueAssistPanel';
 import { normalizeDueDateInput } from '../../features/kiosk/productionSchedule/dueManagement';
@@ -154,6 +155,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [pinMode, setPinMode] = useState(false);
   const [orderPreview, setOrderPreview] = useState<OrderPreview | null>(null);
   const [colorBySeiban, setColorBySeiban] = useState(false);
+  const { largeScreen, changeLargeScreen } = usePlanningBoardLargeScreen();
   const [ganttEnabled, setGanttEnabled] = useState(false);
   const [view, setView] = useState<'seiban' | 'resource'>('resource');
   const [status, setStatus] = useState<PlanningBoardStatus>('incomplete');
@@ -1002,6 +1004,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   return (
     <main className="min-h-0 w-full shrink-0 overflow-hidden bg-slate-950 px-2 py-2 text-white sm:px-3">
       <PlanningBoardToolbar
+        largeScreen={largeScreen} onToggleLargeScreen={() => changeLargeScreen(!largeScreen)}
         colorBySeiban={colorBySeiban} onToggleColorBySeiban={() => setColorBySeiban((enabled) => !enabled)}
         ganttEnabled={ganttEnabled}
         onToggleGantt={() => { setPinMode(false); setGanttEnabled((enabled) => !enabled); }}

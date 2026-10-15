@@ -4,6 +4,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRe
 import { createPortal } from 'react-dom';
 
 import { normalizeMachineName } from '../../productionSchedule/machineName';
+import { pageZoom } from '../pageZoom';
 import { compareProcessOrder } from '../sortGrindingPlanningBoardItems';
 import { usePlanningBoardPaneOrder } from '../usePlanningBoardPaneOrder';
 
@@ -58,6 +59,7 @@ const HOUR_TICK_MIN_DAY_WIDTH = 160;
 const NUDGE_DAYS = 2 / 24;
 
 function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTMLElement | null {
+  // Hit testing takes visual coordinates, just like pointer events.
   const elements = typeof document.elementsFromPoint === 'function' ? document.elementsFromPoint(x, y) : [];
   for (const element of elements) {
     const lane = element.closest<HTMLElement>('[data-gantt-lane]');
@@ -116,8 +118,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     cover.setPointerCapture?.(pointerId);
     cover.addEventListener('pointermove', (move) => {
       if (move.pointerId !== pointerId || pan.current !== cover) return;
-      element.scrollLeft = left - (move.clientX - x);
-      element.scrollTop = top - (move.clientY - y);
+      element.scrollLeft = left - (move.clientX - x) / pageZoom();
+      element.scrollTop = top - (move.clientY - y) / pageZoom();
       move.preventDefault();
     });
     const end = (stop: PointerEvent) => {
@@ -158,7 +160,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     const measure = () => {
       if (element.clientWidth > 0) setViewportWidth(element.clientWidth);
       const top = element.getBoundingClientRect().top;
-      if (window.innerHeight > 0) setViewportHeight(Math.max(192, Math.floor(window.innerHeight - top - GANTT_BOTTOM_GAP - (legend.current?.offsetHeight ?? 0))));
+      if (window.innerHeight > 0) setViewportHeight(Math.max(192, Math.floor((window.innerHeight - top) / pageZoom() - GANTT_BOTTOM_GAP - (legend.current?.offsetHeight ?? 0))));
     };
     measure();
     window.addEventListener('resize', measure);
@@ -192,7 +194,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     if (!element || !rows?.length) return;
     flaggedIndex.current = (flaggedIndex.current + 1) % rows.length;
     const row = rows[flaggedIndex.current]!;
-    element.scrollTop += row.getBoundingClientRect().top - element.getBoundingClientRect().top - 36;
+    element.scrollTop += (row.getBoundingClientRect().top - element.getBoundingClientRect().top) / pageZoom() - 36;
     const bar = row.querySelector<HTMLElement>('[data-testid^="planning-gantt-bar-"]');
     if (bar) element.scrollLeft = Math.max(0, parseFloat(bar.style.left) - (viewportWidth - labelWidth) / 2);
   }, scrollToNextLate: () => {
@@ -201,7 +203,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     if (!element || !bars?.length) return;
     flaggedIndex.current = (flaggedIndex.current + 1) % bars.length;
     const bar = bars[flaggedIndex.current]!;
-    element.scrollTop += bar.getBoundingClientRect().top - element.getBoundingClientRect().top - 70;
+    element.scrollTop += (bar.getBoundingClientRect().top - element.getBoundingClientRect().top) / pageZoom() - 70;
     element.scrollLeft = Math.max(0, parseFloat(bar.style.left) - (viewportWidth - labelWidth) / 2);
   } }), [viewportWidth, labelWidth]);
   const days = useMemo(() => Array.from({ length: layout.end - layout.start }, (_, i) => {
@@ -218,8 +220,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     if (!element || !target) return;
     const bounds = element.getBoundingClientRect();
     const rect = target.getBoundingClientRect();
-    const left = Math.max(0, element.scrollLeft + rect.left + rect.width / 2 - bounds.left - (viewportWidth + labelWidth) / 2);
-    const top = Math.max(0, element.scrollTop + rect.top - bounds.top - 36);
+    const left = Math.max(0, element.scrollLeft + (rect.left + rect.width / 2 - bounds.left) / pageZoom() - (viewportWidth + labelWidth) / 2);
+    const top = Math.max(0, element.scrollTop + (rect.top - bounds.top) / pageZoom() - 36);
     if (typeof element.scrollTo === 'function') element.scrollTo({ left, top, behavior: 'smooth' });
     else { element.scrollLeft = left; element.scrollTop = top; }
     setCurrentItemId(bar.item.itemId);
@@ -324,7 +326,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
       {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} layout={layout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} dragDisabled={interaction.dragDisabled || Boolean(interaction.pinMode)} />}
       {dragPreview && createPortal(<div data-testid="planning-gantt-drag-ghost"
         className="pointer-events-none fixed z-[100] rounded border-2 border-amber-400 bg-slate-950 px-2 py-1 text-[13px] text-slate-100"
-        style={{ left: dragPreview.x + 12, top: dragPreview.y + 12 }}>
+        style={{ left: dragPreview.x / pageZoom() + 12, top: dragPreview.y / pageZoom() + 12 }}>
         <strong className="font-mono">{dragPreview.bar.resource}</strong> {dragPreview.bar.item.fhinmei || dragPreview.bar.item.fhincd}
       </div>, document.body)}
     </section>

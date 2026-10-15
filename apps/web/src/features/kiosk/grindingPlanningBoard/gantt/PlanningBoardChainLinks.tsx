@@ -1,5 +1,7 @@
 import { useLayoutEffect, useState } from 'react';
 
+import { pageZoom } from '../pageZoom';
+
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
 import type { RefObject } from 'react';
 
@@ -29,10 +31,10 @@ export function PlanningBoardChainLinks({ bars, content, layout, dayWidth, viewp
       const previous = chainBarElement(element, bars[index]!, true)?.getBoundingClientRect();
       const next = chainBarElement(element, bar)?.getBoundingClientRect();
       if (!previous || !next) return [];
-      const x1 = previous.right - bounds.left;
-      const y1 = previous.top + previous.height / 2 - bounds.top;
-      const x2 = next.left - bounds.left;
-      const y2 = next.top + next.height / 2 - bounds.top;
+      const x1 = (previous.right - bounds.left) / pageZoom();
+      const y1 = (previous.top + previous.height / 2 - bounds.top) / pageZoom();
+      const x2 = (next.left - bounds.left) / pageZoom();
+      const y2 = (next.top + next.height / 2 - bounds.top) / pageZoom();
       const bend = Math.max(24, Math.abs(x2 - x1) / 2);
       return [{ id: bar.item.itemId, path: `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`, x: x2, y: y2 }];
     }));

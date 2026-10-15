@@ -1,6 +1,8 @@
 import clsx from 'clsx';
 import { useEffect, useMemo, useRef } from 'react';
 
+import { pageZoom } from '../pageZoom';
+
 import { canReorderForwardBars, forwardItemDetails } from './planningBoardForwardQueue';
 import { dateToDay, workingPeriods } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH } from './PlanningBoardGanttRow';
@@ -91,7 +93,7 @@ export function PlanningBoardForwardGanttRow({ row, seibanColors, label, start, 
     const targetLane = lanes.find((candidate) => candidate.resource === targetResource);
     const targetTrack = lane.querySelector<HTMLElement>('[data-gantt-track]');
     if (!targetLane || !targetTrack) return null;
-    const x = clientX - targetTrack.getBoundingClientRect().left;
+    const x = (clientX - targetTrack.getBoundingClientRect().left) / pageZoom();
     const centre = (bar: GanttBar) => (bar.start! - start) * dayWidth +
       (bar.unknown ? 70 : Math.max(2, ((bar.segments?.[0]?.end ?? bar.end!) - bar.start!) * dayWidth - 2)) / 2;
     const others = targetLane.bars.filter((bar) => bar.item.itemId !== source.item.itemId).sort((a, b) => centre(a) - centre(b));

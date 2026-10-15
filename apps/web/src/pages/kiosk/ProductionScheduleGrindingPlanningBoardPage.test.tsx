@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as planningBoardSorting from '../../features/kiosk/grindingPlanningBoard/sortGrindingPlanningBoardItems';
+import { LARGE_SCREEN_STORAGE_KEY } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardLargeScreen';
 
 import { ProductionScheduleGrindingPlanningBoardPage } from './ProductionScheduleGrindingPlanningBoardPage';
 
@@ -157,6 +158,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     vi.stubGlobal('PointerEvent', TestPointerEvent);
     localStorage.removeItem('kiosk-planning-board-gantt-scale');
     localStorage.removeItem('kiosk-planning-board-gantt-mode');
+    localStorage.removeItem(LARGE_SCREEN_STORAGE_KEY);
     mocks.capacity.mockReset();
     mocks.capacity.mockReturnValue({ data: undefined, isLoading: true });
     mocks.snapshot.mockReset();
@@ -202,6 +204,25 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('toggles large-screen display, restores it on return and clears zoom when leaving the page', () => {
+    const page = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    const toggle = screen.getByRole('button', { name: '50インチ表示' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(document.documentElement.style.zoom).toBe('0.7');
+    page.unmount();
+    expect(document.documentElement.style.zoom).toBe('');
+    const returned = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    const restored = screen.getByRole('button', { name: '50インチ表示' });
+    expect(restored).toHaveAttribute('aria-pressed', 'true');
+    expect(document.documentElement.style.zoom).toBe('0.7');
+    fireEvent.click(restored);
+    expect(restored).toHaveAttribute('aria-pressed', 'false');
+    expect(document.documentElement.style.zoom).toBe('');
+    returned.unmount();
   });
 
   it('keeps selections scoped to the derived all category and restores each scope', () => {
