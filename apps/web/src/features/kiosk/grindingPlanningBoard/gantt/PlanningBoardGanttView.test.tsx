@@ -384,7 +384,8 @@ describe('forward PlanningBoardGanttView', () => {
     const target = document.querySelector('[data-resource-code="306"]')!;
     Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => [target]) });
     const handle = screen.getByRole('button', { name: '資源CD 305の行を並べ替え' });
-    const source = handle.closest<HTMLElement>('[data-gantt-lane]')!;
+    const source = handle.closest<HTMLElement>('[data-gantt-lane-label]')!;
+    expect(source.closest('[data-gantt-lane]')).toHaveAttribute('data-resource-code', '305');
     source.style.outline = '1px solid blue';
     source.style.outlineOffset = '-1px';
     source.style.backgroundColor = 'red';
@@ -395,7 +396,8 @@ describe('forward PlanningBoardGanttView', () => {
     expect(document.querySelector('[data-planning-board-pane-ghost]')).toBeNull();
     fireEvent.pointerMove(handle, { pointerId: 3, clientX: 40, clientY: 140 });
     expect(source).toHaveAttribute('data-planning-board-drag-source', 'true');
-    expect(source).toHaveStyle({ outline: '3px solid rgb(251 191 36)', outlineOffset: '-3px', backgroundColor: 'rgba(251,191,36,0.12)' });
+    expect([source.style.outline, source.style.outlineOffset, source.style.backgroundColor]).toEqual(['3px solid rgb(251 191 36)', '-3px', 'red']);
+    expect(source.closest('[data-gantt-lane]')).not.toHaveAttribute('data-planning-board-drag-source');
     expect(target).toHaveStyle({ outline: '2px solid rgb(110 231 183)' });
     expect(document.querySelector('[data-planning-board-pane-ghost]')).toHaveClass('border-2', 'border-amber-400');
     fireEvent.pointerUp(handle, { pointerId: 3, clientX: 40, clientY: 140 });

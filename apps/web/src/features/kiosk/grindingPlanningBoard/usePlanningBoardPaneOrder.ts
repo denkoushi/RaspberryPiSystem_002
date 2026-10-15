@@ -135,7 +135,9 @@ export function usePlanningBoardPaneOrder(
     document.body.appendChild(ghost);
     drag.ghost = ghost;
     drag.handle.style.opacity = '0.45';
-    const source = drag.handle.closest<HTMLElement>('[data-gantt-lane]')
+    // In the gantt only the machine-name cell is framed so the bars stay readable.
+    const label = drag.handle.closest<HTMLElement>('[data-gantt-lane-label]');
+    const source = label ?? drag.handle.closest<HTMLElement>('[data-gantt-lane]')
       ?? paneAtPoint(drag.startX, drag.startY) ?? drag.handle.closest<HTMLElement>('[data-resource-code]');
     if (source) {
       drag.source = source;
@@ -144,7 +146,7 @@ export function usePlanningBoardPaneOrder(
       drag.sourceBackground = source.style.backgroundColor;
       source.style.outline = '3px solid rgb(251 191 36)';
       source.style.outlineOffset = '-3px';
-      source.style.backgroundColor = 'rgba(251,191,36,0.12)';
+      if (!label) source.style.backgroundColor = 'rgba(251,191,36,0.12)';
       source.dataset.planningBoardDragSource = 'true';
     }
     flush();
