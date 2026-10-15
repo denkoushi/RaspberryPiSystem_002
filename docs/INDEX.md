@@ -10,6 +10,7 @@
 - Hermesトルクレンチ訓練の検索ソース（セッション・従業員・チーム集計、既定OFF）: [ExecPlan](./plans/hermes-torque-training-source-execplan.md)
 - Hermes検索のオフラインDGXエンリッチメント（既定OFF、照会時は呼ばない）: [Plan](./plans/hermes-dgx-retrieval-enrichment.md)
 - Hermes検索の精度改善の履歴（採用・不採用とも数値つき）: [Log](./plans/hermes-retrieval-accuracy-log.md)
+- キオスク操作案内（Chat の「画面の操作方法を見る」）の当たり率の履歴: [Log](./plans/kiosk-operation-guide-accuracy-log.md)
 - DGX Sparkを夜間の仕込み役にする（夜に下ごしらえ・索引・紐づけ、昼は質問だけ）: [ExecPlan](./plans/dgx-night-preparation-execplan.md)
 - Hermes retrieval hybrid and enrichment aliases: [ADR-20260924](./decisions/ADR-20260924-hermes-retrieval-hybrid-enrichment.md)
 - Hermes/JEV不適合検索の引き継ぎ・達成範囲・未検証事項: [Handoff Plan](./plans/hermes-jev-search-handoff-20260923.md)

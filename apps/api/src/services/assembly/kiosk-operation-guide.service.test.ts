@@ -13,8 +13,8 @@ vi.mock('../../lib/logger.js', () => ({ logger: { warn: vi.fn() } }));
 const longBody = `自主検査を始めるには開始ボタンを押します。\n${'記録を確認します。'.repeat(80)}`;
 const headings = ['この画面でできること', '基本の手順', 'よくある困りごととその場の対処', 'それでも直らないとき'];
 
-function screenDocument(title: string, body: string): string {
-  return `---\ntitle: ${title}\nroutes: ["/kiosk/example"]\nkeywords: ['${title}', 端末, ABC]\naudience: 作業者\ncategory: kiosk-operation-guide\nlast-verified: 2026-10-14\n---\n# ${title}\n`
+function screenDocument(title: string, body: string, routes = ['/kiosk/example'], keywords = [title, '端末', 'ABC']): string {
+  return `---\ntitle: ${title}\nroutes: ${JSON.stringify(routes)}\nkeywords: ${JSON.stringify(keywords)}\naudience: 作業者\ncategory: kiosk-operation-guide\nlast-verified: 2026-10-14\n---\n# ${title}\n`
     + headings.map((heading, index) => `\n## ${heading}\n${index === 1 ? body : '画面を確認してください。'}\n`).join('');
 }
 
@@ -77,12 +77,43 @@ describe('KioskOperationGuideIndex', () => {
     expect(index.search('自主検査の始め方', 1)).toMatchObject({ total: 4, hasMore: true, results: [found.results[0]] });
   });
 
-  it.each(['チップの登録', 'icチップの登録', 'ＩＣチップの登録手順', 'チップのやり方'])('maps %s to a tag screen', (question) => {
-    writeFileSync(path.join(dir, 'tag-desk.md'), screenDocument('タグ管理', 'タグを登録します。'));
-    writeFileSync(path.join(dir, 'assembly-library.md'), screenDocument('手順書', '登録します。'));
+  it('uses master families to resolve keyword ties without treating subject names as synonyms', () => {
+    writeFileSync(path.join(dir, 'tag-desk.md'), screenDocument('タグ管理', '画面の説明。', ['/kiosk/tag-desk'], ['登録']));
+    writeFileSync(path.join(dir, 'item-inventory-settings.md'), screenDocument('在庫の準備', '画面の説明。', ['/kiosk/inventory/settings'], ['登録']));
     const index = KioskOperationGuideIndex.fromDirectory(dir);
-    expect(index.search(question, 1).results[0]).toMatchObject({ file: 'tag-desk.md', screen: 'タグ管理' });
-    expect(index.matchStrength(question)).toBe('screen');
+    const question = 'チップの登録手順';
+    expect(index.bestSection(question, { families: ['inventory'] })).toMatchObject({ file: 'item-inventory-settings.md' });
+    expect(index.matchStrength(question, { families: ['inventory'] })).toBe('screen');
+    expect(index.bestSection(question)).toBeNull();
+    expect(index.matchStrength(question)).toBe('keyword');
+    expect(index.bestSection(question, { families: ['inventory', 'tool'] })).toBeNull();
+    expect(index.bestSection('超硬チップの欠け', { families: ['inventory'] })).toBeNull();
+    expect(index.matchStrength('超硬チップの欠け', { families: ['inventory'] })).toBe('none');
+    expect(index.search('チップ', 20).results).toEqual([]);
+  });
+
+  it('reports only the terms no document names in its title or keywords', () => {
+    writeFileSync(path.join(dir, 'tag-desk.md'), screenDocument('タグ管理', '画面の説明。', ['/kiosk/tag-desk'], ['登録']));
+    const index = KioskOperationGuideIndex.fromDirectory(dir);
+    expect(index.unknownTerms('チップの登録手順')).toEqual(['チップ']);
+    expect(index.unknownTerms('タグの登録')).toEqual([]);
+    expect(index.unknownTerms('ノギスとシャックルの持出')).toEqual(['ノギス', 'シャックル', '持出']);
+  });
+
+  it('falls back when the family has no documents or no term hits', () => {
+    writeFileSync(path.join(dir, 'inventory.md'), screenDocument('在庫', '在庫の説明。', ['/kiosk/inventory']));
+    const index = KioskOperationGuideIndex.fromDirectory(dir);
+    for (const families of [['rigging'], ['inventory']] as const) {
+      expect(index.bestSection('自主検査', { families: [...families] })).toEqual(index.bestSection('自主検査'));
+      expect(index.matchStrength('自主検査', { families: [...families] })).toBe('screen');
+    }
+  });
+
+  it.each(['/kiosk/tag', '/kiosk/tag/borrow', '/kiosk/tag-desk'])('includes the exact or slash-delimited tool route %s', (route) => {
+    writeFileSync(path.join(dir, 'tool.md'), screenDocument('工具', '画面の説明。', [route], ['登録']));
+    writeFileSync(path.join(dir, 'other.md'), screenDocument('別画面', '画面の説明。', ['/kiosk/tag-other'], ['登録']));
+    const index = KioskOperationGuideIndex.fromDirectory(dir);
+    expect(index.bestSection('登録手順', { families: ['tool'] })).toMatchObject({ file: 'tool.md' });
   });
 
   it('keeps a carbide-insert question away from the tag screen', () => {

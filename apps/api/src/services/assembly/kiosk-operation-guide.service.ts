@@ -3,9 +3,11 @@ import path from 'node:path';
 
 import { env } from '../../config/env.js';
 import { logger } from '../../lib/logger.js';
+import { GUIDE_FAMILY_ROUTES, type GuideFamily } from './kiosk-operation-guide-subject.js';
 import { BUSINESS_HERMES_SOURCE_DEFINITION_VERSION, type BusinessHermesSourceDefinition } from './business-hermes-source-adapters.js';
 
 export type KioskOperationGuideMatch = 'screen' | 'keyword' | 'none';
+export type KioskOperationGuideLookupOptions = { families?: GuideFamily[] };
 
 export type KioskOperationGuideSection = {
   id: string;
@@ -38,12 +40,10 @@ function parseInlineList(value: string | undefined): string[] | null {
   return inner === '' ? [] : inner.split(',').map((item) => item.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
 }
 
-function normalize(value: string): string {
+export function normalize(value: string): string {
   return value.normalize('NFKC').toLowerCase().replace(/\s+/g, '');
 }
 
-// Exact terms only: 超硬チップ (a carbide insert) must not become a tag-screen question.
-const QUESTION_TERM_SYNONYMS: Record<string, string> = { 'チップ': 'タグ', 'icチップ': 'タグ' };
 const HOW_TO_SUFFIXES = ['手順', 'やり方', '方法', '始め方', '使い方'];
 const HOW_TO_SUFFIX_PATTERN = new RegExp(HOW_TO_SUFFIXES.join('|'), 'u');
 const QUESTION_SUFFIX_PATTERN = new RegExp(`(?:教えて|ください|したい|${HOW_TO_SUFFIXES.join('|')}|とは|ですか|できない|しない|ない)+$`, 'u');
@@ -58,11 +58,10 @@ export function isOperationHowToQuestion(question: string): boolean {
     });
 }
 
-function questionTerms(question: string): string[] {
+export function questionTerms(question: string): string[] {
   const terms = question.normalize('NFKC').toLowerCase()
     .split(QUESTION_TERM_SEPARATOR)
     .map((term) => normalize(term).replace(QUESTION_SUFFIX_PATTERN, ''))
-    .map((term) => QUESTION_TERM_SYNONYMS[term] ?? term)
     .filter((term) => term.length >= 2);
   const whole = normalize(question);
   return [...new Set(terms.length ? terms : whole ? [whole] : [])];
@@ -145,9 +144,13 @@ export class KioskOperationGuideIndex {
     return { results, total: ranked.length, hasMore: results.length < ranked.length };
   }
 
-  private rank(query: string) {
+  private rank(query: string, families: GuideFamily[] = []) {
     const terms = questionTerms(query);
-    return this.sections.map((section, index) => ({ section, index, ...scoreSection(section, terms) }))
+    const prefixes = families.flatMap((family) => GUIDE_FAMILY_ROUTES[family]);
+    const files = families.length ? new Set(this.sections.filter((section) => section.routes.some((route) =>
+      prefixes.some((prefix) => route === prefix || route.startsWith(prefix + '/')))).map((section) => section.file)) : undefined;
+    return this.sections.filter((section) => !files || files.has(section.file))
+      .map((section, index) => ({ section, index, ...scoreSection(section, terms) }))
       .filter(({ score }) => score > 0)
       .sort((a, b) => b.score - a.score || a.index - b.index);
   }
@@ -158,8 +161,9 @@ export class KioskOperationGuideIndex {
    * another file (e.g. 登録 alone). A screen-name hit keeps the first file in
    * order even when several screen names share the word (持出 and 吊具 持出).
    */
-  bestSection(query: string): KioskOperationGuideSection | null {
-    const ranked = this.rank(query);
+  bestSection(query: string, options: KioskOperationGuideLookupOptions = {}): KioskOperationGuideSection | null {
+    const restricted = options.families?.length ? this.rank(query, options.families) : [];
+    const ranked = restricted.length ? restricted : this.rank(query);
     const top = ranked[0];
     if (!top) return null;
     const rival = ranked.find(({ section }) => section.file !== top.section.file);
@@ -181,7 +185,19 @@ export class KioskOperationGuideIndex {
    * term names a guide screen, 'keyword' when it only hits a screen's keywords (these
    * include generic words such as 品番, so record questions can land here), else 'none'.
    */
-  matchStrength(question: string): KioskOperationGuideMatch {
+  /**
+   * Terms of the question that no guide document names in its title or keywords.
+   * Only these are looked up in master data: a word the documents know (タグ, 持出)
+   * is decided by the documents, a word they do not know (チップ, ノギス) by what
+   * the kiosk has registered under that name.
+   */
+  unknownTerms(question: string): string[] {
+    return questionTerms(question).filter((term) => !this.sections.some((section) =>
+      normalize(section.screen).includes(term) || section.keywords.some((keyword) => normalize(keyword).includes(term))));
+  }
+
+  matchStrength(question: string, options: KioskOperationGuideLookupOptions = {}): KioskOperationGuideMatch {
+    if (options.families?.length && this.rank(question, options.families).length) return 'screen';
     const terms = questionTerms(question);
     let strength: KioskOperationGuideMatch = 'none';
     for (const section of this.sections) {

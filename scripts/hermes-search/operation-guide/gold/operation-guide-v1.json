@@ -1,0 +1,312 @@
+{
+  "version": "operation-guide-v1",
+  "note": "質問 → 正しい操作ガイドの文書。expect が null は操作案内では答えない質問(不適合や加工の話)。配列はどちらでも正解。kind: screen=画面名で当たる / subject=登録データ(品物・工具・計測機器・吊具の名前)で画面が決まる / trouble=困りごと / out_of_scope=範囲外",
+  "cases": [
+    {
+      "id": "g01",
+      "question": "チップの登録手順",
+      "expect": "item-inventory-settings.md",
+      "kind": "subject"
+    },
+    {
+      "id": "g02",
+      "question": "チップの払い出し",
+      "expect": "item-inventory.md",
+      "kind": "subject"
+    },
+    {
+      "id": "g03",
+      "question": "切削油の在庫",
+      "expect": "item-inventory.md",
+      "kind": "subject"
+    },
+    {
+      "id": "g04",
+      "question": "超硬チップの欠け",
+      "expect": null,
+      "kind": "out_of_scope"
+    },
+    {
+      "id": "g05",
+      "question": "ガイド面の加工が荒い",
+      "expect": null,
+      "kind": "out_of_scope"
+    },
+    {
+      "id": "g06",
+      "question": "ベースに刻印が打たれていない",
+      "expect": null,
+      "kind": "out_of_scope"
+    },
+    {
+      "id": "g07",
+      "question": "塗装の剥がれ",
+      "expect": null,
+      "kind": "out_of_scope"
+    },
+    {
+      "id": "g08",
+      "question": "持出のやり方",
+      "expect": "borrow-return.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g09",
+      "question": "工具の持出",
+      "expect": "borrow-return.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g10",
+      "question": "ハンマーを返す",
+      "expect": "borrow-return.md",
+      "kind": "subject"
+    },
+    {
+      "id": "g11",
+      "question": "ノギスの持出",
+      "expect": "instruments-borrow.md",
+      "kind": "subject"
+    },
+    {
+      "id": "g12",
+      "question": "マイクロメータを借りたい",
+      "expect": "instruments-borrow.md",
+      "kind": "subject"
+    },
+    {
+      "id": "g13",
+      "question": "計測機器の返却",
+      "expect": "instruments-borrow.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g14",
+      "question": "シャックルの持出",
+      "expect": "rigging-borrow.md",
+      "kind": "subject"
+    },
+    {
+      "id": "g15",
+      "question": "ワイヤーロープの点検",
+      "expect": "rigging-borrow.md",
+      "kind": "subject"
+    },
+    {
+      "id": "g16",
+      "question": "吊具の点検",
+      "expect": "rigging-borrow.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g17",
+      "question": "タグをかざしても反応しない",
+      "expect": "common/troubleshooting.md",
+      "kind": "trouble"
+    },
+    {
+      "id": "g18",
+      "question": "バーコードが読めない",
+      "expect": "common/troubleshooting.md",
+      "kind": "trouble"
+    },
+    {
+      "id": "g19",
+      "question": "印刷できない",
+      "expect": "common/troubleshooting.md",
+      "kind": "trouble"
+    },
+    {
+      "id": "g20",
+      "question": "画面が固まった",
+      "expect": "common/troubleshooting.md",
+      "kind": "trouble"
+    },
+    {
+      "id": "g21",
+      "question": "Wi-Fiが切れた",
+      "expect": "common/troubleshooting.md",
+      "kind": "trouble"
+    },
+    {
+      "id": "g22",
+      "question": "日本語入力ができない",
+      "expect": "common/troubleshooting.md",
+      "kind": "trouble"
+    },
+    {
+      "id": "g23",
+      "question": "更新のお知らせが出た",
+      "expect": "common/troubleshooting.md",
+      "kind": "trouble"
+    },
+    {
+      "id": "g24",
+      "question": "社員証の登録",
+      "expect": "tag-desk.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g25",
+      "question": "タグの付け替え",
+      "expect": "tag-desk.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g26",
+      "question": "工具にタグを付ける",
+      "expect": "tag-desk.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g27",
+      "question": "暗証番号を忘れた",
+      "expect": "common/card-and-unlock.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g28",
+      "question": "在庫の数が違う",
+      "expect": "item-inventory.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g29",
+      "question": "在庫の補充",
+      "expect": "item-inventory.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g30",
+      "question": "棚の準備",
+      "expect": "item-inventory-settings.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g31",
+      "question": "自主検査の始め方",
+      "expect": "self-inspection.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g32",
+      "question": "測定値の再測定",
+      "expect": "self-inspection.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g33",
+      "question": "検査記録の承認",
+      "expect": "self-inspection-record-approvals.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g34",
+      "question": "減らせる検査とは",
+      "expect": "self-inspection-reduction.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g35",
+      "question": "検査図面の開き方",
+      "expect": "inspection-drawing.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g36",
+      "question": "電話のかけ方",
+      "expect": "call.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g37",
+      "question": "通話がつながらない",
+      "expect": "call.md",
+      "kind": "trouble"
+    },
+    {
+      "id": "g38",
+      "question": "製番の検索",
+      "expect": "production-schedule.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g39",
+      "question": "納期の変更",
+      "expect": "production-schedule-due-management.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g40",
+      "question": "製番ボードの並べ替え",
+      "expect": "production-schedule-planning-board.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g41",
+      "question": "順位ボードの使い方",
+      "expect": "production-schedule-leader-order-board.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g42",
+      "question": "手順書の作り方",
+      "expect": [
+        "assembly-procedure-document-editor.md",
+        "assembly-library.md"
+      ],
+      "kind": "screen"
+    },
+    {
+      "id": "g43",
+      "question": "要領書の見方",
+      "expect": "documents.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g44",
+      "question": "トルクレンチの訓練",
+      "expect": "assembly-training.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g45",
+      "question": "部品名で棚を探す",
+      "expect": "mobile-placement-part-search.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g46",
+      "question": "パレットの可視化",
+      "expect": [
+        "pallet-visualization.md",
+        "mobile-pallet-viz.md"
+      ],
+      "kind": "screen"
+    },
+    {
+      "id": "g47",
+      "question": "設備稼働の見方",
+      "expect": "machine-signal.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g48",
+      "question": "購買照会の使い方",
+      "expect": "purchase-order-lookup.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g49",
+      "question": "お問い合わせの送り方",
+      "expect": "common/inquiry.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g50",
+      "question": "組立作業の始め方",
+      "expect": "assembly-work-session.md",
+      "kind": "screen"
+    }
+  ]
+}
