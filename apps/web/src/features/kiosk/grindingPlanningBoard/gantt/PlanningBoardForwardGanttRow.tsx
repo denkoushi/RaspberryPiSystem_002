@@ -11,7 +11,7 @@ import type { PointerEvent, ReactNode } from 'react';
 
 export type ForwardReorder = (item: GrindingPlanningBoardItem, target: GrindingPlanningBoardItem, placement: GrindingPlanningBoardResourceOrderPlacement) => void;
 type Drop = { bar: GanttBar; placement: GrindingPlanningBoardResourceOrderPlacement; left: number };
-type Drag = { bar: GanttBar; x: number; y: number; tapCancelled: boolean; longPressed: boolean; pointerId: number; element: HTMLButtonElement; moved: boolean };
+type Drag = { bar: GanttBar; x: number; y: number; tapCancelled: boolean; longPressed: boolean; selected: boolean; pointerId: number; element: HTMLButtonElement; moved: boolean };
 type Props = {
   row: GanttRow;
   label?: ReactNode;
@@ -84,7 +84,11 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
       pending.tapCancelled = true;
       cancelLongPress();
     }
-    if (pending.longPressed) return;
+    if (pending.longPressed) {
+      if (Math.abs(dx) < 8) return;
+      pending.longPressed = false;
+      onToggleItem(pending.bar.item, pending.selected);
+    }
     if (!pending.moved && Math.abs(dx) >= 8) { pending.moved = true; onCloseQueue(); }
     if (pending.moved && !disabled && !dragDisabled && resourceView) {
       setPreview({ itemId: pending.bar.item.itemId, dx, drop: findDrop(event.clientX, pending.bar) });
@@ -128,7 +132,7 @@ export function PlanningBoardForwardGanttRow({ row, label, start, end, now, widt
                 onCloseQueue();
                 if (disabled || bar.item.isCompleted || event.button !== 0 || event.isPrimary === false || drag.current) return;
                 suppressClick.current = false;
-                drag.current = { bar, x: event.clientX, y: event.clientY, tapCancelled: false, longPressed: false, pointerId: event.pointerId, element: event.currentTarget, moved: false };
+                drag.current = { bar, x: event.clientX, y: event.clientY, tapCancelled: false, longPressed: false, selected, pointerId: event.pointerId, element: event.currentTarget, moved: false };
                 longPressTimer.current = setTimeout(() => {
                   const pending = drag.current;
                   if (!pending || pending.tapCancelled) return;
