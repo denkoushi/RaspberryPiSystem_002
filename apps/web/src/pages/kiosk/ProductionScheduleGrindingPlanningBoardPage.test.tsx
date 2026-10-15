@@ -341,7 +341,12 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.pointerUp(bar, { pointerId: 1, clientX: 300 });
     fireEvent.click(bar); // Suppress the synthetic click following a swipe.
     expect(bar).toHaveAttribute('aria-pressed', 'false');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    fireEvent.pointerDown(bar, { pointerId: 2, button: 0, clientX: 100 });
+    act(() => vi.advanceTimersByTime(500));
+    fireEvent.pointerUp(bar, { pointerId: 2, clientX: 100 });
     fireEvent.click(bar);
+    vi.useRealTimers();
     expect(bar).toHaveAttribute('aria-pressed', 'true');
     expect(mocks.overrides).not.toHaveBeenCalled();
   });

@@ -946,7 +946,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       {boardQuery.isError ? <p className="p-5 text-sm text-rose-200">一覧を読み込めませんでした。</p> : null}
       {data && ganttEnabled ? (
         <PlanningBoardGanttView ref={gantt.viewRef} layout={gantt.layout} scale={gantt.scale} homeKey={gantt.homeKey}
-          resourceView={view === 'resource'} dailyHoursByResource={gantt.dailyHoursByResource}
+          resourceView={view === 'resource'} dailyHoursByResource={gantt.dailyHoursByResource} preferenceScope={`${data.siteKey}:${category}`}
           resourceNameMap={resourcesQuery.data?.resourceNameMap ?? {}}
           capacityPending={gantt.capacityPending} capacityError={gantt.capacityError} onCapacityChange={gantt.changeCapacity}
           selectedItemIds={selectedItemIds} onToggleItem={toggleItem} onDueDrop={moveDueByDrag} onResourceReorder={reorderResourceByDrag}

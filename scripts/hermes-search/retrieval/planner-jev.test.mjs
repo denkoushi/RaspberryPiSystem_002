@@ -41,6 +41,36 @@ for (const [suffix, residualTokens] of [
   });
 }
 
+for (const [question, residualTokens] of [
+  ['機構設計2課(製造) 最近 不適合', []],
+  ['機構設計2課 最近 不適合', []],
+  ['機構設計2課(製造)の錆の不適合', ['錆']],
+]) {
+  test(`short department form ${question} keeps only tokens outside the selected value`, async () => {
+    const value = '三島工場技術部機構設計２課（製造）';
+    const siblings = ['三島工場技術部機構設計１課（製造）', '三島工場品質保証課（製造）'];
+    const evaluate = async (input) => {
+      const field = Object.entries(input.questions).find(([key]) => key.startsWith('field_'));
+      const choice = Object.entries(field[1].criteria).find(([, description]) => description === value)[0];
+      return { answers: {
+        scope: { type: 'choice', choice: 'nonconformity' },
+        [field[0]]: { type: 'choice', choice },
+        content: { type: 'noul', noul: true },
+        sort: { type: 'choice', choice: 'relevance' },
+        limit: { type: 'choice', choice: '5' },
+      } };
+    };
+    const { plan } = await createPlanner({ evaluate }).plan({
+      question, catalog, now: '2026-10-14',
+      valueIndex: buildValueIndex([value, ...siblings].map((name, index) => ({ id: `r${index}`, originDepartmentName: name })), catalog),
+    });
+    assert.deepEqual(plan.filters[0], { source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: [value] });
+    assert.deepEqual(plan.diagnostics.contentDecision.residualTokens, residualTokens);
+    assert.equal(plan.semanticQuery, residualTokens.length ? question : '');
+    assert.deepEqual(plan.sort, residualTokens.length ? 'relevance' : { field: 'discoveredOn', direction: 'desc' });
+  });
+}
+
 test('residual removal uses both a resolved value and its matched question term', async () => {
   const value = '三島工場管理部生産管理課（製造）';
   const term = '三島生管';

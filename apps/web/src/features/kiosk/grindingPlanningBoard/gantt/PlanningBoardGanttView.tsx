@@ -1,18 +1,22 @@
 import { GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS, GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS } from '@raspi-system/shared-types';
 import clsx from 'clsx';
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 
 import { normalizeMachineName } from '../../productionSchedule/machineName';
+import { compareProcessOrder } from '../sortGrindingPlanningBoardItems';
+import { usePlanningBoardPaneOrder } from '../usePlanningBoardPaneOrder';
 
 import { ganttResourceLabel } from './ganttResourceLabel';
+import { chainBarElement, PlanningBoardChainLinks } from './PlanningBoardChainLinks';
+import { PlanningBoardChainStrip } from './PlanningBoardChainStrip';
 import { PlanningBoardForwardGanttRow } from './PlanningBoardForwardGanttRow';
 import { PlanningBoardForwardQueuePopover } from './PlanningBoardForwardQueuePopover';
 import { dayLabel, dayToDate, jstDay } from './planningBoardGanttLayout';
-import { GANTT_FORWARD_LABEL_WIDTH, GANTT_HATCH, GANTT_LABEL_WIDTH, PlanningBoardGanttRow } from './PlanningBoardGanttRow';
+import { GANTT_FORWARD_LABEL_WIDTH, GANTT_LABEL_WIDTH, PlanningBoardGanttRow } from './PlanningBoardGanttRow';
 
 import type { ForwardReorder } from './PlanningBoardForwardGanttRow';
 import type { ForwardQueueHandle } from './PlanningBoardForwardQueuePopover';
-import type { GanttLayout } from './planningBoardGanttLayout';
+import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttRowProps } from './PlanningBoardGanttRow';
 import type { GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
 
@@ -27,6 +31,8 @@ type Props = Pick<PlanningBoardGanttRowProps, 'disabled' | 'dragDisabled' | 'onT
   capacityPending: boolean;
   capacityError: boolean;
   onCapacityChange: (resourceCd: string, dailyHours: GrindingPlanningBoardResourceDailyHours) => void;
+  /** Device-local lane order key, shared with the resource list panes. */
+  preferenceScope?: string;
 };
 export type PlanningBoardGanttHandle = { scrollToNextOverlap: () => void; scrollToNextLate: () => void };
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
@@ -41,12 +47,54 @@ const HOUR_TICK_MIN_DAY_WIDTH = 160;
 // The ‹ › buttons move the chart by two hours at any scale.
 const NUDGE_DAYS = 2 / 24;
 
+function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTMLElement | null {
+  const elements = typeof document.elementsFromPoint === 'function' ? document.elementsFromPoint(x, y) : [];
+  for (const element of elements) {
+    const lane = element.closest<HTMLElement>('[data-gantt-lane]');
+    if (lane?.dataset.resourceCode && resources.has(lane.dataset.resourceCode)) return lane;
+  }
+  return null;
+}
+
 export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props>(function PlanningBoardGanttView({
-  layout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, ...interaction
+  layout: sourceLayout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange,
+  preferenceScope = 'default', ...interaction
 }, ref) {
+  // Holding a machine name and dragging it up or down reorders the lanes; the order is kept on this kiosk only.
+  const laneResources = useMemo(() => sourceLayout.groups.every((group) => group.resource)
+    ? sourceLayout.groups.map((group) => group.resource!) : [], [sourceLayout]);
+  const laneAt = useCallback((x: number, y: number) => laneAtPoint(x, y, new Set(laneResources)), [laneResources]);
+  const laneOrder = usePlanningBoardPaneOrder(laneResources, preferenceScope, laneAt, Boolean(interaction.disabled));
+  const layout = useMemo(() => laneResources.length < 2 ? sourceLayout : { ...sourceLayout,
+    // With both 研削 and 切削 shown, lanes move only within their own heading.
+    groups: [...sourceLayout.groups].sort((a, b) => (a.category === 'cutting' ? 1 : 0) - (b.category === 'cutting' ? 1 : 0)
+      || laneOrder.order.indexOf(a.resource!) - laneOrder.order.indexOf(b.resource!)) },
+  [sourceLayout, laneResources, laneOrder.order]);
+  const laneHandle = (resource: string, text: string, className: string) => <button type="button" title={text}
+    className={clsx('touch-none select-none truncate text-left focus-visible:outline focus-visible:outline-emerald-300', className)}
+    disabled={interaction.disabled} aria-label={`資源CD ${resource}の行を並べ替え`}
+    aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" onContextMenu={(event) => event.preventDefault()}
+    onPointerDown={(event) => laneOrder.onPointerDown(event, resource)} onPointerMove={laneOrder.onPointerMove}
+    onPointerUp={laneOrder.onPointerUp} onPointerCancel={laneOrder.onPointerCancel} onLostPointerCapture={laneOrder.onPointerCancel}
+    onKeyDown={(event) => laneOrder.onKeyDown(event, resource)}>{text}</button>;
   const forward = layout.mode === 'forward';
   const queuePopover = useRef<ForwardQueueHandle>(null);
   const viewport = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  const [focusedPartKey, setFocusedPartKey] = useState<string | null>(null);
+  const [currentItemId, setCurrentItemId] = useState<string | null>(null);
+  const chain = useMemo(() => forward ? layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars))
+    .filter((bar) => bar.partKey === focusedPartKey)
+    .sort((a, b) => compareProcessOrder(a.item.processOrder, b.item.processOrder) || a.item.itemId.localeCompare(b.item.itemId)) : [], [forward, layout, focusedPartKey]);
+  const chainPositions = useMemo(() => new Map(chain.map((bar, index) => [bar.item.itemId, index + 1])), [chain]);
+  const showChain = chain.length > 0;
+  useEffect(() => {
+    if (!showChain) { setFocusedPartKey(null); setCurrentItemId(null); }
+  }, [showChain]);
+  const focusChain = (bar: GanttBar) => {
+    setFocusedPartKey(focusedPartKey === bar.partKey ? null : bar.partKey);
+    setCurrentItemId(null);
+  };
   const [viewportWidth, setViewportWidth] = useState(1120);
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
   const flaggedIndex = useRef(-1);
@@ -70,7 +118,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     observer?.observe(element);
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
-  }, []);
+  }, [showChain]);
   useEffect(() => {
     if (!viewport.current) return;
     const previous = previousAxis.current;
@@ -116,8 +164,20 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const selectedParts = useMemo(() => new Set(layout.groups.flatMap((group) => group.rows.flatMap((row) =>
     row.bars.filter((bar) => interaction.selectedItemIds.has(bar.item.itemId)).map((bar) => bar.partKey)
   ))), [interaction.selectedItemIds, layout]);
+  const scrollToStep = (bar: GanttBar) => {
+    const element = viewport.current;
+    const target = content.current && chainBarElement(content.current, bar);
+    if (!element || !target) return;
+    const bounds = element.getBoundingClientRect();
+    const rect = target.getBoundingClientRect();
+    const left = Math.max(0, element.scrollLeft + rect.left + rect.width / 2 - bounds.left - (viewportWidth + labelWidth) / 2);
+    const top = Math.max(0, element.scrollTop + rect.top - bounds.top - 36);
+    if (typeof element.scrollTo === 'function') element.scrollTo({ left, top, behavior: 'smooth' });
+    else { element.scrollLeft = left; element.scrollTop = top; }
+    setCurrentItemId(bar.item.itemId);
+  };
   const resourceLabel = (resource: string, label: string) => <>
-    <strong className="truncate" title={label}>{ganttResourceLabel(normalizeMachineName(label), resourceNameMap[resource])}</strong>
+    {laneHandle(resource, ganttResourceLabel(normalizeMachineName(label), resourceNameMap[resource]), 'min-h-7 font-bold')}
     <div className="flex gap-1" role="group" aria-label={`${resource}の1日の稼働時間`}>
       {GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS.map((hours) => <button key={hours} type="button"
         className={clsx('h-7 min-w-10 rounded border px-1 font-mono text-[13px] font-bold leading-none',
@@ -130,15 +190,16 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   return (
     <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className="relative mt-2 overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
       {capacityError && <p role="alert" className="px-2 py-1 text-xs text-rose-200">稼働時間を保存できませんでした。</p>}
+      {showChain && <PlanningBoardChainStrip bars={chain} today={layout.today} resourceNameMap={resourceNameMap} currentItemId={currentItemId}
+        onStep={scrollToStep} onClose={() => setFocusedPartKey(null)} />}
       <div ref={viewport} onScroll={() => queuePopover.current?.close()} className="relative min-h-48 overflow-auto" style={viewportHeight ? { height: viewportHeight } : undefined} tabIndex={0} aria-label="ガントの日付と工程">
-        <div className="relative isolate" style={{ width: labelWidth + width }}>
+        <div ref={content} className="relative isolate" style={{ width: labelWidth + width }}>
           <div className="sticky top-0 z-30 flex h-9 border-b border-slate-700 bg-slate-950">
-            <div className="sticky left-0 z-40 flex shrink-0 flex-wrap items-center gap-x-3 bg-slate-950 px-2 text-[10px] text-slate-300" style={{ width: labelWidth }}>
-              <span><i className="mr-1 inline-block h-2 w-4 rounded bg-sky-400" />予定</span>
-              <span><i className="mr-1 inline-block h-2 w-4 rounded bg-rose-400" />{forward ? '遅れ見込み' : '納期超過'}</span>
-              {forward ? <><span className="text-amber-300">┄ 前工程待ち</span><span className="text-yellow-300">│ 今</span></> : <>
-                <span><i className="mr-1 inline-block h-2 w-4 rounded" style={{ background: GANTT_HATCH }} />工程の重なり</span>
-                <span><i className="mr-1 inline-block h-2 w-4 rounded bg-slate-600" />完了</span></>}
+            {/* The ‹ › buttons sit in the top-left corner so they never cover bars. */}
+            <div className="sticky left-0 z-40 flex shrink-0 items-center justify-center gap-2 bg-slate-950 px-2" style={{ width: labelWidth }} role="group" aria-label="ガントの左右送り">
+              {([[-1, '2時間戻る', '‹'], [1, '2時間進む', '›']] as const).map(([direction, label, mark]) => <button key={direction} type="button" aria-label={label}
+                className="grid h-8 w-16 place-items-center rounded-md border border-slate-500 bg-slate-900 pb-0.5 text-2xl font-bold leading-none text-slate-100 active:bg-sky-400 active:text-slate-950"
+                onClick={() => nudge(direction)}>{mark}</button>)}
             </div>
             {days.map(({ day, weekday, weekend }) => <div key={day} className={clsx('relative shrink-0 overflow-hidden whitespace-nowrap border-l border-slate-800 pt-0.5 text-center text-[11px] leading-4 tabular-nums', day === layout.today ? 'bg-emerald-400 font-bold text-slate-950' : weekend ? 'bg-slate-800 text-slate-300' : 'text-slate-300')}
               style={{ width: dayWidth }} title={dayToDate(day)}>
@@ -153,7 +214,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
             style={{ left: labelWidth + (day - layout.start + hour / 24) * dayWidth }} />))}
           {!forward && <div className="pointer-events-none absolute bottom-0 top-9 z-[1] w-px bg-emerald-400" style={{ left: labelWidth + (layout.today - layout.start) * dayWidth }} />}
           {layout.completedOnly && <p className="sticky left-0 w-fit p-3 text-sm text-slate-400">完了は「納期から」で表示</p>}
-          {layout.groups.map((group, index) => <div key={group.key}>
+          {layout.groups.map((group, index) => <div key={group.key} data-gantt-lane={group.resource ? '' : undefined} data-resource-code={group.resource ?? undefined}>
             {interaction.resourceView && group.category && group.category !== layout.groups[index - 1]?.category && (
               <div data-testid="planning-gantt-category-header" className="relative flex h-6 bg-slate-800 text-[11px] font-bold">
                 <div className="sticky left-0 z-20 flex items-center bg-slate-800 px-2" style={{ width: labelWidth }}>
@@ -163,7 +224,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
             )}
             {!(forward && group.resource) && <div className="relative flex min-h-11 border-b border-slate-700 bg-slate-800">
               <div className="sticky left-0 z-20 flex min-h-11 shrink-0 items-center gap-1 bg-slate-800 px-2 text-xs" style={{ width: labelWidth }}>
-                <strong className="min-w-0 flex-1 truncate" title={group.label}>{group.resource ? ganttResourceLabel(normalizeMachineName(group.label), resourceNameMap[group.resource]) : normalizeMachineName(group.label)}</strong>
+                {group.resource ? laneHandle(group.resource, ganttResourceLabel(normalizeMachineName(group.label), resourceNameMap[group.resource]), 'min-h-11 min-w-0 flex-1 font-bold')
+                  : <strong className="min-w-0 flex-1 truncate" title={group.label}>{normalizeMachineName(group.label)}</strong>}
                 {group.resource && group.resource !== '未設定' && <div className="flex shrink-0 gap-1" role="group" aria-label={`${group.resource}の1日の稼働時間`}>
                   {GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS.map((hours) => <button key={hours} type="button"
                     className={clsx('h-7 min-w-10 rounded border px-1 font-mono text-[13px] font-bold leading-none',
@@ -180,16 +242,13 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
                 onLeaveQueue={() => queuePopover.current?.hideSoon()} onCloseQueue={() => queuePopover.current?.close()}
                 hours={group.resource ? dailyHoursByResource[group.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS : Math.max(...row.bars.map((bar) => dailyHoursByResource[bar.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS), GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS)}
                 {...interaction}
+                focusedPartKey={showChain ? focusedPartKey : null} chainPositions={chainPositions} onFocusChain={focusChain}
                 label={group.resource ? resourceLabel(group.resource, group.label) : undefined} />;
             }) : group.rows.map((row) => <PlanningBoardGanttRow key={row.key} row={row} start={layout.start} width={width} dayWidth={dayWidth}
               today={dayToDate(layout.today)} selectedParts={selectedParts} {...interaction} />)}
           </div>)}
+          {showChain && <PlanningBoardChainLinks bars={chain} content={content} layout={layout} dayWidth={dayWidth} viewportWidth={viewportWidth} viewportHeight={viewportHeight} />}
         </div>
-      </div>
-      <div className="absolute bottom-5 right-3 z-40 flex gap-1.5" role="group" aria-label="ガントの左右送り">
-        {([[-1, '2時間戻る', '‹'], [1, '2時間進む', '›']] as const).map(([direction, label, mark]) => <button key={direction} type="button" aria-label={label}
-          className="grid h-12 w-12 place-items-center rounded-full border border-slate-500 bg-slate-900/85 pb-0.5 text-2xl font-bold leading-none text-slate-100 shadow-lg shadow-black/50 active:bg-sky-400 active:text-slate-950"
-          onClick={() => nudge(direction)}>{mark}</button>)}
       </div>
       {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} layout={layout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} />}
     </section>
