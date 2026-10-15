@@ -8,8 +8,9 @@ import { saveProcedureEditorAccess } from '../procedureEditorAccess';
 import { ProcedureManualWorkshop } from './ProcedureManualWorkshop';
 import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
 
-const mocks = vi.hoisted(() => ({ semantic: vi.fn(), thumbnail: vi.fn(), knowledgeThumbnail: vi.fn(), workInstructionThumbnail: vi.fn(), createDocument: vi.fn(), count: vi.fn(), list: vi.fn(), ingest: vi.fn(), file: vi.fn(), discard: vi.fn(), restore: vi.fn(), unplace: vi.fn(), knowledge: vi.fn(), knowledgeImage: vi.fn(), importKnowledge: vi.fn(), workInstructions: vi.fn(), workInstructionImage: vi.fn(), importWorkInstructions: vi.fn() }));
+const mocks = vi.hoisted(() => ({ splits: vi.fn(), semantic: vi.fn(), thumbnail: vi.fn(), knowledgeThumbnail: vi.fn(), workInstructionThumbnail: vi.fn(), createDocument: vi.fn(), count: vi.fn(), list: vi.fn(), ingest: vi.fn(), file: vi.fn(), discard: vi.fn(), restore: vi.fn(), unplace: vi.fn(), knowledge: vi.fn(), knowledgeImage: vi.fn(), importKnowledge: vi.fn(), workInstructions: vi.fn(), workInstructionImage: vi.fn(), importWorkInstructions: vi.fn() }));
 vi.mock('../../../api/client', () => ({
+  getProcedureMaterialSplitSuggestions: mocks.splits,
   listProcedureVideos: async () => [],
   getProcedureManualOverview: async () => ({ processes: [] }),
   listProcedureManualModels: async () => [], listProcedureManualProcesses: async () => [],
@@ -35,6 +36,7 @@ describe('procedure-manuals material shelf', () => {
     mocks.workInstructions.mockResolvedValue({ items: [] });
     mocks.workInstructionImage.mockResolvedValue(new Blob(['work-instruction'])); mocks.workInstructionThumbnail.mockResolvedValue(new Blob(['work-thumbnail'])); mocks.thumbnail.mockResolvedValue(new Blob(['thumbnail']));
     mocks.importWorkInstructions.mockResolvedValue({ imported: 2, duplicate: 0, failed: [] });
+    mocks.splits.mockResolvedValue({ status: 'disabled', boundaries: [] });
     mocks.semantic.mockResolvedValue({ available: true, mode: 'semantic', items: [] });
     mocks.discard.mockResolvedValue(undefined); mocks.restore.mockResolvedValue(undefined);
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:photo'); vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
@@ -46,6 +48,94 @@ describe('procedure-manuals material shelf', () => {
     await waitFor(() => expect(mocks.list).toHaveBeenCalledWith({ state: 'unplaced', q: value.trim(), limit: 500 }));
     await waitFor(() => expect(screen.getByRole('button', { name: '意味で探す' })).toBeEnabled());
   };
+  const splitPages = () => Array.from({ length: 4 }, (_, index) => ({ ...photo, id: `p${index + 1}`,
+    subjectHint: `ページ (p${index + 1}/4)`, gmailMessageId: 'same-mail', gmailDedupeKey: `pdf:p${index + 1}` }));
+  const splitResult = { status: 'ok', boundaries: [{ beforeId: 'p3', afterId: 'p2', probability: 0.9 }] };
+  it('shows a suggestion without splitting, then selects exactly the section pages and can undo', async () => {
+    const pages = splitPages();
+    mocks.createDocument.mockResolvedValue({ id: 'document', name: 'ページ' });
+    mocks.list.mockResolvedValue([{ ...photo, id: 'pdf', kind: 'PDF', subjectHint: 'ページ', gmailDedupeKey: 'pdf' }, ...pages]);
+    mocks.splits.mockResolvedValue(splitResult);
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    expect(await screen.findByText('ここで分けますか')).toBeInTheDocument();
+    expect(mocks.splits).toHaveBeenCalledExactlyOnceWith(['pdf', 'p1', 'p2', 'p3', 'p4']);
+    expect(screen.queryByText('書類 1')).not.toBeInTheDocument();
+    const marker = screen.getByText('ここで分けますか').closest('li')!;
+    expect(marker).toHaveClass('col-span-full', 'border-dashed', 'border-[#e2b44c]');
+    expect(marker.previousElementSibling).toContainElement(screen.getByRole('checkbox', { name: pages[1].subjectHint }));
+    expect(marker.nextElementSibling).toContainElement(screen.getByRole('checkbox', { name: pages[2].subjectHint }));
+    fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+    expect(screen.getByText('書類 1')).toBeInTheDocument(); expect(screen.getByText('書類 2')).toBeInTheDocument();
+    const select = screen.getAllByRole('button', { name: 'この 2 枚を選ぶ' });
+    fireEvent.click(select[0]);
+    expect(screen.getAllByRole('checkbox', { checked: true }).map(item => item.getAttribute('aria-label'))).toEqual(pages.slice(0, 2).map(item => item.subjectHint));
+    expect(screen.getByRole('checkbox', { name: 'ページ' })).not.toBeChecked();
+    fireEvent.click(select[0]); expect(screen.queryAllByRole('checkbox', { checked: true })).toHaveLength(0);
+    fireEvent.click(select[1]);
+    expect(screen.getAllByRole('checkbox', { checked: true }).map(item => item.getAttribute('aria-label'))).toEqual(pages.slice(2).map(item => item.subjectHint));
+    fireEvent.click(screen.getByRole('button', { name: '分けるのをやめる' }));
+    expect(screen.queryByText('書類 1')).not.toBeInTheDocument();
+    expect(screen.getByText('ここで分けますか')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '要領書を作る' }));
+    await waitFor(() => expect(mocks.createDocument).toHaveBeenCalledWith('pdf'));
+  });
+  it('dismisses a marker and retains that choice without another request on reopen', async () => {
+    mocks.list.mockResolvedValue(splitPages()); mocks.splits.mockResolvedValue(splitResult);
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: '分けない' }));
+    expect(screen.queryByText('ここで分けますか')).not.toBeInTheDocument();
+    const bundle = screen.getByRole('button', { name: /ページ メール/ });
+    fireEvent.click(bundle); fireEvent.click(bundle);
+    expect(screen.queryByText('ここで分けますか')).not.toBeInTheDocument();
+    expect(mocks.splits).toHaveBeenCalledOnce();
+  });
+  it('shows the judging chip until suggestions arrive', async () => {
+    mocks.list.mockResolvedValue(splitPages());
+    let resolve!: (value: unknown) => void;
+    mocks.splits.mockReturnValue(new Promise(done => { resolve = done; }));
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    expect(await screen.findByText('区切りを確認中')).toBeInTheDocument();
+    await act(async () => resolve(splitResult));
+    expect(screen.queryByText('区切りを確認中')).not.toBeInTheDocument();
+    expect(screen.getByText('ここで分けますか')).toBeInTheDocument();
+  });
+  it.each(['disabled', 'unavailable', 'error'])('silently leaves the original bundle on %s', async status => {
+    mocks.list.mockResolvedValue(splitPages());
+    if (status === 'error') mocks.splits.mockRejectedValue(new Error('unavailable'));
+    else mocks.splits.mockResolvedValue({ status, boundaries: [] });
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    await waitFor(() => expect(mocks.splits).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.queryByText('区切りを確認中')).not.toBeInTheDocument());
+    expect(screen.queryByText('ここで分けますか')).not.toBeInTheDocument();
+    expect(screen.queryByText('書類 1')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox')).toHaveLength(4);
+  });
+  it('overlaps API batches for a bundle over 60 items without losing the boundary between batches', async () => {
+    const pages = Array.from({ length: 61 }, (_, index) => ({ ...photo, id: `p${index + 1}`,
+      subjectHint: `ページ (p${index + 1}/61)`, gmailDedupeKey: `pdf:p${index + 1}` }));
+    mocks.list.mockResolvedValue(pages);
+    mocks.splits.mockResolvedValueOnce({ status: 'ok', boundaries: [] })
+      .mockResolvedValueOnce({ status: 'ok', boundaries: [{ beforeId: 'p61', afterId: 'p60', probability: 0.7 }] });
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    expect(await screen.findByText('ここで分けますか')).toBeInTheDocument();
+    expect(mocks.splits).toHaveBeenNthCalledWith(1, pages.slice(0, 60).map(page => page.id));
+    expect(mocks.splits).toHaveBeenNthCalledWith(2, ['p60', 'p61']);
+    fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+    expect(screen.getByRole('button', { name: 'この 60 枚を選ぶ' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'この 1 枚を選ぶ' })).toBeInTheDocument();
+  });
+  it('requests only opened bundles and reuses results after switching tabs', async () => {
+    const pages = splitPages();
+    mocks.list.mockResolvedValue([...pages, ...pages.map(page => ({ ...page, id: `${page.id}-other`, subjectHint: `別の束 ${page.subjectHint}` }))]);
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    await waitFor(() => expect(mocks.splits).toHaveBeenCalledExactlyOnceWith(pages.map(page => page.id)));
+    fireEvent.click(screen.getByRole('button', { name: /別の束 ページ メール/ }));
+    await waitFor(() => expect(mocks.splits).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole('tab', { name: '配置済み' }));
+    await screen.findAllByRole('button', { name: /ページ メール/ });
+    expect(mocks.splits).toHaveBeenCalledTimes(2);
+  });
   it('calls semantic search only on click, shows loading, preserves API order and filters the returned items', async () => {
     let resolve!: (result: unknown) => void;
     mocks.semantic.mockReturnValue(new Promise((done) => { resolve = done; }));

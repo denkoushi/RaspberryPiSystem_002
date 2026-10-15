@@ -10,6 +10,7 @@ import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 import { groupMaterials, groupWorkInstructionCandidates, materialSource } from './procedure-material-grouping';
 import { ProcedureMaterialPhotoCache } from './procedure-material-photo-cache';
 import { emptyShelfFilters, filterShelfKnowledge, filterShelfMaterials, filterShelfWorkInstructions, ShelfFilterChips, ShelfHighlight, normalizeShelfQuery, shelfMatchExcerpt, shelfTabs, useShelfLists, workHasDates } from './procedure-material-shelf-search';
+import { MaterialSplitContents, MaterialSplitLoadingChip, useMaterialSplitSuggestions } from './procedure-material-split-suggestions';
 
 import type { ShelfFilters } from './procedure-material-shelf-search';
 import type { ProcedureWorkInstructionCandidate, ProcedureKnowledgeCandidate, ProcedureKnowledgeImportResult, ProcedureMaterialDto, ProcedureMaterialIngestResult, ProcedureMaterialState } from './procedure-material-types';
@@ -77,14 +78,14 @@ function MaterialCard({ title, query = '', source, date, checked, disabled, onCh
   </li>;
 }
 
-function MaterialBundle({ title, query = '', subtitle, count, photoCount, open, onToggle, onSelectAll, disabled, children }: {
+function MaterialBundle({ title, query = '', subtitle, count, photoCount, open, onToggle, onSelectAll, disabled, children, judging = false }: {
   title: string; query?: string; subtitle: string; count: number; photoCount?: boolean; open: boolean;
-  onToggle: () => void; onSelectAll?: () => void; disabled: boolean; children: ReactNode;
+  onToggle: () => void; onSelectAll?: () => void; disabled: boolean; children: ReactNode; judging?: boolean;
 }) {
   return <details open={open} className="rounded-xl border border-[#344252] bg-[#1b222a]">
     <summary role="button" tabIndex={0} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onToggle(); } }} aria-expanded={open} className="grid min-h-[52px] cursor-pointer list-none grid-cols-[28px_minmax(0,1fr)_auto_auto] items-center gap-3 px-3.5 text-[19px] font-bold [&::-webkit-details-marker]:hidden" onClick={(event) => { event.preventDefault(); onToggle(); }}>
       <span aria-hidden="true" className="text-sm text-[#9fadb9]">{open ? '▼' : '▶'}</span>
-      <span className="min-w-0"><ShelfHighlight text={title} query={query} /> <span className="text-base font-medium text-[#9fadb9]">{subtitle}</span></span>
+      <span className="min-w-0"><ShelfHighlight text={title} query={query} /> <span className="text-base font-medium text-[#9fadb9]">{subtitle}</span>{judging ? <MaterialSplitLoadingChip /> : null}</span>
       <span className="rounded-full bg-[#27313b] px-3 py-0.5 text-base font-semibold tabular-nums">{count} {photoCount ? '枚' : '件'}</span>
       {onSelectAll ? <button type="button" disabled={disabled} className="relative h-9 rounded-lg border border-[#344252] px-3 text-[15px] font-normal text-[#9fadb9] before:absolute before:-inset-y-1 before:inset-x-0 disabled:opacity-40" onClick={(event) => { event.stopPropagation(); onSelectAll(); }}>束を全部選ぶ</button> : null}
     </summary>
@@ -153,6 +154,9 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
   const semanticActive = Boolean(semanticResult && semanticResult.mode !== 'lexical');
   const materialQuery = semanticResult ? q.trim() : query;
   const materials = semanticResult?.items ?? lists.data?.materials ?? emptyMaterials;
+  const materialGroups = groupMaterials(materials);
+  const splitSuggestions = useMaterialSplitSuggestions(materialGroups, openGroups,
+    !filtered && !semanticResult && !semanticLoading && !lists.loading && (state === 'unplaced' || state === 'placed'));
   const knowledge = lists.data?.knowledge;
   const workInstructions = lists.data?.workInstructions;
   const loading = lists.loading;
@@ -362,11 +366,12 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
             </MaterialBundle>;
           })}
         </div> : state === 'unplaced' || state === 'placed' ? <div className="grid content-start gap-2.5 pr-1">
-          {groupMaterials(materials).map(({ key, title, subtitle, items }, index) => {
+          {materialGroups.map(({ key, title, subtitle, items }, index) => {
             const open = openGroups.get(key) ?? index === 0;
             const selectable = items.filter((item) => !materialDisabled(item)).map((item) => item.id);
-            return <MaterialBundle query={query} key={key} title={title} subtitle={subtitle} count={items.length} open={open} onToggle={() => { setOpenGroups((groups) => new Map(groups).set(key, !open)); }} onSelectAll={mode === 'replace' ? undefined : () => toggleGroup(selectable)} disabled={!selectable.length}>
-              <ul className="grid content-start gap-3.5 px-3.5 pb-3.5" style={gridStyle}>{renderMaterials(items)}</ul>
+            const suggestions = splitSuggestions.get(key, items);
+            return <MaterialBundle query={query} key={key} title={title} subtitle={subtitle} count={items.length} open={open} judging={suggestions?.loading} onToggle={() => { setOpenGroups((groups) => new Map(groups).set(key, !open)); }} onSelectAll={mode === 'replace' ? undefined : () => toggleGroup(selectable)} disabled={!selectable.length}>
+              <ul className="grid content-start gap-3.5 px-3.5 pb-3.5" style={gridStyle}><MaterialSplitContents items={items} entry={suggestions} choose={(beforeId, choice) => splitSuggestions.choose(key, items, beforeId, choice)} renderMaterials={renderMaterials} disabled={materialDisabled} onSelect={mode === 'replace' ? undefined : (pages) => toggleGroup(pages.map(page => page.id))} /></ul>
             </MaterialBundle>;
           })}
         </div> : <ul className="grid content-start gap-3.5 pr-1" style={gridStyle}>
