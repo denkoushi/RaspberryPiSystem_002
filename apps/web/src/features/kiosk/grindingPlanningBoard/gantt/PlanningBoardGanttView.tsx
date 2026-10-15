@@ -47,7 +47,7 @@ const GANTT_BOTTOM_GAP = 10;
 // With a 2- or 4-day span a day is wide enough to show where the hours fall.
 const HOUR_TICKS = [8, 17, 20];
 // The one-day scale fits ten hours on screen so short jobs stay readable, with a tick every hour.
-const ONE_DAY_VISIBLE_DAYS = 10 / 24;
+const ONE_DAY_VISIBLE_DAYS = 8 / 24;
 const EVERY_HOUR = Array.from({ length: 24 }, (_, hour) => hour);
 const SHIFT_START_HOUR = 8;
 const HOUR_TICK_MIN_DAY_WIDTH = 160;
