@@ -69,6 +69,10 @@ type PendingResourceDrag = {
   dropRowOriginalBorderTop: string;
   dropRowOriginalBorderBottom: string;
   originalButtonOpacity: string;
+  sourceRow: HTMLElement | null;
+  sourceOutline: string;
+  sourceOutlineOffset: string;
+  sourceBackground: string;
 };
 
 const RESOURCE_PANE_SELECTOR = '[data-planning-board-resource-pane]';
@@ -101,6 +105,15 @@ function restoreDropRow(drag: PendingResourceDrag): void {
   drag.dropRowElement.style.borderTop = drag.dropRowOriginalBorderTop;
   drag.dropRowElement.style.borderBottom = drag.dropRowOriginalBorderBottom;
   drag.dropRowElement = null;
+}
+
+function restoreSourceRow(drag: PendingResourceDrag): void {
+  if (!drag.sourceRow) return;
+  drag.sourceRow.style.outline = drag.sourceOutline;
+  drag.sourceRow.style.outlineOffset = drag.sourceOutlineOffset;
+  drag.sourceRow.style.backgroundColor = drag.sourceBackground;
+  delete drag.sourceRow.dataset.planningBoardDragSource;
+  drag.sourceRow = null;
 }
 
 function setDropRow(
@@ -227,15 +240,20 @@ export function PlanningBoardResourceView({
     if (drag.ghostElement) return;
     const rect = drag.buttonElement.getBoundingClientRect();
     const ghost = document.createElement('div');
-    ghost.textContent = drag.sourceResource ?? '—';
+    const code = document.createElement('span');
+    code.className = 'font-mono text-[15px] font-bold';
+    code.textContent = drag.sourceResource ?? '—';
+    const name = document.createElement('span');
+    name.className = 'max-w-64 truncate text-[13px] font-normal';
+    name.textContent = drag.item.fhinmei || drag.item.fhincd;
+    ghost.append(code, name);
     ghost.setAttribute('aria-hidden', 'true');
-    ghost.className = 'pointer-events-none fixed z-[70] inline-flex min-h-11 items-center justify-center rounded-md border border-indigo-300 bg-slate-900 px-2 font-mono text-[15px] font-bold text-white shadow-lg';
+    ghost.className = 'pointer-events-none fixed z-[70] inline-flex min-h-11 items-center justify-center gap-2 rounded-md border-2 border-amber-400 bg-slate-900 px-2 text-white shadow-lg';
     ghost.style.pointerEvents = 'none';
     ghost.style.left = '0';
     ghost.style.top = '0';
-    ghost.style.width = rect.width + 'px';
     ghost.style.minWidth = Math.max(rect.width, 44) + 'px';
-    ghost.style.height = Math.max(rect.height, 44) + 'px';
+    ghost.style.minHeight = Math.max(rect.height, 44) + 'px';
     ghost.style.opacity = '0.96';
     drag.ghostOffsetX = Math.min(Math.max(0, drag.startClientX - rect.left), rect.width);
     drag.ghostOffsetY = Math.min(Math.max(0, drag.startClientY - rect.top), rect.height);
@@ -243,6 +261,17 @@ export function PlanningBoardResourceView({
     drag.ghostElement = ghost;
     drag.originalButtonOpacity = drag.buttonElement.style.opacity;
     drag.buttonElement.style.opacity = '0.35';
+    const row = drag.buttonElement.closest('tr');
+    if (row) {
+      drag.sourceRow = row;
+      drag.sourceOutline = row.style.outline;
+      drag.sourceOutlineOffset = row.style.outlineOffset;
+      drag.sourceBackground = row.style.backgroundColor;
+      row.style.outline = '3px solid rgb(251 191 36)';
+      row.style.outlineOffset = '-3px';
+      row.style.backgroundColor = 'rgba(251,191,36,0.12)';
+      row.dataset.planningBoardDragSource = 'true';
+    }
   }, []);
 
   const clearResourceDrag = useCallback((pointerId: number) => {
@@ -250,6 +279,7 @@ export function PlanningBoardResourceView({
     if (!drag || drag.pointerId !== pointerId) return null;
     cancelResourceDragFrame(drag);
     restoreDropPane(drag);
+    restoreSourceRow(drag);
     drag.buttonElement.style.opacity = drag.originalButtonOpacity;
     drag.ghostElement?.remove();
     pendingResourceDragRef.current = null;
@@ -268,6 +298,7 @@ export function PlanningBoardResourceView({
     if (!drag) return;
     cancelResourceDragFrame(drag);
     restoreDropPane(drag);
+    restoreSourceRow(drag);
     drag.buttonElement.style.opacity = drag.originalButtonOpacity;
     drag.ghostElement?.remove();
     if (drag.buttonElement.hasPointerCapture?.(drag.pointerId)) {
@@ -324,7 +355,8 @@ export function PlanningBoardResourceView({
       dropRowElement: null,
       dropRowOriginalBorderTop: '',
       dropRowOriginalBorderBottom: '',
-      originalButtonOpacity: buttonElement.style.opacity
+      originalButtonOpacity: buttonElement.style.opacity,
+      sourceRow: null, sourceOutline: '', sourceOutlineOffset: '', sourceBackground: ''
     };
     buttonElement.setPointerCapture?.(event.pointerId);
     event.stopPropagation();

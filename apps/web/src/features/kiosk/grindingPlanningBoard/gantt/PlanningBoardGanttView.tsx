@@ -60,11 +60,11 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   layout: sourceLayout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange,
   preferenceScope = 'default', ...interaction
 }, ref) {
-  // Holding a machine name and dragging it up or down reorders the lanes; the order is kept on this kiosk only.
+  // Dragging a machine name up or down reorders the lanes; the order is kept on this kiosk only.
   const laneResources = useMemo(() => sourceLayout.groups.every((group) => group.resource)
     ? sourceLayout.groups.map((group) => group.resource!) : [], [sourceLayout]);
   const laneAt = useCallback((x: number, y: number) => laneAtPoint(x, y, new Set(laneResources)), [laneResources]);
-  const laneOrder = usePlanningBoardPaneOrder(laneResources, preferenceScope, laneAt, Boolean(interaction.disabled));
+  const laneOrder = usePlanningBoardPaneOrder(laneResources, preferenceScope, laneAt, Boolean(interaction.disabled), { startOnMove: true });
   const layout = useMemo(() => laneResources.length < 2 ? sourceLayout : { ...sourceLayout,
     // With both 研削 and 切削 shown, lanes move only within their own heading.
     groups: [...sourceLayout.groups].sort((a, b) => (a.category === 'cutting' ? 1 : 0) - (b.category === 'cutting' ? 1 : 0)
@@ -80,6 +80,29 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const forward = layout.mode === 'forward';
   const queuePopover = useRef<ForwardQueueHandle>(null);
   const viewport = useRef<HTMLDivElement>(null);
+  const pan = useRef<{ pointerId: number; x: number; y: number; left: number; top: number } | null>(null);
+  const [panning, setPanning] = useState(false);
+  const startPan = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 1 || event.pointerType !== 'mouse' || pan.current) return;
+    event.preventDefault();
+    const element = event.currentTarget;
+    pan.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: element.scrollLeft, top: element.scrollTop };
+    element.setPointerCapture?.(event.pointerId);
+    setPanning(true);
+  };
+  const movePan = (event: React.PointerEvent<HTMLDivElement>) => {
+    const pending = pan.current;
+    if (!pending || pending.pointerId !== event.pointerId) return;
+    event.currentTarget.scrollLeft = pending.left - (event.clientX - pending.x);
+    event.currentTarget.scrollTop = pending.top - (event.clientY - pending.y);
+    event.preventDefault();
+  };
+  const endPan = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (pan.current?.pointerId !== event.pointerId) return;
+    pan.current = null;
+    setPanning(false);
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
   const content = useRef<HTMLDivElement>(null);
   const [focusedPartKey, setFocusedPartKey] = useState<string | null>(null);
   const [currentItemId, setCurrentItemId] = useState<string | null>(null);
@@ -190,9 +213,12 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   return (
     <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className="relative mt-2 overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
       {capacityError && <p role="alert" className="px-2 py-1 text-xs text-rose-200">稼働時間を保存できませんでした。</p>}
-      {showChain && <PlanningBoardChainStrip bars={chain} today={layout.today} resourceNameMap={resourceNameMap} currentItemId={currentItemId}
+      {showChain && <PlanningBoardChainStrip bars={chain} resourceNameMap={resourceNameMap} currentItemId={currentItemId}
         onStep={scrollToStep} onClose={() => setFocusedPartKey(null)} />}
-      <div ref={viewport} onScroll={() => queuePopover.current?.close()} className="relative min-h-48 overflow-auto" style={viewportHeight ? { height: viewportHeight } : undefined} tabIndex={0} aria-label="ガントの日付と工程">
+      <div ref={viewport} onScroll={() => queuePopover.current?.close()} className="relative min-h-48 overflow-auto"
+        style={{ height: viewportHeight ?? undefined, cursor: panning ? 'grabbing' : undefined }} tabIndex={0} aria-label="ガントの日付と工程"
+        onPointerDown={startPan} onPointerMove={movePan} onPointerUp={endPan} onPointerCancel={endPan} onLostPointerCapture={endPan}
+        onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }}>
         <div ref={content} className="relative isolate" style={{ width: labelWidth + width }}>
           <div className="sticky top-0 z-30 flex h-9 border-b border-slate-700 bg-slate-950">
             {/* The ‹ › buttons sit in the top-left corner so they never cover bars. */}
