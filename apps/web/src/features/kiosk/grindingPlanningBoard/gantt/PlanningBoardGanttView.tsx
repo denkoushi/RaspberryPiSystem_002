@@ -80,28 +80,34 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const forward = layout.mode === 'forward';
   const queuePopover = useRef<ForwardQueueHandle>(null);
   const viewport = useRef<HTMLDivElement>(null);
-  const pan = useRef<{ pointerId: number; x: number; y: number; left: number; top: number } | null>(null);
+  const pan = useRef<HTMLDivElement | null>(null);
+  useEffect(() => () => pan.current?.remove(), []);
   const startPan = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 1 || event.pointerType !== 'mouse' || pan.current) return;
     event.preventDefault();
     const element = event.currentTarget;
-    pan.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: element.scrollLeft, top: element.scrollTop };
-    element.setPointerCapture?.(event.pointerId);
-    // Set the cursor directly: a state update would re-render every bar before the cursor changes.
-    element.style.cursor = 'grabbing';
-  };
-  const movePan = (event: React.PointerEvent<HTMLDivElement>) => {
-    const pending = pan.current;
-    if (!pending || pending.pointerId !== event.pointerId) return;
-    event.currentTarget.scrollLeft = pending.left - (event.clientX - pending.x);
-    event.currentTarget.scrollTop = pending.top - (event.clientY - pending.y);
-    event.preventDefault();
-  };
-  const endPan = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (pan.current?.pointerId !== event.pointerId) return;
-    pan.current = null;
-    event.currentTarget.style.cursor = '';
-    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    const { pointerId, clientX: x, clientY: y } = event;
+    const left = element.scrollLeft;
+    const top = element.scrollTop;
+    // A small cover shows the hand: styling the viewport would restyle every bar first, which is slow on big boards.
+    const cover = document.createElement('div');
+    cover.dataset.planningGanttPanCover = '';
+    cover.className = 'fixed inset-0 z-[90] cursor-grabbing';
+    document.body.appendChild(cover);
+    pan.current = cover;
+    cover.setPointerCapture?.(pointerId);
+    cover.addEventListener('pointermove', (move) => {
+      if (move.pointerId !== pointerId || pan.current !== cover) return;
+      element.scrollLeft = left - (move.clientX - x);
+      element.scrollTop = top - (move.clientY - y);
+      move.preventDefault();
+    });
+    const end = (stop: PointerEvent) => {
+      if (stop.pointerId !== pointerId || pan.current !== cover) return;
+      pan.current = null;
+      cover.remove();
+    };
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) cover.addEventListener(type, end);
   };
   const content = useRef<HTMLDivElement>(null);
   const [focusedPartKey, setFocusedPartKey] = useState<string | null>(null);
@@ -217,7 +223,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
         onStep={scrollToStep} onClose={() => setFocusedPartKey(null)} />}
       <div ref={viewport} onScroll={() => queuePopover.current?.close()} className="relative min-h-48 overflow-auto"
         style={{ height: viewportHeight ?? undefined }} tabIndex={0} aria-label="ガントの日付と工程"
-        onPointerDown={startPan} onPointerMove={movePan} onPointerUp={endPan} onPointerCancel={endPan} onLostPointerCapture={endPan}
+        onPointerDown={startPan}
         onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }}>
         <div ref={content} className="relative isolate" style={{ width: labelWidth + width }}>
           <div className="sticky top-0 z-30 flex h-9 border-b border-slate-700 bg-slate-950">
