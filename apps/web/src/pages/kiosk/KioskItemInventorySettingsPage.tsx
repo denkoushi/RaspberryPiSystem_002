@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
 import { invButtonSmGhost, invSurface, invSetupTargets } from '../../features/kiosk/inventory/inventoryUi';
-import { InventoryDashboardTab } from '../../features/kiosk/inventory/setup/InventoryDashboardTab';
 import { InventoryItemEditTab } from '../../features/kiosk/inventory/setup/InventoryItemEditTab';
 import { InventoryPinPad } from '../../features/kiosk/inventory/setup/InventoryPinPad';
 import { InventoryRegistrationTab, type RegistrationState } from '../../features/kiosk/inventory/setup/InventoryRegistrationTab';
@@ -10,14 +9,13 @@ import { InventoryShelvesTab } from '../../features/kiosk/inventory/setup/Invent
 import { InventoryTagsTab } from '../../features/kiosk/inventory/setup/InventoryTagsTab';
 import { clearSetupPin, readSetupPin, rememberSetupPin, subscribeSetupLock, touchSetupPin } from '../../features/kiosk/inventory/setup/setupPinSession';
 
-type SetupTab = 'review' | 'shelves' | 'tags' | 'items' | 'dashboard';
+type SetupTab = 'review' | 'shelves' | 'tags' | 'items';
 
 const TABS: Array<{ id: SetupTab; label: string }> = [
   { id: 'review', label: '登録待ち' },
   { id: 'shelves', label: '棚・引き出し' },
   { id: 'tags', label: 'NFCタグ' },
   { id: 'items', label: 'アイテム編集' },
-  { id: 'dashboard', label: '集計' },
 ];
 
 export function KioskItemInventorySettingsPage() {
@@ -31,7 +29,10 @@ export function KioskItemInventorySettingsPage() {
     touchSetupPin();
   }, [accessPassword]);
   const [registration, setRegistration] = useState<RegistrationState>({ selectedId: initialImportId, draft: null });
-  const [tab, setTab] = useState<SetupTab>('review');
+  const [tab, setTab] = useState<SetupTab>(() => {
+    const requested = (location.state as { tab?: unknown } | null)?.tab;
+    return TABS.find((entry) => entry.id === requested)?.id ?? 'review';
+  });
 
   if (!accessPassword) return <InventoryPinPad onUnlocked={(pin) => { rememberSetupPin(pin); setAccessPassword(pin); }} />;
 
@@ -64,7 +65,6 @@ export function KioskItemInventorySettingsPage() {
         {tab === 'review' ? <InventoryRegistrationTab accessPassword={accessPassword} registration={registration} setRegistration={setRegistration} /> : null}
         {tab === 'shelves' ? <InventoryShelvesTab accessPassword={accessPassword} /> : null}
         {tab === 'tags' ? <InventoryTagsTab accessPassword={accessPassword} /> : null}
-        {tab === 'dashboard' ? <InventoryDashboardTab accessPassword={accessPassword} onEditItems={() => setTab('items')} /> : null}
         {tab === 'items' ? <InventoryItemEditTab accessPassword={accessPassword} /> : null}
       </div>
     </section>

@@ -8,11 +8,11 @@ import { issuedLabel, unitLabel } from './inventoryDailyFlow';
 import { detailLabels, invLabelNumber } from './inventoryUi';
 import './inventoryHoverCard.css';
 
-export function InventoryHoverCard({ id, compartment, rect }: { id: string; compartment: InventoryCompartment; rect: DOMRect }) {
+export function InventoryHoverCard({ id, compartment, rect, photoIndex = 0 }: { id: string; compartment: InventoryCompartment; rect: DOMRect; photoIndex?: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: rect.right + 12, top: rect.top });
   // The 640px thumbnail already fills the 440px frame; no full-size download per hover.
-  const photo = compartment.item.photos[0];
+  const photo = compartment.item.photos[photoIndex];
   useLayoutEffect(() => {
     if (!ref.current) return;
     // Measure the stationary wrapper, independently of the inner pop-in transform.
@@ -32,9 +32,10 @@ export function InventoryHoverCard({ id, compartment, rect }: { id: string; comp
       <div className="relative flex h-[440px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-inv-line2 bg-inv-bg">
         {photo ? <img src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.originalFilename} className="h-full w-full object-contain" /> : <span className="text-inv-faint">写真なし</span>}
         {compartment.item.photos.length > 1 ? <div aria-label="写真の枚数" className="absolute inset-x-0 bottom-2 flex justify-center gap-1.5">
-          {compartment.item.photos.map((entry, index) => <span key={entry.id} className={`h-2 w-2 rounded-full ${index === 0 ? 'bg-white' : 'bg-white/[.35]'}`} />)}
+          {compartment.item.photos.map((entry, index) => <span key={entry.id} className={`h-2 w-2 rounded-full ${index === photoIndex ? 'bg-white' : 'bg-white/[.35]'}`} />)}
         </div> : null}
       </div>
+      {compartment.item.photos.length > 1 ? <p className="text-center text-xs text-inv-faint">ホイールで切替</p> : null}
       <div className="flex items-start gap-2.5">
         <span aria-label="置き場所の番号" className={`${invLabelNumber} mt-0.5 shrink-0 text-base`}>{formatInventoryLabelNumber(compartment.labelNumber)}</span>
         <span className="min-w-0 flex-1 break-all text-[22px] font-black leading-tight">{compartment.item.name.trim()}</span>

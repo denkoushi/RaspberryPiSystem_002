@@ -46,7 +46,8 @@ type InventoryItemGridProps = {
 /** Every registered drawer as one card or row; tapping opens it like scanning its item tag. */
 export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments, onPick, pending = [], onPickPending, size = 'medium', view = 'card' }: InventoryItemGridProps) {
   const [photoIndices, setPhotoIndices] = useState<Record<string, number>>({});
-  const [tooltip, setTooltip] = useState<{ compartment: InventoryCompartment; rect: DOMRect } | null>(null);
+  const [tooltip, setTooltip] = useState<{ compartment: InventoryCompartment; rect: DOMRect; element: HTMLElement } | null>(null);
+  const [hoverPhotoIndex, setHoverPhotoIndex] = useState(0);
   const tooltipId = useId();
   const tooltipTimer = useRef<ReturnType<typeof setTimeout>>();
   const hideTooltip = useCallback(() => { clearTimeout(tooltipTimer.current); setTooltip(null); }, []);
@@ -64,10 +65,33 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
       window.removeEventListener('click', hideTooltip, true);
     };
   }, [hideTooltip, size, view, compartments]);
+  useEffect(() => {
+    if (!tooltip || tooltip.compartment.item.photos.length < 2) return;
+    const { element, compartment } = tooltip;
+    let lastStep = -Infinity;
+    let delta = 0;
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY === 0) return;
+      event.preventDefault();
+      const now = Date.now();
+      if (now - lastStep < 120) return;
+      // Normalize line/page wheels while accumulating small trackpad movements.
+      const movement = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? element.clientHeight || 440 : 1);
+      if (Math.sign(delta) !== Math.sign(movement)) delta = 0;
+      delta += movement;
+      if (Math.abs(delta) < 40) return;
+      const step = Math.sign(delta);
+      setHoverPhotoIndex((index) => (index + step + compartment.item.photos.length) % compartment.item.photos.length);
+      delta = 0;
+      lastStep = now;
+    };
+    element.addEventListener('wheel', onWheel, { passive: false });
+    return () => element.removeEventListener('wheel', onWheel);
+  }, [tooltip]);
   const showTooltip = (compartment: InventoryCompartment, element: HTMLElement) => {
     hideTooltip();
     const rect = element.getBoundingClientRect();
-    tooltipTimer.current = setTimeout(() => setTooltip({ compartment, rect }), 150);
+    tooltipTimer.current = setTimeout(() => { setHoverPhotoIndex(0); setTooltip({ compartment, rect, element }); }, 150);
   };
   const hoverClass = (id: string) => `transition-[transform,opacity,box-shadow] duration-150 motion-reduce:transition-none ${tooltip?.compartment.id === id ? '-translate-y-0.5 ring-2 ring-inv-cyan shadow-xl' : tooltip ? 'opacity-[.55]' : ''}`;
   const config = sizes[size];
@@ -113,7 +137,7 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
           </button>
         );
       })}
-      {tooltip ? <InventoryHoverCard key={tooltip.compartment.id} id={tooltipId} {...tooltip} /> : null}
+      {tooltip ? <InventoryHoverCard key={tooltip.compartment.id} id={tooltipId} photoIndex={hoverPhotoIndex} {...tooltip} /> : null}
     </div>
   );
   return (
@@ -193,7 +217,7 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
           </div>
         );
       })}
-      {tooltip ? <InventoryHoverCard key={tooltip.compartment.id} id={tooltipId} {...tooltip} /> : null}
+      {tooltip ? <InventoryHoverCard key={tooltip.compartment.id} id={tooltipId} photoIndex={hoverPhotoIndex} {...tooltip} /> : null}
     </div>
   );
 });

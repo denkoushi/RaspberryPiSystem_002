@@ -51,6 +51,67 @@ describe('InventoryItemGrid', () => {
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   });
 
+  it.each(['card', 'list'] as const)('wheel switches hover photos in %s view, throttles, wraps and resets', (view) => {
+    vi.useFakeTimers();
+    vi.stubGlobal('matchMedia', undefined);
+    const entries = [drawer('a', '治具A', null), drawer('b', '治具B', null)];
+    for (const entry of entries) entry.item.photos = Array.from({ length: 3 }, (_, i) => ({ id: `${entry.id}${i}`, photoIndex: i, photoUrl: `/${entry.id}${i}.jpg`, originalFilename: `${entry.id}${i}` }));
+    const onPick = vi.fn();
+    render(<InventoryItemGrid view={view} compartments={entries} onPick={onPick} />);
+    const card = screen.getByRole('button', { name: /治具A/ });
+    fireEvent.pointerEnter(card);
+    act(() => vi.advanceTimersByTime(150));
+    const image = () => within(screen.getByRole('tooltip')).getByRole('img');
+    const wheel = (deltaY: number) => {
+      const event = new WheelEvent('wheel', { deltaY, bubbles: true, cancelable: true });
+      const preventDefault = vi.spyOn(event, 'preventDefault');
+      fireEvent(card, event);
+      expect(preventDefault).toHaveBeenCalled();
+      expect(event.defaultPrevented).toBe(true);
+    };
+    expect(image()).toHaveAttribute('src', '/a0.jpg');
+    wheel(20);
+    expect(image()).toHaveAttribute('src', '/a0.jpg');
+    wheel(20);
+    expect(image()).toHaveAttribute('src', '/a1.jpg');
+    const dots = within(screen.getByRole('tooltip')).getByLabelText('写真の枚数').children;
+    expect(dots[0]).toHaveClass('bg-white/[.35]');
+    expect(dots[1]).toHaveClass('bg-white');
+    expect(screen.getByText('ホイールで切替')).toBeInTheDocument();
+    wheel(200);
+    expect(image()).toHaveAttribute('src', '/a1.jpg');
+    for (const [delta, expected] of [[40, 2], [40, 0], [-40, 2]]) {
+      act(() => vi.advanceTimersByTime(120));
+      wheel(delta);
+      expect(image()).toHaveAttribute('src', `/a${expected}.jpg`);
+    }
+    fireEvent.wheel(screen.getByLabelText('登録済みアイテム'), { deltaY: 100 });
+    expect(image()).toHaveAttribute('src', '/a2.jpg');
+    fireEvent.pointerEnter(screen.getByRole('button', { name: /治具B/ }));
+    act(() => vi.advanceTimersByTime(150));
+    expect(image()).toHaveAttribute('src', '/b0.jpg');
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it.each([0, 1])('allows normal wheel scrolling with %s photos', (count) => {
+    vi.useFakeTimers();
+    vi.stubGlobal('matchMedia', undefined);
+    const entry = drawer('a', 'A', null);
+    entry.item.photos = Array.from({ length: count }, (_, i) => ({ id: `p${i}`, photoIndex: i, photoUrl: '/a.jpg', originalFilename: 'a' }));
+    render(<InventoryItemGrid compartments={[entry]} onPick={vi.fn()} />);
+    const card = screen.getByRole('button');
+    fireEvent.pointerEnter(card);
+    act(() => vi.advanceTimersByTime(150));
+    const event = new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true });
+    const preventDefault = vi.spyOn(event, 'preventDefault');
+    fireEvent(card, event);
+    expect(preventDefault).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+    expect(screen.queryByText('ホイールで切替')).not.toBeInTheDocument();
+    fireEvent.scroll(screen.getByLabelText('登録済みアイテム'));
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+
   it('does not show a tooltip for pending candidates', () => {
     vi.useFakeTimers();
     render(<InventoryItemGrid compartments={[]} pending={[{ id: 'p', sourceItemId: 1, area: '工具室', category: null, createdAt: '', photoUrl: null, photoCount: 0 }]} onPick={vi.fn()} />);
