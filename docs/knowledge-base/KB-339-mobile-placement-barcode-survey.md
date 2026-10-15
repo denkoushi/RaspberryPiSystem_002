@@ -2,6 +2,12 @@
 
 最終更新: 2026-04-25（**V27 パレット可視化 部品カード UI**）・2026-04-24（**V26 購買照会バーコード即時確定**）・2026-04-24（**V25 パレット可視化・カード単体スクロール**）・2026-04-24（**V24 追記・Android 実機フィードバック**）・2026-04-23（**V24 バーコード readerOptions／一次元コア**）・2026-04-20（**V23**）・2026-04-18（**V22**）・2026-04-13（**V21**・V20・V18 追記）
 
+## FSEIBAN OCR snap（2026-10-15）
+
+印字製番の誤読で日程の完全一致照合が失敗するため、既存OCR抽出後に日程の有効製番へ重み付き距離で補正する。近接候補を区別できない場合は作業者が候補ボタンで選択する。移動票の製番は補正のヒントに使わない（実在する別製番へ寄せて取り違えを見逃さないため）。自動補正は類似文字の置換2文字までに限る。取得失敗時は既存抽出値へフォールバックする。
+
+契約・閾値・キャッシュの詳細は [API仕様](../api/mobile-placement.md#post-apimobile-placementparse-actual-slip-image) を参照。ローカル実装のみで、本番反映は未実施。
+
 ## V27（2026-04-25）キオスク／配膳 パレット可視化 部品カード UI（`PalletVizItemCard`） {#v27-pallet-viz-item-card-ui-2026-04-25}
 
 - **目的**: 確定静プレビュー（[pallet-viz-card-layout-preview.html](../design-previews/pallet-viz-card-layout-preview.html)）に合わせ、**専用ページ** `/kiosk/pallet-visualization`・**配膳スマホ** `/kiosk/mobile-placement/pallet-viz`・**持出左ペイン埋め込み**（`PalletVizEmbeddedPanel`）で **同じ部品カード**を共有する。固定カード高・ラベー付きグリッドをやめ、**可変高**・**1.5 倍相当タイポ**（`palletVizItemCardTokens`）・**外寸は非表示**（DTO/マッピングの `outsideDimensionsDisplay` は温存・表示層は参照しない）。

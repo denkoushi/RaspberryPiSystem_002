@@ -191,6 +191,9 @@ export async function parseActualSlipImage(imageFile: File) {
     ocrPreviewSafe: string | null;
     manufacturingOrder10: string | null;
     fseiban: string | null;
+    fseibanRaw: string | null;
+    fseibanMatch: 'exact' | 'corrected' | 'ambiguous' | 'none';
+    fseibanCandidates: string[];
   }>('/mobile-placement/parse-actual-slip-image', form);
   return data;
 }

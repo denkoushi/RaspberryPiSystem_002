@@ -107,8 +107,14 @@ export function useMobilePlacementPageState() {
       if (fs) {
         setActualFseiban(fs);
       }
-      if (mo || fs) {
+      const snapFeedback = {
+        fseibanRaw: res.fseibanRaw,
+        fseibanMatch: res.fseibanMatch,
+        fseibanCandidates: res.fseibanCandidates
+      };
+      if (mo || fs || res.fseibanCandidates.length > 0) {
         setActualSlipOcrFeedback({
+          ...snapFeedback,
           status: 'success',
           manufacturingOrder10: mo,
           fseiban: fs,
@@ -118,6 +124,7 @@ export function useMobilePlacementPageState() {
         });
       } else {
         setActualSlipOcrFeedback({
+          ...snapFeedback,
           status: 'no_candidate',
           manufacturingOrder10: null,
           fseiban: null,
@@ -135,6 +142,7 @@ export function useMobilePlacementPageState() {
           ? e.message
           : '読取に失敗しました';
       setActualSlipOcrFeedback({
+        ...initialActualSlipOcrFeedback,
         status: 'error',
         manufacturingOrder10: null,
         fseiban: null,
