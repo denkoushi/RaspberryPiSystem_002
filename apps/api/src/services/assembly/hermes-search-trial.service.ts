@@ -83,8 +83,17 @@ type TrialSession = {
   expiresAt: number;
 };
 
-export type HermesRankResult = { recordIds: string[]; mode: 'semantic' | 'lexical'; fallback: boolean };
-export type HermesRankAvailability = { available: true; mode: 'semantic' | 'lexical'; recordIds: string[] }
+const rankingStatsSchema = z.object({
+  event: z.literal('procedure_material_hybrid_ranking'),
+  queryLength: z.number().int().nonnegative(), recordCount: z.number().int().nonnegative(),
+  denseCount: z.number().int().nonnegative(), lexicalContentHitCount: z.number().int().nonnegative(),
+  denseTop: z.number().finite().nullable(), dense5th: z.number().finite().nullable(),
+  dense10th: z.number().finite().nullable(), denseMedian: z.number().finite().nullable(),
+});
+type RankingStats = z.infer<typeof rankingStatsSchema>;
+
+export type HermesRankResult = { recordIds: string[]; mode: 'semantic' | 'lexical'; fallback: boolean; rankingStats?: RankingStats };
+export type HermesRankAvailability = { available: true; mode: 'semantic' | 'lexical'; recordIds: string[]; rankingStats?: RankingStats }
   | { available: false; mode: 'unavailable'; recordIds: string[] };
 type PendingWorkerRequest =
   | { kind?: 'answer'; resolve: (value: HermesTrialAnswer) => void; reject: (error: Error) => void }
@@ -458,7 +467,9 @@ export class HermesSearchTrialService {
           reject(error);
         }
       });
-      return { available: true, mode: result.mode, recordIds: result.recordIds };
+      const stats = sourceId === 'procedure_material' ? rankingStatsSchema.safeParse(result.rankingStats) : null;
+      return { available: true, mode: result.mode, recordIds: result.recordIds,
+        ...(stats?.success ? { rankingStats: stats.data } : {}) };
     } catch {
       if (acquired && !written) this.releaseSlot();
       return { ...unavailable, recordIds: [] };

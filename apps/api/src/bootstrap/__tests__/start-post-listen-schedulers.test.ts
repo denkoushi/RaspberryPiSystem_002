@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+vi.mock('../../config/env/load-dotenv.js', () => ({}));
+import { describe, expect, it, vi } from 'vitest';
 import {
   SchedulerStartupCleanupError,
   SchedulerStepStateAmbiguousError,
@@ -149,6 +150,7 @@ describe('start-post-listen-schedulers naming contract', () => {
       'system-notice-evaluator',
       'alerts-ingestor',
       'photo-tool-label',
+      'procedure-material-image-description',
       'part-measurement-drawing-ocr',
     ]);
   });

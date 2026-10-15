@@ -595,6 +595,23 @@ async function prepareCandidateRanking(plan, options, records) {
       vectorReason = safeReason(error);
     }
   }
+  let rankingStats;
+  if (options.retriever === 'hybrid' && plan.sources?.length === 1 && plan.sources[0] === 'procedure_material') {
+    // The ranker returns at most 50 dense hits; summarize those without changing ranking.
+    const cosines = vectorOrdered.map(item => item.cosine).filter(Number.isFinite).sort((a, b) => b - a);
+    const middle = Math.floor(cosines.length / 2);
+    rankingStats = {
+      event: 'procedure_material_hybrid_ranking',
+      queryLength: semanticQuery.length,
+      recordCount: filtered.length,
+      denseCount: cosines.length,
+      denseTop: cosines[0] ?? null,
+      dense5th: cosines[4] ?? null,
+      dense10th: cosines[9] ?? null,
+      denseMedian: cosines.length ? (cosines.length % 2 ? cosines[middle] : (cosines[middle - 1] + cosines[middle]) / 2) : null,
+      lexicalContentHitCount: lexicalRows.reduce((count, item) => count + (item.contentTokenScore > 0 ? 1 : 0), 0),
+    };
+  }
   const vectorReady = vectorStatus === 'ok' && vectorOrdered.length > 0;
   const retriever = options.retriever === 'dense' || options.retriever === 'hybrid'
     ? (vectorReady ? options.retriever : 'lexical')
@@ -647,7 +664,7 @@ async function prepareCandidateRanking(plan, options, records) {
       .map((item) => ({ record: byId.get(item.id), score: item.score, lexicalValue: lexicalScores.get(item.id) ?? 0 }))
       .filter((item) => item.record);
   }
-  return { ranked, candidateIds, candidatePoolTruncated, filtered, filters, semanticQuery,
+  return { ranked, candidateIds, candidatePoolTruncated, filtered, filters, semanticQuery, rankingStats,
     bodyFields, filterMs, lexicalMs, vectorMs, vectorStatus, vectorReason, filteredOnly, recentContent, poolLimit, retriever };
 }
 
@@ -663,7 +680,8 @@ export async function rankCandidates(query, options = {}) {
   const ranked = candidates.ranked.filter(item => candidates.retriever === 'hybrid' || item.lexicalValue > 0);
   ranked.sort((left, right) => right.score - left.score || String(left.record.id).localeCompare(String(right.record.id)));
   const mode = candidates.retriever === 'hybrid' ? 'semantic' : 'lexical';
-  return { recordIds: ranked.slice(0, limit).map(item => item.record.id), mode, fallback: mode === 'lexical' };
+  return { recordIds: ranked.slice(0, limit).map(item => item.record.id), mode, fallback: mode === 'lexical',
+    ...(candidates.rankingStats ? { rankingStats: candidates.rankingStats } : {}) };
 }
 
 export async function execute(plan, options = {}) {
