@@ -42,10 +42,26 @@ function normalize(value: string): string {
   return value.normalize('NFKC').toLowerCase().replace(/\s+/g, '');
 }
 
+const QUESTION_TERM_SYNONYMS = [{ pattern: /.*チップ.*/u, replacement: 'タグ' }];
+const HOW_TO_SUFFIXES = ['手順', 'やり方', '方法', '始め方', '使い方'];
+const HOW_TO_SUFFIX_PATTERN = new RegExp(HOW_TO_SUFFIXES.join('|'), 'u');
+const QUESTION_SUFFIX_PATTERN = new RegExp(`(?:教えて|ください|したい|${HOW_TO_SUFFIXES.join('|')}|とは|ですか|できない|しない|ない)+$`, 'u');
+const QUESTION_TERM_SEPARATOR = /から|まで|より|って|や(?!り方)|[のをがはにでとへ、。？！?!\s・]+/;
+
+export function isOperationHowToQuestion(question: string): boolean {
+  const normalized = question.normalize('NFKC').toLowerCase();
+  return /どうやって|どうすれば|仕方|操作/u.test(normalized)
+    || normalized.split(QUESTION_TERM_SEPARATOR).some((term) => {
+      const removed = normalize(term).match(QUESTION_SUFFIX_PATTERN)?.[0];
+      return removed !== undefined && HOW_TO_SUFFIX_PATTERN.test(removed);
+    });
+}
+
 function questionTerms(question: string): string[] {
   const terms = question.normalize('NFKC').toLowerCase()
-    .split(/から|まで|より|って|[のをがはにでとへや、。？！?!\s・]+/)
-    .map((term) => normalize(term).replace(/(?:教えて|ください|したい|方法|やり方|始め方|使い方|手順|とは|ですか|できない|しない|ない)+$/u, ''))
+    .split(QUESTION_TERM_SEPARATOR)
+    .map((term) => normalize(term).replace(QUESTION_SUFFIX_PATTERN, ''))
+    .map((term) => QUESTION_TERM_SYNONYMS.reduce((value, { pattern, replacement }) => value.replace(pattern, replacement), term))
     .filter((term) => term.length >= 2);
   const whole = normalize(question);
   return [...new Set(terms.length ? terms : whole ? [whole] : [])];
@@ -117,7 +133,7 @@ export class KioskOperationGuideIndex {
   }
 
   search(query: string, limit: number): {
-    results: Array<KioskOperationGuideSection & { truncated: boolean }>;
+    results: Array<KioskOperationGuideSection & { truncated: boolean; score: number }>;
     total: number;
     hasMore: boolean;
   } {
@@ -125,10 +141,17 @@ export class KioskOperationGuideIndex {
     const ranked = this.sections.map((section, index) => ({ section, index, ...scoreSection(section, terms) }))
       .filter(({ score }) => score > 0)
       .sort((a, b) => b.score - a.score || a.index - b.index);
-    const results = ranked.slice(0, limit).map(({ section }) => ({
-      ...section, body: section.body.slice(0, 600), truncated: section.body.length > 600
+    const results = ranked.slice(0, limit).map(({ section, score }) => ({
+      ...section, body: section.body.slice(0, 600), truncated: section.body.length > 600, score
     }));
     return { results, total: ranked.length, hasMore: results.length < ranked.length };
+  }
+
+  bestSection(query: string): KioskOperationGuideSection | null {
+    const { results } = this.search(query, this.sections.length);
+    const top = results[0];
+    if (!top || results.find((section) => section.file !== top.file)?.score === top.score) return null;
+    return this.sections.find((section) => section.id === top.id) ?? null;
   }
 
   detail(id: string): (KioskOperationGuideSection & { siblings: Array<{ id: string; heading: string }> }) | null {
