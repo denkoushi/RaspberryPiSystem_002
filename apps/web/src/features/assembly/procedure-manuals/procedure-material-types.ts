@@ -37,3 +37,8 @@ export type ProcedureWorkInstructionCandidate = {
 };
 export type ProcedureWorkInstructionCandidatesResult = { items: ProcedureWorkInstructionCandidate[] };
 export type ProcedureWorkInstructionImportResult = { imported: number; duplicate: number; failed: Array<{ candidateKey: string; reason: string }> };
+
+export type ProcedureMaterialSplitSuggestions = {
+  status: 'ok' | 'disabled' | 'unavailable';
+  boundaries: Array<{ beforeId: string; afterId: string; probability: number }>;
+};

@@ -91,6 +91,10 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertIn("photo_tool_label_assist_max_cosine_distance", bindings["PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE"])
         # The procedure speech-to-text flag reaches the API the same way, off unless the inventory sets it
         self.assertIn("procedure_speech_to_text_enabled | default(false)", bindings["PROCEDURE_SPEECH_TO_TEXT_ENABLED"])
+        self.assertIn("procedure_material_split_suggestion_enabled | default(false)", bindings["PROCEDURE_MATERIAL_SPLIT_SUGGESTION_ENABLED"])
+        self.assertIn("hermes_search_typesafe_api_key | default('')", bindings["TYPESAFE_API_KEY"])
+        self.assertEqual(sum(item["key"] == "TYPESAFE_API_KEY" for item in task["loop"]), 1)
+        self.assertEqual(task["ansible.builtin.lineinfile"]["regexp"], "^{{ item.key }}=")
         self.assertTrue(task["no_log"])
         self.assertEqual(task["ansible.builtin.lineinfile"]["mode"], "0600")
 

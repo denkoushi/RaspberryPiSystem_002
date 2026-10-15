@@ -1130,6 +1130,11 @@ export async function ingestProcedureMaterialsGmail() {
   return data;
 }
 
+export async function getProcedureMaterialSplitSuggestions(ids: string[]) {
+  const { data } = await api.post<import('../../features/assembly/procedure-manuals/procedure-material-types').ProcedureMaterialSplitSuggestions>('/assembly/procedure-materials/split-suggestions', { ids });
+  return data;
+}
+
 export async function createProcedureMaterialDocument(id: string) {
   const { data } = await api.post<{ document: { id: string; name: string } }>(`/assembly/procedure-materials/${encodeURIComponent(id)}/create-document`);
   return data.document;
