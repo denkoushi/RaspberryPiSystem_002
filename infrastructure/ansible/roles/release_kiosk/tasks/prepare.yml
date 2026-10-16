@@ -446,6 +446,10 @@
   no_log: true
   when: "'torque-agent' in release_kiosk_services"
 
+- name: Prepare the kiosk hotcorner transaction
+  ansible.builtin.import_tasks: prepare_hotcorner.yml
+  when: manage_kiosk_browser | default(false) | bool
+
 - name: Define the Pi4 staged file transaction
   ansible.builtin.set_fact:
     release_kiosk_files: >-
@@ -469,6 +473,13 @@
           {'src': release_kiosk_stage_dir ~ '/kiosk-launch.sh', 'dest': '/usr/local/bin/kiosk-launch.sh', 'mode': '0755'},
           {'src': release_kiosk_stage_dir ~ '/kiosk-browser.service', 'dest': '/etc/systemd/system/kiosk-browser.service', 'mode': '0644'},
         ] if release_kiosk_services | length > 0 else [])
+        + ([
+          {'src': release_kiosk_stage_dir ~ '/kiosk-hotcorner.py', 'dest': '/usr/local/bin/kiosk-hotcorner.py', 'mode': '0755'},
+          {'src': release_kiosk_stage_dir ~ '/kiosk-labwc-config.py', 'dest': '/usr/local/bin/kiosk-labwc-config.py', 'mode': '0755'},
+          {'src': release_kiosk_stage_dir ~ '/kiosk-hotcorner.service', 'dest': '/etc/systemd/system/kiosk-hotcorner.service', 'mode': '0644'},
+          {'src': release_kiosk_stage_dir ~ '/show-kiosk-panel.sh', 'dest': '/usr/local/bin/show-kiosk-panel.sh', 'mode': '0755'},
+          {'src': release_kiosk_stage_dir ~ '/labwc-autostart', 'dest': release_kiosk_labwc_dir ~ '/autostart', 'mode': '0644', 'owner': ansible_user, 'group': release_kiosk_user_gid.stdout},
+        ] if manage_kiosk_browser | default(false) | bool else [])
         + ([{'src': release_kiosk_candidate_compose, 'dest': '/etc/raspi-release/client-compose.yml', 'mode': '0600'}] if release_kiosk_services | length > 0 and not (release_torque_cutover | default(false) | bool) else [])
         + ([{'src': release_kiosk_stage_dir ~ '/nfc-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/nfc-agent/.env', 'mode': '0600'}] if 'nfc-agent' in release_kiosk_services else [])
         + ([{'src': release_kiosk_stage_dir ~ '/barcode-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/barcode-agent/.env', 'mode': '0600'}] if 'barcode-agent' in release_kiosk_services else [])

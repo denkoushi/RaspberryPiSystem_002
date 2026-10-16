@@ -1,66 +1,56 @@
 ---
-title: Runbook: キオスクで上辺メニューバー表示（Wi-Fi GUI設定）
+title: Runbook: Pi4 キオスクの左上コーナーと Wi-Fi パネル
 tags: [運用, キオスク, Wi-Fi, labwc, メニューバー, runbook]
 related:
-  - ../knowledge-base/infrastructure/miscellaneous.md
+  - ../guides/deployment.md
 ---
 
-# Runbook: キオスクで上辺メニューバー表示（Wi-Fi GUI設定）
+# Pi4 キオスクの左上コーナーと Wi-Fi パネル
 
-## 概要
+通常は OS の上辺パネルと Chromium のタイトルバーを表示しない。
+画面の**最も左上**（縦横 3 px 以内）にマウスを約 0.3 秒置くとパネルが現れる。
+**Super+Shift+P**（Super は Windows キー）でも同じパネルを表示できる。
+Wi-Fi アイコンから接続先やパスワードを設定する。
 
-キオスクモードでは上辺メニューバー（wf-panel-pi）が非表示のため、Wi-FiアイコンからGUIで設定変更できない。**Super+Shift+P** で一時的にメニューバーを表示し、Wi-Fiアイコンから設定変更可能にする。
+ページ内（画面上端から 80 px 以上）をクリックするとパネルが消える。
+パネル付近のクリックや無操作では閉じないため、Wi-Fi のポップアップや
+パスワード入力中も使用できる。ただし表示から **15 分**で安全のため閉じる。
+パネル表示中は exclusive zone により、ページ領域がパネルの高さだけ縮む。
 
-Firefox キオスクでは、Ansible 配布の専用プロファイルで **タブバー・アドレスバーを折りたたみ表示**にしている。ブラウザ枠を一時的に出す操作は OS パネルとは別（下記「Firefox（ブラウザ枠）」）。
+## 配布と確認
 
-## ショートカット
+標準ローリング更新の `release_kiosk` が `manage_kiosk_browser` 有効端末へ配布する。
+ユーザーの labwc autostart でパネルの自動起動を外し、現在のセッションに残った
+`lwrespawn /usr/bin/wf-panel-pi` と旧パネルはセンサーが停止する。
+ショートカットはセンサーへ SIGUSR1 を送る。rc.xml はバックアップ後に文字列編集し、
+ルート外にある旧ショートカットを修復する。labwc の再読み込みとブラウザの再起動で
+タイトルバー設定を反映する。Chromium の起動フラグは変更しない。
 
-| キー | 動作 |
-|------|------|
-| **Super+Shift+P** | 上辺メニューバー（wf-panel-pi）を表示 |
-
-### Firefox（ブラウザ枠）
-
-| 操作 | 動作 |
-|------|------|
-| 画面上端へマウスを移動 | 折りたたんでいたナビゲータ（タブ・URL バー）が下がって見える |
-| **Ctrl+L** または **F6** | アドレスバーへフォーカス（ツールバーが表示されやすい） |
-| **Alt** または **F10** | メニューバー操作（Firefox 標準） |
-
-実装の詳細は [KB-336](../knowledge-base/infrastructure/miscellaneous.md)（同ファイル内「KB-336」見出し）を参照。本番デプロイ済み端末での Run ID・リモート検証項目・`kiosk-launch.sh` の **`1FF_PROFILE` / `基底の値が大きすぎます`** 対処も同 KB の「本番デプロイ」「トラブルシューティング」を参照。
-
-- **Super**: キーボードの Windows キー（四角形のロゴキー）のこと
-- 表示後、Wi-FiアイコンをクリックしてGUIで設定変更可能
-
-## 前提条件
-
-- Pi4 キオスク端末（raspberrypi4 / raspi4-robodrill01）
-- labwc + wf-panel-pi 環境
-- デプロイ済み（`show-kiosk-panel.sh` と labwc rc.xml の keybind が設定済み）
-
-## 設定の確認
+端末で確認する（配布手順は [deployment](../guides/deployment.md) を参照）:
 
 ```bash
-# Pi4 に SSH 接続して確認（ユーザーは tools03 または tools04、端末により異なる）
-ssh <USER>@<PI4_IP> "cat /usr/local/bin/show-kiosk-panel.sh"
-ssh <USER>@<PI4_IP> "grep -A5 'W-S-p' ~/.config/labwc/rc.xml"
+systemctl status kiosk-hotcorner
+journalctl -u kiosk-hotcorner -n 50 --no-pager
 ```
 
-## 設定が反映されない場合
+表示・非表示イベントが記録される。Xwayland の終了・接続失敗時はセンサーも終了し、
+systemd が 3 秒後に再起動する。Wayland ソケットはユーザーの runtime directory
+内で探索する。コーナー、ショートカット、ページクリック、Wi-Fi 入力中の維持を実機で確認する。
 
-1. labwc の設定は次回ログイン時に読み込まれる
-2. 即時反映が必要な場合: キオスクブラウザを再起動、または端末を再起動
-3. デプロイを再実行: `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi4`
+## ロールバック
 
-## トラブルシューティング
+更新途中の失敗は標準 release の rollback が配布ファイル、所有者・権限、rc.xml を復元する。
+今回初めて導入した `kiosk-hotcorner.service` は停止・無効化して削除し、
+既存サービスなら更新前の有効化・稼働状態へ戻す。復元後は labwc を再読み込みし、
+通常更新ではブラウザを再起動する。旧パネルの常時表示を現在のセッションにも戻すには、
+再ログインまたは端末再起動が必要（autostart の復元だけでは旧プロセスは再開しない）。残った障害は
+[deploy-status-recovery](deploy-status-recovery.md) に従う。
 
-- **ショートカットが効かない**: `~/.config/labwc/rc.xml` に keybind が存在するか確認。`grep -A5 'W-S-p' ~/.config/labwc/rc.xml`（ユーザーは tools03 または tools04）
-- **デプロイ後にショートカットが効かない場合（labwc の再読み込み）**: labwc は rc.xml の変更をホットリロードしない。デプロイで rc.xml を更新したが labwc が先に起動していた場合、keybind が読み込まれていない。**即時対処**: Pi4 に SSH 接続し `sudo kill -s HUP $(pgrep -x labwc)` を実行して labwc に SIGHUP を送り、設定を再読み込みさせる。**代替**: 端末を再起動するか、再ログインする。詳細は [KB-289](../knowledge-base/infrastructure/miscellaneous.md#kb-289-pi4-kensakumain-の-firefox-移行と-supershiftp-キーボードショートカット上辺メニューバー表示) を参照
-- **Super キーが分からない**: キーボード左下の四角形ロゴキー（Windows キー）を押す。Pi4 キーボードでは「Command」キー相当の位置にある場合もある
-- **labwc の keybind 表記**: `W`=Super, `S`=Shift, `A`=Alt, `C`=Ctrl
-
-## 関連
-
-- `infrastructure/ansible/roles/kiosk/templates/show-kiosk-panel.sh.j2`
-- `infrastructure/ansible/roles/kiosk/tasks/main.yml`（labwc keybind タスク）
-- `infrastructure/ansible/roles/kiosk/tasks/firefox-chrome.yml`（Firefox userChrome 配布）
+成功後に手動で戻す可能性がある場合は、更新前に rc.xml、autostart、
+`show-kiosk-panel.sh` と hotcorner unit の有無・状態を別途保存する。
+成功した release の一時バックアップは cleanup される。
+手動復旧ではセンサーを停止・無効化し、保存したファイルと所有者・権限を復元する
+（更新前に autostart がなければ今回の override を削除）。新規導入だったセンサーと unit を
+削除して `systemctl daemon-reload` を実行し、端末を再ログインまたは再起動する。
+更新前からセンサーがあった場合は、その unit と有効化状態も復元する。
+旧 SHA の再配布だけでは、新設したファイルの削除は行われない。

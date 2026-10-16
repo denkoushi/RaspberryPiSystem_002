@@ -761,6 +761,97 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
             str(cleanup_names["Remove Pi4 rollback image tags after a verified outcome"]["when"]),
         )
 
+    def test_hotcorner_files_are_released_without_agents_only_when_browser_managed(self) -> None:
+        import ast
+
+        role = ANSIBLE / "roles/release_kiosk"
+        prepare = {task["name"]: task for task in yaml.safe_load((role / "tasks/prepare.yml").read_text())}
+        expression = prepare["Define the Pi4 staged file transaction"]["ansible.builtin.set_fact"]["release_kiosk_files"]
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = bool
+        context = dict(
+            release_kiosk_services=[], release_kiosk_stage_dir="/stage",
+            release_kiosk_project_dir="/project", release_kiosk_candidate_compose="/candidate",
+            release_kiosk_labwc_dir="/home/kiosk/.config/labwc", ansible_user="kiosk",
+            release_kiosk_user_gid={"stdout": "1000"},
+        )
+        for torque in (False, True):
+            context["release_torque_cutover"] = torque
+            self.assertEqual(ast.literal_eval(environment.from_string(expression).render(**context, manage_kiosk_browser=False)), [])
+            entries = ast.literal_eval(environment.from_string(expression).render(**context, manage_kiosk_browser=True))
+            self.assertEqual({item["dest"] for item in entries}, {
+                "/usr/local/bin/kiosk-hotcorner.py", "/usr/local/bin/kiosk-labwc-config.py",
+                "/usr/local/bin/show-kiosk-panel.sh", "/etc/systemd/system/kiosk-hotcorner.service",
+                "/home/kiosk/.config/labwc/autostart",
+            })
+            autostart = next(item for item in entries if item["dest"].endswith("/autostart"))
+            self.assertEqual((autostart["owner"], autostart["mode"]), ("kiosk", "0644"))
+        self.assertIn("manage_kiosk_browser", prepare["Prepare the kiosk hotcorner transaction"]["when"])
+        stage = yaml.safe_load((role / "tasks/prepare_hotcorner.yml").read_text())
+        for task in stage:
+            if "ansible.builtin.copy" in task and "loop" in task:
+                for item in task["loop"]:
+                    self.assertTrue((role / "files" / item["src"]).is_file())
+        autostart_text = (role / "files/labwc-autostart").read_text()
+        self.assertNotIn("wf-panel-pi", autostart_text)
+        self.assertEqual(autostart_text.splitlines(), [
+            "/usr/bin/lwrespawn /usr/bin/pcmanfm-pi &", "/usr/bin/kanshi &", "/usr/bin/lxsession-xdg-autostart",
+        ])
+        unit = environment.from_string((role / "templates/kiosk-hotcorner.service.j2").read_text()).render(
+            ansible_user="kiosk", release_kiosk_user_uid={"stdout": "1001"},
+        )
+        for expected in ("User=kiosk", "After=kiosk-browser.service", "Restart=always", "RestartSec=3",
+                         "XAUTHORITY=/home/kiosk/.Xauthority", "XDG_RUNTIME_DIR=/run/user/1001",
+                         "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1001/bus"):
+            self.assertIn(expected, unit)
+        shortcut = (ANSIBLE / "roles/kiosk/templates/show-kiosk-panel.sh.j2").read_text()
+        self.assertIn('pkill -USR1 -u "$(id -u)" -f kiosk-hotcorner.py', shortcut)
+        self.assertNotIn("wayland-1", shortcut)
+
+    def test_hotcorner_switch_and_rollback_preserve_files_and_service_state(self) -> None:
+        role = ANSIBLE / "roles/release_kiosk/tasks"
+        switch_list = yaml.safe_load((role / "switch.yml").read_text())
+        rollback_list = yaml.safe_load((role / "rollback.yml").read_text())
+        switch = {task["name"]: task for task in switch_list}
+        rollback = {task["name"]: task for task in rollback_list}
+        install = switch["Install the staged Pi4 release files with standard backups"]["ansible.builtin.copy"]
+        self.assertTrue(install["backup"])
+        self.assertIn("item.owner", install["owner"])
+        names = [task["name"] for task in switch_list]
+        self.assertLess(names.index("Apply the validated kiosk labwc configuration"), names.index("Reconfigure labwc for the kiosk user"))
+        self.assertLess(names.index("Reconfigure labwc for the kiosk user"), names.index("Restart the kiosk browser to apply the exact release SHA"))
+        self.assertEqual(sum(task.get("ansible.builtin.systemd", {}).get("name") == "kiosk-browser.service" for task in switch_list), 1)
+        self.assertEqual(switch["Reconfigure labwc for the kiosk user"]["become_user"], "{{ ansible_user }}")
+        stop = rollback["Stop the candidate hotcorner before restoring files"]["ansible.builtin.systemd"]
+        self.assertEqual((stop["state"], stop["enabled"]), ("stopped", False))
+        restore = rollback["Restore backed-up Pi4 release files"]["ansible.builtin.copy"]
+        for field, original in (("owner", "uid"), ("group", "gid"), ("mode", "mode")):
+            self.assertIn("release_kiosk_original_files.results[file_index].stat." + original, restore[field])
+        remove = rollback["Remove newly introduced Pi4 files without a backup"]
+        self.assertIn("not release_kiosk_original_files.results[file_index].stat.exists", remove["when"])
+        self.assertIn("Restore metadata when only Pi4 file ownership or mode changed", rollback)
+        self.assertIn("release_kiosk_hotcorner_previous | length > 0", rollback["Restore the previous hotcorner service state"]["when"])
+        restore_xml = rollback["Restore the original labwc configuration"]["ansible.builtin.copy"]
+        self.assertTrue(restore_xml["remote_src"])
+        self.assertTrue(restore_xml["src"].endswith("/rc.xml.original"))
+        self.assertIn("Restore the original labwc directory ownership and mode", rollback)
+        health = yaml.safe_load((role / "health_checks.yml").read_text())
+        display = next(task for task in health if task["name"] == "Verify Pi4 display services")
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = bool
+        for managed, previous_running in ((True, False), (True, True), (False, False)):
+            context = dict(manage_kiosk_browser=managed, release_kiosk_services=[], release_torque_cutover=False)
+            candidate = environment.from_string(display["loop"]).render(**context)
+            self.assertEqual("kiosk-hotcorner.service" in candidate, managed)
+            restored = environment.from_string(display["loop"]).render(**context, release_kiosk_check_hotcorner=previous_running)
+            self.assertEqual("kiosk-hotcorner.service" in restored, previous_running)
+        self.assertIn("release_kiosk_hotcorner_previous.state", rollback["Verify the complete restored Pi4 runtime"]["vars"]["release_kiosk_check_hotcorner"])
+        # The installed helper may have been removed already; rollback uses the
+        # release source on stdin under the kiosk user's Wayland environment.
+        reconfigure = rollback["Reconfigure the restored labwc session"]
+        self.assertEqual(reconfigure["ansible.builtin.command"]["argv"], ["/usr/bin/python3", "-", "--reconfigure"])
+        self.assertEqual(reconfigure["become_user"], "{{ ansible_user }}")
+
     def test_pi4_rollback_image_capture_uses_unique_compose_labels(self) -> None:
         prepare_tasks = yaml.safe_load(
             (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(

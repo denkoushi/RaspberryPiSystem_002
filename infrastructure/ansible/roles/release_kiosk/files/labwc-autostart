@@ -1,0 +1,3 @@
+/usr/bin/lwrespawn /usr/bin/pcmanfm-pi &
+/usr/bin/kanshi &
+/usr/bin/lxsession-xdg-autostart

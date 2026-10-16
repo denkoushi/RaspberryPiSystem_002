@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_config xmlns="http://openbox.org/3.4/rc"><theme><name>PiXflat</name></theme></openbox_config>
+<!-- BEGIN ANSIBLE MANAGED: show-kiosk-panel -->
+<keybind key="W-S-p">
+  <action name="Execute">
+    <command>/usr/local/bin/show-kiosk-panel.sh</command>
+  </action>
+</keybind>
+<!-- END ANSIBLE MANAGED: show-kiosk-panel -->
