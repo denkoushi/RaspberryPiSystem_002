@@ -170,7 +170,12 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
         <div className={clsx('min-w-0', showSeiban ? 'flex flex-col items-start gap-0.5' : 'flex items-center gap-0.5')}>
           <div className="flex min-w-0 items-center gap-0.5">
             {seibanRank != null ? (
-              <span className={clsx('shrink-0 font-mono leading-none text-white', showSeiban ? 'text-[15px]' : 'text-[10px]')}>
+              <span
+                className={clsx(
+                  'min-w-[2ch] shrink-0 text-right font-mono tabular-nums leading-none text-white',
+                  showSeiban ? 'text-[15px]' : 'text-[10px]'
+                )}
+              >
                 {seibanRank}
               </span>
             ) : null}
