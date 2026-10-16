@@ -1,4 +1,3 @@
-import { promises as fs } from 'fs';
 import path from 'path';
 import { randomUUID } from 'node:crypto';
 
@@ -162,38 +161,23 @@ export class PhotoStorage {
     const targetYear = year + 2; // 2年後
     const targetMonth = '01'; // 1月
 
-    const yearDir = path.join(getPhotosDir(), targetYear.toString(), targetMonth);
-    const thumbnailYearDir = path.join(getThumbnailsDir(), targetYear.toString(), targetMonth);
-
+    const store = getFileStorageRuntime().store;
     let deletedCount = 0;
 
-    try {
-      // 元画像を削除
-      const files = await fs.readdir(yearDir);
-      for (const file of files) {
-        if (file.endsWith('.jpg') && !file.endsWith('_thumb.jpg')) {
-          await getFileStorageRuntime().store.delete(
-            `photos/${targetYear}/${targetMonth}/${file}`,
-            { integrity: true }
-          );
-          deletedCount++;
-        }
+    // 元画像を削除
+    const files = await store.list(`photos/${targetYear}/${targetMonth}`);
+    for (const file of files) {
+      if (file.endsWith('.jpg') && !file.endsWith('_thumb.jpg')) {
+        await store.delete(`photos/${targetYear}/${targetMonth}/${file}`, { integrity: true });
+        deletedCount++;
       }
+    }
 
-      // サムネイルを削除
-      const thumbnailFiles = await fs.readdir(thumbnailYearDir);
-      for (const file of thumbnailFiles) {
-        if (file.endsWith('_thumb.jpg')) {
-          await getFileStorageRuntime().store.delete(
-            `thumbnails/${targetYear}/${targetMonth}/${file}`,
-            { integrity: true }
-          );
-        }
-      }
-    } catch (error) {
-      // ディレクトリが存在しない場合は無視
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        throw error;
+    // サムネイルを削除
+    const thumbnailFiles = await store.list(`thumbnails/${targetYear}/${targetMonth}`);
+    for (const file of thumbnailFiles) {
+      if (file.endsWith('_thumb.jpg')) {
+        await store.delete(`thumbnails/${targetYear}/${targetMonth}/${file}`, { integrity: true });
       }
     }
 
