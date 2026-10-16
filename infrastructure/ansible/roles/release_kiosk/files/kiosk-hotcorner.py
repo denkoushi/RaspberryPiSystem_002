@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Own the temporary kiosk panel; Xwayland failure is recovered by systemd."""
+"""Own the temporary kiosk panel; Xwayland failure is recovered by systemd.
+
+Operation and rollback: docs/runbooks/kiosk-wifi-panel-shortcut.md.
+"""
 
 import ctypes
 import ctypes.util
