@@ -390,10 +390,11 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
       actualFseibanRaw: body.actualFseibanRaw,
       actualPartBarcodeRaw: body.actualPartBarcodeRaw?.trim() || body.actualFhinmeiBarcodeRaw?.trim() || ''
     });
+    const resolvedBy = result.actualResolvedBy ? { actualResolvedBy: result.actualResolvedBy } : {};
     if (result.ok) {
-      return { ok: true as const };
+      return { ok: true as const, ...resolvedBy };
     }
-    return { ok: false as const, reason: result.reason };
+    return { ok: false as const, reason: result.reason, ...resolvedBy };
   });
 
   /**
