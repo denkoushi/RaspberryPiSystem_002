@@ -601,6 +601,7 @@ type PlanningSnapshotPayload = {
   load: GrindingPlanningBoardLoad[];
   unknownRequiredMinutesCount: number;
   seibanProgress: Record<string, { completed: number; total: number }>;
+  machineNames?: GrindingPlanningBoardResponse['machineNames'];
   resources: string[];
   resourceCategories?: GrindingPlanningBoardResponse['resourceCategories'];
 };
@@ -775,6 +776,7 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
       load: loadSummary.load,
       unknownRequiredMinutesCount: loadSummary.unknownRequiredMinutesCount,
       seibanProgress: progressMapToRecord(projection.progress.bySeiban),
+      machineNames: names.machineNames,
       resources,
       resourceCategories: Object.fromEntries([...new Set([...resources, ...filtered.flatMap((item) =>
         [item.originalResourceCd, item.effectiveResourceCd].filter((cd): cd is string => Boolean(cd)))])].map((cd) =>
@@ -837,6 +839,7 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
     load: payload.load,
     unknownRequiredMinutesCount: payload.unknownRequiredMinutesCount,
     seibanProgress: payload.seibanProgress,
+    machineNames: payload.machineNames ?? {},
     snapshotId,
     nextCursor: cursor + page.length < orderedItems.length ? String(cursor + page.length) : null
   };

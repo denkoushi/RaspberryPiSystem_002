@@ -392,11 +392,13 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     }
     return sorted;
   }, [allocation, itemsBySeiban, registeredFseibans, view]);
+  const boardMachineNames = data?.machineNames;
   const machineNames = useMemo(() => {
-    const result = new Map<string, string | null>();
-    for (const item of displayItems) if (!result.has(item.fseiban)) result.set(item.fseiban, item.machineName);
+    // 区分内に工程が無い登録製番も機種名を出せるよう、サーバーが返す全製番分を土台にする。
+    const result = new Map<string, string | null>(Object.entries(boardMachineNames ?? {}));
+    for (const item of displayItems) if (item.machineName) result.set(item.fseiban, item.machineName);
     return result;
-  }, [displayItems]);
+  }, [boardMachineNames, displayItems]);
   const visibleItems = useMemo(
     () => displayItems.filter((item) => activeFseibans.has(item.fseiban)),
     [activeFseibans, displayItems]

@@ -144,6 +144,8 @@ export interface GrindingPlanningBoardResponse {
   unknownRequiredMinutesCount: number;
   loadDeferred?: boolean;
   seibanProgress: Record<string, { completed: number; total: number }>;
+  /** 登録済み製番すべての機種表示名（その区分に工程が無い製番も含む） */
+  machineNames?: Record<string, string | null>;
   snapshotId: string;
   nextCursor: string | null;
 }
