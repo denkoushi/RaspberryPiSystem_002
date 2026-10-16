@@ -113,11 +113,13 @@ Android スマホ等から、**移動票・現品票の照合**および **製�
 
 ### `POST /api/mobile-placement/verify-slip-match`
 
-移動票・現品票それぞれについて、日程行を解決し、**同一の `FSEIBAN` + `FHINCD` ペア**か判定する（副作用なし）。
+移動票・現品票それぞれについて、日程行または購買照会の行を解決し、**同一の `FSEIBAN` + `FHINCD` ペア**か判定する（副作用なし）。
 
 - **移動票**: `transferOrderBarcodeRaw` を **ProductNo** として `listScheduleRowsByProductNo` と同系で解決。
 - **現品票**:  
-  - `actualOrderBarcodeRaw` が **空でない**ときは **ProductNo**（製造order番号）で解決。  
+  - `actualOrderBarcodeRaw` が **空でない**ときは **ProductNo**（製造order番号）で先に解決。未解決で前後空白を除いた値が10桁数字なら、購買照会と共通の読取で `PurchaseOrderLookupRow.purchaseOrderNo` を検索する。
+  - 注文番号の候補のうち、製番が移動票の `FSEIBAN` と一致（前後空白・大文字小文字を無視）し、`purchasePartCodeMatchKey` が移動票の `FHINCD` の照合キーと一致する行が必要。キーは購買照会と同じ括弧内表記・末尾数値枝番の除去を使う。単一候補でも一致検査を省略しない。
+  - 注文番号に行があってもペアが一致しなければ `FSEIBAN_OR_PART_PAIR_MISMATCH`、どちらの検索でも見つからなければ `ACTUAL_ORDER_UNRESOLVED`。
   - **空**のときは `actualFseibanRaw` を **FSEIBAN** として `listScheduleRowsByFseiban` と同系で解決。  
   - **`actualOrderBarcodeRaw` と `actualFseibanRaw` の少なくとも一方が必須**（両方空は 400）。
 - 部品側のスキャンは **`actualPartBarcodeRaw`**（FHINBAN バーコード等。日程行の `FHINCD` と照合）。
@@ -128,13 +130,13 @@ JSON:
 {
   "transferOrderBarcodeRaw": "移動票の製造order番号（1次元）",
   "transferPartBarcodeRaw": "移動票のFHINBAN/FHINCD（1次元）",
-  "actualOrderBarcodeRaw": "現品票の製造order番号（1次元または空）",
+  "actualOrderBarcodeRaw": "現品票の注文番号または製造order番号（1次元または空）",
   "actualFseibanRaw": "現品票の製番 FSEIBAN（任意。製造orderが空のときに使用）",
   "actualPartBarcodeRaw": "現品票のFHINBAN/FHINCD（1次元）"
 }
 ```
 
-応答: `{ "ok": true }` または `{ "ok": false, "reason": "..." }`（`reason` はサーバ内部コード文字列）。
+応答: `{ "ok": true }` または `{ "ok": false, "reason": "..." }`（`reason` はサーバ内部コード文字列）。解決経路が判明した場合は成功・失敗とも任意フィールド `actualResolvedBy: "productNo" | "purchaseOrder" | "fseiban"` を返す。注文番号経由でも、両票の部品バーコード検査は従来どおり行う。
 
 ### `POST /api/mobile-placement/parse-actual-slip-image`
 

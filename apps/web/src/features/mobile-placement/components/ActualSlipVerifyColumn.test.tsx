@@ -26,6 +26,8 @@ describe('ActualSlipVerifyColumn', () => {
       />
     );
 
+    expect(screen.getByRole('textbox', { name: '現品票 注文番号（バーコード）' })).toHaveAttribute('placeholder', '注文番号（バーコード）');
+    expect(screen.getByRole('button', { name: '現品票を撮影してOCR' })).toBeInTheDocument();
     expect(screen.getByText('製造order番号: 0002178005')).toBeInTheDocument();
     expect(screen.getByText('FSEIBAN: BE1N9321')).toBeInTheDocument();
     expect(screen.queryByText(/OCR:/)).not.toBeInTheDocument();

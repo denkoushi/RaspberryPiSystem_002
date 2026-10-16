@@ -86,6 +86,7 @@ export function MobilePlacementPage() {
       <BarcodeScanModal
         open={mp.scanField !== null}
         formats={mp.scanFormats}
+        engine="auto-native"
         {...KIOSK_STANDARD_BARCODE_SCAN_SESSION}
         onSuccess={mp.onScanSuccess}
         onAbort={() => mp.setScanField(null)}

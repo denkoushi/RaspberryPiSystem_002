@@ -1,15 +1,15 @@
 import { ChecksumException, FormatException, NotFoundException } from '@zxing/library';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { getBarcodeDetector } from '../barcode-scan/barcodeDetector';
 import { BARCODE_READER_OPTIONS_KIOSK_DEFAULT } from '../barcode-scan/readerOptionPresets';
 import { createBrowserMultiFormatReader } from '../barcode-scan/zxingVideoReader';
 
-import { getBarcodeDetector } from './barcodeDetector';
 import { NATIVE_FORMATS, supportsRequiredFormats, toNativeFormat, ZXING_FORMATS } from './helpers';
 import { useBenchCamera } from './useBenchCamera';
 
-import type { NativeBarcode, NativeBarcodeDetector } from './barcodeDetector';
 import type { CameraQuality, ScanEngine, ScanRecord } from './helpers';
+import type { NativeBarcode, NativeBarcodeDetector } from '../barcode-scan/barcodeDetector';
 
 export function useScanBench() {
   const [engine, setEngine] = useState<ScanEngine>('zxing');
