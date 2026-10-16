@@ -94,11 +94,15 @@ class HotcornerPolicyTests(unittest.TestCase):
             for pid, argv in {10: b'/usr/bin/lwrespawn\0/usr/bin/wf-panel-pi\0',
                               11: b'/usr/bin/wf-panel-pi\0',
                               12: b'/usr/bin/lwrespawn\0/usr/bin/pcmanfm-pi\0',
-                              13: b'python3\0kiosk-hotcorner.py\0'}.items():
+                              13: b'python3\0kiosk-hotcorner.py\0',
+                              # Measured on the Pi4s: lwrespawn runs as a shell script.
+                              14: b'/bin/sh\0/usr/bin/lwrespawn\0/usr/bin/wf-panel-pi\0',
+                              15: b'/bin/sh\0/usr/bin/lwrespawn\0/usr/bin/pcmanfm-pi\0'}.items():
                 entry = Path(directory) / str(pid)
                 entry.mkdir()
                 (entry / 'cmdline').write_bytes(argv)
-            self.assertEqual(HOTCORNER['panel_processes'](Path(directory)), ([10], [11]))
+            respawners, panels = HOTCORNER['panel_processes'](Path(directory))
+            self.assertEqual((sorted(respawners), panels), ([10, 14], [11]))
 
     def test_x_open_failure_is_fatal(self):
         lib = mock.Mock()
