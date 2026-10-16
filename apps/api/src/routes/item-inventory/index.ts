@@ -205,13 +205,13 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     return { tag: await services.inventory.resolveCompartmentByLabelNumber(labelNumber) };
   });
 
-  app.get('/item-inventory/dashboard', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+  app.get('/item-inventory/dashboard', { preHandler: [read] }, async (request) => {
     const query = z.object({ weeks: z.enum(['4', '12', '26', '52']).default('12'), machine: z.string().trim().min(1).max(400).optional() }).parse(request.query ?? {});
     return services.inventory.dashboard(Number(query.weeks), query.machine);
   });
   const variantField = z.enum(['maker', 'toolName', 'model', 'toolSize', 'workMaterial', 'usage']);
   const variantValue = z.string().min(1).max(400).refine(value => value.trim().length > 0);
-  app.get('/item-inventory/tool-value-variants', { preHandler: [authorizeManageOrKiosk] }, async () => services.inventory.toolValueVariants());
+  app.get('/item-inventory/tool-value-variants', { preHandler: [read] }, async () => services.inventory.toolValueVariants());
   app.post('/item-inventory/tool-value-variants/merge', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const body = z.object({ field: variantField, to: variantValue, from: z.array(variantValue).min(1).max(100) }).parse(request.body ?? {});
     return services.inventory.mergeToolValueVariants(body.field, body.to, body.from);

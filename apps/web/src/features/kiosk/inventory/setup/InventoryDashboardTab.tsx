@@ -1,5 +1,5 @@
 import { formatInventoryLabelNumber, normalizeToolValue, type InventoryDashboard, type InventoryVariantGroup } from '@raspi-system/shared-types';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useInventoryDashboard, useInventoryMutations, useInventoryValueVariants } from '../../../../api/hooks';
 import { invButtonGhost, invButtonPrimary, invField, invPanel, invSeg } from '../inventoryUi';
@@ -83,7 +83,15 @@ function breakdown(items: InventoryDashboard['items'], dimension: 'toolName' | '
   return rows.length <= 7 ? rows : [...rows.slice(0, 7), { name: 'その他', issued: rows.slice(7).reduce((sum, row) => sum + row.issued, 0), raw: new Set<string>(), other: true }];
 }
 
-export function InventoryDashboardTab({ accessPassword, onEditItems }: { accessPassword: string; onEditItems: () => void }) {
+export type InventoryVariantAction = { group: InventoryVariantGroup; merge: boolean };
+
+export function InventoryDashboardTab({ accessPassword, onEditItems, onRequestUnlock, pendingAction, onActionHandled }: {
+  accessPassword?: string;
+  onEditItems: () => void;
+  onRequestUnlock?: (action: InventoryVariantAction) => void;
+  pendingAction?: InventoryVariantAction | null;
+  onActionHandled?: () => void;
+}) {
   const [weeks, setWeeks] = useState(12);
   const [machine, setMachine] = useState('');
   const [dimension, setDimension] = useState<'toolName' | 'maker'>('toolName');
@@ -93,14 +101,27 @@ export function InventoryDashboardTab({ accessPassword, onEditItems }: { accessP
   const variants = useInventoryValueVariants(accessPassword);
   const mutations = useInventoryMutations(accessPassword, true);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(null), 2500); return () => clearTimeout(timer); }, [toast]);
-  const act = async (group: InventoryVariantGroup, merge: boolean) => {
+  const mergeVariants = mutations.mergeValueVariants.mutateAsync;
+  const dismissVariants = mutations.dismissValueVariants.mutateAsync;
+  const act = useCallback(async (group: InventoryVariantGroup, merge: boolean) => {
+    if (!accessPassword) {
+      onRequestUnlock?.({ group, merge });
+      return;
+    }
     setError(null);
     try {
-      if (merge) await mutations.mergeValueVariants.mutateAsync({ field: group.field, to: group.to, from: group.from.map(row => row.value) });
-      else await mutations.dismissValueVariants.mutateAsync({ field: group.field, values: [group.to, ...group.from.map(row => row.value)] });
+      if (merge) await mergeVariants({ field: group.field, to: group.to, from: group.from.map(row => row.value) });
+      else await dismissVariants({ field: group.field, values: [group.to, ...group.from.map(row => row.value)] });
       setToast(merge ? '表記をまとめました' : '別のものとして残しました');
     } catch (caught) { setError(setupErrorText(caught)); }
-  };
+  }, [accessPassword, onRequestUnlock, mergeVariants, dismissVariants]);
+  const performedAction = useRef<InventoryVariantAction | null>(null);
+  useEffect(() => {
+    if (!accessPassword || !pendingAction || performedAction.current === pendingAction) return;
+    performedAction.current = pendingAction;
+    onActionHandled?.();
+    void act(pendingAction.group, pendingAction.merge);
+  }, [accessPassword, pendingAction, onActionHandled, act]);
   const data = query.data;
   const used = data?.items.filter(item => item.issued > 0) ?? [];
   const rows = breakdown(data?.items ?? [], dimension);

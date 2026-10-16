@@ -30,12 +30,18 @@ describe('inventory dashboard and variant routes', () => {
     inventory.dashboard.mockResolvedValue({ weeks: [], totalIssued: 0 });
     inventory.toolValueVariants.mockResolvedValue({ groups: [], autoMergedValueCount: 2 });
   });
-  it.each(['dashboard', 'tool-value-variants', 'tool-value-variants/merge', 'tool-value-variants/dismiss'])('protects %s with setup authorization', async url => {
+  it.each(['tool-value-variants/merge', 'tool-value-variants/dismiss'])('protects %s with setup authorization', async url => {
     const payload = url.endsWith('merge') ? { field: 'maker', to: 'OSG', from: ['osg'] } : url.endsWith('dismiss') ? { field: 'maker', values: ['OSG', 'osg'] } : undefined;
     expect((await request(url, payload, {})).statusCode).toBe(401);
     expect((await request(url, payload, { 'x-client-key': 'kiosk-key' })).statusCode).toBe(401);
     expect((await request(url, payload, { ...headers, 'x-kiosk-access-password': '9999' })).statusCode).toBe(403);
     for (const method of Object.values(inventory)) expect(method).not.toHaveBeenCalled();
+  });
+  it.each(['dashboard', 'tool-value-variants'])('reads %s with only a registered client key', async url => {
+    expect((await request(url, undefined, {})).statusCode).toBe(401);
+    expect((await request(url, undefined, { 'x-client-key': 'unknown' })).statusCode).toBe(401);
+    expect((await request(url, undefined, { 'x-client-key': 'kiosk-key' })).statusCode).toBe(200);
+    expect(verify).not.toHaveBeenCalled();
   });
   it.each([4, 12, 26, 52])('passes period %s and machine', async weeks => {
     const response = await request(`dashboard?weeks=${weeks}&machine=A`);
