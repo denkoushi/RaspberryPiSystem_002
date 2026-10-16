@@ -23,7 +23,7 @@ import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttRowProps } from './PlanningBoardGanttRow';
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
 
-type Props = Pick<PlanningBoardGanttRowProps, 'onCompleteToggle' | 'completePending' | 'disabled' | 'dragDisabled' | 'onToggleItem' | 'onDueDrop' | 'selectedItemIds' | 'resourceView'> & {
+type Props = Pick<PlanningBoardGanttRowProps, 'onCompleteToggle' | 'completionPendingRowIds' | 'disabled' | 'dragDisabled' | 'onToggleItem' | 'onDueDrop' | 'selectedItemIds' | 'resourceView'> & {
   onResourceReorder?: ForwardReorder;
   onResourceMove?: ForwardMove;
   canMoveResource?: (item: GrindingPlanningBoardItem, resource: string) => boolean;
@@ -72,7 +72,7 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
 
 export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props>(function PlanningBoardGanttView({
   layout: sourceLayout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, runsThroughBreaks, onBreaksChange,
-  focusedSeiban, onFocusedSeibanChange: setFocusedSeiban, onCompleteToggle, completePending,
+  focusedSeiban, onFocusedSeibanChange: setFocusedSeiban, onCompleteToggle, completionPendingRowIds,
   colorBySeiban = false, seibanOrder = [], preferenceScope = 'default', ...interaction
 }, ref) {
   // Dragging a machine name up or down reorders the lanes; the order is kept on this kiosk only.
@@ -274,7 +274,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className="relative mt-2 overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
       {capacityError && <p role="alert" className="px-2 py-1 text-xs text-rose-200">稼働時間を保存できませんでした。</p>}
       {showChain && <PlanningBoardChainStrip bars={chain} resourceNameMap={resourceNameMap} currentItemId={currentItemId}
-        onCompleteToggle={onCompleteToggle} completePending={completePending} disabled={interaction.disabled}
+        onCompleteToggle={onCompleteToggle} completionPendingRowIds={completionPendingRowIds} disabled={interaction.disabled}
         onStep={scrollToStep} onClose={() => setFocusedPartKey(null)} />}
       <div ref={viewport} onScroll={() => queuePopover.current?.close()} className="relative min-h-48 overflow-auto"
         style={{ height: viewportHeight ?? undefined }} tabIndex={0} aria-label="ガントの日付と工程"
@@ -339,7 +339,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
                 focusedPartKey={showChain ? focusedPartKey : null} chainPositions={chainPositions} onFocusChain={focusChain}
                 label={group.resource ? resourceLabel(group.resource, group.label) : undefined} />;
             }) : group.rows.map((row) => <PlanningBoardGanttRow seibanColors={seibanColors} focusedSeiban={focusedSeiban} key={row.key} row={row} start={layout.start} width={width} dayWidth={dayWidth}
-              completionTargetId={completionTargetId} onCompletionTarget={toggleCompletionTarget} onCompleteToggle={onCompleteToggle} completePending={completePending}
+              completionTargetId={completionTargetId} onCompletionTarget={toggleCompletionTarget} onCompleteToggle={onCompleteToggle} completionPendingRowIds={completionPendingRowIds}
               today={dayToDate(layout.today)} selectedParts={selectedParts} {...interaction} />)}
           </div>)}
           {showChain && <PlanningBoardChainLinks bars={chain} content={content} layout={layout} dayWidth={dayWidth} viewportWidth={viewportWidth} viewportHeight={viewportHeight} />}

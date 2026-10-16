@@ -3,6 +3,7 @@ import { forwardRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildPlanningBoardGanttLayout } from './planningBoardGanttLayout';
+import { GANTT_IMPORT_HATCH } from './PlanningBoardGanttRow';
 import { PlanningBoardGanttView as ControlledPlanningBoardGanttView } from './PlanningBoardGanttView';
 
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
@@ -92,6 +93,26 @@ describe('PlanningBoardGanttView', () => {
     }
   });
 
+  it('stripes imported backward bars and shows a disabled import badge after tap', () => {
+    const values = props([item({ isCompleted: true, completionSource: 'import' }),
+      item({ itemId: 'manual', isCompleted: true, completionSource: 'manual' })]);
+    const onCompleteToggle = vi.fn();
+    render(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} />);
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    expect(bar.firstElementChild).toHaveStyle({ background: GANTT_IMPORT_HATCH });
+    expect(screen.getByTestId('planning-gantt-bar-manual').firstElementChild).toHaveClass('bg-slate-600');
+    expect(screen.getByTestId('planning-gantt-bar-manual').firstElementChild).not.toHaveStyle({ background: GANTT_IMPORT_HATCH });
+    expect(screen.queryByRole('button', { name: '取込で完了' })).not.toBeInTheDocument();
+    fireEvent.click(bar);
+    const badge = screen.getByRole('button', { name: '取込で完了' });
+    expect(badge).toHaveTextContent('取込');
+    expect(badge).toBeDisabled();
+    expect(badge.parentElement).toBe(bar.parentElement);
+    fireEvent.click(badge);
+    expect(onCompleteToggle).not.toHaveBeenCalled();
+    expect(values.onToggleItem).not.toHaveBeenCalled();
+  });
+
   it('hides backward split completion and disables the target while pending or locked', () => {
     const values = props([item(), item({ itemId: 'split', kind: 'split' })]);
     const onCompleteToggle = vi.fn();
@@ -99,7 +120,7 @@ describe('PlanningBoardGanttView', () => {
     fireEvent.click(screen.getByTestId('planning-gantt-bar-split'));
     expect(screen.queryByRole('button', { name: '完了にする' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
-    rerender(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} completePending />);
+    rerender(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} completionPendingRowIds={new Set(['a'])} />);
     expect(screen.getByRole('button', { name: '完了にする' })).toBeDisabled();
     rerender(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} disabled />);
     expect(screen.getByRole('button', { name: '完了にする' })).toBeDisabled();

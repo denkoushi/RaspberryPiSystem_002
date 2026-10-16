@@ -58,6 +58,17 @@ import type {
   GrindingPlanningBoardSpecialDueKind
 } from '@raspi-system/shared-types';
 
+type CompletionOverlay = {
+  isCompleted: boolean;
+  completionSource: GrindingPlanningBoardItem['completionSource'];
+  item: GrindingPlanningBoardItem;
+  siteKey: string;
+  category: GrindingPlanningBoardCategory;
+  snapshotId: string;
+  saved?: boolean;
+  staleSnapshotId?: string;
+};
+
 type ResourceOrderSnapshot = { resourceCd: string; itemIds: string[] };
 type OrderPreview = { options: GanttLayoutOptions; sourceRevision: string; current: Record<string, string[]>;
   proposal: Record<string, string[]>; before: PlanningBoardOrderMetrics; after: PlanningBoardOrderMetrics };
@@ -158,6 +169,9 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [orderPreview, setOrderPreview] = useState<OrderPreview | null>(null);
   const [focusedSeiban, setFocusedSeiban] = useState<string | null>(null);
   const [scanFocusKey, setScanFocusKey] = useState(0);
+  const [completionOverlay, setCompletionOverlay] = useState<ReadonlyMap<string, CompletionOverlay>>(new Map());
+  const completionPendingRef = useRef(new Set<string>());
+  const [completionPendingRowIds, setCompletionPendingRowIds] = useState<ReadonlySet<string>>(new Set());
   const [completionNotice, setCompletionNotice] = useState<{ item: GrindingPlanningBoardItem } | null>(null);
   useEffect(() => {
     if (!completionNotice) return;
@@ -225,7 +239,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const boardSiteKeyRef = useRef<string | null>(null);
 
   const queryClient = useQueryClient();
-  const { mutateAsync: setCompletionAsync, isPending: completePending } = useSetKioskProductionScheduleRowCompletion();
+  const { mutateAsync: setCompletionAsync } = useSetKioskProductionScheduleRowCompletion();
   const boardQuery = useKioskGrindingPlanningBoardProgressive(
     { category, view, completionFilter: status },
     { refetchIntervalMs: editorOpen || orderPreview ? false : undefined }
@@ -293,7 +307,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const data = boardQuery.data;
   const scopeReady = boardQuery.scopeReady;
   const bulkReady = scopeReady && boardQuery.isComplete;
-  const interactionLocked = !scopeReady || Boolean(orderPreview) || completePending;
+  const interactionLocked = !scopeReady || Boolean(orderPreview);
   const sourceRevision = data?.sourceRevision ?? '';
   const rankScopeKey = `${data?.siteKey ?? ''}\0${category}\0${status}`;
   const rankMutationReady = Boolean(
@@ -319,11 +333,45 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     onSuccess: (label) => notify(label === '納期順' ? '納期の早い順に並べ直しました' : label === '順番を戻す' ? '1つ前の順番に戻しました' : `${label}を保存しました。`, 'success'),
     onError: handleError
   });
-  const { enqueue: enqueueWrite, items: displayItems, order: registeredFseibans, hasPendingSeiban, acceptRefreshedState } = writeQueue;
+  const { enqueue: enqueueWrite, items: queuedItems, order: registeredFseibans, hasPendingSeiban, acceptRefreshedState } = writeQueue;
+  const displayItems = useMemo(() => {
+    const items = [...queuedItems];
+    const sourceRowIds = new Set(items.map((item) => item.sourceRowId));
+    // Keep the row available for instant undo even after the filtered GET omits it.
+    for (const [rowId, overlay] of completionOverlay) {
+      if (!sourceRowIds.has(rowId) && overlay.siteKey === data?.siteKey &&
+        (category === 'all' || overlay.category === category)) items.push(overlay.item);
+    }
+    return items.map((item) => {
+      const overlay = completionOverlay.get(item.sourceRowId);
+      if (!overlay || overlay.siteKey !== data?.siteKey || item.completionSource === 'import') return item;
+      return { ...item, isCompleted: overlay.isCompleted, completionSource: overlay.completionSource };
+    }).filter((item) => status === 'all' || item.isCompleted === (status === 'complete'));
+  }, [queuedItems, completionOverlay, data?.siteKey, category, status]);
+
+  useEffect(() => {
+    if (!data || boardQuery.isPlaceholderData) return;
+    setCompletionOverlay((current) => {
+      const next = new Map(current);
+      for (const item of data.items) {
+        const overlay = next.get(item.sourceRowId);
+        if (!overlay || overlay.siteKey !== data.siteKey || overlay.snapshotId === data.snapshotId ||
+          completionPendingRowIds.has(item.sourceRowId)) continue;
+        if (item.completionSource === 'import' || (item.isCompleted === overlay.isCompleted &&
+          (item.completionSource ?? null) === overlay.completionSource)) next.delete(item.sourceRowId);
+        // One disagreeing refresh after the save may have started before it; a second one is the truth
+        // (e.g. another kiosk changed the row again).
+        else if (overlay.saved && overlay.staleSnapshotId && overlay.staleSnapshotId !== data.snapshotId) next.delete(item.sourceRowId);
+        else if (overlay.saved && !overlay.staleSnapshotId) next.set(item.sourceRowId, { ...overlay, staleSnapshotId: data.snapshotId });
+      }
+      return next.size === current.size && [...next].every(([key, value]) => current.get(key) === value) ? current : next;
+    });
+  }, [data, boardQuery.isPlaceholderData, completionPendingRowIds]);
+
   const writeBlocked = writeQueue.blocked || rankConflict || orderConflict || Boolean(orderPreview);
   const rankDisabled = useCallback((item: GrindingPlanningBoardItem) =>
-    completePending || !rankMutationReady || writeBlocked || hasPendingSeiban(item.fseiban, true),
-  [completePending, rankMutationReady, writeBlocked, hasPendingSeiban]);
+    !rankMutationReady || writeBlocked || hasPendingSeiban(item.fseiban, true),
+  [rankMutationReady, writeBlocked, hasPendingSeiban]);
   useUnsavedChangesGuard(writeQueue.pending || Boolean(orderPreview));
 
   const baseDueDetail = allocation === 'original'
@@ -449,9 +497,23 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     });
   }, [category, scopeReady]);
   const toggleCompletion = useCallback(async (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => {
-    if (interactionLocked || item.kind !== 'row') return;
+    const currentItem = currentItemsRef.current.find((candidate) => candidate.sourceRowId === item.sourceRowId) ?? item;
+    if (interactionLocked || !data || item.kind !== 'row' || currentItem.completionSource === 'import' ||
+      completionPendingRef.current.has(item.sourceRowId)) return;
+    completionPendingRef.current.add(item.sourceRowId);
+    setCompletionPendingRowIds(new Set(completionPendingRef.current));
+    setCompletionOverlay((current) => new Map(current).set(item.sourceRowId, {
+      isCompleted: intent === 'complete', completionSource: intent === 'complete' ? 'manual' : null,
+      item: currentItem, siteKey: data.siteKey,
+      category: data.resourceCategories?.[item.originalResourceCd ?? ''] ?? category,
+      snapshotId: data.snapshotId
+    }));
     try {
       await setCompletionAsync({ rowId: item.sourceRowId, intent });
+      setCompletionOverlay((current) => {
+        const overlay = current.get(item.sourceRowId);
+        return overlay ? new Map(current).set(item.sourceRowId, { ...overlay, saved: true }) : current;
+      });
       void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
       if (intent === 'complete') {
         setSelectedItemIdsByCategory((current) => Object.fromEntries(Object.entries(current).map(([key, ids]) => {
@@ -464,9 +526,17 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         setCompletionNotice(null);
       }
     } catch {
+      setCompletionOverlay((current) => {
+        const next = new Map(current);
+        next.delete(item.sourceRowId);
+        return next;
+      });
       notify('完了状態を保存できませんでした。時間をおいて再試行してください。', 'error');
+    } finally {
+      completionPendingRef.current.delete(item.sourceRowId);
+      setCompletionPendingRowIds(new Set(completionPendingRef.current));
     }
-  }, [interactionLocked, setCompletionAsync, queryClient, notify]);
+  }, [interactionLocked, data, category, setCompletionAsync, queryClient, notify]);
   const toggleAll = useCallback((items: readonly GrindingPlanningBoardItem[], selected: boolean) => {
     if (!bulkReady) return;
     setSelectedItemIdsByCategory((current) => {
@@ -1087,8 +1157,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         status={status}
         allocation={allocation}
         selectedCount={toolbarSelectedItems.length}
-        scopeDisabled={writeQueue.pending || Boolean(orderPreview) || completePending}
-        bulkDisabled={allocation === 'original' || toolbarSelectedItems.length === 0 || !bulkReady || writeBlocked || completePending}
+        scopeDisabled={writeQueue.pending || Boolean(orderPreview)}
+        bulkDisabled={allocation === 'original' || toolbarSelectedItems.length === 0 || !bulkReady || writeBlocked}
         registeredCount={registeredFseibans.length}
         onOpenDrawer={() => setDrawerOpen(true)}
         onCategoriesChange={(value) => { if (!writeQueue.pending && (value.grinding || value.cutting)) setCategories(value); }}
@@ -1120,7 +1190,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       />
       {completionNotice && <div role="status" className="fixed bottom-4 left-1/2 z-[90] flex -translate-x-1/2 items-center gap-3 rounded-lg bg-emerald-900 px-4 py-2 text-sm font-bold text-emerald-50 shadow-lg">
         <span>完了にしました</span>
-        <button type="button" className="min-h-7 rounded border border-emerald-300 px-2 disabled:opacity-60" disabled={interactionLocked}
+        <button type="button" className="min-h-7 rounded border border-emerald-300 px-2 disabled:opacity-60" disabled={interactionLocked || completionPendingRowIds.has(completionNotice.item.sourceRowId)}
           onClick={() => { void toggleCompletion(completionNotice.item, 'incomplete'); setCompletionNotice(null); }}>↶ 戻す</button>
       </div>}
       {scanNotice && <p role="status" className="pointer-events-none fixed left-1/2 top-16 z-[90] -translate-x-1/2 rounded-lg bg-emerald-900 px-4 py-2 text-sm font-bold text-emerald-50 shadow-lg">{scanNotice.text}</p>}
@@ -1132,7 +1202,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
           runsThroughBreaks={orderPreview?.options.runsThroughBreaks ?? gantt.runsThroughBreaks} onBreaksChange={gantt.changeBreaks}
           capacityPending={gantt.capacityPending} capacityError={gantt.capacityError} onCapacityChange={gantt.changeCapacity}
           pinMode={gantt.mode === 'forward' && view === 'resource' && pinMode} onTogglePin={togglePin}
-          selectedItemIds={selectedItemIds} onToggleItem={toggleItem} onCompleteToggle={toggleCompletion} completePending={completePending} onDueDrop={moveDueByDrag} onResourceReorder={reorderResourceByDrag}
+          selectedItemIds={selectedItemIds} onToggleItem={toggleItem} onCompleteToggle={toggleCompletion} completionPendingRowIds={completionPendingRowIds} onDueDrop={moveDueByDrag} onResourceReorder={reorderResourceByDrag}
           onResourceMove={moveResourceInGantt} canMoveResource={(item, resource) => data.resources.includes(resource) && canMoveResource(item, resource)}
           disabled={interactionLocked || (pinMode && writeQueue.pending)} dragDisabled={allocation !== 'alternate' || writeBlocked || interactionLocked || !rankMutationReady} />
       ) : data && view === 'seiban' && focusedFseiban && focusItems.length > 0 ? (
@@ -1145,7 +1215,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
             selectedItemIds={selectedItemIds}
             onBack={returnFromFocus}
             onToggleAll={toggleFocusAll}
-            onToggleItem={toggleItem} onCompleteToggle={toggleCompletion} completePending={completePending}
+            onToggleItem={toggleItem} onCompleteToggle={toggleCompletion} completionPendingRowIds={completionPendingRowIds}
             onResourceClick={openEditorForItem}
             onRankChange={changeRank}
             disabled={interactionLocked}
@@ -1175,7 +1245,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
                 onToggleOpen={actions.onToggleOpen}
                 onFocus={actions.onFocus}
                 onToggleAll={actions.onToggleAll}
-                onToggleItem={toggleItem} onCompleteToggle={toggleCompletion} completePending={completePending}
+                onToggleItem={toggleItem} onCompleteToggle={toggleCompletion} completionPendingRowIds={completionPendingRowIds}
                 onResourceClick={openEditorForItem}
                 onRankChange={changeRank}
                 disabled={interactionLocked}
@@ -1201,7 +1271,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
             resourceNameMap={resourcesQuery.data?.resourceNameMap ?? {}}
             allocation={allocation}
             selectedItemIds={selectedItemIds}
-            onToggleItem={toggleItem} onCompleteToggle={toggleCompletion} completePending={completePending}
+            onToggleItem={toggleItem} onCompleteToggle={toggleCompletion} completionPendingRowIds={completionPendingRowIds}
             onResourceClick={openEditorForItem}
             onResourceDrop={moveResourceByDrag}
             onResourceReorder={reorderResourceByDrag}

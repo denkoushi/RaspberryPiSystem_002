@@ -55,6 +55,36 @@ const baseParams = (overrides: Partial<Parameters<typeof projectGrindingPlanning
 });
 
 describe('grinding-planning-board-projection', () => {
+  it.each([
+    [false, false, null], [true, false, 'manual'], [false, true, 'import'], [true, true, 'import']
+  ] as const)('projects manual=%s external=%s as %s for rows and splits', (manual, external, completionSource) => {
+    const updatedAt = new Date('2026-09-01');
+    const sourceDetail = detail({
+      productionScheduleProgress: { isCompleted: manual, updatedAt },
+      productionScheduleExternalCompletion: { isExternallyCompleted: external, updatedAt }
+    });
+    const project = (value: GrindingPlanningBoardProjectionRowDetail) => projectGrindingPlanningBoard(baseParams({
+      details: new Map([['row-1', value]])
+    })).items;
+    expect(project(sourceDetail)[0]).toMatchObject({ kind: 'row', isCompleted: manual || external, completionSource });
+    const splits = project({ ...sourceDetail, orderSplits: [
+      { id: 'split-1', splitQuantity: 1, dueDate: null, updatedAt },
+      { id: 'split-2', splitQuantity: 2, dueDate: null, updatedAt }
+    ] });
+    expect(splits).toHaveLength(2);
+    for (const split of splits) expect(split).toMatchObject({ kind: 'split', isCompleted: manual || external, completionSource });
+  });
+
+  it('changes the item revision when manual completion becomes import completion', () => {
+    const updatedAt = new Date('2026-09-01');
+    const manual = detail({ productionScheduleProgress: { isCompleted: true, updatedAt } });
+    const project = (value: GrindingPlanningBoardProjectionRowDetail) => projectGrindingPlanningBoard(baseParams({
+      details: new Map([['row-1', value]])
+    })).items[0]!;
+    expect(project({ ...manual, productionScheduleExternalCompletion: { isExternallyCompleted: true, updatedAt } }).itemRevision)
+      .not.toBe(project(manual).itemRevision);
+  });
+
   it('exposes a pin without changing original resource, due or rank semantics', () => {
     const input = baseParams();
     const original = projectGrindingPlanningBoard(input).items[0]!;
