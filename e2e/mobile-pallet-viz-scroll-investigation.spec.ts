@@ -120,99 +120,59 @@ async function mockKioskPalletApis(page: Page, itemCount: number) {
 }
 
 test.describe('配膳スマホ パレット可視化 スクロール計測', () => {
-  test('main / カード一覧（PalletVizItemList ルート）の scrollHeight・overflow を記録', async ({ page }) => {
+  test('部品一覧だけが縦スクロールし、ページ全体は動かない', async ({ page }) => {
     await mockKioskPalletApis(page, 24);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/kiosk/mobile-placement/pallet-viz', { waitUntil: 'networkidle' });
-    await expect(page.getByRole('heading', { name: 'パレット可視化' })).toBeVisible();
-    await expect(page.locator('main ul.space-y-2 > li')).toHaveCount(24, { timeout: 15_000 });
+    await expect(page.getByRole('heading', { name: 'パレット' })).toBeVisible();
+    const list = page.locator('[data-pallet-viz-item-list-scroll]');
+    await expect(list.locator(':scope > button')).toHaveCount(24, { timeout: 15_000 });
 
     const metrics = await page.evaluate(() => {
-      const main = document.querySelector('main');
-      const pageRoot = main ? [...main.children].find((el) => el.tagName !== 'H1') : null;
-      const listUl = document.querySelector('main ul.space-y-2');
-      const listRoot = listUl?.parentElement ?? null;
-      /** カード一覧のみスクロール: PalletVizItemList ルートが scroll 担当 */
-      const scrollBlock = listRoot;
-
-      const snap = (el: Element | null, label: string) => {
-        if (!el) return { label, missing: true as const };
-        const st = getComputedStyle(el);
+      const snap = (el: Element | null) => {
+        if (!(el instanceof HTMLElement)) return null;
         return {
-          label,
-          missing: false as const,
-          tag: el.tagName,
-          className: typeof (el as HTMLElement).className === 'string' ? (el as HTMLElement).className : '',
-          overflowY: st.overflowY,
-          flexGrow: st.flexGrow,
-          minHeight: st.minHeight,
-          clientHeight: (el as HTMLElement).clientHeight,
-          scrollHeight: (el as HTMLElement).scrollHeight,
-          scrollTop: (el as HTMLElement).scrollTop,
-          canScrollY: (el as HTMLElement).scrollHeight > (el as HTMLElement).clientHeight,
+          overflowY: getComputedStyle(el).overflowY,
+          clientHeight: el.clientHeight,
+          scrollHeight: el.scrollHeight,
+          canScrollY: el.scrollHeight > el.clientHeight,
         };
       };
-
+      const html = document.documentElement;
       return {
-        main: snap(main, 'main'),
-        pageRoot: snap(pageRoot, 'pageRoot'),
-        scrollBlock: snap(scrollBlock ?? null, 'scrollBlock'),
-        listRoot: snap(listRoot, 'listRoot'),
+        list: snap(document.querySelector('[data-pallet-viz-item-list-scroll]')),
+        main: snap(document.querySelector('main')),
+        htmlCanScrollY: html.scrollHeight > html.clientHeight,
       };
     });
-
-    expect(metrics.main.missing, 'main が存在する').toBe(false);
-    expect(metrics.scrollBlock?.missing, 'ページ内 overflow-y スクロールブロックが見つかる').toBe(false);
-    expect(metrics.listRoot?.missing, '一覧ルートが特定できる').toBe(false);
-
-    if (!metrics.main.missing) {
-      expect(
-        metrics.main.canScrollY,
-        `オーバーフローはページ内ブロックで吸収し main はスクロールしない想定: ${JSON.stringify(metrics.main)}`
-      ).toBe(false);
-    }
-
-    if (metrics.scrollBlock && !metrics.scrollBlock.missing) {
-      expect(
-        metrics.scrollBlock.canScrollY,
-        `カード一覧ルートがスクロール可能であること: ${JSON.stringify(metrics.scrollBlock)}`
-      ).toBe(true);
-    }
-
-    if (metrics.listRoot && !metrics.listRoot.missing) {
-      expect(
-        metrics.listRoot.canScrollY,
-        `一覧ルート＝スクロールコンテナ: ${JSON.stringify(metrics.listRoot)}`
-      ).toBe(true);
-    }
-
-    // 調査ログ（HTML レポート・失敗時スクリーンショットと併せて確認可能）
     console.log('[pallet-viz-scroll-investigation]', JSON.stringify(metrics, null, 2));
 
-    // スクロールブロックが実際に scrollBy 可能であること（ホイールはボタン上では親へ伝播しない場合あり）
-    const scrollTopAfter = await page.evaluate(() => {
-      const listUl = document.querySelector('main ul.space-y-2');
-      const listRoot = listUl?.parentElement as HTMLElement | null;
-      if (!listRoot) return -1;
-      listRoot.scrollBy(0, 500);
-      return listRoot.scrollTop;
+    expect(metrics.list, '部品一覧が見つかる').not.toBeNull();
+    expect(metrics.list!.canScrollY, `部品一覧がスクロール可能: ${JSON.stringify(metrics.list)}`).toBe(true);
+    expect(metrics.main?.canScrollY ?? false, `main はスクロールしない: ${JSON.stringify(metrics.main)}`).toBe(false);
+    expect(metrics.htmlCanScrollY, 'ページ全体はスクロールしない').toBe(false);
+
+    const scrollTopAfter = await list.evaluate((el) => {
+      el.scrollBy(0, 500);
+      return el.scrollTop;
     });
-    expect(scrollTopAfter, 'カード一覧が scrollBy で縦移動できること').toBeGreaterThan(0);
+    expect(scrollTopAfter, '部品一覧が scrollBy で縦移動できること').toBeGreaterThan(0);
 
     await resetScrollPositions(page);
 
-    const beforeTenkeyWheel = await readPalletListScrollState(page);
-    const tkBox = await page.getByLabel('パレット番号テンキー').getByRole('button', { name: '5', exact: true }).boundingBox();
-    expect(tkBox, 'テンキー5の bbox').not.toBeNull();
-    await page.mouse.move(tkBox!.x + tkBox!.width / 2, tkBox!.y + tkBox!.height / 2);
+    const tileBox = await page
+      .getByRole('group', { name: 'パレット番号' })
+      .getByRole('button', { name: /^パレット 5・/ })
+      .boundingBox();
+    expect(tileBox, 'パレット5の bbox').not.toBeNull();
+    await page.mouse.move(tileBox!.x + tileBox!.width / 2, tileBox!.y + tileBox!.height / 2);
     await page.mouse.wheel(0, 900);
-    const afterTenkeyWheel = await readPalletListScrollState(page);
+    const afterTileWheel = await readPalletListScrollState(page);
+    console.log('[pallet-viz-scroll-wheel]', JSON.stringify({ afterTileWheel }, null, 2));
 
-    console.log('[pallet-viz-scroll-wheel]', JSON.stringify({ beforeTenkeyWheel, afterTenkeyWheel }, null, 2));
-
-    expect(afterTenkeyWheel.listTop ?? 0, 'テンキー上ホイールでは一覧は動かない').toBe(0);
-    expect(afterTenkeyWheel.mainTop ?? 0, 'テンキー上ホイール後も main は動かない').toBe(0);
-    expect(afterTenkeyWheel.htmlTop ?? 0, 'テンキー上ホイール後も html は動かない').toBe(0);
+    expect(afterTileWheel.listTop ?? 0, 'パレット番号の上でホイールしても一覧は動かない').toBe(0);
+    expect(afterTileWheel.mainTop ?? 0, 'パレット番号の上でホイール後も main は動かない').toBe(0);
+    expect(afterTileWheel.htmlTop ?? 0, 'パレット番号の上でホイール後も html は動かない').toBe(0);
   });
 });
 
@@ -223,14 +183,14 @@ test.describe('配膳スマホ パレット可視化 タッチ相当ドラッグ
   });
 
   /**
-   * CDP タッチは OS/Chromium 版でテンキー上の漏れ量がぶれるため、
-   * テンキー側は別テストの mouse wheel で検証し、ここではカード上のみを見る。
+   * CDP タッチは OS/Chromium 版でパレット番号上の漏れ量がぶれるため、
+   * パレット番号側は別テストの mouse wheel で検証し、ここではカード上のみを見る。
    */
   test('カード上 CDP タッチスワイプで一覧が縦スクロールする', async ({ page }) => {
     await mockKioskPalletApis(page, 24);
     await page.goto('/kiosk/mobile-placement/pallet-viz', { waitUntil: 'networkidle' });
-    await expect(page.getByRole('heading', { name: 'パレット可視化' })).toBeVisible();
-    await expect(page.locator('main ul.space-y-2 > li')).toHaveCount(24, { timeout: 15_000 });
+    await expect(page.getByRole('heading', { name: 'パレット' })).toBeVisible();
+    await expect(page.locator('[data-pallet-viz-item-list-scroll] > button')).toHaveCount(24, { timeout: 15_000 });
 
     await resetScrollPositions(page);
     const client = await page.context().newCDPSession(page);
