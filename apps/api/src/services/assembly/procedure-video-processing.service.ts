@@ -145,6 +145,11 @@ export class ProcedureVideoProcessingService {
           return true;
         }, this.db);
         if (!published) return;
+        try {
+          const { enqueueProcedureVideoAutoEdit } = await import('./procedure-video-auto-edit.service.js');
+          await enqueueProcedureVideoAutoEdit(video.id, this.db);
+        }
+        catch { logger.warn({ videoId: video.id }, 'Procedure video auto edit enqueue failed after READY'); }
         if (isTrim && video.storageKey && video.storageKey !== storageKey) await this.cleanupOutput(video.id, video.storageKey, video.posterStorageKey);
         if (video.sourceStorageKey) await this.cleanupOriginal(video.id, video.sourceStorageKey);
       } catch (error) {

@@ -5505,9 +5505,47 @@ model ProcedureVideo {
   links             ProcedureVideoLink[]
   comments          ProcedureVideoComment[]
   scenes            ProcedureVideoScene[]
+  autoEditSuggestions ProcedureVideoAutoEditSuggestion[]
 
   @@index([status, updatedAt])
   @@index([discardedAt, receivedAt])
+}
+
+enum ProcedureVideoAutoEditStatus {
+  PENDING
+  RUNNING
+  READY
+  FAILED
+  SKIPPED
+}
+
+enum ProcedureVideoAutoEditDecision {
+  APPLIED
+  DISMISSED
+}
+
+model ProcedureVideoAutoEditSuggestion {
+  id              String @id @default(uuid())
+  videoId         String
+  status          ProcedureVideoAutoEditStatus @default(PENDING)
+  decision        ProcedureVideoAutoEditDecision?
+  attempts        Int @default(0)
+  processingToken String?
+  modelRoute      String?
+  modelName       String?
+  promptVersion   String
+  suggestion      Json @default("{}")
+  verification    Json?
+  confirmed       Json?
+  decidedAt       DateTime?
+  errorCode       String?
+  errorMessage    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  video           ProcedureVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@index([videoId, createdAt])
+  @@index([status, createdAt])
 }
 
 model ProcedureVideoScene {

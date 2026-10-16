@@ -1,3 +1,6 @@
+import type { ProcedureVideoAutoEditApplyInput, ProcedureVideoAutoEditDismissInput } from '@raspi-system/shared-types';
+import { env } from '../../config/env.js';
+import { aggregateAutoEditStats, autoEditLatestOrder, PROCEDURE_VIDEO_AUTO_EDIT_PROMPT_VERSION, type AutoEditConfirmed } from './procedure-video-auto-edit.js';
 import { AssemblyProcedureDocumentEditLeaseService, type AssemblyProcedureEditActor } from './assembly-procedure-document-edit-lease.service.js';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
@@ -48,6 +51,14 @@ function sceneTitle(title: string | undefined) {
   return title?.trim();
 }
 
+function normalizeVideoComments(comments: Array<{ atSeconds: number; text: string }>, durationSeconds: number | null) {
+  const normalized = comments.map((comment) => ({ ...comment, text: comment.text.trim() })).sort((a, b) => a.atSeconds - b.atSeconds);
+  if (normalized.length > 5 || normalized.some((comment) => !Number.isFinite(comment.atSeconds) || comment.atSeconds < 0 || durationSeconds == null || comment.atSeconds > durationSeconds || comment.text.length < 1 || comment.text.length > 80)) {
+    throw new ApiError(400, 'コメントは5件まで、動画の範囲内の時刻と1〜80文字で入力してください');
+  }
+  return normalized;
+}
+
 export class ProcedureVideoService {
   constructor(
     private readonly db = defaultPrisma,
@@ -80,9 +91,9 @@ export class ProcedureVideoService {
   async list(params: { state: 'active' | 'discarded' | 'all'; q?: string; limit: number }) {
     const rows = await this.db.procedureVideo.findMany({
       where: { ...(params.state === 'active' ? { discardedAt: null } : params.state === 'discarded' ? { discardedAt: { not: null } } : {}), ...(params.q ? { OR: [{ title: { contains: params.q, mode: 'insensitive' as const } }, { subjectHint: { contains: params.q, mode: 'insensitive' as const } }] } : {}) },
-      orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }], take: params.limit, include: { _count: { select: { links: true, scenes: true } } }
+      orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }], take: params.limit, include: { _count: { select: { links: true, scenes: true } }, autoEditSuggestions: env.PROCEDURE_VIDEO_AUTO_EDIT_ENABLED ? { orderBy: autoEditLatestOrder, take: 1, select: { status: true, decision: true } } : false }
     });
-    return rows.map((row) => ({ id: row.id, title: row.title, origin: row.origin ?? 'GMAIL', status: row.status, durationSeconds: row.durationSeconds, hasPoster: Boolean(row.posterStorageKey), linkCount: row._count.links, sceneCount: row._count.scenes, errorCode: row.errorCode, errorMessage: row.errorMessage, discardedAt: row.discardedAt?.toISOString() ?? null }));
+    return rows.map((row) => ({ autoEdit: env.PROCEDURE_VIDEO_AUTO_EDIT_ENABLED ? row.autoEditSuggestions?.[0] ?? null : null, id: row.id, title: row.title, origin: row.origin ?? 'GMAIL', status: row.status, durationSeconds: row.durationSeconds, hasPoster: Boolean(row.posterStorageKey), linkCount: row._count.links, sceneCount: row._count.scenes, errorCode: row.errorCode, errorMessage: row.errorMessage, discardedAt: row.discardedAt?.toISOString() ?? null }));
   }
 
   async requestConcat(sourceVideoIds: string[], title?: string) {
@@ -256,13 +267,80 @@ export class ProcedureVideoService {
       const video = await tx.procedureVideo.findUnique({ where: { id } });
       if (!video) throw new ApiError(404, '動画がありません');
       if (video.status !== 'READY') throw new ApiError(409, '完了した動画だけコメントを編集できます');
-      const normalized = comments.map((comment) => ({ ...comment, text: comment.text.trim() })).sort((a, b) => a.atSeconds - b.atSeconds);
-      if (normalized.length > 5 || normalized.some((comment) => !Number.isFinite(comment.atSeconds) || comment.atSeconds < 0 || video.durationSeconds == null || comment.atSeconds > video.durationSeconds || comment.text.length < 1 || comment.text.length > 80)) {
-        throw new ApiError(400, 'コメントは5件まで、動画の範囲内の時刻と1〜80文字で入力してください');
-      }
+      const normalized = normalizeVideoComments(comments, video.durationSeconds);
       await tx.procedureVideoComment.deleteMany({ where: { videoId: id } });
       if (normalized.length) await tx.procedureVideoComment.createMany({ data: normalized.map((comment, sortOrder) => ({ videoId: id, ...comment, sortOrder })) });
       return tx.procedureVideoComment.findMany({ where: { videoId: id }, orderBy: { sortOrder: 'asc' } });
+    }, this.db);
+  }
+
+  private assertAutoEditEnabled() {
+    // 個別APIは409に統一し、案がない状態と機能無効を区別する。
+    if (!env.PROCEDURE_VIDEO_AUTO_EDIT_ENABLED) throw new ApiError(409, '自動編集は無効です');
+  }
+
+  async getAutoEdit(id: string) {
+    this.assertAutoEditEnabled();
+    if (!await this.db.procedureVideo.findUnique({ where: { id }, select: { id: true } })) throw new ApiError(404, '動画がありません');
+    return this.db.procedureVideoAutoEditSuggestion.findFirst({ where: { videoId: id }, orderBy: autoEditLatestOrder });
+  }
+
+  async autoEditStats() {
+    this.assertAutoEditEnabled();
+    const rows = await this.db.procedureVideoAutoEditSuggestion.findMany({ where: { decision: 'APPLIED' }, select: { suggestion: true, confirmed: true } });
+    return aggregateAutoEditStats(rows);
+  }
+
+  async applyAutoEdit(id: string, input: ProcedureVideoAutoEditApplyInput) {
+    this.assertAutoEditEnabled();
+    const oldScenes = await runAssemblyTransaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "ProcedureVideo" WHERE "id" = ${id} FOR UPDATE`;
+      const video = await tx.procedureVideo.findUnique({ where: { id } });
+      if (!video) throw new ApiError(404, '動画がありません');
+      if (video.status !== 'READY' || video.discardedAt || video.trimRequest) throw new ApiError(409, '完了した動画だけ採用できます');
+      const latest = await tx.procedureVideoAutoEditSuggestion.findFirst({ where: { videoId: id }, orderBy: autoEditLatestOrder });
+      if (!latest || latest.id !== input.suggestionId || latest.status !== 'READY' || latest.decision) throw new ApiError(409, '未決定の最新のAI案だけ採用できます');
+      const comments = normalizeVideoComments(input.comments, video.durationSeconds);
+      let scenes: AutoEditConfirmed['scenes'];
+      let previous: Array<{ id: string; posterStorageKey: string | null }> = [];
+      if (input.scenes !== undefined) {
+        if (input.scenes.length > 20) throw new ApiError(400, '場面は20件までです');
+        scenes = input.scenes.map((scene, index) => ({ title: sceneTitle(scene.title) || `場面 ${index + 1}`, ...sceneRange(video.durationSeconds, scene.startSeconds, scene.endSeconds) }));
+        if (await tx.procedureVideoLink.count({ where: { videoId: id, sceneId: { not: null } } })) throw new ApiError(409, 'ページに紐づいている場面は置き換えられません');
+        previous = await tx.procedureVideoScene.findMany({ where: { videoId: id }, select: { id: true, posterStorageKey: true } });
+        await tx.procedureVideoScene.deleteMany({ where: { videoId: id } });
+        if (scenes.length) await tx.procedureVideoScene.createMany({ data: scenes.map((scene) => ({ videoId: id, ...scene })) });
+      } else {
+        scenes = await tx.procedureVideoScene.findMany({ where: { videoId: id }, orderBy: [{ startSeconds: 'asc' }, { id: 'asc' }], select: { title: true, startSeconds: true, endSeconds: true } });
+      }
+      await tx.procedureVideoComment.deleteMany({ where: { videoId: id } });
+      if (comments.length) await tx.procedureVideoComment.createMany({ data: comments.map((comment, sortOrder) => ({ videoId: id, ...comment, sortOrder })) });
+      await tx.procedureVideoAutoEditSuggestion.update({ where: { id: latest.id }, data: { decision: 'APPLIED', confirmed: { comments, scenes }, decidedAt: new Date() } });
+      return previous;
+    }, this.db);
+    for (const scene of oldScenes) await this.cleanupScenePoster(scene.id, scene.posterStorageKey);
+  }
+
+  async dismissAutoEdit(id: string, input: ProcedureVideoAutoEditDismissInput) {
+    this.assertAutoEditEnabled();
+    await runAssemblyTransaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "ProcedureVideo" WHERE "id" = ${id} FOR UPDATE`;
+      if (!await tx.procedureVideo.findUnique({ where: { id } })) throw new ApiError(404, '動画がありません');
+      const latest = await tx.procedureVideoAutoEditSuggestion.findFirst({ where: { videoId: id }, orderBy: autoEditLatestOrder });
+      if (!latest || latest.id !== input.suggestionId || latest.status !== 'READY' || latest.decision) throw new ApiError(409, '未決定の最新のAI案だけ却下できます');
+      await tx.procedureVideoAutoEditSuggestion.update({ where: { id: latest.id }, data: { decision: 'DISMISSED', decidedAt: new Date() } });
+    }, this.db);
+  }
+
+  async regenerateAutoEdit(id: string) {
+    if (!env.PROCEDURE_VIDEO_AUTO_EDIT_ENABLED) throw new ApiError(409, '自動編集は無効です');
+    return runAssemblyTransaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "ProcedureVideo" WHERE "id" = ${id} FOR UPDATE`;
+      const video = await tx.procedureVideo.findUnique({ where: { id } });
+      if (!video) throw new ApiError(404, '動画がありません');
+      if (video.status !== 'READY' || video.discardedAt || !video.storageKey) throw new ApiError(409, '完了した動画だけ作り直せます');
+      if (await tx.procedureVideoAutoEditSuggestion.findFirst({ where: { videoId: id, status: { in: ['PENDING', 'RUNNING'] } } })) throw new ApiError(409, 'AI案を作成中です');
+      return tx.procedureVideoAutoEditSuggestion.create({ data: { videoId: id, status: 'PENDING', promptVersion: PROCEDURE_VIDEO_AUTO_EDIT_PROMPT_VERSION } });
     }, this.db);
   }
 

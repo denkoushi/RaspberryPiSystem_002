@@ -1201,6 +1201,20 @@ export async function listProcedureVideos(params: { state?: import('../../featur
   const { data } = await api.get<{ videos: import('../../features/assembly/procedure-manuals/procedure-video-types').ProcedureVideoDto[] }>('/assembly/procedure-videos', { params });
   return data.videos;
 }
+export async function getProcedureVideoAutoEdit(id: string) {
+  const { data } = await api.get<import('@raspi-system/shared-types').ProcedureVideoAutoEditDto | null>(`/assembly/procedure-videos/${encodeURIComponent(id)}/auto-edit`);
+  return data;
+}
+export async function applyProcedureVideoAutoEdit(id: string, input: import('@raspi-system/shared-types').ProcedureVideoAutoEditApplyInput) {
+  await api.post(`/assembly/procedure-videos/${encodeURIComponent(id)}/auto-edit/apply`, input);
+}
+export async function dismissProcedureVideoAutoEdit(id: string, input: import('@raspi-system/shared-types').ProcedureVideoAutoEditDismissInput) {
+  await api.post(`/assembly/procedure-videos/${encodeURIComponent(id)}/auto-edit/dismiss`, input);
+}
+export async function regenerateProcedureVideoAutoEdit(id: string) {
+  const { data } = await api.post<import('@raspi-system/shared-types').ProcedureVideoAutoEditDto>(`/assembly/procedure-videos/${encodeURIComponent(id)}/auto-edit/regenerate`);
+  return data;
+}
 export async function getProcedureVideoFile(id: string, signal?: AbortSignal) {
   const { data } = await api.get<Blob>(`/assembly/procedure-videos/${encodeURIComponent(id)}/file`, { responseType: 'blob', signal });
   return data;
