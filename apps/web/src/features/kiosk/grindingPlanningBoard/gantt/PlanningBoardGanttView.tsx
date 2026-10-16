@@ -13,7 +13,7 @@ import { chainBarElement, PlanningBoardChainLinks } from './PlanningBoardChainLi
 import { PlanningBoardChainStrip } from './PlanningBoardChainStrip';
 import { PlanningBoardForwardGanttRow } from './PlanningBoardForwardGanttRow';
 import { PlanningBoardForwardQueuePopover } from './PlanningBoardForwardQueuePopover';
-import { dayLabel, dayToDate, jstDay } from './planningBoardGanttLayout';
+import { dayLabel, dayToDate, jstDay, planningBoardVisibleBars } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH, GANTT_LABEL_WIDTH, PlanningBoardGanttRow } from './PlanningBoardGanttRow';
 import { planningBoardSeibanColor } from './planningBoardSeibanColor';
 
@@ -32,6 +32,8 @@ type Props = Pick<PlanningBoardGanttRowProps, 'disabled' | 'dragDisabled' | 'onT
   runsThroughBreaks?: ReadonlySet<string>;
   onBreaksChange?: (resourceCd: string, runsThroughBreaks: boolean) => void;
   colorBySeiban?: boolean;
+  focusedSeiban: string | null;
+  onFocusedSeibanChange: (seiban: string | null) => void;
   seibanOrder?: readonly string[];
   layout: GanttLayout;
   scale: number;
@@ -70,6 +72,7 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
 
 export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props>(function PlanningBoardGanttView({
   layout: sourceLayout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, runsThroughBreaks, onBreaksChange,
+  focusedSeiban, onFocusedSeibanChange: setFocusedSeiban,
   colorBySeiban = false, seibanOrder = [], preferenceScope = 'default', ...interaction
 }, ref) {
   // Dragging a machine name up or down reorders the lanes; the order is kept on this kiosk only.
@@ -92,24 +95,21 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const forward = layout.mode === 'forward';
   const seibanColors = useMemo(() => {
     if (!colorBySeiban) return undefined;
-    const seibans = [...new Set(layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars
-      .filter((bar) => forward ? bar.unknown || Boolean(bar.segments?.length) : bar.end != null)
-      .map((bar) => bar.item.fseiban))))];
+    const seibans = [...new Set(planningBoardVisibleBars(layout).map((bar) => bar.item.fseiban))];
     // The legend follows the left pane's seiban priority; seibans outside it keep their first-seen order at the end.
     const rank = (seiban: string) => { const index = seibanOrder.indexOf(seiban); return index < 0 ? seibanOrder.length : index; };
     seibans.sort((a, b) => rank(a) - rank(b));
     return new Map(seibans.map((seiban) => [seiban, planningBoardSeibanColor(seiban, seibanOrder)] as const));
-  }, [colorBySeiban, layout, forward, seibanOrder]);
-  const [focusedSeiban, setFocusedSeiban] = useState<string | null>(null);
+  }, [colorBySeiban, layout, seibanOrder]);
   useEffect(() => {
     if (focusedSeiban !== null && !seibanColors?.has(focusedSeiban)) setFocusedSeiban(null);
-  }, [focusedSeiban, seibanColors]);
+  }, [focusedSeiban, seibanColors, setFocusedSeiban]);
   useEffect(() => {
     if (focusedSeiban === null) return;
     const clear = (event: KeyboardEvent) => { if (event.key === 'Escape') setFocusedSeiban(null); };
     document.addEventListener('keydown', clear);
     return () => document.removeEventListener('keydown', clear);
-  }, [focusedSeiban]);
+  }, [focusedSeiban, setFocusedSeiban]);
   const legend = useRef<HTMLDivElement>(null);
   const [dragPreview, setDragPreview] = useState<ForwardDragPreview | null>(null);
   const dragLanes = useMemo(() => layout.groups.flatMap((group) => group.resource

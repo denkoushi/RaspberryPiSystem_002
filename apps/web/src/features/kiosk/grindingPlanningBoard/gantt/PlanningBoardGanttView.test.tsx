@@ -1,10 +1,20 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { forwardRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildPlanningBoardGanttLayout } from './planningBoardGanttLayout';
-import { PlanningBoardGanttView } from './PlanningBoardGanttView';
+import { PlanningBoardGanttView as ControlledPlanningBoardGanttView } from './PlanningBoardGanttView';
 
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
+
+// Exercise the controlled view with the same state ownership as the page.
+const PlanningBoardGanttView = forwardRef<import('./PlanningBoardGanttView').PlanningBoardGanttHandle,
+  Omit<React.ComponentPropsWithoutRef<typeof ControlledPlanningBoardGanttView>, 'focusedSeiban' | 'onFocusedSeibanChange'>>(
+  function TestGanttView(props, ref) {
+    const [focusedSeiban, setFocusedSeiban] = useState<string | null>(null);
+    return <ControlledPlanningBoardGanttView {...props} ref={ref} focusedSeiban={focusedSeiban} onFocusedSeibanChange={setFocusedSeiban} />;
+  }
+);
 
 class TestPointerEvent extends MouseEvent {
   readonly pointerId: number;

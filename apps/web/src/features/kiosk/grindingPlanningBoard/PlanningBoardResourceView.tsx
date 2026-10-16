@@ -22,6 +22,8 @@ import type {
 
 export type PlanningBoardResourceViewProps = {
   items: readonly GrindingPlanningBoardItem[];
+  focusedSeiban?: string | null;
+  scanFocusKey?: number;
   seibanOrder: readonly string[];
   resources: readonly string[];
   category?: GrindingPlanningBoardCategory;
@@ -147,6 +149,8 @@ function itemRowAtPoint(clientX: number, clientY: number, pane: HTMLElement): HT
 
 export function PlanningBoardResourceView({
   items,
+  focusedSeiban = null,
+  scanFocusKey = 0,
   seibanOrder,
   resources,
   category, resourceCategories, canMoveResource,
@@ -465,6 +469,15 @@ export function PlanningBoardResourceView({
   const orderedResources = useMemo(() => sortPlanningBoardResources(paneOrder.order, category, resourceCategories), [paneOrder.order, category, resourceCategories]);
   const groupsByResource = useMemo(() => new Map(groups), [groups]);
   const gridRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    if (!focusedSeiban) return;
+    gridRef.current?.querySelectorAll<HTMLElement>('[data-resource-scroll]').forEach((scroll) => {
+      const row = scroll.querySelector<HTMLElement>('[data-seiban-focused="true"]');
+      if (row) scroll.scrollTop += (row.getBoundingClientRect().top - scroll.getBoundingClientRect().top) / pageZoom();
+    });
+    // Scroll only when a new scan lands, not on every data refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanFocusKey]);
   const [expanded, setExpanded] = useState<ReadonlyMap<string, { layer: number; height: number }>>(new Map());
   const topLayerRef = useRef(0);
   const [heights, setHeights] = useState({ normal: 361, expanded: 722 });
@@ -590,6 +603,7 @@ export function PlanningBoardResourceView({
                 <div className="min-h-0 flex-1 overflow-y-auto" style={{ scrollbarGutter: 'stable' }} data-resource-scroll>
                   <PlanningBoardItemTable
                     items={resourceItems}
+                    focusedSeiban={focusedSeiban}
                     allocation={allocation}
                     selectedItemIds={selectedItemIds}
                     onToggleItem={onToggleItem}

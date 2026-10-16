@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { memo, useMemo } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 
 import { normalizeMachineName } from '../productionSchedule/machineName';
 
@@ -19,6 +19,8 @@ export type PlanningBoardSeibanPaneProps = {
   selectedItemIds: ReadonlySet<string>;
   isOpen: boolean;
   isFocused: boolean;
+  highlighted?: boolean;
+  scanFocusKey?: number;
   onToggleOpen: () => void;
   onFocus: () => void;
   onToggleAll: (selected: boolean) => void;
@@ -49,6 +51,8 @@ function arePanePropsEqual(
     previous.allocation === next.allocation &&
     previous.isOpen === next.isOpen &&
     previous.isFocused === next.isFocused &&
+    previous.highlighted === next.highlighted &&
+    previous.scanFocusKey === next.scanFocusKey &&
     previous.onToggleOpen === next.onToggleOpen &&
     previous.onFocus === next.onFocus &&
     previous.onToggleAll === next.onToggleAll &&
@@ -69,6 +73,8 @@ export const PlanningBoardSeibanPane = memo(function PlanningBoardSeibanPane({
   selectedItemIds,
   isOpen,
   isFocused,
+  highlighted = false,
+  scanFocusKey = 0,
   onToggleOpen,
   onFocus,
   onToggleAll,
@@ -79,6 +85,10 @@ export const PlanningBoardSeibanPane = memo(function PlanningBoardSeibanPane({
   rankDisabled = false,
   bulkDisabled = false
 }: PlanningBoardSeibanPaneProps) {
+  const paneRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (highlighted && isOpen) paneRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [highlighted, isOpen, scanFocusKey]);
   const selectableItems = useMemo(() => items.filter((item) => !item.isCompleted), [items]);
   const selectedSelectableCount = useMemo(
     () => selectableItems.filter((item) => selectedItemIds.has(item.itemId)).length,
@@ -94,8 +104,10 @@ export const PlanningBoardSeibanPane = memo(function PlanningBoardSeibanPane({
 
   return (
     <article
+      ref={paneRef}
       className={clsx(
         'min-w-0 overflow-hidden rounded-lg border bg-slate-900/85',
+        highlighted && 'ring-2 ring-white',
         isFocused ? 'border-emerald-400/70 shadow-lg shadow-emerald-950/30' : 'border-slate-800'
       )}
       data-testid={`planning-board-seiban-${fseiban}`}
