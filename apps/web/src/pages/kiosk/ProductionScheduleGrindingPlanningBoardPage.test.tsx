@@ -1848,6 +1848,20 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(within(drawer).getByRole('button', { name: '登録' })).toBeDisabled();
   });
 
+  it('登録製番を順位つきのリストで出し、端の行では動かせない向きを無効にする', () => {
+    renderSeibanBoard();
+
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    const rows = within(within(drawer).getByRole('list', { name: '登録製番' })).getAllByRole('listitem');
+    expect(rows.map((row) => row.textContent?.slice(0, 9))).toEqual(['1✓26-1041', '2✓26-1042']);
+    expect(within(drawer).getByText('2/50')).toBeInTheDocument();
+    expect(within(drawer).getByRole('button', { name: '製番26-1041を上へ' })).toBeDisabled();
+    expect(within(drawer).getByRole('button', { name: '製番26-1041を下へ' })).not.toBeDisabled();
+    expect(within(drawer).getByRole('button', { name: '製番26-1042を上へ' })).not.toBeDisabled();
+    expect(within(drawer).getByRole('button', { name: '製番26-1042を下へ' })).toBeDisabled();
+  });
+
   it('製番順409時は最新状態を明示取得できる', async () => {
     mocks.order.mockRejectedValueOnce({ isAxiosError: true, response: { status: 409 } });
     renderSeibanBoard();
