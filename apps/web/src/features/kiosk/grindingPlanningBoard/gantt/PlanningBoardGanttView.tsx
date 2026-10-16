@@ -163,7 +163,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const [viewportWidth, setViewportWidth] = useState(1120);
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
   const flaggedIndex = useRef(-1);
-  const previousAxis = useRef<{ start: number; dayWidth: number; scale: number; forward: boolean; homeKey: number; hour: number; today: number } | null>(null);
+  const previousAxis = useRef<{ start: number; dayWidth: number; scale: number; forward: boolean; homeKey: number; step: number; today: number } | null>(null);
   const labelWidth = forward ? GANTT_FORWARD_LABEL_WIDTH : GANTT_LABEL_WIDTH;
   const dayWidth = Math.max(1, viewportWidth - labelWidth) / (scale === 1 ? ONE_DAY_VISIBLE_DAYS : scale);
   const width = (layout.end - layout.start) * dayWidth;
@@ -189,17 +189,20 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     if (!viewport.current) return;
     const previous = previousAxis.current;
     // A scale press starts near today so a 2- or 4-day span does not open on past days; data changes keep the position.
-    // The ten-hour day starts an hour before now on the hour, never before the shift starts.
-    // Each new hour also returns to that position, so an unattended board keeps following the clock.
-    const nowHour = ((layout.now ?? jstDay(new Date())) - layout.today) * 24;
-    // Day fractions lose a little precision, so 14:00 can come out as 13.999…; the epsilon keeps it in the new hour.
-    const hour = Math.floor(nowHour + 1e-6);
-    const home = layout.today + (scale === 1 ? Math.max(SHIFT_START_HOUR, hour - 1) / 24 : forward || scale < 7 ? 0 : -3);
-    const firstDay = previous && previous.scale === scale && previous.forward === forward && previous.homeKey === homeKey && previous.hour === hour && previous.today === layout.today
+    // The one-day scale never opens before the shift starts. Backward charts open an hour before now on the hour.
+    // 「今日から」 has nothing before now, so it opens ten minutes before the current ten-minute step and keeps the bars at the left edge.
+    // Each new step also returns to that position, so an unattended board keeps following the clock.
+    const nowMinute = ((layout.now ?? jstDay(new Date())) - layout.today) * 24 * 60;
+    const stepMinutes = forward && scale === 1 ? 10 : 60;
+    // Day fractions lose a little precision, so 14:00 can come out as 13:59.99…; the epsilon keeps it in the new step.
+    const step = Math.floor(nowMinute / stepMinutes + 1e-6);
+    const homeMinute = forward ? step * stepMinutes - 10 : (step - 1) * stepMinutes;
+    const home = layout.today + (scale === 1 ? Math.max(SHIFT_START_HOUR * 60, homeMinute) / (24 * 60) : forward || scale < 7 ? 0 : -3);
+    const firstDay = previous && previous.scale === scale && previous.forward === forward && previous.homeKey === homeKey && previous.step === step && previous.today === layout.today
       ? previous.start + viewport.current.scrollLeft / previous.dayWidth
       : home;
     viewport.current.scrollLeft = Math.max(0, (firstDay - layout.start) * dayWidth);
-    previousAxis.current = { start: layout.start, dayWidth, scale, forward, homeKey, hour, today: layout.today };
+    previousAxis.current = { start: layout.start, dayWidth, scale, forward, homeKey, step, today: layout.today };
   }, [dayWidth, layout.start, layout.today, layout.now, scale, forward, homeKey]);
   const nudge = (direction: 1 | -1) => {
     if (viewport.current) viewport.current.scrollLeft = Math.max(0, viewport.current.scrollLeft + direction * NUDGE_DAYS * dayWidth);
