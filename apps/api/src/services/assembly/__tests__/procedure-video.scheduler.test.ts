@@ -18,8 +18,9 @@ describe('procedure-video scheduler', () => {
   it('runs the independent worker even when video processing fails', async () => {
     env.PROCEDURE_VIDEO_AUTO_EDIT_ENABLED = true; mocks.getAutoEdit.mockReturnValue({ runOnce: mocks.autoEdit });
     mocks.recover.mockResolvedValue(undefined); mocks.autoEdit.mockResolvedValue(undefined); mocks.processing.mockRejectedValue(new Error('encoding failed'));
-    new ProcedureVideoScheduler().kick(); await Promise.resolve();
-    expect(mocks.recover).toHaveBeenCalledOnce(); expect(mocks.autoEdit).toHaveBeenCalledOnce(); expect(mocks.processing).toHaveBeenCalledOnce();
+    new ProcedureVideoScheduler().kick();
+    await vi.waitFor(() => expect(mocks.autoEdit).toHaveBeenCalledOnce());
+    expect(mocks.recover).toHaveBeenCalledOnce(); expect(mocks.processing).toHaveBeenCalledOnce();
   });
   it('shares the once-per-minute schedule and stops without adding another cron task', () => {
     mocks.schedule.mockReturnValue({ stop: mocks.stop }); const scheduler = new ProcedureVideoScheduler();
