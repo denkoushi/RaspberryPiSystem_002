@@ -32,3 +32,12 @@
 ```bash
 cd apps/web && pnpm exec tsc -b && pnpm lint && pnpm test
 ```
+
+## 新デザイン（2026-10-16）
+
+上記は旧プレビューの記録。配膳スマホのハブと5画面（部品を探す・購買照会・パレット・Zero2W 配膳・棚マスタ）は [mobile-placement-redesign-mock.html](../design-previews/mobile-placement-redesign-mock.html) の見た目に置き換えた。購買照会と棚マスタは `useIsPhoneViewport()`（幅767px以下）のときだけ新表示で、据え置き端末は従来のまま。
+
+- 登録は照合が「一致」になってから。棚の欄は一致まで押せない。
+- 棚マスタの「棚を移す」は登録済みの棚どうしだけ。既存の移動APIが空きセルへの移動を扱わないため。
+- 部品検索の機種候補と Zero2W 一覧の端末名は、APIが返さないため出さない。
+- 右下の Hermes ボタンと重ならないよう、スマホ画面の下端操作は右に 84px 空ける（`haizenPhoneTokens.ts` の `hermesGutter`）。

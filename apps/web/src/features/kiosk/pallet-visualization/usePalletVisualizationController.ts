@@ -259,5 +259,6 @@ export function usePalletVisualizationController(options?: UsePalletVisualizatio
     deleteSelectedItem,
     clearCurrentPallet,
     mutationError,
+    phoneMutationError: mutationError ?? resolveMutationError(deleteMutation.error) ?? resolveMutationError(clearMutation.error),
   };
 }

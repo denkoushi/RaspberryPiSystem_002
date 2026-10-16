@@ -44,6 +44,7 @@
 | [loan-report-gap-bottleneck-preview.html](./loan-report-gap-bottleneck-preview.html) | **過不足ペイン案** — 余力vs需要圧の二段＋**アイテム単位ボトルネック5件**（同一ペイン・静的モック） |
 | [loan-report-group-timeseries-preview.html](./loan-report-group-timeseries-preview.html) | **過不足ペイン内・グループ経時** — A4 1枚想定、本番と同スケールのカード幅に<strong>薄型経時SVG＋ボトルネック2行</strong>を収めたモック |
 | [loan-report-item-surplus-preview.html](./loan-report-item-surplus-preview.html) | **貸出レポート・アイテム軸パネル** — 需要バー＋即時在庫ラインに **機械的な短文** を右列に足す案（本番と同面積想定） |
+| [mobile-placement-redesign-mock.html](./mobile-placement-redesign-mock.html) | 配膳スマホ 全6画面の見本、2026-10-16 採用 |
 | [mobile-placement-shelf-register-layout-preview.html](./mobile-placement-shelf-register-layout-preview.html) | **配膳スマホ・棚番登録** — 現状 vs 改善案（**確定をヘッダー「棚番を登録」**・選択中を右・見出し省略・番号拡大）。**実装は未反映** |
 | [mobile-placement-register-section-stack-preview.html](./mobile-placement-register-section-stack-preview.html) | **配膳スマホ・下半（登録済み棚番 + 製造order）** — エリア／列ボタンと製造order行の**重なり問題** vs **縦積み修正案**（`flex-1` 見直しのイメージ） |
 | [mobile-placement-verify-collapsible-preview.html](./mobile-placement-verify-collapsible-preview.html) | **配膳スマホ・照合の折りたたみ** — **既定は閉じる**・「展開」で移動票/現品票・閉じるで下半を広く。下半は棚6・QR・＋・製造order・**新規/既存/登録を1行**（登録は既存の右・見出し・ヒント文なし） |

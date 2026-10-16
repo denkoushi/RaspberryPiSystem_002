@@ -2,10 +2,8 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { BarcodeScanModal, KIOSK_STANDARD_BARCODE_SCAN_SESSION } from '../../features/barcode-scan';
-import { MobilePlacementRegisterSection } from '../../features/mobile-placement/components/MobilePlacementRegisterSection';
-import { MobilePlacementVerifySection } from '../../features/mobile-placement/components/MobilePlacementVerifySection';
+import { HaizenHub } from '../../features/mobile-placement/haizen/HaizenHub';
 import { isMobilePlacementShelfRegisterRouteState } from '../../features/mobile-placement/shelfSelection';
-import { mpKioskTheme } from '../../features/mobile-placement/ui/mobilePlacementKioskTheme';
 import { useMobilePlacementPageState } from '../../features/mobile-placement/useMobilePlacementPageState';
 import { useOrderPlacementBranches } from '../../features/mobile-placement/useOrderPlacementBranches';
 import { useRegisteredShelves } from '../../features/mobile-placement/useRegisteredShelves';
@@ -33,43 +31,6 @@ export function MobilePlacementPage() {
 
   return (
     <div className="flex min-h-0 w-full flex-col">
-      <div className="flex flex-wrap justify-end gap-2 px-3 pt-2">
-        <button
-          type="button"
-          className={mpKioskTheme.partSearchButton}
-          onClick={() => navigate('/kiosk/mobile-placement/shelf-master')}
-        >
-          棚マスタ
-        </button>
-        <button
-          type="button"
-          className={mpKioskTheme.partSearchButton}
-          onClick={() => navigate('/kiosk/mobile-placement/zero2w-status')}
-        >
-          棚番配膳一覧（Zero2W）
-        </button>
-        <button
-          type="button"
-          className={mpKioskTheme.partSearchButton}
-          onClick={() => navigate('/kiosk/mobile-placement/pallet-viz')}
-        >
-          パレット
-        </button>
-        <button
-          type="button"
-          className={mpKioskTheme.partSearchButton}
-          onClick={() => navigate('/kiosk/purchase-order-lookup')}
-        >
-          購買照会
-        </button>
-        <button
-          type="button"
-          className={mpKioskTheme.partSearchButton}
-          onClick={() => navigate('/kiosk/mobile-placement/part-search')}
-        >
-          部品名で棚を探す
-        </button>
-      </div>
       <input
         ref={actualSlipFileInputRef}
         type="file"
@@ -92,76 +53,16 @@ export function MobilePlacementPage() {
         onAbort={() => mp.setScanField(null)}
       />
 
-      <MobilePlacementVerifySection
-        transferOrder={mp.transferOrder}
-        transferPart={mp.transferPart}
-        actualOrder={mp.actualOrder}
-        actualFseiban={mp.actualFseiban}
-        actualPart={mp.actualPart}
-        onChangeTransferOrder={(v) => {
-          mp.setTransferOrder(v);
-          mp.resetSlipResult();
-        }}
-        onChangeTransferPart={(v) => {
-          mp.setTransferPart(v);
-          mp.resetSlipResult();
-        }}
-        onChangeActualOrder={(v) => {
-          mp.setActualOrder(v);
-          mp.resetSlipResult();
-          mp.resetActualSlipOcrFeedback();
-        }}
-        onChangeActualFseiban={(v) => {
-          mp.setActualFseiban(v);
-          mp.resetSlipResult();
-          mp.resetActualSlipOcrFeedback();
-        }}
-        onChangeActualPart={(v) => {
-          mp.setActualPart(v);
-          mp.resetSlipResult();
-          mp.resetActualSlipOcrFeedback();
-        }}
-        onScanTransferOrder={() => mp.setScanField('transferOrder')}
-        onScanTransferPart={() => mp.setScanField('transferPart')}
-        onScanActualOrder={() => mp.setScanField('actualOrder')}
-        onScanActualPart={() => mp.setScanField('actualPart')}
-        onPickActualSlipImage={() => actualSlipFileInputRef.current?.click()}
-        actualSlipImageOcrBusy={mp.actualSlipImageOcrBusy}
-        actualSlipOcrFeedback={mp.actualSlipOcrFeedback}
-        slipVerifying={mp.slipVerifying}
-        slipResult={mp.slipResult}
-        onVerify={() => void mp.runSlipVerify()}
-      />
-
-      <MobilePlacementRegisterSection
-        shelfCode={mp.shelfCode}
-        onSelectShelf={mp.selectShelf}
-        onOpenShelfRegister={() =>
-          navigate('/kiosk/mobile-placement/shelf-master', {
-            state: mp.buildShelfRegisterRouteState()
-          })
-        }
-        onShelfQrScan={() => mp.setScanField('shelf')}
-        registeredShelves={registeredShelvesQuery.data?.shelves ?? []}
-        registeredShelvesLoading={registeredShelvesQuery.isLoading}
-        registeredShelvesError={registeredShelvesQuery.isError}
-        onRetryRegisteredShelves={() => void registeredShelvesQuery.refetch()}
-        orderBarcode={mp.orderBarcode}
-        onOrderScan={() => mp.setScanField('order')}
-        orderPlacementIntent={mp.orderPlacementIntent}
-        onOrderPlacementIntentChange={mp.setOrderPlacementIntent}
-        branches={orderBranchesQuery.data?.branches ?? []}
-        branchesLoading={orderBranchesQuery.isLoading}
-        branchesError={orderBranchesQuery.isError}
-        onRetryBranches={() => void orderBranchesQuery.refetch()}
-        selectedBranchId={mp.selectedBranchId}
-        onSelectBranchId={mp.setSelectedBranchId}
+      <HaizenHub
+        mp={mp}
+        shelves={registeredShelvesQuery}
+        branches={orderBranchesQuery}
         suggestedNextBranchNo={suggestedNextBranchNo}
-        registerSubmitting={mp.registerSubmitting}
-        registerDisabled={mp.registerDisabled}
-        onRegister={() => void mp.runRegister()}
-        registerMessage={mp.registerMessage}
-        registerError={mp.registerError}
+        onNavigate={(path) => navigate(path)}
+        onShelfMaster={() => navigate('/kiosk/mobile-placement/shelf-master', {
+          state: mp.buildShelfRegisterRouteState()
+        })}
+        onPhoto={() => actualSlipFileInputRef.current?.click()}
       />
     </div>
   );

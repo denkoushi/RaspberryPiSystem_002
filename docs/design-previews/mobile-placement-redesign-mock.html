@@ -1,0 +1,879 @@
+<title>配膳スマホ 新画面</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Dela+Gothic+One&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: phone-portrait route ticket — three stubs (移動票 / 現品票 / 棚) stacked on a seam, one thumb button at the bottom drives the next scan. */
+:root{
+  color-scheme:dark;
+  --bg:#0d0f0e;          /* factory-floor black, faint green bias */
+  --panel:#171a19;
+  --panel-2:#1f2321;
+  --line:#2c312e;
+  --ink:#f2f4f1;
+  --ink-2:#a3aaa5;
+  --ink-3:#6c736e;
+  --slip:#38bdf8;        /* 移動票 */
+  --actual:#c4b5fd;      /* 現品票 */
+  --shelf:#fbbf24;       /* 棚 */
+  --ok:#34d399;
+  --ng:#f87171;
+  --font-body:"Zen Kaku Gothic New",system-ui,"Hiragino Sans",sans-serif;
+  --font-display:"Dela Gothic One","Zen Kaku Gothic New",system-ui,sans-serif;
+  --font-num:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:20px;display:flex;flex-direction:column;align-items:center;gap:14px}
+button{font:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+button:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+
+/* mock controls (outside the phone) */
+.demo{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;align-items:center;font-size:13px;color:var(--ink-2)}
+.demo button{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:6px 12px;font-size:13px}
+.demo button[aria-pressed="true"]{border-color:var(--ink);color:var(--ink)}
+
+/* phone */
+.phone{position:relative;width:min(390px,100%);height:min(844px,calc(100dvh - 90px));min-height:640px;
+  background:var(--bg);border:1px solid var(--line);border-radius:34px;overflow:hidden;
+  display:flex;flex-direction:column;box-shadow:0 30px 80px -30px #000}
+@media (max-width:460px){body{padding-left:0;padding-right:0;padding-block:0}.demo{padding:8px 16px 0}.phone{border:0;border-radius:0;height:calc(100dvh - 52px);width:100%}}
+
+.top{display:flex;align-items:center;gap:10px;padding:14px 16px 6px;height:52px;flex-shrink:0}
+.top h1{margin:0;font-family:var(--font-body);font-weight:900;font-size:19px;letter-spacing:.12em}
+.progress{display:flex;gap:4px;margin-left:auto}
+.progress i{width:18px;height:4px;border-radius:2px;background:var(--line);transition:background .3s}
+.progress i.on{background:var(--ink)}
+.icon-btn{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--panel);display:grid;place-items:center}
+.icon-btn svg{width:20px;height:20px}
+
+/* stubs */
+.route{flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;padding:6px 14px 0;position:relative}
+.stub{position:relative;border-radius:16px;background:var(--panel);border:1px solid var(--line);
+  padding:12px 14px 12px 18px;display:grid;grid-template-columns:1fr auto;align-items:center;gap:4px 10px;
+  min-height:96px;transition:border-color .25s,background .25s,opacity .25s;text-align:left;width:100%}
+.stub::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:4px;border-radius:0 4px 4px 0;background:var(--c)}
+.stub.slip{--c:var(--slip)} .stub.actual{--c:var(--actual)} .stub.shelf{--c:var(--shelf)}
+.stub.next{border-color:var(--c);background:var(--panel-2)}
+.stub.locked{opacity:.38}
+.stub .tag{grid-column:1;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--c);letter-spacing:.06em}
+.stub .val{grid-column:1;font-family:var(--font-num);font-weight:700;font-size:26px;letter-spacing:.02em;font-variant-numeric:tabular-nums;line-height:1.15}
+.stub .val.empty{font-family:var(--font-body);font-size:17px;font-weight:700;color:var(--ink-3);letter-spacing:0}
+.stub .sub{grid-column:1;font-size:14px;color:var(--ink-2);display:flex;gap:10px;flex-wrap:wrap}
+.stub .sub b{color:var(--ink);font-weight:700}
+.stub .side{grid-column:2;grid-row:1/span 3;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.mini{height:36px;min-width:36px;padding:0 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--ink-2)}
+.mini svg{width:18px;height:18px}
+.shelf .val.big{font-family:var(--font-display);font-weight:400;font-size:40px;color:var(--shelf);letter-spacing:.04em}
+
+/* match seal between 移動票 and 現品票 */
+.seal{position:absolute;right:28px;z-index:3;width:64px;height:64px;border-radius:50%;
+  display:grid;place-items:center;text-align:center;pointer-events:none;
+  border:3px solid var(--s);color:var(--s);background:color-mix(in srgb,var(--bg) 82%,var(--s));
+  font-family:var(--font-body);font-weight:900;line-height:1;transform:rotate(-12deg) scale(.4);opacity:0;transition:transform .32s cubic-bezier(.2,1.6,.4,1),opacity .2s}
+.seal.show{transform:rotate(-12deg) scale(1);opacity:1}
+.seal.ok{--s:var(--ok)} .seal.ng{--s:var(--ng)}
+.seal .k{font-size:26px} .seal .w{font-size:11px;font-family:var(--font-body);font-weight:900;letter-spacing:.1em;margin-top:2px}
+@media (prefers-reduced-motion:reduce){.seal{transition:none}}
+
+/* 分配 row */
+.branch{display:flex;align-items:center;gap:8px;padding:2px 2px 0;min-height:44px}
+.branch .lbl{font-size:13px;font-weight:700;color:var(--ink-2);letter-spacing:.06em;flex-shrink:0}
+.seg{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.seg button{height:40px;padding:0 14px;border-radius:12px;border:1px solid var(--line);background:var(--panel);font-weight:700;font-size:15px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.seg button[aria-pressed="true"]{border-color:var(--shelf);background:color-mix(in srgb,var(--panel) 70%,var(--shelf));color:var(--ink)}
+.seg button .n{font-size:11px;color:var(--ink-2);margin-left:4px;font-weight:500}
+
+/* thumb zone */
+.dock{flex-shrink:0;padding:10px 14px calc(16px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;align-items:stretch}
+.primary{flex:1;height:64px;border:0;border-radius:18px;background:var(--pc,var(--ink));color:#0d0f0e;
+  display:flex;align-items:center;justify-content:center;gap:12px;font-size:19px;font-weight:900;letter-spacing:.04em;transition:background .25s,transform .08s}
+.primary:active{transform:scale(.98)}
+.primary svg{width:26px;height:26px}
+.primary .to{font-family:var(--font-num);font-weight:700;font-size:21px;letter-spacing:.02em}
+.alt{width:64px;height:64px;border-radius:18px;border:1px solid var(--line);background:var(--panel);display:grid;place-items:center;align-content:center;gap:2px;font-size:11px;font-weight:700;color:var(--ink-2)}
+.alt svg{width:24px;height:24px;color:var(--ink)}
+
+/* scan overlay */
+.cam{position:absolute;inset:0;z-index:10;background:#050605;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px}
+.cam .frame{position:relative;width:78%;height:140px;border-radius:14px;
+  background:repeating-linear-gradient(90deg,#1c201e 0 3px,#0b0d0c 3px 5px,#1c201e 5px 6px,#0b0d0c 6px 10px);opacity:.9}
+.cam .frame::after{content:"";position:absolute;left:-6px;right:-6px;top:50%;height:2px;background:var(--cc);box-shadow:0 0 14px var(--cc);animation:sweep 1s ease-in-out infinite alternate}
+@keyframes sweep{from{transform:translateY(-48px)}to{transform:translateY(48px)}}
+@media (prefers-reduced-motion:reduce){.cam .frame::after{animation:none}}
+.cam .what{font-size:22px;font-weight:900;color:var(--cc);display:flex;align-items:center;gap:10px}
+.cam .close{position:absolute;top:16px;right:16px}
+
+/* shelf sheet */
+.scrim{position:absolute;inset:0;z-index:8;background:#000a}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:9;background:var(--panel);border-top:1px solid var(--line);border-radius:22px 22px 0 0;padding:14px 14px calc(18px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px}
+.sheet .grab{width:40px;height:4px;border-radius:2px;background:var(--line);align-self:center}
+.axis{display:grid;grid-template-columns:repeat(3,1fr) 12px repeat(3,1fr);gap:6px}
+.axis button{height:48px;border-radius:12px;border:1px solid var(--line);background:var(--bg);font-size:18px;font-weight:900}
+.axis button[aria-pressed="true"]{border-color:var(--shelf);color:var(--shelf)}
+.chips{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.chips button{height:56px;border-radius:12px;border:1px solid var(--line);background:var(--bg);font-family:var(--font-display);font-size:22px;color:var(--ink)}
+.chips button .p{display:block;font-family:var(--font-body);font-size:11px;color:var(--ink-3);font-weight:700}
+
+/* toast */
+.done{position:absolute;inset:0;z-index:12;background:color-mix(in srgb,var(--bg) 88%,var(--ok));display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}
+.done .big{font-family:var(--font-display);font-size:52px;color:var(--shelf)}
+.done .msg{font-size:20px;font-weight:900}
+.done svg{width:64px;height:64px;color:var(--ok)}
+
+.note{max-width:390px;font-size:13px;color:var(--ink-3);line-height:1.6;text-align:center;margin:0}
+
+/* ---------- sub screens ---------- */
+:root{--teal:#2dd4bf;--lime:#a3e635}
+.view{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
+.top .ttl-sub{font-size:12px;color:var(--ink-3);font-weight:700;letter-spacing:.04em}
+.scroll{flex:1;min-height:0;overflow-y:auto;padding:4px 14px 10px;display:flex;flex-direction:column;gap:8px;scrollbar-width:none}
+.scroll::-webkit-scrollbar{display:none}
+.toast{position:absolute;left:14px;right:14px;bottom:96px;z-index:7;background:var(--ink);color:var(--bg);border-radius:14px;padding:13px 16px;font-weight:900;font-size:15px;display:flex;gap:10px;align-items:center;animation:pop .22s ease-out;box-shadow:0 12px 30px -10px #000}
+.toast svg{width:20px;height:20px;color:#047857}
+@keyframes pop{from{transform:translateY(10px);opacity:0}}
+.seg2{display:flex;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--bg)}
+.seg2 button{flex:1;height:40px;padding:0 14px;border:0;background:transparent;font-size:14px;font-weight:900;color:var(--ink-3);white-space:nowrap}
+.seg2 button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.chip{height:36px;padding:0 13px;border-radius:999px;border:1px solid var(--line);background:var(--panel);font-size:13px;font-weight:700;color:var(--ink-2);white-space:nowrap;flex-shrink:0}
+.chip[aria-pressed="true"]{border-color:var(--ink);color:var(--ink)}
+.empty-state{margin:auto;text-align:center;color:var(--ink-3);font-size:15px;font-weight:700;display:grid;gap:10px;justify-items:center;padding:24px 0}
+.empty-state svg{width:44px;height:44px;opacity:.7}
+.ghost{height:64px;padding:0 16px;border-radius:18px;border:1px solid var(--line);background:var(--panel);font-weight:900;font-size:16px;display:flex;align-items:center;justify-content:center;gap:8px;flex:1}
+.ghost svg{width:22px;height:22px}
+.ghost.danger{color:var(--ng);border-color:color-mix(in srgb,var(--ng) 45%,var(--line))}
+
+/* menu */
+.menu{position:absolute;left:0;right:0;bottom:0;z-index:9;background:var(--panel);border-top:1px solid var(--line);border-radius:22px 22px 0 0;padding:14px 14px calc(18px + env(safe-area-inset-bottom,0px));display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.menu .grab{grid-column:1/-1;width:40px;height:4px;border-radius:2px;background:var(--line);justify-self:center;margin-bottom:4px}
+.tile{height:88px;border-radius:16px;border:1px solid var(--line);background:var(--bg);display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;padding:12px 14px;font-size:16px;font-weight:900;text-align:left}
+.tile svg{width:26px;height:26px;color:var(--tc)}
+.tile small{display:block;font-size:11px;color:var(--ink-3);font-weight:700;letter-spacing:.02em;margin-top:2px}
+
+/* 部品を探す */
+.qbox{margin:2px 14px 0;display:flex;align-items:center;gap:10px;height:58px;border-radius:16px;border:1.5px solid var(--shelf);background:var(--panel-2);padding:0 8px 0 14px;flex-shrink:0}
+.qbox>svg{width:22px;height:22px;color:var(--shelf);flex-shrink:0}
+.qtext{flex:1;font-size:23px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qtext.empty{color:var(--ink-3);font-size:17px;font-weight:700}
+.qcaret{width:2px;height:24px;background:var(--shelf);animation:blink 1s steps(1) infinite;flex-shrink:0;margin-left:-8px}
+@keyframes blink{50%{opacity:0}}
+.filters{display:flex;gap:6px;padding:8px 14px 6px;align-items:center;flex-shrink:0;overflow-x:auto;scrollbar-width:none}
+.count{margin-left:auto;font-size:13px;color:var(--ink-3);font-weight:700;white-space:nowrap;padding-left:6px}
+.hit{display:grid;grid-template-columns:auto 1fr;gap:1px 14px;align-items:center;border-radius:14px;border:1px solid var(--line);background:var(--panel);padding:10px 12px;text-align:left;width:100%;flex-shrink:0}
+.hit .code{grid-row:1/span 2;font-family:var(--font-num);font-weight:700;font-size:20px;color:var(--shelf);min-width:116px}
+.hit .nm{font-size:16px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hit .meta{font-size:12px;color:var(--ink-2);font-family:var(--font-num)}
+.hit[aria-pressed="true"]{border-color:var(--shelf);background:var(--panel-2)}
+.hit .more{grid-column:1/-1;display:none;font-size:12px;color:var(--ink-2);border-top:1px dashed var(--line);margin-top:8px;padding-top:8px;gap:4px 14px;flex-wrap:wrap;font-family:var(--font-num)}
+.hit .more b{color:var(--ink);font-weight:700}
+.hit[aria-pressed="true"] .more{display:flex}
+.hit mark{background:none;color:var(--shelf)}
+.kb{flex-shrink:0;border-top:1px solid var(--line);background:var(--panel);padding:8px 10px calc(10px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:7px}
+.presets{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.presets button{height:38px;padding:0 13px;border-radius:10px;border:1px solid color-mix(in srgb,var(--shelf) 40%,var(--line));background:var(--bg);color:var(--shelf);font-weight:900;font-size:15px;white-space:nowrap;flex-shrink:0}
+.keys{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;height:146px;overflow-y:auto;scrollbar-width:none;align-content:start}
+.keys button{height:44px;border-radius:10px;border:1px solid var(--line);background:var(--bg);font-size:19px;font-weight:900}
+.keys button:active,.presets button:active{background:var(--panel-2)}
+.keys .none{grid-column:1/-1;align-self:center;text-align:center;font-size:13px;color:var(--ink-3);font-weight:700;padding-top:46px}
+.kbrow{display:flex;gap:6px}
+.kbrow .seg2 button{height:42px}
+.kbrow .del{margin-left:auto;height:42px;padding:0 16px;border-radius:12px;border:1px solid color-mix(in srgb,var(--ng) 45%,var(--line));background:var(--bg);color:var(--ng);display:flex;align-items:center;gap:6px;font-weight:900;font-size:14px}
+.kbrow .del svg{width:20px;height:20px}
+
+/* 棚マスタ */
+.modebar{padding:0 14px 8px;flex-shrink:0}
+.fmap{flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:8px;padding:0 14px 6px}
+.zone{border-radius:14px;border:1px solid var(--line);background:var(--panel);padding:9px;display:flex;flex-direction:column;gap:7px;text-align:left;min-height:0}
+.zone .zn{font-size:14px;font-weight:900;display:flex;justify-content:space-between;align-items:baseline;gap:4px}
+.zone .zn small{font-size:11px;color:var(--ink-3);font-weight:700;white-space:nowrap}
+.mm{flex:1;display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(4,1fr);gap:3px;min-height:0}
+.mm i{border-radius:3px;background:var(--panel-2)}
+.mm i.S{background:var(--shelf)} .mm i.M{background:var(--teal)} .mm i.A{background:repeating-linear-gradient(135deg,var(--line) 0 2px,transparent 2px 4px)} .mm i.E{background:transparent;border:1px dashed var(--line)}
+.zone.has-from{border-color:var(--shelf)}
+.axes{display:flex;justify-content:space-between;padding:0 18px 4px;font-size:11px;color:var(--ink-3);font-weight:900;letter-spacing:.1em;flex-shrink:0}
+.zgrid{flex:1;min-height:0;display:grid;grid-template-columns:30px repeat(4,1fr) 30px;grid-template-rows:30px repeat(4,1fr) 30px;gap:6px;padding:0 10px 6px}
+.edge{border:1px solid var(--line);border-radius:10px;background:var(--panel);font-size:12px;font-weight:900;color:var(--ink-2);display:flex;align-items:center;justify-content:center;gap:4px;padding:0}
+.edge.v{writing-mode:vertical-rl;letter-spacing:.1em}
+.edge.v .ar{display:inline-block;writing-mode:horizontal-tb;margin-bottom:4px}
+.edge.n{grid-column:2/6;grid-row:1} .edge.s{grid-column:2/6;grid-row:6} .edge.w{grid-column:1;grid-row:2/6} .edge.e{grid-column:6;grid-row:2/6}
+.cell{border-radius:12px;border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-weight:900;position:relative;background:var(--panel);min-height:0;padding:0}
+.cell.S{border-color:color-mix(in srgb,var(--shelf) 50%,var(--line));color:var(--shelf)}
+.cell .no{font-family:var(--font-num);font-size:26px;line-height:1}
+.cell .pre{font-size:10px;color:var(--ink-3);font-weight:700}
+.cell.M{background:color-mix(in srgb,var(--panel) 72%,var(--teal));border-color:transparent;color:var(--ink);font-size:12px;font-family:var(--font-num)}
+.cell.M .k{font-size:10px;color:var(--teal);font-family:var(--font-body)}
+.cell.A{background:repeating-linear-gradient(135deg,var(--panel) 0 7px,var(--bg) 7px 14px);color:var(--ink-3);font-size:11px}
+.cell.E{background:transparent;border-style:dashed;color:var(--ink-3);font-size:11px}
+.cell.drop{border:1.5px solid var(--ok);color:var(--ok);background:color-mix(in srgb,var(--bg) 88%,var(--ok))}
+.cell.from{outline:3px solid var(--shelf);outline-offset:2px;animation:pulse .7s ease-in-out infinite alternate}
+.cell.sel{outline:3px solid var(--ink);outline-offset:2px}
+.cell .z2{position:absolute;top:5px;right:6px;width:8px;height:8px;border-radius:50%;background:var(--slip);box-shadow:0 0 0 2px var(--panel)}
+@keyframes pulse{to{outline-color:transparent}}
+@media (prefers-reduced-motion:reduce){.cell.from,.qcaret{animation:none}}
+.mstatus{flex-shrink:0;padding:6px 14px calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px}
+.sline{min-height:56px;border-radius:16px;background:var(--panel);border:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 8px 0 16px;font-size:16px;font-weight:900}
+.sline .dot{width:10px;height:10px;border-radius:50%;background:var(--sc,var(--ink-3));flex-shrink:0}
+.sline .code{font-family:var(--font-num);color:var(--shelf)}
+.sline .mini{margin-left:auto}
+.types{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.types button{height:54px;border-radius:12px;border:1px solid var(--line);background:var(--panel);font-weight:900;font-size:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+.types button i{width:16px;height:10px;border-radius:3px;display:block}
+.legend{display:flex;gap:12px;justify-content:center;font-size:11px;color:var(--ink-3);font-weight:700}
+.legend span{display:flex;align-items:center;gap:4px}
+.legend i{width:10px;height:10px;border-radius:3px;display:block}
+.row2{display:flex;gap:8px}
+.row2 .ghost{height:52px;font-size:15px}
+.row2 .primary{height:52px;font-size:16px}
+
+/* パレット */
+.machines{display:flex;gap:6px;overflow-x:auto;padding:0 14px 8px;scrollbar-width:none;flex-shrink:0}
+.machines .chip{height:40px;font-size:14px;font-family:var(--font-num);font-weight:700}
+.machines .chip[aria-pressed="true"]{border-color:var(--teal);color:var(--teal);background:color-mix(in srgb,var(--panel) 82%,var(--teal))}
+.pallets{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;padding:0 14px 10px;flex-shrink:0}
+.pal{height:62px;border-radius:14px;border:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0}
+.pal b{font-family:var(--font-num);font-size:24px;line-height:1}
+.pal .dots{display:flex;gap:3px;height:6px}
+.pal .dots i{width:6px;height:6px;border-radius:50%;background:var(--teal)}
+.pal .dots i.more{width:auto;height:auto;background:none;font-size:10px;line-height:6px;color:var(--teal);font-style:normal;font-weight:900}
+.pal[aria-pressed="true"]{border-color:var(--teal);background:color-mix(in srgb,var(--panel) 70%,var(--teal))}
+.pal[aria-pressed="true"] .dots i{background:var(--ink)} .pal[aria-pressed="true"] .dots i.more{color:var(--ink);background:none}
+.palhead{display:flex;align-items:center;gap:10px;padding:2px 14px 8px;flex-shrink:0;border-top:1px solid var(--line);padding-top:10px}
+.palhead .pn{font-family:var(--font-num);font-size:26px;font-weight:700;color:var(--teal);line-height:1}
+.palhead .pl{font-size:13px;color:var(--ink-2);font-weight:700}
+.palhead .clear{margin-left:auto;height:34px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--ng);font-size:13px;font-weight:900}
+.palhead .clear.arm{background:var(--ng);color:var(--bg);border-color:var(--ng)}
+.item{display:grid;grid-template-columns:1fr auto;gap:2px 12px;align-items:center;border-radius:14px;border:1px solid var(--line);background:var(--panel);padding:10px 14px;text-align:left;width:100%;flex-shrink:0}
+.item .nm{font-size:16px;font-weight:900}
+.item .meta{font-size:12px;color:var(--ink-2);font-family:var(--font-num)}
+.item .qty{grid-column:2;grid-row:1/span 2;font-family:var(--font-num);font-size:24px;font-weight:700;color:var(--teal)}
+.item .qty small{font-size:12px;color:var(--ink-3);margin-right:1px}
+.item[aria-pressed="true"]{border-color:var(--ink);background:var(--panel-2)}
+
+/* 購買照会 */
+.ponum{margin:2px 14px 10px;border-radius:18px;background:var(--panel);border:1px solid var(--line);padding:14px 16px 14px 20px;position:relative;flex-shrink:0}
+.ponum::before{content:"";position:absolute;left:0;top:16px;bottom:16px;width:4px;border-radius:0 4px 4px 0;background:var(--lime)}
+.ponum .lbl{font-size:13px;font-weight:700;color:var(--lime);letter-spacing:.06em;display:flex;justify-content:space-between}
+.ponum .lbl span{color:var(--ink-2)}
+.digits{font-family:var(--font-num);font-size:36px;font-weight:700;letter-spacing:.04em;line-height:1.2;margin-top:2px}
+.digits .g{color:var(--line)}
+.porow{border-radius:16px;border:1px solid var(--line);background:var(--panel);padding:12px 14px;display:grid;grid-template-columns:1fr auto;gap:8px 10px;flex-shrink:0}
+.porow .mc{font-size:24px;font-weight:900;font-family:var(--font-num);line-height:1.1}
+.porow .qty{grid-column:2;grid-row:1;font-family:var(--font-num);font-size:28px;font-weight:700;color:var(--lime);line-height:1.1}
+.porow .qty small{font-size:13px;color:var(--ink-3);font-family:var(--font-body);margin-left:2px}
+.porow dl{grid-column:1/-1;margin:0;display:grid;grid-template-columns:auto 1fr auto 1fr;gap:6px 10px;font-size:15px;align-items:baseline}
+.porow dt{color:var(--ink-3);font-weight:700;font-size:12px}
+.porow dd{margin:0;font-weight:700;font-family:var(--font-num)}
+.porow dd.jp{font-family:var(--font-body);font-weight:900}
+.porow .diff{grid-column:1/-1;font-size:12px;color:var(--shelf);font-weight:700}
+
+/* Zero2W */
+.live{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-3);font-weight:700;margin-left:auto;white-space:nowrap}
+.live i{width:8px;height:8px;border-radius:50%;background:var(--ok);animation:breathe 1.8s ease-in-out infinite}
+@keyframes breathe{50%{opacity:.2}}
+.zrow{display:grid;grid-template-columns:124px minmax(0,1fr) auto;gap:2px 10px;align-items:center;padding:10px 12px;border-radius:14px;background:var(--panel);border:1px solid var(--line);flex-shrink:0}
+.zrow .code{grid-row:1/span 2;white-space:nowrap;letter-spacing:-.02em;font-family:var(--font-num);font-weight:700;font-size:16px;color:var(--shelf)}
+.zrow .code small{display:block;font-size:11px;color:var(--ink-3);font-family:var(--font-body);font-weight:700}
+.zrow .nm{font-weight:900;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.zrow .meta{font-size:12px;color:var(--ink-2);font-family:var(--font-num);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.zrow .t{font-size:12px;color:var(--ink-3);font-weight:700;text-align:right;white-space:nowrap}
+.pill{font-size:11px;font-weight:900;padding:3px 8px;border-radius:999px;border:1px solid;white-space:nowrap;justify-self:end}
+.pill.ok{color:var(--ok)} .pill.wait{color:var(--shelf)}
+.zrow.fresh{animation:flash 1.2s ease-out}
+@keyframes flash{from{background:color-mix(in srgb,var(--panel) 60%,var(--ok))}}
+</style>
+
+<div class="demo" role="group" aria-label="モックの切り替え">
+  <span>例:</span>
+  <button id="sc-ok" aria-pressed="true">一致する</button>
+  <button id="sc-ng" aria-pressed="false">一致しない</button>
+  <button id="sc-reset">最初から</button>
+</div>
+
+<div class="demo" id="screens" role="group" aria-label="画面の切り替え">
+  <span>画面:</span>
+  <button data-go="main" aria-pressed="true">配膳</button><button data-go="search" aria-pressed="false">部品を探す</button><button data-go="po" aria-pressed="false">購買照会</button><button data-go="pallet" aria-pressed="false">パレット</button><button data-go="zero" aria-pressed="false">Zero2W</button><button data-go="master" aria-pressed="false">棚マスタ</button>
+</div>
+
+<div class="phone" id="phone">
+  <section class="view" id="v-main">
+  <header class="top">
+    <h1>配膳</h1>
+    <div class="progress" aria-hidden="true"><i></i><i></i><i></i></div>
+    <button class="icon-btn" id="menu" aria-label="ほかの画面">
+      <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+    </button>
+  </header>
+
+  <main class="route" id="route">
+    <button class="stub slip" id="st-slip" type="button">
+      <span class="tag">移動票</span>
+      <span class="val empty" id="v-slip">製造order を読む</span>
+      <span class="sub" id="s-slip"></span>
+      <span class="side" id="x-slip"></span>
+    </button>
+
+    <button class="stub actual" id="st-actual" type="button">
+      <span class="tag">現品票</span>
+      <span class="val empty" id="v-actual">注文番号 を読む</span>
+      <span class="sub" id="s-actual"></span>
+      <span class="side"><span class="mini" id="photo" role="button" aria-label="写真から読む" title="写真から読む">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>写真</span></span>
+    </button>
+
+    <div class="seal" id="seal" aria-live="polite"><div><div class="k" id="seal-k">合</div><div class="w" id="seal-w">一致</div></div></div>
+
+    <button class="stub shelf" id="st-shelf" type="button">
+      <span class="tag">棚</span>
+      <span class="val empty" id="v-shelf">棚の QR を読む</span>
+      <span class="sub" id="s-shelf"></span>
+      <span class="side" id="x-shelf"></span>
+    </button>
+
+    <div class="branch" id="branch" hidden>
+      <span class="lbl">分配</span>
+      <div class="seg" role="group" aria-label="分配">
+        <button aria-pressed="true" data-b="new">新規<span class="n">分配3</span></button>
+        <button aria-pressed="false" data-b="1">分配1<span class="n">東-南-05</span></button>
+        <button aria-pressed="false" data-b="2">分配2<span class="n">西-北-02</span></button>
+      </div>
+    </div>
+  </main>
+
+  <footer class="dock">
+    <button class="primary" id="primary" type="button"></button>
+    <button class="alt" id="alt" type="button" hidden aria-label="一覧から棚を選ぶ">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>一覧
+    </button>
+  </footer>
+  </section>
+
+  <section class="view" id="v-search" hidden>
+    <header class="top">
+      <button class="icon-btn" data-go="main" aria-label="配膳に戻る"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <h1>部品を探す</h1>
+    </header>
+    <div class="qbox">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+      <div class="qtext empty" id="q-text"></div><span class="qcaret" id="q-caret"></span>
+      <button class="icon-btn" id="q-clear" aria-label="全部消す" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="filters" id="q-mach"></div>
+    <div class="scroll" id="q-list"></div>
+    <div class="kb">
+      <div class="presets" id="q-presets"></div>
+      <div class="keys" id="q-keys"></div>
+      <div class="kbrow">
+        <div class="seg2" id="q-mode"><button data-m="kana" aria-pressed="true">かな</button><button data-m="abc" aria-pressed="false">英数</button></div>
+        <button class="del" id="q-del" aria-label="1文字消す"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5h11v14H9l-6-7z"/><path d="M12.5 9.5l5 5M17.5 9.5l-5 5"/></svg>1字消す</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="v-master" hidden>
+    <header class="top">
+      <button class="icon-btn" id="m-back" aria-label="戻る"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <h1 id="m-title">棚マスタ</h1>
+    </header>
+    <div class="modebar"><div class="seg2" id="m-mode"><button data-m="move" aria-pressed="true">棚を移す</button><button data-m="layout" aria-pressed="false">配置を変える</button></div></div>
+    <div class="axes" id="m-axes"><span>西</span><span>中央</span><span>東</span></div>
+    <div class="fmap" id="m-map"></div>
+    <div class="zgrid" id="m-zone" hidden></div>
+    <div class="mstatus" id="m-status"></div>
+  </section>
+
+  <section class="view" id="v-pallet" hidden>
+    <header class="top">
+      <button class="icon-btn" data-go="main" aria-label="配膳に戻る"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <h1>パレット</h1>
+    </header>
+    <div class="machines" id="p-mach" role="group" aria-label="加工機"></div>
+    <div class="pallets" id="p-grid" role="group" aria-label="パレット番号"></div>
+    <div class="palhead"><span class="pn" id="p-no"></span><span class="pl" id="p-label"></span><button class="clear" id="p-clear">全部外す</button></div>
+    <div class="scroll" id="p-list"></div>
+    <footer class="dock" id="p-dock"></footer>
+  </section>
+
+  <section class="view" id="v-po" hidden>
+    <header class="top">
+      <button class="icon-btn" data-go="main" aria-label="配膳に戻る"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <h1>購買照会</h1>
+    </header>
+    <div class="ponum"><div class="lbl">注文番号<span id="po-st"></span></div><div class="digits" id="po-digits"></div></div>
+    <div class="scroll" id="po-list"></div>
+    <footer class="dock"><button class="primary" id="po-scan" style="--pc:var(--lime)"></button></footer>
+  </section>
+
+  <section class="view" id="v-zero" hidden>
+    <header class="top">
+      <button class="icon-btn" data-go="main" aria-label="配膳に戻る"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <h1>Zero2W 配膳</h1>
+      <span class="live"><i></i>自動で更新</span>
+      <button class="icon-btn" id="z-refresh" aria-label="今すぐ更新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v4h-4"/></svg></button>
+    </header>
+    <div class="filters" id="z-filter"></div>
+    <div class="scroll" id="z-list"></div>
+  </section>
+
+  <div class="cam" id="cam" hidden>
+    <button class="icon-btn close" id="cam-close" aria-label="閉じる">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <div class="what" id="cam-what"></div>
+    <div class="frame"></div>
+  </div>
+
+  <div class="scrim" id="scrim" hidden></div>
+  <div class="sheet" id="sheet" hidden role="dialog" aria-label="棚を選ぶ">
+    <div class="grab"></div>
+    <div class="axis" id="axis">
+      <button data-a="西" aria-pressed="true">西</button><button data-a="中央" aria-pressed="false">中央</button><button data-a="東" aria-pressed="false">東</button>
+      <span></span>
+      <button data-l="北" aria-pressed="true">北</button><button data-l="中央" aria-pressed="false">中央</button><button data-l="南" aria-pressed="false">南</button>
+    </div>
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <div class="scrim" id="menu-scrim" hidden></div>
+  <div class="menu" id="menu-sheet" hidden role="dialog" aria-label="ほかの画面">
+    <div class="grab"></div>
+    <button class="tile" data-go="search" style="--tc:var(--shelf)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg><span>部品を探す<small>名前から棚を見つける</small></span></button>
+    <button class="tile" data-go="po" style="--tc:var(--lime)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg><span>購買照会<small>注文番号を読む</small></span></button>
+    <button class="tile" data-go="pallet" style="--tc:var(--teal)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 15h18M5 15v4M12 15v4M19 15v4"/><rect x="5" y="6" width="6" height="9" rx="1"/><rect x="13" y="9" width="6" height="6" rx="1"/></svg><span>パレット<small>加工機ごとの部品</small></span></button>
+    <button class="tile" data-go="zero" style="--tc:var(--slip)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="4" y="9" width="16" height="11" rx="2"/><path d="M8 6a6 6 0 0 1 8 0M10 3.5a9 9 0 0 1 4 0"/><path d="M8 14h4"/></svg><span>Zero2W 配膳<small>棚スキャナの記録</small></span></button>
+    <button class="tile" data-go="master" style="--tc:var(--actual);grid-column:1/-1;height:64px;flex-direction:row;align-items:center;justify-content:flex-start;gap:14px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>棚マスタ<small>工場の棚の配置を変える</small></span></button>
+  </div>
+
+  <div class="done" id="done" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M4 12.5l5 5L20 6.5"/></svg>
+    <div class="big" id="done-shelf"></div>
+    <div class="msg">に置きました</div>
+  </div>
+</div>
+
+<p class="note">見本です。ボタンを押すと読み取り済みとして進みます。</p>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const DATA = {
+    slip: { order: '0002178005', seiban: 'BA1S2201', name: 'ブラケット取付板' },
+    actualOk: { po: '4501238876' },
+    actualNg: { po: '4501240113', seiban: 'BA1S2310' },
+  };
+  const ICON = {
+    scan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 9v6M10 9v6M13 9v6M17 9v6"/></svg>',
+    qr: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h3v-3"/></svg>',
+    check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><path d="M4 12.5l5 5L20 6.5"/></svg>',
+    redo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4h4"/></svg>',
+  };
+  let scenario = 'ok';
+  let s;
+  const reset = () => { s = { slip: null, actual: null, match: null, shelf: null, branch: 'new' }; render(); };
+
+  function step() {
+    if (!s.slip) return 'slip';
+    if (!s.actual || s.match === 'ng') return 'actual';
+    if (!s.shelf) return 'shelf';
+    return 'confirm';
+  }
+
+  function render() {
+    const st = step();
+    // stubs
+    const slip = $('st-slip'), actual = $('st-actual'), shelf = $('st-shelf');
+    [slip, actual, shelf].forEach((el) => el.classList.remove('next', 'locked'));
+    ({ slip, actual, shelf })[st]?.classList.add('next');
+    if (!s.slip) { actual.classList.add('locked'); shelf.classList.add('locked'); }
+    else if (s.match !== 'ok') shelf.classList.add('locked');
+
+    setVal('slip', s.slip ? s.slip.order : '製造order を読む', !s.slip,
+      s.slip ? `製番 <b>${s.slip.seiban}</b><span>${s.slip.name}</span>` : '');
+    $('x-slip').innerHTML = s.slip ? `<span class="mini" aria-hidden="true">${ICON.redo}</span>` : '';
+    setVal('actual', s.actual ? s.actual.po : '注文番号 を読む', !s.actual,
+      s.actual ? (s.match === 'ok' ? `製番 <b>${s.slip.seiban}</b><span>同じ品番</span>` : `製番 <b style="color:var(--ng)">${s.actual.seiban}</b><span>品番も違う</span>`) : '');
+    setVal('shelf', s.shelf ? s.shelf : '棚の QR を読む', !s.shelf, s.shelf ? '前回もこの棚' : '');
+    $('v-shelf').classList.toggle('big', !!s.shelf);
+    $('x-shelf').innerHTML = s.shelf ? `<span class="mini" aria-hidden="true">${ICON.redo}</span>` : '';
+
+    // seal sits on the seam between 現品票 and 棚
+    const seal = $('seal');
+    seal.className = 'seal' + (s.match ? ' show ' + s.match : '');
+    $('seal-k').textContent = s.match === 'ng' ? '違' : '合';
+    $('seal-w').textContent = s.match === 'ng' ? '不一致' : '一致';
+    seal.style.top = (actual.offsetTop + (actual.offsetHeight - 64) / 2) + 'px';
+    $('photo').hidden = !!s.actual;
+
+    $('branch').hidden = !s.shelf;
+    document.querySelectorAll('.progress i').forEach((i, n) => i.classList.toggle('on', n < ['slip', 'actual', 'shelf', 'confirm'].indexOf(st) || st === 'confirm'));
+
+    // dock
+    const p = $('primary');
+    const ngRetry = s.match === 'ng';
+    const cfg = {
+      slip: { c: 'var(--slip)', h: `${ICON.scan}移動票を読む` },
+      actual: { c: ngRetry ? 'var(--ng)' : 'var(--actual)', h: `${ICON.scan}${ngRetry ? '現品票を読み直す' : '現品票を読む'}` },
+      shelf: { c: 'var(--shelf)', h: `${ICON.qr}棚を読む` },
+      confirm: { c: 'var(--ok)', h: `${ICON.check}<span class="to">${s.shelf}</span>に置く` },
+    }[st];
+    p.style.setProperty('--pc', cfg.c);
+    p.innerHTML = cfg.h;
+    $('alt').hidden = st !== 'shelf';
+  }
+
+  function setVal(k, text, empty, sub) {
+    const v = $('v-' + k);
+    v.textContent = text; v.classList.toggle('empty', empty);
+    $('s-' + k).innerHTML = sub;
+  }
+
+  // fake scanner
+  let camTimer;
+  function fakeScan(label, color, icon, cb) {
+    const cam = $('cam');
+    cam.style.setProperty('--cc', color);
+    $('cam-what').innerHTML = icon.replace('<svg', '<svg width="28" height="28"') + label;
+    cam.hidden = false;
+    camTimer = setTimeout(() => { cam.hidden = true; cb(); }, 650);
+  }
+  function scan(kind) {
+    const label = { slip: '移動票', actual: '現品票', shelf: '棚の QR' }[kind];
+    const color = { slip: 'var(--slip)', actual: 'var(--actual)', shelf: 'var(--shelf)' }[kind];
+    fakeScan(label, color, kind === 'shelf' ? ICON.qr : ICON.scan, () => {
+      if (kind === 'slip') { s.slip = DATA.slip; if (s.actual) evalMatch(); }
+      if (kind === 'actual') {
+        s.actual = scenario === 'ok' || s.match === 'ng' ? DATA.actualOk : DATA.actualNg;
+        evalMatch();
+      }
+      if (kind === 'shelf') s.shelf = '西-北-02';
+      render();
+    });
+  }
+  function evalMatch() { s.match = s.actual === DATA.actualOk ? 'ok' : 'ng'; }
+  $('cam-close').onclick = () => { clearTimeout(camTimer); $('cam').hidden = true; };
+
+  $('primary').onclick = () => {
+    const st = step();
+    if (st === 'confirm') {
+      $('done-shelf').textContent = s.shelf; $('done').hidden = false;
+      setTimeout(() => { $('done').hidden = true; reset(); }, 1500);
+    } else scan(st);
+  };
+  $('st-slip').onclick = () => scan('slip');
+  $('st-actual').onclick = (e) => { if (e.target.closest('#photo')) return; if (s.slip) scan('actual'); };
+  $('st-shelf').onclick = () => { if (s.match === 'ok') scan('shelf'); };
+
+  // shelf sheet
+  const sel = { a: '西', l: '北' };
+  function chips() {
+    $('chips').innerHTML = ['01', '02', '03', '04', '05', '06', '07', '08'].map((n) =>
+      `<button data-n="${n}"><span class="p">${sel.a}-${sel.l}</span>${n}</button>`).join('');
+  }
+  function openSheet(open) { $('sheet').hidden = !open; $('scrim').hidden = !open; if (open) chips(); }
+  $('alt').onclick = () => openSheet(true);
+  $('scrim').onclick = () => openSheet(false);
+  $('axis').onclick = (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const key = b.dataset.a ? 'a' : 'l';
+    sel[key] = b.dataset[key];
+    $('axis').querySelectorAll(`[data-${key}]`).forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    chips();
+  };
+  $('chips').onclick = (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    s.shelf = `${sel.a}-${sel.l}-${b.dataset.n}`; openSheet(false); render();
+  };
+  document.querySelector('.seg').onclick = (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    document.querySelectorAll('.seg button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  };
+
+  const setScenario = (v) => { go('main'); scenario = v; $('sc-ok').setAttribute('aria-pressed', String(v === 'ok')); $('sc-ng').setAttribute('aria-pressed', String(v === 'ng')); reset(); };
+  $('sc-ok').onclick = () => setScenario('ok');
+  $('sc-ng').onclick = () => setScenario('ng');
+  $('sc-reset').onclick = () => { go('main'); reset(); };
+  // ---------- shared ----------
+  const CHECK_S = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><path d="M4 12.5l5 5L20 6.5"/></svg>';
+  let toastTimer;
+  function toast(html) {
+    document.querySelectorAll('.toast').forEach((t) => t.remove());
+    const t = document.createElement('div'); t.className = 'toast'; t.innerHTML = CHECK_S + '<span>' + html + '</span>';
+    $('phone').appendChild(t); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.remove(), 1800);
+  }
+  const VIEWS = { main: () => render(), search: () => rSearch(), master: () => rMaster(), pallet: () => rPallet(), po: () => rPo(), zero: () => rZero() };
+  function go(v) {
+    Object.keys(VIEWS).forEach((k) => { $('v-' + k).hidden = k !== v; });
+    menu(false);
+    document.querySelectorAll('#screens button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.go === v)));
+    VIEWS[v]();
+  }
+  function menu(open) { $('menu-sheet').hidden = !open; $('menu-scrim').hidden = !open; }
+  document.addEventListener('click', (e) => { const b = e.target.closest('[data-go]'); if (b) go(b.dataset.go); });
+  $('menu').onclick = () => menu(true);
+  $('menu-scrim').onclick = () => menu(false);
+
+  // ---------- 部品を探す ----------
+  const PARTS = [
+    { name: '脚（左）', kana: 'あしひだり', code: 'MD00412163', shelf: '西-北-01', seiban: 'BA1S2201', order: '0002178005', machine: 'DAD3350' },
+    { name: '脚（右）', kana: 'あしみぎ', code: 'MD00412164', shelf: '西-北-01', seiban: 'BA1S2201', order: '0002178006', machine: 'DAD3350' },
+    { name: '脚カバー', kana: 'あしかばー', code: 'MD00415520', shelf: '東-南-05', seiban: 'BA1S2310', order: '0002178101', machine: 'L300KP' },
+    { name: 'アジャスタボルト', kana: 'あじゃすたぼると', code: 'BT20012', shelf: '中央-北-03', seiban: 'BA1S2201', order: '0002178033', machine: 'DAD3350' },
+    { name: 'ナット M12', kana: 'なっと', code: 'FH-01', shelf: '西-中央-07', seiban: 'BE1', order: '0002179012', machine: 'MH-X' },
+    { name: 'サドル', kana: 'さどる', code: 'SD-2040', shelf: '東-北-04', seiban: 'BA1S2310', order: '0002178120', machine: 'L300KP' },
+    { name: 'ベースプレート', kana: 'べーすぷれーと', code: 'BP-7781', shelf: '中央-南-01', seiban: 'BA1S2201', order: '0002178040', machine: 'DAD3350' },
+    { name: 'ベアリングホルダ', kana: 'べありんぐほるだ', code: 'BH-0330', shelf: '中央-中央-06', seiban: 'BE1', order: '0002179020', machine: 'MH-X' },
+    { name: 'モータ取付台', kana: 'もーたとりつけだい', code: 'MT-1102', shelf: '東-中央-02', seiban: 'BA1S2310', order: '0002178133', machine: 'L300KP' },
+    { name: 'ブラケット取付板', kana: 'ぶらけっととりつけいた', code: 'MD00413390', shelf: '西-北-02', seiban: 'BA1S2201', order: '0002178005', machine: 'DAD3350' },
+    { name: 'カラー φ20', kana: 'からー', code: 'CL-020', shelf: '西-南-08', seiban: 'BE1', order: '0002179031', machine: 'MH-X' },
+    { name: 'テーブル天板', kana: 'てーぶるてんいた', code: 'TB-5500', shelf: '東-南-01', seiban: 'BA1S2310', order: '0002178150', machine: 'L300KP' },
+  ];
+  const PRESETS = ['脚', '足', 'テーブル', 'ボルト', 'アシ', 'ナット', 'サドル', 'ベース', 'カラー', 'ベアリング', 'モータ'];
+  const QMACH = ['すべて', 'DAD3350', 'L300KP', 'MH-X'];
+  const KANA_ORDER = 'あいうえおかきくけこがぎぐげごさしすせそざじずぜぞたちつてとだぢづでどなにぬねのはひふへほばびぶべぼぱぴぷぺぽまみむめもやゆよらりるれろわをんっゃゅょー';
+  const toHira = (t) => t.replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
+  let q = '', qm = 'すべて', qmode = 'kana', qpick = null;
+  const machOk = (p) => qm === 'すべて' || p.machine === qm;
+  function qMatch(p, w) {
+    if (!w) return true;
+    const h = toHira(w).toLowerCase();
+    return p.name.includes(w) || toHira(p.name).includes(h) || p.kana.includes(h) || p.code.toLowerCase().includes(h);
+  }
+  function nextKeys(hits) {
+    const set = new Set();
+    if (qmode === 'kana') {
+      const h = toHira(q);
+      if (!/^[ぁ-ゖー]*$/.test(h)) return null;
+      hits.forEach((p) => { for (let i = p.kana.indexOf(h); i >= 0; i = p.kana.indexOf(h, i + 1)) { const c = p.kana[i + h.length]; if (c) set.add(c); if (!h) break; } if (!h) [...p.kana].forEach((c) => set.add(c)); });
+      return [...set].sort((a, b) => KANA_ORDER.indexOf(a) - KANA_ORDER.indexOf(b));
+    }
+    const h = q.toLowerCase();
+    if (!/^[a-z0-9-]*$/.test(h)) return null;
+    hits.forEach((p) => { const c = p.code.toLowerCase(); for (let i = c.indexOf(h); i >= 0; i = c.indexOf(h, i + 1)) { const n = c[i + h.length]; if (n) set.add(n.toUpperCase()); if (!h) break; } if (!h) [...c].forEach((x) => set.add(x.toUpperCase())); });
+    return [...set].sort();
+  }
+  function rSearch() {
+    const hits = PARTS.filter((p) => machOk(p) && qMatch(p, q));
+    $('q-text').textContent = q || '部品名・品番';
+    $('q-text').classList.toggle('empty', !q);
+    $('q-clear').hidden = !q;
+    $('q-mach').innerHTML = QMACH.map((m) => `<button class="chip" data-m="${m}" aria-pressed="${m === qm}">${m === 'すべて' ? '全機種' : m}</button>`).join('') +
+      `<span class="count">${q ? hits.length + '件' : '全' + hits.length + '件'}</span>`;
+    const esc = (t) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    $('q-list').innerHTML = hits.length ? hits.map((p) => {
+      const nm = q && p.name.includes(q) ? esc(p.name).replace(esc(q), `<mark>${esc(q)}</mark>`) : esc(p.name);
+      return `<button class="hit" data-k="${p.code}" aria-pressed="${qpick === p.code}">
+        <span class="code">${p.shelf}</span><span class="nm">${nm}</span>
+        <span class="meta">${p.machine} · ${p.seiban}</span>
+        <span class="more"><span>製造order <b>${p.order}</b></span><span>品番 <b>${p.code}</b></span><span>製番 <b>${p.seiban}</b></span></span></button>`;
+    }).join('') : `<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5M8.5 11h5"/></svg>見つかりません</div>`;
+    const base = PARTS.filter(machOk);
+    $('q-presets').innerHTML = PRESETS.filter((w) => w !== q && base.some((p) => qMatch(p, w))).map((w) => `<button data-w="${w}">${w}</button>`).join('');
+    const keys = nextKeys(hits);
+    $('q-keys').innerHTML = keys && keys.length ? keys.map((c) => `<button data-c="${c}">${c}</button>`).join('')
+      : `<span class="none">${hits.length ? '下の候補から選ぶ' : '1字消して戻す'}</span>`;
+    document.querySelectorAll('#q-mode button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.m === qmode)));
+  }
+  $('q-mach').onclick = (e) => { const b = e.target.closest('[data-m]'); if (!b) return; qm = b.dataset.m; rSearch(); };
+  $('q-list').onclick = (e) => { const b = e.target.closest('.hit'); if (!b) return; qpick = qpick === b.dataset.k ? null : b.dataset.k; rSearch(); };
+  $('q-presets').onclick = (e) => { const b = e.target.closest('[data-w]'); if (!b) return; q = b.dataset.w; qpick = null; rSearch(); };
+  $('q-keys').onclick = (e) => { const b = e.target.closest('[data-c]'); if (!b) return; q += b.dataset.c; qpick = null; rSearch(); };
+  $('q-mode').onclick = (e) => { const b = e.target.closest('[data-m]'); if (!b) return; qmode = b.dataset.m; rSearch(); };
+  $('q-del').onclick = () => { q = [...q].slice(0, -1).join(''); rSearch(); };
+  $('q-clear').onclick = () => { q = ''; qpick = null; rSearch(); };
+
+  // ---------- 棚マスタ ----------
+  const AREAS = ['西', '中央', '東'], LINES = ['北', '中央', '南'];
+  const PATS = ['SSAMSSAEAAAAMSSE', 'MSSAESSAAAAASSSM', 'SSSEAAAASMSSEASS'];
+  const MNAMES = ['L300KP', 'DAD3350', 'MH-X', 'NV5000'];
+  const Z = {}; let mcount = 0;
+  LINES.forEach((l, li) => AREAS.forEach((a, ai) => {
+    let n = 0;
+    Z[`${a}|${l}`] = [...PATS[(li + ai) % 3]].map((t) => t === 'S' ? { t, code: `${a}-${l}-${String(++n).padStart(2, '0')}`, z2: n === 1 }
+      : t === 'M' ? { t, name: MNAMES[mcount++ % 4] } : { t });
+  }));
+  const zl = (k) => k.replace('|', '・');
+  let mMode = 'move', mZone = null, mFrom = null, mSel = new Set(), mDirty = false;
+  const counts = (k) => Z[k].reduce((c, x) => (c[x.t] = (c[x.t] || 0) + 1, c), {});
+  function rMaster() {
+    $('m-title').textContent = mZone ? zl(mZone) : '棚マスタ';
+    document.querySelectorAll('#m-mode button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.m === mMode)));
+    $('m-map').hidden = !!mZone; $('m-axes').hidden = !!mZone; $('m-zone').hidden = !mZone;
+    if (!mZone) {
+      $('m-map').innerHTML = LINES.map((l) => AREAS.map((a) => {
+        const k = `${a}|${l}`, c = counts(k);
+        return `<button class="zone${mFrom && mFrom.z === k ? ' has-from' : ''}" data-z="${k}"><span class="zn">${zl(k)}<small>棚${c.S || 0}</small></span>
+          <span class="mm">${Z[k].map((x) => `<i class="${x.t}"></i>`).join('')}</span></button>`;
+      }).join('')).join('');
+    } else {
+      const [a, l] = mZone.split('|'), ai = AREAS.indexOf(a), li = LINES.indexOf(l);
+      const nb = { n: li > 0 && `${a}|${LINES[li - 1]}`, s: li < 2 && `${a}|${LINES[li + 1]}`, w: ai > 0 && `${AREAS[ai - 1]}|${l}`, e: ai < 2 && `${AREAS[ai + 1]}|${l}` };
+      const arrow = { n: '↑', s: '↓', w: '←', e: '→' };
+      const edges = Object.entries(nb).map(([d, k]) => k ? `<button class="edge ${d}${d === 'w' || d === 'e' ? ' v' : ''}" data-nz="${k}"><span class="ar">${arrow[d]}</span>${zl(k)}</button>` : `<span class="edge ${d}" style="visibility:hidden"></span>`).join('');
+      const cells = Z[mZone].map((x, i) => {
+        const r = Math.floor(i / 4) + 2, c = (i % 4) + 2;
+        const key = `${mZone}#${i}`;
+        let cls = `cell ${x.t}`, body = '';
+        if (x.t === 'S') { const [pa, pl, no] = x.code.split('-'); body = `${`${pa}|${pl}` !== mZone ? `<span class="pre">${pa}-${pl}</span>` : ''}<span class="no">${no}</span>${x.z2 ? '<span class="z2" title="Zero2W 担当"></span>' : ''}`; }
+        if (x.t === 'M') body = `<span class="k">加工機</span>${x.name}`;
+        if (x.t === 'A') body = '通路';
+        if (x.t === 'E') body = mMode === 'move' && mFrom ? 'ここへ' : '空き';
+        if (mMode === 'move' && mFrom && x.t === 'E') cls += ' drop';
+        if (mMode === 'move' && mFrom && mFrom.z === mZone && mFrom.i === i) cls += ' from';
+        if (mMode === 'layout' && mSel.has(key)) cls += ' sel';
+        return `<button class="${cls}" style="grid-row:${r};grid-column:${c}" data-i="${i}">${body}</button>`;
+      }).join('');
+      $('m-zone').innerHTML = edges + cells;
+    }
+    // status dock
+    const st = $('m-status');
+    const legend = `<div class="legend"><span><i style="background:var(--shelf)"></i>棚</span><span><i style="background:var(--teal)"></i>加工機</span><span><i style="background:repeating-linear-gradient(135deg,var(--line) 0 2px,transparent 2px 4px)"></i>通路</span><span><i style="border:1px dashed var(--ink-3)"></i>空き</span><span><i style="background:var(--slip);border-radius:50%"></i>Zero2W</span></div>`;
+    if (!mZone && !mFrom) { st.innerHTML = `<div class="sline"><span class="dot"></span>区画をタップ</div>${legend}`; return; }
+    if (mMode === 'move') {
+      if (!mFrom) st.innerHTML = `<div class="sline" style="--sc:var(--shelf)"><span class="dot"></span>動かす棚をタップ</div>${legend}`;
+      else {
+        const fc = Z[mFrom.z][mFrom.i].code;
+        st.innerHTML = `<div class="sline" style="--sc:var(--ok)"><span class="dot"></span><span class="code">${fc}</span>の置き先をタップ<button class="mini" id="m-cancel">やめる</button></div>${legend}`;
+      }
+      return;
+    }
+    if (!mSel.size) { st.innerHTML = `<div class="sline"><span class="dot"></span>変える区画をタップ（複数可）</div>${mDirty ? `<div class="row2"><button class="primary" id="m-save" style="--pc:var(--ok)">${CHECK_S}保存する</button></div>` : legend}`; return; }
+    const one = mSel.size === 1 ? Z[mZone][+[...mSel][0].split('#')[1]] : null;
+    st.innerHTML = `<div class="types">
+      <button data-t="S"><i style="background:var(--shelf)"></i>棚</button><button data-t="M"><i style="background:var(--teal)"></i>加工機</button>
+      <button data-t="A"><i style="background:repeating-linear-gradient(135deg,var(--ink-3) 0 2px,transparent 2px 4px)"></i>通路</button><button data-t="E"><i style="border:1px dashed var(--ink-3)"></i>空き</button></div>
+      <div class="row2"><button class="ghost" id="m-unsel">選択をやめる ${mSel.size}</button>${one && one.t === 'S' ? `<button class="ghost" id="m-z2" style="color:var(--slip)">Zero2W ${one.z2 ? '外す' : '付ける'}</button>` : ''}<button class="primary" id="m-save" style="--pc:var(--ok)">${CHECK_S}保存</button></div>`;
+  }
+  $('m-mode').onclick = (e) => { const b = e.target.closest('[data-m]'); if (!b) return; mMode = b.dataset.m; mFrom = null; mSel.clear(); rMaster(); };
+  $('m-map').onclick = (e) => { const b = e.target.closest('[data-z]'); if (!b) return; mZone = b.dataset.z; mSel.clear(); rMaster(); };
+  $('m-back').onclick = () => { if (mZone) { mZone = null; mSel.clear(); rMaster(); } else go('main'); };
+  $('m-zone').onclick = (e) => {
+    const nz = e.target.closest('[data-nz]'); if (nz) { mZone = nz.dataset.nz; mSel.clear(); rMaster(); return; }
+    const b = e.target.closest('[data-i]'); if (!b) return;
+    const i = +b.dataset.i, x = Z[mZone][i];
+    if (mMode === 'move') {
+      if (x.t === 'S' && !mFrom) mFrom = { z: mZone, i };
+      else if (mFrom && mFrom.z === mZone && mFrom.i === i) mFrom = null;
+      else if (mFrom && x.t === 'E') {
+        const src = Z[mFrom.z][mFrom.i]; Z[mZone][i] = { ...src }; Z[mFrom.z][mFrom.i] = { t: 'E' };
+        toast(`${src.code} を ${zl(mZone)} に移しました`); mFrom = null;
+      } else if (x.t === 'S') mFrom = { z: mZone, i };
+    } else {
+      const k = `${mZone}#${i}`; mSel.has(k) ? mSel.delete(k) : mSel.add(k);
+    }
+    rMaster();
+  };
+  $('m-status').onclick = (e) => {
+    const t = e.target.closest('[data-t]');
+    if (t) {
+      const [a, l] = mZone.split('|');
+      mSel.forEach((k) => {
+        const i = +k.split('#')[1];
+        if (t.dataset.t === 'S') {
+          if (Z[mZone][i].t === 'S') return;
+          const max = Math.max(0, ...Object.values(Z).flat().filter((x) => x.t === 'S' && x.code.startsWith(`${a}-${l}-`)).map((x) => +x.code.split('-')[2]));
+          Z[mZone][i] = { t: 'S', code: `${a}-${l}-${String(max + 1).padStart(2, '0')}` };
+        } else if (t.dataset.t === 'M') Z[mZone][i] = { t: 'M', name: MNAMES[mcount++ % 4] };
+        else Z[mZone][i] = { t: t.dataset.t };
+      });
+      mDirty = true; rMaster(); return;
+    }
+    if (e.target.closest('#m-cancel')) { mFrom = null; rMaster(); }
+    if (e.target.closest('#m-unsel')) { mSel.clear(); rMaster(); }
+    if (e.target.closest('#m-z2')) { const x = Z[mZone][+[...mSel][0].split('#')[1]]; x.z2 = !x.z2; mDirty = true; rMaster(); }
+    if (e.target.closest('#m-save')) { mSel.clear(); mDirty = false; toast('配置を保存しました'); rMaster(); }
+  };
+
+  // ---------- パレット ----------
+  const POOL = [
+    { seiban: 'BA1S2201', code: 'MD00412163', name: '脚（左）', qty: 4, start: '10/18', order: '0002178005' },
+    { seiban: 'BA1S2201', code: 'MD00413390', name: 'ブラケット取付板', qty: 2, start: '10/18', order: '0002178006' },
+    { seiban: 'BA1S2310', code: 'SD-2040', name: 'サドル', qty: 1, start: '10/21', order: '0002178120' },
+    { seiban: 'BE1', code: 'FH-01', name: 'ナット M12', qty: 12, start: '10/22', order: '0002179012' },
+    { seiban: 'BA1S2310', code: 'MT-1102', name: 'モータ取付台', qty: 1, start: '10/24', order: '0002178133' },
+    { seiban: 'BA1S2201', code: 'BP-7781', name: 'ベースプレート', qty: 2, start: '10/25', order: '0002178040' },
+  ];
+  const PM = ['L300KP', 'DAD3350', 'MH-X', 'NV5000'];
+  const PB = {}; PM.forEach((m) => { PB[m] = {}; for (let n = 1; n <= 10; n++) PB[m][n] = []; });
+  let pid = 0; const mk = (i) => ({ ...POOL[i % POOL.length], id: ++pid });
+  PB.L300KP[1] = [mk(0), mk(1)]; PB.L300KP[3] = [mk(2)]; PB.L300KP[4] = [mk(3), mk(4), mk(5), mk(0), mk(1)]; PB.DAD3350[2] = [mk(1)]; PB['MH-X'][1] = [mk(3)];
+  let pm = 'L300KP', pn = 1, psel = null, parm = false, ppool = 2;
+  function rPallet() {
+    const items = PB[pm][pn];
+    $('p-mach').innerHTML = PM.map((m) => `<button class="chip" data-m="${m}" aria-pressed="${m === pm}">${m}</button>`).join('');
+    $('p-grid').innerHTML = Object.entries(PB[pm]).map(([n, it]) => `<button class="pal" data-n="${n}" aria-pressed="${+n === pn}" aria-label="パレット${n} ${it.length}件"><b>${n}</b><span class="dots">${it.slice(0, 3).map(() => '<i></i>').join('')}${it.length > 3 ? `<i class="more">+${it.length - 3}</i>` : ''}</span></button>`).join('');
+    $('p-no').textContent = `No.${pn}`;
+    $('p-label').textContent = items.length ? `${items.length}件` : '空';
+    $('p-clear').hidden = !items.length;
+    $('p-clear').classList.toggle('arm', parm);
+    $('p-clear').textContent = parm ? 'もう一度で全部外す' : '全部外す';
+    $('p-list').innerHTML = items.length ? items.map((x) => `<button class="item" data-id="${x.id}" aria-pressed="${psel === x.id}">
+      <span class="nm">${x.name}</span><span class="qty"><small>×</small>${x.qty}</span>
+      <span class="meta">${x.seiban} · ${x.code} · 着手 ${x.start}</span></button>`).join('')
+      : `<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 15h18M5 15v4M12 15v4M19 15v4"/></svg>まだ何も載っていません</div>`;
+    $('p-dock').innerHTML = psel != null
+      ? `<button class="ghost" id="p-swap">${ICON.scan}入れ替え</button><button class="ghost danger" id="p-del">外す</button><button class="alt" id="p-unsel" aria-label="選択をやめる"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6L6 18"/></svg>やめる</button>`
+      : `<button class="primary" id="p-add" style="--pc:var(--teal)">${ICON.scan}読んで<span class="to">No.${pn}</span>に載せる</button>`;
+  }
+  $('p-mach').onclick = (e) => { const b = e.target.closest('[data-m]'); if (!b) return; pm = b.dataset.m; psel = null; parm = false; rPallet(); };
+  $('p-grid').onclick = (e) => { const b = e.target.closest('[data-n]'); if (!b) return; pn = +b.dataset.n; psel = null; parm = false; rPallet(); };
+  $('p-list').onclick = (e) => { const b = e.target.closest('[data-id]'); if (!b) return; psel = psel === +b.dataset.id ? null : +b.dataset.id; parm = false; rPallet(); };
+  $('p-clear').onclick = () => { if (!parm) { parm = true; rPallet(); setTimeout(() => { parm = false; if (!$('v-pallet').hidden) rPallet(); }, 2500); return; } PB[pm][pn] = []; parm = false; psel = null; toast(`No.${pn} を空にしました`); rPallet(); };
+  $('p-dock').onclick = (e) => {
+    if (e.target.closest('#p-add')) fakeScan('製造order', 'var(--teal)', ICON.scan, () => { const x = mk(ppool++); PB[pm][pn].push(x); toast(`${x.name} を No.${pn} に載せました`); rPallet(); });
+    if (e.target.closest('#p-swap')) fakeScan('入れ替える製造order', 'var(--teal)', ICON.scan, () => { const a = PB[pm][pn]; const i = a.findIndex((x) => x.id === psel); const x = mk(ppool++); a[i] = x; psel = null; toast(`${x.name} に入れ替えました`); rPallet(); });
+    if (e.target.closest('#p-del')) { PB[pm][pn] = PB[pm][pn].filter((x) => x.id !== psel); psel = null; toast('外しました'); rPallet(); }
+    if (e.target.closest('#p-unsel')) { psel = null; rPallet(); }
+  };
+
+  // ---------- 購買照会 ----------
+  const POS = [
+    { no: '4501238876', rows: [
+      { mc: 'DAD3350', seiban: 'BA1S2201', start: '10/18', name: 'ブラケット取付板', code: 'MD00413390', qty: 2 },
+      { mc: 'DAD3350', seiban: 'BA1S2202', start: '10/25', name: 'ブラケット取付板', code: 'MD00413390', qty: 2 },
+    ] },
+    { no: '4501240113', rows: [{ mc: 'MH-X', seiban: 'BE1', start: '—', name: 'ナット', code: 'FH-01', qty: 3, db: 'ナット M12' }] },
+  ];
+  let poI = -1;
+  function rPo() {
+    const po = POS[poI];
+    $('po-digits').innerHTML = po ? po.no : '<span class="g">0000000000</span>';
+    $('po-st').textContent = po ? `${po.rows.length}件` : '';
+    $('po-list').innerHTML = po ? po.rows.map((r) => `<div class="porow"><span class="mc">${r.mc}</span><span class="qty">${r.qty}<small>個</small></span>
+      <dl><dt>製番</dt><dd>${r.seiban}</dd><dt>着手</dt><dd>${r.start}</dd><dt>品名</dt><dd class="jp">${r.name}</dd><dt>品番</dt><dd>${r.code}</dd></dl>
+      ${r.db ? `<span class="diff">部品マスタでは「${r.db}」</span>` : ''}</div>`).join('')
+      : `<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 9v6M10 9v6M13 9v6M17 9v6"/></svg>現品票のバーコードを読む</div>`;
+    $('po-scan').innerHTML = `${ICON.scan}${po ? '次の注文番号を読む' : '注文番号を読む'}`;
+  }
+  $('po-scan').onclick = () => fakeScan('注文番号', 'var(--lime)', ICON.scan, () => { poI = (poI + 1) % POS.length; rPo(); });
+
+  // ---------- Zero2W 配膳 ----------
+  const ZROWS = [
+    { code: '西-北-02', dev: 'zero2w-01', order: '0002178005', seiban: 'BA1S2201', name: 'ブラケット取付板', t: '2分前', ok: true, br: 2 },
+    { code: '東-南-05', dev: 'zero2w-04', order: '0002178101', seiban: 'BA1S2310', name: '脚カバー', t: '6分前', ok: true },
+    { code: '中央-北-03', dev: 'zero2w-02', order: '0002178033', seiban: 'BA1S2201', name: 'アジャスタボルト', t: '11分前', ok: false },
+    { code: '西-中央-07', dev: 'zero2w-03', order: '0002179012', seiban: 'BE1', name: 'ナット M12', t: '18分前', ok: true },
+    { code: '東-北-04', dev: 'zero2w-05', order: '0002178120', seiban: 'BA1S2310', name: 'サドル', t: '25分前', ok: false },
+    { code: '中央-南-01', dev: 'zero2w-06', order: '0002178040', seiban: 'BA1S2201', name: 'ベースプレート', t: '9:42', ok: true, br: 1 },
+    { code: '中央-中央-06', dev: 'zero2w-02', order: '0002179020', seiban: 'BE1', name: 'ベアリングホルダ', t: '9:30', ok: true },
+    { code: '東-中央-02', dev: 'zero2w-05', order: '0002178133', seiban: 'BA1S2310', name: 'モータ取付台', t: '9:12', ok: false },
+    { code: '西-南-08', dev: 'zero2w-03', order: '0002179031', seiban: 'BE1', name: 'カラー φ20', t: '8:55', ok: true },
+  ];
+  let zf = 'all', zfresh = false;
+  function rZero() {
+    const nWait = ZROWS.filter((r) => !r.ok).length;
+    $('z-filter').innerHTML = `<button class="chip" data-f="all" aria-pressed="${zf === 'all'}">すべて ${ZROWS.length}</button><button class="chip" data-f="wait" aria-pressed="${zf === 'wait'}" style="${nWait ? 'color:var(--shelf)' : ''}">未照合 ${nWait}</button><span class="count">新しい順</span>`;
+    const rows = ZROWS.filter((r) => zf === 'all' || !r.ok);
+    $('z-list').innerHTML = rows.map((r, i) => `<div class="zrow${zfresh && i === 0 ? ' fresh' : ''}"><span class="code">${r.code}<small>${r.dev}</small></span>
+      <span class="nm">${r.name}</span><span class="t">${r.t}</span>
+      <span class="meta">${r.order} · ${r.seiban}${r.br ? ` · 分配${r.br}` : ''}</span><span class="pill ${r.ok ? 'ok' : 'wait'}">${r.ok ? '日程一致' : '未照合'}</span></div>`).join('');
+    zfresh = false;
+  }
+  $('z-filter').onclick = (e) => { const b = e.target.closest('[data-f]'); if (!b) return; zf = b.dataset.f; rZero(); };
+  $('z-refresh').onclick = () => { ZROWS.unshift({ code: '西-北-03', dev: 'zero2w-01', order: '0002178006', seiban: 'BA1S2201', name: '脚（右）', t: 'たった今', ok: true }); ZROWS.pop(); zfresh = true; rZero(); };
+
+  window.addEventListener('resize', () => { if (!$('v-main').hidden) render(); });
+  reset();
+})();
+</script>
