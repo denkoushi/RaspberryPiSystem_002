@@ -25,8 +25,18 @@ class KioskLabwcConfigTests(unittest.TestCase):
         self.assertEqual(result, expected)
         root = ET.fromstring(result)
         rules = root.findall("rc:windowRules/rc:windowRule", NS)
-        self.assertEqual([rule.get("identifier") for rule in rules], ["Chromium", "Kodi"])
+        self.assertEqual([rule.get("identifier") for rule in rules], ["*__kiosk", "Kodi"])
         self.assertEqual(rules[0].get("serverDecoration"), "no")
+        self.assertEqual(UPDATE(result), result)
+
+    def test_rule_from_the_first_release_is_rewritten_in_place(self):
+        # The first release wrote identifier="Chromium", which labwc never matched
+        # because it compares the WM_CLASS instance ("<host>__kiosk").
+        original = (FIXTURES / "kiosk-labwc-long.xml").read_text()
+        old_release = UPDATE(original).replace('identifier="*__kiosk"', 'identifier="Chromium"')
+        result = UPDATE(old_release)
+        self.assertEqual(result, UPDATE(original))
+        self.assertEqual(result.count("BEGIN ANSIBLE MANAGED: kiosk-titlebar"), 1)
         self.assertEqual(UPDATE(result), result)
 
     def test_single_line_root_with_trailing_shortcut_is_repaired(self):

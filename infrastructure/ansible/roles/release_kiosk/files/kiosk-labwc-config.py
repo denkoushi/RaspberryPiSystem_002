@@ -11,15 +11,24 @@ import xml.etree.ElementTree as ET
 
 
 TITLEBAR_MARKER = "<!-- BEGIN ANSIBLE MANAGED: kiosk-titlebar -->"
+# labwc matches an Xwayland window by the WM_CLASS instance, not the class.
+# Chromium --app=https://<host>/kiosk?... names it "<host>__kiosk".
+KIOSK_WINDOW_RULE = '<windowRule identifier="*__kiosk" serverDecoration="no" />'
 TITLEBAR_RULE = (
     TITLEBAR_MARKER
-    + '\n    <windowRule identifier="Chromium" serverDecoration="no" />\n'
+    + "\n    " + KIOSK_WINDOW_RULE + "\n"
     + "    <!-- END ANSIBLE MANAGED: kiosk-titlebar -->"
 )
 TITLEBAR_BLOCK = (
     TITLEBAR_MARKER
-    + '\n  <windowRules>\n    <windowRule identifier="Chromium" serverDecoration="no" />'
+    + "\n  <windowRules>\n    " + KIOSK_WINDOW_RULE
     + "\n  </windowRules>\n  <!-- END ANSIBLE MANAGED: kiosk-titlebar -->"
+)
+MANAGED_TITLEBAR = re.compile(
+    r"(<!--\s*BEGIN ANSIBLE MANAGED: kiosk-titlebar\s*-->.*?)"
+    r"<windowRule\b[^>]*/>"
+    r"(.*?<!--\s*END ANSIBLE MANAGED: kiosk-titlebar\s*-->)",
+    re.DOTALL,
 )
 SHORTCUT_BLOCK = re.compile(
     r"<!--\s*BEGIN ANSIBLE MANAGED: show-kiosk-panel\s*-->.*?"
@@ -92,7 +101,12 @@ def update_config(text: str) -> str:
             )
 
     root_close, children = root_sections(text)
-    if TITLEBAR_MARKER not in text[: root_close.start()]:
+    if TITLEBAR_MARKER in text[: root_close.start()]:
+        # Earlier releases wrote a rule that never matched; rewrite it in place.
+        text = MANAGED_TITLEBAR.sub(
+            lambda match: match.group(1) + KIOSK_WINDOW_RULE + match.group(2), text, count=1
+        )
+    else:
         if "windowRules" in children:
             text = insert_child(text, children["windowRules"], TITLEBAR_RULE)
         else:
