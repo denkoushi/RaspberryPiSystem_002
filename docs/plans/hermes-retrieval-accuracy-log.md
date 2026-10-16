@@ -555,3 +555,18 @@ Night of 2026-10-14 (22:0x), the first with #1996 (ambiguous linked terms give w
 Change in this PR (planner): a residual token that is contained in a selected filter value no longer counts as content. 「機構設計2課(製造) 最近 不適合」 now has an empty residual and becomes filter-only with the recent sort, like the full name; 「機構設計2課(製造)の錆の不適合」 keeps 「錆」 and stays a content search. Three tests in `planner-jev.test.mjs` (Claude directly; 344 tests pass). Measured on the next nights' `short` filter questions.
 
 Private files: `work/flywheel/questions-2026-10-14.jsonl`, `real-2026-10-14.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-14.log`, `receipts-2026-10-14.jsonl`, `receipts-2026-10-15.jsonl`.
+
+### 2026-10-16: thirteenth night, 88% and no ask-back; the short department name went filter-only, and ambiguous linked terms gave way for the first time (measurement basis)
+
+Night of 2026-10-15 (22:0x), the first with #2023 (a residual token contained in a selected filter value is not content; Pi5 release the morning before).
+
+- Synthetic content: 100 pairs tried, 74 generated, 69 kept (median 17 chars, anchor overlap 0.38). Dropped: 16 copied runs, 6 copied words, 5 anchors not confirmed, 4 too similar. Production showed a relevant record for 61 of 69 (88%; 10 known only through the second grader), other records for 10 (12 of the night's shown lists still await the second grader's label, so this count may fall), nothing for 8 (all outside the judged candidates, none rejected by the judge), and 0 failed. The "outside the judged candidates" share doubled from 4 to 8; the misses are terse part-and-process queries (「万力サイズ選定 指導」, 「架台 一体加工 不適合」, 「サドル 分解 破損 不適合」) and two colloquial sentences.
+- Ask-backs: 0, the second night in a row. `ambiguousDropped` appeared for the first time, on 6 rows (department name 4, part name 2): 5 of them showed a relevant record and 1 showed other records, so #1996 turned what would have been six ask-backs into five hits. Measured.
+- Synthetic filter: 10 questions, 9 ok, 0 mismatch, 1 unsupported (「営業部 営業2課(販管)」 with `count5`, a department with no record in the period). The one `short` question (「…課 最近 不適合」 form) went filter-only with the recent sort and matched all five expected records (203 matched), so the change in #2023 did what it was meant to on its first live case. More `short` nights are needed before calling it settled.
+- Real: 0 questions; receipts of 2026-10-15 and 2026-10-16 empty, so no operation-inquiry route.
+- Learned queries: 7 activated (held-out 1/0 on the last decision); 33 active, 1 rejected.
+- Runner log: 195 lines, 4 final lines (completed, budget_reached, 2 outside_window); no dgx_busy.
+
+No code change. Next candidate: the misses outside the judged candidates (4 to 8 per night) are now the largest loss; options are a larger candidate pool for terse queries or learned terms for the recurring part names, to be compared through the gate before any change.
+
+Private files: `work/flywheel/questions-2026-10-15.jsonl`, `real-2026-10-15.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-15.log`, `receipts-2026-10-15.jsonl`, `receipts-2026-10-16.jsonl`.
