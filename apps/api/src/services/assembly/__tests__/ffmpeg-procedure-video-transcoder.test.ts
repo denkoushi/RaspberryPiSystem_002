@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FfmpegProcedureVideoTranscoderAdapter } from '../ffmpeg-procedure-video-transcoder.adapter.js';
 
-const { execute, stat, childKill, mkdtemp, rm, writeFile } = vi.hoisted(() => ({ execute: vi.fn(), stat: vi.fn(), childKill: vi.fn(), mkdtemp: vi.fn(), rm: vi.fn(), writeFile: vi.fn() }));
-vi.mock('node:fs/promises', () => ({ stat, mkdtemp, rm, writeFile }));
+const { execute, stat, childKill, mkdtemp, rm, writeFile, readdir } = vi.hoisted(() => ({ execute: vi.fn(), stat: vi.fn(), childKill: vi.fn(), mkdtemp: vi.fn(), rm: vi.fn(), writeFile: vi.fn(), readdir: vi.fn() }));
+vi.mock('node:fs/promises', () => ({ stat, mkdtemp, rm, writeFile, readdir }));
 vi.mock('node:child_process', () => {
   const execFile = vi.fn();
   Object.defineProperty(execFile, Symbol.for('nodejs.util.promisify.custom'), { value: async (...args: unknown[]) => {
@@ -19,6 +19,13 @@ function conversion(duration: string) {
 beforeEach(() => { execute.mockReset(); stat.mockReset().mockResolvedValue({ size: 64 }); childKill.mockReset(); mkdtemp.mockReset().mockResolvedValue('/tmp/concat'); rm.mockReset(); writeFile.mockReset(); });
 afterEach(() => vi.useRealTimers());
 describe('ffmpeg procedure-video transcoder', () => {
+  it('extracts bounded, timestamped JPEG frames with two threads and long edge 640', async () => {
+    readdir.mockResolvedValue(['frame-003.jpg', 'frame-001.jpg', 'frame-002.jpg', 'video.mp4']);
+    const frames = await new FfmpegProcedureVideoTranscoderAdapter().extractFrames('input.mp4', '/tmp/frames', { intervalSeconds: 1, maxLongEdge: 640 });
+    expect(frames).toEqual([0, 1, 2].map((atSeconds) => ({ atSeconds, path: `/tmp/frames/frame-00${atSeconds + 1}.jpg` })));
+    expect(execute).toHaveBeenCalledWith('ffmpeg', ['-nostdin', '-y', '-i', 'input.mp4', '-an', '-threads', '2', '-vf', "fps=1/1:start_time=0:round=up,scale='if(gt(iw,ih),640,-2)':'if(gt(iw,ih),-2,640)'", '-frames:v', '61', '-q:v', '2', '/tmp/frames/frame-%03d.jpg'], { timeout: 120000, killSignal: 'SIGKILL', maxBuffer: 1024 * 1024 });
+  });
+
   it('extracts exactly the scene start frame with the existing scale, quality and bounded argument array', async () => {
     await new FfmpegProcedureVideoTranscoderAdapter().posterAt('/tmp/input ; name.mp4', '/tmp/scene.jpg', 12.3);
     expect(execute).toHaveBeenCalledExactlyOnceWith('ffmpeg', ['-nostdin', '-y', '-ss', '12.3', '-i', '/tmp/input ; name.mp4', '-an', '-threads', '2', '-frames:v', '1', '-vf', "scale='if(gt(iw,ih),640,-2)':'if(gt(iw,ih),-2,640)'", '/tmp/scene.jpg'], { timeout: 30_000, killSignal: 'SIGKILL', maxBuffer: 1024 * 1024 });

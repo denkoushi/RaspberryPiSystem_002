@@ -1,3 +1,4 @@
+import { env } from '../../../config/env.js';
 import { Prisma } from '@prisma/client';
 import { access, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -21,7 +22,9 @@ function harness() {
     events.push(data.status === 'READY' ? 'READY commit' : 'clear reference');
     return target;
   });
-  const db = { procedureVideo: {
+  const db = { procedureVideoAutoEditSuggestion: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn(async ({ data }) => {
+    expect(inTransaction).toBe(true); expect(row.status).toBe('READY'); return { id: 'suggestion', ...data };
+  }) }, procedureVideo: {
     findFirst: vi.fn(async () => {
       const pending = rows.find((video) => video.status === 'PENDING');
       return pending ? { ...pending } : null;
@@ -34,7 +37,7 @@ function harness() {
       return { count: matches.length };
     }), update,
   }, $transaction: vi.fn() };
-  const tx = { $queryRaw: vi.fn().mockResolvedValue([]), $executeRaw: vi.fn().mockResolvedValue(1), procedureVideo: {
+  const tx = { procedureVideoAutoEditSuggestion: db.procedureVideoAutoEditSuggestion, $queryRaw: vi.fn().mockResolvedValue([]), $executeRaw: vi.fn().mockResolvedValue(1), procedureVideo: {
     findMany: vi.fn(async ({ where }) => rows.filter((video) => where.id.in.includes(video.id)).map((video) => ({ ...video, comments: video.comments ?? [] }))),
     findUnique: vi.fn(async ({ where }) => rows.find((video) => video.id === where.id)),
     count: vi.fn(async ({ where }) => rows.filter((video) => 'storageKey' in where ? video.storageKey === where.storageKey : video.sourceStorageKey === where.sourceStorageKey).length),
@@ -63,7 +66,7 @@ function harness() {
     expect(inTransaction).toBe(!key.includes('/incoming/'));
     events.push('delete');
   }) };
-  const transcoder = { posterAt: vi.fn(), probe: vi.fn().mockResolvedValue({ durationSeconds: 12, width: 640, height: 360 }), transcode: vi.fn(async (input: string, output: string, poster: string, _heartbeat?: () => Promise<void>) => {
+  const transcoder = { extractFrames: vi.fn(), posterAt: vi.fn(), probe: vi.fn().mockResolvedValue({ durationSeconds: 12, width: 640, height: 360 }), transcode: vi.fn(async (input: string, output: string, poster: string, _heartbeat?: () => Promise<void>) => {
     expect(inTransaction).toBe(false);
     expect(await readFile(input, 'utf8')).toBe('original');
     await writeFile(output, 'converted'); await writeFile(poster, 'poster');
@@ -79,7 +82,33 @@ function harness() {
 }
 
 describe('procedure-video processing', () => {
-  afterEach(() => vi.restoreAllMocks());
+  const originalFlag = env.PROCEDURE_VIDEO_AUTO_EDIT_ENABLED;
+  afterEach(() => { env.PROCEDURE_VIDEO_AUTO_EDIT_ENABLED = originalFlag; vi.restoreAllMocks(); });
+  it.each(['ingest', 'trim', 'concat'])('enqueues PENDING after the successful %s READY commit only when enabled', async (mode) => {
+    env.PROCEDURE_VIDEO_AUTO_EDIT_ENABLED = true;
+    const h = mode === 'trim' ? trimming() : mode === 'concat' ? concatenating() : harness();
+    if (mode === 'concat') h.transcoder.probe.mockResolvedValue({ durationSeconds: 50, width: 640, height: 360 });
+    await h.service.runOnce();
+    expect(h.db.procedureVideoAutoEditSuggestion.create).toHaveBeenCalledExactlyOnceWith({ data: { videoId: 'video', status: 'PENDING', promptVersion: 'procedure-video-auto-edit-v1' } });
+  });
+  it('does not enqueue a concatenated output longer than 60 seconds', async () => {
+    env.PROCEDURE_VIDEO_AUTO_EDIT_ENABLED = true;
+    const h = concatenating(); await h.service.runOnce();
+    expect(h.row.status).toBe('READY');
+    expect(h.db.procedureVideoAutoEditSuggestion.create).not.toHaveBeenCalled();
+  });
+  it('does not enqueue when disabled or when the READY commit failed', async () => {
+    env.PROCEDURE_VIDEO_AUTO_EDIT_ENABLED = false;
+    const h = harness(); await h.service.runOnce(); expect(h.db.procedureVideoAutoEditSuggestion.create).not.toHaveBeenCalled();
+    env.PROCEDURE_VIDEO_AUTO_EDIT_ENABLED = true;
+    const failed = harness(); failed.tx.procedureVideo.updateMany.mockRejectedValue(new Error('commit failed'));
+    await failed.service.runOnce(); expect(failed.db.procedureVideoAutoEditSuggestion.create).not.toHaveBeenCalled();
+  });
+  it('keeps successful READY and original cleanup intact when enqueue fails', async () => {
+    env.PROCEDURE_VIDEO_AUTO_EDIT_ENABLED = true;
+    const h = harness(); h.db.procedureVideoAutoEditSuggestion.create.mockRejectedValue(new Error('enqueue failed'));
+    await h.service.runOnce(); expect(h.row).toMatchObject({ status: 'READY', attempts: 0, sourceStorageKey: null });
+  });
   it('does not transcode or publish an input whose streamed copy fails integrity verification', async () => {
     const h = harness();
     h.store.copyToFile.mockRejectedValueOnce(new FileStorageIntegrityMismatchError());

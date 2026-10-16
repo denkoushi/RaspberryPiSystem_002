@@ -14,6 +14,7 @@ import {
   type InferenceRouterConfig,
 } from './routing/inference-router.js';
 import type { TextCompletionPort } from './ports/text-completion.port.js';
+import type { MultiImageVisionCompletionPort } from './ports/multi-image-vision-completion.port.js';
 import type { VisionCompletionPort } from './ports/vision-completion.port.js';
 
 export type AdminLocalLlmRuntimeConfigShape = {
@@ -31,6 +32,7 @@ export type InferenceRuntime = {
   /** 管理用 LocalLLM プロキシ（既定プロバイダ default または先頭） */
   getAdminLocalLlmRuntimeConfig: () => AdminLocalLlmRuntimeConfigShape;
   createVisionCompletionPort: () => VisionCompletionPort;
+  createMultiImageVisionCompletionPort: () => MultiImageVisionCompletionPort;
   createTextCompletionPort: () => TextCompletionPort;
   isPhotoLabelInferenceConfigured: () => boolean;
   isDocumentSummaryInferenceConfigured: () => boolean;
@@ -119,6 +121,10 @@ export function buildInferenceRuntime(fetchImpl: typeof fetch = fetch): Inferenc
         getMaxTokens: () => env.INFERENCE_PHOTO_LABEL_VISION_MAX_TOKENS,
         getTemperature: () => env.INFERENCE_PHOTO_LABEL_VISION_TEMPERATURE,
       }),
+    createMultiImageVisionCompletionPort: () =>
+      new RoutedVisionCompletionAdapter({ router, fetchImpl, useCase: 'photo_label',
+        getMaxTokens: () => env.INFERENCE_PHOTO_LABEL_VISION_MAX_TOKENS,
+        getTemperature: () => env.INFERENCE_PHOTO_LABEL_VISION_TEMPERATURE }),
     createTextCompletionPort: () =>
       new OpenAiCompatibleTextAdapter({
         router,

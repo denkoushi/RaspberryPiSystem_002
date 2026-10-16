@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { ProcedureVideoService } from '../../services/assembly/procedure-video.service.js';
 
 const idParams = z.object({ id: z.string().uuid() });
+const commentBody = z.array(z.object({ atSeconds: z.number().finite().min(0), text: z.string().trim().min(1).max(80) }).strict()).max(5);
 const pageParams = idParams.extend({ pageIndex: z.coerce.number().int().min(0) });
 
 export function registerProcedureVideoRoutes(app: FastifyInstance, options: {
@@ -72,9 +73,22 @@ export function registerProcedureVideoRoutes(app: FastifyInstance, options: {
   });
   app.get(`${path}/:id/comments`, { preHandler: options.allowView }, async (request) => ({ comments: await service.listComments(idParams.parse(request.params).id) }));
   app.put(`${path}/:id/comments`, { preHandler: options.allowWriteKiosk }, async (request) => {
-    const { comments } = z.object({ comments: z.array(z.object({ atSeconds: z.number().finite().min(0), text: z.string().trim().min(1).max(80) }).strict()).max(5) }).strict().parse(request.body);
+    const { comments } = z.object({ comments: commentBody }).strict().parse(request.body);
     return { comments: await service.replaceComments(idParams.parse(request.params).id, comments) };
   });
+  app.get(`${path}/auto-edit/stats`, { preHandler: options.allowView }, async () => service.autoEditStats());
+  app.get(`${path}/:id/auto-edit`, { preHandler: options.allowView }, async (request) => service.getAutoEdit(idParams.parse(request.params).id));
+  app.post(`${path}/:id/auto-edit/apply`, { preHandler: options.allowWriteKiosk }, async (request) => {
+    const input = z.object({ suggestionId: z.string().uuid(), comments: commentBody, scenes: z.array(sceneBody.required()).max(20).optional() }).strict().parse(request.body);
+    await service.applyAutoEdit(idParams.parse(request.params).id, input);
+    return { saved: true };
+  });
+  app.post(`${path}/:id/auto-edit/dismiss`, { preHandler: options.allowWriteKiosk }, async (request) => {
+    const input = z.object({ suggestionId: z.string().uuid() }).strict().parse(request.body);
+    await service.dismissAutoEdit(idParams.parse(request.params).id, input);
+    return { saved: true };
+  });
+  app.post(`${path}/:id/auto-edit/regenerate`, { preHandler: options.allowWriteKiosk }, async (request) => service.regenerateAutoEdit(idParams.parse(request.params).id));
   const pagesPath = '/assembly/procedure-documents/:id/pages/:pageIndex/videos';
   app.get(pagesPath, { preHandler: options.allowView }, async (request) => {
     const { id, pageIndex } = pageParams.parse(request.params);

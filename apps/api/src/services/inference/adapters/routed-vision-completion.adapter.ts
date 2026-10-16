@@ -1,3 +1,4 @@
+import { InferenceUnavailableError, type MultiImageVisionCompletionPort, type MultiImageVisionCompletionInput } from '../ports/multi-image-vision-completion.port.js';
 import type { VisionCompletionPort, VisionCompletionInput, VisionCompletionResult } from '../ports/vision-completion.port.js';
 import { emitInferenceCallOutcome } from '../observability/inference-observability.js';
 import { InferenceRouter } from '../routing/inference-router.js';
@@ -45,8 +46,56 @@ export type RoutedVisionCompletionAdapterDeps = {
  * OpenAI 互換 VLM: 指定 useCase へルーティングし `/v1/chat/completions` を呼ぶ。
  * 画像ロード/デコード系 400 のときだけ、JPEG 再エンコードで **最大 1 回** 再送する。
  */
-export class RoutedVisionCompletionAdapter implements VisionCompletionPort {
+export class RoutedVisionCompletionAdapter implements VisionCompletionPort, MultiImageVisionCompletionPort {
   constructor(private readonly deps: RoutedVisionCompletionAdapterDeps) {}
+
+  async completeMany(input: MultiImageVisionCompletionInput) {
+    if (input.images.length < 1 || input.images.length > 61) throw new Error('Vision requires 1–61 images');
+    const { provider, model } = this.deps.router.resolve(this.deps.useCase);
+    if (input.background && model !== 'system-prod-primary') throw new Error('Background admission requires the DGX model alias');
+    const modelName = input.background ? 'dgx-background-preparation' : model;
+    const { signal, cleanup } = createTimeoutSignal(input.timeoutMs ?? provider.timeoutMs);
+    const combined = input.signal ? AbortSignal.any([signal, input.signal]) : signal;
+    const started = performance.now();
+    let ok = false;
+    try {
+      let response: Response;
+      try {
+        response = await this.deps.fetchImpl(new URL('/v1/chat/completions', provider.baseUrl), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-LLM-Token': provider.sharedToken },
+          body: JSON.stringify({
+            model: modelName,
+            messages: [{ role: 'user', content: [
+              { type: 'text', text: input.userText },
+              ...input.images.flatMap((image) => [
+                { type: 'text', text: image.label },
+                { type: 'image_url', image_url: { url: `data:${image.mimeType};base64,${image.imageBytes.toString('base64')}` } },
+              ]),
+            ] }],
+            max_tokens: input.maxTokens ?? this.deps.getMaxTokens(),
+            temperature: input.temperature ?? this.deps.getTemperature(),
+            chat_template_kwargs: { enable_thinking: false },
+            ...(input.jsonOutput ? { response_format: { type: 'json_object' } } : {}),
+          }), signal: combined,
+        });
+      } catch { throw new InferenceUnavailableError(); }
+      if ([429, 502, 503, 504].includes(response.status)) throw new InferenceUnavailableError();
+      if (!response.ok) throw new Error(`Inference vision upstream error: HTTP ${response.status}`);
+      const rawText = extractTextFromOpenAiStylePayload(await response.json() as OpenAiStyleChatResponse);
+      if (!rawText) throw new Error('Inference vision response missing assistant text');
+      ok = true;
+      return { rawText, modelRoute: `${this.deps.useCase}:${provider.id}`, modelName };
+    } catch (error) {
+      if (combined.aborted) throw combined.reason ?? new Error('Inference timed out');
+      throw error;
+    } finally {
+      cleanup();
+      emitInferenceCallOutcome({ useCase: this.deps.useCase, providerId: provider.id, model: modelName,
+        latencyMs: Math.round(performance.now() - started), result: ok ? 'ok' : 'failure',
+        inputSize: input.images.reduce((sum, image) => sum + image.imageBytes.length, Buffer.byteLength(input.userText)), outputSize: 0 });
+    }
+  }
 
   async complete(input: VisionCompletionInput): Promise<VisionCompletionResult> {
     const started = performance.now();

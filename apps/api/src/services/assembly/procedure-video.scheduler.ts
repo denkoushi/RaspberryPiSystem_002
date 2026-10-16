@@ -1,5 +1,8 @@
 import cron from 'node-cron';
 
+import { env } from '../../config/env.js';
+import { getProcedureVideoAutoEditService, recoverProcedureVideoAutoEdit } from './procedure-video-auto-edit.service.js';
+
 import { logger } from '../../lib/logger.js';
 import { getProcedureVideoProcessingService } from './procedure-video-processing.service.js';
 
@@ -12,6 +15,11 @@ export class ProcedureVideoScheduler {
   }
   stop() { this.task?.stop(); this.task = null; }
   kick() {
+    if (env.PROCEDURE_VIDEO_AUTO_EDIT_ENABLED) {
+      void recoverProcedureVideoAutoEdit().then(() => getProcedureVideoAutoEditService().runOnce()).catch((error: unknown) => {
+        logger.error({ err: error }, 'Procedure video auto edit failed');
+      });
+    }
     void getProcedureVideoProcessingService().runOnce().catch((error: unknown) => {
       logger.error({ err: error }, 'Procedure video processing failed');
     });
