@@ -1,6 +1,11 @@
 [Unit]
 Description=Kiosk top-left corner panel sensor
-After=kiosk-browser.service
+# Order after graphical.target explicitly, like kiosk-browser.service. Without it
+# graphical.target is implicitly ordered after this unit, which with
+# kiosk-browser's After=graphical.target forms a cycle and systemd drops the
+# start job at boot.
+After=graphical.target kiosk-browser.service
+Wants=graphical.target
 
 [Service]
 Type=simple

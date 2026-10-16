@@ -75,6 +75,14 @@
     release_kiosk_labwc_edit_attempted: true
   when: manage_kiosk_browser | default(false) | bool
 
+- name: Remove the obsolete labwc autostart override
+  ansible.builtin.file:
+    path: "{{ release_kiosk_labwc_dir }}/autostart"
+    state: absent
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - release_kiosk_legacy_autostart_obsolete | default(false) | bool
+
 - name: Apply the validated kiosk labwc configuration
   ansible.builtin.command:
     argv:
