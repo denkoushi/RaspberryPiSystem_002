@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 762,
-    "totalLines": 188450,
-    "totalBytes": 15011301,
+    "totalLines": 188382,
+    "totalBytes": 14971049,
     "withFrontmatter": 366,
     "withStatus": 170,
     "sourceOfTruthDeclared": 116,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 39,
-    "localLinkCount": 5820,
+    "localLinkCount": 5824,
     "brokenLocalLinkCount": 89,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
@@ -12009,8 +12009,8 @@
     },
     {
       "path": "docs/api/mobile-placement.md",
-      "lineCount": 248,
-      "byteSize": 19000,
+      "lineCount": 260,
+      "byteSize": 21747,
       "hasFrontmatter": false,
       "title": "配膳スマホ API（mobile-placement）",
       "status": null,
@@ -12047,7 +12047,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 11,
+      "inboundCount": 12,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -17417,8 +17417,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260731-single-ssd-durable-file-storage.md",
-      "lineCount": 93,
-      "byteSize": 5563,
+      "lineCount": 108,
+      "byteSize": 6534,
       "hasFrontmatter": true,
       "title": "Keep business files on one Pi5 SSD behind a durable storage port",
       "status": "accepted",
@@ -17844,8 +17844,8 @@
     },
     {
       "path": "docs/design-previews/README.md",
-      "lineCount": 111,
-      "byteSize": 25579,
+      "lineCount": 112,
+      "byteSize": 25718,
       "hasFrontmatter": false,
       "title": "デザインプレビュー（静的 HTML）",
       "status": null,
@@ -18139,6 +18139,11 @@
         {
           "href": "./mobile-placement-placement-board-all-cases-preview.html",
           "targetPath": "docs/design-previews/mobile-placement-placement-board-all-cases-preview.html",
+          "exists": true
+        },
+        {
+          "href": "./mobile-placement-redesign-mock.html",
+          "targetPath": "docs/design-previews/mobile-placement-redesign-mock.html",
           "exists": true
         },
         {
@@ -19662,7 +19667,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 197,
+      "inboundCount": 198,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -22993,6 +22998,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/kiosk-operation-guide/item-inventory-dashboard.md",
+      "lineCount": 35,
+      "byteSize": 2122,
+      "hasFrontmatter": true,
+      "title": "在庫の集計",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/kiosk-operation-guide/item-inventory-settings.md",
       "lineCount": 43,
       "byteSize": 2746,
@@ -23069,10 +23089,25 @@
     },
     {
       "path": "docs/kiosk-operation-guide/mobile-placement.md",
-      "lineCount": 39,
-      "byteSize": 2659,
+      "lineCount": 40,
+      "byteSize": 2941,
       "hasFrontmatter": true,
       "title": "照合（移動票・現品票）",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/kiosk-operation-guide/mobile-scan-bench.md",
+      "lineCount": 37,
+      "byteSize": 2042,
+      "hasFrontmatter": true,
+      "title": "読取速度テスト（配膳スマホ）",
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
@@ -23219,8 +23254,8 @@
     },
     {
       "path": "docs/kiosk-operation-guide/production-schedule-planning-board.md",
-      "lineCount": 69,
-      "byteSize": 8821,
+      "lineCount": 75,
+      "byteSize": 11942,
       "hasFrontmatter": true,
       "title": "製番ボード",
       "status": null,
@@ -23354,40 +23389,10 @@
     },
     {
       "path": "docs/kiosk-operation-guide/self-inspection.md",
-      "lineCount": 47,
-      "byteSize": 3969,
+      "lineCount": 48,
+      "byteSize": 4350,
       "hasFrontmatter": true,
       "title": "自主検査",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 0,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/kiosk-operation-guide/tag-desk.md",
-      "lineCount": 41,
-      "byteSize": 2443,
-      "hasFrontmatter": true,
-      "title": "タグ管理",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 0,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/kiosk-operation-guide/tag-desk.md",
-      "lineCount": 41,
-      "byteSize": 2443,
-      "hasFrontmatter": true,
-      "title": "タグ管理",
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
@@ -24880,8 +24885,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-339-mobile-placement-barcode-survey.md",
-      "lineCount": 294,
-      "byteSize": 56448,
+      "lineCount": 306,
+      "byteSize": 58008,
       "hasFrontmatter": false,
       "title": "KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）",
       "status": null,
@@ -24889,6 +24894,11 @@
       "localLinks": [
         {
           "href": "../api/mobile-placement.md",
+          "targetPath": "docs/api/mobile-placement.md",
+          "exists": true
+        },
+        {
+          "href": "../api/mobile-placement.md#post-apimobile-placementparse-actual-slip-image",
           "targetPath": "docs/api/mobile-placement.md",
           "exists": true
         },
@@ -24925,6 +24935,11 @@
         {
           "href": "../guides/deployment.md",
           "targetPath": "docs/guides/deployment.md",
+          "exists": true
+        },
+        {
+          "href": "../kiosk-operation-guide/mobile-placement.md",
+          "targetPath": "docs/kiosk-operation-guide/mobile-placement.md",
           "exists": true
         },
         {
@@ -29390,8 +29405,8 @@
     },
     {
       "path": "docs/knowledge-base/index.md",
-      "lineCount": 884,
-      "byteSize": 267235,
+      "lineCount": 885,
+      "byteSize": 267589,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - 索引",
       "status": null,
@@ -32033,6 +32048,11 @@
           "exists": true
         },
         {
+          "href": "./KB-421-kensakumain-video-freeze-os-upgrade.md",
+          "targetPath": "docs/knowledge-base/KB-421-kensakumain-video-freeze-os-upgrade.md",
+          "exists": true
+        },
+        {
           "href": "./KB-investigation-kiosk-ime-and-power-regression.md",
           "targetPath": "docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md",
           "exists": true
@@ -32896,7 +32916,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 37,
+      "inboundCount": 35,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -35437,8 +35457,8 @@
     },
     {
       "path": "docs/plans/hermes-retrieval-accuracy-log.md",
-      "lineCount": 557,
-      "byteSize": 75350,
+      "lineCount": 572,
+      "byteSize": 77907,
       "hasFrontmatter": false,
       "title": "Hermes retrieval accuracy log",
       "status": null,
@@ -35705,6 +35725,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/inventory-dashboard.md",
+      "lineCount": 97,
+      "byteSize": 8229,
+      "hasFrontmatter": false,
+      "title": "Kiosk inventory usage dashboard",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/kiosk-admin-ui-brushup-202607.md",
       "lineCount": 115,
       "byteSize": 13954,
@@ -35958,48 +35993,6 @@
       "referencesExecPlan": false
     },
     {
-      "path": "docs/plans/kiosk-chat-system-guide-execplan.md",
-      "lineCount": 139,
-      "byteSize": 35485,
-      "hasFrontmatter": false,
-      "title": "キオスクの Chat をシステム全体の案内役にする(操作の問い合わせと不具合の受付)",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "./kiosk-operation-guide-accuracy-log.md",
-          "targetPath": "docs/plans/kiosk-operation-guide-accuracy-log.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 2,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/kiosk-chat-system-guide-execplan.md",
-      "lineCount": 139,
-      "byteSize": 35485,
-      "hasFrontmatter": false,
-      "title": "キオスクの Chat をシステム全体の案内役にする(操作の問い合わせと不具合の受付)",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "./kiosk-operation-guide-accuracy-log.md",
-          "targetPath": "docs/plans/kiosk-operation-guide-accuracy-log.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 2,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
       "path": "docs/plans/kiosk-deploy-notice-assembly-ui.md",
       "lineCount": 71,
       "byteSize": 6832,
@@ -36016,13 +36009,19 @@
     },
     {
       "path": "docs/plans/kiosk-grinding-planning-board.md",
-      "lineCount": 208,
-      "byteSize": 41096,
+      "lineCount": 212,
+      "byteSize": 41272,
       "hasFrontmatter": false,
       "title": "Kiosk grinding planning board",
       "status": null,
       "source_of_truth": null,
-      "localLinks": [],
+      "localLinks": [
+        {
+          "href": "planning-board-auto-order.md",
+          "targetPath": "docs/plans/planning-board-auto-order.md",
+          "exists": true
+        }
+      ],
       "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
@@ -36375,7 +36374,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 4,
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -36864,8 +36863,8 @@
     },
     {
       "path": "docs/plans/mobile-placement-main-page-preview-parity.md",
-      "lineCount": 34,
-      "byteSize": 2879,
+      "lineCount": 43,
+      "byteSize": 3847,
       "hasFrontmatter": false,
       "title": "配膳スマホメイン画面: 静的プレビューと本番Reactの整合メモ",
       "status": null,
@@ -36879,6 +36878,11 @@
         {
           "href": "../design-previews/mobile-placement-main-page-detail-preview.html",
           "targetPath": "docs/design-previews/mobile-placement-main-page-detail-preview.html",
+          "exists": true
+        },
+        {
+          "href": "../design-previews/mobile-placement-redesign-mock.html",
+          "targetPath": "docs/design-previews/mobile-placement-redesign-mock.html",
           "exists": true
         },
         {
@@ -37228,6 +37232,21 @@
           "length": 1083
         }
       ],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/planning-board-auto-order.md",
+      "lineCount": 22,
+      "byteSize": 1738,
+      "hasFrontmatter": false,
+      "title": "Planning board auto-order",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
       "referencesExecPlan": false
     },
     {
@@ -37834,8 +37853,8 @@
     },
     {
       "path": "docs/plans/procedure-manuals-execplan.md",
-      "lineCount": 783,
-      "byteSize": 198119,
+      "lineCount": 799,
+      "byteSize": 204641,
       "hasFrontmatter": false,
       "title": "機種×工程ごとの要領書を、組立手順書を正本にして閲覧・作成できるようにする",
       "status": null,
@@ -37852,7 +37871,7 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 15,
+          "line": 29,
           "length": 1029
         }
       ],
@@ -39560,7 +39579,7 @@
       "status": "active",
       "source_of_truth": null,
       "localLinks": [],
-      "inboundCount": 29,
+      "inboundCount": 30,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -40664,21 +40683,21 @@
     },
     {
       "path": "docs/runbooks/kiosk-wifi-panel-shortcut.md",
-      "lineCount": 66,
-      "byteSize": 4213,
+      "lineCount": 64,
+      "byteSize": 4448,
       "hasFrontmatter": true,
-      "title": "Runbook: キオスクで上辺メニューバー表示（Wi-Fi GUI設定）",
+      "title": "Runbook: Pi4 キオスクの左上コーナーと Wi-Fi パネル",
       "status": null,
       "source_of_truth": null,
       "localLinks": [
         {
-          "href": "../knowledge-base/infrastructure/miscellaneous.md",
-          "targetPath": "docs/knowledge-base/infrastructure/miscellaneous.md",
+          "href": "../guides/deployment.md",
+          "targetPath": "docs/guides/deployment.md",
           "exists": true
         },
         {
-          "href": "../knowledge-base/infrastructure/miscellaneous.md#kb-289-pi4-kensakumain-の-firefox-移行と-supershiftp-キーボードショートカット上辺メニューバー表示",
-          "targetPath": "docs/knowledge-base/infrastructure/miscellaneous.md",
+          "href": "deploy-status-recovery.md",
+          "targetPath": "docs/runbooks/deploy-status-recovery.md",
           "exists": true
         }
       ],
@@ -40781,8 +40800,8 @@
     },
     {
       "path": "docs/runbooks/mobile-placement-smartphone.md",
-      "lineCount": 181,
-      "byteSize": 45823,
+      "lineCount": 191,
+      "byteSize": 47283,
       "hasFrontmatter": false,
       "title": "配膳スマホ（Android）セットアップ・検証 Runbook",
       "status": null,
