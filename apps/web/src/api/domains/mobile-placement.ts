@@ -173,7 +173,9 @@ export async function verifyMobilePlacementSlipMatch(payload: {
   actualFseibanRaw: string;
   actualPartBarcodeRaw: string;
 }) {
-  const { data } = await api.post<{ ok: true } | { ok: false; reason: string }>(
+  const { data } = await api.post<({ ok: true } | { ok: false; reason: string }) & {
+    actualResolvedBy?: 'productNo' | 'purchaseOrder' | 'fseiban';
+  }>(
     '/mobile-placement/verify-slip-match',
     payload
   );
