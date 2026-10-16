@@ -11,22 +11,27 @@ import xml.etree.ElementTree as ET
 
 
 TITLEBAR_MARKER = "<!-- BEGIN ANSIBLE MANAGED: kiosk-titlebar -->"
-# labwc matches an Xwayland window by the WM_CLASS instance, not the class.
-# Chromium --app=https://<host>/kiosk?... names it "<host>__kiosk".
-KIOSK_WINDOW_RULE = '<windowRule identifier="*__kiosk" serverDecoration="no" />'
+# labwc up to 0.9 matches an Xwayland window by the WM_CLASS instance, which
+# Chromium --app=https://<host>/kiosk?... sets to "<host>__kiosk". labwc 0.20,
+# already offered by the Raspberry Pi archive, matches the class "Chromium".
+KIOSK_WINDOW_RULES = (
+    '<windowRule identifier="*__kiosk" serverDecoration="no" />',
+    '<windowRule identifier="Chromium" serverDecoration="no" />',
+)
 TITLEBAR_RULE = (
     TITLEBAR_MARKER
-    + "\n    " + KIOSK_WINDOW_RULE + "\n"
+    + "".join("\n    " + rule for rule in KIOSK_WINDOW_RULES) + "\n"
     + "    <!-- END ANSIBLE MANAGED: kiosk-titlebar -->"
 )
 TITLEBAR_BLOCK = (
     TITLEBAR_MARKER
-    + "\n  <windowRules>\n    " + KIOSK_WINDOW_RULE
+    + "\n  <windowRules>"
+    + "".join("\n    " + rule for rule in KIOSK_WINDOW_RULES)
     + "\n  </windowRules>\n  <!-- END ANSIBLE MANAGED: kiosk-titlebar -->"
 )
 MANAGED_TITLEBAR = re.compile(
     r"(<!--\s*BEGIN ANSIBLE MANAGED: kiosk-titlebar\s*-->.*?)"
-    r"<windowRule\b[^>]*/>"
+    r"<windowRule\b[^>]*/>(?:\s*<windowRule\b[^>]*/>)*"
     r"(.*?<!--\s*END ANSIBLE MANAGED: kiosk-titlebar\s*-->)",
     re.DOTALL,
 )
@@ -104,7 +109,7 @@ def update_config(text: str) -> str:
     if TITLEBAR_MARKER in text[: root_close.start()]:
         # Earlier releases wrote a rule that never matched; rewrite it in place.
         text = MANAGED_TITLEBAR.sub(
-            lambda match: match.group(1) + KIOSK_WINDOW_RULE + match.group(2), text, count=1
+            lambda match: match.group(1) + "\n    ".join(KIOSK_WINDOW_RULES) + match.group(2), text, count=1
         )
     else:
         if "windowRules" in children:

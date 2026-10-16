@@ -782,21 +782,24 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
             self.assertEqual({item["dest"] for item in entries}, {
                 "/usr/local/bin/kiosk-hotcorner.py", "/usr/local/bin/kiosk-labwc-config.py",
                 "/usr/local/bin/show-kiosk-panel.sh", "/etc/systemd/system/kiosk-hotcorner.service",
-                "/home/kiosk/.config/labwc/autostart",
             })
-            autostart = next(item for item in entries if item["dest"].endswith("/autostart"))
-            self.assertEqual((autostart["owner"], autostart["mode"]), ("kiosk", "0644"))
         self.assertIn("manage_kiosk_browser", prepare["Prepare the kiosk hotcorner transaction"]["when"])
         stage = yaml.safe_load((role / "tasks/prepare_hotcorner.yml").read_text())
         for task in stage:
             if "ansible.builtin.copy" in task and "loop" in task:
                 for item in task["loop"]:
                     self.assertTrue((role / "files" / item["src"]).is_file())
-        autostart_text = (role / "files/labwc-autostart").read_text()
-        self.assertNotIn("wf-panel-pi", autostart_text)
-        self.assertEqual(autostart_text.splitlines(), [
-            "/usr/bin/lwrespawn /usr/bin/pcmanfm-pi &", "/usr/bin/kanshi &", "/usr/bin/lxsession-xdg-autostart",
-        ])
+        # labwc -m also runs /etc/xdg/labwc/autostart, so the first release's user
+        # override is removed only when it is byte-for-byte that override.
+        legacy = b"/usr/bin/lwrespawn /usr/bin/pcmanfm-pi &\n/usr/bin/kanshi &\n/usr/bin/lxsession-xdg-autostart\n"
+        self.assertIn(hashlib.sha1(legacy).hexdigest(), (role / "tasks/prepare_hotcorner.yml").read_text())
+        self.assertFalse((role / "files/labwc-autostart").exists())
+        switch_tasks = {task["name"]: task for task in yaml.safe_load((role / "tasks/switch.yml").read_text())}
+        removal = switch_tasks["Remove the obsolete labwc autostart override"]
+        self.assertEqual(removal["ansible.builtin.file"]["state"], "absent")
+        rollback_tasks = {task["name"]: task for task in yaml.safe_load((role / "tasks/rollback.yml").read_text())}
+        self.assertIn("labwc-autostart.original", rollback_tasks["Restore the labwc autostart override"]["ansible.builtin.copy"]["src"])
+        self.assertFalse(rollback_tasks["Reconfigure the restored labwc session"]["failed_when"])
         unit = environment.from_string((role / "templates/kiosk-hotcorner.service.j2").read_text()).render(
             ansible_user="kiosk", release_kiosk_user_uid={"stdout": "1001"},
         )

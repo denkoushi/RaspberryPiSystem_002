@@ -20,14 +20,20 @@ Wi-Fi アイコンから接続先やパスワードを設定する。
 ## 配布と確認
 
 標準ローリング更新の `release_kiosk` が `manage_kiosk_browser` 有効端末へ配布する。
-ユーザーの labwc autostart でパネルの自動起動を外すが、labwc は `-m`（設定の合成）で
-起動するため `/etc/xdg/labwc/autostart` も実行され、ログインのたびに
-`lwrespawn /usr/bin/wf-panel-pi` が起動する。センサーが起動直後と 5 秒ごとにこれと旧パネルを停止する。
+labwc は `-m`（設定の合成）で起動するため、ユーザーの `~/.config/labwc/autostart` を
+置いてもシステムの `/etc/xdg/labwc/autostart` は止められず、両方が実行される。
+そのためユーザー側の autostart は置かない（初回版が置いた上書きは、内容が一致する場合だけ
+release が削除する。残すと kanshi、pcmanfm-pi、ibus などが二重に起動する）。
+ログインのたびに起動する `lwrespawn /usr/bin/wf-panel-pi` と旧パネルは、
+センサーが起動直後と 5 秒ごとに停止する。
 センサーの unit は `After=graphical.target` を明示している。これがないと kiosk-browser との
 起動順序が循環し、起動時にセンサーの開始が取り消されてパネルが出たままになる。
 ショートカットはセンサーへ SIGUSR1 を送る。rc.xml はバックアップ後に文字列編集し、
 ルート外にある旧ショートカットを修復する。labwc の再読み込みとブラウザの再起動で
 タイトルバー設定を反映する。Chromium の起動フラグは変更しない。
+labwc 0.9 までは窓を WM_CLASS の instance（`<host>__kiosk`）、0.20 以降は class（`Chromium`）で
+見分けるため、両方の規則を入れている。Pi4 ごとに labwc の版が異なり（0.8.4〜0.9.7）、
+OS の更新で 0.20 系になっても題名の帯が戻らない。
 
 端末で確認する（配布手順は [deployment](../guides/deployment.md) を参照）:
 
@@ -46,14 +52,13 @@ systemd が 3 秒後に再起動する。Wayland ソケットはユーザーの 
 今回初めて導入した `kiosk-hotcorner.service` は停止・無効化して削除し、
 既存サービスなら更新前の有効化・稼働状態へ戻す。復元後は labwc を再読み込みし、
 通常更新ではブラウザを再起動する。旧パネルの常時表示を現在のセッションにも戻すには、
-再ログインまたは端末再起動が必要（autostart の復元だけでは旧プロセスは再開しない）。残った障害は
+再ログインまたは端末再起動が必要。残った障害は
 [deploy-status-recovery](deploy-status-recovery.md) に従う。
 
-成功後に手動で戻す可能性がある場合は、更新前に rc.xml、autostart、
+成功後に手動で戻す可能性がある場合は、更新前に rc.xml、
 `show-kiosk-panel.sh` と hotcorner unit の有無・状態を別途保存する。
 成功した release の一時バックアップは cleanup される。
-手動復旧ではセンサーを停止・無効化し、保存したファイルと所有者・権限を復元する
-（更新前に autostart がなければ今回の override を削除）。新規導入だったセンサーと unit を
-削除して `systemctl daemon-reload` を実行し、端末を再ログインまたは再起動する。
+手動復旧ではセンサーを停止・無効化し、保存したファイルと所有者・権限を復元する。
+新規導入だったセンサーと unit を削除して `systemctl daemon-reload` を実行し、端末を再ログインまたは再起動する。
 更新前からセンサーがあった場合は、その unit と有効化状態も復元する。
 旧 SHA の再配布だけでは、新設したファイルの削除は行われない。

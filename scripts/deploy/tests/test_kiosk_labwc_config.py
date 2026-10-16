@@ -25,15 +25,17 @@ class KioskLabwcConfigTests(unittest.TestCase):
         self.assertEqual(result, expected)
         root = ET.fromstring(result)
         rules = root.findall("rc:windowRules/rc:windowRule", NS)
-        self.assertEqual([rule.get("identifier") for rule in rules], ["*__kiosk", "Kodi"])
+        self.assertEqual([rule.get("identifier") for rule in rules], ["*__kiosk", "Chromium", "Kodi"])
         self.assertEqual(rules[0].get("serverDecoration"), "no")
         self.assertEqual(UPDATE(result), result)
 
     def test_rule_from_the_first_release_is_rewritten_in_place(self):
-        # The first release wrote identifier="Chromium", which labwc never matched
-        # because it compares the WM_CLASS instance ("<host>__kiosk").
+        # The first release wrote only identifier="Chromium", which labwc up to 0.9
+        # never matched because it compares the WM_CLASS instance ("<host>__kiosk").
         original = (FIXTURES / "kiosk-labwc-long.xml").read_text()
-        old_release = UPDATE(original).replace('identifier="*__kiosk"', 'identifier="Chromium"')
+        old_rule = '<windowRule identifier="Chromium" serverDecoration="no" />'
+        old_release = UPDATE(original).replace("\n    ".join(HELPER["KIOSK_WINDOW_RULES"]), old_rule)
+        self.assertEqual(old_release.count("<windowRule "), 2)
         result = UPDATE(old_release)
         self.assertEqual(result, UPDATE(original))
         self.assertEqual(result.count("BEGIN ANSIBLE MANAGED: kiosk-titlebar"), 1)

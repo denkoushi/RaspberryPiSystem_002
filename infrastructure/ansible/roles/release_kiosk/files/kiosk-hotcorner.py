@@ -126,7 +126,7 @@ def panel_processes(proc_root=Path("/proc")):
             if os.path.basename(argv[0]) in (b"sh", b"dash", b"bash") and len(argv) > 1:
                 argv = argv[1:]
             executable = os.path.basename(argv[0])
-            if executable == b"lwrespawn" and len(argv) > 1 and argv[1] == b"/usr/bin/wf-panel-pi":
+            if executable == b"lwrespawn" and len(argv) > 1 and os.path.basename(argv[1]) == b"wf-panel-pi":
                 respawners.append(int(entry.name))
             elif executable == b"wf-panel-pi":
                 panels.append(int(entry.name))
