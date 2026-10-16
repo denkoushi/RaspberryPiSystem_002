@@ -59,4 +59,15 @@ describe('seiban-progress.service', () => {
       ['S-003', null],
     ]);
   });
+
+  it('supplementMachineName: false なら補完テーブルを見ずに MH/SH 行の機種名だけを返す', async () => {
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      { fseiban: 'S-002', total: 1, completed: 0, incompleteProductNames: ['B'], machineName: null },
+    ] as never);
+
+    const result = await fetchSeibanProgressRows(['S-002'], undefined, { supplementMachineName: false });
+
+    expect(result.map((row) => row.machineName)).toEqual([null]);
+    expect(prisma.productionScheduleSeibanMachineNameSupplement.findMany).not.toHaveBeenCalled();
+  });
 });

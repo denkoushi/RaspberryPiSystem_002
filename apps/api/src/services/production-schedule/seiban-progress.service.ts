@@ -31,7 +31,11 @@ const normalizeSeibanList = (values: string[]): string[] => {
 
 export async function fetchSeibanProgressRows(
   fseibans: string[],
-  csvDashboardId: string = PRODUCTION_SCHEDULE_DASHBOARD_ID
+  csvDashboardId: string = PRODUCTION_SCHEDULE_DASHBOARD_ID,
+  options: {
+    /** false にすると MH/SH 行の機種名だけを返す（補完の有無を呼び出し側で区別したいとき） */
+    supplementMachineName?: boolean;
+  } = {}
 ): Promise<SeibanProgressRow[]> {
   const normalized = normalizeSeibanList(fseibans);
   if (normalized.length === 0) {
@@ -79,6 +83,10 @@ export async function fetchSeibanProgressRows(
     GROUP BY ("CsvDashboardRow"."rowData"->>'FSEIBAN')
     ORDER BY ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC
   `;
+
+  if (options.supplementMachineName === false) {
+    return rows;
+  }
 
   // MH/SH 行に機種名が無い製番は補完テーブルで埋める（resolveSeibanMachineDisplayNames と同じ解決順）
   const supplement = await findSupplementMachineNamesForMissing(
