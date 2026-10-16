@@ -95,9 +95,10 @@ describe('WorkInstructionViewerDialog', () => {
     expect(screen.getByRole('tab', { name: '段取写真' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByTestId('work-instruction-card-grid')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: '手順書' }));
-    expect(screen.getByRole('toolbar', { name: 'ページ操作' })).toBeInTheDocument();
+    const rail = screen.getByRole('toolbar', { name: 'ページ操作' });
+    expect(within(rail).getByRole('tab', { name: '手順書' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.queryByTestId('work-instruction-card-grid')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', { name: '段取写真' }));
+    fireEvent.click(within(rail).getByRole('tab', { name: '段取写真' }));
     expect(screen.getByTestId('work-instruction-card-grid')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: '手順書' }));
     view.rerender(<WorkInstructionViewerDialog isOpen partNumber="PN-002" shootingTarget="FRONT" group={group} isLoading={false} manualSequence={manualSequence} onClose={vi.fn()} />);
@@ -139,10 +140,11 @@ describe('WorkInstructionViewerDialog', () => {
     expect(screen.getByTestId('procedure-page-spread')).toHaveAttribute('data-pages', '1');
   });
 
-  it('anchors manual nonconformity details at the left edge of the floating cluster', () => {
+  it('puts manual nonconformity in the page rail and opens details beside it', () => {
     renderViewer({ hasWorkInstruction: false, manualSequence, nonconformityErrorMessage: '取得失敗' });
-    fireEvent.click(screen.getByRole('button', { name: '不適合情報' }));
-    expect(screen.getByRole('region', { name: '不適合情報' })).toHaveClass('left-0');
+    const rail = screen.getByRole('toolbar', { name: 'ページ操作' });
+    fireEvent.click(within(rail).getByRole('button', { name: '不適合情報' }));
+    expect(screen.getByRole('region', { name: '不適合情報' })).toHaveClass('fixed', 'right-[4.75rem]');
   });
 
   it('renders the flattened step order, display numbers, memo-only cards, and responsive grid contract', () => {

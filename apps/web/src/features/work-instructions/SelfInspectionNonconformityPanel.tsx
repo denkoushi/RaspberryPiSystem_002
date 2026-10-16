@@ -9,7 +9,8 @@ export type SelfInspectionNonconformityPanelProps = {
   isLoading?: boolean;
   errorMessage?: string;
   onRetry?: () => void;
-  align?: 'left' | 'right';
+  /** `rail` renders a compact icon button for the manual page rail; its panel opens to the rail's left. */
+  variant?: 'header' | 'rail';
 };
 
 const fields: ReadonlyArray<{
@@ -43,7 +44,7 @@ export function SelfInspectionNonconformityPanel({
   isLoading = false,
   errorMessage,
   onRetry,
-  align = 'right'
+  variant = 'header'
 }: SelfInspectionNonconformityPanelProps) {
   const [expanded, setExpanded] = useState(false);
   const panelId = useId();
@@ -56,20 +57,35 @@ export function SelfInspectionNonconformityPanel({
 
   return (
     <div className="relative shrink-0">
-      <button
-        type="button"
-        className="min-h-11 shrink-0 rounded-md border border-amber-300/50 bg-amber-300/10 px-3 text-sm font-bold text-amber-100 hover:bg-amber-300/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
-        aria-expanded={expanded}
-        aria-controls={panelId}
-        onClick={() => setExpanded((current) => !current)}
-      >
-        不適合情報{countLabel}
-      </button>
+      {variant === 'rail' ? (
+        <button
+          type="button"
+          className="relative flex min-h-14 w-[52px] flex-col items-center justify-center gap-0.5 rounded-[10px] border border-amber-300/50 bg-amber-300/10 text-[11px] font-bold text-amber-100 hover:bg-amber-300/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+          aria-label={`不適合情報${countLabel}`}
+          aria-expanded={expanded}
+          aria-controls={panelId}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          <svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2}><path d="M12 3l10 18H2L12 3z" /><path d="M12 10v5M12 18h.01" /></svg>
+          不適合
+          {displayItems.length > 0 ? <span aria-hidden="true" className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-amber-400 px-1 text-[11px] leading-none text-slate-950">{displayItems.length}</span> : null}
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="min-h-11 shrink-0 rounded-md border border-amber-300/50 bg-amber-300/10 px-3 text-sm font-bold text-amber-100 hover:bg-amber-300/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+          aria-expanded={expanded}
+          aria-controls={panelId}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          不適合情報{countLabel}
+        </button>
+      )}
 
       {expanded ? (
         <aside
           id={panelId}
-          className={`absolute ${align === 'left' ? 'left-0' : 'right-0'} top-[calc(100%+0.5rem)] z-20 flex max-h-[calc(100dvh-7rem)] w-[min(90vw,34rem)] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-lg border border-amber-300/50 bg-slate-950/95 text-white shadow-2xl`}
+          className={`${variant === 'rail' ? 'fixed right-[4.75rem] top-2 max-h-[calc(100dvh-1rem)]' : 'absolute right-0 top-[calc(100%+0.5rem)] max-h-[calc(100dvh-7rem)]'} z-20 flex w-[min(90vw,34rem)] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-lg border border-amber-300/50 bg-slate-950/95 text-white shadow-2xl`}
           role="region"
           aria-label="不適合情報"
         >
