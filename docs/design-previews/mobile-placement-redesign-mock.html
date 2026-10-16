@@ -693,7 +693,7 @@ button:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
     Z[`${a}|${l}`] = [...PATS[(li + ai) % 3]].map((t) => t === 'S' ? { t, code: `${a}-${l}-${String(++n).padStart(2, '0')}`, z2: n === 1 }
       : t === 'M' ? { t, name: MNAMES[mcount++ % 4] } : { t });
   }));
-  const zl = (k) => k.replace('|', '・');
+  const zl = (k) => k.split('|').join('・');
   let mMode = 'move', mZone = null, mFrom = null, mSel = new Set(), mDirty = false;
   const counts = (k) => Z[k].reduce((c, x) => (c[x.t] = (c[x.t] || 0) + 1, c), {});
   function rMaster() {

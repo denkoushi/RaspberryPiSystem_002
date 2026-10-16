@@ -72,7 +72,7 @@ export function PalletVizPhoneView({ ctrl, onBack }: Props) {
         </button>
       </div>
       {error && <p role="alert" className="shrink-0 px-3.5 text-sm text-[var(--hp-ng)]">{error}</p>}
-      <div className={`${hp.list} ${hp.hermesBottomPadding}`}>
+      <div data-pallet-viz-item-list-scroll className={`${hp.list} ${hp.hermesBottomPadding}`}>
         {ctrl.listItems.map((item) => {
           const date = phonePalletStartDate(item.plannedStartDateDisplay);
           const meta = [item.fseiban, item.fhincd, date && `着手 ${date}`].filter(Boolean).join(' · ');
