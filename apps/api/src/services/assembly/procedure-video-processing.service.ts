@@ -1,7 +1,8 @@
 import { enqueueProcedureVideoAutoEdit } from './procedure-video-auto-edit.service.js';
 import { Prisma } from '@prisma/client';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -89,14 +90,16 @@ export class ProcedureVideoProcessingService {
           else await this.transcoder.transcode(input, output, poster, heartbeat);
         }
         const { durationSeconds, width, height } = await this.transcoder.probe(output);
-        const bytes = await readFile(output);
-        const sha256 = createHash('sha256').update(bytes).digest('hex');
+        const { size } = await stat(output);
+        const digest = createHash('sha256');
+        for await (const chunk of createReadStream(output)) digest.update(chunk);
+        const sha256 = digest.digest('hex');
         const storageKey = `procedure-videos/${sha256}/video.mp4`;
         const posterStorageKey = `procedure-videos/${sha256}/poster.jpg`;
         const posterBytes = await readFile(poster);
         const published = await runAssemblyTransaction(async (tx) => {
           const result = await tx.procedureVideo.updateMany({ where: processingWhere, data: {
-            status: 'READY', storageKey, posterStorageKey, sha256, byteSize: bytes.length, durationSeconds, width, height,
+            status: 'READY', storageKey, posterStorageKey, sha256, byteSize: size, durationSeconds, width, height,
             errorCode: null, errorMessage: null, processedAt: new Date(),
             ...(isTrim ? { trimmedAt: new Date(), trimRequest: Prisma.DbNull } : { sourceDurationSeconds }),
             ...(concat ? { concatRequest: Prisma.DbNull } : {}),
@@ -127,7 +130,12 @@ export class ProcedureVideoProcessingService {
           }
           // Writers and old-output cleanup share the same lock. Keep encoding outside it.
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${storageKey}))`;
-          await this.save(storageKey, bytes);
+          try {
+            await this.store.writeStream({ key: storageKey, source: createReadStream(output), integrity: true, sizeHint: size });
+          } catch (error) {
+            if (!(error instanceof FileStorageAlreadyExistsError)) throw error;
+            if ((await this.store.hash(storageKey)).sha256 !== sha256) throw new Error('Procedure video identity conflict');
+          }
           await this.save(posterStorageKey, posterBytes);
           if (isTrim && trim) {
             const comments = await tx.procedureVideoComment.findMany({ where: { videoId: video.id }, orderBy: { sortOrder: 'asc' } });

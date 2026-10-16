@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { buffer } from 'node:stream/consumers';
+import type { DurableFileStorePort } from '../../file-storage/durable-file-store.port.js';
 import { env } from '../../../config/env.js';
 import { Prisma } from '@prisma/client';
 import { access, readFile, writeFile } from 'node:fs/promises';
@@ -6,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ProcedureVideoProcessingService } from '../procedure-video-processing.service.js';
 import { ProcedureVideoTranscodeError } from '../procedure-video-transcoder.port.js';
-import { FileStorageIntegrityMismatchError } from '../../file-storage/file-storage-errors.js';
+import { FileStorageAlreadyExistsError, FileStorageIntegrityMismatchError } from '../../file-storage/file-storage-errors.js';
 
 type VideoRow = { id: string; status: string; attempts: number; sourceStorageKey: string | null; discardedAt: Date | null; updatedAt: Date; processingToken?: string | null; storageKey?: string | null; posterStorageKey?: string | null; trimRequest?: { startSeconds: number; endSeconds: number; requestedAt: string } | null; concatRequest?: { sourceVideoIds: string[]; requestedAt: string } | null; sourceDurationSeconds?: number | null; comments?: Array<{ atSeconds: number; text: string; sortOrder: number }> };
 function harness() {
@@ -62,7 +65,11 @@ function harness() {
       throw error;
     } finally { inTransaction = false; }
   });
-  const store = { copyToFile: vi.fn(async (_key: string, destination: string, _options: { verifyIntegrity: boolean }) => { await writeFile(destination, 'original'); }), read: vi.fn().mockResolvedValue(Buffer.from('original')), write: vi.fn(), delete: vi.fn(async (key) => {
+  const store = { copyToFile: vi.fn(async (_key: string, destination: string, _options: { verifyIntegrity: boolean }) => { await writeFile(destination, 'original'); }), read: vi.fn().mockResolvedValue(Buffer.from('original')), hash: vi.fn(), writeStream: vi.fn<DurableFileStorePort['writeStream']>(async ({ key, source }) => {
+    expect(inTransaction).toBe(true);
+    const data = await buffer(source);
+    return { key, sha256: createHash('sha256').update(data).digest('hex'), size: data.length };
+  }), write: vi.fn(), delete: vi.fn(async (key) => {
     expect(inTransaction).toBe(!key.includes('/incoming/'));
     events.push('delete');
   }) };
@@ -116,10 +123,23 @@ describe('procedure-video processing', () => {
     expect(h.row).toMatchObject({ status: 'PENDING', attempts: 1, errorCode: 'PROCESSING_FAILED' });
     expect(h.transcoder.probe).not.toHaveBeenCalled();
     expect(h.transcoder.transcode).not.toHaveBeenCalled();
-    expect(h.store.write).not.toHaveBeenCalled();
+    expect(h.store.write).not.toHaveBeenCalled(); expect(h.store.writeStream).not.toHaveBeenCalled();
     expect(h.store.read).not.toHaveBeenCalled();
     const destination = h.store.copyToFile.mock.calls[0][1];
     await expect(access(path.dirname(destination))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+  it.each([true, false])('compares hashes on a streamed create conflict (identical: %s)', async (identical) => {
+    const h = harness();
+    h.store.writeStream.mockImplementationOnce(async ({ source }) => {
+      await buffer(source);
+      throw new FileStorageAlreadyExistsError();
+    });
+    h.store.hash.mockResolvedValue({ sha256: createHash('sha256').update(identical ? 'converted' : 'different').digest('hex') });
+    await h.service.runOnce();
+    expect(h.store.hash).toHaveBeenCalledWith(h.store.writeStream.mock.calls[0][0].key);
+    expect(h.store.read).not.toHaveBeenCalled();
+    if (identical) expect(h.row.status).toBe('READY');
+    else expect(h.row).toMatchObject({ status: 'PENDING', errorMessage: 'Procedure video identity conflict' });
   });
   it('claims PENDING, converts outside a transaction, commits READY and clears the last reference before deletion', async () => {
     const h = harness();
@@ -135,7 +155,10 @@ describe('procedure-video processing', () => {
     expect(h.store.read).not.toHaveBeenCalled();
     expect(h.events).toEqual(['READY commit', 'clear reference', 'cleanup commit', 'delete']);
     expect(h.row).toMatchObject({ status: 'READY', sourceStorageKey: null, attempts: 0, durationSeconds: 12, sourceDurationSeconds: 12, width: 640, height: 360 });
-    expect(h.store.write.mock.calls.map(([request]) => request.key)).toEqual([expect.stringMatching(/procedure-videos\/[a-f0-9]{64}\/video.mp4/), expect.stringMatching(/procedure-videos\/[a-f0-9]{64}\/poster.jpg/)]);
+    expect(h.store.writeStream).toHaveBeenCalledWith({ key: expect.stringMatching(/procedure-videos\/[a-f0-9]{64}\/video.mp4/), source: expect.anything(), integrity: true, sizeHint: 9 });
+    expect(await h.store.writeStream.mock.results[0].value).toMatchObject({ sha256: createHash('sha256').update('converted').digest('hex'), size: 9 });
+    expect(h.row).toMatchObject({ byteSize: 9 });
+    expect(h.store.write.mock.calls.map(([request]) => request.key)).toEqual([expect.stringMatching(/procedure-videos\/[a-f0-9]{64}\/poster.jpg/)]);
     expect(h.store.delete).toHaveBeenCalledWith('procedure-videos/incoming/hash/original', { integrity: true });
     expect(h.tx.$executeRaw.mock.calls[1]).toEqual([expect.arrayContaining(['SELECT pg_advisory_xact_lock(hashtext(', '))']), 'procedure-videos/incoming/hash/original']);
     expect(h.tx.procedureVideo.update).toHaveBeenCalledWith({ where: { id: 'video' }, data: { sourceStorageKey: null } });
@@ -336,7 +359,7 @@ describe('procedure-video processing', () => {
     expect(h.store.copyToFile.mock.calls.map(([key]) => key)).toEqual(['second.mp4', 'first.mp4', 'second.mp4']);
     expect(h.store.copyToFile.mock.calls.every(([, , options]) => options.verifyIntegrity)).toBe(true);
     expect(h.store.read).not.toHaveBeenCalled();
-    expect(h.store.write.mock.calls[1][0].data.toString()).toBe('concat-poster');
+    expect(h.store.write.mock.calls[0][0].data.toString()).toBe('concat-poster');
     expect(h.tx.procedureVideoComment.createMany).toHaveBeenCalledWith({ data: [
       { videoId: 'video', atSeconds: 0, text: '次', sortOrder: 0 }, { videoId: 'video', atSeconds: 2, text: '後', sortOrder: 1 },
       { videoId: 'video', atSeconds: 31, text: '最初', sortOrder: 2 }, { videoId: 'video', atSeconds: 50, text: '次', sortOrder: 3 }, { videoId: 'video', atSeconds: 52, text: '後', sortOrder: 4 },
@@ -361,7 +384,7 @@ describe('procedure-video processing', () => {
     await h.service.runOnce();
     expect(h.row).toEqual(beforeHeartbeat!);
     expect(h.db.$transaction).not.toHaveBeenCalled();
-    expect(h.store.write).not.toHaveBeenCalled();
+    expect(h.store.write).not.toHaveBeenCalled(); expect(h.store.writeStream).not.toHaveBeenCalled();
     await expect(access(directory)).rejects.toMatchObject({ code: 'ENOENT' });
   });
   it('extends the recovery deadline with a matching heartbeat', async () => {
@@ -389,7 +412,7 @@ describe('procedure-video processing', () => {
     });
     await h.service.runOnce();
     expect(h.row).toEqual(recovered!);
-    expect(h.store.write).not.toHaveBeenCalled();
+    expect(h.store.write).not.toHaveBeenCalled(); expect(h.store.writeStream).not.toHaveBeenCalled();
     expect(h.tx.procedureVideoComment.deleteMany).not.toHaveBeenCalled();
     expect(h.tx.procedureVideoComment.createMany).not.toHaveBeenCalled();
     expect(h.store.delete).not.toHaveBeenCalled();
@@ -419,7 +442,7 @@ describe('procedure-video processing', () => {
     else h.rows[1].status = 'PROCESSING';
     await h.service.runOnce();
     expect(h.row).toMatchObject({ status: 'FAILED', attempts: 1, errorCode: 'CONCAT_FAILED' });
-    expect(h.transcoder.concat).not.toHaveBeenCalled(); expect(h.store.write).not.toHaveBeenCalled();
+    expect(h.transcoder.concat).not.toHaveBeenCalled(); expect(h.store.write).not.toHaveBeenCalled(); expect(h.store.writeStream).not.toHaveBeenCalled();
   });
   it.each(['deleted', 'discarded', 'replaced'])('rechecks sources under row locks and refuses READY when a source was %s during encoding', async (state) => {
     const h = concatenating();
@@ -431,7 +454,7 @@ describe('procedure-video processing', () => {
     });
     await h.service.runOnce();
     expect(h.row).toMatchObject({ status: 'FAILED', errorCode: 'CONCAT_FAILED', attempts: 1 });
-    expect(h.store.write).not.toHaveBeenCalled(); expect(h.tx.procedureVideoComment.createMany).not.toHaveBeenCalled();
+    expect(h.store.write).not.toHaveBeenCalled(); expect(h.store.writeStream).not.toHaveBeenCalled(); expect(h.tx.procedureVideoComment.createMany).not.toHaveBeenCalled();
     expect(h.tx.$queryRaw.mock.calls.map((call) => call[1])).toEqual(['first', 'second']);
   });
   it('retries concat three times then fails on the fourth, preserving its request for manual retry', async () => {

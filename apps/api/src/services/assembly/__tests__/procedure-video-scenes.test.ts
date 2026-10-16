@@ -20,7 +20,7 @@ function harness() {
     try { return await work(db); }
     finally { inTransaction = false; }
   });
-  const store = { read: vi.fn().mockResolvedValue(Buffer.from('mp4')), write: vi.fn(async (_request: { key: string; data: Buffer; mode: string; integrity: boolean }) => undefined), delete: vi.fn() };
+  const store = { copyToFile: vi.fn(async (_key: string, destination: string) => { await writeFile(destination, 'mp4'); }), read: vi.fn().mockResolvedValue(Buffer.from('mp4')), write: vi.fn(async (_request: { key: string; data: Buffer; mode: string; integrity: boolean }) => undefined), delete: vi.fn() };
   const transcoder = { posterAt: vi.fn(async (_input: string, poster: string, _startSeconds: number) => {
     expect(inTransaction).toBe(false);
     await writeFile(poster, Buffer.from('scene jpeg'));
@@ -64,7 +64,8 @@ describe('procedure-video scenes service', () => {
   it('generates the start frame after create commits, stores it in the protected prefix and exposes its flag', async () => {
     const h = harness();
     expect(await h.service.createScene('video', { startSeconds: 2.14, endSeconds: 8 })).toMatchObject({ hasScenePoster: true });
-    expect(h.store.read).toHaveBeenCalledWith('procedure-videos/video/video.mp4', { verifyIntegrity: true });
+    expect(h.store.copyToFile).toHaveBeenCalledWith('procedure-videos/video/video.mp4', expect.any(String), { verifyIntegrity: true });
+    expect(h.store.read).not.toHaveBeenCalled();
     expect(h.transcoder.posterAt).toHaveBeenCalledWith(expect.stringMatching(/video\.mp4$/), expect.stringMatching(/poster\.jpg$/), 2.1);
     const key = h.store.write.mock.calls[0][0].key;
     expect(key).toMatch(/^procedure-videos\/scenes\/scene\/[a-f0-9-]+\/poster.jpg$/);
@@ -88,7 +89,7 @@ describe('procedure-video scenes service', () => {
     const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
     const h = harness(); const error = new Error(stage);
     if (stage === 'extract') h.transcoder.posterAt.mockRejectedValue(error);
-    if (stage === 'read') h.store.read.mockRejectedValue(error);
+    if (stage === 'read') h.store.copyToFile.mockRejectedValue(error);
     if (stage === 'store') h.store.write.mockRejectedValue(error);
     if (stage === 'publish') h.db.procedureVideoScene.updateMany.mockRejectedValue(error);
     expect(await h.service.createScene('video', { startSeconds: 0, endSeconds: 2 })).toMatchObject({ hasScenePoster: false });

@@ -56,13 +56,15 @@ describe('procedure-video Gmail', () => {
   it('reuses identical shared original bytes and rejects identity conflicts', async () => {
     const db = { $queryRaw: vi.fn(), $executeRaw: vi.fn(), $transaction: vi.fn(), procedureVideo: { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn() } };
     db.$transaction.mockImplementation((work) => work(db));
-    const store = { write: vi.fn().mockRejectedValue(new FileStorageAlreadyExistsError()), read: vi.fn().mockResolvedValue(bytes) };
+    const store = { write: vi.fn().mockRejectedValue(new FileStorageAlreadyExistsError()), hash: vi.fn().mockResolvedValue({ sha256: createHash('sha256').update(bytes).digest('hex') }), read: vi.fn() };
     const video = (await resolveProcedureMaterialGmailPacket({ message: message(), client: { getAttachment: async () => bytes } })).videos[0]!;
     const service = new ProcedureVideoService(db as never, store as never);
     expect(await service.ingest(video, { gmailMessageId: 'gmail-1', fromEmail: null, subjectHint: null, receivedAt: new Date() })).toBe(true);
     // pg_advisory_xact_lock returns void, which $queryRaw cannot deserialize.
     expect(db.$executeRaw).toHaveBeenCalledOnce(); expect(db.$queryRaw).not.toHaveBeenCalled();
-    store.read.mockResolvedValue(Buffer.from('wrong'));
+    expect(store.hash).toHaveBeenCalledWith(`procedure-videos/incoming/${video.sha256}/original`);
+    expect(store.read).not.toHaveBeenCalled();
+    store.hash.mockResolvedValue({ sha256: createHash('sha256').update('wrong').digest('hex') });
     await expect(service.ingest(video, { gmailMessageId: 'gmail-1', fromEmail: null, subjectHint: null, receivedAt: new Date() })).rejects.toThrow('identity conflict');
   });
 });

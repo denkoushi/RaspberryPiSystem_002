@@ -4,7 +4,7 @@ import { aggregateAutoEditStats, autoEditLatestOrder, PROCEDURE_VIDEO_AUTO_EDIT_
 import { AssemblyProcedureDocumentEditLeaseService, type AssemblyProcedureEditActor } from './assembly-procedure-document-edit-lease.service.js';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -76,7 +76,7 @@ export class ProcedureVideoService {
         try { await this.store.write({ key: sourceStorageKey, data: video.buffer, mode: 'create', integrity: true }); }
         catch (error) {
           if (!(error instanceof FileStorageAlreadyExistsError)) throw error;
-          if (!(await this.store.read(sourceStorageKey, { verifyIntegrity: true })).equals(video.buffer)) throw new Error('Procedure video identity conflict');
+          if ((await this.store.hash(sourceStorageKey)).sha256 !== video.sha256) throw new Error('Procedure video identity conflict');
         }
         await tx.procedureVideo.create({ data: { ...common, origin: 'GMAIL', status: 'PENDING', title: common.subjectHint || video.filename, gmailDedupeKey: video.gmailDedupeKey, sourceStorageKey, sourceFileName: video.filename, sourceContentType: video.contentType, sourceByteSize: video.buffer.length } });
         return true;
@@ -235,7 +235,7 @@ export class ProcedureVideoService {
       if (!storageKey) throw new Error('Procedure video MP4 is missing');
       directory = await mkdtemp(path.join(tmpdir(), 'procedure-video-scene-'));
       const input = path.join(directory, 'video.mp4'), poster = path.join(directory, 'poster.jpg');
-      await writeFile(input, await this.store.read(storageKey, { verifyIntegrity: true }));
+      await this.store.copyToFile(storageKey, input, { verifyIntegrity: true });
       await this.transcoder.posterAt(input, poster, startSeconds);
       // Each attempt owns its file, so stale attempts can safely delete their output.
       posterStorageKey = `procedure-videos/scenes/${sceneId}/${randomUUID()}/poster.jpg`;
