@@ -84,6 +84,21 @@ UUID固定で同じホストパスへmountすればAPI変更なしで移行で�
 対する別媒体への復旧は別計画で扱う。S3、MinIO、クラウド、追加SSD、既存
 ファイルの物理移行、DB migrationは今回含めない。
 
+## Amendment 2026-10-16: streaming reads
+
+S3互換ストレージへ差し替え可能な形に寄せるため、portへ
+`openReadStream(key, { start, end })`、`list(namespace)`、
+`copyToFile(key, destination, { verifyIntegrity })` を追加した。手順動画の配信は
+Rangeごとに動画全体を読み込みhashする方式をやめ、指定範囲だけをstreamで返す。
+streamでの範囲読取りはSHA-256を照合できないため、catalogのsizeとの一致だけを
+確認し、内容の照合は書込み時のhashとbackfill/scanに任せる。動画変換の入力は
+`copyToFile` で一時ファイルへ流しながら全体のSHA-256を照合する。手順資料のGCは
+`absolutePath()` ではなく `list()` を使う。
+
+`read()` と `absolutePath()` は小さいファイルの既存利用者のため残す。
+`apps/api/src/lib/*storage*.ts` の直接fs利用、書込みのstream化、
+`absolutePath()` の廃止は後続で扱う。
+
 ## Alternatives considered
 
 クラウドまたはS3互換ストレージは、当面導入しないという運用方針のため見送った。

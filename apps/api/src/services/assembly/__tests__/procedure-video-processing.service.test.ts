@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ProcedureVideoProcessingService } from '../procedure-video-processing.service.js';
 import { ProcedureVideoTranscodeError } from '../procedure-video-transcoder.port.js';
+import { FileStorageIntegrityMismatchError } from '../../file-storage/file-storage-errors.js';
 
 type VideoRow = { id: string; status: string; attempts: number; sourceStorageKey: string | null; discardedAt: Date | null; updatedAt: Date; processingToken?: string | null; storageKey?: string | null; posterStorageKey?: string | null; trimRequest?: { startSeconds: number; endSeconds: number; requestedAt: string } | null; concatRequest?: { sourceVideoIds: string[]; requestedAt: string } | null; sourceDurationSeconds?: number | null; comments?: Array<{ atSeconds: number; text: string; sortOrder: number }> };
 function harness() {
@@ -58,7 +59,7 @@ function harness() {
       throw error;
     } finally { inTransaction = false; }
   });
-  const store = { read: vi.fn().mockResolvedValue(Buffer.from('original')), write: vi.fn(), delete: vi.fn(async (key) => {
+  const store = { copyToFile: vi.fn(async (_key: string, destination: string, _options: { verifyIntegrity: boolean }) => { await writeFile(destination, 'original'); }), read: vi.fn().mockResolvedValue(Buffer.from('original')), write: vi.fn(), delete: vi.fn(async (key) => {
     expect(inTransaction).toBe(!key.includes('/incoming/'));
     events.push('delete');
   }) };
@@ -79,6 +80,18 @@ function harness() {
 
 describe('procedure-video processing', () => {
   afterEach(() => vi.restoreAllMocks());
+  it('does not transcode or publish an input whose streamed copy fails integrity verification', async () => {
+    const h = harness();
+    h.store.copyToFile.mockRejectedValueOnce(new FileStorageIntegrityMismatchError());
+    await h.service.runOnce();
+    expect(h.row).toMatchObject({ status: 'PENDING', attempts: 1, errorCode: 'PROCESSING_FAILED' });
+    expect(h.transcoder.probe).not.toHaveBeenCalled();
+    expect(h.transcoder.transcode).not.toHaveBeenCalled();
+    expect(h.store.write).not.toHaveBeenCalled();
+    expect(h.store.read).not.toHaveBeenCalled();
+    const destination = h.store.copyToFile.mock.calls[0][1];
+    await expect(access(path.dirname(destination))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
   it('claims PENDING, converts outside a transaction, commits READY and clears the last reference before deletion', async () => {
     const h = harness();
     h.db.procedureVideo.update.mockImplementationOnce(async ({ data }) => {
@@ -89,6 +102,8 @@ describe('procedure-video processing', () => {
     });
     await h.service.runOnce();
     expect(h.states).toEqual(['PROCESSING', 'READY', 'READY']);
+    expect(h.store.copyToFile).toHaveBeenCalledWith('procedure-videos/incoming/hash/original', expect.any(String), { verifyIntegrity: true });
+    expect(h.store.read).not.toHaveBeenCalled();
     expect(h.events).toEqual(['READY commit', 'clear reference', 'cleanup commit', 'delete']);
     expect(h.row).toMatchObject({ status: 'READY', sourceStorageKey: null, attempts: 0, durationSeconds: 12, sourceDurationSeconds: 12, width: 640, height: 360 });
     expect(h.store.write.mock.calls.map(([request]) => request.key)).toEqual([expect.stringMatching(/procedure-videos\/[a-f0-9]{64}\/video.mp4/), expect.stringMatching(/procedure-videos\/[a-f0-9]{64}\/poster.jpg/)]);
@@ -202,7 +217,7 @@ describe('procedure-video processing', () => {
     await h.service.runOnce();
     expect(h.transcoder.trim).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.any(String), 2, 10, expect.any(Function));
     expect(h.transcoder.transcode).not.toHaveBeenCalled();
-    expect(h.store.read).toHaveBeenCalledWith('procedure-videos/old/video.mp4', { verifyIntegrity: true });
+    expect(h.store.copyToFile).toHaveBeenCalledWith('procedure-videos/old/video.mp4', expect.any(String), { verifyIntegrity: true });
     expect(h.row).toMatchObject({ status: 'READY', durationSeconds: 8, sourceDurationSeconds: 12, trimmedAt: expect.any(Date), errorCode: null });
     expect(h.row.storageKey).toMatch(/^procedure-videos\/[a-f0-9]{64}\/video.mp4$/);
     expect(h.tx.procedureVideoComment.createMany).toHaveBeenCalledWith({ data: [expect.objectContaining({ id: '1', atSeconds: 0, sortOrder: 0 }), expect.objectContaining({ id: '2', atSeconds: 3, sortOrder: 1 }), expect.objectContaining({ id: '3', atSeconds: 8, sortOrder: 2 })] });
@@ -224,7 +239,7 @@ describe('procedure-video processing', () => {
     expect(h.row).toMatchObject({ status: 'PENDING', trimRequest: replacement });
     expect(h.db.procedureVideo.updateMany).toHaveBeenLastCalledWith({ where: { id: 'video', status: 'PENDING', updatedAt: snapshot.updatedAt, discardedAt: null }, data: { status: 'PROCESSING', processingToken: expect.any(String) } });
     expect(h.db.procedureVideo.findUnique).not.toHaveBeenCalled();
-    expect(h.transcoder.trim).not.toHaveBeenCalled(); expect(h.store.read).not.toHaveBeenCalled();
+    expect(h.transcoder.trim).not.toHaveBeenCalled(); expect(h.store.copyToFile).not.toHaveBeenCalled(); expect(h.store.read).not.toHaveBeenCalled();
     await h.service.runOnce();
     expect(h.transcoder.trim).toHaveBeenCalledExactlyOnceWith(expect.any(String), expect.any(String), expect.any(String), 1, 6, expect.any(Function));
   });
@@ -276,7 +291,7 @@ describe('procedure-video processing', () => {
       { ...h.row, id: 'first', status: 'READY', concatRequest: null, storageKey: 'first.mp4', comments: [{ atSeconds: 1, text: '最初', sortOrder: 0 }] },
       { ...h.row, id: 'second', status: 'READY', concatRequest: null, storageKey: 'second.mp4', comments: [{ atSeconds: 0, text: '次', sortOrder: 0 }, { atSeconds: 2, text: '後', sortOrder: 1 }] },
     );
-    h.store.read.mockImplementation(async (key) => Buffer.from(key));
+    h.store.copyToFile.mockImplementation(async (key, destination) => { await writeFile(destination, key); });
     h.transcoder.probe.mockImplementation(async (input) => ({ durationSeconds: path.basename(input) === 'video.mp4' ? 80 : (await readFile(input, 'utf8')) === 'first.mp4' ? 20 : 30, width: 640, height: 360 }));
     return h;
   }
@@ -289,7 +304,9 @@ describe('procedure-video processing', () => {
     const [inputs, output, poster] = h.transcoder.concat.mock.calls[0];
     expect(inputs.map((input) => path.basename(input))).toEqual(['0.mp4', '1.mp4', '2.mp4']);
     expect(path.basename(output)).toBe('video.mp4'); expect(path.basename(poster)).toBe('poster.jpg');
-    expect(h.store.read.mock.calls.map(([key]) => key)).toEqual(['second.mp4', 'first.mp4', 'second.mp4']);
+    expect(h.store.copyToFile.mock.calls.map(([key]) => key)).toEqual(['second.mp4', 'first.mp4', 'second.mp4']);
+    expect(h.store.copyToFile.mock.calls.every(([, , options]) => options.verifyIntegrity)).toBe(true);
+    expect(h.store.read).not.toHaveBeenCalled();
     expect(h.store.write.mock.calls[1][0].data.toString()).toBe('concat-poster');
     expect(h.tx.procedureVideoComment.createMany).toHaveBeenCalledWith({ data: [
       { videoId: 'video', atSeconds: 0, text: '次', sortOrder: 0 }, { videoId: 'video', atSeconds: 2, text: '後', sortOrder: 1 },

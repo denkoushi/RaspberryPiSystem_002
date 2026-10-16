@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { buffer } from 'node:stream/consumers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FileStorageIntegrityCatalog } from '../file-storage-integrity-catalog.js';
 import {
@@ -10,6 +11,7 @@ import {
   FileStorageInvalidPathError,
 } from '../file-storage-errors.js';
 import { LocalDurableFileStore } from '../local-durable-file-store.js';
+import { logger } from '../../../lib/logger.js';
 
 describe('LocalDurableFileStore', () => {
   let root: string;
@@ -191,5 +193,88 @@ describe('LocalDurableFileStore', () => {
       store.read('photos/legacy.jpg', { verifyIntegrity: true })
     ).rejects.toBeInstanceOf(FileStorageIntegrityMismatchError);
     await expect(fs.readFile(legacyPath, 'utf8')).resolves.toBe('legacy');
+  });
+
+  it.each([
+    [undefined, '0123456789'],
+    [{ start: 2, end: 5 }, '2345'],
+    [{ start: 3 }, '3456789'],
+    [{ end: 3 }, '0123'],
+    [{ start: 0, end: 0 }, '0'],
+  ])('streams full or inclusive ranged content with full size: %j', async (options, expected) => {
+    await store.write({ key: 'photos/video', data: Buffer.from('0123456789'), mode: 'create', integrity: true });
+    const read = vi.spyOn(store, 'read');
+    const { stream, size } = await store.openReadStream('photos/video', options);
+    expect(size).toBe(10);
+    expect(await buffer(stream)).toEqual(Buffer.from(expected));
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { start: -1 }, { end: -1 }, { start: 1.5 }, { end: 1.5 },
+    { start: NaN }, { end: Infinity }, { start: Number.MAX_SAFE_INTEGER + 1 },
+    { end: Number.MAX_SAFE_INTEGER + 1 }, { start: 5, end: 2 },
+  ])('rejects invalid stream offsets %j', async (options) => {
+    await expect(store.openReadStream('photos/video', options)).rejects.toBeInstanceOf(RangeError);
+  });
+
+  it('rejects traversal and symlink escapes for streaming, copying and listing', async () => {
+    await fs.symlink(os.tmpdir(), path.join(root, 'photos', 'escape'));
+    await fs.writeFile(path.join(root, 'photos', 'original'), 'original');
+    await fs.symlink(path.join(root, 'photos', 'original'), path.join(root, 'photos', 'link'));
+    for (const key of ['../escape', '/tmp/escape', 'photos/../escape', 'photos/a\0b', 'photos/escape/file', 'photos/link']) {
+      await expect(store.openReadStream(key)).rejects.toBeInstanceOf(FileStorageInvalidPathError);
+      await expect(store.copyToFile(key, path.join(root, 'copy'), { verifyIntegrity: true })).rejects.toBeInstanceOf(FileStorageInvalidPathError);
+    }
+    for (const namespace of ['../escape', '/tmp', 'photos/escape', 'photos/escape/nested', 'photos/link']) {
+      await expect(store.list(namespace)).rejects.toBeInstanceOf(FileStorageInvalidPathError);
+    }
+  });
+
+  it('rejects stream size mismatches but does not hash streamed contents', async () => {
+    await store.write({ key: 'photos/video', data: Buffer.from('good'), mode: 'create', integrity: true });
+    await fs.writeFile(path.join(root, 'photos', 'video'), 'evil');
+    const { stream } = await store.openReadStream('photos/video');
+    expect(await buffer(stream)).toEqual(Buffer.from('evil'));
+    await fs.writeFile(path.join(root, 'photos', 'video'), 'short');
+    await expect(store.openReadStream('photos/video', { start: 0, end: 0 })).rejects.toBeInstanceOf(FileStorageIntegrityMismatchError);
+  });
+
+  it('lists only direct child names including files and directories, and handles missing namespaces', async () => {
+    await fs.mkdir(path.join(root, 'photos', 'nested'));
+    await fs.writeFile(path.join(root, 'photos', 'nested', 'child'), 'child');
+    await fs.writeFile(path.join(root, 'photos', 'file'), 'file');
+    expect((await store.list('photos')).sort()).toEqual(['file', 'nested']);
+    expect(await store.list('missing')).toEqual([]);
+    expect(await store.list('missing/nested')).toEqual([]);
+  });
+
+  it('copies full contents without buffer reads and verifies SHA-256 and size', async () => {
+    const key = 'photos/video';
+    const destination = path.join(root, 'copy');
+    await store.write({ key, data: Buffer.from('original'), mode: 'create', integrity: true });
+    const read = vi.spyOn(store, 'read');
+    await store.copyToFile(key, destination, { verifyIntegrity: true });
+    expect(await fs.readFile(destination, 'utf8')).toBe('original');
+    expect(read).not.toHaveBeenCalled();
+    for (const corrupted of ['tampered', 'short']) {
+      await fs.writeFile(path.join(root, key), corrupted);
+      await expect(store.copyToFile(key, destination, { verifyIntegrity: true })).rejects.toBeInstanceOf(FileStorageIntegrityMismatchError);
+    }
+    await store.copyToFile(key, destination, { verifyIntegrity: false });
+    expect(await fs.readFile(destination, 'utf8')).toBe('short');
+  });
+
+  it('uses the read missing-record policy for streams and verified copies', async () => {
+    const key = 'photos/legacy';
+    await fs.writeFile(path.join(root, key), 'legacy');
+    const warn = vi.spyOn(logger, 'warn');
+    const { stream } = await store.openReadStream(key);
+    expect(await buffer(stream)).toEqual(Buffer.from('legacy'));
+    await store.copyToFile(key, path.join(root, 'copy'), { verifyIntegrity: true });
+    expect(warn).toHaveBeenCalledTimes(2);
+    await catalog.writeState({ ...await catalog.readState(), status: 'complete', mismatchCount: 0 });
+    await expect(store.openReadStream(key)).rejects.toBeInstanceOf(FileStorageIntegrityMismatchError);
+    await expect(store.copyToFile(key, path.join(root, 'copy'), { verifyIntegrity: true })).rejects.toBeInstanceOf(FileStorageIntegrityMismatchError);
   });
 });

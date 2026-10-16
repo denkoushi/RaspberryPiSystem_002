@@ -19,19 +19,24 @@ export function registerProcedureVideoRoutes(app: FastifyInstance, options: {
   app.get(path, { preHandler: options.allowView }, async (request) => ({ videos: await service.list(z.object({ state: z.enum(['active', 'discarded', 'all']).default('active'), q: z.string().trim().max(200).optional(), limit: z.coerce.number().int().min(1).max(500).default(100) }).parse(request.query)) }));
   for (const type of ['file', 'poster'] as const) {
     app.get(`${path}/:id/${type}`, { preHandler: options.allowView, config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
-      const bytes = await service.readFile(idParams.parse(request.params).id, type === 'poster');
+      const { id } = idParams.parse(request.params);
       reply.header('Cache-Control', 'private, no-store').header('X-Content-Type-Options', 'nosniff').type(type === 'file' ? 'video/mp4' : 'image/jpeg');
-      if (type === 'poster') return reply.send(bytes);
+      if (type === 'poster') return reply.send(await service.readFile(id, true));
+      const { size } = await service.statFile(id);
       reply.header('Accept-Ranges', 'bytes');
       const range = request.headers.range;
-      if (!range) return reply.header('Content-Length', bytes.length).send(bytes);
+      if (!range) {
+        const file = await service.openFileStream(id);
+        return reply.header('Content-Length', file.size).send(file.stream);
+      }
       const match = /^bytes=(\d*)-(\d*)$/.exec(range);
-      const invalid = () => reply.code(416).header('Content-Range', `bytes */${bytes.length}`).send();
+      const invalid = () => reply.code(416).header('Content-Range', `bytes */${size}`).send();
       if (!match || (!match[1] && !match[2])) return invalid();
-      const start = match[1] ? Number(match[1]) : Math.max(0, bytes.length - Number(match[2]));
-      const end = match[1] && match[2] ? Math.min(Number(match[2]), bytes.length - 1) : bytes.length - 1;
-      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end || start >= bytes.length || (!match[1] && Number(match[2]) === 0)) return invalid();
-      return reply.code(206).header('Content-Range', `bytes ${start}-${end}/${bytes.length}`).header('Content-Length', end - start + 1).send(bytes.subarray(start, end + 1));
+      const start = match[1] ? Number(match[1]) : Math.max(0, size - Number(match[2]));
+      const end = match[1] && match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end || start >= size || (!match[1] && Number(match[2]) === 0)) return invalid();
+      const { stream } = await service.openFileStream(id, { start, end });
+      return reply.code(206).header('Content-Range', `bytes ${start}-${end}/${size}`).header('Content-Length', end - start + 1).send(stream);
     });
   }
   for (const action of ['retry', 'discard', 'restore'] as const) {

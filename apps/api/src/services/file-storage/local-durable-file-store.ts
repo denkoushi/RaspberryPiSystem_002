@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
-import { createReadStream, promises as fs, type Stats } from 'node:fs';
+import { createReadStream, createWriteStream, promises as fs, type Stats } from 'node:fs';
 import path from 'node:path';
+import { Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { logger } from '../../lib/logger.js';
 import type {
   DurableFileStorePort,
@@ -11,6 +13,7 @@ import { FileStorageIntegrityCatalog } from './file-storage-integrity-catalog.js
 import {
   FileStorageCapacityExhaustedError,
   FileStorageIntegrityMismatchError,
+  FileStorageInvalidPathError,
   FileStorageUnavailableError,
 } from './file-storage-errors.js';
 import {
@@ -205,16 +208,72 @@ export class LocalDurableFileStore implements DurableFileStorePort {
     if (options.verifyIntegrity) {
       const result = await this.catalog.verify(normalized, data);
       if (result === 'missing') {
-        if (await this.catalog.requiresCatalog()) {
-          throw new FileStorageIntegrityMismatchError();
-        }
-        logger.warn(
-          { storageKeyHash: await this.storageKeyHash(normalized) },
-          'Durable file has no integrity catalog record yet'
-        );
+        await this.handleMissingIntegrityRecord(normalized);
       }
     }
     return data;
+  }
+
+  async openReadStream(key: string, options: { start?: number; end?: number } = {}) {
+    const { start, end } = options;
+    if (
+      (start !== undefined && (!Number.isSafeInteger(start) || start < 0)) ||
+      (end !== undefined && (!Number.isSafeInteger(end) || end < 0)) ||
+      (start !== undefined && end !== undefined && start > end)
+    ) {
+      throw new RangeError('Invalid file byte range');
+    }
+    const normalized = normalizeStorageKey(key);
+    const file = await resolveSecureFile(this.root, normalized, { allowMissing: false });
+    const { size } = await fs.stat(file);
+    const record = await this.catalog.get(normalized);
+    if (!record) await this.handleMissingIntegrityRecord(normalized);
+    else if (record.size !== size) throw new FileStorageIntegrityMismatchError();
+    return { stream: createReadStream(file, { start, end }), size };
+  }
+
+  async list(namespace: string): Promise<string[]> {
+    const normalized = normalizeStorageKey(namespace);
+    if (!path.isAbsolute(this.root)) throw new FileStorageInvalidPathError();
+    let directory = this.root;
+    try {
+      for (const segment of ['', ...normalized.split('/')]) {
+        directory = path.join(directory, segment);
+        const stat = await fs.lstat(directory);
+        if (stat.isSymbolicLink() || !stat.isDirectory()) throw new FileStorageInvalidPathError();
+      }
+      return await fs.readdir(directory);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    }
+  }
+
+  async copyToFile(key: string, destination: string, options: { verifyIntegrity: boolean }): Promise<void> {
+    const normalized = normalizeStorageKey(key);
+    const file = await resolveSecureFile(this.root, normalized, { allowMissing: false });
+    const digest = createHash('sha256');
+    let size = 0;
+    const hash = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        digest.update(chunk);
+        size += chunk.length;
+        callback(null, chunk);
+      },
+    });
+    await pipeline(createReadStream(file), hash, createWriteStream(destination));
+    if (options.verifyIntegrity) {
+      const result = await this.catalog.verifyMetadata(normalized, digest.digest('hex'), size);
+      if (result === 'missing') await this.handleMissingIntegrityRecord(normalized);
+    }
+  }
+
+  private async handleMissingIntegrityRecord(key: string): Promise<void> {
+    if (await this.catalog.requiresCatalog()) throw new FileStorageIntegrityMismatchError();
+    logger.warn(
+      { storageKeyHash: await this.storageKeyHash(key) },
+      'Durable file has no integrity catalog record yet'
+    );
   }
 
   async stat(key: string): Promise<Stats> {

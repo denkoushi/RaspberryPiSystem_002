@@ -1,7 +1,6 @@
-import { readdir } from 'node:fs/promises';
-
 import { prisma } from '../../lib/prisma.js';
 import type { DurableFileStorePort } from '../file-storage/durable-file-store.port.js';
+import { FileStorageInvalidPathError } from '../file-storage/file-storage-errors.js';
 import { getFileStorageRuntime } from '../file-storage/file-storage-runtime.js';
 
 export class ProcedureMaterialGcService {
@@ -9,19 +8,15 @@ export class ProcedureMaterialGcService {
 
   async collect(now = new Date()) {
     const result = { scanned: 0, deleted: 0 };
-    let entries;
-    try {
-      entries = await readdir(this.store.absolutePath('procedure-materials'), { withFileTypes: true });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return result;
-      throw error;
-    }
+    const entries = await this.store.list('procedure-materials');
     for (const entry of entries) {
-      if (!entry.isDirectory() || !/^[a-f0-9]{64}$/.test(entry.name)) continue;
-      const key = `procedure-materials/${entry.name}/original`;
+      if (!/^[a-f0-9]{64}$/.test(entry)) continue;
+      const key = `procedure-materials/${entry}/original`;
       let stat;
       try { stat = await this.store.stat(key); }
       catch (error) {
+        // Listing includes files and symlinks as well as candidate directories.
+        if (error instanceof FileStorageInvalidPathError || (error as NodeJS.ErrnoException).code === 'ENOTDIR') continue;
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
         throw error;
       }
