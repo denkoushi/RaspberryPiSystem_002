@@ -8,6 +8,7 @@ export type ProcedureVideoSceneDto = ProcedureVideoRange & { id: string; title: 
 export type ProcedureVideoLinkItem = { videoId: string; sceneId: string | null };
 export type ProcedureVideoDto = Omit<ProcedureVideoSummaryDto, 'sceneId' | 'startSeconds' | 'endSeconds' | 'hasScenePoster'> & {
   origin: 'GMAIL' | 'CONCAT';
+  autoEdit?: import('@raspi-system/shared-types').ProcedureVideoAutoEditSummary | null;
   hasPoster: boolean; linkCount: number; sceneCount: number; errorCode: string | null; errorMessage: string | null; discardedAt: string | null;
 };
 export type ProcedureVideoState = 'active' | 'discarded' | 'all';
