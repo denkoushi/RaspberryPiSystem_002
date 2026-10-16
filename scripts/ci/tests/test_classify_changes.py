@@ -299,6 +299,7 @@ class ClassifyChangesTests(unittest.TestCase):
             "infrastructure/ansible/templates/kiosk-launch.sh.j2",
             "infrastructure/ansible/templates/kiosk-browser.service.j2",
             "infrastructure/ansible/roles/kiosk/tasks/resolve-browser.yml",
+            "infrastructure/ansible/roles/kiosk/templates/show-kiosk-panel.sh.j2",
             "infrastructure/ansible/roles/kiosk/defaults/main.yml",
             "infrastructure/ansible/inventory.yml",
             "infrastructure/ansible/templates/status-agent.conf.j2",
