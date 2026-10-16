@@ -570,3 +570,18 @@ Night of 2026-10-15 (22:0x), the first with #2023 (a residual token contained in
 No code change. Next candidate: the misses outside the judged candidates (4 to 8 per night) are now the largest loss; options are a larger candidate pool for terse queries or learned terms for the recurring part names, to be compared through the gate before any change.
 
 Private files: `work/flywheel/questions-2026-10-15.jsonl`, `real-2026-10-15.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-15.log`, `receipts-2026-10-15.jsonl`, `receipts-2026-10-16.jsonl`.
+
+### 2026-10-17: fourteenth night, 90% and no ask-back; three short department names all filter-only, and the first real follow-up asking for "all 43" (measurement basis)
+
+Night of 2026-10-16 (22:0x), the second with #2023.
+
+- Synthetic content: 100 pairs tried, 77 generated, 68 kept (median 20 chars, anchor overlap 0.35). Dropped: 17 copied runs, 9 anchors not confirmed, 5 copied words, 1 too similar. Production showed a relevant record for 61 of 68 (90%; 10 known only through the second grader), other records for 10 (25 shown lists still await the second grader's label, more than usual, so this count may fall), nothing for 7 (all outside the judged candidates, none rejected by the judge), and 0 failed. The misses are again terse part-and-process queries (「看板 取付部 穴数 不足」, 「ワーク 固定 甘く 増圧弁 追加」) and colloquial sentences about a specific incident (sensor dog, panel mounted without a base).
+- Ask-backs: 0, the third night in a row. `ambiguousDropped` on 4 rows (department name 3, part name 1): 3 showed a relevant record, 1 fell outside the candidates (「台なしでパネル直付けしたの、設計側のミス？」), so #1996 again turned ask-backs into hits.
+- Synthetic filter: 10 of 10 ok, the three `short` questions included (first night with more than one short form; all filter-only with the right sort), so #2023 holds.
+- Real: 3 questions. 「今年の機械課での不適合を教えて」 was a filter question, scored correct (5 shown). The follow-up 「４３件すべて」 (the answer had said 43 records) showed 20 other records: the kiosk caps a list at 20, so "show me all" cannot be satisfied today; this is the first real request for the whole set and is recorded as an open item, not a retrieval loss. 「(個人名)の最近の訓練結果」 was out of scope (training results are not nonconformity records), correctly refused. Receipts of 2026-10-16 (3 rows, the same three) carried no operation-inquiry route; 2026-10-17 empty.
+- Learned queries: 1 activated, 4 rejected (held-out 0/1), 34 active, 5 rejected in all. The rejected candidates are the night's not-in-pool queries, as designed.
+- Runner log: 275 lines, 6 final lines (completed, budget_reached, 2 dgx_busy after a DGX HTTP 503 at 22:02, 2 outside_window); the night completed at 22:29.
+
+No code change. Three nights at 88 to 90% with no ask-back; the remaining loss is the 7 or 8 queries a night outside the judged candidates, and the learned-term path rejects them (they do not generalise to the held-out set). The next candidate is therefore the candidate pool for terse queries, measured through the gate. Separate open item: a real "show all N" follow-up meets the 20-record cap.
+
+Private files: `work/flywheel/questions-2026-10-16.jsonl`, `real-2026-10-16.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-16.log`, `receipts-2026-10-16.jsonl`, `receipts-2026-10-17.jsonl`.
