@@ -924,6 +924,21 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByRole('status')).toHaveTextContent('保存できませんでした');
   });
 
+  it('区分内に工程が無い登録製番も、サーバーが返す機種名を製番登録ペインに出す', () => {
+    const data = {
+      ...fixture(),
+      registeredFseibans: ['26-1041', '26-1042', '26-1050'],
+      machineNames: { '26-1041': 'NVD-5000', '26-1042': 'NVD-5000', '26-1050': 'DAD3351XYZ-3724343' }
+    };
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    renderSeibanBoard();
+
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    expect(within(drawer).getByRole('button', { name: /^26-1050 / })).toHaveTextContent('DAD3351XYZ-3724343');
+    expect(within(drawer).queryByText('機種名未登録')).not.toBeInTheDocument();
+  });
+
   it('機種名数字検索は入力時だけ候補を表示し、解除後も登録製番と選択を保持する', () => {
     const candidates = [
       {
