@@ -1,3 +1,4 @@
+import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
 import { PillToggle } from '../layout/PillToggle';
 import { Row } from '../layout/Row';
 import { Button } from '../ui/Button';
@@ -157,7 +158,7 @@ export function ProductionScheduleToolbar({
             <option value="">機種名: 全て</option>
             {machineNameOptions.map((machineName) => (
               <option key={machineName} value={machineName}>
-                {machineName}
+                {normalizeMachineName(machineName)}
               </option>
             ))}
           </select>

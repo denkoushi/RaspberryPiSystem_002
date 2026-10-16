@@ -9,10 +9,14 @@ import {
   resolveMachineNameForSeiban,
 } from '../production-schedule-lookup.service.js';
 import * as legacyLookup from '../../part-measurement/part-measurement-schedule-lookup.service.js';
-import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
+import {
+  PRODUCTION_SCHEDULE_DASHBOARD_ID,
+  PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
+} from '../constants.js';
 
 const fixturePrefix = `schedule-lookup-${randomUUID()}`;
 const rowIds: string[] = [];
+const supplementFseibans: string[] = [];
 const createdDashboardIds: string[] = [];
 const otherDashboardId = randomUUID();
 const occurredAt = new Date('2026-09-01T00:00:00Z');
@@ -69,6 +73,9 @@ describe('production schedule lookup compatibility (PostgreSQL)', () => {
 
   afterAll(async () => {
     await prisma.csvDashboardRow.deleteMany({ where: { id: { in: rowIds } } });
+    await prisma.productionScheduleSeibanMachineNameSupplement.deleteMany({
+      where: { fseiban: { in: supplementFseibans } },
+    });
     await prisma.csvDashboard.deleteMany({ where: { id: { in: createdDashboardIds } } });
     await prisma.$disconnect();
   });
@@ -151,6 +158,29 @@ describe('production schedule lookup compatibility (PostgreSQL)', () => {
     await seed('no-machine', data);
     await expect(resolveMachineNameForSeiban(String(data.FSEIBAN))).resolves.toBeNull();
     await expect(resolveMachineNameForSeiban(`${fixturePrefix}-missing`)).resolves.toBeNull();
+  });
+
+  it('falls back to the machine name supplement table when no MH/SH row has a name', async () => {
+    const data = scheduleRow('sup1');
+    const machineData = scheduleRow('sup2', { FHINCD: 'MH-1', FHINMEI: 'Model From Row' });
+    await seed('sup1', data);
+    await seed('sup2', machineData);
+    for (const [fseiban, machineName] of [
+      [String(data.FSEIBAN), 'Model From Supplement'],
+      [String(machineData.FSEIBAN), 'Shadowed Supplement'],
+    ]) {
+      await prisma.productionScheduleSeibanMachineNameSupplement.create({
+        data: {
+          sourceCsvDashboardId: PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
+          fseiban,
+          machineName,
+        },
+      });
+      supplementFseibans.push(fseiban);
+    }
+
+    await expect(resolveMachineNameForSeiban(String(data.FSEIBAN))).resolves.toBe('Model From Supplement');
+    await expect(resolveMachineNameForSeiban(String(machineData.FSEIBAN))).resolves.toBe('Model From Row');
   });
 
   it.each([

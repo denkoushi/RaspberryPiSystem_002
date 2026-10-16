@@ -10,6 +10,8 @@ import type {
 } from './pallet-visualization.types.js';
 import { getResourceNameMapByResourceCds } from '../production-schedule/resource-master.service.js';
 import { listProductionSchedulePalletDisplaySnapshots } from '../production-schedule/production-schedule-snapshot.service.js';
+import { findSupplementMachineNamesForMissing } from '../production-schedule/seiban-machine-name-supplement-backfill.js';
+import { isMissingSeibanMachineName } from '../production-schedule/seiban-machine-name-state.js';
 import { listRegisteredMachineCds } from './pallet-visualization-resource.service.js';
 import { DEFAULT_MACHINE_PALLET_COUNT } from './pallet-count-bounds.js';
 import { ApiError } from '../../lib/errors.js';
@@ -153,10 +155,17 @@ async function loadMachineBoardsForOrderedCds(filteredMachineCds: string[]): Pro
   const rowIds = Array.from(new Set(items.map((item) => item.csvDashboardRowId).filter((id): id is string => Boolean(id))));
   const snapshots = await listProductionSchedulePalletDisplaySnapshots(rowIds);
   const snapshotMap = new Map(snapshots.map((snapshot) => [snapshot.rowId, snapshot]));
+  // 登録時に機種名を引けず null で保存された行は、表示時に補完テーブルで埋める（保存値は変えない）
+  const supplementMachineNames = await findSupplementMachineNamesForMissing(
+    items.map((item) => [item.fseiban, item.machineName] as const)
+  );
   const itemsWithFallback = items.map((item) => {
     const snapshot = item.csvDashboardRowId ? snapshotMap.get(item.csvDashboardRowId) : null;
     return {
       ...item,
+      machineName: isMissingSeibanMachineName(item.machineName)
+        ? (supplementMachineNames.get(item.fseiban.trim()) ?? item.machineName)
+        : item.machineName,
       fallbackPlannedStartDateDisplay: formatPlannedStartDateForPalletDisplay(snapshot?.plannedStartDate ?? null),
       fallbackPlannedQuantity: snapshot?.plannedQuantity ?? null,
       fallbackOutsideDimensionsDisplay: snapshot?.outsideDimensionsDisplay ?? null,
