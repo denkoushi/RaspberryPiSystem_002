@@ -34,6 +34,8 @@ export type PlanningBoardResourceViewProps = {
   allocation: PlanningBoardAllocation;
   selectedItemIds: ReadonlySet<string>;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
+  onCompleteToggle?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
+  completePending?: boolean;
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onResourceDrop?: (item: GrindingPlanningBoardItem, resourceCd: string) => void;
   onResourceReorder?: (
@@ -159,6 +161,8 @@ export function PlanningBoardResourceView({
   allocation,
   selectedItemIds,
   onToggleItem,
+  onCompleteToggle,
+  completePending = false,
   onResourceClick,
   onResourceDrop,
   onResourceReorder,
@@ -607,6 +611,8 @@ export function PlanningBoardResourceView({
                     allocation={allocation}
                     selectedItemIds={selectedItemIds}
                     onToggleItem={onToggleItem}
+                    onCompleteToggle={onCompleteToggle}
+                    completePending={completePending}
                     onResourceClick={handleResourceClick}
                     onResourcePointerDown={handleResourcePointerDown}
                     resourceDragDisabled={resourceDragDisabled}

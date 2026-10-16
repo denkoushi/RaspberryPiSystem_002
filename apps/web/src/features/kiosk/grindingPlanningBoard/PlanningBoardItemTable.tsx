@@ -23,6 +23,8 @@ export type PlanningBoardItemTableProps = {
   allocation: PlanningBoardAllocation;
   selectedItemIds: ReadonlySet<string>;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
+  onCompleteToggle?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
+  completePending?: boolean;
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
   onSpecialDueClick?: (item: GrindingPlanningBoardItem) => void;
@@ -49,6 +51,8 @@ type PlanningBoardItemTableRowProps = {
   selected: boolean;
   seibanFocus: 'match' | 'dim' | null;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
+  onCompleteToggle?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
+  completePending?: boolean;
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
   onSpecialDueClick?: (item: GrindingPlanningBoardItem) => void;
@@ -73,6 +77,8 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
   selected,
   seibanFocus,
   onToggleItem,
+  onCompleteToggle,
+  completePending = false,
   onResourceClick,
   onRankChange,
   onSpecialDueClick,
@@ -290,6 +296,14 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
           ) : null}
         </div>
       </td>
+      {onCompleteToggle && <td className="px-1 align-middle">
+        {item.kind === 'row' && <button type="button"
+          className={clsx('flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 text-[11px] hover:bg-white/5 disabled:opacity-60',
+            item.isCompleted ? 'border-slate-400 bg-slate-800 text-white/80' : 'border-emerald-400 bg-emerald-600/20 text-emerald-100')}
+          aria-label={item.isCompleted ? '未完了に戻す' : '完了にする'}
+          disabled={disabled || completePending}
+          onClick={(event) => { event.stopPropagation(); onCompleteToggle(item, item.isCompleted ? 'incomplete' : 'complete'); }}>✓</button>}
+      </td>}
     </tr>
   );
 });
@@ -308,6 +322,8 @@ function areTablePropsEqual(previous: PlanningBoardItemTableProps, next: Plannin
     previous.focusedSeiban === next.focusedSeiban &&
     previous.allocation === next.allocation &&
     previous.onToggleItem === next.onToggleItem &&
+    previous.onCompleteToggle === next.onCompleteToggle &&
+    previous.completePending === next.completePending &&
     previous.onResourceClick === next.onResourceClick &&
     previous.onRankChange === next.onRankChange &&
     previous.onSpecialDueClick === next.onSpecialDueClick &&
@@ -331,6 +347,8 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
   allocation,
   selectedItemIds,
   onToggleItem,
+  onCompleteToggle,
+  completePending = false,
   onResourceClick,
   onRankChange,
   onSpecialDueClick,
@@ -357,6 +375,7 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
           <col />
           <col className={seibanRankByFseiban ? 'w-[4rem]' : 'w-[3.25rem]'} />
           <col className={showRank ? (showSeiban ? 'w-[3.5rem]' : 'w-[6.5rem]') : 'w-12 xl:w-[6.5rem]'} />
+          {onCompleteToggle && <col className="w-9" />}
         </colgroup>
         {showColumnHeaders ? (
           <thead>
@@ -365,6 +384,7 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
               <th scope="col" className="px-1">部品名 / 図番</th>
               <th scope="col" className="px-1">資源</th>
               <th scope="col" className="px-1">日付 / 指示</th>
+              {onCompleteToggle && <th scope="col" className="px-1">完了</th>}
             </tr>
           </thead>
         ) : null}
@@ -380,10 +400,12 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
                 allocation={allocation}
                 selected={selected}
                 onToggleItem={onToggleItem}
+                onCompleteToggle={onCompleteToggle}
+                completePending={completePending}
                 onResourceClick={onResourceClick}
                 onRankChange={onRankChange}
                 onSpecialDueClick={onSpecialDueClick}
-                specialDueEnabled={Boolean(specialDueMode)}
+                specialDueEnabled={Boolean(specialDueMode) && !disabled && !completePending}
                 specialDueExpired={item.specialDue != null && new Date(item.specialDue.expiresAt).getTime() <= resolvedNowMs}
                 showRank={showRank}
                 showSeiban={showSeiban}

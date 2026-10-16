@@ -25,6 +25,8 @@ export type PlanningBoardSeibanPaneProps = {
   onFocus: () => void;
   onToggleAll: (selected: boolean) => void;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
+  onCompleteToggle?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
+  completePending?: boolean;
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
   disabled?: boolean;
@@ -57,6 +59,8 @@ function arePanePropsEqual(
     previous.onFocus === next.onFocus &&
     previous.onToggleAll === next.onToggleAll &&
     previous.onToggleItem === next.onToggleItem &&
+    previous.onCompleteToggle === next.onCompleteToggle &&
+    previous.completePending === next.completePending &&
     previous.onResourceClick === next.onResourceClick &&
     previous.onRankChange === next.onRankChange &&
     previous.disabled === next.disabled &&
@@ -79,6 +83,8 @@ export const PlanningBoardSeibanPane = memo(function PlanningBoardSeibanPane({
   onFocus,
   onToggleAll,
   onToggleItem,
+  onCompleteToggle,
+  completePending = false,
   onResourceClick,
   onRankChange,
   disabled = false,
@@ -158,6 +164,8 @@ export const PlanningBoardSeibanPane = memo(function PlanningBoardSeibanPane({
           allocation={allocation}
           selectedItemIds={selectedItemIds}
           onToggleItem={onToggleItem}
+          onCompleteToggle={onCompleteToggle}
+          completePending={completePending}
           onResourceClick={onResourceClick}
           onRankChange={onRankChange}
           disabled={disabled}

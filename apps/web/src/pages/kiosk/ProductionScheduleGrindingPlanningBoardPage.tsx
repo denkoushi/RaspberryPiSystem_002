@@ -1,9 +1,11 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 
 import {
   useKioskProductionScheduleResources,
+  useSetKioskProductionScheduleRowCompletion,
   useKioskGrindingPlanningBoardProgressive,
   useKioskGrindingPlanningBoardLoad,
   useKioskGrindingPlanningBoardSeibanCandidates,
@@ -156,6 +158,12 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [orderPreview, setOrderPreview] = useState<OrderPreview | null>(null);
   const [focusedSeiban, setFocusedSeiban] = useState<string | null>(null);
   const [scanFocusKey, setScanFocusKey] = useState(0);
+  const [completionNotice, setCompletionNotice] = useState<{ item: GrindingPlanningBoardItem } | null>(null);
+  useEffect(() => {
+    if (!completionNotice) return;
+    const timer = window.setTimeout(() => setCompletionNotice(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [completionNotice]);
   const [scanNotice, setScanNotice] = useState<{ text: string } | null>(null);
   useEffect(() => {
     if (!scanNotice) return;
@@ -216,6 +224,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const registeredServerFseibansRef = useRef<Set<string> | null>(null);
   const boardSiteKeyRef = useRef<string | null>(null);
 
+  const queryClient = useQueryClient();
+  const { mutateAsync: setCompletionAsync, isPending: completePending } = useSetKioskProductionScheduleRowCompletion();
   const boardQuery = useKioskGrindingPlanningBoardProgressive(
     { category, view, completionFilter: status },
     { refetchIntervalMs: editorOpen || orderPreview ? false : undefined }
@@ -283,7 +293,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const data = boardQuery.data;
   const scopeReady = boardQuery.scopeReady;
   const bulkReady = scopeReady && boardQuery.isComplete;
-  const interactionLocked = !scopeReady || Boolean(orderPreview);
+  const interactionLocked = !scopeReady || Boolean(orderPreview) || completePending;
   const sourceRevision = data?.sourceRevision ?? '';
   const rankScopeKey = `${data?.siteKey ?? ''}\0${category}\0${status}`;
   const rankMutationReady = Boolean(
@@ -312,8 +322,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const { enqueue: enqueueWrite, items: displayItems, order: registeredFseibans, hasPendingSeiban, acceptRefreshedState } = writeQueue;
   const writeBlocked = writeQueue.blocked || rankConflict || orderConflict || Boolean(orderPreview);
   const rankDisabled = useCallback((item: GrindingPlanningBoardItem) =>
-    !rankMutationReady || writeBlocked || hasPendingSeiban(item.fseiban, true),
-  [rankMutationReady, writeBlocked, hasPendingSeiban]);
+    completePending || !rankMutationReady || writeBlocked || hasPendingSeiban(item.fseiban, true),
+  [completePending, rankMutationReady, writeBlocked, hasPendingSeiban]);
   useUnsavedChangesGuard(writeQueue.pending || Boolean(orderPreview));
 
   const baseDueDetail = allocation === 'original'
@@ -438,6 +448,25 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       return { ...current, [category]: next };
     });
   }, [category, scopeReady]);
+  const toggleCompletion = useCallback(async (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => {
+    if (interactionLocked || item.kind !== 'row') return;
+    try {
+      await setCompletionAsync({ rowId: item.sourceRowId, intent });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+      if (intent === 'complete') {
+        setSelectedItemIdsByCategory((current) => Object.fromEntries(Object.entries(current).map(([key, ids]) => {
+          const next = new Set(ids);
+          next.delete(item.itemId);
+          return [key, next];
+        })));
+        setCompletionNotice({ item });
+      } else {
+        setCompletionNotice(null);
+      }
+    } catch {
+      notify('完了状態を保存できませんでした。時間をおいて再試行してください。', 'error');
+    }
+  }, [interactionLocked, setCompletionAsync, queryClient, notify]);
   const toggleAll = useCallback((items: readonly GrindingPlanningBoardItem[], selected: boolean) => {
     if (!bulkReady) return;
     setSelectedItemIdsByCategory((current) => {
@@ -1058,8 +1087,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         status={status}
         allocation={allocation}
         selectedCount={toolbarSelectedItems.length}
-        scopeDisabled={writeQueue.pending || Boolean(orderPreview)}
-        bulkDisabled={allocation === 'original' || toolbarSelectedItems.length === 0 || !bulkReady || writeBlocked}
+        scopeDisabled={writeQueue.pending || Boolean(orderPreview) || completePending}
+        bulkDisabled={allocation === 'original' || toolbarSelectedItems.length === 0 || !bulkReady || writeBlocked || completePending}
         registeredCount={registeredFseibans.length}
         onOpenDrawer={() => setDrawerOpen(true)}
         onCategoriesChange={(value) => { if (!writeQueue.pending && (value.grinding || value.cutting)) setCategories(value); }}
@@ -1089,6 +1118,11 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         ) : null}
         specialDueCounts={specialDueCounts}
       />
+      {completionNotice && <div role="status" className="fixed bottom-4 left-1/2 z-[90] flex -translate-x-1/2 items-center gap-3 rounded-lg bg-emerald-900 px-4 py-2 text-sm font-bold text-emerald-50 shadow-lg">
+        <span>完了にしました</span>
+        <button type="button" className="min-h-7 rounded border border-emerald-300 px-2 disabled:opacity-60" disabled={interactionLocked}
+          onClick={() => { void toggleCompletion(completionNotice.item, 'incomplete'); setCompletionNotice(null); }}>↶ 戻す</button>
+      </div>}
       {scanNotice && <p role="status" className="pointer-events-none fixed left-1/2 top-16 z-[90] -translate-x-1/2 rounded-lg bg-emerald-900 px-4 py-2 text-sm font-bold text-emerald-50 shadow-lg">{scanNotice.text}</p>}
       {boardQuery.isError ? <p className="p-5 text-sm text-rose-200">一覧を読み込めませんでした。</p> : null}
       {data && ganttEnabled ? (
@@ -1098,7 +1132,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
           runsThroughBreaks={orderPreview?.options.runsThroughBreaks ?? gantt.runsThroughBreaks} onBreaksChange={gantt.changeBreaks}
           capacityPending={gantt.capacityPending} capacityError={gantt.capacityError} onCapacityChange={gantt.changeCapacity}
           pinMode={gantt.mode === 'forward' && view === 'resource' && pinMode} onTogglePin={togglePin}
-          selectedItemIds={selectedItemIds} onToggleItem={toggleItem} onDueDrop={moveDueByDrag} onResourceReorder={reorderResourceByDrag}
+          selectedItemIds={selectedItemIds} onToggleItem={toggleItem} onCompleteToggle={toggleCompletion} completePending={completePending} onDueDrop={moveDueByDrag} onResourceReorder={reorderResourceByDrag}
           onResourceMove={moveResourceInGantt} canMoveResource={(item, resource) => data.resources.includes(resource) && canMoveResource(item, resource)}
           disabled={interactionLocked || (pinMode && writeQueue.pending)} dragDisabled={allocation !== 'alternate' || writeBlocked || interactionLocked || !rankMutationReady} />
       ) : data && view === 'seiban' && focusedFseiban && focusItems.length > 0 ? (
@@ -1111,7 +1145,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
             selectedItemIds={selectedItemIds}
             onBack={returnFromFocus}
             onToggleAll={toggleFocusAll}
-            onToggleItem={toggleItem}
+            onToggleItem={toggleItem} onCompleteToggle={toggleCompletion} completePending={completePending}
             onResourceClick={openEditorForItem}
             onRankChange={changeRank}
             disabled={interactionLocked}
@@ -1141,7 +1175,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
                 onToggleOpen={actions.onToggleOpen}
                 onFocus={actions.onFocus}
                 onToggleAll={actions.onToggleAll}
-                onToggleItem={toggleItem}
+                onToggleItem={toggleItem} onCompleteToggle={toggleCompletion} completePending={completePending}
                 onResourceClick={openEditorForItem}
                 onRankChange={changeRank}
                 disabled={interactionLocked}
@@ -1167,7 +1201,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
             resourceNameMap={resourcesQuery.data?.resourceNameMap ?? {}}
             allocation={allocation}
             selectedItemIds={selectedItemIds}
-            onToggleItem={toggleItem}
+            onToggleItem={toggleItem} onCompleteToggle={toggleCompletion} completePending={completePending}
             onResourceClick={openEditorForItem}
             onResourceDrop={moveResourceByDrag}
             onResourceReorder={reorderResourceByDrag}

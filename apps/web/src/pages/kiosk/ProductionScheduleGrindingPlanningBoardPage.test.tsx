@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider, useMutation } from '@tanstack/react-query';
+import { act, fireEvent, render as renderComponent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as planningBoardSorting from '../../features/kiosk/grindingPlanningBoard/sortGrindingPlanningBoardItems';
@@ -18,6 +19,7 @@ class TestPointerEvent extends MouseEvent {
 }
 
 const mocks = vi.hoisted(() => ({
+  completion: vi.fn(),
   capacity: vi.fn(),
   snapshot: vi.fn(),
   load: vi.fn(),
@@ -34,6 +36,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../api/hooks', () => ({
+  useSetKioskProductionScheduleRowCompletion: () => useMutation({ mutationFn: (args: { rowId: string; intent: 'complete' | 'incomplete' }) => mocks.completion(args) }),
   useKioskGrindingPlanningBoardResourceCapacity: (enabled: boolean) => mocks.capacity(enabled),
   useUpdateKioskGrindingPlanningBoardResourceCapacity: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
   useKioskProductionScheduleResources: () => ({
@@ -83,6 +86,11 @@ vi.mock('../../api/hooks', () => ({
   useUpdateKioskGrindingPlanningBoardResourceOrder: () => ({ mutateAsync: mocks.resourceOrder, isPending: false }),
   useUpdateKioskGrindingPlanningBoardSeibanOrder: () => ({ mutateAsync: mocks.order, isPending: false })
 }));
+
+function render(ui: React.ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  return renderComponent(ui, { wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
+}
 
 function fixture() {
   const item = (id: string, fseiban: string, processOrder: string, completed = false) => ({
@@ -166,6 +174,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     localStorage.removeItem('kiosk-planning-board-gantt-scale');
     localStorage.removeItem('kiosk-planning-board-gantt-mode');
     localStorage.removeItem(LARGE_SCREEN_STORAGE_KEY);
+    mocks.completion.mockReset();
+    mocks.completion.mockResolvedValue({});
     mocks.capacity.mockReset();
     mocks.capacity.mockReturnValue({ data: undefined, isLoading: true });
     mocks.snapshot.mockReset();
@@ -213,6 +223,60 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it('completes the source row, removes its selection and undoes from the notice', async () => {
+    const invalidate = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    const row = screen.getByTestId('planning-board-item-a');
+    fireEvent.click(within(row).getByRole('checkbox'));
+    fireEvent.click(within(row).getByRole('button', { name: '完了にする' }));
+    await waitFor(() => expect(mocks.completion).toHaveBeenCalledWith({ rowId: 'source-a', intent: 'complete' }));
+    expect(await screen.findByText('完了にしました')).toBeVisible();
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['kiosk-grinding-planning-board'] });
+    expect(within(row).getByRole('checkbox')).not.toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: '↶ 戻す' }));
+    await waitFor(() => expect(mocks.completion).toHaveBeenLastCalledWith({ rowId: 'source-a', intent: 'incomplete' }));
+    expect(screen.queryByText('完了にしました')).not.toBeInTheDocument();
+  });
+
+  it('replaces the undo notice and expires it five seconds after the latest completion', async () => {
+    vi.useFakeTimers();
+    const page = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    const complete = async (id: string) => {
+      await act(async () => {
+        fireEvent.click(within(screen.getByTestId(`planning-board-item-${id}`)).getByRole('button', { name: '完了にする' }));
+      });
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    };
+    await complete('a');
+    expect(screen.getByText('完了にしました')).toBeVisible();
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    await complete('b');
+    expect(screen.getAllByText('完了にしました')).toHaveLength(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(4999); });
+    expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeVisible();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(screen.queryByText('完了にしました')).not.toBeInTheDocument();
+    await complete('c');
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '↶ 戻す' })); });
+    expect(mocks.completion).toHaveBeenLastCalledWith({ rowId: 'source-c', intent: 'incomplete' });
+    page.unmount();
+  });
+
+  it('locks row controls during completion and reports errors without a success notice', async () => {
+    let reject!: (error: Error) => void;
+    mocks.completion.mockImplementation(() => new Promise((_resolve, rejectPromise) => { reject = rejectPromise; }));
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    const row = screen.getByTestId('planning-board-item-a');
+    fireEvent.click(within(row).getByRole('button', { name: '完了にする' }));
+    await waitFor(() => expect(within(row).getByRole('button', { name: '完了にする' })).toBeDisabled());
+    expect(within(row).getByRole('button', { name: '資源CD 305を変更' })).toBeDisabled();
+    expect(within(row).getByRole('button', { name: '部品aの個別指定' })).toBeDisabled();
+    expect(within(row).getByRole('checkbox')).toBeDisabled();
+    await act(async () => reject(new Error('completion failed')));
+    expect(await screen.findByText('完了状態を保存できませんでした。時間をおいて再試行してください。')).toBeVisible();
+    expect(screen.queryByText('完了にしました')).not.toBeInTheDocument();
   });
 
   it('scans a visible order, enables Gantt colors and shares legend focus, including Escape and mode reset', () => {
