@@ -51,7 +51,8 @@ export function WorkInstructionViewerDialog({
   onEdit
 }: WorkInstructionViewerDialogProps) {
   const [source, setSource] = useState<'original' | 'manual'>('original');
-  useEffect(() => { setSource('original'); setSelectedImageStepId(null); }, [isOpen, partNumber, shootingTarget]);
+  const [twoPages, setTwoPages] = useState(false);
+  useEffect(() => { setSource('original'); setSelectedImageStepId(null); setTwoPages(false); }, [isOpen, partNumber, shootingTarget]);
   const hasManual = Boolean(manualSequence?.documents.length);
   const showManual = hasManual && (!hasWorkInstruction || source === 'manual');
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -76,6 +77,10 @@ export function WorkInstructionViewerDialog({
     if (nextStep) setSelectedImageStepId(nextStep.id);
   };
 
+  const sourceTabs = (
+    hasManual && hasWorkInstruction ? <div role="tablist" aria-label="資料" className="flex shrink-0 gap-1">{([['original', '段取写真'], ['manual', '手順書']] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={source === value} className={`min-h-11 rounded-lg border border-white/25 px-3 text-sm font-bold ${source === value ? 'bg-cyan-950 text-cyan-50' : ''}`} onClick={() => { setSelectedImageStepId(null); setSource(value); }}>{label}</button>)}</div> : null
+  );
+
   return (
     <>
       <Dialog
@@ -85,19 +90,35 @@ export function WorkInstructionViewerDialog({
         closeOnBackdrop={false}
         closeOnEsc={selectedImageStep == null}
         trapFocus={selectedImageStep == null}
-        initialFocusRef={closeButtonRef}
+        initialFocusRef={showManual ? undefined : closeButtonRef}
         size="full"
         overlayZIndex={80}
-        className="!my-0 flex h-[calc(100dvh-2rem)] !max-h-[calc(100dvh-2rem)] flex-col overflow-hidden !rounded-lg !border !border-white/20 !bg-slate-950 !p-0 !text-white !shadow-none"
+        overlayClassName={showManual ? '!p-0' : undefined}
+        className={showManual
+          ? 'relative !my-0 flex h-dvh !max-h-[100dvh] !w-full flex-col overflow-hidden !rounded-none !border-0 !bg-slate-950 !p-0 !text-white !shadow-none'
+          : "!my-0 flex h-[calc(100dvh-2rem)] !max-h-[calc(100dvh-2rem)] flex-col overflow-hidden !rounded-lg !border !border-white/20 !bg-slate-950 !p-0 !text-white !shadow-none"}
       >
-        <header className="flex min-h-14 shrink-0 items-center gap-3 border-b border-white/15 bg-slate-900 px-3 py-2">
+        {showManual ? (
+          <div className="pointer-events-none absolute left-2 right-16 top-2 z-10">
+            <div className="pointer-events-auto flex w-fit max-w-full flex-col items-start gap-1 rounded-lg bg-slate-950/85 p-1 empty:hidden">
+              {sourceTabs}
+              <SelfInspectionNonconformityPanel
+                items={nonconformityItems}
+                isLoading={nonconformityIsLoading}
+                errorMessage={nonconformityErrorMessage}
+                onRetry={onRetryNonconformities}
+                align="left"
+              />
+            </div>
+          </div>
+        ) : <header className="flex min-h-14 shrink-0 items-center gap-3 border-b border-white/15 bg-slate-900 px-3 py-2">
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-lg font-bold text-white">作業要領書</h2>
             <p className="truncate text-sm text-white/60">
               {partNumber} ・ {shootingTarget}
             </p>
           </div>
-          {hasManual && hasWorkInstruction ? <div role="tablist" aria-label="資料" className="flex shrink-0 gap-1">{([['original', '加工要領書'], ['manual', '手順書']] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={source === value} className={`min-h-11 rounded-lg border border-white/25 px-3 text-sm font-bold ${source === value ? 'bg-cyan-950 text-cyan-50' : ''}`} onClick={() => { setSelectedImageStepId(null); setSource(value); }}>{label}</button>)}</div> : null}
+          {sourceTabs}
           {!showManual && group?.updateAvailable ? (
             <span
               className="shrink-0 rounded border border-amber-300/50 bg-amber-300/15 px-2 py-1 text-xs font-bold text-amber-100"
@@ -130,9 +151,9 @@ export function WorkInstructionViewerDialog({
           >
             自主検査画面に戻る
           </button>
-        </header>
+        </header>}
 
-        {showManual && manualSequence ? <AssemblyProcedureSequenceViewer sequence={manualSequence} showCurrentMarkerButton={false} className="min-h-0 flex-1" /> : isLoading ? (
+        {showManual && manualSequence ? <AssemblyProcedureSequenceViewer sequence={manualSequence} layout="manuals" showCurrentMarkerButton={false} twoPages={twoPages} onToggleTwoPages={() => setTwoPages(value => !value)} onClose={onClose} className="min-h-0 w-full flex-1" /> : isLoading ? (
           <div className="flex min-h-0 flex-1 items-center justify-center bg-slate-950 px-4 text-sm font-semibold text-white/60" role="status">
             作業要領を読み込み中…
           </div>

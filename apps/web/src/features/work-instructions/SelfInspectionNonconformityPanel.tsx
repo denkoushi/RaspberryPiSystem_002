@@ -9,6 +9,7 @@ export type SelfInspectionNonconformityPanelProps = {
   isLoading?: boolean;
   errorMessage?: string;
   onRetry?: () => void;
+  align?: 'left' | 'right';
 };
 
 const fields: ReadonlyArray<{
@@ -41,7 +42,8 @@ export function SelfInspectionNonconformityPanel({
   items = [],
   isLoading = false,
   errorMessage,
-  onRetry
+  onRetry,
+  align = 'right'
 }: SelfInspectionNonconformityPanelProps) {
   const [expanded, setExpanded] = useState(false);
   const panelId = useId();
@@ -67,7 +69,7 @@ export function SelfInspectionNonconformityPanel({
       {expanded ? (
         <aside
           id={panelId}
-          className="absolute right-0 top-[calc(100%+0.5rem)] z-20 flex max-h-[calc(100dvh-7rem)] w-[min(90vw,34rem)] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-lg border border-amber-300/50 bg-slate-950/95 text-white shadow-2xl"
+          className={`absolute ${align === 'left' ? 'left-0' : 'right-0'} top-[calc(100%+0.5rem)] z-20 flex max-h-[calc(100dvh-7rem)] w-[min(90vw,34rem)] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-lg border border-amber-300/50 bg-slate-950/95 text-white shadow-2xl`}
           role="region"
           aria-label="不適合情報"
         >
