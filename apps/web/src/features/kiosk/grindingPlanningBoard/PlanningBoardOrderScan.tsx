@@ -37,7 +37,7 @@ export function PlanningBoardOrderScan({ onScan }: Props) {
     onScan: (raw) => {
       const productNo = normalizeManufacturingOrderScanText(raw);
       const message = productNo === null
-        ? `製造order番号は数字10桁です（読取値: ${raw}）。読み直してください。`
+        ? `製造オーダー番号は数字10桁です（読取値: ${raw}）。読み直してください。`
         : onScan(productNo);
       if (message) setError(message);
       else close();
@@ -88,10 +88,10 @@ export function PlanningBoardOrderScan({ onScan }: Props) {
         <path d="M7 3H3v4m14-4h4v4M3 17v4h4m14-4v4h-4M7 7v10m3-10v10m4-10v10m3-10v10" />
       </svg>
     </button>
-    {open && createPortal(<div ref={panel} role="dialog" aria-label="移動票を読み取る" tabIndex={-1} style={position}
+    {open && createPortal(<div ref={panel} role="dialog" aria-label="製造オーダー番号を読み取る" tabIndex={-1} style={position}
       className="fixed z-[100] w-[300px] overflow-y-auto rounded-lg border border-slate-600 bg-slate-900 p-3 text-white shadow-xl">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-bold">移動票を読み取る</h2>
+        <h2 className="text-sm font-bold">製造オーダー番号を読み取る</h2>
         <button type="button" aria-label="閉じる" onClick={close} className="grid h-11 w-11 shrink-0 place-items-center rounded-md hover:bg-slate-800">✕</button>
       </div>
       <p className="flex items-center gap-2 text-sm"><span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" aria-hidden="true" />読み取り待ち</p>

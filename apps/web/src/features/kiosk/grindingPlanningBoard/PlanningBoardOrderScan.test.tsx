@@ -49,7 +49,7 @@ describe('PlanningBoardOrderScan', () => {
     render(<PlanningBoardOrderScan onScan={onScan} />);
     fireEvent.click(screen.getByRole('button', { name: '移動票で製番を探す' }));
     scan('12345');
-    expect(screen.getByRole('alert')).toHaveTextContent('製造order番号は数字10桁です（読取値: 12345）。読み直してください。');
+    expect(screen.getByRole('alert')).toHaveTextContent('製造オーダー番号は数字10桁です（読取値: 12345）。読み直してください。');
     expect(onScan).not.toHaveBeenCalled();
     scan('1234567890');
     expect(within(screen.getByRole('dialog')).getByRole('alert')).toHaveTextContent('1234567890 の行はこの画面にありません。');
@@ -77,7 +77,7 @@ describe('PlanningBoardOrderScan', () => {
     render(<PlanningBoardOrderScan onScan={() => null} />);
     fireEvent.click(screen.getByRole('button', { name: '移動票で製番を探す' }));
     scan('123');
-    const panel = screen.getByRole('dialog', { name: '移動票を読み取る' });
+    const panel = screen.getByRole('dialog', { name: '製造オーダー番号を読み取る' });
     expect(parseFloat(panel.style.left)).toBeCloseTo((window.innerWidth - 210) / 0.7 - 8);
     expect(parseFloat(panel.style.left) * 0.7 + 210).toBeLessThan(window.innerWidth);
     expect(parseFloat(panel.style.top) * 0.7 + 140).toBeLessThan(window.innerHeight);
