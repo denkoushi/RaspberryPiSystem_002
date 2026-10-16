@@ -40,7 +40,7 @@ kensakuMain だけ labwc が 0.8.4 と古い。症状は Xwayland のウイン�
 - 再起動後、`kiosk-browser`・`kiosk-hotcorner`・`docker` は active、`docker-nfc-agent-1` は Up、`ibus-daemon` は 1 つ、パスワード画面（`gcr-prompter`）なし。起動フラグに `--ozone-platform=x11 --gtk-version=3 --password-store=basic` がある。画面は自主検査を表示。
 - 同じ手順で動画を開くと映像が出た。再生して 5 秒で 155 フレーム（落ち 5）、閉じる を押すと画面にも反映された。そのあと自主検査の画面へ戻した。
 - 上辺パネル: 通常時に `wf-panel-pi` が動いていないのは robodrill01 と同じ（`kiosk-hotcorner` が必要なときだけ起動する設計）。
-- 端末での確認が残っている項目: 左上に触れてパネルが出るか、物理キーボードの日本語入力、NFC の読み取り、動画の再生。
+- 端末での確認（2026-10-16、利用者）: 左上に触れてパネルが出る、物理キーボードの日本語入力、NFC の読み取り、素材の動画の再生と 閉じる。4 項目すべて問題なし。
 
 ## Notes
 
