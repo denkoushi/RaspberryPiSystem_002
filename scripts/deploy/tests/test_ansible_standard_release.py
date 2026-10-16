@@ -800,7 +800,7 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         unit = environment.from_string((role / "templates/kiosk-hotcorner.service.j2").read_text()).render(
             ansible_user="kiosk", release_kiosk_user_uid={"stdout": "1001"},
         )
-        for expected in ("User=kiosk", "After=kiosk-browser.service", "Restart=always", "RestartSec=3",
+        for expected in ("User=kiosk", "After=graphical.target kiosk-browser.service", "Wants=graphical.target", "Restart=always", "RestartSec=3",
                          "XAUTHORITY=/home/kiosk/.Xauthority", "XDG_RUNTIME_DIR=/run/user/1001",
                          "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1001/bus"):
             self.assertIn(expected, unit)

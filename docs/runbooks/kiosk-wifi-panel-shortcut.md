@@ -20,8 +20,11 @@ Wi-Fi アイコンから接続先やパスワードを設定する。
 ## 配布と確認
 
 標準ローリング更新の `release_kiosk` が `manage_kiosk_browser` 有効端末へ配布する。
-ユーザーの labwc autostart でパネルの自動起動を外し、現在のセッションに残った
-`lwrespawn /usr/bin/wf-panel-pi` と旧パネルはセンサーが停止する。
+ユーザーの labwc autostart でパネルの自動起動を外すが、labwc は `-m`（設定の合成）で
+起動するため `/etc/xdg/labwc/autostart` も実行され、ログインのたびに
+`lwrespawn /usr/bin/wf-panel-pi` が起動する。センサーが起動直後と 5 秒ごとにこれと旧パネルを停止する。
+センサーの unit は `After=graphical.target` を明示している。これがないと kiosk-browser との
+起動順序が循環し、起動時にセンサーの開始が取り消されてパネルが出たままになる。
 ショートカットはセンサーへ SIGUSR1 を送る。rc.xml はバックアップ後に文字列編集し、
 ルート外にある旧ショートカットを修復する。labwc の再読み込みとブラウザの再起動で
 タイトルバー設定を反映する。Chromium の起動フラグは変更しない。
