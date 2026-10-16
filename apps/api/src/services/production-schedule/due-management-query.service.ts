@@ -12,6 +12,8 @@ import {
   getResourceNameMapByResourceCds
 } from './resource-master.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
+import { findSupplementMachineNamesForMissing } from './seiban-machine-name-supplement-backfill.js';
+import { isMissingSeibanMachineName } from './seiban-machine-name-state.js';
 import { buildProductionScheduleEffectiveCompletedSql } from './production-schedule-effective-completion.sql.js';
 import {
   createPartSupplementAggregate,
@@ -129,6 +131,10 @@ export async function listDueManagementSummaries(locationKey: string): Promise<D
     ORDER BY ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC
   `;
 
+  const supplementMachineNames = await findSupplementMachineNamesForMissing(
+    summaryRows.map((row) => [row.fseiban, row.machineName] as const)
+  );
+
   const dueDateRows = await prisma.productionScheduleSeibanDueDate.findMany({
     where: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID
@@ -189,7 +195,9 @@ export async function listDueManagementSummaries(locationKey: string): Promise<D
 
   return summaryRows.map((row) => ({
     fseiban: row.fseiban,
-    machineName: row.machineName,
+    machineName: isMissingSeibanMachineName(row.machineName)
+      ? (supplementMachineNames.get(row.fseiban.trim()) ?? row.machineName)
+      : row.machineName,
     dueDate: dueDateMap.get(row.fseiban) ?? null,
     partsCount: Number(row.partsCount),
     processCount: Number(row.processCount),
@@ -423,10 +431,12 @@ export async function getDueManagementSeibanDetail(params: {
         suggestedPriorityRank: index + 1
       };
     });
-  const machineName = rows.find((row) => {
+  const machineNameFromRows = rows.find((row) => {
     const normalized = row.fhincd?.trim().toUpperCase() ?? '';
     return (normalized.startsWith('MH') || normalized.startsWith('SH')) && row.fhinmei?.trim().length > 0;
   })?.fhinmei?.trim() ?? null;
+  const supplementMachineNames = await findSupplementMachineNamesForMissing([[fseiban, machineNameFromRows]]);
+  const machineName = supplementMachineNames.get(fseiban.trim()) ?? machineNameFromRows;
 
   return {
     fseiban,
