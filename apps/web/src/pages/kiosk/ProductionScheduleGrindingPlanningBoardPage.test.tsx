@@ -223,7 +223,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ガント', exact: true }));
     fireEvent.click(screen.getByRole('button', { name: '移動票で製番を探す' }));
     scanOrder('1234567890');
-    expect(screen.queryByRole('dialog', { name: '移動票を読み取る' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: '製造オーダー番号を読み取る' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '製番ごとに色分け' })).toHaveAttribute('aria-pressed', 'true');
     const legend = screen.getByRole('group', { name: '製番の色分け凡例' });
     expect(within(legend).getByRole('button', { name: '26-1041', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -245,7 +245,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
     fireEvent.click(screen.getByRole('button', { name: '移動票で製番を探す' }));
     scanOrder('12345');
-    expect(screen.getByRole('alert')).toHaveTextContent('製造order番号は数字10桁です（読取値: 12345）。読み直してください。');
+    expect(screen.getByRole('alert')).toHaveTextContent('製造オーダー番号は数字10桁です（読取値: 12345）。読み直してください。');
     scanOrder('9999999999');
     expect(screen.getByRole('alert')).toHaveTextContent('9999999999 の行はこの画面にありません。');
     fireEvent.click(screen.getByRole('button', { name: '閉じる', exact: true }));
@@ -256,7 +256,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('1234567890 の棒はこのガントにありません。');
     expect(screen.getByRole('button', { name: '移動票で製番を探す' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(screen.queryByRole('dialog', { name: '移動票を読み取る' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: '製造オーダー番号を読み取る' })).not.toBeInTheDocument();
   });
 
   it('highlights resource rows, scrolls each resource at 70% zoom and clears via chip, Escape or Gantt toggle', () => {
