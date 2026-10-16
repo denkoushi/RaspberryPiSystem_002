@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { promises as fs, type Stats } from 'fs';
+import type { Stats } from 'fs';
 import path from 'path';
 import sharp from 'sharp';
 import { getFileStorageRoot } from '../services/file-storage/file-storage-config.js';
@@ -66,12 +66,8 @@ export function resetPartMeasurementDrawingDerivativeInFlightForTests(): void {
   derivativeGenerationInFlight.clear();
 }
 
-function getDerivativesDir(width: DerivativeWidth): string {
-  return path.join(getStorageBaseDir(), 'part-measurement-drawings-derivatives', `w${width}`);
-}
-
-function resolveDerivativeFile(sourceFilename: string, width: DerivativeWidth): string {
-  return path.join(getDerivativesDir(width), `${sourceFilename}.webp`);
+function derivativeStorageKey(sourceFilename: string, width: DerivativeWidth): string {
+  return `part-measurement-drawings-derivatives/w${width}/${sourceFilename}.webp`;
 }
 
 function derivativeGenerationKey(sourceFullPath: string, width: DerivativeWidth): string {
@@ -80,16 +76,15 @@ function derivativeGenerationKey(sourceFullPath: string, width: DerivativeWidth)
 
 async function generateDerivativeWebp(
   sourceBuffer: Buffer,
-  derivativeFullPath: string,
+  derivativeKey: string,
   width: DerivativeWidth
 ): Promise<void> {
   const buffer = await sharp(sourceBuffer, { failOn: 'none' })
     .resize({ width, withoutEnlargement: true })
     .webp({ quality: DERIVATIVE_WEBP_QUALITY })
     .toBuffer();
-  const key = path.relative(getStorageBaseDir(), derivativeFullPath).split(path.sep).join('/');
   await getFileStorageRuntime().store.write({
-    key,
+    key: derivativeKey,
     data: buffer,
     mode: 'replace',
     integrity: false,
@@ -103,11 +98,11 @@ async function ensureDerivativeFile(
   width: DerivativeWidth,
   sourceMtimeMs: number
 ): Promise<string> {
-  const derivativeFullPath = resolveDerivativeFile(sourceFilename, width);
+  const derivativeKey = derivativeStorageKey(sourceFilename, width);
   try {
-    const derivativeStat = await fs.stat(derivativeFullPath);
+    const derivativeStat = await getFileStorageRuntime().store.stat(derivativeKey);
     if (derivativeStat.mtimeMs >= sourceMtimeMs) {
-      return derivativeFullPath;
+      return derivativeKey;
     }
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
@@ -120,14 +115,14 @@ async function ensureDerivativeFile(
   const inFlight = derivativeGenerationInFlight.get(inFlightKey);
   if (inFlight) {
     await inFlight;
-    return derivativeFullPath;
+    return derivativeKey;
   }
 
   const generationPromise = (async () => {
     try {
-      const derivativeStat = await fs.stat(derivativeFullPath).catch(() => null);
+      const derivativeStat = await getFileStorageRuntime().store.stat(derivativeKey).catch(() => null);
       if (!derivativeStat || derivativeStat.mtimeMs < sourceMtimeMs) {
-        await generateDerivativeWebp(sourceBuffer, derivativeFullPath, width);
+        await generateDerivativeWebp(sourceBuffer, derivativeKey, width);
       }
     } finally {
       derivativeGenerationInFlight.delete(inFlightKey);
@@ -136,7 +131,7 @@ async function ensureDerivativeFile(
 
   derivativeGenerationInFlight.set(inFlightKey, generationPromise);
   await generationPromise;
-  return derivativeFullPath;
+  return derivativeKey;
 }
 
 function resolveDrawingFile(relativeUrl: string): { fullPath: string; contentType: string } {
@@ -246,14 +241,14 @@ export class PartMeasurementDrawingStorage {
     }
 
     const sourceFilename = relativeUrl.slice(DRAWING_URL_PREFIX.length);
-    const derivativeFullPath = await ensureDerivativeFile(
+    const derivativeKey = await ensureDerivativeFile(
       fullPath,
       sourceBuffer,
       sourceFilename,
       width,
       sourceStat.mtimeMs
     );
-    const [buffer, stat] = await Promise.all([fs.readFile(derivativeFullPath), fs.stat(derivativeFullPath)]);
+    const [buffer, stat] = await Promise.all([getFileStorageRuntime().store.read(derivativeKey, { verifyIntegrity: false }), getFileStorageRuntime().store.stat(derivativeKey)]);
     return { buffer, contentType: 'image/webp', stat };
   }
 

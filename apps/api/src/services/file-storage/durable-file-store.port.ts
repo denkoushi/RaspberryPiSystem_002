@@ -18,8 +18,11 @@ export type StoredFileResult = {
 
 export interface DurableFileStorePort {
   initialize(namespaces: readonly string[]): Promise<void>;
-  absolutePath(key: string): string;
   write(request: FileWriteRequest): Promise<StoredFileResult>;
+  /** Streams a new object (create only; fails with FileStorageAlreadyExistsError if the key exists).
+   * Replace is not offered: writeBatch's restore-previous-content rollback cannot be honored without buffering.
+   * sizeHint, when given, is checked against the capacity reserve before writing. */
+  writeStream(request: { key: string; source: Readable; integrity: boolean; sizeHint?: number }): Promise<StoredFileResult>;
   writeBatch(requests: readonly FileWriteRequest[]): Promise<StoredFileResult[]>;
   read(key: string, options: { verifyIntegrity: boolean }): Promise<Buffer>;
   /**

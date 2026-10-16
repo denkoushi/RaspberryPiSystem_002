@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import { Prisma } from '@prisma/client';
+import { writeFile } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -29,6 +30,7 @@ function harness(deny: 'view' | 'write' | null = null) {
   vi.spyOn(prisma, '$transaction').mockImplementation((async (work: any) => work(db)) as never);
   const store = {
     delete: vi.fn(), read: vi.fn().mockResolvedValue(Buffer.from('0123456789')),
+    copyToFile: vi.fn(async (_key: string, destination: string) => { await writeFile(destination, '0123456789'); }),
     stat: vi.fn().mockResolvedValue({ size: 10 }),
     openReadStream: vi.fn(async (_key: string, options?: { start?: number; end?: number }) => ({
       size: 10,
@@ -289,7 +291,7 @@ describe('procedure-video routes', () => {
     expect((await h.app.inject({ method: 'POST', url: `${base}/scenes`, payload: { startSeconds: 0, endSeconds: 0.5, title: '  確認  ' } })).json().title).toBe('確認');
     h.db.procedureVideoScene.count.mockResolvedValue(20);
     expect((await h.app.inject({ method: 'POST', url: `${base}/scenes`, payload: { startSeconds: 0, endSeconds: 1 } })).statusCode).toBe(400);
-    expect(h.store.read).toHaveBeenCalled(); expect(h.db.procedureVideo.update).not.toHaveBeenCalled();
+    expect(h.store.copyToFile).toHaveBeenCalledWith('video.mp4', expect.any(String), { verifyIntegrity: true }); expect(h.db.procedureVideo.update).not.toHaveBeenCalled();
   });
   it.each([{ startSeconds: -0.1, endSeconds: 1 }, { startSeconds: 1, endSeconds: 1.4 }, { startSeconds: 2, endSeconds: 1 }, { startSeconds: 0, endSeconds: 11 }, { startSeconds: '0', endSeconds: 1 }, { startSeconds: 0, endSeconds: 1, title: 'あ'.repeat(81) }])('rejects invalid scene %j before creation', async (payload) => {
     const h = setup();

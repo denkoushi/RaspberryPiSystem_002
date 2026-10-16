@@ -1,7 +1,7 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream, promises as fs, type Stats } from 'node:fs';
 import path from 'node:path';
-import { Transform } from 'node:stream';
+import { Transform, type Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { logger } from '../../lib/logger.js';
 import type {
@@ -11,6 +11,7 @@ import type {
 } from './durable-file-store.port.js';
 import { FileStorageIntegrityCatalog } from './file-storage-integrity-catalog.js';
 import {
+  FileStorageAlreadyExistsError,
   FileStorageCapacityExhaustedError,
   FileStorageIntegrityMismatchError,
   FileStorageInvalidPathError,
@@ -72,11 +73,6 @@ export class LocalDurableFileStore implements DurableFileStorePort {
     }
   }
 
-  absolutePath(key: string): string {
-    const normalized = normalizeStorageKey(key);
-    return path.join(this.root, ...normalized.split('/'));
-  }
-
   async capacity(): Promise<FileSystemCapacity & { reserveBytes: number }> {
     const capacity = await this.capacityReader(this.root);
     const reserveBytes = Math.max(
@@ -99,6 +95,70 @@ export class LocalDurableFileStore implements DurableFileStorePort {
   async write(request: FileWriteRequest): Promise<StoredFileResult> {
     const [result] = await this.writeBatch([request]);
     return result!;
+  }
+
+  async writeStream(request: { key: string; source: Readable; integrity: boolean; sizeHint?: number }): Promise<StoredFileResult> {
+    let temporary: string | undefined;
+    let destination: string | undefined;
+    let committed = false;
+    try {
+      const key = normalizeStorageKey(request.key);
+      await this.assertCapacity(request.sizeHint ?? 0);
+      destination = await resolveSecureFile(this.root, key, { allowMissing: true });
+      const parent = path.dirname(destination);
+      temporary = path.join(parent, `.${path.basename(destination)}.${randomUUID()}.tmp`);
+      const handle = await fs.open(temporary, 'wx', 0o600);
+      const digest = createHash('sha256');
+      let size = 0;
+      const hash = new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          digest.update(chunk);
+          size += chunk.length;
+          callback(null, chunk);
+        },
+      });
+      const sink = handle.createWriteStream({ autoClose: false });
+      try {
+        await pipeline(request.source, hash, sink);
+        await handle.sync();
+      } finally {
+        sink.destroy();
+        await handle.close();
+      }
+      try {
+        await fs.link(temporary, destination);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new FileStorageAlreadyExistsError();
+        throw error;
+      }
+      committed = true;
+      await fs.unlink(temporary);
+      await syncDirectory(parent);
+      const sha256 = digest.digest('hex');
+      if (request.integrity) await this.catalog.put({ storageKey: key, sha256, size });
+      return { key, sha256, size };
+    } catch (error) {
+      request.source.destroy();
+      if (committed && destination) {
+        try {
+          await fs.unlink(destination);
+          await syncDirectory(path.dirname(destination));
+        } catch (rollbackError) {
+          throw new FileStorageUnavailableError(rollbackError);
+        }
+      }
+      if ((error as NodeJS.ErrnoException).code === 'ENOSPC') throw new FileStorageCapacityExhaustedError();
+      if (
+        error instanceof FileStorageCapacityExhaustedError ||
+        error instanceof FileStorageIntegrityMismatchError ||
+        (typeof error === 'object' && error !== null && 'statusCode' in error)
+      ) {
+        throw error;
+      }
+      throw new FileStorageUnavailableError(error);
+    } finally {
+      if (temporary) await fs.unlink(temporary).catch(() => undefined);
+    }
   }
 
   async writeBatch(requests: readonly FileWriteRequest[]): Promise<StoredFileResult[]> {
