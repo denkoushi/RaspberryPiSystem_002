@@ -9,7 +9,7 @@ import { invButtonGhost, invError, invKey, invKeyUtil, invPanel, invSurface } fr
 const PIN_LENGTH = 4;
 
 /** On-screen 4-digit unlock for inventory setup; the verified PIN is handed to the setup screen. */
-export function InventoryPinPad({ onUnlocked }: { onUnlocked: (password: string) => void }) {
+export function InventoryPinPad({ onUnlocked, onCancel }: { onUnlocked: (password: string) => void; onCancel?: () => void }) {
   const verify = useVerifyKioskDueManagementAccessPassword();
   const [digits, setDigits] = useState('');
   const [message, setMessage] = useState<string | null>(null);
@@ -67,7 +67,7 @@ export function InventoryPinPad({ onUnlocked }: { onUnlocked: (password: string)
           disabled={verify.isPending}
         />
         {verify.isPending ? <p className="text-center text-inv-muted">確認中…</p> : null}
-        <Link to="/kiosk/inventory" className={invButtonGhost}>やめる</Link>
+        <>{onCancel ? <button type="button" className={invButtonGhost} onClick={onCancel}>やめる</button> : <Link to="/kiosk/inventory" className={invButtonGhost}>やめる</Link>}</>
       </section>
     </div>
   );

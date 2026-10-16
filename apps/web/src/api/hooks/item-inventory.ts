@@ -252,13 +252,11 @@ export function useInventoryMutations(accessPassword?: string, setup = false) {
   };
 }
 
-export function useInventoryDashboard(weeks: number, machine: string | undefined, accessPassword: string) {
-  const session = useMemo(() => captureSetupPinSession(accessPassword), [accessPassword]);
-  return useQuery({ queryKey: [...inventoryKeys.dashboard, weeks, machine, session.generation], placeholderData: previous => previous,
-    queryFn: () => sendSetupRequest(session, () => getInventoryDashboard(weeks, machine, accessPassword)) });
+export function useInventoryDashboard(weeks: number, machine: string | undefined, accessPassword?: string) {
+  return useQuery({ queryKey: [...inventoryKeys.dashboard, weeks, machine], placeholderData: previous => previous,
+    queryFn: () => getInventoryDashboard(weeks, machine, accessPassword) });
 }
-export function useInventoryValueVariants(accessPassword: string) {
-  const session = useMemo(() => captureSetupPinSession(accessPassword), [accessPassword]);
-  return useQuery({ queryKey: [...inventoryKeys.variants, session.generation],
-    queryFn: () => sendSetupRequest(session, () => getInventoryValueVariants(accessPassword)) });
+export function useInventoryValueVariants(accessPassword?: string) {
+  return useQuery({ queryKey: inventoryKeys.variants,
+    queryFn: () => getInventoryValueVariants(accessPassword) });
 }

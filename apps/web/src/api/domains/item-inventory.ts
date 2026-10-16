@@ -455,11 +455,11 @@ export function inventoryThumbnailUrl(photoUrl: string): string {
   return photoUrl.replace('/api/storage/photos/', '/storage/thumbnails/').replace(/\.jpg$/i, '_thumb.jpg');
 }
 
-export async function getInventoryDashboard(weeks: number, machine: string | undefined, accessPassword: string) {
+export async function getInventoryDashboard(weeks: number, machine: string | undefined, accessPassword?: string) {
   const { data } = await api.get<InventoryDashboard>('/item-inventory/dashboard', { params: { weeks, machine }, headers: inventorySettingsHeaders(accessPassword) });
   return data;
 }
-export async function getInventoryValueVariants(accessPassword: string) {
+export async function getInventoryValueVariants(accessPassword?: string) {
   const { data } = await api.get<InventoryValueVariants>('/item-inventory/tool-value-variants', { headers: inventorySettingsHeaders(accessPassword) });
   return data;
 }

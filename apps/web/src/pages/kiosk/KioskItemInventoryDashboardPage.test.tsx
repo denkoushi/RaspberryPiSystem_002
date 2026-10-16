@@ -1,17 +1,18 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useVerifyKioskDueManagementAccessPassword } from '../../api/hooks';
+import { getInventoryDashboard, getInventoryValueVariants, mergeInventoryValueVariants, dismissInventoryValueVariants, verifyKioskDueManagementAccessPassword } from '../../api/client';
 import { clearSetupPin, readSetupPin, rememberSetupPin } from '../../features/kiosk/inventory/setup/setupPinSession';
 
 import { KioskItemInventoryDashboardPage } from './KioskItemInventoryDashboardPage';
 
-vi.mock('../../api/hooks', () => ({ useVerifyKioskDueManagementAccessPassword: vi.fn() }));
-vi.mock('../../features/kiosk/inventory/setup/InventoryDashboardTab', () => ({
-  InventoryDashboardTab: ({ accessPassword, onEditItems }: { accessPassword: string; onEditItems: () => void }) => (
-    <div>dashboard-open:{accessPassword}<button onClick={onEditItems}>単価を入れる</button></div>
-  ),
+vi.mock('../../api/client', async importOriginal => ({
+  ...await importOriginal<typeof import('../../api/client')>(),
+  getInventoryDashboard: vi.fn(), getInventoryValueVariants: vi.fn(),
+  mergeInventoryValueVariants: vi.fn(), dismissInventoryValueVariants: vi.fn(),
+  verifyKioskDueManagementAccessPassword: vi.fn(),
 }));
 
 function SettingsDestination() {
@@ -20,28 +21,65 @@ function SettingsDestination() {
 }
 
 function renderPage() {
-  return render(<MemoryRouter initialEntries={['/kiosk/inventory/dashboard']}>
+  return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}><MemoryRouter initialEntries={['/kiosk/inventory/dashboard']}>
     <Routes>
       <Route path="/kiosk/inventory/dashboard" element={<KioskItemInventoryDashboardPage />} />
       <Route path="/kiosk/inventory/settings" element={<SettingsDestination />} />
     </Routes>
-  </MemoryRouter>);
+  </MemoryRouter></QueryClientProvider>);
 }
 
 describe('KioskItemInventoryDashboardPage', () => {
   beforeEach(() => {
     clearSetupPin();
-    vi.mocked(useVerifyKioskDueManagementAccessPassword).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ success: true }), isPending: false } as never);
+    vi.clearAllMocks();
+    vi.mocked(verifyKioskDueManagementAccessPassword).mockResolvedValue({ success: true } as never);
+    vi.mocked(getInventoryDashboard).mockResolvedValue({ weeks: [], items: [], machines: [], totalIssued: 0, previousTotalIssued: 0, lowStockCount: 0, pricedItemCount: 0, itemCount: 0, cost: { total: 0, previousTotal: 0, byMonth: [] } });
+    vi.mocked(getInventoryValueVariants).mockResolvedValue({ groups: [{ field: 'maker', to: 'OSG', from: [{ value: 'オーエスジー', count: 2 }], auto: false }], autoMergedValueCount: 0 });
+    vi.mocked(mergeInventoryValueVariants).mockResolvedValue({});
+    vi.mocked(dismissInventoryValueVariants).mockResolvedValue({});
   });
   afterEach(() => { vi.useRealTimers(); });
 
-  it('requires a PIN when locked and remembers the verified PIN', async () => {
+  it('renders the dashboard without a PIN', async () => {
     renderPage();
+    expect(await screen.findByRole('button', { name: 'OSG にまとめる' })).toBeInTheDocument();
+    expect(screen.queryByText('4桁のパスワード')).not.toBeInTheDocument();
+    expect(screen.queryByText('解除中')).not.toBeInTheDocument();
+    expect(getInventoryDashboard).toHaveBeenCalledWith(12, undefined, undefined);
+    expect(getInventoryValueVariants).toHaveBeenCalledWith(undefined);
+  });
+
+  it.each([true, false])('unlocks and performs the pending action once (merge=%s)', async merge => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: merge ? 'OSG にまとめる' : '別のもの' }));
     const keypad = within(screen.getByRole('group', { name: 'パスワードのテンキー' }));
-    expect(screen.queryByText(/dashboard-open/)).not.toBeInTheDocument();
+    expect(mergeInventoryValueVariants).not.toHaveBeenCalled();
+    expect(dismissInventoryValueVariants).not.toHaveBeenCalled();
     for (const digit of '2520') fireEvent.click(keypad.getByRole('button', { name: digit, exact: true }));
-    expect(await screen.findByText('dashboard-open:2520')).toBeInTheDocument();
+    const mutation = merge ? mergeInventoryValueVariants : dismissInventoryValueVariants;
+    await waitFor(() => expect(mutation).toHaveBeenCalledExactlyOnceWith(merge
+      ? { field: 'maker', to: 'OSG', from: ['オーエスジー'] }
+      : { field: 'maker', values: ['OSG', 'オーエスジー'] }, '2520'));
     expect(readSetupPin()).toBe('2520');
+    expect(screen.getByRole('heading', { name: '集計' })).toBeInTheDocument();
+  });
+
+  it('cancels without performing the pending merge', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'OSG にまとめる' }));
+    fireEvent.click(screen.getByRole('button', { name: 'やめる' }));
+    expect(await screen.findByRole('button', { name: 'OSG にまとめる' })).toBeInTheDocument();
+    expect(mergeInventoryValueVariants).not.toHaveBeenCalled();
+    expect(readSetupPin()).toBeNull();
+  });
+
+  it.each([true, false])('acts immediately when unlocked (merge=%s)', async merge => {
+    rememberSetupPin('2520');
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: merge ? 'OSG にまとめる' : '別のもの' }));
+    await waitFor(() => expect(merge ? mergeInventoryValueVariants : dismissInventoryValueVariants).toHaveBeenCalledOnce());
+    expect(verifyKioskDueManagementAccessPassword).not.toHaveBeenCalled();
   });
 
   it('uses the shared session, shows no tabs, and locks manually', () => {
@@ -49,18 +87,18 @@ describe('KioskItemInventoryDashboardPage', () => {
     renderPage();
     expect(screen.getByRole('heading', { name: '集計' })).toBeInTheDocument();
     expect(screen.getByText('解除中')).toBeInTheDocument();
-    expect(screen.getByText('dashboard-open:2520')).toBeInTheDocument();
+    expect(screen.getByText('解除中')).toBeInTheDocument();
     expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: '在庫操作に戻る' })).toHaveAttribute('href', '/kiosk/inventory');
     fireEvent.click(screen.getByRole('button', { name: 'ロック' }));
-    expect(screen.getByRole('group', { name: 'パスワードのテンキー' })).toBeInTheDocument();
+    expect(screen.queryByText('4桁のパスワード')).not.toBeInTheDocument();
+    expect(screen.queryByText('解除中')).not.toBeInTheDocument();
     expect(readSetupPin()).toBeNull();
   });
 
-  it('opens item editing with router state', () => {
-    rememberSetupPin('2520');
+  it('opens item editing with router state while locked', async () => {
     renderPage();
-    fireEvent.click(screen.getByRole('button', { name: '単価を入れる' }));
+    fireEvent.click(await screen.findByRole('button', { name: '単価を入れる' }));
     expect(screen.getByTestId('destination')).toHaveTextContent('/kiosk/inventory/settings:{"tab":"items"}');
   });
 
@@ -71,8 +109,9 @@ describe('KioskItemInventoryDashboardPage', () => {
     act(() => vi.advanceTimersByTime(4 * 60_000));
     fireEvent.pointerDown(screen.getByRole('heading', { name: '集計' }));
     act(() => vi.advanceTimersByTime(4 * 60_000));
-    expect(screen.getByText('dashboard-open:2520')).toBeInTheDocument();
+    expect(screen.getByText('解除中')).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(60_000));
-    expect(screen.getByRole('group', { name: 'パスワードのテンキー' })).toBeInTheDocument();
+    expect(screen.queryByText('4桁のパスワード')).not.toBeInTheDocument();
+    expect(screen.queryByText('解除中')).not.toBeInTheDocument();
   });
 });
