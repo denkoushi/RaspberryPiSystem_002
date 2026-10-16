@@ -61,18 +61,34 @@ function useNaturalSizeFromImg(rootRef: RefObject<HTMLElement | null>, deps: unk
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
-    const img = root.querySelector('img');
-    if (!img) return;
-
+    let img: HTMLImageElement | null = null;
     const sync = () => {
-      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-        setNatural({ width: img.naturalWidth, height: img.naturalHeight });
+      if (img && img.naturalWidth > 0 && img.naturalHeight > 0) {
+        const { naturalWidth: width, naturalHeight: height } = img;
+        setNatural((current) =>
+          current.width === width && current.height === height
+            ? current
+            : { width, height }
+        );
       }
     };
+    const observeImage = () => {
+      const next = root.querySelector('img');
+      if (next !== img) {
+        img?.removeEventListener('load', sync);
+        img = next;
+        img?.addEventListener('load', sync);
+      }
+      sync();
+    };
 
-    sync();
-    img.addEventListener('load', sync);
-    return () => img.removeEventListener('load', sync);
+    observeImage();
+    const observer = new MutationObserver(observeImage);
+    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'srcset'] });
+    return () => {
+      observer.disconnect();
+      img?.removeEventListener('load', sync);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- caller passes explicit dependency list
   }, deps);
 

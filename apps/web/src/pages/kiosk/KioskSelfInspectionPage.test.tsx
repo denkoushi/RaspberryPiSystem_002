@@ -389,7 +389,7 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
     expect(screen.getByRole('button', { name: '研削' })).toHaveTextContent('2');
     expect(screen.getByRole('button', { name: '切削' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '研削' }));
-    expect(screen.getByRole('tab', { name: '加工要領書' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: '段取写真' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText('加工面を確認します。')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: '手順書' }));
     expect(screen.getByTestId('manual-viewer')).toHaveTextContent('公開手順書');

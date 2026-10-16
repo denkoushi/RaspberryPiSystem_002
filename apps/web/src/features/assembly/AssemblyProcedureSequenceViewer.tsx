@@ -7,6 +7,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+
 import { Button } from '../../components/ui/Button';
 
 import { AssemblyProcedureImageWithMarkers } from './AssemblyProcedureCanvas';
@@ -28,6 +29,7 @@ import type {
   AssemblyProcedureSequencePageDto,
   AssemblyProcedureSequenceStepDto
 } from './types';
+import type { ReactNode } from 'react';
 
 type Props = {
   sequence: AssemblyProcedureSequenceDto;
@@ -40,6 +42,7 @@ type Props = {
   onClose?: () => void;
   twoPages?: boolean;
   onToggleTwoPages?: () => void;
+  railExtra?: ReactNode;
   onCurrentStepChange?: (step: AssemblyProcedureSequenceStepDto | null, index: number, total: number) => void;
   boltMarkers?: AssemblyCanvasBolt[];
   checkMarkers?: AssemblyCanvasCheckItem[];
@@ -237,6 +240,7 @@ export function AssemblyProcedureSequenceViewer({
   onToggleList,
   twoPages = false,
   onToggleTwoPages,
+  railExtra,
   onClose
 }: Props) {
   const steps = useMemo(
@@ -361,7 +365,7 @@ export function AssemblyProcedureSequenceViewer({
         <div className="flex h-full min-h-[18rem] items-center justify-center bg-slate-950 text-sm font-semibold text-white/60">
           表示できる要領書ページがありません
         </div>
-        {manuals ? <ProcedureManualPageRail onClose={onClose} listOpen={listOpen} onToggleList={onToggleList} /> : null}
+        {manuals ? <ProcedureManualPageRail onClose={onClose} listOpen={listOpen} onToggleList={onToggleList} extra={railExtra} /> : null}
       </div>
     );
   }
@@ -597,7 +601,7 @@ export function AssemblyProcedureSequenceViewer({
           ) : null}
         </div>
       </div>
-      {manuals ? <ProcedureManualPageRail onClose={onClose} listOpen={listOpen} onToggleList={onToggleList} twoPages={spread} onToggleTwoPages={onToggleTwoPages} storyboardOpen={storyboardOpen} onToggleStoryboard={() => setStoryboardOpen(open => !open)} fitMode={fitMode} fitDisabled={Boolean(crop && !showFullPage)} onFit={mode => setFitChoice({ url: currentStep.pageUrl, mode })} index={stepIndex} total={steps.length} onPrevious={() => setStepIndex(index => Math.max(0, index - (spread ? 2 : 1)))} onNext={() => setStepIndex(index => Math.min(steps.length - 1, index + (spread ? 2 : 1)))} /> : null}
+      {manuals ? <ProcedureManualPageRail onClose={onClose} listOpen={listOpen} onToggleList={onToggleList} extra={railExtra} twoPages={spread} onToggleTwoPages={onToggleTwoPages} storyboardOpen={storyboardOpen} onToggleStoryboard={() => setStoryboardOpen(open => !open)} fitMode={fitMode} fitDisabled={Boolean(crop && !showFullPage)} onFit={mode => setFitChoice({ url: currentStep.pageUrl, mode })} index={stepIndex} total={steps.length} onPrevious={() => setStepIndex(index => Math.max(0, index - (spread ? 2 : 1)))} onNext={() => setStepIndex(index => Math.min(steps.length - 1, index + (spread ? 2 : 1)))} /> : null}
     </div>
   );
 }
