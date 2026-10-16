@@ -436,6 +436,8 @@ function buildItems(
     const sourceMinutes = parseRequiredMinutes(data);
     const sourceQuantity = detail.orderSupplements[0]?.plannedQuantity ?? null;
     const rowCompleted = isCompleted(detail);
+    const completionSource = detail.productionScheduleExternalCompletion?.isExternallyCompleted
+      ? 'import' : detail.productionScheduleProgress?.isCompleted ? 'manual' : null;
     const rowItemId = buildGrindingPlanningBoardRowItemId(data);
     const parentOverride = params.overrides.get(rowItemId);
     const splits = params.splitEnabled === false
@@ -497,6 +499,7 @@ function buildItems(
         originalDueDate,
         sourceMinutes,
         rowCompleted,
+        completionSource,
         sourceQuantity,
         overrideVersion: override?.version ?? 0,
         overrideResourceCd: override?.overrideResourceCd ?? null,
@@ -536,6 +539,7 @@ function buildItems(
         requiredMinutes,
         requiredMinutesKnown,
         isCompleted: rowCompleted,
+        completionSource,
         progress: {
           completed: itemProgress.completed,
           total: itemProgress.total,

@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { memo, useCallback, useEffect, useRef } from 'react';
 
 import { pageZoom } from '../pageZoom';
+import { PlanningBoardCompletionButton } from '../PlanningBoardCompletionButton';
 
 import { dateToDay, dayLabel, shiftedDueDate } from './planningBoardGanttLayout';
 
@@ -13,11 +14,12 @@ export const GANTT_LABEL_WIDTH = 320;
 // 「今日から」 only shows the machine and its daily-hours buttons, so its label column is narrower.
 export const GANTT_FORWARD_LABEL_WIDTH = 168;
 export const GANTT_ROW_HEIGHT = 56;
+export const GANTT_IMPORT_HATCH = 'repeating-linear-gradient(135deg, #475569 0 6px, #334155 6px 12px)';
 export const GANTT_HATCH = 'repeating-linear-gradient(135deg, #fb7185 0 4px, #9f1239 4px 8px)';
 
 type InteractionProps = {
   onCompleteToggle?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
-  completePending?: boolean;
+  completionPendingRowIds?: ReadonlySet<string>;
   completionTargetId?: string | null;
   onCompletionTarget?: (itemId: string) => void;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
@@ -39,7 +41,7 @@ type BarProps = InteractionProps & {
 type Drag = { pointerId: number; x: number; y: number; moved: boolean; delta: number; frame: number | null; element: HTMLButtonElement };
 
 const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
-  bar, start, dayWidth, today, selected, sibling, dimmed, disabled, dragDisabled, onToggleItem, onDueDrop, onCompleteToggle, completePending, completionTargetId, onCompletionTarget, seibanColors, focusedSeiban = null
+  bar, start, dayWidth, today, selected, sibling, dimmed, disabled, dragDisabled, onToggleItem, onDueDrop, onCompleteToggle, completionPendingRowIds, completionTargetId, onCompletionTarget, seibanColors, focusedSeiban = null
 }: BarProps) {
   const pending = useRef<Drag | null>(null);
   const suppressClick = useRef(false);
@@ -121,18 +123,16 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
         bar.unknown && (seibanColors ? 'border border-dashed border-slate-200' : 'border border-dashed border-slate-200 bg-slate-800 text-slate-200'),
         selected ? 'outline outline-2 outline-offset-1 outline-emerald-300' : sibling && 'outline outline-2 outline-offset-1 outline-white',
         focusedSeiban !== null ? focusedSeiban === bar.item.fseiban ? 'ring-2 ring-white' : 'opacity-20 saturate-[.3]' : dimmed && 'opacity-30'
-      )} style={{ width }}>
+      )} style={{ width, background: bar.tone === 'completed' && bar.item.completionSource === 'import' ? GANTT_IMPORT_HATCH : undefined }}>
         {bar.unknown ? `${bar.item.processOrder} 所要不明` : `${bar.item.processOrder} ${bar.resource}`}
         {bar.flagged && bar.overlaps.length === 0 && <i className="absolute inset-y-0 right-0 w-1" style={{ background: GANTT_HATCH }} />}
       </span>
       <span ref={tip} hidden className="absolute right-0 top-0 z-20 whitespace-nowrap rounded bg-white px-1 text-[10px] font-bold text-slate-950" />
     </button>
-    {onCompleteToggle && completionTargetId === bar.item.itemId && bar.item.kind === 'row' && <button type="button"
-      className={clsx('absolute top-0 z-10 flex h-7 w-7 items-center justify-center rounded-full border-2 text-[11px] hover:bg-white/5 disabled:opacity-60',
-        bar.item.isCompleted ? 'border-slate-400 bg-slate-800 text-white/80' : 'border-emerald-400 bg-emerald-600/20 text-emerald-100')}
+    {onCompleteToggle && completionTargetId === bar.item.itemId && bar.item.kind === 'row' && <PlanningBoardCompletionButton
+      item={bar.item} onToggle={onCompleteToggle} className="absolute top-0 z-10"
       style={{ left: (bar.end! - start) * dayWidth - 28 }}
-      aria-label={bar.item.isCompleted ? '未完了に戻す' : '完了にする'} disabled={disabled || completePending}
-      onClick={(event) => { event.stopPropagation(); onCompleteToggle(bar.item, bar.item.isCompleted ? 'incomplete' : 'complete'); }}>✓</button>}
+      disabled={disabled || completionPendingRowIds?.has(bar.item.sourceRowId)} />}
     </>
   );
 });

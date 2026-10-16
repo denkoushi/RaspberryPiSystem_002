@@ -234,8 +234,9 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     await waitFor(() => expect(mocks.completion).toHaveBeenCalledWith({ rowId: 'source-a', intent: 'complete' }));
     expect(await screen.findByText('完了にしました')).toBeVisible();
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['kiosk-grinding-planning-board'] });
-    expect(within(row).getByRole('checkbox')).not.toBeChecked();
+    expect(screen.queryByTestId('planning-board-item-a')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '↶ 戻す' }));
+    expect(within(screen.getByTestId('planning-board-item-a')).getByRole('checkbox')).not.toBeChecked();
     await waitFor(() => expect(mocks.completion).toHaveBeenLastCalledWith({ rowId: 'source-a', intent: 'incomplete' }));
     expect(screen.queryByText('完了にしました')).not.toBeInTheDocument();
   });
@@ -264,19 +265,90 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     page.unmount();
   });
 
-  it('locks row controls during completion and reports errors without a success notice', async () => {
+  it('updates completion immediately, locks only that button and reverts on rejection', async () => {
     let reject!: (error: Error) => void;
     mocks.completion.mockImplementation(() => new Promise((_resolve, rejectPromise) => { reject = rejectPromise; }));
     render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: '両方', exact: true }));
     const row = screen.getByTestId('planning-board-item-a');
     fireEvent.click(within(row).getByRole('button', { name: '完了にする' }));
-    await waitFor(() => expect(within(row).getByRole('button', { name: '完了にする' })).toBeDisabled());
-    expect(within(row).getByRole('button', { name: '資源CD 305を変更' })).toBeDisabled();
-    expect(within(row).getByRole('button', { name: '部品aの個別指定' })).toBeDisabled();
-    expect(within(row).getByRole('checkbox')).toBeDisabled();
+    const completed = within(row).getByRole('button', { name: '未完了に戻す' });
+    expect(completed).toHaveClass('border-slate-400');
+    expect(completed).toBeDisabled();
+    fireEvent.click(completed);
+    const otherRow = screen.getByTestId('planning-board-item-b');
+    expect(within(otherRow).getByRole('button', { name: '完了にする' })).toBeEnabled();
+    expect(within(otherRow).getByRole('button', { name: '部品bの個別指定' })).toBeEnabled();
+    expect(within(otherRow).getByRole('button', { name: '資源CD 305を変更' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '未完', exact: true })).toBeEnabled();
+    await waitFor(() => expect(mocks.completion).toHaveBeenCalledTimes(1));
     await act(async () => reject(new Error('completion failed')));
+    expect(within(row).getByRole('button', { name: '完了にする' })).toBeEnabled();
     expect(await screen.findByText('完了状態を保存できませんでした。時間をおいて再試行してください。')).toBeVisible();
     expect(screen.queryByText('完了にしました')).not.toBeInTheDocument();
+  });
+
+  it('hides a newly completed row immediately in the incomplete filter and restores it on failure', async () => {
+    let reject!: (error: Error) => void;
+    mocks.completion.mockImplementation(() => new Promise((_resolve, rejectPromise) => { reject = rejectPromise; }));
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '完了にする' }));
+    expect(screen.queryByTestId('planning-board-item-a')).not.toBeInTheDocument();
+    await waitFor(() => expect(mocks.completion).toHaveBeenCalledTimes(1));
+    await act(async () => reject(new Error('completion failed')));
+    expect(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '完了にする' })).toBeEnabled();
+  });
+
+  it('hides a manually completed row instantly when undoing in the complete filter', async () => {
+    const data = fixture();
+    Object.assign(data.items[0]!, { isCompleted: true, completionSource: 'manual' });
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    let resolve!: (value: unknown) => void;
+    mocks.completion.mockImplementationOnce(() => new Promise((resolvePromise) => { resolve = resolvePromise; }));
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: '完了', exact: true }));
+    fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '未完了に戻す' }));
+    expect(screen.queryByTestId('planning-board-item-a')).not.toBeInTheDocument();
+    await waitFor(() => expect(mocks.completion).toHaveBeenCalledWith({ rowId: 'source-a', intent: 'incomplete' }));
+    await act(async () => resolve({}));
+  });
+
+  it('restores a row instantly on undo after the server omitted it from the incomplete filter', async () => {
+    const page = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '完了にする' }));
+    await screen.findByText('完了にしました');
+    const refreshed = fixture();
+    refreshed.items = refreshed.items.filter((item) => item.itemId !== 'a');
+    mocks.snapshot.mockReturnValue({ data: refreshed, isLoading: false, isError: false, refetch: mocks.refetch });
+    page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    let resolve!: (value: unknown) => void;
+    mocks.completion.mockImplementationOnce(() => new Promise((resolvePromise) => { resolve = resolvePromise; }));
+    fireEvent.click(screen.getByRole('button', { name: '↶ 戻す' }));
+    expect(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '完了にする' })).toBeDisabled();
+    await waitFor(() => expect(mocks.completion).toHaveBeenLastCalledWith({ rowId: 'source-a', intent: 'incomplete' }));
+    await act(async () => resolve({}));
+  });
+
+  it('keeps the overlay until a matching refresh, then allows import completion to take over', async () => {
+    const page = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: '両方', exact: true }));
+    fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '完了にする' }));
+    await screen.findByText('完了にしました');
+    let snapshotNumber = 1;
+    const refresh = (isCompleted: boolean, completionSource: GrindingPlanningBoardItem['completionSource']) => {
+      const data = fixture();
+      data.snapshotId = `snapshot-${++snapshotNumber}`;
+      Object.assign(data.items[0]!, { isCompleted, completionSource });
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    };
+    refresh(false, null);
+    expect(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '未完了に戻す' })).toBeEnabled();
+    refresh(true, 'manual');
+    refresh(false, null);
+    expect(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '完了にする' })).toBeEnabled();
+    refresh(true, 'import');
+    expect(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '取込で完了' })).toBeDisabled();
   });
 
   it('scans a visible order, enables Gantt colors and shares legend focus, including Escape and mode reset', () => {

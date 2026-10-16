@@ -32,7 +32,7 @@ const item = (itemId: string, partial: Partial<GrindingPlanningBoardItem> = {}):
 });
 
 describe('PlanningBoardItemTable completion', () => {
-  const items = [item('row'), item('done', { isCompleted: true }), item('split', { kind: 'split' })];
+  const items = [item('row'), item('done', { isCompleted: true, completionSource: 'manual' }), item('split', { kind: 'split' })];
   const props = { items, allocation: 'alternate' as const, selectedItemIds: new Set<string>(),
     onToggleItem: vi.fn(), onResourceClick: vi.fn(), tableLabel: '工程' };
 
@@ -56,6 +56,18 @@ describe('PlanningBoardItemTable completion', () => {
     expect(screen.getByRole('table').querySelectorAll('col')).toHaveLength(5);
   });
 
+  it('renders imported completion as a disabled sky badge', () => {
+    const onCompleteToggle = vi.fn();
+    render(<PlanningBoardItemTable {...props} items={[item('imported', { isCompleted: true, completionSource: 'import' })]}
+      onCompleteToggle={onCompleteToggle} />);
+    const badge = screen.getByRole('button', { name: '取込で完了' });
+    expect(badge).toHaveTextContent('取込');
+    expect(badge).toHaveClass('h-7', 'w-7', 'rounded-full', 'border-sky-400', 'bg-cyan-700/35', 'text-sky-50');
+    expect(badge).toBeDisabled();
+    fireEvent.click(badge);
+    expect(onCompleteToggle).not.toHaveBeenCalled();
+  });
+
   it('omits the column without a handler and updates memoized pending controls', () => {
     const { rerender } = render(<PlanningBoardItemTable {...props} />);
     expect(screen.queryByRole('columnheader', { name: '完了' })).not.toBeInTheDocument();
@@ -65,9 +77,9 @@ describe('PlanningBoardItemTable completion', () => {
     const onCompleteToggle = vi.fn();
     rerender(<PlanningBoardItemTable {...props} onCompleteToggle={onCompleteToggle} />);
     expect(screen.getByRole('button', { name: '未完了に戻す' })).toBeEnabled();
-    rerender(<PlanningBoardItemTable {...props} onCompleteToggle={onCompleteToggle} completePending />);
+    rerender(<PlanningBoardItemTable {...props} onCompleteToggle={onCompleteToggle} completionPendingRowIds={new Set(['done'])} />);
     expect(screen.getByRole('button', { name: '未完了に戻す' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '完了にする' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '完了にする' })).toBeEnabled();
     rerender(<PlanningBoardItemTable {...props} onCompleteToggle={onCompleteToggle} disabled />);
     expect(screen.getByRole('button', { name: '未完了に戻す' })).toBeDisabled();
   });

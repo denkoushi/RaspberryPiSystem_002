@@ -21,7 +21,7 @@ export type PlanningBoardFocusViewProps = {
   onToggleAll: (selected: boolean) => void;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
   onCompleteToggle?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
-  completePending?: boolean;
+  completionPendingRowIds?: ReadonlySet<string>;
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
   disabled?: boolean;
@@ -39,7 +39,7 @@ export function PlanningBoardFocusView({
   onToggleAll,
   onToggleItem,
   onCompleteToggle,
-  completePending = false,
+  completionPendingRowIds,
   onResourceClick,
   onRankChange,
   disabled = false,
@@ -104,7 +104,7 @@ export function PlanningBoardFocusView({
             selectedItemIds={selectedItemIds}
             onToggleItem={onToggleItem}
             onCompleteToggle={onCompleteToggle}
-            completePending={completePending}
+            completionPendingRowIds={completionPendingRowIds}
             onResourceClick={onResourceClick}
             onRankChange={onRankChange}
             disabled={disabled}
