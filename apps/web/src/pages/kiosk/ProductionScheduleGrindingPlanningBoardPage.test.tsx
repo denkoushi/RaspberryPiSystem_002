@@ -153,6 +153,13 @@ function chooseResourceRank(fseiban: string, rank: number | null) {
   return screen.getByRole('button', { name: `${fseiban}の個別指定` });
 }
 
+function scanOrder(raw: string) {
+  act(() => {
+    for (const key of raw) fireEvent.keyDown(document.activeElement ?? document.body, { key });
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Enter' });
+  });
+}
+
 describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   beforeEach(() => {
     vi.stubGlobal('PointerEvent', TestPointerEvent);
@@ -203,7 +210,115 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it('scans a visible order, enables Gantt colors and shares legend focus, including Escape and mode reset', () => {
+    const data = fixture();
+    data.items[0]!.productNo = '1234567890';
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'ガント', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '移動票で製番を探す' }));
+    scanOrder('1234567890');
+    expect(screen.queryByRole('dialog', { name: '移動票を読み取る' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '製番ごとに色分け' })).toHaveAttribute('aria-pressed', 'true');
+    const legend = screen.getByRole('group', { name: '製番の色分け凡例' });
+    expect(within(legend).getByRole('button', { name: '26-1041', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('planning-gantt-bar-a')).toHaveClass('ring-2', 'ring-white');
+    expect(screen.getByText('1234567890 → 製番 26-1041')).toHaveAttribute('role', 'status');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(within(legend).getByRole('button', { name: '26-1041', exact: true })).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(within(legend).getByRole('button', { name: '26-1041', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'ガント', exact: true }));
+    expect(screen.queryByRole('button', { name: '目立たせるのをやめる' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('planning-board-item-a')).not.toHaveClass('ring-white');
+  });
+
+  it('does not find orders absent from the list or bars absent from the current Gantt', () => {
+    const data = fixture();
+    data.items[0]!.productNo = '1234567890';
+    data.items[0]!.originalDueDate = null as unknown as string;
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: '移動票で製番を探す' }));
+    scanOrder('12345');
+    expect(screen.getByRole('alert')).toHaveTextContent('製造order番号は数字10桁です（読取値: 12345）。読み直してください。');
+    scanOrder('9999999999');
+    expect(screen.getByRole('alert')).toHaveTextContent('9999999999 の行はこの画面にありません。');
+    fireEvent.click(screen.getByRole('button', { name: '閉じる', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'ガント', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '納期から', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '移動票で製番を探す' }));
+    scanOrder('1234567890');
+    expect(screen.getByRole('alert')).toHaveTextContent('1234567890 の棒はこのガントにありません。');
+    expect(screen.getByRole('button', { name: '移動票で製番を探す' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: '移動票を読み取る' })).not.toBeInTheDocument();
+  });
+
+  it('highlights resource rows, scrolls each resource at 70% zoom and clears via chip, Escape or Gantt toggle', () => {
+    const data = fixture();
+    data.items[0]!.productNo = '1234567890';
+    data.items[1]!.originalResourceCd = '584';
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    const getStyle = window.getComputedStyle;
+    const computed = vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+      const style = getStyle(element, pseudo);
+      if (element === document.documentElement) style.zoom = '0.7';
+      return style;
+    });
+    const rects = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return { top: this.dataset.seibanFocused === 'true' ? 210 : 70, left: 0, bottom: 100, width: 200, height: 30 } as DOMRect;
+    });
+    fireEvent.click(screen.getByRole('button', { name: '移動票で製番を探す' }));
+    scanOrder('1234567890');
+    expect(screen.getByTestId('planning-board-item-a')).toHaveClass('ring-2', 'ring-white');
+    expect(screen.getByTestId('planning-board-item-b')).toHaveClass('ring-white');
+    expect(screen.getByTestId('planning-board-item-c')).toHaveClass('opacity-25');
+    document.querySelectorAll<HTMLElement>('[data-resource-scroll]').forEach((scroll) => expect(scroll.scrollTop).toBe(200));
+    document.querySelectorAll<HTMLElement>('[data-resource-scroll]').forEach((scroll) => { scroll.scrollTop = 0; });
+    fireEvent.click(screen.getByRole('button', { name: '移動票で製番を探す' }));
+    scanOrder('1234567890');
+    document.querySelectorAll<HTMLElement>('[data-resource-scroll]').forEach((scroll) => expect(scroll.scrollTop).toBe(200));
+    rects.mockRestore();
+    computed.mockRestore();
+    fireEvent.click(screen.getByRole('button', { name: '目立たせるのをやめる' }));
+    expect(screen.getByTestId('planning-board-item-a')).not.toHaveClass('ring-white');
+    expect(screen.getByTestId('planning-board-item-c')).not.toHaveClass('opacity-25');
+    for (const clear of ['escape', 'gantt']) {
+      fireEvent.click(screen.getByRole('button', { name: '移動票で製番を探す' }));
+      scanOrder('1234567890');
+      if (clear === 'escape') fireEvent.keyDown(document, { key: 'Escape' });
+      else fireEvent.click(screen.getByRole('button', { name: 'ガント', exact: true }));
+      expect(screen.queryByRole('button', { name: '目立たせるのをやめる' })).not.toBeInTheDocument();
+    }
+    expect(screen.getByTestId('planning-gantt-bar-a')).not.toHaveClass('ring-white');
+  });
+
+  it('opens and scrolls the scanned seiban pane and dismisses the notice after two seconds', () => {
+    const data = fixture();
+    data.items[0]!.productNo = '1234567890';
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    renderSeibanBoard();
+    fireEvent.click(screen.getByRole('button', { name: '製番26-1041の明細を閉じる' }));
+    const pane = screen.getByTestId('planning-board-seiban-26-1041');
+    const scroll = vi.fn();
+    pane.scrollIntoView = scroll;
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole('button', { name: '移動票で製番を探す' }));
+    scanOrder('1234567890');
+    expect(pane).toHaveClass('ring-2', 'ring-white');
+    expect(screen.getByRole('button', { name: '製番26-1041の明細を閉じる' })).toHaveAttribute('aria-expanded', 'true');
+    expect(scroll).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' });
+    expect(screen.getByText('1234567890 → 製番 26-1041')).toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(2000); });
+    expect(screen.queryByText('1234567890 → 製番 26-1041')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '目立たせるのをやめる' }));
+    expect(pane).not.toHaveClass('ring-white');
   });
 
   it('toggles large-screen display, restores it on return and clears zoom when leaving the page', () => {

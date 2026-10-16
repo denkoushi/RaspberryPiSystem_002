@@ -20,7 +20,7 @@ import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModa
 import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { planningBoardAutoOrder, planningBoardLaneOrder, planningBoardOrderMetrics } from '../../features/kiosk/grindingPlanningBoard/gantt/planningBoardAutoOrder';
-import { buildForwardPlanningBoardGanttLayout } from '../../features/kiosk/grindingPlanningBoard/gantt/planningBoardGanttLayout';
+import { buildForwardPlanningBoardGanttLayout, planningBoardVisibleBars } from '../../features/kiosk/grindingPlanningBoard/gantt/planningBoardGanttLayout';
 import { PlanningBoardGanttView } from '../../features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttView';
 import { usePlanningBoardGantt } from '../../features/kiosk/grindingPlanningBoard/gantt/usePlanningBoardGantt';
 import { PlanningBoardFocusView } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardFocusView';
@@ -154,6 +154,20 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const category: GrindingPlanningBoardCategory = categories.grinding && categories.cutting ? 'all' : categories.grinding ? 'grinding' : 'cutting';
   const [pinMode, setPinMode] = useState(false);
   const [orderPreview, setOrderPreview] = useState<OrderPreview | null>(null);
+  const [focusedSeiban, setFocusedSeiban] = useState<string | null>(null);
+  const [scanFocusKey, setScanFocusKey] = useState(0);
+  const [scanNotice, setScanNotice] = useState<{ text: string } | null>(null);
+  useEffect(() => {
+    if (!scanNotice) return;
+    const timer = window.setTimeout(() => setScanNotice(null), 2000);
+    return () => window.clearTimeout(timer);
+  }, [scanNotice]);
+  useEffect(() => {
+    if (!focusedSeiban) return;
+    const clear = (event: KeyboardEvent) => { if (event.key === 'Escape') setFocusedSeiban(null); };
+    document.addEventListener('keydown', clear);
+    return () => document.removeEventListener('keydown', clear);
+  }, [focusedSeiban]);
   const [colorBySeiban, setColorBySeiban] = useState(false);
   const { largeScreen, changeLargeScreen } = usePlanningBoardLargeScreen();
   const [ganttEnabled, setGanttEnabled] = useState(false);
@@ -834,6 +848,23 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       onSaved, onFailed
     });
   };
+  const handleOrderScan = (productNo: string): string | null => {
+    const displayedItems = ganttEnabled
+      ? planningBoardVisibleBars(ganttLayout).map((bar) => bar.item)
+      : view === 'seiban' && focusedFseiban && focusItems.length > 0 ? focusItems : visibleItems;
+    const item = displayedItems.find((candidate) => candidate.productNo === productNo);
+    if (!item) return ganttEnabled ? `${productNo} の棒はこのガントにありません。` : `${productNo} の行はこの画面にありません。`;
+    if (ganttEnabled) setColorBySeiban(true);
+    else if (view === 'seiban') {
+      setFocusedFseiban(null);
+      setOpenFseibans((current) => new Set(current).add(item.fseiban));
+    }
+    setFocusedSeiban(item.fseiban);
+    setScanFocusKey((key) => key + 1);
+    setScanNotice({ text: `${productNo} → 製番 ${item.fseiban}` });
+    return null;
+  };
+
   const moveResourceInGantt = (original: GrindingPlanningBoardItem, targetResource: string, targetItem: GrindingPlanningBoardItem | null,
     placement: GrindingPlanningBoardResourceOrderPlacement) => {
     const item = currentItemsRef.current.find((candidate) => candidate.itemId === original.itemId);
@@ -1006,8 +1037,9 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       <PlanningBoardToolbar
         largeScreen={largeScreen} onToggleLargeScreen={() => changeLargeScreen(!largeScreen)}
         colorBySeiban={colorBySeiban} onToggleColorBySeiban={() => setColorBySeiban((enabled) => !enabled)}
+        onOrderScan={handleOrderScan} focusedSeiban={focusedSeiban} onClearSeibanFocus={() => setFocusedSeiban(null)}
         ganttEnabled={ganttEnabled}
-        onToggleGantt={() => { setPinMode(false); setGanttEnabled((enabled) => !enabled); }}
+        onToggleGantt={() => { setFocusedSeiban(null); setPinMode(false); setGanttEnabled((enabled) => !enabled); }}
         ganttScale={gantt.scale}
         onGanttScaleChange={gantt.changeScale}
         ganttMode={gantt.mode} onGanttModeChange={(mode) => { setPinMode(false); gantt.changeMode(mode); }}
@@ -1055,9 +1087,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         ) : null}
         specialDueCounts={specialDueCounts}
       />
+      {scanNotice && <p role="status" className="pointer-events-none fixed left-1/2 top-16 z-[90] -translate-x-1/2 rounded-lg bg-emerald-900 px-4 py-2 text-sm font-bold text-emerald-50 shadow-lg">{scanNotice.text}</p>}
       {boardQuery.isError ? <p className="p-5 text-sm text-rose-200">一覧を読み込めませんでした。</p> : null}
       {data && ganttEnabled ? (
-        <PlanningBoardGanttView colorBySeiban={colorBySeiban} seibanOrder={registeredFseibans} ref={gantt.viewRef} layout={ganttLayout} scale={gantt.scale} homeKey={gantt.homeKey}
+        <PlanningBoardGanttView focusedSeiban={focusedSeiban} onFocusedSeibanChange={setFocusedSeiban} colorBySeiban={colorBySeiban} seibanOrder={registeredFseibans} ref={gantt.viewRef} layout={ganttLayout} scale={gantt.scale} homeKey={gantt.homeKey}
           resourceView={view === 'resource'} dailyHoursByResource={orderPreview?.options.dailyHoursByResource ?? gantt.dailyHoursByResource} preferenceScope={`${data.siteKey}:${category}`}
           resourceNameMap={resourcesQuery.data?.resourceNameMap ?? {}}
           runsThroughBreaks={orderPreview?.options.runsThroughBreaks ?? gantt.runsThroughBreaks} onBreaksChange={gantt.changeBreaks}
@@ -1101,6 +1134,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
                 selectedItemIds={selectedItemIds}
                 isOpen={openFseibans.has(fseiban)}
                 isFocused={false}
+                highlighted={focusedSeiban === fseiban}
+                scanFocusKey={scanFocusKey}
                 onToggleOpen={actions.onToggleOpen}
                 onFocus={actions.onFocus}
                 onToggleAll={actions.onToggleAll}
@@ -1120,6 +1155,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
             key={`${data.siteKey}:${category}`}
             preferenceScope={`${data.siteKey}:${category}`}
             items={visibleItems}
+            focusedSeiban={focusedSeiban}
+            scanFocusKey={scanFocusKey}
             seibanOrder={registeredFseibans}
             resources={data.resources}
             category={category}

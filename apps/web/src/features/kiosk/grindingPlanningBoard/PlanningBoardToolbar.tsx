@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { PlanningBoardPinIcon } from './gantt/PlanningBoardPinIcon';
 import { GANTT_SCALES, ganttScaleLabel } from './gantt/usePersistedPlanningBoardGanttScale';
 import { pageZoom } from './pageZoom';
+import { PlanningBoardOrderScan } from './PlanningBoardOrderScan';
 
 import type { PlanningBoardOrderMetrics } from './gantt/planningBoardAutoOrder';
 import type { PlanningBoardGanttMode } from './gantt/usePersistedPlanningBoardGanttMode';
@@ -67,6 +68,9 @@ function SegmentGroup({ ariaLabel, children }: { ariaLabel: string; children: Re
 }
 
 export type PlanningBoardToolbarProps = {
+  onOrderScan?: (productNo: string) => string | null;
+  focusedSeiban?: string | null;
+  onClearSeibanFocus?: () => void;
   largeScreen?: boolean;
   onToggleLargeScreen?: () => void;
   ganttEnabled?: boolean;
@@ -116,6 +120,7 @@ export type PlanningBoardToolbarProps = {
 const formatWait = (minutes: number) => `${Math.floor(minutes / 60)}時間${String(minutes % 60).padStart(2, '0')}分`;
 
 export function PlanningBoardToolbar({
+  onOrderScan, focusedSeiban = null, onClearSeibanFocus,
   largeScreen = false, onToggleLargeScreen,
   ganttEnabled = false,
   onToggleGantt,
@@ -248,6 +253,14 @@ export function PlanningBoardToolbar({
               <circle cx="7" cy="10" r="1" /><circle cx="10" cy="6" r="1" /><circle cx="15" cy="6" r="1" /><circle cx="18" cy="10" r="1" />
             </svg>
           </button>
+        </>}
+      </div>}
+      {onOrderScan && <PlanningBoardOrderScan onScan={onOrderScan} />}
+      {!ganttEnabled && focusedSeiban && <div className="flex shrink-0 items-center gap-1 rounded-md border border-slate-600 pl-2 text-sm">
+        <span>製番 {focusedSeiban}</span>
+        <button type="button" aria-label="目立たせるのをやめる" onClick={onClearSeibanFocus} className="grid h-11 w-11 place-items-center">✕</button>
+      </div>}
+      {ganttEnabled && <div className="flex shrink-0 items-center gap-1">
           <button type="button" onClick={ganttMode === 'forward' ? onNextLate : onNextOverlap}
             className={clsx('ml-1 min-h-11 shrink-0 rounded-md px-2 text-[13px] font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300', (ganttMode === 'forward' ? lateCount : overlapCount) ? 'bg-rose-800 text-white' : 'text-emerald-300')}>
             {ganttMode === 'forward' ? (lateCount ? `⚠ 遅れ ${lateCount}` : '✓ 遅れなし') : (overlapCount ? `⚠ 重なり ${overlapCount}` : '✓ 重なりなし')}
@@ -277,7 +290,6 @@ export function PlanningBoardToolbar({
           <button type="button" onClick={onUndoOrder}
             disabled={ganttMode !== 'forward' || allocation !== 'alternate' || orderDisabled || !canUndoOrder}
             className="min-h-11 shrink-0 rounded-md border border-slate-600 px-2 text-[13px] font-bold text-slate-200 disabled:opacity-40">↶ 戻す</button>
-        </>}
       </div>}
       <SegmentGroup ariaLabel="進捗">
         <SegmentButton disabled={scopeDisabled} pressed={status === 'incomplete'} onClick={() => onStatusChange('incomplete')}>

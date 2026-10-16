@@ -12,6 +12,16 @@ const props = (): PlanningBoardToolbarProps => ({
   onOpenDrawer: vi.fn(), onCategoriesChange: vi.fn(), onViewChange: vi.fn(), onStatusChange: vi.fn(), onAllocationChange: vi.fn(), onOpenDueEditor: vi.fn()
 });
 describe('PlanningBoardToolbar forward controls', () => {
+  it.each([false, true])('keeps the icon-only scan control outside the Gantt group with gantt=%s', (ganttEnabled) => {
+    render(<PlanningBoardToolbar {...props()} ganttEnabled={ganttEnabled} onOrderScan={() => null} />);
+    const scan = screen.getByRole('button', { name: '移動票で製番を探す' });
+    expect(scan).toHaveClass('h-[46px]', 'w-[46px]');
+    expect(scan).toHaveTextContent('');
+    expect(scan.querySelector('svg')).toBeInTheDocument();
+    const gantt = screen.getByRole('button', { name: 'ガント', exact: true });
+    expect(gantt.parentElement).not.toContainElement(scan);
+    if (ganttEnabled) expect(scan.previousElementSibling?.lastElementChild).toBe(screen.getByRole('button', { name: '製番ごとに色分け' }));
+  });
   it.each([false, true])('shows the large-screen toggle at the far right with gantt=%s', (ganttEnabled) => {
     const onToggleLargeScreen = vi.fn();
     const values = { ...props(), ganttEnabled, onToggleLargeScreen };

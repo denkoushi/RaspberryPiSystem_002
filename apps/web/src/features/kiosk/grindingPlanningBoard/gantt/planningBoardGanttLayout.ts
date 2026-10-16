@@ -48,6 +48,12 @@ export type GanttBar = {
 export type GanttRow = { key: string; label: string; detail: string; bars: GanttBar[]; flagged: boolean; connectors: { start: number; end: number }[] };
 export type GanttGroup = { key: string; label: string; resource: string | null; category?: 'grinding' | 'cutting'; rows: GanttRow[] };
 export type GanttLayout = { groups: GanttGroup[]; start: number; end: number; today: number; overlapCount: number; mode?: 'forward' | 'backward'; now?: number; lateCount?: number; completedOnly?: boolean };
+// Shared by the legend and movement-slip lookup: placeholders without a drawn bar are excluded.
+export function planningBoardVisibleBars(layout: GanttLayout): GanttBar[] {
+  return layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars
+    .filter((bar) => layout.mode === 'forward' ? bar.unknown || Boolean(bar.segments?.length) : bar.end != null)));
+}
+
 export type GanttLayoutOptions = {
   items: readonly GrindingPlanningBoardItem[];
   allocation: PlanningBoardAllocation;

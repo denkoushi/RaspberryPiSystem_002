@@ -19,6 +19,7 @@ const rankOptions = [null, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
 export type PlanningBoardItemTableProps = {
   items: readonly GrindingPlanningBoardItem[];
+  focusedSeiban?: string | null;
   allocation: PlanningBoardAllocation;
   selectedItemIds: ReadonlySet<string>;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
@@ -46,6 +47,7 @@ type PlanningBoardItemTableRowProps = {
   item: GrindingPlanningBoardItem;
   allocation: PlanningBoardAllocation;
   selected: boolean;
+  seibanFocus: 'match' | 'dim' | null;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
@@ -69,6 +71,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
   item,
   allocation,
   selected,
+  seibanFocus,
   onToggleItem,
   onResourceClick,
   onRankChange,
@@ -108,12 +111,14 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
       key={item.itemId}
       data-testid={`planning-board-item-${item.itemId}`}
       data-planning-board-item-id={item.itemId}
+      data-seiban-focused={seibanFocus === 'match'}
       className={clsx(
         'border-b border-slate-800/80',
         specialDue && 'outline outline-1 -outline-offset-1',
         specialDue && (pendingSpecialDue === undefined && specialDueExpired ? 'outline-rose-400' : 'outline-amber-300'),
         specialDueEnabled && !item.isCompleted && 'cursor-pointer',
-        item.isCompleted && 'opacity-55'
+        seibanFocus === 'match' && 'ring-2 ring-inset ring-white',
+        seibanFocus === 'dim' ? 'opacity-25' : item.isCompleted && 'opacity-55'
       )}
       onClick={specialDueEnabled && !item.isCompleted ? () => onSpecialDueClick?.(item) : undefined}
     >
@@ -300,6 +305,7 @@ function areSelectionStatesEqual(
 
 function areTablePropsEqual(previous: PlanningBoardItemTableProps, next: PlanningBoardItemTableProps): boolean {
   return previous.items === next.items &&
+    previous.focusedSeiban === next.focusedSeiban &&
     previous.allocation === next.allocation &&
     previous.onToggleItem === next.onToggleItem &&
     previous.onResourceClick === next.onResourceClick &&
@@ -321,6 +327,7 @@ function areTablePropsEqual(previous: PlanningBoardItemTableProps, next: Plannin
 
 export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
   items,
+  focusedSeiban = null,
   allocation,
   selectedItemIds,
   onToggleItem,
@@ -368,6 +375,7 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
             return (
               <PlanningBoardItemTableRow
                 key={item.itemId}
+                seibanFocus={focusedSeiban === null ? null : focusedSeiban === item.fseiban ? 'match' : 'dim'}
                 item={item}
                 allocation={allocation}
                 selected={selected}
