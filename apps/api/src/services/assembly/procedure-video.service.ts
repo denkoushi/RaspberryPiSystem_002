@@ -106,10 +106,22 @@ export class ProcedureVideoService {
   }
 
   async readFile(id: string, poster = false) {
+    return this.store.read(await this.readyFileKey(id, poster), { verifyIntegrity: true });
+  }
+
+  async statFile(id: string) {
+    return this.store.stat(await this.readyFileKey(id));
+  }
+
+  async openFileStream(id: string, options?: { start?: number; end?: number }) {
+    return this.store.openReadStream(await this.readyFileKey(id), options);
+  }
+
+  private async readyFileKey(id: string, poster = false) {
     const video = await this.db.procedureVideo.findUnique({ where: { id } });
     const key = poster ? video?.posterStorageKey : video?.storageKey;
     if (video?.status !== 'READY' || !key) throw new ApiError(404, '動画がありません');
-    return this.store.read(key, { verifyIntegrity: true });
+    return key;
   }
 
   async retry(id: string) {

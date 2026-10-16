@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -69,7 +69,7 @@ export class ProcedureVideoProcessingService {
             if (!source || source.status !== 'READY' || source.discardedAt || !source.storageKey) throw new ProcedureVideoTranscodeError('SOURCE_MISSING', '接続元の動画がないか、完了していないか、捨てられています');
             const sourceInput = path.join(directory, `${index}.mp4`);
             // eslint-disable-next-line no-await-in-loop
-            await writeFile(sourceInput, await this.store.read(source.storageKey, { verifyIntegrity: true }));
+            await this.store.copyToFile(source.storageKey, sourceInput, { verifyIntegrity: true });
             // eslint-disable-next-line no-await-in-loop
             const probe = await this.transcoder.probe(sourceInput);
             concatSources.push({ id, storageKey: source.storageKey, durationSeconds: probe.durationSeconds });
@@ -80,7 +80,7 @@ export class ProcedureVideoProcessingService {
         } else {
           const inputKey = isTrim ? video.storageKey : video.sourceStorageKey;
           if (!inputKey) throw new ProcedureVideoTranscodeError('SOURCE_MISSING', '動画の原本がありません');
-          await writeFile(input, await this.store.read(inputKey, { verifyIntegrity: true }));
+          await this.store.copyToFile(inputKey, input, { verifyIntegrity: true });
           const probe = await this.transcoder.probe(input);
           sourceDurationSeconds = probe.durationSeconds;
           if (!isTrim && probe.durationSeconds > 60) throw new ProcedureVideoTranscodeError('TOO_LONG', '動画は60秒までです');
