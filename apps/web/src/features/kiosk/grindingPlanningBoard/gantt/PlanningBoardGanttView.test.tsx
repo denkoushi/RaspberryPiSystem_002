@@ -613,29 +613,46 @@ describe('forward PlanningBoardGanttView', () => {
     dragBar();
     expect(special.onResourceReorder).not.toHaveBeenCalled();
   });
-  it('fits eight hours at the one-day scale, ticks every hour, and opens an hour before now but not before 8:00', () => {
+  it('fits eight hours at the one-day scale, ticks every hour, and opens just before now but not before 8:00', () => {
     const eightHourDay = (1120 - 168) / (8 / 24);
     const at = (time: string) => ({ ...forwardProps(), scale: 1, layout: buildPlanningBoardGanttLayout({ items: [item()], mode: 'forward', allocation: 'alternate', view: 'resource',
       seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', now: new Date(`2026-10-14T${time}:00+09:00`), scale: 1 }) });
     const { unmount } = render(<PlanningBoardGanttView {...at('13:20')} />);
-    expect(screen.getByLabelText('ガントの日付と工程').scrollLeft).toBeCloseTo(eightHourDay * 12 / 24);
+    expect(screen.getByLabelText('ガントの日付と工程').scrollLeft).toBeCloseTo(eightHourDay * (13 + 10 / 60) / 24);
     expect(screen.getAllByText('13時').length).toBeGreaterThan(0);
     unmount();
     render(<PlanningBoardGanttView {...at('07:30')} />);
     expect(screen.getByLabelText('ガントの日付と工程').scrollLeft).toBeCloseTo(eightHourDay * 8 / 24);
   });
-  it('returns to the home position when the clock reaches a new hour', () => {
+  it('keeps the backward chart opening an hour before now on the hour', () => {
+    // The backward layout carries no clock of its own, so the chart reads the system time.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-14T13:20:00+09:00'));
+    try {
+      const layout = buildPlanningBoardGanttLayout({ items: [item()], mode: 'backward', allocation: 'alternate', view: 'resource',
+        seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', scale: 1 });
+      render(<PlanningBoardGanttView {...forwardProps()} scale={1} layout={layout} />);
+      const viewport = screen.getByLabelText('ガントの日付と工程');
+      const dayWidth = Number.parseFloat(screen.getAllByText('13時')[0]!.parentElement!.style.width);
+      expect(viewport.scrollLeft).toBeCloseTo((layout.today + 12 / 24 - layout.start) * dayWidth);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('returns to the home position every ten minutes', () => {
     const eightHourDay = (1120 - 168) / (8 / 24);
     const at = (time: string) => ({ ...forwardProps(), scale: 1, layout: buildPlanningBoardGanttLayout({ items: [item()], mode: 'forward', allocation: 'alternate', view: 'resource',
       seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', now: new Date(`2026-10-14T${time}:00+09:00`), scale: 1 }) });
     const { rerender } = render(<PlanningBoardGanttView {...at('13:20')} />);
     const viewport = screen.getByLabelText('ガントの日付と工程');
     fireEvent.click(screen.getByRole('button', { name: '2時間進む' }));
-    expect(viewport.scrollLeft).toBeCloseTo(eightHourDay * 14 / 24);
-    rerender(<PlanningBoardGanttView {...at('13:50')} />);
-    expect(viewport.scrollLeft).toBeCloseTo(eightHourDay * 14 / 24);
+    expect(viewport.scrollLeft).toBeCloseTo(eightHourDay * (15 + 10 / 60) / 24);
+    rerender(<PlanningBoardGanttView {...at('13:29')} />);
+    expect(viewport.scrollLeft).toBeCloseTo(eightHourDay * (15 + 10 / 60) / 24);
+    rerender(<PlanningBoardGanttView {...at('13:30')} />);
+    expect(viewport.scrollLeft).toBeCloseTo(eightHourDay * (13 + 20 / 60) / 24);
     rerender(<PlanningBoardGanttView {...at('14:00')} />);
-    expect(viewport.scrollLeft).toBeCloseTo(eightHourDay * 13 / 24);
+    expect(viewport.scrollLeft).toBeCloseTo(eightHourDay * (13 + 50 / 60) / 24);
   });
   it('moves two hours with the arrow buttons and returns to today on each scale press', () => {
     const values = forwardProps([item()]);
