@@ -520,6 +520,8 @@ The API files above (except the untouched existing integration-test WIP), `apps/
 
 ### 動画: V1 / V2 / V3
 
+映像から場面の区切りと字幕の案を自動で作る機能は、別の計画 [作業動画の自動編集](./procedure-video-auto-edit-execplan.md) で扱う。
+
 V1は専用素材メールからMP4/MOV/3GP/M4V(非inline、25 MB以下)を取り込み、独立したProcedureVideoとしてPENDINGへ保存する。既存素材と同じ添付名・part IDのハッシュによる重複キー、送信元ドメイン、未読再試行を維持する。動画だけ保存できたメールもゴミ箱へ移す。原本はprocedure-videos/incoming/<sha256>/originalを共有する。
 
 Pi5のffprobeで60秒以下を確認し、音声なし・長辺640・縦横比維持・H.264 MP4(30fps、CRF28、faststart)とJPEG posterへ変換する。既定autorotationを維持する。procedure-video-transcoder.port.tsのprobe/transcodeを将来の差し替え口にするが、DGX接続は実装しない。1分間隔の共通リーダースケジューラーと取込直後の起動から最古のPENDINGを1件処理する。条件付きclaimと全worker排他で同時1件、停止したPROCESSINGは排他取得後に回復する。一般失敗は3回までPENDINGへ戻し、4回目にFAILED。TOO_LONGとFFMPEG_UNAVAILABLEは即FAILED、手動retryはattemptsを0へ戻す。出力とposterは変換MP4のsha256ディレクトリへ保存し、最後の参照を終えた原本を削除する。
