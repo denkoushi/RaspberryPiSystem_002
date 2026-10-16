@@ -394,7 +394,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(mocks.overrides).not.toHaveBeenCalled();
   });
 
-  it.each(['⇅ 納期順に並べる', '並べ替え'])('%s saves through the queue and undoes with acknowledged revisions', async (action) => {
+  it.each(['納期順に並べる', '並べ替え'])('%s saves through the queue and undoes with acknowledged revisions', async (action) => {
     const data = fixture();
     data.items[0]!.originalDueDate = '2026-10-20';
     data.items[1]!.originalDueDate = '2026-10-17';
@@ -417,7 +417,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       expect(mocks.resourceOrderBulk).not.toHaveBeenCalled();
       expect(screen.getByRole('status', { name: '並べ替えの比較' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: '一括変更' })).toBeDisabled();
-      expect(screen.queryByRole('button', { name: '⇅ 納期順に並べる' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '納期順に並べる' })).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: '適用', exact: true }));
     } else {
       expect(screen.queryByRole('status', { name: '並べ替えの比較' })).not.toBeInTheDocument();
@@ -557,7 +557,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(mocks.pins).toHaveBeenCalledWith({ sourceRevision: 'board-1', pinned: true,
       items: [{ itemId: 'a', itemRevision: 'revision-a', overrideVersion: 2 }] });
     expect(screen.getByRole('button', { name: '並べ替え' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '⇅ 納期順に並べる' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '納期順に並べる' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '固定', exact: true })).toBeDisabled();
     await act(async () => resolvePin({ sourceRevision: 'board-1', items: [{ ...data.items[0], orderPinned: true, itemRevision: 'pin-saved', version: 3 }] }));
     expect(screen.getByTestId('planning-gantt-bar-a')).toHaveAttribute('data-gantt-pinned', 'true');
@@ -688,7 +688,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '4週' }));
     expect(screen.getByRole('button', { name: '他の幅' })).toHaveTextContent('4週 ▾');
     fireEvent.click(screen.getByRole('button', { name: '納期から' }));
-    expect(screen.getByRole('button', { name: '✓ 重なりなし' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '重なりなし' })).toBeInTheDocument();
     expect(mocks.capacity).toHaveBeenLastCalledWith(true);
     fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
     expect(screen.queryByTestId('planning-board-gantt')).not.toBeInTheDocument();
