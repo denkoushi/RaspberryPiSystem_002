@@ -50,6 +50,72 @@ describe('PlanningBoardGanttView', () => {
     }) });
   });
   afterEach(() => { Reflect.deleteProperty(document, 'elementsFromPoint'); vi.unstubAllGlobals(); vi.useRealTimers(); });
+  it('completes a forward chain step with a sibling button and hides split completion', () => {
+    const items = [item(), item({ itemId: 'split', kind: 'split', processOrder: '20' })];
+    const values = props(items);
+    const onCompleteToggle = vi.fn();
+    const layout = buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource',
+      seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', scale: 2 });
+    render(<PlanningBoardGanttView {...values} layout={layout} onCompleteToggle={onCompleteToggle} />);
+    fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
+    const strip = screen.getByTestId('planning-gantt-chain-strip');
+    const button = within(strip).getByRole('button', { name: '完了にする' });
+    expect(button.parentElement?.closest('button')).toBeNull();
+    fireEvent.click(button);
+    expect(onCompleteToggle).toHaveBeenCalledWith(items[0], 'complete');
+    expect(values.onToggleItem).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('toggles backward completion without selecting or dragging completed bars (completed=%s)', (completed) => {
+    const target = item({ isCompleted: completed });
+    const values = props([target]);
+    const onCompleteToggle = vi.fn();
+    render(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} />);
+    const label = completed ? '未完了に戻す' : '完了にする';
+    expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument();
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    expect(bar).toBeEnabled();
+    fireEvent.click(bar);
+    const button = screen.getByRole('button', { name: label });
+    expect(button.parentElement).toBe(bar.parentElement);
+    fireEvent.click(button);
+    expect(onCompleteToggle).toHaveBeenCalledWith(target, completed ? 'incomplete' : 'complete');
+    expect(values.onToggleItem).toHaveBeenCalledTimes(completed ? 0 : 1);
+    fireEvent.click(bar);
+    expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument();
+    if (completed) {
+      expect(bar).toHaveAttribute('data-drag-disabled', 'true');
+      fireEvent.pointerDown(bar, { pointerId: 1, clientX: 100, button: 0 });
+      fireEvent.pointerMove(bar, { pointerId: 1, clientX: 500 });
+      fireEvent.pointerUp(bar, { pointerId: 1, clientX: 500 });
+      expect(values.onDueDrop).not.toHaveBeenCalled();
+    }
+  });
+
+  it('hides backward split completion and disables the target while pending or locked', () => {
+    const values = props([item(), item({ itemId: 'split', kind: 'split' })]);
+    const onCompleteToggle = vi.fn();
+    const { rerender } = render(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} />);
+    fireEvent.click(screen.getByTestId('planning-gantt-bar-split'));
+    expect(screen.queryByRole('button', { name: '完了にする' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
+    rerender(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} completePending />);
+    expect(screen.getByRole('button', { name: '完了にする' })).toBeDisabled();
+    rerender(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} disabled />);
+    expect(screen.getByRole('button', { name: '完了にする' })).toBeDisabled();
+  });
+
+  it('clears the backward completion target when its item disappears', () => {
+    const values = props();
+    const onCompleteToggle = vi.fn();
+    const { rerender } = render(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} />);
+    fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
+    expect(screen.getByRole('button', { name: '完了にする' })).toBeVisible();
+    rerender(<PlanningBoardGanttView {...props([])} onCompleteToggle={onCompleteToggle} />);
+    rerender(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} />);
+    expect(screen.queryByRole('button', { name: '完了にする' })).not.toBeInTheDocument();
+  });
+
   it.each(['backward', 'forward'] as const)('colors visible bars and split segments with a legend in %s mode without late badges or outlines', (mode) => {
     const items = [item({ originalDueDate: '2026-10-13' }),
       item({ itemId: 'b', fseiban: '********', fhincd: 'P2' }),
@@ -256,7 +322,7 @@ describe('PlanningBoardGanttView', () => {
     fireEvent.pointerUp(bar, { clientX: 500 });
     expect(values.onDueDrop).not.toHaveBeenCalled();
     const completed = screen.getByTestId('planning-gantt-bar-b');
-    expect(completed).toBeDisabled();
+    expect(completed).toBeEnabled();
     fireEvent.click(completed);
     expect(values.onToggleItem).not.toHaveBeenCalled();
   });

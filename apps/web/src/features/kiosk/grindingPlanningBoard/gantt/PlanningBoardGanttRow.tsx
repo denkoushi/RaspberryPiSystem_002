@@ -16,6 +16,10 @@ export const GANTT_ROW_HEIGHT = 56;
 export const GANTT_HATCH = 'repeating-linear-gradient(135deg, #fb7185 0 4px, #9f1239 4px 8px)';
 
 type InteractionProps = {
+  onCompleteToggle?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
+  completePending?: boolean;
+  completionTargetId?: string | null;
+  onCompletionTarget?: (itemId: string) => void;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
   onDueDrop: (item: GrindingPlanningBoardItem, date: string) => void;
   disabled: boolean;
@@ -35,7 +39,7 @@ type BarProps = InteractionProps & {
 type Drag = { pointerId: number; x: number; y: number; moved: boolean; delta: number; frame: number | null; element: HTMLButtonElement };
 
 const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
-  bar, start, dayWidth, today, selected, sibling, dimmed, disabled, dragDisabled, onToggleItem, onDueDrop, seibanColors, focusedSeiban = null
+  bar, start, dayWidth, today, selected, sibling, dimmed, disabled, dragDisabled, onToggleItem, onDueDrop, onCompleteToggle, completePending, completionTargetId, onCompletionTarget, seibanColors, focusedSeiban = null
 }: BarProps) {
   const pending = useRef<Drag | null>(null);
   const suppressClick = useRef(false);
@@ -60,7 +64,7 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
     const drag = pending.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     if (Math.abs(event.clientX - drag.x) > 4 || Math.abs(event.clientY - drag.y) > 4) drag.moved = true;
-    if (!drag.moved || dragDisabled || !bar.due) return;
+    if (!drag.moved || dragDisabled || bar.item.isCompleted || !bar.due) return;
     const date = shiftedDueDate(bar.due, Math.round((event.clientX - drag.x) / pageZoom() / dayWidth), today);
     drag.delta = dateToDay(date) - dateToDay(bar.due);
     if (drag.frame != null) return;
@@ -77,18 +81,19 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
   const color = bar.tone !== 'completed' ? seibanColors?.get(bar.item.fseiban) : undefined;
   const width = bar.unknown ? 72 : Math.max(5, (bar.end! - bar.start!) * dayWidth);
   return (
+    <>
     <button
       type="button"
       data-testid={`planning-gantt-bar-${bar.item.itemId}`}
       data-drag-disabled={dragDisabled || disabled || bar.item.isCompleted}
       aria-label={`${bar.item.fhinmei || bar.item.fhincd} 工順${bar.item.processOrder} ${bar.resource} 納期${bar.due}`}
       aria-pressed={selected}
-      disabled={disabled || bar.item.isCompleted}
+      disabled={disabled}
       title={`工順${bar.item.processOrder} ${bar.resource} 納期${bar.due}`}
       className="absolute top-1.5 min-h-11 min-w-11 touch-pan-y select-none rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
       style={{ left: (bar.end! - start) * dayWidth - Math.max(44, width), width: Math.max(44, width), zIndex: selected ? 4 : 2 }}
       onPointerDown={(event) => {
-        if (event.button !== 0 || event.isPrimary === false || pending.current) return;
+        if (event.button !== 0 || event.isPrimary === false || pending.current || bar.item.isCompleted) return;
         suppressClick.current = false;
         pending.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, moved: false, delta: 0, frame: null, element: event.currentTarget };
         event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -107,7 +112,8 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
       onLostPointerCapture={() => { if (pending.current) { suppressClick.current = true; clear(); } }}
       onClick={() => {
         if (suppressClick.current) { suppressClick.current = false; return; }
-        onToggleItem(bar.item, !selected);
+        onCompletionTarget?.(bar.item.itemId);
+        if (!bar.item.isCompleted) onToggleItem(bar.item, !selected);
       }}
     >
       <span className={clsx('absolute right-0 top-3 h-6 overflow-hidden whitespace-nowrap rounded px-1 text-left font-mono text-[10px] font-bold leading-6',
@@ -121,6 +127,13 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
       </span>
       <span ref={tip} hidden className="absolute right-0 top-0 z-20 whitespace-nowrap rounded bg-white px-1 text-[10px] font-bold text-slate-950" />
     </button>
+    {onCompleteToggle && completionTargetId === bar.item.itemId && bar.item.kind === 'row' && <button type="button"
+      className={clsx('absolute top-0 z-10 flex h-7 w-7 items-center justify-center rounded-full border-2 text-[11px] hover:bg-white/5 disabled:opacity-60',
+        bar.item.isCompleted ? 'border-slate-400 bg-slate-800 text-white/80' : 'border-emerald-400 bg-emerald-600/20 text-emerald-100')}
+      style={{ left: (bar.end! - start) * dayWidth - 28 }}
+      aria-label={bar.item.isCompleted ? '未完了に戻す' : '完了にする'} disabled={disabled || completePending}
+      onClick={(event) => { event.stopPropagation(); onCompleteToggle(bar.item, bar.item.isCompleted ? 'incomplete' : 'complete'); }}>✓</button>}
+    </>
   );
 });
 
