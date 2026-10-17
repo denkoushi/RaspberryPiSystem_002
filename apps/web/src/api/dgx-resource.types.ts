@@ -5,7 +5,6 @@ export type DgxControlTargetIdApi =
   | 'system-prod-gateway'
   | 'system-prod-inference'
   | 'system-prod-embedding'
-  | 'private-comfyui'
   | 'experiment-lab'
   | 'agent-container'
   | 'spark-host'
@@ -81,7 +80,6 @@ export type DgxResourceWarmWindow = {
 };
 
 export type DgxOrchestrationScenarioIdApi =
-  | 'business_to_private'
   | 'private_to_business'
   | 'business_to_experiment'
   | 'experiment_to_business';
@@ -159,7 +157,6 @@ export type DgxResourceScenarioExecuteResultApi = {
       | 'model_profile_active'
       | 'model_profile_backend'
       | 'model_profile_vision_runtime'
-      | 'private_comfy'
       | 'experiment_lab';
     satisfied: boolean;
     detailJa: string;
@@ -174,7 +171,7 @@ export type DgxResourceScenarioExecuteResultApi = {
 
 export type DgxOperatorRiskLevelApi = 'low' | 'medium' | 'high';
 
-export type DgxOperatorWorkloadIdApi = 'business_vlm' | 'private_comfy' | 'experiment_lab' | 'agent_container';
+export type DgxOperatorWorkloadIdApi = 'business_vlm' | 'experiment_lab' | 'agent_container';
 
 export type DgxOperatorWorkloadApi = {
   id: DgxOperatorWorkloadIdApi;
@@ -245,7 +242,6 @@ export type DgxResourceOperatorConsoleApi = {
     policyLabelJa: string;
     previousMode: DgxPolicyModeApi | null;
     previousPolicyLabelJa: string | null;
-    comfyStartBlockedHint: boolean;
     inferenceSparkLineJa: string | null;
     alertPreviewJa: string[];
   };
@@ -360,7 +356,6 @@ export type DgxResourceOverview = {
   policy: {
     mode: DgxPolicyModeApi;
     previousMode: DgxPolicyModeApi | null;
-    comfyStartBlockedHint: boolean;
   };
   runtime: {
     localLlmMode: 'always_on' | 'on_demand';
@@ -369,10 +364,8 @@ export type DgxResourceOverview = {
   };
   optionalProbes: {
     metricsConfigured: boolean;
-    comfyHealthConfigured: boolean;
     embeddingHealthConfigured: boolean;
     sparkHostConfigured: boolean;
-    comfyRuntimeControlConfigured: boolean;
     experimentLabHealthConfigured: boolean;
     experimentLabRuntimeControlConfigured: boolean;
     agentContainerHealthConfigured: boolean;

@@ -115,7 +115,6 @@ export function buildDgxResourceDashboardViewModel(
   );
   const readyValue = summary.businessReady ? '準備完了' : loading ? 'ロード中' : summary.inferenceDegraded ? '低下' : '未準備';
   const businessStatus = targetStatus(overview, 'system-prod-inference');
-  const comfyStatus = targetStatus(overview, 'private-comfyui');
   const experimentStatus = targetStatus(overview, 'experiment-lab');
 
   const services: DgxResourceServicePill[] = [
@@ -125,13 +124,6 @@ export function buildDgxResourceDashboardViewModel(
       value: statusLabel(businessStatus),
       tone: serviceTone(businessStatus),
       hint: businessStatus,
-    },
-    {
-      key: 'private-comfyui',
-      label: 'ComfyUI',
-      value: statusLabel(comfyStatus),
-      tone: serviceTone(comfyStatus),
-      hint: comfyStatus,
     },
     {
       key: 'experiment-lab',

@@ -11,7 +11,6 @@ describe('buildDgxResourceUiMetadata', () => {
     const meta = buildDgxResourceUiMetadata();
 
     expect(meta.scenarios.map((s) => s.id)).toEqual([
-      'business_to_private',
       'private_to_business',
       'business_to_experiment',
       'experiment_to_business',
@@ -64,9 +63,9 @@ describe('createDgxResourceService overview uiMetadata', () => {
     const overview = await svc.getOverview();
 
     expect(overview.uiMetadata).toBeDefined();
-    expect(overview.uiMetadata!.scenarios).toHaveLength(4);
+    expect(overview.uiMetadata!.scenarios).toHaveLength(3);
     expect(overview.uiMetadata!.policyModes).toHaveLength(3);
-    expect(overview.uiMetadata!.scenarios[0]?.id).toBe('business_to_private');
+    expect(overview.uiMetadata!.scenarios[0]?.id).toBe('private_to_business');
     expect(overview.uiMetadata!.policyModes[0]?.mode).toBe('business_first');
   });
 });

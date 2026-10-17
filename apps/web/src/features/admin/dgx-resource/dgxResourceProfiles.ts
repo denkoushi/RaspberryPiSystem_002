@@ -19,9 +19,9 @@ export const DGX_POLICY_PROFILES: Record<DgxPolicyModeApi, DgxPolicyProfileUi> =
   private_ok: {
     mode: 'private_ok',
     titleShort: '私用OK',
-    titleFull: '私用OK（ComfyUI 向けに業務 LLM を退避）',
+    titleFull: '私用OK（運用モードのみ）',
     description:
-      'ComfyUI 等の私用ワークロード向けに業務 LLM を停止して Spark メモリを空けます。終了後は業務優先へ戻して Ready 完了を確認してください。',
+      '運用モードのみを記録します。ワークロードの起動・停止は行いません。',
   },
   experiment_first: {
     mode: 'experiment_first',

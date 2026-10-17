@@ -37,7 +37,6 @@ function makeOperator(): DgxResourceOperatorConsoleApi {
       policyLabelJa: '業務優先',
       previousMode: null,
       previousPolicyLabelJa: null,
-      comfyStartBlockedHint: false,
       inferenceSparkLineJa: null,
       alertPreviewJa: [],
     },

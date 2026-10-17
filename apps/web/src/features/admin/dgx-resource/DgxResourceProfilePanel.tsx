@@ -29,24 +29,8 @@ async function confirmWorkloadOrchestration(
     return confirmFn({
       title: '業務優先：ワークロード自動調整',
       description:
-        '実験ラボ・私用 ComfyUI が Pi5 の起停 URL に設定されている場合、停止リクエストを順に送信します（GPU競合 KB-364 の緩和）。業務側推論への影響はありません。',
+        '実験ラボ・Agent コンテナ が Pi5 の起停 URL に設定されている場合、停止リクエストを順に送信します（GPU競合 KB-364 の緩和）。業務側推論への影響はありません。',
       tone: 'primary',
-    });
-  }
-  if (mode === 'experiment_first') {
-    return confirmFn({
-      title: '実験優先：ワークロード自動調整',
-      description:
-        '私用 ComfyUI の停止試行と、業務 gateway（on_demand + 制御 URL 済みのときのみ）ランタイムの停止試行が走ります。写真持出 VLM 等への影響が大きいため必ず確認してください。',
-      tone: 'danger',
-    });
-  }
-  if (mode === 'private_ok') {
-    return confirmFn({
-      title: '私用OK：業務 LLM を停止してメモリを空けます',
-      description:
-        'system-prod-gateway を強制停止し、blue keep-warm 中でも業務 LLM を退避します。Comfy 用に Spark メモリを空けますが、職場 Pi5・Hermes・管理チャットは業務優先へ戻して Ready 完了するまで一時的に使えなくなります。',
-      tone: 'danger',
     });
   }
   return true;
@@ -134,14 +118,14 @@ export function DgxResourceProfilePanel({ overview, onControlUiError, postDgxAct
           <span className="font-semibold text-white">切替時にワークロード自動調整</span>
           <span
             className="ml-1 inline-block text-white/60"
-            title="業務優先／実験優先では補助ワークロード停止を追加します。私用OK ではチェック ON 時のみ業務 LLM 強制停止と experiment-lab / agent-container 停止が走ります。"
+            title="業務優先では experiment-lab / agent-container の停止を追加します。その他のモードでは起動・停止を行いません。"
           >
             ⓘ
           </span>
         </span>
       </label>
       <p className="text-xs leading-snug text-amber-300/90">
-        私用OK へ切替時、チェック OFF のままだと業務 LLM の強制停止は走りません（確認ダイアログのみ）。メモリ解放が必要ならチェックを ON にするか、画面上部の運用ガイド「業務→私用」を使ってください。
+        ワークロード自動調整は業務優先への切替時に実験ラボ・Agent コンテナを停止します。業務 LLM は停止しません。
       </p>
 
       {degraded ? (
@@ -158,7 +142,7 @@ export function DgxResourceProfilePanel({ overview, onControlUiError, postDgxAct
             className="px-4 py-2.5 text-base"
             disabled={busy}
             onClick={async () => {
-              if (p.mode === 'private_ok' || (applyWorkloadChanges && (p.mode === 'business_first' || p.mode === 'experiment_first'))) {
+              if (applyWorkloadChanges && p.mode === 'business_first') {
                 const ok = await confirmWorkloadOrchestration(confirm, p.mode);
                 if (!ok) return;
               }

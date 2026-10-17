@@ -4,8 +4,8 @@ import type { DgxResourceMonitoringSummary } from './dgx-resource.monitoring-ove
 import { policyLabelJa } from './dgx-resource.policy-profile.js';
 import type { DgxOrchestrationScenarioId } from './dgx-resource.scenario-planner.js';
 
-/** 運用者向けワークロード（業務・私用・実験・Agent）。Control Target の詳細は targetIds で辿る。 */
-export type DgxOperatorWorkloadId = 'business_vlm' | 'private_comfy' | 'experiment_lab' | 'agent_container';
+/** 運用者向けワークロード（業務・実験・Agent）。Control Target の詳細は targetIds で辿る。 */
+export type DgxOperatorWorkloadId = 'business_vlm' | 'experiment_lab' | 'agent_container';
 
 export type DgxOperatorRiskLevel = 'low' | 'medium' | 'high';
 
@@ -44,7 +44,6 @@ export type DgxResourceOperatorConsole = {
     policyLabelJa: string;
     previousMode: DgxPolicyMode | null;
     previousPolicyLabelJa: string | null;
-    comfyStartBlockedHint: boolean;
     inferenceSparkLineJa: string | null;
     alertPreviewJa: string[];
   };
@@ -118,22 +117,6 @@ function buildBusinessWorkload(targets: DgxControlTargetSnapshot[]): DgxOperator
   };
 }
 
-function buildPrivateComfyWorkload(targets: DgxControlTargetSnapshot[]): DgxOperatorWorkload {
-  const t = targets.find((x) => x.id === 'private-comfyui');
-  const st = t?.status ?? 'unknown';
-  const risk: DgxOperatorRiskLevel = st === 'running' ? 'medium' : st === 'degraded' ? 'high' : 'low';
-  return {
-    id: 'private_comfy',
-    labelJa: '私用 ComfyUI',
-    purposeJa: '私用の画像生成ワークロードです（業務推論と GPU を共有します）。',
-    risk,
-    status: st,
-    statusHeadlineJa: `ComfyUI: ${statusJa(st)}`,
-    relatedTargetIds: ['private-comfyui'],
-    runtimeControlConfigured: Boolean(t?.capabilities.includes('start') && t?.capabilities.includes('stop')),
-  };
-}
-
 function buildExperimentLabWorkload(targets: DgxControlTargetSnapshot[]): DgxOperatorWorkload {
   const t = targets.find((x) => x.id === 'experiment-lab');
   const st = t?.status ?? 'unknown';
@@ -180,17 +163,15 @@ function actionState(input: {
   if (input.disabledReasonJa) {
     return { stateKind: 'current', stateLabelJa: '現在' };
   }
-  const privateRunning = input.targets.find((t) => t.id === 'private-comfyui')?.status === 'running';
   const experimentRunning = input.targets.find((t) => t.id === 'experiment-lab')?.status === 'running';
   const agentRunning = input.targets.find((t) => t.id === 'agent-container')?.status === 'running';
   if (
-    (input.scenarioId === 'private_to_business' && (privateRunning || agentRunning)) ||
+    (input.scenarioId === 'private_to_business' && (experimentRunning || agentRunning)) ||
     (input.scenarioId === 'experiment_to_business' && (experimentRunning || agentRunning))
   ) {
     return { stateKind: 'warning', stateLabelJa: '停止対象あり' };
   }
   if (
-    (input.scenarioId === 'business_to_private' && input.policyMode === 'experiment_first') ||
     (input.scenarioId === 'business_to_experiment' && input.policyMode === 'private_ok')
   ) {
     return { stateKind: 'warning', stateLabelJa: '切替可' };
@@ -205,14 +186,12 @@ function actionState(input: {
 export function buildDgxResourceOperatorConsole(input: {
   policyMode: DgxPolicyMode;
   previousMode: DgxPolicyMode | null;
-  comfyStartBlockedHint: boolean;
   targets: DgxControlTargetSnapshot[];
   monitoring: DgxResourceMonitoringSummary;
 }): DgxResourceOperatorConsole {
-  const { policyMode, previousMode, comfyStartBlockedHint, targets, monitoring } = input;
+  const { policyMode, previousMode, targets, monitoring } = input;
   const workloads = [
     buildBusinessWorkload(targets),
-    buildPrivateComfyWorkload(targets),
     buildExperimentLabWorkload(targets),
     buildAgentContainerWorkload(targets),
   ];
@@ -234,27 +213,14 @@ export function buildDgxResourceOperatorConsole(input: {
     operatorActions.push(a);
   };
 
-  const primaryForPrivate = policyMode === 'business_first';
   const primaryForExperiment = policyMode === 'business_first';
   const primaryReturnFromPrivate = policyMode === 'private_ok';
   const primaryReturnFromExperiment = policyMode === 'experiment_first';
 
-  const businessToPrivateDisabled = policyMode === 'private_ok' ? 'すでに「私用OK」です' : undefined;
-  add({
-    id: 'business_to_private',
-    scenarioId: 'business_to_private',
-    labelJa: '私用を始める',
-    subtitleJa:
-      '「私用OK」へ切り替えます。Pi5 に Comfy の起停 URL が揃っていれば、続けて私用 ComfyUI の起動も依頼します。',
-    primary: primaryForPrivate,
-    disabledReasonJa: businessToPrivateDisabled,
-    ...actionState({ scenarioId: 'business_to_private', policyMode, targets, disabledReasonJa: businessToPrivateDisabled }),
-  });
-
   add({
     id: 'private_to_business',
     scenarioId: 'private_to_business',
-    labelJa: '業務に戻す（私用を終える）',
+    labelJa: '業務に戻す',
     subtitleJa: '必要な停止試行の後、「業務優先」へ戻します。',
     primary: primaryReturnFromPrivate,
     ...actionState({ scenarioId: 'private_to_business', policyMode, targets }),
@@ -288,7 +254,6 @@ export function buildDgxResourceOperatorConsole(input: {
       policyLabelJa: currentPolicyLabelJa,
       previousMode,
       previousPolicyLabelJa: prevLabel,
-      comfyStartBlockedHint,
       inferenceSparkLineJa: inferenceSparkLine,
       alertPreviewJa: buildAlertPreview(monitoring, 4),
     },

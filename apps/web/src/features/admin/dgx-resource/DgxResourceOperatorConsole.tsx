@@ -84,8 +84,6 @@ function workloadSortKey(workload: DgxOperatorWorkloadApi): number {
   switch (workload.id) {
     case 'business_vlm':
       return 0;
-    case 'private_comfy':
-      return 1;
     case 'agent_container':
       return 2;
     case 'experiment_lab':
@@ -99,8 +97,6 @@ function compactWorkloadLabel(workload: DgxOperatorWorkloadApi): string {
   switch (workload.id) {
     case 'business_vlm':
       return '業務推論';
-    case 'private_comfy':
-      return 'ComfyUI';
     case 'agent_container':
       return 'Agent';
     case 'experiment_lab':
@@ -126,7 +122,6 @@ function formatGeneratedAt(iso: string): string {
 function releaseTargetLabels(overview: DgxResourceOverview): string[] {
   return [
     overview.runtime.runtimeControlConfigured ? '業務 LLM' : null,
-    overview.optionalProbes.comfyRuntimeControlConfigured ? 'ComfyUI' : null,
     overview.optionalProbes.experimentLabRuntimeControlConfigured ? '実験ラボ' : null,
     overview.optionalProbes.agentContainerRuntimeControlConfigured ? 'Agent' : null,
   ].filter((label): label is string => label != null);
@@ -161,7 +156,7 @@ export function DgxResourceOperatorConsole({
     activeProfile?.startupFit?.detailJa ??
     (kpis.startupFreeMemoryGiB != null ? `起動判定 ${formatGiB(kpis.startupFreeMemoryGiB)}` : '起動判定 未取得');
   const generatedAt = formatGeneratedAt(overview.generatedAt);
-  const workloads = [...operator.workloads].sort((a, b) => workloadSortKey(a) - workloadSortKey(b));
+  const workloads = operator.workloads.filter((w) => ['business_vlm', 'experiment_lab', 'agent_container'].includes(w.id)).sort((a, b) => workloadSortKey(a) - workloadSortKey(b));
   const releaseTargets = releaseTargetLabels(overview);
   const executeRelease = async () => {
     const ok = await confirm({

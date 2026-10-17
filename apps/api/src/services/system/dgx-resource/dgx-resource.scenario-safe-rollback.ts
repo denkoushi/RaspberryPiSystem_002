@@ -10,7 +10,6 @@ export type ScenarioRollbackWorkloadContext = {
   policyBefore: DgxPolicyMode;
   /** 復帰先の論理モード */
   rollbackPolicyMode: DgxPolicyMode;
-  comfyRuntimeConfigured: boolean;
   experimentLabRuntimeConfigured: boolean;
   agentContainerRuntimeConfigured: boolean;
 };
@@ -34,19 +33,6 @@ export async function performSafeScenarioRollback(input: {
   }
 
   /** ワークロード側の復帰（policy 復帳の前にも後にも危険度が異なるのでシナリオ別） */
-  if (ctx.scenarioId === 'business_to_private') {
-    if (ctx.comfyRuntimeConfigured && ctx.policyBefore === 'business_first') {
-      try {
-        await runTargetRuntimeAction('private-comfyui', 'stop', 'scenario_safe_rollback', 'none');
-        steps.push('私用 ComfyUI 停止リクエスト（Ready タイムアウト後の復帰）を送信しました');
-        policyStore.appendEvent('復帰: Comfy を停止すべく POST を試行しました');
-      } catch {
-        steps.push('私用 ComfyUI 停止の試行が失敗しました（手動で停止を確認してください）');
-        policyStore.appendEvent('復帰警告: private-comfyui stop が失敗した可能性があります');
-      }
-    }
-  }
-
   if (ctx.scenarioId === 'business_to_experiment') {
     if (ctx.experimentLabRuntimeConfigured && ctx.policyBefore === 'business_first') {
       try {

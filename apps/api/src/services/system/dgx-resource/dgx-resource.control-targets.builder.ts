@@ -1,7 +1,3 @@
-import {
-  comfyPolicyBadgeApplicable,
-  isBusinessFirstSuppressionHintActive,
-} from './dgx-resource.policy-profile.js';
 import type { DgxPolicyMode } from './dgx-resource.policy-store.js';
 
 import type {
@@ -21,9 +17,6 @@ export type OverviewProbeBundle = {
   modelProfiles: DgxModelProfilesOverview;
   metricsConfigured: boolean;
   metricsPayload: MetricsPayload | undefined;
-  comfyConfigured: boolean;
-  comfyReachable: boolean;
-  comfyProbeUrl?: string;
   embeddingConfigured: boolean;
   embeddingReachable: boolean;
   embeddingProbeDisplay?: string;
@@ -31,8 +24,6 @@ export type OverviewProbeBundle = {
   sparkConfigured: boolean;
   sparkProbe: { ok: boolean; statusCode?: number; errorBrief?: string };
   runtimeControlConfigured: boolean;
-  /** POST start/stop がともに設定されているとき true */
-  comfyRuntimeControlConfigured: boolean;
   /** GET ヘルス URL が設定されていれば監視対象として true */
   experimentLabHealthConfigured: boolean;
   experimentLabReachable: boolean;
@@ -43,18 +34,6 @@ export type OverviewProbeBundle = {
   agentContainerProbeUrl?: string;
   agentContainerRuntimeControlConfigured: boolean;
 };
-
-function comfyMetaLines(policyMode: DgxPolicyMode, comfyConfigured: boolean, comfyProbeUrl?: string): string[] {
-  const lines: string[] = [];
-  if (comfyConfigured && comfyProbeUrl) lines.push(`probe: GET ${comfyProbeUrl}`);
-  if (isBusinessFirstSuppressionHintActive(policyMode)) {
-    lines.push('業務優先: 私用GPU負荷は運用手順で抑制');
-  }
-  if (policyMode === 'experiment_first') {
-    lines.push('実験優先: 業務 Inference との競合は人手で確認（Runbook）');
-  }
-  return lines;
-}
 
 /**
  * 後方互換用サービスカード（既存 UI / 外部契約）。targets と同じ判定根拠。
@@ -74,9 +53,6 @@ export function buildLegacyServiceCards(bundle: OverviewProbeBundle): DgxResourc
     gatewayStatus,
     modelsProbe,
     modelProfiles,
-    comfyConfigured,
-    comfyReachable,
-    comfyProbeUrl,
     embeddingConfigured,
     embeddingReachable,
     embeddingProbeDisplay,
@@ -101,14 +77,6 @@ export function buildLegacyServiceCards(bundle: OverviewProbeBundle): DgxResourc
       : gatewayStatus.configured
         ? 'stopped'
         : 'unknown';
-
-  let comfyUiStatus: DgxServiceStatusKind = 'unknown';
-  if (comfyConfigured) {
-    comfyUiStatus = comfyReachable ? 'running' : 'stopped';
-  }
-
-  const comfyBadges =
-    comfyPolicyBadgeApplicable(policyMode, comfyConfigured, comfyReachable) ? ['policy'] : [];
 
   const embeddingStatus: DgxServiceStatusKind = !embeddingConfigured
     ? 'unknown'
@@ -157,13 +125,6 @@ export function buildLegacyServiceCards(bundle: OverviewProbeBundle): DgxResourc
       ],
     },
     {
-      id: 'private-comfyui',
-      name: 'private-comfyui',
-      status: comfyUiStatus,
-      badges: comfyBadges,
-      metaLines: comfyMetaLines(policyMode, comfyConfigured, comfyProbeUrl),
-    },
-    {
       id: 'system-prod-embedding',
       name: 'system-prod-embedding',
       status: embeddingStatus,
@@ -200,9 +161,6 @@ export function buildControlTargetSnapshots(bundle: OverviewProbeBundle): DgxCon
     modelsProbe,
     metricsConfigured,
     metricsPayload,
-    comfyConfigured,
-    comfyReachable,
-    comfyProbeUrl,
     embeddingConfigured,
     embeddingReachable,
     embeddingProbeDisplay,
@@ -210,7 +168,6 @@ export function buildControlTargetSnapshots(bundle: OverviewProbeBundle): DgxCon
     sparkConfigured,
     sparkProbe,
     runtimeControlConfigured,
-    comfyRuntimeControlConfigured,
     experimentLabHealthConfigured,
     experimentLabReachable,
     experimentLabProbeUrl,
@@ -235,14 +192,6 @@ export function buildControlTargetSnapshots(bundle: OverviewProbeBundle): DgxCon
         ? 'stopped'
         : 'unknown';
 
-  let comfyUiStatus: DgxServiceStatusKind = 'unknown';
-  if (comfyConfigured) {
-    comfyUiStatus = comfyReachable ? 'running' : 'stopped';
-  }
-
-  const comfyBadges =
-    comfyPolicyBadgeApplicable(policyMode, comfyConfigured, comfyReachable) ? ['policy'] : [];
-
   const embeddingStatus: DgxServiceStatusKind = !embeddingConfigured
     ? 'unknown'
     : embeddingReachable
@@ -261,10 +210,6 @@ export function buildControlTargetSnapshots(bundle: OverviewProbeBundle): DgxCon
   }
 
   const gatewayCaps: DgxControlTargetSnapshot['capabilities'] = runtimeControlConfigured
-    ? ['readStatus', 'start', 'stop']
-    : ['readStatus'];
-
-  const comfyCaps: DgxControlTargetSnapshot['capabilities'] = comfyRuntimeControlConfigured
     ? ['readStatus', 'start', 'stop']
     : ['readStatus'];
 
@@ -322,18 +267,6 @@ export function buildControlTargetSnapshots(bundle: OverviewProbeBundle): DgxCon
       status: embeddingStatus,
       badges: [],
       metaLines: embeddingConfigured && embeddingProbeDisplay ? [`probe: ${embeddingProbeDisplay}`] : [],
-    },
-    {
-      id: 'private-comfyui',
-      kind: 'http_probe',
-      displayName: 'private-comfyui',
-      capabilities: comfyCaps,
-      status: comfyUiStatus,
-      badges: comfyBadges,
-      metaLines: [
-        ...comfyMetaLines(policyMode, comfyConfigured, comfyProbeUrl),
-        ...(comfyRuntimeControlConfigured ? ['runtime: POST start/stop（DGX側 hook・Pi5経由）'] : []),
-      ],
     },
     {
       id: 'experiment-lab',

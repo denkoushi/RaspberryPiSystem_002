@@ -122,13 +122,9 @@ all:
           api_local_llm_runtime_warm_window_end_hour: "23"
           # DGXリソース管理（未設定時は監視/起停を自動有効化しない）
           api_dgx_resource_metrics_url: "{{ vault_api_dgx_resource_metrics_url | default('') }}"
-          api_dgx_resource_comfyui_health_url: "{{ vault_api_dgx_resource_comfyui_health_url | default('http://100.118.82.72:38081/private-comfyui/health') }}"
           api_dgx_resource_embedding_health_url: "{{ vault_api_dgx_resource_embedding_health_url | default('') }}"
           api_dgx_resource_spark_host_status_url: "{{ vault_api_dgx_resource_spark_host_status_url | default('') }}"
           api_dgx_resource_probe_timeout_ms: "{{ vault_api_dgx_resource_probe_timeout_ms | default('10000') }}"
-          api_dgx_resource_private_comfyui_runtime_start_url: "{{ vault_api_dgx_resource_private_comfyui_runtime_start_url | default('http://100.118.82.72:38081/private-comfyui/start') }}"
-          api_dgx_resource_private_comfyui_runtime_stop_url: "{{ vault_api_dgx_resource_private_comfyui_runtime_stop_url | default('http://100.118.82.72:38081/private-comfyui/stop') }}"
-          api_dgx_resource_private_comfyui_runtime_control_token: "{{ vault_api_dgx_resource_private_comfyui_runtime_control_token | default(vault_api_local_llm_runtime_control_token | default('')) }}"
           api_dgx_resource_experiment_lab_runtime_start_url: "{{ vault_api_dgx_resource_experiment_lab_runtime_start_url | default('http://100.118.82.72:38081/experiment-lab/start') }}"
           api_dgx_resource_experiment_lab_runtime_stop_url: "{{ vault_api_dgx_resource_experiment_lab_runtime_stop_url | default('http://100.118.82.72:38081/experiment-lab/stop') }}"
           api_dgx_resource_experiment_lab_runtime_control_token: "{{ vault_api_dgx_resource_experiment_lab_runtime_control_token | default(vault_api_local_llm_runtime_control_token | default('')) }}"

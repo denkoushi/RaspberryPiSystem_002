@@ -46,12 +46,6 @@ function stopConfirmCopy(targetId: DgxControlTargetIdApi, displayName: string): 
         title: `${displayName} を停止しますか？`,
         description: '実行中の推論やオンデマンド利用に影響します。',
       };
-    case 'private-comfyui':
-      return {
-        title: '私用 ComfyUI を停止しますか？',
-        description:
-          'DGX 側の Comfy UI コンテナ等が停止試行されます。未保存ワークフローがあれば先に確認してください。',
-      };
     case 'experiment-lab':
       return {
         title: 'experiment-lab を停止しますか？',
@@ -95,7 +89,7 @@ export function DgxResourceTargetGrid({
 }: Props) {
   return (
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 sm:grid-cols-2">
-      {targets.map((t) => {
+      {targets.filter((t) => ['system-prod-gateway', 'system-prod-inference', 'system-prod-embedding', 'experiment-lab', 'agent-container', 'spark-host', 'metrics-kpi'].includes(t.id)).map((t) => {
         const b = badge(t.status, t.badges);
         const canControlRuntime = t.capabilities.includes('start') && t.capabilities.includes('stop');
         const cardError = targetActionError?.targetId === t.id ? targetActionError.message : null;

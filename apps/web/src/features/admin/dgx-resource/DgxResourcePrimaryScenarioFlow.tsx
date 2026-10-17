@@ -54,10 +54,8 @@ function businessReturnReady(runtimeSummary?: {
 
 function compactScenarioLabel(scenarioId: DgxOrchestrationScenarioIdApi): string {
   switch (scenarioId) {
-    case 'business_to_private':
-      return '業務→私用';
     case 'private_to_business':
-      return '私用→業務';
+      return '業務復帰';
     case 'business_to_experiment':
       return '業務→実験';
     case 'experiment_to_business':

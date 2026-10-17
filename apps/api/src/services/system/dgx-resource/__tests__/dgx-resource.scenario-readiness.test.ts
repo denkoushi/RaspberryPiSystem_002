@@ -50,14 +50,11 @@ function mkBundle(over: Partial<OverviewProbeBundle>): OverviewProbeBundle {
     modelProfiles: defaultModelProfiles,
     metricsConfigured: false,
     metricsPayload: undefined,
-    comfyConfigured: false,
-    comfyReachable: false,
     embeddingConfigured: false,
     embeddingReachable: false,
     sparkConfigured: false,
     sparkProbe: { ok: false },
     runtimeControlConfigured: true,
-    comfyRuntimeControlConfigured: false,
     experimentLabHealthConfigured: false,
     experimentLabReachable: false,
     experimentLabRuntimeControlConfigured: false,
@@ -98,7 +95,6 @@ describe('dgx-resource.scenario-readiness', () => {
   it('buildScenarioReadinessTargetSpec: business復帰ガイドは Inference を必須・補正スタートを許可', () => {
     const s = buildScenarioReadinessTargetSpec({
       scenarioId: 'private_to_business',
-      willPostPolicyStartComfy: false,
       willPostPolicyStartExperimentLab: false,
       localLlmRuntimeMode: 'on_demand',
       gatewayRuntimeConfigured: true,
@@ -111,7 +107,6 @@ describe('dgx-resource.scenario-readiness', () => {
   it('buildScenarioReadinessTargetSpec: experiment シナリオはヘルス必須（Strict）', () => {
     const s = buildScenarioReadinessTargetSpec({
       scenarioId: 'business_to_experiment',
-      willPostPolicyStartComfy: false,
       willPostPolicyStartExperimentLab: true,
       localLlmRuntimeMode: 'always_on',
       gatewayRuntimeConfigured: false,
@@ -126,7 +121,6 @@ describe('dgx-resource.scenario-readiness', () => {
     const res = await waitScenarioReadiness({
       spec: buildScenarioReadinessTargetSpec({
         scenarioId: 'experiment_to_business',
-        willPostPolicyStartComfy: false,
         willPostPolicyStartExperimentLab: false,
         localLlmRuntimeMode: 'always_on',
         gatewayRuntimeConfigured: false,
@@ -146,7 +140,6 @@ describe('dgx-resource.scenario-readiness', () => {
     const res = await waitScenarioReadiness({
       spec: buildScenarioReadinessTargetSpec({
         scenarioId: 'private_to_business',
-        willPostPolicyStartComfy: false,
         willPostPolicyStartExperimentLab: false,
         localLlmRuntimeMode: 'always_on',
         gatewayRuntimeConfigured: false,
@@ -179,7 +172,6 @@ describe('dgx-resource.scenario-readiness', () => {
     const res = await waitScenarioReadiness({
       spec: {
         requireInferenceBusiness: true,
-        requirePrivateComfyHealthy: false,
         requireExperimentLabHealthy: false,
         allowGatewayStartRemediation: true,
       },
@@ -214,7 +206,6 @@ describe('dgx-resource.scenario-readiness', () => {
     const res = await waitScenarioReadiness({
       spec: buildScenarioReadinessTargetSpec({
         scenarioId: 'private_to_business',
-        willPostPolicyStartComfy: false,
         willPostPolicyStartExperimentLab: false,
         localLlmRuntimeMode: 'always_on',
         gatewayRuntimeConfigured: false,
@@ -243,7 +234,6 @@ describe('dgx-resource.scenario-readiness', () => {
     const res = await waitScenarioReadiness({
       spec: buildScenarioReadinessTargetSpec({
         scenarioId: 'experiment_to_business',
-        willPostPolicyStartComfy: false,
         willPostPolicyStartExperimentLab: false,
         localLlmRuntimeMode: 'always_on',
         gatewayRuntimeConfigured: false,
@@ -271,7 +261,6 @@ describe('dgx-resource.scenario-readiness', () => {
     const res = await waitScenarioReadiness({
       spec: buildScenarioReadinessTargetSpec({
         scenarioId: 'private_to_business',
-        willPostPolicyStartComfy: false,
         willPostPolicyStartExperimentLab: false,
         localLlmRuntimeMode: 'always_on',
         gatewayRuntimeConfigured: false,
@@ -300,7 +289,6 @@ describe('dgx-resource.scenario-readiness', () => {
     const res = await waitScenarioReadiness({
       spec: buildScenarioReadinessTargetSpec({
         scenarioId: 'private_to_business',
-        willPostPolicyStartComfy: false,
         willPostPolicyStartExperimentLab: false,
         localLlmRuntimeMode: 'always_on',
         gatewayRuntimeConfigured: false,
@@ -342,7 +330,6 @@ describe('dgx-resource.scenario-readiness', () => {
     const res = await waitScenarioReadiness({
       spec: buildScenarioReadinessTargetSpec({
         scenarioId: 'private_to_business',
-        willPostPolicyStartComfy: false,
         willPostPolicyStartExperimentLab: false,
         localLlmRuntimeMode: 'always_on',
         gatewayRuntimeConfigured: false,

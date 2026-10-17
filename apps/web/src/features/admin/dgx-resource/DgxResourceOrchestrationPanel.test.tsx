@@ -44,16 +44,16 @@ describe('DgxResourceOrchestrationPanel', () => {
       ok: true,
       message: 'プレビュー取得',
       scenarioPreview: {
-        scenarioId: 'business_to_private',
-        targetPolicyMode: 'private_ok',
+        scenarioId: 'business_to_experiment',
+        targetPolicyMode: 'experiment_first',
         applyWorkloadChanges: false,
         planFingerprint: 'a'.repeat(64),
         steps: [
           {
             kind: 'policy',
             order: 1,
-            policyMode: 'private_ok',
-            summaryJa: '運用プロファイルを「私用OK」へ適用します',
+            policyMode: 'experiment_first',
+            summaryJa: '運用プロファイルを「実験優先」へ適用します',
           },
         ],
         warnings: ['注意事項'],
@@ -63,7 +63,7 @@ describe('DgxResourceOrchestrationPanel', () => {
     renderWithClient();
     fireEvent.click(screen.getByRole('button', { name: 'プレビュー取得' }));
 
-    expect(await screen.findByText('運用プロファイルを「私用OK」へ適用します')).toBeInTheDocument();
+    expect(await screen.findByText('運用プロファイルを「実験優先」へ適用します')).toBeInTheDocument();
     expect(screen.getByText(/実行計画 ID（指紋）/)).toBeInTheDocument();
     expect(screen.getByText(/注意事項/)).toBeInTheDocument();
   });
@@ -74,16 +74,16 @@ describe('DgxResourceOrchestrationPanel', () => {
         ok: true,
         message: 'プレビュー取得',
         scenarioPreview: {
-          scenarioId: 'business_to_private',
-          targetPolicyMode: 'private_ok',
+          scenarioId: 'business_to_experiment',
+          targetPolicyMode: 'experiment_first',
           applyWorkloadChanges: false,
           planFingerprint: 'b'.repeat(64),
           steps: [
             {
               kind: 'policy',
               order: 1,
-              policyMode: 'private_ok',
-              summaryJa: '運用プロファイルを「私用OK」へ適用します',
+              policyMode: 'experiment_first',
+              summaryJa: '運用プロファイルを「実験優先」へ適用します',
             },
           ],
           warnings: [],
@@ -93,7 +93,7 @@ describe('DgxResourceOrchestrationPanel', () => {
         ok: true,
         message: '途中停止しました',
         scenarioExecute: {
-          scenarioId: 'business_to_private',
+          scenarioId: 'business_to_experiment',
           success: false,
           completedStepOrders: [1, 2],
           completedPolicyApplied: false,
@@ -104,7 +104,7 @@ describe('DgxResourceOrchestrationPanel', () => {
 
     renderWithClient();
     fireEvent.click(screen.getByRole('button', { name: 'プレビュー取得' }));
-    await screen.findByText('運用プロファイルを「私用OK」へ適用します');
+    await screen.findByText('運用プロファイルを「実験優先」へ適用します');
 
     fireEvent.click(screen.getByRole('button', { name: 'この内容で実行する' }));
 

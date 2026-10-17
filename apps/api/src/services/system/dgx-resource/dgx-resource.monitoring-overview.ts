@@ -23,7 +23,6 @@ export type DgxResourceMonitoringSummary = {
 const TARGET_LABELS: Partial<Record<string, string>> = {
   'system-prod-gateway': 'Gateway',
   'system-prod-inference': 'Inference (/v1/models)',
-  'private-comfyui': '私用 ComfyUI',
   'experiment-lab': 'experiment-lab',
   'agent-container': 'agent-container',
 };
@@ -36,10 +35,8 @@ export function buildDgxResourceMonitoringOverview(input: {
 }): DgxResourceMonitoringSummary {
   const { bundle, targets } = input;
   const inferenceTarget = targets.find((t) => t.id === 'system-prod-inference');
-  const comfyTarget = targets.find((t) => t.id === 'private-comfyui');
   const expTarget = targets.find((t) => t.id === 'experiment-lab');
   const agentTarget = targets.find((t) => t.id === 'agent-container');
-  const gatewayTarget = targets.find((t) => t.id === 'system-prod-gateway');
 
   const parts = [
     ...(input.adminCfg.model ? [`モデル構成ヒント: ${input.adminCfg.model}`] : []),
@@ -64,41 +61,13 @@ export function buildDgxResourceMonitoringOverview(input: {
 
   const alerts: DgxResourceMonitoringAlert[] = [];
 
-  if (gatewayTarget?.status === 'running' && inferenceTarget?.status === 'degraded') {
-    if (bundle.modelsProbe.statusCode === 502 || bundle.modelsProbe.statusCode === undefined) {
-      if (comfyTarget?.status === 'running') {
-        alerts.push({
-          level: 'warning',
-          code: 'possible_gpu_contention',
-          title: 'GPU 競合の疑い（KB-364）',
-          detail:
-            'Gateway は healthy に見える一方で /v1/models が degraded、かつ ComfyUI が稼働中に見えます。cold start と GPU 競合が混ざり得ます。Runbook と DGX の nvidia-smi / docker logs を確認してください',
-        });
-      }
-    }
-  }
-
   if (inferenceTarget?.status === 'degraded' && bundle.modelsProbe.statusCode === 503) {
     alerts.push({
       level: 'info',
       code: 'possible_inference_loading',
       title: '/v1/models が 503',
       detail:
-        '重いモデルのロードや blue cold start と一致する場合があります。しばらく待って再評価し、競合がある場合は Comfy を止めて検証してください',
-    });
-  }
-
-  if (
-    comfyTarget?.status === 'running' &&
-    bundle.policyMode === 'business_first' &&
-    (inferenceTarget?.status === 'degraded' || inferenceTarget?.status === 'stopped')
-  ) {
-    alerts.push({
-      level: 'info',
-      code: 'comfy_live_under_business_mode',
-      title: '業務優先だが私用ワークロードが検知されています',
-      detail:
-        'GPU 競合が疑われるときは自動調停ガイド（業務復帰）または手動停止を検討してください。ポリシーはヒントであり、コンテナ状態は個別確認が必要です',
+        '重いモデルのロードや blue cold start と一致する場合があります。しばらく待って再評価し、競合がある場合は GPU の状態を確認してください',
     });
   }
 
@@ -122,7 +91,7 @@ export function buildDgxResourceMonitoringOverview(input: {
       level: 'info',
       code: 'agent_container_active_outside_profile',
       title: 'agent-container が稼働検知されていますがプロファイルが実験優先ではありません',
-      detail: '業務優先・私用OKでは GPU を空けるため停止調停の対象になり得ます。意図した運用か確認してください',
+      detail: '業務優先では GPU を空けるため停止調停の対象になり得ます。意図した運用か確認してください',
     });
   }
 
@@ -139,7 +108,6 @@ export function buildDgxResourceMonitoringOverview(input: {
   const targetHighlights = [
     'system-prod-gateway',
     'system-prod-inference',
-    'private-comfyui',
     'experiment-lab',
     'agent-container',
   ].map((id) => {

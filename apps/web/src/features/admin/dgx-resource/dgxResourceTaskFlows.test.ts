@@ -18,10 +18,10 @@ describe('dgxResourceTaskFlows', () => {
         primary: false,
       },
       {
-        id: 'business_to_private',
+        id: 'business_to_experiment',
         labelJa: 'a',
         subtitleJa: 'a',
-        scenarioId: 'business_to_private',
+        scenarioId: 'business_to_experiment',
         primary: true,
       },
       {
@@ -29,13 +29,6 @@ describe('dgxResourceTaskFlows', () => {
         labelJa: 'b',
         subtitleJa: 'b',
         scenarioId: 'private_to_business',
-        primary: false,
-      },
-      {
-        id: 'business_to_experiment',
-        labelJa: 'c',
-        subtitleJa: 'c',
-        scenarioId: 'business_to_experiment',
         primary: false,
       },
     ];

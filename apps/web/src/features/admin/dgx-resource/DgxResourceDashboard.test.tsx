@@ -81,7 +81,6 @@ function makeOverview(): DgxResourceOverview {
     policy: {
       mode: 'business_first',
       previousMode: null,
-      comfyStartBlockedHint: false,
     },
     runtime: {
       localLlmMode: 'always_on',
@@ -90,10 +89,8 @@ function makeOverview(): DgxResourceOverview {
     },
     optionalProbes: {
       metricsConfigured: true,
-      comfyHealthConfigured: true,
       embeddingHealthConfigured: true,
       sparkHostConfigured: true,
-      comfyRuntimeControlConfigured: true,
       experimentLabHealthConfigured: true,
       experimentLabRuntimeControlConfigured: true,
       agentContainerHealthConfigured: false,
@@ -106,15 +103,6 @@ function makeOverview(): DgxResourceOverview {
         displayName: 'system-prod-inference',
         capabilities: ['readStatus'],
         status: 'running',
-        badges: [],
-        metaLines: [],
-      },
-      {
-        id: 'private-comfyui',
-        kind: 'http_probe',
-        displayName: 'private-comfyui',
-        capabilities: ['readStatus'],
-        status: 'stopped',
         badges: [],
         metaLines: [],
       },
@@ -150,7 +138,6 @@ function makeOverview(): DgxResourceOverview {
         policyLabelJa: '業務優先',
         previousMode: null,
         previousPolicyLabelJa: null,
-        comfyStartBlockedHint: false,
         inferenceSparkLineJa: null,
         alertPreviewJa: [],
       },

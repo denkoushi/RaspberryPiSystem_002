@@ -10,7 +10,6 @@ export type DgxScenarioReadinessCheckJa = {
     | 'model_profile_active'
     | 'model_profile_backend'
     | 'model_profile_vision_runtime'
-    | 'private_comfy'
     | 'experiment_lab';
   satisfied: boolean;
   detailJa: string;

@@ -28,7 +28,6 @@ function overview(partial?: Partial<DgxResourceOverview>): DgxResourceOverview {
     policy: {
       mode: 'business_first',
       previousMode: null,
-      comfyStartBlockedHint: false,
     },
     runtime: {
       localLlmMode: 'on_demand',
@@ -37,10 +36,8 @@ function overview(partial?: Partial<DgxResourceOverview>): DgxResourceOverview {
     },
     optionalProbes: {
       metricsConfigured: true,
-      comfyHealthConfigured: false,
       embeddingHealthConfigured: false,
       sparkHostConfigured: true,
-      comfyRuntimeControlConfigured: false,
       experimentLabHealthConfigured: false,
       experimentLabRuntimeControlConfigured: false,
       agentContainerHealthConfigured: false,

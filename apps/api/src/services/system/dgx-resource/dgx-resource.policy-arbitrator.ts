@@ -13,7 +13,6 @@ export type WorkloadPlannerInput = {
   nextMode: DgxPolicyMode;
   /** true のときのみ非 noop ステップが返る */
   applyWorkloadChanges: boolean;
-  comfyRuntimeConfigured: boolean;
   experimentLabRuntimeConfigured: boolean;
   agentContainerRuntimeConfigured: boolean;
   gatewayRuntimeConfigured: boolean;
@@ -43,50 +42,13 @@ export function planWorkloadAdjustmentsBeforePolicyChange(input: WorkloadPlanner
           eventMessageJa: '業務優先: agent-container 停止リクエストを送信しました（設定 URL）',
         });
       }
-      if (input.comfyRuntimeConfigured) {
-        steps.push({
-          targetId: 'private-comfyui',
-          action: 'stop',
-          eventMessageJa: '業務優先: 私用 ComfyUI 停止リクエストを送信しました（設定 URL）',
-        });
-      }
       return steps;
     }
     case 'experiment_first': {
       const steps: WorkloadAdjustmentStep[] = [];
-      if (input.comfyRuntimeConfigured) {
-        steps.push({
-          targetId: 'private-comfyui',
-          action: 'stop',
-          eventMessageJa: '実験優先: 私用 ComfyUI 停止リクエストを送信しました（GPU 競合緩和）',
-        });
-      }
       return steps;
     }
-    case 'private_ok': {
-      const steps: WorkloadAdjustmentStep[] = [];
-      if (input.experimentLabRuntimeConfigured) {
-        steps.push({
-          targetId: 'experiment-lab',
-          action: 'stop',
-          eventMessageJa: '私用OK: experiment-lab 停止リクエストを送信しました（GPU 解放）',
-        });
-      }
-      if (input.agentContainerRuntimeConfigured) {
-        steps.push({
-          targetId: 'agent-container',
-          action: 'stop',
-          eventMessageJa: '私用OK: agent-container 停止リクエストを送信しました（GPU 解放）',
-        });
-      }
-      if (input.gatewayRuntimeConfigured) {
-        steps.push({
-          targetId: 'system-prod-gateway',
-          action: 'stop_force',
-          eventMessageJa: '私用OK: system-prod-gateway 強制停止リクエストを送信しました（keep_warm 上書き・GPU 解放）',
-        });
-      }
-      return steps;
-    }
+    case 'private_ok':
+      return [];
   }
 }

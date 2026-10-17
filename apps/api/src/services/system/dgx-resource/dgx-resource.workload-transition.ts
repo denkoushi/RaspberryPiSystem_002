@@ -31,7 +31,6 @@ export type RunTargetRuntimeActionFn = TargetRuntimeDispatchFn;
 export type { TargetRuntimeEventLogMode };
 
 export type WorkloadCapabilityFlags = {
-  comfyRuntimeConfigured: boolean;
   experimentLabRuntimeConfigured: boolean;
   agentContainerRuntimeConfigured: boolean;
   gatewayRuntimeConfigured: boolean;
@@ -74,7 +73,6 @@ export async function executeWorkloadTransitionsThenApplyPolicyMode(input: {
   const plan = planWorkloadAdjustmentsBeforePolicyChange({
     nextMode: mode,
     applyWorkloadChanges,
-    comfyRuntimeConfigured: capability.comfyRuntimeConfigured,
     experimentLabRuntimeConfigured: capability.experimentLabRuntimeConfigured,
     agentContainerRuntimeConfigured: capability.agentContainerRuntimeConfigured,
     gatewayRuntimeConfigured: capability.gatewayRuntimeConfigured,
@@ -137,13 +135,12 @@ export async function executeOrchestrationScenarioTransition(input: {
 
   const postPolicyPlan = buildPostPolicyOrchestrationSteps({
     scenarioId,
-    comfyRuntimeConfigured: capability.comfyRuntimeConfigured,
     experimentLabRuntimeConfigured: capability.experimentLabRuntimeConfigured,
   });
-  const postPolicyStarts: Array<'private-comfyui' | 'experiment-lab'> = [];
+  const postPolicyStarts: Array<'experiment-lab'> = [];
   for (const s of postPolicyPlan) {
     if (s.action !== 'start') continue;
-    if (s.targetId === 'private-comfyui' || s.targetId === 'experiment-lab') {
+    if (s.targetId === 'experiment-lab') {
       postPolicyStarts.push(s.targetId);
     }
   }
@@ -153,7 +150,6 @@ export async function executeOrchestrationScenarioTransition(input: {
     targetPolicyMode: intent.targetPolicyMode,
     applyWorkloadChanges: intent.applyWorkloadChanges,
     postPolicyStarts,
-    comfyRuntimeConfigured: capability.comfyRuntimeConfigured,
     experimentLabRuntimeConfigured: capability.experimentLabRuntimeConfigured,
     agentContainerRuntimeConfigured: capability.agentContainerRuntimeConfigured,
     gatewayRuntimeConfigured: capability.gatewayRuntimeConfigured,
@@ -172,7 +168,6 @@ export async function executeOrchestrationScenarioTransition(input: {
   const plan = planWorkloadAdjustmentsBeforePolicyChange({
     nextMode: intent.targetPolicyMode,
     applyWorkloadChanges: intent.applyWorkloadChanges,
-    comfyRuntimeConfigured: capability.comfyRuntimeConfigured,
     experimentLabRuntimeConfigured: capability.experimentLabRuntimeConfigured,
     agentContainerRuntimeConfigured: capability.agentContainerRuntimeConfigured,
     gatewayRuntimeConfigured: capability.gatewayRuntimeConfigured,
@@ -242,7 +237,6 @@ export async function executeOrchestrationScenarioTransition(input: {
       msg = msgPieces.filter((s) => s.length > 0).join(' ') || setPolicyEventMessage(intent.targetPolicyMode);
     }
 
-    const willPostPolicyStartComfy = postPolicyPlan.some((p) => p.targetId === 'private-comfyui' && p.action === 'start');
     const willPostPolicyStartExperimentLab = postPolicyPlan.some(
       (p) => p.targetId === 'experiment-lab' && p.action === 'start'
     );
@@ -254,7 +248,6 @@ export async function executeOrchestrationScenarioTransition(input: {
     if (!noopOrchestration && readinessCoordinator) {
       const spec = buildScenarioReadinessTargetSpec({
         scenarioId,
-        willPostPolicyStartComfy,
         willPostPolicyStartExperimentLab,
         localLlmRuntimeMode: readinessCoordinator.localLlmRuntimeMode,
         gatewayRuntimeConfigured: capability.gatewayRuntimeConfigured,
@@ -308,7 +301,6 @@ export async function executeOrchestrationScenarioTransition(input: {
                 scenarioId,
                 policyBefore,
                 rollbackPolicyMode: policyBefore,
-                comfyRuntimeConfigured: capability.comfyRuntimeConfigured,
                 experimentLabRuntimeConfigured: capability.experimentLabRuntimeConfigured,
                 agentContainerRuntimeConfigured: capability.agentContainerRuntimeConfigured,
               },

@@ -32,16 +32,6 @@ function makeOperator(): DgxResourceOperatorConsoleApi {
         runtimeControlConfigured: true,
       },
       {
-        id: 'private_comfy',
-        labelJa: '私用 ComfyUI',
-        purposeJa: 'test',
-        risk: 'low',
-        status: 'stopped',
-        statusHeadlineJa: 'ComfyUI: 停止',
-        relatedTargetIds: ['private-comfyui'],
-        runtimeControlConfigured: true,
-      },
-      {
         id: 'experiment_lab',
         labelJa: '実験ラボ',
         purposeJa: 'test',
@@ -68,21 +58,13 @@ function makeOperator(): DgxResourceOperatorConsoleApi {
       policyLabelJa: '業務優先',
       previousMode: null,
       previousPolicyLabelJa: null,
-      comfyStartBlockedHint: true,
       inferenceSparkLineJa: null,
       alertPreviewJa: [],
     },
     operatorActions: [
       {
-        id: 'business_to_private',
-        labelJa: '私用を始める',
-        subtitleJa: 'sub',
-        scenarioId: 'business_to_private',
-        primary: true,
-      },
-      {
         id: 'private_to_business',
-        labelJa: '業務に戻す（私用を終える）',
+        labelJa: '業務に戻す',
         subtitleJa: 'sub',
         scenarioId: 'private_to_business',
         primary: false,
@@ -119,7 +101,6 @@ function makeOverview(operator: DgxResourceOperatorConsoleApi): DgxResourceOverv
     policy: {
       mode: 'business_first',
       previousMode: null,
-      comfyStartBlockedHint: true,
     },
     runtime: {
       localLlmMode: 'on_demand',
@@ -128,10 +109,8 @@ function makeOverview(operator: DgxResourceOperatorConsoleApi): DgxResourceOverv
     },
     optionalProbes: {
       metricsConfigured: false,
-      comfyHealthConfigured: false,
       embeddingHealthConfigured: false,
       sparkHostConfigured: false,
-      comfyRuntimeControlConfigured: true,
       experimentLabHealthConfigured: false,
       experimentLabRuntimeControlConfigured: false,
       agentContainerHealthConfigured: false,
@@ -189,9 +168,9 @@ describe('DgxResourceOperatorConsole', () => {
     expect(screen.getByRole('heading', { name: 'DGX リソース' })).toBeInTheDocument();
     expect(screen.getByText('Current State')).toBeInTheDocument();
     expect(screen.getByText('業務優先')).toBeInTheDocument();
-    expect(screen.getByText('業務→私用')).toBeInTheDocument();
+    expect(screen.getByText('業務→実験')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'DGX 操作' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '業務に戻す（私用を終える）' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '業務に戻す' })).toBeInTheDocument();
   });
 
   it('disables guide actions while an external scenario is pending', () => {
@@ -207,8 +186,8 @@ describe('DgxResourceOperatorConsole', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: '私用を始める' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '業務に戻す（私用を終える）' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '実験へ' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '業務に戻す' })).toBeDisabled();
     expect(screen.getByText('進行中: 切替処理を実行中です。別タブへ移動しても処理は継続します。')).toBeInTheDocument();
   });
 
@@ -261,7 +240,7 @@ describe('DgxResourceOperatorConsole', () => {
     );
   });
 
-  it('selects available primary scenario when business_to_private is disabled', async () => {
+  it('selects available primary scenario when business_to_experiment is disabled', async () => {
     const postDgxAction = vi.fn(async (body) => {
       if (body.type === 'PREVIEW_ORCHESTRATION_SCENARIO') {
         return {
@@ -288,7 +267,7 @@ describe('DgxResourceOperatorConsole', () => {
         policyLabelJa: '私用OK',
       },
       operatorActions: base.operatorActions.map((action) =>
-        action.scenarioId === 'business_to_private'
+        action.scenarioId === 'business_to_experiment'
           ? { ...action, disabledReasonJa: 'すでに「私用OK」です', primary: false }
           : action.scenarioId === 'private_to_business'
             ? { ...action, primary: true }
@@ -306,7 +285,7 @@ describe('DgxResourceOperatorConsole', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '業務に戻す（私用を終える）' }));
+    fireEvent.click(screen.getByRole('button', { name: '業務に戻す' }));
     await waitFor(() =>
       expect(postDgxAction).toHaveBeenCalledWith({
         type: 'PREVIEW_ORCHESTRATION_SCENARIO',
