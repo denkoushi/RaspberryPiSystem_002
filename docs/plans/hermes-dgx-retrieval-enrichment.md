@@ -60,6 +60,8 @@ Copying the store to a Mac uses the same on-host export style as `export-busines
 
 ## Cause classification runtime
 
+The release runner forwards both `HERMES_RETRIEVAL_CAUSE_ENABLED` and `HERMES_RETRIEVAL_CAUSE_MAX_TEXTS` like the enrichment keys.
+
 The separate JEV cause runner and its cadence are described in [the accuracy log](hermes-retrieval-accuracy-log.md#2026-10-17-要因で分ける-axis-from-jev-classification-of-不適合内容-change-not-a-measurement). It uses the existing `HERMES_JEV_PROVIDER` transport, independent of the enrichment gate.
 
 | Environment variable | Default / purpose |

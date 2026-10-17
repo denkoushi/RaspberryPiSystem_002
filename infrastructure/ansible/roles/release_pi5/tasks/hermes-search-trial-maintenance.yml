@@ -60,6 +60,11 @@
     release_pi5_trial_enrichment_concurrency: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY') }}"
     release_pi5_trial_enrichment_window: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_ENRICHMENT_WINDOW') }}"
     release_pi5_trial_enrichment_ids: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_ENRICHMENT_IDS') }}"
+    release_pi5_trial_cause_requested: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_CAUSE_ENABLED') }}"
+    release_pi5_trial_cause_before: >-
+      {{ (release_pi5_trial_maintenance_env_before.content | b64decode).splitlines()
+         | select('match', '^HERMES_RETRIEVAL_CAUSE_ENABLED=') | list }}
+    release_pi5_trial_cause_max_texts: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_CAUSE_MAX_TEXTS') }}"
     release_pi5_trial_flywheel_enabled: "{{ lookup('ansible.builtin.env', 'HERMES_FLYWHEEL_ENABLED') }}"
     release_pi5_trial_flywheel_max_questions: "{{ lookup('ansible.builtin.env', 'HERMES_FLYWHEEL_MAX_QUESTIONS') }}"
     release_pi5_trial_retrieval_sources: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_SOURCES') }}"
@@ -107,6 +112,17 @@
             ['HERMES_RETRIEVAL_ENRICHMENT_ENABLED=true', 'HERMES_RETRIEVAL_ENRICHMENT_ENABLED=false'])
     fail_msg: Retrieval enrichment must be omitted, true, or false; an omitted value preserves the existing line and does not turn the gate on.
 
+- name: Require an explicit or preserved retrieval cause classification gate
+  ansible.builtin.assert:
+    that:
+      - release_pi5_trial_cause_requested in ['', 'true', 'false']
+      - >-
+        release_pi5_trial_cause_before | length == 0
+        or (release_pi5_trial_cause_before | length == 1
+            and release_pi5_trial_cause_before[0] in
+            ['HERMES_RETRIEVAL_CAUSE_ENABLED=true', 'HERMES_RETRIEVAL_CAUSE_ENABLED=false'])
+    fail_msg: Retrieval cause classification must be omitted, true, or false; an omitted value preserves the existing line and does not turn the gate on.
+
 - name: Require an explicit or preserved dense retrieval provider
   ansible.builtin.assert:
     that:
@@ -141,6 +157,11 @@
          if release_pi5_trial_enrichment_requested != ''
          else (release_pi5_trial_enrichment_before[0].split('=', 1)[1]
                if release_pi5_trial_enrichment_before | length == 1 else '') }}
+    release_pi5_trial_cause_effective: >-
+      {{ release_pi5_trial_cause_requested
+         if release_pi5_trial_cause_requested != ''
+         else (release_pi5_trial_cause_before[0].split('=', 1)[1]
+               if release_pi5_trial_cause_before | length == 1 else '') }}
     release_pi5_trial_dense_provider_effective: >-
       {{ release_pi5_trial_dense_provider_requested
          if release_pi5_trial_dense_provider_requested != ''

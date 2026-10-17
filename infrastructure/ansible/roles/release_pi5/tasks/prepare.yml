@@ -1162,6 +1162,11 @@
         select('match', '^HERMES_RETRIEVAL_ENRICHMENT_ENABLED=(true|false)$') | list | length) == 1
       - >-
         (release_pi5_candidate_search_env.stdout | from_json |
+        select('match', '^HERMES_RETRIEVAL_CAUSE_ENABLED=') | list | length) == 0
+        or (release_pi5_candidate_search_env.stdout | from_json |
+        select('match', '^HERMES_RETRIEVAL_CAUSE_ENABLED=(true|false)$') | list | length) == 1
+      - >-
+        (release_pi5_candidate_search_env.stdout | from_json |
         select('match', '^HERMES_FLYWHEEL_ENABLED=') | list | length) == 0
         or (release_pi5_candidate_search_env.stdout | from_json |
         select('match', '^HERMES_FLYWHEEL_ENABLED=(true|false)$') | list | length) == 1
