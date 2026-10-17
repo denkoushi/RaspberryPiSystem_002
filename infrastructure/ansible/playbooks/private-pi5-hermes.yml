@@ -373,39 +373,15 @@
     - name: Deploy Hermes chat profile
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-chat-profile.yml"
 
-    - name: Deploy Hermes research profile skeleton
-      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-research-profile.yml"
-      when: private_pi5_hermes_research_profile_enabled | default(false) | bool
-
-    - name: Deploy Hermes Discord gateway plugins (task + novel bridges)
+    - name: Deploy Hermes Life Pilot modules and policy
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-discord-task-bridge.yml"
-      when: >
-        private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool or
-        private_pi5_hermes_discord_novel_bridge_enabled | default(false) | bool or
-        private_pi5_hermes_discord_research_bridge_enabled | default(false) | bool or
-        private_pi5_hermes_daily_pilot_enabled | default(false) | bool or
-        private_pi5_hermes_life_pilot_enabled | default(false) | bool
-
-    - name: Sync Hermes Discord daily and life slash commands
-      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/sync-discord-daily-command.yml"
-      when: (private_pi5_hermes_discord_bot_token | default('') | trim) | length > 0
+      when: private_pi5_hermes_life_pilot_enabled | default(false) | bool
 
     - name: Configure Hermes Life Pilot reminder scheduler
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/life-reminder-scheduler.yml"
 
     - name: Configure Hermes Life Pilot proactive loop
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/life-proactive-loop.yml"
-
-    - name: Configure Hermes Life Pilot Daily Interest Digest
-      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/life-interest-digest.yml"
-
-    - name: Deploy Hermes tools profile skeleton
-      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-tools-profile.yml"
-      when: private_pi5_hermes_tools_profile_enabled | default(false) | bool
-
-    - name: Deploy Hermes novel profile skeleton
-      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-novel-profile.yml"
-      when: private_pi5_hermes_novel_profile_enabled | default(false) | bool
 
     - name: Install Hermes browser tooling (Phase D4)
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/install-browser-tooling.yml"
@@ -425,10 +401,6 @@
 
     - name: Verify Hermes deployment
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/verify.yml"
-
-    - name: Verify Hermes tools profile deployment
-      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/verify-tools-profile.yml"
-      when: private_pi5_hermes_tools_profile_enabled | default(false) | bool
 
     - name: Verify Hermes Discord task bridge (Phase D5)
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/verify-discord-task-bridge.yml"
