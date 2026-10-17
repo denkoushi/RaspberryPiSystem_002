@@ -1,5 +1,5 @@
 ---
-# Phase D5 / D5.1: Discord /task bridge plugin + lib (tools profile runner + approval relay).
+# Life Pilot modules and policy only. The /task bridge plugin itself is deployed from the private repository (DGXSparkControlPlane).
 - name: Ensure Hermes discord-task-bridge plugin directory exists
   ansible.builtin.file:
     path: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge"
@@ -7,14 +7,6 @@
     owner: "{{ private_pi5_hermes_user }}"
     group: "{{ private_pi5_hermes_group }}"
     mode: "0755"
-
-- name: Ensure approval relay store directory exists (Phase D5.1)
-  ansible.builtin.file:
-    path: "{{ private_pi5_hermes_data_dir }}/task-bridge/approvals"
-    state: directory
-    owner: "{{ private_pi5_hermes_user }}"
-    group: "{{ private_pi5_hermes_group }}"
-    mode: "0700"
 
 - name: Ensure Life Pilot private data directories exist (D6-life)
   ansible.builtin.file:
@@ -35,7 +27,7 @@
     - "{{ private_pi5_hermes_life_obsidian_vault_dir }}"
   when: private_pi5_hermes_life_pilot_enabled | default(false) | bool
 
-- name: Deploy discord-task-bridge shared Python modules
+- name: Deploy Life Pilot Python modules
   ansible.builtin.copy:
     src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/lib/{{ item }}"
     dest: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/{{ item }}"
@@ -43,155 +35,13 @@
     group: "{{ private_pi5_hermes_group }}"
     mode: "0644"
   loop:
-    - __init__.py
-    - boundary_policy.py
-    - task_bridge_policy.py
-    - task_request.py
-    - dgx_runtime_prepare.py
-    - tools_profile_constants.py
-    - tools_profile_runner.py
-    - discord_task_bridge.py
-    - novel_request.py
-    - novel_profile_constants.py
-    - novel_profile_runner.py
-    - discord_novel_bridge.py
-    - research_request.py
-    - research_profile_runner.py
-    - discord_research_bridge.py
-    - daily_pilot_policy.py
-    - discord_daily_pilot_bridge.py
     - life_pilot_policy.py
     - discord_life_pilot_bridge.py
     - life_reminder_scheduler.py
     - life_discord_inbox.py
-    - life_interest_digest.py
-    - life_interest_editorial.py
     - life_obsidian_inbox.py
     - life_proactive_loop.py
-    - life_discord_ui_relay.py
-
-- name: Ensure approval relay package directory exists on plugin path
-  ansible.builtin.file:
-    path: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/approval_relay"
-    state: directory
-    owner: "{{ private_pi5_hermes_user }}"
-    group: "{{ private_pi5_hermes_group }}"
-    mode: "0755"
-
-- name: Deploy discord-task-bridge approval relay package (Phase D5.1)
-  ansible.builtin.copy:
-    src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/lib/approval_relay/{{ item }}"
-    dest: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/approval_relay/{{ item }}"
-    owner: "{{ private_pi5_hermes_user }}"
-    group: "{{ private_pi5_hermes_group }}"
-    mode: "0644"
-  loop:
-    - __init__.py
-    - models.py
-    - policy.py
-    - store.py
-    - subprocess_notify.py
-    - pending_approval.py
-    - tool_write_gate.py
-    - runner.py
-    - bootstrap.py
-    - discord_relay.py
-    - coordinator.py
-    - session_context.py
-    - gateway_actor_context.py
-
-- name: Deploy hermes-task-with-approval-relay CLI (Phase D5.1)
-  ansible.builtin.copy:
-    src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/hermes-task-with-approval-relay"
-    dest: "{{ private_pi5_hermes_home }}/.local/bin/hermes-task-with-approval-relay"
-    owner: "{{ private_pi5_hermes_user }}"
-    group: "{{ private_pi5_hermes_group }}"
-    mode: "0755"
-
-- name: Deploy hermes-life-interest-digest CLI (D19-life)
-  ansible.builtin.copy:
-    src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/hermes-life-interest-digest"
-    dest: "{{ private_pi5_hermes_home }}/.local/bin/hermes-life-interest-digest"
-    owner: "{{ private_pi5_hermes_user }}"
-    group: "{{ private_pi5_hermes_group }}"
-    mode: "0755"
   when: private_pi5_hermes_life_pilot_enabled | default(false) | bool
-
-- name: Deploy discord-task-bridge plugin entrypoint
-  ansible.builtin.copy:
-    src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/lib/discord_task_bridge_plugin.py"
-    dest: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/__init__.py"
-    owner: "{{ private_pi5_hermes_user }}"
-    group: "{{ private_pi5_hermes_group }}"
-    mode: "0644"
-
-- name: Deploy task-bridge plugin manifest
-  ansible.builtin.copy:
-    src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/plugin.yaml"
-    dest: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/plugin.yaml"
-    owner: "{{ private_pi5_hermes_user }}"
-    group: "{{ private_pi5_hermes_group }}"
-    mode: "0644"
-
-- name: Deploy task-bridge policy reference on host
-  ansible.builtin.copy:
-    src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/config/task-bridge.policy.yaml"
-    dest: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/task-bridge.policy.yaml"
-    owner: "{{ private_pi5_hermes_user }}"
-    group: "{{ private_pi5_hermes_group }}"
-    mode: "0644"
-  when: private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool
-
-- name: Remove stale task-bridge policy when tools bridge is disabled
-  ansible.builtin.file:
-    path: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/task-bridge.policy.yaml"
-    state: absent
-  when: not (private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool)
-
-- name: Mark novel bridge as enabled on host
-  ansible.builtin.copy:
-    dest: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/novel-bridge.enabled"
-    content: "enabled=true\n"
-    owner: "{{ private_pi5_hermes_user }}"
-    group: "{{ private_pi5_hermes_group }}"
-    mode: "0644"
-  when: private_pi5_hermes_discord_novel_bridge_enabled | default(false) | bool
-
-- name: Remove stale novel bridge marker when bridge is disabled
-  ansible.builtin.file:
-    path: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/novel-bridge.enabled"
-    state: absent
-  when: not (private_pi5_hermes_discord_novel_bridge_enabled | default(false) | bool)
-
-- name: Mark research bridge as enabled on host
-  ansible.builtin.copy:
-    dest: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/research-bridge.enabled"
-    content: "enabled=true\n"
-    owner: "{{ private_pi5_hermes_user }}"
-    group: "{{ private_pi5_hermes_group }}"
-    mode: "0644"
-  when: private_pi5_hermes_discord_research_bridge_enabled | default(false) | bool
-
-- name: Remove stale research bridge marker when bridge is disabled
-  ansible.builtin.file:
-    path: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/research-bridge.enabled"
-    state: absent
-  when: not (private_pi5_hermes_discord_research_bridge_enabled | default(false) | bool)
-
-- name: Deploy daily-pilot policy reference on host
-  ansible.builtin.copy:
-    src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/config/daily-pilot.policy.yaml"
-    dest: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/daily-pilot.policy.yaml"
-    owner: "{{ private_pi5_hermes_user }}"
-    group: "{{ private_pi5_hermes_group }}"
-    mode: "0644"
-  when: private_pi5_hermes_daily_pilot_enabled | default(false) | bool
-
-- name: Remove stale daily-pilot policy when pilot is disabled
-  ansible.builtin.file:
-    path: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/daily-pilot.policy.yaml"
-    state: absent
-  when: not (private_pi5_hermes_daily_pilot_enabled | default(false) | bool)
 
 - name: Deploy life-pilot policy reference on host
   ansible.builtin.copy:
@@ -207,84 +57,3 @@
     path: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/life-pilot.policy.yaml"
     state: absent
   when: not (private_pi5_hermes_life_pilot_enabled | default(false) | bool)
-
-- name: Ensure Daily Interest Digest skill directory exists (D19-life)
-  ansible.builtin.file:
-    path: "{{ private_pi5_hermes_data_dir }}/skills/research/daily-interest-digest"
-    state: directory
-    owner: "{{ private_pi5_hermes_user }}"
-    group: "{{ private_pi5_hermes_group }}"
-    mode: "0755"
-  when: private_pi5_hermes_life_pilot_enabled | default(false) | bool
-
-- name: Deploy Daily Interest Digest skill (D19-life)
-  ansible.builtin.copy:
-    src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/skills/daily-interest-digest/SKILL.md"
-    dest: "{{ private_pi5_hermes_data_dir }}/skills/research/daily-interest-digest/SKILL.md"
-    owner: "{{ private_pi5_hermes_user }}"
-    group: "{{ private_pi5_hermes_group }}"
-    mode: "0644"
-  when: private_pi5_hermes_life_pilot_enabled | default(false) | bool
-
-- name: Verify discord-task-bridge policy from repo smoke
-  ansible.builtin.command:
-    argv:
-      - python3
-      - "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/validate_boundary_policy.py"
-      - --validate-task-bridge
-      - --task-bridge-policy
-      - "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/config/task-bridge.policy.yaml"
-  register: private_pi5_hermes_task_bridge_validate
-  changed_when: false
-  delegate_to: localhost
-  become: false
-  when: private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool
-
-- name: Verify daily-pilot policy from repo smoke
-  ansible.builtin.command:
-    argv:
-      - python3
-      - "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/validate_boundary_policy.py"
-      - --validate-daily-pilot
-      - --daily-pilot-policy
-      - "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/config/daily-pilot.policy.yaml"
-  register: private_pi5_hermes_daily_pilot_validate
-  changed_when: false
-  delegate_to: localhost
-  become: false
-  when: private_pi5_hermes_daily_pilot_enabled | default(false) | bool
-
-- name: Verify life-pilot policy from repo smoke
-  ansible.builtin.command:
-    argv:
-      - python3
-      - "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/validate_boundary_policy.py"
-      - --validate-life-pilot
-      - --life-pilot-policy
-      - "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/config/life-pilot.policy.yaml"
-  register: private_pi5_hermes_life_pilot_validate
-  changed_when: false
-  delegate_to: localhost
-  become: false
-  when: private_pi5_hermes_life_pilot_enabled | default(false) | bool
-
-- name: Assert daily-pilot policy validation passed
-  ansible.builtin.assert:
-    that:
-      - private_pi5_hermes_daily_pilot_validate.rc == 0
-    fail_msg: "daily-pilot.policy.yaml validation failed on controller"
-  when: private_pi5_hermes_daily_pilot_enabled | default(false) | bool
-
-- name: Assert life-pilot policy validation passed
-  ansible.builtin.assert:
-    that:
-      - private_pi5_hermes_life_pilot_validate.rc == 0
-    fail_msg: "life-pilot.policy.yaml validation failed on controller"
-  when: private_pi5_hermes_life_pilot_enabled | default(false) | bool
-
-- name: Assert discord-task-bridge policy validation passed
-  ansible.builtin.assert:
-    that:
-      - private_pi5_hermes_task_bridge_validate.rc == 0
-    fail_msg: "task-bridge.policy.yaml validation failed on controller"
-  when: private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool

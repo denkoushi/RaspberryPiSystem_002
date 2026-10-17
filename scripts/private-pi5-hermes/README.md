@@ -2,6 +2,8 @@
 
 自宅 **私用 Pi5** 上で [Hermes Agent](https://hermes-agent.nousresearch.com/docs/) を **専用ユーザー + Docker 隔離 + UFW** で運用し、**Discord DM（本人のみ）** から DGX で雑談する。
 
+> **移管済み（2026-10-17）**: Discord `/task` ブリッジ、承認リレー、Daily Pilot、Interest Digest、tools / novel / research プロファイル、`validate_boundary_policy.py` などは個人用リポジトリ `denkoushi/DGXSparkControlPlane` へ移り、このリポジトリから削除した。ここに残るのは Life Pilot のモジュールとポリシーだけで、下の手順のうち削除済みファイルを使うものは個人用リポジトリ側で行う。
+
 ## ドキュメント正本
 
 | 種別 | パス |
