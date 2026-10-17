@@ -18,7 +18,6 @@
   "src/services/part-measurement/part-measurement-template.service.ts": 1386,
   "src/services/part-measurement/self-inspection/serialization.ts": 989,
   "src/services/production-schedule/grinding-planning-board-load-summary.ts": 744,
-  "src/services/production-schedule/grinding-planning-board.service.ts": 1349,
   "src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts": 1039,
   "src/services/production-schedule/load-balancing/load-balancing-settings.service.ts": 668,
   "src/services/production-schedule/order-split/production-schedule-order-split.service.ts": 1064,
