@@ -3,6 +3,7 @@ import axios from 'axios';
 type ApiErrorPayload = {
   message?: unknown;
   error?: unknown;
+  errorCode?: string;
 };
 
 function extractResponseMessage(data: unknown): string | undefined {
@@ -40,4 +41,17 @@ export function getApiErrorMessage(error: unknown, fallback: string): string {
     return error.message;
   }
   return fallback;
+}
+
+export function getApiErrorMessageWithCode(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const d = error.response?.data as ApiErrorPayload | undefined;
+    if (typeof d?.message === 'string') {
+      return d.errorCode ? `${d.message} (${d.errorCode})` : d.message;
+    }
+    if (error.response?.status === 403) {
+      return 'この操作を行う権限がありません';
+    }
+  }
+  return error instanceof Error ? error.message : '予期しないエラーが発生しました';
 }
