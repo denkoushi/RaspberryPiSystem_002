@@ -183,6 +183,10 @@ trivy_alert_ignore_patterns:
   - "/certs/"
   - "/backups/"
 
+# Nightly scans run in a systemd scope with this disk bandwidth cap (path resolves to its backing disk)
+security_scan_io_device: "/"
+security_scan_io_bandwidth_max: "30M"
+
 rkhunter_server_enabled: true
 rkhunter_server_cron: "0 4 * * *"
 rkhunter_log_dir: "/var/log/rkhunter"
