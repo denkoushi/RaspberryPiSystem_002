@@ -420,7 +420,7 @@ function App() {
         </Route>
         <Route path="knowledge-position-ranks" element={<MovedToKioskTagDeskPage positionRanks />} />
         <Route path="local-llm" element={<LocalLlmAdminPage />} />
-        <Route path="dgx-resource" element={<DgxResourceAdminPage />} />
+        <Route path="dgx-resource" element={<Navigate to="/admin/tools/dgx-resource" replace />} />
         <Route path="photo-loan-label-reviews" element={<PhotoLoanLabelReviewsPage />} />
         <Route path="photo-gallery-seed" element={<PhotoGallerySeedPage />} />
         <Route path="kiosk-documents" element={<KioskDocumentsAdminPage />} />

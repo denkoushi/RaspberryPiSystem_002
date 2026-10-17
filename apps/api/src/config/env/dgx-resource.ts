@@ -9,43 +9,11 @@ export const dgxResourceEnvShape = {
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
     z.string().url().optional()
   ),
-  /** embedding など追加プローブ用。相対パスのとき admin LocalLLM baseUrl を prefix にする */
-  DGX_RESOURCE_EMBEDDING_HEALTH_URL: z.preprocess(
-    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
-    z.string().min(1).optional()
-  ),
-  /**
-   * DGX Spark ホスト状態の簡易疎通（GET）。200 応答なら監視対象ホスト側エージェントが生存している前提。
-   * 未設定時は監視ペインは unknown のまま（Runbook の例: メトリクス sidecar が返す軽い /health）。
-   */
-  DGX_RESOURCE_SPARK_HOST_STATUS_URL: z.preprocess(
-    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
-    z.string().url().optional()
-  ),
   DGX_RESOURCE_PROBE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(10_000),
   DGX_RESOURCE_EVENT_LOG_MAX: z.coerce.number().int().min(10).max(500).default(50),
   /**
-   * 実験用ラボ（単一論理ターゲット experiment-lab）の起停用 URL と任意ヘルス。
-   */
-  DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL: z.preprocess(
-    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
-    z.string().url().optional()
-  ),
-  DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL: z.preprocess(
-    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
-    z.string().url().optional()
-  ),
-  DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_CONTROL_TOKEN: z.preprocess(
-    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
-    z.string().optional()
-  ),
-  DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL: z.preprocess(
-    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
-    z.string().url().optional()
-  ),
-  /**
-   * Agent 用コンテナ（Control Target `agent-container`）の起停と任意ヘルス。
-   * 未設定時は API は読取のみ・ランタイムキューも agent 専用経路は無効（既存契約を維持）。
+   * Agent 用コンテナの起停 URL。DGXリソース画面からは使わない（ADR-20261017）。
+   * 推論ランタイムの agent 専用経路だけが読む。未設定時はその経路は無効。
    */
   DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL: z.preprocess(
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
@@ -63,6 +31,4 @@ export const dgxResourceEnvShape = {
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
     z.string().url().optional()
   ),
-  /** 補助ランタイム（実験・agent-container）POST /start|/stop に使うタイムアウト */
-  DGX_RESOURCE_AUX_RUNTIME_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).max(180000).default(90_000),
 } as const;
