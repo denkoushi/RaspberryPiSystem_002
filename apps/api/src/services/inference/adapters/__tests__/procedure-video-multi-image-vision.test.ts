@@ -7,7 +7,7 @@ import { RoutedVisionCompletionAdapter } from '../routed-vision-completion.adapt
 function setup() {
   const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async () => new Response(JSON.stringify({ choices: [{ message: { content: '{"scenes":[]}' } }] })));
   const router = new InferenceRouter({ providers: [{ id: 'business', baseUrl: 'http://localhost:1234', sharedToken: 'test-token', defaultModel: 'system-prod-primary', timeoutMs: 1000 }], routes: {
-    photo_label: { providerId: 'business' }, business_hermes: { providerId: 'business' }, document_summary: { providerId: 'business' }, admin_console_chat: { providerId: 'business' }, stackchan_chat: { providerId: 'business' },
+    photo_label: { providerId: 'business' }, business_hermes: { providerId: 'business' }, document_summary: { providerId: 'business' }, admin_console_chat: { providerId: 'business' },
   } });
   return { fetch, adapter: new RoutedVisionCompletionAdapter({ router, fetchImpl: fetch, useCase: 'photo_label', getMaxTokens: () => 1500, getTemperature: () => 0 }) };
 }

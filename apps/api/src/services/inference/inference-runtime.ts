@@ -84,7 +84,6 @@ function buildRouterConfig(providers: InferenceProviderDefinition[]): InferenceR
         modelOverride: env.INFERENCE_DOCUMENT_SUMMARY_MODEL,
       },
       admin_console_chat: adminChatRoute,
-      stackchan_chat: adminChatRoute,
     },
   };
 }
