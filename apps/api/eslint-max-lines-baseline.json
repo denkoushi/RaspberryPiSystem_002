@@ -1,5 +1,4 @@
 {
-  "src/routes/assembly/index.ts": 1160,
   "src/routes/part-measurement/shared.ts": 1045,
   "src/services/assembly/assembly-procedure-document.service.ts": 658,
   "src/services/assembly/assembly-template.service.ts": 971,
