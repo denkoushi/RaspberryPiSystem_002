@@ -432,6 +432,34 @@ export function buildCoverage({ known, matchCount, shown, order }) {
   return { known: false, total: null, floor, shown, order };
 }
 
+function buildGroups(filtered, catalog) {
+  if (!catalog) return [];
+  return [
+    { axis: 'organization', role: 'organization', label: '部署', limit: 8 },
+    { axis: 'month', role: 'date', label: '月', limit: 12 },
+  ].flatMap(({ axis, role, label, limit }) => {
+    const field = fieldsWithRole(catalog, role)[0];
+    if (!field) return [];
+    const counts = new Map();
+    let otherCount = 0;
+    for (const record of filtered) {
+      const raw = typeof record[field] === 'string' ? record[field].trim() : '';
+      const value = axis === 'month' ? raw.slice(0, 7) : raw;
+      if (!value || value.length > 80 || (axis === 'month' && !/^\d{4}-(0[1-9]|1[0-2])$/u.test(value))) {
+        otherCount += 1;
+        continue;
+      }
+      counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+    const ordered = [...counts.entries()].sort(([left, a], [right, b]) => axis === 'month'
+      ? compareRaw(right, left) : b - a || compareRaw(left, right));
+    otherCount += ordered.slice(limit).reduce((sum, [, count]) => sum + count, 0);
+    return [{ axis, field, label, otherCount, buckets: ordered.slice(0, limit).map(([value, count]) => ({
+      value, count, label: axis === 'month' ? `${value.slice(0, 4)}年${Number(value.slice(5))}月` : value,
+    })) }];
+  });
+}
+
 export function isRecentContentPlan(plan, catalog) {
   if (plan?.diagnostics?.contentDecision?.final !== true) return false;
   const query = typeof plan?.semanticQuery === 'string' ? plan.semanticQuery.trim() : '';
@@ -864,6 +892,7 @@ export async function execute(plan, options = {}) {
     requested: limit,
     returned: results.length,
     ...(coverage ? { coverage } : {}),
+    ...(coverage?.known === true && coverage.total > coverage.shown ? { groups: buildGroups(filtered, options.catalog) } : {}),
     results,
     ...(options.stageDump ? { candidateIds } : {}),
     timings: {

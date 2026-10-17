@@ -30,6 +30,11 @@ describe('Hermes search trial authorization',()=>{
     const sessionResponse=await app.inject({...request,payload:{question:'処置は？',sessionId}});
     expect(sessionResponse.statusCode).toBe(200);
     expect(answer).toHaveBeenLastCalledWith('処置は？',sessionId,undefined,{principal:{kind:'viewer'}});
+    const refine = { axis: 'organization', field: 'originDepartmentName', value: '組立' };
+    expect((await app.inject({...request,payload:{question:'組立で絞り込む',sessionId,refine}})).statusCode).toBe(200);
+    expect(answer).toHaveBeenLastCalledWith('組立で絞り込む',sessionId,undefined,{principal:{kind:'viewer'},refine});
+    expect((await app.inject({...request,payload:{question:'q',refine:{...refine,axis:'unknown'}}})).statusCode).toBe(400);
+    expect((await app.inject({...request,payload:{refine}})).statusCode).toBe(400);
     expect((await app.inject({...request,payload:{question:'q',override:'unsafe'}})).statusCode).toBe(400);
     answer.mockRejectedValueOnce(new Error('検索に失敗しました。'));
     const failed=await app.inject(request);

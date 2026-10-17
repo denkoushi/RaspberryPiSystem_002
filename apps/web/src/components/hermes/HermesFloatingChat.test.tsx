@@ -87,6 +87,7 @@ vi.mock('./HermesChatPanel', () => ({
     composerVisible?: boolean;
     onDraftChange: (value: string) => void;
     onSend: () => void;
+    onRefine?: (refine: { axis: 'organization' | 'month'; field: string; value: string }) => void;
     onReset: () => void;
     onClose: () => void;
     onStop?: () => void;
@@ -152,6 +153,7 @@ vi.mock('./HermesChatPanel', () => ({
           {message.evidence?.map((evidence) => <p key={evidence.id}>{evidence.title}</p>)}
         </div>
       ))}
+      {props.onRefine ? <button type="button" disabled={props.isBusy} onClick={() => props.onRefine?.({ axis: 'organization', field: 'originDepartmentName', value: '組立' })}>組立 12</button> : null}
       {props.error ? <p role="alert">{props.error}</p> : null}
       {props.consultationError ? <p role="alert">{props.consultationError}</p> : null}
       {props.conversationContent ?? <>
@@ -628,6 +630,28 @@ describe('HermesFloatingChat', () => {
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
     expect(JSON.parse((await screen.findByTestId('record-display')).textContent!)).toEqual(display);
     expect(screen.getByText('元の回答')).toBeInTheDocument();
+  });
+
+  it('sends refine with a display question and the same record-pilot session', async () => {
+    mocks.getTrialScope.mockResolvedValue({ enabled: true });
+    mocks.sendTrialAnswer.mockResolvedValue({ status: 'completed', answer: '検索結果', recordIds: [], elapsedMs: 1 });
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    await screen.findByRole('button', { name: 'JEV記録' });
+    expect(screen.queryByRole('button', { name: '組立 12' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'JEV記録' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '一覧' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    await screen.findByText('検索結果');
+    fireEvent.click(screen.getByRole('button', { name: '組立 12' }));
+    await waitFor(() => expect(mocks.sendTrialAnswer).toHaveBeenCalledTimes(2));
+    expect(mocks.sendTrialAnswer.mock.calls[1][0]).toMatchObject({
+      question: '組立で絞り込む', sessionId: mocks.sendTrialAnswer.mock.calls[0][0].sessionId,
+      refine: { axis: 'organization', field: 'originDepartmentName', value: '組立' },
+    });
+    expect(screen.getByText('組立で絞り込む')).toBeInTheDocument();
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.sendConsultationMessage).not.toHaveBeenCalled();
   });
 
   it.each([
