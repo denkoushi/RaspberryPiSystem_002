@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 768,
-    "totalLines": 188989,
-    "totalBytes": 15047478,
+    "totalLines": 188992,
+    "totalBytes": 15049683,
     "withFrontmatter": 367,
     "withStatus": 170,
     "sourceOfTruthDeclared": 116,
@@ -26,7 +26,7 @@
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 39,
     "localLinkCount": 5871,
-    "brokenLocalLinkCount": 89,
+    "brokenLocalLinkCount": 91,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
     "brokenLocalLinks": [
@@ -74,6 +74,11 @@
         "sourcePath": "docs/archive/architecture/deployment-modules-legacy-through-2026-07.md",
         "href": "../../../infrastructure/ansible/playbooks/deploy.yml",
         "targetPath": "infrastructure/ansible/playbooks/deploy.yml"
+      },
+      {
+        "sourcePath": "docs/decisions/ADR-20260525-private-pi5-hermes-discord-approval-relay-d5-1.md",
+        "href": "../../scripts/private-pi5-hermes/config/task-bridge.policy.yaml",
+        "targetPath": "scripts/private-pi5-hermes/config/task-bridge.policy.yaml"
       },
       {
         "sourcePath": "docs/guides/ansible-best-practices.md",
@@ -199,6 +204,11 @@
         "sourcePath": "docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md",
         "href": "../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24",
         "targetPath": "docs/EXEC_PLAN.md"
+      },
+      {
+        "sourcePath": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
+        "href": "../../scripts/private-pi5-hermes/config/task-bridge.policy.yaml",
+        "targetPath": "scripts/private-pi5-hermes/config/task-bridge.policy.yaml"
       },
       {
         "sourcePath": "docs/knowledge-base/api.md",
@@ -12285,8 +12295,8 @@
     },
     {
       "path": "docs/architecture/single-instance-state.md",
-      "lineCount": 53,
-      "byteSize": 5280,
+      "lineCount": 54,
+      "byteSize": 5726,
       "hasFrontmatter": false,
       "title": "API の 1 台構成の前提（プロセスのメモリに持つ状態）",
       "status": null,
@@ -16340,7 +16350,7 @@
         {
           "href": "../../scripts/private-pi5-hermes/config/task-bridge.policy.yaml",
           "targetPath": "scripts/private-pi5-hermes/config/task-bridge.policy.yaml",
-          "exists": true
+          "exists": false
         }
       ],
       "inboundCount": 4,
@@ -28731,7 +28741,7 @@
         {
           "href": "../../scripts/private-pi5-hermes/config/task-bridge.policy.yaml",
           "targetPath": "scripts/private-pi5-hermes/config/task-bridge.policy.yaml",
-          "exists": true
+          "exists": false
         }
       ],
       "inboundCount": 17,
@@ -33021,8 +33031,8 @@
     },
     {
       "path": "docs/knowledge-base/infrastructure/security.md",
-      "lineCount": 1312,
-      "byteSize": 81500,
+      "lineCount": 1313,
+      "byteSize": 82232,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - セキュリティ関連",
       "status": null,
@@ -34628,8 +34638,8 @@
     },
     {
       "path": "docs/plans/code-health-refactor-execplan.md",
-      "lineCount": 119,
-      "byteSize": 17330,
+      "lineCount": 120,
+      "byteSize": 18184,
       "hasFrontmatter": false,
       "title": "コード保守性の改善プログラム",
       "status": null,
@@ -35029,7 +35039,7 @@
     {
       "path": "docs/plans/dgx-spark-optimization-execplan-202607.md",
       "lineCount": 92,
-      "byteSize": 8618,
+      "byteSize": 8791,
       "hasFrontmatter": true,
       "title": "DGX Spark Optimization ExecPlan",
       "status": "done_repo_side",

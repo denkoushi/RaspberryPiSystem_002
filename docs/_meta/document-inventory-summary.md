@@ -12,8 +12,8 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Metric | Count |
 |--------|------:|
 | Documents | 768 |
-| Total lines | 188989 |
-| Total bytes | 15047478 |
+| Total lines | 188992 |
+| Total bytes | 15049683 |
 | With frontmatter | 367 |
 | With status | 170 |
 | source_of_truth declared | 116 |
@@ -22,7 +22,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Replacement-character documents | 1 |
 | Long-line documents | 39 |
 | Local links | 5871 |
-| Broken local links | 89 |
+| Broken local links | 91 |
 | Documents over 1,000 lines | 29 |
 | Documents over 3,000 lines | 6 |
 
@@ -103,6 +103,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/architecture/overview.md` -> `./database.md` (docs/architecture/database.md)
 - `docs/architecture/overview.md` -> `./modules.md` (docs/architecture/modules.md)
 - `docs/archive/architecture/deployment-modules-legacy-through-2026-07.md` -> `../../../infrastructure/ansible/playbooks/deploy.yml` (infrastructure/ansible/playbooks/deploy.yml)
+- `docs/decisions/ADR-20260525-private-pi5-hermes-discord-approval-relay-d5-1.md` -> `../../scripts/private-pi5-hermes/config/task-bridge.policy.yaml` (scripts/private-pi5-hermes/config/task-bridge.policy.yaml)
 - `docs/guides/ansible-best-practices.md` -> `../plans/ansible-hardening-stabilization-plan.md` (docs/plans/ansible-hardening-stabilization-plan.md)
 - `docs/guides/ansible-best-practices.md` -> `../plans/ansible-progress-summary.md` (docs/plans/ansible-progress-summary.md)
 - `docs/guides/ansible-managed-files.md` -> `../plans/ansible-hardening-stabilization-plan.md` (docs/plans/ansible-hardening-stabilization-plan.md)
@@ -128,6 +129,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md` -> `../EXEC_PLAN.md#キオスク順位ボード--shell-選定-sql-第3弾以降保留2026-05-22--後日参照` (docs/EXEC_PLAN.md)
 - `docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md` -> `../EXEC_PLAN.md#cursor-state-db-recovery-2026-06-06` (docs/EXEC_PLAN.md)
 - `docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md` -> `../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24` (docs/EXEC_PLAN.md)
+- `docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md` -> `../../scripts/private-pi5-hermes/config/task-bridge.policy.yaml` (scripts/private-pi5-hermes/config/task-bridge.policy.yaml)
 - `docs/knowledge-base/api.md` -> `../frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能` (docs/frontend.md)
 - `docs/knowledge-base/api.md` -> `../frontend.md#kb-268-生産スケジュールキオスク操作で間欠的に数秒待つ継続観察` (docs/frontend.md)
 - `docs/knowledge-base/api.md` -> `../frontend.md#kb-282-生産スケジュール登録製番ボタンの3段表示と機種名表示全角半角大文字化` (docs/frontend.md)
@@ -142,5 +144,3 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/knowledge-base/infrastructure/ansible-deployment.md` -> `../guides/deployment.md#本番セキュリティ設定2026-02-13追加` (docs/knowledge-base/guides/deployment.md)
 - `docs/knowledge-base/infrastructure/ansible-deployment.md` -> `../plans/security-hardening-execplan.md` (docs/knowledge-base/plans/security-hardening-execplan.md)
 - `docs/knowledge-base/infrastructure/ansible-deployment.md` -> `../runbooks/deploy-status-recovery.md` (docs/knowledge-base/runbooks/deploy-status-recovery.md)
-- `docs/knowledge-base/infrastructure/backup-restore.md` -> `../api/backup.md` (docs/knowledge-base/api/backup.md)
-- `docs/knowledge-base/infrastructure/backup-restore.md` -> `../guides/ansible-ssh-architecture.md` (docs/knowledge-base/guides/ansible-ssh-architecture.md)
