@@ -1,204 +1,69 @@
-import { ApiError } from '../../../lib/errors.js';
 import { env } from '../../../config/env.js';
+import { ApiError } from '../../../lib/errors.js';
+import { resolveBusinessRuntimeStartProfile } from '../../inference/config/business-profile-intent.js';
+import { getBusinessProfileIntentStore } from '../../inference/config/business-profile-intent-store.js';
+import { readPhotoToolEmbeddingHealth } from '../../tools/photo-tool-label/photo-tool-embedding-health.js';
 
-import { policyLabelJa } from './dgx-resource.policy-profile.js';
-import type { DgxPolicyMode, DgxResourceEvent, DgxResourcePolicyStore } from './dgx-resource.policy-store.js';
-
-import type {
-  DgxControlTargetAction,
-  DgxControlTargetId,
-  DgxControlTargetSnapshot,
-  DgxUserControlTargetAction,
-} from './dgx-resource.control-target.types.js';
-import { executeAuxHttpRuntimeStartStop } from './dgx-resource.aux-http-runtime.executor.js';
 import { executeGatewayRuntimeStartStop } from './dgx-resource.gateway-runtime.executor.js';
+import { fetchDgxModelProfilesOverview, profileDeclaresVision, type DgxBusinessModelProfile } from './dgx-resource.model-profiles.js';
 import {
-  buildControlTargetSnapshots,
-  buildLegacyServiceCards,
-  type DgxResourceServiceCard,
-  type OverviewProbeBundle,
-} from './dgx-resource.control-targets.builder.js';
-import {
-  buildOrchestrationScenarioPreview,
-  type DgxOrchestrationScenarioId,
-  type ScenarioPlanPreview,
-} from './dgx-resource.scenario-planner.js';
-import { buildDgxResourceMonitoringOverview, type DgxResourceMonitoringSummary } from './dgx-resource.monitoring-overview.js';
-import { buildDgxResourceOperatorConsole, type DgxResourceOperatorConsole } from './dgx-resource.operator-overview.js';
-import {
-  assertModelProfileEligibleForBusinessReturn,
-  assertModelProfileKnownAndStartable,
-  assertModelProfileSelectionAllowed,
-  fetchDgxModelProfilesOverview,
-  type DgxModelProfilesOverview,
-  type DgxResourceSharedState,
-} from './dgx-resource.model-profiles.js';
-import {
-  executeDgxModelStorageDelete,
-  previewDgxModelStorageDelete,
-  type DgxModelStorageDeleteExecuteResult,
-  type DgxModelStorageDeletePreview,
+  executeDgxModelStorageDelete, previewDgxModelStorageDelete,
+  type DgxModelStorageDeleteExecuteResult, type DgxModelStorageDeletePreview,
 } from './dgx-resource.model-storage-delete.js';
+import { fetchJsonMetrics, probeV1Models } from './dgx-resource.probes.js';
+import { waitBusinessReadiness, type BusinessReadinessSnapshot } from './dgx-resource.scenario-readiness.js';
 import { enrichDgxModelProfilesStartupFit } from './dgx-resource.startup-fit.js';
-import {
-  executeOrchestrationScenarioTransition,
-  executeWorkloadTransitionsThenApplyPolicyMode,
-} from './dgx-resource.workload-transition.js';
-import type { DgxResourceScenarioExecuteResult } from './dgx-resource.scenario-execute.types.js';
-import { fetchJsonMetrics, probeHttpGet, probeHttpOk, probeV1Models } from './dgx-resource.probes.js';
-import { buildDgxResourceRuntimeSummary, type DgxResourceRuntimeSummary } from './dgx-resource.runtime-summary.js';
-import { buildDgxResourceUiMetadata, type DgxResourceUiMetadata } from './dgx-resource.ui-metadata.js';
+import type { BusinessReturn, DgxResourceEvent, DgxResourceStateStore } from './dgx-resource.state-store.js';
 
 import type { LocalLlmGateway, LocalLlmRuntimeConfig } from '../local-llm-proxy.service.js';
 
-export type { DgxResourceServiceCard };
-
-/** @deprecated 互換のため re-export。新規は control-target.types を参照 */
-export type DgxServiceStatusKind = import('./dgx-resource.control-target.types.js').DgxServiceStatusKind;
-
-export type DgxResourceKpis = {
-  gpuUtilPct: number | null;
-  gpuTemperatureC: number | null;
-  gpuPowerDrawW: number | null;
-  gpuPowerLimitW: number | null;
-  gpuClockSmMhz: number | null;
-  gpuClockGraphicsMhz: number | null;
-  gpuClockMemoryMhz: number | null;
-  gpuPstate: string | null;
-  gpuClocksThrottleReason: string | null;
-  gpuName: string | null;
-  driverVersion: string | null;
-  unifiedMemoryUsedGiB: number | null;
-  unifiedMemoryTotalGiB: number | null;
-  freeMemoryGiB: number | null;
-  systemMemoryAvailableGiB: number | null;
-  startupFreeMemoryGiB: number | null;
-  memoryMetricSource: string | null;
-  gpuProcessCount: number | null;
-  gpuProcessMemoryUsedGiB: number | null;
-  gpuProcesses: Array<{
-    pid?: number;
-    processName?: string;
-    usedMemoryGiB?: number;
+type ProfileLabel = { id: string; displayName: string };
+export type DgxResourceOverview = {
+  generatedAt: string;
+  business: {
+    state: 'ready' | 'ready_mismatch' | 'degraded' | 'down' | 'unconfigured' | 'returning';
+    llm: { state: BusinessReadinessSnapshot['llmState'] };
+    embedding: ReturnType<typeof readPhotoToolEmbeddingHealth>;
+    activeProfile: ProfileLabel | null;
+    intendedProfile: ProfileLabel | null;
+    matchesIntent: boolean | null;
+  };
+  metrics: {
+    unifiedMemUsedBytes: number | null;
+    unifiedMemTotalBytes: number | null;
+    gpuUtilPct: number | null;
+    temperatureC: number | null;
+    powerW: number | null;
+  };
+  modelProfiles: Array<ProfileLabel & {
+    backendLabel: 'vLLM' | 'llama.cpp' | '不明';
+    supportsVision: boolean;
+    isActive: boolean;
+    isRecommended: boolean;
+    startupFit: 'fits' | 'insufficient' | 'unknown';
+    startable: boolean;
+    unavailableReasonJa: string | null;
+    deletable: boolean;
+    storageBytes?: number;
   }>;
-  /** グラフ配色などはこちらで分岐（表示ラベル文字列依存を避ける） */
-  policyMode: DgxPolicyMode;
-  policyLabel: string;
+  modelProfilesAvailable: boolean;
+  businessReturn: BusinessReturn;
+  alerts: Array<{ id: string; messageJa: string }>;
 };
 
-export type { DgxResourceScenarioExecuteResult } from './dgx-resource.scenario-execute.types.js';
+export type DgxResourceActionBody =
+  | { type: 'RETURN_TO_BUSINESS'; modelProfileId: string }
+  | { type: 'STOP_BUSINESS_LLM' }
+  | { type: 'PREVIEW_MODEL_STORAGE_DELETE'; modelProfileId: string }
+  | { type: 'EXECUTE_MODEL_STORAGE_DELETE'; modelProfileId: string; planFingerprint: string; confirmation: string };
 
-/** API POST /system/dgx-resource/actions の戻り（後方互換: message と ok は常に設定） */
 export type DgxResourceActionResult = {
   ok: true;
   message: string;
-  scenarioPreview?: ScenarioPlanPreview;
-  scenarioExecute?: DgxResourceScenarioExecuteResult;
-  releaseResult?: DgxResourceReleaseResult;
+  businessReturn?: BusinessReturn;
   modelStorageDeletePreview?: DgxModelStorageDeletePreview;
   modelStorageDeleteExecute?: DgxModelStorageDeleteExecuteResult;
 };
-
-export type DgxResourceReleaseResult = {
-  success: boolean;
-  steps: Array<{
-    targetId: DgxControlTargetId;
-    labelJa: string;
-    action: DgxControlTargetAction;
-    status: 'success' | 'skipped' | 'failed';
-    messageJa: string;
-  }>;
-};
-
-export type DgxSparkHostOverview = {
-  configured: boolean;
-  probedAt: string;
-  status: DgxServiceStatusKind;
-  probeUrl?: string;
-  httpStatus?: number;
-  errorBrief?: string;
-};
-
-export type DgxResourceWarmWindow = {
-  enabled: boolean;
-  timeZone?: string;
-  startHourInclusive?: number;
-  endHourExclusive?: number;
-};
-
-export type DgxResourceOverview = {
-  generatedAt: string;
-  kpis: DgxResourceKpis;
-  policy: {
-    mode: DgxPolicyMode;
-    /** ロールバック用。未切替または同一モード再設定のみのとき null */
-    previousMode: DgxPolicyMode | null;
-  };
-  runtime: {
-    localLlmMode: 'always_on' | 'on_demand';
-    runtimeControlConfigured: boolean;
-    warmWindow: DgxResourceWarmWindow;
-  };
-  optionalProbes: {
-    metricsConfigured: boolean;
-    embeddingHealthConfigured: boolean;
-    sparkHostConfigured: boolean;
-    experimentLabHealthConfigured: boolean;
-    experimentLabRuntimeControlConfigured: boolean;
-    agentContainerHealthConfigured: boolean;
-    agentContainerRuntimeControlConfigured: boolean;
-  };
-  /** 標準 Control Target 一覧（監視・許可操作の正規モデル） */
-  targets: DgxControlTargetSnapshot[];
-  sparkHost: DgxSparkHostOverview;
-  /** @deprecated 後方互換。UI は targets を優先 */
-  services: DgxResourceServiceCard[];
-  notes: string[];
-  /** Phase4 以降の構造化運用ヒント・アラート */
-  monitoring: DgxResourceMonitoringSummary;
-  /** 運用者向け表示モデル（targets[] を置き換えない） */
-  operator: DgxResourceOperatorConsole;
-  /** DGX 正本の業務復帰 LocalLLM モデルプロファイル */
-  modelProfiles: DgxModelProfilesOverview;
-  /** DGX gateway 共有 owner/state。Private Pi5 直通 route と業務 Pi5 UI の共通状態 */
-  resourceState: DgxResourceSharedState | null;
-  /** メトリクス KPI とは分離した実行時状態（モデル・backend・Ready ヒント） */
-  runtimeSummary: DgxResourceRuntimeSummary;
-  /** ダッシュボード表示メタデータ（シナリオ・運用モードの説明。additive） */
-  uiMetadata: DgxResourceUiMetadata;
-};
-
-export type { DgxResourceUiMetadata };
-
-export type { DgxResourceRuntimeSummary };
-
-export type DgxResourceActionBody =
-  | { type: 'LOCAL_LLM_START'; reason?: string }
-  | { type: 'LOCAL_LLM_STOP'; reason?: string }
-  | { type: 'START_MODEL_PROFILE'; modelProfileId: string; reason?: string }
-  | { type: 'SET_POLICY'; policyMode: DgxPolicyMode; applyWorkloadChanges?: boolean }
-  | {
-      type: 'EXECUTE_TARGET_ACTION';
-      targetId: DgxControlTargetId;
-      action: DgxUserControlTargetAction;
-      reason?: string;
-    }
-  | { type: 'PREVIEW_ORCHESTRATION_SCENARIO'; scenarioId: DgxOrchestrationScenarioId; modelProfileId?: string }
-  | {
-      type: 'EXECUTE_ORCHESTRATION_SCENARIO';
-      scenarioId: DgxOrchestrationScenarioId;
-      planFingerprint: string;
-      confirmed: true;
-      modelProfileId?: string;
-    }
-  | { type: 'RELEASE_DGX_RESOURCES'; reason?: string }
-  | { type: 'PREVIEW_MODEL_STORAGE_DELETE'; modelProfileId: string }
-  | {
-      type: 'EXECUTE_MODEL_STORAGE_DELETE';
-      modelProfileId: string;
-      planFingerprint: string;
-      confirmation: string;
-    };
 
 export type DgxResourceServicePort = {
   getOverview: () => Promise<DgxResourceOverview>;
@@ -210,835 +75,199 @@ export type DgxResourceServiceDeps = {
   fetchImpl: typeof fetch;
   localLlmGateway: LocalLlmGateway;
   getAdminLocalLlmRuntimeConfig: () => LocalLlmRuntimeConfig;
-  policyStore: DgxResourcePolicyStore;
+  stateStore: DgxResourceStateStore;
   probeTimeoutMs: number;
   metricsUrl?: string;
-  embeddingHealthUrl?: string;
-  /** DGX Spark ホスト疎通（任意） */
-  sparkHostStatusUrl?: string;
 };
 
-function ensureAuxRuntimeAction(action: DgxControlTargetAction): DgxUserControlTargetAction {
-  if (action === 'stop_force') {
-    throw new ApiError(
-      400,
-      'この制御ターゲットでは強制停止を実行できません',
-      { action },
-      'DGX_TARGET_ACTION_NOT_SUPPORTED'
-    );
-  }
-  return action;
+function displayName(profile: DgxBusinessModelProfile): string {
+  return profile.displayNameJa !== profile.id ? profile.displayNameJa : '名称未登録のモデル';
 }
 
-function buildWarmWindow(): DgxResourceWarmWindow {
-  if (!env.LOCAL_LLM_RUNTIME_WARM_WINDOW_ENABLED) {
-    return { enabled: false };
-  }
-  return {
-    enabled: true,
-    timeZone: env.LOCAL_LLM_RUNTIME_WARM_WINDOW_TIMEZONE,
-    startHourInclusive: env.LOCAL_LLM_RUNTIME_WARM_WINDOW_START_HOUR,
-    endHourExclusive: env.LOCAL_LLM_RUNTIME_WARM_WINDOW_END_HOUR,
-  };
+function unavailableReason(profile: DgxBusinessModelProfile): string | null {
+  if (!profile.businessOrchestrationEligible) return '業務用ではありません';
+  if (!profile.enabled || profile.status !== 'available') return '現在は利用できません';
+  if (profile.startupFit?.status === 'insufficient') return 'メモリ不足';
+  return null;
 }
-
-function gatewayRuntimeControlConfiguredFlag(): boolean {
-  return (
-    Boolean(env.LOCAL_LLM_RUNTIME_CONTROL_START_URL?.trim() && env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL?.trim()) &&
-    env.LOCAL_LLM_RUNTIME_MODE === 'on_demand'
-  );
-}
-
-function releaseTargetLabelJa(targetId: DgxControlTargetId): string {
-  switch (targetId) {
-    case 'system-prod-gateway':
-      return '業務 LLM';
-    case 'experiment-lab':
-      return '実験ラボ';
-    case 'agent-container':
-      return 'Agent';
-    default:
-      return targetId;
-  }
-}
-
-function readExperimentLabRuntimeEndpoints(): { startUrl: string; stopUrl: string; token?: string } | undefined {
-  const s = env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL?.trim();
-  const sp = env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL?.trim();
-  if (!s || !sp) return undefined;
-  const t = env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_CONTROL_TOKEN?.trim();
-  return { startUrl: s, stopUrl: sp, ...(t ? { token: t } : {}) };
-}
-
-function readAgentContainerRuntimeEndpoints(): { startUrl: string; stopUrl: string; token?: string } | undefined {
-  const s = env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL?.trim();
-  const sp = env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_STOP_URL?.trim();
-  if (!s || !sp) return undefined;
-  const t = env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_CONTROL_TOKEN?.trim();
-  return { startUrl: s, stopUrl: sp, ...(t ? { token: t } : {}) };
-}
-
-function experimentLabRuntimeControlConfigured(): boolean {
-  return readExperimentLabRuntimeEndpoints() !== undefined;
-}
-
-function agentContainerRuntimeControlConfigured(): boolean {
-  return readAgentContainerRuntimeEndpoints() !== undefined;
-}
-
-function inferenceHeuristics(bundle: OverviewProbeBundle): {
-  inferenceLooksDegraded: boolean;
-} {
-  const gatewayRunning = bundle.gatewayStatus.configured && bundle.gatewayStatus.health.ok;
-  const inferenceLooksDegraded = Boolean(gatewayRunning && !bundle.modelsProbe.ok && bundle.gatewayStatus.configured);
-  return { inferenceLooksDegraded };
-}
-
-type TargetRuntimeEventLogMode = 'default' | 'none';
 
 export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResourceServicePort {
-  const auxTimeoutMs = env.DGX_RESOURCE_AUX_RUNTIME_REQUEST_TIMEOUT_MS;
-  const experimentLabHealthUrl = env.DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL?.trim() || undefined;
-  const agentContainerHealthUrl = env.DGX_RESOURCE_AGENT_CONTAINER_HEALTH_URL?.trim() || undefined;
-  const collectOverviewProbeBundle = async (): Promise<{
-    generatedAt: string;
-    policyMode: DgxPolicyMode;
-    previousMode: DgxPolicyMode | null;
-    adminCfg: LocalLlmRuntimeConfig;
-    gatewayStatus: Awaited<ReturnType<LocalLlmGateway['getStatus']>>;
-    bundle: OverviewProbeBundle;
-    runtimeControlConfigured: boolean;
-    expLabRtCfg: boolean;
-    metricsConfigured: boolean;
-    embeddingConfigured: boolean;
-    sparkConfigured: boolean;
-    experimentLabHealthConfigured: boolean;
-    experimentLabProbeUrl: string | undefined;
-    agentContainerHealthConfigured: boolean;
-    agentContainerProbeUrl: string | undefined;
-    agentRtCfg: boolean;
-    sparkHost: DgxSparkHostOverview;
-    modelProfiles: DgxModelProfilesOverview;
-    notes: string[];
-  }> => {
-    const generatedAt = new Date().toISOString();
-    const policyMode = deps.policyStore.getPolicyMode();
-    const previousMode = deps.policyStore.getPreviousPolicyMode();
-
-    const adminCfg = deps.getAdminLocalLlmRuntimeConfig();
-    const gatewayStatus = await deps.localLlmGateway.getStatus();
-
-    let modelsProbe: OverviewProbeBundle['modelsProbe'] = { ok: false };
-    if (
-      gatewayStatus.configured &&
-      adminCfg.configured &&
-      adminCfg.baseUrl &&
-      adminCfg.sharedToken &&
-      gatewayStatus.health.ok
-    ) {
-      modelsProbe = await probeV1Models(adminCfg.baseUrl, adminCfg.sharedToken, deps.fetchImpl, deps.probeTimeoutMs);
-    }
-
-    let modelProfiles = await fetchDgxModelProfilesOverview({
-      baseUrl: adminCfg.baseUrl,
-      sharedToken: adminCfg.sharedToken,
-      fetchImpl: deps.fetchImpl,
-      timeoutMs: deps.probeTimeoutMs,
+  const store = deps.stateStore;
+  const fetchProfiles = () => {
+    const config = deps.getAdminLocalLlmRuntimeConfig();
+    return fetchDgxModelProfilesOverview({
+      baseUrl: config.baseUrl, sharedToken: config.sharedToken,
+      fetchImpl: deps.fetchImpl, timeoutMs: deps.probeTimeoutMs,
     });
-
-    const metricsConfigured = Boolean(deps.metricsUrl?.trim());
-    const metricsFallbackCandidates =
-      !metricsConfigured && adminCfg.baseUrl
-        ? ([
-            {
-              url: new URL('/system/metrics', adminCfg.baseUrl).toString(),
-              headers: adminCfg.sharedToken ? ({ 'X-LLM-Token': adminCfg.sharedToken } as const) : undefined,
-            },
-            {
-              url: new URL('/v1/system/metrics', adminCfg.baseUrl).toString(),
-              headers: adminCfg.sharedToken ? ({ 'X-LLM-Token': adminCfg.sharedToken } as const) : undefined,
-            },
-          ] as const)
-        : [];
-    const metricsProbeCandidates = metricsConfigured
-      ? ([{ url: deps.metricsUrl!, headers: undefined as Record<string, string> | undefined }] as const)
-      : metricsFallbackCandidates;
-    let metricsPayload: Awaited<ReturnType<typeof fetchJsonMetrics>> = undefined;
-    for (const candidate of metricsProbeCandidates) {
-      metricsPayload = await fetchJsonMetrics(candidate.url, deps.fetchImpl, deps.probeTimeoutMs, candidate.headers);
-      if (metricsPayload) break;
+  };
+  const fetchMetrics = async () => {
+    const config = deps.getAdminLocalLlmRuntimeConfig();
+    const candidates = deps.metricsUrl?.trim()
+      ? [{ url: deps.metricsUrl, headers: undefined }]
+      : config.baseUrl
+        ? ['/system/metrics', '/v1/system/metrics'].map((path) => ({
+          url: new URL(path, config.baseUrl).toString(),
+          headers: config.sharedToken ? { 'X-LLM-Token': config.sharedToken } : undefined,
+        })) : [];
+    for (const candidate of candidates) {
+      const metrics = await fetchJsonMetrics(candidate.url, deps.fetchImpl, deps.probeTimeoutMs, candidate.headers);
+      if (metrics) return metrics;
     }
-    modelProfiles = enrichDgxModelProfilesStartupFit(modelProfiles, metricsPayload);
-    const embeddingConfigured = Boolean(deps.embeddingHealthUrl?.trim());
-    let embeddingReachable = false;
-    let embeddingProbeDisplay: string | undefined;
-    if (embeddingConfigured && adminCfg.sharedToken && adminCfg.baseUrl) {
-      const raw = deps.embeddingHealthUrl!;
-      embeddingProbeDisplay = raw;
-      const embUrl =
-        raw.startsWith('http://') || raw.startsWith('https://')
-          ? raw
-          : new URL(raw, adminCfg.baseUrl).toString();
-      embeddingReachable = await probeHttpOk(embUrl, deps.fetchImpl, deps.probeTimeoutMs, {
-        'X-LLM-Token': adminCfg.sharedToken,
+    return undefined;
+  };
+  const collect = async (): Promise<BusinessReadinessSnapshot> => {
+    const config = deps.getAdminLocalLlmRuntimeConfig();
+    const [gateway, profiles, models] = await Promise.all([
+      deps.localLlmGateway.getStatus(), fetchProfiles(),
+      config.configured && config.baseUrl && config.sharedToken
+        ? probeV1Models(config.baseUrl, config.sharedToken, deps.fetchImpl, deps.probeTimeoutMs)
+        : Promise.resolve({ ok: false }),
+    ]);
+    return {
+      llmState: !gateway.configured ? 'unconfigured' : gateway.health.ok && models.ok ? 'ok' : 'down',
+      modelProfiles: profiles,
+    };
+  };
+  const acquire = () => {
+    if (!store.tryAcquire()) {
+      throw new ApiError(409, '別の操作が進行中です。終わるまでお待ちください。', undefined, 'DGX_OPERATION_IN_PROGRESS');
+    }
+  };
+  const finishReturn = async (profile: DgxBusinessModelProfile) => {
+    try {
+      await executeGatewayRuntimeStartStop(deps, 'start', 'return_to_business', profile.id);
+      const ready = await waitBusinessReadiness({
+        collect, modelProfileId: profile.id,
+        timeoutMs: env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS,
+        pollIntervalMs: env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS,
+        retryStart: () => executeGatewayRuntimeStartStop(deps, 'start', 'return_to_business_retry', profile.id),
       });
-    }
-
-    const explicitSparkUrl = deps.sparkHostStatusUrl?.trim();
-    const fallbackSparkUrl =
-      !explicitSparkUrl && adminCfg.baseUrl ? new URL('/healthz', adminCfg.baseUrl).toString() : undefined;
-    const sparkUrl = explicitSparkUrl || fallbackSparkUrl;
-    const sparkConfigured = Boolean(sparkUrl);
-    let sparkProbe: { ok: boolean; statusCode?: number; errorBrief?: string } = { ok: false };
-    if (sparkConfigured) {
-      sparkProbe = await probeHttpGet(sparkUrl!, deps.fetchImpl, deps.probeTimeoutMs);
-    }
-
-    const experimentLabHealthConfigured = Boolean(env.DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL?.trim());
-    let experimentLabReachable = false;
-    const experimentLabProbeUrl = env.DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL?.trim();
-    if (experimentLabHealthConfigured && experimentLabProbeUrl) {
-      experimentLabReachable = await probeHttpOk(experimentLabProbeUrl, deps.fetchImpl, deps.probeTimeoutMs);
-    }
-
-    const agentContainerHealthConfigured = Boolean(env.DGX_RESOURCE_AGENT_CONTAINER_HEALTH_URL?.trim());
-    let agentContainerReachable = false;
-    const agentContainerProbeUrl = env.DGX_RESOURCE_AGENT_CONTAINER_HEALTH_URL?.trim();
-    if (agentContainerHealthConfigured && agentContainerProbeUrl) {
-      agentContainerReachable = await probeHttpOk(agentContainerProbeUrl, deps.fetchImpl, deps.probeTimeoutMs);
-    }
-
-    const runtimeControlConfigured = gatewayRuntimeControlConfiguredFlag();
-    const expLabRtCfg = experimentLabRuntimeControlConfigured();
-    const agentRtCfg = agentContainerRuntimeControlConfigured();
-
-    const bundle: OverviewProbeBundle = {
-      policyMode,
-      adminCfg,
-      gatewayStatus,
-      modelsProbe,
-      modelProfiles,
-      metricsConfigured,
-      metricsPayload,
-      embeddingConfigured,
-      embeddingReachable,
-      embeddingProbeDisplay,
-      sparkUrl,
-      sparkConfigured,
-      sparkProbe,
-      runtimeControlConfigured,
-      experimentLabHealthConfigured,
-      experimentLabReachable,
-      experimentLabProbeUrl: experimentLabProbeUrl ?? undefined,
-      experimentLabRuntimeControlConfigured: expLabRtCfg,
-      agentContainerHealthConfigured,
-      agentContainerReachable,
-      agentContainerProbeUrl: agentContainerProbeUrl ?? undefined,
-      agentContainerRuntimeControlConfigured: agentRtCfg,
-    };
-
-    const notes: string[] = [];
-    if (!metricsConfigured && !metricsPayload) {
-      notes.push(
-        'GPU/メモリKPI は DGX_RESOURCE_METRICS_URL 未設定かつ、ゲートウェイ /system/metrics または /v1/system/metrics の取得に失敗したため未表示です'
-      );
-    }
-    if (!sparkConfigured) {
-      notes.push(
-        'DGX Spark ホスト簡易監視は DGX_RESOURCE_SPARK_HOST_STATUS_URL 未設定のため未取得です（メトリクス sidecar の /health 等を Runbook で設定）'
-      );
-    }
-    if (modelProfiles.status === 'degraded' && modelProfiles.errorMessageJa) {
-      notes.push(`業務モデルプロファイル取得が degraded です: ${modelProfiles.errorMessageJa}`);
-    }
-
-    const eStart = env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL?.trim();
-    const eStop = env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL?.trim();
-    if ((eStart && !eStop) || (!eStart && eStop)) {
-      notes.push(
-        'DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL / STOP_URL の片方のみ設定されています（起停は無効）'
-      );
-    }
-
-    const acStart = env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL?.trim();
-    const acStop = env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_STOP_URL?.trim();
-    if ((acStart && !acStop) || (!acStart && acStop)) {
-      notes.push(
-        'DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL / STOP_URL の片方のみ設定されています（起停は無効）'
-      );
-    }
-
-    if (!experimentLabHealthConfigured && expLabRtCfg) {
-      notes.push(
-        'experiment-lab のヘルス URL 未設定のため状態は不明ですが、起停用 POST は利用できます（任意で DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL）'
-      );
-    }
-
-    if (!agentContainerHealthConfigured && agentRtCfg) {
-      notes.push(
-        'agent-container のヘルス URL 未設定のため状態は不明ですが、起停用 POST は利用できます（任意で DGX_RESOURCE_AGENT_CONTAINER_HEALTH_URL）'
-      );
-    }
-
-    const sparkHost: DgxSparkHostOverview = {
-      configured: sparkConfigured,
-      probedAt: generatedAt,
-      status: sparkConfigured ? (sparkProbe.ok ? 'running' : 'stopped') : 'unknown',
-      ...(sparkConfigured && sparkUrl ? { probeUrl: sparkUrl } : {}),
-      ...(sparkProbe.statusCode !== undefined ? { httpStatus: sparkProbe.statusCode } : {}),
-      ...(sparkProbe.errorBrief && !sparkProbe.ok ? { errorBrief: sparkProbe.errorBrief } : {}),
-    };
-
-    return {
-      generatedAt,
-      policyMode,
-      previousMode,
-      adminCfg,
-      gatewayStatus,
-      bundle,
-      runtimeControlConfigured,
-      expLabRtCfg,
-      metricsConfigured,
-      embeddingConfigured,
-      sparkConfigured,
-      experimentLabHealthConfigured,
-      experimentLabProbeUrl: experimentLabProbeUrl ?? undefined,
-      agentContainerHealthConfigured,
-      agentContainerProbeUrl: agentContainerProbeUrl ?? undefined,
-      agentRtCfg,
-      sparkHost,
-      modelProfiles,
-      notes,
-    };
-  };
-
-  const runGatewayRuntimeStartStop = async (
-    action: DgxControlTargetAction,
-    reason: string | undefined,
-    eventLog: TargetRuntimeEventLogMode,
-    modelProfileId?: string
-  ): Promise<{ ok: true; message: string }> => {
-    await executeGatewayRuntimeStartStop(deps, action, reason, modelProfileId);
-    if (eventLog === 'default') {
-      if (action === 'start') {
-        deps.policyStore.appendEvent('LocalLLM ランタイム起動を要求しました');
-        return { ok: true, message: '起動リクエストを送信しました（反映まで時間がかかる場合があります）' };
+      if (!ready) {
+        const reason = 'モデルの準備が時間内に終わりませんでした。状態を確認して、もう一度お試しください。';
+        store.finishReturn(reason);
+        store.appendEvent(`業務に戻せませんでした。${reason}`);
+        return;
       }
-      deps.policyStore.appendEvent(
-        action === 'stop_force' ? 'LocalLLM ランタイム強制停止を要求しました' : 'LocalLLM ランタイム停止を要求しました'
-      );
-      return {
-        ok: true,
-        message: action === 'stop_force' ? '強制停止リクエストを送信しました' : '停止リクエストを送信しました',
-      };
+      getBusinessProfileIntentStore().setFromOrchestration(profile.id);
+      store.finishReturn(null);
+      store.appendEvent(`「${displayName(profile)}」で業務に戻しました。`);
+    } catch {
+      const reason = 'モデルを読み込めませんでした。DGX との接続や設定を確認して、もう一度お試しください。';
+      store.finishReturn(reason);
+      store.appendEvent(`業務に戻せませんでした。${reason}`);
+    } finally {
+      store.release();
     }
-    return {
-      ok: true,
-      message:
-        action === 'start'
-          ? 'ゲートウェイ起動リクエストを送信しました'
-          : action === 'stop_force'
-            ? 'ゲートウェイ強制停止リクエストを送信しました'
-            : 'ゲートウェイ停止リクエストを送信しました',
-    };
-  };
-
-  const runExperimentLabAuxStartStop = async (
-    action: DgxControlTargetAction,
-    reason: string | undefined,
-    eventLog: TargetRuntimeEventLogMode
-  ): Promise<{ ok: true; message: string }> => {
-    const auxAction = ensureAuxRuntimeAction(action);
-    const rt = readExperimentLabRuntimeEndpoints();
-    if (!rt) {
-      throw new ApiError(
-        400,
-        'experiment-lab の起停 URL が Pi5 に未設定です（DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_*）',
-        { targetId: 'experiment-lab', action },
-        'DGX_TARGET_ACTION_NOT_SUPPORTED'
-      );
-    }
-    await executeAuxHttpRuntimeStartStop(deps, {
-      action: auxAction,
-      startUrl: rt.startUrl,
-      stopUrl: rt.stopUrl,
-      timeoutMs: auxTimeoutMs,
-      controlToken: rt.token,
-      reason,
-      errorCodePrefix: 'DGX_EXPERIMENT_LAB',
-    });
-    if (auxAction === 'stop' && experimentLabHealthUrl) {
-      const firstProbe = await probeHttpGet(experimentLabHealthUrl, deps.fetchImpl, deps.probeTimeoutMs);
-      if (firstProbe.ok) {
-        deps.policyStore.appendEvent('experiment-lab 停止確認: ヘルス応答が残っているため停止を再試行します');
-        await executeAuxHttpRuntimeStartStop(deps, {
-          action: auxAction,
-          startUrl: rt.startUrl,
-          stopUrl: rt.stopUrl,
-          timeoutMs: auxTimeoutMs,
-          controlToken: rt.token,
-          reason: `${reason ?? 'dgx_resource_aux'}_retry1`,
-          errorCodePrefix: 'DGX_EXPERIMENT_LAB',
-        });
-        const secondProbe = await probeHttpGet(experimentLabHealthUrl, deps.fetchImpl, deps.probeTimeoutMs);
-        if (secondProbe.ok) {
-          throw new ApiError(
-            502,
-            '補助ランタイム停止後もヘルス応答が残っています',
-            {
-              targetId: 'experiment-lab',
-              healthUrl: experimentLabHealthUrl,
-              firstStatusCode: firstProbe.statusCode ?? null,
-              secondStatusCode: secondProbe.statusCode ?? null,
-            },
-            'DGX_EXPERIMENT_LAB_STOP_NOT_EFFECTIVE'
-          );
-        }
-      }
-    }
-    if (eventLog === 'default') {
-      deps.policyStore.appendEvent(
-        auxAction === 'start' ? 'experiment-lab 起動を要求しました' : 'experiment-lab 停止を要求しました'
-      );
-    }
-    return {
-      ok: true,
-      message:
-        auxAction === 'start'
-          ? 'experiment-lab 起動リクエストを送信しました'
-          : 'experiment-lab 停止リクエストを送信しました',
-    };
-  };
-
-  const runAgentContainerAuxStartStop = async (
-    action: DgxControlTargetAction,
-    reason: string | undefined,
-    eventLog: TargetRuntimeEventLogMode
-  ): Promise<{ ok: true; message: string }> => {
-    const auxAction = ensureAuxRuntimeAction(action);
-    const rt = readAgentContainerRuntimeEndpoints();
-    if (!rt) {
-      throw new ApiError(
-        400,
-        'agent-container の起停 URL が Pi5 に未設定です（DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_*）',
-        { targetId: 'agent-container', action },
-        'DGX_TARGET_ACTION_NOT_SUPPORTED'
-      );
-    }
-    await executeAuxHttpRuntimeStartStop(deps, {
-      action: auxAction,
-      startUrl: rt.startUrl,
-      stopUrl: rt.stopUrl,
-      timeoutMs: auxTimeoutMs,
-      controlToken: rt.token,
-      reason,
-      errorCodePrefix: 'DGX_AGENT_CONTAINER',
-    });
-    if (auxAction === 'stop' && agentContainerHealthUrl) {
-      const firstProbe = await probeHttpGet(agentContainerHealthUrl, deps.fetchImpl, deps.probeTimeoutMs);
-      if (firstProbe.ok) {
-        deps.policyStore.appendEvent('agent-container 停止確認: ヘルス応答が残っているため停止を再試行します');
-        await executeAuxHttpRuntimeStartStop(deps, {
-          action: auxAction,
-          startUrl: rt.startUrl,
-          stopUrl: rt.stopUrl,
-          timeoutMs: auxTimeoutMs,
-          controlToken: rt.token,
-          reason: `${reason ?? 'dgx_resource_aux'}_retry1`,
-          errorCodePrefix: 'DGX_AGENT_CONTAINER',
-        });
-        const secondProbe = await probeHttpGet(agentContainerHealthUrl, deps.fetchImpl, deps.probeTimeoutMs);
-        if (secondProbe.ok) {
-          throw new ApiError(
-            502,
-            '補助ランタイム停止後もヘルス応答が残っています',
-            {
-              targetId: 'agent-container',
-              healthUrl: agentContainerHealthUrl,
-              firstStatusCode: firstProbe.statusCode ?? null,
-              secondStatusCode: secondProbe.statusCode ?? null,
-            },
-            'DGX_AGENT_CONTAINER_STOP_NOT_EFFECTIVE'
-          );
-        }
-      }
-    }
-    if (eventLog === 'default') {
-      deps.policyStore.appendEvent(
-        auxAction === 'start' ? 'agent-container 起動を要求しました' : 'agent-container 停止を要求しました'
-      );
-    }
-    return {
-      ok: true,
-      message:
-        auxAction === 'start'
-          ? 'agent-container 起動リクエストを送信しました'
-          : 'agent-container 停止リクエストを送信しました',
-    };
-  };
-
-  const runTargetRuntimeAction = async (
-    targetId: DgxControlTargetId,
-    action: DgxControlTargetAction,
-    reason: string | undefined,
-    eventLog: TargetRuntimeEventLogMode,
-    modelProfileId?: string
-  ): Promise<{ ok: true; message: string }> => {
-    switch (targetId) {
-      case 'system-prod-gateway':
-        return runGatewayRuntimeStartStop(action, reason, eventLog, modelProfileId);
-      case 'experiment-lab':
-        return runExperimentLabAuxStartStop(action, reason, eventLog);
-      case 'agent-container':
-        return runAgentContainerAuxStartStop(action, reason, eventLog);
-      default:
-        throw new ApiError(
-          400,
-          'この制御ターゲットでは start/stop を実行できません（読取のみ）',
-          { targetId, action },
-          'DGX_TARGET_ACTION_NOT_SUPPORTED'
-        );
-    }
-  };
-
-  const handleExecuteTargetAction = async (
-    targetId: DgxControlTargetId,
-    action: DgxControlTargetAction,
-    reason?: string
-  ): Promise<{ ok: true; message: string }> => {
-    return runTargetRuntimeAction(targetId, action, reason, 'default');
-  };
-
-  const handleReleaseDgxResources = async (reason?: string): Promise<DgxResourceActionResult> => {
-    const releaseTargets: Array<{
-      targetId: DgxControlTargetId;
-      action: DgxControlTargetAction;
-      configured: boolean;
-    }> = [
-      { targetId: 'system-prod-gateway', action: 'stop_force', configured: gatewayRuntimeControlConfiguredFlag() },
-      { targetId: 'experiment-lab', action: 'stop', configured: experimentLabRuntimeControlConfigured() },
-      { targetId: 'agent-container', action: 'stop', configured: agentContainerRuntimeControlConfigured() },
-    ];
-    const steps: DgxResourceReleaseResult['steps'] = [];
-    for (const target of releaseTargets) {
-      const labelJa = releaseTargetLabelJa(target.targetId);
-      if (!target.configured) {
-        steps.push({
-          targetId: target.targetId,
-          labelJa,
-          action: target.action,
-          status: 'skipped',
-          messageJa: '制御URL未設定',
-        });
-        continue;
-      }
-      try {
-        const result = await runTargetRuntimeAction(
-          target.targetId,
-          target.action,
-          reason ?? 'admin_dgx_resource_release',
-          'none'
-        );
-        steps.push({
-          targetId: target.targetId,
-          labelJa,
-          action: target.action,
-          status: 'success',
-          messageJa: result.message,
-        });
-      } catch (error) {
-        steps.push({
-          targetId: target.targetId,
-          labelJa,
-          action: target.action,
-          status: 'failed',
-          messageJa: error instanceof Error ? error.message : '停止に失敗しました',
-        });
-      }
-    }
-    const failed = steps.filter((step) => step.status === 'failed');
-    const success = failed.length === 0;
-    deps.policyStore.clearScenarioFailure();
-    deps.policyStore.appendEvent(
-      success
-        ? 'DGX 完全解放を実行しました'
-        : `DGX 完全解放を実行しました（一部失敗: ${failed.map((step) => step.labelJa).join(', ')}）`
-    );
-    return {
-      ok: true,
-      message: success ? 'DGX 完全解放を実行しました' : 'DGX 完全解放を実行しました（一部失敗あり）',
-      releaseResult: { success, steps },
-    };
-  };
-
-  const handlePreviewModelStorageDelete = async (modelProfileId: string): Promise<DgxResourceActionResult> => {
-    const pb = await collectOverviewProbeBundle();
-    const preview = await previewDgxModelStorageDelete({
-      baseUrl: pb.adminCfg.baseUrl,
-      fetchImpl: deps.fetchImpl,
-      timeoutMs: deps.probeTimeoutMs,
-      modelProfileId,
-    });
-    return {
-      ok: true,
-      message: preview.canDelete
-        ? `model profile「${modelProfileId}」の保存先削除プレビューを取得しました`
-        : `model profile「${modelProfileId}」は削除保護中です`,
-      modelStorageDeletePreview: preview,
-    };
-  };
-
-  const handleExecuteModelStorageDelete = async (
-    modelProfileId: string,
-    planFingerprint: string,
-    confirmation: string
-  ): Promise<DgxResourceActionResult> => {
-    const pb = await collectOverviewProbeBundle();
-    const result = await executeDgxModelStorageDelete({
-      baseUrl: pb.adminCfg.baseUrl,
-      fetchImpl: deps.fetchImpl,
-      timeoutMs: deps.probeTimeoutMs,
-      modelProfileId,
-      planFingerprint,
-      confirmation,
-    });
-    deps.policyStore.clearScenarioFailure();
-    deps.policyStore.appendEvent(`model profile「${modelProfileId}」の保存先を削除しました`);
-    return {
-      ok: true,
-      message: `model profile「${modelProfileId}」の保存先を削除しました`,
-      modelStorageDeleteExecute: result,
-    };
-  };
-
-  const handleStartModelProfile = async (
-    modelProfileId: string,
-    reason?: string
-  ): Promise<DgxResourceActionResult> => {
-    const pb = await collectOverviewProbeBundle();
-    assertModelProfileKnownAndStartable(pb.modelProfiles, modelProfileId);
-    const r = await runTargetRuntimeAction(
-      'system-prod-gateway',
-      'start',
-      reason,
-      'default',
-      modelProfileId
-    );
-    deps.policyStore.clearScenarioFailure();
-    deps.policyStore.appendEvent(`model profile「${modelProfileId}」の起動を要求しました`);
-    return {
-      ok: true,
-      message: `model profile「${modelProfileId}」: ${r.message}`,
-    };
-  };
-
-  const handleSetPolicy = async (
-    mode: DgxPolicyMode,
-    opts?: { applyWorkloadChanges?: boolean }
-  ): Promise<DgxResourceActionResult> => {
-    const res = await executeWorkloadTransitionsThenApplyPolicyMode({
-      mode,
-      applyWorkloadChanges: Boolean(opts?.applyWorkloadChanges),
-      workloadTraceReason: 'policy_ui',
-      capability: {
-        experimentLabRuntimeConfigured: experimentLabRuntimeControlConfigured(),
-        agentContainerRuntimeConfigured: agentContainerRuntimeControlConfigured(),
-        gatewayRuntimeConfigured: gatewayRuntimeControlConfiguredFlag(),
-      },
-      runTargetRuntimeAction,
-      policyStore: deps.policyStore,
-    });
-    deps.policyStore.clearScenarioFailure();
-    return res;
-  };
-
-  const orchestrationScenarioPreview = async (
-    scenarioId: DgxOrchestrationScenarioId,
-    modelProfileId?: string
-  ): Promise<DgxResourceActionResult> => {
-    assertModelProfileSelectionAllowed(scenarioId, modelProfileId);
-    const pb = await collectOverviewProbeBundle();
-    if (modelProfileId) {
-      assertModelProfileEligibleForBusinessReturn(pb.modelProfiles, modelProfileId);
-    }
-    const hints = inferenceHeuristics(pb.bundle);
-    const preview = buildOrchestrationScenarioPreview({
-      scenarioId,
-      experimentLabRuntimeConfigured: pb.bundle.experimentLabRuntimeControlConfigured,
-      agentContainerRuntimeConfigured: pb.bundle.agentContainerRuntimeControlConfigured,
-      gatewayRuntimeConfigured: pb.bundle.runtimeControlConfigured,
-      currentPolicyMode: pb.bundle.policyMode,
-      inferenceLooksDegraded: hints.inferenceLooksDegraded,
-      ...(modelProfileId ? { modelProfileId, modelProfiles: pb.modelProfiles.available } : {}),
-    });
-    const lines = preview.steps.map((s) => `${s.order}. ${s.summaryJa}`).join(' / ');
-    return {
-      ok: true,
-      message: preview.warnings.length > 0 ? `プレビュー（警告あり）: ${lines}` : `プレビュー（${lines}）`,
-      scenarioPreview: preview,
-    };
-  };
-
-  const orchestrationScenarioExecute = async (
-    scenarioId: DgxOrchestrationScenarioId,
-    planFingerprint: string,
-    modelProfileId?: string
-  ): Promise<DgxResourceActionResult> => {
-    assertModelProfileSelectionAllowed(scenarioId, modelProfileId);
-    if (modelProfileId) {
-      const pb = await collectOverviewProbeBundle();
-      assertModelProfileEligibleForBusinessReturn(pb.modelProfiles, modelProfileId);
-    }
-    const result = await executeOrchestrationScenarioTransition({
-      scenarioId,
-      planFingerprint,
-      ...(modelProfileId ? { modelProfileId } : {}),
-      deferReadiness: scenarioId === 'private_to_business' || scenarioId === 'experiment_to_business',
-      capability: {
-        experimentLabRuntimeConfigured: experimentLabRuntimeControlConfigured(),
-        agentContainerRuntimeConfigured: agentContainerRuntimeControlConfigured(),
-        gatewayRuntimeConfigured: gatewayRuntimeControlConfiguredFlag(),
-      },
-      runTargetRuntimeAction,
-      policyStore: deps.policyStore,
-      readinessCoordinator: {
-        collectProbeBundle: async () => {
-          const pb = await collectOverviewProbeBundle();
-          return pb.bundle;
-        },
-        localLlmRuntimeMode: env.LOCAL_LLM_RUNTIME_MODE,
-        readinessDeadlineMs: env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS,
-        readinessPollIntervalMs: env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS,
-      },
-    });
-    return result;
   };
 
   return {
-    getEvents(limit: number): DgxResourceEvent[] {
-      return deps.policyStore.getEvents(limit);
-    },
-
-    async executeAction(body: DgxResourceActionBody): Promise<DgxResourceActionResult> {
-      if (body.type === 'SET_POLICY') {
-        return handleSetPolicy(body.policyMode, {
-          applyWorkloadChanges: body.applyWorkloadChanges,
-        });
-      }
-      if (body.type === 'PREVIEW_ORCHESTRATION_SCENARIO') {
-        return orchestrationScenarioPreview(body.scenarioId, body.modelProfileId);
-      }
-      if (body.type === 'EXECUTE_ORCHESTRATION_SCENARIO') {
-        return orchestrationScenarioExecute(body.scenarioId, body.planFingerprint, body.modelProfileId);
-      }
-      if (body.type === 'RELEASE_DGX_RESOURCES') {
-        return handleReleaseDgxResources(body.reason);
-      }
-      if (body.type === 'PREVIEW_MODEL_STORAGE_DELETE') {
-        return handlePreviewModelStorageDelete(body.modelProfileId);
-      }
-      if (body.type === 'EXECUTE_MODEL_STORAGE_DELETE') {
-        return handleExecuteModelStorageDelete(body.modelProfileId, body.planFingerprint, body.confirmation);
-      }
-      if (body.type === 'EXECUTE_TARGET_ACTION') {
-        const r = await handleExecuteTargetAction(body.targetId, body.action, body.reason);
-        deps.policyStore.clearScenarioFailure();
-        return r;
-      }
-      if (body.type === 'START_MODEL_PROFILE') {
-        return handleStartModelProfile(body.modelProfileId, body.reason);
-      }
-      if (body.type === 'LOCAL_LLM_START') {
-        const r = await handleExecuteTargetAction('system-prod-gateway', 'start', body.reason);
-        deps.policyStore.clearScenarioFailure();
-        return r;
-      }
-      const r = await handleExecuteTargetAction('system-prod-gateway', 'stop', body.reason);
-      deps.policyStore.clearScenarioFailure();
-      return r;
-    },
-
-    async getOverview(): Promise<DgxResourceOverview> {
-      const pb = await collectOverviewProbeBundle();
-      const bundle = pb.bundle;
-      const targets = buildControlTargetSnapshots(bundle);
-      const services = buildLegacyServiceCards(bundle);
-      const monitoring = buildDgxResourceMonitoringOverview({
-        bundle,
-        targets,
-        adminCfg: pb.adminCfg,
-        lastScenarioFailure: deps.policyStore.getLastScenarioFailure(),
-      });
-
-      const operator = buildDgxResourceOperatorConsole({
-        policyMode: pb.policyMode,
-        previousMode: pb.previousMode,
-        targets,
-        monitoring,
-      });
-      const businessIntentEnv = {
+    getEvents: (limit) => store.getEvents(limit),
+    async getOverview() {
+      const [snapshot, metrics] = await Promise.all([collect(), fetchMetrics()]);
+      const profiles = enrichDgxModelProfilesStartupFit(snapshot.modelProfiles, metrics);
+      const intendedId = resolveBusinessRuntimeStartProfile({
         businessRuntimeStartProfileId: env.INFERENCE_BUSINESS_RUNTIME_START_PROFILE_ID,
-        photoLabelRuntimeStartProfileId: env.INFERENCE_PHOTO_LABEL_RUNTIME_START_PROFILE_ID,
-        documentSummaryRuntimeStartProfileId: env.INFERENCE_DOCUMENT_SUMMARY_RUNTIME_START_PROFILE_ID,
-        adminRuntimeStartProfileId: env.INFERENCE_ADMIN_RUNTIME_START_PROFILE_ID,
+      })?.modelProfileId;
+      const label = (id: string | null | undefined): ProfileLabel | null => {
+        if (!id) return null;
+        const profile = profiles.available.find((item) => item.id === id);
+        return { id, displayName: profile ? displayName(profile) : '名称を確認できないモデル' };
       };
-      const runtimeSummary = buildDgxResourceRuntimeSummary(bundle, pb.policyMode, businessIntentEnv);
-
+      const activeProfile = label(profiles.activeProfileId);
+      const intendedProfile = label(intendedId);
+      const matchesIntent = intendedId ? profiles.activeProfileId === intendedId : null;
+      const embedding = readPhotoToolEmbeddingHealth();
+      const businessReturn = store.getBusinessReturn();
+      const state: DgxResourceOverview['business']['state'] = businessReturn.state === 'in_progress' ? 'returning'
+        : snapshot.llmState === 'unconfigured' ? 'unconfigured'
+          : snapshot.llmState === 'down' ? 'down'
+            : embedding.state === 'failed' ? 'degraded'
+              : matchesIntent === false ? 'ready_mismatch' : 'ready';
+      const alerts: DgxResourceOverview['alerts'] = [];
+      if (matchesIntent === false && state !== 'returning') {
+        alerts.push({ id: 'model_mismatch', messageJa: `業務で使うモデル（${intendedProfile!.displayName}）と動いているモデル（${activeProfile?.displayName ?? 'なし'}）が違います。揃えるには「このモデルで業務に戻す」を押してください。` });
+      }
+      if (state === 'down') {
+        alerts.push({ id: 'llm_down', messageJa: 'DGX の業務 LLM が応答しません。「このモデルで業務に戻す」で起動してください。' });
+      }
+      if (businessReturn.state === 'failed') {
+        alerts.push({ id: 'return_failed', messageJa: `直近の業務復帰に失敗しました。${businessReturn.failureReasonJa}` });
+      }
       return {
-        generatedAt: pb.generatedAt,
-        kpis: {
-          gpuUtilPct: bundle.metricsPayload?.gpuUtilPct ?? null,
-          gpuTemperatureC: bundle.metricsPayload?.gpuTemperatureC ?? null,
-          gpuPowerDrawW: bundle.metricsPayload?.gpuPowerDrawW ?? null,
-          gpuPowerLimitW: bundle.metricsPayload?.gpuPowerLimitW ?? null,
-          gpuClockSmMhz: bundle.metricsPayload?.gpuClockSmMhz ?? null,
-          gpuClockGraphicsMhz: bundle.metricsPayload?.gpuClockGraphicsMhz ?? null,
-          gpuClockMemoryMhz: bundle.metricsPayload?.gpuClockMemoryMhz ?? null,
-          gpuPstate: bundle.metricsPayload?.gpuPstate ?? null,
-          gpuClocksThrottleReason: bundle.metricsPayload?.gpuClocksThrottleReason ?? null,
-          gpuName: bundle.metricsPayload?.gpuName ?? null,
-          driverVersion: bundle.metricsPayload?.driverVersion ?? null,
-          unifiedMemoryUsedGiB: bundle.metricsPayload?.unifiedMemoryUsedGiB ?? null,
-          unifiedMemoryTotalGiB: bundle.metricsPayload?.unifiedMemoryTotalGiB ?? null,
-          freeMemoryGiB: bundle.metricsPayload?.freeMemoryGiB ?? null,
-          systemMemoryAvailableGiB: bundle.metricsPayload?.systemMemoryAvailableGiB ?? null,
-          startupFreeMemoryGiB: bundle.metricsPayload?.startupFreeMemoryGiB ?? null,
-          memoryMetricSource: bundle.metricsPayload?.memoryMetricSource ?? null,
-          gpuProcessCount: bundle.metricsPayload?.gpuProcessCount ?? null,
-          gpuProcessMemoryUsedGiB: bundle.metricsPayload?.gpuProcessMemoryUsedGiB ?? null,
-          gpuProcesses: bundle.metricsPayload?.gpuProcesses ?? [],
-          policyMode: pb.policyMode,
-          policyLabel: policyLabelJa(pb.policyMode),
+        generatedAt: new Date().toISOString(),
+        business: { state, llm: { state: snapshot.llmState }, embedding, activeProfile, intendedProfile, matchesIntent },
+        metrics: {
+          unifiedMemUsedBytes: metrics?.unifiedMemoryUsedGiB != null ? metrics.unifiedMemoryUsedGiB * 1024 ** 3 : null,
+          unifiedMemTotalBytes: metrics?.unifiedMemoryTotalGiB != null ? metrics.unifiedMemoryTotalGiB * 1024 ** 3 : null,
+          gpuUtilPct: metrics?.gpuUtilPct ?? null, temperatureC: metrics?.gpuTemperatureC ?? null,
+          powerW: metrics?.gpuPowerDrawW ?? null,
         },
-        policy: {
-          mode: pb.policyMode,
-          previousMode: pb.previousMode,
-        },
-        runtime: {
-          localLlmMode: env.LOCAL_LLM_RUNTIME_MODE,
-          runtimeControlConfigured: pb.runtimeControlConfigured,
-          warmWindow: buildWarmWindow(),
-        },
-        optionalProbes: {
-          metricsConfigured: pb.metricsConfigured,
-          embeddingHealthConfigured: pb.embeddingConfigured,
-          sparkHostConfigured: pb.sparkConfigured,
-          experimentLabHealthConfigured: pb.experimentLabHealthConfigured,
-          experimentLabRuntimeControlConfigured: pb.expLabRtCfg,
-          agentContainerHealthConfigured: pb.agentContainerHealthConfigured,
-          agentContainerRuntimeControlConfigured: pb.agentRtCfg,
-        },
-        targets,
-        sparkHost: pb.sparkHost,
-        services,
-        notes: pb.notes,
-        monitoring,
-        operator,
-        modelProfiles: pb.modelProfiles,
-        resourceState: pb.modelProfiles.resourceState,
-        runtimeSummary,
-        uiMetadata: buildDgxResourceUiMetadata(),
+        modelProfiles: profiles.available.filter((profile) => profile.businessOrchestrationEligible).map((profile) => ({
+          id: profile.id, displayName: displayName(profile),
+          backendLabel: profile.runtimeProfile?.engine === 'vllm' ? 'vLLM' as const
+            : profile.runtimeProfile?.engine === 'llama.cpp' ? 'llama.cpp' as const : '不明' as const,
+          supportsVision: profileDeclaresVision(profile), isActive: profiles.activeProfileId === profile.id,
+          isRecommended: profile.recommended,
+          startupFit: profile.startupFit?.status === 'fits' ? 'fits' as const
+            : profile.startupFit?.status === 'insufficient' ? 'insufficient' as const : 'unknown' as const,
+          startable: unavailableReason(profile) === null, unavailableReasonJa: unavailableReason(profile),
+          deletable: profile.deleteProtection?.canDelete === true && !profile.deleteProtection.protected && profiles.activeProfileId !== profile.id,
+        })),
+        modelProfilesAvailable: profiles.status === 'ok', businessReturn, alerts,
       };
+    },
+    async executeAction(body) {
+      acquire();
+      let backgroundOwnsLock = false;
+      try {
+        if (body.type === 'RETURN_TO_BUSINESS') {
+          const [catalog, metrics] = await Promise.all([fetchProfiles(), fetchMetrics()]);
+          const profiles = enrichDgxModelProfilesStartupFit(catalog, metrics);
+          if (profiles.status !== 'ok') {
+            throw new ApiError(503, 'モデル一覧を取得できません。少し待ってお試しください。', undefined, 'DGX_MODEL_PROFILES_UNAVAILABLE');
+          }
+          const profile = profiles.available.find((item) => item.id === body.modelProfileId);
+          if (!profile) throw new ApiError(400, '選んだモデルが見つかりません。', undefined, 'DGX_MODEL_PROFILE_UNKNOWN');
+          const reason = unavailableReason(profile);
+          if (reason) throw new ApiError(409, `このモデルは起動できません（${reason}）。`, undefined, 'DGX_MODEL_PROFILE_UNAVAILABLE');
+          const businessReturn = store.startReturn(profile.id);
+          store.appendEvent(`「${displayName(profile)}」を読み込み、業務に戻しています。`);
+          backgroundOwnsLock = true;
+          void finishReturn(profile);
+          return { ok: true, message: '業務に戻しています。', businessReturn };
+        }
+        if (body.type === 'STOP_BUSINESS_LLM') {
+          store.appendEvent('業務 LLM を止めています。');
+          await executeGatewayRuntimeStartStop(deps, 'stop_force', 'stop_business_llm');
+          store.appendEvent('業務 LLM を止めました。');
+          return { ok: true, message: '業務 LLM を止めました。' };
+        }
+        const catalog = await fetchProfiles();
+        if (catalog.status !== 'ok') throw new ApiError(503, 'モデル一覧を取得できません。', undefined, 'DGX_MODEL_PROFILES_UNAVAILABLE');
+        const profile = catalog.available.find((item) => item.id === body.modelProfileId && item.businessOrchestrationEligible);
+        if (!profile) throw new ApiError(400, '選んだ業務モデルが見つかりません。', undefined, 'DGX_MODEL_PROFILE_UNKNOWN');
+        const options = {
+          baseUrl: deps.getAdminLocalLlmRuntimeConfig().baseUrl, fetchImpl: deps.fetchImpl,
+          timeoutMs: deps.probeTimeoutMs, modelProfileId: body.modelProfileId,
+        };
+        if (body.type === 'PREVIEW_MODEL_STORAGE_DELETE') {
+          const preview = await previewDgxModelStorageDelete(options);
+          store.appendEvent(`「${displayName(profile)}」の保存先を削除できるか確認しました。`);
+          return { ok: true, message: '削除の確認ができました。', modelStorageDeletePreview: preview };
+        }
+        store.appendEvent(`「${displayName(profile)}」の保存先を削除しています。`);
+        const result = await executeDgxModelStorageDelete({ ...options, planFingerprint: body.planFingerprint, confirmation: body.confirmation });
+        store.appendEvent(`「${displayName(profile)}」の保存先を削除しました。`);
+        return { ok: true, message: 'モデルの保存先を削除しました。', modelStorageDeleteExecute: result };
+      } catch (error) {
+        const message = body.type === 'RETURN_TO_BUSINESS' ? '業務に戻す操作を開始できませんでした。'
+          : body.type === 'STOP_BUSINESS_LLM' ? '業務 LLM を止められませんでした。'
+            : 'モデル保存先の操作を完了できませんでした。';
+        store.appendEvent(message);
+        throw error;
+      } finally {
+        if (!backgroundOwnsLock) store.release();
+      }
     },
   };
 }
