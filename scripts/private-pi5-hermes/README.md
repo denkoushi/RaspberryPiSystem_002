@@ -46,7 +46,7 @@
 | 承認 | `manual` |
 | LLM | `custom:dgx-system-prod` → DGX Bearer |
 | Discord | 許可 User のみ・テンプレ **`require_mention: false`** |
-| 体感レイテンシ | **8.7〜10.7 s/通**（max_tokens 128 + inject + keep-warm） |
+| 体感レイテンシ | **8.7〜10.7 s/通**（max_tokens 128 + inject + keep-warm、計測当時） |
 | 主因 | **DGX 推論**（out 比例）。経路 ~2〜3 s |
 | スキル・記憶 | **`skills` / `memory` 無効** — 会話から自動では賢くならない（[KB](../../docs/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md)） |
 
@@ -62,7 +62,7 @@ Discord 有効化後は fragment を更新して再実行。初回のみ Pi5 ven
 
 ## DGX keep-warm
 
-fragment に `private_pi5_dgx_runtime_control_token` を設定してデプロイすると、`hermes-dgx-keep-warm.timer` が **10 分毎**（起動 **3 分**後も）DGX を warm します。既定では **`DGX_MODEL_PROFILE_ID=business_qwen36_27b_nvfp4`** を維持（`/novel` 後のドリフト矯正）。`private_pi5_hermes_dgx_default_model_profile_id` を fragment で変更した場合は、keep-warm と `/task` 実行前の ensure/verify が同じ profile へ復帰します。詳細は [Runbook §keep-warm](../../docs/runbooks/private-pi5-hermes-deploy.md#dgx-keep-warm体感速度)。
+Pi 側の `hermes-dgx-keep-warm.timer` は 2026-08-04 に止め、DGXSparkControlPlane の中央 keep-warm（Lease 対応）へ移した。この playbook は timer を配らず、プロファイルが使う `dgx_runtime_client.py` と env だけを `~/.hermes/dgx-keep-warm/` に配る。Pi に残る timer の unit は、中央 keep-warm の戻し手順で再有効化できる。
 
 ## Desktop 併用
 
@@ -146,7 +146,6 @@ Hermes標準の Memory / Skills / Cron を使う場合は fragment に `private_
 
 ```bash
 ssh raspi5-private@<tailscale-ip>
-systemctl is-active hermes-dgx-keep-warm.timer
 systemctl is-active hermes-gateway
 sudo -u hermes /home/hermes/.local/bin/hermes doctor
 sudo -u hermes bash -lc 'set -a; source ~/.hermes/.env; set +a; \

@@ -40,7 +40,7 @@ all:
       private_pi5_dgx_model: "system-prod-primary"
       private_pi5_dgx_llm_shared_token: "replace-me"
       private_pi5_dgx_runtime_auto_start: false
-      # Hermes keep-warm（/start）にも必要。未設定時は timer 無効。
+      # Hermes の DGX runtime client（/start）にも必要。
       private_pi5_dgx_runtime_control_token: ""
       # chat /tools の通常 DGX profile（/novel 後の復帰・/task 前の ensure に使用）
       # private_pi5_hermes_dgx_default_model_profile_id: "business_qwen38_flash_next_nvfp4"
@@ -52,9 +52,6 @@ all:
       private_pi5_hermes_tools_runtime_ready_timeout_sec: 1200
       private_pi5_hermes_research_runtime_ready_timeout_sec: 1200
       private_pi5_hermes_dgx_keep_warm_runtime_ready_timeout_sec: 1200
-      # The keep-warm unit timeout defaults to readiness + 2*HTTP timeout + 60s slack.
-      # Set this only when an explicit systemd start deadline is required.
-      # private_pi5_hermes_dgx_keep_warm_timeout_start_sec: 1500
 
       # 任意: StackChan -> bridge の簡易認証
       private_pi5_stackchan_token: ""
@@ -91,8 +88,6 @@ all:
       # デプロイ: ./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh
       # 正本: docs/runbooks/private-pi5-hermes-deploy.md
       # private_pi5_hermes_gateway_enabled: false
-      # private_pi5_hermes_dgx_keep_warm_enabled: true
-      # private_pi5_hermes_dgx_keep_warm_interval_min: 10
       # private_pi5_hermes_max_tokens: 128
       # トークン分離（Phase D0）: 省略時は private_pi5_dgx_llm_shared_token を chat も使用
       # private_pi5_hermes_chat_dgx_llm_token: ""
