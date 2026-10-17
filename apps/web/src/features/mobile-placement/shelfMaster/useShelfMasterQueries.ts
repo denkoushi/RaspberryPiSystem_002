@@ -10,24 +10,25 @@ import {
   putMobilePlacementShelfLayoutZone,
   getMobilePlacementHaizenTargetDevices
 } from '../../../api/client';
+import { mobilePlacementQueryKeys } from '../mobilePlacementQueryKeys';
 
 export function useClientCapabilities() {
   return useQuery({
-    queryKey: ['mobile-placement', 'client-capabilities'],
+    queryKey: mobilePlacementQueryKeys.clientCapabilities,
     queryFn: getMobilePlacementClientCapabilities
   });
 }
 
 export function useShelfLayoutSummary() {
   return useQuery({
-    queryKey: ['mobile-placement', 'shelf-layout'],
+    queryKey: mobilePlacementQueryKeys.shelfLayout,
     queryFn: getMobilePlacementShelfLayoutSummary
   });
 }
 
 export function useShelfLayoutZone(macroZoneId: string | null) {
   return useQuery({
-    queryKey: ['mobile-placement', 'shelf-layout', 'zone', macroZoneId],
+    queryKey: mobilePlacementQueryKeys.shelfLayoutZone(macroZoneId),
     queryFn: () => getMobilePlacementShelfLayoutZone(macroZoneId!),
     enabled: macroZoneId != null && macroZoneId.length > 0
   });
@@ -35,14 +36,14 @@ export function useShelfLayoutZone(macroZoneId: string | null) {
 
 export function useMachineMasters() {
   return useQuery({
-    queryKey: ['mobile-placement', 'machine-masters'],
+    queryKey: mobilePlacementQueryKeys.machineMasters,
     queryFn: getMobilePlacementMachineMasters
   });
 }
 
 export function useHaizenTargetDevicesForShelfMaster() {
   return useQuery({
-    queryKey: ['mobile-placement', 'haizen-target-devices'],
+    queryKey: mobilePlacementQueryKeys.haizenTargetDevices,
     queryFn: getMobilePlacementHaizenTargetDevices
   });
 }
@@ -53,9 +54,9 @@ export function useSaveShelfLayoutZone(macroZoneId: string) {
     mutationFn: (payload: Parameters<typeof putMobilePlacementShelfLayoutZone>[1]) =>
       putMobilePlacementShelfLayoutZone(macroZoneId, payload),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['mobile-placement', 'shelf-layout'] });
-      await queryClient.invalidateQueries({ queryKey: ['mobile-placement', 'shelf-layout', 'zone', macroZoneId] });
-      await queryClient.invalidateQueries({ queryKey: ['mobile-placement', 'registered-shelves'] });
+      await queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.shelfLayout });
+      await queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.shelfLayoutZone(macroZoneId) });
+      await queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.registeredShelves });
     }
   });
 }
@@ -66,7 +67,7 @@ export function useRelocateShelf() {
     mutationFn: (payload: { sourceShelfCodeRaw: string; targetShelfCodeRaw: string }) =>
       postMobilePlacementShelfRelocate(payload.sourceShelfCodeRaw, payload.targetShelfCodeRaw),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['mobile-placement'] });
+      await queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.all });
     }
   });
 }
@@ -76,8 +77,8 @@ export function useAssignZero2wPreset() {
   return useMutation({
     mutationFn: putMobilePlacementHaizenTargetPresetShelf,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['mobile-placement', 'haizen-target-devices'] });
-      await queryClient.invalidateQueries({ queryKey: ['mobile-placement', 'shelf-layout'] });
+      await queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.haizenTargetDevices });
+      await queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.shelfLayout });
     }
   });
 }

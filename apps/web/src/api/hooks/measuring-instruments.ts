@@ -28,6 +28,7 @@ import {
   returnMeasuringInstrument,
   type MeasuringInstrumentInput
 } from '../client';
+import { toolsQueryKeys } from '../queryKeys/tools';
 
 import type {
   MeasuringInstrumentStatus,
@@ -235,7 +236,7 @@ export function useBorrowMeasuringInstrument(clientKey?: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: MeasuringInstrumentBorrowPayload) => borrowMeasuringInstrument(payload, clientKey),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['loans'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.loansAll })
   });
 }
 
@@ -243,6 +244,6 @@ export function useReturnMeasuringInstrument(clientKey?: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: MeasuringInstrumentReturnPayload) => returnMeasuringInstrument(payload, clientKey),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['loans'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.loansAll })
   });
 }
