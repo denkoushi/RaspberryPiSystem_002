@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 768,
-    "totalLines": 188989,
-    "totalBytes": 15047478,
+    "totalLines": 188996,
+    "totalBytes": 15049045,
     "withFrontmatter": 367,
     "withStatus": 170,
     "sourceOfTruthDeclared": 116,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 39,
-    "localLinkCount": 5871,
+    "localLinkCount": 5874,
     "brokenLocalLinkCount": 89,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
@@ -12285,8 +12285,8 @@
     },
     {
       "path": "docs/architecture/single-instance-state.md",
-      "lineCount": 53,
-      "byteSize": 5280,
+      "lineCount": 54,
+      "byteSize": 5726,
       "hasFrontmatter": false,
       "title": "API の 1 台構成の前提（プロセスのメモリに持つ状態）",
       "status": null,
@@ -15970,13 +15970,18 @@
     },
     {
       "path": "docs/decisions/ADR-20260502-dgx-resource-control-targets.md",
-      "lineCount": 75,
-      "byteSize": 4572,
+      "lineCount": 77,
+      "byteSize": 4719,
       "hasFrontmatter": true,
       "title": "ADR-20260502: DGX リソース管理に Control Target レジストリを導入する",
       "status": null,
       "source_of_truth": null,
       "localLinks": [
+        {
+          "href": "ADR-20261017-dgx-resource-business-llm-only.md",
+          "targetPath": "docs/decisions/ADR-20261017-dgx-resource-business-llm-only.md",
+          "exists": true
+        },
         {
           "href": "../runbooks/dgx-system-prod-local-llm.md",
           "targetPath": "docs/runbooks/dgx-system-prod-local-llm.md",
@@ -15996,8 +16001,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260503-dgx-resource-operator-console.md",
-      "lineCount": 33,
-      "byteSize": 2468,
+      "lineCount": 35,
+      "byteSize": 2615,
       "hasFrontmatter": true,
       "title": "ADR-20260503: DGX Resource 運用者コンソールとワークロード遷移の API 境界",
       "status": null,
@@ -16006,6 +16011,11 @@
         {
           "href": "./ADR-20260502-dgx-resource-control-targets.md",
           "targetPath": "docs/decisions/ADR-20260502-dgx-resource-control-targets.md",
+          "exists": true
+        },
+        {
+          "href": "ADR-20261017-dgx-resource-business-llm-only.md",
+          "targetPath": "docs/decisions/ADR-20261017-dgx-resource-business-llm-only.md",
           "exists": true
         },
         {
@@ -35029,7 +35039,7 @@
     {
       "path": "docs/plans/dgx-spark-optimization-execplan-202607.md",
       "lineCount": 92,
-      "byteSize": 8618,
+      "byteSize": 8791,
       "hasFrontmatter": true,
       "title": "DGX Spark Optimization ExecPlan",
       "status": "done_repo_side",
@@ -39989,8 +39999,8 @@
     },
     {
       "path": "docs/runbooks/dgx-system-prod-local-llm.md",
-      "lineCount": 1377,
-      "byteSize": 147068,
+      "lineCount": 1379,
+      "byteSize": 147722,
       "hasFrontmatter": false,
       "title": "Runbook: DGX Spark system-prod LocalLLM 段階切替",
       "status": null,
@@ -40084,6 +40094,11 @@
         {
           "href": "../decisions/ADR-20260705-dgx-spark-gb10-inference-performance-parameters.md",
           "targetPath": "docs/decisions/ADR-20260705-dgx-spark-gb10-inference-performance-parameters.md",
+          "exists": true
+        },
+        {
+          "href": "../decisions/ADR-20261017-dgx-resource-business-llm-only.md",
+          "targetPath": "docs/decisions/ADR-20261017-dgx-resource-business-llm-only.md",
           "exists": true
         },
         {
@@ -40327,51 +40342,51 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 46,
+          "line": 48,
           "length": 1212
         },
         {
-          "line": 126,
+          "line": 128,
           "length": 1193
         },
         {
-          "line": 139,
+          "line": 141,
           "length": 1694
         },
         {
-          "line": 141,
+          "line": 143,
           "length": 1085
         },
         {
-          "line": 145,
+          "line": 147,
           "length": 1525
         },
         {
-          "line": 163,
+          "line": 165,
           "length": 1671
         },
         {
-          "line": 340,
+          "line": 342,
           "length": 1220
         },
         {
-          "line": 342,
+          "line": 344,
           "length": 1167
         },
         {
-          "line": 344,
+          "line": 346,
           "length": 1120
         },
         {
-          "line": 346,
+          "line": 348,
           "length": 1414
         },
         {
-          "line": 348,
+          "line": 350,
           "length": 1098
         },
         {
-          "line": 350,
+          "line": 352,
           "length": 1145
         }
       ],

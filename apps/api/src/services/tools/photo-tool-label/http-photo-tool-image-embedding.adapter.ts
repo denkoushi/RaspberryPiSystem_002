@@ -2,6 +2,8 @@ import fetch from 'node-fetch';
 
 import { env } from '../../../config/env.js';
 
+import { recordPhotoToolEmbeddingFailure, recordPhotoToolEmbeddingSuccess } from './photo-tool-embedding-health.js';
+
 import type { PhotoToolImageEmbeddingPort } from './photo-tool-image-embedding.port.js';
 
 type EmbeddingResponseJson = {
@@ -19,6 +21,7 @@ export class HttpPhotoToolImageEmbeddingAdapter implements PhotoToolImageEmbeddi
   async embedJpeg(jpegBytes: Buffer): Promise<number[]> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.opts.timeoutMs);
+    let failureKind: 'connection' | 'response' | 'invalid' = 'connection';
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (this.opts.apiKey) {
@@ -34,9 +37,11 @@ export class HttpPhotoToolImageEmbeddingAdapter implements PhotoToolImageEmbeddi
         signal: controller.signal,
       });
       if (!res.ok) {
+        failureKind = 'response';
         const text = await res.text().catch(() => '');
         throw new Error(`Embedding HTTP ${res.status}: ${text.slice(0, 200)}`);
       }
+      failureKind = 'invalid';
       const json = (await res.json()) as EmbeddingResponseJson;
       const emb = json.embedding;
       if (!Array.isArray(emb) || emb.length !== this.opts.expectedDim) {
@@ -45,7 +50,11 @@ export class HttpPhotoToolImageEmbeddingAdapter implements PhotoToolImageEmbeddi
       if (!emb.every((x) => typeof x === 'number' && Number.isFinite(x))) {
         throw new Error('Embedding contains non-finite numbers');
       }
+      recordPhotoToolEmbeddingSuccess();
       return emb;
+    } catch (error) {
+      recordPhotoToolEmbeddingFailure(controller.signal.aborted ? 'timeout' : failureKind);
+      throw error;
     } finally {
       clearTimeout(timer);
     }

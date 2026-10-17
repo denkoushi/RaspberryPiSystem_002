@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  assertModelProfileEligibleForBusinessReturn,
-  assertModelProfileKnownAndStartable,
   fetchDgxModelProfilesOverview,
 } from '../dgx-resource.model-profiles.js';
 
@@ -230,81 +228,5 @@ describe('fetchDgxModelProfilesOverview', () => {
     expect(overview.status).toBe('degraded');
     expect(overview.available).toEqual([]);
     expect(overview.errorMessageJa).toContain('HTTP 503');
-  });
-});
-
-describe('assertModelProfileKnownAndStartable', () => {
-  it('allows startable profile when overview is ok and activeProfileId is null', () => {
-    const profile = assertModelProfileKnownAndStartable(
-      {
-        configured: true,
-        status: 'ok',
-        activeProfileId: null,
-        activeStateBackend: null,
-        activeRuntimeState: null,
-        pendingProfileId: null,
-        lastLoadedProfileId: null,
-        resourceState: null,
-        available: [
-          {
-            id: 'business_qwen35_35b_gguf',
-            displayNameJa: 'Qwen3.5 35B GGUF',
-            backend: 'green',
-            servedAlias: 'system-prod-primary',
-            recommended: false,
-            businessOrchestrationEligible: true,
-            enabled: true,
-            status: 'available',
-            canonicalNames: [],
-            legacyNames: [],
-          },
-        ],
-        businessReturnSelectable: [],
-      },
-      'business_qwen35_35b_gguf'
-    );
-
-    expect(profile.id).toBe('business_qwen35_35b_gguf');
-  });
-});
-
-describe('assertModelProfileEligibleForBusinessReturn', () => {
-  const overviewBase = {
-    configured: true,
-    status: 'ok' as const,
-    activeProfileId: null,
-    activeStateBackend: null,
-    activeRuntimeState: null,
-    pendingProfileId: null,
-    lastLoadedProfileId: null,
-    resourceState: null,
-    businessReturnSelectable: [],
-    available: [
-      {
-        id: 'qwen36_35b_uncensored',
-        displayNameJa: 'uncensored',
-        backend: 'green' as const,
-        servedAlias: 'system-prod-primary',
-        recommended: false,
-        businessOrchestrationEligible: false,
-        enabled: true,
-        status: 'available' as const,
-        canonicalNames: [],
-        legacyNames: [],
-      },
-    ],
-  };
-
-  it('rejects private-only profile for business return', () => {
-    expect(() =>
-      assertModelProfileEligibleForBusinessReturn(overviewBase, 'qwen36_35b_uncensored')
-    ).toThrowError(
-      expect.objectContaining({ code: 'DGX_MODEL_PROFILE_NOT_ELIGIBLE_FOR_BUSINESS_RETURN' })
-    );
-  });
-
-  it('still allows START_MODEL_PROFILE path via assertModelProfileKnownAndStartable', () => {
-    const profile = assertModelProfileKnownAndStartable(overviewBase, 'qwen36_35b_uncensored');
-    expect(profile.id).toBe('qwen36_35b_uncensored');
   });
 });

@@ -36,7 +36,9 @@ update-frequency: high
 **UI ルート**:
 
 - 推奨: **管理コンソール** → `/admin/tools/dgx-resource`
-- 後方互換: `/admin/dgx-resource`
+- 後方互換: `/admin/dgx-resource`（`/admin/tools/dgx-resource` へ転送）
+
+> **2026-10-17 以降の正本**: 画面と API は業務 LLM 専用になった（[ADR-20261017](../decisions/ADR-20261017-dgx-resource-business-llm-only.md)）。actions は `RETURN_TO_BUSINESS` / `STOP_BUSINESS_LLM` / `PREVIEW_MODEL_STORAGE_DELETE` / `EXECUTE_MODEL_STORAGE_DELETE` の 4 種だけ。以下に残る `operator`・`targets[]`・`EXECUTE_TARGET_ACTION`・`SET_POLICY`・運用モード・切替シナリオ・`START_MODEL_PROFILE`・実験ラボ・Agent の記述は履歴で、現行の業務画面には無い。個人用ワークロードの起停は DGX 側（Control Plane）で行う。
 
 **サーバ API（管理者・マネージャー）**:
 
