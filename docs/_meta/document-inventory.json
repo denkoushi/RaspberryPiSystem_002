@@ -17,7 +17,7 @@
   "summary": {
     "documentCount": 767,
     "totalLines": 188912,
-    "totalBytes": 15035198,
+    "totalBytes": 15035226,
     "withFrontmatter": 367,
     "withStatus": 170,
     "sourceOfTruthDeclared": 116,
@@ -18347,7 +18347,7 @@
     {
       "path": "docs/design/preview-workflow.md",
       "lineCount": 94,
-      "byteSize": 6538,
+      "byteSize": 6566,
       "hasFrontmatter": false,
       "title": "HTMLとSVGの整合プレビュー運用",
       "status": null,
