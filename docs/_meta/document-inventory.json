@@ -15,9 +15,9 @@
     ]
   },
   "summary": {
-    "documentCount": 767,
-    "totalLines": 188924,
-    "totalBytes": 15038534,
+    "documentCount": 768,
+    "totalLines": 188987,
+    "totalBytes": 15046103,
     "withFrontmatter": 367,
     "withStatus": 170,
     "sourceOfTruthDeclared": 116,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 39,
-    "localLinkCount": 5867,
+    "localLinkCount": 5871,
     "brokenLocalLinkCount": 89,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
@@ -12133,7 +12133,7 @@
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
-      "inboundCount": 1,
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -12162,8 +12162,8 @@
     },
     {
       "path": "docs/architecture/infrastructure-base.md",
-      "lineCount": 265,
-      "byteSize": 10910,
+      "lineCount": 268,
+      "byteSize": 11190,
       "hasFrontmatter": true,
       "title": "インフラ基盤",
       "status": null,
@@ -12172,6 +12172,11 @@
         {
           "href": "./overview.md",
           "targetPath": "docs/architecture/overview.md",
+          "exists": true
+        },
+        {
+          "href": "./single-instance-state.md",
+          "targetPath": "docs/architecture/single-instance-state.md",
           "exists": true
         },
         {
@@ -12273,6 +12278,32 @@
         }
       ],
       "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/architecture/single-instance-state.md",
+      "lineCount": 53,
+      "byteSize": 5280,
+      "hasFrontmatter": false,
+      "title": "API の 1 台構成の前提（プロセスのメモリに持つ状態）",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "./concurrency-control.md",
+          "targetPath": "docs/architecture/concurrency-control.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/code-health-refactor-execplan.md",
+          "targetPath": "docs/plans/code-health-refactor-execplan.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -34597,14 +34628,20 @@
     },
     {
       "path": "docs/plans/code-health-refactor-execplan.md",
-      "lineCount": 110,
-      "byteSize": 13946,
+      "lineCount": 117,
+      "byteSize": 15955,
       "hasFrontmatter": false,
       "title": "コード保守性の改善プログラム",
       "status": null,
       "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 1,
+      "localLinks": [
+        {
+          "href": "../architecture/single-instance-state.md",
+          "targetPath": "docs/architecture/single-instance-state.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
