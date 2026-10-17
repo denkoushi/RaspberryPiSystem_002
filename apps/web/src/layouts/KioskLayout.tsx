@@ -1,4 +1,4 @@
-import { DEFAULT_KIOSK_HEADER_TAB_ORDER, normalizeKioskHeaderTabOrder } from '@raspi-system/shared-types';
+import { KIOSK_INITIAL_ROUTE_PATHS, DEFAULT_KIOSK_HEADER_TAB_ORDER, normalizeKioskHeaderTabOrder } from '@raspi-system/shared-types';
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
@@ -30,6 +30,8 @@ import {
   advanceKioskWebActivation,
   kioskWebNavigation
 } from '../features/kiosk/kioskWebActivation';
+import { KioskPortalControls } from '../features/kiosk/portal/KioskPortalControls';
+import { useKioskPortalLargeScreen } from '../features/kiosk/portal/useKioskPortalLargeScreen';
 import { useKioskSeamlessWebUpdate } from '../features/kiosk/useKioskSeamlessWebUpdate';
 import {
   proveNfcRuntimeReady,
@@ -51,6 +53,8 @@ export function KioskLayout() {
   const deployDesiredReleaseSha = deployStatus?.desiredReleaseSha;
   const deployVerificationId = deployStatus?.verificationId;
   const location = useLocation();
+  const isPortal = location.pathname.replace(/\/$/, '') === KIOSK_INITIAL_ROUTE_PATHS.portal;
+  const { largeScreen: portalLargeScreen, toggleLargeScreen } = useKioskPortalLargeScreen();
   useKioskSeamlessWebUpdate(location.pathname, deployStatus === undefined || deployIsMaintenance);
   const acknowledgedRunIdRef = useRef<Record<'notice' | 'maintenance', string | null>>({
     notice: null,
@@ -66,7 +70,7 @@ export function KioskLayout() {
   const canCloseDock = useCallback((reason: TimedHoverRevealCloseReason = 'manual') =>
     !headerRef.current?.querySelector('[data-kiosk-dock-overlay="true"]') &&
     !(reason === 'timer' && headerRef.current?.querySelector(':focus-visible')), []);
-  const headerReveal = useKioskBottomRightHeaderReveal(true, canCloseDock);
+  const headerReveal = useKioskBottomRightHeaderReveal(!isPortal, canCloseDock);
   const closeDock = headerReveal.close;
 
   useEffect(() => {
@@ -247,8 +251,9 @@ export function KioskLayout() {
   return (
     <div
       className={clsx(
-        'flex flex-col bg-slate-800 text-white',
-        immersiveKioskLayout
+        'flex flex-col text-white',
+        isPortal ? 'overflow-hidden bg-inv-bg' : 'bg-slate-800',
+        immersiveKioskLayout || isPortal
           ? [VIEWPORT_HEIGHT_FULL, 'min-h-0', planningBoardRoute && 'kiosk-planning-board-route']
           : VIEWPORT_MIN_HEIGHT_FULL
       )}
@@ -259,40 +264,42 @@ export function KioskLayout() {
       {deployStatus?.preNotice ? (
         <KioskDeployPreNotice runId={preNoticeRunId} scheduledAt={preNoticeScheduledAt} />
       ) : null}
-      <div
-        className={KIOSK_IMMERSIVE_HEADER_HOT_ZONE_CLASS}
-        onMouseEnter={headerReveal.onHotZoneEnter}
-        onMouseLeave={headerReveal.onHeaderMouseLeave}
-        aria-hidden
-      />
-      <button
-        ref={handleRef}
-        type="button"
-        hidden={headerReveal.isVisible}
-        className="fixed bottom-0 right-4 z-40 [&[hidden]]:hidden flex h-6 w-14 items-center justify-center rounded-t-lg border border-b-0 border-inv-faint bg-inv-s3 text-inv-text opacity-[.85] hover:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inv-cyan"
-        aria-label="メニューを開く"
-        aria-expanded={headerReveal.isVisible}
-        aria-controls="kiosk-dock"
-        onMouseEnter={headerReveal.onHotZoneEnter}
-        onMouseLeave={headerReveal.onHeaderMouseLeave}
-        onClick={headerReveal.onHotZoneEnter}
-      >
-        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="m6 15 6-6 6 6" />
-        </svg>
-      </button>
+      {!isPortal && (<>
+        <div
+          className={KIOSK_IMMERSIVE_HEADER_HOT_ZONE_CLASS}
+          onMouseEnter={headerReveal.onHotZoneEnter}
+          onMouseLeave={headerReveal.onHeaderMouseLeave}
+          aria-hidden
+        />
+        <button
+          ref={handleRef}
+          type="button"
+          hidden={headerReveal.isVisible}
+          className="fixed bottom-0 right-4 z-40 [&[hidden]]:hidden flex h-6 w-14 items-center justify-center rounded-t-lg border border-b-0 border-inv-faint bg-inv-s3 text-inv-text opacity-[.85] hover:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inv-cyan"
+          aria-label="メニューを開く"
+          aria-expanded={headerReveal.isVisible}
+          aria-controls="kiosk-dock"
+          onMouseEnter={headerReveal.onHotZoneEnter}
+          onMouseLeave={headerReveal.onHeaderMouseLeave}
+          onClick={headerReveal.onHotZoneEnter}
+        >
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m6 15 6-6 6 6" />
+          </svg>
+        </button>
+      </>)}
       <header
         ref={headerRef}
         id="kiosk-dock"
-        aria-hidden={!headerReveal.isVisible}
-        {...(!headerReveal.isVisible ? { inert: '' } : {})}
+        aria-hidden={!isPortal && !headerReveal.isVisible}
+        {...(!isPortal && !headerReveal.isVisible ? { inert: '' } : {})}
         className={clsx(
           'shrink-0 bg-inv-bg px-5 py-[14px]',
-          KIOSK_IMMERSIVE_HEADER_BORDER_CLASS,
-          KIOSK_IMMERSIVE_HEADER_FIXED_CLASS,
-          headerReveal.isVisible
+          isPortal ? 'relative z-40 border-b border-inv-line2' : KIOSK_IMMERSIVE_HEADER_BORDER_CLASS,
+          !isPortal && KIOSK_IMMERSIVE_HEADER_FIXED_CLASS,
+          !isPortal && (headerReveal.isVisible
             ? KIOSK_IMMERSIVE_HEADER_VISIBLE_TRANSFORM_CLASS
-            : KIOSK_IMMERSIVE_HEADER_HIDDEN_TRANSFORM_CLASS
+            : KIOSK_IMMERSIVE_HEADER_HIDDEN_TRANSFORM_CLASS)
         )}
         onMouseEnter={headerReveal.onHeaderMouseEnter}
         onMouseLeave={headerReveal.onHeaderMouseLeave}
@@ -305,11 +312,12 @@ export function KioskLayout() {
           clientStatus={kioskConfig?.clientStatus ?? null}
           pathname={location.pathname}
           navTabOrder={navTabOrder}
+          portalControls={isPortal ? <KioskPortalControls clientKey={clientKey} largeScreen={portalLargeScreen} onToggleLargeScreen={toggleLargeScreen} /> : undefined}
         />
       </header>
-      <main className={clsx('flex min-h-0 flex-1 flex-col', [KIOSK_ASSEMBLY_MANUALS_PATH, KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH].includes(location.pathname.replace(/\/$/, '')) ? 'overflow-hidden' : 'gap-4 overflow-auto px-4 py-4')}>
+      <main className={clsx('flex min-h-0 flex-1 flex-col', isPortal || [KIOSK_ASSEMBLY_MANUALS_PATH, KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH].includes(location.pathname.replace(/\/$/, '')) ? 'overflow-hidden' : 'gap-4 overflow-auto px-4 py-4')}>
         <h1 className="sr-only">キオスク</h1>
-        <Outlet />
+        <Outlet context={{ portalLargeScreen }} />
       </main>
     </div>
   );

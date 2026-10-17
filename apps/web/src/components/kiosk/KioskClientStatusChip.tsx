@@ -6,6 +6,7 @@ import { kioskClientStatusColor } from './kioskClientStatusColor';
 type KioskClientStatusChipProps = {
   clientKey: string;
   clientId: string;
+  popoverSide?: 'top' | 'bottom';
   clientStatus?: { temperature: number | null; cpuUsage: number } | null;
 };
 
@@ -15,7 +16,7 @@ function formatKey(value: string) {
   return `${value.slice(0, 4)}…${value.slice(-4)}`;
 }
 
-export function KioskClientStatusChip({ clientKey, clientId, clientStatus }: KioskClientStatusChipProps) {
+export function KioskClientStatusChip({ clientKey, clientId, clientStatus, popoverSide = 'top' }: KioskClientStatusChipProps) {
   const [isOpen, setIsOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -60,7 +61,7 @@ export function KioskClientStatusChip({ clientKey, clientId, clientStatus }: Kio
         ) : '端末'}
       </button>
       {isOpen ? (
-        <div id={popoverId} className="absolute bottom-[calc(100%+60px)] left-0 w-[260px] rounded-[10px] border border-inv-line2 bg-inv-s1 p-[14px] text-inv-text">
+        <div id={popoverId} className={clsx('absolute w-[260px] rounded-[10px] border border-inv-line2 bg-inv-s1 p-[14px] text-inv-text', popoverSide === 'bottom' ? 'right-0 top-[calc(100%+12px)]' : 'bottom-[calc(100%+60px)] left-0')}>
           <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-4 gap-y-[13px] [&>dt]:text-[13px] [&>dt]:text-inv-muted [&>dd]:text-right [&>dd]:font-mono [&>dd]:text-sm [&>dd]:whitespace-nowrap">
             <dt>端末</dt><dd>キオスク端末</dd>
             <dt>APIキー</dt><dd>{formatKey(clientKey)}</dd>

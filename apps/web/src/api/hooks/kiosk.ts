@@ -10,6 +10,7 @@ import {
   lookupKioskInquiryEmployee,
   getKioskConfig,
   putKioskInitialRoute,
+  putKioskPortalCards,
   getKioskNavTabOrderSettings,
   updateKioskNavTabOrderSettings,
   getKioskEmployees,
@@ -17,7 +18,7 @@ import {
 } from '../client';
 
 import type { KioskConfig, KioskInquiryDetail, KioskInquirySummary, KioskInquiryThread } from '../domains/kiosk';
-import type { KioskInitialRouteId } from '@raspi-system/shared-types';
+import type { KioskInitialRouteId, KioskReorderableHeaderTabId } from '@raspi-system/shared-types';
 
 export function useKioskEmployees(clientKey?: string) {
   return useQuery({
@@ -57,6 +58,22 @@ export function useUpdateKioskInitialRoute(clientKey: string) {
     onSuccess: (data) => {
       queryClient.setQueryData<KioskConfig>(['kiosk-config'], (current) =>
         current ? { ...current, initialKioskRoute: data.initialKioskRoute, initialKioskPath: data.initialKioskPath } : current
+      );
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-config'] });
+    }
+  });
+}
+
+export function useUpdateKioskPortalCards(clientKey: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (hiddenTabIds: KioskReorderableHeaderTabId[]) => putKioskPortalCards(hiddenTabIds, clientKey),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['kiosk-config'] });
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData<KioskConfig>(['kiosk-config'], (current) =>
+        current ? { ...current, portalHiddenTabIds: data.portalHiddenTabIds } : current
       );
       void queryClient.invalidateQueries({ queryKey: ['kiosk-config'] });
     }

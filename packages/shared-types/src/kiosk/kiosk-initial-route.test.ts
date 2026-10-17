@@ -28,6 +28,7 @@ describe('kiosk initial route contract', () => {
 });
 
 const expectedRoutes = [
+  ['portal', 'ポータル', '/kiosk/portal'],
   ['borrow_tag', '2タグスキャン', '/kiosk/tag'],
   ['borrow_photo', '写真撮影持出', '/kiosk/photo'],
   ['production_schedule', '生産スケジュール', '/kiosk/production-schedule'],
@@ -58,7 +59,7 @@ describe('all startup pages', () => {
     const expectedIds = KIOSK_REORDERABLE_HEADER_TAB_IDS.flatMap((id) =>
       id === 'borrow' ? ['borrow_tag', 'borrow_photo'] : id === 'tag_desk' || id === 'due_management' ? [] : [id]
     );
-    expect([...KIOSK_INITIAL_ROUTE_IDS].sort()).toEqual(expectedIds.sort());
+    expect([...KIOSK_INITIAL_ROUTE_IDS].sort()).toEqual(['portal', ...expectedIds].sort());
     expect(KIOSK_SELECTABLE_INITIAL_ROUTE_IDS).toEqual(KIOSK_INITIAL_ROUTE_IDS);
     expect(Object.keys(KIOSK_INITIAL_ROUTE_PATHS).sort()).toEqual([...KIOSK_INITIAL_ROUTE_IDS].sort());
     expect(Object.keys(KIOSK_INITIAL_ROUTE_LABELS).sort()).toEqual([...KIOSK_INITIAL_ROUTE_IDS].sort());

@@ -374,3 +374,16 @@ describe('KioskLayout deploy status handling', () => {
     expect(dock).toHaveClass('invisible');
   });
 });
+
+it('keeps the portal header visible at the top without a dock handle', () => {
+  deployStatus = { isMaintenance: false };
+  revealMode.real = true;
+  render(<MemoryRouter initialEntries={['/kiosk/portal']}><KioskLayout /></MemoryRouter>);
+  const header = screen.getByRole('banner');
+  expect(header).toHaveAttribute('aria-hidden', 'false');
+  expect(header).not.toHaveAttribute('inert');
+  expect(header).not.toHaveClass('fixed');
+  expect(screen.queryByRole('button', { name: 'メニューを開く' })).not.toBeInTheDocument();
+  expect(screen.getByRole('main')).toHaveClass('overflow-hidden');
+  revealMode.real = false;
+});

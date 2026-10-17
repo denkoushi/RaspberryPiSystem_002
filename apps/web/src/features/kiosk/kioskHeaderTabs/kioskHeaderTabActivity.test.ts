@@ -19,3 +19,8 @@ describe('shared header activity', () => {
     expect(KIOSK_REORDERABLE_HEADER_TAB_IDS.filter((id) => isKioskHeaderTabActive(id, pathname))[0]).toBe(tab);
   });
 });
+
+it('recognizes the fixed portal tab as a startup page', () => {
+  expect(resolveCurrentKioskInitialRoute('/kiosk/portal')).toBe('portal');
+  expect(resolveCurrentKioskInitialRoute('/kiosk/portal/')).toBe('portal');
+});

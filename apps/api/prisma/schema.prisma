@@ -491,6 +491,7 @@ model ClientDevice {
   statusClientId                                String? // ClientStatus.clientId への紐づけ（x-client-key → statusClientId）
   defaultMode                                   String?                                        @default("TAG") // 'PHOTO' | 'TAG'（デフォルト: 'TAG'）
   kioskInitialRoute                             String? // 端末ごとのキオスク開始ページ（shared-types の KIOSK_INITIAL_ROUTE_IDS。未設定は defaultMode、PIN画面は対象外）
+  kioskPortalHiddenTabIds                        String[] @default([])
   /// キオスクのサイネージプレビューで参照する `ClientDevice.apiKey`（サイネージ用途端末のみ許可。未設定時は自端末キーでプレビュー）
   signagePreviewTargetApiKey                    String?
   /// Zero2W 棚番エッジ等: 端末に固定する棚番（`西-北-01` 形式・trim 保存）
