@@ -57,7 +57,7 @@ Decision (2026-10-06, implementation): make two small source-neutral planner cha
 
 `scripts/hermes-search/hermes-source-definition.mjs` registers source JSONs under `scripts/hermes-search/hermes-sources/`. `retrieval/catalog.mjs` derives identifier, date, facet, and body roles from their field names/labels. `completedOn` and `lastTrainingOn` become dates. The worker receives authorized API rows, selects a source using JEV, filters local records, and displays the original row text.
 
-`apps/api/src/services/assembly/hermes-search-sources.ts` owns the API reader registry and derives its source IDs. `hermes-search-trial.service.ts` supplies authorized reader dependencies for enabled sources. New row transformations live in `apps/api/src/services/torque-training/torque-training-hermes-source.service.ts`. One refresh shares one Prisma session query between session and operator readers. Only COMPLETED sessions with `excludedAt: null` are read; defensive transformation filters preserve that boundary too. The team reader calls the existing summary service and reads no unbounded attempt corpus. Dates use Asia/Tokyo. This changes no schema, training API, UI, business-consultation route, infrastructure, or CI configuration.
+`apps/api/src/services/business-hermes/hermes-search-sources.ts` owns the API reader registry and derives its source IDs. `hermes-search-trial.service.ts` supplies authorized reader dependencies for enabled sources. New row transformations live in `apps/api/src/services/torque-training/torque-training-hermes-source.service.ts`. One refresh shares one Prisma session query between session and operator readers. Only COMPLETED sessions with `excludedAt: null` are read; defensive transformation filters preserve that boundary too. The team reader calls the existing summary service and reads no unbounded attempt corpus. Dates use Asia/Tokyo. This changes no schema, training API, UI, business-consultation route, infrastructure, or CI configuration.
 
 ## Plan of Work
 
@@ -78,7 +78,7 @@ Use the standard deployment guide with an immutable reviewed target and successf
 From repository root, run:
 
     node --test scripts/hermes-search/hermes-source-definition.test.mjs
-    pnpm --filter @raspi-system/api test -- src/services/torque-training/torque-training-hermes-source.service.test.ts src/services/assembly/__tests__/hermes-search-sources.test.ts src/services/assembly/__tests__/hermes-search-trial.service.test.ts
+    pnpm --filter @raspi-system/api test -- src/services/torque-training/torque-training-hermes-source.service.test.ts src/services/business-hermes/__tests__/hermes-search-sources.test.ts src/services/business-hermes/__tests__/hermes-search-trial.service.test.ts
     pnpm --filter @raspi-system/api lint
     pnpm --filter @raspi-system/api build
 
@@ -141,7 +141,7 @@ Incremental refresh remains unchanged. `mergeRecords` only inserts and replaces 
 ### Adding a Source
 
 1. Place one `hermes-source-definition/v1` JSON in `scripts/hermes-search/hermes-sources/`, with a matching filename/ID, `label`, explicit `visibility`, metadata/body fields, and search/projection attributes. Declare numeric metadata in `numericFields`. Omit optional execution capabilities unless their backing data/indexes are available.
-2. Implement the authorized read function and add one factory entry to `RETRIEVAL_SOURCE_READERS` in `apps/api/src/services/assembly/hermes-search-sources.ts`. Import the reader in that registry, or inject its code-owned dependencies there when needed. Do not add an ID to a second list or change planner/executor/worker code.
+2. Implement the authorized read function and add one factory entry to `RETRIEVAL_SOURCE_READERS` in `apps/api/src/services/business-hermes/hermes-search-sources.ts`. Import the reader in that registry, or inject its code-owned dependencies there when needed. Do not add an ID to a second list or change planner/executor/worker code.
 3. Add reader tests for authorization, original text, update/removal behavior, and empty data. Extend synthetic retrieval coverage for source visibility, catalog roles, and a multi-source QueryPlan. `hermes-search-sources.test.ts` automatically compares API registry IDs to the shipped definition directory. `source-registration.test.mjs` registers temporary definitions without adding permanent synthetic source files; `source-compatibility.test.mjs` fixes existing catalog, JEV input, plan, candidate, and answer hashes captured before this refactor.
 4. Run definition tests, affected API tests, retrieval tests, API lint, and the no-emit API typecheck. Existing two-source expectations must remain unchanged.
 5. At a separately authorized production rollout, deploy a reviewed immutable target with successful CI using the standard deployment guide, print the plan, and specify the exact Pi5 limit. Preserve the confirmed current source list and append the new ID to `HERMES_RETRIEVAL_SOURCES`. After worker restart and full corpus refresh, verify the source's visibility, counts, original text, representative searches, and kiosk behavior. Source JSON and read registration alone do not enable a source in production.

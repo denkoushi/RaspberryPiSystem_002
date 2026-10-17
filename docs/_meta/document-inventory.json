@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 762,
-    "totalLines": 188382,
-    "totalBytes": 14971049,
-    "withFrontmatter": 366,
+    "documentCount": 766,
+    "totalLines": 188811,
+    "totalBytes": 15023763,
+    "withFrontmatter": 367,
     "withStatus": 170,
     "sourceOfTruthDeclared": 116,
     "execPlanReferences": 62,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 39,
-    "localLinkCount": 5824,
+    "localLinkCount": 5866,
     "brokenLocalLinkCount": 89,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
@@ -5919,8 +5919,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 2079,
-      "byteSize": 358735,
+      "lineCount": 2082,
+      "byteSize": 359011,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -10707,6 +10707,11 @@
           "exists": true
         },
         {
+          "href": "./plans/kiosk-portal.md",
+          "targetPath": "docs/plans/kiosk-portal.md",
+          "exists": true
+        },
+        {
           "href": "./plans/kiosk-self-inspection-record-view-uiux-execplan.md",
           "targetPath": "docs/plans/kiosk-self-inspection-record-view-uiux-execplan.md",
           "exists": true
@@ -10869,6 +10874,11 @@
         {
           "href": "./plans/procedure-manuals-execplan.md",
           "targetPath": "docs/plans/procedure-manuals-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/procedure-video-auto-edit-execplan.md",
+          "targetPath": "docs/plans/procedure-video-auto-edit-execplan.md",
           "exists": true
         },
         {
@@ -11587,100 +11597,100 @@
           "exists": true
         }
       ],
-      "inboundCount": 12,
+      "inboundCount": 13,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 340,
+          "line": 343,
           "length": 1132
         },
         {
-          "line": 356,
+          "line": 359,
           "length": 1242
         },
         {
-          "line": 360,
+          "line": 363,
           "length": 1022
         },
         {
-          "line": 375,
+          "line": 378,
           "length": 1065
         },
         {
-          "line": 423,
+          "line": 426,
           "length": 1165
         },
         {
-          "line": 429,
+          "line": 432,
           "length": 1458
         },
         {
-          "line": 441,
+          "line": 444,
           "length": 1083
         },
         {
-          "line": 455,
+          "line": 458,
           "length": 1398
         },
         {
-          "line": 457,
+          "line": 460,
           "length": 1133
         },
         {
-          "line": 461,
+          "line": 464,
           "length": 1399
         },
         {
-          "line": 463,
+          "line": 466,
           "length": 1008
         },
         {
-          "line": 469,
+          "line": 472,
           "length": 1059
         },
         {
-          "line": 477,
+          "line": 480,
           "length": 1129
         },
         {
-          "line": 481,
+          "line": 484,
           "length": 1135
         },
         {
-          "line": 485,
+          "line": 488,
           "length": 1117
         },
         {
-          "line": 600,
+          "line": 603,
           "length": 1013
         },
         {
-          "line": 786,
+          "line": 789,
           "length": 2038
         },
         {
-          "line": 802,
+          "line": 805,
           "length": 1496
         },
         {
-          "line": 808,
+          "line": 811,
           "length": 1177
         },
         {
-          "line": 1150,
+          "line": 1153,
           "length": 1449
         },
         {
-          "line": 1186,
+          "line": 1189,
           "length": 1136
         },
         {
-          "line": 1188,
+          "line": 1191,
           "length": 1239
         },
         {
-          "line": 1224,
+          "line": 1227,
           "length": 1004
         }
       ],
@@ -17417,8 +17427,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260731-single-ssd-durable-file-storage.md",
-      "lineCount": 108,
-      "byteSize": 6534,
+      "lineCount": 124,
+      "byteSize": 8058,
       "hasFrontmatter": true,
       "title": "Keep business files on one Pi5 SSD behind a durable storage port",
       "status": "accepted",
@@ -17667,7 +17677,7 @@
     {
       "path": "docs/decisions/ADR-20260907-hermes-business-butler-design-policy-v1.md",
       "lineCount": 193,
-      "byteSize": 10706,
+      "byteSize": 10734,
       "hasFrontmatter": true,
       "title": "ADR-20260907: Hermes business butler design policy v1",
       "status": "accepted",
@@ -17679,13 +17689,13 @@
           "exists": true
         },
         {
-          "href": "../../apps/api/src/services/assembly/business-hermes-chat.service.ts",
-          "targetPath": "apps/api/src/services/assembly/business-hermes-chat.service.ts",
+          "href": "../../apps/api/src/services/business-hermes/business-hermes-chat.service.ts",
+          "targetPath": "apps/api/src/services/business-hermes/business-hermes-chat.service.ts",
           "exists": true
         },
         {
-          "href": "../../apps/api/src/services/assembly/business-hermes.service.ts",
-          "targetPath": "apps/api/src/services/assembly/business-hermes.service.ts",
+          "href": "../../apps/api/src/services/business-hermes/business-hermes.service.ts",
+          "targetPath": "apps/api/src/services/business-hermes/business-hermes.service.ts",
           "exists": true
         },
         {
@@ -23193,6 +23203,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/kiosk-operation-guide/portal.md",
+      "lineCount": 35,
+      "byteSize": 2355,
+      "hasFrontmatter": true,
+      "title": "ポータル",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/kiosk-operation-guide/production-schedule-due-management.md",
       "lineCount": 37,
       "byteSize": 2420,
@@ -27706,7 +27731,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 2,
+      "inboundCount": 3,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -27850,6 +27875,27 @@
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-421-kensakumain-video-freeze-os-upgrade.md",
+      "lineCount": 48,
+      "byteSize": 5273,
+      "hasFrontmatter": false,
+      "title": "KB-421: kensakuMain で動画を開くと画面が止まって震えた（古い labwc / OS を更新して解消）",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "./KB-413-kiosk-chromium-canary-stonebase01.md",
+          "targetPath": "docs/knowledge-base/KB-413-kiosk-chromium-canary-stonebase01.md",
+          "exists": true
+        }
+      ],
       "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
@@ -34440,7 +34486,7 @@
     {
       "path": "docs/plans/business-hermes-assembly-guide.md",
       "lineCount": 79,
-      "byteSize": 12996,
+      "byteSize": 13010,
       "hasFrontmatter": false,
       "title": "業務Hermesによる組立作業案内の最小縦断",
       "status": null,
@@ -34455,7 +34501,7 @@
     {
       "path": "docs/plans/business-hermes-butler-gate-execplan.md",
       "lineCount": 120,
-      "byteSize": 18053,
+      "byteSize": 18067,
       "hasFrontmatter": false,
       "title": "Business Hermes Butler: design policy and technical gate",
       "status": null,
@@ -34476,7 +34522,7 @@
     {
       "path": "docs/plans/business-hermes-butler-phase1-execplan.md",
       "lineCount": 529,
-      "byteSize": 34709,
+      "byteSize": 34730,
       "hasFrontmatter": false,
       "title": "Hermes business butler v1: gated phase 1 implementation",
       "status": null,
@@ -34502,7 +34548,7 @@
     {
       "path": "docs/plans/business-hermes-consultation-boundaries-execplan.md",
       "lineCount": 101,
-      "byteSize": 14561,
+      "byteSize": 14624,
       "hasFrontmatter": false,
       "title": "Separate Hermes response parsing from evidence projection",
       "status": null,
@@ -34517,7 +34563,7 @@
     {
       "path": "docs/plans/business-hermes-signage-live-data.md",
       "lineCount": 105,
-      "byteSize": 9862,
+      "byteSize": 9869,
       "hasFrontmatter": false,
       "title": "Business Hermes signage live data",
       "status": null,
@@ -34789,7 +34835,7 @@
     {
       "path": "docs/plans/dgx-night-preparation-execplan.md",
       "lineCount": 137,
-      "byteSize": 16520,
+      "byteSize": 16527,
       "hasFrontmatter": false,
       "title": "DGX Spark as the night preparation worker for business Hermes",
       "status": null,
@@ -35176,7 +35222,7 @@
     {
       "path": "docs/plans/hermes-answer-cache.md",
       "lineCount": 153,
-      "byteSize": 28258,
+      "byteSize": 28265,
       "hasFrontmatter": false,
       "title": "Hermes reviewed answer reuse",
       "status": null,
@@ -35197,7 +35243,7 @@
     {
       "path": "docs/plans/hermes-background-admission.md",
       "lineCount": 57,
-      "byteSize": 6207,
+      "byteSize": 6214,
       "hasFrontmatter": false,
       "title": "Run Hermes preparation whenever DGX capacity is available",
       "status": null,
@@ -35212,7 +35258,7 @@
     {
       "path": "docs/plans/hermes-background-worker.md",
       "lineCount": 188,
-      "byteSize": 31634,
+      "byteSize": 31669,
       "hasFrontmatter": true,
       "title": "Delegate bounded Hermes preparation to DGX",
       "status": "in-progress",
@@ -35232,7 +35278,7 @@
     {
       "path": "docs/plans/hermes-cross-source-foundation-execplan.md",
       "lineCount": 236,
-      "byteSize": 45611,
+      "byteSize": 45639,
       "hasFrontmatter": true,
       "title": "Hermes横断検索の土台（ソース追加の共通口・DB索引・ページ文脈）",
       "status": null,
@@ -35256,7 +35302,7 @@
     {
       "path": "docs/plans/hermes-cross-source-retrieval-execplan.md",
       "lineCount": 233,
-      "byteSize": 33488,
+      "byteSize": 33509,
       "hasFrontmatter": true,
       "title": "Hermes cross-source record retrieval (source catalog, query plan, offline evaluation)",
       "status": "in-progress",
@@ -35270,14 +35316,20 @@
     },
     {
       "path": "docs/plans/hermes-dgx-retrieval-enrichment.md",
-      "lineCount": 59,
-      "byteSize": 6838,
+      "lineCount": 76,
+      "byteSize": 8247,
       "hasFrontmatter": false,
       "title": "Hermes DGX retrieval enrichment",
       "status": null,
       "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 1,
+      "localLinks": [
+        {
+          "href": "hermes-retrieval-accuracy-log.md#2026-10-17-要因で分ける-axis-from-jev-classification-of-不適合内容-change-not-a-measurement",
+          "targetPath": "docs/plans/hermes-retrieval-accuracy-log.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -35286,7 +35338,7 @@
     {
       "path": "docs/plans/hermes-jev-search-handoff-20260923.md",
       "lineCount": 167,
-      "byteSize": 11307,
+      "byteSize": 11314,
       "hasFrontmatter": true,
       "title": "Hermes/JEV record-search handoff and completion boundary",
       "status": "in-progress",
@@ -35368,7 +35420,7 @@
     {
       "path": "docs/plans/hermes-knowledge.md",
       "lineCount": 91,
-      "byteSize": 13557,
+      "byteSize": 13564,
       "hasFrontmatter": false,
       "title": "Hermes knowledge: Markdown, photographs, PDFs and reports",
       "status": null,
@@ -35383,7 +35435,7 @@
     {
       "path": "docs/plans/hermes-learning-evaluation.md",
       "lineCount": 150,
-      "byteSize": 22893,
+      "byteSize": 22907,
       "hasFrontmatter": false,
       "title": "Hermes measured Skill improvement",
       "status": null,
@@ -35398,7 +35450,7 @@
     {
       "path": "docs/plans/hermes-nightly-doc2query.md",
       "lineCount": 111,
-      "byteSize": 12283,
+      "byteSize": 12339,
       "hasFrontmatter": false,
       "title": "Hermes nightly document questions and independent evaluation",
       "status": null,
@@ -35443,7 +35495,7 @@
     {
       "path": "docs/plans/hermes-question-prefetch.md",
       "lineCount": 127,
-      "byteSize": 15685,
+      "byteSize": 15699,
       "hasFrontmatter": false,
       "title": "Hermes question recipes and one-candidate prefetch",
       "status": null,
@@ -35457,14 +35509,20 @@
     },
     {
       "path": "docs/plans/hermes-retrieval-accuracy-log.md",
-      "lineCount": 572,
-      "byteSize": 77907,
+      "lineCount": 605,
+      "byteSize": 84537,
       "hasFrontmatter": false,
       "title": "Hermes retrieval accuracy log",
       "status": null,
       "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 2,
+      "localLinks": [
+        {
+          "href": "hermes-dgx-retrieval-enrichment.md#cause-classification-runtime",
+          "targetPath": "docs/plans/hermes-dgx-retrieval-enrichment.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 3,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -35473,7 +35531,7 @@
     {
       "path": "docs/plans/hermes-source-fact-adoption.md",
       "lineCount": 67,
-      "byteSize": 9263,
+      "byteSize": 9298,
       "hasFrontmatter": false,
       "title": "Hermes source-fact adoption",
       "status": null,
@@ -35516,7 +35574,7 @@
     {
       "path": "docs/plans/hermes-torque-training-source-execplan.md",
       "lineCount": 150,
-      "byteSize": 19424,
+      "byteSize": 19452,
       "hasFrontmatter": true,
       "title": "Hermes torque training retrieval sources",
       "status": "implementation-verified-in-part",
@@ -35974,7 +36032,7 @@
     {
       "path": "docs/plans/kiosk-chat-system-guide-execplan.md",
       "lineCount": 139,
-      "byteSize": 35485,
+      "byteSize": 35541,
       "hasFrontmatter": false,
       "title": "キオスクの Chat をシステム全体の案内役にする(操作の問い合わせと不具合の受付)",
       "status": null,
@@ -36371,6 +36429,202 @@
         {
           "href": "./hermes-retrieval-accuracy-log.md",
           "targetPath": "docs/plans/hermes-retrieval-accuracy-log.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/kiosk-portal.md",
+      "lineCount": 127,
+      "byteSize": 13969,
+      "hasFrontmatter": false,
+      "title": "Kiosk portal with per-device card visibility",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "../../apps/api/prisma/migrations/20261017100000_add_kiosk_portal_hidden_tab_ids/migration.sql",
+          "targetPath": "apps/api/prisma/migrations/20261017100000_add_kiosk_portal_hidden_tab_ids/migration.sql",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/prisma/schema.prisma",
+          "targetPath": "apps/api/prisma/schema.prisma",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/src/routes/kiosk.ts",
+          "targetPath": "apps/api/src/routes/kiosk.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/src/routes/kiosk/config.ts",
+          "targetPath": "apps/api/src/routes/kiosk/config.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/src/routes/kiosk/portal-cards.test.ts",
+          "targetPath": "apps/api/src/routes/kiosk/portal-cards.test.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/src/routes/kiosk/portal-cards.ts",
+          "targetPath": "apps/api/src/routes/kiosk/portal-cards.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/src/services/kiosk/kiosk-config.service.ts",
+          "targetPath": "apps/api/src/services/kiosk/kiosk-config.service.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/api/domains/kiosk.ts",
+          "targetPath": "apps/web/src/api/domains/kiosk.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/api/hooks/kiosk-portal.test.tsx",
+          "targetPath": "apps/web/src/api/hooks/kiosk-portal.test.tsx",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/api/hooks/kiosk.ts",
+          "targetPath": "apps/web/src/api/hooks/kiosk.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/App.tsx",
+          "targetPath": "apps/web/src/App.tsx",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/components/kiosk/KioskClientStatusChip.tsx",
+          "targetPath": "apps/web/src/components/kiosk/KioskClientStatusChip.tsx",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/components/kiosk/KioskHeader.test.tsx",
+          "targetPath": "apps/web/src/components/kiosk/KioskHeader.test.tsx",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/components/kiosk/KioskHeader.tsx",
+          "targetPath": "apps/web/src/components/kiosk/KioskHeader.tsx",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/components/kiosk/KioskInitialRouteButton.test.tsx",
+          "targetPath": "apps/web/src/components/kiosk/KioskInitialRouteButton.test.tsx",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/features/kiosk/kioskHeaderTabs/kioskHeaderReorderableTabRenderer.test.tsx",
+          "targetPath": "apps/web/src/features/kiosk/kioskHeaderTabs/kioskHeaderReorderableTabRenderer.test.tsx",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/features/kiosk/kioskHeaderTabs/kioskHeaderReorderableTabRenderer.tsx",
+          "targetPath": "apps/web/src/features/kiosk/kioskHeaderTabs/kioskHeaderReorderableTabRenderer.tsx",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/features/kiosk/kioskHeaderTabs/kioskHeaderTabActivity.test.ts",
+          "targetPath": "apps/web/src/features/kiosk/kioskHeaderTabs/kioskHeaderTabActivity.test.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/features/kiosk/kioskHeaderTabs/kioskHeaderTabActivity.ts",
+          "targetPath": "apps/web/src/features/kiosk/kioskHeaderTabs/kioskHeaderTabActivity.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/features/kiosk/kioskHeaderTabs/kioskHeaderTabRoutes.test.ts",
+          "targetPath": "apps/web/src/features/kiosk/kioskHeaderTabs/kioskHeaderTabRoutes.test.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/features/kiosk/kioskHeaderTabs/kioskHeaderTabRoutes.ts",
+          "targetPath": "apps/web/src/features/kiosk/kioskHeaderTabs/kioskHeaderTabRoutes.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/features/kiosk/kioskHeaderTabs/useKioskDueManagementNavigation.ts",
+          "targetPath": "apps/web/src/features/kiosk/kioskHeaderTabs/useKioskDueManagementNavigation.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/features/kiosk/portal/KioskPortalControls.tsx",
+          "targetPath": "apps/web/src/features/kiosk/portal/KioskPortalControls.tsx",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/features/kiosk/portal/kioskPortalGroups.test.ts",
+          "targetPath": "apps/web/src/features/kiosk/portal/kioskPortalGroups.test.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/features/kiosk/portal/kioskPortalGroups.ts",
+          "targetPath": "apps/web/src/features/kiosk/portal/kioskPortalGroups.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/features/kiosk/portal/KioskPortalIcon.tsx",
+          "targetPath": "apps/web/src/features/kiosk/portal/KioskPortalIcon.tsx",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/features/kiosk/portal/useKioskPortalLargeScreen.ts",
+          "targetPath": "apps/web/src/features/kiosk/portal/useKioskPortalLargeScreen.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/layouts/KioskLayout.test.tsx",
+          "targetPath": "apps/web/src/layouts/KioskLayout.test.tsx",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/layouts/KioskLayout.tsx",
+          "targetPath": "apps/web/src/layouts/KioskLayout.tsx",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/pages/kiosk/KioskPortalPage.test.tsx",
+          "targetPath": "apps/web/src/pages/kiosk/KioskPortalPage.test.tsx",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/pages/kiosk/KioskPortalPage.tsx",
+          "targetPath": "apps/web/src/pages/kiosk/KioskPortalPage.tsx",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/tailwind.config.ts",
+          "targetPath": "apps/web/tailwind.config.ts",
+          "exists": true
+        },
+        {
+          "href": "../../docs/INDEX.md",
+          "targetPath": "docs/INDEX.md",
+          "exists": true
+        },
+        {
+          "href": "../../docs/plans/kiosk-portal.md",
+          "targetPath": "docs/plans/kiosk-portal.md",
+          "exists": true
+        },
+        {
+          "href": "../../packages/shared-types/src/kiosk/kiosk-initial-route.test.ts",
+          "targetPath": "packages/shared-types/src/kiosk/kiosk-initial-route.test.ts",
+          "exists": true
+        },
+        {
+          "href": "../../packages/shared-types/src/kiosk/kiosk-initial-route.ts",
+          "targetPath": "packages/shared-types/src/kiosk/kiosk-initial-route.ts",
           "exists": true
         }
       ],
@@ -37853,8 +38107,8 @@
     },
     {
       "path": "docs/plans/procedure-manuals-execplan.md",
-      "lineCount": 799,
-      "byteSize": 204641,
+      "lineCount": 801,
+      "byteSize": 204856,
       "hasFrontmatter": false,
       "title": "機種×工程ごとの要領書を、組立手順書を正本にして閲覧・作成できるようにする",
       "status": null,
@@ -37863,6 +38117,11 @@
         {
           "href": "../knowledge-base/KB-319-photo-loan-vlm-tool-label.md",
           "targetPath": "docs/knowledge-base/KB-319-photo-loan-vlm-tool-label.md",
+          "exists": true
+        },
+        {
+          "href": "./procedure-video-auto-edit-execplan.md",
+          "targetPath": "docs/plans/procedure-video-auto-edit-execplan.md",
           "exists": true
         }
       ],
@@ -37875,6 +38134,21 @@
           "length": 1029
         }
       ],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/procedure-video-auto-edit-execplan.md",
+      "lineCount": 148,
+      "byteSize": 20594,
+      "hasFrontmatter": false,
+      "title": "作業動画の自動編集(場面の区切りと映像からの字幕案)",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
       "referencesExecPlan": false
     },
     {

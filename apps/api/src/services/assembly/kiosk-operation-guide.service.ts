@@ -4,7 +4,7 @@ import path from 'node:path';
 import { env } from '../../config/env.js';
 import { logger } from '../../lib/logger.js';
 import { GUIDE_FAMILY_ROUTES, type GuideFamily } from './kiosk-operation-guide-subject.js';
-import { BUSINESS_HERMES_SOURCE_DEFINITION_VERSION, type BusinessHermesSourceDefinition } from './business-hermes-source-adapters.js';
+import { BUSINESS_HERMES_SOURCE_DEFINITION_VERSION, type BusinessHermesSourceDefinition } from '../business-hermes/business-hermes-source-adapters.js';
 
 export type KioskOperationGuideMatch = 'screen' | 'keyword' | 'none';
 export type KioskOperationGuideLookupOptions = { families?: GuideFamily[] };

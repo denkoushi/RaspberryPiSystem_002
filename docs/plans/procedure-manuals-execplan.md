@@ -464,7 +464,7 @@ NODE_OPTIONS='--require=/private/tmp/procedure-material-no-env.cjs' DATABASE_URL
 # The schema at prisma/schema.prisma is valid 🚀
 NODE_OPTIONS='--require=/private/tmp/procedure-material-no-env.cjs' DATABASE_URL='postgresql://test:test@localhost:5432/test' pnpm --filter api exec prisma generate
 # ✔ Generated Prisma Client (v5.22.0) ... in 979ms
-NODE_OPTIONS='--require=/private/tmp/procedure-material-no-env.cjs' pnpm --filter api exec vitest run src/services/assembly/__tests__/procedure-material-image-description.service.test.ts src/services/assembly/__tests__/procedure-material-hermes-source.service.test.ts src/services/assembly/__tests__/hermes-search-trial.service.test.ts src/routes/assembly/__tests__/procedure-material-knowledge.routes.test.ts src/routes/assembly/__tests__/procedure-material-semantic-search.routes.test.ts src/config/__tests__/procedure-material.env.test.ts src/bootstrap/__tests__/start-post-listen-schedulers.test.ts
+NODE_OPTIONS='--require=/private/tmp/procedure-material-no-env.cjs' pnpm --filter api exec vitest run src/services/assembly/__tests__/procedure-material-image-description.service.test.ts src/services/business-hermes/__tests__/procedure-material-hermes-source.service.test.ts src/services/business-hermes/__tests__/hermes-search-trial.service.test.ts src/routes/assembly/__tests__/procedure-material-knowledge.routes.test.ts src/routes/assembly/__tests__/procedure-material-semantic-search.routes.test.ts src/config/__tests__/procedure-material.env.test.ts src/bootstrap/__tests__/start-post-listen-schedulers.test.ts
 # Test Files  7 passed (7)
 # Tests  124 passed (124)
 # Duration  15.37s
@@ -489,11 +489,11 @@ src/config/env.ts
 src/routes/assembly/__tests__/procedure-material-knowledge.routes.test.ts
 src/routes/assembly/__tests__/procedure-material-semantic-search.routes.test.ts
 src/routes/assembly/procedure-materials.ts
-src/services/assembly/__tests__/hermes-search-trial.service.test.ts
-src/services/assembly/__tests__/procedure-material-hermes-source.service.test.ts
+src/services/business-hermes/__tests__/hermes-search-trial.service.test.ts
+src/services/business-hermes/__tests__/procedure-material-hermes-source.service.test.ts
 src/services/assembly/__tests__/procedure-material-search.integration.test.ts
-src/services/assembly/hermes-search-trial.service.ts
-src/services/assembly/procedure-material-hermes-source.service.ts
+src/services/business-hermes/hermes-search-trial.service.ts
+src/services/business-hermes/procedure-material-hermes-source.service.ts
 src/services/assembly/procedure-material-knowledge.service.ts
 src/services/assembly/procedure-material.service.ts
 src/config/__tests__/procedure-material.env.test.ts

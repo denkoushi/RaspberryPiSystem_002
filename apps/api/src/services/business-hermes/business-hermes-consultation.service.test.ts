@@ -11,7 +11,7 @@ vi.mock('../notifications/slack-webhook.js', () => ({ sendSlackNotification: vi.
 import { BusinessHermesConsultationService, troubleCategory } from './business-hermes-consultation.service.js';
 import { CACHED_QUESTION_PREFIX, SOURCE_QUESTION_PREFIX } from './business-hermes-answer-cache.js';
 import { projectTrustedEvidence } from './business-hermes-evidence.js';
-import { KioskOperationGuideIndex } from './kiosk-operation-guide.service.js';
+import { KioskOperationGuideIndex } from '../assembly/kiosk-operation-guide.service.js';
 import { modelState, signageToolProposal } from './business-hermes-responses.js';
 
 const consultationId = '00000000-0000-0000-0000-000000000010';

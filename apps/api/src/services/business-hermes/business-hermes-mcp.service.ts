@@ -32,7 +32,7 @@ import {
   type BusinessHermesSourceKind
 } from './business-hermes-source-adapters.js';
 
-import { kioskOperationGuide, kioskOperationGuideSourceDefinition, type KioskOperationGuideIndex } from './kiosk-operation-guide.service.js';
+import { kioskOperationGuide, kioskOperationGuideSourceDefinition, type KioskOperationGuideIndex } from '../assembly/kiosk-operation-guide.service.js';
 
 export const BUSINESS_HERMES_MCP_TOOL_NAMES = [
   'business_hermes_describe_sources',

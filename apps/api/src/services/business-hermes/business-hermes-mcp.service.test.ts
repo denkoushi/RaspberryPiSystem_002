@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 
 import { BusinessHermesMcpService, groundedAnswerMessage } from './business-hermes-mcp.service.js';
-import { KioskOperationGuideIndex } from './kiosk-operation-guide.service.js';
+import { KioskOperationGuideIndex } from '../assembly/kiosk-operation-guide.service.js';
 import { businessHermesSourceDefinitionList, businessSourceAdapters } from './business-hermes-source-adapters.js';
 
 describe('BusinessHermesMcpService', () => {

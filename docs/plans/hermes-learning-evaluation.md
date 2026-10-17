@@ -43,7 +43,7 @@ Use an explicitly invoked offline Python command with SQLite (standard library),
 ## Context and Orientation
 
 
-`apps/api/src/services/assembly/business-hermes-consultation.service.ts` handles first-question choices and one speculative answer. Messages already contain `searchDiagnostics` JSON. `apps/api/src/scripts/export-business-hermes-learning.ts` exports private observations using existing database credentials. `scripts/hermes-learning/learning.py` consumes the export into SQLite and prepares a native Hermes Skills review. No business examples belong in Git. The deployed Skill template is `infrastructure/ansible/templates/business-hermes-chat/skills/business-consultation/SKILL.md.j2` and must still be released through the normal repository path.
+`apps/api/src/services/business-hermes/business-hermes-consultation.service.ts` handles first-question choices and one speculative answer. Messages already contain `searchDiagnostics` JSON. `apps/api/src/scripts/export-business-hermes-learning.ts` exports private observations using existing database credentials. `scripts/hermes-learning/learning.py` consumes the export into SQLite and prepares a native Hermes Skills review. No business examples belong in Git. The deployed Skill template is `infrastructure/ansible/templates/business-hermes-chat/skills/business-consultation/SKILL.md.j2` and must still be released through the normal repository path.
 
 ## Plan of Work
 
@@ -53,7 +53,7 @@ First add telemetry around the existing request and inference lifecycle, includi
 ## Concrete Steps
 
 
-From the repository root run `python3 -m unittest discover -s scripts/hermes-learning -p 'test_*.py'`. From `apps/api` run `pnpm exec vitest run src/services/assembly/business-hermes-consultation.service.test.ts` and targeted ESLint. The CLI help and the operational instructions below describe the actual file contracts and commands after implementation.
+From the repository root run `python3 -m unittest discover -s scripts/hermes-learning -p 'test_*.py'`. From `apps/api` run `pnpm exec vitest run src/services/business-hermes/business-hermes-consultation.service.test.ts` and targeted ESLint. The CLI help and the operational instructions below describe the actual file contracts and commands after implementation.
 
 ## Validation and Acceptance
 

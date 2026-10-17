@@ -5,7 +5,7 @@ import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
 import { AssemblyProcedureImageStorage } from '../../lib/assembly-procedure-image-storage.js';
-import { AssemblyWorkSessionService } from './assembly-work-session.service.js';
+import { AssemblyWorkSessionService } from '../assembly/assembly-work-session.service.js';
 import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm-runtime-controller.js';
 import type { LocalLlmRuntimeControllerPort } from '../inference/runtime/local-llm-runtime-control.port.js';
 import { getImageOcrLayoutPort } from '../ocr/image-ocr-runtime.js';

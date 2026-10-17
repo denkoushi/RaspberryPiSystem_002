@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authorizeKioskClientKeyOrJwtRoles } from '../../lib/kiosk-document-auth.js';
-import { HermesSearchTrialService, type HermesPrincipal } from '../../services/assembly/hermes-search-trial.service.js';
-import { createReceiptLog, type ReceiptLog } from '../../services/assembly/hermes-search-receipt-log.js';
+import { HermesSearchTrialService, type HermesPrincipal } from '../../services/business-hermes/hermes-search-trial.service.js';
+import { createReceiptLog, type ReceiptLog } from '../../services/business-hermes/hermes-search-receipt-log.js';
 
 const SAFE_DIAGNOSTIC_STAGES = new Set(['jev_query', 'worker_request']);
 const SAFE_DIAGNOSTIC_EXCEPTION_TYPES = new Set(['TypeSafeDirectError', 'AbortError', 'RangeError', 'ReferenceError', 'SyntaxError', 'TypeError', 'Error']);

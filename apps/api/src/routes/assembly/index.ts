@@ -13,9 +13,9 @@ import { authorizeRoles } from '../../lib/auth.js';
 import { registerBusinessHermesRoutes } from './business-hermes.js';
 import { registerBusinessHermesMcpRoutes } from './business-hermes-mcp.js';
 import { registerHermesSearchTrialRoutes } from './hermes-search-trial.js';
-import { HermesSearchTrialService } from '../../services/assembly/hermes-search-trial.service.js';
-import { BusinessHermesService } from '../../services/assembly/business-hermes.service.js';
-import { BusinessHermesConsultationService } from '../../services/assembly/business-hermes-consultation.service.js';
+import { HermesSearchTrialService } from '../../services/business-hermes/hermes-search-trial.service.js';
+import { BusinessHermesService } from '../../services/business-hermes/business-hermes.service.js';
+import { BusinessHermesConsultationService } from '../../services/business-hermes/business-hermes-consultation.service.js';
 import { requireClientDevice } from '../kiosk/shared.js';
 import { requireKioskClientDevice } from '../../services/clients/client-device-auth.service.js';
 import {

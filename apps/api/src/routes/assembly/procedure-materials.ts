@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../../services/backup/backup-config.js';
-import { HermesSearchTrialService } from '../../services/assembly/hermes-search-trial.service.js';
+import { HermesSearchTrialService } from '../../services/business-hermes/hermes-search-trial.service.js';
 import { ProcedureMaterialService } from '../../services/assembly/procedure-material.service.js';
 import { getProcedureMaterialGmailIngestionService, type ProcedureMaterialGmailIngestionService } from '../../services/assembly/procedure-material-gmail-ingestion.service.js';
 
