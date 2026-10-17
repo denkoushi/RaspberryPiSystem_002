@@ -15,8 +15,8 @@ Pi3(軽量サイネージ)はSVGを直接描画しない。
 
 関連:
 - `apps/api/src/services/signage/signage.renderer.ts`
-- `infrastructure/ansible/templates/signage-update.sh.j2`
-- `infrastructure/ansible/templates/signage-display.sh.j2`
+- `infrastructure/ansible/roles/signage/templates/signage-update.sh.j2`
+- `infrastructure/ansible/roles/signage/templates/signage-display.sh.j2`
 
 このため、HTML(ブラウザ描画)と見え方がズレる要因が複数ある。ズレを「仕様として許容する」のか「契約として固定する」のかを明確にする必要がある。
 
