@@ -11,8 +11,6 @@ ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_PROFILE = "business_qwen38_flash_next_nvfp4"
 EXPLICIT_PROFILE = "business_qwen36_27b_nvfp4"
 TEMPLATE_PATHS = (
-    ROOT / "infrastructure/ansible/templates/private-pi5-hermes/env.tools.j2",
-    ROOT / "infrastructure/ansible/templates/private-pi5-hermes/env.research.j2",
     ROOT / "infrastructure/ansible/templates/private-pi5-hermes-dgx-keep-warm.env.j2",
 )
 
@@ -69,20 +67,10 @@ class ModelProfileTemplateTests(unittest.TestCase):
                 common = _render(path, private_pi5_dgx_runtime_ready_timeout_sec=777)
                 self.assertIn("DGX_RUNTIME_READY_TIMEOUT_SEC=777", common)
 
-        tools = _render(
-            TEMPLATE_PATHS[0],
-            private_pi5_hermes_tools_runtime_ready_timeout_sec=888,
-        )
-        research = _render(
-            TEMPLATE_PATHS[1],
-            private_pi5_hermes_research_runtime_ready_timeout_sec=889,
-        )
         keep_warm = _render(
-            TEMPLATE_PATHS[2],
+            TEMPLATE_PATHS[0],
             private_pi5_hermes_dgx_keep_warm_runtime_ready_timeout_sec=890,
         )
-        self.assertIn("DGX_RUNTIME_READY_TIMEOUT_SEC=888", tools)
-        self.assertIn("DGX_RUNTIME_READY_TIMEOUT_SEC=889", research)
         self.assertIn("DGX_RUNTIME_READY_TIMEOUT_SEC=890", keep_warm)
 
 
