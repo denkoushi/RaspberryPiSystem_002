@@ -7,13 +7,13 @@ import {
   BUSINESS_HERMES_CHAT_SCOPES,
   BusinessHermesChatService,
   type BusinessHermesChatUserMessage
-} from '../../services/assembly/business-hermes-chat.service.js';
-import { BusinessHermesService, BUSINESS_HERMES_EVENT_CODES } from '../../services/assembly/business-hermes.service.js';
+} from '../../services/business-hermes/business-hermes-chat.service.js';
+import { BusinessHermesService, BUSINESS_HERMES_EVENT_CODES } from '../../services/business-hermes/business-hermes.service.js';
 import {
   BusinessHermesConsultationService
-} from '../../services/assembly/business-hermes-consultation.service.js';
+} from '../../services/business-hermes/business-hermes-consultation.service.js';
 import type { requireClientDevice } from '../kiosk/shared.js';
-import { createReceiptLog, type ReceiptLog } from '../../services/assembly/hermes-search-receipt-log.js';
+import { createReceiptLog, type ReceiptLog } from '../../services/business-hermes/hermes-search-receipt-log.js';
 
 const paramsSchema = z.object({ id: z.string().uuid() });
 const guideBodySchema = z.object({

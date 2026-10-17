@@ -10,7 +10,7 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../production-schedule/cons
 import { readPartNamesByPartNumbers, readPartNumbersByPartName } from '../../work-instructions/repositories/prisma-work-instruction-part-names.js';
 import { PrismaWorkInstructionRepository } from '../../work-instructions/repositories/prisma-work-instruction.repository.js';
 import { WorkInstructionReadService } from '../../work-instructions/work-instruction-read.service.js';
-import { loadProcedureMaterialRecords } from '../procedure-material-hermes-source.service.js';
+import { loadProcedureMaterialRecords } from '../../business-hermes/procedure-material-hermes-source.service.js';
 import { ProcedureMaterialService } from '../procedure-material.service.js';
 import { ProcedureMaterialWorkInstructionService } from '../procedure-material-work-instruction.service.js';
 

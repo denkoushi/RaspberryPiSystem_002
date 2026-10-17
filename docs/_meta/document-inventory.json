@@ -17,7 +17,7 @@
   "summary": {
     "documentCount": 767,
     "totalLines": 188912,
-    "totalBytes": 15035043,
+    "totalBytes": 15035554,
     "withFrontmatter": 367,
     "withStatus": 170,
     "sourceOfTruthDeclared": 116,
@@ -17682,7 +17682,7 @@
     {
       "path": "docs/decisions/ADR-20260907-hermes-business-butler-design-policy-v1.md",
       "lineCount": 193,
-      "byteSize": 10706,
+      "byteSize": 10734,
       "hasFrontmatter": true,
       "title": "ADR-20260907: Hermes business butler design policy v1",
       "status": "accepted",
@@ -17694,13 +17694,13 @@
           "exists": true
         },
         {
-          "href": "../../apps/api/src/services/assembly/business-hermes-chat.service.ts",
-          "targetPath": "apps/api/src/services/assembly/business-hermes-chat.service.ts",
+          "href": "../../apps/api/src/services/business-hermes/business-hermes-chat.service.ts",
+          "targetPath": "apps/api/src/services/business-hermes/business-hermes-chat.service.ts",
           "exists": true
         },
         {
-          "href": "../../apps/api/src/services/assembly/business-hermes.service.ts",
-          "targetPath": "apps/api/src/services/assembly/business-hermes.service.ts",
+          "href": "../../apps/api/src/services/business-hermes/business-hermes.service.ts",
+          "targetPath": "apps/api/src/services/business-hermes/business-hermes.service.ts",
           "exists": true
         },
         {
@@ -34491,7 +34491,7 @@
     {
       "path": "docs/plans/business-hermes-assembly-guide.md",
       "lineCount": 79,
-      "byteSize": 12996,
+      "byteSize": 13010,
       "hasFrontmatter": false,
       "title": "業務Hermesによる組立作業案内の最小縦断",
       "status": null,
@@ -34506,7 +34506,7 @@
     {
       "path": "docs/plans/business-hermes-butler-gate-execplan.md",
       "lineCount": 120,
-      "byteSize": 18053,
+      "byteSize": 18067,
       "hasFrontmatter": false,
       "title": "Business Hermes Butler: design policy and technical gate",
       "status": null,
@@ -34527,7 +34527,7 @@
     {
       "path": "docs/plans/business-hermes-butler-phase1-execplan.md",
       "lineCount": 529,
-      "byteSize": 34709,
+      "byteSize": 34730,
       "hasFrontmatter": false,
       "title": "Hermes business butler v1: gated phase 1 implementation",
       "status": null,
@@ -34553,7 +34553,7 @@
     {
       "path": "docs/plans/business-hermes-consultation-boundaries-execplan.md",
       "lineCount": 101,
-      "byteSize": 14561,
+      "byteSize": 14624,
       "hasFrontmatter": false,
       "title": "Separate Hermes response parsing from evidence projection",
       "status": null,
@@ -34568,7 +34568,7 @@
     {
       "path": "docs/plans/business-hermes-signage-live-data.md",
       "lineCount": 105,
-      "byteSize": 9862,
+      "byteSize": 9869,
       "hasFrontmatter": false,
       "title": "Business Hermes signage live data",
       "status": null,
@@ -34855,7 +34855,7 @@
     {
       "path": "docs/plans/dgx-night-preparation-execplan.md",
       "lineCount": 137,
-      "byteSize": 16520,
+      "byteSize": 16527,
       "hasFrontmatter": false,
       "title": "DGX Spark as the night preparation worker for business Hermes",
       "status": null,
@@ -35242,7 +35242,7 @@
     {
       "path": "docs/plans/hermes-answer-cache.md",
       "lineCount": 153,
-      "byteSize": 28258,
+      "byteSize": 28265,
       "hasFrontmatter": false,
       "title": "Hermes reviewed answer reuse",
       "status": null,
@@ -35263,7 +35263,7 @@
     {
       "path": "docs/plans/hermes-background-admission.md",
       "lineCount": 57,
-      "byteSize": 6207,
+      "byteSize": 6214,
       "hasFrontmatter": false,
       "title": "Run Hermes preparation whenever DGX capacity is available",
       "status": null,
@@ -35278,7 +35278,7 @@
     {
       "path": "docs/plans/hermes-background-worker.md",
       "lineCount": 188,
-      "byteSize": 31634,
+      "byteSize": 31669,
       "hasFrontmatter": true,
       "title": "Delegate bounded Hermes preparation to DGX",
       "status": "in-progress",
@@ -35298,7 +35298,7 @@
     {
       "path": "docs/plans/hermes-cross-source-foundation-execplan.md",
       "lineCount": 236,
-      "byteSize": 45611,
+      "byteSize": 45639,
       "hasFrontmatter": true,
       "title": "Hermes横断検索の土台（ソース追加の共通口・DB索引・ページ文脈）",
       "status": null,
@@ -35322,7 +35322,7 @@
     {
       "path": "docs/plans/hermes-cross-source-retrieval-execplan.md",
       "lineCount": 233,
-      "byteSize": 33488,
+      "byteSize": 33509,
       "hasFrontmatter": true,
       "title": "Hermes cross-source record retrieval (source catalog, query plan, offline evaluation)",
       "status": "in-progress",
@@ -35358,7 +35358,7 @@
     {
       "path": "docs/plans/hermes-jev-search-handoff-20260923.md",
       "lineCount": 167,
-      "byteSize": 11307,
+      "byteSize": 11314,
       "hasFrontmatter": true,
       "title": "Hermes/JEV record-search handoff and completion boundary",
       "status": "in-progress",
@@ -35440,7 +35440,7 @@
     {
       "path": "docs/plans/hermes-knowledge.md",
       "lineCount": 91,
-      "byteSize": 13557,
+      "byteSize": 13564,
       "hasFrontmatter": false,
       "title": "Hermes knowledge: Markdown, photographs, PDFs and reports",
       "status": null,
@@ -35455,7 +35455,7 @@
     {
       "path": "docs/plans/hermes-learning-evaluation.md",
       "lineCount": 150,
-      "byteSize": 22893,
+      "byteSize": 22907,
       "hasFrontmatter": false,
       "title": "Hermes measured Skill improvement",
       "status": null,
@@ -35470,7 +35470,7 @@
     {
       "path": "docs/plans/hermes-nightly-doc2query.md",
       "lineCount": 111,
-      "byteSize": 12283,
+      "byteSize": 12339,
       "hasFrontmatter": false,
       "title": "Hermes nightly document questions and independent evaluation",
       "status": null,
@@ -35515,7 +35515,7 @@
     {
       "path": "docs/plans/hermes-question-prefetch.md",
       "lineCount": 127,
-      "byteSize": 15685,
+      "byteSize": 15699,
       "hasFrontmatter": false,
       "title": "Hermes question recipes and one-candidate prefetch",
       "status": null,
@@ -35551,7 +35551,7 @@
     {
       "path": "docs/plans/hermes-source-fact-adoption.md",
       "lineCount": 67,
-      "byteSize": 9263,
+      "byteSize": 9298,
       "hasFrontmatter": false,
       "title": "Hermes source-fact adoption",
       "status": null,
@@ -35594,7 +35594,7 @@
     {
       "path": "docs/plans/hermes-torque-training-source-execplan.md",
       "lineCount": 150,
-      "byteSize": 19424,
+      "byteSize": 19452,
       "hasFrontmatter": true,
       "title": "Hermes torque training retrieval sources",
       "status": "implementation-verified-in-part",
@@ -36052,7 +36052,7 @@
     {
       "path": "docs/plans/kiosk-chat-system-guide-execplan.md",
       "lineCount": 139,
-      "byteSize": 35485,
+      "byteSize": 35541,
       "hasFrontmatter": false,
       "title": "キオスクの Chat をシステム全体の案内役にする(操作の問い合わせと不具合の受付)",
       "status": null,
@@ -38128,7 +38128,7 @@
     {
       "path": "docs/plans/procedure-manuals-execplan.md",
       "lineCount": 801,
-      "byteSize": 204814,
+      "byteSize": 204856,
       "hasFrontmatter": false,
       "title": "機種×工程ごとの要領書を、組立手順書を正本にして閲覧・作成できるようにする",
       "status": null,

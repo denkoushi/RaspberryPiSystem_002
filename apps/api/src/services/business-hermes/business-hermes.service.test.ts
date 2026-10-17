@@ -18,7 +18,7 @@ vi.mock('../../lib/assembly-procedure-image-storage.js', () => ({ AssemblyProced
 vi.mock('../ocr/image-ocr-runtime.js', () => ({ getImageOcrLayoutPort: () => imageOcrLayoutMock }));
 
 import { BusinessHermesService, resetBusinessHermesProcedurePageOcrCacheForTests } from './business-hermes.service.js';
-import type { AssemblyWorkSessionService } from './assembly-work-session.service.js';
+import type { AssemblyWorkSessionService } from '../assembly/assembly-work-session.service.js';
 
 function createSession() {
   const now = new Date('2026-09-05T00:00:00.000Z');
