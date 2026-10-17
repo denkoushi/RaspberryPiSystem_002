@@ -111,8 +111,8 @@ polkit.addRule(function(action, subject) {
 | **ファイルパス** | `/etc/systemd/system/signage-lite.service` |
 | **説明** | サイネージ systemdサービス定義 |
 | **管理方法** | Ansibleテンプレート |
-| **テンプレート** | `infrastructure/ansible/templates/signage-lite.service.j2` |
-| **プレイブック** | `infrastructure/ansible/playbooks/manage-system-configs.yml` |
+| **テンプレート** | `infrastructure/ansible/roles/signage/templates/signage-lite.service.j2` |
+| **プレイブック** | 標準の反映（`playbooks/deploy-release-standard.yml` の `release_signage`）。`manage-system-configs.yml` では管理しない（古い定義で上書きしないため、2026-10-17 に対象から外した） |
 | **状態** | ✅ 管理済み |
 
 ## アプリケーション設定ファイル
