@@ -1,4 +1,5 @@
 import { prisma } from '../../lib/prisma.js';
+import { toUpperTrimmedCode as normalizeCd } from '../../lib/string-normalize.js';
 import type {
   PalletVisualizationBoardResponse,
   PalletVisualizationHistoryResponse,
@@ -20,8 +21,6 @@ import {
   formatPlannedStartDateForPalletDisplay,
   readPalletItemDisplayFromScheduleSnapshot,
 } from './pallet-visualization-display-fields.js';
-
-const normalizeCd = (value: string): string => value.trim().toUpperCase();
 
 function toItem(row: {
   id: string;

@@ -15,9 +15,9 @@
     ]
   },
   "summary": {
-    "documentCount": 766,
-    "totalLines": 188811,
-    "totalBytes": 15023763,
+    "documentCount": 767,
+    "totalLines": 188912,
+    "totalBytes": 15035554,
     "withFrontmatter": 367,
     "withStatus": 170,
     "sourceOfTruthDeclared": 116,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 39,
-    "localLinkCount": 5866,
+    "localLinkCount": 5867,
     "brokenLocalLinkCount": 89,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
@@ -5919,8 +5919,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 2082,
-      "byteSize": 359011,
+      "lineCount": 2083,
+      "byteSize": 359251,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -10394,6 +10394,11 @@
         {
           "href": "./plans/business-hermes-signage-live-data.md",
           "targetPath": "docs/plans/business-hermes-signage-live-data.md",
+          "exists": true
+        },
+        {
+          "href": "plans/code-health-refactor-execplan.md",
+          "targetPath": "docs/plans/code-health-refactor-execplan.md",
           "exists": true
         },
         {
@@ -18342,7 +18347,7 @@
     {
       "path": "docs/design/preview-workflow.md",
       "lineCount": 94,
-      "byteSize": 6538,
+      "byteSize": 6566,
       "hasFrontmatter": false,
       "title": "HTMLとSVGの整合プレビュー運用",
       "status": null,
@@ -34585,6 +34590,21 @@
       "source_of_truth": null,
       "localLinks": [],
       "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/code-health-refactor-execplan.md",
+      "lineCount": 100,
+      "byteSize": 11523,
+      "hasFrontmatter": false,
+      "title": "コード保守性の改善プログラム",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],

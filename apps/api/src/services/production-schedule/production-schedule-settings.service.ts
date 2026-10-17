@@ -3,6 +3,7 @@ import { parse } from 'csv-parse/sync';
 
 import { resolveSiteKeyForScopeKey } from '../../lib/site-directory.js';
 import { prisma } from '../../lib/prisma.js';
+import { toUpperTrimmedCode as normalizeResourceCd } from '../../lib/string-normalize.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import {
   DEFAULT_CUTTING_EXCLUDED_RESOURCE_CDS,
@@ -21,7 +22,6 @@ const DEFAULT_PROCESSING_TYPE_OPTIONS = [
   { code: 'その他02', label: 'その他02', priority: 5, enabled: true }
 ] as const;
 
-const normalizeResourceCd = (value: string): string => value.trim().toUpperCase();
 const normalizeGroupCd = (value: string): string => value.trim().toUpperCase();
 const normalizeCsvHeader = (value: string): string => value.replace(/^\uFEFF/, '').trim().toUpperCase();
 

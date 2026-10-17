@@ -1,6 +1,5 @@
-import axios from 'axios';
-
 import { api } from './client';
+import { getApiErrorMessageWithCode } from './errors';
 
 import type {
   DgxResourceActionBody,
@@ -33,20 +32,6 @@ export async function postDgxResourceAction(body: DgxResourceActionBody): Promis
   return data;
 }
 
-type ApiErrorPayload = {
-  message?: string;
-  errorCode?: string;
-};
-
 export function getDgxResourceApiErrorMessage(error: unknown): string {
-  if (axios.isAxiosError(error)) {
-    const d = error.response?.data as ApiErrorPayload | undefined;
-    if (typeof d?.message === 'string') {
-      return d.errorCode ? `${d.message} (${d.errorCode})` : d.message;
-    }
-    if (error.response?.status === 403) {
-      return 'この操作を行う権限がありません';
-    }
-  }
-  return error instanceof Error ? error.message : '予期しないエラーが発生しました';
+  return getApiErrorMessageWithCode(error);
 }

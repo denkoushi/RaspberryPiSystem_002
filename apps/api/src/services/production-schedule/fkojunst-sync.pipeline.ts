@@ -3,6 +3,7 @@
  */
 import { Prisma, type PrismaClient } from '@prisma/client';
 
+import { toTrimmedString as normalizeToken } from '../../lib/string-normalize.js';
 import {
   PRODUCTION_SCHEDULE_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOJUNST_DASHBOARD_ID,
@@ -41,8 +42,6 @@ export type FkojunstSyncResult = {
   upserted: number;
   pruned: number;
 };
-
-const normalizeToken = (value: unknown): string => String(value ?? '').trim();
 
 function normalizeStatusCode(value: unknown): string | null {
   const s = normalizeToken(value).toUpperCase();

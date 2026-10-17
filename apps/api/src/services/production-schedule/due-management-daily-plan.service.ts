@@ -4,20 +4,9 @@ import { buildDueManagementDailyPlanSeed } from './due-management-carryover.serv
 import { dueManagementLearningEventRepository } from './due-management-learning-event.repository.js';
 import { listDueManagementGlobalRank, mergeDueManagementGlobalRank } from './due-management-global-rank.service.js';
 import { resolveRankingScopePolicy } from './due-management-ranking-scope-policy.service.js';
+import { normalizeFseibanList } from './fseiban-list.js';
 
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
-
-const normalizeFseibans = (items: string[]): string[] => {
-  const unique = new Set<string>();
-  const next: string[] = [];
-  for (const raw of items) {
-    const value = raw.trim();
-    if (!value || unique.has(value)) continue;
-    unique.add(value);
-    next.push(value);
-  }
-  return next.slice(0, 2000);
-};
 
 const getTodayPlanDate = (): Date => {
   const now = new Date();
@@ -67,7 +56,7 @@ export async function getDueManagementDailyPlan(params: {
 
   const orderedFseibans = plan?.items.map((item) => item.fseiban) ?? [];
   if (orderedFseibans.length > 0) {
-    const selectedSet = new Set(normalizeFseibans(params.selectedFseibans));
+    const selectedSet = new Set(normalizeFseibanList(params.selectedFseibans));
     return {
       planDate: toDateKey(planDate),
       status: plan?.status ?? 'draft',
@@ -102,7 +91,7 @@ export async function replaceDueManagementDailyPlan(params: {
   orderedFseibans: string[];
 }): Promise<DueManagementDailyPlan> {
   const { locationKey } = params;
-  const orderedFseibans = normalizeFseibans(params.orderedFseibans);
+  const orderedFseibans = normalizeFseibanList(params.orderedFseibans);
   const planDate = getTodayPlanDate();
 
   const result = await prisma.$transaction(async (tx) => {
