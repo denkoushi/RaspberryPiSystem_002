@@ -1,4 +1,4 @@
-import { KIOSK_REORDERABLE_HEADER_TAB_IDS, isKioskInitialRouteId } from '@raspi-system/shared-types';
+import { KIOSK_INITIAL_ROUTE_PATHS, KIOSK_REORDERABLE_HEADER_TAB_IDS, isKioskInitialRouteId } from '@raspi-system/shared-types';
 
 import { KIOSK_MACHINE_SIGNAL_PATH } from '../../machine-signal/machineSignalRoutes';
 import {
@@ -65,6 +65,7 @@ export function resolveActiveKioskHeaderTab(pathname: string): KioskReorderableH
 }
 
 export function resolveCurrentKioskInitialRoute(pathname: string): KioskInitialRouteId | null {
+  if (pathname.replace(/\/$/, '') === KIOSK_INITIAL_ROUTE_PATHS.portal) return 'portal';
   const tabId = resolveActiveKioskHeaderTab(pathname);
   if (tabId === 'borrow') return pathname === '/kiosk/photo' ? 'borrow_photo' : 'borrow_tag';
   return tabId && isKioskInitialRouteId(tabId) ? tabId : null;

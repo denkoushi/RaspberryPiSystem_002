@@ -1,4 +1,6 @@
 # ドキュメント索引
+
+- キオスクのポータル画面・端末別カード選択: [Plan](./plans/kiosk-portal.md)
 - フローティングChatの操作ガイド（組立の登録・編集、固定案内の最初のスライス）: [ExecPlan](./plans/hermes-operation-guide-execplan.md)
 - フローティングChatをシステム全体の案内役にする（操作の問い合わせ、不具合の受付、入口の一本化、計測）: [ExecPlan](./plans/kiosk-chat-system-guide-execplan.md)
 - キオスク操作ガイド(現場向け。全画面の基本操作とよくある困りごと、Chat の案内役の知識の正本): [書き方](./kiosk-operation-guide/README.md) / [共通: 困ったとき](./kiosk-operation-guide/common/troubleshooting.md)
