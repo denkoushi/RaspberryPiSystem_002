@@ -52,6 +52,8 @@ services:
       KIOSK_OPERATION_GUIDE_DIR: /app/docs/kiosk-operation-guide
       PI5_SCHEDULER_LEASE_FILE: /app/alerts/.pi5-scheduler-leader
       PI5_SCHEDULER_LEASE_INTERVAL_MS: "2000"
+      # DGXリソースの「PI5 業務意図」を再起動・スロット切替後も残す（ホストの config/ に保存）
+      INFERENCE_BUSINESS_PROFILE_INTENT_FILE_PATH: /app/config/business-profile-intent.json
       # ページ撮影（サイネージ）は同じスロットの Web の内部入口を開く。ホストへは公開されない。
       SIGNAGE_WEB_CAPTURE_BASE_URL: http://web-blue
     volumes: &api-volumes

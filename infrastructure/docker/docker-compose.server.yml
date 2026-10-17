@@ -99,6 +99,8 @@ services:
       PI5_SCHEDULER_LEADER_ENABLED: ${PI5_SCHEDULER_LEADER_ENABLED:-false}
       PI5_SCHEDULER_LEASE_FILE: ${PI5_SCHEDULER_LEASE_FILE:-/app/alerts/.pi5-scheduler-leader}
       PI5_SCHEDULER_LEASE_INTERVAL_MS: ${PI5_SCHEDULER_LEASE_INTERVAL_MS:-2000}
+      # DGXリソースの「PI5 業務意図」を再起動・スロット切替後も残す（ホストの config/ に保存）
+      INFERENCE_BUSINESS_PROFILE_INTENT_FILE_PATH: /app/config/business-profile-intent.json
     volumes:
       - photo-storage:/app/storage/photos
       - thumbnail-storage:/app/storage/thumbnails

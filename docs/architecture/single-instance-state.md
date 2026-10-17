@@ -45,6 +45,7 @@ API サーバーは Pi5 上で 1 プロセスだけ動かす前提で作られ�
 
 - 組立手順書の編集リースは DB に保存している（`services/assembly/assembly-procedure-document-edit-lease.service.ts`）。
 - 業務データの同時更新の保護は DB の制約と行ロックで行っている（[競合制御](./concurrency-control.md)）。
+- DGX リソース画面の「PI5 業務意図」（`services/inference/config/business-profile-intent-store.ts`）は、ホストの `config/business-profile-intent.json`（コンテナ内 `/app/config`）に保存している。再起動や blue/green の切替後も残る（2026-10-17 から。設定は `infrastructure/docker/docker-compose.phase3.yml` と `docker-compose.server.yml` の `INFERENCE_BUSINESS_PROFILE_INTENT_FILE_PATH`）。
 
 ## 複数台にするときの順番（案）
 
