@@ -24,6 +24,7 @@
 - [x] (2026-10-17) 段階8: プロセスのメモリに持っている状態を洗い出し、[API の 1 台構成の前提](../architecture/single-instance-state.md) に記録した。現状は 1 台構成なのでコードは変えない。
 - [ ] 段階9: 個人用 Pi5、DGX、StackChan のコードは、新しいリポジトリを作らず、既存の個人用リポジトリ `denkoushi/DGXSparkControlPlane` へ移す（2026-10-17 ユーザー判断、Decision Log 参照）。個人用リポジトリ側で移して動作を受け入れてから、業務側の写しを消す。
 - [x] (2026-10-17) 段階9: 業務側の写しのうち 3 つを消して Pi5 へ反映した。個人用 Pi5 の Pi 側 DGX keep-warm（本体、timer のテンプレートとタスク。2026-08-04 に中央 keep-warm へ移行済み）を外した（PR #2094、main 259829dd、run 20261017-100613-eeef5e）。業務 Pi5 の未使用の StackChan 会話 API `/api/system/stackchan/chat` と推論の用途 `stackchan_chat` を消した（PR #2095、main a2bdb7ec、run 20261017-103207-58f340）。未使用の確認は業務 Pi5 の API と Caddy のログで行ったが、ログは当日分しか残っていなかった。業務の管理画面から個人用 ComfyUI の起動・停止とカード、その URL 設定を消した（PR #2096、main 9e73b1b0、run 20261017-110014-fcc674）。運用モード「私用OK」は保存値の互換のため残した。3 回とも反映は成功し、API のエラー 0 件、health 200。Life Pilot の 7 ファイルは個人用 Hermes の他のファイルが読み込んでいるので、`scripts/private-pi5-hermes/` 全体と一緒に消す。
+- [x] (2026-10-17) 段階9: 個人用 Hermes の Discord `/task` ブリッジ一式（グループ1。承認リレー、Daily Pilot、Interest Digest、tools / novel / research プロファイル、`validate_boundary_policy.py` など）の写しを消し、それだけを配る Ansible タスク 6 本と include を外した（PR #2100、main 57fbdfcd、Pi5 へは #2098 と一緒に main a550b318 として run 20261017-133011-51c154 で反映、成功、health 200）。個人用側は DGXSparkControlPlane #418 で同じものを配り、Discord の `/task` と Life ボタンを確認済み。グループ1の戻し先は個人用側の世代 0aa07b44 で、業務側の revert は使わない。Life Pilot のモジュール 6 本、ポリシー、テストと、その配布タスクは残した（グループ2の戻し先として使う）。
 
 ## Surprises & Discoveries
 

@@ -15,18 +15,18 @@
     ]
   },
   "summary": {
-    "documentCount": 768,
-    "totalLines": 188996,
-    "totalBytes": 15049045,
-    "withFrontmatter": 367,
+    "documentCount": 769,
+    "totalLines": 189052,
+    "totalBytes": 15056470,
+    "withFrontmatter": 368,
     "withStatus": 170,
     "sourceOfTruthDeclared": 116,
     "execPlanReferences": 62,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 39,
-    "localLinkCount": 5874,
-    "brokenLocalLinkCount": 89,
+    "localLinkCount": 5878,
+    "brokenLocalLinkCount": 91,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
     "brokenLocalLinks": [
@@ -74,6 +74,11 @@
         "sourcePath": "docs/archive/architecture/deployment-modules-legacy-through-2026-07.md",
         "href": "../../../infrastructure/ansible/playbooks/deploy.yml",
         "targetPath": "infrastructure/ansible/playbooks/deploy.yml"
+      },
+      {
+        "sourcePath": "docs/decisions/ADR-20260525-private-pi5-hermes-discord-approval-relay-d5-1.md",
+        "href": "../../scripts/private-pi5-hermes/config/task-bridge.policy.yaml",
+        "targetPath": "scripts/private-pi5-hermes/config/task-bridge.policy.yaml"
       },
       {
         "sourcePath": "docs/guides/ansible-best-practices.md",
@@ -199,6 +204,11 @@
         "sourcePath": "docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md",
         "href": "../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24",
         "targetPath": "docs/EXEC_PLAN.md"
+      },
+      {
+        "sourcePath": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
+        "href": "../../scripts/private-pi5-hermes/config/task-bridge.policy.yaml",
+        "targetPath": "scripts/private-pi5-hermes/config/task-bridge.policy.yaml"
       },
       {
         "sourcePath": "docs/knowledge-base/api.md",
@@ -15993,7 +16003,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 7,
+      "inboundCount": 8,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -16029,7 +16039,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 4,
+      "inboundCount": 5,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -16350,7 +16360,7 @@
         {
           "href": "../../scripts/private-pi5-hermes/config/task-bridge.policy.yaml",
           "targetPath": "scripts/private-pi5-hermes/config/task-bridge.policy.yaml",
-          "exists": true
+          "exists": false
         }
       ],
       "inboundCount": 4,
@@ -17878,6 +17888,42 @@
         }
       ],
       "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/decisions/ADR-20261017-dgx-resource-business-llm-only.md",
+      "lineCount": 54,
+      "byteSize": 5839,
+      "hasFrontmatter": true,
+      "title": "ADR-20261017: 管理画面「DGXリソース」を業務 LLM 専用にする",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "ADR-20260502-dgx-resource-control-targets.md",
+          "targetPath": "docs/decisions/ADR-20260502-dgx-resource-control-targets.md",
+          "exists": true
+        },
+        {
+          "href": "ADR-20260503-dgx-resource-operator-console.md",
+          "targetPath": "docs/decisions/ADR-20260503-dgx-resource-operator-console.md",
+          "exists": true
+        },
+        {
+          "href": "../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md",
+          "targetPath": "docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md",
+          "exists": true
+        },
+        {
+          "href": "../runbooks/dgx-system-prod-local-llm.md",
+          "targetPath": "docs/runbooks/dgx-system-prod-local-llm.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 3,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -25771,7 +25817,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 110,
+      "inboundCount": 111,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -28741,7 +28787,7 @@
         {
           "href": "../../scripts/private-pi5-hermes/config/task-bridge.policy.yaml",
           "targetPath": "scripts/private-pi5-hermes/config/task-bridge.policy.yaml",
-          "exists": true
+          "exists": false
         }
       ],
       "inboundCount": 17,
@@ -33031,8 +33077,8 @@
     },
     {
       "path": "docs/knowledge-base/infrastructure/security.md",
-      "lineCount": 1312,
-      "byteSize": 81500,
+      "lineCount": 1313,
+      "byteSize": 82232,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - セキュリティ関連",
       "status": null,
@@ -34638,8 +34684,8 @@
     },
     {
       "path": "docs/plans/code-health-refactor-execplan.md",
-      "lineCount": 119,
-      "byteSize": 17330,
+      "lineCount": 120,
+      "byteSize": 18184,
       "hasFrontmatter": false,
       "title": "コード保守性の改善プログラム",
       "status": null,
@@ -40337,7 +40383,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 70,
+      "inboundCount": 71,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
