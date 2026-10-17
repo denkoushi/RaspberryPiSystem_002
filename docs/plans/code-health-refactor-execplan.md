@@ -21,7 +21,7 @@
 - [ ] 段階6: 画面側のデータ取得の書き方をそろえる。1 本目として移動棚配置と工具・貸出の queryKey を一か所で定義した（PR #2092）。生産スケジュールの queryKey は #2088 の取り込み後に続ける。
 - [ ] 段階7: 業務エラーを HTTP に変える場所をエラーハンドラーに集約する。1 本目として `DomainHttpError` を追加し、在庫と作業要領編集のルートから変換関数を外した（PR #2091、応答の本文は全体一致テストで固定）。組立の独自応答と Prisma の P2025 変換は別の回にする。
 - [x] (2026-10-17) 段階8: プロセスのメモリに持っている状態を洗い出し、[API の 1 台構成の前提](../architecture/single-instance-state.md) に記録した。現状は 1 台構成なのでコードは変えない。
-- [x] (2026-10-17) 段階9: 個人用 Pi5、DGX、StackChan のコードを業務リポジトリから分けることは、ユーザー判断で行わないことにした（Decision Log 参照）。
+- [ ] 段階9: 個人用 Pi5、DGX、StackChan のコードは、新しいリポジトリを作らず、既存の個人用リポジトリ `denkoushi/DGXSparkControlPlane` へ移す（2026-10-17 ユーザー判断、Decision Log 参照）。個人用リポジトリ側で移して動作を受け入れてから、業務側の写しを消す。
 
 ## Surprises & Discoveries
 
@@ -53,8 +53,8 @@
   Rationale: 前者は本番から呼ばれず、置き換え済み。後者は配備高速化の計画（Phase A3）で使う前提の部品なので残す。ユーザーが 2026-10-17 に判断した。
   Date/Author: 2026-10-17 / ユーザー判断、Claude 記録
 
-- Decision: 段階9（個人用 Pi5、DGX、StackChan のコードを別リポジトリへ移す）は行わない。計画は段階8までで終える。
-  Rationale: 2026-10-17 に段階9の開始可否を確認したところ、ユーザーが「段階9はやめる」と判断した。
+- Decision: 段階9は新しいリポジトリを作らず、個人用の既存リポジトリ `denkoushi/DGXSparkControlPlane` へ移す。順番は、移行済みの写しの削除、個人用 Hermes の基本導入、StackChan、画像生成（ComfyUI）、個人用だけの文書。業務の Pi5 にある StackChan 会話の入口は記録で未使用を確かめてから消し、業務の管理画面の ComfyUI 起動・停止は消す。古い ComfyUI の設定 14 個と個人用だけの文書は個人用リポジトリへ移して残す。業務の内容が混ざった文書は移さない。
+  Rationale: 2026-10-17 に一度「段階9はやめる」と判断した後、ユーザーが「新しいリポジトリを作らず、私用の DGXSparkControlPlane へ移す」案を了承した。2026-08-16 から個人用 Hermes はすでにそちらへ移行中で、新しいリポジトリを作る取り消しにくい操作が要らない。
   Date/Author: 2026-10-17 / ユーザー判断、Claude 記録
 
 - Decision: 業務エラーの HTTP 変換は `ApiError` を継承しない `DomainHttpError` で行う。
@@ -65,7 +65,7 @@
 
 （解決済み）本番から呼ばれていない配備スクリプト `scripts/deploy/terminal-runtime-manifest.py` と `scripts/deploy/rollback-manifest.py` は、2026-10-17 のユーザー判断で残すことにした（Decision Log 参照）。
 
-（解決済み）個人用 Pi5、DGX、StackChan のコードを別リポジトリへ移すこと（段階9）は、2026-10-17 のユーザー判断で行わないことにした（Decision Log 参照）。
+（解決済み）個人用 Pi5、DGX、StackChan のコードの移し先（段階9）は、2026-10-17 のユーザー判断で既存の個人用リポジトリ `denkoushi/DGXSparkControlPlane` にした（Decision Log 参照）。
 
 ## Outcomes & Retrospective
 
