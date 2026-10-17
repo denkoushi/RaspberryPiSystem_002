@@ -78,6 +78,37 @@
     mode: '0600'
   when: release_pi5_trial_retrieval_v2_requested in ['true', 'false']
 
+- name: Apply retrieval cause classification gate when explicitly configured for maintenance
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_trial_maintenance_env_file }}"
+    regexp: '^HERMES_RETRIEVAL_CAUSE_ENABLED='
+    line: "HERMES_RETRIEVAL_CAUSE_ENABLED={{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_CAUSE_ENABLED') | lower }}"
+    create: false
+    mode: '0600'
+  when:
+    - release_pi5_trial_maintenance == 'on'
+    - (lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_CAUSE_ENABLED') | lower) in ['true', 'false']
+
+- name: Apply retrieval cause classification limit for maintenance
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_trial_maintenance_env_file }}"
+    regexp: '^HERMES_RETRIEVAL_CAUSE_MAX_TEXTS='
+    line: "HERMES_RETRIEVAL_CAUSE_MAX_TEXTS={{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_CAUSE_MAX_TEXTS') }}"
+    create: false
+    mode: '0600'
+  when:
+    - release_pi5_trial_maintenance == 'on'
+    - lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_CAUSE_MAX_TEXTS') | length > 0
+
+- name: Disable retrieval cause classification when the search trial is disabled for maintenance
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_trial_maintenance_env_file }}"
+    regexp: '^HERMES_RETRIEVAL_CAUSE_ENABLED='
+    line: HERMES_RETRIEVAL_CAUSE_ENABLED=false
+    create: false
+    mode: '0600'
+  when: release_pi5_trial_maintenance == 'off'
+
 - name: Apply the explicitly requested retrieval enrichment gate for maintenance
   ansible.builtin.lineinfile:
     path: "{{ release_pi5_trial_maintenance_env_file }}"

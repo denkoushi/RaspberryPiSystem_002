@@ -1,3 +1,4 @@
+import { CAUSE_CATEGORY_IDS } from './cause-categories.mjs';
 import { catalogEntries } from './catalog.mjs';
 import { normalizeForMatch } from './value-index.mjs';
 
@@ -56,6 +57,7 @@ export function validateQueryPlan(plan, catalog, valueIndex) {
   for (const source of plan.sources) {
     if (!byId.has(source)) return fail(`unknown source: ${source}`);
   }
+  if (plan.causeCategory !== undefined && !CAUSE_CATEGORY_IDS.includes(plan.causeCategory)) return fail('unknown cause category');
   if (!Array.isArray(plan.filters)) return fail('filters must be an array');
 
   const filters = [];
@@ -136,6 +138,7 @@ export function validateQueryPlan(plan, catalog, valueIndex) {
       schema: QUERY_PLAN_SCHEMA,
       sources: [...plan.sources],
       filters,
+      ...(plan.causeCategory !== undefined ? { causeCategory: plan.causeCategory } : {}),
       semanticQuery: plan.semanticQuery,
       sort,
       limit: plan.limit,

@@ -115,6 +115,28 @@
     - hermes_search_trial_enabled | bool
     - hermes_retrieval_sources | default('') | length > 0
 
+- name: Apply retrieval cause classification gate when explicitly configured
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_chat_env_file }}"
+    regexp: '^HERMES_RETRIEVAL_CAUSE_ENABLED='
+    line: "HERMES_RETRIEVAL_CAUSE_ENABLED={{ hermes_retrieval_cause_enabled }}"
+    create: false
+    mode: '0600'
+  when:
+    - hermes_search_trial_enabled | bool
+    - hermes_retrieval_cause_enabled in ['true', 'false']
+
+- name: Apply retrieval cause classification limit when explicitly configured
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_chat_env_file }}"
+    regexp: '^HERMES_RETRIEVAL_CAUSE_MAX_TEXTS='
+    line: "HERMES_RETRIEVAL_CAUSE_MAX_TEXTS={{ hermes_retrieval_cause_max_texts }}"
+    create: false
+    mode: '0600'
+  when:
+    - hermes_search_trial_enabled | bool
+    - hermes_retrieval_cause_max_texts | length > 0
+
 - name: Apply retrieval enrichment gate when explicitly configured
   ansible.builtin.lineinfile:
     path: "{{ release_pi5_chat_env_file }}"
@@ -220,6 +242,15 @@
     path: "{{ release_pi5_chat_env_file }}"
     regexp: '^HERMES_RETRIEVAL_V2_ENABLED='
     line: HERMES_RETRIEVAL_V2_ENABLED=false
+    create: false
+    mode: '0600'
+  when: not (hermes_search_trial_enabled | bool)
+
+- name: Disable retrieval cause classification when the search trial is disabled
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_chat_env_file }}"
+    regexp: '^HERMES_RETRIEVAL_CAUSE_ENABLED='
+    line: HERMES_RETRIEVAL_CAUSE_ENABLED=false
     create: false
     mode: '0600'
   when: not (hermes_search_trial_enabled | bool)

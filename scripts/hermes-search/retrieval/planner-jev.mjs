@@ -1,5 +1,6 @@
 // One JEV call per turn. Choice options come only from code-found candidates.
 // evaluate is injectable; the default transport follows hermes-jev-record-pilot.
+import { defaultEvaluate } from './jev-evaluate.mjs';
 import { performance } from 'node:perf_hooks';
 import { catalogEntries, definitionForCatalog } from './catalog.mjs';
 import { QUERY_PLAN_SCHEMA, hasAppliedHardFilter, shouldSkipRelevance } from './query-plan.mjs';
@@ -198,20 +199,6 @@ function conditionText(entries, filter) {
   if (filter.op === 'after') return `${label}が${values[0]}より後`;
   if (filter.op === 'before') return `${label}が${values[0]}より前`;
   return `${label}が${values.join('、')}`;
-}
-
-async function defaultEvaluate(input) {
-  const provider = process.env.HERMES_JEV_PROVIDER;
-  const payload = { ...input, model: 'typesafe-ai/jev', maxRetries: 0 };
-  if (provider === 'typesafe-direct' || (provider == null && process.env.TYPESAFE_API_KEY)) {
-    const { createTypesafeDirectEvaluate } = await import('../hermes-jev-record-pilot.mjs');
-    return createTypesafeDirectEvaluate()(payload);
-  }
-  if (provider && provider !== 'vercel-ai-gateway') {
-    throw new Error(`unsupported HERMES_JEV_PROVIDER: ${provider}`);
-  }
-  const { experimental_evaluate: evaluate } = await import('ai');
-  return evaluate(payload);
 }
 
 export function createPlanner({ evaluate = defaultEvaluate } = {}) {

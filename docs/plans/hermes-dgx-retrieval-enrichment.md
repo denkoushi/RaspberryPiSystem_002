@@ -57,3 +57,18 @@ The paraphrase set has 16 cases, so a 0.06 difference is one case. DGX enrichmen
 The chat egress inactivity cap is 60 seconds. The client timeout stays at most 55 seconds. A silent DGX response longer than the cap fails and is retried on a later pass.
 
 Copying the store to a Mac uses the same on-host export style as `export-business-hermes-answer-sources.ts`. This repository has no authorized pull path for that private file.
+
+## Cause classification runtime
+
+The separate JEV cause runner and its cadence are described in [the accuracy log](hermes-retrieval-accuracy-log.md#2026-10-17-要因で分ける-axis-from-jev-classification-of-不適合内容-change-not-a-measurement). It uses the existing `HERMES_JEV_PROVIDER` transport, independent of the enrichment gate.
+
+| Environment variable | Default / purpose |
+| --- | --- |
+| `HERMES_RETRIEVAL_CAUSE_ENABLED` | Off; only `true` starts the runner. Explicit `true`/`false` is forwarded by release and maintenance. |
+| `HERMES_RETRIEVAL_CAUSE_MAX_TEXTS` | `600` distinct texts per refresh; forwarded when explicitly set. |
+| `HERMES_RETRIEVAL_CAUSE_CONCURRENCY` | `1`; accepts `1` or `2` calls in flight. |
+| `HERMES_RETRIEVAL_CAUSE_ENTRY` | `/app/scripts/hermes-search/retrieval/cause-runner.mjs` |
+| `HERMES_RETRIEVAL_CAUSE_STORE` | `/app/storage/hermes-search/runtime/retrieval-cause.jsonl` |
+| `HERMES_RETRIEVAL_CAUSE_STATUS` | `/app/storage/hermes-search/runtime/retrieval-cause-status.json` |
+
+Failures are stored beside the JSONL as `retrieval-cause-failures.json`. Store, status, failures and runner logs contain hashes/counts and category metadata only, never record text. Reading the classification store is independent of the enable flag.

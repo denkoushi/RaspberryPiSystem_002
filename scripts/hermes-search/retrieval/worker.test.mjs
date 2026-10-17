@@ -972,3 +972,92 @@ test('enabling rank-only materials leaves conversational answers unchanged', asy
   };
   assert.deepEqual(await run([...ids, 'procedure_material']), await run(ids));
 });
+
+test('cause refinement preserves catalog filters and stacks with organization and month chips', async () => {
+  const { compactPlan } = await import('./worker.mjs');
+  let calls = 0;
+  const causeById = new Map([['rec-alpha', 'check'], ['rec-beta', 'check'], ['rec-gamma', 'drawing']]);
+  const answering = createRetrievalAnswering({ records, catalog, causeById, planner: { plan: async () => {
+    calls += 1;
+    return { plan: listPlan() };
+  } } });
+  const first = await answering.answer('一覧');
+  const refined = await answering.answer('確認・検査の漏れで絞り込む', first.session, {
+    refine: { axis: 'cause', field: 'causeCategory', value: 'check' },
+  });
+  assert.equal(calls, 1);
+  assert.equal(refined.session.previousPlan.causeCategory, 'check');
+  assert.deepEqual(refined.session.previousPlan.filters, first.session.previousPlan.filters);
+  assert.deepEqual(refined.recordIds, ['nonconformity:rec-beta', 'nonconformity:rec-alpha']);
+  const stacked = await answering.answer('部署で絞り込む', refined.session, {
+    refine: { axis: 'organization', field: 'originDepartmentName', value: 'North Shop' },
+  });
+  assert.equal(calls, 1);
+  assert.equal(stacked.session.previousPlan.causeCategory, 'check');
+  assert.equal(stacked.session.previousPlan.filters.length, 2);
+  const month = await answering.answer('月で絞り込む', stacked.session, {
+    refine: { axis: 'month', field: 'discoveredOn', value: '2026-10' },
+  });
+  assert.equal(calls, 1);
+  assert.equal(month.session.previousPlan.causeCategory, 'check');
+  for (const refine of [
+    { axis: 'cause', field: 'causeCategory', value: 'invalid' },
+    { axis: 'cause', field: 'condition', value: 'check' },
+  ]) {
+    const result = await answering.answer('表示用の質問', refined.session, { refine });
+    assert.equal(Object.hasOwn(result.session.previousPlan, 'causeCategory'), false);
+  }
+  assert.equal(calls, 3);
+  const natural = await answering.answer('新しい順で', refined.session);
+  assert.equal(Object.hasOwn(natural.session.previousPlan, 'causeCategory'), false);
+  assert.equal(compactPlan(listPlan({ causeCategory: 'check' })).causeCategory, 'check');
+  assert.equal(Object.hasOwn(compactPlan(listPlan()), 'causeCategory'), false);
+});
+
+test('cause cache maps condition hashes to original executor ids and refreshes on corpus messages', async t => {
+  const { mkdtemp, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const path = await import('node:path');
+  const { loadCauseById } = await import('./worker.mjs');
+  const { buildCauseQuestions, conditionSha256 } = await import('./cause-categories.mjs');
+  const { CAUSE_STORE_SCHEMA, writeCauseStore } = await import('./cause-store.mjs');
+  const dir = await mkdtemp(path.join(tmpdir(), 'cause-worker-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'store.jsonl');
+  const previous = process.env.HERMES_RETRIEVAL_CAUSE_STORE;
+  process.env.HERMES_RETRIEVAL_CAUSE_STORE = file;
+  t.after(() => { if (previous === undefined) delete process.env.HERMES_RETRIEVAL_CAUSE_STORE; else process.env.HERMES_RETRIEVAL_CAUSE_STORE = previous; });
+  const textSha256 = conditionSha256(' Ａ\n B ');
+  const row = { schema: CAUSE_STORE_SCHEMA, textSha256, categoryId: 'check', promptSha256: buildCauseQuestions([]).promptSha256, classifiedAt: '2026-10-17T00:00:00Z' };
+  const rows = [{ ...records[0], id: 'bare', condition: 'A B' }, { ...records[0], id: 'nonconformity:prefixed', condition: ' Ａ\n B ' },
+    { ...records[0], id: 'empty', condition: '' }, { ...records[0], id: 'other', sourceId: 'knowledge_procedure', condition: 'A B' }];
+  assert.equal((await loadCauseById({ HERMES_RETRIEVAL_CAUSE_STORE: file }, rows)).size, 0);
+  await writeCauseStore(file, new Map([[textSha256, row]]));
+  const causeById = await loadCauseById({ HERMES_RETRIEVAL_CAUSE_STORE: file, HERMES_RETRIEVAL_CAUSE_ENABLED: 'false' }, rows);
+  assert.deepEqual([...causeById], [['bare', 'check'], ['nonconformity:prefixed', 'check']]);
+  const answering = createRetrievalAnswering({ records: rows.slice(0, 3), catalog, causeById,
+    planner: { plan: async () => ({ plan: listPlan() }) } });
+  const refine = { axis: 'cause', field: 'causeCategory', value: 'check' };
+  const first = await answering.answer('分類', { previousPlan: listPlan() }, { refine });
+  assert.deepEqual(new Set(first.recordIds), new Set(['nonconformity:bare', 'nonconformity:prefixed']));
+  row.categoryId = 'drawing';
+  await writeCauseStore(file, new Map([[textSha256, row]]));
+  assert.equal((await answering.replaceCorpus({ mode: 'full', records: rows.slice(0, 3) })).ok, true);
+  const next = await answering.answer('分類', first.session, { refine: { ...refine, value: 'drawing' } });
+  assert.equal(next.recordIds.length, 2);
+  assert.equal(rows.some(record => Object.hasOwn(record, 'causeCategory')), false);
+});
+
+test('cause support leaves catalog prompt text, ordinary compact plans and coverage wording unchanged', async () => {
+  const { createHash } = await import('node:crypto');
+  const { catalogFieldLines } = await import('./enrichment-contract.mjs');
+  const { compactPlan } = await import('./worker.mjs');
+  assert.equal(createHash('sha256').update(JSON.stringify(catalogFieldLines(catalog))).digest('hex'),
+    'fb5fc625af7d8bc17bc67a09af3b26a73e1f55e91583cebaa6ef11eac4e38632');
+  assert.equal(catalog.fields.some(field => field.key === 'causeCategory'), false);
+  const ordinary = listPlan();
+  assert.deepEqual(compactPlan(ordinary), { sources: ordinary.sources, filters: ordinary.filters,
+    semanticQuery: '', sort: ordinary.sort, limit: 20 });
+  assert.equal(formatCoverageNotice({ known: true, total: 43, shown: 20, order: 'date_desc' }),
+    '該当43件のうち、新しい順に20件を表示しています。');
+});

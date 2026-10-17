@@ -33,6 +33,9 @@ describe('Hermes search trial authorization',()=>{
     const refine = { axis: 'organization', field: 'originDepartmentName', value: '組立' };
     expect((await app.inject({...request,payload:{question:'組立で絞り込む',sessionId,refine}})).statusCode).toBe(200);
     expect(answer).toHaveBeenLastCalledWith('組立で絞り込む',sessionId,undefined,{principal:{kind:'viewer'},refine});
+    const causeRefine = { axis: 'cause', field: 'causeCategory', value: 'check' };
+    expect((await app.inject({...request,payload:{question:'確認・検査の漏れで絞り込む',sessionId,refine:causeRefine}})).statusCode).toBe(200);
+    expect(answer).toHaveBeenLastCalledWith('確認・検査の漏れで絞り込む',sessionId,undefined,{principal:{kind:'viewer'},refine:causeRefine});
     expect((await app.inject({...request,payload:{question:'q',refine:{...refine,axis:'unknown'}}})).statusCode).toBe(400);
     expect((await app.inject({...request,payload:{refine}})).statusCode).toBe(400);
     expect((await app.inject({...request,payload:{question:'q',override:'unsafe'}})).statusCode).toBe(400);

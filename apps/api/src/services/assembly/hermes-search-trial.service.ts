@@ -17,7 +17,7 @@ export type HermesPageContext = {
 export type HermesPrincipal = { kind: 'kiosk' | 'viewer' | 'manager' | 'admin' };
 type HermesAnswerOptions = {
   principal?: HermesPrincipal;
-  refine?: { axis: 'organization' | 'month'; field: string; value: string };
+  refine?: { axis: 'organization' | 'month' | 'cause'; field: string; value: string };
 };
 type WorkerMemory = {
   heapUsedMb: number;
@@ -53,13 +53,14 @@ const answerDisplaySchema = z.object({
   })).max(20),
   notices: z.array(z.string().max(2000)).max(8),
   groups: z.array(z.object({
-    axis: z.enum(['organization', 'month']),
+    axis: z.enum(['organization', 'month', 'cause']),
     field: z.string().min(1).max(80),
     label: z.string().max(80),
     buckets: z.array(z.object({
       value: z.string().max(80), label: z.string().max(80), count: z.number().int().nonnegative(),
     })).max(12),
     otherCount: z.number().int().nonnegative(),
+    otherLabel: z.string().max(20).optional(),
   }).refine(group => group.axis !== 'organization' || group.buckets.length <= 8)).max(3).optional(),
   coverage: z.object({ total: z.number().int().nonnegative(), shown: z.number().int().nonnegative() }).optional(),
   dataAsOf: z.string().max(16).regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/u).nullable(),
@@ -180,6 +181,7 @@ export class HermesSearchTrialService {
   private retrievalSources: RetrievalSourceId[] = ['nonconformity'];
   private procedures: KnowledgeProcedureRepositoryPort | null = null;
   private lastCorpusCount = 0;
+  private causeChild: ChildProcessByStdio<Writable, null, null> | null = null;
   private enrichmentChild: ChildProcessByStdio<Writable, null, null> | null = null;
   private flywheelChild: ChildProcessByStdio<Writable, null, null> | null = null;
 
@@ -195,7 +197,7 @@ export class HermesSearchTrialService {
   // the worker. Without this, an API restart leaves the night jobs idle until the first Chat request.
   warmForEnrichment() {
     if (!this.settings.enabled || !this.settings.retrievalV2) return;
-    if (process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED !== 'true' && process.env.HERMES_FLYWHEEL_ENABLED !== 'true') return;
+    if (process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED !== 'true' && process.env.HERMES_FLYWHEEL_ENABLED !== 'true' && process.env.HERMES_RETRIEVAL_CAUSE_ENABLED !== 'true') return;
     this.start().catch(() => { console.warn('hermes retrieval warm start failed'); });
   }
 
@@ -576,6 +578,7 @@ export class HermesSearchTrialService {
       this.child?.stdin.write(`${JSON.stringify({ type: 'corpus', mode, records, asOf: new Date().toISOString() })}\n`);
       const nonconformity = records.filter(row => (!row.kind || row.kind === 'nonconformity') && (!row.sourceId || row.sourceId === 'nonconformity'));
       this.kickEnrichment(nonconformity);
+      this.kickCauseClassify(nonconformity);
       this.kickFlywheel(nonconformity);
     } catch {
       console.warn(`hermes retrieval refresh failed count=${this.lastCorpusCount}`);
@@ -597,6 +600,27 @@ export class HermesSearchTrialService {
     const clear = () => { if (this.enrichmentChild === child) this.enrichmentChild = null; };
     child.once('spawn', () => { if (child.pid) try { setPriority(child.pid, 19); } catch { /* OS may reject the priority. */ } });
     child.once('error', () => { clear(); console.warn('hermes retrieval enrichment start failed'); });
+    child.once('exit', clear);
+    child.stdin.on('error', clear);
+    child.stdin.write(JSON.stringify({ records }));
+    child.stdin.end();
+  }
+
+  private kickCauseClassify(records: Array<Record<string, unknown>>) {
+    if (process.env.HERMES_RETRIEVAL_CAUSE_ENABLED !== 'true' || this.causeChild || records.length === 0) return;
+    const entry = process.env.HERMES_RETRIEVAL_CAUSE_ENTRY
+      ?? '/app/scripts/hermes-search/retrieval/cause-runner.mjs';
+    let child: ChildProcessByStdio<Writable, null, null>;
+    try {
+      child = spawn(this.settings.node, [entry], { env: process.env, stdio: ['pipe', 'ignore', 'ignore'] });
+    } catch {
+      console.warn('hermes retrieval cause start failed');
+      return;
+    }
+    this.causeChild = child;
+    const clear = () => { if (this.causeChild === child) this.causeChild = null; };
+    child.once('spawn', () => { if (child.pid) try { setPriority(child.pid, 19); } catch { /* OS may reject the priority. */ } });
+    child.once('error', () => { clear(); console.warn('hermes retrieval cause start failed'); });
     child.once('exit', clear);
     child.stdin.on('error', clear);
     child.stdin.write(JSON.stringify({ records }));
@@ -632,6 +656,7 @@ export class HermesSearchTrialService {
     this.appliedCorpusSources.clear();
     this.child?.kill('SIGTERM');
     this.enrichmentChild?.kill('SIGTERM');
+    this.causeChild?.kill('SIGTERM');
     this.flywheelChild?.kill('SIGTERM');
   }
 }

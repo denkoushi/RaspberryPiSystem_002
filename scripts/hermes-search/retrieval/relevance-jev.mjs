@@ -1,5 +1,6 @@
 // One JEV call judges up to 15 retrieved candidates; a larger pool is judged in parallel calls
 // of 15, so each call keeps the same size. evaluate is injectable.
+import { defaultEvaluate } from './jev-evaluate.mjs';
 import { performance } from 'node:perf_hooks';
 import { setTimeout as delay } from 'node:timers/promises';
 
@@ -44,20 +45,6 @@ export function candidateBody(record, bodyFields) {
     if (typeof value === 'string' && value.trim()) parts.push(value.trim());
   }
   return parts.join('\n').slice(0, BODY_CHAR_LIMIT);
-}
-
-async function defaultEvaluate(input) {
-  const provider = process.env.HERMES_JEV_PROVIDER;
-  const payload = { ...input, model: 'typesafe-ai/jev', maxRetries: 0 };
-  if (provider === 'typesafe-direct' || (provider == null && process.env.TYPESAFE_API_KEY)) {
-    const { createTypesafeDirectEvaluate } = await import('../hermes-jev-record-pilot.mjs');
-    return createTypesafeDirectEvaluate()(payload);
-  }
-  if (provider && provider !== 'vercel-ai-gateway') {
-    throw new Error(`unsupported HERMES_JEV_PROVIDER: ${provider}`);
-  }
-  const { experimental_evaluate: evaluate } = await import('ai');
-  return evaluate(payload);
 }
 
 export function createRelevanceJudge({ evaluate = defaultEvaluate, sleep = delay } = {}) {
