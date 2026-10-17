@@ -14,8 +14,6 @@ export type CollectOverviewProbeBundleFn = () => Promise<OverviewProbeBundle>;
 export type ScenarioReadinessTargetSpec = {
   /** `/v1/models` が業務 Inference として利用可能になるまで待つ（gateway + admin 構成前提） */
   requireInferenceBusiness: boolean;
-  /** Comfy が GET health で running と判定できるまで（post-policy で起動試行済みである前提が多い） */
-  requirePrivateComfyHealthy: boolean;
   /** experiment の GET health が reachable になるまで */
   requireExperimentLabHealthy: boolean;
   /** on_demand かつゲートウェイ起停構築時、未 Ready だと `/start` を 1 回だけ試みる（幂等運用前提） */
@@ -152,16 +150,6 @@ function businessModelProfileBackendReady(
   };
 }
 
-function privateComfyHealthy(bundle: OverviewProbeBundle): { satisfied: boolean; detailJa: string } {
-  if (!bundle.comfyConfigured) {
-    return { satisfied: false, detailJa: 'DGX_RESOURCE_COMFYUI_HEALTH_URL が未設定のため Comfy Ready を確認できません' };
-  }
-  if (bundle.comfyReachable) {
-    return { satisfied: true, detailJa: 'Comfy ヘルス GET が応答しています' };
-  }
-  return { satisfied: false, detailJa: 'Comfy ヘルスがまだ準備できていません（起動には数十秒〜要する場合があります）' };
-}
-
 function experimentLabHealthy(bundle: OverviewProbeBundle): { satisfied: boolean; detailJa: string } {
   if (!bundle.experimentLabHealthConfigured) {
     return {
@@ -185,56 +173,33 @@ function experimentLabHealthy(bundle: OverviewProbeBundle): { satisfied: boolean
  */
 export function buildScenarioReadinessTargetSpec(input: {
   scenarioId: DgxOrchestrationScenarioId;
-  /** post-policy が private-comfyui start を含むかどうか */
-  willPostPolicyStartComfy: boolean;
   /** post-policy が experiment-lab start を含むかどうか */
   willPostPolicyStartExperimentLab: boolean;
   localLlmRuntimeMode: 'always_on' | 'on_demand';
   gatewayRuntimeConfigured: boolean;
 }): ScenarioReadinessTargetSpec {
-  const { scenarioId, willPostPolicyStartComfy, willPostPolicyStartExperimentLab, localLlmRuntimeMode, gatewayRuntimeConfigured } = input;
+  const { scenarioId, willPostPolicyStartExperimentLab, localLlmRuntimeMode, gatewayRuntimeConfigured } = input;
 
   switch (scenarioId) {
     case 'private_to_business':
     case 'experiment_to_business':
       return {
         requireInferenceBusiness: true,
-        requirePrivateComfyHealthy: false,
         requireExperimentLabHealthy: false,
         allowGatewayStartRemediation: localLlmRuntimeMode === 'on_demand' && gatewayRuntimeConfigured,
       };
-
-    case 'business_to_private': {
-      if (!willPostPolicyStartComfy) {
-        /** 運用モードのみの切替／Comfy の POST が無いときは Inference の再検証のみ（業務状態を再確認）。 */
-        return {
-          requireInferenceBusiness: false,
-          requirePrivateComfyHealthy: false,
-          requireExperimentLabHealthy: false,
-          allowGatewayStartRemediation: false,
-        };
-      }
-      return {
-        requireInferenceBusiness: false,
-        requirePrivateComfyHealthy: true,
-        requireExperimentLabHealthy: false,
-        allowGatewayStartRemediation: false,
-      };
-    }
 
     case 'business_to_experiment': {
       if (!willPostPolicyStartExperimentLab) {
         /** 計画のみ policy 適用など（実験起動なし）は追加 Ready チェックしない */
         return {
           requireInferenceBusiness: false,
-          requirePrivateComfyHealthy: false,
           requireExperimentLabHealthy: false,
           allowGatewayStartRemediation: false,
         };
       }
       return {
         requireInferenceBusiness: false,
-        requirePrivateComfyHealthy: false,
         requireExperimentLabHealthy: true,
         allowGatewayStartRemediation: false,
       };
@@ -248,7 +213,7 @@ export function buildScenarioReadinessTargetSpec(input: {
 
 function noopReadiness(spec: ScenarioReadinessTargetSpec): boolean {
   return (
-    !spec.requireInferenceBusiness && !spec.requirePrivateComfyHealthy && !spec.requireExperimentLabHealthy
+    !spec.requireInferenceBusiness && !spec.requireExperimentLabHealthy
   );
 }
 
@@ -285,10 +250,6 @@ function evaluateReadinessChecks(
         detailJa: vision.detailJa,
       });
     }
-  }
-  if (spec.requirePrivateComfyHealthy) {
-    const r = privateComfyHealthy(bundle);
-    checks.push({ code: 'private_comfy', satisfied: r.satisfied, detailJa: r.detailJa });
   }
   if (spec.requireExperimentLabHealthy) {
     const r = experimentLabHealthy(bundle);

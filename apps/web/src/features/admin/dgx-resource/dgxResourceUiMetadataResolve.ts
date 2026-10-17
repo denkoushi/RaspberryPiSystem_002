@@ -30,7 +30,7 @@ export function resolveScenarioOrder(
   overview?: Pick<DgxResourceOverview, 'uiMetadata'> | null
 ): readonly DgxOrchestrationScenarioIdApi[] {
   if (hasUiMetadata(overview) && overview.uiMetadata.scenarios.length > 0) {
-    return overview.uiMetadata.scenarios.map((s) => s.id);
+    return overview.uiMetadata.scenarios.map((s) => s.id).filter((id) => DGX_ORCHESTRATION_SCENARIO_ORDER.includes(id));
   }
   return DGX_ORCHESTRATION_SCENARIO_ORDER;
 }

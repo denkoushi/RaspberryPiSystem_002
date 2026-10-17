@@ -23,7 +23,6 @@ function makeSvc(
   opts?: {
     fetchImpl?: typeof fetch;
     sparkHostStatusUrl?: string;
-    comfyHealthUrl?: string;
     metricsUrl?: string;
   }
 ) {
@@ -40,7 +39,6 @@ function makeSvc(
     policyStore: store,
     probeTimeoutMs: 3000,
     ...(opts?.sparkHostStatusUrl ? { sparkHostStatusUrl: opts.sparkHostStatusUrl } : {}),
-    ...(opts?.comfyHealthUrl ? { comfyHealthUrl: opts.comfyHealthUrl } : {}),
     ...(opts?.metricsUrl ? { metricsUrl: opts.metricsUrl } : {}),
   });
 }
@@ -558,40 +556,6 @@ describe('createDgxResourceService', () => {
     expect(ov.kpis.freeMemoryGiB).toBe(40);
   });
 
-  it('comfy comfyPolicy badge only under business_first', async () => {
-    const store = new DgxResourcePolicyStore(10);
-    store.setPolicyMode('private_ok');
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(async () => ({
-        configured: false,
-        health: { ok: false },
-      })),
-      createChatCompletion: vi.fn(),
-    };
-    const fetchImpl = vi.fn(async (): Promise<Response> => ({
-      ok: false,
-      status: 503,
-      headers: new Headers(),
-      url: '',
-      text: async () => '',
-      json: async () => ({}),
-    })) as typeof fetch;
-
-    const svc = makeSvc(store, gateway, {
-      fetchImpl,
-      comfyHealthUrl: 'http://127.0.0.1:8188/health',
-    });
-
-    let ov = await svc.getOverview();
-    const comfy = ov.services.find((s) => s.id === 'private-comfyui');
-    expect(comfy?.badges).not.toContain('policy');
-
-    store.setPolicyMode('business_first');
-    ov = await svc.getOverview();
-    const comfy2 = ov.services.find((s) => s.id === 'private-comfyui');
-    expect(comfy2?.badges).toContain('policy');
-  });
-
   it('rejects LOCAL_LLM_START when not on_demand or control URLs missing', async () => {
     const store = new DgxResourcePolicyStore(20);
     const gateway: LocalLlmGateway = {
@@ -731,8 +695,6 @@ describe('createDgxResourceService', () => {
       runtimeStart: env.LOCAL_LLM_RUNTIME_CONTROL_START_URL,
       runtimeStop: env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL,
       runtimeToken: env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN,
-      comfyStart: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL,
-      comfyStop: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL,
       expStart: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL,
       expStop: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL,
       agentStart: env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL,
@@ -742,8 +704,6 @@ describe('createDgxResourceService', () => {
     env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = 'http://dgx/start';
     env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = 'http://dgx/stop';
     env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = 'runtime-token-xxxxxxxxxxxxxxxxxxxxxxxx';
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = 'http://dgx/private/start';
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = 'http://dgx/private/stop';
     env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL = '';
     env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL = '';
     env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL = '';
@@ -773,19 +733,15 @@ describe('createDgxResourceService', () => {
       expect(result.releaseResult?.success).toBe(true);
       expect(result.releaseResult?.steps.map((step) => [step.targetId, step.status])).toEqual([
         ['system-prod-gateway', 'success'],
-        ['private-comfyui', 'success'],
         ['experiment-lab', 'skipped'],
         ['agent-container', 'skipped'],
       ]);
       expect(fetchImpl.mock.calls.map((call) => String(call[0]))).toContain('http://dgx/stop-force');
-      expect(fetchImpl.mock.calls.map((call) => String(call[0]))).toContain('http://dgx/private/stop');
     } finally {
       env.LOCAL_LLM_RUNTIME_MODE = prev.runtimeMode;
       env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = prev.runtimeStart;
       env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = prev.runtimeStop;
       env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = prev.runtimeToken;
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = prev.comfyStart;
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = prev.comfyStop;
       env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL = prev.expStart;
       env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL = prev.expStop;
       env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL = prev.agentStart;
@@ -897,21 +853,17 @@ describe('createDgxResourceService', () => {
     const svc = makeSvc(store, gateway);
     const ov = await svc.getOverview();
 
-    expect(ov.targets).toHaveLength(8);
+    expect(ov.targets).toHaveLength(7);
     expect(ov.targets.map((t) => t.id)).toEqual([
       'system-prod-gateway',
       'system-prod-inference',
       'system-prod-embedding',
-      'private-comfyui',
       'experiment-lab',
       'agent-container',
       'spark-host',
       'metrics-kpi',
     ]);
-    expect(ov.services).toHaveLength(6);
-    const comfySvc = ov.services.find((s) => s.id === 'private-comfyui');
-    const comfyTgt = ov.targets.find((t) => t.id === 'private-comfyui');
-    expect(comfySvc?.status).toBe(comfyTgt?.status);
+    expect(ov.services).toHaveLength(5);
   });
 
   it('rejects EXECUTE_TARGET_ACTION start on read-only spark-host', async () => {
@@ -953,16 +905,10 @@ describe('createDgxResourceService', () => {
       expStart: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL,
       expStop: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL,
       expToken: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_CONTROL_TOKEN,
-      comfyStart: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL,
-      comfyStop: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL,
-      comfyToken: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN,
     };
     env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL = 'http://127.0.0.1:9191/experiment/start';
     env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL = 'http://127.0.0.1:9191/experiment/stop';
     env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_CONTROL_TOKEN = 'tok-xxx';
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = undefined;
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = undefined;
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = undefined;
 
     try {
       const store = new DgxResourcePolicyStore(20);
@@ -1002,25 +948,16 @@ describe('createDgxResourceService', () => {
       env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL = prev.expStart;
       env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL = prev.expStop;
       env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_CONTROL_TOKEN = prev.expToken;
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = prev.comfyStart;
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = prev.comfyStop;
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = prev.comfyToken;
     }
   });
 
-  it('SET_POLICY experiment_first with workload changes stops comfy only and does not stop gateway', async () => {
+  it('SET_POLICY experiment_first with workload changes does not stop gateway', async () => {
     const prev = {
-      comfyStart: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL,
-      comfyStop: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL,
-      comfyToken: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN,
       runtimeMode: env.LOCAL_LLM_RUNTIME_MODE,
       runtimeStart: env.LOCAL_LLM_RUNTIME_CONTROL_START_URL,
       runtimeStop: env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL,
       runtimeToken: env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN,
     };
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = 'http://127.0.0.1:8188/comfy/start';
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = 'http://127.0.0.1:8188/comfy/stop';
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = 'comfy-token';
     env.LOCAL_LLM_RUNTIME_MODE = 'on_demand';
     env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = 'http://127.0.0.1:38081/runtime/start';
     env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = 'http://127.0.0.1:38081/runtime/stop';
@@ -1053,12 +990,8 @@ describe('createDgxResourceService', () => {
       });
 
       expect(result.ok).toBe(true);
-      expect(fetchImpl).toHaveBeenCalledTimes(1);
-      expect(String(fetchImpl.mock.calls[0]?.[0])).toBe('http://127.0.0.1:8188/comfy/stop');
+      expect(fetchImpl).not.toHaveBeenCalled();
     } finally {
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = prev.comfyStart;
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = prev.comfyStop;
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = prev.comfyToken;
       env.LOCAL_LLM_RUNTIME_MODE = prev.runtimeMode;
       env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = prev.runtimeStart;
       env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = prev.runtimeStop;
@@ -1066,7 +999,7 @@ describe('createDgxResourceService', () => {
     }
   });
 
-  it('SET_POLICY private_ok with workload changes force-stops gateway after auxiliary workloads', async () => {
+  it('SET_POLICY private_ok with workload changes does not stop business workloads', async () => {
     const prev = {
       expStart: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL,
       expStop: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL,
@@ -1117,10 +1050,7 @@ describe('createDgxResourceService', () => {
       });
 
       expect(result.ok).toBe(true);
-      expect(fetchImpl).toHaveBeenCalledTimes(3);
-      expect(String(fetchImpl.mock.calls[0]?.[0])).toBe('http://127.0.0.1:9191/experiment/stop');
-      expect(String(fetchImpl.mock.calls[1]?.[0])).toBe('http://127.0.0.1:9393/agent/stop');
-      expect(String(fetchImpl.mock.calls[2]?.[0])).toBe('http://127.0.0.1:38081/runtime/stop-force');
+      expect(fetchImpl).not.toHaveBeenCalled();
       expect(store.getPolicyMode()).toBe('private_ok');
     } finally {
       env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL = prev.expStart;
@@ -1169,11 +1099,10 @@ describe('createDgxResourceService', () => {
     expect(ov.operator).toBeDefined();
     expect(ov.operator.workloads.map((w) => w.id)).toEqual([
       'business_vlm',
-      'private_comfy',
       'experiment_lab',
       'agent_container',
     ]);
-    expect(ov.operator.operatorActions).toHaveLength(4);
+    expect(ov.operator.operatorActions).toHaveLength(3);
     expect(ov.operator.operatorSummary.policyMode).toBe(ov.policy.mode);
   });
 
@@ -1190,7 +1119,7 @@ describe('createDgxResourceService', () => {
 
     const preview = await svc.executeAction({
       type: 'PREVIEW_ORCHESTRATION_SCENARIO',
-      scenarioId: 'business_to_private',
+      scenarioId: 'business_to_experiment',
     });
 
     expect(preview.scenarioPreview).toBeTruthy();
@@ -1199,7 +1128,7 @@ describe('createDgxResourceService', () => {
     await expect(
       svc.executeAction({
         type: 'EXECUTE_ORCHESTRATION_SCENARIO',
-        scenarioId: 'business_to_private',
+        scenarioId: 'business_to_experiment',
         planFingerprint: '0'.repeat(64),
         confirmed: true,
       })
@@ -1456,132 +1385,4 @@ describe('createDgxResourceService', () => {
     }
   });
 
-  it('business_to_private succeeds only after strict readiness is confirmed', async () => {
-    const prev = {
-      comfyStart: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL,
-      comfyStop: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL,
-      comfyToken: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN,
-      readyTimeout: env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS,
-      readyPoll: env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS,
-    };
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = 'http://127.0.0.1:8188/start';
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = 'http://127.0.0.1:8188/stop';
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = 'tok-private';
-    env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS = 200;
-    env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS = 10;
-
-    try {
-      const store = new DgxResourcePolicyStore(20);
-      const gateway: LocalLlmGateway = {
-        getStatus: vi.fn(async () => ({
-          configured: false,
-          health: { ok: false },
-          timeoutMs: 60_000,
-        })),
-        createChatCompletion: vi.fn(),
-      };
-      const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]): Promise<Response> => {
-        const u = typeof input === 'string' ? input : (input as URL).href;
-        if (u === 'http://127.0.0.1:8188/start' && init?.method === 'POST') {
-          return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-        }
-        if (u === 'http://127.0.0.1:8188/health' && init?.method === 'GET') {
-          return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-        }
-        return { ok: false, status: 404, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-      });
-
-      const svc = makeSvc(store, gateway, {
-        fetchImpl: fetchImpl as typeof fetch,
-        comfyHealthUrl: 'http://127.0.0.1:8188/health',
-      });
-
-      const preview = await svc.executeAction({
-        type: 'PREVIEW_ORCHESTRATION_SCENARIO',
-        scenarioId: 'business_to_private',
-      });
-      const execute = await svc.executeAction({
-        type: 'EXECUTE_ORCHESTRATION_SCENARIO',
-        scenarioId: 'business_to_private',
-        planFingerprint: preview.scenarioPreview!.planFingerprint,
-        confirmed: true,
-      });
-
-      expect(execute.scenarioExecute?.success).toBe(true);
-      expect(execute.scenarioExecute?.readinessSummaryJa).toContain('Strict Ready');
-      expect(execute.scenarioExecute?.readinessChecksJa?.every((c) => c.satisfied)).toBe(true);
-      expect(store.getPolicyMode()).toBe('private_ok');
-    } finally {
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = prev.comfyStart;
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = prev.comfyStop;
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = prev.comfyToken;
-      env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS = prev.readyTimeout;
-      env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS = prev.readyPoll;
-    }
-  });
-
-  it('business_to_private timeout returns rollback details and restores prior policy', async () => {
-    const prev = {
-      comfyStart: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL,
-      comfyStop: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL,
-      comfyToken: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN,
-      readyTimeout: env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS,
-      readyPoll: env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS,
-    };
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = 'http://127.0.0.1:8188/start';
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = 'http://127.0.0.1:8188/stop';
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = 'tok-private';
-    env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS = 60;
-    env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS = 10;
-
-    try {
-      const store = new DgxResourcePolicyStore(20);
-      const gateway: LocalLlmGateway = {
-        getStatus: vi.fn(async () => ({
-          configured: false,
-          health: { ok: false },
-          timeoutMs: 60_000,
-        })),
-        createChatCompletion: vi.fn(),
-      };
-      const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]): Promise<Response> => {
-        const u = typeof input === 'string' ? input : (input as URL).href;
-        if ((u === 'http://127.0.0.1:8188/start' || u === 'http://127.0.0.1:8188/stop') && init?.method === 'POST') {
-          return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-        }
-        if (u === 'http://127.0.0.1:8188/health' && init?.method === 'GET') {
-          return { ok: false, status: 503, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-        }
-        return { ok: false, status: 404, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-      });
-
-      const svc = makeSvc(store, gateway, {
-        fetchImpl: fetchImpl as typeof fetch,
-        comfyHealthUrl: 'http://127.0.0.1:8188/health',
-      });
-
-      const preview = await svc.executeAction({
-        type: 'PREVIEW_ORCHESTRATION_SCENARIO',
-        scenarioId: 'business_to_private',
-      });
-      const execute = await svc.executeAction({
-        type: 'EXECUTE_ORCHESTRATION_SCENARIO',
-        scenarioId: 'business_to_private',
-        planFingerprint: preview.scenarioPreview!.planFingerprint,
-        confirmed: true,
-      });
-
-      expect(execute.scenarioExecute?.success).toBe(false);
-      expect(execute.scenarioExecute?.rollback?.attempted).toBe(true);
-      expect(execute.scenarioExecute?.rollback?.policyRestoredJa).toContain('業務優先');
-      expect(store.getPolicyMode()).toBe('business_first');
-      expect(execute.scenarioExecute?.readinessChecksJa?.some((c) => c.code === 'private_comfy' && !c.satisfied)).toBe(true);
-    } finally {
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = prev.comfyStart;
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = prev.comfyStop;
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = prev.comfyToken;
-      env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS = prev.readyTimeout;
-      env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS = prev.readyPoll;
-    }
-  });
 });

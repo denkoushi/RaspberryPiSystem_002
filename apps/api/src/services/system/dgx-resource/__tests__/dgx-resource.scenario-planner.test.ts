@@ -8,11 +8,10 @@ import {
 describe('dgx-resource.scenario-planner', () => {
   it('computeScenarioPlanFingerprint is deterministic for normalized inputs', () => {
     const input = {
-      scenarioId: 'business_to_private' as const,
-      targetPolicyMode: 'private_ok' as const,
+      scenarioId: 'private_to_business' as const,
+      targetPolicyMode: 'business_first' as const,
       applyWorkloadChanges: true,
       postPolicyStarts: [],
-      comfyRuntimeConfigured: true,
       experimentLabRuntimeConfigured: false,
       agentContainerRuntimeConfigured: false,
       gatewayRuntimeConfigured: true,
@@ -21,47 +20,15 @@ describe('dgx-resource.scenario-planner', () => {
     expect(computeScenarioPlanFingerprint(input)).toBe(computeScenarioPlanFingerprint(input));
   });
 
-  it('buildOrchestrationScenarioPreview includes policy step before optional post-policy comfy start when hooks exist', () => {
+
+  it('private_to_business adds pre-policy experiment stop when runtime hook exists', () => {
     const p = buildOrchestrationScenarioPreview({
-      scenarioId: 'business_to_private',
-      comfyRuntimeConfigured: true,
-      experimentLabRuntimeConfigured: false,
-      agentContainerRuntimeConfigured: false,
-      gatewayRuntimeConfigured: true,
-      currentPolicyMode: 'business_first',
-      inferenceLooksDegraded: false,
-      comfyLooksRunning: false,
-    });
-
-    const policyIdx = p.steps.findIndex((s) => s.kind === 'policy');
-    const postComfyIdx = p.steps.findIndex((s) => s.kind === 'workload' && s.targetId === 'private-comfyui' && s.action === 'start');
-    expect(policyIdx).toBeGreaterThan(-1);
-    expect(postComfyIdx).toBeGreaterThan(policyIdx);
-
-    expect(
-      computeScenarioPlanFingerprint({
-        scenarioId: p.scenarioId,
-        targetPolicyMode: p.targetPolicyMode,
-        applyWorkloadChanges: p.applyWorkloadChanges,
-        postPolicyStarts: ['private-comfyui'],
-        comfyRuntimeConfigured: true,
-        experimentLabRuntimeConfigured: false,
-        agentContainerRuntimeConfigured: false,
-        gatewayRuntimeConfigured: true,
-      })
-    ).toBe(p.planFingerprint);
-  });
-
-  it('business_to_private adds pre-policy experiment stop when runtime hook exists', () => {
-    const p = buildOrchestrationScenarioPreview({
-      scenarioId: 'business_to_private',
-      comfyRuntimeConfigured: true,
+      scenarioId: 'private_to_business',
       experimentLabRuntimeConfigured: true,
       agentContainerRuntimeConfigured: false,
       gatewayRuntimeConfigured: true,
       currentPolicyMode: 'business_first',
       inferenceLooksDegraded: false,
-      comfyLooksRunning: false,
     });
     const expStopIdx = p.steps.findIndex(
       (s) => s.kind === 'workload' && s.targetId === 'experiment-lab' && s.action === 'stop'
@@ -71,36 +38,15 @@ describe('dgx-resource.scenario-planner', () => {
     expect(policyIdx).toBeGreaterThan(expStopIdx);
   });
 
-  it('business_to_private adds gateway force-stop before policy when runtime hook exists', () => {
-    const p = buildOrchestrationScenarioPreview({
-      scenarioId: 'business_to_private',
-      comfyRuntimeConfigured: true,
-      experimentLabRuntimeConfigured: true,
-      agentContainerRuntimeConfigured: true,
-      gatewayRuntimeConfigured: true,
-      currentPolicyMode: 'business_first',
-      inferenceLooksDegraded: false,
-      comfyLooksRunning: false,
-    });
-
-    const gatewayForceStopIdx = p.steps.findIndex(
-      (s) => s.kind === 'workload' && s.targetId === 'system-prod-gateway' && s.action === 'stop_force'
-    );
-    const policyIdx = p.steps.findIndex((s) => s.kind === 'policy');
-    expect(gatewayForceStopIdx).toBeGreaterThan(-1);
-    expect(policyIdx).toBeGreaterThan(gatewayForceStopIdx);
-  });
 
   it('buildOrchestrationScenarioPreview includes policy step last when no post-policy steps and aligns fingerprint inputs', () => {
     const p = buildOrchestrationScenarioPreview({
       scenarioId: 'experiment_to_business',
-      comfyRuntimeConfigured: true,
       experimentLabRuntimeConfigured: true,
       agentContainerRuntimeConfigured: false,
       gatewayRuntimeConfigured: true,
       currentPolicyMode: 'experiment_first',
       inferenceLooksDegraded: false,
-      comfyLooksRunning: false,
     });
 
     expect(p.steps[p.steps.length - 1]?.kind).toBe('policy');
@@ -109,7 +55,6 @@ describe('dgx-resource.scenario-planner', () => {
       targetPolicyMode: p.targetPolicyMode,
       applyWorkloadChanges: p.applyWorkloadChanges,
       postPolicyStarts: [],
-      comfyRuntimeConfigured: true,
       experimentLabRuntimeConfigured: true,
       agentContainerRuntimeConfigured: false,
       gatewayRuntimeConfigured: true,
@@ -120,13 +65,11 @@ describe('dgx-resource.scenario-planner', () => {
   it('business_to_experiment adds post-policy experiment start when hooks exist', () => {
     const p = buildOrchestrationScenarioPreview({
       scenarioId: 'business_to_experiment',
-      comfyRuntimeConfigured: true,
       experimentLabRuntimeConfigured: true,
       agentContainerRuntimeConfigured: false,
       gatewayRuntimeConfigured: true,
       currentPolicyMode: 'business_first',
       inferenceLooksDegraded: false,
-      comfyLooksRunning: false,
     });
     const postExpIdx = p.steps.findIndex((s) => s.kind === 'workload' && s.targetId === 'experiment-lab' && s.action === 'start');
     const policyIdx = p.steps.findIndex((s) => s.kind === 'policy');
@@ -138,7 +81,6 @@ describe('dgx-resource.scenario-planner', () => {
         targetPolicyMode: p.targetPolicyMode,
         applyWorkloadChanges: p.applyWorkloadChanges,
         postPolicyStarts: ['experiment-lab'],
-        comfyRuntimeConfigured: true,
         experimentLabRuntimeConfigured: true,
         agentContainerRuntimeConfigured: false,
         gatewayRuntimeConfigured: true,
@@ -149,13 +91,11 @@ describe('dgx-resource.scenario-planner', () => {
   it('business return modelProfileId changes fingerprint and adds load step', () => {
     const base = {
       scenarioId: 'private_to_business' as const,
-      comfyRuntimeConfigured: true,
       experimentLabRuntimeConfigured: false,
       agentContainerRuntimeConfigured: false,
       gatewayRuntimeConfigured: true,
       currentPolicyMode: 'private_ok' as const,
       inferenceLooksDegraded: false,
-      comfyLooksRunning: false,
       modelProfiles: [
         {
           id: 'business_qwen36_27b_nvfp4',

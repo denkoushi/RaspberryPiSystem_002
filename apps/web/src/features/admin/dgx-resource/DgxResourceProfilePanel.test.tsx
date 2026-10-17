@@ -35,7 +35,6 @@ describe('DgxResourceProfilePanel', () => {
       policy: {
         mode: 'business_first',
         previousMode: null,
-        comfyStartBlockedHint: true,
       },
       runtime: {
         localLlmMode: 'on_demand',
@@ -44,10 +43,8 @@ describe('DgxResourceProfilePanel', () => {
       },
       optionalProbes: {
         metricsConfigured: false,
-        comfyHealthConfigured: false,
         embeddingHealthConfigured: false,
         sparkHostConfigured: false,
-        comfyRuntimeControlConfigured: false,
         experimentLabHealthConfigured: false,
         experimentLabRuntimeControlConfigured: false,
         agentContainerHealthConfigured: false,
@@ -87,6 +84,6 @@ describe('DgxResourceProfilePanel', () => {
     expect(screen.getByText('運用モード（保守・手動切替）')).toBeInTheDocument();
     expect(screen.getByText(/推論レイヤが degraded の可能性があります/)).toBeInTheDocument();
     expect(screen.getByText(/切替時にワークロード自動調整/)).toBeInTheDocument();
-    expect(screen.getByText(/私用OK へ切替時、チェック OFF のままだと業務 LLM の強制停止は走りません/)).toBeInTheDocument();
+    expect(screen.getByText(/ワークロード自動調整は業務優先への切替時に実験ラボ・Agent コンテナを停止します/)).toBeInTheDocument();
   });
 });

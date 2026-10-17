@@ -33,7 +33,7 @@ export function DgxResourceOrchestrationPanel({ onControlUiError, overview }: Pr
   const qc = useQueryClient();
   const confirm = useConfirm();
 
-  const [scenarioId, setScenarioId] = useState<DgxOrchestrationScenarioIdApi>('business_to_private');
+  const [scenarioId, setScenarioId] = useState<DgxOrchestrationScenarioIdApi>('business_to_experiment');
   const [lastPreview, setLastPreview] = useState<ScenarioPlanPreviewApi | null>(null);
   const [resultNote, setResultNote] = useState<string | null>(null);
   const [lastExecute, setLastExecute] = useState<{

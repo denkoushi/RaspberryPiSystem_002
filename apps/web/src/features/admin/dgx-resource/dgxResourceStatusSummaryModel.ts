@@ -46,7 +46,7 @@ function buildNextAction(
   const summary = overview.runtimeSummary;
   if (summary?.businessRuntimeIntentAlignedWithActive === false) {
     return {
-      nextActionLabel: 'Pi5 業務意図と Active Model が不一致 — 「私用→業務」または「実験→業務」を再実行してください',
+      nextActionLabel: 'Pi5 業務意図と Active Model が不一致 — 「業務復帰」または「実験→業務」を再実行してください',
       nextActionTone: 'warn',
     };
   }

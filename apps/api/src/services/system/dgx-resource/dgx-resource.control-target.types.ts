@@ -7,7 +7,6 @@ export const DGX_CONTROL_TARGET_IDS = [
   'system-prod-gateway',
   'system-prod-inference',
   'system-prod-embedding',
-  'private-comfyui',
   'experiment-lab',
   'agent-container',
   'spark-host',

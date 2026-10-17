@@ -19,7 +19,6 @@ function makeOverview(partial?: Partial<DgxResourceOverview>): DgxResourceOvervi
     policy: {
       mode: 'business_first',
       previousMode: null,
-      comfyStartBlockedHint: false,
     },
     runtime: {
       localLlmMode: 'always_on',
@@ -28,10 +27,8 @@ function makeOverview(partial?: Partial<DgxResourceOverview>): DgxResourceOvervi
     },
     optionalProbes: {
       metricsConfigured: true,
-      comfyHealthConfigured: true,
       embeddingHealthConfigured: true,
       sparkHostConfigured: true,
-      comfyRuntimeControlConfigured: true,
       experimentLabHealthConfigured: true,
       experimentLabRuntimeControlConfigured: true,
       agentContainerHealthConfigured: false,
@@ -135,7 +132,7 @@ describe('DgxResourceStatusSummary', () => {
 
     expect(screen.getByText('Qwen3.5 35B GGUF')).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent(/Active Model と不一致/);
-    expect(screen.getByRole('status')).toHaveTextContent(/私用→業務.*実験→業務/);
+    expect(screen.getByRole('status')).toHaveTextContent(/業務復帰.*実験→業務/);
   });
 
   it('prioritizes last scenario failure in next action hint', () => {
@@ -145,7 +142,7 @@ describe('DgxResourceStatusSummary', () => {
           monitoring: {
             ...makeOverview().monitoring,
             lastScenarioFailure: {
-              scenarioId: 'business_to_private',
+              scenarioId: 'business_to_experiment',
               at: new Date().toISOString(),
               message: 'gateway stop failed',
               completedStepOrders: [1],

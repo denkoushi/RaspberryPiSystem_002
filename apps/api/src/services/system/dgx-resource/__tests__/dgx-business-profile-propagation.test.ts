@@ -22,7 +22,6 @@ describe('dgx business profile propagation', () => {
     const policyStore = getDgxResourcePolicyStore(50);
     const runTargetRuntimeAction = vi.fn().mockResolvedValue({ ok: true, message: 'ok' });
     const capability = {
-      comfyRuntimeConfigured: false,
       experimentLabRuntimeConfigured: false,
       agentContainerRuntimeConfigured: false,
       gatewayRuntimeConfigured: true,
@@ -32,12 +31,11 @@ describe('dgx business profile propagation', () => {
     const intent = resolveScenarioPolicyIntent(scenarioId);
     const postPolicyPlan = buildPostPolicyOrchestrationSteps({
       scenarioId,
-      comfyRuntimeConfigured: capability.comfyRuntimeConfigured,
       experimentLabRuntimeConfigured: capability.experimentLabRuntimeConfigured,
     });
-    const postPolicyStarts: Array<'private-comfyui' | 'experiment-lab'> = [];
+    const postPolicyStarts: Array<'experiment-lab'> = [];
     for (const s of postPolicyPlan) {
-      if (s.action === 'start' && (s.targetId === 'private-comfyui' || s.targetId === 'experiment-lab')) {
+      if (s.action === 'start' && (s.targetId === 'experiment-lab')) {
         postPolicyStarts.push(s.targetId);
       }
     }

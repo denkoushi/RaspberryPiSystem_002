@@ -6,7 +6,7 @@ export type AuxHttpRuntimeExecutorDeps = {
 };
 
 /**
- * 補助ランタイム（私用 ComfyUI・experiment-lab 等）への POST。
+ * 補助ランタイム（experiment-lab 等）への POST。
  * gateway と同様 `X-Runtime-Control-Token` を使用（DGX 側側車輪で統一しやすい）。
  */
 export async function executeAuxHttpRuntimeStartStop(

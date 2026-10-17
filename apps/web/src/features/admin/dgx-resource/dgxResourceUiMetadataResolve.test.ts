@@ -14,21 +14,15 @@ import type { DgxResourceUiMetadataApi } from '../../../api/dgx-resource.types';
 const apiUiMetadata: DgxResourceUiMetadataApi = {
   scenarios: [
     {
-      id: 'business_to_private',
-      titleJa: 'API: 私用を始める',
-      descriptionJa: 'API: 私用OK へ切替',
+      id: 'business_to_experiment',
+      titleJa: 'API: 実験を始める',
+      descriptionJa: 'API: 実験優先 へ切替',
       cautionsJa: ['API caution'],
     },
     {
       id: 'private_to_business',
       titleJa: 'API: 業務に戻す',
       descriptionJa: 'API: 業務優先へ',
-      cautionsJa: [],
-    },
-    {
-      id: 'business_to_experiment',
-      titleJa: 'API: 実験を始める',
-      descriptionJa: 'API: 実験優先へ',
       cautionsJa: [],
     },
     {
@@ -65,8 +59,8 @@ const apiUiMetadata: DgxResourceUiMetadataApi = {
 
 describe('dgxResourceUiMetadataResolve', () => {
   it('falls back to local scenario metadata when overview.uiMetadata is absent', () => {
-    const meta = resolveScenarioMeta('business_to_private');
-    expect(meta.titleJa).toBe(DGX_ORCHESTRATION_SCENARIO_META.business_to_private.titleJa);
+    const meta = resolveScenarioMeta('business_to_experiment');
+    expect(meta.titleJa).toBe(DGX_ORCHESTRATION_SCENARIO_META.business_to_experiment.titleJa);
     expect(meta.cautionsJa).toEqual([]);
   });
 
@@ -74,9 +68,8 @@ describe('dgxResourceUiMetadataResolve', () => {
     const overview = { uiMetadata: apiUiMetadata };
 
     expect(resolveScenarioOrder(overview).map((id) => resolveScenarioMeta(id, overview).titleJa)).toEqual([
-      'API: 私用を始める',
-      'API: 業務に戻す',
       'API: 実験を始める',
+      'API: 業務に戻す',
       'API: 実験終了',
     ]);
 

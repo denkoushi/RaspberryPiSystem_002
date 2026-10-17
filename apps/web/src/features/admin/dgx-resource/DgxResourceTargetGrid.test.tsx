@@ -19,7 +19,6 @@ function makeOverview(): DgxResourceOverview {
     policy: {
       mode: 'business_first',
       previousMode: null,
-      comfyStartBlockedHint: true,
     },
     runtime: {
       localLlmMode: 'on_demand',
@@ -28,10 +27,8 @@ function makeOverview(): DgxResourceOverview {
     },
     optionalProbes: {
       metricsConfigured: false,
-      comfyHealthConfigured: true,
       embeddingHealthConfigured: false,
       sparkHostConfigured: false,
-      comfyRuntimeControlConfigured: true,
       experimentLabHealthConfigured: false,
       experimentLabRuntimeControlConfigured: false,
       agentContainerHealthConfigured: false,
@@ -48,9 +45,9 @@ function makeOverview(): DgxResourceOverview {
         metaLines: ['gateway: http://127.0.0.1:38081'],
       },
       {
-        id: 'private-comfyui',
+        id: 'experiment-lab',
         kind: 'http_probe',
-        displayName: 'private-comfyui',
+        displayName: 'experiment-lab',
         capabilities: ['readStatus', 'start', 'stop'],
         status: 'stopped',
         badges: [],
@@ -90,8 +87,8 @@ describe('DgxResourceTargetGrid', () => {
         targets={makeOverview().targets ?? []}
         overview={makeOverview()}
         targetActionError={{
-          targetId: 'private-comfyui',
-          message: 'private-comfyui の停止に失敗しました',
+          targetId: 'experiment-lab',
+          message: 'experiment-lab の停止に失敗しました',
         }}
         onControlUiError={() => undefined}
         confirmStop={vi.fn(async () => true)}
@@ -100,9 +97,29 @@ describe('DgxResourceTargetGrid', () => {
       />
     );
 
-    expect(screen.getByText('private-comfyui の停止に失敗しました')).toBeInTheDocument();
+    expect(screen.getByText('experiment-lab の停止に失敗しました')).toBeInTheDocument();
     expect(screen.getAllByText('起動')).toHaveLength(2);
     expect(screen.getAllByText('停止')).toHaveLength(2);
+  });
+
+  it('ignores unknown target ids from stale responses', () => {
+    const overview = makeOverview();
+    const staleTarget = { id: 'retired-target', displayName: 'Retired target' } as NonNullable<DgxResourceOverview['targets']>[number];
+    render(
+      <DgxResourceTargetGrid
+        targets={[staleTarget, ...(overview.targets ?? [])]}
+        overview={overview}
+        targetActionError={null}
+        onControlUiError={() => undefined}
+        confirmStop={vi.fn(async () => true)}
+        busy={false}
+        onExecuteTarget={() => undefined}
+      />
+    );
+
+    expect(screen.queryByText('Retired target')).not.toBeInTheDocument();
+    expect(screen.getByText('system-prod-gateway')).toBeInTheDocument();
+    expect(screen.getAllByText('起動')).toHaveLength(2);
   });
 
   it('keeps read-only cards free from control buttons', () => {

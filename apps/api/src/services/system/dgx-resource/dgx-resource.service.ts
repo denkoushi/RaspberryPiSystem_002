@@ -1,7 +1,7 @@
 import { ApiError } from '../../../lib/errors.js';
 import { env } from '../../../config/env.js';
 
-import { isBusinessFirstSuppressionHintActive, policyLabelJa } from './dgx-resource.policy-profile.js';
+import { policyLabelJa } from './dgx-resource.policy-profile.js';
 import type { DgxPolicyMode, DgxResourceEvent, DgxResourcePolicyStore } from './dgx-resource.policy-store.js';
 
 import type {
@@ -133,7 +133,6 @@ export type DgxResourceOverview = {
     mode: DgxPolicyMode;
     /** ロールバック用。未切替または同一モード再設定のみのとき null */
     previousMode: DgxPolicyMode | null;
-    comfyStartBlockedHint: boolean;
   };
   runtime: {
     localLlmMode: 'always_on' | 'on_demand';
@@ -142,10 +141,8 @@ export type DgxResourceOverview = {
   };
   optionalProbes: {
     metricsConfigured: boolean;
-    comfyHealthConfigured: boolean;
     embeddingHealthConfigured: boolean;
     sparkHostConfigured: boolean;
-    comfyRuntimeControlConfigured: boolean;
     experimentLabHealthConfigured: boolean;
     experimentLabRuntimeControlConfigured: boolean;
     agentContainerHealthConfigured: boolean;
@@ -216,7 +213,6 @@ export type DgxResourceServiceDeps = {
   policyStore: DgxResourcePolicyStore;
   probeTimeoutMs: number;
   metricsUrl?: string;
-  comfyHealthUrl?: string;
   embeddingHealthUrl?: string;
   /** DGX Spark ホスト疎通（任意） */
   sparkHostStatusUrl?: string;
@@ -257,8 +253,6 @@ function releaseTargetLabelJa(targetId: DgxControlTargetId): string {
   switch (targetId) {
     case 'system-prod-gateway':
       return '業務 LLM';
-    case 'private-comfyui':
-      return 'ComfyUI';
     case 'experiment-lab':
       return '実験ラボ';
     case 'agent-container':
@@ -266,14 +260,6 @@ function releaseTargetLabelJa(targetId: DgxControlTargetId): string {
     default:
       return targetId;
   }
-}
-
-function readComfyRuntimeEndpoints(): { startUrl: string; stopUrl: string; token?: string } | undefined {
-  const s = env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL?.trim();
-  const sp = env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL?.trim();
-  if (!s || !sp) return undefined;
-  const t = env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN?.trim();
-  return { startUrl: s, stopUrl: sp, ...(t ? { token: t } : {}) };
 }
 
 function readExperimentLabRuntimeEndpoints(): { startUrl: string; stopUrl: string; token?: string } | undefined {
@@ -292,10 +278,6 @@ function readAgentContainerRuntimeEndpoints(): { startUrl: string; stopUrl: stri
   return { startUrl: s, stopUrl: sp, ...(t ? { token: t } : {}) };
 }
 
-function comfyRuntimeControlConfigured(): boolean {
-  return readComfyRuntimeEndpoints() !== undefined;
-}
-
 function experimentLabRuntimeControlConfigured(): boolean {
   return readExperimentLabRuntimeEndpoints() !== undefined;
 }
@@ -306,12 +288,10 @@ function agentContainerRuntimeControlConfigured(): boolean {
 
 function inferenceHeuristics(bundle: OverviewProbeBundle): {
   inferenceLooksDegraded: boolean;
-  comfyLooksRunning: boolean;
 } {
   const gatewayRunning = bundle.gatewayStatus.configured && bundle.gatewayStatus.health.ok;
   const inferenceLooksDegraded = Boolean(gatewayRunning && !bundle.modelsProbe.ok && bundle.gatewayStatus.configured);
-  const comfyLooksRunning = Boolean(bundle.comfyConfigured && bundle.comfyReachable);
-  return { inferenceLooksDegraded, comfyLooksRunning };
+  return { inferenceLooksDegraded };
 }
 
 type TargetRuntimeEventLogMode = 'default' | 'none';
@@ -328,10 +308,8 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     gatewayStatus: Awaited<ReturnType<LocalLlmGateway['getStatus']>>;
     bundle: OverviewProbeBundle;
     runtimeControlConfigured: boolean;
-    comfyRtCfg: boolean;
     expLabRtCfg: boolean;
     metricsConfigured: boolean;
-    comfyConfigured: boolean;
     embeddingConfigured: boolean;
     sparkConfigured: boolean;
     experimentLabHealthConfigured: boolean;
@@ -391,12 +369,6 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       if (metricsPayload) break;
     }
     modelProfiles = enrichDgxModelProfilesStartupFit(modelProfiles, metricsPayload);
-    const comfyConfigured = Boolean(deps.comfyHealthUrl?.trim());
-    let comfyReachable = false;
-    if (comfyConfigured) {
-      comfyReachable = await probeHttpOk(deps.comfyHealthUrl!, deps.fetchImpl, deps.probeTimeoutMs);
-    }
-
     const embeddingConfigured = Boolean(deps.embeddingHealthUrl?.trim());
     let embeddingReachable = false;
     let embeddingProbeDisplay: string | undefined;
@@ -437,7 +409,6 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     }
 
     const runtimeControlConfigured = gatewayRuntimeControlConfiguredFlag();
-    const comfyRtCfg = comfyRuntimeControlConfigured();
     const expLabRtCfg = experimentLabRuntimeControlConfigured();
     const agentRtCfg = agentContainerRuntimeControlConfigured();
 
@@ -449,9 +420,6 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       modelProfiles,
       metricsConfigured,
       metricsPayload,
-      comfyConfigured,
-      comfyReachable,
-      comfyProbeUrl: deps.comfyHealthUrl ?? undefined,
       embeddingConfigured,
       embeddingReachable,
       embeddingProbeDisplay,
@@ -459,7 +427,6 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       sparkConfigured,
       sparkProbe,
       runtimeControlConfigured,
-      comfyRuntimeControlConfigured: comfyRtCfg,
       experimentLabHealthConfigured,
       experimentLabReachable,
       experimentLabProbeUrl: experimentLabProbeUrl ?? undefined,
@@ -476,11 +443,6 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         'GPU/メモリKPI は DGX_RESOURCE_METRICS_URL 未設定かつ、ゲートウェイ /system/metrics または /v1/system/metrics の取得に失敗したため未表示です'
       );
     }
-    if (!comfyConfigured) {
-      notes.push(
-        'ComfyUI は DGX_RESOURCE_COMFYUI_HEALTH_URL 未設定のため疎通のみ表示できません（SSH ポートフォワード運用は Runbook 参照）'
-      );
-    }
     if (!sparkConfigured) {
       notes.push(
         'DGX Spark ホスト簡易監視は DGX_RESOURCE_SPARK_HOST_STATUS_URL 未設定のため未取得です（メトリクス sidecar の /health 等を Runbook で設定）'
@@ -488,14 +450,6 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     }
     if (modelProfiles.status === 'degraded' && modelProfiles.errorMessageJa) {
       notes.push(`業務モデルプロファイル取得が degraded です: ${modelProfiles.errorMessageJa}`);
-    }
-
-    const cStart = env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL?.trim();
-    const cStop = env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL?.trim();
-    if ((cStart && !cStop) || (!cStart && cStop)) {
-      notes.push(
-        'DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL / STOP_URL の片方のみ設定されています（起停は無効）'
-      );
     }
 
     const eStart = env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL?.trim();
@@ -543,10 +497,8 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       gatewayStatus,
       bundle,
       runtimeControlConfigured,
-      comfyRtCfg,
       expLabRtCfg,
       metricsConfigured,
-      comfyConfigured,
       embeddingConfigured,
       sparkConfigured,
       experimentLabHealthConfigured,
@@ -588,41 +540,6 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
           : action === 'stop_force'
             ? 'ゲートウェイ強制停止リクエストを送信しました'
             : 'ゲートウェイ停止リクエストを送信しました',
-    };
-  };
-
-  const runComfyAuxStartStop = async (
-    action: DgxControlTargetAction,
-    reason: string | undefined,
-    eventLog: TargetRuntimeEventLogMode
-  ): Promise<{ ok: true; message: string }> => {
-    const auxAction = ensureAuxRuntimeAction(action);
-    const rt = readComfyRuntimeEndpoints();
-    if (!rt) {
-      throw new ApiError(
-        400,
-        'private-comfyui の起停 URL が Pi5 に未設定です（DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_* を Runbook 参照）',
-        { targetId: 'private-comfyui', action },
-        'DGX_TARGET_ACTION_NOT_SUPPORTED'
-      );
-    }
-    await executeAuxHttpRuntimeStartStop(deps, {
-      action: auxAction,
-      startUrl: rt.startUrl,
-      stopUrl: rt.stopUrl,
-      timeoutMs: auxTimeoutMs,
-      controlToken: rt.token,
-      reason,
-      errorCodePrefix: 'DGX_COMFY',
-    });
-    if (eventLog === 'default') {
-      deps.policyStore.appendEvent(
-        auxAction === 'start' ? '私用 ComfyUI 起動を要求しました' : '私用 ComfyUI 停止を要求しました'
-      );
-    }
-    return {
-      ok: true,
-      message: auxAction === 'start' ? 'ComfyUI 起動リクエストを送信しました' : 'ComfyUI 停止リクエストを送信しました',
     };
   };
 
@@ -770,8 +687,6 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     switch (targetId) {
       case 'system-prod-gateway':
         return runGatewayRuntimeStartStop(action, reason, eventLog, modelProfileId);
-      case 'private-comfyui':
-        return runComfyAuxStartStop(action, reason, eventLog);
       case 'experiment-lab':
         return runExperimentLabAuxStartStop(action, reason, eventLog);
       case 'agent-container':
@@ -801,7 +716,6 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       configured: boolean;
     }> = [
       { targetId: 'system-prod-gateway', action: 'stop_force', configured: gatewayRuntimeControlConfiguredFlag() },
-      { targetId: 'private-comfyui', action: 'stop', configured: comfyRuntimeControlConfigured() },
       { targetId: 'experiment-lab', action: 'stop', configured: experimentLabRuntimeControlConfigured() },
       { targetId: 'agent-container', action: 'stop', configured: agentContainerRuntimeControlConfigured() },
     ];
@@ -927,7 +841,6 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       applyWorkloadChanges: Boolean(opts?.applyWorkloadChanges),
       workloadTraceReason: 'policy_ui',
       capability: {
-        comfyRuntimeConfigured: comfyRuntimeControlConfigured(),
         experimentLabRuntimeConfigured: experimentLabRuntimeControlConfigured(),
         agentContainerRuntimeConfigured: agentContainerRuntimeControlConfigured(),
         gatewayRuntimeConfigured: gatewayRuntimeControlConfiguredFlag(),
@@ -951,13 +864,11 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     const hints = inferenceHeuristics(pb.bundle);
     const preview = buildOrchestrationScenarioPreview({
       scenarioId,
-      comfyRuntimeConfigured: pb.bundle.comfyRuntimeControlConfigured,
       experimentLabRuntimeConfigured: pb.bundle.experimentLabRuntimeControlConfigured,
       agentContainerRuntimeConfigured: pb.bundle.agentContainerRuntimeControlConfigured,
       gatewayRuntimeConfigured: pb.bundle.runtimeControlConfigured,
       currentPolicyMode: pb.bundle.policyMode,
       inferenceLooksDegraded: hints.inferenceLooksDegraded,
-      comfyLooksRunning: hints.comfyLooksRunning,
       ...(modelProfileId ? { modelProfileId, modelProfiles: pb.modelProfiles.available } : {}),
     });
     const lines = preview.steps.map((s) => `${s.order}. ${s.summaryJa}`).join(' / ');
@@ -984,7 +895,6 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       ...(modelProfileId ? { modelProfileId } : {}),
       deferReadiness: scenarioId === 'private_to_business' || scenarioId === 'experiment_to_business',
       capability: {
-        comfyRuntimeConfigured: comfyRuntimeControlConfigured(),
         experimentLabRuntimeConfigured: experimentLabRuntimeControlConfigured(),
         agentContainerRuntimeConfigured: agentContainerRuntimeControlConfigured(),
         gatewayRuntimeConfigured: gatewayRuntimeControlConfiguredFlag(),
@@ -1063,7 +973,6 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       const operator = buildDgxResourceOperatorConsole({
         policyMode: pb.policyMode,
         previousMode: pb.previousMode,
-        comfyStartBlockedHint: isBusinessFirstSuppressionHintActive(pb.policyMode),
         targets,
         monitoring,
       });
@@ -1104,7 +1013,6 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         policy: {
           mode: pb.policyMode,
           previousMode: pb.previousMode,
-          comfyStartBlockedHint: isBusinessFirstSuppressionHintActive(pb.policyMode),
         },
         runtime: {
           localLlmMode: env.LOCAL_LLM_RUNTIME_MODE,
@@ -1113,10 +1021,8 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         },
         optionalProbes: {
           metricsConfigured: pb.metricsConfigured,
-          comfyHealthConfigured: pb.comfyConfigured,
           embeddingHealthConfigured: pb.embeddingConfigured,
           sparkHostConfigured: pb.sparkConfigured,
-          comfyRuntimeControlConfigured: pb.comfyRtCfg,
           experimentLabHealthConfigured: pb.experimentLabHealthConfigured,
           experimentLabRuntimeControlConfigured: pb.expLabRtCfg,
           agentContainerHealthConfigured: pb.agentContainerHealthConfigured,

@@ -58,15 +58,6 @@ export function DgxResourceCurrentStateSummary({ overview, operator }: Props) {
             注意なし
           </span>
         )}
-        {summary.comfyStartBlockedHint ? (
-          <span
-            className="rounded-lg border border-amber-400/40 bg-amber-950/35 px-2 py-1 text-base leading-none"
-            title="業務優先のため、私用 ComfyUI の起動抑止ヒントが有効です（仕様どおり）"
-            aria-label="私用 Comfy 起動抑止ヒント"
-          >
-            🔒
-          </span>
-        ) : null}
         {summary.previousPolicyLabelJa ? (
           <span className="text-sm text-white/60" title={`直前のプロファイル: ${summary.previousPolicyLabelJa}`}>
             ↩ {summary.previousPolicyLabelJa}

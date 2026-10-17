@@ -31,13 +31,3 @@ export function setPolicyEventMessage(mode: DgxPolicyMode): string {
     }
   }
 }
-
-/** 業務優先ヒント（Comfyや私用GPU抑制の表示）を出すか */
-export function isBusinessFirstSuppressionHintActive(mode: DgxPolicyMode): boolean {
-  return mode === 'business_first';
-}
-
-/** Comfy カードに policy バッジ（業務優先で未疎通など） */
-export function comfyPolicyBadgeApplicable(mode: DgxPolicyMode, comfyConfigured: boolean, comfyReachable: boolean): boolean {
-  return comfyConfigured && !comfyReachable && mode === 'business_first';
-}

@@ -8,14 +8,12 @@ import type { DgxBusinessModelProfile } from './dgx-resource.model-profiles.js';
 
 /** GUI の複合運用ガイド用シナリオ（ユーザー向け日本語説明とは別レイヤー） */
 export type DgxOrchestrationScenarioId =
-  | 'business_to_private'
   | 'private_to_business'
   | 'business_to_experiment'
   | 'experiment_to_business';
 
 /** ルート検証や UI で列挙するための固定リスト（型との整合チェック込み） */
 export const DGX_ORCHESTRATION_SCENARIO_IDS = [
-  'business_to_private',
   'private_to_business',
   'business_to_experiment',
   'experiment_to_business',
@@ -26,8 +24,7 @@ export type ScenarioPlanFingerprintInputs = {
   targetPolicyMode: DgxPolicyMode;
   applyWorkloadChanges: boolean;
   /** ポリシー適用後に追加で起動する post-policy ワークロード（順序込みで指紋に含める） */
-  postPolicyStarts: Array<'private-comfyui' | 'experiment-lab'>;
-  comfyRuntimeConfigured: boolean;
+  postPolicyStarts: Array<'experiment-lab'>;
   experimentLabRuntimeConfigured: boolean;
   agentContainerRuntimeConfigured: boolean;
   gatewayRuntimeConfigured: boolean;
@@ -73,8 +70,6 @@ function mapScenarioToPolicyInputs(scenarioId: DgxOrchestrationScenarioId): {
   applyWorkloadChanges: boolean;
 } {
   switch (scenarioId) {
-    case 'business_to_private':
-      return { targetPolicyMode: 'private_ok', applyWorkloadChanges: true };
     case 'private_to_business':
     case 'experiment_to_business':
       return { targetPolicyMode: 'business_first', applyWorkloadChanges: true };
@@ -101,7 +96,6 @@ export function buildScenarioFingerprintPayload(input: ScenarioPlanFingerprintIn
     applyWorkloadChanges: input.applyWorkloadChanges,
     postPolicyStarts: [...input.postPolicyStarts].sort(),
     capabilities: {
-      comfyRuntimeConfigured: input.comfyRuntimeConfigured,
       experimentLabRuntimeConfigured: input.experimentLabRuntimeConfigured,
       agentContainerRuntimeConfigured: input.agentContainerRuntimeConfigured,
       gatewayRuntimeConfigured: input.gatewayRuntimeConfigured,
@@ -118,15 +112,12 @@ export function computeScenarioPlanFingerprint(input: ScenarioPlanFingerprintInp
 /** ワークロード調停と最終モード適用までの順序付きステップ一覧（プレビュー／実行共通） */
 export function buildOrchestrationScenarioPreview(input: {
   scenarioId: DgxOrchestrationScenarioId;
-  comfyRuntimeConfigured: boolean;
   experimentLabRuntimeConfigured: boolean;
   agentContainerRuntimeConfigured: boolean;
   gatewayRuntimeConfigured: boolean;
   currentPolicyMode: DgxPolicyMode;
   /** Inference が degraded と判定できるときのみ true（呼び出し側で算出） */
   inferenceLooksDegraded: boolean;
-  /** private-comfyui が running と判定できるときのみ true */
-  comfyLooksRunning: boolean;
   modelProfileId?: string;
   modelProfiles?: DgxBusinessModelProfile[];
 }): ScenarioPlanPreview {
@@ -136,7 +127,6 @@ export function buildOrchestrationScenarioPreview(input: {
   const workloadSteps = planWorkloadAdjustmentsBeforePolicyChange({
     nextMode: targetPolicyMode,
     applyWorkloadChanges,
-    comfyRuntimeConfigured: input.comfyRuntimeConfigured,
     experimentLabRuntimeConfigured: input.experimentLabRuntimeConfigured,
     agentContainerRuntimeConfigured: input.agentContainerRuntimeConfigured,
     gatewayRuntimeConfigured: input.gatewayRuntimeConfigured,
@@ -144,13 +134,12 @@ export function buildOrchestrationScenarioPreview(input: {
 
   const postPolicyWorkloadTemplate = buildPostPolicyOrchestrationSteps({
     scenarioId,
-    comfyRuntimeConfigured: input.comfyRuntimeConfigured,
     experimentLabRuntimeConfigured: input.experimentLabRuntimeConfigured,
   });
-  const postPolicyStarts: Array<'private-comfyui' | 'experiment-lab'> = [];
+  const postPolicyStarts: Array<'experiment-lab'> = [];
   for (const s of postPolicyWorkloadTemplate) {
     if (s.action !== 'start') continue;
-    if (s.targetId === 'private-comfyui' || s.targetId === 'experiment-lab') {
+    if (s.targetId === 'experiment-lab') {
       postPolicyStarts.push(s.targetId);
     }
   }
@@ -205,7 +194,6 @@ export function buildOrchestrationScenarioPreview(input: {
     targetPolicyMode,
     applyWorkloadChanges,
     postPolicyStarts,
-    comfyRuntimeConfigured: input.comfyRuntimeConfigured,
     experimentLabRuntimeConfigured: input.experimentLabRuntimeConfigured,
     agentContainerRuntimeConfigured: input.agentContainerRuntimeConfigured,
     gatewayRuntimeConfigured: input.gatewayRuntimeConfigured,
@@ -216,25 +204,13 @@ export function buildOrchestrationScenarioPreview(input: {
 
   if (input.inferenceLooksDegraded && scenarioId !== 'experiment_to_business') {
     warnings.push(
-      '推論レイヤ (/v1/models) が degraded です。cold start と GPU 競合（私用 ComfyUI など）が混ざり得ます。復旧しないまま運用すると意図と異なる挙動になることがあります（KB-364 / Runbook）'
-    );
-  }
-
-  if (scenarioId === 'business_to_private' && !input.comfyRuntimeConfigured) {
-    warnings.push(
-      '私用 ComfyUI の POST 起停 URL が Pi5 に未設定のため、このガイドは運用モードを私用OKへ変えるのみです（Comfy 自体は手動で立ち上げてください）。運用自動化には URL を両方 Ansible で設定してください'
-    );
-  }
-
-  if (scenarioId === 'business_to_private' && input.comfyRuntimeConfigured && input.comfyLooksRunning) {
-    warnings.push(
-      'Comfy が稼働中に見える場合でも business→private で自動停止は行いません。GPU を空けて業務推論へ戻すときは「業務優先への切替」ガイドを使ってください'
+      '推論レイヤ (/v1/models) が degraded です。cold start と GPU 競合が混ざり得ます。復旧しないまま運用すると意図と異なる挙動になることがあります（KB-364 / Runbook）'
     );
   }
 
   if (scenarioId === 'business_to_experiment' || scenarioId === 'experiment_to_business') {
     warnings.push(
-      '実験優先または業務復帰は gateway / Comfy と GPU を共有します。途中失敗した場合でも一部の POST が既に通っていることがあります。イベントログと Runbook を参照してください'
+      '実験優先または業務復帰は gateway と GPU を共有します。途中失敗した場合でも一部の POST が既に通っていることがあります。イベントログと Runbook を参照してください'
     );
   }
 
@@ -245,17 +221,7 @@ export function buildOrchestrationScenarioPreview(input: {
   }
 
   if (scenarioId === 'private_to_business') {
-    warnings.push('私用→業務: private_ok 中に強制停止した業務 LLM を再度 ready まで起動します。Hermes や職場 Pi5 は完了まで一時的に待ちが発生し得ます')
-  }
-
-  if (
-    scenarioId === 'business_to_private' &&
-    input.currentPolicyMode === 'private_ok' &&
-    input.comfyRuntimeConfigured
-  ) {
-    warnings.push(
-      '運用モードはすでに私用OKです。続いて私用 ComfyUI の起動リクエストを送ります（hook がべき等でない環境では二重送信に注意してください）'
-    );
+    warnings.push('業務復帰: 停止中の業務 LLM を再度 ready まで起動します。Hermes や職場 Pi5 は完了まで一時的に待ちが発生し得ます')
   }
 
   if (input.currentPolicyMode === targetPolicyMode && workloadSteps.length === 0 && postPolicyStarts.length === 0) {

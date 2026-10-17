@@ -2,7 +2,6 @@ import type { DgxOrchestrationScenarioIdApi, DgxOperatorConsoleActionApi } from 
 
 /** 画面上のカード並び順（API の operatorActions と独立・欠落時は並びのみスキップ） */
 export const DGX_PRIMARY_TASK_SCENARIO_ORDER: readonly DgxOrchestrationScenarioIdApi[] = [
-  'business_to_private',
   'private_to_business',
   'business_to_experiment',
   'experiment_to_business',

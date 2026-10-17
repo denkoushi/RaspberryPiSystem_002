@@ -40,7 +40,7 @@ const actionBodySchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('SET_POLICY'),
     policyMode: z.enum(['business_first', 'private_ok', 'experiment_first']),
-    /** true: 運用調停に従い Comfy/experiment/gateway を順に停止試行してからモード変更 */
+    /** true: 運用調停に従い experiment/agent を順に停止試行してからモード変更 */
     applyWorkloadChanges: z.boolean().optional(),
   }),
   z.object({
@@ -87,7 +87,6 @@ function resolveDgxResourceService(app: FastifyInstance): DgxResourceServicePort
     policyStore: getDgxResourcePolicyStore(env.DGX_RESOURCE_EVENT_LOG_MAX),
     probeTimeoutMs: env.DGX_RESOURCE_PROBE_TIMEOUT_MS,
     metricsUrl: env.DGX_RESOURCE_METRICS_URL,
-    comfyHealthUrl: env.DGX_RESOURCE_COMFYUI_HEALTH_URL,
     embeddingHealthUrl: env.DGX_RESOURCE_EMBEDDING_HEALTH_URL,
     sparkHostStatusUrl: env.DGX_RESOURCE_SPARK_HOST_STATUS_URL,
   });
