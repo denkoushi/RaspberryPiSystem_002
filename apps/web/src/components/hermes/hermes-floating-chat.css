@@ -882,6 +882,103 @@
   margin-top: 8px;
 }
 
+.hermes-chat-panel__answer-count {
+  margin: 0 0 10px;
+  color: #11261a;
+}
+
+.hermes-chat-panel__answer-count strong {
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.hermes-chat-panel__answer-tabs,
+.hermes-chat-panel__answer-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.hermes-chat-panel__answer-tab,
+.hermes-chat-panel__answer-chip {
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 1px solid #3f5a48;
+  border-radius: 8px;
+  background: #f4fff5;
+  color: #11261a;
+  font: inherit;
+  cursor: pointer;
+}
+
+.hermes-chat-panel__answer-tab[aria-pressed='true'] {
+  background: #d1efd8;
+  font-weight: 700;
+}
+
+.hermes-chat-panel__answer-chip:disabled {
+  border-style: dashed;
+  cursor: default;
+}
+
+.hermes-chat-panel__answer-other,
+.hermes-chat-panel__answer-more {
+  color: #3f5a48;
+}
+
+.hermes-chat-panel__answer-record--compact {
+  gap: 6px;
+  padding: 6px 8px;
+}
+
+.hermes-chat-panel__answer-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  color: #11261a;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.hermes-chat-panel__answer-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hermes-chat-panel__answer-row .hermes-chat-panel__answer-meta {
+  color: #3f5a48;
+}
+
+.hermes-chat-panel__answer-preview {
+  flex: 1;
+}
+
+.hermes-chat-panel__answer-tab:focus-visible,
+.hermes-chat-panel__answer-chip:focus-visible,
+.hermes-chat-panel__answer-row:focus-visible {
+  outline: 2px solid #24673b;
+  outline-offset: 2px;
+}
+
+.hermes-chat-panel__answer-more {
+  margin-top: 12px;
+}
+
+.hermes-chat-panel__answer-more p {
+  margin: 0 0 8px;
+}
+
 .hermes-chat-panel__answer-record-head {
   min-width: 0;
   display: flex;

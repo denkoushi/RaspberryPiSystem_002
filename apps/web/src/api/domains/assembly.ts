@@ -738,12 +738,22 @@ export type HermesSearchTrialScope = {
   snapshotId?: string;
 };
 
+export type HermesRecordRefine = { axis: 'organization' | 'month'; field: string; value: string };
+
 export type HermesRecordAnswerDisplay = {
   records: Array<{
     sourceLabel: string;
     fields: Array<{ label: string; value: string; role: 'identifier' | 'date' | 'organization' | 'body' }>;
   }>;
   notices: string[];
+  groups?: Array<{
+    axis: HermesRecordRefine['axis'];
+    field: string;
+    label: string;
+    buckets: Array<{ value: string; label: string; count: number }>;
+    otherCount: number;
+  }>;
+  coverage?: { total: number; shown: number };
   dataAsOf: string | null;
 };
 
@@ -929,7 +939,7 @@ export type HermesPageContext = {
 };
 
 export async function sendHermesSearchTrialAnswer(
-  payload: { question: string; sessionId: string; pageContext?: HermesPageContext },
+  payload: { question: string; sessionId: string; pageContext?: HermesPageContext; refine?: HermesRecordRefine },
   signal?: AbortSignal
 ): Promise<HermesSearchTrialAnswer> {
   const { data } = await api.post<HermesSearchTrialAnswer>(

@@ -744,6 +744,109 @@ test('answer takes a vector budget for night scoring; the day budget still appli
 });
 
 
+function listPlan(overrides = {}) {
+  return {
+    schema: 'hermes-query-plan/v1', sources: ['nonconformity'],
+    filters: [{ source: 'nonconformity', field: 'discoveredOn', op: 'after', values: ['2020-01-01'] }],
+    semanticQuery: '', sort: { field: 'discoveredOn', direction: 'desc' }, limit: 20,
+    display: catalog.fields.map(field => field.key), unresolved: [],
+    diagnostics: { contentDecision: { jev: false, final: false }, limitExplicit: false }, ...overrides,
+  };
+}
+
+test('display groups appear only for known totals exceeding shown, with unchanged notices', async () => {
+  for (const count of [5, 20, 43]) {
+    const rows = Array.from({ length: count }, (_, index) => ({ ...records[index % records.length], id: `list-${index}` }));
+    const answering = createRetrievalAnswering({ records: rows, catalog, planner: { plan: async () => ({ plan: listPlan() }) } });
+    const result = await answering.answer('一覧');
+    assert.equal(Boolean(result.display.groups), count > 20);
+    assert.deepEqual(result.display.coverage, { total: count, shown: Math.min(20, count) });
+    if (count > 20) {
+      assert.equal(result.display.groups[0].buckets.reduce((sum, item) => sum + item.count, 0), 43);
+      const notice = '該当43件のうち、新しい順に20件を表示しています。';
+      assert.deepEqual(result.display.notices, [notice]);
+      assert.ok(result.answer.includes(notice));
+    }
+  }
+  const rows = Array.from({ length: 40 }, (_, index) => ({ ...records[0], id: `semantic-${index}`, condition: 'qxrare' }));
+  const answering = createRetrievalAnswering({ records: rows, catalog,
+    planner: { plan: async () => ({ plan: listPlan({ semanticQuery: 'qxrare', sort: 'relevance', diagnostics: {} }) }) },
+    evaluate: mixedEvaluate,
+  });
+  const result = await answering.answer('qxrare');
+  assert.equal(result.coverage.known, false);
+  assert.equal(result.display.groups, undefined);
+  assert.equal(result.display.coverage, undefined);
+  assert.deepEqual(result.display.notices, [formatCoverageNotice(result.coverage)]);
+});
+
+test('refine bypasses the planner, replaces filters and resets shown IDs and pending state', async () => {
+  let calls = 0;
+  const answering = createRetrievalAnswering({ records, catalog, planner: { plan: async () => {
+    calls += 1;
+    return { plan: listPlan() };
+  } } });
+  const first = await answering.answer('一覧');
+  const session = { ...first.session, pending: { question: '古い確認' }, previousPlan: { ...first.session.previousPlan,
+    diagnostics: { excludeShown: true },
+  } };
+  const refine = { axis: 'organization', field: 'originDepartmentName', value: 'North Shop' };
+  const response = await completeRequest(answering, { type: 'request', requestId: 'refine', question: 'North Shopで絞り込む', session, refine });
+  const result = response.result;
+  assert.equal(calls, 1);
+  assert.deepEqual(result.recordIds, ['nonconformity:rec-beta', 'nonconformity:rec-delta', 'nonconformity:rec-alpha']);
+  assert.equal(result.session.previousPlan.filters.length, 2);
+  assert.deepEqual(result.session.previousPlan.filters[1], { source: 'nonconformity', field: refine.field, op: 'eq', values: [refine.value] });
+  assert.deepEqual(result.session.shownIds, result.recordIds);
+  assert.equal(result.session.pending, null);
+  assert.deepEqual(result.receipt.refine, refine);
+  assert.equal(result.receipt.planMs, 0);
+  assert.equal(session.previousPlan.diagnostics.excludeShown, true);
+  const replaced = await answering.answer('South Shopで絞り込む', result.session, { refine: { ...refine, value: 'South Shop' } });
+  assert.equal(calls, 1);
+  assert.equal(replaced.session.previousPlan.filters.length, 2);
+  assert.deepEqual(replaced.recordIds, ['nonconformity:rec-gamma']);
+  assert.deepEqual(replaced.session.shownIds, replaced.recordIds);
+});
+
+test('month refine uses inclusive calendar bounds including leap days and year rollover', async () => {
+  const rows = ['2024-01-31', '2024-02-01', '2024-02-29', '2024-03-01', '2025-02-28', '2025-03-01', '2026-12-31', '2027-01-01']
+    .map(date => ({ ...records[0], id: date, discoveredOn: date }));
+  const answering = createRetrievalAnswering({ records: rows, catalog, planner: { plan: () => { throw new Error('must bypass planner'); } } });
+  for (const [value, last, expected] of [
+    ['2024-02', '29', ['2024-02-29', '2024-02-01']],
+    ['2025-02', '28', ['2025-02-28']],
+    ['2026-12', '31', ['2026-12-31']],
+  ]) {
+    const result = await answering.answer(`${value}で絞り込む`, { previousPlan: listPlan(), shownIds: rows.map(row => `nonconformity:${row.id}`) }, {
+      refine: { axis: 'month', field: 'discoveredOn', value },
+    });
+    assert.deepEqual(result.recordIds, expected.map(id => `nonconformity:${id}`));
+    assert.deepEqual(result.session.previousPlan.filters, [{ source: 'nonconformity', field: 'discoveredOn', op: 'between', values: [`${value}-01`, `${value}-${last}`] }]);
+  }
+});
+
+test('invalid refine or an expired session falls back to normal planning', async () => {
+  const inputs = [];
+  const answering = createRetrievalAnswering({ records, catalog, planner: { plan: async input => {
+    inputs.push(input);
+    return { plan: listPlan() };
+  } } });
+  const valid = { axis: 'organization', field: 'originDepartmentName', value: 'North Shop' };
+  for (const [refine, previousPlan] of [
+    [valid, null], [{ ...valid, value: 'unknown department' }, listPlan()],
+    [{ ...valid, axis: 'invalid' }, listPlan()], [{ ...valid, value: 7 }, listPlan()],
+    [{ ...valid, field: 'condition' }, listPlan()],
+    [{ axis: 'month', field: 'discoveredOn', value: '2026-13' }, listPlan()],
+  ]) {
+    const response = await completeRequest(answering, { type: 'request', requestId: 'fallback', question: '表示用の質問', refine, session: { previousPlan } });
+    assert.equal(response.result.status, 'completed');
+    assert.equal(response.result.receipt.refine, undefined);
+    assert.equal(inputs.at(-1).question, '表示用の質問');
+  }
+  assert.equal(inputs.length, 6);
+});
+
 test('record display uses exactly the answer fields and order for multiple and single sources', async () => {
   for (const selectedCatalog of [mixedCatalog, [mixedCatalog[1]]]) {
     const selectedRecords = mixedRecords.filter(record => selectedCatalog.some(entry => entry.id === record.sourceId));
@@ -764,6 +867,7 @@ test('record display uses exactly the answer fields and order for multiple and s
         .map(field => ({ label: field.label, value: row[field.key], role: field.role })) };
     });
     assert.deepEqual(result.display.records, expectedRecords);
+    if (selectedCatalog.length > 1) assert.equal(result.display.groups, undefined);
     const body = expectedRecords.map(record => [
       ...(selectedCatalog.length > 1 ? [`【${record.sourceLabel}】`] : []),
       ...record.fields.map(field => `${field.label}: ${field.value}`),

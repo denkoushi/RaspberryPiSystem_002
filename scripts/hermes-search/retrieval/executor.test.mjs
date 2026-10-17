@@ -554,6 +554,7 @@ test('coverage is omitted when every match is shown', async () => {
   }), { records: syntheticDated(3), catalog });
   assert.equal(executed.returned, 3);
   assert.equal(executed.coverage, undefined);
+  assert.equal(executed.groups, undefined);
 });
 
 test('coverage stays inexact when relevance only judged the top candidate pool', async () => {
@@ -579,6 +580,41 @@ test('coverage stays inexact when relevance only judged the top candidate pool',
   assert.equal(judged, 30);
   assert.equal(executed.returned, 5);
   assert.deepEqual(executed.coverage, { known: false, total: null, floor: 30, shown: 5, order: 'relevance' });
+  assert.equal(executed.groups, undefined);
+});
+
+test('groups use all filtered records, role-derived keys, and caps of 8 organizations / 12 months', async () => {
+  const renamedCatalog = { ...catalog, fields: catalog.fields.map(field => ({ ...field,
+    key: field.role === 'organization' ? 'department' : field.role === 'date' ? 'foundDate' : field.key,
+  })) };
+  const rows = Array.from({ length: 35 }, (_, index) => ({
+    id: `group-${index}`, partNumber: 'included', department: `部署${String(index).padStart(2, '0')}`,
+    foundDate: `${2024 + Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, '0')}-15`,
+  }));
+  rows.push(...Array.from({ length: 5 }, (_, index) => ({ ...rows[0], id: `repeat-${index}` })),
+    { id: 'empty', partNumber: 'included', department: '', foundDate: '' },
+    { id: 'excluded', partNumber: 'excluded', department: '対象外', foundDate: '2027-01-01' });
+  const executed = await execute(plan({
+    filters: [{ source: 'nonconformity', field: 'partNumber', op: 'eq', values: ['included'] }],
+    sort: { field: 'foundDate', direction: 'desc' }, limit: 20, display: ['department', 'foundDate'],
+  }), { records: rows, catalog: renamedCatalog });
+  assert.equal(executed.results.length, 20);
+  assert.equal(executed.coverage.total, 41);
+  const [organization, month] = executed.groups;
+  assert.equal(organization.field, 'department');
+  assert.equal(organization.axis, 'organization');
+  assert.equal(organization.buckets.length, 8);
+  assert.deepEqual(organization.buckets[0], { value: '部署00', label: '部署00', count: 6 });
+  assert.equal(organization.otherCount, 28);
+  assert.equal(month.field, 'foundDate');
+  assert.equal(month.axis, 'month');
+  assert.equal(month.buckets.length, 12);
+  assert.deepEqual(month.buckets[0], { value: '2026-11', label: '2026年11月', count: 1 });
+  assert.equal(month.buckets.at(-1).value, '2025-12');
+  assert.equal(month.otherCount, 29);
+  for (const group of executed.groups) {
+    assert.equal(group.buckets.reduce((sum, bucket) => sum + bucket.count, group.otherCount), 41);
+  }
 });
 
 test('coverage stays inexact when a deadline stops before the pool is judged', async () => {
