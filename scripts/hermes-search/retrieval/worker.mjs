@@ -11,7 +11,8 @@ import { createDenseRuntime, denseSettings } from './dense-dgx.mjs';
 import { execute, rankCandidates, openQmdVectorRanker, prepareLexicalCorpus } from './executor.mjs';
 import { createPlanner } from './planner-jev.mjs';
 import { createRelevanceJudge } from './relevance-jev.mjs';
-import { validateQueryPlan } from './query-plan.mjs';
+import { QUERY_PLAN_SCHEMA, validateQueryPlan } from './query-plan.mjs';
+import { previousIsoDay } from './period-parse.mjs';
 import { buildValueIndex, findCandidateValues } from './value-index.mjs';
 import { authorizedRecords, buildCorpusView, replaceCorpus, stampAnswer } from './corpus.mjs';
 import { attachEnrichment } from './enrichment-attach.mjs';
@@ -288,6 +289,48 @@ function selectedSourcePlan(plan, entries) {
   };
 }
 
+function validRefine(refine) {
+  return refine && typeof refine === 'object' && !Array.isArray(refine)
+    && ['organization', 'month'].includes(refine.axis)
+    && typeof refine.field === 'string' && refine.field.trim().length > 0 && refine.field.length <= 80
+    && typeof refine.value === 'string' && refine.value.trim().length > 0 && refine.value.length <= 80;
+}
+
+function refinedPlan(previousPlan, refine, catalog, valueIndex) {
+  if (!previousPlan || !validRefine(refine) || previousPlan.sources?.length !== 1) return null;
+  const entry = catalogEntries(catalog).find((item) => item.id === previousPlan.sources[0]);
+  const role = refine.axis === 'month' ? 'date' : 'organization';
+  if (!entry || !fieldsWithRole(entry, role).includes(refine.field)) return null;
+  let values = [refine.value];
+  if (refine.axis === 'month') {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/u.test(refine.value)) return null;
+    const year = Number(refine.value.slice(0, 4));
+    const month = Number(refine.value.slice(5));
+    const nextMonth = month === 12 ? `${String(year + 1).padStart(4, '0')}-01-01`
+      : `${refine.value.slice(0, 4)}-${String(month + 1).padStart(2, '0')}-01`;
+    values = [`${refine.value}-01`, previousIsoDay(nextMonth)];
+  }
+  const plan = {
+    ...previousPlan,
+    schema: QUERY_PLAN_SCHEMA,
+    filters: [...(previousPlan.filters ?? []).filter((filter) => filter.field !== refine.field), {
+      source: entry.id, field: refine.field, op: refine.axis === 'month' ? 'between' : 'eq', values,
+    }],
+    // Stored plans are compact: restore the display and diagnostics needed by execution.
+    display: previousPlan.display ?? entry.fields.map((field) => field.key),
+    unresolved: [],
+    diagnostics: {
+      ...previousPlan.diagnostics,
+      excludeShown: false,
+      contentDecision: previousPlan.diagnostics?.contentDecision ?? {
+        jev: Boolean(previousPlan.semanticQuery?.trim()), final: Boolean(previousPlan.semanticQuery?.trim()), residualTokens: [],
+      },
+      ...(previousPlan.contentSpan ? { contentSpan: previousPlan.contentSpan } : {}),
+    },
+  };
+  return validateQueryPlan(plan, catalog, valueIndex).ok ? plan : null;
+}
+
 // The stored enrichment is attached only while HERMES_RETRIEVAL_ENRICHMENT_ENABLED is true, the
 // same flag that runs the overnight enrichment. Full-corpus enrichment showed only a small gain
 // (2026-10-02), so turning the flag off stops both; the store stays on disk.
@@ -429,18 +472,19 @@ export function createRetrievalAnswering({
       const previousPlan = restricted && storedPlan
         && (storedPlan.sources?.some((source) => !visibleSources.has(source))
           || storedPlan.filters?.some((filter) => !visibleSources.has(filter.source))) ? null : storedPlan;
-      const previouslyShown = restricted
+      let previouslyShown = restricted
         ? shownIdsOf(session).filter((id) => visibleEntries.some((entry) => id.startsWith(`${entry.id}:`))) : shownIdsOf(session);
       if (!visibleEntries.length) {
         return trialResult({ status: 'completed', answer: outOfScopeAnswer, recordIds: [], elapsedMs: elapsed(),
           previousPlan: null, shownIds: [], dataAsOf: view.dataAsOf });
       }
-      const candidates = findCandidateValues(question, visibleValueIndex, visibleCatalog);
-      const planned = await planner.plan({
+      const refinePlan = refinedPlan(previousPlan, options.refine, visibleCatalog, visibleValueIndex);
+      if (refinePlan) previouslyShown = [];
+      const planned = refinePlan ? { plan: refinePlan, timings: { planMs: 0 } } : await planner.plan({
         question,
         previousPlan,
         catalog: visibleCatalog,
-        candidates,
+        candidates: findCandidateValues(question, visibleValueIndex, visibleCatalog),
         valueIndex: visibleValueIndex,
         shownCount: previouslyShown.length,
         ...(options.pageContext ? { pageContext: options.pageContext } : {}),
@@ -583,6 +627,10 @@ export function createRetrievalAnswering({
         ...(formatted.records.length ? { display: {
           records: formatted.records,
           notices: [...(executed.insufficient && body ? [INSUFFICIENT_NOTICE] : []), ...(notice ? [notice] : [])],
+          ...(executed.groups?.length ? { groups: executed.groups } : {}),
+          ...(executed.coverage?.known !== false ? { coverage: {
+            total: executed.coverage?.total ?? executed.results.length, shown: executed.results.length,
+          } } : {}),
         } } : {}),
         recordIds: executed.results.map((result) => publicRecordId(result.sourceId, result.recordId)),
         elapsedMs: elapsed(),
@@ -592,6 +640,7 @@ export function createRetrievalAnswering({
         coverage: executed.coverage ?? null,
         candidateIds: stageDump ? executed.candidateIds ?? [] : null,
         receipt: receiptOf('answer', {
+          ...(refinePlan ? { refine: { axis: options.refine.axis, field: options.refine.field, value: options.refine.value } } : {}),
           resultCount: executed.results.length,
           retriever: usesDense ? 'hybrid' : 'lexical',
           timings: numericTimings(executed.timings),
@@ -671,6 +720,7 @@ export async function completeRequest(answering, request) {
       throw new Error('request type, requestId, and question are required');
     }
     const options = {
+      ...(validRefine(request.refine) ? { refine: request.refine } : {}),
       ...(request.pageContext ? { pageContext: request.pageContext } : {}),
       ...(request.principal ? { principal: request.principal } : {}),
     };

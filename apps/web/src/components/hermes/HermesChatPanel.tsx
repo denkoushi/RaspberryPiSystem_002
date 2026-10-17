@@ -16,7 +16,8 @@ import type {
   BusinessHermesConsultationItem,
   BusinessHermesSignageCanvasElement,
   BusinessHermesSignageProposal,
-  HermesRecordAnswerDisplay
+  HermesRecordAnswerDisplay,
+  HermesRecordRefine
 } from '../../api/domains/assembly';
 
 export type HermesPanelMessage = {
@@ -71,6 +72,7 @@ export type HermesChatPanelProps = {
   feedbackBusy?: boolean;
   onDraftChange: (value: string) => void;
   onSend: () => void;
+  onRefine?: (refine: HermesRecordRefine) => void;
   onReset: () => void;
   onClose: () => void;
   onStop?: () => void;
@@ -467,6 +469,7 @@ export default function HermesChatPanel({
   feedbackBusy = false,
   onDraftChange,
   onSend,
+  onRefine,
   onReset,
   onClose,
   onStop,
@@ -653,7 +656,7 @@ export default function HermesChatPanel({
                           <p className="hermes-chat-panel__message-selection" role="status">「{message.selection.option}」が選択されました。</p>
                         ) : (
                           <div className="hermes-chat-panel__message">{message.role === 'assistant'
-                            ? message.guide ? <HermesOperationGuideAnswer guide={message.guide} /> : message.display?.records.length ? <HermesRecordAnswer display={message.display} /> : renderMessageContent(message.content)
+                            ? message.guide ? <HermesOperationGuideAnswer guide={message.guide} /> : message.display?.records.length ? <HermesRecordAnswer display={message.display} onRefine={onRefine} disabled={isBusy} /> : renderMessageContent(message.content)
                             : message.content}</div>
                         )}
                         {message.recordIds?.length && message.evidence?.length ? message.recordIds.flatMap((recordId) => {

@@ -198,6 +198,58 @@ describe('HermesSearchTrialService retrieval switch', () => {
     } finally { service.close(); }
   });
 
+  it('accepts 35 departments folded to 8 buckets plus otherCount and 12 month buckets', async () => {
+    const display = {
+      records: [{ sourceLabel: '不適合情報', fields: [{ label: '本文', value: '原文', role: 'body' }] }],
+      notices: [], dataAsOf: null, coverage: { total: 35, shown: 20 },
+      groups: [
+        { axis: 'organization', field: 'originDepartmentName', label: '部署', otherCount: 27,
+          buckets: Array.from({ length: 8 }, (_, index) => ({ value: `部署${index}`, label: `部署${index}`, count: 1 })) },
+        { axis: 'month', field: 'discoveredOn', label: '月', otherCount: 23,
+          buckets: Array.from({ length: 12 }, (_, index) => ({ value: `2026-${String(index + 1).padStart(2, '0')}`, label: `2026年${index + 1}月`, count: 1 })) },
+      ],
+    };
+    spawnMock.mockImplementation(() => fakeChild({ ...workerResult, display }));
+    const service = new HermesSearchTrialService(v2Settings());
+    try { expect((await service.answer('一覧')).display).toEqual(display); }
+    finally { service.close(); }
+  });
+
+  it.each([
+    { axis: 'month', bucketCount: 13 },
+    { axis: 'organization', bucketCount: 9 },
+    { axis: 'organization', bucketCount: 35 },
+  ])('drops the entire display for $axis with $bucketCount buckets', async ({ axis, bucketCount }) => {
+    const display = {
+      records: [{ sourceLabel: '不適合情報', fields: [{ label: '本文', value: '原文', role: 'body' }] }], notices: [], dataAsOf: null,
+      groups: [{ axis, field: 'field', label: '内訳', otherCount: 0,
+        buckets: Array.from({ length: bucketCount }, (_, index) => ({ value: `${index}`, label: `${index}`, count: 1 })) }],
+    };
+    spawnMock.mockImplementation(() => fakeChild({ ...workerResult, display }));
+    const service = new HermesSearchTrialService(v2Settings());
+    try {
+      const answer = await service.answer('一覧');
+      expect(answer).not.toHaveProperty('display');
+      expect(answer.answer).toBe(workerResult.answer);
+    } finally { service.close(); }
+  });
+
+  it('sends structured refine in the retrieval worker stdin JSON', async () => {
+    const written: Array<Record<string, unknown>> = [];
+    spawnMock.mockImplementation(() => {
+      const child = fakeChild(workerResult);
+      const write = child.stdin.write;
+      child.stdin.write = line => { written.push(JSON.parse(line)); return write(line); };
+      return child;
+    });
+    const service = new HermesSearchTrialService(v2Settings());
+    const refine = { axis: 'organization' as const, field: 'originDepartmentName', value: '組立' };
+    try {
+      await service.answer('組立で絞り込む', 'refine-session', undefined, { refine });
+      expect(written.find(request => request.type === 'request')).toMatchObject({ question: '組立で絞り込む', refine });
+    } finally { service.close(); }
+  });
+
   function holdingChild(memory?: Record<string, unknown>, autoApply = true) {
     const stdout = new EventEmitter() as EventEmitter & { setEncoding: (encoding: string) => void };
     stdout.setEncoding = () => {};

@@ -16,6 +16,8 @@ import { OperationGuidePrompt } from '../../features/operation-guide/OperationGu
 
 import HermesChatPanel from './HermesChatPanel';
 
+import type { HermesRecordAnswerDisplay } from '../../api/domains/assembly';
+
 describe('HermesChatPanel evidence cards', () => {
   beforeEach(() => {
     vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
@@ -108,6 +110,77 @@ describe('HermesChatPanel evidence cards', () => {
     expect(screen.getByText('該当14件のうち、新しい順に2件を表示しています。').closest('footer')).toHaveClass('hermes-chat-panel__answer-foot');
     expect(screen.getByText('データ時点 2026-10-08 06:30')).toBeInTheDocument();
     expect(screen.queryByText('従来の回答文字列')).not.toBeInTheDocument();
+  });
+
+  it('renders six records as compact expandable rows without groups', () => {
+    const firstLine = 'あ'.repeat(41);
+    const display: HermesRecordAnswerDisplay = {
+      records: Array.from({ length: 6 }, (_, index) => ({ sourceLabel: '不適合', fields: [
+        { role: 'identifier', label: '番号', value: `N${index}` },
+        { role: 'date', label: '発見日', value: '2026-09-01' },
+        { role: 'organization', label: '部署', value: '組立' },
+        { role: 'body', label: '不適合内容', value: `${firstLine}\n2行目の内容。` },
+        { role: 'body', label: '処置内容', value: '補修済み。' },
+      ] })), notices: [], dataAsOf: null,
+    };
+    render(<HermesChatPanel messages={[{ id: 'compact', role: 'assistant', content: '元の本文', display }]}
+      draft="" isBusy={false} error={null} authRequired={null} onDraftChange={vi.fn()} onSend={vi.fn()} onReset={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByText('6 件')).toBeInTheDocument();
+    const rows = screen.getAllByRole('button', { expanded: false });
+    expect(rows).toHaveLength(6);
+    for (const value of ['N0', '2026-09-01', '組立', 'あ'.repeat(40)]) expect(within(rows[0]).getByText(value)).toBeInTheDocument();
+    expect(rows[0].textContent).not.toContain(firstLine);
+    expect(screen.queryByRole('heading', { name: '不適合内容' })).not.toBeInTheDocument();
+    fireEvent.click(rows[0]);
+    expect(rows[0]).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('heading', { name: '不適合内容' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '処置内容' })).toBeInTheDocument();
+    expect(screen.getByText('補修済み')).toBeInTheDocument();
+    expect(rows[1]).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(rows[0]);
+    expect(screen.queryByRole('heading', { name: '不適合内容' })).not.toBeInTheDocument();
+    expect(screen.queryByText('20 件ずつ表示しています')).not.toBeInTheDocument();
+  });
+
+  it('switches breakdown axes, refines from both chip locations and disables chips while busy', () => {
+    const onRefine = vi.fn();
+    const display: HermesRecordAnswerDisplay = {
+      records: Array.from({ length: 20 }, (_, index) => ({ sourceLabel: '不適合', fields: [{ role: 'identifier', label: '番号', value: `N${index}` }] })),
+      groups: [
+        { axis: 'organization', field: 'originDepartmentName', label: '部署', buckets: [{ value: '組立', label: '組立', count: 12 }], otherCount: 31 },
+        { axis: 'month', field: 'discoveredOn', label: '月', buckets: [{ value: '2026-09', label: '2026年9月', count: 43 }], otherCount: 0 },
+      ], coverage: { total: 43, shown: 20 }, notices: ['既存の通知'], dataAsOf: '2026-10-08 06:30',
+    };
+    const props = { messages: [{ id: 'grouped', role: 'assistant' as const, content: '元の本文', display }],
+      draft: '', isBusy: false, error: null, authRequired: null, onRefine,
+      onDraftChange: vi.fn(), onSend: vi.fn(), onReset: vi.fn(), onClose: vi.fn() };
+    const { rerender } = render(<HermesChatPanel {...props} />);
+    expect(screen.getByText('43 件')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '部署で分ける' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('他にも 23 件あります。月で絞ってください。')).toBeInTheDocument();
+    expect(screen.getByText('20 件ずつ表示しています')).toBeInTheDocument();
+    expect(screen.getByText('その他 31 件').tagName).toBe('SPAN');
+    const organizationChip = screen.getByRole('button', { name: '組立 12' });
+    expect(organizationChip).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(organizationChip);
+    expect(onRefine).toHaveBeenLastCalledWith({ axis: 'organization', field: 'originDepartmentName', value: '組立' });
+    fireEvent.click(screen.getByRole('button', { name: '2026年9月 43' }));
+    expect(onRefine).toHaveBeenLastCalledWith({ axis: 'month', field: 'discoveredOn', value: '2026-09' });
+    fireEvent.click(screen.getByRole('button', { name: '月で分ける' }));
+    expect(screen.getByRole('button', { name: '月で分ける' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('他にも 23 件あります。部署で絞ってください。')).toBeInTheDocument();
+    expect(screen.getByText('既存の通知')).toBeInTheDocument();
+    expect(screen.getByText('データ時点 2026-10-08 06:30')).toBeInTheDocument();
+    rerender(<HermesChatPanel {...props} isBusy />);
+    expect(screen.getByRole('button', { name: '組立 12' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '2026年9月 43' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '組立 12' }));
+    expect(onRefine).toHaveBeenCalledTimes(2);
+    rerender(<HermesChatPanel {...props} messages={[{ ...props.messages[0], display: {
+      ...display, records: display.records.slice(0, 2), coverage: { total: 43, shown: 2 }, groups: display.groups!.slice(0, 1),
+    } }]} />);
+    expect(screen.getByText('他にも 41 件あります。部署で絞ってください。')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: '組立 12' })).toHaveLength(2);
   });
 
   it.each([undefined, { records: [], notices: [], dataAsOf: null }])('falls back to text for missing or empty display', display => {

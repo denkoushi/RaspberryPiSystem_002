@@ -15,7 +15,10 @@ export type HermesPageContext = {
 };
 
 export type HermesPrincipal = { kind: 'kiosk' | 'viewer' | 'manager' | 'admin' };
-type HermesAnswerOptions = { principal?: HermesPrincipal };
+type HermesAnswerOptions = {
+  principal?: HermesPrincipal;
+  refine?: { axis: 'organization' | 'month'; field: string; value: string };
+};
 type WorkerMemory = {
   heapUsedMb: number;
   rssMb: number;
@@ -49,6 +52,16 @@ const answerDisplaySchema = z.object({
     })).max(64),
   })).max(20),
   notices: z.array(z.string().max(2000)).max(8),
+  groups: z.array(z.object({
+    axis: z.enum(['organization', 'month']),
+    field: z.string().min(1).max(80),
+    label: z.string().max(80),
+    buckets: z.array(z.object({
+      value: z.string().max(80), label: z.string().max(80), count: z.number().int().nonnegative(),
+    })).max(12),
+    otherCount: z.number().int().nonnegative(),
+  }).refine(group => group.axis !== 'organization' || group.buckets.length <= 8)).max(3).optional(),
+  coverage: z.object({ total: z.number().int().nonnegative(), shown: z.number().int().nonnegative() }).optional(),
   dataAsOf: z.string().max(16).regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/u).nullable(),
 });
 
@@ -404,6 +417,7 @@ export class HermesSearchTrialService {
           reject: error => { clearTimeout(timeout); reject(error); },
         });
         this.child!.stdin.write(JSON.stringify({ type: 'request', requestId: id, question, session,
+          ...(options.refine ? { refine: options.refine } : {}),
           ...(pageContext ? { pageContext } : {}), ...(options.principal ? { principal: options.principal } : {}) }) + '\n');
         written = true;
       });

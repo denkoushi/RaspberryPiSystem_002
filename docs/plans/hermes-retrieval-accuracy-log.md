@@ -585,3 +585,11 @@ Night of 2026-10-16 (22:0x), the second with #2023.
 No code change. Three nights at 88 to 90% with no ask-back; the remaining loss is the 7 or 8 queries a night outside the judged candidates, and the learned-term path rejects them (they do not generalise to the held-out set). The next candidate is therefore the candidate pool for terse queries, measured through the gate. Separate open item: a real "show all N" follow-up meets the 20-record cap.
 
 Private files: `work/flywheel/questions-2026-10-16.jsonl`, `real-2026-10-16.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-16.log`, `receipts-2026-10-16.jsonl`, `receipts-2026-10-17.jsonl`.
+
+### 2026-10-17: the "all 43" follow-up answered by a breakdown instead of a longer list (change, not a measurement)
+
+Decision on the open item of the fourteenth night. The 20-record cap stays. When the total exceeds the records shown, the kiosk answer now leads with the count, offers a breakdown by department and by month (buckets with counts, computed over every matching record, not only the 20 shown), shows each record as one line that expands on tap, and ends with 「他にも N 件あります。○で絞ってください。」 plus the chips of the other axis. A chip sends a structured `refine` (axis, field, value) to the same endpoint; the worker adds that filter to the stored plan and re-executes without calling the planner, so the step costs no JEV call and cannot be misread. An expired session falls back to normal planning on the chip text. Five records or fewer keep the card layout.
+
+Not changed: the plain-text answer and `formatCoverageNotice` wording that the nightly evaluation reads; the receipt records `refine` so chip turns can be told apart. Groups are emitted only when the total is known (filter-only or counted paths); relevance-capped answers keep today's notice.
+
+Second step, not in this PR: a 「要因で分ける」 axis. The cause lives in the existing 不適合内容 column (`condition`), free text with about 5,200 distinct values over 8,209 rows, so it needs JEV to sort each record into a small fixed set of cause categories, computed off the query path and cached by content hash. 処置内容 (`disposition`) is near-categorical (再製作 490, THKへ返却 72, 支給品 66, …) and could be a cheap extra axis.
