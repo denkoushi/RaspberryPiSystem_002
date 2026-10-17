@@ -360,7 +360,7 @@ export async function executeOrchestrationScenarioTransition(input: {
     ) {
       getBusinessProfileIntentStore().setFromOrchestration(modelProfileId);
       policyStore.appendEvent(
-        `業務モデル意図を更新しました（${modelProfileId}）。以降の photo_label / 要約 / 管理チャット / StackChan の on-demand start がこの profile を参照します（opt-in 時は /start に付与）。`
+        `業務モデル意図を更新しました（${modelProfileId}）。以降の photo_label / 要約 / 管理チャット の on-demand start がこの profile を参照します（opt-in 時は /start に付与）。`
       );
     }
 
