@@ -3,9 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { FSEIBAN_LIST_LIMIT, normalizeFseibanList } from '../fseiban-list.js';
 
 describe('normalizeFseibanList', () => {
-  it('handles empty and undefined lists', () => {
+  it('handles empty lists', () => {
     expect(normalizeFseibanList([])).toEqual([]);
-    expect(normalizeFseibanList(undefined)).toEqual([]);
   });
 
   it('trims whitespace, skips empty values and keeps first occurrence order', () => {
@@ -34,6 +33,5 @@ describe('normalizeFseibanList', () => {
   it('supports an unlimited list', () => {
     const items = Array.from({ length: 2500 }, (_, i) => String(i));
     expect(normalizeFseibanList(items, Number.POSITIVE_INFINITY)).toEqual(items);
-    expect(normalizeFseibanList(undefined, Number.POSITIVE_INFINITY)).toEqual([]);
   });
 });

@@ -18,7 +18,7 @@ type SeibanProcessingDueDateRow = {
 export async function listEarliestEffectiveDueDateBySeiban(
   fseibans?: string[]
 ): Promise<Map<string, Date | null>> {
-  const targets = normalizeFseibanList(fseibans, Number.POSITIVE_INFINITY);
+  const targets = normalizeFseibanList(fseibans ?? [], Number.POSITIVE_INFINITY);
   const targetFilter =
     targets.length > 0
       ? Prisma.sql`AND ("CsvDashboardRow"."rowData"->>'FSEIBAN') IN (${Prisma.join(targets)})`
