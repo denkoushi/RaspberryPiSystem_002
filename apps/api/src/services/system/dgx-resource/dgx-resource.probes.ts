@@ -1,3 +1,7 @@
+import { createTimeoutSignal } from '../../../lib/timeout-signal.js';
+
+export { createTimeoutSignal } from '../../../lib/timeout-signal.js';
+
 export type MetricsPayload = {
   gpuUtilPct?: number;
   gpuTemperatureC?: number;
@@ -23,15 +27,6 @@ export type MetricsPayload = {
     processName?: string;
     usedMemoryGiB?: number;
   }>;
-};
-
-export const createTimeoutSignal = (timeoutMs: number): { signal: AbortSignal; cleanup: () => void } => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  return {
-    signal: controller.signal,
-    cleanup: () => clearTimeout(timeout),
-  };
 };
 
 export async function fetchJsonMetrics(

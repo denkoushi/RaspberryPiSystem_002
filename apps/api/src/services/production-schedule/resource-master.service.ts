@@ -1,9 +1,9 @@
 import { prisma } from '../../lib/prisma.js';
+import { toUpperTrimmedCode as normalizeResourceCd } from '../../lib/string-normalize.js';
 
 export type ProductionScheduleResourceNameMap = Record<string, string[]>;
 export type ProductionScheduleResourceGroupCandidatesMap = Record<string, string[]>;
 
-const normalizeResourceCd = (value: string): string => value.trim().toUpperCase();
 const normalizeGroupCd = (value: string | null | undefined): string => (value ?? '').trim().toUpperCase();
 
 export async function getResourceNameMapByResourceCds(resourceCds: string[]): Promise<ProductionScheduleResourceNameMap> {

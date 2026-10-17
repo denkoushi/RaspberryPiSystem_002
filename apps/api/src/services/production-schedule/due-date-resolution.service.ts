@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { normalizeFseibanList } from './fseiban-list.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
 type EffectiveDueDateRow = {
@@ -14,19 +15,10 @@ type SeibanProcessingDueDateRow = {
   dueDate: Date;
 };
 
-const normalizeFseibans = (fseibans: string[] | undefined): string[] =>
-  Array.from(
-    new Set(
-      (fseibans ?? [])
-        .map((value) => value.trim())
-        .filter((value) => value.length > 0)
-    )
-  );
-
 export async function listEarliestEffectiveDueDateBySeiban(
   fseibans?: string[]
 ): Promise<Map<string, Date | null>> {
-  const targets = normalizeFseibans(fseibans);
+  const targets = normalizeFseibanList(fseibans, Number.POSITIVE_INFINITY);
   const targetFilter =
     targets.length > 0
       ? Prisma.sql`AND ("CsvDashboardRow"."rowData"->>'FSEIBAN') IN (${Prisma.join(targets)})`

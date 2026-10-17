@@ -1,7 +1,6 @@
+import { toTrimmedString as normalizeToken } from '../../lib/string-normalize.js';
 import { parseFkojunstStatusMailFupdteDt } from '../csv-dashboard/fkojunst-status-mail-fupdtedt-parse.js';
 import { normalizePurchaseFhinCdForMatching, normalizePurchaseFhinCdForScheduleLookup } from './purchase-fhincd-normalize.js';
-
-const normalizeToken = (value: unknown): string => String(value ?? '').trim();
 
 export type ParsedPurchaseOrderLookupCsvRow = {
   purchaseOrderNo: string;

@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { PalletMachineIllustrationStorage } from '../../lib/pallet-machine-illustration-storage.js';
+import { toUpperTrimmedCode as normalizeCd } from '../../lib/string-normalize.js';
 import { resolveScheduleSnapshotForPalletItem } from './pallet-visualization-schedule-resolver.js';
 import {
   assertMachineCdRegistered,
@@ -9,8 +10,6 @@ import {
 } from './pallet-visualization-resource.service.js';
 import { DEFAULT_MACHINE_PALLET_COUNT, MAX_MACHINE_PALLET_COUNT } from './pallet-count-bounds.js';
 import { acquirePalletCommandLock, mapPalletOrderConflict } from './pallet-command-lock.js';
-
-const normalizeCd = (value: string): string => value.trim().toUpperCase();
 
 async function assertPalletNoForMachine(machineCd: string, palletNo: number): Promise<void> {
   const max = await getPalletCountForResource(machineCd);

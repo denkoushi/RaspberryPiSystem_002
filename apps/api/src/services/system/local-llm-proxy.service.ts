@@ -1,4 +1,5 @@
 import { ApiError } from '../../lib/errors.js';
+import { createTimeoutSignal } from '../../lib/timeout-signal.js';
 import { extractTextFromOpenAiStylePayload, type OpenAiStyleChatResponse } from '../inference/adapters/openai-chat-response.util.js';
 
 import type { LocalLlmObservability } from './local-llm-observability.js';
@@ -74,15 +75,6 @@ type LocalLlmUpstreamResponse = {
     prompt_tokens?: unknown;
     completion_tokens?: unknown;
     total_tokens?: unknown;
-  };
-};
-
-const createTimeoutSignal = (timeoutMs: number): { signal: AbortSignal; cleanup: () => void } => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  return {
-    signal: controller.signal,
-    cleanup: () => clearTimeout(timeout),
   };
 };
 
