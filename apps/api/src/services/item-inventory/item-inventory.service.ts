@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { Prisma, PrismaClient, InventoryImportPayloadStatus, InventoryNfcTagKind, InventoryRegistrationMode, InventoryTransactionAction } from '@prisma/client';
 
 import { prisma as defaultPrisma } from '../../lib/prisma.js';
-import { ApiError } from '../../lib/errors.js';
+import { ApiError, DomainHttpError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { PhotoStorage } from '../../lib/photo-storage.js';
 
@@ -67,16 +67,16 @@ function toolData(input: InventoryToolInput, keepMissing: boolean): Partial<Reco
   return data;
 }
 
-export class InventoryInsufficientStockError extends Error {
+export class InventoryInsufficientStockError extends DomainHttpError {
   constructor() {
-    super('在庫が不足しています');
+    super(409, '在庫が不足しています', 'INVENTORY_INSUFFICIENT_STOCK');
     this.name = 'InventoryInsufficientStockError';
   }
 }
 
-export class InventoryConflictError extends Error {
+export class InventoryConflictError extends DomainHttpError {
   constructor(message = '在庫が更新されています。画面を再読み込みしてください') {
-    super(message);
+    super(409, message, 'INVENTORY_CONFLICT');
     this.name = 'InventoryConflictError';
   }
 }
