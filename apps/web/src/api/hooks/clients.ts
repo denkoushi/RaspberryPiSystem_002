@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
+import { mobilePlacementQueryKeys } from '../../features/mobile-placement/mobilePlacementQueryKeys';
 import { buildClientDevicesByApiKey } from '../../lib/signageTargetClientDevices';
 import {
   getClients,
@@ -54,7 +55,7 @@ export function useClientMutations() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
       queryClient.invalidateQueries({ queryKey: ['kiosk-config'] });
-      queryClient.invalidateQueries({ queryKey: ['mobile-placement', 'haizen-target-devices'] });
+      queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.haizenTargetDevices });
     }
   });
   return { update };

@@ -8,6 +8,7 @@ import {
   getDeployStatus,
   getNetworkModeStatus
 } from '../client';
+import { toolsQueryKeys } from '../queryKeys/tools';
 
 export function useImportMaster() {
   const queryClient = useQueryClient();
@@ -36,8 +37,8 @@ export function useImportMasterSingle() {
       } else if (variables.type === 'riggingGears') {
         queryClient.invalidateQueries({ queryKey: ['riggingGears'] });
       } else if (variables.type === 'machines') {
-        queryClient.invalidateQueries({ queryKey: ['machines'] });
-        queryClient.invalidateQueries({ queryKey: ['machines-uninspected'] });
+        queryClient.invalidateQueries({ queryKey: toolsQueryKeys.machinesAll });
+        queryClient.invalidateQueries({ queryKey: toolsQueryKeys.uninspectedMachinesAll });
       }
     }
   });
