@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 767,
-    "totalLines": 188912,
-    "totalBytes": 15035737,
+    "totalLines": 188924,
+    "totalBytes": 15038553,
     "withFrontmatter": 367,
     "withStatus": 170,
     "sourceOfTruthDeclared": 116,
@@ -34597,8 +34597,8 @@
     },
     {
       "path": "docs/plans/code-health-refactor-execplan.md",
-      "lineCount": 100,
-      "byteSize": 11523,
+      "lineCount": 110,
+      "byteSize": 13965,
       "hasFrontmatter": false,
       "title": "コード保守性の改善プログラム",
       "status": null,
@@ -34687,8 +34687,8 @@
     },
     {
       "path": "docs/plans/deploy-speed-optimization-execplan.md",
-      "lineCount": 238,
-      "byteSize": 31926,
+      "lineCount": 240,
+      "byteSize": 32300,
       "hasFrontmatter": true,
       "title": "Shorten rolling releases without weakening terminal safety",
       "status": "complete",

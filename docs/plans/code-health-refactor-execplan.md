@@ -12,11 +12,13 @@
 
 - [x] (2026-10-17) 調査を実施し、所見を会話で報告した（本文の Context and Orientation に要点を再掲）。
 - [x] (2026-10-17) 段階1: ファイル行数の歯止め（ラチェット）を apps/api と apps/web の ESLint に導入した。新しいファイルは 600 行まで、既存の大きいファイルは記録時の行数 +30 行までに制限する。
-- [ ] 段階1: PR 作成、CI、マージ、本番反映（進捗追跡セッション経由）。
-- [ ] 段階2: 重複した小関数の共通化（サーバー側の製番正規化、トークン正規化、保存先フォルダ取得、タイムアウト信号、画面側の日付整形、エラーメッセージ取り出し、機種名判定）。
-- [ ] 段階3: Hermes の部品を `apps/api/src/services/assembly/` から独立したまとまりへ移す（ファイル移動と import の書き換えのみ）。
-- [ ] 段階4: 配備まわりの二重化を整理する（サイネージ設定テンプレートの二重管理、使われていない旧シェルスクリプト）。本番から呼ばれていない大きな配備スクリプトの扱いは要判断（後述）。
-- [ ] 段階5: 頻繁に変更される巨大ファイルを分割する（組立のルート定義、部品測定のルート共通定義、サイネージ描画、画面側の API 定義）。
+- [x] (2026-10-17) 段階1: PR #2080 をマージした（main fa1f7f00）。lint 設定だけの変更なので本番反映は不要。
+- [x] (2026-10-17) 段階2: 重複した小関数を共通化した（製番リスト、文字列正規化、タイムアウト、機種コード判定など）。PR #2081、main 13d21554、Pi5 反映 run 20261017-053848-19d536 成功。
+- [x] (2026-10-17) 段階3: 業務 Hermes の部品を `apps/api/src/services/assembly/` から `apps/api/src/services/business-hermes/` へ移した（ファイル移動と import の書き換えのみ）。PR #2082、main 621eb26f、Pi5 反映 run 20261017-063429-930dcc 成功（health 200）。反映後、キオスクの Chat で質問に回答が返ることをユーザーが確認した。移動先は不適合情報検索精度向上セッションへ連絡済み。
+- [x] (2026-10-17) 段階4: 使われていない旧サイネージ用テンプレート 11 個を削除した（PR #2083、main 431ccdfc）。本番未使用の旧シェル `change-detector` / `impact-analyzer` と専用テストを削除し、手動プレイブック `manage-system-configs.yml` から `signage-lite.service` の管理を外した（PR #2084、main 4d82d49c）。どちらも本番反映は不要。
+- [x] (2026-10-17) 段階4: `terminal-runtime-manifest.py` と `rollback-manifest.py` はユーザー判断で残し、本番未使用であることを本計画と `docs/plans/deploy-speed-optimization-execplan.md` に明記した。
+- [ ] 段階5: 1 本目として画面側の組立 API 定義 `apps/web/src/api/domains/assembly.ts` をテーマ別の 9 ファイルに分けた（PR #2085、main 83eaa0b5）。続きは変更頻度順に、生産スケジュールの研削計画ボード画面と service、画面側の生産スケジュール API 定義と hook、在庫 service、組立のルート定義を分ける。Hermes 系の大きいファイルは他セッションが頻繁に触るので後回しにする。
+- [ ] 段階5（全体）: 頻繁に変更される巨大ファイルを分割する（組立のルート定義、部品測定のルート共通定義、サイネージ描画、画面側の API 定義）。
 - [ ] 段階6: 画面側のデータ取得の書き方をそろえる（react-query の queryKey を一か所で定義、ページからの API 直接呼び出しを hook へ寄せる）。
 - [ ] 段階7: 業務処理と HTTP の切り離し（業務エラーを HTTP に変換する場所を error handler に集約）を、1 機能ずつ段階的に進める。
 - [ ] 段階8: プロセスのメモリに持っている状態（ログイン連携の一時情報など）を、複数台構成の前提が出たときに DB へ移す。現状は 1 台構成のため、制約として文書化するに留める。
@@ -28,6 +30,10 @@
   Evidence: `apps/api/src/services/production-schedule/*.ts` の各定義を比較した結果。
 - Observation: ESLint の `max-lines` は空行とコメントを除いて数えるので、`wc -l` の行数より小さい。apps/api で 600 行を超えるのは 32 ファイル、apps/web は 25 ファイルだった。
   Evidence: `node scripts/ci/max-lines-baseline.mjs init api` の出力 "32 entries"、web は "25 entries"。
+- Observation: `docs/_meta/document-inventory.*` は docs を含む PR がマージされるたびに書き換わるため、並行する PR がほぼ必ず衝突する。
+  Evidence: PR #2084 が #2083、#2082 のマージのたびに、この 2 ファイルだけで衝突した。main 側を取ってから `node scripts/docs/audit-docs.mjs --write` で作り直せば解消する。
+- Observation: `terminal-runtime-manifest.py` と `rollback-manifest.py` を呼ぶのは CI の契約テスト（`scripts/ci/run-deploy-contracts-local.sh` と専用テスト）だけで、本番の配備経路からは呼ばれていない。配備高速化の計画にある束ね役 `terminal_manifest_capture.py` も存在しない。
+  Evidence: `infrastructure/` と `scripts/`（テストを除く）を両ファイル名で検索した結果。
 
 ## Decision Log
 
@@ -44,9 +50,13 @@
   Rationale: 定義ごとに細かい違いがあり、一つにまとめると静かに挙動が変わる恐れがある。
   Date/Author: 2026-10-17 / Claude
 
+- Decision: 旧シェル `change-detector` / `impact-analyzer` は削除し、`terminal-runtime-manifest.py` / `rollback-manifest.py` は削除せず「本番未使用」と文書に明記するに留める。手動プレイブックからサイネージ定義を外す。
+  Rationale: 前者は本番から呼ばれず、置き換え済み。後者は配備高速化の計画（Phase A3）で使う前提の部品なので残す。ユーザーが 2026-10-17 に判断した。
+  Date/Author: 2026-10-17 / ユーザー判断、Claude 記録
+
 ## 要判断（その段階に着いたときにユーザーへ一度だけ確認する）
 
-本番から呼ばれていない配備スクリプト（`scripts/deploy/terminal-runtime-manifest.py` 3,029 行、`scripts/deploy/rollback-manifest.py` 1,770 行など）は、使われていないのではなく「計画中で未接続」の可能性がある。段階4で関連する計画書と、接続を取り消した PR #1282 の理由を確認し、計画中なら削除せず扱いをユーザーに確認する。
+（解決済み）本番から呼ばれていない配備スクリプト `scripts/deploy/terminal-runtime-manifest.py` と `scripts/deploy/rollback-manifest.py` は、2026-10-17 のユーザー判断で残すことにした（Decision Log 参照）。
 
 個人用 Pi5、DGX、StackChan のコードを別リポジトリへ移すことは、新しいリポジトリの作成という外部に見える取り消しにくい操作を含むので、段階9の開始前に必ずユーザーに確認する。
 
