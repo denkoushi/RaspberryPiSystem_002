@@ -2,7 +2,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { prisma } from '../../../lib/prisma.js';
-import { BusinessHermesMcpService } from '../../assembly/business-hermes-mcp.service.js';
+import { BusinessHermesMcpService } from '../../business-hermes/business-hermes-mcp.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../production-schedule/constants.js';
 import type {
   WorkInstructionAssetInput,

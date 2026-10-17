@@ -49,8 +49,8 @@ import {
 import { isSignageCanvasLayout } from '../signage/signage-layout.types.js';
 import { businessHermesSourceDefinition, businessHermesSourceDefinitionList } from './business-hermes-source-adapters.js';
 
-import { isOperationHowToQuestion, kioskOperationGuide, kioskOperationGuideSourceDefinition, type KioskOperationGuideIndex } from './kiosk-operation-guide.service.js';
-import { PrismaSubjectResolver, type AsyncSubjectResolver, type GuideFamily } from './kiosk-operation-guide-subject.js';
+import { isOperationHowToQuestion, kioskOperationGuide, kioskOperationGuideSourceDefinition, type KioskOperationGuideIndex } from '../assembly/kiosk-operation-guide.service.js';
+import { PrismaSubjectResolver, type AsyncSubjectResolver, type GuideFamily } from '../assembly/kiosk-operation-guide-subject.js';
 
 export type { BusinessHermesConsultationConfirmation } from './business-hermes-responses.js';
 export type { ConsultationEvidence } from './business-hermes-evidence.js';

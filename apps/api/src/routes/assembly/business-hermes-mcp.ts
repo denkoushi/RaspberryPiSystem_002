@@ -7,7 +7,7 @@ import { ApiError } from '../../lib/errors.js';
 import {
   BusinessHermesMcpService,
   type BusinessHermesMcpTool
-} from '../../services/assembly/business-hermes-mcp.service.js';
+} from '../../services/business-hermes/business-hermes-mcp.service.js';
 
 type JsonRpcRequest = {
   jsonrpc?: string;
