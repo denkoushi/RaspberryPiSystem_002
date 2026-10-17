@@ -6,6 +6,7 @@ import { LeaderBoardRankPickerDropdown } from '../leaderOrderBoard/LeaderBoardRa
 import { normalizeMachineName } from '../productionSchedule/machineName';
 
 import { PlanningBoardCompletionButton } from './PlanningBoardCompletionButton';
+import { formatPlanningBoardDate as formatDate } from './planningBoardDateLabel';
 import {
   resolveGrindingPlanningBoardDueDate,
   resolveGrindingPlanningBoardResource
@@ -13,8 +14,6 @@ import {
 
 import type { PlanningBoardAllocation } from './types';
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardSpecialDueKind } from '@raspi-system/shared-types';
-
-const formatDate = (date: string | null): string => (date ? date.slice(5).replace('-', '/') : '未定');
 
 const rankOptions = [null, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 

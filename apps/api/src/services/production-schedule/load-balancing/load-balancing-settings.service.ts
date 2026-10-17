@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
 import { logger } from '../../../lib/logger.js';
 import { prisma } from '../../../lib/prisma.js';
+import { toUpperTrimmedCode as normalizeResourceCd } from '../../../lib/string-normalize.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import {
   mergeLoadBalancingItemsByResourceCd,
@@ -18,8 +19,6 @@ export { SHARED_LOAD_BALANCING_SITE_KEY } from './load-balancing-settings-merge.
 
 const normalizeLocation = (location: string): string => location.trim();
 const normalizeSiteKey = (location: string): string => resolveSiteKeyForScopeKey(normalizeLocation(location));
-
-const normalizeResourceCd = (value: string): string => value.trim().toUpperCase();
 
 function logLoadBalancingSiteSharedResolution(params: {
   siteKey: string;

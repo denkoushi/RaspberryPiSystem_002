@@ -3,13 +3,12 @@ import { memo, useEffect, useMemo, useRef } from 'react';
 
 import { normalizeMachineName } from '../productionSchedule/machineName';
 
+import { formatPlanningBoardDate as formatDate } from './planningBoardDateLabel';
 import { PlanningBoardItemTable } from './PlanningBoardItemTable';
 import { resolveGrindingPlanningBoardDueDate } from './sortGrindingPlanningBoardItems';
 
 import type { PlanningBoardAllocation } from './types';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
-
-const formatDate = (date: string | null): string => (date ? date.slice(5).replace('-', '/') : '未定');
 
 export type PlanningBoardSeibanPaneProps = {
   fseiban: string;

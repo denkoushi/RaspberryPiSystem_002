@@ -1,3 +1,4 @@
+import { createTimeoutSignal } from '../../../lib/timeout-signal.js';
 import { InferenceUnavailableError, type MultiImageVisionCompletionPort, type MultiImageVisionCompletionInput } from '../ports/multi-image-vision-completion.port.js';
 import type { VisionCompletionPort, VisionCompletionInput, VisionCompletionResult } from '../ports/vision-completion.port.js';
 import { emitInferenceCallOutcome } from '../observability/inference-observability.js';
@@ -12,15 +13,6 @@ import {
   reencodeImageBufferForVlmFallback,
   type VlmReencodeOptions,
 } from './vision-vlm-fallback.util.js';
-
-const createTimeoutSignal = (timeoutMs: number): { signal: AbortSignal; cleanup: () => void } => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  return {
-    signal: controller.signal,
-    cleanup: () => clearTimeout(timeout),
-  };
-};
 
 const trimErrorBody = (body: string): string => body.slice(0, 2000);
 

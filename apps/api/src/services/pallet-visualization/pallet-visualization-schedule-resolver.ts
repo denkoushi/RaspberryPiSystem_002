@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
+import { toUpperTrimmedCode as normalizeCd } from '../../lib/string-normalize.js';
 import {
   listScheduleRowsByProductNo,
   resolveMachineNameForSeiban,
@@ -7,8 +8,6 @@ import {
 import { normalizeSlipToken } from '../mobile-placement/mobile-placement-slip-match.js';
 import { findProductionSchedulePalletSnapshot } from '../production-schedule/production-schedule-snapshot.service.js';
 import { formatPlannedStartDateForPalletDisplay } from './pallet-visualization-display-fields.js';
-
-const normalizeCd = (value: string): string => value.trim().toUpperCase();
 
 export type ResolvedPalletScheduleSnapshot = {
   csvDashboardRowId: string;
