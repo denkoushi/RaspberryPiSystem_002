@@ -1,7 +1,7 @@
 import { resolveClientKey } from '../../lib/client-key';
 import { api } from '../http';
 
-import type { KioskInitialRouteId } from '@raspi-system/shared-types';
+import type { KioskInitialRouteId, KioskReorderableHeaderTabId } from '@raspi-system/shared-types';
 
 // キオスク専用の従業員リスト取得（x-client-key認証）
 export async function getKioskEmployees(clientKey?: string) {
@@ -46,6 +46,7 @@ export interface KioskConfig {
   initialKioskRoute?: string | null;
   initialKioskPath?: string;
   navTabOrder?: string[];
+  portalHiddenTabIds?: string[];
   clientStatus?: {
     temperature: number | null;
     cpuUsage: number;
@@ -63,6 +64,15 @@ export async function putKioskInitialRoute(initialRoute: KioskInitialRouteId | n
   const { data } = await api.put<KioskInitialRouteResponse>(
     '/kiosk/initial-route',
     { initialRoute },
+    { headers: { 'x-client-key': clientKey } }
+  );
+  return data;
+}
+
+export async function putKioskPortalCards(hiddenTabIds: KioskReorderableHeaderTabId[], clientKey: string) {
+  const { data } = await api.put<{ ok: true; portalHiddenTabIds: KioskReorderableHeaderTabId[] }>(
+    '/kiosk/portal-cards',
+    { hiddenTabIds },
     { headers: { 'x-client-key': clientKey } }
   );
   return data;

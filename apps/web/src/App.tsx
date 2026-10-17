@@ -64,6 +64,7 @@ import { KioskPartMeasurementPage } from './pages/kiosk/KioskPartMeasurementPage
 import { KioskPartMeasurementTemplatePage } from './pages/kiosk/KioskPartMeasurementTemplatePage';
 import { KioskPartMeasurementTemplatePickPage } from './pages/kiosk/KioskPartMeasurementTemplatePickPage';
 import { KioskPhotoBorrowPage } from './pages/kiosk/KioskPhotoBorrowPage';
+import { KioskPortalPage } from './pages/kiosk/KioskPortalPage';
 import { KioskRiggingAnalyticsPage } from './pages/kiosk/KioskRiggingAnalyticsPage';
 import { KioskRiggingBorrowPage } from './pages/kiosk/KioskRiggingBorrowPage';
 import { KioskSelfInspectionPage } from './pages/kiosk/KioskSelfInspectionPage';
@@ -195,6 +196,7 @@ function App() {
         <Route path="/signage-lite" element={<SignageLiteDisplayPage />} />
         <Route element={<KioskLayout />}>
           <Route path="/kiosk" element={<KioskRedirect />} />
+          <Route path="/kiosk/portal" element={<KioskPortalPage />} />
           <Route path="/kiosk/tag" element={<KioskBorrowPage />} />
           <Route path="/kiosk/inventory" element={<KioskItemInventoryPage />} />
           <Route path="/kiosk/inventory/dashboard" element={<KioskItemInventoryDashboardPage />} />

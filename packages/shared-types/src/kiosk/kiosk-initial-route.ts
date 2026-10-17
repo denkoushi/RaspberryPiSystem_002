@@ -4,6 +4,7 @@
  */
 
 export const KIOSK_INITIAL_ROUTE_IDS = [
+  'portal',
   'borrow_tag',
   'borrow_photo',
   'production_schedule',
@@ -37,6 +38,7 @@ export type KioskSelectableInitialRouteId = (typeof KIOSK_SELECTABLE_INITIAL_ROU
 export type KioskLegacyDefaultMode = 'PHOTO' | 'TAG';
 
 export const KIOSK_INITIAL_ROUTE_LABELS: Record<KioskInitialRouteId, string> = {
+  portal: 'ポータル',
   borrow_tag: '2タグスキャン',
   borrow_photo: '写真撮影持出',
   production_schedule: '生産スケジュール',
@@ -62,6 +64,7 @@ export const KIOSK_INITIAL_ROUTE_LABELS: Record<KioskInitialRouteId, string> = {
 };
 
 export const KIOSK_INITIAL_ROUTE_PATHS: Record<KioskInitialRouteId, string> = {
+  portal: '/kiosk/portal',
   borrow_tag: '/kiosk/tag',
   borrow_photo: '/kiosk/photo',
   production_schedule: '/kiosk/production-schedule',
