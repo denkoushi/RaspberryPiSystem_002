@@ -2078,3 +2078,4 @@ APIの概要と詳細。
 - [Hermes knowledge intake and reports](plans/hermes-knowledge.md) — Markdown/Git, photographs, PDFs and remaining integration work.
 - [Kiosk inventory daily/setup screens](plans/kiosk-inventory-ux-execplan.md) — NFC-first 在庫操作 with password-free correction and a separate touch setup screen.
 - [Kiosk tag desk](plans/kiosk-tag-desk-execplan.md) — キオスク「タグ管理」: NFCタグの紐づけ・切り離しと、従業員・工具・計測機器・吊具のマスター編集を管理コンソールから移設。
+- [コード保守性の改善プログラム](plans/code-health-refactor-execplan.md) — ファイル行数の歯止め、重複関数の共通化、Hermes の独立、巨大ファイル分割を段階ごとに進める計画と進捗。
