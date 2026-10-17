@@ -48,4 +48,4 @@ Pi4/端末で動く新しい Docker agent を、設定配布だけ、health だ�
 - fixed/configurable port、endpoint、response validator、`.env` path、Compose service、rollback path が一致する。
 - candidate release 前に通常の exact-SHA preflight と agent health を read-only で実行し、対象 host と maintenance 状態を確認する。
 
-新しい agent を追加するために archive 内の旧 `change-detector.sh`／`impact-analyzer.sh` を実行経路として復活させたり、削除したりしてはならない。現在の registry 駆動経路と matrix test を更新する。
+旧 `change-detector.sh`／`impact-analyzer.sh` は 2026-10-17 に削除した（本番から呼ばれていなかった）。新しい agent を追加するときは、それらを復活させず、現在の registry 駆動経路と matrix test を更新する。

@@ -17,7 +17,7 @@
   "summary": {
     "documentCount": 767,
     "totalLines": 188912,
-    "totalBytes": 15035554,
+    "totalBytes": 15035737,
     "withFrontmatter": 367,
     "withStatus": 170,
     "sourceOfTruthDeclared": 116,
@@ -18522,7 +18522,7 @@
     {
       "path": "docs/guides/ansible-managed-files.md",
       "lineCount": 239,
-      "byteSize": 8561,
+      "byteSize": 8732,
       "hasFrontmatter": true,
       "title": "Ansibleで管理すべき設定ファイル一覧",
       "status": null,
@@ -39852,7 +39852,7 @@
     {
       "path": "docs/runbooks/client-agent-addition.md",
       "lineCount": 51,
-      "byteSize": 4594,
+      "byteSize": 4606,
       "hasFrontmatter": true,
       "title": "Client Docker Agent Addition Runbook",
       "status": "active",
