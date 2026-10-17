@@ -1,0 +1,388 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
+
+import { normalizeLeaderboardContinueFailure } from '../../../features/kiosk/leaderOrderBoard/leaderboardContinueErrorPolicy';
+import { LEADER_BOARD_LEADER_PHASED_STALE_MS, LEADER_BOARD_SCHEDULE_REFETCH_MS } from '../../../features/kiosk/leaderOrderBoard/performance/leaderBoardRefetchPolicy';
+import {
+  getKioskGrindingPlanningBoardDueDetail,
+  getKioskGrindingPlanningBoardResourceCapacity,
+  updateKioskGrindingPlanningBoardResourceCapacity,
+  getKioskGrindingPlanningBoard,
+  getKioskGrindingPlanningBoardLoad,
+  getKioskGrindingPlanningBoardSnapshot,
+  getKioskGrindingPlanningBoardSeibanCandidates,
+  updateKioskGrindingPlanningBoardOverrides,
+  updateKioskGrindingPlanningBoardPins,
+  updateKioskGrindingPlanningBoardRank,
+  updateKioskGrindingPlanningBoardResourceOrder,
+  updateKioskGrindingPlanningBoardResourceOrderBulk,
+  updateKioskGrindingPlanningBoardSeibanOrder,
+  type KioskGrindingPlanningBoardQuery,
+  updateKioskGrindingPlanningBoardDueScope
+} from '../../client';
+
+import type {
+  GrindingPlanningBoardResourceCapacityRequest,
+  GrindingPlanningBoardResourceCapacityResponse,
+  GrindingPlanningBoardOverridesRequest,
+  GrindingPlanningBoardRankRequest,
+  GrindingPlanningBoardRankResponse,
+  GrindingPlanningBoardResourceOrderRequest,
+  GrindingPlanningBoardResourceOrderBulkRequest,
+  GrindingPlanningBoardPinsRequest,
+  GrindingPlanningBoardResourceOrderResponse,
+  GrindingPlanningBoardSeibanOrderRequest,
+  GrindingPlanningBoardCategory,
+  GrindingPlanningBoardResponse,
+  GrindingPlanningBoardDueScopeRequest
+} from '@raspi-system/shared-types';
+
+export function useKioskGrindingPlanningBoard(
+  params: KioskGrindingPlanningBoardQuery | undefined,
+  options?: {
+    enabled?: boolean;
+    refetchIntervalMs?: number | false;
+    refetchOnWindowFocus?: boolean;
+    staleTime?: number;
+  }
+) {
+  const queryClient = useQueryClient();
+  return useQuery({
+    queryKey: ['kiosk-grinding-planning-board', params],
+    queryFn: async () => {
+      const board = await getKioskGrindingPlanningBoard(params!);
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board', 'load'] });
+      return board;
+    },
+    enabled: (options?.enabled ?? true) && Boolean(params),
+    refetchInterval: options?.refetchIntervalMs ?? 30000,
+    staleTime: options?.staleTime,
+    refetchOnWindowFocus: options?.refetchOnWindowFocus,
+    placeholderData: (previousData) => previousData
+  });
+}
+
+export function useKioskGrindingPlanningBoardLoad(category: GrindingPlanningBoardCategory) {
+  return useQuery({
+    queryKey: ['kiosk-grinding-planning-board', 'load', category],
+    queryFn: () => getKioskGrindingPlanningBoardLoad(category),
+    refetchOnWindowFocus: false,
+    staleTime: LEADER_BOARD_LEADER_PHASED_STALE_MS
+  });
+}
+
+export type KioskGrindingPlanningBoardProgressiveResult = {
+  data: GrindingPlanningBoardResponse | undefined;
+  isLoading: boolean;
+  isFetching: boolean;
+  isError: boolean;
+  error: unknown;
+  isPlaceholderData: boolean;
+  refetch: ReturnType<typeof useKioskGrindingPlanningBoard>['refetch'];
+  hasStableData: boolean;
+  scopeReady: boolean;
+  isAppending: boolean;
+  isComplete: boolean;
+  appendError: unknown;
+};
+
+/**
+ * 初回ページを先に表示し、同じスナップショットの残りだけを順次追補する。
+ * 順位ボードのphased取得と同じ300秒のstale/refetch方針を使うが、契約が異なるため
+ * continue部分はこのAPI専用の薄いアダプターとして保持する。
+ */
+export function useKioskGrindingPlanningBoardProgressive(
+  params: KioskGrindingPlanningBoardQuery | undefined,
+  options?: { enabled?: boolean; refetchIntervalMs?: number | false }
+): KioskGrindingPlanningBoardProgressiveResult {
+  const query = useKioskGrindingPlanningBoard(params, {
+    enabled: options?.enabled,
+    refetchIntervalMs: options?.refetchIntervalMs ?? LEADER_BOARD_SCHEDULE_REFETCH_MS,
+    refetchOnWindowFocus: false,
+    staleTime: LEADER_BOARD_LEADER_PHASED_STALE_MS
+  });
+  const paramsKey = useMemo(() => JSON.stringify(params ?? null), [params]);
+  const [mergedData, setMergedData] = useState<GrindingPlanningBoardResponse>();
+  const [isAppending, setIsAppending] = useState(false);
+  const [isComplete, setIsComplete] = useState(false);
+  const [appendError, setAppendError] = useState<unknown>(null);
+  const runIdRef = useRef(0);
+  const syncedSignatureRef = useRef<string | null>(null);
+  const stableParams = useMemo(
+    () => paramsKey === 'null' ? undefined : JSON.parse(paramsKey) as KioskGrindingPlanningBoardQuery,
+    [paramsKey]
+  );
+
+  useEffect(() => {
+    runIdRef.current += 1;
+    syncedSignatureRef.current = null;
+    setMergedData(undefined);
+    setIsAppending(false);
+    setIsComplete(false);
+    setAppendError(null);
+  }, [paramsKey]);
+
+  const firstData = query.data;
+  const firstDataIsFresh = Boolean(firstData && !query.isPlaceholderData);
+  const firstSignature = firstData
+    ? `${query.dataUpdatedAt}:${firstData.snapshotId}:${firstData.sourceRevision}`
+    : null;
+
+  useEffect(() => {
+    if (!firstDataIsFresh || !firstData || firstSignature == null || query.isFetching) return;
+    if (syncedSignatureRef.current === firstSignature) return;
+    syncedSignatureRef.current = firstSignature;
+    const runId = ++runIdRef.current;
+    let cancelled = false;
+    const initial = firstData;
+    let items = [...initial.items];
+    let cursor = initial.nextCursor;
+    let previousCursor = -1;
+
+    setMergedData({ ...initial, items, nextCursor: cursor });
+    setAppendError(null);
+    setIsComplete(cursor == null);
+    if (cursor == null) return;
+
+    setIsAppending(true);
+    void (async () => {
+      try {
+        while (!cancelled && runId === runIdRef.current && cursor != null) {
+          const nextCursor = Number(cursor);
+          if (!Number.isInteger(nextCursor) || nextCursor <= previousCursor) {
+            throw new Error('生産日程のページ情報が不正です。再読み込みしてください。');
+          }
+          const page = await getKioskGrindingPlanningBoard({
+            ...stableParams!,
+            cursor: nextCursor,
+            pageSize: 160,
+            snapshotId: initial.snapshotId
+          });
+          if (cancelled || runId !== runIdRef.current) return;
+          if (
+            page.snapshotId !== initial.snapshotId ||
+            page.sourceRevision !== initial.sourceRevision ||
+            page.siteKey !== initial.siteKey ||
+            page.category !== initial.category ||
+            page.view !== initial.view
+          ) {
+            throw new Error('表示中の生産日程が更新されました。再読み込みしてください。');
+          }
+          const seen = new Set(items.map((item) => item.itemId));
+          const pageItems = page.items.filter((item) => {
+            if (seen.has(item.itemId)) throw new Error('生産日程のページに重複があります。再読み込みしてください。');
+            seen.add(item.itemId);
+            return true;
+          });
+          items = [...items, ...pageItems];
+          previousCursor = nextCursor;
+          cursor = page.nextCursor;
+          setMergedData((current) => current?.snapshotId === initial.snapshotId
+            ? { ...initial, items, nextCursor: cursor }
+            : current);
+          setIsComplete(cursor == null);
+        }
+      } catch (error) {
+        if (!cancelled && runId === runIdRef.current) {
+          setAppendError(normalizeLeaderboardContinueFailure(error));
+          setIsComplete(false);
+        }
+      } finally {
+        if (!cancelled && runId === runIdRef.current) setIsAppending(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      syncedSignatureRef.current = null;
+      if (runId === runIdRef.current) setIsAppending(false);
+    };
+  }, [firstData, firstDataIsFresh, firstSignature, query.isFetching, stableParams]);
+
+  const displayData = mergedData ?? firstData;
+  const hasStableData = Boolean(
+    firstData && !query.isPlaceholderData && mergedData?.snapshotId === firstData.snapshotId
+  );
+  // A same-scope revalidation keeps the current snapshot usable. Placeholder
+  // data and the first fetch remain unready through hasStableData above.
+  const scopeReady = hasStableData;
+  return {
+    data: displayData,
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
+    isError: query.isError,
+    error: query.error,
+    isPlaceholderData: query.isPlaceholderData,
+    refetch: query.refetch,
+    hasStableData,
+    scopeReady,
+    isAppending,
+    isComplete: scopeReady && isComplete,
+    appendError,
+  };
+}
+
+export function useKioskGrindingPlanningBoardSnapshot(
+  params: KioskGrindingPlanningBoardQuery | undefined,
+  options?: { enabled?: boolean; refetchIntervalMs?: number | false; refetchOnWindowFocus?: boolean }
+) {
+  const queryClient = useQueryClient();
+  return useQuery({
+    queryKey: ['kiosk-grinding-planning-board', 'snapshot', params],
+    queryFn: async () => {
+      const board = await getKioskGrindingPlanningBoardSnapshot(params!);
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board', 'load'] });
+      return board;
+    },
+    enabled: (options?.enabled ?? true) && Boolean(params),
+    refetchInterval: options?.refetchIntervalMs ?? 30000,
+    refetchOnWindowFocus: options?.refetchOnWindowFocus ?? true
+  });
+}
+
+export function useKioskGrindingPlanningBoardSeibanCandidates(
+  params: { category: GrindingPlanningBoardCategory; completionFilter: 'all' | 'incomplete' } | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: ['kiosk-grinding-planning-board', 'seiban-candidates', params],
+    queryFn: () => getKioskGrindingPlanningBoardSeibanCandidates(params!),
+    enabled: (options?.enabled ?? true) && Boolean(params),
+    placeholderData: (previousData, previousQuery) => {
+      const previousParams = previousQuery?.queryKey?.[2] as typeof params;
+      return previousParams?.category === params?.category ? previousData : undefined;
+    },
+    refetchInterval: 30000,
+    refetchOnWindowFocus: false
+  });
+}
+
+export function useUpdateKioskGrindingPlanningBoardOverrides(options?: { invalidateOnSuccess?: boolean }) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrindingPlanningBoardOverridesRequest) => updateKioskGrindingPlanningBoardOverrides(payload),
+    onSuccess: () => {
+      if (options?.invalidateOnSuccess === false) return;
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+    }
+  });
+}
+
+export function useUpdateKioskGrindingPlanningBoardPins(options?: { invalidateOnSuccess?: boolean }) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrindingPlanningBoardPinsRequest) => updateKioskGrindingPlanningBoardPins(payload),
+    onSuccess: () => {
+      if (options?.invalidateOnSuccess === false) return;
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+    }
+  });
+}
+
+export function useUpdateKioskGrindingPlanningBoardRank(options?: { invalidateOnSuccess?: boolean }) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrindingPlanningBoardRankRequest) => updateKioskGrindingPlanningBoardRank(payload),
+    onSuccess: (_result: GrindingPlanningBoardRankResponse) => {
+      if (options?.invalidateOnSuccess === false) return;
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+    }
+  });
+}
+
+export function useUpdateKioskGrindingPlanningBoardResourceOrder(options?: { invalidateOnSuccess?: boolean }) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrindingPlanningBoardResourceOrderRequest) => updateKioskGrindingPlanningBoardResourceOrder(payload),
+    onSuccess: (_result: GrindingPlanningBoardResourceOrderResponse) => {
+      if (options?.invalidateOnSuccess === false) return;
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+    }
+  });
+}
+
+export function useUpdateKioskGrindingPlanningBoardResourceOrderBulk(options?: { invalidateOnSuccess?: boolean }) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrindingPlanningBoardResourceOrderBulkRequest) => updateKioskGrindingPlanningBoardResourceOrderBulk(payload),
+    onSuccess: (_result: GrindingPlanningBoardResourceOrderResponse) => {
+      if (options?.invalidateOnSuccess === false) return;
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+    }
+  });
+}
+
+export function useUpdateKioskGrindingPlanningBoardSeibanOrder(options?: { invalidateOnSuccess?: boolean }) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrindingPlanningBoardSeibanOrderRequest) => updateKioskGrindingPlanningBoardSeibanOrder(payload),
+    onSuccess: () => {
+      if (options?.invalidateOnSuccess === false) return;
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+    }
+  });
+}
+
+export function useKioskGrindingPlanningBoardDueDetail(fseiban: string | null) {
+  return useQuery({
+    queryKey: ['kiosk-grinding-planning-board-due-detail', fseiban],
+    queryFn: () => getKioskGrindingPlanningBoardDueDetail(fseiban ?? ''),
+    enabled: typeof fseiban === 'string' && fseiban.trim().length > 0,
+    refetchOnWindowFocus: false
+  });
+}
+
+export function useUpdateKioskGrindingPlanningBoardDueScope(options?: { invalidateOnSuccess?: boolean }) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      fseiban,
+      payload
+    }: {
+      fseiban: string;
+      payload: GrindingPlanningBoardDueScopeRequest;
+    }) => updateKioskGrindingPlanningBoardDueScope(fseiban, payload),
+    onSuccess: (_data, variables) => {
+      if (options?.invalidateOnSuccess === false) return;
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board-due-detail', variables.fseiban] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+    }
+  });
+}
+
+// Independent of board invalidation and progressive snapshots.
+const planningBoardCapacityKey = ['kiosk-planning-board-resource-capacity'] as const;
+
+export function useKioskGrindingPlanningBoardResourceCapacity(enabled: boolean) {
+  return useQuery({
+    queryKey: planningBoardCapacityKey,
+    queryFn: getKioskGrindingPlanningBoardResourceCapacity,
+    enabled,
+    staleTime: 10 * 60_000
+  });
+}
+
+export function useUpdateKioskGrindingPlanningBoardResourceCapacity() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrindingPlanningBoardResourceCapacityRequest) => updateKioskGrindingPlanningBoardResourceCapacity(payload),
+    onMutate: async ({ resourceCd, dailyHours, runsThroughBreaks }) => {
+      await queryClient.cancelQueries({ queryKey: planningBoardCapacityKey });
+      const previous = queryClient.getQueryData<GrindingPlanningBoardResourceCapacityResponse>(planningBoardCapacityKey);
+      queryClient.setQueryData<GrindingPlanningBoardResourceCapacityResponse>(planningBoardCapacityKey, {
+        dailyHoursByResource: { ...previous?.dailyHoursByResource, ...(dailyHours !== undefined ? { [resourceCd]: dailyHours } : {}) },
+        runsThroughBreaksResources: runsThroughBreaks === undefined ? previous?.runsThroughBreaksResources ?? []
+          : [...(previous?.runsThroughBreaksResources ?? []).filter((resource) => resource !== resourceCd), ...(runsThroughBreaks ? [resourceCd] : [])]
+      });
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      queryClient.setQueryData(planningBoardCapacityKey, context?.previous ?? { dailyHoursByResource: {}, runsThroughBreaksResources: [] });
+    },
+    onSuccess: (response) => queryClient.setQueryData(planningBoardCapacityKey, response)
+  });
+}
