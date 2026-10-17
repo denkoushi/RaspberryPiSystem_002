@@ -73,7 +73,7 @@ Optimize DGX Spark as the AI inference engine across four areas:
 - All repo-side changes are backward compatible: with no new env vars set and no DGX-side apply, production behavior is unchanged.
 - New env vars (all optional): `INFERENCE_DOCUMENT_SUMMARY_SYSTEM_PROMPT`, `INFERENCE_STACKCHAN_SYSTEM_PROMPT`, `INFERENCE_BUSINESS_PROFILE_INTENT_FILE_PATH`. New manifest fields: `moeBackend`, `attentionBackend`, `enableChunkedPrefill`, `enablePrefixCaching`.
 - Deliberately NOT done: DGX real-machine apply/benchmark (open item), deletion of Web fallback metadata files (kept for rolling-deploy compatibility), scenario-planner/policy-arbitrator rewrite (judged unnecessary).
-- Follow-up candidates: unify the 3 duplicated DGX gateway client implementations (Pi5 TS / stackchan-bridge Python / hermes), raise `maxModelLen` beyond 16384 after real-machine benchmark, wire `INFERENCE_BUSINESS_PROFILE_INTENT_FILE_PATH` into Ansible docker.env template when enabling persistence in production.
+- Follow-up candidates: unify the 3 duplicated DGX gateway client implementations (Pi5 TS / stackchan-bridge Python / hermes), raise `maxModelLen` beyond 16384 after real-machine benchmark, wire `INFERENCE_BUSINESS_PROFILE_INTENT_FILE_PATH` into Ansible docker.env template when enabling persistence in production. (Done 2026-10-17: set in the API compose `environment` to `/app/config/business-profile-intent.json` instead of the Ansible template, because it is a fixed container path.)
 
 ## Validation Summary
 
