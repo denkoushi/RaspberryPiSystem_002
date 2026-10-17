@@ -17,12 +17,11 @@
 - [x] (2026-10-17) 段階3: 業務 Hermes の部品を `apps/api/src/services/assembly/` から `apps/api/src/services/business-hermes/` へ移した（ファイル移動と import の書き換えのみ）。PR #2082、main 621eb26f、Pi5 反映 run 20261017-063429-930dcc 成功（health 200）。反映後、キオスクの Chat で質問に回答が返ることをユーザーが確認した。移動先は不適合情報検索精度向上セッションへ連絡済み。
 - [x] (2026-10-17) 段階4: 使われていない旧サイネージ用テンプレート 11 個を削除した（PR #2083、main 431ccdfc）。本番未使用の旧シェル `change-detector` / `impact-analyzer` と専用テストを削除し、手動プレイブック `manage-system-configs.yml` から `signage-lite.service` の管理を外した（PR #2084、main 4d82d49c）。どちらも本番反映は不要。
 - [x] (2026-10-17) 段階4: `terminal-runtime-manifest.py` と `rollback-manifest.py` はユーザー判断で残し、本番未使用であることを本計画と `docs/plans/deploy-speed-optimization-execplan.md` に明記した。
-- [ ] 段階5: 1 本目として画面側の組立 API 定義 `apps/web/src/api/domains/assembly.ts` をテーマ別の 9 ファイルに分けた（PR #2085、main 83eaa0b5）。続きは変更頻度順に、生産スケジュールの研削計画ボード画面と service、画面側の生産スケジュール API 定義と hook、在庫 service、組立のルート定義を分ける。Hermes 系の大きいファイルは他セッションが頻繁に触るので後回しにする。
-- [ ] 段階5（全体）: 頻繁に変更される巨大ファイルを分割する（組立のルート定義、部品測定のルート共通定義、サイネージ描画、画面側の API 定義）。
-- [ ] 段階6: 画面側のデータ取得の書き方をそろえる（react-query の queryKey を一か所で定義、ページからの API 直接呼び出しを hook へ寄せる）。
-- [ ] 段階7: 業務処理と HTTP の切り離し（業務エラーを HTTP に変換する場所を error handler に集約）を、1 機能ずつ段階的に進める。
-- [ ] 段階8: プロセスのメモリに持っている状態（ログイン連携の一時情報など）を、複数台構成の前提が出たときに DB へ移す。現状は 1 台構成のため、制約として文書化するに留める。
-- [ ] 段階9: 個人用 Pi5、DGX、StackChan のコードを業務リポジトリから分ける（要判断、後述）。
+- [ ] 段階5: 頻繁に変更される巨大ファイルを 5 本分けた。画面側の組立 API 定義（PR #2085、main 83eaa0b5）、画面側の生産スケジュール API 定義（PR #2087、main 53fe3ea9）、画面側の生産スケジュール hook（PR #2088）、研削計画ボードの service（PR #2089）、組立のルート定義（PR #2090）。どれも中身は書き写しのみで、公開名の一致を機械的に確かめた。Hermes 系の大きいファイルは他セッションが頻繁に触るので対象外とした。#2088〜#2090 の取り込みと本番反映が済んだら完了にする。
+- [ ] 段階6: 画面側のデータ取得の書き方をそろえる。1 本目として移動棚配置と工具・貸出の queryKey を一か所で定義した（PR #2092）。生産スケジュールの queryKey は #2088 の取り込み後に続ける。
+- [ ] 段階7: 業務エラーを HTTP に変える場所をエラーハンドラーに集約する。1 本目として `DomainHttpError` を追加し、在庫と作業要領編集のルートから変換関数を外した（PR #2091、応答の本文は全体一致テストで固定）。組立の独自応答と Prisma の P2025 変換は別の回にする。
+- [x] (2026-10-17) 段階8: プロセスのメモリに持っている状態を洗い出し、[API の 1 台構成の前提](../architecture/single-instance-state.md) に記録した。現状は 1 台構成なのでコードは変えない。
+- [x] (2026-10-17) 段階9: 個人用 Pi5、DGX、StackChan のコードを業務リポジトリから分けることは、ユーザー判断で行わないことにした（Decision Log 参照）。
 
 ## Surprises & Discoveries
 
@@ -54,11 +53,19 @@
   Rationale: 前者は本番から呼ばれず、置き換え済み。後者は配備高速化の計画（Phase A3）で使う前提の部品なので残す。ユーザーが 2026-10-17 に判断した。
   Date/Author: 2026-10-17 / ユーザー判断、Claude 記録
 
+- Decision: 段階9（個人用 Pi5、DGX、StackChan のコードを別リポジトリへ移す）は行わない。計画は段階8までで終える。
+  Rationale: 2026-10-17 に段階9の開始可否を確認したところ、ユーザーが「段階9はやめる」と判断した。
+  Date/Author: 2026-10-17 / ユーザー判断、Claude 記録
+
+- Decision: 業務エラーの HTTP 変換は `ApiError` を継承しない `DomainHttpError` で行う。
+  Rationale: `instanceof ApiError` で分岐して再送出している既存箇所があり、継承させるとその経路の動きが変わるため。
+  Date/Author: 2026-10-17 / Claude
+
 ## 要判断（その段階に着いたときにユーザーへ一度だけ確認する）
 
 （解決済み）本番から呼ばれていない配備スクリプト `scripts/deploy/terminal-runtime-manifest.py` と `scripts/deploy/rollback-manifest.py` は、2026-10-17 のユーザー判断で残すことにした（Decision Log 参照）。
 
-個人用 Pi5、DGX、StackChan のコードを別リポジトリへ移すことは、新しいリポジトリの作成という外部に見える取り消しにくい操作を含むので、段階9の開始前に必ずユーザーに確認する。
+（解決済み）個人用 Pi5、DGX、StackChan のコードを別リポジトリへ移すこと（段階9）は、2026-10-17 のユーザー判断で行わないことにした（Decision Log 参照）。
 
 ## Outcomes & Retrospective
 
