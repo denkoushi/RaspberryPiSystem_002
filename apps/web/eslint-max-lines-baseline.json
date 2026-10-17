@@ -1,5 +1,4 @@
 {
-  "src/api/domains/assembly.ts": 1215,
   "src/api/domains/part-measurement.ts": 1420,
   "src/api/domains/production-schedule.ts": 1563,
   "src/api/hooks/production-schedule.ts": 1582,
