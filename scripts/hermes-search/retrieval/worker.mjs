@@ -1,3 +1,5 @@
+import { CAUSE_CATEGORY_IDS, conditionSha256, normalizeConditionText } from './cause-categories.mjs';
+import { readCauseStore, causeStorePathFromEnv } from './cause-store.mjs';
 // JSON-lines worker for the lexical + one planner call + one relevance call path.
 // Vector ranking stays off unless HERMES_RETRIEVAL_VECTOR_ENABLED=true.
 import { readFile } from 'node:fs/promises';
@@ -122,6 +124,7 @@ export function compactPlan(plan) {
       op: filter.op,
       values: Array.isArray(filter.values) ? [...filter.values] : [],
     })) : [],
+    ...(plan.causeCategory !== undefined ? { causeCategory: plan.causeCategory } : {}),
     semanticQuery: typeof plan.semanticQuery === 'string' ? plan.semanticQuery : '',
     // The content part the judge read, so a follow-up that reuses the content judges the same text.
     ...(typeof plan.diagnostics?.contentSpan === 'string' && plan.diagnostics.contentSpan
@@ -291,7 +294,8 @@ function selectedSourcePlan(plan, entries) {
 
 function validRefine(refine) {
   return refine && typeof refine === 'object' && !Array.isArray(refine)
-    && ['organization', 'month'].includes(refine.axis)
+    && ['organization', 'month', 'cause'].includes(refine.axis)
+    && (refine.axis !== 'cause' || (refine.field === 'causeCategory' && CAUSE_CATEGORY_IDS.includes(refine.value)))
     && typeof refine.field === 'string' && refine.field.trim().length > 0 && refine.field.length <= 80
     && typeof refine.value === 'string' && refine.value.trim().length > 0 && refine.value.length <= 80;
 }
@@ -300,7 +304,7 @@ function refinedPlan(previousPlan, refine, catalog, valueIndex) {
   if (!previousPlan || !validRefine(refine) || previousPlan.sources?.length !== 1) return null;
   const entry = catalogEntries(catalog).find((item) => item.id === previousPlan.sources[0]);
   const role = refine.axis === 'month' ? 'date' : 'organization';
-  if (!entry || !fieldsWithRole(entry, role).includes(refine.field)) return null;
+  if (!entry || (refine.axis !== 'cause' && !fieldsWithRole(entry, role).includes(refine.field))) return null;
   let values = [refine.value];
   if (refine.axis === 'month') {
     if (!/^\d{4}-(0[1-9]|1[0-2])$/u.test(refine.value)) return null;
@@ -313,7 +317,8 @@ function refinedPlan(previousPlan, refine, catalog, valueIndex) {
   const plan = {
     ...previousPlan,
     schema: QUERY_PLAN_SCHEMA,
-    filters: [...(previousPlan.filters ?? []).filter((filter) => filter.field !== refine.field), {
+    ...(refine.axis === 'cause' ? { causeCategory: refine.value } : {}),
+    filters: refine.axis === 'cause' ? [...(previousPlan.filters ?? [])] : [...(previousPlan.filters ?? []).filter((filter) => filter.field !== refine.field), {
       source: entry.id, field: refine.field, op: refine.axis === 'month' ? 'between' : 'eq', values,
     }],
     // Stored plans are compact: restore the display and diagnostics needed by execution.
@@ -348,6 +353,23 @@ export async function loadEnrichmentById(env = process.env) {
     }
   }
   return enrichmentById;
+}
+
+// Executor records retain their original (bare or already-prefixed) ids. Public ids are only
+// for the answer/session; never key this map through publicRecordId or attach a record field.
+export async function loadCauseById(env = process.env, records = []) {
+  const byId = new Map();
+  try {
+    const store = await readCauseStore(causeStorePathFromEnv(env));
+    for (const record of records) {
+      if (recordSourceId(record) !== 'nonconformity' || !normalizeConditionText(record.condition)) continue;
+      const row = store.get(conditionSha256(record.condition));
+      if (row) byId.set(record.id, row.categoryId);
+    }
+  } catch {
+    console.warn('hermes retrieval cause store unreadable');
+  }
+  return byId;
 }
 
 export async function loadLearnedQueriesById(env = process.env) {
@@ -401,6 +423,7 @@ export function createRetrievalAnswering({
   denseBySource = null,
   vectorBySource = null,
   enrichmentById = null,
+  causeById = null,
   learnedById = null,
   snapshotCount = Array.isArray(records) ? records.length : 0,
 } = {}) {
@@ -417,7 +440,7 @@ export function createRetrievalAnswering({
     current = { ...current, valueIndex, lexicalCorpus, snapshotCount };
     if (entries.length === 1 && lexicalCorpus) current.bySource[entries[0].id].lexicalCorpus = lexicalCorpus;
   }
-  current = applyEnrichment(current, enrichmentById, catalog, learnedById);
+  current = { ...applyEnrichment(current, enrichmentById, catalog, learnedById), causeById };
   return {
     async rank(query, options = {}) {
       const entry = entries.find(entry => entry.id === options.sourceId);
@@ -439,7 +462,8 @@ export function createRetrievalAnswering({
     async replaceCorpus(message) {
       const count = current.snapshotCount;
       try {
-        current = applyEnrichment(replaceCorpus(current, catalog, message), await loadEnrichmentById(), catalog, await loadLearnedQueriesById());
+        const next = applyEnrichment(replaceCorpus(current, catalog, message), await loadEnrichmentById(), catalog, await loadLearnedQueriesById());
+        current = { ...next, causeById: await loadCauseById(process.env, next.records) };
         for (const entry of semanticEntries) denseFor(entry.id)?.schedule?.(current.bySource[entry.id].records, fieldsWithRole(entry, 'body'));
         return { ok: true, sourceIds: entries.map(entry => entry.id), count: current.snapshotCount, memory: memoryReport(current.records, catalog) };
       } catch {
@@ -480,6 +504,7 @@ export function createRetrievalAnswering({
       }
       const refinePlan = refinedPlan(previousPlan, options.refine, visibleCatalog, visibleValueIndex);
       if (refinePlan) previouslyShown = [];
+      // Planner-made plans never set causeCategory: a natural-language follow-up drops the cause filter.
       const planned = refinePlan ? { plan: refinePlan, timings: { planMs: 0 } } : await planner.plan({
         question,
         previousPlan,
@@ -560,6 +585,7 @@ export function createRetrievalAnswering({
           ? (dateField ? { ...plan.sort, field: dateField.key } : 'relevance') : plan.sort;
         executions.push(await execute({ ...plan, sources: [sourceId], filters: plan.filters.filter((filter) => filter.source === sourceId), sort }, {
           records: sourceView.records,
+          causeById: sourceId === 'nonconformity' ? view.causeById : null,
           catalog: entry,
           lexicalCorpus: sourceView.lexicalCorpus,
           retriever: sourceDense?.queryEnabled ? 'hybrid' : 'lexical',
@@ -790,6 +816,7 @@ export async function main() {
     answering = createRetrievalAnswering({
       ...resources,
       enrichmentById: await loadEnrichmentById(),
+      causeById: await loadCauseById(process.env, resources.records),
       learnedById: await loadLearnedQueriesById(),
       denseBySource,
       vectorBySource,

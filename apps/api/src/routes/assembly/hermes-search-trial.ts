@@ -53,7 +53,7 @@ export async function registerHermesSearchTrialRoutes(
       question: z.string().trim().min(1).max(4000),
       sessionId: z.string().uuid().optional(),
       refine: z.object({
-        axis: z.enum(['organization', 'month']),
+        axis: z.enum(['organization', 'month', 'cause']),
         field: z.string().trim().min(1).max(80),
         value: z.string().trim().min(1).max(80),
       }).strict().optional(),

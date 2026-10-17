@@ -592,4 +592,14 @@ Decision on the open item of the fourteenth night. The 20-record cap stays. When
 
 Not changed: the plain-text answer and `formatCoverageNotice` wording that the nightly evaluation reads; the receipt records `refine` so chip turns can be told apart. Groups are emitted only when the total is known (filter-only or counted paths); relevance-capped answers keep today's notice.
 
-Second step, not in this PR: a 「要因で分ける」 axis. The cause lives in the existing 不適合内容 column (`condition`), free text with about 5,200 distinct values over 8,209 rows, so it needs JEV to sort each record into a small fixed set of cause categories, computed off the query path and cached by content hash. 処置内容 (`disposition`) is near-categorical (再製作 490, THKへ返却 72, 支給品 66, …) and could be a cheap extra axis.
+Second step, not in this PR: a 「要因で分ける」 axis. The cause lives in the existing 不適合内容 column (`condition`), free text with about 5,200 distinct values over 8,209 rows, so it needs JEV to sort each record into a small fixed set of cause categories, computed off the query path and cached by content hash. 処置内容 (`disposition`) has 4,583 distinct values and 2,233 empty rows; it is not near-categorical, so the proposed 処置内容 axis is dropped.
+
+### 2026-10-17: 「要因で分ける」 axis from JEV classification of 不適合内容 (change, not a measurement)
+
+Phase 2 adds a third breakdown axis, 「要因」, from the free-text `condition` field: 8,209 records, 5,839 non-empty, about 5,230 distinct texts, p50 40 characters, p90 95, maximum 395. JEV classifies normalized text off the query path, ten texts per call with one choice question per text. Results are cached by text SHA-256 with a prompt hash, never as searchable record fields. Prompt wording changes trigger reclassification. Empty or not-yet-classified records appear as 「未分類」; the axis is absent when none of the matching records has a classification. Cause chips stack with department/month filters; a natural-language follow-up drops the cause filter.
+
+Fixed taxonomy, in order: 確認・検査の漏れ、思い込み・勘違い、図面・設計の誤り、加工・組立・段取りのミス、測定・検査方法の誤り、手配・発注・出図の漏れ、材料・外注・支給品の不良、取扱い・保管・運搬での破損、手順・教育・情報伝達の不足、不明・記載なし。
+
+The pilot covered 120 sampled texts, ten per call, about 250 ms per call, with 100% answered and sensible assignments. This is a pilot result, not a new retrieval accuracy measurement. While `HERMES_RETRIEVAL_CAUSE_ENABLED=true`, the runner starts on each corpus refresh, at most 600 distinct texts per run by default; the first full pass takes about ten refreshes. Content failures stop retrying after three attempts per text; transport failures stop the run with backoff and do not consume attempts. The saved store remains usable with the runner disabled.
+
+Unchanged: planner prompt and catalog, lexical/dense text, plain answer text and `formatCoverageNotice`, the 20-record cap, and nightly evaluation. Runtime settings are listed in [the enrichment operations reference](hermes-dgx-retrieval-enrichment.md#cause-classification-runtime).

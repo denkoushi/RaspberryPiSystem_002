@@ -738,7 +738,7 @@ export type HermesSearchTrialScope = {
   snapshotId?: string;
 };
 
-export type HermesRecordRefine = { axis: 'organization' | 'month'; field: string; value: string };
+export type HermesRecordRefine = { axis: 'organization' | 'month' | 'cause'; field: string; value: string };
 
 export type HermesRecordAnswerDisplay = {
   records: Array<{
@@ -752,6 +752,7 @@ export type HermesRecordAnswerDisplay = {
     label: string;
     buckets: Array<{ value: string; label: string; count: number }>;
     otherCount: number;
+    otherLabel?: string;
   }>;
   coverage?: { total: number; shown: number };
   dataAsOf: string | null;

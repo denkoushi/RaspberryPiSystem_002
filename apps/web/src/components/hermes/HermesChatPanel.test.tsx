@@ -183,6 +183,30 @@ describe('HermesChatPanel evidence cards', () => {
     expect(screen.getAllByRole('button', { name: '組立 12' })).toHaveLength(2);
   });
 
+  it('renders cause tabs and sends category ids with labels from either chip location', () => {
+    const onRefine = vi.fn();
+    const display: HermesRecordAnswerDisplay = {
+      records: [{ sourceLabel: '不適合', fields: [{ role: 'identifier', label: '番号', value: 'N1' }] }],
+      groups: [
+        { axis: 'organization', field: 'originDepartmentName', label: '部署', buckets: [], otherCount: 0 },
+        { axis: 'month', field: 'discoveredOn', label: '月', buckets: [], otherCount: 0 },
+        { axis: 'cause', field: 'causeCategory', label: '要因', buckets: [{ value: 'check', label: '確認・検査の漏れ', count: 40 }], otherCount: 3, otherLabel: '未分類' },
+      ], coverage: { total: 43, shown: 1 }, notices: [], dataAsOf: null,
+    };
+    render(<HermesChatPanel messages={[{ id: 'cause', role: 'assistant', content: '', display }]}
+      draft="" isBusy={false} error={null} authRequired={null} onRefine={onRefine}
+      onDraftChange={vi.fn()} onSend={vi.fn()} onReset={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '月で分ける' }));
+    expect(screen.getByText('他にも 42 件あります。要因で絞ってください。')).toBeInTheDocument();
+    expect(screen.getByText('未分類 3 件').closest('.hermes-chat-panel__answer-more')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '確認・検査の漏れ 40' }));
+    expect(onRefine).toHaveBeenLastCalledWith({ axis: 'cause', field: 'causeCategory', value: 'check' }, '確認・検査の漏れ');
+    fireEvent.click(screen.getByRole('button', { name: '要因で分ける' }));
+    expect(screen.getByRole('button', { name: '要因で分ける' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '確認・検査の漏れ 40' }));
+    expect(onRefine).toHaveBeenCalledTimes(2);
+  });
+
   it.each([undefined, { records: [], notices: [], dataAsOf: null }])('falls back to text for missing or empty display', display => {
     render(<HermesChatPanel messages={[{ id: 'old-answer', role: 'assistant', content: '**見出し**\n従来の本文', display }]}
       draft="" isBusy={false} error={null} authRequired={null} onDraftChange={vi.fn()} onSend={vi.fn()} onReset={vi.fn()} onClose={vi.fn()} />);

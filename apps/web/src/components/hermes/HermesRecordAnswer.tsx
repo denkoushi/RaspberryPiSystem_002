@@ -7,7 +7,7 @@ import type { HermesRecordAnswerDisplay, HermesRecordRefine } from '../../api/do
 
 export function HermesRecordAnswer({ display, onRefine, disabled = false }: {
   display: HermesRecordAnswerDisplay;
-  onRefine?: (refine: HermesRecordRefine) => void;
+  onRefine?: (refine: HermesRecordRefine, label?: string) => void;
   disabled?: boolean;
 }) {
   const [selectedAxis, setSelectedAxis] = useState(0);
@@ -15,18 +15,22 @@ export function HermesRecordAnswer({ display, onRefine, disabled = false }: {
   const groups = display.groups ?? [];
   const compact = display.records.length > 5 || groups.length > 0;
   const selected = groups[selectedAxis] ?? groups[0];
-  const alternate = groups.find(group => group !== selected) ?? selected;
+  const alternate = groups[(groups.indexOf(selected) + 1) % groups.length] ?? selected;
   const remaining = display.coverage ? display.coverage.total - display.coverage.shown : 0;
   const chips = (group: typeof selected) => group ? (
     <div className="hermes-chat-panel__answer-chips">
       {group.buckets.map(bucket => (
         <button type="button" className="hermes-chat-panel__answer-chip" key={bucket.value}
           aria-pressed={false} disabled={disabled || !onRefine}
-          onClick={() => onRefine?.({ axis: group.axis, field: group.field, value: bucket.value })}>
+          onClick={() => {
+            const refine = { axis: group.axis, field: group.field, value: bucket.value };
+            if (group.axis === 'cause') onRefine?.(refine, bucket.label);
+            else onRefine?.(refine);
+          }}>
           {bucket.label} {bucket.count}
         </button>
       ))}
-      {group.otherCount > 0 ? <span className="hermes-chat-panel__answer-other">その他 {group.otherCount} 件</span> : null}
+      {group.otherCount > 0 ? <span className="hermes-chat-panel__answer-other">{group.otherLabel ?? 'その他'} {group.otherCount} 件</span> : null}
     </div>
   ) : null;
   return (

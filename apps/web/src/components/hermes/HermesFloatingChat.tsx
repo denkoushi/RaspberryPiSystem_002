@@ -1036,7 +1036,7 @@ export function HermesFloatingChat() {
     onFeedback: (id, verdict) => void recordFeedback(id, verdict),
     onDraftChange: handleDraftChange,
     onSend: sendMessage,
-    onRefine: knowledgeMode === 'record-pilot' ? refine => void sendMessage(`${refine.value}で絞り込む`, { refine }) : undefined,
+    onRefine: knowledgeMode === 'record-pilot' ? (refine, label) => void sendMessage(`${refine.axis === 'cause' ? label ?? refine.value : refine.value}で絞り込む`, { refine }) : undefined,
     onReset: () => { operationGuide.clear(); knowledge.reset(); resetActiveConversation(); },
     onClose: closePanel,
     onStop: knowledgeMode === 'knowledge' && knowledge.busy ? undefined : stopRequest,

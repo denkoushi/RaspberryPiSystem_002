@@ -779,6 +779,17 @@ def enrichment_environment() -> dict[str, str]:
     return environment
 
 
+def cause_environment() -> dict[str, str]:
+    environment: dict[str, str] = {}
+    enabled = optional_bool_setting("HERMES_RETRIEVAL_CAUSE_ENABLED")
+    max_texts = optional_cap_setting("HERMES_RETRIEVAL_CAUSE_MAX_TEXTS")
+    if enabled:
+        environment["HERMES_RETRIEVAL_CAUSE_ENABLED"] = enabled
+    if max_texts:
+        environment["HERMES_RETRIEVAL_CAUSE_MAX_TEXTS"] = max_texts
+    return environment
+
+
 def flywheel_environment() -> dict[str, str]:
     # Nightly synthetic question flywheel (docs/plans/hermes-synthetic-question-flywheel-execplan.md).
     # Omitted values keep the current line on the Pi 5; the runner defaults to off.
@@ -823,6 +834,7 @@ def hermes_trial_configuration(
     if retrieval_v2_enabled:
         environment["HERMES_RETRIEVAL_V2_ENABLED"] = retrieval_v2_enabled
     environment.update(enrichment)
+    environment.update(cause_environment())
     environment.update(flywheel_environment())
     environment.update(dense_environment())
     environment.update(retrieval_sources_environment())
@@ -878,6 +890,7 @@ def hermes_trial_maintenance_configuration(
             raise UsageError("HERMES_RETRIEVAL_V2_ENABLED must be true or false")
         environment["HERMES_RETRIEVAL_V2_ENABLED"] = retrieval_v2_enabled
     environment.update(enrichment_environment())
+    environment.update(cause_environment())
     environment.update(flywheel_environment())
     environment.update(dense_environment())
     environment.update(retrieval_sources_environment())
@@ -893,6 +906,8 @@ HERMES_FLAG_SETTINGS = (
     "HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY",
     "HERMES_RETRIEVAL_ENRICHMENT_WINDOW",
     "HERMES_RETRIEVAL_ENRICHMENT_IDS",
+    "HERMES_RETRIEVAL_CAUSE_ENABLED",
+    "HERMES_RETRIEVAL_CAUSE_MAX_TEXTS",
     "HERMES_FLYWHEEL_ENABLED",
     "HERMES_FLYWHEEL_MAX_QUESTIONS",
     "HERMES_RETRIEVAL_DENSE_PROVIDER",
@@ -1010,6 +1025,8 @@ def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str,
                        "HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY",
                        "HERMES_RETRIEVAL_ENRICHMENT_WINDOW",
                        "HERMES_RETRIEVAL_ENRICHMENT_IDS",
+                       "HERMES_RETRIEVAL_CAUSE_ENABLED",
+                       "HERMES_RETRIEVAL_CAUSE_MAX_TEXTS",
                        "HERMES_FLYWHEEL_ENABLED",
                        "HERMES_FLYWHEEL_MAX_QUESTIONS",
                        "HERMES_RETRIEVAL_DENSE_PROVIDER",

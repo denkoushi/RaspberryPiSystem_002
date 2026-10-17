@@ -86,3 +86,16 @@ test('validator accepts an indexed filter and rejects unknown source, field, op,
     filters: [{ source: 'nonconformity', field: 'condition', op: 'eq', values: ['paint drip'] }],
   }), catalog, valueIndex).ok, false);
 });
+
+test('cause category is optional, validated and carried outside catalog filters', () => {
+  const result = validateQueryPlan(plan({ causeCategory: 'check' }), catalog, valueIndex);
+  assert.equal(result.ok, true);
+  assert.equal(result.plan.causeCategory, 'check');
+  assert.deepEqual(result.plan.filters, []);
+  assert.equal(Object.hasOwn(validateQueryPlan(plan(), catalog, valueIndex).plan, 'causeCategory'), false);
+  for (const causeCategory of ['invalid', null, 1]) {
+    const invalid = validateQueryPlan(plan({ causeCategory }), catalog, valueIndex);
+    assert.equal(invalid.ok, false);
+    assert.equal(invalid.clarification.message, 'unknown cause category');
+  }
+});

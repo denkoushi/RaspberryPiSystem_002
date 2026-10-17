@@ -670,3 +670,30 @@ test('the relevance judge reads the planner content span instead of the whole qu
   await execute(plan({ semanticQuery: 'surface scratch', limit: 3 }), { records, catalog, relevance });
   assert.deepEqual(seen, ['surface scratch', 'surface scratch']);
 });
+
+test('cause grouping uses executor ids, taxonomy tie order and unclassified counts after catalog filters', async () => {
+  const rows = Array.from({ length: 43 }, (_, index) => ({ id: `cause-${index}`, partNumber: 'included', discoveredOn: '2026-01-01' }));
+  const causeById = new Map(rows.slice(0, 30).map((row, index) => [row.id, index < 10 ? 'drawing' : index < 20 ? 'assume' : 'check']));
+  rows.push({ id: 'excluded', partNumber: 'excluded' });
+  causeById.set('excluded', 'check');
+  const list = plan({ filters: [{ source: 'nonconformity', field: 'partNumber', op: 'eq', values: ['included'] }], limit: 20 });
+  const result = await execute(list, { records: rows, catalog, causeById });
+  assert.deepEqual(result.groups.find(group => group.axis === 'cause'), {
+    axis: 'cause', field: 'causeCategory', label: '要因', otherCount: 13, otherLabel: '未分類', buckets: [
+      { value: 'check', label: '確認・検査の漏れ', count: 10 },
+      { value: 'assume', label: '思い込み・勘違い', count: 10 },
+      { value: 'drawing', label: '図面・設計の誤り', count: 10 },
+    ],
+  });
+  const refined = await execute({ ...list, limit: 5, causeCategory: 'check' }, { records: rows, catalog, causeById });
+  assert.equal(refined.timings.filteredCount, 10);
+  assert.equal(refined.coverage.total, 10);
+  assert.equal(refined.results.length, 5);
+  assert.ok(refined.results.every(row => causeById.get(row.recordId) === 'check'));
+  for (const map of [undefined, new Map(), new Map([['excluded', 'check']])]) {
+    const result = await execute(list, { records: rows, catalog, causeById: map });
+    assert.equal(result.groups.some(group => group.axis === 'cause'), false);
+  }
+  const missing = await execute({ ...list, causeCategory: 'check' }, { records: rows, catalog });
+  assert.equal(missing.timings.filteredCount, 0);
+});

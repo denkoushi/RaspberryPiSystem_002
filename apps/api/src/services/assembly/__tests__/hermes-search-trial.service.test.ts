@@ -205,6 +205,8 @@ describe('HermesSearchTrialService retrieval switch', () => {
       groups: [
         { axis: 'organization', field: 'originDepartmentName', label: '部署', otherCount: 27,
           buckets: Array.from({ length: 8 }, (_, index) => ({ value: `部署${index}`, label: `部署${index}`, count: 1 })) },
+        { axis: 'cause', field: 'causeCategory', label: '要因', otherCount: 3, otherLabel: '未分類',
+          buckets: [{ value: 'check', label: '確認・検査の漏れ', count: 32 }] },
         { axis: 'month', field: 'discoveredOn', label: '月', otherCount: 23,
           buckets: Array.from({ length: 12 }, (_, index) => ({ value: `2026-${String(index + 1).padStart(2, '0')}`, label: `2026年${index + 1}月`, count: 1 })) },
       ],
@@ -247,6 +249,22 @@ describe('HermesSearchTrialService retrieval switch', () => {
     try {
       await service.answer('組立で絞り込む', 'refine-session', undefined, { refine });
       expect(written.find(request => request.type === 'request')).toMatchObject({ question: '組立で絞り込む', refine });
+    } finally { service.close(); }
+  });
+
+  it('sends cause refine in the retrieval worker stdin JSON', async () => {
+    const written: Array<Record<string, unknown>> = [];
+    spawnMock.mockImplementation(() => {
+      const child = fakeChild(workerResult);
+      const write = child.stdin.write;
+      child.stdin.write = line => { written.push(JSON.parse(line)); return write(line); };
+      return child;
+    });
+    const service = new HermesSearchTrialService(v2Settings());
+    const refine = { axis: 'cause' as const, field: 'causeCategory', value: 'check' };
+    try {
+      await service.answer('確認・検査の漏れで絞り込む', 'refine-session', undefined, { refine });
+      expect(written.find(request => request.type === 'request')).toMatchObject({ question: '確認・検査の漏れで絞り込む', refine });
     } finally { service.close(); }
   });
 
@@ -725,6 +743,73 @@ describe('HermesSearchTrialService retrieval switch', () => {
       else process.env.HERMES_FLYWHEEL_ENABLED = previous.flywheel;
       if (previous.enrichment === undefined) delete process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED;
       else process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED = previous.enrichment;
+    }
+  });
+
+  it('starts the cause runner with the corpus only while the cause is on', async () => {
+    const previous = { cause: process.env.HERMES_RETRIEVAL_CAUSE_ENABLED, enrichment: process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED };
+    try {
+      const gate = holdingChild();
+      const written: string[] = [];
+      const runnerStdin = new EventEmitter() as EventEmitter & { write: (line: string) => boolean; end: () => void };
+      runnerStdin.write = (line: string) => { written.push(String(line)); return true; };
+      runnerStdin.end = vi.fn();
+      const runner = new EventEmitter() as EventEmitter & { stdin: typeof runnerStdin; pid: number; kill: ReturnType<typeof vi.fn> };
+      runner.stdin = runnerStdin;
+      runner.pid = 43;
+      runner.kill = vi.fn();
+      spawnMock.mockImplementation((_node: string, args: string[]) => (String(args[0]).endsWith('cause-runner.mjs') ? runner : gate.child));
+      delete process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED;
+      process.env.HERMES_RETRIEVAL_CAUSE_ENABLED = 'true';
+      // The runner is started only with a non-empty corpus.
+      const service = new HermesSearchTrialService(v2Settings({ loadRecords: async () => [{ id: 'rec-1', condition: 'scratch' }] }));
+      service.warmForEnrichment();
+      await vi.waitFor(() => expect(gate.corpus).toHaveLength(1));
+      await vi.waitFor(() => expect(written).toHaveLength(1));
+      const runnerCall = spawnMock.mock.calls.find((call) => String(call[1]?.[0]).endsWith('cause-runner.mjs'));
+      expect(runnerCall?.[1]?.[0]).toBe('/app/scripts/hermes-search/retrieval/cause-runner.mjs');
+      expect(Array.isArray(JSON.parse(written[0] ?? '{}').records)).toBe(true);
+      expect(runnerStdin.end).toHaveBeenCalled();
+      service.close();
+      expect(runner.kill).toHaveBeenCalledWith('SIGTERM');
+    } finally {
+      if (previous.cause === undefined) delete process.env.HERMES_RETRIEVAL_CAUSE_ENABLED;
+      else process.env.HERMES_RETRIEVAL_CAUSE_ENABLED = previous.cause;
+      if (previous.enrichment === undefined) delete process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED;
+      else process.env.HERMES_RETRIEVAL_ENRICHMENT_ENABLED = previous.enrichment;
+    }
+  });
+
+  it('cause kick respects the gate, empty corpus and active child guard', () => {
+    const previous = process.env.HERMES_RETRIEVAL_CAUSE_ENABLED;
+    const previousEntry = process.env.HERMES_RETRIEVAL_CAUSE_ENTRY;
+    const runner = Object.assign(new EventEmitter(), { stdin: Object.assign(new EventEmitter(), { write: vi.fn(), end: vi.fn() }), pid: 43, kill: vi.fn() });
+    spawnMock.mockReturnValue(runner);
+    const service = new HermesSearchTrialService(v2Settings());
+    const kick = (service as unknown as { kickCauseClassify: (rows: Array<Record<string, unknown>>) => void }).kickCauseClassify.bind(service);
+    try {
+      delete process.env.HERMES_RETRIEVAL_CAUSE_ENABLED;
+      kick([{ id: 'fixture' }]);
+      process.env.HERMES_RETRIEVAL_CAUSE_ENABLED = 'false';
+      kick([{ id: 'fixture' }]);
+      expect(spawnMock).not.toHaveBeenCalled();
+      process.env.HERMES_RETRIEVAL_CAUSE_ENABLED = 'true';
+      process.env.HERMES_RETRIEVAL_CAUSE_ENTRY = '/app/custom-cause.mjs';
+      kick([]);
+      expect(spawnMock).not.toHaveBeenCalled();
+      kick([{ id: 'fixture' }]);
+      kick([{ id: 'fixture' }]);
+      expect(spawnMock).toHaveBeenCalledTimes(1);
+      expect(spawnMock.mock.calls[0]?.[1]).toEqual(['/app/custom-cause.mjs']);
+      runner.emit('exit');
+      kick([{ id: 'fixture' }]);
+      expect(spawnMock).toHaveBeenCalledTimes(2);
+    } finally {
+      service.close();
+      if (previous === undefined) delete process.env.HERMES_RETRIEVAL_CAUSE_ENABLED;
+      else process.env.HERMES_RETRIEVAL_CAUSE_ENABLED = previous;
+      if (previousEntry === undefined) delete process.env.HERMES_RETRIEVAL_CAUSE_ENTRY;
+      else process.env.HERMES_RETRIEVAL_CAUSE_ENTRY = previousEntry;
     }
   });
 

@@ -72,7 +72,7 @@ export type HermesChatPanelProps = {
   feedbackBusy?: boolean;
   onDraftChange: (value: string) => void;
   onSend: () => void;
-  onRefine?: (refine: HermesRecordRefine) => void;
+  onRefine?: (refine: HermesRecordRefine, label?: string) => void;
   onReset: () => void;
   onClose: () => void;
   onStop?: () => void;
