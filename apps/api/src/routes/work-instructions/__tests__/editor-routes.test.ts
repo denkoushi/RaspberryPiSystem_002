@@ -2,8 +2,9 @@ import Fastify from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../../../lib/errors.js';
+import { registerErrorHandler } from '../../../plugins/error-handler.js';
 import { registerRateLimit } from '../../../plugins/rate-limit.js';
-import { computeWorkInstructionMemoFingerprint } from '../../../services/work-instructions/domain/editing.js';
+import { computeWorkInstructionMemoFingerprint, WorkInstructionEditingError } from '../../../services/work-instructions/domain/editing.js';
 import type { WorkInstructionEditService } from '../../../services/work-instructions/work-instruction-edit.service.js';
 import type { WorkInstructionReadService } from '../../../services/work-instructions/work-instruction-read.service.js';
 import { registerWorkInstructionEditorRoutes } from '../editor-routes.js';
@@ -76,10 +77,7 @@ const editingView = {
 
 function makeApp(overrides: { allowWrite?: () => Promise<void>; withRateLimit?: boolean } = {}) {
   const app = Fastify();
-  app.setErrorHandler((error, _request, reply) => {
-    const apiError = error as ApiError;
-    reply.code(apiError.statusCode ?? 500).send({ code: apiError.code ?? 'UNEXPECTED' });
-  });
+  registerErrorHandler(app);
   if (overrides.withRateLimit) {
     app.register(registerRateLimit);
   }
@@ -186,6 +184,28 @@ function makeApp(overrides: { allowWrite?: () => Promise<void>; withRateLimit?: 
 }
 
 describe('work-instruction editor route contract', () => {
+  it('preserves the complete editing conflict response including details', async () => {
+    const fixture = makeApp();
+    vi.mocked(fixture.editing.createEditorAuthentication).mockRejectedValueOnce(
+      new WorkInstructionEditingError(409, '編集が競合しています', 'WORK_INSTRUCTION_EDIT_CONFLICT', { expectedEditVersion: 1 })
+    );
+    const response = await fixture.app.inject({
+      method: 'POST',
+      url: '/work-instructions/editor-authentications',
+      headers: { 'x-client-key': 'test-client-key' },
+      payload: { partNumber: 'MD004', shootingTarget: '研削', employeeTagUid: 'employee-tag-1' }
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({
+      message: '編集が競合しています',
+      errorCode: 'WORK_INSTRUCTION_EDIT_CONFLICT',
+      details: { expectedEditVersion: 1 },
+      requestId: expect.any(String),
+      timestamp: expect.any(String)
+    });
+    await fixture.app.close();
+  });
+
   it('issues an editor authentication from an employee NFC UID and binds it to the client device', async () => {
     const fixture = makeApp();
     await fixture.app.ready();
@@ -257,7 +277,7 @@ describe('work-instruction editor route contract', () => {
       payload: {}
     });
     expect(missingAuthentication.statusCode).toBe(401);
-    expect(missingAuthentication.json()).toMatchObject({ code: 'WORK_INSTRUCTION_EDITOR_AUTHENTICATION_REQUIRED' });
+    expect(missingAuthentication.json()).toMatchObject({ errorCode: 'WORK_INSTRUCTION_EDITOR_AUTHENTICATION_REQUIRED' });
     expect(fixture.editing.discardRevision).not.toHaveBeenCalled();
     await fixture.app.close();
   });

@@ -93,7 +93,7 @@ describe('inventory phase 2 API contracts', () => {
       itemTagUid: 'item-uid', quantityTagUid: 'quantity-uid', expectedCompartmentId: id,
     });
     expect(response.statusCode).toBe(409);
-    expect(response.json()).toMatchObject({ errorCode: 'INVENTORY_CONFLICT', message: 'タグの登録が変わりました' });
+    expect(response.json()).toEqual({ errorCode: 'INVENTORY_CONFLICT', message: 'タグの登録が変わりました', requestId: expect.any(String), timestamp: expect.any(String) });
     expect(tx.$queryRaw).toHaveBeenCalledOnce();
     expect(compartment.stockQuantity).toBe(10);
     expect(tx.inventoryCompartment.update).not.toHaveBeenCalled();
@@ -151,13 +151,13 @@ describe('inventory phase 2 API contracts', () => {
   });
 
   it.each([
-    { error: new InventoryConflictError(), code: 'INVENTORY_CONFLICT' },
-    { error: new InventoryInsufficientStockError(), code: 'INVENTORY_INSUFFICIENT_STOCK' },
-  ])('maps touch failure to 409 $code', async ({ error, code }) => {
+    { error: new InventoryConflictError(), code: 'INVENTORY_CONFLICT', message: '在庫が更新されています。画面を再読み込みしてください' },
+    { error: new InventoryInsufficientStockError(), code: 'INVENTORY_INSUFFICIENT_STOCK', message: '在庫が不足しています' },
+  ])('maps touch failure to 409 $code', async ({ error, code, message }) => {
     inventory.processTouchTransaction.mockRejectedValue(error);
     const response = await request('POST', '/item-inventory/touch-transactions', clientHeaders, { compartmentId: id, quantity: 1 });
     expect(response.statusCode).toBe(409);
-    expect(response.json().errorCode).toBe(code);
+    expect(response.json()).toEqual({ errorCode: code, message, requestId: expect.any(String), timestamp: expect.any(String) });
   });
 
   it.each(setupRoutes)('requires the existing setup PIN for $method $url', async ({ method, url, handler }) => {
