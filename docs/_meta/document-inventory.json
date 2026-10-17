@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 768,
-    "totalLines": 188987,
-    "totalBytes": 15046103,
+    "totalLines": 188989,
+    "totalBytes": 15047478,
     "withFrontmatter": 367,
     "withStatus": 170,
     "sourceOfTruthDeclared": 116,
@@ -34628,8 +34628,8 @@
     },
     {
       "path": "docs/plans/code-health-refactor-execplan.md",
-      "lineCount": 117,
-      "byteSize": 15955,
+      "lineCount": 119,
+      "byteSize": 17330,
       "hasFrontmatter": false,
       "title": "コード保守性の改善プログラム",
       "status": null,
