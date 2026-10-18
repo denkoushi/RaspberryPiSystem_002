@@ -68,7 +68,7 @@ vi.mock('./HermesChatPanel', () => ({
   default: (props: {
     inquiryMode?: { active: boolean; unreadCount: number; onSelect: () => void };
     mode?: 'legacy' | 'consultations';
-    messages: Array<{ id: string; content: string; display?: { records: Array<{ sourceLabel: string }> }; evidence?: ReadonlyArray<{ id: string; title: string }> }>;
+    messages: Array<{ id: string; content: string; planId?: string; display?: { records: Array<{ sourceLabel: string }> }; evidence?: ReadonlyArray<{ id: string; title: string }> }>;
     draft: string;
     isBusy: boolean;
     isConsultationsLoading?: boolean;
@@ -87,7 +87,7 @@ vi.mock('./HermesChatPanel', () => ({
     composerVisible?: boolean;
     onDraftChange: (value: string) => void;
     onSend: () => void;
-    onRefine?: (refine: { axis: 'organization' | 'month' | 'cause'; field: string; value: string }, label?: string) => void;
+    onRefine?: (refine: { axis: 'organization' | 'month' | 'cause'; field: string; value: string }, label?: string, planId?: string) => void;
     onReset: () => void;
     onClose: () => void;
     onStop?: () => void;
@@ -150,6 +150,10 @@ vi.mock('./HermesChatPanel', () => ({
         <div key={message.id}>
           <p>{message.content}</p>
           {message.display ? <output data-testid="record-display">{JSON.stringify(message.display)}</output> : null}
+          {message.display && props.onRefine ? <button type="button" disabled={props.isBusy}
+            onClick={() => props.onRefine?.({ axis: 'cause', field: 'causeCategory', value: 'drawing' }, '図面・設計の誤り', message.planId)}>
+            この回答を絞る: {message.content}
+          </button> : null}
           {message.evidence?.map((evidence) => <p key={evidence.id}>{evidence.title}</p>)}
         </div>
       ))}
@@ -631,6 +635,33 @@ describe('HermesFloatingChat', () => {
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
     expect(JSON.parse((await screen.findByTestId('record-display')).textContent!)).toEqual(display);
     expect(screen.getByText('元の回答')).toBeInTheDocument();
+  });
+
+  it('sends an earlier message planId after a newer answer and hides the record-pilot notice', async () => {
+    const display = { records: [{ sourceLabel: '不適合', fields: [] }], notices: [], dataAsOf: null };
+    mocks.getTrialScope.mockResolvedValue({ enabled: true });
+    mocks.sendTrialAnswer
+      .mockResolvedValueOnce({ status: 'completed', answer: '最初の回答', planId: 'first-plan', display, recordIds: [], elapsedMs: 1 })
+      .mockResolvedValueOnce({ status: 'completed', answer: '次の回答', planId: 'second-plan', display, recordIds: [], elapsedMs: 1 })
+      .mockResolvedValueOnce({ status: 'completed', answer: '図面の回答', planId: 'third-plan', recordIds: [], elapsedMs: 1 });
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'JEV記録' }));
+    expect(screen.queryByText(/JEV記録検索：/)).not.toBeInTheDocument();
+    for (const [question, answer] of [['一覧', '最初の回答'], ['7月', '次の回答']]) {
+      fireEvent.change(screen.getByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: question } });
+      fireEvent.click(screen.getByRole('button', { name: '送信' }));
+      await screen.findByText(answer);
+      await waitFor(() => expect(screen.getByRole('button', { name: '送信' })).not.toBeDisabled());
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'この回答を絞る: 最初の回答' }));
+    await screen.findByText('図面の回答');
+    expect(mocks.sendTrialAnswer).toHaveBeenCalledTimes(3);
+    expect(mocks.sendTrialAnswer.mock.calls[2][0]).toMatchObject({
+      question: '図面・設計の誤りで絞り込む', sessionId: mocks.sendTrialAnswer.mock.calls[0][0].sessionId,
+      refine: { axis: 'cause', field: 'causeCategory', value: 'drawing', planId: 'first-plan' },
+    });
+    expect(screen.queryByText(/JEV記録検索：/)).not.toBeInTheDocument();
   });
 
   it('sends refine with a display question and the same record-pilot session', async () => {

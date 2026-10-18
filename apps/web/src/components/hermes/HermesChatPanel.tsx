@@ -26,6 +26,7 @@ export type HermesPanelMessage = {
   role: 'user' | 'assistant';
   content: string;
   display?: HermesRecordAnswerDisplay;
+  planId?: string;
   guide?: BusinessHermesOperationGuideDisplay;
   evidence?: readonly BusinessHermesChatEvidence[];
   evidenceVisible?: boolean;
@@ -72,7 +73,7 @@ export type HermesChatPanelProps = {
   feedbackBusy?: boolean;
   onDraftChange: (value: string) => void;
   onSend: () => void;
-  onRefine?: (refine: HermesRecordRefine, label?: string) => void;
+  onRefine?: (refine: HermesRecordRefine, label?: string, planId?: string) => void;
   onReset: () => void;
   onClose: () => void;
   onStop?: () => void;
@@ -656,7 +657,7 @@ export default function HermesChatPanel({
                           <p className="hermes-chat-panel__message-selection" role="status">「{message.selection.option}」が選択されました。</p>
                         ) : (
                           <div className="hermes-chat-panel__message">{message.role === 'assistant'
-                            ? message.guide ? <HermesOperationGuideAnswer guide={message.guide} /> : message.display?.records.length ? <HermesRecordAnswer display={message.display} onRefine={onRefine} disabled={isBusy} /> : renderMessageContent(message.content)
+                            ? message.guide ? <HermesOperationGuideAnswer guide={message.guide} /> : message.display?.records.length ? <HermesRecordAnswer display={message.display} onRefine={onRefine && message.planId !== undefined ? (refine, label) => onRefine(refine, label, message.planId) : onRefine} disabled={isBusy} /> : renderMessageContent(message.content)
                             : message.content}</div>
                         )}
                         {message.recordIds?.length && message.evidence?.length ? message.recordIds.flatMap((recordId) => {

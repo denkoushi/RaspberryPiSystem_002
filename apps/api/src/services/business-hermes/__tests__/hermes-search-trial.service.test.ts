@@ -236,19 +236,23 @@ describe('HermesSearchTrialService retrieval switch', () => {
     } finally { service.close(); }
   });
 
-  it('sends structured refine in the retrieval worker stdin JSON', async () => {
+  it('forwards refine planId, returns answer planId and round-trips the plan ring', async () => {
+    const plans = [{ id: 'answer-plan', plan: { sources: ['nonconformity'], filters: [] } }];
     const written: Array<Record<string, unknown>> = [];
     spawnMock.mockImplementation(() => {
-      const child = fakeChild(workerResult);
+      const child = fakeChild({ ...workerResult, planId: 'answer-plan', session: { plans } });
       const write = child.stdin.write;
       child.stdin.write = line => { written.push(JSON.parse(line)); return write(line); };
       return child;
     });
     const service = new HermesSearchTrialService(v2Settings());
-    const refine = { axis: 'organization' as const, field: 'originDepartmentName', value: '組立' };
+    const refine = { axis: 'organization' as const, field: 'originDepartmentName', value: '組立', planId: 'older-plan' };
     try {
-      await service.answer('組立で絞り込む', 'refine-session', undefined, { refine });
+      const answer = await service.answer('組立で絞り込む', 'refine-session', undefined, { refine });
+      expect(answer.planId).toBe('answer-plan');
       expect(written.find(request => request.type === 'request')).toMatchObject({ question: '組立で絞り込む', refine });
+      await service.answer('次の質問', 'refine-session');
+      expect(written.filter(request => request.type === 'request')[1]).toMatchObject({ session: { plans } });
     } finally { service.close(); }
   });
 
