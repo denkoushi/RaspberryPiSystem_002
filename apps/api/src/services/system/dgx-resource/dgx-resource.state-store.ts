@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 export type DgxResourceEvent = { id: string; at: string; message: string };
 export type BusinessReturn = {
   state: 'idle' | 'in_progress' | 'succeeded' | 'failed';
+  phase: 'starting' | 'checking' | null;
   profileId: string | null;
   startedAt: string | null;
   finishedAt: string | null;
@@ -13,7 +14,7 @@ export type BusinessReturn = {
 export class DgxResourceStateStore {
   private busy = false;
   private businessReturn: BusinessReturn = {
-    state: 'idle', profileId: null, startedAt: null, finishedAt: null, failureReasonJa: null,
+    state: 'idle', phase: null, profileId: null, startedAt: null, finishedAt: null, failureReasonJa: null,
   };
   private readonly events: DgxResourceEvent[] = [];
 
@@ -31,14 +32,18 @@ export class DgxResourceStateStore {
 
   startReturn(profileId: string): BusinessReturn {
     this.businessReturn = {
-      state: 'in_progress', profileId, startedAt: new Date().toISOString(), finishedAt: null, failureReasonJa: null,
+      state: 'in_progress', phase: 'starting', profileId, startedAt: new Date().toISOString(), finishedAt: null, failureReasonJa: null,
     };
     return this.getBusinessReturn();
   }
 
+  setReturnPhase(phase: 'starting' | 'checking'): void {
+    if (this.businessReturn.state === 'in_progress') this.businessReturn.phase = phase;
+  }
+
   finishReturn(failureReasonJa: string | null): void {
     this.businessReturn = {
-      ...this.businessReturn, state: failureReasonJa ? 'failed' : 'succeeded',
+      ...this.businessReturn, phase: null, state: failureReasonJa ? 'failed' : 'succeeded',
       finishedAt: new Date().toISOString(), failureReasonJa,
     };
   }

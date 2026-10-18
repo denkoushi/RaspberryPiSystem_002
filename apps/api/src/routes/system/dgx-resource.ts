@@ -46,7 +46,7 @@ export function registerDgxResourceRoutes(app: FastifyInstance): void {
 
   app.get('/system/dgx-resource/events', { preHandler: canManage }, async (request, reply) => {
     const qSchema = z.object({
-      limit: z.coerce.number().int().min(1).max(100).default(30),
+      limit: z.coerce.number().int().min(1).max(100).default(20),
     });
     const { limit } = qSchema.parse(request.query);
     const events = resolveDgxResourceService(app).getEvents(limit);

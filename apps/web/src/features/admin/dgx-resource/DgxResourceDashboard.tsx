@@ -7,13 +7,16 @@ import {
 } from '../../../api/dgx-resource';
 import { POLL_MS } from '../../../lib/admin-polling-intervals';
 
-import { DgxResourceStatusPanel, formatDgxTime } from './DgxResourceStatusPanel';
+import { DgxResourceStatusPanel, formatDgxTime, formatGiB, memoryPercent } from './DgxResourceStatusPanel';
+import './dgx-resource.css';
 
-import type { DgxModelStorageDeletePreview } from '../../../api/dgx-resource.types';
+import type { DgxModelStorageDeletePreview, DgxResourceOverview } from '../../../api/dgx-resource.types';
 
-const cardClass = 'rounded-xl border border-slate-700 bg-slate-900 p-5';
-const buttonClass = 'rounded-md border border-slate-600 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400 disabled:cursor-not-allowed disabled:opacity-50';
-const fieldClass = 'w-full rounded-md border border-slate-600 bg-slate-950 px-3 py-2 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400 disabled:opacity-50';
+type Profile = DgxResourceOverview['modelProfiles'][number];
+
+function Guard() {
+  return <span className="dgx-guard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.6-3 8.3-7 10-4-1.7-7-5.4-7-10V6l7-3z M9 12l2 2 4-4" fill="none" stroke="currentColor" strokeWidth="2" /></svg>検閲あり</span>;
+}
 
 export function DgxResourceDashboard() {
   const qc = useQueryClient();
@@ -22,15 +25,16 @@ export function DgxResourceDashboard() {
     refetchInterval: POLL_MS.dgxResourceDashboardPrimary,
   });
   const eventsQuery = useQuery({
-    queryKey: dgxResourceQueryKeys.events(8), queryFn: () => fetchDgxResourceEvents(8),
+    queryKey: dgxResourceQueryKeys.events(20), queryFn: () => fetchDgxResourceEvents(20),
     refetchInterval: POLL_MS.dgxResourceDashboardPrimary,
   });
-  const [selection, setSelection] = useState<string | null>(null);
-  const [confirmAction, setConfirmAction] = useState<'return' | 'stop' | null>(null);
-  const [operationError, setOperationError] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const [stopConfirm, setStopConfirm] = useState(false);
+  const [menu, setMenu] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deletePreview, setDeletePreview] = useState<DgxModelStorageDeletePreview | null>(null);
   const [confirmation, setConfirmation] = useState('');
+  const [error, setError] = useState<{ target: string; message: string } | null>(null);
   const mutation = useMutation({
     mutationFn: postDgxResourceAction,
     onSuccess: (result) => {
@@ -44,132 +48,109 @@ export function DgxResourceDashboard() {
     },
   });
   const overview = overviewQuery.data;
-  const profiles = overview?.modelProfiles ?? [];
-  const selectedId = selection ?? overview?.business.intendedProfile?.id
-    ?? profiles.find((profile) => profile.isRecommended && profile.startable)?.id
-    ?? profiles.find((profile) => profile.startable)?.id ?? '';
-  const selected = profiles.find((profile) => profile.id === selectedId);
-  const deleteProfileName = profiles.find((profile) => profile.id === deletePreview?.modelProfileId)?.displayName ?? '選んだモデル';
   const returning = overview?.businessReturn.state === 'in_progress';
-  const busy = mutation.isPending || returning;
-  const controlsDisabled = busy || overviewQuery.isError;
-
-  const runBusinessAction = async () => {
-    if (!confirmAction || controlsDisabled) return;
-    setOperationError(null);
+  const running = overview?.business.llm.state === 'ok';
+  const controlsDisabled = mutation.isPending || returning || overviewQuery.isError;
+  const profiles = overview?.modelProfiles ?? [];
+  const active = (profile: Profile) => running && profile.isActive && !returning;
+  // Memory-limited models retain their meter, so the required space remains visible.
+  const usable = profiles.filter((profile) => active(profile) || profile.startable || profile.unavailableKind === 'insufficient_memory');
+  const unavailable = profiles.filter((profile) => !usable.includes(profile));
+  const cancel = () => { setOpen(null); setDeleteId(null); setMenu(null); setError(null); setDeletePreview(null); setConfirmation(''); };
+  const run = async (profile?: Profile) => {
+    if (controlsDisabled) return;
+    setError(null);
     try {
-      await mutation.mutateAsync(confirmAction === 'return'
-        ? { type: 'RETURN_TO_BUSINESS', modelProfileId: selectedId } : { type: 'STOP_BUSINESS_LLM' });
-      setConfirmAction(null);
-    } catch (error) { setOperationError(getDgxResourceApiErrorMessage(error)); }
+      await mutation.mutateAsync(profile ? { type: 'RETURN_TO_BUSINESS', modelProfileId: profile.id } : { type: 'STOP_BUSINESS_LLM' });
+      setOpen(null); setStopConfirm(false);
+    } catch (cause) { setError({ target: profile?.id ?? 'stop', message: getDgxResourceApiErrorMessage(cause) }); }
   };
-  const previewDelete = async (modelProfileId: string) => {
-    setDeleteError(null);
-    setDeletePreview(null);
-    setConfirmation('');
+  const previewDelete = async (profile: Profile) => {
+    if (controlsDisabled) return;
+    cancel(); setDeleteId(profile.id); setStopConfirm(false);
     try {
-      const result = await mutation.mutateAsync({ type: 'PREVIEW_MODEL_STORAGE_DELETE', modelProfileId });
+      const result = await mutation.mutateAsync({ type: 'PREVIEW_MODEL_STORAGE_DELETE', modelProfileId: profile.id });
       if (!result.modelStorageDeletePreview) throw new Error('Missing preview');
       setDeletePreview(result.modelStorageDeletePreview);
-    } catch (error) { setDeleteError(getDgxResourceApiErrorMessage(error)); }
+    } catch (cause) { setError({ target: profile.id, message: getDgxResourceApiErrorMessage(cause) }); }
   };
-  const executeDelete = async () => {
-    if (!deletePreview?.canDelete || !deletePreview.planFingerprint || confirmation !== deleteProfileName || controlsDisabled) return;
-    setDeleteError(null);
+  const executeDelete = async (profile: Profile) => {
+    if (controlsDisabled || !deletePreview?.canDelete || !deletePreview.planFingerprint || deletePreview.modelProfileId !== profile.id || confirmation !== profile.displayName) return;
+    setError(null);
     try {
-      await mutation.mutateAsync({ type: 'EXECUTE_MODEL_STORAGE_DELETE', modelProfileId: deletePreview.modelProfileId,
+      await mutation.mutateAsync({ type: 'EXECUTE_MODEL_STORAGE_DELETE', modelProfileId: profile.id,
         planFingerprint: deletePreview.planFingerprint, confirmation: deletePreview.requiredConfirmation });
-      setDeletePreview(null);
-      setConfirmation('');
-    } catch (error) { setDeleteError(getDgxResourceApiErrorMessage(error)); }
+      cancel();
+    } catch (cause) { setError({ target: profile.id, message: getDgxResourceApiErrorMessage(cause) }); }
   };
-
-  return <main className="space-y-5 text-slate-200">
-    <header className="flex flex-wrap items-center justify-between gap-2">
-      <h1 className="text-2xl font-bold text-white">DGX リソース</h1>
-      <p className="text-sm tabular-nums text-slate-400">更新 {formatDgxTime(overview?.generatedAt ?? null, true)}</p>
-    </header>
-    {overviewQuery.isError && <p role="alert" className="rounded-lg border border-amber-400/40 bg-amber-950/40 p-3 text-amber-200">状態を更新できません。接続を確認してください。{overview ? '表示は最後に確認できた状態です。' : ''}</p>}
+  const more = (profile: Profile) => profile.deletable && !active(profile) && <div className="dgx-menu-wrap">
+    <button className="dgx-more" type="button" aria-label={`${profile.displayName} のその他の操作`} aria-expanded={menu === profile.id}
+      disabled={controlsDisabled} onClick={() => { cancel(); setMenu(menu === profile.id ? null : profile.id); }}>⋯</button>
+    {menu === profile.id && <div className="dgx-menu"><button className="dgx-ghost" type="button" disabled={controlsDisabled} onClick={() => void previewDelete(profile)}>保存先を削除</button></div>}
+  </div>;
+  const extra = (profile: Profile) => <>
+    {open === profile.id && !returning && <div className="dgx-confirm">
+      <span className="dgx-warn">切り替え中は AI 機能が数分止まります</span>
+      <button className="dgx-ghost" type="button" disabled={mutation.isPending} onClick={cancel}>やめる</button>
+      <button className="dgx-go" type="button" disabled={controlsDisabled || !profile.startable} onClick={() => void run(profile)}>{profile.displayName} に切り替える</button>
+    </div>}
+    {deleteId === profile.id && <div className="dgx-confirm">
+      <span className="dgx-warn dgx-danger">保存先を削除</span>
+      {!deletePreview && !error && <span role="status">削除できるか確認しています</span>}
+      {deletePreview && (deletePreview.canDelete && deletePreview.planFingerprint ? <>
+        <label className="dgx-sr-only" htmlFor="dgx-delete-name">モデル名</label>
+        <input id="dgx-delete-name" placeholder={`${profile.displayName} と入力`} value={confirmation} autoComplete="off" disabled={controlsDisabled} onChange={(event) => setConfirmation(event.target.value)} />
+      </> : <span>このモデルは保護されているため、保存先を削除できません。</span>)}
+      <button className="dgx-ghost" type="button" disabled={mutation.isPending} onClick={cancel}>やめる</button>
+      {deletePreview?.canDelete && <button className="dgx-del" type="button" disabled={controlsDisabled || !deletePreview.planFingerprint || confirmation !== profile.displayName} onClick={() => void executeDelete(profile)}>削除する</button>}
+    </div>}
+    {error?.target === profile.id && <p className="dgx-operation-error" role="alert">{error.message}</p>}
+  </>;
+  return <main className="dgx-page">
+    <header className="dgx-top"><h1>DGXリソース</h1><span className="dgx-hw">{overview?.metrics.gpuName ?? 'ハードウェア未確認'} · 統合メモリ {formatGiB(overview?.metrics.unifiedMemTotalBytes ?? null)} GiB · {formatDgxTime(overview?.generatedAt ?? null, true)} 更新</span></header>
+    {overviewQuery.isError && <p className="dgx-alert" role="alert">状態を更新できません。接続を確認してください。{overview ? '表示は最後に確認できた状態です。' : ''}</p>}
     {!overview && !overviewQuery.isError && <p role="status">状態を確認しています。</p>}
     {overview && <>
-      <DgxResourceStatusPanel overview={overview} />
-      {overview.alerts.length > 0 && <aside aria-label="注意" className="space-y-2 rounded-lg border border-amber-400/40 bg-amber-950/40 p-4 text-sm leading-relaxed text-amber-200">
-        {overview.alerts.map((alert) => <p key={alert.id}>{alert.messageJa}</p>)}
-      </aside>}
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
-        <section aria-labelledby="business-return-title" className={cardClass}>
-          <h2 id="business-return-title" className="text-lg font-semibold text-white">業務に戻す</h2>
-          <label htmlFor="business-model" className="mb-2 mt-4 block text-sm">使うモデル</label>
-          <select id="business-model" className={fieldClass} value={selectedId} disabled={controlsDisabled || !overview.modelProfilesAvailable}
-            onChange={(event) => { setSelection(event.target.value); setConfirmAction(null); setOperationError(null); }}>
-            {!selected && <option value={selectedId}>{overview.business.intendedProfile && selectedId === overview.business.intendedProfile.id
-              ? `${overview.business.intendedProfile.displayName}（現在は利用できません）` : 'モデルを選んでください'}</option>}
-            {profiles.map((profile) => <option key={profile.id} value={profile.id} disabled={!profile.startable}>
-              {profile.displayName}{!profile.startable ? `（${profile.unavailableReasonJa ?? '現在は利用できません'}）` : ''}
-            </option>)}
-          </select>
-          {!overview.modelProfilesAvailable && <p className="mt-2 text-sm text-amber-300">モデル一覧を取得できません。少し待ってお試しください。</p>}
-          <button type="button" className={`${buttonClass} mt-3 w-full border-blue-500 bg-blue-600 hover:bg-blue-500`}
-            disabled={controlsDisabled || !selected?.startable || !overview.modelProfilesAvailable}
-            onClick={() => { setConfirmAction('return'); setOperationError(null); }}>このモデルで業務に戻す</button>
-          {confirmAction === 'return' && !returning && <div className="mt-3 space-y-3 rounded-lg border border-blue-400/40 bg-slate-950 p-4">
-            <p className="text-sm leading-relaxed">DGX の今の処理を止めて、{selected?.displayName} を読み込みます。読み込みに数分かかり、その間キオスクの AI 機能は使えません。</p>
-            <div className="flex gap-2"><button type="button" className={buttonClass} disabled={controlsDisabled} onClick={() => void runBusinessAction()}>戻す</button>
-              <button type="button" className={buttonClass} disabled={mutation.isPending} onClick={() => { setConfirmAction(null); setOperationError(null); }}>やめる</button></div>
-          </div>}
-          {returning && <p role="status" className="mt-4 flex items-start gap-3 text-sm leading-relaxed text-blue-200">
-            <span aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-blue-200 border-t-transparent motion-reduce:animate-none" />
-            モデルを読み込み中です（開始 {formatDgxTime(overview.businessReturn.startedAt)}）。この画面を離れても続きます。
-          </p>}
-          {operationError && confirmAction !== 'stop' && <p role="alert" className="mt-3 text-sm text-red-300">{operationError}</p>}
-          <div className="mt-6 border-t border-slate-700 pt-5">
-            <p className="text-sm leading-relaxed text-slate-400">DGX の業務 LLM を止めます。止めている間、キオスクの AI 機能は使えません。</p>
-            <button type="button" className={`${buttonClass} mt-3 border-red-400/60 text-red-300 hover:bg-red-950`}
-              disabled={controlsDisabled} onClick={() => { setConfirmAction('stop'); setOperationError(null); }}>業務 LLM を止める</button>
-            {confirmAction === 'stop' && !returning && <div className="mt-3 space-y-3 rounded-lg border border-red-400/40 bg-slate-950 p-4">
-              <p className="text-sm leading-relaxed">業務 LLM を止めますか？ 再開するには「このモデルで業務に戻す」を押します。</p>
-              <div className="flex gap-2"><button type="button" className={`${buttonClass} border-red-400 text-red-300`} disabled={controlsDisabled} onClick={() => void runBusinessAction()}>止める</button>
-                <button type="button" className={buttonClass} disabled={mutation.isPending} onClick={() => { setConfirmAction(null); setOperationError(null); }}>やめる</button></div>
-            </div>}
-            {operationError && confirmAction === 'stop' && <p role="alert" className="mt-3 text-sm text-red-300">{operationError}</p>}
-          </div>
-        </section>
-        <section aria-labelledby="models-title" className={`${cardClass} min-w-0`}>
-          <h2 id="models-title" className="text-lg font-semibold text-white">モデル</h2>
-          <div className="mt-3 overflow-x-auto"><table className="w-full text-left text-sm">
-            <thead className="border-b border-slate-700 text-slate-400"><tr>{['名前', '方式', 'メモリ', '状態', '操作'].map((label) => <th key={label} scope="col" className="whitespace-nowrap px-2 py-3 font-medium">{label}</th>)}</tr></thead>
-            <tbody>{profiles.map((profile) => <tr key={profile.id} className="border-b border-slate-800">
-              <th scope="row" className="px-2 py-4 font-medium text-white">{profile.displayName}</th>
-              <td className="px-2 py-4">{profile.backendLabel}{profile.supportsVision ? ' · 画像可' : ''}</td>
-              <td className={`whitespace-nowrap px-2 py-4 ${profile.startupFit === 'fits' ? 'text-emerald-300' : profile.startupFit === 'insufficient' ? 'text-amber-300' : 'text-slate-400'}`}>{{ fits: '入る', insufficient: '不足', unknown: '不明' }[profile.startupFit]}</td>
-              <td className="whitespace-nowrap px-2 py-4">{profile.isActive ? <span className="rounded-full bg-emerald-400/10 px-2 py-1 text-xs text-emerald-300">動作中</span> : '待機'}</td>
-              <td className="whitespace-nowrap px-2 py-4">{profile.deletable ? <button type="button" className={`${buttonClass} px-2 text-red-300`} disabled={controlsDisabled}
-                onClick={() => void previewDelete(profile.id)}>保存先を削除</button> : <span className="text-slate-500">削除不可</span>}</td>
-            </tr>)}</tbody>
-          </table></div>
-          {profiles.length === 0 && <p className="mt-3 text-sm text-slate-400">{overview.modelProfilesAvailable ? '業務用モデルが登録されていません。' : 'モデル一覧を取得できません。'}</p>}
-          {deletePreview && <div className="mt-4 space-y-3 rounded-lg border border-red-400/40 bg-slate-950 p-4">
-            <p className="font-medium text-white">{deleteProfileName}の保存先を削除</p>
-            {(deletePreview.sizeBytes != null || deletePreview.sizeGiB != null) && <p className="text-sm text-slate-300">容量: {(deletePreview.sizeBytes != null ? deletePreview.sizeBytes / 1024 ** 3 : deletePreview.sizeGiB!).toFixed(1)} GB</p>}
-            {deletePreview.canDelete && deletePreview.planFingerprint ? <>
-              <p className="text-sm">元に戻せません。確認のためモデル名を入力してください。</p>
-              <label htmlFor="delete-model-name" className="block text-sm">モデル名: {deleteProfileName}</label>
-              <input id="delete-model-name" className={fieldClass} value={confirmation} disabled={controlsDisabled} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" />
-              <button type="button" className={`${buttonClass} border-red-400 text-red-300`} disabled={controlsDisabled || confirmation !== deleteProfileName} onClick={() => void executeDelete()}>削除する</button>
-            </> : <p className="text-sm text-amber-300">このモデルは保護されているため、保存先を削除できません。</p>}
-            <button type="button" className={`${buttonClass} ml-2`} disabled={mutation.isPending} onClick={() => { setDeletePreview(null); setDeleteError(null); }}>やめる</button>
-          </div>}
-          {deleteError && <p role="alert" className="mt-3 text-sm text-red-300">{deleteError}</p>}
+      {overview.alerts.filter((item) => item.id === 'model_mismatch' && overview.business.matchesIntent === false && overview.business.intendedProfile && running && !returning).map((item) => <aside className="dgx-alert" aria-label="注意" key={item.id}>{item.messageJa}</aside>)}
+      <div className="dgx-grid">
+        <DgxResourceStatusPanel overview={overview} stopControls={<>
+          {stopConfirm ? <><span className="dgx-inline-q">AI 機能が止まります</span><div className="dgx-stop-actions">
+            <button className="dgx-ghost" type="button" disabled={mutation.isPending} onClick={() => { setStopConfirm(false); setError(null); }}>やめる</button>
+            <button className="dgx-del" type="button" disabled={controlsDisabled} onClick={() => void run()}>止める</button>
+          </div></> : <button className="dgx-btn-stop" type="button" disabled={controlsDisabled} onClick={() => { cancel(); setStopConfirm(true); }}>⏻ 停止</button>}
+          {error?.target === 'stop' && <p className="dgx-operation-error" role="alert">{error.message}</p>}
+        </>} />
+        <section className="dgx-models" aria-label="モデル">
+          <header><h2>モデル <small>{profiles.length} 件</small></h2><span className="dgx-cap">検閲なしは個人用のため非表示</span></header>
+          {!overview.modelProfilesAvailable && <p className="dgx-list-message" role="alert">モデル一覧を取得できません。少し待ってお試しください。</p>}
+          {overview.businessReturn.state === 'failed' && <p className="dgx-list-message dgx-danger" role="alert">{overview.businessReturn.failureReasonJa ?? 'モデルを起動できませんでした。'}</p>}
+          {overview.modelProfilesAvailable && profiles.length === 0 && <p className="dgx-list-message">業務用モデルが登録されていません。</p>}
+          <ul className="dgx-list">
+            <li className="dgx-row dgx-axis" aria-hidden="true"><span /><span className="dgx-scale"><span>0</span><span>{formatGiB(overview.metrics.unifiedMemTotalBytes)} GiB</span></span><span>メモリ</span><span /></li>
+            {usable.map((profile) => {
+              const isActive = active(profile);
+              const bytes = isActive ? overview.metrics.modelMemBytes : profile.requiredBytes;
+              const fits = profile.startupFit === 'fits';
+              return <li key={profile.id} className={`dgx-row ${isActive ? 'dgx-active' : 'dgx-can'}`}>
+                <div className="dgx-nm"><b>{profile.displayName}</b><span>{profile.quantizationLabel && <span>{profile.quantizationLabel}</span>}<span>{profile.backendLabel}</span>{profile.supportsVision && <span>画像対応</span>}{profile.censored && <Guard />}</span></div>
+                <div className="dgx-meter" role="img" aria-label={`必要メモリ ${formatGiB(profile.requiredBytes)} GiB、切替時の空き ${formatGiB(profile.fitAvailableBytes)} GiB`}><i style={{ width: `${memoryPercent(bytes, overview.metrics.unifiedMemTotalBytes)}%`, background: isActive ? 'var(--live)' : fits ? 'var(--signal)' : 'var(--halt)' }} /></div>
+                <span className="dgx-val">{formatGiB(bytes)} GiB{!isActive && <em className={fits ? 'dgx-ok' : profile.startupFit === 'insufficient' ? 'dgx-danger' : ''}>{fits ? '入る' : profile.startupFit === 'insufficient' ? '不足' : '未確認'}</em>}</span>
+                <div className="dgx-act">{isActive ? <span className="dgx-badge-live"><i />稼働中</span> : returning && overview.businessReturn.profileId === profile.id ? <span className="dgx-switching">切替中</span> : open !== profile.id && <button className="dgx-go" type="button" disabled={controlsDisabled || !profile.startable || !overview.modelProfilesAvailable} onClick={() => { cancel(); setStopConfirm(false); if (running) setOpen(profile.id); else void run(profile); }}>{running ? '切り替える' : '起動'}</button>}{more(profile)}</div>
+                {extra(profile)}
+              </li>;
+            })}
+          </ul>
+          {unavailable.length > 0 && <div className="dgx-idle"><h3>いま使えないモデル <small>{unavailable.length}</small></h3><ul className="dgx-cards">{unavailable.map((profile) => <li className="dgx-card" key={profile.id}>
+            <b>{profile.displayName}<small>{profile.quantizationLabel} {profile.backendLabel}</small></b>{more(profile)}
+            <span className="dgx-sub"><span className="dgx-reason">{profile.unavailableReasonJa ?? '停止中'}</span>{profile.censored && <Guard />}</span>{extra(profile)}
+          </li>)}</ul></div>}
+          <section className="dgx-log" aria-labelledby="dgx-events-title"><h3 id="dgx-events-title">操作の履歴</h3>
+            {eventsQuery.isError && <p role="alert">履歴を更新できません。</p>}
+            <ol>{eventsQuery.data?.events.slice(0, 20).map((event) => <li key={event.id}><time dateTime={event.at}>{new Date(event.at).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })} {formatDgxTime(event.at)}</time><span>{event.message}</span></li>)}</ol>
+            {eventsQuery.data?.events.length === 0 && <p>操作の履歴はまだありません。</p>}
+          </section>
         </section>
       </div>
     </>}
-    <section aria-labelledby="events-title" className={cardClass}>
-      <h2 id="events-title" className="text-lg font-semibold text-white">操作の履歴</h2>
-      {eventsQuery.isError && <p className="mt-3 text-sm text-amber-300">履歴を更新できません。</p>}
-      <ol className="mt-3 divide-y divide-slate-800">{eventsQuery.data?.events.slice(0, 8).map((event) => <li key={event.id} className="flex flex-wrap gap-x-4 gap-y-1 py-2 text-sm">
-        <time dateTime={event.at} className="tabular-nums text-slate-400">{formatDgxTime(event.at, true)}</time><span>{event.message}</span>
-      </li>)}</ol>
-      {eventsQuery.data?.events.length === 0 && <p className="text-sm text-slate-400">操作の履歴はまだありません。</p>}
-    </section>
   </main>;
 }

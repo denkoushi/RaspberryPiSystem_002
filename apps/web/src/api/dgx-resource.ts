@@ -23,7 +23,7 @@ export async function fetchDgxResourceOverview(): Promise<DgxResourceOverview> {
   return data;
 }
 
-export async function fetchDgxResourceEvents(limit = 8): Promise<DgxResourceEventsResponse> {
+export async function fetchDgxResourceEvents(limit = 20): Promise<DgxResourceEventsResponse> {
   const { data } = await api.get<DgxResourceEventsResponse>(DGX_RESOURCE_EVENTS_PATH, { params: { limit } });
   return data;
 }

@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { fetchDgxResourceEvents, fetchDgxResourceOverview, postDgxResourceAction } from '../../../api/dgx-resource';
+import { dgxResourceQueryKeys, fetchDgxResourceEvents, fetchDgxResourceOverview, postDgxResourceAction } from '../../../api/dgx-resource';
 
 import { DgxResourceDashboard } from './DgxResourceDashboard';
 
@@ -14,23 +14,25 @@ vi.mock('../../../api/dgx-resource', async (importOriginal) => ({
 }));
 
 function overview(): DgxResourceOverview {
+  const common = { backendLabel: 'vLLM' as const, quantizationLabel: 'NVFP4', supportsVision: true,
+    isActive: false, isRecommended: false, censored: true, requiredBytes: 64 * 1024 ** 3, fitAvailableBytes: 120 * 1024 ** 3,
+    startupFit: 'fits' as const, startable: true, unavailableKind: null, unavailableReasonJa: null, deletable: true };
   return {
     generatedAt: '2026-10-17T01:02:03Z',
-    business: {
-      state: 'ready', llm: { state: 'ok' },
+    business: { state: 'ready', llm: { state: 'ok' },
       embedding: { state: 'not_observed', lastSuccessAt: null, lastFailureAt: null, lastErrorBrief: null },
-      activeProfile: { id: 'internal-a', displayName: '業務モデル A' },
-      intendedProfile: { id: 'internal-a', displayName: '業務モデル A' }, matchesIntent: true,
-    },
-    metrics: { unifiedMemUsedBytes: 32 * 1024 ** 3, unifiedMemTotalBytes: 128 * 1024 ** 3, gpuUtilPct: 25, temperatureC: 42, powerW: 80 },
+      activeProfile: { id: 'internal-a', displayName: 'モデル A' }, intendedProfile: null, matchesIntent: null },
+    metrics: { gpuName: 'NVIDIA GB10', unifiedMemUsedBytes: 84 * 1024 ** 3, unifiedMemTotalBytes: 128 * 1024 ** 3,
+      modelMemBytes: 80 * 1024 ** 3, otherMemBytes: 4 * 1024 ** 3, gpuUtilPct: 25, temperatureC: 42, powerW: 80 },
     modelProfiles: [
-      { id: 'internal-a', displayName: '業務モデル A', backendLabel: 'vLLM', supportsVision: false, isActive: true, isRecommended: true, startupFit: 'fits', startable: true, unavailableReasonJa: null, deletable: false },
-      { id: 'internal-b', displayName: '画像モデル B', backendLabel: 'llama.cpp', supportsVision: true, isActive: false, isRecommended: false, startupFit: 'unknown', startable: true, unavailableReasonJa: null, deletable: true },
-      { id: 'internal-c', displayName: '大型モデル C', backendLabel: 'vLLM', supportsVision: false, isActive: false, isRecommended: false, startupFit: 'insufficient', startable: false, unavailableReasonJa: 'メモリ不足', deletable: false },
+      { ...common, id: 'internal-a', displayName: 'モデル A', isActive: true, deletable: false },
+      { ...common, id: 'internal-b', displayName: '画像モデル B' },
+      { ...common, id: 'internal-c', displayName: '大型モデル C', startupFit: 'insufficient', startable: false, unavailableKind: 'insufficient_memory', unavailableReasonJa: 'メモリ不足' },
+      { ...common, id: 'internal-d', displayName: 'モデル D', startable: false, unavailableKind: 'no_storage', unavailableReasonJa: '保存先なし' },
+      { ...common, id: 'internal-e', displayName: 'モデル E', startable: false, unavailableKind: 'disabled', unavailableReasonJa: '停止中' },
     ],
     modelProfilesAvailable: true,
-    businessReturn: { state: 'idle', profileId: null, startedAt: null, finishedAt: null, failureReasonJa: null },
-    alerts: [],
+    businessReturn: { state: 'idle', phase: null, profileId: null, startedAt: null, finishedAt: null, failureReasonJa: null }, alerts: [],
   };
 }
 const clients: QueryClient[] = [];
@@ -46,116 +48,130 @@ beforeEach(() => {
   vi.mocked(postDgxResourceAction).mockResolvedValue({ ok: true, message: '完了しました。' });
 });
 afterEach(() => { cleanup(); clients.splice(0).forEach((client) => client.clear()); });
-
 async function loaded() { return screen.findByRole('region', { name: '業務 LLM の状態' }); }
+const row = (name: string) => within(screen.getByText(name, { selector: '.dgx-nm b, .dgx-card b' }).closest('li')!);
+const openDelete = () => { fireEvent.click(screen.getByRole('button', { name: '画像モデル B のその他の操作' })); fireEvent.click(screen.getByRole('button', { name: '保存先を削除' })); };
 
-describe('business LLM dashboard', () => {
-  it.each([
-    ['ready', '使えます'], ['ready_mismatch', '使えます（モデル違い）'], ['degraded', '一部に問題があります'],
-    ['down', '使えません'], ['unconfigured', '確認できません'], ['returning', '業務に戻しています'],
-  ] as const)('renders %s without internal terminology', async (state, label) => {
-    const data = overview(); data.business.state = state;
-    const { container } = mount(data);
-    expect(within(await loaded()).getByText(label)).toBeInTheDocument();
-    expect(container.textContent).not.toMatch(/experiment-lab|agent-container|business_first|Strict Ready|指紋|KB-|internal-|not loaded|post_only/);
-    expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+describe('DGX switch console', () => {
+  it('shows the active row, switches, censorship chips and no intent or start button', async () => {
+    const { container } = mount(); await loaded();
+    expect(row('モデル A').getByText('稼働中')).toBeInTheDocument();
+    expect(row('画像モデル B').getByRole('button', { name: '切り替える' })).toBeEnabled();
+    expect(row('大型モデル C').getByRole('button', { name: '切り替える' })).toBeDisabled();
+    expect(row('大型モデル C').getByText('不足')).toBeInTheDocument();
+    expect(row('モデル D').getByText('保存先なし')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '起動' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/業務で使うモデル|未設定/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('注意')).not.toBeInTheDocument();
+    expect(screen.getAllByText('検閲あり')).toHaveLength(5);
+    expect(screen.getByText('検閲なしは個人用のため非表示')).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/internal-|業務モデル|RETURN_TO_BUSINESS|not_observed|insufficient_memory|DGX_RESOURCE_|Strict Ready|指紋|KB-/);
   });
-  it.each([
-    ['ok', '直近は成功'], ['failed', '直近は失敗'], ['not_observed', 'まだ呼ばれていません'], ['disabled', '使っていません'],
-  ] as const)('renders embedding %s', async (state, label) => {
-    const data = overview(); data.business.embedding = { state, lastSuccessAt: data.generatedAt, lastFailureAt: data.generatedAt, lastErrorBrief: '写真の処理先に接続できませんでした' };
-    mount(data);
-    expect(within(await loaded()).getByText(label)).toBeInTheDocument();
-  });
-  it('shows missing models and measurements without raw values', async () => {
-    const data = overview(); data.business.activeProfile = null; data.business.intendedProfile = null; data.business.matchesIntent = null;
-    data.metrics = { unifiedMemUsedBytes: null, unifiedMemTotalBytes: null, gpuUtilPct: null, temperatureC: null, powerW: null };
-    mount(data);
-    const panel = within(await loaded());
-    expect(panel.getByText('動いているモデル: なし')).toBeInTheDocument();
-    expect(panel.getByText('未設定')).toBeInTheDocument();
-    expect(panel.getAllByText('—')).toHaveLength(4);
-    expect(panel.queryByRole('meter')).not.toBeInTheDocument();
-  });
-  it('selects intent first, disables insufficient models, and confirms before starting', async () => {
-    const data = overview(); data.business.intendedProfile = { id: 'internal-b', displayName: '画像モデル B' };
+  it('starts directly when stopped, with no stop control or stale active badge', async () => {
+    const data = overview(); data.business.llm.state = 'down'; data.business.state = 'down';
     mount(data); await loaded();
-    expect(screen.getByLabelText('使うモデル')).toHaveValue('internal-b');
-    expect(screen.getByRole('option', { name: '大型モデル C（メモリ不足）' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: 'このモデルで業務に戻す' }));
-    expect(screen.getByText(/DGX の今の処理を止めて、画像モデル B/)).toBeInTheDocument();
-    expect(postDgxResourceAction).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'やめる' }));
-    expect(screen.queryByRole('button', { name: '戻す' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'このモデルで業務に戻す' }));
-    fireEvent.click(screen.getByRole('button', { name: '戻す' }));
+    expect(screen.getByText('業務 LLM 停止')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /停止/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('稼働中')).not.toBeInTheDocument();
+    fireEvent.click(row('画像モデル B').getByRole('button', { name: '起動' }));
     await waitFor(() => expect(postDgxResourceAction).toHaveBeenCalledWith({ type: 'RETURN_TO_BUSINESS', modelProfileId: 'internal-b' }, expect.any(Object)));
   });
-  it('defaults to the recommended model when intent is absent', async () => {
-    const data = overview(); data.business.intendedProfile = null;
+  it('shows the mock warning only for an intended model mismatch', async () => {
+    const data = overview(); data.business.state = 'ready_mismatch'; data.business.matchesIntent = false;
+    data.business.intendedProfile = { id: 'internal-b', displayName: '画像モデル B' };
+    data.alerts = [{ id: 'model_mismatch', messageJa: '業務の既定は 画像モデル B です。いまは別のモデルで動いています' }];
     mount(data); await loaded();
-    expect(screen.getByLabelText('使うモデル')).toHaveValue('internal-a');
+    expect(screen.getByLabelText('注意')).toHaveTextContent(data.alerts[0].messageJa);
   });
-  it('confirms stop inline and shows an error beside that operation', async () => {
+  it('confirms switching inline, cancels, then restores API phase progress', async () => {
+    const data = overview(); const { client } = mount(data); await loaded();
+    fireEvent.click(row('画像モデル B').getByRole('button', { name: '切り替える' }));
+    expect(row('画像モデル B').getByText('切り替え中は AI 機能が数分止まります')).toBeInTheDocument();
+    expect(postDgxResourceAction).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'やめる' }));
+    expect(screen.queryByText('切り替え中は AI 機能が数分止まります')).not.toBeInTheDocument();
+    fireEvent.click(row('画像モデル B').getByRole('button', { name: '切り替える' }));
+    const progress = { ...data, businessReturn: { ...data.businessReturn, state: 'in_progress' as const, profileId: 'internal-b', phase: 'starting' as const } };
+    vi.mocked(fetchDgxResourceOverview).mockResolvedValue(progress);
+    vi.mocked(postDgxResourceAction).mockResolvedValue({ ok: true, message: '', businessReturn: progress.businessReturn });
+    fireEvent.click(screen.getByRole('button', { name: '画像モデル B に切り替える' }));
+    await screen.findByText('切り替え中');
+    expect(postDgxResourceAction).toHaveBeenCalledWith({ type: 'RETURN_TO_BUSINESS', modelProfileId: 'internal-b' }, expect.any(Object));
+    expect(screen.getByText('完了:')).toBeInTheDocument();
+    expect(screen.getByText('起動').closest('[aria-current]')).toHaveAttribute('aria-current', 'step');
+    expect(row('大型モデル C').getByRole('button', { name: '切り替える' })).toBeDisabled();
+    client.setQueryData(dgxResourceQueryKeys.overview, { ...progress, businessReturn: { ...progress.businessReturn, phase: 'checking' } });
+    await waitFor(() => expect(screen.getByText('応答確認').closest('[aria-current]')).toHaveAttribute('aria-current', 'step'));
+  });
+  it('restores progress on fresh navigation', async () => {
+    const data = overview(); data.businessReturn = { ...data.businessReturn, state: 'in_progress', phase: 'checking', profileId: 'internal-b' };
+    mount(data); await loaded();
+    expect(screen.getByText('キオスクの AI 機能は一時停止中')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /停止/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '画像モデル B のその他の操作' })).toBeDisabled();
+  });
+  it('confirms stop and keeps safe errors near the stop controls', async () => {
     vi.mocked(postDgxResourceAction).mockRejectedValue(new Error('Strict Ready 409 https://secret.test'));
     mount(); await loaded();
-    fireEvent.click(screen.getByRole('button', { name: '業務 LLM を止める' }));
-    expect(screen.getByText(/業務 LLM を止めますか？/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /停止/ }));
+    expect(screen.getByText('AI 機能が止まります')).toBeInTheDocument();
     expect(postDgxResourceAction).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'やめる' }));
+    expect(screen.queryByText('AI 機能が止まります')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /停止/ }));
     fireEvent.click(screen.getByRole('button', { name: '止める' }));
-    const card = within(screen.getByRole('region', { name: '業務に戻す' }));
-    expect(await card.findByRole('alert')).toHaveTextContent('操作を完了できませんでした');
-    expect(card.getByRole('alert').textContent).not.toMatch(/Strict Ready|409|secret/);
+    const alert = await within(await loaded()).findByRole('alert');
+    expect(alert).toHaveTextContent('操作を完了できませんでした');
+    expect(alert.textContent).not.toMatch(/Strict Ready|409|secret/);
     expect(postDgxResourceAction).toHaveBeenCalledWith({ type: 'STOP_BUSINESS_LLM' }, expect.any(Object));
   });
-  it('restores progress from the API on a fresh page and disables controls', async () => {
-    const data = overview(); data.business.state = 'returning';
-    data.businessReturn = { state: 'in_progress', profileId: 'internal-a', startedAt: data.generatedAt, finishedAt: null, failureReasonJa: null };
-    mount(data); await loaded();
-    expect(screen.getByText(/この画面を離れても続きます/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'このモデルで業務に戻す' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '業務 LLM を止める' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '保存先を削除' })).toBeDisabled();
-    expect(document.querySelector('.motion-reduce\\:animate-none')).toBeInTheDocument();
-  });
-  it('requires exact display-name input, then sends the original deletion contract invisibly', async () => {
-    vi.mocked(postDgxResourceAction).mockResolvedValue({ ok: true, message: '確認しました', modelStorageDeletePreview: {
-      ok: true, modelProfileId: 'internal-b', displayNameJa: '画像モデル B', canDelete: true,
+  it('requires exact visible model name, while preserving the deletion contract invisibly', async () => {
+    vi.mocked(postDgxResourceAction).mockResolvedValue({ ok: true, message: '', modelStorageDeletePreview: {
+      ok: true, modelProfileId: 'internal-b', displayNameJa: '業務 画像モデル B', canDelete: true,
       blockedReasons: [], storagePath: '/secret/models', resolvedStoragePath: '/secret/models',
-      requiredConfirmation: 'DELETE internal-b', planFingerprint: 'f'.repeat(64), sizeBytes: 2 * 1024 ** 3,
+      requiredConfirmation: 'DELETE internal-b', planFingerprint: 'f'.repeat(64),
     } });
-    const { container } = mount(); await loaded();
-    fireEvent.click(screen.getByRole('button', { name: '保存先を削除' }));
-    expect(await screen.findByText('元に戻せません。確認のためモデル名を入力してください。')).toBeInTheDocument();
-    expect(screen.getByText('容量: 2.0 GB')).toBeInTheDocument();
-    const button = screen.getByRole('button', { name: '削除する' });
-    expect(button).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('モデル名: 画像モデル B'), { target: { value: '画像モデル' } });
-    expect(button).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('モデル名: 画像モデル B'), { target: { value: '画像モデル B' } });
-    expect(button).not.toBeDisabled();
-    expect(container.textContent).not.toMatch(/internal-b|DELETE|指紋|secret/);
+    const { container } = mount(); await loaded(); openDelete();
+    const input = await screen.findByLabelText('モデル名');
+    const button = screen.getByRole('button', { name: '削除する' }); expect(button).toBeDisabled();
+    fireEvent.change(input, { target: { value: '画像モデル' } }); expect(button).toBeDisabled();
+    fireEvent.change(input, { target: { value: '画像モデル B' } }); expect(button).toBeEnabled();
+    expect(container.textContent).not.toMatch(/DELETE|internal-|secret|指紋|業務 画像/);
     fireEvent.click(button);
     await waitFor(() => expect(postDgxResourceAction).toHaveBeenLastCalledWith({ type: 'EXECUTE_MODEL_STORAGE_DELETE', modelProfileId: 'internal-b', planFingerprint: 'f'.repeat(64), confirmation: 'DELETE internal-b' }, expect.any(Object)));
   });
-  it('does not allow deleting a protected preview and hides upstream reasons', async () => {
-    vi.mocked(postDgxResourceAction).mockResolvedValue({ ok: true, message: '確認しました', modelStorageDeletePreview: {
+  it('prevents deletion when preview denies it and hides raw reasons', async () => {
+    vi.mocked(postDgxResourceAction).mockResolvedValue({ ok: true, message: '', modelStorageDeletePreview: {
       ok: true, modelProfileId: 'internal-b', displayNameJa: '画像モデル B', canDelete: false,
       blockedReasons: [{ code: 'active', detailJa: 'Strict Ready KB-123' }], storagePath: null, resolvedStoragePath: null,
       requiredConfirmation: 'DELETE internal-b', planFingerprint: null,
     } });
-    const { container } = mount(); await loaded();
-    fireEvent.click(screen.getByRole('button', { name: '保存先を削除' }));
-    expect(await screen.findByText('このモデルは保護されているため、保存先を削除できません。')).toBeInTheDocument();
+    const { container } = mount(); await loaded(); openDelete();
+    await screen.findByText('このモデルは保護されているため、保存先を削除できません。');
     expect(screen.queryByRole('button', { name: '削除する' })).not.toBeInTheDocument();
     expect(container.textContent).not.toMatch(/Strict Ready|KB-/);
   });
-  it('renders at most eight events and the model mismatch alert', async () => {
-    const data = overview(); data.alerts = [{ id: 'mismatch', messageJa: '業務で使うモデルと動いているモデルが違います。' }];
-    vi.mocked(fetchDgxResourceEvents).mockResolvedValue({ events: Array.from({ length: 10 }, (_, i) => ({ id: String(i), at: data.generatedAt, message: `操作 ${i}` })) });
+  it.each([['ok', '正常'], ['failed', '失敗'], ['not_observed', '未確認'], ['disabled', '未使用']] as const)('labels embedding %s', async (state, label) => {
+    const data = overview(); data.business.embedding.state = state; mount(data); await loaded();
+    expect(screen.getByText(`写真の埋め込み ${label}`)).toBeInTheDocument();
+  });
+  it('shows unknown memory without inventing measurements', async () => {
+    const data = overview(); data.metrics.modelMemBytes = null; data.metrics.otherMemBytes = null;
     mount(data); await loaded();
-    expect(screen.getByText('業務で使うモデルと動いているモデルが違います。')).toBeInTheDocument();
-    expect(within(screen.getByRole('region', { name: '操作の履歴' })).getAllByRole('listitem')).toHaveLength(8);
-    expect(fetchDgxResourceEvents).toHaveBeenCalledWith(8);
+    expect(screen.getByText('モデル —')).toBeInTheDocument(); expect(screen.getByText('その他 —')).toBeInTheDocument();
+  });
+  it('disables actions when the overview refresh fails', async () => {
+    const { client } = mount(); await loaded();
+    vi.mocked(fetchDgxResourceOverview).mockRejectedValue(new Error('offline'));
+    await client.invalidateQueries({ queryKey: dgxResourceQueryKeys.overview });
+    await screen.findByText(/表示は最後に確認できた状態です/);
+    expect(row('画像モデル B').getByRole('button', { name: '切り替える' })).toBeDisabled();
+  });
+  it('requests and displays up to twenty events', async () => {
+    const data = overview();
+    vi.mocked(fetchDgxResourceEvents).mockResolvedValue({ events: Array.from({ length: 25 }, (_, i) => ({ id: String(i), at: data.generatedAt, message: `操作 ${i}` })) });
+    mount(data); await loaded();
+    expect(within(screen.getByRole('region', { name: '操作の履歴' })).getAllByRole('listitem')).toHaveLength(20);
+    expect(fetchDgxResourceEvents).toHaveBeenCalledWith(20);
   });
 });
