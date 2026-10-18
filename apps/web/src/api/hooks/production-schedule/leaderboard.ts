@@ -9,6 +9,7 @@ import {
   type KioskProductionScheduleLeaderboardPhasedQueryParams,
   type KioskProductionScheduleLeaderboardBoardQueryParams
 } from '../../client';
+import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule';
 
 export function useKioskProductionScheduleLeaderboardShell(
   params: KioskProductionScheduleLeaderboardPhasedQueryParams | undefined,
@@ -17,7 +18,7 @@ export function useKioskProductionScheduleLeaderboardShell(
   const interval =
     options?.pauseRefetch ? false : (options?.refetchIntervalMs !== undefined ? options.refetchIntervalMs : 30000);
   return useQuery({
-    queryKey: ['kiosk-production-schedule', 'leaderboard-shell', params],
+    queryKey: productionScheduleQueryKeys.leaderboardShell(params),
     queryFn: () => getKioskProductionScheduleLeaderboardShell(params),
     placeholderData: (previousData) => previousData,
     refetchInterval: interval,
@@ -34,7 +35,7 @@ export function useKioskProductionScheduleLeaderboardTotal(
   const interval =
     options?.pauseRefetch ? false : (options?.refetchIntervalMs !== undefined ? options.refetchIntervalMs : 30000);
   return useQuery({
-    queryKey: ['kiosk-production-schedule', 'leaderboard-total', params],
+    queryKey: productionScheduleQueryKeys.leaderboardTotal(params),
     queryFn: () => getKioskProductionScheduleLeaderboardTotal(params),
     placeholderData: (previousData) => previousData,
     refetchInterval: interval,
@@ -59,7 +60,7 @@ export function useKioskProductionScheduleLeaderboardDecorations(
   const rowFingerprint = payload?.rowIds.length ? payload.rowIds.join('\u0001') : '';
 
   return useQuery({
-    queryKey: ['kiosk-production-schedule', 'leaderboard-decorations', rowFingerprint, payload?.targetDeviceScopeKey ?? ''],
+    queryKey: productionScheduleQueryKeys.leaderboardDecorations(rowFingerprint, payload?.targetDeviceScopeKey),
     queryFn: () =>
       postKioskProductionScheduleLeaderboardDecorations({
         rowIds: payload!.rowIds,
@@ -82,7 +83,7 @@ export function useKioskProductionScheduleLeaderboardBoard(
   const interval =
     options?.pauseRefetch ? false : (options?.refetchIntervalMs !== undefined ? options.refetchIntervalMs : 30000);
   return useQuery({
-    queryKey: ['kiosk-production-schedule', 'leaderboard-board', params],
+    queryKey: productionScheduleQueryKeys.leaderboardBoard(params),
     queryFn: () => getKioskProductionScheduleLeaderboardBoard(params!),
     placeholderData: (previousData) => previousData,
     refetchInterval: interval,
