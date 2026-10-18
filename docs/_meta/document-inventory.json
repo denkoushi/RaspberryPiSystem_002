@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 769,
-    "totalLines": 189052,
-    "totalBytes": 15056470,
+    "totalLines": 189092,
+    "totalBytes": 15065828,
     "withFrontmatter": 368,
     "withStatus": 170,
     "sourceOfTruthDeclared": 116,
@@ -26,7 +26,7 @@
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 39,
     "localLinkCount": 5878,
-    "brokenLocalLinkCount": 91,
+    "brokenLocalLinkCount": 93,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
     "brokenLocalLinks": [
@@ -39,6 +39,11 @@
         "sourcePath": "EXEC_PLAN.md",
         "href": "../docs/knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-?15[question-mark-corruption]pi5[question-mark-corruption]",
         "targetPath": "../docs/knowledge-base/infrastructure/security.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./scripts/stackchan-ai-stackchan-ex/README.md",
+        "targetPath": "scripts/stackchan-ai-stackchan-ex/README.md"
       },
       {
         "sourcePath": "docs/INDEX.md",
@@ -464,6 +469,11 @@
         "sourcePath": "docs/requirements/system-requirements.md",
         "href": "./csv-import-export.md",
         "targetPath": "docs/requirements/csv-import-export.md"
+      },
+      {
+        "sourcePath": "docs/runbooks/stackchan-cores3-bringup-probe.md",
+        "href": "../../scripts/stackchan-ai-stackchan-ex/README.md",
+        "targetPath": "scripts/stackchan-ai-stackchan-ex/README.md"
       },
       {
         "sourcePath": "docs/security/evaluation-plan.md",
@@ -4421,7 +4431,7 @@
         {
           "href": "./scripts/stackchan-ai-stackchan-ex/README.md",
           "targetPath": "scripts/stackchan-ai-stackchan-ex/README.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./scripts/test/stop-postgres.sh",
@@ -17895,8 +17905,8 @@
     },
     {
       "path": "docs/decisions/ADR-20261017-dgx-resource-business-llm-only.md",
-      "lineCount": 54,
-      "byteSize": 5839,
+      "lineCount": 66,
+      "byteSize": 8019,
       "hasFrontmatter": true,
       "title": "ADR-20261017: 管理画面「DGXリソース」を業務 LLM 専用にする",
       "status": null,
@@ -29190,8 +29200,8 @@
     },
     {
       "path": "docs/knowledge-base/ci-cd.md",
-      "lineCount": 829,
-      "byteSize": 57157,
+      "lineCount": 830,
+      "byteSize": 57751,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - CI/CD関連",
       "status": null,
@@ -33078,7 +33088,7 @@
     {
       "path": "docs/knowledge-base/infrastructure/security.md",
       "lineCount": 1313,
-      "byteSize": 82232,
+      "byteSize": 82657,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - セキュリティ関連",
       "status": null,
@@ -34684,8 +34694,8 @@
     },
     {
       "path": "docs/plans/code-health-refactor-execplan.md",
-      "lineCount": 120,
-      "byteSize": 18184,
+      "lineCount": 122,
+      "byteSize": 19987,
       "hasFrontmatter": false,
       "title": "コード保守性の改善プログラム",
       "status": null,
@@ -35429,8 +35439,8 @@
     },
     {
       "path": "docs/plans/hermes-dgx-retrieval-enrichment.md",
-      "lineCount": 76,
-      "byteSize": 8247,
+      "lineCount": 78,
+      "byteSize": 8623,
       "hasFrontmatter": false,
       "title": "Hermes DGX retrieval enrichment",
       "status": null,
@@ -35622,8 +35632,8 @@
     },
     {
       "path": "docs/plans/hermes-retrieval-accuracy-log.md",
-      "lineCount": 605,
-      "byteSize": 84537,
+      "lineCount": 624,
+      "byteSize": 87758,
       "hasFrontmatter": false,
       "title": "Hermes retrieval accuracy log",
       "status": null,
@@ -35897,8 +35907,8 @@
     },
     {
       "path": "docs/plans/inventory-dashboard.md",
-      "lineCount": 97,
-      "byteSize": 8229,
+      "lineCount": 101,
+      "byteSize": 8988,
       "hasFrontmatter": false,
       "title": "Kiosk inventory usage dashboard",
       "status": null,
@@ -42094,7 +42104,7 @@
         {
           "href": "../../scripts/stackchan-ai-stackchan-ex/README.md",
           "targetPath": "scripts/stackchan-ai-stackchan-ex/README.md",
-          "exists": true
+          "exists": false
         }
       ],
       "inboundCount": 4,
