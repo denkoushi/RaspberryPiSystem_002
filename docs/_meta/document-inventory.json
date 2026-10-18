@@ -15,19 +15,19 @@
     ]
   },
   "summary": {
-    "documentCount": 769,
-    "totalLines": 189093,
-    "totalBytes": 15066371,
-    "withFrontmatter": 368,
-    "withStatus": 170,
-    "sourceOfTruthDeclared": 116,
-    "execPlanReferences": 62,
+    "documentCount": 724,
+    "totalLines": 179601,
+    "totalBytes": 14400665,
+    "withFrontmatter": 348,
+    "withStatus": 169,
+    "sourceOfTruthDeclared": 115,
+    "execPlanReferences": 60,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 39,
-    "localLinkCount": 5878,
-    "brokenLocalLinkCount": 95,
-    "documentsOver1000Lines": 29,
+    "localLinkCount": 5446,
+    "brokenLocalLinkCount": 126,
+    "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
     "brokenLocalLinks": [
       {
@@ -39,6 +39,181 @@
         "sourcePath": "EXEC_PLAN.md",
         "href": "../docs/knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-?15[question-mark-corruption]pi5[question-mark-corruption]",
         "targetPath": "../docs/knowledge-base/infrastructure/security.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md",
+        "targetPath": "docs/knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md",
+        "targetPath": "docs/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
+        "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md#デプロイ経路の注意surprises",
+        "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md",
+        "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md",
+        "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/knowledge-base/KB-private-pi5-hermes-life-pilot.md",
+        "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-life-pilot.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/knowledge-base/KB-private-pi5-hermes-phase-d0-production.md",
+        "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d0-production.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md",
+        "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/knowledge-base/KB-private-pi5-hermes-phase-d4-production.md",
+        "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d4-production.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
+        "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo",
+        "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイpoll-スレッド競合--tool-write-ipc--2026-05-26-jst",
+        "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイ承認-relay-完結--2026-05-30-jst",
+        "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05",
+        "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結",
+        "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md",
+        "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
+        "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
+        "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-13-??-chatgpt_api_url-[question-mark-corruption]bridge-[question-mark-corruption]url-[question-mark-corruption]",
+        "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-23-??-pi5-utterance-??-api[question-mark-corruption]-overlay[question-mark-corruption]",
+        "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/plans/private-pi5-hermes-agent-plan.md",
+        "targetPath": "docs/plans/private-pi5-hermes-agent-plan.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md",
+        "targetPath": "docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/plans/private-pi5-hermes-daily-pilot-execplan.md",
+        "targetPath": "docs/plans/private-pi5-hermes-daily-pilot-execplan.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/plans/private-pi5-hermes-life-pilot-execplan.md",
+        "targetPath": "docs/plans/private-pi5-hermes-life-pilot-execplan.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/plans/private-pi5-hermes-tools-security-phase-d0-execplan.md",
+        "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d0-execplan.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md",
+        "targetPath": "docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md#two-path-architecture-private-work-2026-05-10",
+        "targetPath": "docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/runbooks/dgx-private-comfyui.md",
+        "targetPath": "docs/runbooks/dgx-private-comfyui.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/runbooks/private-pi5-hermes-deploy.md",
+        "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/runbooks/private-pi5-hermes-deploy.md#phase-d6-life--discord-life-pilot2026-06-06-私用-pi5--discord-e2e-完了",
+        "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/runbooks/private-pi5-hermes-deploy.md#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-06-実機検証完了",
+        "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/runbooks/private-pi5-stackchan-bridge-deploy.md",
+        "targetPath": "docs/runbooks/private-pi5-stackchan-bridge-deploy.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/runbooks/stackchan-community-text-only-e2e.md",
+        "targetPath": "docs/runbooks/stackchan-community-text-only-e2e.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./docs/runbooks/stackchan-community-text-only-e2e.md#65-2026-05-23-post-apistackchanutterancepi5-[question-mark-corruption]",
+        "targetPath": "docs/runbooks/stackchan-community-text-only-e2e.md"
       },
       {
         "sourcePath": "EXEC_PLAN.md",
@@ -84,11 +259,6 @@
         "sourcePath": "docs/archive/architecture/deployment-modules-legacy-through-2026-07.md",
         "href": "../../../infrastructure/ansible/playbooks/deploy.yml",
         "targetPath": "infrastructure/ansible/playbooks/deploy.yml"
-      },
-      {
-        "sourcePath": "docs/decisions/ADR-20260525-private-pi5-hermes-discord-approval-relay-d5-1.md",
-        "href": "../../scripts/private-pi5-hermes/config/task-bridge.policy.yaml",
-        "targetPath": "scripts/private-pi5-hermes/config/task-bridge.policy.yaml"
       },
       {
         "sourcePath": "docs/guides/ansible-best-practices.md",
@@ -214,11 +384,6 @@
         "sourcePath": "docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md",
         "href": "../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24",
         "targetPath": "docs/EXEC_PLAN.md"
-      },
-      {
-        "sourcePath": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-        "href": "../../scripts/private-pi5-hermes/config/task-bridge.policy.yaml",
-        "targetPath": "scripts/private-pi5-hermes/config/task-bridge.policy.yaml"
       },
       {
         "sourcePath": "docs/knowledge-base/api.md",
@@ -474,16 +639,6 @@
         "sourcePath": "docs/requirements/system-requirements.md",
         "href": "./csv-import-export.md",
         "targetPath": "docs/requirements/csv-import-export.md"
-      },
-      {
-        "sourcePath": "docs/runbooks/dgx-private-comfyui.md",
-        "href": "../../scripts/dgx-private-comfyui/README.md",
-        "targetPath": "scripts/dgx-private-comfyui/README.md"
-      },
-      {
-        "sourcePath": "docs/runbooks/stackchan-cores3-bringup-probe.md",
-        "href": "../../scripts/stackchan-ai-stackchan-ex/README.md",
-        "targetPath": "scripts/stackchan-ai-stackchan-ex/README.md"
       },
       {
         "sourcePath": "docs/security/evaluation-plan.md",
@@ -3716,12 +3871,12 @@
         {
           "href": "./docs/knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md",
           "targetPath": "docs/knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md",
           "targetPath": "docs/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/knowledge-base/KB-380-kiosk-leaderboard-network-error-resilience.md",
@@ -3796,97 +3951,97 @@
         {
           "href": "./docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
           "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md#デプロイ経路の注意surprises",
           "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md",
           "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md",
           "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/knowledge-base/KB-private-pi5-hermes-life-pilot.md",
           "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-life-pilot.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/knowledge-base/KB-private-pi5-hermes-phase-d0-production.md",
           "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d0-production.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md",
           "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/knowledge-base/KB-private-pi5-hermes-phase-d4-production.md",
           "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d4-production.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
           "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo",
           "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイpoll-スレッド競合--tool-write-ipc--2026-05-26-jst",
           "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイ承認-relay-完結--2026-05-30-jst",
           "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05",
           "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結",
           "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md",
           "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
           "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
           "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-13-??-chatgpt_api_url-[question-mark-corruption]bridge-[question-mark-corruption]url-[question-mark-corruption]",
           "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-23-??-pi5-utterance-??-api[question-mark-corruption]-overlay[question-mark-corruption]",
           "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "docs/knowledge-base/troubleshooting-knowledge.md#kb-001-429[question-mark-corruption]",
@@ -4041,27 +4196,27 @@
         {
           "href": "./docs/plans/private-pi5-hermes-agent-plan.md",
           "targetPath": "docs/plans/private-pi5-hermes-agent-plan.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md",
           "targetPath": "docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/plans/private-pi5-hermes-daily-pilot-execplan.md",
           "targetPath": "docs/plans/private-pi5-hermes-daily-pilot-execplan.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/plans/private-pi5-hermes-life-pilot-execplan.md",
           "targetPath": "docs/plans/private-pi5-hermes-life-pilot-execplan.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/plans/private-pi5-hermes-tools-security-phase-d0-execplan.md",
           "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d0-execplan.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "docs/plans/production-deployment-phase2-execplan.md",
@@ -4101,12 +4256,12 @@
         {
           "href": "./docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md",
           "targetPath": "docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md#two-path-architecture-private-work-2026-05-10",
           "targetPath": "docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "docs/plans/tool-management-debug-execplan.md",
@@ -4156,7 +4311,7 @@
         {
           "href": "./docs/runbooks/dgx-private-comfyui.md",
           "targetPath": "docs/runbooks/dgx-private-comfyui.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/runbooks/dgx-system-prod-local-llm.md",
@@ -4316,32 +4471,32 @@
         {
           "href": "./docs/runbooks/private-pi5-hermes-deploy.md",
           "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/runbooks/private-pi5-hermes-deploy.md#phase-d6-life--discord-life-pilot2026-06-06-私用-pi5--discord-e2e-完了",
           "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/runbooks/private-pi5-hermes-deploy.md#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-06-実機検証完了",
           "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/runbooks/private-pi5-stackchan-bridge-deploy.md",
           "targetPath": "docs/runbooks/private-pi5-stackchan-bridge-deploy.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/runbooks/stackchan-community-text-only-e2e.md",
           "targetPath": "docs/runbooks/stackchan-community-text-only-e2e.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/runbooks/stackchan-community-text-only-e2e.md#65-2026-05-23-post-apistackchanutterancepi5-[question-mark-corruption]",
           "targetPath": "docs/runbooks/stackchan-community-text-only-e2e.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./docs/runbooks/vnc-tailscale-recovery.md",
@@ -5950,7 +6105,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 2083,
-      "byteSize": 359251,
+      "byteSize": 360086,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6727,16 +6882,6 @@
           "exists": true
         },
         {
-          "href": "./decisions/ADR-20260524-private-pi5-hermes-security-profile.md",
-          "targetPath": "docs/decisions/ADR-20260524-private-pi5-hermes-security-profile.md",
-          "exists": true
-        },
-        {
-          "href": "./decisions/ADR-20260525-private-pi5-hermes-discord-tools-bridge-d5.md",
-          "targetPath": "docs/decisions/ADR-20260525-private-pi5-hermes-discord-tools-bridge-d5.md",
-          "exists": true
-        },
-        {
           "href": "./decisions/ADR-20260526-production-schedule-completion-status-only.md",
           "targetPath": "docs/decisions/ADR-20260526-production-schedule-completion-status-only.md",
           "exists": true
@@ -6754,11 +6899,6 @@
         {
           "href": "./decisions/ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md",
           "targetPath": "docs/decisions/ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md",
-          "exists": true
-        },
-        {
-          "href": "./decisions/ADR-20260531-stackchan-cores3-probe-display-halt.md",
-          "targetPath": "docs/decisions/ADR-20260531-stackchan-cores3-probe-display-halt.md",
           "exists": true
         },
         {
@@ -10047,16 +10187,6 @@
           "exists": true
         },
         {
-          "href": "./knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md",
-          "targetPath": "docs/knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md",
-          "targetPath": "docs/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md",
-          "exists": true
-        },
-        {
           "href": "./knowledge-base/KB-380-kiosk-leaderboard-network-error-resilience.md",
           "targetPath": "docs/knowledge-base/KB-380-kiosk-leaderboard-network-error-resilience.md",
           "exists": true
@@ -10154,101 +10284,6 @@
         {
           "href": "./knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md#2026-03-25-追記-旧-active-loan-の-location-補正手段",
           "targetPath": "docs/knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-private-pi5-hermes-life-pilot.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-life-pilot.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-private-pi5-hermes-novel-profile-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-novel-profile-production.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-private-pi5-hermes-novel-profile-production.md#追記--novel-slash-args_hint-修正2026-05-29-2156-jst",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-novel-profile-production.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-private-pi5-hermes-phase-d3-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-private-pi5-hermes-phase-d4-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d4-production.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#phase-d51-追記2026-05-25--repo-実装--私用-pi5-本番反映",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md#追記--blue-backend-起動失敗で-v1models-5022026-06-05",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-13-追補-chatgpt_api_url-ドリフトbridge-リクエスト読取タイムアウトurl-境界の錯覚調査上の断定ルール",
-          "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-23-私用-pi5-utterance-一括-apiファーム-overlay実機ブリングアップ作業中断",
-          "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-31-coreS3-表示--確定結論probe-全面停止",
-          "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
           "exists": true
         },
         {
@@ -10867,46 +10902,6 @@
           "exists": true
         },
         {
-          "href": "./plans/private-pi5-hermes-agent-plan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-agent-plan.md",
-          "exists": true
-        },
-        {
-          "href": "./plans/private-pi5-hermes-butler-vision-and-roadmap.md",
-          "targetPath": "docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md",
-          "exists": true
-        },
-        {
-          "href": "./plans/private-pi5-hermes-daily-pilot-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-daily-pilot-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "./plans/private-pi5-hermes-novel-profile-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-novel-profile-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "./plans/private-pi5-hermes-tools-security-phase-d3-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d3-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "./plans/private-pi5-hermes-tools-security-phase-d4-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d4-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "./plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "./plans/private-pi5-hermes-tools-security-phase-d5-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d5-execplan.md",
-          "exists": true
-        },
-        {
           "href": "./plans/procedure-manuals-execplan.md",
           "targetPath": "docs/plans/procedure-manuals-execplan.md",
           "exists": true
@@ -11062,21 +11057,6 @@
           "exists": true
         },
         {
-          "href": "./plans/stackchan-private-pi5-tailnet-workflow-plan.md",
-          "targetPath": "docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md",
-          "exists": true
-        },
-        {
-          "href": "./plans/stackchan-private-pi5-tailnet-workflow-plan.md#two-path-architecture-private-work-2026-05-10",
-          "targetPath": "docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md",
-          "exists": true
-        },
-        {
-          "href": "./plans/stackchan-spark-voice-assistant-restart-2026-07.md",
-          "targetPath": "docs/plans/stackchan-spark-voice-assistant-restart-2026-07.md",
-          "exists": true
-        },
-        {
           "href": "./plans/tool-management-debug-execplan.md",
           "targetPath": "docs/plans/tool-management-debug-execplan.md",
           "exists": true
@@ -11159,11 +11139,6 @@
         {
           "href": "./runbooks/deploy-status-recovery.md#5-pi4デプロイハング時の復旧手順2026-03-09-追加",
           "targetPath": "docs/runbooks/deploy-status-recovery.md",
-          "exists": true
-        },
-        {
-          "href": "./runbooks/dgx-private-comfyui.md",
-          "targetPath": "docs/runbooks/dgx-private-comfyui.md",
           "exists": true
         },
         {
@@ -11387,98 +11362,8 @@
           "exists": true
         },
         {
-          "href": "./runbooks/private-pi5-hermes-deploy.md",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "./runbooks/private-pi5-hermes-deploy.md#hermes-agent-本体-hotfix承認-yes-の割り込み回避2026-06-05",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "./runbooks/private-pi5-hermes-deploy.md#novel-profile--args_hint-修正デプロイ2026-05-29-2156-jst",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "./runbooks/private-pi5-hermes-deploy.md#novel-profile--本番反映2026-05-29",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "./runbooks/private-pi5-hermes-deploy.md#phase-d3--file--web実機本番反映2026-05-25",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "./runbooks/private-pi5-hermes-deploy.md#phase-d4--file--web--browser実機本番反映2026-05-25",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "./runbooks/private-pi5-hermes-deploy.md#phase-d5--discord-task-橋実機本番反映2026-05-25",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "./runbooks/private-pi5-hermes-deploy.md#phase-d51--discord-承認中継2026-05-25--私用-pi5-本番反映",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "./runbooks/private-pi5-hermes-deploy.md#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-05",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "./runbooks/private-pi5-hermes-deploy.md#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-06-実機検証完了",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "./runbooks/private-pi5-hermes-deploy.md#本番復旧--task-二段障害2026-06-05",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "./runbooks/private-pi5-stackchan-bridge-deploy.md",
-          "targetPath": "docs/runbooks/private-pi5-stackchan-bridge-deploy.md",
-          "exists": true
-        },
-        {
           "href": "./runbooks/scaw-nonconformity-self-inspection.md",
           "targetPath": "docs/runbooks/scaw-nonconformity-self-inspection.md",
-          "exists": true
-        },
-        {
-          "href": "./runbooks/stackchan-community-realtime-api-migration.md",
-          "targetPath": "docs/runbooks/stackchan-community-realtime-api-migration.md",
-          "exists": true
-        },
-        {
-          "href": "./runbooks/stackchan-community-text-only-e2e.md",
-          "targetPath": "docs/runbooks/stackchan-community-text-only-e2e.md",
-          "exists": true
-        },
-        {
-          "href": "./runbooks/stackchan-community-text-only-e2e.md#63-2026-05-11-最終到達点wakeword---stt---llm---tts-成立",
-          "targetPath": "docs/runbooks/stackchan-community-text-only-e2e.md",
-          "exists": true
-        },
-        {
-          "href": "./runbooks/stackchan-community-text-only-e2e.md#64-2026-05-14-引き継ぎウェイクワード登録オフラインシリアル",
-          "targetPath": "docs/runbooks/stackchan-community-text-only-e2e.md",
-          "exists": true
-        },
-        {
-          "href": "./runbooks/stackchan-community-text-only-e2e.md#65-2026-05-23-post-apistackchanutterancepi5-一括と実機復旧",
-          "targetPath": "docs/runbooks/stackchan-community-text-only-e2e.md",
-          "exists": true
-        },
-        {
-          "href": "./runbooks/stackchan-cores3-bringup-probe.md",
-          "targetPath": "docs/runbooks/stackchan-cores3-bringup-probe.md",
           "exists": true
         },
         {
@@ -11632,7 +11517,7 @@
           "exists": false
         }
       ],
-      "inboundCount": 13,
+      "inboundCount": 12,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
@@ -11649,6 +11534,10 @@
           "length": 1022
         },
         {
+          "line": 374,
+          "length": 1147
+        },
+        {
           "line": 378,
           "length": 1065
         },
@@ -11662,7 +11551,7 @@
         },
         {
           "line": 444,
-          "length": 1083
+          "length": 1052
         },
         {
           "line": 458,
@@ -11674,11 +11563,11 @@
         },
         {
           "line": 464,
-          "length": 1399
+          "length": 1385
         },
         {
           "line": 466,
-          "length": 1008
+          "length": 1016
         },
         {
           "line": 472,
@@ -16313,165 +16202,6 @@
       "referencesExecPlan": false
     },
     {
-      "path": "docs/decisions/ADR-20260524-private-pi5-hermes-security-profile.md",
-      "lineCount": 81,
-      "byteSize": 6803,
-      "hasFrontmatter": false,
-      "title": "ADR-20260524: 私用 Pi5 Hermes Agent セキュリティプロファイル",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-install-noninteractive.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-install-noninteractive.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-agent-plan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-agent-plan.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 7,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/decisions/ADR-20260525-private-pi5-hermes-discord-approval-relay-d5-1.md",
-      "lineCount": 44,
-      "byteSize": 2211,
-      "hasFrontmatter": false,
-      "title": "ADR-20260525: 私用 Pi5 Hermes Discord 承認中継（Phase D5.1）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "./ADR-20260525-private-pi5-hermes-discord-tools-bridge-d5.md",
-          "targetPath": "docs/decisions/ADR-20260525-private-pi5-hermes-discord-tools-bridge-d5.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../../scripts/private-pi5-hermes/config/task-bridge.policy.yaml",
-          "targetPath": "scripts/private-pi5-hermes/config/task-bridge.policy.yaml",
-          "exists": false
-        }
-      ],
-      "inboundCount": 4,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/decisions/ADR-20260525-private-pi5-hermes-discord-tools-bridge-d5.md",
-      "lineCount": 43,
-      "byteSize": 2219,
-      "hasFrontmatter": false,
-      "title": "ADR-20260525: 私用 Pi5 Hermes Discord ↔ tools 橋（Phase D5）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-butler-vision-and-roadmap.md",
-          "targetPath": "docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d5-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d5-execplan.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 6,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md",
-      "lineCount": 79,
-      "byteSize": 4263,
-      "hasFrontmatter": false,
-      "title": "ADR-20260525: 私用 Pi5 Hermes ツール向けセキュリティ Phase D0",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "./ADR-20260524-private-pi5-hermes-security-profile.md",
-          "targetPath": "docs/decisions/ADR-20260524-private-pi5-hermes-security-profile.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d0-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d0-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d0-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d0-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "../security/tailscale-policy-hermes-private-pi5-draft.md",
-          "targetPath": "docs/security/tailscale-policy-hermes-private-pi5-draft.md",
-          "exists": true
-        },
-        {
-          "href": "../security/tailscale-policy-hermes-private-pi5-grants.json",
-          "targetPath": "docs/security/tailscale-policy-hermes-private-pi5-grants.json",
-          "exists": true
-        }
-      ],
-      "inboundCount": 7,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
       "path": "docs/decisions/ADR-20260526-production-schedule-completion-status-only.md",
       "lineCount": 35,
       "byteSize": 3368,
@@ -16631,32 +16361,6 @@
         }
       ],
       "inboundCount": 7,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/decisions/ADR-20260531-stackchan-cores3-probe-display-halt.md",
-      "lineCount": 45,
-      "byteSize": 2648,
-      "hasFrontmatter": false,
-      "title": "ADR-20260531: CoreS3 bring-up probe 停止（表示互換性未解決）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-31-coreS3-表示--確定結論probe-全面停止",
-          "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/stackchan-cores3-bringup-probe.md",
-          "targetPath": "docs/runbooks/stackchan-cores3-bringup-probe.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 4,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -19798,7 +19502,7 @@
     {
       "path": "docs/guides/development.md",
       "lineCount": 561,
-      "byteSize": 16261,
+      "byteSize": 16304,
       "hasFrontmatter": true,
       "title": "開発ガイド",
       "status": null,
@@ -19862,11 +19566,6 @@
         {
           "href": "../knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md#本リポジトリ固有の-wip2026-06-06-時点",
           "targetPath": "docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
           "exists": true
         },
         {
@@ -22002,7 +21701,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 2,
+      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -25564,7 +25263,7 @@
     {
       "path": "docs/knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md",
       "lineCount": 47,
-      "byteSize": 4435,
+      "byteSize": 4559,
       "hasFrontmatter": true,
       "title": "KB-364 DGX blue vLLM と私用 ComfyUI の GPU 競合（502・inference-backend WARN）",
       "status": null,
@@ -25586,27 +25285,12 @@
           "exists": true
         },
         {
-          "href": "./KB-378-dgx-private-comfyui-mac-ssh-access.md",
-          "targetPath": "docs/knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md",
-          "targetPath": "docs/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/dgx-private-comfyui.md",
-          "targetPath": "docs/runbooks/dgx-private-comfyui.md",
-          "exists": true
-        },
-        {
           "href": "../runbooks/dgx-system-prod-local-llm.md",
           "targetPath": "docs/runbooks/dgx-system-prod-local-llm.md",
           "exists": true
         }
       ],
-      "inboundCount": 13,
+      "inboundCount": 9,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -25615,7 +25299,7 @@
     {
       "path": "docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md",
       "lineCount": 631,
-      "byteSize": 88927,
+      "byteSize": 88946,
       "hasFrontmatter": true,
       "title": "KB-365 DGXリソース Phase3・補助ランタイム起停・ワークロード自動調停",
       "status": null,
@@ -25830,14 +25514,9 @@
           "href": "../runbooks/dgx-system-prod-local-llm.md#管理コンソール-dgx-リソースpi5-api-経由",
           "targetPath": "docs/runbooks/dgx-system-prod-local-llm.md",
           "exists": true
-        },
-        {
-          "href": "../runbooks/stackchan-community-text-only-e2e.md#text-only-done-criteria",
-          "targetPath": "docs/runbooks/stackchan-community-text-only-e2e.md",
-          "exists": true
         }
       ],
-      "inboundCount": 111,
+      "inboundCount": 108,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -25846,7 +25525,7 @@
     {
       "path": "docs/knowledge-base/KB-366-dgx-spark-operational-understanding.md",
       "lineCount": 237,
-      "byteSize": 22536,
+      "byteSize": 22712,
       "hasFrontmatter": true,
       "title": "KB-366 DGX Spark 運用理解（メモリ・モデル・モード切替・KPI）",
       "status": null,
@@ -25948,21 +25627,6 @@
           "exists": true
         },
         {
-          "href": "./KB-378-dgx-private-comfyui-mac-ssh-access.md",
-          "targetPath": "docs/knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md",
-          "targetPath": "docs/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-task-dgx-profile-restore.md#追記--blue-backend-起動失敗で-v1models-5022026-06-05",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md",
-          "exists": true
-        },
-        {
           "href": "../runbooks/dgx-system-prod-local-llm.md",
           "targetPath": "docs/runbooks/dgx-system-prod-local-llm.md",
           "exists": true
@@ -25988,7 +25652,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 40,
+      "inboundCount": 38,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -26797,88 +26461,6 @@
       "referencesExecPlan": false
     },
     {
-      "path": "docs/knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md",
-      "lineCount": 82,
-      "byteSize": 6600,
-      "hasFrontmatter": true,
-      "title": "KB-378 DGX Spark private ComfyUI と Mac アクセス（SSH 順序・トンネル・切り分け）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "./infrastructure/security.md",
-          "targetPath": "docs/knowledge-base/infrastructure/security.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-364-dgx-blue-vllm-comfyui-gpu-contention.md",
-          "targetPath": "docs/knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-365-dgx-resource-phase3-workload-orchestration.md",
-          "targetPath": "docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md#2026-05-31-現状確認実機モデル配置基準線-workflow",
-          "targetPath": "docs/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/dgx-private-comfyui.md",
-          "targetPath": "docs/runbooks/dgx-private-comfyui.md",
-          "exists": true
-        },
-        {
-          "href": "../security/tailscale-policy.md",
-          "targetPath": "docs/security/tailscale-policy.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 9,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md",
-      "lineCount": 554,
-      "byteSize": 34401,
-      "hasFrontmatter": true,
-      "title": "KB-379 DGX Spark private ComfyUI（FLUX.2 Klein 9B 移行・workflow・NVFP4）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "./KB-364-dgx-blue-vllm-comfyui-gpu-contention.md",
-          "targetPath": "docs/knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-378-dgx-private-comfyui-mac-ssh-access.md",
-          "targetPath": "docs/knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/dgx-private-comfyui.md",
-          "targetPath": "docs/runbooks/dgx-private-comfyui.md",
-          "exists": true
-        },
-        {
-          "href": "../../infrastructure/ansible/inventory.yml",
-          "targetPath": "infrastructure/ansible/inventory.yml",
-          "exists": true
-        }
-      ],
-      "inboundCount": 11,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
       "path": "docs/knowledge-base/KB-380-kiosk-leaderboard-network-error-resilience.md",
       "lineCount": 68,
       "byteSize": 4739,
@@ -27146,7 +26728,7 @@
     {
       "path": "docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md",
       "lineCount": 189,
-      "byteSize": 10117,
+      "byteSize": 10176,
       "hasFrontmatter": false,
       "title": "KB-388: Cursor `state.vscdb` 破損・肥大化と外部SSD運用下での復旧（2026-06-06）",
       "status": null,
@@ -27196,11 +26778,6 @@
           "href": "./infrastructure/miscellaneous.md#kb-212-cursorチャットログの安全な削除手順1週間より前のログ削除",
           "targetPath": "docs/knowledge-base/infrastructure/miscellaneous.md",
           "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-daily-pilot.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
-          "exists": true
         }
       ],
       "inboundCount": 8,
@@ -27239,7 +26816,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 4,
+      "inboundCount": 3,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -28102,772 +27679,6 @@
       "referencesExecPlan": false
     },
     {
-      "path": "docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
-      "lineCount": 257,
-      "byteSize": 14091,
-      "hasFrontmatter": false,
-      "title": "KB-private-pi5-hermes-daily-pilot: Discord `/daily` 普段遣いパイロット（D6-pre）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "./KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-agent-plan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-agent-plan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-butler-vision-and-roadmap.md",
-          "targetPath": "docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-daily-pilot-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-daily-pilot-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-05",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 15,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md",
-      "lineCount": 77,
-      "byteSize": 4547,
-      "hasFrontmatter": false,
-      "title": "KB-private-pi5-hermes-dgx-403-bearer-token: Hermes Discord で HTTP 403 forbidden",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../runbooks/dgx-system-prod-local-llm.md",
-          "targetPath": "docs/runbooks/dgx-system-prod-local-llm.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 7,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md",
-      "lineCount": 277,
-      "byteSize": 16653,
-      "hasFrontmatter": false,
-      "title": "KB-private-pi5-hermes-discord-e2e-and-latency: Discord 雑談 E2E・遅延・8K・keep-warm・enable_thinking",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "./KB-private-pi5-hermes-dgx-403-bearer-token.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-skills-community-architecture.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-agent-plan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-agent-plan.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/dgx-system-prod-local-llm.md",
-          "targetPath": "docs/runbooks/dgx-system-prod-local-llm.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "../../infrastructure/ansible/playbooks/private-pi5-hermes.yml",
-          "targetPath": "infrastructure/ansible/playbooks/private-pi5-hermes.yml",
-          "exists": true
-        },
-        {
-          "href": "../../scripts/dgx-local-llm-system/tests/test_gateway_server.py",
-          "targetPath": "scripts/dgx-local-llm-system/tests/test_gateway_server.py",
-          "exists": true
-        }
-      ],
-      "inboundCount": 10,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/knowledge-base/KB-private-pi5-hermes-install-noninteractive.md",
-      "lineCount": 73,
-      "byteSize": 4176,
-      "hasFrontmatter": false,
-      "title": "KB-private-pi5-hermes: 私用 Pi5 への Hermes 非対話インストール障害",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../decisions/ADR-20260524-private-pi5-hermes-security-profile.md",
-          "targetPath": "docs/decisions/ADR-20260524-private-pi5-hermes-security-profile.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-agent-plan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-agent-plan.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 5,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/knowledge-base/KB-private-pi5-hermes-life-pilot.md",
-      "lineCount": 509,
-      "byteSize": 35625,
-      "hasFrontmatter": false,
-      "title": "KB-private-pi5-hermes-life-pilot: Discord Life Pilot（D6-life 以降）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../INDEX.md",
-          "targetPath": "docs/INDEX.md",
-          "exists": true
-        },
-        {
-          "href": "./index.md",
-          "targetPath": "docs/knowledge-base/index.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-daily-pilot.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-butler-vision-and-roadmap.md",
-          "targetPath": "docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-life-pilot-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-life-pilot-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md#phase-d6-life--discord-life-pilot2026-06-06-私用-pi5--discord-e2e-完了",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 6,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/knowledge-base/KB-private-pi5-hermes-novel-profile-production.md",
-      "lineCount": 118,
-      "byteSize": 8903,
-      "hasFrontmatter": false,
-      "title": "KB-private-pi5-hermes-novel-profile-production: Novel profile 本番反映（Discord `/novel`）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "./KB-private-pi5-hermes-phase-d5-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/dgx-uncensored-profile-button.md",
-          "targetPath": "docs/plans/dgx-uncensored-profile-button.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-novel-profile-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-novel-profile-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md#novel-profile--discord-novel長文創作--2026-05-29",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 8,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/knowledge-base/KB-private-pi5-hermes-phase-d0-production.md",
-      "lineCount": 60,
-      "byteSize": 3149,
-      "hasFrontmatter": false,
-      "title": "KB-private-pi5-hermes-phase-d0-production: Phase D0 本番反映・運用到達",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md",
-          "targetPath": "docs/decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-dgx-403-bearer-token.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-discord-e2e-and-latency.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d1-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d1-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-tools-security-threat-model.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d0-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d0-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 9,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/knowledge-base/KB-private-pi5-hermes-phase-d1-production.md",
-      "lineCount": 58,
-      "byteSize": 4148,
-      "hasFrontmatter": false,
-      "title": "KB-private-pi5-hermes-phase-d1-production: Phase D1 本番反映（tools 骨格）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "./KB-private-pi5-hermes-phase-d0-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d0-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-tools-security-threat-model.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-tools-security-threat-model.md#d2-チェックリスト未実施",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d1-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d1-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md#phase-d1--tools-プロファイル骨格実機本番反映2026-05-24",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 9,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/knowledge-base/KB-private-pi5-hermes-phase-d2-production.md",
-      "lineCount": 77,
-      "byteSize": 3595,
-      "hasFrontmatter": false,
-      "title": "KB-private-pi5-hermes-phase-d2-production: Phase D2 本番反映（file のみ）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "./KB-private-pi5-hermes-phase-d1-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d1-production.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d2-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d2-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md#phase-d2--file-ツールのみworkspace-限定repo-実装",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 6,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md",
-      "lineCount": 101,
-      "byteSize": 6706,
-      "hasFrontmatter": false,
-      "title": "KB-private-pi5-hermes-phase-d3-production: Phase D3 本番反映（file + web）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "./KB-private-pi5-hermes-phase-d2-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d2-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-tools-security-threat-model.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-butler-vision-and-roadmap.md",
-          "targetPath": "docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d3-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d3-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md#phase-d3--file--webboundary--website_blocklist-同期",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 9,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/knowledge-base/KB-private-pi5-hermes-phase-d4-production.md",
-      "lineCount": 95,
-      "byteSize": 7256,
-      "hasFrontmatter": false,
-      "title": "KB-private-pi5-hermes-phase-d4-production: Phase D4 本番反映（file + web + browser）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "./KB-private-pi5-hermes-phase-d3-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-tools-security-threat-model.md#d4-チェックリストrepo-実装2026-05-25",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d4-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d4-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md#phase-d4--file--web--browser実機本番反映2026-05-25",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 8,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-      "lineCount": 566,
-      "byteSize": 45251,
-      "hasFrontmatter": false,
-      "title": "KB-private-pi5-hermes-phase-d5-production: Phase D5 本番反映（Discord `/task` 橋）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../decisions/ADR-20260525-private-pi5-hermes-discord-approval-relay-d5-1.md",
-          "targetPath": "docs/decisions/ADR-20260525-private-pi5-hermes-discord-approval-relay-d5-1.md",
-          "exists": true
-        },
-        {
-          "href": "../decisions/ADR-20260525-private-pi5-hermes-discord-tools-bridge-d5.md",
-          "targetPath": "docs/decisions/ADR-20260525-private-pi5-hermes-discord-tools-bridge-d5.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-366-dgx-spark-operational-understanding.md#8-gpu-memory-utilization-を下げる場合参考",
-          "targetPath": "docs/knowledge-base/KB-366-dgx-spark-operational-understanding.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d4-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d4-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-tools-security-threat-model.md#d5-チェックリストrepo-実装2026-05-25",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d5-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d5-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/dgx-system-prod-local-llm.md",
-          "targetPath": "docs/runbooks/dgx-system-prod-local-llm.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md#hermes-agent-本体-hotfix承認-yes-の割り込み回避2026-06-05",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md#phase-d5--discord-task-橋実機本番反映2026-05-25",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md#phase-d51--discord-承認中継2026-05-25--repo-実装",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 47,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md",
-      "lineCount": 134,
-      "byteSize": 9000,
-      "hasFrontmatter": false,
-      "title": "KB-private-pi5-hermes-skills-community-architecture: スキル・フォーラム知見・実装評価",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../decisions/ADR-20260524-private-pi5-hermes-security-profile.md",
-          "targetPath": "docs/decisions/ADR-20260524-private-pi5-hermes-security-profile.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-discord-e2e-and-latency.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-agent-plan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-agent-plan.md",
-          "exists": true
-        },
-        {
-          "href": "../../scripts/dgx-local-llm-system/tests/test_gateway_server.py",
-          "targetPath": "scripts/dgx-local-llm-system/tests/test_gateway_server.py",
-          "exists": true
-        }
-      ],
-      "inboundCount": 8,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md",
-      "lineCount": 148,
-      "byteSize": 11337,
-      "hasFrontmatter": true,
-      "title": "KB-private-pi5-hermes-task-dgx-profile-restore",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "./KB-366-dgx-spark-operational-understanding.md#8-gpu-memory-utilization-を下げる場合参考",
-          "targetPath": "docs/knowledge-base/KB-366-dgx-spark-operational-understanding.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d5-production.md#discord-承認-ux-修正2026-05-30--repo",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d5-production.md#本番デプロイ承認-relay-完結--2026-05-30-jst",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/dgx-system-prod-local-llm.md",
-          "targetPath": "docs/runbooks/dgx-system-prod-local-llm.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 8,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-      "lineCount": 144,
-      "byteSize": 9806,
-      "hasFrontmatter": false,
-      "title": "KB-private-pi5-hermes-tools-security-threat-model: ツール有効化前の脅威モデル",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../decisions/ADR-20260525-private-pi5-hermes-discord-approval-relay-d5-1.md",
-          "targetPath": "docs/decisions/ADR-20260525-private-pi5-hermes-discord-approval-relay-d5-1.md",
-          "exists": true
-        },
-        {
-          "href": "../decisions/ADR-20260525-private-pi5-hermes-discord-tools-bridge-d5.md",
-          "targetPath": "docs/decisions/ADR-20260525-private-pi5-hermes-discord-tools-bridge-d5.md",
-          "exists": true
-        },
-        {
-          "href": "../decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md",
-          "targetPath": "docs/decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-daily-pilot.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d0-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d0-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d1-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d1-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d2-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d2-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d4-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d4-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d5-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d5-production.md#phase-d51-追記2026-05-25--repo-実装--私用-pi5-本番反映",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-agent-plan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-agent-plan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-butler-vision-and-roadmap.md",
-          "targetPath": "docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d2-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d2-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d4-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d4-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d5-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d5-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../security/tailscale-policy-hermes-private-pi5-draft.md",
-          "targetPath": "docs/security/tailscale-policy-hermes-private-pi5-draft.md",
-          "exists": true
-        },
-        {
-          "href": "../security/tailscale-policy-hermes-private-pi5-grants.json",
-          "targetPath": "docs/security/tailscale-policy-hermes-private-pi5-grants.json",
-          "exists": true
-        },
-        {
-          "href": "../../scripts/private-pi5-hermes/config/task-bridge.policy.yaml",
-          "targetPath": "scripts/private-pi5-hermes/config/task-bridge.policy.yaml",
-          "exists": false
-        }
-      ],
-      "inboundCount": 17,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-      "lineCount": 709,
-      "byteSize": 58840,
-      "hasFrontmatter": true,
-      "title": "KB: StackChan コミュニティファーム（AI_StackChan_Ex）供給鎖・セキュリティ",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../decisions/ADR-20260531-stackchan-cores3-probe-display-halt.md",
-          "targetPath": "docs/decisions/ADR-20260531-stackchan-cores3-probe-display-halt.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/stackchan-private-pi5-tailnet-workflow-plan.md#two-path-architecture-private-work-2026-05-10",
-          "targetPath": "docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-stackchan-bridge-deploy.md",
-          "targetPath": "docs/runbooks/private-pi5-stackchan-bridge-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/stackchan-community-text-only-e2e.md",
-          "targetPath": "docs/runbooks/stackchan-community-text-only-e2e.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/stackchan-community-text-only-e2e.md#e2e-checklist-text-then-audio",
-          "targetPath": "docs/runbooks/stackchan-community-text-only-e2e.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/stackchan-community-text-only-e2e.md#text-only-done-criteria",
-          "targetPath": "docs/runbooks/stackchan-community-text-only-e2e.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/stackchan-cores3-bringup-probe.md",
-          "targetPath": "docs/runbooks/stackchan-cores3-bringup-probe.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 20,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
       "path": "docs/knowledge-base/_template.md",
       "lineCount": 12,
       "byteSize": 494,
@@ -28885,7 +27696,7 @@
     {
       "path": "docs/knowledge-base/api.md",
       "lineCount": 4899,
-      "byteSize": 356482,
+      "byteSize": 356630,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - API関連",
       "status": null,
@@ -29162,16 +27973,6 @@
           "exists": true
         },
         {
-          "href": "./KB-378-dgx-private-comfyui-mac-ssh-access.md",
-          "targetPath": "docs/knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md",
-          "targetPath": "docs/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md",
-          "exists": true
-        },
-        {
           "href": "../modules/signage/README.md",
           "targetPath": "docs/modules/signage/README.md",
           "exists": true
@@ -29184,11 +27985,6 @@
         {
           "href": "../runbooks/deploy-status-recovery.md",
           "targetPath": "docs/runbooks/deploy-status-recovery.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/dgx-private-comfyui.md",
-          "targetPath": "docs/runbooks/dgx-private-comfyui.md",
           "exists": true
         },
         {
@@ -29564,7 +28360,7 @@
     {
       "path": "docs/knowledge-base/index.md",
       "lineCount": 885,
-      "byteSize": 267589,
+      "byteSize": 269621,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - 索引",
       "status": null,
@@ -29678,16 +28474,6 @@
         {
           "href": "../decisions/ADR-20260509-fkojunst-status-completion-matching-policy.md",
           "targetPath": "docs/decisions/ADR-20260509-fkojunst-status-completion-matching-policy.md",
-          "exists": true
-        },
-        {
-          "href": "../decisions/ADR-20260524-private-pi5-hermes-security-profile.md",
-          "targetPath": "docs/decisions/ADR-20260524-private-pi5-hermes-security-profile.md",
-          "exists": true
-        },
-        {
-          "href": "../decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md",
-          "targetPath": "docs/decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md",
           "exists": true
         },
         {
@@ -32011,16 +30797,6 @@
           "exists": true
         },
         {
-          "href": "./KB-378-dgx-private-comfyui-mac-ssh-access.md",
-          "targetPath": "docs/knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md",
-          "targetPath": "docs/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md",
-          "exists": true
-        },
-        {
           "href": "./KB-380-kiosk-leaderboard-network-error-resilience.md",
           "targetPath": "docs/knowledge-base/KB-380-kiosk-leaderboard-network-error-resilience.md",
           "exists": true
@@ -32221,116 +30997,6 @@
           "exists": true
         },
         {
-          "href": "./KB-private-pi5-hermes-daily-pilot.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-dgx-403-bearer-token.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-discord-e2e-and-latency.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-install-noninteractive.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-install-noninteractive.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-life-pilot.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-life-pilot.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-novel-profile-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-novel-profile-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d0-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d0-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d1-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d1-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d2-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d2-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d3-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d4-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d4-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d5-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d5-production.md#phase-d51-追記2026-05-25--repo-実装--私用-pi5-本番反映",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-skills-community-architecture.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-task-dgx-profile-restore.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-task-dgx-profile-restore.md#追記--blue-backend-起動失敗で-v1models-5022026-06-05",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-private-pi5-hermes-tools-security-threat-model.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-stackchan-community-firmware-supply-chain.md",
-          "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-stackchan-community-firmware-supply-chain.md#2026-05-23-私用-pi5-utterance-一括-apiファーム-overlay実機ブリングアップ作業中断",
-          "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "exists": true
-        },
-        {
           "href": "../plans/dgx-spark-local-llm-migration-execplan.md",
           "targetPath": "docs/plans/dgx-spark-local-llm-migration-execplan.md",
           "exists": true
@@ -32366,73 +31032,13 @@
           "exists": true
         },
         {
-          "href": "../plans/private-pi5-hermes-agent-plan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-agent-plan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-butler-vision-and-roadmap.md",
-          "targetPath": "docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-daily-pilot-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-daily-pilot-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-novel-profile-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-novel-profile-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d1-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d1-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d2-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d2-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d3-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d3-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d4-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d4-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d5-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d5-execplan.md",
-          "exists": true
-        },
-        {
           "href": "../plans/solid-refactor-phase6-execplan-202607.md",
           "targetPath": "docs/plans/solid-refactor-phase6-execplan-202607.md",
           "exists": true
         },
         {
-          "href": "../plans/stackchan-private-pi5-tailnet-workflow-plan.md",
-          "targetPath": "docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md",
-          "exists": true
-        },
-        {
           "href": "../runbooks/deploy-status-recovery.md",
           "targetPath": "docs/runbooks/deploy-status-recovery.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/dgx-private-comfyui.md",
-          "targetPath": "docs/runbooks/dgx-private-comfyui.md",
           "exists": true
         },
         {
@@ -32486,48 +31092,8 @@
           "exists": true
         },
         {
-          "href": "../runbooks/private-pi5-hermes-deploy.md",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md#hermes-agent-本体-hotfix承認-yes-の割り込み回避2026-06-05",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-05",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-06-実機検証完了",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md#本番復旧--task-二段障害2026-06-05",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-stackchan-bridge-deploy.md",
-          "targetPath": "docs/runbooks/private-pi5-stackchan-bridge-deploy.md",
-          "exists": true
-        },
-        {
           "href": "../runbooks/security-hardening-remediation.md",
           "targetPath": "docs/runbooks/security-hardening-remediation.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/stackchan-community-text-only-e2e.md",
-          "targetPath": "docs/runbooks/stackchan-community-text-only-e2e.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/stackchan-community-text-only-e2e.md#65-2026-05-23-post-apistackchanutterancepi5-一括と実機復旧",
-          "targetPath": "docs/runbooks/stackchan-community-text-only-e2e.md",
           "exists": true
         },
         {
@@ -32551,7 +31117,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 23,
+      "inboundCount": 22,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -33180,7 +31746,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 103,
+      "inboundCount": 101,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -34936,21 +33502,6 @@
       "referencesExecPlan": false
     },
     {
-      "path": "docs/plans/dgx-comfyui-single-image-edit-workflow.md",
-      "lineCount": 118,
-      "byteSize": 13066,
-      "hasFrontmatter": true,
-      "title": "Complete the DGX ComfyUI single-image prompt editing workflow",
-      "status": "active",
-      "source_of_truth": "docs/plans/dgx-comfyui-single-image-edit-workflow.md",
-      "localLinks": [],
-      "inboundCount": 0,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
       "path": "docs/plans/dgx-control-plane-business-proxy-consumer-execplan.md",
       "lineCount": 182,
       "byteSize": 9455,
@@ -35018,8 +33569,8 @@
     },
     {
       "path": "docs/plans/dgx-spark-local-llm-migration-execplan.md",
-      "lineCount": 491,
-      "byteSize": 86922,
+      "lineCount": 489,
+      "byteSize": 86985,
       "hasFrontmatter": false,
       "title": "DGX Spark LocalLLM 移行・多用途分離運用 ExecPlan",
       "status": null,
@@ -35056,21 +33607,6 @@
           "exists": true
         },
         {
-          "href": "../knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md",
-          "targetPath": "docs/knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md",
-          "targetPath": "docs/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md#2026-05-31-現状確認実機モデル配置基準線-workflow",
-          "targetPath": "docs/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md",
-          "exists": true
-        },
-        {
           "href": "../runbooks/dgx-system-prod-local-llm.md",
           "targetPath": "docs/runbooks/dgx-system-prod-local-llm.md",
           "exists": true
@@ -35091,13 +33627,13 @@
           "exists": true
         }
       ],
-      "inboundCount": 6,
+      "inboundCount": 5,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 38,
-          "length": 1075
+          "line": 36,
+          "length": 1127
         }
       ],
       "referencesExecPlan": true
@@ -35142,11 +33678,6 @@
       "source_of_truth": null,
       "localLinks": [
         {
-          "href": "./private-pi5-hermes-novel-profile-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-novel-profile-execplan.md",
-          "exists": true
-        },
-        {
           "href": "../runbooks/dgx-system-prod-local-llm.md#dgx-uncensored-profile-2026-05-29",
           "targetPath": "docs/runbooks/dgx-system-prod-local-llm.md",
           "exists": true
@@ -35157,7 +33688,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 5,
+      "inboundCount": 3,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -37667,578 +36198,6 @@
       "referencesExecPlan": false
     },
     {
-      "path": "docs/plans/private-pi5-hermes-agent-plan.md",
-      "lineCount": 207,
-      "byteSize": 17086,
-      "hasFrontmatter": true,
-      "title": "私用 Pi5 Hermes Agent 計画（セキュリティ先行・Discord 雑談）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../decisions/ADR-20260524-private-pi5-hermes-security-profile.md",
-          "targetPath": "docs/decisions/ADR-20260524-private-pi5-hermes-security-profile.md",
-          "exists": true
-        },
-        {
-          "href": "../decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md",
-          "targetPath": "docs/decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
-          "exists": true
-        },
-        {
-          "href": "./../knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
-          "exists": true
-        },
-        {
-          "href": "./../knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md",
-          "exists": true
-        },
-        {
-          "href": "./../knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md",
-          "exists": true
-        },
-        {
-          "href": "./../knowledge-base/KB-private-pi5-hermes-install-noninteractive.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-install-noninteractive.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d0-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d0-production.md",
-          "exists": true
-        },
-        {
-          "href": "./../knowledge-base/KB-private-pi5-hermes-phase-d0-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d0-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d1-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d1-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d3-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md",
-          "exists": true
-        },
-        {
-          "href": "./../knowledge-base/KB-private-pi5-hermes-phase-d3-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "./../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "./../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "./../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "./../knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md",
-          "exists": true
-        },
-        {
-          "href": "./../knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md#追記--blue-backend-起動失敗で-v1models-5022026-06-05",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md",
-          "exists": true
-        },
-        {
-          "href": "./private-pi5-hermes-butler-vision-and-roadmap.md",
-          "targetPath": "docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md",
-          "exists": true
-        },
-        {
-          "href": "./private-pi5-hermes-daily-pilot-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-daily-pilot-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "./private-pi5-hermes-tools-security-phase-d0-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d0-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "./private-pi5-hermes-tools-security-phase-d4-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d4-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md#hermes-agent-本体-hotfix承認-yes-の割り込み回避2026-06-05",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "./../runbooks/private-pi5-hermes-deploy.md",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "../security/tailscale-policy-hermes-private-pi5-grants.json",
-          "targetPath": "docs/security/tailscale-policy-hermes-private-pi5-grants.json",
-          "exists": true
-        }
-      ],
-      "inboundCount": 12,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md",
-      "lineCount": 166,
-      "byteSize": 11708,
-      "hasFrontmatter": true,
-      "title": "私用 Pi5 Hermes — AI執事ビジョンとロードマップ（北極星）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-life-pilot.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-life-pilot.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d0-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d0-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d1-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d1-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d2-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d2-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d3-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d4-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d4-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "exists": true
-        },
-        {
-          "href": "./private-pi5-hermes-agent-plan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-agent-plan.md",
-          "exists": true
-        },
-        {
-          "href": "./private-pi5-hermes-tools-security-phase-d3-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d3-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "./private-pi5-hermes-tools-security-phase-d5-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d5-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 10,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": true
-    },
-    {
-      "path": "docs/plans/private-pi5-hermes-daily-pilot-execplan.md",
-      "lineCount": 148,
-      "byteSize": 5837,
-      "hasFrontmatter": true,
-      "title": "Hermes 普段遣いパイロット（D6-pre）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 6,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/private-pi5-hermes-life-pilot-execplan.md",
-      "lineCount": 362,
-      "byteSize": 24453,
-      "hasFrontmatter": true,
-      "title": "Hermes Life Pilot（D6-life）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-life-pilot.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-life-pilot.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 3,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/private-pi5-hermes-novel-profile-execplan.md",
-      "lineCount": 217,
-      "byteSize": 17278,
-      "hasFrontmatter": true,
-      "title": "私用 Pi5 Hermes 小説創作プロファイル ExecPlan",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-novel-profile-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-novel-profile-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-novel-profile-production.md#investigationデプロイ検証トラブルシュート",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-novel-profile-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-novel-profile-production.md#追記--novel-slash-args_hint-修正2026-05-29-2156-jst",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-novel-profile-production.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md#novel-profile--discord-novel長文創作--2026-05-29",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 5,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/private-pi5-hermes-tools-security-phase-d0-execplan.md",
-      "lineCount": 88,
-      "byteSize": 4800,
-      "hasFrontmatter": true,
-      "title": "私用 Pi5 Hermes ツール向けセキュリティ Phase D0 ExecPlan",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md",
-          "targetPath": "docs/decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d1-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d1-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md#トークン分離2026-05-24-実施",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md#本番反映2026-05-24phase-d0-骨格私用-pi5--dgx-順次",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 6,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/private-pi5-hermes-tools-security-phase-d1-execplan.md",
-      "lineCount": 82,
-      "byteSize": 3033,
-      "hasFrontmatter": true,
-      "title": "私用 Pi5 Hermes ツール向けセキュリティ Phase D1 ExecPlan",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d0-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d0-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d1-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d1-production.md",
-          "exists": true
-        },
-        {
-          "href": "./private-pi5-hermes-tools-security-phase-d0-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d0-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "./private-pi5-hermes-tools-security-phase-d2-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d2-execplan.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 4,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/private-pi5-hermes-tools-security-phase-d2-execplan.md",
-      "lineCount": 76,
-      "byteSize": 3400,
-      "hasFrontmatter": true,
-      "title": "私用 Pi5 Hermes ツール向けセキュリティ Phase D2 ExecPlan",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d2-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d2-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "exists": true
-        },
-        {
-          "href": "./private-pi5-hermes-tools-security-phase-d1-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d1-execplan.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 6,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/private-pi5-hermes-tools-security-phase-d3-execplan.md",
-      "lineCount": 84,
-      "byteSize": 4183,
-      "hasFrontmatter": true,
-      "title": "私用 Pi5 Hermes ツール向けセキュリティ Phase D3 ExecPlan",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d3-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "exists": true
-        },
-        {
-          "href": "./private-pi5-hermes-tools-security-phase-d2-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d2-execplan.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 6,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/private-pi5-hermes-tools-security-phase-d4-execplan.md",
-      "lineCount": 88,
-      "byteSize": 4249,
-      "hasFrontmatter": true,
-      "title": "私用 Pi5 Hermes ツール向けセキュリティ Phase D4 ExecPlan",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d4-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d4-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "exists": true
-        },
-        {
-          "href": "./private-pi5-hermes-tools-security-phase-d3-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d3-execplan.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 7,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md",
-      "lineCount": 74,
-      "byteSize": 4564,
-      "hasFrontmatter": true,
-      "title": "私用 Pi5 Hermes ツール向けセキュリティ Phase D5.1 ExecPlan",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../decisions/ADR-20260525-private-pi5-hermes-discord-approval-relay-d5-1.md",
-          "targetPath": "docs/decisions/ADR-20260525-private-pi5-hermes-discord-approval-relay-d5-1.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#phase-d51-追記2026-05-25--repo-実装--私用-pi5-本番反映",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイgateway-actor-context--yes-ルーティング--2026-05-26-jst",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイsession-context-api-修正--2026-05-25-2236-jst",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイwrite_file-承認ゲート--2026-05-26-jst",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "./private-pi5-hermes-tools-security-phase-d5-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d5-execplan.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 6,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/private-pi5-hermes-tools-security-phase-d5-execplan.md",
-      "lineCount": 87,
-      "byteSize": 3943,
-      "hasFrontmatter": true,
-      "title": "私用 Pi5 Hermes ツール向けセキュリティ Phase D5 ExecPlan",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../decisions/ADR-20260525-private-pi5-hermes-discord-tools-bridge-d5.md",
-          "targetPath": "docs/decisions/ADR-20260525-private-pi5-hermes-discord-tools-bridge-d5.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "./private-pi5-hermes-tools-security-phase-d4-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d4-execplan.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 8,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
       "path": "docs/plans/procedure-manuals-execplan.md",
       "lineCount": 801,
       "byteSize": 204856,
@@ -39180,98 +37139,6 @@
       "referencesExecPlan": true
     },
     {
-      "path": "docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md",
-      "lineCount": 235,
-      "byteSize": 20133,
-      "hasFrontmatter": false,
-      "title": "StackChan 私用 Pi5 経由ワークフロー計画（会話反映）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-install-noninteractive.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-install-noninteractive.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-23-私用-pi5-utterance-一括-apiファーム-overlay実機ブリングアップ作業中断",
-          "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "exists": true
-        },
-        {
-          "href": "./private-pi5-hermes-agent-plan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-agent-plan.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-hermes-deploy.md",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/private-pi5-stackchan-bridge-deploy.md",
-          "targetPath": "docs/runbooks/private-pi5-stackchan-bridge-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/stackchan-community-text-only-e2e.md",
-          "targetPath": "docs/runbooks/stackchan-community-text-only-e2e.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/stackchan-community-text-only-e2e.md#e2e-checklist-text-then-audio",
-          "targetPath": "docs/runbooks/stackchan-community-text-only-e2e.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/stackchan-community-text-only-e2e.md#text-only-done-criteria",
-          "targetPath": "docs/runbooks/stackchan-community-text-only-e2e.md",
-          "exists": true
-        },
-        {
-          "href": "../../scripts/private-pi5-stackchan-bridge/README.md",
-          "targetPath": "scripts/private-pi5-stackchan-bridge/README.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 8,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": true
-    },
-    {
-      "path": "docs/plans/stackchan-spark-voice-assistant-restart-2026-07.md",
-      "lineCount": 449,
-      "byteSize": 38567,
-      "hasFrontmatter": false,
-      "title": "Restart StackChan as a Spark-backed voice assistant",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../../docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "exists": true
-        },
-        {
-          "href": "../../scripts/private-pi5-stackchan-bridge/README.md#lan-ip-drift-の注意",
-          "targetPath": "scripts/private-pi5-stackchan-bridge/README.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 1,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
       "path": "docs/plans/standard-release-production-path-audit-execplan.md",
       "lineCount": 614,
       "byteSize": 34966,
@@ -39993,80 +37860,9 @@
       "referencesExecPlan": false
     },
     {
-      "path": "docs/runbooks/dgx-private-comfyui.md",
-      "lineCount": 264,
-      "byteSize": 24547,
-      "hasFrontmatter": true,
-      "title": "Runbook DGX Spark private ComfyUI（コンテナ・Tailscale）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../knowledge-base/infrastructure/security.md",
-          "targetPath": "docs/knowledge-base/infrastructure/security.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md",
-          "targetPath": "docs/knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md",
-          "targetPath": "docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md",
-          "targetPath": "docs/knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md",
-          "targetPath": "docs/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md#2026-05-31-現状確認実機モデル配置基準線-workflow",
-          "targetPath": "docs/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/dgx-spark-local-llm-migration-execplan.md",
-          "targetPath": "docs/plans/dgx-spark-local-llm-migration-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "./dgx-system-prod-local-llm.md",
-          "targetPath": "docs/runbooks/dgx-system-prod-local-llm.md",
-          "exists": true
-        },
-        {
-          "href": "./local-llm-tailscale-sidecar.md",
-          "targetPath": "docs/runbooks/local-llm-tailscale-sidecar.md",
-          "exists": true
-        },
-        {
-          "href": "../../infrastructure/ansible/inventory.yml",
-          "targetPath": "infrastructure/ansible/inventory.yml",
-          "exists": true
-        },
-        {
-          "href": "../../scripts/dgx-private-comfyui/README.md",
-          "targetPath": "scripts/dgx-private-comfyui/README.md",
-          "exists": false
-        }
-      ],
-      "inboundCount": 7,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
       "path": "docs/runbooks/dgx-system-prod-local-llm.md",
       "lineCount": 1379,
-      "byteSize": 147722,
+      "byteSize": 147670,
       "hasFrontmatter": false,
       "title": "Runbook: DGX Spark system-prod LocalLLM 段階切替",
       "status": null,
@@ -40358,16 +38154,6 @@
           "exists": true
         },
         {
-          "href": "../knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md",
-          "exists": true
-        },
-        {
-          "href": "./../knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md#追記--blue-backend-起動失敗で-v1models-5022026-06-05",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md",
-          "exists": true
-        },
-        {
           "href": "../plans/dgx-spark-optimization-execplan-202607.md",
           "targetPath": "docs/plans/dgx-spark-optimization-execplan-202607.md",
           "exists": true
@@ -40378,32 +38164,12 @@
           "exists": true
         },
         {
-          "href": "../plans/stackchan-private-pi5-tailnet-workflow-plan.md#two-path-architecture-private-work-2026-05-10",
-          "targetPath": "docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md",
-          "exists": true
-        },
-        {
-          "href": "./private-pi5-hermes-deploy.md#phase-d0--トークン分離tools-プロファイル2026-05-24",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "./private-pi5-hermes-deploy.md#本番反映--task-dgx-通常-profile-復帰2026-05-30",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "./private-pi5-hermes-deploy.md#本番反映2026-05-24phase-d0-骨格私用-pi5--dgx-順次",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
           "href": "../security/tailscale-policy.md",
           "targetPath": "docs/security/tailscale-policy.md",
           "exists": true
         }
       ],
-      "inboundCount": 71,
+      "inboundCount": 64,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
@@ -41189,7 +38955,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 13,
+      "inboundCount": 12,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -41593,328 +39359,6 @@
       "referencesExecPlan": false
     },
     {
-      "path": "docs/runbooks/private-pi5-hermes-deploy.md",
-      "lineCount": 1304,
-      "byteSize": 93891,
-      "hasFrontmatter": false,
-      "title": "私用 Pi5 Hermes Agent 標準デプロイ",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../decisions/ADR-20260524-private-pi5-hermes-security-profile.md",
-          "targetPath": "docs/decisions/ADR-20260524-private-pi5-hermes-security-profile.md",
-          "exists": true
-        },
-        {
-          "href": "../decisions/ADR-20260525-private-pi5-hermes-discord-approval-relay-d5-1.md",
-          "targetPath": "docs/decisions/ADR-20260525-private-pi5-hermes-discord-approval-relay-d5-1.md",
-          "exists": true
-        },
-        {
-          "href": "../decisions/ADR-20260525-private-pi5-hermes-discord-tools-bridge-d5.md",
-          "targetPath": "docs/decisions/ADR-20260525-private-pi5-hermes-discord-tools-bridge-d5.md",
-          "exists": true
-        },
-        {
-          "href": "../decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md",
-          "targetPath": "docs/decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md",
-          "exists": true
-        },
-        {
-          "href": "../guides/ssd-migration.md",
-          "targetPath": "docs/guides/ssd-migration.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md",
-          "targetPath": "docs/knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-389-dgx-resource-runtime-profile-resource-state.md",
-          "targetPath": "docs/knowledge-base/KB-389-dgx-resource-runtime-profile-resource-state.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-daily-pilot.md#investigation--policy-regex-修正2026-06-06",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-daily-pilot.md#デプロイ経路の注意surprises",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-install-noninteractive.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-install-noninteractive.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-life-pilot.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-life-pilot.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-novel-profile-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-novel-profile-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-novel-profile-production.md#追記--novel-slash-args_hint-修正2026-05-29-2156-jst",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-novel-profile-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d1-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d1-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d2-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d2-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d3-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d4-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d4-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#investigationd51-デプロイ実機検証",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#phase-d51-追記2026-05-25--repo-実装--私用-pi5-本番反映",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイgateway-actor-context--yes-ルーティング--2026-05-26-jst",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイwrite_file-承認ゲート--2026-05-26-jst",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイ承認-relay-完結--2026-05-30-jst",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md#追記--blue-backend-起動失敗で-v1models-5022026-06-05",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "targetPath": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/dgx-uncensored-profile-button.md",
-          "targetPath": "docs/plans/dgx-uncensored-profile-button.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-agent-plan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-agent-plan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-butler-vision-and-roadmap.md",
-          "targetPath": "docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-daily-pilot-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-daily-pilot-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-life-pilot-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-life-pilot-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-novel-profile-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-novel-profile-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d0-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d0-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d1-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d1-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d2-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d2-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d3-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d3-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d4-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d4-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/private-pi5-hermes-tools-security-phase-d5-execplan.md",
-          "targetPath": "docs/plans/private-pi5-hermes-tools-security-phase-d5-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "./dgx-system-prod-local-llm.md",
-          "targetPath": "docs/runbooks/dgx-system-prod-local-llm.md",
-          "exists": true
-        },
-        {
-          "href": "./dgx-system-prod-local-llm.md#トラブルシュート--blue-backend-起動失敗--v1models-5022026-06-05",
-          "targetPath": "docs/runbooks/dgx-system-prod-local-llm.md",
-          "exists": true
-        },
-        {
-          "href": "./private-pi5-stackchan-bridge-deploy.md",
-          "targetPath": "docs/runbooks/private-pi5-stackchan-bridge-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "../security/tailscale-policy-hermes-private-pi5-draft.md",
-          "targetPath": "docs/security/tailscale-policy-hermes-private-pi5-draft.md",
-          "exists": true
-        },
-        {
-          "href": "../security/tailscale-policy-hermes-private-pi5-grants.json",
-          "targetPath": "docs/security/tailscale-policy-hermes-private-pi5-grants.json",
-          "exists": true
-        },
-        {
-          "href": "../security/tailscale-policy-hermes-private-pi5-verification.sh",
-          "targetPath": "docs/security/tailscale-policy-hermes-private-pi5-verification.sh",
-          "exists": true
-        },
-        {
-          "href": "../../infrastructure/ansible/tasks/private-pi5-hermes/verify-discord-approval-relay.yml",
-          "targetPath": "infrastructure/ansible/tasks/private-pi5-hermes/verify-discord-approval-relay.yml",
-          "exists": true
-        }
-      ],
-      "inboundCount": 49,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/runbooks/private-pi5-stackchan-bridge-deploy.md",
-      "lineCount": 189,
-      "byteSize": 15903,
-      "hasFrontmatter": false,
-      "title": "私用 Pi5 `stackchan-bridge` 標準デプロイ",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-14-追補-実機ワークストリームウェイクワード登録オフラインモードシリアル本-repo-未コミットの試行含む",
-          "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-23-私用-pi5-utterance-一括-apiファーム-overlay実機ブリングアップ作業中断",
-          "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "exists": true
-        },
-        {
-          "href": "./private-pi5-hermes-deploy.md",
-          "targetPath": "docs/runbooks/private-pi5-hermes-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/stackchan-community-text-only-e2e.md#64-2026-05-14-引き継ぎウェイクワード登録オフラインシリアル",
-          "targetPath": "docs/runbooks/stackchan-community-text-only-e2e.md",
-          "exists": true
-        },
-        {
-          "href": "./stackchan-community-text-only-e2e.md#text-only-done-criteria",
-          "targetPath": "docs/runbooks/stackchan-community-text-only-e2e.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 7,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
       "path": "docs/runbooks/scaw-nonconformity-self-inspection.md",
       "lineCount": 155,
       "byteSize": 13729,
@@ -42001,123 +39445,6 @@
         }
       ],
       "inboundCount": 3,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/runbooks/stackchan-community-realtime-api-migration.md",
-      "lineCount": 116,
-      "byteSize": 5428,
-      "hasFrontmatter": true,
-      "title": "Runbook — StackChan コミュニティファーム Realtime API 段階移行",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 2,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/runbooks/stackchan-community-text-only-e2e.md",
-      "lineCount": 379,
-      "byteSize": 29938,
-      "hasFrontmatter": true,
-      "title": "Runbook — StackChan コミュニティファーム text-only 疎通（Pi5 bridge → DGX）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../decisions/ADR-20260531-stackchan-cores3-probe-display-halt.md",
-          "targetPath": "docs/decisions/ADR-20260531-stackchan-cores3-probe-display-halt.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#private-pi5-stackchan-bridge-boundary-2026-05-10",
-          "targetPath": "docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-13-追補-chatgpt_api_url-ドリフトbridge-リクエスト読取タイムアウトurl-境界の錯覚調査上の断定ルール",
-          "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-14-追補-実機ワークストリームウェイクワード登録オフラインモードシリアル本-repo-未コミットの試行含む",
-          "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-23-私用-pi5-utterance-一括-apiファーム-overlay実機ブリングアップ作業中断",
-          "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "exists": true
-        },
-        {
-          "href": "./private-pi5-stackchan-bridge-deploy.md",
-          "targetPath": "docs/runbooks/private-pi5-stackchan-bridge-deploy.md",
-          "exists": true
-        },
-        {
-          "href": "./stackchan-community-realtime-api-migration.md",
-          "targetPath": "docs/runbooks/stackchan-community-realtime-api-migration.md",
-          "exists": true
-        },
-        {
-          "href": "./stackchan-cores3-bringup-probe.md",
-          "targetPath": "docs/runbooks/stackchan-cores3-bringup-probe.md",
-          "exists": true
-        },
-        {
-          "href": "../../scripts/private-pi5-stackchan-bridge/README.md",
-          "targetPath": "scripts/private-pi5-stackchan-bridge/README.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 18,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/runbooks/stackchan-cores3-bringup-probe.md",
-      "lineCount": 364,
-      "byteSize": 17558,
-      "hasFrontmatter": false,
-      "title": "StackChan CoreS3 bring-up probe（最小ファーム）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../decisions/ADR-20260531-stackchan-cores3-probe-display-halt.md",
-          "targetPath": "docs/decisions/ADR-20260531-stackchan-cores3-probe-display-halt.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "targetPath": "docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md",
-          "exists": true
-        },
-        {
-          "href": "./stackchan-community-text-only-e2e.md",
-          "targetPath": "docs/runbooks/stackchan-community-text-only-e2e.md",
-          "exists": true
-        },
-        {
-          "href": "../../scripts/stackchan-ai-stackchan-ex/README.md",
-          "targetPath": "scripts/stackchan-ai-stackchan-ex/README.md",
-          "exists": false
-        }
-      ],
-      "inboundCount": 4,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -43505,50 +40832,9 @@
       "referencesExecPlan": false
     },
     {
-      "path": "docs/security/tailscale-policy-hermes-private-pi5-draft.md",
-      "lineCount": 62,
-      "byteSize": 3413,
-      "hasFrontmatter": false,
-      "title": "Tailscale ACL 草案 — 私用 Pi5（Hermes / StackChan）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md",
-          "targetPath": "docs/decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/stackchan-private-pi5-tailnet-workflow-plan.md",
-          "targetPath": "docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md",
-          "exists": true
-        },
-        {
-          "href": "./tailscale-policy-hermes-private-pi5-grants.json",
-          "targetPath": "docs/security/tailscale-policy-hermes-private-pi5-grants.json",
-          "exists": true
-        },
-        {
-          "href": "./tailscale-policy-hermes-private-pi5-verification.sh",
-          "targetPath": "docs/security/tailscale-policy-hermes-private-pi5-verification.sh",
-          "exists": true
-        },
-        {
-          "href": "./tailscale-policy.md",
-          "targetPath": "docs/security/tailscale-policy.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 3,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
       "path": "docs/security/tailscale-policy.md",
       "lineCount": 372,
-      "byteSize": 18717,
+      "byteSize": 18770,
       "hasFrontmatter": false,
       "title": "Tailscale Policy（タグ/ACL/SSH）運用台帳",
       "status": null,
@@ -43588,14 +40874,9 @@
           "href": "../runbooks/zero2w-tanaban-edge-setup.md",
           "targetPath": "docs/runbooks/zero2w-tanaban-edge-setup.md",
           "exists": true
-        },
-        {
-          "href": "./tailscale-policy-hermes-private-pi5-grants.json",
-          "targetPath": "docs/security/tailscale-policy-hermes-private-pi5-grants.json",
-          "exists": true
         }
       ],
-      "inboundCount": 17,
+      "inboundCount": 15,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],

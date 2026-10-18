@@ -8,24 +8,24 @@
 
 | 種別 | パス |
 |------|------|
-| 計画・進捗 | [private-pi5-hermes-agent-plan.md](../../docs/plans/private-pi5-hermes-agent-plan.md) |
-| AI執事ビジョン（北極星・D4以降） | [private-pi5-hermes-butler-vision-and-roadmap.md](../../docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md) |
-| Runbook | [private-pi5-hermes-deploy.md](../../docs/runbooks/private-pi5-hermes-deploy.md) |
-| KB（install 障害） | [KB-private-pi5-hermes-install-noninteractive.md](../../docs/knowledge-base/KB-private-pi5-hermes-install-noninteractive.md) |
-| KB（403 / Bearer） | [KB-private-pi5-hermes-dgx-403-bearer-token.md](../../docs/knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md) |
-| KB（Discord E2E・遅延） | [KB-private-pi5-hermes-discord-e2e-and-latency.md](../../docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md) |
-| KB（スキル・フォーラム・設計） | [KB-private-pi5-hermes-skills-community-architecture.md](../../docs/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md) |
-| ADR（セキュリティ） | [ADR-20260524](../../docs/decisions/ADR-20260524-private-pi5-hermes-security-profile.md) |
-| Phase D0（ツール安全） | [ExecPlan](../../docs/plans/private-pi5-hermes-tools-security-phase-d0-execplan.md) · [ADR-20260525](../../docs/decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md) |
-| Phase D1（tools 骨格） | [ExecPlan D1](../../docs/plans/private-pi5-hermes-tools-security-phase-d1-execplan.md) · `verify-tools-profile-deploy.sh` |
-| Phase D2（file のみ） | [ExecPlan D2](../../docs/plans/private-pi5-hermes-tools-security-phase-d2-execplan.md) · `HERMES_TOOLS_PHASE=d2` · `verify-tools-file-smoke.sh` |
-| Phase D3（file+web） | [ExecPlan D3](../../docs/plans/private-pi5-hermes-tools-security-phase-d3-execplan.md) · `HERMES_TOOLS_PHASE=d3` · `verify-tools-web-smoke.sh` |
-| Phase D4（file+web+browser） | [ExecPlan D4](../../docs/plans/private-pi5-hermes-tools-security-phase-d4-execplan.md) · `HERMES_TOOLS_PHASE=d4` · `verify-tools-browser-smoke.sh` |
-| Phase D5（Discord `/task` 橋） | [ExecPlan D5](../../docs/plans/private-pi5-hermes-tools-security-phase-d5-execplan.md) · `verify-discord-task-bridge-smoke.sh` · `plugin.yaml` · `hermes-discord-task-bridge` |
-| D6-pre（普段遣いパイロット） | [ExecPlan](../../docs/plans/private-pi5-hermes-daily-pilot-execplan.md) · [KB](../../docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md) · [`config/daily-pilot.policy.yaml`](config/daily-pilot.policy.yaml) · [`lib/discord_command_sync.py`](lib/discord_command_sync.py) · [`sync-discord-commands.py`](sync-discord-commands.py) |
-| D6-life（Life Pilot） | [ExecPlan](../../docs/plans/private-pi5-hermes-life-pilot-execplan.md) · [KB](../../docs/knowledge-base/KB-private-pi5-hermes-life-pilot.md) · [`config/life-pilot.policy.yaml`](config/life-pilot.policy.yaml) · [`lib/discord_life_pilot_bridge.py`](lib/discord_life_pilot_bridge.py) |
-| D19-life（Daily Interest Digest） | [ExecPlan](../../docs/plans/private-pi5-hermes-life-pilot-execplan.md#d19-life-daily-interest-digest2026-06-07--repo) · [`lib/life_interest_digest.py`](lib/life_interest_digest.py) · [`skills/daily-interest-digest/SKILL.md`](skills/daily-interest-digest/SKILL.md) |
-| Novel profile（`/novel` 創作） | [ExecPlan](../../docs/plans/private-pi5-hermes-novel-profile-execplan.md) · [KB 本番](../../docs/knowledge-base/KB-private-pi5-hermes-novel-profile-production.md) · `lib/novel_profile_runner.py` · DGX `qwen36_35b_uncensored` on-demand |
+| 計画・進捗 | DGXSparkControlPlane `docs/private-history/plans/private-pi5-hermes-agent-plan.md` |
+| AI執事ビジョン（北極星・D4以降） | DGXSparkControlPlane `docs/private-history/plans/private-pi5-hermes-butler-vision-and-roadmap.md` |
+| Runbook | DGXSparkControlPlane `docs/private-history/runbooks/private-pi5-hermes-deploy.md` |
+| KB（install 障害） | DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-install-noninteractive.md` |
+| KB（403 / Bearer） | DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md` |
+| KB（Discord E2E・遅延） | DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md` |
+| KB（スキル・フォーラム・設計） | DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md` |
+| ADR（セキュリティ） | ADR-20260524（DGXSparkControlPlane `docs/private-history/decisions/ADR-20260524-private-pi5-hermes-security-profile.md`） |
+| Phase D0（ツール安全） | ExecPlan（DGXSparkControlPlane `docs/private-history/plans/private-pi5-hermes-tools-security-phase-d0-execplan.md`） · ADR-20260525（DGXSparkControlPlane `docs/private-history/decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md`） |
+| Phase D1（tools 骨格） | ExecPlan D1（DGXSparkControlPlane `docs/private-history/plans/private-pi5-hermes-tools-security-phase-d1-execplan.md`） · `verify-tools-profile-deploy.sh` |
+| Phase D2（file のみ） | ExecPlan D2（DGXSparkControlPlane `docs/private-history/plans/private-pi5-hermes-tools-security-phase-d2-execplan.md`） · `HERMES_TOOLS_PHASE=d2` · `verify-tools-file-smoke.sh` |
+| Phase D3（file+web） | ExecPlan D3（DGXSparkControlPlane `docs/private-history/plans/private-pi5-hermes-tools-security-phase-d3-execplan.md`） · `HERMES_TOOLS_PHASE=d3` · `verify-tools-web-smoke.sh` |
+| Phase D4（file+web+browser） | ExecPlan D4（DGXSparkControlPlane `docs/private-history/plans/private-pi5-hermes-tools-security-phase-d4-execplan.md`） · `HERMES_TOOLS_PHASE=d4` · `verify-tools-browser-smoke.sh` |
+| Phase D5（Discord `/task` 橋） | ExecPlan D5（DGXSparkControlPlane `docs/private-history/plans/private-pi5-hermes-tools-security-phase-d5-execplan.md`） · `verify-discord-task-bridge-smoke.sh` · `plugin.yaml` · `hermes-discord-task-bridge` |
+| D6-pre（普段遣いパイロット） | ExecPlan（DGXSparkControlPlane `docs/private-history/plans/private-pi5-hermes-daily-pilot-execplan.md`） · KB（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-daily-pilot.md`） · [`config/daily-pilot.policy.yaml`](config/daily-pilot.policy.yaml) · [`lib/discord_command_sync.py`](lib/discord_command_sync.py) · [`sync-discord-commands.py`](sync-discord-commands.py) |
+| D6-life（Life Pilot） | ExecPlan（DGXSparkControlPlane `docs/private-history/plans/private-pi5-hermes-life-pilot-execplan.md`） · KB（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-life-pilot.md`） · [`config/life-pilot.policy.yaml`](config/life-pilot.policy.yaml) · [`lib/discord_life_pilot_bridge.py`](lib/discord_life_pilot_bridge.py) |
+| D19-life（Daily Interest Digest） | ExecPlan（DGXSparkControlPlane `docs/private-history/plans/private-pi5-hermes-life-pilot-execplan.md`） · [`lib/life_interest_digest.py`](lib/life_interest_digest.py) · [`skills/daily-interest-digest/SKILL.md`](skills/daily-interest-digest/SKILL.md) |
+| Novel profile（`/novel` 創作） | ExecPlan（DGXSparkControlPlane `docs/private-history/plans/private-pi5-hermes-novel-profile-execplan.md`） · KB 本番（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-novel-profile-production.md`） · `lib/novel_profile_runner.py` · DGX `qwen36_35b_uncensored` on-demand |
 | 境界ポリシー | [`lib/boundary_policy.py`](lib/boundary_policy.py) · [`config_contract.py`](lib/config_contract.py) · [`hermes_security_adapter.py`](lib/hermes_security_adapter.py) · [`config/boundary-policy.tools.yaml`](config/boundary-policy.tools.yaml) |
 
 ## 前提
@@ -50,7 +50,7 @@
 | Discord | 許可 User のみ・テンプレ **`require_mention: false`** |
 | 体感レイテンシ | **8.7〜10.7 s/通**（max_tokens 128 + inject + keep-warm、計測当時） |
 | 主因 | **DGX 推論**（out 比例）。経路 ~2〜3 s |
-| スキル・記憶 | **`skills` / `memory` 無効** — 会話から自動では賢くならない（[KB](../../docs/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md)） |
+| スキル・記憶 | **`skills` / `memory` 無効** — 会話から自動では賢くならない（KB（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md`）） |
 
 ## デプロイ
 
@@ -58,9 +58,9 @@
 ./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh
 ```
 
-初回 install は **10〜30 分**（async 3600s）。非対話の要点は [KB install](../../docs/knowledge-base/KB-private-pi5-hermes-install-noninteractive.md)。
+初回 install は **10〜30 分**（async 3600s）。非対話の要点は KB install（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-install-noninteractive.md`）。
 
-Discord 有効化後は fragment を更新して再実行。初回のみ Pi5 venv へ `discord-py` が必要な場合あり（[Runbook](../../docs/runbooks/private-pi5-hermes-deploy.md)）。
+Discord 有効化後は fragment を更新して再実行。初回のみ Pi5 venv へ `discord-py` が必要な場合あり（Runbook（DGXSparkControlPlane `docs/private-history/runbooks/private-pi5-hermes-deploy.md`））。
 
 ## DGX keep-warm
 
@@ -84,17 +84,17 @@ Discord は日常の入口・通知先として残し、Hermes Desktop は Provi
 python3 scripts/private-pi5-hermes/validate_boundary_policy.py --validate-task-bridge
 ```
 
-詳細: [KB D5 §安全枠](../../docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo)
+詳細: KB D5 §安全枠（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md`）
 
 ## 普段遣いパイロット（D6-pre）
 
-正本: [`config/daily-pilot.policy.yaml`](config/daily-pilot.policy.yaml) · [ExecPlan](../../docs/plans/private-pi5-hermes-daily-pilot-execplan.md)
+正本: [`config/daily-pilot.policy.yaml`](config/daily-pilot.policy.yaml) · ExecPlan（DGXSparkControlPlane `docs/private-history/plans/private-pi5-hermes-daily-pilot-execplan.md`）
 
 Hermes をいきなり現行システムに接続せず、まず Discord 上の進行係として使う。許可するのは **Markdown 作成**（Cursor 指示書、Codex レビュー依頼、CI/Deploy チェックリスト、日次ログ）まで。**Cursor/Codex CLI、git、deploy、terminal、秘密読取は無効**。
 
 有効化は fragment に `private_pi5_hermes_daily_pilot_enabled: true` を置く。Discord では `/daily <メモ>` が、実行なしの引き継ぎ Markdown を返す。
 
-**2026-06-06**: 私用 Pi5 実機検証完了。policy regex 修正済（`git pushして` 拒否 · 安全な Cursor 文案許可）。詳細は [KB daily pilot](../../docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md)。
+**2026-06-06**: 私用 Pi5 実機検証完了。policy regex 修正済（`git pushして` 拒否 · 安全な Cursor 文案許可）。詳細は KB daily pilot（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-daily-pilot.md`）。
 
 ```bash
 python3 scripts/private-pi5-hermes/validate_boundary_policy.py --validate-daily-pilot
@@ -103,12 +103,12 @@ python3 -m unittest scripts/private-pi5-hermes/tests/test_daily_pilot_policy.py 
 
 | 症状 | 正本 |
 |------|------|
-| `/daily` が Discord に出ない | command sync · [Runbook §D6-pre](../../docs/runbooks/private-pi5-hermes-deploy.md#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-06-実機検証完了) |
-| 安全文案が拒否 / `git pushして` が通る | 古い policy — [KB §regex](../../docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md#investigation--policy-regex-修正2026-06-06) |
+| `/daily` が Discord に出ない | command sync · Runbook §D6-pre（DGXSparkControlPlane `docs/private-history/runbooks/private-pi5-hermes-deploy.md`） |
+| 安全文案が拒否 / `git pushして` が通る | 古い policy — KB §regex（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-daily-pilot.md`） |
 
 ## Life Pilot（D6-life）
 
-正本: [`config/life-pilot.policy.yaml`](config/life-pilot.policy.yaml) · [ExecPlan](../../docs/plans/private-pi5-hermes-life-pilot-execplan.md) · [KB](../../docs/knowledge-base/KB-private-pi5-hermes-life-pilot.md)
+正本: [`config/life-pilot.policy.yaml`](config/life-pilot.policy.yaml) · ExecPlan（DGXSparkControlPlane `docs/private-history/plans/private-pi5-hermes-life-pilot-execplan.md`） · KB（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-life-pilot.md`）
 
 AI執事の体感を先に作るため、Discord から日常メモ・備忘録・リマインド通知・次アクション提案を扱う。コマンドは `/memo` `/digest` `/remind` `/recommend`。保存は `/home/hermes/.hermes-life` のみで、日時を読めた `/remind` は `hermes-life-reminder.timer` がDiscordへ通知する。詳細はExecPlanを参照。
 
@@ -137,12 +137,12 @@ Hermes標準の Memory / Skills / Cron を使う場合は fragment に `private_
 
 | 症状 | 正本 |
 |------|------|
-| 承認通知 **`403` / Cloudflare `1010`** | [`discord_relay.py`](lib/approval_relay/discord_relay.py) に **DiscordBot User-Agent** — [KB D5 §2026-06-05](../../docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05) |
-| DGX **`/v1/models` 502** · `/task` 無応答 | DGX blue 27B 起動 — [KB `/task` blue 502](../../docs/knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md#追記--blue-backend-起動失敗で-v1models-5022026-06-05) · [dgx Runbook](../../docs/runbooks/dgx-system-prod-local-llm.md) |
-| `/novel` 後に `/task` が **2048 context 400** | DGX profile 復帰 — [KB task profile restore](../../docs/knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md) |
-| `yes` 後に **Interrupting current task** | Hermes 本体 `gateway/platforms/base.py` hotfix + plugin **channel 承認キー** — [KB §yes 最終修正](../../docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結) |
+| 承認通知 **`403` / Cloudflare `1010`** | [`discord_relay.py`](lib/approval_relay/discord_relay.py) に **DiscordBot User-Agent** — KB D5 §2026-06-05（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md`） |
+| DGX **`/v1/models` 502** · `/task` 無応答 | DGX blue 27B 起動 — KB `/task` blue 502（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md`） · [dgx Runbook](../../docs/runbooks/dgx-system-prod-local-llm.md) |
+| `/novel` 後に `/task` が **2048 context 400** | DGX profile 復帰 — KB task profile restore（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md`） |
+| `yes` 後に **Interrupting current task** | Hermes 本体 `gateway/platforms/base.py` hotfix + plugin **channel 承認キー** — KB §yes 最終修正（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md`） |
 
-**注意**: `/task` は **gateway plugin スラッシュコマンド**（`hermes task` CLI ではない）。write は **承認 relay**（`yes` / `/task-approve`）が動く。**Hermes 再 install 後**は Pi5 本体 hotfix の有無を [Runbook](../../docs/runbooks/private-pi5-hermes-deploy.md#hermes-agent-本体-hotfix承認-yes-の割り込み回避2026-06-05) で確認。
+**注意**: `/task` は **gateway plugin スラッシュコマンド**（`hermes task` CLI ではない）。write は **承認 relay**（`yes` / `/task-approve`）が動く。**Hermes 再 install 後**は Pi5 本体 hotfix の有無を Runbook（DGXSparkControlPlane `docs/private-history/runbooks/private-pi5-hermes-deploy.md`） で確認。
 
 ## 手動確認
 
