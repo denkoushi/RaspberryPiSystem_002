@@ -1,5 +1,7 @@
 ---
-# 私用 Pi5: Hermes Agent（セキュリティ準備 → インストール → 検証）
+# 私用 Pi5: Hermes Agent（まだ移していない Life Pilot・DGX 実行環境・Discord 部分の配布と検証）
+# 基本導入（install、ufw、各プロファイル、browser tooling、gateway 修正、verify）は
+# denkoushi/DGXSparkControlPlane の infra/ansible/playbooks/rebuild_private_pi_hermes.yml へ移した。
 # 在庫: inventory-private-pi5-stackchan-bridge-fragment.yml（ローカル非追跡）
 - name: Private Pi5 Hermes Agent (security-first)
   hosts: private-pi5-stackchan-bridge
@@ -364,15 +366,6 @@
           in the local inventory fragment.
 
   tasks:
-    - name: Install Hermes user and CLI
-      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/install.yml"
-
-    - name: Configure UFW for private Pi5 Hermes host
-      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/ufw.yml"
-
-    - name: Deploy Hermes chat profile
-      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-chat-profile.yml"
-
     - name: Deploy Hermes Life Pilot modules and policy
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-discord-task-bridge.yml"
       when: private_pi5_hermes_life_pilot_enabled | default(false) | bool
@@ -383,24 +376,11 @@
     - name: Configure Hermes Life Pilot proactive loop
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/life-proactive-loop.yml"
 
-    - name: Install Hermes browser tooling (Phase D4)
-      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/install-browser-tooling.yml"
-      when:
-        - private_pi5_hermes_tools_profile_enabled | default(false) | bool
-        - private_pi5_hermes_tools_browser_enabled | default(false) | bool
-
     - name: Deploy Hermes DGX runtime client and env
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/keep-warm.yml"
 
-    - name: Patch Hermes gateway plugin discovery (Phase D5 / D5.1)
-      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-hermes-gateway-plugin-discover-fix.yml"
-      when: private_pi5_hermes_gateway_enabled | default(false) | bool
-
     - name: Restart Hermes chat gateway after deploy
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/restart-chat-gateway.yml"
-
-    - name: Verify Hermes deployment
-      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/verify.yml"
 
     - name: Verify Hermes Discord task bridge (Phase D5)
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/verify-discord-task-bridge.yml"
@@ -418,20 +398,11 @@
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/verify-discord-life-pilot.yml"
       when: private_pi5_hermes_life_pilot_enabled | default(false) | bool
 
-    - name: Verify Hermes research profile deployment
-      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/verify-research-profile.yml"
-      when: private_pi5_hermes_research_profile_enabled | default(false) | bool
-
-    - name: Verify Hermes novel profile deployment
-      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/verify-novel-profile.yml"
-      when: private_pi5_hermes_novel_profile_enabled | default(false) | bool
-
     - name: Summarize Hermes deployment
       ansible.builtin.debug:
         msg:
           - "hermes_user={{ private_pi5_hermes_user }}"
           - "hermes_bin={{ private_pi5_hermes_bin }}"
-          - "dgx_health={{ private_pi5_hermes_dgx_health.content | default('n/a') | trim }}"
           - "gateway_enabled={{ private_pi5_hermes_gateway_enabled }}"
           - "tools_profile_enabled={{ private_pi5_hermes_tools_profile_enabled | default(false) }}"
           - "tools_file_enabled={{ private_pi5_hermes_tools_file_enabled | default(false) }}"
