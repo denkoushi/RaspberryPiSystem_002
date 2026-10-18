@@ -15,10 +15,11 @@ import {
   getKioskProductionScheduleLoadBalancingWorkspaceDay,
   putKioskProductionScheduleLoadBalancingCapacityBase
 } from '../../client';
+import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule';
 
 export function useProductionScheduleLoadBalancingCapacityBase(location: string) {
   return useQuery({
-    queryKey: ['production-schedule-load-balancing-capacity-base', location],
+    queryKey: productionScheduleQueryKeys.loadBalancingCapacityBase(location),
     queryFn: () => getProductionScheduleLoadBalancingCapacityBase(location),
     enabled: location.trim().length > 0
   });
@@ -26,7 +27,7 @@ export function useProductionScheduleLoadBalancingCapacityBase(location: string)
 
 export function useProductionScheduleLoadBalancingMonthlyCapacity(location: string, yearMonth: string) {
   return useQuery({
-    queryKey: ['production-schedule-load-balancing-monthly-capacity', location, yearMonth],
+    queryKey: productionScheduleQueryKeys.loadBalancingMonthlyCapacity(location, yearMonth),
     queryFn: () => getProductionScheduleLoadBalancingMonthlyCapacity(location, yearMonth.trim()),
     enabled: location.trim().length > 0 && /^\d{4}-\d{2}$/.test(yearMonth.trim())
   });
@@ -34,7 +35,7 @@ export function useProductionScheduleLoadBalancingMonthlyCapacity(location: stri
 
 export function useProductionScheduleLoadBalancingClasses(location: string) {
   return useQuery({
-    queryKey: ['production-schedule-load-balancing-classes', location],
+    queryKey: productionScheduleQueryKeys.loadBalancingClasses(location),
     queryFn: () => getProductionScheduleLoadBalancingClasses(location),
     enabled: location.trim().length > 0
   });
@@ -42,7 +43,7 @@ export function useProductionScheduleLoadBalancingClasses(location: string) {
 
 export function useProductionScheduleLoadBalancingTransferRules(location: string) {
   return useQuery({
-    queryKey: ['production-schedule-load-balancing-transfer-rules', location],
+    queryKey: productionScheduleQueryKeys.loadBalancingTransferRules(location),
     queryFn: () => getProductionScheduleLoadBalancingTransferRules(location),
     enabled: location.trim().length > 0
   });
@@ -50,7 +51,7 @@ export function useProductionScheduleLoadBalancingTransferRules(location: string
 
 export function useProductionScheduleLoadBalancingWorkCalendars(location: string) {
   return useQuery({
-    queryKey: ['production-schedule-load-balancing-work-calendars', location],
+    queryKey: productionScheduleQueryKeys.loadBalancingWorkCalendars(location),
     queryFn: () => getProductionScheduleLoadBalancingWorkCalendars(location),
     enabled: location.trim().length > 0
   });
@@ -62,7 +63,7 @@ export function useUpdateProductionScheduleLoadBalancingCapacityBase() {
     mutationFn: updateProductionScheduleLoadBalancingCapacityBase,
     onSuccess: (_settings, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: ['production-schedule-load-balancing-capacity-base', variables.location]
+        queryKey: productionScheduleQueryKeys.loadBalancingCapacityBase(variables.location)
       });
     }
   });
@@ -74,7 +75,7 @@ export function useUpdateProductionScheduleLoadBalancingMonthlyCapacity() {
     mutationFn: updateProductionScheduleLoadBalancingMonthlyCapacity,
     onSuccess: (_settings, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: ['production-schedule-load-balancing-monthly-capacity', variables.location, variables.yearMonth]
+        queryKey: productionScheduleQueryKeys.loadBalancingMonthlyCapacity(variables.location, variables.yearMonth)
       });
     }
   });
@@ -86,7 +87,7 @@ export function useUpdateProductionScheduleLoadBalancingClasses() {
     mutationFn: updateProductionScheduleLoadBalancingClasses,
     onSuccess: (_settings, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: ['production-schedule-load-balancing-classes', variables.location]
+        queryKey: productionScheduleQueryKeys.loadBalancingClasses(variables.location)
       });
     }
   });
@@ -98,7 +99,7 @@ export function useUpdateProductionScheduleLoadBalancingTransferRules() {
     mutationFn: updateProductionScheduleLoadBalancingTransferRules,
     onSuccess: (_settings, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: ['production-schedule-load-balancing-transfer-rules', variables.location]
+        queryKey: productionScheduleQueryKeys.loadBalancingTransferRules(variables.location)
       });
     }
   });
@@ -110,7 +111,7 @@ export function useUpdateProductionScheduleLoadBalancingWorkCalendars() {
     mutationFn: updateProductionScheduleLoadBalancingWorkCalendars,
     onSuccess: (_settings, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: ['production-schedule-load-balancing-work-calendars', variables.location]
+        queryKey: productionScheduleQueryKeys.loadBalancingWorkCalendars(variables.location)
       });
     }
   });
@@ -121,7 +122,7 @@ export function useKioskProductionScheduleLoadBalancingWorkspace(
   options?: { enabled?: boolean }
 ) {
   return useQuery({
-    queryKey: ['kiosk-production-schedule-load-balancing-workspace', params],
+    queryKey: productionScheduleQueryKeys.loadBalancingWorkspace(params),
     queryFn: () => getKioskProductionScheduleLoadBalancingWorkspace(params),
     enabled: options?.enabled ?? true,
     staleTime: 120_000,
@@ -134,7 +135,7 @@ export function useKioskProductionScheduleLoadBalancingWorkspaceDay(
   options?: { enabled?: boolean }
 ) {
   return useQuery({
-    queryKey: ['kiosk-production-schedule-load-balancing-workspace-day', params],
+    queryKey: productionScheduleQueryKeys.loadBalancingWorkspaceDay(params),
     queryFn: () => getKioskProductionScheduleLoadBalancingWorkspaceDay(params),
     enabled: options?.enabled ?? true,
     staleTime: 120_000
@@ -146,8 +147,8 @@ export function usePutKioskProductionScheduleLoadBalancingCapacityBase() {
   return useMutation({
     mutationFn: putKioskProductionScheduleLoadBalancingCapacityBase,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-load-balancing-workspace'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-load-balancing-workspace-day'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.loadBalancingWorkspaceAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.loadBalancingWorkspaceDayAll });
     }
   });
 }

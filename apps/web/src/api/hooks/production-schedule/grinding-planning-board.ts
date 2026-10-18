@@ -25,6 +25,7 @@ import {
   type KioskGrindingPlanningBoardQuery,
   updateKioskGrindingPlanningBoardDueScope
 } from '../../client';
+import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule';
 
 import type {
   GrindingPlanningBoardResourceCapacityRequest,
@@ -53,10 +54,10 @@ export function useKioskGrindingPlanningBoard(
 ) {
   const queryClient = useQueryClient();
   return useQuery({
-    queryKey: ['kiosk-grinding-planning-board', params],
+    queryKey: productionScheduleQueryKeys.grindingPlanningBoard(params),
     queryFn: async () => {
       const board = await getKioskGrindingPlanningBoard(params!);
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board', 'load'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoadAll });
       return board;
     },
     enabled: (options?.enabled ?? true) && Boolean(params),
@@ -69,7 +70,7 @@ export function useKioskGrindingPlanningBoard(
 
 export function useKioskGrindingPlanningBoardLoad(category: GrindingPlanningBoardCategory) {
   return useQuery({
-    queryKey: ['kiosk-grinding-planning-board', 'load', category],
+    queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoad(category),
     queryFn: () => getKioskGrindingPlanningBoardLoad(category),
     refetchOnWindowFocus: false,
     staleTime: LEADER_BOARD_LEADER_PHASED_STALE_MS
@@ -232,10 +233,10 @@ export function useKioskGrindingPlanningBoardSnapshot(
 ) {
   const queryClient = useQueryClient();
   return useQuery({
-    queryKey: ['kiosk-grinding-planning-board', 'snapshot', params],
+    queryKey: productionScheduleQueryKeys.grindingPlanningBoardSnapshot(params),
     queryFn: async () => {
       const board = await getKioskGrindingPlanningBoardSnapshot(params!);
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board', 'load'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoadAll });
       return board;
     },
     enabled: (options?.enabled ?? true) && Boolean(params),
@@ -249,7 +250,7 @@ export function useKioskGrindingPlanningBoardSeibanCandidates(
   options?: { enabled?: boolean }
 ) {
   return useQuery({
-    queryKey: ['kiosk-grinding-planning-board', 'seiban-candidates', params],
+    queryKey: productionScheduleQueryKeys.grindingPlanningBoardSeibanCandidates(params),
     queryFn: () => getKioskGrindingPlanningBoardSeibanCandidates(params!),
     enabled: (options?.enabled ?? true) && Boolean(params),
     placeholderData: (previousData, previousQuery) => {
@@ -267,7 +268,7 @@ export function useUpdateKioskGrindingPlanningBoardOverrides(options?: { invalid
     mutationFn: (payload: GrindingPlanningBoardOverridesRequest) => updateKioskGrindingPlanningBoardOverrides(payload),
     onSuccess: () => {
       if (options?.invalidateOnSuccess === false) return;
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
     }
   });
 }
@@ -278,7 +279,7 @@ export function useUpdateKioskGrindingPlanningBoardPins(options?: { invalidateOn
     mutationFn: (payload: GrindingPlanningBoardPinsRequest) => updateKioskGrindingPlanningBoardPins(payload),
     onSuccess: () => {
       if (options?.invalidateOnSuccess === false) return;
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
     }
   });
 }
@@ -289,7 +290,7 @@ export function useUpdateKioskGrindingPlanningBoardRank(options?: { invalidateOn
     mutationFn: (payload: GrindingPlanningBoardRankRequest) => updateKioskGrindingPlanningBoardRank(payload),
     onSuccess: (_result: GrindingPlanningBoardRankResponse) => {
       if (options?.invalidateOnSuccess === false) return;
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
     }
   });
 }
@@ -300,7 +301,7 @@ export function useUpdateKioskGrindingPlanningBoardResourceOrder(options?: { inv
     mutationFn: (payload: GrindingPlanningBoardResourceOrderRequest) => updateKioskGrindingPlanningBoardResourceOrder(payload),
     onSuccess: (_result: GrindingPlanningBoardResourceOrderResponse) => {
       if (options?.invalidateOnSuccess === false) return;
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
     }
   });
 }
@@ -311,7 +312,7 @@ export function useUpdateKioskGrindingPlanningBoardResourceOrderBulk(options?: {
     mutationFn: (payload: GrindingPlanningBoardResourceOrderBulkRequest) => updateKioskGrindingPlanningBoardResourceOrderBulk(payload),
     onSuccess: (_result: GrindingPlanningBoardResourceOrderResponse) => {
       if (options?.invalidateOnSuccess === false) return;
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
     }
   });
 }
@@ -322,14 +323,14 @@ export function useUpdateKioskGrindingPlanningBoardSeibanOrder(options?: { inval
     mutationFn: (payload: GrindingPlanningBoardSeibanOrderRequest) => updateKioskGrindingPlanningBoardSeibanOrder(payload),
     onSuccess: () => {
       if (options?.invalidateOnSuccess === false) return;
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
     }
   });
 }
 
 export function useKioskGrindingPlanningBoardDueDetail(fseiban: string | null) {
   return useQuery({
-    queryKey: ['kiosk-grinding-planning-board-due-detail', fseiban],
+    queryKey: productionScheduleQueryKeys.grindingPlanningBoardDueDetail(fseiban),
     queryFn: () => getKioskGrindingPlanningBoardDueDetail(fseiban ?? ''),
     enabled: typeof fseiban === 'string' && fseiban.trim().length > 0,
     refetchOnWindowFocus: false
@@ -348,14 +349,14 @@ export function useUpdateKioskGrindingPlanningBoardDueScope(options?: { invalida
     }) => updateKioskGrindingPlanningBoardDueScope(fseiban, payload),
     onSuccess: (_data, variables) => {
       if (options?.invalidateOnSuccess === false) return;
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board-due-detail', variables.fseiban] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardDueDetail(variables.fseiban) });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
     }
   });
 }
 
 // Independent of board invalidation and progressive snapshots.
-const planningBoardCapacityKey = ['kiosk-planning-board-resource-capacity'] as const;
+const planningBoardCapacityKey = productionScheduleQueryKeys.planningBoardResourceCapacityAll;
 
 export function useKioskGrindingPlanningBoardResourceCapacity(enabled: boolean) {
   return useQuery({
