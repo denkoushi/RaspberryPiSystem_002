@@ -1,3 +1,4 @@
+import { DomainHttpError } from '../../lib/errors.js';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { z } from 'zod';
 import {
@@ -47,10 +48,10 @@ export function registerAssemblyLotRoutes(app: FastifyInstance, {
     return { lots: lots.map(serializeAssemblyLotSummary) };
   });
 
-  app.get('/assembly/lots/:id', { preHandler: allowView }, async (request, reply) => {
+  app.get('/assembly/lots/:id', { preHandler: allowView }, async (request) => {
     const params = idParamSchema.parse(request.params);
     const lot = await lotService.getById(params.id);
-    if (!lot) return reply.status(404).send({ message: '組立ロットが見つかりません' });
+    if (!lot) throw new DomainHttpError(404, '組立ロットが見つかりません');
     return { lot: serializeAssemblyLotSummary(buildAssemblyLotSummary(lot)) };
   });
 
