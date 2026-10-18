@@ -20,22 +20,32 @@ function estimateRequiredGiB(profile: DgxBusinessModelProfile, metrics?: Metrics
 
 export function buildDgxModelStartupFit(
   profile: DgxBusinessModelProfile,
-  metrics?: MetricsPayload
+  metrics?: MetricsPayload,
+  activeProfile?: DgxBusinessModelProfile,
+  activeProfileId?: string | null
 ): DgxBusinessModelProfile['startupFit'] {
+  const requiredGiB = estimateRequiredGiB(profile, metrics);
+  const freeGiB = startupAvailableGiB(metrics);
+  const reclaimedGiB = activeProfileId
+    ? metrics?.gpuProcessMemoryUsedGiB ?? (activeProfile ? estimateRequiredGiB(activeProfile, metrics) : undefined)
+    : 0;
+  const availableGiB = freeGiB != null && reclaimedGiB != null ? freeGiB + reclaimedGiB : undefined;
+  const amounts = {
+    ...(requiredGiB != null ? { requiredGiB } : {}),
+    ...(availableGiB != null ? { availableGiB } : {}),
+  };
+  if (profile.id === activeProfileId) return { status: 'fits', ...amounts, detailJa: '稼働中' };
   if (profile.runtimeProfile?.engine && profile.runtimeProfile.engine !== 'vllm') {
     return {
-      status: 'not_applicable',
+      status: 'not_applicable', ...amounts,
       detailJa: 'vLLM以外',
     };
   }
 
-  const requiredGiB = estimateRequiredGiB(profile, metrics);
-  const availableGiB = startupAvailableGiB(metrics);
   if (requiredGiB == null || availableGiB == null) {
     return {
       status: 'unknown',
-      ...(requiredGiB != null ? { requiredGiB: roundGiB(requiredGiB) } : {}),
-      ...(availableGiB != null ? { availableGiB: roundGiB(availableGiB) } : {}),
+      ...amounts,
       detailJa: '起動判定未取得',
     };
   }
@@ -45,15 +55,15 @@ export function buildDgxModelStartupFit(
   if (availableGiB >= requiredGiB) {
     return {
       status: 'fits',
-      requiredGiB: roundedRequired,
-      availableGiB: roundedAvailable,
+      requiredGiB,
+      availableGiB,
       detailJa: `起動可 ${roundedAvailable} / ${roundedRequired} GiB`,
     };
   }
   return {
     status: 'insufficient',
-    requiredGiB: roundedRequired,
-    availableGiB: roundedAvailable,
+    requiredGiB,
+    availableGiB,
     detailJa: `メモリ不足 ${roundedAvailable} / ${roundedRequired} GiB`,
   };
 }
@@ -62,9 +72,10 @@ export function enrichDgxModelProfilesStartupFit(
   modelProfiles: DgxModelProfilesOverview,
   metrics?: MetricsPayload
 ): DgxModelProfilesOverview {
+  const active = modelProfiles.available.find((profile) => profile.id === modelProfiles.activeProfileId);
   const available = modelProfiles.available.map((profile) => ({
     ...profile,
-    startupFit: buildDgxModelStartupFit(profile, metrics),
+    startupFit: buildDgxModelStartupFit(profile, metrics, active, modelProfiles.activeProfileId),
   }));
   const selectableIds = new Set(modelProfiles.businessReturnSelectable.map((profile) => profile.id));
   return {
