@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ statuses: vi.fn(), device: vi.fn(), deliver: vi.fn(), expire: vi.fn(), resolveUnmonitored: vi.fn() }));
+const mocks = vi.hoisted(() => ({ statuses: vi.fn(), device: vi.fn(), deliver: vi.fn(), expire: vi.fn(), resolveUnmonitored: vi.fn(), resolveQuiet: vi.fn(), warn: vi.fn() }));
+vi.mock('../../../lib/logger.js', () => ({ logger: { warn: mocks.warn } }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: {
   clientStatus: { findMany: mocks.statuses }, clientDevice: { findFirst: mocks.device }
 } }));
-vi.mock('../system-notice.service.js', () => ({ deliverSystemNotice: mocks.deliver, resolveInactiveFileNotices: mocks.expire, resolveUnmonitoredTerminalNotices: mocks.resolveUnmonitored }));
+vi.mock('../system-notice.service.js', () => ({ deliverSystemNotice: mocks.deliver, resolveInactiveFileNotices: mocks.expire, resolveUnmonitoredTerminalNotices: mocks.resolveUnmonitored, resolveQuietKioskUiErrorNotices: mocks.resolveQuiet }));
 import { evaluateSystemNotices, getSystemNoticeEvaluator, TERMINAL_INACTIVE_MS, TERMINAL_STALE_MS } from '../system-notice-evaluator.js';
 const now = new Date('2026-10-13T00:00:00Z');
 const status = { clientId: 'raspi4-stone', lastSeen: now, diskUsage: 30, temperature: 40 };
@@ -15,6 +16,19 @@ beforeEach(() => {
   mocks.device.mockResolvedValue({ name: '端末', location: 'StoneBase01' });
 });
 describe('system notice evaluator', () => {
+  it('resolves quiet kiosk errors on each evaluation', async () => {
+    await evaluateSystemNotices(now);
+    expect(mocks.resolveQuiet).toHaveBeenCalledWith(now);
+  });
+  it('logs quiet resolution failures and continues other evaluations', async () => {
+    const err = new Error('unavailable');
+    mocks.resolveQuiet.mockRejectedValueOnce(err);
+    await evaluateSystemNotices(now);
+    expect(mocks.warn).toHaveBeenCalledWith({ err }, '[SystemNotice] Quiet kiosk UI error resolution failed');
+    expect(mocks.resolveUnmonitored).toHaveBeenCalled();
+    expect(mocks.deliver).toHaveBeenCalled();
+    expect(mocks.expire).toHaveBeenCalledWith(now);
+  });
   it.each(['mac-kiosk-1', 'zero2w-home'])('skips non-monitored client %s', async (clientId) => {
     mocks.statuses.mockResolvedValue([{ ...status, clientId, lastSeen: new Date(now.getTime() - TERMINAL_STALE_MS), diskUsage: 95 }]);
     await evaluateSystemNotices(now);

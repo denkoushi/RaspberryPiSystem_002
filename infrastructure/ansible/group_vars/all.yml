@@ -189,6 +189,10 @@ security_scan_io_bandwidth_max: "30M"
 
 rkhunter_server_enabled: true
 rkhunter_server_cron: "0 4 * * *"
+rkhunter_server_allow_dev_files:
+  - "/dev/shm/lttng-ust-wait-*"
+rkhunter_server_allow_hidden_files:
+  - "/etc/.updated"
 rkhunter_log_dir: "/var/log/rkhunter"
 rkhunter_log_file: "rkhunter-scan.log"
 rkhunter_ignore_patterns:
