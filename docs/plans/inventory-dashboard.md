@@ -12,6 +12,9 @@ Add 集計 to 在庫の準備 so operators can compare weekly usage, stock and c
 - [x] Add schema, shared contracts, bounded dashboard query and variant service/routes.
 - [x] Add price editor and dashboard with existing setup-session hooks.
 - [x] Add contract tests and run requested validation. API full-project typecheck remains blocked by existing configuration/type errors; browser visual verification is unavailable in this environment.
+- [x] Merged and deployed to Pi5 as #2045 (hover card) and #2046 (dashboard, price, variants), 2026-10-15.
+- [x] Follow-up #2047: the 集計 entry moved from a setup tab to a button on the 在庫操作 top bar (`/kiosk/inventory/dashboard`); the hover card switches photos with the mouse wheel.
+- [x] Follow-up #2050: the dashboard opens without the PIN; only merge and dismiss ask for it. Deployed 2026-10-16 (main 9c63e736); the user confirmed all checks on the kiosk on 2026-10-18.
 
 ## Context and Orientation
 
@@ -28,6 +31,7 @@ First add nullable price and sorted dismissal pairs with an additive migration. 
 - Prices are current item prices, not historical transaction prices. Existing data has no price history.
 - Machine scope follows the compartment's current shelf area, because movement transactions do not record a structured historical machine on ISSUE.
 - Normalization is shared and applied at display time; GET never rewrites stored values. Auto count counts redundant raw spellings. Human-approved variants persist through the existing rename operation.
+- After use on the kiosk, the user asked for 集計 on the inventory top page and without the PIN. Reading usage is daily information, so the two GET routes use the kiosk client-key `read` check; merge and dismiss still require the setup PIN because they rewrite item data.
 
 ## Surprises & Discoveries
 
