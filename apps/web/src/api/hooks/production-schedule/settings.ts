@@ -14,10 +14,11 @@ import {
   updateProductionScheduleOrderSplitPilotSettings,
   updateProductionScheduleProcessingTypeOptions
 } from '../../client';
+import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule';
 
 export function useProductionScheduleResourceCategorySettings(location: string) {
   return useQuery({
-    queryKey: ['production-schedule-resource-category-settings', location],
+    queryKey: productionScheduleQueryKeys.resourceCategorySettings(location),
     queryFn: () => getProductionScheduleResourceCategorySettings(location),
     enabled: location.trim().length > 0
   });
@@ -25,7 +26,7 @@ export function useProductionScheduleResourceCategorySettings(location: string) 
 
 export function useProductionScheduleDueManagementAccessPasswordSettings(location: string) {
   return useQuery({
-    queryKey: ['production-schedule-due-management-access-password-settings', location],
+    queryKey: productionScheduleQueryKeys.dueManagementAccessPasswordSettings(location),
     queryFn: () => getProductionScheduleDueManagementAccessPasswordSettings(location),
     enabled: location.trim().length > 0
   });
@@ -33,14 +34,14 @@ export function useProductionScheduleDueManagementAccessPasswordSettings(locatio
 
 export function useProductionScheduleOrderSplitPilotSettings() {
   return useQuery({
-    queryKey: ['production-schedule-order-split-pilot-settings'],
+    queryKey: productionScheduleQueryKeys.orderSplitPilotSettingsAll,
     queryFn: getProductionScheduleOrderSplitPilotSettings
   });
 }
 
 export function useProductionScheduleProcessingTypeOptions(location: string) {
   return useQuery({
-    queryKey: ['production-schedule-processing-type-options', location],
+    queryKey: productionScheduleQueryKeys.processingTypeOptions(location),
     queryFn: () => getProductionScheduleProcessingTypeOptions(location),
     enabled: location.trim().length > 0
   });
@@ -48,7 +49,7 @@ export function useProductionScheduleProcessingTypeOptions(location: string) {
 
 export function useProductionScheduleResourceCodeMappings(location: string) {
   return useQuery({
-    queryKey: ['production-schedule-resource-code-mappings', location],
+    queryKey: productionScheduleQueryKeys.resourceCodeMappings(location),
     queryFn: () => getProductionScheduleResourceCodeMappings(location),
     enabled: location.trim().length > 0
   });
@@ -60,11 +61,11 @@ export function useUpdateProductionScheduleResourceCategorySettings() {
     mutationFn: (payload: { location: string; cuttingExcludedResourceCds: string[] }) =>
       updateProductionScheduleResourceCategorySettings(payload),
     onSuccess: (settings) => {
-      void queryClient.invalidateQueries({ queryKey: ['production-schedule-resource-category-settings', settings.location] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-resources'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-progress-overview'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-due-management-summary'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.resourceCategorySettings(settings.location) });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.resourcesAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.progressOverviewAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.dueManagementSummaryAll });
     }
   });
 }
@@ -75,7 +76,7 @@ export function useUpdateProductionScheduleDueManagementAccessPassword() {
     mutationFn: (payload: { location: string; password: string }) => updateProductionScheduleDueManagementAccessPassword(payload),
     onSuccess: (settings) => {
       void queryClient.invalidateQueries({
-        queryKey: ['production-schedule-due-management-access-password-settings', settings.location]
+        queryKey: productionScheduleQueryKeys.dueManagementAccessPasswordSettings(settings.location)
       });
     }
   });
@@ -86,18 +87,18 @@ export function useUpdateProductionScheduleOrderSplitPilotSettings() {
   return useMutation({
     mutationFn: (payload: { enabled: boolean }) => updateProductionScheduleOrderSplitPilotSettings(payload),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['production-schedule-order-split-pilot-settings'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-order-split-status'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-leaderboard-shell'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-leaderboard-board'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.orderSplitPilotSettingsAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.orderSplitStatusAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.kioskLeaderboardShellAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.kioskLeaderboardBoardAll });
     }
   });
 }
 
 export function useKioskProductionScheduleOrderSplitStatus() {
   return useQuery({
-    queryKey: ['kiosk-production-schedule-order-split-status'],
+    queryKey: productionScheduleQueryKeys.orderSplitStatusAll,
     queryFn: getKioskProductionScheduleOrderSplitStatus,
     refetchInterval: 15000
   });
@@ -109,8 +110,8 @@ export function useUpdateProductionScheduleProcessingTypeOptions() {
     mutationFn: (payload: { location: string; options: Array<{ code: string; label: string; priority: number; enabled: boolean }> }) =>
       updateProductionScheduleProcessingTypeOptions(payload),
     onSuccess: (settings) => {
-      void queryClient.invalidateQueries({ queryKey: ['production-schedule-processing-type-options', settings.location] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-processing-type-options'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.processingTypeOptions(settings.location) });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.kioskProcessingTypeOptionsAll });
     }
   });
 }
@@ -123,10 +124,10 @@ export function useUpdateProductionScheduleResourceCodeMappings() {
       mappings: Array<{ fromResourceCd: string; toResourceCd: string; priority: number; enabled: boolean }>;
     }) => updateProductionScheduleResourceCodeMappings(payload),
     onSuccess: (settings) => {
-      void queryClient.invalidateQueries({ queryKey: ['production-schedule-resource-code-mappings', settings.location] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-due-management-summary'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-due-management-seiban-detail'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.resourceCodeMappings(settings.location) });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.dueManagementSummaryAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.dueManagementSeibanDetailAll });
     }
   });
 }
@@ -137,10 +138,10 @@ export function useImportProductionScheduleResourceCodeMappingsFromCsv() {
     mutationFn: (payload: { location: string; csvText: string; dryRun: boolean }) =>
       importProductionScheduleResourceCodeMappingsFromCsv(payload),
     onSuccess: (_result, variables) => {
-      void queryClient.invalidateQueries({ queryKey: ['production-schedule-resource-code-mappings', variables.location] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-due-management-summary'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-due-management-seiban-detail'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.resourceCodeMappings(variables.location) });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.dueManagementSummaryAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.dueManagementSeibanDetailAll });
     }
   });
 }

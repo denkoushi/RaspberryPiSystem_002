@@ -23,6 +23,7 @@ import {
   updateKioskProductionScheduleDueManagementGlobalRank,
   verifyKioskDueManagementAccessPassword
 } from '../../client';
+import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule';
 
 type DueManagementFilterContext = {
   resourceCd?: string;
@@ -31,7 +32,7 @@ type DueManagementFilterContext = {
 
 export function useKioskProductionScheduleDueManagementSummary(context?: DueManagementFilterContext) {
   return useQuery({
-    queryKey: ['kiosk-production-schedule-due-management-summary', context],
+    queryKey: productionScheduleQueryKeys.dueManagementSummary(context),
     queryFn: () => getKioskProductionScheduleDueManagementSummary(context),
     refetchInterval: 30000
   });
@@ -39,7 +40,7 @@ export function useKioskProductionScheduleDueManagementSummary(context?: DueMana
 
 export function useKioskProductionScheduleDueManagementTriage(context?: DueManagementFilterContext) {
   return useQuery({
-    queryKey: ['kiosk-production-schedule-due-management-triage', context],
+    queryKey: productionScheduleQueryKeys.dueManagementTriage(context),
     queryFn: () => getKioskProductionScheduleDueManagementTriage(context),
     refetchInterval: 30000
   });
@@ -47,7 +48,7 @@ export function useKioskProductionScheduleDueManagementTriage(context?: DueManag
 
 export function useKioskProductionScheduleDueManagementDailyPlan(context?: DueManagementFilterContext) {
   return useQuery({
-    queryKey: ['kiosk-production-schedule-due-management-daily-plan', context],
+    queryKey: productionScheduleQueryKeys.dueManagementDailyPlan(context),
     queryFn: () => getKioskProductionScheduleDueManagementDailyPlan(context),
     refetchInterval: 30000
   });
@@ -58,7 +59,7 @@ export function useKioskProductionScheduleDueManagementSeibanDetail(
   context?: DueManagementFilterContext
 ) {
   return useQuery({
-    queryKey: ['kiosk-production-schedule-due-management-seiban', fseiban, context],
+    queryKey: productionScheduleQueryKeys.dueManagementSeiban(fseiban, context),
     queryFn: () => getKioskProductionScheduleDueManagementSeibanDetail(fseiban ?? '', context),
     enabled: typeof fseiban === 'string' && fseiban.trim().length > 0
   });
@@ -66,7 +67,7 @@ export function useKioskProductionScheduleDueManagementSeibanDetail(
 
 export function useKioskProductionScheduleProgressOverview() {
   return useQuery({
-    queryKey: ['kiosk-production-schedule-progress-overview'],
+    queryKey: productionScheduleQueryKeys.progressOverviewAll,
     queryFn: getKioskProductionScheduleProgressOverview,
     refetchInterval: 300000
   });
@@ -78,11 +79,11 @@ export function useUpdateKioskProductionScheduleDueManagementSeibanDueDate() {
     mutationFn: ({ fseiban, dueDate }: { fseiban: string; dueDate: string }) =>
       updateKioskProductionScheduleDueManagementSeibanDueDate(fseiban, { dueDate }),
     onSuccess: (_data, variables) => {
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-due-management-summary'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.dueManagementSummaryAll });
       void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-seiban', variables.fseiban]
+        queryKey: productionScheduleQueryKeys.dueManagementSeibanAll(variables.fseiban)
       });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
     }
   });
 }
@@ -100,11 +101,11 @@ export function useUpdateKioskProductionScheduleDueManagementSeibanProcessingDue
       dueDate: string;
     }) => updateKioskProductionScheduleDueManagementSeibanProcessingDueDate(fseiban, processingType, { dueDate }),
     onSuccess: (_data, variables) => {
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-due-management-summary'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.dueManagementSummaryAll });
       void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-seiban', variables.fseiban]
+        queryKey: productionScheduleQueryKeys.dueManagementSeibanAll(variables.fseiban)
       });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
     }
   });
 }
@@ -116,9 +117,9 @@ export function useUpdateKioskProductionScheduleDueManagementPartPriorities() {
       updateKioskProductionScheduleDueManagementPartPriorities(fseiban, { orderedFhincds }),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-seiban', variables.fseiban]
+        queryKey: productionScheduleQueryKeys.dueManagementSeibanAll(variables.fseiban)
       });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-due-management-summary'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.dueManagementSummaryAll });
     }
   });
 }
@@ -137,9 +138,9 @@ export function useUpdateKioskProductionScheduleDueManagementPartProcessingType(
     }) => updateKioskProductionScheduleDueManagementPartProcessingType(fseiban, fhincd, { processingType }),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-seiban', variables.fseiban]
+        queryKey: productionScheduleQueryKeys.dueManagementSeibanAll(variables.fseiban)
       });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
     }
   });
 }
@@ -151,9 +152,9 @@ export function useUpdateKioskProductionScheduleDueManagementPartNote() {
       updateKioskProductionScheduleDueManagementPartNote(fseiban, fhincd, { note }),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-seiban', variables.fseiban]
+        queryKey: productionScheduleQueryKeys.dueManagementSeibanAll(variables.fseiban)
       });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
     }
   });
 }
@@ -165,10 +166,10 @@ export function useUpdateKioskProductionScheduleDueManagementTriageSelection() {
       updateKioskProductionScheduleDueManagementTriageSelection({ selectedFseibans }),
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-triage']
+        queryKey: productionScheduleQueryKeys.dueManagementTriageAll
       });
       void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-daily-plan']
+        queryKey: productionScheduleQueryKeys.dueManagementDailyPlanAll
       });
     }
   });
@@ -181,10 +182,10 @@ export function useUpdateKioskProductionScheduleDueManagementDailyPlan() {
       updateKioskProductionScheduleDueManagementDailyPlan({ orderedFseibans }),
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-daily-plan']
+        queryKey: productionScheduleQueryKeys.dueManagementDailyPlanAll
       });
       void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-triage']
+        queryKey: productionScheduleQueryKeys.dueManagementTriageAll
       });
     }
   });
@@ -199,7 +200,7 @@ type DueManagementTargetContext = {
 
 export function useKioskProductionScheduleDueManagementGlobalRank(context?: DueManagementTargetContext) {
   return useQuery({
-    queryKey: ['kiosk-production-schedule-due-management-global-rank', context],
+    queryKey: productionScheduleQueryKeys.dueManagementGlobalRank(context),
     queryFn: () => getKioskProductionScheduleDueManagementGlobalRank(context),
     refetchInterval: 30000
   });
@@ -213,7 +214,7 @@ export function useKioskProductionScheduleDueManagementManualOrderOverview(
   options?: { enabled?: boolean }
 ) {
   return useQuery({
-    queryKey: ['kiosk-production-schedule-due-management-manual-order-overview', context],
+    queryKey: productionScheduleQueryKeys.dueManagementManualOrderOverview(context),
     queryFn: () => getKioskProductionScheduleDueManagementManualOrderOverview(context),
     refetchInterval: 30000,
     enabled: options?.enabled ?? true
@@ -226,7 +227,7 @@ export function useKioskProductionScheduleManualOrderSiteDevices(
 ) {
   const interval = options?.refetchIntervalMs === undefined ? false : options.refetchIntervalMs;
   return useQuery({
-    queryKey: ['kiosk-production-schedule-manual-order-site-devices', siteKey],
+    queryKey: productionScheduleQueryKeys.manualOrderSiteDevices(siteKey),
     queryFn: () => getKioskProductionScheduleManualOrderSiteDevices(siteKey!),
     enabled: (options?.enabled ?? true) && Boolean(siteKey && siteKey.trim().length > 0),
     refetchInterval: interval
@@ -244,7 +245,7 @@ export function useKioskProductionScheduleManualOrderResourceAssignments(
         ? false
         : options.refetchIntervalMs;
   return useQuery({
-    queryKey: ['kiosk-production-schedule-manual-order-resource-assignments', siteKey],
+    queryKey: productionScheduleQueryKeys.manualOrderResourceAssignments(siteKey),
     queryFn: () => getKioskProductionScheduleManualOrderResourceAssignments(siteKey!),
     enabled: (options?.enabled ?? true) && Boolean(siteKey && siteKey.trim().length > 0),
     refetchInterval: interval
@@ -259,9 +260,9 @@ export function useUpdateKioskProductionScheduleManualOrderResourceAssignments()
       putKioskProductionScheduleManualOrderResourceAssignments(payload),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-manual-order-resource-assignments', variables.siteKey]
+        queryKey: productionScheduleQueryKeys.manualOrderResourceAssignments(variables.siteKey)
       });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-due-management-manual-order-overview'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.dueManagementManualOrderOverviewAll });
     }
   });
 }
@@ -273,10 +274,10 @@ export function useUpdateKioskProductionScheduleDueManagementGlobalRank() {
       updateKioskProductionScheduleDueManagementGlobalRank(payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-global-rank']
+        queryKey: productionScheduleQueryKeys.dueManagementGlobalRankAll
       });
       void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-daily-plan']
+        queryKey: productionScheduleQueryKeys.dueManagementDailyPlanAll
       });
     }
   });
@@ -284,7 +285,7 @@ export function useUpdateKioskProductionScheduleDueManagementGlobalRank() {
 
 export function useKioskProductionScheduleDueManagementGlobalRankProposal(context?: DueManagementTargetContext) {
   return useQuery({
-    queryKey: ['kiosk-production-schedule-due-management-global-rank-proposal', context],
+    queryKey: productionScheduleQueryKeys.dueManagementGlobalRankProposal(context),
     queryFn: () => getKioskProductionScheduleDueManagementGlobalRankProposal(context),
     refetchInterval: 30000
   });
@@ -297,13 +298,13 @@ export function useAutoGenerateKioskProductionScheduleDueManagementGlobalRank() 
       autoGenerateKioskProductionScheduleDueManagementGlobalRank(payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-global-rank']
+        queryKey: productionScheduleQueryKeys.dueManagementGlobalRankAll
       });
       void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-global-rank-proposal']
+        queryKey: productionScheduleQueryKeys.dueManagementGlobalRankProposalAll
       });
       void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-daily-plan']
+        queryKey: productionScheduleQueryKeys.dueManagementDailyPlanAll
       });
     }
   });
