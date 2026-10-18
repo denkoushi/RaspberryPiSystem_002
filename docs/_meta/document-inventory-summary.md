@@ -12,8 +12,8 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Metric | Count |
 |--------|------:|
 | Documents | 769 |
-| Total lines | 189092 |
-| Total bytes | 15065828 |
+| Total lines | 189093 |
+| Total bytes | 15066371 |
 | With frontmatter | 368 |
 | With status | 170 |
 | source_of_truth declared | 116 |
@@ -22,7 +22,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Replacement-character documents | 1 |
 | Long-line documents | 39 |
 | Local links | 5878 |
-| Broken local links | 93 |
+| Broken local links | 95 |
 | Documents over 1,000 lines | 29 |
 | Documents over 3,000 lines | 6 |
 
@@ -98,6 +98,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `EXEC_PLAN.md` -> `../docs/knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-?15[question-mark-corruption]pi5[question-mark-corruption]` (../docs/knowledge-base/infrastructure/security.md)
 - `EXEC_PLAN.md` -> `./scripts/stackchan-ai-stackchan-ex/README.md` (scripts/stackchan-ai-stackchan-ex/README.md)
 - `docs/INDEX.md` -> `plans/hermes-source-semantics-pilot.md` (docs/plans/hermes-source-semantics-pilot.md)
+- `docs/INDEX.md` -> `../scripts/dgx-private-comfyui/README.md` (scripts/dgx-private-comfyui/README.md)
 - `docs/api/overview.md` -> `./kiosk.md` (docs/api/kiosk.md)
 - `docs/api/overview.md` -> `./tools.md` (docs/api/tools.md)
 - `docs/architecture/overview.md` -> `./client-device-integration.md` (docs/architecture/client-device-integration.md)
@@ -143,4 +144,3 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/knowledge-base/index.md` -> `../EXEC_PLAN.md` (docs/EXEC_PLAN.md)
 - `docs/knowledge-base/infrastructure/ansible-deployment.md` -> `../guides/deployment.md` (docs/knowledge-base/guides/deployment.md)
 - `docs/knowledge-base/infrastructure/ansible-deployment.md` -> `../guides/deployment.md#本番セキュリティ設定2026-02-13追加` (docs/knowledge-base/guides/deployment.md)
-- `docs/knowledge-base/infrastructure/ansible-deployment.md` -> `../plans/security-hardening-execplan.md` (docs/knowledge-base/plans/security-hardening-execplan.md)

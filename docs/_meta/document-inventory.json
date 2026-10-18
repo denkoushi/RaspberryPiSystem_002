@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 769,
-    "totalLines": 189092,
-    "totalBytes": 15065828,
+    "totalLines": 189093,
+    "totalBytes": 15066371,
     "withFrontmatter": 368,
     "withStatus": 170,
     "sourceOfTruthDeclared": 116,
@@ -26,7 +26,7 @@
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 39,
     "localLinkCount": 5878,
-    "brokenLocalLinkCount": 93,
+    "brokenLocalLinkCount": 95,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
     "brokenLocalLinks": [
@@ -49,6 +49,11 @@
         "sourcePath": "docs/INDEX.md",
         "href": "plans/hermes-source-semantics-pilot.md",
         "targetPath": "docs/plans/hermes-source-semantics-pilot.md"
+      },
+      {
+        "sourcePath": "docs/INDEX.md",
+        "href": "../scripts/dgx-private-comfyui/README.md",
+        "targetPath": "scripts/dgx-private-comfyui/README.md"
       },
       {
         "sourcePath": "docs/api/overview.md",
@@ -469,6 +474,11 @@
         "sourcePath": "docs/requirements/system-requirements.md",
         "href": "./csv-import-export.md",
         "targetPath": "docs/requirements/csv-import-export.md"
+      },
+      {
+        "sourcePath": "docs/runbooks/dgx-private-comfyui.md",
+        "href": "../../scripts/dgx-private-comfyui/README.md",
+        "targetPath": "scripts/dgx-private-comfyui/README.md"
       },
       {
         "sourcePath": "docs/runbooks/stackchan-cores3-bringup-probe.md",
@@ -11619,7 +11629,7 @@
         {
           "href": "../scripts/dgx-private-comfyui/README.md",
           "targetPath": "scripts/dgx-private-comfyui/README.md",
-          "exists": true
+          "exists": false
         }
       ],
       "inboundCount": 13,
@@ -34694,8 +34704,8 @@
     },
     {
       "path": "docs/plans/code-health-refactor-execplan.md",
-      "lineCount": 122,
-      "byteSize": 19987,
+      "lineCount": 123,
+      "byteSize": 20530,
       "hasFrontmatter": false,
       "title": "コード保守性の改善プログラム",
       "status": null,
@@ -40044,7 +40054,7 @@
         {
           "href": "../../scripts/dgx-private-comfyui/README.md",
           "targetPath": "scripts/dgx-private-comfyui/README.md",
-          "exists": true
+          "exists": false
         }
       ],
       "inboundCount": 7,
