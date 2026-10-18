@@ -1,3 +1,4 @@
+import { DomainHttpError } from '../../lib/errors.js';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { z } from 'zod';
 import { BusinessHermesService } from '../../services/business-hermes/business-hermes.service.js';
@@ -126,17 +127,17 @@ export function registerAssemblyWorkSessionRoutes(app: FastifyInstance, {
   excelService: AssemblyExcelExportService;
   businessHermesService: BusinessHermesService;
 }): void {
-  app.get('/assembly/work-sessions/:id/procedure-sequence', { preHandler: allowView }, async (request, reply) => {
+  app.get('/assembly/work-sessions/:id/procedure-sequence', { preHandler: allowView }, async (request) => {
     const params = idParamSchema.parse(request.params);
     const sequence = await procedureSequenceService.resolveForWorkSession(params.id);
-    if (!sequence) return reply.status(404).send({ message: '作業セッションが見つかりません' });
+    if (!sequence) throw new DomainHttpError(404, '作業セッションが見つかりません');
     return { sequence: serializeProcedureSequence(sequence) };
   });
 
-  app.get('/assembly/work-sessions/:id', { preHandler: allowView }, async (request, reply) => {
+  app.get('/assembly/work-sessions/:id', { preHandler: allowView }, async (request) => {
     const params = idParamSchema.parse(request.params);
     const session = await sessionService.getDetail(params.id);
-    if (!session) return reply.status(404).send({ message: '作業セッションが見つかりません' });
+    if (!session) throw new DomainHttpError(404, '作業セッションが見つかりません');
     return { session: serializeSession(session, sessionService) };
   });
 

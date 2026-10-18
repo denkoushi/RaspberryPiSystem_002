@@ -1,3 +1,4 @@
+import { DomainHttpError } from '../../lib/errors.js';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { z } from 'zod';
 import {
@@ -63,10 +64,10 @@ export function registerAssemblyCandidateRoutes(app: FastifyInstance, {
     return { items };
   });
 
-  app.post('/assembly/operators/resolve-nfc', { preHandler: allowView }, async (request, reply) => {
+  app.post('/assembly/operators/resolve-nfc', { preHandler: allowView }, async (request) => {
     const body = z.object({ uid: z.string().trim().min(1).max(200) }).parse(request.body);
     const resolved = await resolveAssemblyOperatorNfcUid(body.uid);
-    if (!resolved) return reply.status(404).send({ message: '社員タグが見つかりません' });
+    if (!resolved) throw new DomainHttpError(404, '社員タグが見つかりません');
     return resolved;
   });
 
@@ -123,10 +124,10 @@ export function registerAssemblyTemplateRoutes(app: FastifyInstance, {
     return { templates: templates.map(serializeTemplateSummary) };
   });
 
-  app.get('/assembly/templates/:id', { preHandler: allowView }, async (request, reply) => {
+  app.get('/assembly/templates/:id', { preHandler: allowView }, async (request) => {
     const params = idParamSchema.parse(request.params);
     const template = await templateService.getById(params.id, { includeInactive: true });
-    if (!template) return reply.status(404).send({ message: 'テンプレートが見つかりません' });
+    if (!template) throw new DomainHttpError(404, 'テンプレートが見つかりません');
     return { template: serializeTemplate(template) };
   });
 
@@ -154,7 +155,7 @@ export function registerAssemblyTemplateRoutes(app: FastifyInstance, {
   app.delete('/assembly/templates/:id', { preHandler: allowWriteKiosk }, async (request, reply) => {
     const params = idParamSchema.parse(request.params);
     const result = await templateService.retire(params.id);
-    if (result === 'not_found') return reply.status(404).send({ message: 'テンプレートが見つかりません' });
+    if (result === 'not_found') throw new DomainHttpError(404, 'テンプレートが見つかりません');
     return reply.status(204).send();
   });
 }

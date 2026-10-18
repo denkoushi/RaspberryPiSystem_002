@@ -19,7 +19,7 @@
 - [x] (2026-10-17) 段階4: `terminal-runtime-manifest.py` と `rollback-manifest.py` はユーザー判断で残し、本番未使用であることを本計画と `docs/plans/deploy-speed-optimization-execplan.md` に明記した。
 - [x] 段階5: 頻繁に変更される巨大ファイルを 5 本分けた。画面側の組立 API 定義（PR #2085、main 83eaa0b5）、画面側の生産スケジュール API 定義（PR #2087、main 53fe3ea9）、画面側の生産スケジュール hook（PR #2088、main 73948300）、研削計画ボードの service（PR #2089、main c3291fda）、組立のルート定義（PR #2090、main 94e09541）。どれも中身は書き写しのみで、公開名の一致を機械的に確かめた。Hermes 系の大きいファイルは他セッションが頻繁に触るので対象外とした。#2088〜#2090 は 2026-10-17 に Pi5 へまとめて反映した（run 20261017-091529-dcfae1、成功、反映後の API エラー 0 件、health 200）。キオスクで生産スケジュール、順位ボード、負荷調整、製番ボード、組立の表示と操作をユーザーが確かめ、問題はなかった。
 - [ ] 段階6: 画面側のデータ取得の書き方をそろえる。1 本目として移動棚配置と工具・貸出の queryKey を一か所で定義した（PR #2092）。2 本目として生産スケジュールの hook 6 ファイルの queryKey を `apps/web/src/api/queryKeys/productionSchedule.ts` に集めた（変更前後の配列の一致をテストで固定）。3 本目として、画面 3 つ、部品測定 hook、リーダー順位ボードの hook 2 つ、検索履歴の操作に残っていた生産スケジュール系の鍵の直書きを同じ定義に置き換えた（キー値と配列の長さは不変、新しく足した前方一致用の鍵もテストで固定）。`mutationKey` と画面の保存設定のキーは対象外。`settings.ts` の分割試行設定の更新時に無効化している `['kiosk-production-schedule-leaderboard-shell']` と `['kiosk-production-schedule-leaderboard-board']` は実際の鍵と一致せず何も無効化していないが、同じ処理の `scheduleAll` が順位ボードの鍵も前方一致で無効化しているため画面への影響はない。直すかは別に判断する。
-- [ ] 段階7: 業務エラーを HTTP に変える場所をエラーハンドラーに集約する。1 本目として `DomainHttpError` を追加し、在庫と作業要領編集のルートから変換関数を外した（PR #2091、応答の本文は全体一致テストで固定）。組立の独自応答と Prisma の P2025 変換は別の回にする。
+- [ ] 段階7: 業務エラーを HTTP に変える場所をエラーハンドラーに集約する。1 本目として `DomainHttpError` を追加し、在庫と作業要領編集のルートから変換関数を外した（PR #2091、応答の本文は全体一致テストで固定）。2 本目として組立ルートの `{ message }` だけの 404/409 応答 11 か所を `DomainHttpError` へ移した（応答に `requestId` と `timestamp` が加わるだけで、画面は `message` しか読まない。全体一致テストで固定）。編集ロック、音声入力、Hermes の独自応答は本文の形が違うので残す。Prisma の P2025 変換は次の回にする。
 - [x] (2026-10-17) 段階6・7: 1 本目の #2091（main 62b5de34）と #2092（main 71311682）を Pi5 へ反映した（run 20261017-094007-1efeee）。反映後、キオスクの「持出」と「棚マスタ」の表示をユーザーが確かめ、問題はなかった。
 - [x] (2026-10-17) 段階8: プロセスのメモリに持っている状態を洗い出し、[API の 1 台構成の前提](../architecture/single-instance-state.md) に記録した。現状は 1 台構成なのでコードは変えない。
 - [x] (2026-10-18) 段階9: 個人用 Pi5、DGX、StackChan のコードは、新しいリポジトリを作らず、既存の個人用リポジトリ `denkoushi/DGXSparkControlPlane` へ移す（2026-10-17 ユーザー判断、Decision Log 参照）。個人用リポジトリ側で移して動作を受け入れてから、業務側の写しを消す。
@@ -41,6 +41,8 @@
   Evidence: PR #2084 が #2083、#2082 のマージのたびに、この 2 ファイルだけで衝突した。main 側を取ってから `node scripts/docs/audit-docs.mjs --write` で作り直せば解消する。
 - Observation: `terminal-runtime-manifest.py` と `rollback-manifest.py` を呼ぶのは CI の契約テスト（`scripts/ci/run-deploy-contracts-local.sh` と専用テスト）だけで、本番の配備経路からは呼ばれていない。配備高速化の計画にある束ね役 `terminal_manifest_capture.py` も存在しない。
   Evidence: `infrastructure/` と `scripts/`（テストを除く）を両ファイル名で検索した結果。
+- Observation: 段階7の 3 本目で、Prisma の P2025（レコードが見つからない）を 404 に変える 3 か所（アイテム削除、従業員削除、キオスクのタグ管理）を共通の小関数 `apps/api/src/lib/prisma-errors.ts` の `throwIfPrismaNotFound` に集めた。応答の本文は変えていない（全体一致テストで固定）。一方、ルートで受け止めない P2025 は共通のエラーハンドラーで一般的な 400「データベースエラー」になる。404 が正しいが、画面側への影響を調べていないので別件・未対応とする。
+  Evidence: `apps/api/src/plugins/error-handler.ts` の Prisma エラーの分岐。
 
 ## Decision Log
 

@@ -7,6 +7,7 @@ import { prisma } from '../../lib/prisma.js';
 import { PrismaKnowledgeReviewerRepository } from '../../services/knowledge/prisma-knowledge-reviewer.repository.js';
 import { positionRanksRequestSchema } from '../../services/knowledge/procedure-review-input.js';
 import { ApiError } from '../../lib/errors.js';
+import { throwIfPrismaNotFound } from '../../lib/prisma-errors.js';
 import { createKioskSettingsPinGuard } from '../../lib/kiosk-settings-pin.js';
 import { MeasuringInstrumentService } from '../../services/measuring-instruments/index.js';
 import { RiggingGearService } from '../../services/rigging/index.js';
@@ -65,7 +66,7 @@ const riggingUpdateBody = riggingCreateBody.partial();
 
 function notFoundAs(message: string) {
   return (error: unknown): never => {
-    if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') throw new ApiError(404, message);
+    throwIfPrismaNotFound(error, message);
     if (error instanceof PrismaClientKnownRequestError && error.code === 'P2002') {
       throw new ApiError(409, '同じコード・管理番号がすでに登録されています', undefined, 'DUPLICATE_CODE');
     }
