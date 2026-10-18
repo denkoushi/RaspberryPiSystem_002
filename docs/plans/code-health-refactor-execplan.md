@@ -41,6 +41,8 @@
   Evidence: PR #2084 が #2083、#2082 のマージのたびに、この 2 ファイルだけで衝突した。main 側を取ってから `node scripts/docs/audit-docs.mjs --write` で作り直せば解消する。
 - Observation: `terminal-runtime-manifest.py` と `rollback-manifest.py` を呼ぶのは CI の契約テスト（`scripts/ci/run-deploy-contracts-local.sh` と専用テスト）だけで、本番の配備経路からは呼ばれていない。配備高速化の計画にある束ね役 `terminal_manifest_capture.py` も存在しない。
   Evidence: `infrastructure/` と `scripts/`（テストを除く）を両ファイル名で検索した結果。
+- Observation: 段階7の 3 本目で、Prisma の P2025（レコードが見つからない）を 404 に変える 3 か所（アイテム削除、従業員削除、キオスクのタグ管理）を共通の小関数 `apps/api/src/lib/prisma-errors.ts` の `throwIfPrismaNotFound` に集めた。応答の本文は変えていない（全体一致テストで固定）。一方、ルートで受け止めない P2025 は共通のエラーハンドラーで一般的な 400「データベースエラー」になる。404 が正しいが、画面側への影響を調べていないので別件・未対応とする。
+  Evidence: `apps/api/src/plugins/error-handler.ts` の Prisma エラーの分岐。
 
 ## Decision Log
 
