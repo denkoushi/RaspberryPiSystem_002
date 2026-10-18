@@ -603,3 +603,22 @@ Fixed taxonomy, in order: 確認・検査の漏れ、思い込み・勘違い、
 The pilot covered 120 sampled texts, ten per call, about 250 ms per call, with 100% answered and sensible assignments. This is a pilot result, not a new retrieval accuracy measurement. While `HERMES_RETRIEVAL_CAUSE_ENABLED=true`, the runner starts on each corpus refresh, at most 600 distinct texts per run by default; the first full pass takes about ten refreshes. Content failures stop retrying after three attempts per text; transport failures stop the run with backoff and do not consume attempts. The saved store remains usable with the runner disabled.
 
 Unchanged: planner prompt and catalog, lexical/dense text, plain answer text and `formatCoverageNotice`, the 20-record cap, and nightly evaluation. Runtime settings are listed in [the enrichment operations reference](hermes-dgx-retrieval-enrichment.md#cause-classification-runtime).
+
+### 2026-10-18: fifteenth night, 93% and no ask-back for the fourth night; the cause axis is live and fully classified (measurement basis)
+
+Night of 2026-10-17 (22:0x), the first with #2076 (count and breakdown chips) and #2078 (cause axis) in production. Neither changes the plain answer text that the night reads, so the numbers are comparable.
+
+- Synthetic content: 100 pairs tried, 71 generated, 61 kept (median 22 chars, anchor overlap 0.33). Dropped: 23 copied runs, 9 anchors not confirmed, 4 too similar, 2 copied words, 1 ungraded. Production showed a relevant record for 57 of 61 (93%), other records for 1 (「凸凹部品 見間違い 不適合」), nothing for 3 (1 outside the judged candidates, 2 rejected by the judge: 「測定治具取付穴 未展開 不適合」 and a colloquial question about an appearance standard), and 0 failed. The two judge rejections are the first in several nights; both had candidates, so the loss moved one stage later than the usual terse-query miss.
+- Ask-backs: 0, the fourth night in a row. `ambiguousDropped` on 2 rows (part name 1, department name 1), both answered.
+- Synthetic filter: 10 of 10 ok.
+- Real: 2 questions, both answered. One filter question (correct), one content question with a relevant record shown. Receipts of 2026-10-17: 2 rows, no review items; 2026-10-18 empty by noon.
+- Learned queries: 3 activated on 2026-10-17, 37 active, 5 rejected in all.
+- Runner log: 190 lines, 5 final lines (dgx_busy at 22:07 after a DGX 503, completed, budget_reached, 2 outside_window); the night completed at 22:24.
+
+Cause classification (#2078), rollout result: the Pi 5 release of 896f9861 needed three runs. The first (20261017-043810-86b783) failed because the new version and `--hermes-search-trial-maintenance on` were sent together; the maintenance path requires the same version to be running already, so the release rolled back by itself and production stayed healthy. The second run (20261017-044447-39a851) was a plain release and the third (20261017-045105-4ed2f4) applied the maintenance path with `HERMES_RETRIEVAL_CAUSE_ENABLED=true`. The first runner pass started 04:53 UTC and classified 600 of 5,299 distinct texts in 26 seconds (60 calls, mean 374 ms, 0 failed). By 2026-10-18 03:49 UTC every text was classified: 5,299 classified, 0 pending, 0 failed, and the runner now reports `nothing_to_do` on each refresh. This is a coverage result, not an accuracy measurement; the kiosk check of the 「要因で分ける」 chips is still open.
+
+Operating note: when a release both ships a new version and changes a Hermes flag, run it as two releases, a plain one first and the maintenance one second. Recorded in [the enrichment operations reference](hermes-dgx-retrieval-enrichment.md#cause-classification-runtime).
+
+No retrieval change. Next candidates stay as before: the planner using cause categories as a filter condition, and answering count questions (「今年多い要因は？」) from the saved classification without a model call.
+
+Private files: `work/flywheel/questions-2026-10-17.jsonl`, `real-2026-10-17.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-17.log`, `runner-2026-10-18.log`, `receipts-2026-10-17.jsonl`.
