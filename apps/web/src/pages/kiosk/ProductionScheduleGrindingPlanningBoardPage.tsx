@@ -18,6 +18,7 @@ import {
   useUpdateKioskGrindingPlanningBoardResourceOrderBulk,
   useUpdateKioskGrindingPlanningBoardSeibanOrder
 } from '../../api/hooks';
+import { productionScheduleQueryKeys } from '../../api/queryKeys/productionSchedule';
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
@@ -514,7 +515,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         const overlay = current.get(item.sourceRowId);
         return overlay ? new Map(current).set(item.sourceRowId, { ...overlay, saved: true }) : current;
       });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
       if (intent === 'complete') {
         setSelectedItemIdsByCategory((current) => Object.fromEntries(Object.entries(current).map(([key, ids]) => {
           const next = new Set(ids);
