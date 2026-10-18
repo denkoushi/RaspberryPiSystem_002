@@ -85,7 +85,7 @@ all:
 
       # --- Hermes Agent（任意・Discord 雑談）---
       # デプロイ: ./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh
-      # 正本: docs/runbooks/private-pi5-hermes-deploy.md
+      # 正本: DGXSparkControlPlane `docs/private-history/runbooks/private-pi5-hermes-deploy.md`
       # private_pi5_hermes_gateway_enabled: false
       # private_pi5_hermes_max_tokens: 128
       # トークン分離（Phase D0）: 省略時は private_pi5_dgx_llm_shared_token を chat も使用

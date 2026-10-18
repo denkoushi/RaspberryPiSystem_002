@@ -64,7 +64,7 @@ category: knowledge-base
 - **競合注意**: private bridge が独自に **`POST /start`** しても、職場側キューとは **別プロセス**だが **DGX 上の同一 gateway/backend** を触る。`.env` / vault は **私用と職場で混線禁止**。
 - **検証**: 開発 Mac から DGX を直叩きした結果と、私用 Pi5 からの結果が **一致しない**ことがある（Tailscale ACL・経路差）。**運用切り分けの正は私用 Pi5 上**の `curl` / bridge。
 - **2026-05-10 late の追記（実機経路）**: StackChan 実機は **`192.168.128.124`**、private Pi5 は当日 DHCP で **`192.168.128.113`** を取得したが、StackChan ファームは **旧 bridge IP `192.168.128.112`** を見ていた。DGX upstream 復旧後も `GET /chat?...` に対応する bridge ログが出ないことで **宛先IPミスマッチ**を切り分け、private Pi5 `wlan0` に **`192.168.128.112/24` compatibility alias** を一時追加した直後に **`POST /api/stackchan/chat/simple 200`** を確認した。**教訓**: StackChan の `/chat` が `200` でも **bridge ログが無い**なら、upstream より先に **bridge URL の IP ドリフト**を疑う。
-- **2026-05-10 追記（実装モジュール）**: 入力検証・upstream オーケストレーションは [`stackchan_chat_core.py`](../../scripts/private-pi5-stackchan-bridge/stackchan_chat_core.py)（`ChatCompletionWorkflow`）。HTTP のみ [`bridge_server.py`](../../scripts/private-pi5-stackchan-bridge/bridge_server.py)。**text-only 完了条件**は [stackchan-community-text-only-e2e.md §text-only-done-criteria](../runbooks/stackchan-community-text-only-e2e.md#text-only-done-criteria)。
+- **2026-05-10 追記（実装モジュール）**: 入力検証・upstream オーケストレーションは [`stackchan_chat_core.py`](../../scripts/private-pi5-stackchan-bridge/stackchan_chat_core.py)（`ChatCompletionWorkflow`）。HTTP のみ [`bridge_server.py`](../../scripts/private-pi5-stackchan-bridge/bridge_server.py)。**text-only 完了条件**は stackchan-community-text-only-e2e.md §text-only-done-criteria（DGXSparkControlPlane `docs/private-history/runbooks/stackchan-community-text-only-e2e.md`）。
 
 ### 本番反映（2026-05-10・AgentContainer・Pi5 API + Web + DGX gateway） {#production-2026-05-10-dgx-agent-container}
 
