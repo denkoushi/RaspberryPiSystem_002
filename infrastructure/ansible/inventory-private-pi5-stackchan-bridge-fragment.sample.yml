@@ -1,4 +1,5 @@
-# 私用 Pi5 StackChan bridge 用インベントリ断片（サンプル・コミット可）
+# 私用 Pi5 Hermes 用インベントリ断片（サンプル・コミット可）
+# StackChan bridge は DGXSparkControlPlane へ移した。ホスト名と StackChan 用の変数は互換のため残している。
 #
 # 使い方:
 #   1. コピー:
@@ -6,9 +7,7 @@
 #           infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.yml
 #   2. 接続先と secret をローカル断片へ設定
 #   3. リポジトリ直下で:
-#        ./scripts/private-pi5-stackchan-bridge/deploy-private-pi5-stackchan-bridge.sh
-#
-# 参照: docs/runbooks/private-pi5-stackchan-bridge-deploy.md
+#        ./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh
 
 all:
   hosts:
