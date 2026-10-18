@@ -142,6 +142,26 @@ describe('HermesChatPanel evidence cards', () => {
     expect(screen.queryByText('20 件ずつ表示しています')).not.toBeInTheDocument();
   });
 
+  it('keeps each answer planId attached to chips on earlier and latest messages', () => {
+    const onRefine = vi.fn();
+    const display: HermesRecordAnswerDisplay = {
+      records: [{ sourceLabel: '不適合', fields: [{ role: 'identifier', label: '番号', value: 'N1' }] }],
+      groups: [{ axis: 'cause', field: 'causeCategory', label: '要因',
+        buckets: [{ value: 'drawing', label: '図面・設計の誤り', count: 1 }], otherCount: 0 }],
+      notices: [], dataAsOf: null,
+    };
+    render(<HermesChatPanel messages={[
+      { id: 'first', role: 'assistant', content: '', display, planId: 'first-plan' },
+      { id: 'second', role: 'assistant', content: '', display, planId: 'second-plan' },
+    ]} draft="" isBusy={false} error={null} onRefine={onRefine}
+      onDraftChange={vi.fn()} onSend={vi.fn()} onReset={vi.fn()} onClose={vi.fn()} />);
+    const chips = screen.getAllByRole('button', { name: '図面・設計の誤り 1' });
+    fireEvent.click(chips[0]);
+    expect(onRefine).toHaveBeenLastCalledWith({ axis: 'cause', field: 'causeCategory', value: 'drawing' }, '図面・設計の誤り', 'first-plan');
+    fireEvent.click(chips[chips.length - 1]);
+    expect(onRefine).toHaveBeenLastCalledWith({ axis: 'cause', field: 'causeCategory', value: 'drawing' }, '図面・設計の誤り', 'second-plan');
+  });
+
   it('switches breakdown axes, refines from both chip locations and disables chips while busy', () => {
     const onRefine = vi.fn();
     const display: HermesRecordAnswerDisplay = {

@@ -94,7 +94,7 @@ export type HermesSearchTrialScope = {
   snapshotId?: string;
 };
 
-export type HermesRecordRefine = { axis: 'organization' | 'month' | 'cause'; field: string; value: string };
+export type HermesRecordRefine = { axis: 'organization' | 'month' | 'cause'; field: string; value: string; planId?: string };
 
 export type HermesRecordAnswerDisplay = {
   records: Array<{
@@ -118,6 +118,7 @@ export type HermesSearchTrialAnswer = {
   status: string;
   answer: string;
   display?: HermesRecordAnswerDisplay;
+  planId?: string;
   recordIds: string[];
   elapsedMs: number;
   confirmationPending?: {

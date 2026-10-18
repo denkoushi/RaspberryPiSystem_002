@@ -17,7 +17,7 @@ export type HermesPageContext = {
 export type HermesPrincipal = { kind: 'kiosk' | 'viewer' | 'manager' | 'admin' };
 type HermesAnswerOptions = {
   principal?: HermesPrincipal;
-  refine?: { axis: 'organization' | 'month' | 'cause'; field: string; value: string };
+  refine?: { axis: 'organization' | 'month' | 'cause'; field: string; value: string; planId?: string };
 };
 type WorkerMemory = {
   heapUsedMb: number;
@@ -70,6 +70,7 @@ export type HermesTrialAnswer = {
   status: string;
   answer: string;
   display?: z.infer<typeof answerDisplaySchema>;
+  planId?: string;
   recordIds: string[];
   elapsedMs: number;
   confirmationPending?: {
@@ -90,6 +91,7 @@ export type HermesTrialAnswer = {
 };
 
 type TrialSession = {
+  plans?: Array<{ id: string; plan: Record<string, unknown> }>;
   pending: unknown | null;
   searchRequest: null;
   searchState: SearchState | null;
@@ -434,6 +436,7 @@ export class HermesSearchTrialService {
         status: result.status,
         answer: result.answer,
         ...(display.success ? { display: display.data } : {}),
+        ...(typeof result.planId === 'string' ? { planId: result.planId } : {}),
         recordIds: result.recordIds,
         elapsedMs: result.elapsedMs,
         confirmationPending: result.confirmationPending ?? null,

@@ -56,6 +56,7 @@ export async function registerHermesSearchTrialRoutes(
         axis: z.enum(['organization', 'month', 'cause']),
         field: z.string().trim().min(1).max(80),
         value: z.string().trim().min(1).max(80),
+        planId: z.string().max(64).optional(),
       }).strict().optional(),
       pageContext: z.object({
         path: z.string().max(200),

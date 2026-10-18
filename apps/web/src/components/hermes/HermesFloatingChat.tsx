@@ -776,6 +776,7 @@ export function HermesFloatingChat() {
           role: 'assistant',
           content: response.answer,
           display: response.display,
+          planId: response.planId,
           recordIds: response.recordIds,
           createdAt: new Date().toISOString()
         }]);
@@ -1005,9 +1006,7 @@ export function HermesFloatingChat() {
     conversationContent: inquiry.content ?? (knowledgeWorkspace.isOpen ? <KnowledgeWorkspace workspace={knowledgeWorkspace} posterName={knowledgePoster.poster?.name ?? null} /> : undefined),
     conversationExtension: <>
       {showPageContextShortcuts && pageContext ? <HermesPageContextShortcuts partNumber={pageContext.entity.value} disabled={isBusy} onChoose={handlePageContextShortcut} /> : null}
-      {knowledgeMode === 'search' && operationGuide.question ? <OperationGuidePrompt question={operationGuide.question} onChoose={operationGuide.choose} /> : knowledgeMode === 'record-pilot' && !showPageContextShortcuts ? <p className="hermes-chat-panel__status" role="note">
-        JEV記録検索：取り込み済みの実際の不適合記録が対象です。工程・現象・処置・原因など、知りたい条件を自然文で入力してください。記録の原文をそのまま表示します。条件を特定できない質問には確認を返します。
-      </p> : knowledgeMode === 'knowledge' && knowledge.enabled ? <>
+      {knowledgeMode === 'search' && operationGuide.question ? <OperationGuidePrompt question={operationGuide.question} onChoose={operationGuide.choose} /> : knowledgeMode === 'knowledge' && knowledge.enabled ? <>
         <KnowledgePosterBar destinationChip={<KnowledgeDestinationChip destination={knowledgeDestination} />} actions={<KnowledgeWorkspaceChips workspace={knowledgeWorkspace} />} poster={knowledgePoster.poster} verifying={knowledgePoster.verifying} error={knowledgePoster.error}
           partNumber={knowledgePoster.partNumber} pending={knowledgePoster.pending} onClearPartNumber={() => knowledgePoster.setPartNumber(null)}
           onPendingDecided={(intakeId, title) => { knowledgePoster.removePending(intakeId); knowledge.markDecided(intakeId, title); }} />
@@ -1036,7 +1035,7 @@ export function HermesFloatingChat() {
     onFeedback: (id, verdict) => void recordFeedback(id, verdict),
     onDraftChange: handleDraftChange,
     onSend: sendMessage,
-    onRefine: knowledgeMode === 'record-pilot' ? (refine, label) => void sendMessage(`${refine.axis === 'cause' ? label ?? refine.value : refine.value}で絞り込む`, { refine }) : undefined,
+    onRefine: knowledgeMode === 'record-pilot' ? (refine, label, planId) => void sendMessage(`${refine.axis === 'cause' ? label ?? refine.value : refine.value}で絞り込む`, { refine: { ...refine, planId } }) : undefined,
     onReset: () => { operationGuide.clear(); knowledge.reset(); resetActiveConversation(); },
     onClose: closePanel,
     onStop: knowledgeMode === 'knowledge' && knowledge.busy ? undefined : stopRequest,

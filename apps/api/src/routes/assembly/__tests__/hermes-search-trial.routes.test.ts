@@ -33,6 +33,16 @@ describe('Hermes search trial authorization',()=>{
     const refine = { axis: 'organization', field: 'originDepartmentName', value: '組立' };
     expect((await app.inject({...request,payload:{question:'組立で絞り込む',sessionId,refine}})).statusCode).toBe(200);
     expect(answer).toHaveBeenLastCalledWith('組立で絞り込む',sessionId,undefined,{principal:{kind:'viewer'},refine});
+    const identifiedRefine = { ...refine, planId: 'answer-plan' };
+    expect((await app.inject({...request,payload:{question:'組立で絞り込む',sessionId,refine:identifiedRefine}})).statusCode).toBe(200);
+    expect(answer).toHaveBeenLastCalledWith('組立で絞り込む',sessionId,undefined,{principal:{kind:'viewer'},refine:identifiedRefine});
+    for (const planId of ['x'.repeat(64), '']) {
+      expect((await app.inject({...request,payload:{question:'q',refine:{...refine,planId}}})).statusCode).toBe(200);
+    }
+    for (const planId of ['x'.repeat(65), 1, {}]) {
+      expect((await app.inject({...request,payload:{question:'q',refine:{...refine,planId}}})).statusCode).toBe(400);
+    }
+    expect((await app.inject({...request,payload:{question:'q',refine:{...refine,plan:{sources:['nonconformity']}}}})).statusCode).toBe(400);
     const causeRefine = { axis: 'cause', field: 'causeCategory', value: 'check' };
     expect((await app.inject({...request,payload:{question:'確認・検査の漏れで絞り込む',sessionId,refine:causeRefine}})).statusCode).toBe(200);
     expect(answer).toHaveBeenLastCalledWith('確認・検査の漏れで絞り込む',sessionId,undefined,{principal:{kind:'viewer'},refine:causeRefine});
