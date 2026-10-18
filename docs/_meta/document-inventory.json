@@ -17,7 +17,7 @@
   "summary": {
     "documentCount": 724,
     "totalLines": 179601,
-    "totalBytes": 14400665,
+    "totalBytes": 14400232,
     "withFrontmatter": 348,
     "withStatus": 169,
     "sourceOfTruthDeclared": 115,
@@ -26,7 +26,7 @@
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 39,
     "localLinkCount": 5446,
-    "brokenLocalLinkCount": 126,
+    "brokenLocalLinkCount": 127,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
     "brokenLocalLinks": [
@@ -214,6 +214,11 @@
         "sourcePath": "EXEC_PLAN.md",
         "href": "./docs/runbooks/stackchan-community-text-only-e2e.md#65-2026-05-23-post-apistackchanutterancepi5-[question-mark-corruption]",
         "targetPath": "docs/runbooks/stackchan-community-text-only-e2e.md"
+      },
+      {
+        "sourcePath": "EXEC_PLAN.md",
+        "href": "./scripts/private-pi5-stackchan-bridge/README.md",
+        "targetPath": "scripts/private-pi5-stackchan-bridge/README.md"
       },
       {
         "sourcePath": "EXEC_PLAN.md",
@@ -4591,7 +4596,7 @@
         {
           "href": "./scripts/private-pi5-stackchan-bridge/README.md",
           "targetPath": "scripts/private-pi5-stackchan-bridge/README.md",
-          "exists": true
+          "exists": false
         },
         {
           "href": "./scripts/stackchan-ai-stackchan-ex/README.md",
@@ -6105,7 +6110,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 2083,
-      "byteSize": 360086,
+      "byteSize": 359818,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -11551,7 +11556,7 @@
         },
         {
           "line": 444,
-          "length": 1052
+          "length": 1025
         },
         {
           "line": 458,
@@ -11563,11 +11568,7 @@
         },
         {
           "line": 464,
-          "length": 1385
-        },
-        {
-          "line": 466,
-          "length": 1016
+          "length": 1170
         },
         {
           "line": 472,
@@ -25299,7 +25300,7 @@
     {
       "path": "docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md",
       "lineCount": 631,
-      "byteSize": 88946,
+      "byteSize": 88821,
       "hasFrontmatter": true,
       "title": "KB-365 DGXリソース Phase3・補助ランタイム起停・ワークロード自動調停",
       "status": null,
@@ -28360,7 +28361,7 @@
     {
       "path": "docs/knowledge-base/index.md",
       "lineCount": 885,
-      "byteSize": 269621,
+      "byteSize": 269601,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - 索引",
       "status": null,
@@ -37862,7 +37863,7 @@
     {
       "path": "docs/runbooks/dgx-system-prod-local-llm.md",
       "lineCount": 1379,
-      "byteSize": 147670,
+      "byteSize": 147650,
       "hasFrontmatter": false,
       "title": "Runbook: DGX Spark system-prod LocalLLM 段階切替",
       "status": null,
