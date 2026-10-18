@@ -16,6 +16,12 @@ export function ProcedureVideoTimeline({ scenes, duration, position, editable, p
     const rect = track.current?.getBoundingClientRect();
     return rect?.width ? Math.max(0, Math.min(duration, (clientX - rect.left) / rect.width * duration)) : 0;
   };
+  // 境目を動かしている間は、動画をその境目のコマに合わせて止める
+  const moveBoundary = (index: number, seconds: number) => {
+    const next = moveSceneBoundary(scenes, index, seconds);
+    onChange(next);
+    onSeek(next[index].startSeconds);
+  };
   const percent = (seconds: number) => duration > 0 ? seconds / duration * 100 : 0;
   const ticks = Array.from({ length: Math.floor(duration / (duration > 20 ? 5 : 2)) + 1 }, (_, i) => i * (duration > 20 ? 5 : 2));
   return <div className="shrink-0 space-y-2">
@@ -25,10 +31,10 @@ export function ProcedureVideoTimeline({ scenes, duration, position, editable, p
       {scenes.length ? <div className="absolute inset-x-0 bottom-0 h-11 rounded bg-slate-800">{scenes.map((scene, index) => <Button key={index} variant="ghostOnDark" aria-label={`${scene.title || `場面 ${index + 1}`}の頭へ移動`} className="absolute min-h-11 overflow-hidden !border-0 !px-2 text-xs !text-slate-950" style={{ left: `${percent(scene.startSeconds)}%`, width: `${percent(scene.endSeconds - scene.startSeconds)}%`, backgroundColor: sceneColors[index] }} onClick={() => onSeek(scene.startSeconds)}>{scene.title || `場面 ${index + 1}`}</Button>)}</div> : null}
       {editable ? scenes.slice(1).map((scene, index) => <button key={index} type="button" role="slider" tabIndex={0} aria-label={`場面${index + 1}と${index + 2}の境目`} aria-valuemin={scenes[index].startSeconds + 0.5} aria-valuemax={scene.endSeconds - 0.5} aria-valuenow={scene.startSeconds}
         className="absolute top-[58px] z-10 flex h-11 w-5 -translate-x-1/2 touch-none cursor-ew-resize items-center justify-center rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400" style={{ left: `${percent(scene.startSeconds)}%` }}
-        onPointerDown={(e) => { dragging.current = index + 1; e.currentTarget.setPointerCapture(e.pointerId); e.preventDefault(); }}
-        onPointerMove={(e) => { if (dragging.current === index + 1) onChange(moveSceneBoundary(scenes, index + 1, secondsAt(e.clientX))); }}
+        onPointerDown={(e) => { if (playing) onPlay(); dragging.current = index + 1; e.currentTarget.setPointerCapture(e.pointerId); e.preventDefault(); }}
+        onPointerMove={(e) => { if (dragging.current === index + 1) moveBoundary(index + 1, secondsAt(e.clientX)); }}
         onPointerUp={() => { dragging.current = null; }} onPointerCancel={() => { dragging.current = null; }}
-        onKeyDown={(e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); onChange(moveSceneBoundary(scenes, index + 1, scene.startSeconds + (e.key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 1 : 0.1))); } }}>
+        onKeyDown={(e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); moveBoundary(index + 1, scene.startSeconds + (e.key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 1 : 0.1)); } }}>
         <span className="h-10 w-1 rounded bg-slate-100 shadow" /><span className="absolute h-6 w-3 rounded bg-slate-100 shadow" />
       </button>) : null}
       <div className={`pointer-events-none absolute top-3 w-0.5 bg-amber-400 ${scenes.length ? 'h-[92px]' : 'h-12'}`} style={{ left: `${percent(position)}%` }}><span className="absolute -left-1 -top-1 text-xs text-amber-400">▼</span></div>
