@@ -167,5 +167,5 @@ sudo -u hermes grep max_tokens ~/.hermes/.hermes/config.yaml ~/.hermes-novel/hom
 
 ## 関連
 
-- [private-pi5-stackchan-bridge](../private-pi5-stackchan-bridge/README.md)（別系統・併用可）
+- StackChan bridge は DGXSparkControlPlane へ移した（`dgx_runtime_client.py` だけ [private-pi5-stackchan-bridge](../private-pi5-stackchan-bridge/README.md) に残す）
 - [dgx-system-prod-local-llm.md](../../docs/runbooks/dgx-system-prod-local-llm.md)
