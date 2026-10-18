@@ -25,6 +25,18 @@ Status: accepted
 5. 埋め込みは実際の呼び出し結果で判定する。写真持出の HTTP 埋め込みアダプタが成功・失敗をプロセス内に記録し（`photo-tool-embedding-health.ts`）、直近が失敗なら `degraded`。まだ呼ばれていない・無効のときは判定に入れない。
 6. 別名ルート `/admin/dgx-resource` は `/admin/tools/dgx-resource` へ転送する。
 
+## Addendum 2026-10-18: 切替コンソール
+
+利用者の指摘（稼働中なのに主操作が「業務に戻す」、「業務で使うモデル: 未設定」が意味不明、検閲の有無が分からない）を受けて画面を作り直した。
+
+1. 稼働中の主操作は「切り替える」。動いているモデルは一覧で「稼働中」として選択済みに見せる。止まっているときだけ「起動」を出す。どちらも API は従来の `RETURN_TO_BUSINESS { modelProfileId }` を使い、契約は変えない。
+2. 起動判定: 動いているモデル自身は常に「入る」。他モデルの判定に使う空き = 起動用の空き + 動いているモデルの使用量（`gpuProcessMemoryUsedGiB`、無ければその推定必要量）。切替時は DGX が先に止めるため。overview に `requiredBytes`・`fitAvailableBytes` を出す。
+3. 業務意図: 未設定なら行ごと出さない。既定と動いているモデルが違い、かつ LLM が応答しているときだけ注意帯を出す。意図は従来どおり `RETURN_TO_BUSINESS` 成功時だけ記録する。
+4. 全モデルに「検閲あり」を出す（業務に出すのは `businessOrchestrationEligible` のものだけなので `censored: true`）。検閲なしモデル（例: 個人用の uncensored モデル）は個人用のため業務画面に出さない。一覧見出しに「検閲なしは個人用のため非表示」と注記する。
+5. 使えないモデルは理由（`unavailableKind`: 保存先なし・停止中・メモリ不足）を付けて小さく分けて出す。表示名から「業務」接頭辞を外す。
+6. 切替の進行は `businessReturn.phase`（starting / checking）で「停止・起動・応答確認」の手順として出す。
+7. レイアウトはコンテナクエリと `clamp()` で連続的に組み替える（ページ幅で 2 列/1 列、稼働パネル幅で横並び/縦積み、一覧幅で行の組み替え、広い画面は画面の高さいっぱいにリング表示）。Tailwind 3.4 に container query が無いため `dgx-resource.css` を同じ場所に置く。
+
 ## Alternatives
 
 - 表示の修正（Unknown・用語・不要部品）だけを行い、実験ラボ・Agent・運用モードを残す: 業務と個人用の境界違反が残るため採らない。

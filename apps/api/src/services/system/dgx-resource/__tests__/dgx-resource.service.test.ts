@@ -8,6 +8,7 @@ import { getBusinessProfileIntentStore } from '../../../inference/config/busines
 import { readPhotoToolEmbeddingHealth } from '../../../tools/photo-tool-label/photo-tool-embedding-health.js';
 import { DgxResourceStateStore } from '../dgx-resource.state-store.js';
 import { createDgxResourceService } from '../dgx-resource.service.js';
+import type { MetricsPayload } from '../dgx-resource.probes.js';
 
 function setup() {
   const stateStore = new DgxResourceStateStore(50);
@@ -23,7 +24,7 @@ function setup() {
   const status = { configured: true, timeoutMs: 1000, health: { ok: true } };
   let modelsOk = true;
   let startOk = true;
-  let metrics = { unifiedMemoryUsedGiB: 32, unifiedMemoryTotalGiB: 128, startupFreeMemoryGiB: 80, gpuUtilPct: 23, gpuTemperatureC: 45, gpuPowerDrawW: 60 };
+  let metrics: MetricsPayload = { unifiedMemoryUsedGiB: 32, unifiedMemoryTotalGiB: 128, startupFreeMemoryGiB: 80, gpuUtilPct: 23, gpuTemperatureC: 45, gpuPowerDrawW: 60 };
   const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
     const url = String(input);
     if (url.endsWith('/start')) return new Response('', { status: startOk ? 200 : 500 });
@@ -47,6 +48,7 @@ function setup() {
   return {
     svc: createDgxResourceService(deps), deps, stateStore, profile, upstream, status, fetchImpl,
     setModelsOk: (value: boolean) => { modelsOk = value; }, setStartOk: (value: boolean) => { startOk = value; },
+    setMetrics: (value: MetricsPayload) => { metrics = value; },
     setFreeMemory: (value: number) => { metrics = { ...metrics, startupFreeMemoryGiB: value }; },
   };
 }
@@ -90,14 +92,14 @@ describe('business overview', () => {
     const overview = await svc.getOverview();
     expect(overview.business.state).toBe('ready');
     expect(overview.business.matchesIntent).toBeNull();
-    expect(overview.metrics).toEqual({ unifiedMemUsedBytes: 32 * 1024 ** 3, unifiedMemTotalBytes: 128 * 1024 ** 3, gpuUtilPct: 23, temperatureC: 45, powerW: 60 });
+    expect(overview.metrics).toEqual({ gpuName: null, modelMemBytes: null, otherMemBytes: null, unifiedMemUsedBytes: 32 * 1024 ** 3, unifiedMemTotalBytes: 128 * 1024 ** 3, gpuUtilPct: 23, temperatureC: 45, powerW: 60 });
   });
   it('reports mismatch without replacing the intended model', async () => {
     getBusinessProfileIntentStore().setFromOrchestration('model-b');
     const overview = await setup().svc.getOverview();
     expect(overview.business).toMatchObject({ state: 'ready_mismatch', matchesIntent: false, intendedProfile: { id: 'model-b' }, activeProfile: { id: 'model-a' } });
     expect(getBusinessProfileIntentStore().getModelProfileId()).toBe('model-b');
-    expect(overview.alerts[0]?.messageJa).toContain('違います');
+    expect(overview.alerts[0]?.messageJa).toContain('いまは別のモデルで動いています');
     expect(JSON.stringify(overview.alerts)).not.toContain('model-b');
   });
   it('matches the configured business intent without changing resolver precedence', async () => {
@@ -138,7 +140,7 @@ describe('business overview', () => {
     const test = setup(); test.fetchImpl.mockResolvedValue(new Response('', { status: 503 }));
     const overview = await test.svc.getOverview();
     expect(overview.modelProfilesAvailable).toBe(false);
-    expect(Object.values(overview.metrics)).toEqual([null, null, null, null, null]);
+    expect(Object.values(overview.metrics).every((value) => value === null)).toBe(true);
   });
 });
 
@@ -155,7 +157,7 @@ describe('business actions', () => {
     expect(posts).toHaveLength(1);
     expect(String(posts[0]?.[0])).toBe('http://dgx.test/start');
     expect(JSON.parse(String(posts[0]?.[1]?.body))).toMatchObject({ modelProfileId: 'model-a' });
-    expect(test.svc.getEvents(8)[0]?.message).toBe('「業務モデル A」で業務に戻しました。');
+    expect(test.svc.getEvents(8)[0]?.message).toBe('「モデル A」に切り替えました。');
   });
   it('shares running state between service instances and rejects duplicate requests before validation', async () => {
     const test = setup();
@@ -192,7 +194,7 @@ describe('business actions', () => {
     if (reason === 'disabled') test.profile.enabled = false;
     if (reason === 'unavailable') test.profile.status = 'unavailable';
     if (reason === 'personal') test.profile.businessOrchestrationEligible = false;
-    if (reason === 'memory') test.setFreeMemory(1);
+    if (reason === 'memory') { test.setFreeMemory(1); test.upstream.activeProfileId = null; }
     await expect(test.svc.executeAction({ type: 'RETURN_TO_BUSINESS', modelProfileId: reason === 'missing' ? 'unknown' : 'model-a' })).rejects.toMatchObject({ statusCode: reason === 'missing' ? 400 : 409 });
     expect(test.fetchImpl.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
     expect(test.stateStore.getBusinessReturn().state).toBe('idle');
@@ -216,6 +218,78 @@ describe('business actions', () => {
     await test.svc.executeAction({ type: 'EXECUTE_MODEL_STORAGE_DELETE', modelProfileId: 'model-a', planFingerprint: 'f'.repeat(64), confirmation: 'DELETE model-a' });
     const call = test.fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/execute'));
     expect(JSON.parse(String(call?.[1]?.body))).toEqual({ modelProfileId: 'model-a', planFingerprint: 'f'.repeat(64), confirmation: 'DELETE model-a' });
-    expect(test.svc.getEvents(8)[0]?.message).toBe('「業務モデル A」の保存先を削除しました。');
+    expect(test.svc.getEvents(8)[0]?.message).toBe('「モデル A」の保存先を削除しました。');
+  });
+});
+
+
+describe('switch console overview', () => {
+  it.each(['業務 モデル A', '業務　モデル A', '業務モデル A', 'モデル A'])('strips the business prefix: %s', async (name) => {
+    const test = setup(); test.profile.displayNameJa = name;
+    const data = await test.svc.getOverview();
+    expect(data.modelProfiles[0]?.displayName).toBe('モデル A');
+    expect(data.business.activeProfile?.displayName).toBe('モデル A');
+    expect(data.business.intendedProfile).toBeNull();
+  });
+  it.each([
+    [{ unifiedMemoryUsedGiB: 90, gpuProcessMemoryUsedGiB: 80 }, 80, 10],
+    [{ unifiedMemoryUsedGiB: 70, gpuProcessMemoryUsedGiB: 80 }, 80, 0],
+    [{ unifiedMemoryUsedGiB: 90 }, null, null],
+    [{ gpuProcessMemoryUsedGiB: 80 }, 80, null],
+  ])('reports memory breakdown %j', async (metrics, model, other) => {
+    const test = setup(); test.setMetrics(metrics);
+    expect((await test.svc.getOverview()).metrics).toMatchObject({
+      modelMemBytes: model == null ? null : model * 1024 ** 3,
+      otherMemBytes: other == null ? null : other * 1024 ** 3,
+    });
+  });
+  it.each([
+    [{ storageStatus: 'missing', status: 'unavailable' }, 'no_storage', '保存先なし'],
+    [{ enabled: false }, 'disabled', '停止中'],
+    [{ status: 'unavailable' }, 'disabled', '停止中'],
+    [{ status: 'unknown' }, 'disabled', '停止中'],
+    [{}, 'insufficient_memory', 'メモリ不足'],
+  ])('classifies unavailable models %j', async (fields, kind, reason) => {
+    const test = setup(); Object.assign(test.profile, fields); test.upstream.activeProfileId = null; test.setFreeMemory(1);
+    expect((await test.svc.getOverview()).modelProfiles[0]).toMatchObject({
+      censored: true, unavailableKind: kind, unavailableReasonJa: reason, startable: false,
+      requiredBytes: 64 * 1024 ** 3, fitAvailableBytes: 1024 ** 3,
+    });
+  });
+  it('reclaims the active model memory for a switch through the existing start contract', async () => {
+    const test = setup(); test.setFreeMemory(1);
+    test.upstream.profiles.push({ ...test.profile, id: 'model-b' });
+    const data = await test.svc.getOverview();
+    expect(data.modelProfiles.map((profile) => profile.startupFit)).toEqual(['fits', 'fits']);
+    expect(data.modelProfiles[1]).toMatchObject({ fitAvailableBytes: 65 * 1024 ** 3, requiredBytes: 64 * 1024 ** 3, unavailableKind: null });
+    await test.svc.executeAction({ type: 'RETURN_TO_BUSINESS', modelProfileId: 'model-b' });
+    test.upstream.activeProfileId = 'model-b';
+    await vi.advanceTimersByTimeAsync(20);
+    expect(test.fetchImpl.mock.calls.filter(([url]) => String(url).endsWith('/stop-force'))).toHaveLength(0);
+    expect(test.stateStore.getBusinessReturn()).toMatchObject({ state: 'succeeded', phase: null });
+  });
+  it('limits events to the latest twenty', () => {
+    const test = setup();
+    for (let i = 0; i < 25; i++) test.stateStore.appendEvent(`操作 ${i}`);
+    expect(test.svc.getEvents(100)).toHaveLength(20);
+    expect(test.svc.getEvents(100)[0]?.message).toBe('操作 24');
+  });
+  it('exposes starting until start is accepted, checking while waiting, then null', async () => {
+    const test = setup();
+    const fetch = test.fetchImpl.getMockImplementation()!;
+    let accept!: () => void;
+    const accepted = new Promise<void>((resolve) => { accept = resolve; });
+    test.fetchImpl.mockImplementation(async (url, init) => {
+      if (String(url).endsWith('/start')) await accepted;
+      return fetch(url, init);
+    });
+    const result = await test.svc.executeAction({ type: 'RETURN_TO_BUSINESS', modelProfileId: 'model-a' });
+    expect(result.businessReturn).toMatchObject({ state: 'in_progress', phase: 'starting' });
+    expect((await test.svc.getOverview()).businessReturn.phase).toBe('starting');
+    accept();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(test.stateStore.getBusinessReturn().phase).toBe('checking');
+    await vi.advanceTimersByTimeAsync(20);
+    expect(test.stateStore.getBusinessReturn()).toMatchObject({ state: 'succeeded', phase: null });
   });
 });

@@ -2,6 +2,7 @@ export type DgxResourceEvent = { id: string; at: string; message: string };
 export type DgxResourceEventsResponse = { events: DgxResourceEvent[] };
 export type DgxBusinessReturn = {
   state: 'idle' | 'in_progress' | 'succeeded' | 'failed';
+  phase: 'starting' | 'checking' | null;
   profileId: string | null;
   startedAt: string | null;
   finishedAt: string | null;
@@ -24,6 +25,9 @@ export type DgxResourceOverview = {
     matchesIntent: boolean | null;
   };
   metrics: {
+    gpuName: string | null;
+    modelMemBytes: number | null;
+    otherMemBytes: number | null;
     unifiedMemUsedBytes: number | null;
     unifiedMemTotalBytes: number | null;
     gpuUtilPct: number | null;
@@ -32,6 +36,11 @@ export type DgxResourceOverview = {
   };
   modelProfiles: Array<ProfileLabel & {
     backendLabel: 'vLLM' | 'llama.cpp' | '不明';
+    quantizationLabel: string | null;
+    requiredBytes: number | null;
+    fitAvailableBytes: number | null;
+    censored: boolean;
+    unavailableKind: 'no_storage' | 'disabled' | 'insufficient_memory' | null;
     supportsVision: boolean;
     isActive: boolean;
     isRecommended: boolean;
