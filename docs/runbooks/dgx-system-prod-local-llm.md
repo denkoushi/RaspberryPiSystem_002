@@ -27,7 +27,7 @@ update-frequency: high
 ## 私用 Pi5 `stackchan-bridge` との区別（境界・read-only）
 
 - **本 Runbook の主対象**は **職場 Pi5 API** が **`LOCAL_LLM_*`** 経由で扱う **DGX system-prod gateway**（単一キュー・用途別 keep-warm 含む）。
-- **自宅の StackChan 等**は [`scripts/private-pi5-stackchan-bridge`](../../scripts/private-pi5-stackchan-bridge/README.md) により **私用 Pi5 から DGX へ直接** HTTP する。**職場 Pi5 API の `stackchan_chat` 契約とは別系統**（JWT・キューを通さない）。**2系統の正本**: 計画 §2系統（DGXSparkControlPlane `docs/private-history/plans/stackchan-private-pi5-tailnet-workflow-plan.md`）·[KB-365 §私用 bridge](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#private-pi5-stackchan-bridge-boundary-2026-05-10)。
+- **自宅の StackChan 等**は `scripts/private-pi5-stackchan-bridge`（DGXSparkControlPlane へ移動） により **私用 Pi5 から DGX へ直接** HTTP する。**職場 Pi5 API の `stackchan_chat` 契約とは別系統**（JWT・キューを通さない）。**2系統の正本**: 計画 §2系統（DGXSparkControlPlane `docs/private-history/plans/stackchan-private-pi5-tailnet-workflow-plan.md`）·[KB-365 §私用 bridge](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#private-pi5-stackchan-bridge-boundary-2026-05-10)。
 
 ## 管理コンソール: DGX リソース（Pi5 API 経由）
 

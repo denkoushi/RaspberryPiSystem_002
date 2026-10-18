@@ -13,7 +13,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 |--------|------:|
 | Documents | 724 |
 | Total lines | 179601 |
-| Total bytes | 14400665 |
+| Total bytes | 14400232 |
 | With frontmatter | 348 |
 | With status | 169 |
 | source_of_truth declared | 115 |
@@ -22,7 +22,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Replacement-character documents | 1 |
 | Long-line documents | 39 |
 | Local links | 5446 |
-| Broken local links | 126 |
+| Broken local links | 127 |
 | Documents over 1,000 lines | 28 |
 | Documents over 3,000 lines | 6 |
 
@@ -40,7 +40,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | `docs/archive/architecture/deployment-modules-legacy-through-2026-07.md` | 2522 | 128149 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2208 | 137917 |
 | `docs/knowledge-base/infrastructure/signage.md` | 2208 | 190029 |
-| `docs/INDEX.md` | 2083 | 360086 |
+| `docs/INDEX.md` | 2083 | 359818 |
 | `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1951 | 217024 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153539 |
 | `docs/archive/deployments/legacy-operator-guide-through-2026-07.md` | 1600 | 108031 |
@@ -131,6 +131,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `EXEC_PLAN.md` -> `./docs/runbooks/private-pi5-stackchan-bridge-deploy.md` (docs/runbooks/private-pi5-stackchan-bridge-deploy.md)
 - `EXEC_PLAN.md` -> `./docs/runbooks/stackchan-community-text-only-e2e.md` (docs/runbooks/stackchan-community-text-only-e2e.md)
 - `EXEC_PLAN.md` -> `./docs/runbooks/stackchan-community-text-only-e2e.md#65-2026-05-23-post-apistackchanutterancepi5-[question-mark-corruption]` (docs/runbooks/stackchan-community-text-only-e2e.md)
+- `EXEC_PLAN.md` -> `./scripts/private-pi5-stackchan-bridge/README.md` (scripts/private-pi5-stackchan-bridge/README.md)
 - `EXEC_PLAN.md` -> `./scripts/stackchan-ai-stackchan-ex/README.md` (scripts/stackchan-ai-stackchan-ex/README.md)
 - `docs/INDEX.md` -> `plans/hermes-source-semantics-pilot.md` (docs/plans/hermes-source-semantics-pilot.md)
 - `docs/INDEX.md` -> `../scripts/dgx-private-comfyui/README.md` (scripts/dgx-private-comfyui/README.md)
@@ -143,4 +144,3 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/guides/ansible-best-practices.md` -> `../plans/ansible-hardening-stabilization-plan.md` (docs/plans/ansible-hardening-stabilization-plan.md)
 - `docs/guides/ansible-best-practices.md` -> `../plans/ansible-progress-summary.md` (docs/plans/ansible-progress-summary.md)
 - `docs/guides/ansible-managed-files.md` -> `../plans/ansible-hardening-stabilization-plan.md` (docs/plans/ansible-hardening-stabilization-plan.md)
-- `docs/guides/api-key-policy.md` -> `./kiosk-setup.md` (docs/guides/kiosk-setup.md)
