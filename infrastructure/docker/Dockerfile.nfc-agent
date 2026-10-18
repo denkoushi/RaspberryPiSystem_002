@@ -29,7 +29,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pcscd pcsc-tools libpcsclite1 \
     && apt-get install -y --only-upgrade --no-install-recommends \
-      gzip libpcre2-8-0 libsqlite3-0 perl-base libglib2.0-0t64 libperl5.40 perl perl-modules-5.40 \
+      gzip libexpat1 libpcre2-8-0 libsqlite3-0 perl-base libglib2.0-0t64 libperl5.40 perl perl-modules-5.40 \
       libssl3t64 openssl openssl-provider-legacy \
     && for package in libssl3t64 openssl openssl-provider-legacy; do \
       version="$(dpkg-query -W -f='${Version}' "$package")"; \
@@ -38,6 +38,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     done \
     && for requirement in \
       gzip:1.13-1+deb13u1 \
+      libexpat1:2.9.0-1~deb13u1 \
       libpcre2-8-0:10.46-1~deb13u2 \
       libsqlite3-0:3.46.1-7+deb13u2 \
       perl-base:5.40.1-6+deb13u1 \
