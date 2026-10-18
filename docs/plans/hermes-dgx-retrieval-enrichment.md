@@ -62,6 +62,8 @@ Copying the store to a Mac uses the same on-host export style as `export-busines
 
 The release runner forwards both `HERMES_RETRIEVAL_CAUSE_ENABLED` and `HERMES_RETRIEVAL_CAUSE_MAX_TEXTS` like the enrichment keys.
 
+Shipping a new version and changing a Hermes flag in the same release fails: the `--hermes-search-trial-maintenance on` path requires the same version to be running already, and the runner rolls back. Run a plain release first, then a second release with the maintenance option and the flag (observed 2026-10-17, runs 20261017-043810-86b783, -044447-39a851, -045105-4ed2f4).
+
 The separate JEV cause runner and its cadence are described in [the accuracy log](hermes-retrieval-accuracy-log.md#2026-10-17-要因で分ける-axis-from-jev-classification-of-不適合内容-change-not-a-measurement). It uses the existing `HERMES_JEV_PROVIDER` transport, independent of the enrichment gate.
 
 | Environment variable | Default / purpose |
