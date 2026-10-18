@@ -12,6 +12,7 @@ import {
   useKioskProductionScheduleSearchState,
   useUpdateKioskProductionScheduleSearchState
 } from '../../api/hooks';
+import { productionScheduleQueryKeys } from '../../api/queryKeys/productionSchedule';
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
@@ -645,8 +646,8 @@ export function ProductionSchedulePage() {
   const handleComplete = async (rowId: string, intent: 'complete' | 'incomplete') => {
     const t0 = performance.now();
     const isFetchingSchedule = scheduleQuery.isFetching;
-    const fetchingCountSchedule = queryClient.isFetching({ queryKey: ['kiosk-production-schedule'] });
-    const fetchingCountOrderUsage = queryClient.isFetching({ queryKey: ['kiosk-production-schedule-order-usage'] });
+    const fetchingCountSchedule = queryClient.isFetching({ queryKey: productionScheduleQueryKeys.scheduleAll });
+    const fetchingCountOrderUsage = queryClient.isFetching({ queryKey: productionScheduleQueryKeys.orderUsageAll });
     if (cursorDebugEnabled) {
       void isFetchingSchedule;
       void fetchingCountSchedule;

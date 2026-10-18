@@ -10,6 +10,7 @@ import {
   useKioskProductionScheduleOrderUsage,
   useKioskProductionScheduleResources
 } from '../../api/hooks';
+import { productionScheduleQueryKeys } from '../../api/queryKeys/productionSchedule';
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
 import { readProductionBuildConfig } from '../../config/productionBuildConfig';
@@ -227,11 +228,11 @@ export function ProductionScheduleLeaderOrderBoardPage() {
 
   const invalidateScheduleQueries = useCallback(() =>
     Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] }),
+      queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll }),
       queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-manual-order-overview']
+        queryKey: productionScheduleQueryKeys.dueManagementManualOrderOverviewAll
       }),
-      queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-manual-order-resource-assignments'] })
+      queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.manualOrderResourceAssignmentsAll })
     ]), [queryClient]);
 
   const {
@@ -526,7 +527,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   }, []);
 
   const handleSplitSaved = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-board'] });
+    void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.leaderboardBoardAll });
     void invalidateScheduleQueries();
   }, [invalidateScheduleQueries, queryClient]);
 

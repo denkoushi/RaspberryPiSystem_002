@@ -34,6 +34,7 @@ import {
   listSelfInspectionInvalidations,
   getSelfInspectionInvalidation
 } from '../client';
+import { productionScheduleQueryKeys } from '../queryKeys/productionSchedule';
 
 import type { SelfInspectionSessionDetailDto, SelfInspectionStatus } from '../../features/part-measurement/types';
 
@@ -96,7 +97,7 @@ export function useInvalidateSelfInspectionItem() {
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-out-of-tolerance-reviews'] });
       // 永続snapshotを先に破棄し、直後の再取得が削除前キャッシュをhydrateしないようにする。
       await purgeLeaderboardBoardCacheForScheduleRow(invalidation.scheduleRowId);
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
     }
   });
 }
@@ -134,8 +135,8 @@ export function useUpdateSelfInspectionRegistrationPolicy() {
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approval-session'] });
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-session'] });
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-decorations'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.leaderboardDecorationsAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
     }
   });
 }
@@ -370,8 +371,8 @@ export function useApproveSelfInspectionOutOfToleranceReview() {
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-out-of-tolerance-reviews'] });
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', session.id] });
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-decorations'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.leaderboardDecorationsAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
     }
   });
 }
@@ -399,8 +400,8 @@ export function useApproveSelfInspectionRecordApproval() {
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approval-session', session.id] });
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', session.id] });
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-decorations'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.leaderboardDecorationsAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
     }
   });
 }
@@ -426,8 +427,8 @@ export function useResetSelfInspectionSession() {
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', variables.sessionId] });
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', result.newSession.id] });
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-decorations'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.leaderboardDecorationsAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
       const scheduleRowId = result.newSession.scheduleRowId;
       if (scheduleRowId) {
         await purgeLeaderboardBoardCacheForScheduleRow(scheduleRowId);

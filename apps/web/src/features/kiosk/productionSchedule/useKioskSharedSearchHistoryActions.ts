@@ -6,11 +6,9 @@ import {
   useKioskProductionScheduleSearchState,
   useUpdateKioskProductionScheduleSearchState
 } from '../../../api/hooks';
+import { productionScheduleQueryKeys } from '../../../api/queryKeys/productionSchedule';
 
 import { normalizeHistoryList } from './useProductionScheduleQueryParams';
-
-const SEARCH_STATE_QUERY_KEY = ['kiosk-production-schedule-search-state'] as const;
-const PROGRESS_OVERVIEW_QUERY_KEY = ['kiosk-production-schedule-progress-overview'] as const;
 
 export type KioskSharedSearchHistoryOperation = { type: 'add' | 'remove'; value: string };
 
@@ -58,8 +56,8 @@ export function useKioskSharedSearchHistoryActions(options?: {
           etagRef.current = result.etag;
         }
         void Promise.all([
-          queryClient.invalidateQueries({ queryKey: [...SEARCH_STATE_QUERY_KEY] }),
-          queryClient.invalidateQueries({ queryKey: [...PROGRESS_OVERVIEW_QUERY_KEY] })
+          queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.searchStateAll }),
+          queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.progressOverviewAll })
         ]).catch(() => {});
       } catch (error) {
         if (isAxiosError(error) && error.response?.status === 409 && attempt < 2) {

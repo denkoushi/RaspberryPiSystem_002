@@ -59,6 +59,7 @@ export const productionScheduleQueryKeys = {
     ['kiosk-production-schedule-due-management-seiban', fseiban, context] as const,
   manualOrderSiteDevices: (siteKey?: string) =>
     ['kiosk-production-schedule-manual-order-site-devices', siteKey] as const,
+  manualOrderResourceAssignmentsAll: ['kiosk-production-schedule-manual-order-resource-assignments'] as const,
   manualOrderResourceAssignments: (siteKey?: string) =>
     ['kiosk-production-schedule-manual-order-resource-assignments', siteKey] as const,
   grindingPlanningBoardAll: ['kiosk-grinding-planning-board'] as const,
@@ -74,12 +75,16 @@ export const productionScheduleQueryKeys = {
   grindingPlanningBoardDueDetail: (fseiban: string | null) =>
     ['kiosk-grinding-planning-board-due-detail', fseiban] as const,
   planningBoardResourceCapacityAll: ['kiosk-planning-board-resource-capacity'] as const,
+  leaderboardShellAll: ['kiosk-production-schedule', 'leaderboard-shell'] as const,
   leaderboardShell: (params?: Parameters<typeof getKioskProductionScheduleLeaderboardShell>[0]) =>
     ['kiosk-production-schedule', 'leaderboard-shell', params] as const,
+  leaderboardTotalAll: ['kiosk-production-schedule', 'leaderboard-total'] as const,
   leaderboardTotal: (params?: Parameters<typeof getKioskProductionScheduleLeaderboardTotal>[0]) =>
     ['kiosk-production-schedule', 'leaderboard-total', params] as const,
+  leaderboardBoardAll: ['kiosk-production-schedule', 'leaderboard-board'] as const,
   leaderboardBoard: (params?: Parameters<typeof getKioskProductionScheduleLeaderboardBoard>[0]) =>
     ['kiosk-production-schedule', 'leaderboard-board', params] as const,
+  leaderboardDecorationsAll: ['kiosk-production-schedule', 'leaderboard-decorations'] as const,
   leaderboardDecorations: (rowFingerprint: string, targetDeviceScopeKey?: string) =>
     ['kiosk-production-schedule', 'leaderboard-decorations', rowFingerprint, targetDeviceScopeKey ?? ''] as const,
   loadBalancingCapacityBase: (location: string) =>

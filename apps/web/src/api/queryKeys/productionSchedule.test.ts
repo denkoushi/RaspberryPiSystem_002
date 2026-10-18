@@ -4,6 +4,11 @@ import { productionScheduleQueryKeys } from './productionSchedule';
 
 describe('productionScheduleQueryKeys', () => {
   it('preserves fixed keys and invalidation prefixes', () => {
+    expect(productionScheduleQueryKeys.manualOrderResourceAssignmentsAll).toEqual(['kiosk-production-schedule-manual-order-resource-assignments']);
+    expect(productionScheduleQueryKeys.leaderboardShellAll).toEqual(['kiosk-production-schedule', 'leaderboard-shell']);
+    expect(productionScheduleQueryKeys.leaderboardTotalAll).toEqual(['kiosk-production-schedule', 'leaderboard-total']);
+    expect(productionScheduleQueryKeys.leaderboardBoardAll).toEqual(['kiosk-production-schedule', 'leaderboard-board']);
+    expect(productionScheduleQueryKeys.leaderboardDecorationsAll).toEqual(['kiosk-production-schedule', 'leaderboard-decorations']);
     expect(productionScheduleQueryKeys.scheduleAll).toEqual(['kiosk-production-schedule']);
     expect(productionScheduleQueryKeys.resourcesAll).toEqual(['kiosk-production-schedule-resources']);
     expect(productionScheduleQueryKeys.kioskProcessingTypeOptionsAll).toEqual(['kiosk-production-schedule-processing-type-options']);
