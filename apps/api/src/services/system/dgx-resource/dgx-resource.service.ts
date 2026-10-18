@@ -29,6 +29,9 @@ export type DgxResourceOverview = {
     matchesIntent: boolean | null;
   };
   metrics: {
+    gpuName: string | null;
+    modelMemBytes: number | null;
+    otherMemBytes: number | null;
     unifiedMemUsedBytes: number | null;
     unifiedMemTotalBytes: number | null;
     gpuUtilPct: number | null;
@@ -37,6 +40,11 @@ export type DgxResourceOverview = {
   };
   modelProfiles: Array<ProfileLabel & {
     backendLabel: 'vLLM' | 'llama.cpp' | '不明';
+    quantizationLabel: string | null;
+    requiredBytes: number | null;
+    fitAvailableBytes: number | null;
+    censored: boolean;
+    unavailableKind: 'no_storage' | 'disabled' | 'insufficient_memory' | null;
     supportsVision: boolean;
     isActive: boolean;
     isRecommended: boolean;
@@ -81,14 +89,21 @@ export type DgxResourceServiceDeps = {
 };
 
 function displayName(profile: DgxBusinessModelProfile): string {
-  return profile.displayNameJa !== profile.id ? profile.displayNameJa : '名称未登録のモデル';
+  const name = profile.displayNameJa.replace(/^業務\s*/, '').trim();
+  return name && profile.displayNameJa !== profile.id ? name : '名称未登録のモデル';
+}
+
+function unavailableKind(profile: DgxBusinessModelProfile): DgxResourceOverview['modelProfiles'][number]['unavailableKind'] {
+  if (profile.storageStatus === 'missing') return 'no_storage';
+  if (!profile.enabled || profile.status !== 'available') return 'disabled';
+  if (profile.startupFit?.status === 'insufficient') return 'insufficient_memory';
+  return null;
 }
 
 function unavailableReason(profile: DgxBusinessModelProfile): string | null {
   if (!profile.businessOrchestrationEligible) return '業務用ではありません';
-  if (!profile.enabled || profile.status !== 'available') return '現在は利用できません';
-  if (profile.startupFit?.status === 'insufficient') return 'メモリ不足';
-  return null;
+  const kind = unavailableKind(profile);
+  return kind ? { no_storage: '保存先なし', disabled: '停止中', insufficient_memory: 'メモリ不足' }[kind] : null;
 }
 
 export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResourceServicePort {
@@ -135,33 +150,38 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
   };
   const finishReturn = async (profile: DgxBusinessModelProfile) => {
     try {
-      await executeGatewayRuntimeStartStop(deps, 'start', 'return_to_business', profile.id);
+      const start = async (reason: string) => {
+        store.setReturnPhase('starting');
+        await executeGatewayRuntimeStartStop(deps, 'start', reason, profile.id);
+        store.setReturnPhase('checking');
+      };
+      await start('return_to_business');
       const ready = await waitBusinessReadiness({
         collect, modelProfileId: profile.id,
         timeoutMs: env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS,
         pollIntervalMs: env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS,
-        retryStart: () => executeGatewayRuntimeStartStop(deps, 'start', 'return_to_business_retry', profile.id),
+        retryStart: () => start('return_to_business_retry'),
       });
       if (!ready) {
         const reason = 'モデルの準備が時間内に終わりませんでした。状態を確認して、もう一度お試しください。';
         store.finishReturn(reason);
-        store.appendEvent(`業務に戻せませんでした。${reason}`);
+        store.appendEvent(`モデルを起動できませんでした。${reason}`);
         return;
       }
       getBusinessProfileIntentStore().setFromOrchestration(profile.id);
       store.finishReturn(null);
-      store.appendEvent(`「${displayName(profile)}」で業務に戻しました。`);
+      store.appendEvent(`「${displayName(profile)}」に切り替えました。`);
     } catch {
       const reason = 'モデルを読み込めませんでした。DGX との接続や設定を確認して、もう一度お試しください。';
       store.finishReturn(reason);
-      store.appendEvent(`業務に戻せませんでした。${reason}`);
+      store.appendEvent(`モデルを起動できませんでした。${reason}`);
     } finally {
       store.release();
     }
   };
 
   return {
-    getEvents: (limit) => store.getEvents(limit),
+    getEvents: (limit) => store.getEvents(Math.min(limit, 20)),
     async getOverview() {
       const [snapshot, metrics] = await Promise.all([collect(), fetchMetrics()]);
       const profiles = enrichDgxModelProfilesStartupFit(snapshot.modelProfiles, metrics);
@@ -184,19 +204,20 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
             : embedding.state === 'failed' ? 'degraded'
               : matchesIntent === false ? 'ready_mismatch' : 'ready';
       const alerts: DgxResourceOverview['alerts'] = [];
-      if (matchesIntent === false && state !== 'returning') {
-        alerts.push({ id: 'model_mismatch', messageJa: `業務で使うモデル（${intendedProfile!.displayName}）と動いているモデル（${activeProfile?.displayName ?? 'なし'}）が違います。揃えるには「このモデルで業務に戻す」を押してください。` });
-      }
-      if (state === 'down') {
-        alerts.push({ id: 'llm_down', messageJa: 'DGX の業務 LLM が応答しません。「このモデルで業務に戻す」で起動してください。' });
+      if (matchesIntent === false && snapshot.llmState === 'ok' && state !== 'returning') {
+        alerts.push({ id: 'model_mismatch', messageJa: `業務の既定は ${intendedProfile!.displayName} です。いまは別のモデルで動いています` });
       }
       if (businessReturn.state === 'failed') {
-        alerts.push({ id: 'return_failed', messageJa: `直近の業務復帰に失敗しました。${businessReturn.failureReasonJa}` });
+        alerts.push({ id: 'return_failed', messageJa: `直近の起動に失敗しました。${businessReturn.failureReasonJa}` });
       }
       return {
         generatedAt: new Date().toISOString(),
         business: { state, llm: { state: snapshot.llmState }, embedding, activeProfile, intendedProfile, matchesIntent },
         metrics: {
+          gpuName: metrics?.gpuName ?? null,
+          modelMemBytes: metrics?.gpuProcessMemoryUsedGiB != null ? metrics.gpuProcessMemoryUsedGiB * 1024 ** 3 : null,
+          otherMemBytes: metrics?.unifiedMemoryUsedGiB != null && metrics.gpuProcessMemoryUsedGiB != null
+            ? Math.max(0, metrics.unifiedMemoryUsedGiB - metrics.gpuProcessMemoryUsedGiB) * 1024 ** 3 : null,
           unifiedMemUsedBytes: metrics?.unifiedMemoryUsedGiB != null ? metrics.unifiedMemoryUsedGiB * 1024 ** 3 : null,
           unifiedMemTotalBytes: metrics?.unifiedMemoryTotalGiB != null ? metrics.unifiedMemoryTotalGiB * 1024 ** 3 : null,
           gpuUtilPct: metrics?.gpuUtilPct ?? null, temperatureC: metrics?.gpuTemperatureC ?? null,
@@ -206,6 +227,10 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
           id: profile.id, displayName: displayName(profile),
           backendLabel: profile.runtimeProfile?.engine === 'vllm' ? 'vLLM' as const
             : profile.runtimeProfile?.engine === 'llama.cpp' ? 'llama.cpp' as const : '不明' as const,
+          quantizationLabel: profile.quantization ?? profile.runtimeProfile?.vllm?.quantization ?? null,
+          requiredBytes: profile.startupFit?.requiredGiB != null ? profile.startupFit.requiredGiB * 1024 ** 3 : null,
+          fitAvailableBytes: profile.startupFit?.availableGiB != null ? profile.startupFit.availableGiB * 1024 ** 3 : null,
+          censored: true, unavailableKind: unavailableKind(profile),
           supportsVision: profileDeclaresVision(profile), isActive: profiles.activeProfileId === profile.id,
           isRecommended: profile.recommended,
           startupFit: profile.startupFit?.status === 'fits' ? 'fits' as const
@@ -231,10 +256,10 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
           const reason = unavailableReason(profile);
           if (reason) throw new ApiError(409, `このモデルは起動できません（${reason}）。`, undefined, 'DGX_MODEL_PROFILE_UNAVAILABLE');
           const businessReturn = store.startReturn(profile.id);
-          store.appendEvent(`「${displayName(profile)}」を読み込み、業務に戻しています。`);
+          store.appendEvent(`「${displayName(profile)}」を読み込んでいます。`);
           backgroundOwnsLock = true;
           void finishReturn(profile);
-          return { ok: true, message: '業務に戻しています。', businessReturn };
+          return { ok: true, message: 'モデルを読み込んでいます。', businessReturn };
         }
         if (body.type === 'STOP_BUSINESS_LLM') {
           store.appendEvent('業務 LLM を止めています。');
@@ -260,7 +285,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         store.appendEvent(`「${displayName(profile)}」の保存先を削除しました。`);
         return { ok: true, message: 'モデルの保存先を削除しました。', modelStorageDeleteExecute: result };
       } catch (error) {
-        const message = body.type === 'RETURN_TO_BUSINESS' ? '業務に戻す操作を開始できませんでした。'
+        const message = body.type === 'RETURN_TO_BUSINESS' ? 'モデルの起動を開始できませんでした。'
           : body.type === 'STOP_BUSINESS_LLM' ? '業務 LLM を止められませんでした。'
             : 'モデル保存先の操作を完了できませんでした。';
         store.appendEvent(message);
