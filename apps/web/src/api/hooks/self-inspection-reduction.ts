@@ -11,13 +11,11 @@ import {
   type SelfInspectionReductionPeriodDays,
   type SelfInspectionReductionSettings
 } from '../client';
-
-const INSIGHTS_KEY = ['self-inspection-reduction', 'insights'] as const;
-const SETTINGS_KEY = ['self-inspection-reduction', 'settings'] as const;
+import { selfInspectionQueryKeys } from '../queryKeys/selfInspection';
 
 export function useSelfInspectionReductionInsights(periodDays: SelfInspectionReductionPeriodDays) {
   return useQuery({
-    queryKey: [...INSIGHTS_KEY, periodDays],
+    queryKey: selfInspectionQueryKeys.reductionInsights(periodDays),
     queryFn: () => getSelfInspectionReductionInsights(periodDays),
     refetchInterval: 60000,
     refetchOnWindowFocus: false
@@ -26,7 +24,7 @@ export function useSelfInspectionReductionInsights(periodDays: SelfInspectionRed
 
 export function useSelfInspectionReductionSettings() {
   return useQuery({
-    queryKey: SETTINGS_KEY,
+    queryKey: selfInspectionQueryKeys.reductionSettingsAll,
     queryFn: () => getSelfInspectionReductionSettings(),
     refetchOnWindowFocus: false
   });
@@ -37,7 +35,7 @@ export function useUpdateSelfInspectionReductionPolicy() {
   return useMutation({
     mutationFn: updateSelfInspectionReductionPolicy,
     onSuccess: (settings) => {
-      queryClient.setQueryData(SETTINGS_KEY, settings);
+      queryClient.setQueryData(selfInspectionQueryKeys.reductionSettingsAll, settings);
     }
   });
 }
@@ -49,10 +47,10 @@ function useApproverMutation<TPayload>(
   return useMutation({
     mutationFn,
     onSuccess: (approvers) => {
-      queryClient.setQueryData<SelfInspectionReductionSettings>(SETTINGS_KEY, (current) =>
+      queryClient.setQueryData<SelfInspectionReductionSettings>(selfInspectionQueryKeys.reductionSettingsAll, (current) =>
         current ? { ...current, approvers } : current
       );
-      void queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.reductionSettingsAll });
     }
   });
 }
@@ -69,7 +67,7 @@ export function useRecordSelfInspectionChangePoint() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: recordSelfInspectionChangePoint,
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: INSIGHTS_KEY })
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.reductionInsightsAll })
   });
 }
 
@@ -77,6 +75,6 @@ export function useRecordSelfInspectionLevelDecision() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: recordSelfInspectionLevelDecision,
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: INSIGHTS_KEY })
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.reductionInsightsAll })
   });
 }
