@@ -74,8 +74,8 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
   if (snapshotId) {
     const snapshot = store.get(snapshotId);
     const sameScope = snapshot != null && snapshot.siteKey === params.siteKey && snapshot.locationKey === params.siteKey && snapshot.filterFingerprint === filterFingerprint;
-    const generation = await perf.measure('generationSnapshot', () => readPlanningSnapshotGenerationToken(params.siteKey));
-    if (!snapshot || !sameScope || snapshot.generationToken !== generationBeforeRead.generationToken || snapshot.generationToken !== generation || snapshot.partialOrdering || !isPlanningSnapshotPayload(snapshot.payload)) {
+    const generation = generationBeforeRead.generationToken;
+    if (!snapshot || !sameScope || snapshot.generationToken !== generation || snapshot.partialOrdering || !isPlanningSnapshotPayload(snapshot.payload)) {
       // A binding mismatch may refer to another terminal/site/filter. Do not
       // let one caller delete a valid snapshot owned by that scope.
       if (sameScope) store.delete(snapshotId);

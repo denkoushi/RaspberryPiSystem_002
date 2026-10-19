@@ -588,28 +588,27 @@ describe('grinding planning board service orchestration', () => {
     })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_SNAPSHOT' });
   });
 
-  it('checks a valid cursor snapshot with two generation reads', async () => {
+  it('keeps the default at 160 and reads generation once per continuation capped at 640', async () => {
+    const projection = mocks.projectGrindingPlanningBoard.getMockImplementation()!();
+    const items = Array.from({ length: 1441 }, (_, index) => ({ ...projection.items[0], itemId: `row:${index}` }));
+    mocks.projectGrindingPlanningBoard.mockReturnValue({ ...projection, allItems: items, items });
     const snapshotStore = createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 });
-    const first = await getGrindingPlanningBoard({
-      siteKey: 'site-a',
-      category: 'grinding',
-      view: 'seiban',
-      pageSize: 1,
-      snapshotStore
-    });
-    mocks.readGrindingPlanningBoardSnapshotGenerationToken.mockClear();
+    const params = { siteKey: 'site-a', category: 'grinding' as const, view: 'seiban' as const, includeLoad: false, snapshotStore };
+    const first = await getGrindingPlanningBoard(params);
+    expect(first.items).toHaveLength(160);
+    expect(first.nextCursor).toBe('160');
 
-    const continued = await getGrindingPlanningBoard({
-      siteKey: 'site-a',
-      category: 'grinding',
-      view: 'seiban',
-      cursor: 0,
-      snapshotId: first.snapshotId,
-      snapshotStore
-    });
-
-    expect(continued.items).toHaveLength(1);
-    expect(mocks.readGrindingPlanningBoardSnapshotGenerationToken).toHaveBeenCalledTimes(2);
+    for (const [cursor, pageSize] of [[160, 640], [800, 641]]) {
+      vi.clearAllMocks();
+      const continued = await getGrindingPlanningBoard({ ...params, cursor, pageSize, snapshotId: first.snapshotId });
+      expect(continued.items).toEqual(items.slice(cursor, cursor + 640));
+      expect(continued.nextCursor).toBe(String(cursor + 640));
+      expect(mocks.readGrindingPlanningBoardSnapshotGenerationToken).toHaveBeenCalledTimes(1);
+      expect(mocks.prisma.productionScheduleGrindingPlanningBoardState.findUnique).toHaveBeenCalledTimes(2);
+      expect(mocks.prisma.productionScheduleGrindingPlanningBoardOverride.aggregate).toHaveBeenCalledTimes(1);
+      expect(mocks.prisma.productionScheduleResourceMaster.aggregate).toHaveBeenCalledTimes(1);
+      expect(mocks.prisma.productionScheduleSeibanMachineNameSupplement.aggregate).toHaveBeenCalledTimes(1);
+    }
   });
 
   it('rejects a cursor when the before-read generation differs from the stored snapshot', async () => {
@@ -623,8 +622,7 @@ describe('grinding planning board service orchestration', () => {
     });
     mocks.readGrindingPlanningBoardSnapshotGenerationToken.mockClear();
     mocks.readGrindingPlanningBoardSnapshotGenerationToken
-      .mockResolvedValueOnce('leaderboard-generation-2')
-      .mockResolvedValueOnce('leaderboard-generation-1');
+      .mockResolvedValueOnce('leaderboard-generation-2');
 
     await expect(getGrindingPlanningBoard({
       siteKey: 'site-a',
@@ -634,7 +632,7 @@ describe('grinding planning board service orchestration', () => {
       snapshotId: first.snapshotId,
       snapshotStore
     })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_SNAPSHOT' });
-    expect(mocks.readGrindingPlanningBoardSnapshotGenerationToken).toHaveBeenCalledTimes(2);
+    expect(mocks.readGrindingPlanningBoardSnapshotGenerationToken).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the registered display source bounded when the database has many rows', async () => {

@@ -79,6 +79,17 @@ describe('grinding planning board route scope', () => {
     } finally { await app.close(); }
   });
 
+  it.each([[640, 200], [641, 400]])('validates pageSize=%s at the 640 cap', async (pageSize, status) => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    mocks.get.mockResolvedValue({ items: [] });
+    try {
+      const response = await app.inject({ method: 'GET', url: `/kiosk/production-schedule/grinding-planning-board?pageSize=${pageSize}` });
+      expect(response.statusCode).toBe(status);
+      if (status === 200) expect(mocks.get).toHaveBeenCalledWith(expect.objectContaining({ pageSize }));
+      else expect(mocks.get).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+
   it.each(['true', 'false'])('parses includeLoad=%s without boolean coercion', async (includeLoad) => {
     const app = await createApp(async () => ({ id: 'device-1' }));
     mocks.get.mockResolvedValue({ load: [], unknownRequiredMinutesCount: 0 });
