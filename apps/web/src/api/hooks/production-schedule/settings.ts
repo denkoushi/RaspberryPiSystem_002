@@ -90,8 +90,6 @@ export function useUpdateProductionScheduleOrderSplitPilotSettings() {
       void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.orderSplitPilotSettingsAll });
       void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.orderSplitStatusAll });
       void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
-      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.kioskLeaderboardShellAll });
-      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.kioskLeaderboardBoardAll });
     }
   });
 }

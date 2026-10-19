@@ -30,8 +30,6 @@ describe('productionScheduleQueryKeys', () => {
     expect(productionScheduleQueryKeys.loadBalancingWorkspaceDayAll).toEqual(['kiosk-production-schedule-load-balancing-workspace-day']);
     expect(productionScheduleQueryKeys.orderSplitPilotSettingsAll).toEqual(['production-schedule-order-split-pilot-settings']);
     expect(productionScheduleQueryKeys.orderSplitStatusAll).toEqual(['kiosk-production-schedule-order-split-status']);
-    expect(productionScheduleQueryKeys.kioskLeaderboardShellAll).toEqual(['kiosk-production-schedule-leaderboard-shell']);
-    expect(productionScheduleQueryKeys.kioskLeaderboardBoardAll).toEqual(['kiosk-production-schedule-leaderboard-board']);
     expect(productionScheduleQueryKeys.dueManagementSeibanDetailAll).toEqual(['kiosk-production-schedule-due-management-seiban-detail']);
   });
 
