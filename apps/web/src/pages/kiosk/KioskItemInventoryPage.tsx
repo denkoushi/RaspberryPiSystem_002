@@ -12,6 +12,7 @@ import {
   type InventoryTag,
 } from '../../api/client';
 import { useInventoryImportSummaries, useInventoryItems, useInventoryMutations } from '../../api/hooks';
+import { inventoryKeys } from '../../api/queryKeys/itemInventory';
 import { KioskHomeIcon } from '../../components/kiosk/KioskHomeIcon';
 import { InventoryCorrectionPanel } from '../../features/kiosk/inventory/InventoryCorrectionPanel';
 import {
@@ -210,7 +211,7 @@ export function KioskItemInventoryPage() {
         const drawer = item?.compartments.find((entry) => entry.id === transaction.compartmentId);
         return item && drawer ? pickedCompartmentTag({ ...drawer, item }) : null;
       };
-      tag = findTag(queryClient.getQueryData(['inventory-items']) ?? itemsQuery.data);
+      tag = findTag(queryClient.getQueryData(inventoryKeys.itemsAll) ?? itemsQuery.data);
       if (!tag) tag = findTag((await itemsQuery.refetch().catch(() => null))?.data);
     }
     if (tag?.compartment) tag = { ...tag, compartment: { ...tag.compartment, stockQuantity: transaction.afterQuantity } };
@@ -232,7 +233,7 @@ export function KioskItemInventoryPage() {
       if (!mountedRef.current || generation !== verificationGenerationRef.current) return;
       succeeded = await operation();
     } catch (error) {
-      if (isClientError(error)) void queryClient.invalidateQueries({ queryKey: ['inventory-tags'] });
+      if (isClientError(error)) void queryClient.invalidateQueries({ queryKey: inventoryKeys.tagsAll });
       await onError(error);
     } finally {
       if (!succeeded) {
@@ -305,7 +306,7 @@ export function KioskItemInventoryPage() {
           } catch (error) {
             if (eventQueueRef.current[0] !== event) continue;
             eventQueueRef.current.shift();
-            if (isClientError(error)) void queryClient.invalidateQueries({ queryKey: ['inventory-tags'] });
+            if (isClientError(error)) void queryClient.invalidateQueries({ queryKey: inventoryKeys.tagsAll });
             setMessage(messageFromError(error));
             setMessageKind('error');
             playInventoryTone('error');
@@ -334,7 +335,7 @@ export function KioskItemInventoryPage() {
           if (tag.kind === 'ITEM') {
             if (!tag.compartment) {
               selectTag(null);
-              if (event.inventoryTagFromCache) void queryClient.invalidateQueries({ queryKey: ['inventory-tags'] });
+              if (event.inventoryTagFromCache) void queryClient.invalidateQueries({ queryKey: inventoryKeys.tagsAll });
               setMessage('アイテムNFCタグに区画が割り当てられていません');
               setMessageKind('error');
               playInventoryTone('error');
@@ -355,7 +356,7 @@ export function KioskItemInventoryPage() {
                 selectTag(latest?.kind === 'ITEM' && latest.compartment ? latest : null);
                 setLastTransaction((current) => current?.compartmentId === latest?.compartment?.id ? current : null);
                 if (!unchanged) {
-                  void queryClient.invalidateQueries({ queryKey: ['inventory-tags'] });
+                  void queryClient.invalidateQueries({ queryKey: inventoryKeys.tagsAll });
                   setPanel('none');
                   setQuantityError(null);
                   setCorrectionError(null);
@@ -403,7 +404,7 @@ export function KioskItemInventoryPage() {
               const latestQuantity = await resolveInventoryTag(tag.uid);
               if (!mountedRef.current || generation !== verificationGenerationRef.current) return false;
               if (latestQuantity?.kind !== 'QUANTITY' || !latestQuantity.quantity || latestQuantity.quantity <= 0) {
-                void queryClient.invalidateQueries({ queryKey: ['inventory-tags'] });
+                void queryClient.invalidateQueries({ queryKey: inventoryKeys.tagsAll });
                 setMessage('タグの登録が変わりました');
                 setMessageKind('error');
                 return false;
@@ -426,8 +427,8 @@ export function KioskItemInventoryPage() {
               const response = (error as { response?: { status?: number; data?: { code?: string; errorCode?: string } } })?.response;
               if (response?.status === 409 && (response.data?.errorCode ?? response.data?.code) === 'INVENTORY_CONFLICT') {
                 selectTag(null);
-                void queryClient.invalidateQueries({ queryKey: ['inventory-tags'] });
-                void queryClient.invalidateQueries({ queryKey: ['inventory-items'] });
+                void queryClient.invalidateQueries({ queryKey: inventoryKeys.tagsAll });
+                void queryClient.invalidateQueries({ queryKey: inventoryKeys.itemsAll });
                 setMessage('タグの登録が変わりました');
               } else setMessage(messageFromError(error));
               setMessageKind('error');

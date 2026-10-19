@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { createRiggingInspectionRecord, getRiggingInspectionRecords } from '../../../api/domains/rigging';
 import { getTagDeskRegistry } from '../../../api/domains/tag-desk';
 import { getApiErrorMessage } from '../../../api/errors';
+import { tagDeskQueryKeys } from '../../../api/queryKeys/tagDesk';
 
 import { formatWhen, Section } from './TagDeskParts';
 import { tagDesk } from './tagDeskTheme';
@@ -11,8 +12,8 @@ import { tagDesk } from './tagDeskTheme';
 /** Inspection records of one rigging gear, with a one-line form to add today's result. */
 export function RiggingInspectionPanel({ pin, riggingGearId }: { pin: string; riggingGearId: string }) {
   const queryClient = useQueryClient();
-  const records = useQuery({ queryKey: ['kiosk-tag-desk', 'rigging-inspections', riggingGearId], queryFn: () => getRiggingInspectionRecords(riggingGearId) });
-  const employees = useQuery({ queryKey: ['kiosk-tag-desk', 'registry', 'employee'], queryFn: () => getTagDeskRegistry(pin, 'employee'), staleTime: 30_000 });
+  const records = useQuery({ queryKey: tagDeskQueryKeys.riggingInspections(riggingGearId), queryFn: () => getRiggingInspectionRecords(riggingGearId) });
+  const employees = useQuery({ queryKey: tagDeskQueryKeys.registry('employee'), queryFn: () => getTagDeskRegistry(pin, 'employee'), staleTime: 30_000 });
   const [employeeId, setEmployeeId] = useState('');
   const [result, setResult] = useState<'PASS' | 'FAIL'>('PASS');
   const [notes, setNotes] = useState('');
@@ -25,7 +26,7 @@ export function RiggingInspectionPanel({ pin, riggingGearId }: { pin: string; ri
     onSuccess: async () => {
       setNotes('');
       setError(null);
-      await queryClient.invalidateQueries({ queryKey: ['kiosk-tag-desk', 'rigging-inspections', riggingGearId] });
+      await queryClient.invalidateQueries({ queryKey: tagDeskQueryKeys.riggingInspections(riggingGearId) });
     },
     onError: (err) => setError(getApiErrorMessage(err, '記録できませんでした'))
   });

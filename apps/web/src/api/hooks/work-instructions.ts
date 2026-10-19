@@ -7,6 +7,7 @@ import {
   getWorkInstructionGroup,
   getWorkInstructionGroupsByPartNumber
 } from '../client';
+import { workInstructionsQueryKeys } from '../queryKeys/workInstructions';
 
 function normalizeWorkInstructionTarget(value: string | null | undefined): string {
   if (value === null || value === undefined) return '';
@@ -17,7 +18,7 @@ export function useWorkInstructionGroups(partNumber: string | null | undefined) 
   const normalizedPartNumber = normalizeWorkInstructionPartNumber(partNumber);
 
   return useQuery({
-    queryKey: ['work-instructions', 'groups', normalizedPartNumber],
+    queryKey: workInstructionsQueryKeys.groups(normalizedPartNumber),
     queryFn: () => getWorkInstructionGroupsByPartNumber(normalizedPartNumber),
     enabled: Boolean(normalizedPartNumber)
   });
@@ -32,7 +33,7 @@ export function useWorkInstructionGroup(
   const enabled = Boolean(normalizedPartNumber && normalizedShootingTarget);
 
   return useQuery({
-    queryKey: ['work-instructions', 'group', normalizedPartNumber, normalizedShootingTarget],
+    queryKey: workInstructionsQueryKeys.group(normalizedPartNumber, normalizedShootingTarget),
     queryFn: () => getWorkInstructionGroup(normalizedPartNumber, normalizedShootingTarget),
     enabled
   });
@@ -47,7 +48,7 @@ export function useWorkInstructionEditorGroup(
   const enabled = Boolean(normalizedPartNumber && normalizedShootingTarget);
 
   return useQuery({
-    queryKey: ['work-instructions', 'editor-group', normalizedPartNumber, normalizedShootingTarget],
+    queryKey: workInstructionsQueryKeys.editorGroup(normalizedPartNumber, normalizedShootingTarget),
     queryFn: () => getWorkInstructionEditorGroup({
       partNumber: normalizedPartNumber,
       shootingTarget: normalizedShootingTarget
@@ -58,5 +59,5 @@ export function useWorkInstructionEditorGroup(
 
 export function useProcedureManualsByPart(partNumber: string) {
   const key = normalizeWorkInstructionPartNumber(partNumber);
-  return useQuery({ queryKey: ['procedure-manuals', 'by-part', key], queryFn: () => getProcedureManualsByPart(key), enabled: Boolean(key), retry: false });
+  return useQuery({ queryKey: workInstructionsQueryKeys.procedureManualsByPart(key), queryFn: () => getProcedureManualsByPart(key), enabled: Boolean(key), retry: false });
 }
