@@ -1636,7 +1636,9 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     renderComponent(<ProductionScheduleGrindingPlanningBoardPage />, {
       wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
     });
-
+    // Opens in Gantt; the per-item rank button lives in the list view.
+    openListView();
+    fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
     chooseResourceRank('部品b', 1);
 
     await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
