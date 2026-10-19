@@ -64,7 +64,7 @@
 
 ### 運用追補（2026-06-23）
 
-board 集約 API は HTTP fan-out を抑えるが、サーバ内の residual context / summary / per-resource shell / labor lookup が重い場合は単一リクエスト内の待ちとして残る。2026-06-23 の PR #464 では、process-change residual evidence を sync/backfill 時に永続化し、表示時の raw `FKOJUNST_Status` 45万行級読みを避けるようにした。さらに residual summary は正規化キー式インデックスで解決する。
+board 集約 API は HTTP fan-out を抑えるが、サーバ内の residual context / summary / per-resource shell / labor lookup が重い場合は単一リクエスト内の待ちとして残る。2026-06-23 の PR #464 では、process-change residual evidence を sync/backfill 時に永続化し、表示時の raw `FKOJUNST_Status` 45万行級読みを避けるようにした。さらに residual summary は正規化キー式インデックスで解決する。2026-10-19 に、多資源の board でこの VALUES 結合が総当たりになり 11〜18 秒かかることが分かった。そこで、キーの照合を `= ANY(text[])` に置き換えた（詳細は [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md#residual-summary-の-values-結合が総当たりになる2026-10-19)）。
 
 Pi5 503/504 scoped sample:
 
