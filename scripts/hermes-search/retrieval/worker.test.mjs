@@ -885,13 +885,14 @@ test('record display uses exactly the answer fields and order for multiple and s
   }
 });
 
-test('record display includes insufficient notice and a null stamp without changing answer', async () => {
+test('record display omits the requested-count shortfall sentence and keeps a null stamp', async () => {
   const answering = createRetrievalAnswering({ records: mixedRecords, catalog: mixedCatalog,
     planner: fixedPlanner(mixedCatalog.map(entry => entry.id), { limit: 5, diagnostics: { limitExplicit: true } }), evaluate: mixedEvaluate });
   const result = await answering.answer('ブラケット溶接');
   assert.equal(result.display.records.length, 2);
   assert.equal(result.display.dataAsOf, null);
-  assert.ok(result.display.notices.includes('見つかった件数は、指定された件数より少ないです。'));
+  assert.ok(!result.display.notices.includes('見つかった件数は、指定された件数より少ないです。'));
+  assert.doesNotMatch(result.answer, /指定された件数より少ない/u);
   for (const notice of result.display.notices) assert.ok(result.answer.includes(notice));
   assert.ok(result.display.notices.every(notice => !notice.includes('データ時点')));
 });

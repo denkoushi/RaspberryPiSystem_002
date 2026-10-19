@@ -31,7 +31,6 @@ export function noteDenseFallback(status) {
   console.info(`hermes retrieval dense fallback count=${denseFallbackCount} status=${status}`);
 }
 const ANSWER_ROLES = new Set(['identifier', 'date', 'organization', 'body']);
-const INSUFFICIENT_NOTICE = '見つかった件数は、指定された件数より少ないです。';
 const COVERAGE_ORDER = {
   date_desc: '新しい順',
   date_asc: '古い順',
@@ -667,14 +666,14 @@ export function createRetrievalAnswering({
       const formatted = formatRecords(executed.results, visibleCatalog);
       const body = formatted.answer;
       const notice = formatCoverageNotice(executed.coverage);
-      let answer = executed.insufficient && body ? `${body}\n\n${INSUFFICIENT_NOTICE}` : body;
-      if (notice) answer = answer ? `${answer}\n\n${notice}` : notice;
+      // The requested-count shortfall stays in the receipt (`insufficient`) but is not shown: readers found the sentence confusing.
+      const answer = notice ? (body ? `${body}\n\n${notice}` : notice) : body;
       return trialResult({
         status: 'completed',
         answer,
         ...(formatted.records.length ? { display: {
           records: formatted.records,
-          notices: [...(executed.insufficient && body ? [INSUFFICIENT_NOTICE] : []), ...(notice ? [notice] : [])],
+          notices: notice ? [notice] : [],
           ...(executed.groups?.length ? { groups: executed.groups } : {}),
           ...(executed.coverage?.known !== false ? { coverage: {
             total: executed.coverage?.total ?? executed.results.length, shown: executed.results.length,
