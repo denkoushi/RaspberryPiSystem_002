@@ -622,3 +622,22 @@ Operating note: when a release both ships a new version and changes a Hermes fla
 No retrieval change. Next candidates stay as before: the planner using cause categories as a filter condition, and answering count questions (「今年多い要因は？」) from the saved classification without a model call.
 
 Private files: `work/flywheel/questions-2026-10-17.jsonl`, `real-2026-10-17.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-17.log`, `runner-2026-10-18.log`, `receipts-2026-10-17.jsonl`.
+
+### 2026-10-19: sixteenth night, 85%; the first user-reported retrieval bug, a chip refining the wrong answer, fixed the same day (measurement and fix)
+
+Night of 2026-10-18 (22:0x–22:14), the first with cause classification fully populated. Neither #2123 nor #2125 (below) changes the plain answer text that the night reads, and both landed after the night ran.
+
+- Synthetic content: 100 pairs tried, 70 generated, 61 kept (median 20 chars, anchor overlap 0.35). Dropped: 22 copied runs, 9 anchors not confirmed, 6 copied words, 2 too similar. Production showed a relevant record for 52 of 61 (85%, down from 93%), other records for 4, nothing for 4 (all 4 outside the judged candidates, 0 rejected by the judge, 0 ask-backs), and 1 failed (TypeSafe HTTP 422 on one question). The four misses and four other-record rows are the usual terse-query shape (「軸数変更に伴う封止材未配」, 「コマの押付け力 ベースの動き 過大 理由」) plus two long colloquial questions about a casting shape and a lifting-hole plug; no single new failure mode. One night at 85 after four at 90–93 is within the range seen before the learned-query change (nights 7–11); it is a watch item, not a regression call.
+- Ask-backs: 0, the fifth night in a row. `ambiguousDropped` on 3 rows (machine 1, part 1, department 1), all answered.
+- Synthetic filter: 10 of 10 ok.
+- Real: 0 questions in the night window (no `real-2026-10-18.jsonl`). Receipts 2026-10-18 and 2026-10-19 (11 rows up to 09:26 JST): 9 answer, 2 no_result, no review items; the no_result rows are the chip bug below.
+- Learned queries: 3 candidates on 2026-10-18, all rejected (the held-out check lost 2 of 55 and gained 0); 37 active, 8 rejected in all.
+- Runner log: 187 lines; completed at 22:14 JST, then budget_reached and outside_window.
+
+Chip scoping bug, found by the user on the kiosk (2026-10-19 08:19 JST): on a 「要因で分ける」 breakdown of an older answer (department, all periods), the chip 「図面・設計の誤り 1」 returned 「見つかりませんでした」 although the count said 1. Receipts show why: the chip refined `session.previousPlan`, which by then was the latest answer (same department, July, 確認・検査の漏れ), so the cause filter was stacked on the July plan and the real count for that plan was 0. Fix (#2123, main 147fb627, Pi 5 release 20261018-235022-4e0ba5, rollback floor 0c7d6eaa): every executed plan gets a `planId`, the session keeps the last 8 plans, each answer carries its `planId` to the kiosk, and a chip sends it back so the refine applies to the plan the chip was counted against. Unknown or expired ids fall back to the latest plan; restricted principals cannot refine a plan they could not see. Receipts now record `refine` (axis, field, value, planId) on all outcomes including no_result. Verified on the kiosk by the user: the same chip now shows the 1 record. The same PR removed the yellow JEV記録 notice at the top of the tab at the user's request.
+
+Answer text: 「見つかった件数は、指定された件数より少ないです。」 (shown when results < plan limit) is removed from answers in #2125 (open at the time of writing; merge and release are recorded in the next entry). The user read it as unintelligible without context; the `insufficient` flag stays in receipts and coverage. `formatCoverageNotice` is unchanged.
+
+No retrieval ranking change. Next candidates: the planner using cause categories as a filter condition (「図面の誤りで先月」 in one turn), and answering count questions (「今年多い要因は？」) from the saved classification without a model call.
+
+Private files: `work/flywheel/questions-2026-10-18.jsonl`, `runner-2026-10-18.log`, `learned-queries.jsonl`, `receipts-2026-10-19.jsonl`.
