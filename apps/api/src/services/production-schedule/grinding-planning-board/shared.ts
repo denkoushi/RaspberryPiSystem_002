@@ -1,5 +1,5 @@
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
-import type { GrindingPlanningBoardCategory, GrindingPlanningBoardDueRequest, GrindingPlanningBoardItem, GrindingPlanningBoardLoad, GrindingPlanningBoardResponse, GrindingPlanningBoardSpecialDueKind } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardCategory, GrindingPlanningBoardDueRequest, GrindingPlanningBoardItem, GrindingPlanningBoardLoad, GrindingPlanningBoardResponse, GrindingPlanningBoardSpecialDueKind, GrindingPlanningBoardView } from '@raspi-system/shared-types';
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
@@ -18,6 +18,14 @@ export type ReusablePlanningPayload = {
   orderedRowIds: readonly string[];
   payload: PlanningSnapshotPayload;
   expiresAtMs: number;
+  lastUsedAtMs: number;
+  request: {
+    category: GrindingPlanningBoardCategory;
+    view: GrindingPlanningBoardView;
+    requestedFseibans?: string[];
+    completionFilter: 'all' | 'complete' | 'incomplete';
+    includeLoad: boolean;
+  };
 };
 
 export type DbClient = Prisma.TransactionClient | typeof prisma;
