@@ -16,7 +16,7 @@ describe('procedure-material routes with mocked Prisma', () => {
   afterEach(async () => { await app?.close(); });
   function harness(deny: 'view' | 'write' | null = null) {
     const material = { id, kind: 'TEXT', text: '手順', documentId: null, placedAt: null, discardedAt: null, storageKey: null, gmailMessageId: null };
-    const db = { $queryRaw: vi.fn().mockResolvedValue([]), $transaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(db)), procedureMaterial: {
+    const db = { employee: { findMany: vi.fn().mockResolvedValue([]) }, $queryRaw: vi.fn().mockResolvedValue([]), $transaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(db)), procedureMaterial: {
       findMany: vi.fn().mockResolvedValue([material]), findUnique: vi.fn().mockResolvedValue(material),
       update: vi.fn(async ({ data }: { data: object }) => Object.assign(material, data)),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -45,7 +45,7 @@ describe('procedure-material routes with mocked Prisma', () => {
     expect(response.json().materials.map((row: { text: string | null }) => row.text)).toEqual(['手順', null, null]);
   });
   it.each([
-    ['unplaced', { documentId: null, placedAt: null, discardedAt: null }],
+    ['unplaced', { origin: { not: 'APP' }, documentId: null, placedAt: null, discardedAt: null }],
     ['placed', { discardedAt: null, OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] }],
     ['discarded', { discardedAt: { not: null } }], ['all', {}],
   ])('filters state=%s and hint, filename or text with a newest-first limit', async (state, where) => {
@@ -85,7 +85,7 @@ describe('procedure-material routes with mocked Prisma', () => {
     expect(response.json().materials.map((row: { id: string }) => row.id)).toEqual(['body', 'photo', 'pdf', 'null-body', 'discarded-email-photo']);
     expect(db.procedureMaterial.findMany).toHaveBeenCalledTimes(2);
     expect(db.procedureMaterial.findMany).toHaveBeenNthCalledWith(1, { where: { gmailMessageId: { not: null }, OR: [...new Set([q, q.normalize('NFKC')])].map((value) => ({ text: { contains: value, mode: 'insensitive' } })) }, select: { gmailMessageId: true }, distinct: ['gmailMessageId'], take: 500 });
-    expect(db.procedureMaterial.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { documentId: null, placedAt: null, discardedAt: null, AND: [{ OR: expect.arrayContaining([{ gmailMessageId: { in: ['mail-1', 'mail-3'] } }]) }] } }));
+    expect(db.procedureMaterial.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { origin: { not: 'APP' }, documentId: null, placedAt: null, discardedAt: null, AND: [{ OR: expect.arrayContaining([{ gmailMessageId: { in: ['mail-1', 'mail-3'] } }]) }] } }));
   });
   it('joins matching material IDs once and names snapshot and matching mail materials', async () => {
     const { db, material } = harness();
@@ -122,8 +122,26 @@ describe('procedure-material routes with mocked Prisma', () => {
     expect((await app.inject({ method: 'GET', url: base })).statusCode).toBe(200);
     expect(db.procedureMaterial.findMany).toHaveBeenCalledOnce();
     expect(db.$queryRaw).not.toHaveBeenCalled();
-    expect(db.procedureMaterial.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { documentId: null, placedAt: null, discardedAt: null }, take: 100 }));
-    for (const query of ['state=invalid', 'limit=0', 'limit=501']) expect((await app.inject({ method: 'GET', url: `${base}?${query}` })).statusCode).toBe(400);
+    expect(db.procedureMaterial.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { origin: { not: 'APP' }, documentId: null, placedAt: null, discardedAt: null }, take: 100 }));
+    for (const query of ['state=invalid', 'origin=invalid', 'limit=0', 'limit=501']) expect((await app.inject({ method: 'GET', url: `${base}?${query}` })).statusCode).toBe(400);
+  });
+  it.each(['APP', 'GMAIL', 'KNOWLEDGE', 'WORK_INSTRUCTION'])('filters explicit origin %s without the implicit APP exclusion', async (origin) => {
+    const { db } = harness();
+    expect((await app.inject(`${base}?origin=${origin}`)).statusCode).toBe(200);
+    expect(db.procedureMaterial.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { origin, documentId: null, placedAt: null, discardedAt: null } }));
+  });
+  it('returns app metadata and resolves employee names once, preserving unknown and null numbers', async () => {
+    const { db, material } = harness();
+    db.procedureMaterial.findMany.mockResolvedValue(['007125', 'unknown', null].map((nameId) => ({ ...material, origin: 'APP',
+      appRef: { category: '保守', note: '7125 test', location: '工場', nameId } })));
+    db.employee.findMany.mockResolvedValue([{ employeeCode: '007125', displayName: '津田' }]);
+    const response = await app.inject(`${base}?origin=APP`);
+    expect(response.statusCode).toBe(200);
+    expect(response.json().materials).toEqual([
+      expect.objectContaining({ category: '保守', note: '7125 test', location: '工場', nameId: '007125', employeeName: '津田' }),
+      expect.objectContaining({ nameId: 'unknown', employeeName: null }), expect.objectContaining({ nameId: null, employeeName: null }),
+    ]);
+    expect(db.employee.findMany).toHaveBeenCalledExactlyOnceWith({ where: { employeeCode: { in: ['007125', 'unknown'] } }, select: { employeeCode: true, displayName: true } });
   });
   it('returns 404 for TEXT, missing materials, or a PHOTO without a storage key', async () => {
     const { db, store } = harness();

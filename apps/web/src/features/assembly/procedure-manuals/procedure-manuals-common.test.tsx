@@ -9,6 +9,7 @@ import { ProcedureManualCommonDialog } from './ProcedureManualCommonDialog';
 import { ProcedureManualWorkshop } from './ProcedureManualWorkshop';
 
 import type { ProcedureManualAssignmentOverviewItemDto, ProcedureManualCommonCatalogDto, ProcedureManualProcessDto } from '../types';
+import type { ReactNode } from 'react';
 
 const api = vi.hoisted(() => ({ catalog: vi.fn(), overview: vi.fn(), create: vi.fn(), save: vi.fn(), delete: vi.fn(), assignments: vi.fn(), replace: vi.fn(), deleteDocument: vi.fn(), document: vi.fn() }));
 vi.mock('../../../api/client', () => ({
@@ -22,7 +23,7 @@ vi.mock('../../../api/client', () => ({
   deleteAssemblyProcedureDocument: api.deleteDocument, getAssemblyProcedureDocument: api.document,
 }));
 vi.mock('../../../hooks/useProtectedImageBlobUrl', () => ({ useProtectedImageBlobUrl: () => ({ blobUrl: null }) }));
-vi.mock('../AssemblyProcedureSequenceViewer', () => ({ AssemblyProcedureSequenceViewer: () => <div>共通ビューア</div> }));
+vi.mock('../AssemblyProcedureSequenceViewer', () => ({ AssemblyProcedureSequenceViewer: ({ railNav }: { railNav?: ReactNode }) => <div>共通ビューア{railNav}</div> }));
 const processes: ProcedureManualProcessDto[] = [
   { id: 'tools', parentId: 'procedure-manual-common', name: '工具', subjectKind: 'COMMON', sortOrder: 0, active: true, resourceCd: null },
   { id: 'clean', parentId: 'procedure-manual-common', name: '清掃', subjectKind: 'COMMON', sortOrder: 1, active: true, resourceCd: null },
@@ -109,11 +110,10 @@ describe('common mode in the shared screens', () => {
     api.assignments.mockResolvedValue({ assignments: [], sequence: { documents: [{ id: 'torque' }] } });
     render(<MemoryRouter initialEntries={['/kiosk/assembly/manuals?common=1&process=tools']}><ProcedureManualBrowser /><Location /></MemoryRouter>);
     const row = await screen.findByRole('row', { name: 'トルクレンチ_使い方' });
-    const header = screen.getByRole('banner');
-    expect(header).toHaveClass('h-16');
-    expect(header.parentElement).toHaveClass('grid-rows-[64px_minmax(0,1fr)]');
-    expect(within(header).getAllByRole('link').map(link => link.textContent)).toEqual(['作る・直す', '組立へ戻る']);
-    expect(within(header).getByRole('link', { name: '作る・直す' })).toHaveAttribute('href', '/kiosk/assembly/manuals/workshop?common=1&process=tools');
+    expect(screen.queryByRole('banner')).not.toBeInTheDocument();
+    const toolbar = screen.getByRole('toolbar', { name: 'ページ操作' });
+    expect(within(toolbar).getAllByRole('link').map(link => link.getAttribute('aria-label'))).toEqual(['組立へ戻る', '作る・直す']);
+    expect(within(toolbar).getByRole('link', { name: '作る・直す' })).toHaveAttribute('href', '/kiosk/assembly/manuals/workshop?common=1&process=tools');
     expect(screen.getByRole('region', { name: '共通一覧' }).firstElementChild).toBe(screen.getByRole('group', { name: '機種か部品か' }));
     expect(api.overview).toHaveBeenCalledWith(undefined, true);
     expect(screen.queryByRole('row', { name: 'マイクロメータ_使い方' })).not.toBeInTheDocument();
@@ -122,7 +122,6 @@ describe('common mode in the shared screens', () => {
     await waitFor(() => expect(api.assignments).toHaveBeenCalledWith('トルクレンチ', 'tools'));
     expect(await screen.findByText('共通ビューア')).toBeVisible();
     expect(screen.getByTestId('procedure-manuals-left')).not.toBeVisible();
-    expect(header).toBeVisible();
     expect(screen.getAllByRole('link', { name: '作る・直す' })).toHaveLength(1);
     expect(screen.getByTestId('location')).toHaveTextContent('common=1');
   });

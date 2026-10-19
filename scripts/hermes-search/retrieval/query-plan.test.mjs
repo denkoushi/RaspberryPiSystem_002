@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { deriveCatalog, loadNonconformityCatalog } from './catalog.mjs';
 import { records } from './fixtures/synthetic-records.mjs';
-import { QUERY_PLAN_SCHEMA, validateQueryPlan } from './query-plan.mjs';
+import { QUERY_PLAN_SCHEMA, hasAppliedHardFilter, shouldSkipRelevance, validateQueryPlan } from './query-plan.mjs';
 import { buildValueIndex } from './value-index.mjs';
 
 const catalog = loadNonconformityCatalog();
@@ -97,5 +97,16 @@ test('cause category is optional, validated and carried outside catalog filters'
     const invalid = validateQueryPlan(plan({ causeCategory }), catalog, valueIndex);
     assert.equal(invalid.ok, false);
     assert.equal(invalid.clarification.message, 'unknown cause category');
+  }
+});
+
+test('valid causes are hard filters and skip relevance only without content', () => {
+  for (const causeCategory of ['drawing', 'unknown']) {
+    assert.equal(hasAppliedHardFilter(plan({ causeCategory }), catalog), true);
+    assert.equal(shouldSkipRelevance(plan({ causeCategory, diagnostics: { contentDecision: { jev: false } } }), catalog), true);
+    assert.equal(shouldSkipRelevance(plan({ causeCategory, diagnostics: { contentDecision: { jev: true } } }), catalog), false);
+  }
+  for (const causeCategory of [undefined, null, '', 'invalid']) {
+    assert.equal(hasAppliedHardFilter(plan({ causeCategory }), catalog), false);
   }
 });

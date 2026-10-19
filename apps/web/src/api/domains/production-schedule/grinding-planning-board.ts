@@ -55,7 +55,7 @@ export async function getKioskGrindingPlanningBoardLoad(category: GrindingPlanni
 }
 
 export async function getKioskGrindingPlanningBoardSnapshot(params: KioskGrindingPlanningBoardQuery) {
-  const first = await getKioskGrindingPlanningBoard({ ...params, cursor: 0 });
+  const first = await getKioskGrindingPlanningBoard({ ...params, cursor: 0, pageSize: 160 });
   const items = [...first.items];
   const seenIds = new Set(first.items.map((item) => item.itemId));
   let nextCursor = first.nextCursor;
@@ -65,7 +65,7 @@ export async function getKioskGrindingPlanningBoardSnapshot(params: KioskGrindin
     if (!Number.isInteger(cursor) || cursor <= previousCursor) {
       throw new Error('生産日程のページ情報が不正です。再読み込みしてください。');
     }
-    const page = await getKioskGrindingPlanningBoard({ ...params, cursor, snapshotId: first.snapshotId });
+    const page = await getKioskGrindingPlanningBoard({ ...params, cursor, pageSize: 640, snapshotId: first.snapshotId });
     if (page.sourceRevision !== first.sourceRevision || page.snapshotId !== first.snapshotId) {
       throw new Error('表示中の生産日程が更新されました。再読み込みしてください。');
     }

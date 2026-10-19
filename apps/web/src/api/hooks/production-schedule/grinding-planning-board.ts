@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import {
   useEffect,
   useMemo,
@@ -52,14 +53,9 @@ export function useKioskGrindingPlanningBoard(
     staleTime?: number;
   }
 ) {
-  const queryClient = useQueryClient();
   return useQuery({
     queryKey: productionScheduleQueryKeys.grindingPlanningBoard(params),
-    queryFn: async () => {
-      const board = await getKioskGrindingPlanningBoard(params!);
-      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoadAll });
-      return board;
-    },
+    queryFn: () => getKioskGrindingPlanningBoard(params!),
     enabled: (options?.enabled ?? true) && Boolean(params),
     refetchInterval: options?.refetchIntervalMs ?? 30000,
     staleTime: options?.staleTime,
@@ -107,6 +103,8 @@ export function useKioskGrindingPlanningBoardProgressive(
     refetchOnWindowFocus: false,
     staleTime: LEADER_BOARD_LEADER_PHASED_STALE_MS
   });
+  const queryClient = useQueryClient();
+  const previousRevisionRef = useRef<{ paramsKey: string; revision: string }>();
   const paramsKey = useMemo(() => JSON.stringify(params ?? null), [params]);
   const [mergedData, setMergedData] = useState<GrindingPlanningBoardResponse>();
   const [isAppending, setIsAppending] = useState(false);
@@ -114,6 +112,7 @@ export function useKioskGrindingPlanningBoardProgressive(
   const [appendError, setAppendError] = useState<unknown>(null);
   const runIdRef = useRef(0);
   const syncedSignatureRef = useRef<string | null>(null);
+  const staleRefetchCountRef = useRef(0);
   const stableParams = useMemo(
     () => paramsKey === 'null' ? undefined : JSON.parse(paramsKey) as KioskGrindingPlanningBoardQuery,
     [paramsKey]
@@ -122,6 +121,7 @@ export function useKioskGrindingPlanningBoardProgressive(
   useEffect(() => {
     runIdRef.current += 1;
     syncedSignatureRef.current = null;
+    staleRefetchCountRef.current = 0;
     setMergedData(undefined);
     setIsAppending(false);
     setIsComplete(false);
@@ -129,10 +129,23 @@ export function useKioskGrindingPlanningBoardProgressive(
   }, [paramsKey]);
 
   const firstData = query.data;
+  const refetch = query.refetch;
   const firstDataIsFresh = Boolean(firstData && !query.isPlaceholderData);
   const firstSignature = firstData
     ? `${query.dataUpdatedAt}:${firstData.snapshotId}:${firstData.sourceRevision}`
     : null;
+
+  useEffect(() => {
+    if (!firstDataIsFresh || !firstData || query.isFetching) return;
+    const previous = previousRevisionRef.current;
+    previousRevisionRef.current = { paramsKey, revision: firstData.sourceRevision };
+    if (previous?.paramsKey === paramsKey && previous.revision !== firstData.sourceRevision) {
+      void queryClient.invalidateQueries(
+        { queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoadAll },
+        { cancelRefetch: false }
+      );
+    }
+  }, [firstData, firstDataIsFresh, paramsKey, query.isFetching, queryClient]);
 
   useEffect(() => {
     if (!firstDataIsFresh || !firstData || firstSignature == null || query.isFetching) return;
@@ -148,7 +161,11 @@ export function useKioskGrindingPlanningBoardProgressive(
     setMergedData({ ...initial, items, nextCursor: cursor });
     setAppendError(null);
     setIsComplete(cursor == null);
-    if (cursor == null) return;
+    if (cursor == null) {
+      staleRefetchCountRef.current = 0;
+      setIsAppending(false);
+      return;
+    }
 
     setIsAppending(true);
     void (async () => {
@@ -161,7 +178,7 @@ export function useKioskGrindingPlanningBoardProgressive(
           const page = await getKioskGrindingPlanningBoard({
             ...stableParams!,
             cursor: nextCursor,
-            pageSize: 160,
+            pageSize: 640,
             snapshotId: initial.snapshotId
           });
           if (cancelled || runId !== runIdRef.current) return;
@@ -187,9 +204,19 @@ export function useKioskGrindingPlanningBoardProgressive(
             ? { ...initial, items, nextCursor: cursor }
             : current);
           setIsComplete(cursor == null);
+          if (cursor == null) staleRefetchCountRef.current = 0;
         }
       } catch (error) {
         if (!cancelled && runId === runIdRef.current) {
+          if (
+            isAxiosError(error) && error.response?.status === 409 &&
+            error.response.data?.errorCode === 'STALE_PLANNING_BOARD_SNAPSHOT' &&
+            staleRefetchCountRef.current < 2
+          ) {
+            staleRefetchCountRef.current += 1;
+            void refetch();
+            return;
+          }
           setAppendError(normalizeLeaderboardContinueFailure(error));
           setIsComplete(false);
         }
@@ -202,7 +229,7 @@ export function useKioskGrindingPlanningBoardProgressive(
       syncedSignatureRef.current = null;
       if (runId === runIdRef.current) setIsAppending(false);
     };
-  }, [firstData, firstDataIsFresh, firstSignature, query.isFetching, stableParams]);
+  }, [firstData, firstDataIsFresh, firstSignature, query.isFetching, refetch, stableParams]);
 
   const displayData = mergedData ?? firstData;
   const hasStableData = Boolean(
@@ -231,14 +258,9 @@ export function useKioskGrindingPlanningBoardSnapshot(
   params: KioskGrindingPlanningBoardQuery | undefined,
   options?: { enabled?: boolean; refetchIntervalMs?: number | false; refetchOnWindowFocus?: boolean }
 ) {
-  const queryClient = useQueryClient();
   return useQuery({
     queryKey: productionScheduleQueryKeys.grindingPlanningBoardSnapshot(params),
-    queryFn: async () => {
-      const board = await getKioskGrindingPlanningBoardSnapshot(params!);
-      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoadAll });
-      return board;
-    },
+    queryFn: () => getKioskGrindingPlanningBoardSnapshot(params!),
     enabled: (options?.enabled ?? true) && Boolean(params),
     refetchInterval: options?.refetchIntervalMs ?? 30000,
     refetchOnWindowFocus: options?.refetchOnWindowFocus ?? true

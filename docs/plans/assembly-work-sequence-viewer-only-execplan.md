@@ -1,6 +1,6 @@
 ---
 title: 組立作業画面 新ステップUI完全移行 ExecPlan
-status: in_progress
+status: completed
 created: 2026-07-27
 branch: fix/assembly-work-sequence-viewer-only
 related:
@@ -28,7 +28,9 @@ related:
 - [x] 2026-07-27: Web、Playwright、API統合の回帰テストを追加した。
 - [x] 2026-07-27: ADR、索引、先行ExecPlanの後継リンクを更新した。
 - [x] 2026-07-27: Web全1,534件、lint、build、Playwright 8件、隔離DBの組立API統合30件を完了した。
-- [ ] PRの必須CIを通してmainへ統合し、標準rolling releaseと実機受入を完了する。
+- [x] 2026-07-27: PR #1098の必須CI、CodeQL、secret scanが不変SHA `8ea1ffc0` で成功したことを確認し、`8338957ed3cee1f40bd123b0b2ea3afd0164acf1` としてmainへ統合した。
+- [x] 2026-07-27: 標準rolling release `20260727-041613-dc7b07`でPi5と全キオスクのWeb identityを更新し、maintenance解除、同SHAのno-op plan、Phase12 `PASS 47 / WARN 0 / FAIL 0`を確認した。
+- [x] 2026-07-27: `raspi4-assembly-01`で完了済みfallbackセッションと無効化済み明示crop検証セッションを読み取り専用で開き、両方が新ステップUIを表示する実機受入を完了した。
 
 ## Surprises & Discoveries
 
@@ -42,6 +44,10 @@ related:
   Evidence: 変更前の対象Vitestは14件成功、4件失敗。実装後は既存分を含む18件すべて成功した。
 - Observation: ローカルPlaywright設定はCI以外でWeb serverを自動起動しない。
   Evidence: 初回実行は8件すべて`localhost:4173`接続拒否になり、Viteを明示起動した再実行では8/8件成功した。
+- Observation: 完了済み業務セッションは `mode: fallback` でも `stepSource: document_expansion` の全体ステップを持ち、版4のページ紐づき丸数字と矢視を新viewerで描画できた。
+  Evidence: 本番read-only APIと `raspi4-assembly-01` の実画面で「手順 1/1」、左ストーリーボード、丸数字1〜3、矢視を確認した。
+- Observation: 無効化済み検証セッションはsummary一覧には現れないが、監査証跡の既知IDでは読み取り可能で、`template_steps` の全体1件とcrop1件を保持していた。
+  Evidence: Firefox履歴をread-onlyで参照して検証セッションを特定し、APIと実画面で「手順 1/2」「手順 2/2」、全体・矩形、共通丸数字1・2・4、矢視、チェック必須1/1、cropミニマップを確認した。矩形外の丸数字3はcropに表示されなかった。
 
 ## Decision Log
 
@@ -57,7 +63,11 @@ related:
 
 ## Outcomes & Retrospective
 
-ローカル実装と検証は完了した。組立作業画面はAPIの`mode`に関係なく新viewerを表示し、loading、error、emptyも旧Canvasへ戻らない。PR、main統合、本番反映、fallback業務セッションと明示cropセッションの実機受入は未完了である。
+PR #1098で組立作業画面の旧Canvas直表示経路を撤去し、APIの`mode`に関係なく新viewerを使うようにした。loading、error、emptyも新UI専用状態で扱い、公開API、DB、migration、作業完了条件は変更していない。
+
+必須CI、CodeQL、secret scanが成功した不変SHAだけをmainへ統合し、標準rolling releaseでPi5 API/Webと全6キオスクのWeb identityを検証した。release後のplanは対象0件のno-opとなり、Phase12は47件すべて成功した。
+
+実機では完了済みfallback業務セッションに「要領書」「手順 1/1」、ストーリーボード、前後・全手順操作、丸数字と矢視が表示された。明示cropの無効化済み検証セッションでは全体とcropを前後移動し、同じマーカーとチェック状態、矢視、cropミニマップを確認した。トルク、チェック、工程、テンプレート、業務データは変更していない。検証用Firefoxウィンドウを閉じて通常の組立トップへ戻し、Pi4/Pi5の一時ツールと画像を残存0にした。
 
 ## Context and Orientation
 
@@ -106,6 +116,10 @@ Web変更とテストは繰り返し実行できる。専用hookはセッショ�
 - 対象Playwrightはfallback自動展開と明示cropを1366×768、1920×1080、900×900で実行し、8/8件が成功した。
 - 固有名の一時PostgreSQLへ全156 migrationをfresh適用し、組立API統合test 30/30件が成功した。cleanup後のcontainer、volume、networkは各0件だった。
 - 作業ページの静的検索で `AssemblyProcedureCanvas`、`hasConfiguredProcedureSequence`、`fallbackPageRef`、`mode === "configured"` は0件である。
+- PR #1098は実装SHA `8ea1ffc013d18f28ab622553b28b8c479f3e53d4` の全必須check成功後、main SHA `8338957ed3cee1f40bd123b0b2ea3afd0164acf1` としてsquash統合した。
+- rolling release `20260727-041613-dc7b07` はexit 0。Pi5 API/Webと全6キオスクの `controlPlaneWeb` claimがmain SHAでverifiedとなり、全端末のmaintenance clearが成功した。
+- release後の `--print-plan` はmutation、activation、verification対象がすべて0件でwarningなし。Phase12は `PASS 47 / WARN 0 / FAIL 0` だった。
+- 実機受入は既存の完了済みfallbackセッションと、取消・無効化済みの専用cropセッションだけを読み取り、作業状態を変更せずに行った。
 
 ## Interfaces and Dependencies
 

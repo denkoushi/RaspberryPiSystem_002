@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 724,
-    "totalLines": 179608,
-    "totalBytes": 14405075,
+    "documentCount": 726,
+    "totalLines": 179972,
+    "totalBytes": 14465032,
     "withFrontmatter": 348,
     "withStatus": 169,
     "sourceOfTruthDeclared": 115,
     "execPlanReferences": 60,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
-    "longLineDocuments": 39,
-    "localLinkCount": 5446,
+    "longLineDocuments": 40,
+    "localLinkCount": 5448,
     "brokenLocalLinkCount": 127,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -6109,8 +6109,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 2083,
-      "byteSize": 359818,
+      "lineCount": 2084,
+      "byteSize": 360087,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -10464,6 +10464,11 @@
         {
           "href": "./plans/business-hermes-signage-live-data.md",
           "targetPath": "docs/plans/business-hermes-signage-live-data.md",
+          "exists": true
+        },
+        {
+          "href": "plans/code-health-phase2-execplan.md",
+          "targetPath": "docs/plans/code-health-phase2-execplan.md",
           "exists": true
         },
         {
@@ -27517,8 +27522,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-418-planning-board-warm-reuse.md",
-      "lineCount": 75,
-      "byteSize": 4590,
+      "lineCount": 83,
+      "byteSize": 6405,
       "hasFrontmatter": false,
       "title": "KB-418: 製番ボード (grinding planning board) reopens were rebuilt every time",
       "status": null,
@@ -33134,11 +33139,11 @@
     },
     {
       "path": "docs/plans/assembly-work-sequence-viewer-only-execplan.md",
-      "lineCount": 112,
-      "byteSize": 11684,
+      "lineCount": 126,
+      "byteSize": 14665,
       "hasFrontmatter": true,
       "title": "組立作業画面 新ステップUI完全移行 ExecPlan",
-      "status": "in_progress",
+      "status": "completed",
       "source_of_truth": null,
       "localLinks": [],
       "inboundCount": 1,
@@ -33270,6 +33275,27 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/code-health-phase2-execplan.md",
+      "lineCount": 175,
+      "byteSize": 28214,
+      "hasFrontmatter": false,
+      "title": "コード健全化 第2期",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "code-health-refactor-execplan.md",
+          "targetPath": "docs/plans/code-health-refactor-execplan.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/code-health-refactor-execplan.md",
       "lineCount": 130,
       "byteSize": 25373,
@@ -33284,7 +33310,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 2,
+      "inboundCount": 3,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -34174,8 +34200,8 @@
     },
     {
       "path": "docs/plans/hermes-retrieval-accuracy-log.md",
-      "lineCount": 624,
-      "byteSize": 87758,
+      "lineCount": 643,
+      "byteSize": 91557,
       "hasFrontmatter": false,
       "title": "Hermes retrieval accuracy log",
       "status": null,
@@ -34190,7 +34216,12 @@
       "inboundCount": 3,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
-      "longLines": [],
+      "longLines": [
+        {
+          "line": 637,
+          "length": 1105
+        }
+      ],
       "referencesExecPlan": false
     },
     {
@@ -35300,6 +35331,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/kiosk-remote-screen-view-execplan.md",
+      "lineCount": 125,
+      "byteSize": 17879,
+      "hasFrontmatter": false,
+      "title": "現場キオスクの画面を StoneBase から見る(遠隔画面表示)",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/kiosk-self-inspection-item-invalidation-execplan.md",
       "lineCount": 178,
       "byteSize": 11412,
@@ -36200,8 +36246,8 @@
     },
     {
       "path": "docs/plans/procedure-manuals-execplan.md",
-      "lineCount": 801,
-      "byteSize": 204856,
+      "lineCount": 809,
+      "byteSize": 207040,
       "hasFrontmatter": false,
       "title": "機種×工程ごとの要領書を、組立手順書を正本にして閲覧・作成できるようにする",
       "status": null,
@@ -38420,8 +38466,8 @@
     },
     {
       "path": "docs/runbooks/kiosk-inquiry-inbox.md",
-      "lineCount": 113,
-      "byteSize": 16916,
+      "lineCount": 127,
+      "byteSize": 19732,
       "hasFrontmatter": true,
       "title": "キオスクお問い合わせ受信箱 Runbook",
       "status": null,

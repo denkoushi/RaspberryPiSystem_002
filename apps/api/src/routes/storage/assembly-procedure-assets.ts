@@ -1,3 +1,4 @@
+import { sendStorageReadError } from './shared.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { authorizeRoles } from '../../lib/auth.js';
@@ -91,8 +92,11 @@ export function registerAssemblyProcedureAssetStorageRoutes(app: FastifyInstance
         ) {
           return reply.status(400).send({ message: '手順書assetのパスが不正です' });
         }
-        request.log.error({ err, urlPath }, '手順書assetの読み込みに失敗しました');
-        return reply.status(500).send({ message: '手順書assetの読み込みに失敗しました' });
+        return sendStorageReadError(request, reply, err, {
+          notFoundMessage: '手順書assetが見つかりません',
+          failedMessage: '手順書assetの読み込みに失敗しました',
+          logContext: { err, urlPath },
+        });
       }
     },
   );

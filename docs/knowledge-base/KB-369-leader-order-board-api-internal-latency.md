@@ -127,9 +127,42 @@ category: knowledge-base
 **Prevention**:
 
 - 表示リクエストで 10万行級以上の raw dashboard を読まない。raw source scan は sync/backfill 境界に寄せる。
-- 少数 evidence key で十分な処理は `VALUES` / CTE + expression index へ寄せる。partial index は predicate をクエリ側にも明示する。
+- 少数 evidence key で十分な処理は `VALUES` / CTE + expression index へ寄せる。partial index は predicate をクエリ側にも明示する。（2026-10-19 追記: 多資源では VALUES 結合が総当たりになったため、`= ANY(text[])` 照合に置き換えた。下の節を参照）
 - `LEADERBOARD_BOARD_PERF_LOG` は一時測定のみ。測定後は `.env` から削除し API を再起動する。
 - 詳細な時系列・デプロイ・計測ログは [leaderboard-defer-totals-performance-recovery](../plans/leaderboard-defer-totals-performance-recovery.md#pi5-residual-evidence-persistence--residual-key-index-deploy-2026-06-23) を参照。
+
+## Residual summary の VALUES 結合が総当たりになる（2026-10-19）
+
+**症状**: kensakuMain（8 資源）の順位ボードの初回表示が 11〜18 秒かかる。1 資源だけなら速い。
+
+**調べ方**: 本番 Pi5 の DB に読み取り専用（`PGOPTIONS='-c default_transaction_read_only=on'`）で接続し、board shell が出す SQL をそのまま 1 本ずつ実行して計測した。あわせて `EXPLAIN (ANALYZE, BUFFERS)` も取った。
+
+**根因**:
+
+- `fetchLeaderboardProcessChangeResidualSummary()` の件数 SQL と代表行 SQL は、証拠キー 647 件を `WITH residual_keys AS (VALUES ...)` に入れて `INNER JOIN` していた。
+- planner が `fkmail` の件数を誤って見積もった（推定 724 行、実際は 20,371 行）。そのため、相関 winner の副問い合わせを通った約 1 万行と 647 件の VALUES を Nested Loop と Join Filter で総当たりした（`Rows Removed by Join Filter: 6,892,482`）。
+- 結合条件の式は JSON の `BTRIM` / `UPPER` なので、比較 1 回ごとのコストも高い。資源数が増えるほど候補行が増え、遅さが目立つ。
+
+**Fix（結果不変）**: 両 SQL の CTE と JOIN をやめた。代わりに、既存の `buildLeaderboardProcessChangeResidualFilterWhereSql('only', keys)` を使う。これは長さを前置したテキストキーを `= ANY(text[])` で照合する方式で、キーは bind 1 個で渡す。あわせて、キーの長さを UTF-16 の `.length` ではなくコードポイント数で数えるように揃えた（PostgreSQL の `length()` と一致させるため）。
+
+**Pi5 実測（読み取り専用、kensakuMain の 8 資源）**:
+
+| SQL | 修正前 | 修正後 |
+| --- | --- | --- |
+| residual 件数 | 5,232 ms | 388〜413 ms |
+| residual 代表行 | 6,728 ms | 385〜387 ms |
+| board shell の全 SQL を直列に実行した合計 | 16.8 s | 5.1 s |
+
+- 出力は修正前と完全に一致した（psql の結果を diff で確認）。
+- 本番では資源ごとの shell が並列に動くので、画面の応答時間は反映後に改めて確認する。
+- 補足: `csv_dashboard_row_prod_schedule_residual_key_idx` は、この 2 本の SQL からは使われなくなった。削除するかどうかは `pg_stat_user_indexes.idx_scan` を見てから別に判断する。
+
+**同じ型の遅さ（未修正）**: 研削計画ボードの `GET .../grinding-planning-board/load` にも同じ型の遅さがある。
+
+- `grinding-planning-board-load-summary.ts` の集計 SQL が 9.4 s かかる。
+- 上書き 354 行を渡す `jsonb_to_recordset` と 60,517 行を Nested Loop Left Join しており（推定 1 行）、`Rows Removed by Join Filter: 21,422,927` になっている。
+
+**Prevention**: 少数キーの照合は、`VALUES` や JSON の行集合との JOIN にしない。`= ANY(text[])` か、ハッシュ結合が効く形にする。候補行の見積もりが外れると、Nested Loop の総当たりになる。
 
 ## Production deploy & verification（2026-05-06 · leaderboard-shell winner materialization）
 

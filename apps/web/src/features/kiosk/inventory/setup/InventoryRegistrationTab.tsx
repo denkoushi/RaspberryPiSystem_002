@@ -12,7 +12,7 @@ import {
 import { InventoryPhotoReadDialog } from '../../../../components/kiosk/InventoryPhotoReadDialog';
 import { useDismissOnOutside } from '../../../../hooks/useDismissOnOutside';
 import { AREA_DIRECTIONS, composeArea, DEFAULT_AREA_DIRECTION, splitArea } from '../areaNaming';
-import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, ChevronDownIcon, PlusIcon, TrashIcon } from '../InventoryIcons';
+import { ArrowLeftIcon, ArrowRightIcon, RotateRightIcon, CheckIcon, ChevronDownIcon, PlusIcon, TrashIcon } from '../InventoryIcons';
 import {
   invSetupTargets,
   invButtonGo,
@@ -224,7 +224,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
   const read = useArmedNfcRead(waitingForTag);
   const handledRef = useRef<NfcEvent | null>(null);
   const failedMessages = (messagesQuery.data ?? []).filter((entry) => entry.outcome === 'RETRYABLE' || entry.outcome === 'PROCESSING');
-  const photoPending = mutations.deleteImportPhoto.isPending || mutations.reorderImportPhotos.isPending;
+  const photoPending = mutations.deleteImportPhoto.isPending || mutations.rotateImportPhoto.isPending || mutations.reorderImportPhotos.isPending;
 
   // A different candidate starts over.
   const candidateId = candidate?.id ?? null;
@@ -338,6 +338,12 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
     setError(null);
     setErrorAt('photos');
     void mutations.reorderImportPhotos.mutateAsync({ payloadId: candidate.id, photoIds: ids }).catch((caught) => setError(errorText(caught)));
+  };
+  const rotatePhoto = (photoId: string) => {
+    if (!candidate) return;
+    setError(null);
+    setErrorAt('photos');
+    void mutations.rotateImportPhoto.mutateAsync({ payloadId: candidate.id, photoId }).catch((caught) => setError(errorText(caught)));
   };
   const deletePhoto = (photoId: string) => {
     if (!candidate) return;
@@ -527,6 +533,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
                     <div className="flex items-center gap-1.5">
                       <button type="button" className={iconSm} aria-label={`写真${index + 1}を前へ`} disabled={index === 0 || photoPending} onClick={() => movePhoto(index, -1)}><ArrowLeftIcon /></button>
                       <button type="button" className={iconSm} aria-label={`写真${index + 1}を後ろへ`} disabled={index === candidate.photos.length - 1 || photoPending} onClick={() => movePhoto(index, 1)}><ArrowRightIcon size={16} /></button>
+                      <button type="button" className={iconSm} aria-label={`写真${index + 1}を右に回す`} title={`写真${index + 1}を右に回す`} disabled={photoPending} onClick={() => rotatePhoto(photo.id)}><RotateRightIcon /></button>
                       <span className="flex-1" />
                       <button type="button" className={`${iconSm} border-inv-red/45 bg-transparent text-[#ffb3b3] hover:bg-inv-red/10`} aria-label={`写真${index + 1}を削除`} disabled={photoPending} onClick={() => setConfirmDeletePhotoId(photo.id)}><TrashIcon /></button>
                     </div>

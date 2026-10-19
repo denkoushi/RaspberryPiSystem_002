@@ -8,6 +8,9 @@ import {
   getDeployStatus,
   getNetworkModeStatus
 } from '../client';
+import { measuringInstrumentsQueryKeys } from '../queryKeys/measuringInstruments';
+import { riggingQueryKeys } from '../queryKeys/rigging';
+import { systemQueryKeys } from '../queryKeys/system';
 import { toolsQueryKeys } from '../queryKeys/tools';
 
 export function useImportMaster() {
@@ -16,8 +19,8 @@ export function useImportMaster() {
     mutationFn: importMaster,
     onSuccess: () => {
       // インポート成功後、employeesとitemsのクエリを無効化して最新データを取得
-      queryClient.invalidateQueries({ queryKey: ['employees'] });
-      queryClient.invalidateQueries({ queryKey: ['items'] });
+      queryClient.invalidateQueries({ queryKey: toolsQueryKeys.employeesAll });
+      queryClient.invalidateQueries({ queryKey: toolsQueryKeys.itemsAll });
     }
   });
 }
@@ -29,13 +32,13 @@ export function useImportMasterSingle() {
     onSuccess: (_, variables) => {
       // インポート成功後、該当するデータタイプのクエリを無効化して最新データを取得
       if (variables.type === 'employees') {
-        queryClient.invalidateQueries({ queryKey: ['employees'] });
+        queryClient.invalidateQueries({ queryKey: toolsQueryKeys.employeesAll });
       } else if (variables.type === 'items') {
-        queryClient.invalidateQueries({ queryKey: ['items'] });
+        queryClient.invalidateQueries({ queryKey: toolsQueryKeys.itemsAll });
       } else if (variables.type === 'measuringInstruments') {
-        queryClient.invalidateQueries({ queryKey: ['measuringInstruments'] });
+        queryClient.invalidateQueries({ queryKey: measuringInstrumentsQueryKeys.instrumentsAll });
       } else if (variables.type === 'riggingGears') {
-        queryClient.invalidateQueries({ queryKey: ['riggingGears'] });
+        queryClient.invalidateQueries({ queryKey: riggingQueryKeys.gearsAll });
       } else if (variables.type === 'machines') {
         queryClient.invalidateQueries({ queryKey: toolsQueryKeys.machinesAll });
         queryClient.invalidateQueries({ queryKey: toolsQueryKeys.uninspectedMachinesAll });
@@ -51,7 +54,7 @@ export function useImportMasterSingle() {
 
 export function useSystemInfo() {
   return useQuery({
-    queryKey: ['system-info'],
+    queryKey: systemQueryKeys.infoAll,
     queryFn: getSystemInfo,
     refetchInterval: POLL_MS.systemInfo, // 負荷軽減のため既定を緩和（管理画面中心）
     staleTime: 3000, // 3秒間はキャッシュを使用
@@ -61,7 +64,7 @@ export function useSystemInfo() {
 
 export function useNetworkModeStatus() {
   return useQuery({
-    queryKey: ['network-mode-status'],
+    queryKey: systemQueryKeys.networkModeStatusAll,
     queryFn: getNetworkModeStatus,
     refetchInterval: 30_000,
     staleTime: 10_000,
@@ -71,7 +74,7 @@ export function useNetworkModeStatus() {
 
 export function useDeployStatus() {
   return useQuery({
-    queryKey: ['deploy-status'],
+    queryKey: systemQueryKeys.deployStatusAll,
     queryFn: getDeployStatus,
     refetchInterval: (query) => (
       query.state.data?.isMaintenance || query.state.data?.preNotice

@@ -136,3 +136,20 @@ test('date ranges on non-date fields and malformed bounds are explicitly unsuppo
       { supported: false, reason: 'date_bounds:discoveredOn' });
   }
 });
+
+test('cause filtering composes with catalog filters and keeps original record id keys', () => {
+  const causeById = new Map([['nonconformity:b', 'drawing'], ['a', 'check'], ['d', 'drawing']]);
+  const causePlan = { ...plan, causeCategory: 'drawing' };
+  const expected = expectedFilterResults({ plan: causePlan, records, catalog, causeById });
+  assert.deepEqual(expected.expectedIds, ['b']);
+  assert.equal(expected.matchedCount, 1);
+  assert.equal(checkFilterAnswer({ plan: causePlan, records, catalog, causeById, shown: ['nonconformity:b'] }).ok, true);
+  for (const id of ['a', 'c', 'd']) {
+    assert.equal(checkFilterAnswer({ plan: causePlan, records, catalog, causeById, shown: [id] }).filtersOk, false);
+  }
+  assert.equal(expectedFilterResults({ plan: causePlan, records, catalog }).matchedCount, 0);
+  const causeOnly = { causeCategory: 'drawing', semanticQuery: '', filters: [] };
+  assert.equal(isFilterOnlyPlan(causeOnly), true);
+  assert.equal(isFilterOnlyPlan({ ...causeOnly, causeCategory: 'invalid' }), false);
+  assert.deepEqual(expectedFilterResults({ plan: causeOnly, records, catalog, causeById }).expectedIds, ['d', 'b']);
+});

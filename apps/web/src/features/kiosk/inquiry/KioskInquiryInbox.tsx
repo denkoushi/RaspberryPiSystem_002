@@ -3,8 +3,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { listKioskInquiries } from '../../../api/client';
 import { useKioskInquiries, useKioskInquiryActions } from '../../../api/hooks/kiosk';
+import { kioskQueryKeys } from '../../../api/queryKeys/kiosk';
 import { Button } from '../../../components/ui/Button';
 import { useArmedNfcRead } from '../inventory/setup/useArmedNfcRead';
+import { startWatch } from '../screen-watch/startWatch';
 
 import { inquiryErrorMessage, isInquiryAccessError } from './inquiryErrors';
 import { KioskInquiryCompose } from './KioskInquiryCompose';
@@ -50,7 +52,7 @@ export function KioskInquiryInbox({ clientKey, isReceiver, loginUnlock = false, 
       session.active = false;
       session.employeeTagUid = undefined;
       controller.abort();
-      const queryKey = ['kiosk-inquiries', clientKey, sessionId];
+      const queryKey = kioskQueryKeys.inquiries(clientKey, sessionId);
       void queryClient.cancelQueries({ queryKey });
       queryClient.removeQueries({ queryKey });
     };
@@ -64,7 +66,7 @@ export function KioskInquiryInbox({ clientKey, isReceiver, loginUnlock = false, 
     void listKioskInquiries(read.uid, controllerSignal).then(result => {
       if (controllerSignal?.aborted) return;
       access.current.employeeTagUid = read.uid;
-      queryClient.setQueryData(['kiosk-inquiries', clientKey, sessionId], result);
+      queryClient.setQueryData(kioskQueryKeys.inquiries(clientKey, sessionId), result);
       setUnlocked(true);
     }).catch(failure => {
       if (!controllerSignal?.aborted) setError(inquiryErrorMessage(failure, '社員証を確認できません'));
@@ -85,7 +87,7 @@ export function KioskInquiryInbox({ clientKey, isReceiver, loginUnlock = false, 
       setUnlocked(false);
       setDetail(null);
       setDraft('');
-      queryClient.removeQueries({ queryKey: ['kiosk-inquiries', clientKey, sessionId] });
+      queryClient.removeQueries({ queryKey: kioskQueryKeys.inquiries(clientKey, sessionId) });
     }
     setError(loginExpired ? 'ログインし直してください' : inquiryErrorMessage(failure, fallback));
   }, [clientKey, isReceiver, loginUnlock, queryClient, sessionId]);
@@ -109,7 +111,7 @@ export function KioskInquiryInbox({ clientKey, isReceiver, loginUnlock = false, 
     setError(null);
     try {
       const result = await actions.reply.mutateAsync({ threadId: detail.thread.id, body: text });
-      if (access.current.active) { setDetail(result); setDraft(''); }
+      if (access.current.active) { setDetail({ ...result, canViewScreen: detail.canViewScreen }); setDraft(''); }
     } catch (failure) { handleFailure(failure, '返信を送信できません'); }
   };
 
@@ -118,9 +120,9 @@ export function KioskInquiryInbox({ clientKey, isReceiver, loginUnlock = false, 
     setComposing(false);
     setSent(true);
     setError(null);
-    void queryClient.invalidateQueries({ queryKey: ['kiosk-inquiry-summary', clientKey] });
+    void queryClient.invalidateQueries({ queryKey: kioskQueryKeys.inquirySummary(clientKey) });
     if (unlocked) {
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-inquiries', clientKey, sessionId] });
+      void queryClient.invalidateQueries({ queryKey: kioskQueryKeys.inquiries(clientKey, sessionId) });
       if (!isReceiver && threadId) void openThread(threadId);
     }
   };
@@ -159,6 +161,12 @@ export function KioskInquiryInbox({ clientKey, isReceiver, loginUnlock = false, 
         {detailReceiver ? <div className="kiosk-inquiry__who">{detail.thread.kind === 'SYSTEM_NOTICE' ? detail.thread.noticeTitle : detail.thread.senderClientDeviceName}
           <NoticeTag thread={detail.thread} />
           <small>{detail.thread.senderLocation}</small></div> : null}
+        {detail.canViewScreen && detailReceiver && detail.thread.kind === 'INQUIRY' && detail.thread.senderClientDeviceName ? (
+          <Button type="button" variant="ghostOnDark" onClick={() => {
+            const uid = access.current.employeeTagUid;
+            if (uid) void startWatch(detail.thread.id, uid, detail.thread.senderClientDeviceName!);
+          }}>画面を見る</Button>
+        ) : null}
       </div>
       <div className="kiosk-inquiry__messages" ref={messagesRef}>
         {detail.messages.map(message => (

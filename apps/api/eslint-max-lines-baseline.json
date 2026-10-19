@@ -10,7 +10,6 @@
   "src/services/business-hermes/hermes-search-trial.service.ts": 640,
   "src/services/csv-dashboard/csv-dashboard-ingestor.ts": 677,
   "src/services/imports/csv-import-scheduler.ts": 787,
-  "src/services/item-inventory/item-inventory.service.ts": 1131,
   "src/services/knowledge/knowledge-field-seed.ts": 784,
   "src/services/part-measurement/part-measurement-drawing-ocr.service.ts": 696,
   "src/services/part-measurement/part-measurement-sheet.service.ts": 822,

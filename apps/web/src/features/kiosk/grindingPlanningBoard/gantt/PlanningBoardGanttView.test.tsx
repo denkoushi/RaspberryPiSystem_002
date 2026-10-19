@@ -700,16 +700,16 @@ describe('forward PlanningBoardGanttView', () => {
     dragBar();
     expect(special.onResourceReorder).not.toHaveBeenCalled();
   });
-  it('fits eight hours at the one-day scale, ticks every hour, and opens just before now but not before 8:00', () => {
-    const eightHourDay = (1120 - 168) / (8 / 24);
+  it('fits six hours at the one-day scale, ticks every hour, and opens just before now but not before 8:00', () => {
+    const sixHourDay = (1120 - 168) / (6 / 24);
     const at = (time: string) => ({ ...forwardProps(), scale: 1, layout: buildPlanningBoardGanttLayout({ items: [item()], mode: 'forward', allocation: 'alternate', view: 'resource',
       seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', now: new Date(`2026-10-14T${time}:00+09:00`), scale: 1 }) });
     const { unmount } = render(<PlanningBoardGanttView {...at('13:20')} />);
-    expect(screen.getByLabelText('ガントの日付と工程').scrollLeft).toBeCloseTo(eightHourDay * (13 + 10 / 60) / 24);
+    expect(screen.getByLabelText('ガントの日付と工程').scrollLeft).toBeCloseTo(sixHourDay * (13 + 10 / 60) / 24);
     expect(screen.getAllByText('13時').length).toBeGreaterThan(0);
     unmount();
     render(<PlanningBoardGanttView {...at('07:30')} />);
-    expect(screen.getByLabelText('ガントの日付と工程').scrollLeft).toBeCloseTo(eightHourDay * 8 / 24);
+    expect(screen.getByLabelText('ガントの日付と工程').scrollLeft).toBeCloseTo(sixHourDay * 8 / 24);
   });
   it('keeps the backward chart opening an hour before now on the hour', () => {
     // The backward layout carries no clock of its own, so the chart reads the system time.
@@ -727,19 +727,19 @@ describe('forward PlanningBoardGanttView', () => {
     }
   });
   it('returns to the home position every ten minutes', () => {
-    const eightHourDay = (1120 - 168) / (8 / 24);
+    const sixHourDay = (1120 - 168) / (6 / 24);
     const at = (time: string) => ({ ...forwardProps(), scale: 1, layout: buildPlanningBoardGanttLayout({ items: [item()], mode: 'forward', allocation: 'alternate', view: 'resource',
       seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', now: new Date(`2026-10-14T${time}:00+09:00`), scale: 1 }) });
     const { rerender } = render(<PlanningBoardGanttView {...at('13:20')} />);
     const viewport = screen.getByLabelText('ガントの日付と工程');
     fireEvent.click(screen.getByRole('button', { name: '2時間進む' }));
-    expect(viewport.scrollLeft).toBeCloseTo(eightHourDay * (15 + 10 / 60) / 24);
+    expect(viewport.scrollLeft).toBeCloseTo(sixHourDay * (15 + 10 / 60) / 24);
     rerender(<PlanningBoardGanttView {...at('13:29')} />);
-    expect(viewport.scrollLeft).toBeCloseTo(eightHourDay * (15 + 10 / 60) / 24);
+    expect(viewport.scrollLeft).toBeCloseTo(sixHourDay * (15 + 10 / 60) / 24);
     rerender(<PlanningBoardGanttView {...at('13:30')} />);
-    expect(viewport.scrollLeft).toBeCloseTo(eightHourDay * (13 + 20 / 60) / 24);
+    expect(viewport.scrollLeft).toBeCloseTo(sixHourDay * (13 + 20 / 60) / 24);
     rerender(<PlanningBoardGanttView {...at('14:00')} />);
-    expect(viewport.scrollLeft).toBeCloseTo(eightHourDay * (13 + 50 / 60) / 24);
+    expect(viewport.scrollLeft).toBeCloseTo(sixHourDay * (13 + 50 / 60) / 24);
   });
   it('moves two hours with the arrow buttons and returns to today on each scale press', () => {
     const values = forwardProps([item()]);
@@ -1063,7 +1063,7 @@ describe('forward PlanningBoardGanttView', () => {
       Object.defineProperty(screen.getByRole('group', { name: '製番の色分け凡例' }), 'offsetHeight', { configurable: true, value: 40 });
       fireEvent(window, new Event('resize'));
       expect(viewport.style.height).toBe(`${Math.floor((window.innerHeight - 140) / 0.7 - 10 - 40)}px`);
-      expect(parseFloat(screen.getByTestId('planning-gantt-bar-a').style.width)).toBeCloseTo((1600 - 168) / 8 - 2);
+      expect(parseFloat(screen.getByTestId('planning-gantt-bar-a').style.width)).toBeCloseTo((1600 - 168) / 6 - 2);
       viewport.scrollLeft = 200;
       viewport.scrollTop = 100;
       fireEvent.pointerDown(viewport, { button: 1, clientX: 70, clientY: 70 });

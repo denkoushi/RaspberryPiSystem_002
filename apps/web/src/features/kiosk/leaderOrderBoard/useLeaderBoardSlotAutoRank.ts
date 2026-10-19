@@ -1,4 +1,6 @@
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
+
+import { useSingleFlight } from '../../../hooks/useSingleFlight';
 
 import { applyLeaderBoardAutoRankAssignments } from './applyLeaderBoardAutoRankAssignments';
 import { buildLeaderBoardAutoRankAssignments } from './buildLeaderBoardAutoRankAssignments';
@@ -26,7 +28,7 @@ export function useLeaderBoardSlotAutoRank({
   orderUsageByResourceCd,
   updateOrderAsync
 }: UseLeaderBoardSlotAutoRankParams) {
-  const [autoRankApplying, setAutoRankApplying] = useState(false);
+  const { run, pending: autoRankApplying } = useSingleFlight();
 
   const autoRankDisabled =
     !seibanEvalEnabled || interactionLocked || orderPending || autoRankApplying;
@@ -47,14 +49,10 @@ export function useLeaderBoardSlotAutoRank({
       });
       if (assignments.length === 0) return;
 
-      setAutoRankApplying(true);
-      try {
-        await applyLeaderBoardAutoRankAssignments(assignments, updateOrderAsync);
-      } finally {
-        setAutoRankApplying(false);
-      }
+      await run(() => applyLeaderBoardAutoRankAssignments(assignments, updateOrderAsync));
     },
     [
+      run,
       autoRankApplying,
       interactionLocked,
       orderPending,

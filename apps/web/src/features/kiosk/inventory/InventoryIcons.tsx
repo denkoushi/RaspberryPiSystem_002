@@ -39,3 +39,8 @@ export const PlusIcon = ({ size = 14 }: { size?: number }) => <Icon size={size} 
 export const ChartIcon = ({ size }: { size?: number }) => (
   <Icon size={size}><path d="M4 3v18h17M8 17v-5M13 17V8M18 17V4" /></Icon>
 );
+
+// A photo with an arrow turning around its corner, so it does not read as reload.
+export const RotateRightIcon = ({ size = 20 }: { size?: number }) => (
+  <Icon size={size} width={2}><rect x="3" y="8" width="13" height="13" rx="1.5" /><path d="M3 18l4-4 3 3 2-2 4 4" /><path d="M12 3h4a5 5 0 0 1 5 5v2" /><path d="M18.5 8l2.5 2.5L23.5 8" /></Icon>
+);

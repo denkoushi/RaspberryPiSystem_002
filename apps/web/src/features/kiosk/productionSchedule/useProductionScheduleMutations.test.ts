@@ -123,7 +123,7 @@ describe('useProductionScheduleMutations', () => {
 
     expect(noteMutation.mutate).toHaveBeenCalledTimes(1);
     expect(noteMutation.mutate).toHaveBeenCalledWith(
-      { rowId: 'row-1', note: 'abcde' },
+      { rowId: 'row-1', note: 'abcde', cachePolicy: 'default' },
       expect.objectContaining({ onSettled, onSuccess: expect.any(Function) })
     );
     unmount();

@@ -169,6 +169,7 @@ function fieldOf(catalog, source, key) {
 }
 
 export function hasAppliedHardFilter(plan, catalog) {
+  if (CAUSE_CATEGORY_IDS.includes(plan?.causeCategory)) return true;
   const filters = Array.isArray(plan?.filters) ? plan.filters : [];
   return filters.some((filter) => {
     const field = fieldOf(catalog, filter?.source, filter?.field);

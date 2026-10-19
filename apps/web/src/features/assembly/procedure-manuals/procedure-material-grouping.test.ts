@@ -15,6 +15,23 @@ const candidate = (candidateKey: string, partNumber: string, shootingTarget: str
 });
 
 describe('groupMaterials', () => {
+  it('groups APP photos by mail rather than heading, orders photo indexes and displays location and employee fallback', () => {
+    const at = '2026-10-19T03:36:27Z';
+    const app = { origin: 'APP' as const, category: '保守', note: '7125 test', location: '工場', nameId: '007125', employeeName: '津田' };
+    const groups = groupMaterials([
+      material('p2', '保守・7125 test', at, { ...app, gmailMessageId: 'mail-a', appRef: { photoIndex: 2 } }),
+      material('p1', '保守・7125 test', at, { ...app, gmailMessageId: 'mail-a', appRef: { photoIndex: 1 } }),
+      material('other', '保守・7125 test', at, { ...app, gmailMessageId: 'mail-b', employeeName: null }),
+      material('legacy', '保守・7125 test', at),
+    ]);
+    expect(groups.map(({ key }) => key)).toEqual(['app:mail-a', 'app:mail-b', 'hint:保守・7125 test']);
+    expect(groups[0].title).toBe('保守・7125 test');
+    expect(groups[0].items.map(({ id }) => id)).toEqual(['p1', 'p2']);
+    expect(groups[0].subtitle).toMatch(/^工場 · 津田 · アプリ/);
+    expect(groups[1].subtitle).toMatch(/^工場 · 007125 · アプリ/);
+    const empty = groupMaterials([material('empty', null, at, { origin: 'APP', nameId: null, location: null })]);
+    expect(empty[0]).toMatchObject({ title: 'アプリの素材', subtitle: expect.stringMatching(/^アプリ · /) });
+  });
   it('puts missing hints last, sorts bundles and cards newest first, and keeps all kinds together without mutating input', () => {
     const materials = [
       material('old', '組立', '2026-10-05T00:00:00Z', { kind: 'TEXT' }),

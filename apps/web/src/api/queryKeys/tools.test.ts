@@ -27,4 +27,38 @@ describe('toolsQueryKeys', () => {
     expect(toolsQueryKeys.loans(undefined, 'key-1')).toEqual(['loans', undefined, 'key-1']);
     expect(toolsQueryKeys.loans('', '')).toEqual(['loans', '', '']);
   });
+
+  it('preserves invalidation prefixes', () => {
+    expect(toolsQueryKeys.departmentsAll).toEqual(['departments']);
+    expect(toolsQueryKeys.employeesAll).toEqual(['employees']);
+    expect(toolsQueryKeys.itemsAll).toEqual(['items']);
+    expect(toolsQueryKeys.photoLabelReviewsAll).toEqual(['photo-label-reviews']);
+  });
+
+  it('preserves photoLabelReviews values and arity', () => {
+    expect(toolsQueryKeys.photoLabelReviews(50)).toEqual(['photo-label-reviews', 50]);
+    expect(toolsQueryKeys.photoLabelReviews(0)).toEqual(['photo-label-reviews', 0]);
+    expect(toolsQueryKeys.photoLabelReviews(1)).toEqual(['photo-label-reviews', 1]);
+  });
+
+  it('preserves photoSimilarCandidates values and arity', () => {
+    expect(toolsQueryKeys.photoSimilarCandidates('loan-1')).toEqual(['photo-similar-candidates', 'loan-1']);
+    expect(toolsQueryKeys.photoSimilarCandidates('')).toEqual(['photo-similar-candidates', '']);
+  });
+
+  it('preserves transactions values and arity', () => {
+    expect(toolsQueryKeys.transactions(2, { employeeId: 'employee-1', startDate: '2026-10-01', endDate: '2026-10-19', itemId: 'item-1', clientId: 'client-1' })).toEqual(['transactions', 2, { employeeId: 'employee-1', startDate: '2026-10-01', endDate: '2026-10-19', itemId: 'item-1', clientId: 'client-1' }]);
+    expect(toolsQueryKeys.transactions(1)).toEqual(['transactions', 1, undefined]);
+    expect(toolsQueryKeys.transactions(1, undefined)).toEqual(['transactions', 1, undefined]);
+    expect(toolsQueryKeys.transactions(0, {})).toEqual(['transactions', 0, {}]);
+    expect(toolsQueryKeys.transactions(1, { employeeId: '', startDate: '', endDate: '', itemId: '', clientId: '' })).toEqual(['transactions', 1, { employeeId: '', startDate: '', endDate: '', itemId: '', clientId: '' }]);
+  });
+
+  it('preserves unifiedItems values and arity', () => {
+    expect(toolsQueryKeys.unifiedItems({ search: 'tool', category: 'TOOLS', itemStatus: 'AVAILABLE' })).toEqual(['unified-items', { search: 'tool', category: 'TOOLS', itemStatus: 'AVAILABLE' }]);
+    expect(toolsQueryKeys.unifiedItems({})).toEqual(['unified-items', {}]);
+    expect(toolsQueryKeys.unifiedItems(undefined)).toEqual(['unified-items', undefined]);
+    expect(toolsQueryKeys.unifiedItems()).toEqual(['unified-items', undefined]);
+    expect(toolsQueryKeys.unifiedItems({ search: '' })).toEqual(['unified-items', { search: '' }]);
+  });
 });
