@@ -34,9 +34,9 @@ export function useImportMasterSingle() {
       } else if (variables.type === 'items') {
         queryClient.invalidateQueries({ queryKey: ['items'] });
       } else if (variables.type === 'measuringInstruments') {
-        queryClient.invalidateQueries({ queryKey: ['measuringInstruments'] });
+        queryClient.invalidateQueries({ queryKey: ['measuring-instruments'] });
       } else if (variables.type === 'riggingGears') {
-        queryClient.invalidateQueries({ queryKey: ['riggingGears'] });
+        queryClient.invalidateQueries({ queryKey: ['rigging-gears'] });
       } else if (variables.type === 'machines') {
         queryClient.invalidateQueries({ queryKey: toolsQueryKeys.machinesAll });
         queryClient.invalidateQueries({ queryKey: toolsQueryKeys.uninspectedMachinesAll });
