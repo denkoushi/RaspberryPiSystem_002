@@ -31,7 +31,7 @@ import {
   buildMeasurementLabelSelectOptions,
   INSPECTION_DRAWING_MEASUREMENT_LABEL_OPTIONS
 } from './inspectionDrawingMeasurementLabelOptions';
-import { InspectionDrawingPointPositionNudge } from './InspectionDrawingPointPositionNudge';
+import { inspectionDrawingSopTargetProps } from './inspectionDrawingSopAnnotations';
 import { buildGeometricTolerancePointPatch } from './markerNumbering';
 import {
   INSPECTION_DRAWING_SURFACE_SIDE_OPTIONS,
@@ -54,16 +54,26 @@ type Props = {
   ocrCandidateStatus?: PartMeasurementDrawingOcrStatus | null;
   ocrCandidateLoading?: boolean;
   ocrCandidateError?: string | null;
-  onApplyOcrCandidate?: (valueText: string) => void;
+  /** 候補を押したとき。2 つの和のときは candidate を渡さない */
+  onApplyOcrCandidate?: (valueText: string, candidate?: PartMeasurementDrawingOcrCandidateDto) => void;
   measurementLabelSettings?: readonly InspectionDrawingMeasurementLabelSetting[];
   /** 丸数字/矢視モード行（Sidebar が組み立てる） */
   modeChrome?: ReactNode;
+  /** 使用中の丸数字（入替先の候補） */
+  markerNos?: readonly number[];
+  /** 選択点の丸数字を指定番号と入れ替える */
+  onSwapMarkerNo?: (targetMarkerNo: number) => void;
 };
 
 const DEFAULT_MEASUREMENT_LABEL_SETTINGS = buildDefaultInspectionDrawingMeasurementLabelSettings();
 
 const toleranceCandidateChipClassName =
   'min-h-7 rounded border border-cyan-300/40 bg-cyan-950/70 px-2 text-cyan-50 disabled:opacity-50';
+
+/** 候補 2 つの和。浮動小数の誤差（0.1+0.2）を落とす */
+export function formatCandidateSum(sum: number): string {
+  return String(Number(sum.toFixed(4)));
+}
 
 type ToleranceCandidateInputProps = {
   value: string;
@@ -145,8 +155,22 @@ export function InspectionDrawingPointSettingsPanel({
   ocrCandidateError = null,
   onApplyOcrCandidate,
   measurementLabelSettings,
-  modeChrome
+  modeChrome,
+  markerNos = [],
+  onSwapMarkerNo
 }: Props) {
+  const [markerPickerPointId, setMarkerPickerPointId] = useState<string | null>(null);
+  /** 「＋」: 候補を 2 つ押して和を基準値にする（ピッチなど図面に無い寸法用）。先に押した値を持つ */
+  const [sumMode, setSumMode] = useState(false);
+  const [sumFirstValue, setSumFirstValue] = useState<string | null>(null);
+  const candidateSignature = ocrCandidates.map((candidate) => candidate.valueText).join('|');
+  useEffect(() => {
+    setSumMode(false);
+    setSumFirstValue(null);
+  }, [point.id, candidateSignature]);
+  const markerPickerOpen = markerPickerPointId === point.id;
+  const setMarkerPickerOpen = (open: boolean) => setMarkerPickerPointId(open ? point.id : null);
+  const canSwapMarkerNo = Boolean(onSwapMarkerNo) && !disabled && markerNos.length > 1;
   const effectiveMeasurementLabelSettings =
     measurementLabelSettings && measurementLabelSettings.length > 0
       ? measurementLabelSettings
@@ -161,19 +185,22 @@ export function InspectionDrawingPointSettingsPanel({
     effectiveMeasurementLabelSettings
   );
   const isGeometricTolerance = toleranceKind === 'geometric';
-  const showDepthMode = isInspectionDrawingDepthLabel(point.name);
+  const isPipeThreadJudgement = point.threadNominal === '管用';
+  const showDepthMode = !isPipeThreadJudgement && isInspectionDrawingDepthLabel(point.name);
   const isThrough = showDepthMode && isInspectionDrawingThroughDepthMode(point.depthMode);
   const toleranceInputsDisabled = disabled || isThrough;
   const threadNominal = point.threadNominal ?? '';
   const surfaceSide = point.surfaceSide ?? '';
   const supplementText = point.supplementText ?? '';
   const showOcrCandidateRow =
+    !isPipeThreadJudgement &&
     !isThrough &&
     (ocrCandidateLoading ||
       ocrCandidateError ||
       ocrCandidates.length > 0 ||
       ocrCandidateStatus === 'failed');
   const handleNameChange = (name: string) => {
+    if (isPipeThreadJudgement) return;
     const nextKind = resolveInspectionDrawingToleranceKindForLabel(
       name,
       effectiveMeasurementLabelSettings
@@ -188,6 +215,30 @@ export function InspectionDrawingPointSettingsPanel({
         ? buildGeometricTolerancePointPatch(point.nominalRaw)
         : {})
     });
+  };
+  const handleThreadNominalChange = (threadNominal: string) => {
+    if (threadNominal === '管用') {
+      onChange({
+        threadNominal,
+        name: 'ネジ穴深さ',
+        valueKind: 'judgement',
+        depthMode: INSPECTION_DRAWING_DEPTH_MODE_MEASURED,
+        nominalRaw: '',
+        upperToleranceRaw: '',
+        lowerToleranceRaw: '',
+        legacyAbsoluteBounds: undefined
+      });
+      return;
+    }
+    if (point.valueKind === 'judgement' || point.threadNominal === '管用') {
+      onChange({
+        threadNominal,
+        valueKind: 'numeric',
+        depthMode: INSPECTION_DRAWING_DEPTH_MODE_MEASURED
+      });
+      return;
+    }
+    onChange({ threadNominal });
   };
   const handleDepthModeChange = (next: typeof INSPECTION_DRAWING_DEPTH_MODE_MEASURED | typeof INSPECTION_DRAWING_DEPTH_MODE_THROUGH) => {
     if (next === INSPECTION_DRAWING_DEPTH_MODE_THROUGH) {
@@ -229,21 +280,69 @@ export function InspectionDrawingPointSettingsPanel({
 
   return (
     <div className={inspectionDrawingPointSettingPanelClassName}>
-      <InspectionDrawingPointPositionNudge
-        point={point}
-        disabled={disabled}
-        onChange={onChange}
-      />
-      <p className="text-[1.02rem] font-bold">測定点の設定（No.{point.markerNo}）</p>
+      <div className="flex items-center gap-2">
+        <p className="text-[1.02rem] font-bold">測定点</p>
+        {canSwapMarkerNo ? (
+          <button
+            type="button"
+            aria-expanded={markerPickerOpen}
+            aria-label={`番号 ${point.markerNo} を入れ替える`}
+            className="inline-flex h-10 items-center gap-1 rounded-lg border-2 border-cyan-300 bg-cyan-950 px-2.5 text-[1.15rem] font-extrabold tabular-nums text-cyan-200"
+            onClick={() => setMarkerPickerOpen(!markerPickerOpen)}
+          >
+            {point.markerNo}
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={3}>
+              <path d="M4 20h4L19 9l-4-4L4 16z" />
+            </svg>
+          </button>
+        ) : (
+          <span className="text-[1.15rem] font-extrabold tabular-nums text-cyan-200">{point.markerNo}</span>
+        )}
+      </div>
+      {canSwapMarkerNo && markerPickerOpen ? (
+        <div
+          className="rounded-lg border border-cyan-300/70 bg-cyan-950/60 p-1.5"
+          role="group"
+          aria-label="入れ替える番号"
+        >
+          <p className="mb-1 text-xs font-bold text-cyan-200">入れ替える番号</p>
+          <div className="flex flex-wrap gap-1.5">
+            {markerNos.map((no) => {
+              const current = no === point.markerNo;
+              return (
+                <button
+                  key={no}
+                  type="button"
+                  aria-pressed={current}
+                  aria-label={`番号 ${no}`}
+                  className={clsx(
+                    'flex h-11 w-11 items-center justify-center rounded-full text-[1.05rem] font-extrabold tabular-nums',
+                    current
+                      ? 'bg-cyan-300 text-cyan-950'
+                      : 'bg-white text-slate-900 ring-2 ring-slate-400'
+                  )}
+                  onClick={() => {
+                    setMarkerPickerOpen(false);
+                    if (!current) onSwapMarkerNo?.(no);
+                  }}
+                >
+                  {no}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
       {modeChrome}
       <label className={inspectionDrawingPointNameInlineClassName} title={point.name || '名称'}>
         <span className={inspectionDrawingPointNameInlineLabelClassName}>名称</span>
         <div className={clsx(inspectionDrawingBoundedSelectShellClassName, 'min-w-0 flex-1')}>
           <select
+            {...inspectionDrawingSopTargetProps('measurement-name')}
             value={point.name}
             onChange={(e) => handleNameChange(e.target.value)}
             className={inspectionDrawingBoundedSelectClassName}
-            disabled={disabled}
+            disabled={disabled || isPipeThreadJudgement}
             aria-label="名称"
             title={point.name || '選択'}
           >
@@ -256,7 +355,12 @@ export function InspectionDrawingPointSettingsPanel({
         </div>
       </label>
       {showDepthMode ? (
-        <div className="grid grid-cols-2 gap-1.5" role="group" aria-label="通し切替">
+        <div
+          {...inspectionDrawingSopTargetProps('depth-mode')}
+          className="grid grid-cols-2 gap-1.5"
+          role="group"
+          aria-label="通し切替"
+        >
           <button
             type="button"
             disabled={disabled}
@@ -284,7 +388,10 @@ export function InspectionDrawingPointSettingsPanel({
         </div>
       ) : null}
       <div className={inspectionDrawingPointSettingSingleRowClassName}>
-        <div className="grid grid-cols-[minmax(0,0.85fr)_minmax(0,1fr)_minmax(0,1.45fr)] gap-1.5">
+        <div
+          {...inspectionDrawingSopTargetProps('face-thread')}
+          className="grid grid-cols-[minmax(0,0.85fr)_minmax(0,1fr)_minmax(0,1.45fr)] gap-1.5"
+        >
           <label className="grid min-w-0 gap-1 text-[0.82rem] font-semibold text-white/70">
             面
             <div className={inspectionDrawingBoundedSelectShellClassName}>
@@ -309,7 +416,7 @@ export function InspectionDrawingPointSettingsPanel({
             <div className={inspectionDrawingBoundedSelectShellClassName}>
               <select
                 value={threadNominal}
-                onChange={(e) => onChange({ threadNominal: e.target.value })}
+                onChange={(e) => handleThreadNominalChange(e.target.value)}
                 className={inspectionDrawingBoundedSelectClassName}
                 disabled={disabled}
                 title={threadNominal || '呼び径なし'}
@@ -326,6 +433,7 @@ export function InspectionDrawingPointSettingsPanel({
           <label className="grid min-w-0 gap-1 text-[0.82rem] font-semibold text-white/70">
             直接入力
             <Input
+              {...inspectionDrawingSopTargetProps('direct-label')}
               type="text"
               value={supplementText}
               onChange={(e) => onChange({ supplementText: e.target.value })}
@@ -336,9 +444,17 @@ export function InspectionDrawingPointSettingsPanel({
           </label>
         </div>
       </div>
+      {isPipeThreadJudgement ? (
+        <p className="rounded border border-cyan-300/25 bg-cyan-950/40 px-2 py-2 text-[0.9rem] font-semibold text-cyan-100">
+          管用ネジ形状をOK/NGで判定します。数値の基準値・公差・測定／通しは設定しません。
+        </p>
+      ) : (
       <div className={inspectionDrawingPointSettingSingleRowClassName}>
         <div className="grid min-w-0 gap-1">
-          <label className={inspectionDrawingPointSettingNominalInlineClassName}>
+          <label
+            className={inspectionDrawingPointSettingNominalInlineClassName}
+            {...(!isGeometricTolerance ? inspectionDrawingSopTargetProps('nominal-value') : {})}
+          >
             <span className="shrink-0 text-[1rem] font-semibold">
               {isGeometricTolerance ? '上限値' : '基準値'}
             </span>
@@ -369,7 +485,10 @@ export function InspectionDrawingPointSettingsPanel({
             </p>
           ) : null}
           {showOcrCandidateRow ? (
-            <div className="flex min-h-8 flex-wrap items-center gap-1 text-[0.8rem] font-semibold">
+            <div
+              {...inspectionDrawingSopTargetProps('ocr-candidate')}
+              className="flex min-h-8 flex-wrap items-center gap-1 text-[0.8rem] font-semibold"
+            >
               {ocrCandidateLoading ? <span className="text-cyan-100/75">OCR確認中</span> : null}
               {!ocrCandidateLoading && ocrCandidateStatus === 'failed' ? (
                 <span className="text-amber-200">OCR失敗</span>
@@ -380,24 +499,70 @@ export function InspectionDrawingPointSettingsPanel({
                   key={`${candidate.valueText}-${candidate.xRatio}-${candidate.yRatio}`}
                   type="button"
                   disabled={disabled || !onApplyOcrCandidate}
-                  className={toleranceCandidateChipClassName}
-                  onClick={() => onApplyOcrCandidate?.(candidate.valueText)}
+                  className={clsx(
+                    toleranceCandidateChipClassName,
+                    sumMode && sumFirstValue === candidate.valueText && 'ring-2 ring-amber-300'
+                  )}
+                  aria-pressed={sumMode && sumFirstValue === candidate.valueText ? true : undefined}
+                  onClick={() => {
+                    if (!onApplyOcrCandidate) return;
+                    if (!sumMode) {
+                      onApplyOcrCandidate(candidate.valueText, candidate);
+                      return;
+                    }
+                    if (sumFirstValue === null) {
+                      setSumFirstValue(candidate.valueText);
+                      return;
+                    }
+                    const sum = Number(sumFirstValue) + Number(candidate.valueText);
+                    setSumMode(false);
+                    setSumFirstValue(null);
+                    if (!Number.isFinite(sum)) return;
+                    onApplyOcrCandidate(formatCandidateSum(sum));
+                  }}
                   title={`raw: ${candidate.rawText}`}
                 >
                   {candidate.valueText}
                 </button>
               ))}
+              {ocrCandidates.length >= 2 ? (
+                <button
+                  type="button"
+                  disabled={disabled || !onApplyOcrCandidate}
+                  aria-label="2つの和"
+                  aria-pressed={sumMode}
+                  className={clsx(
+                    toleranceCandidateChipClassName,
+                    'min-w-8 px-2',
+                    sumMode && 'bg-amber-400/25 ring-2 ring-amber-300'
+                  )}
+                  onClick={() => {
+                    setSumMode((prev) => !prev);
+                    setSumFirstValue(null);
+                  }}
+                  title="候補を2つ押して、その和を基準値にする"
+                >
+                  ＋
+                </button>
+              ) : null}
+              {sumMode ? (
+                <span className="text-amber-200">{sumFirstValue === null ? '1つ目' : `${sumFirstValue}＋`}</span>
+              ) : null}
             </div>
           ) : null}
         </div>
       </div>
-      {isThrough ? null : isGeometricTolerance ? (
+      )}
+      {isPipeThreadJudgement || isThrough ? null : isGeometricTolerance ? (
         <p className="rounded border border-cyan-300/25 bg-cyan-950/40 px-2 py-1 text-[0.92rem] font-semibold text-cyan-100">
           合格範囲 0〜{geometricRangeUpper}
         </p>
       ) : (
         <div className="grid grid-cols-2 gap-1.5">
-          <label className="grid gap-1 text-[1rem] font-semibold">
+          <label
+            {...inspectionDrawingSopTargetProps('upper-tolerance')}
+            className="grid gap-1 text-[1rem] font-semibold"
+          >
             上限公差
             <ToleranceCandidateInput
               value={point.upperToleranceRaw}
@@ -406,7 +571,10 @@ export function InspectionDrawingPointSettingsPanel({
               disabled={toleranceInputsDisabled}
             />
           </label>
-          <label className="grid gap-1 text-[1rem] font-semibold">
+          <label
+            {...inspectionDrawingSopTargetProps('lower-tolerance')}
+            className="grid gap-1 text-[1rem] font-semibold"
+          >
             下限公差
             <ToleranceCandidateInput
               value={point.lowerToleranceRaw}
@@ -421,6 +589,7 @@ export function InspectionDrawingPointSettingsPanel({
         <div className={onRemove && onRemoveAll ? 'grid grid-cols-2 gap-1.5' : 'grid grid-cols-1'}>
           {onRemove ? (
             <Button
+              {...inspectionDrawingSopTargetProps('delete-one-point')}
               type="button"
               variant="secondary"
               className={inspectionDrawingPointSettingDeleteButtonClassName}
@@ -432,6 +601,7 @@ export function InspectionDrawingPointSettingsPanel({
           ) : null}
           {onRemoveAll ? (
             <Button
+              {...inspectionDrawingSopTargetProps('delete-all-points')}
               type="button"
               variant="secondary"
               className={inspectionDrawingPointSettingDeleteButtonClassName}

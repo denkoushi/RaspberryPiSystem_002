@@ -24,7 +24,7 @@ function mockDevice(partial: Partial<ClientDevice> & Pick<ClientDevice, 'id' | '
 describe('signageTargetClientDevices', () => {
   it('isSignageDisplayClientDevice matches apiKey containing signage', () => {
     expect(
-      isSignageDisplayClientDevice(mockDevice({ id: '1', name: 'Pi3', apiKey: 'client-key-raspberrypi3-signage1' }))
+      isSignageDisplayClientDevice(mockDevice({ id: '1', name: 'Pi3', apiKey: 'test-signage-client-key' }))
     ).toBe(true);
     expect(
       isSignageDisplayClientDevice(

@@ -28,7 +28,7 @@ Raspberry Pi 4を再起動した後、APIキーとIDがランダムな文字列�
 - **参照**: `docs/guides/api-key-policy.md` (25行目), `infrastructure/ansible/inventory.yml` (53-54行目)
 
 #### Raspberry Pi 3（サイネージ）
-- **APIキー**: `client-key-raspberrypi3-signage1`
+- **APIキー**: Ansible Vault-managed Pi3 signage client key
 - **Client ID** (status-agent用): `raspberrypi3-signage1`
 - **UUID** (ClientDevice.id): `d1f81cfa-af3c-4958-9252-7da69d4b7e96`
 - **参照**: `docs/guides/api-key-policy.md` (24行目), `infrastructure/ansible/inventory.yml` (85-86行目)

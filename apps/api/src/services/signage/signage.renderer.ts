@@ -1,3 +1,5 @@
+import { SignageA2uiDataService } from './signage-a2ui-data.service.js';
+import { SignageA2uiRenderer } from './signage-a2ui-renderer.js';
 import sharp from 'sharp';
 import path from 'path';
 import { promises as fs } from 'fs';
@@ -8,6 +10,8 @@ import { logger } from '../../lib/logger.js';
 import { env } from '../../config/env.js';
 import { prisma } from '../../lib/prisma.js';
 import type {
+  SignageCanvasTextElement,
+  SignageCanvasLayoutConfig,
   PdfSlotConfig,
   CsvDashboardSlotConfig,
   VisualizationSlotConfig,
@@ -15,9 +19,13 @@ import type {
   KioskLeaderOrderCardsSlotConfig,
   MobilePlacementPartsShelfGridSlotConfig,
   SelfInspectionMachineBoardSlotConfig,
+  WebPageSlotConfig,
 } from './signage-layout.types.js';
+import { signageCanvasLayoutSchema } from './signage-canvas.js';
 import type { RenderablePane } from './signage-pane-resolver.js';
 import { resolveSplitPanes } from './signage-pane-resolver.js';
+import { buildEmergencyBandSvg, buildEmergencyMessageSvg } from './signage-emergency-screen.js';
+import { WebCaptureStorage } from './web-capture/web-capture-storage.js';
 import { CsvDashboardTemplateRenderer } from '../csv-dashboard/csv-dashboard-template-renderer.js';
 import { CsvDashboardService } from '../csv-dashboard/index.js';
 import { VisualizationService } from '../visualization/index.js';
@@ -47,6 +55,7 @@ import {
 import { resolveSelfInspectionMachineBoardConfig } from '../part-measurement/self-inspection-machine-board-config.js';
 import {
   buildAutoSelfInspectionMachineBoardRotationViewModel,
+  buildKioskActiveSelfInspectionMachineBoardRotationViewModel,
   buildManualSelfInspectionMachineBoardRotationViewModel,
   type SelfInspectionMachineBoardRotationViewModel,
 } from '../part-measurement/self-inspection-machine-board-rotation.service.js';
@@ -176,16 +185,37 @@ export class SignageRenderer {
       lastFilename = result.filename;
       logger.info({ location: 'signage.renderer.ts:renderCurrentContent', filename: result.filename }, 'Legacy global signage image saved');
     } else {
+      let clientKeysRendered = 0;
       for (const clientKey of clientKeys) {
-        const content = await this.signageService.getContent({ clientKey });
-        const buffer = await this.renderContent(content);
-        const result = await SignageRenderStorage.saveRenderedImageForClient(buffer, clientKey);
-        lastFilename = result.filename;
-        logger.info(
-          { location: 'signage.renderer.ts:renderCurrentContent', filename: result.filename, clientKeyLen: clientKey.length },
-          'Client signage image saved',
-        );
+        try {
+          const content = await this.signageService.getContent({ clientKey });
+          const buffer = await this.renderContent(content);
+          const result = await SignageRenderStorage.saveRenderedImageForClient(buffer, clientKey);
+          lastFilename = result.filename;
+          clientKeysRendered += 1;
+          logger.info(
+            { location: 'signage.renderer.ts:renderCurrentContent', filename: result.filename, clientKeyLen: clientKey.length },
+            'Client signage image saved',
+          );
+        } catch (error) {
+          // Rendering and storage are atomic per client. Do not replace this
+          // client's previous JPEG, and continue with the remaining devices.
+          logger.warn(
+            { err: error, location: 'signage.renderer.ts:renderCurrentContent', clientKeyLen: clientKey.length },
+            'Client signage image was not updated',
+          );
+        }
       }
+
+      if (clientKeysRendered === 0) {
+        throw new Error('All client signage images failed to render');
+      }
+
+      return {
+        renderedAt: new Date(),
+        filename: lastFilename,
+        clientKeysRendered,
+      };
     }
 
     return {
@@ -202,7 +232,41 @@ export class SignageRenderer {
     return await this.renderVisualizationDashboard(dashboardId);
   }
 
+  /** 業務Hermesの承認前プレビュー用。保存やスケジュール変更は行わない。 */
+  /** CSV ダッシュボードをサイネージと同じ描画で JPEG にする（管理画面のプレビュー用） */
+  async renderCsvDashboardToBuffer(dashboardId: string): Promise<Buffer> {
+    const data = await this.signageService.loadCsvDashboardForPreview(dashboardId);
+    if (!data) {
+      return await this.renderMessage('CSVダッシュボードが見つかりません');
+    }
+    return await this.renderCsvDashboard(dashboardId, data);
+  }
+
+  async renderCanvasPreviewToBuffer(layout: SignageCanvasLayoutConfig): Promise<Buffer> {
+    return await this.renderCanvasLayout(layout, { failOnVisualizationError: true });
+  }
+
   private async renderContent(content: SignageContentResponse): Promise<Buffer> {
+    const emergencyMessage = content.emergency?.message?.trim();
+    if (!emergencyMessage) {
+      return await this.renderContentBody(content);
+    }
+    if (content.emergency?.messageOnly) {
+      return await sharp(Buffer.from(buildEmergencyMessageSvg(emergencyMessage, WIDTH, HEIGHT)))
+        .jpeg({ quality: 90, mozjpeg: true })
+        .toBuffer();
+    }
+    // PDF・持出一覧と一緒に出すときは、上部に赤い帯でメッセージを重ねる
+    const body = await this.renderContentBody(content);
+    const band = await sharp(Buffer.from(buildEmergencyBandSvg(emergencyMessage, WIDTH, HEIGHT))).png().toBuffer();
+    return await sharp(body)
+      .resize(WIDTH, HEIGHT, { fit: 'contain', background: BACKGROUND })
+      .composite([{ input: band, top: 0, left: 0 }])
+      .jpeg({ quality: 90, mozjpeg: true })
+      .toBuffer();
+  }
+
+  private async renderContentBody(content: SignageContentResponse): Promise<Buffer> {
     // layoutConfigを優先し、nullの場合は旧形式（contentType）から処理
     if (content.layoutConfig) {
       return await this.renderWithLayoutConfig(content);
@@ -255,6 +319,15 @@ export class SignageRenderer {
     }
 
     const layoutConfig = content.layoutConfig;
+
+    if (layoutConfig.layout === 'CANVAS') {
+      return await this.renderCanvasLayout(layoutConfig);
+    }
+
+    if (layoutConfig.layout === 'FULL' && layoutConfig.a2ui) {
+      const resolved = await new SignageA2uiDataService().resolve(layoutConfig.a2ui);
+      return new SignageA2uiRenderer().renderImage(resolved);
+    }
 
     if (layoutConfig.layout === 'FULL') {
       // 全体表示: 最初のスロットを全体に表示
@@ -378,6 +451,8 @@ export class SignageRenderer {
           );
         }
         return await this.renderSelfInspectionMachineBoardFull(boardCfg, slideSec, partsPerPage, detailTopN);
+      } else if (slot.kind === 'web_page') {
+        return await this.renderWebPageCapture((slot.config as WebPageSlotConfig).webCaptureId);
       }
     } else if (layoutConfig.layout === 'SPLIT') {
       // SignagePaneResolver でペイン解決（loans=0件も有効）
@@ -397,6 +472,97 @@ export class SignageRenderer {
     }
 
     return await this.renderMessage('表示するコンテンツがありません');
+  }
+
+  /**
+   * 業務Hermesが作成した安全な画面仕様を、既存の可視化データソース／レンダラーで合成する。
+   * データはこの描画周期ごとに取得し、仕様にはコードやURLを含めない。
+   */
+  private async renderCanvasLayout(
+    rawLayout: SignageCanvasLayoutConfig,
+    options: { failOnVisualizationError?: boolean } = {},
+  ): Promise<Buffer> {
+    const parsed = signageCanvasLayoutSchema.safeParse(rawLayout);
+    if (!parsed.success) {
+      return await this.renderMessage('サイネージ画面仕様を検証できません');
+    }
+    const layout = parsed.data;
+    const visualizationElements = layout.elements.filter((element) => element.kind === 'visualization');
+    const svg = this.buildCanvasBackgroundSvg(layout);
+    const scaleX = WIDTH / layout.width;
+    const scaleY = HEIGHT / layout.height;
+    const overlays: Array<{ input: Buffer; left: number; top: number }> = [];
+
+    for (const element of visualizationElements) {
+      try {
+        const output = await this.visualizationService.renderToBuffer(
+          {
+            dataSourceType: element.dataSourceType,
+            rendererType: element.rendererType,
+            dataSourceConfig: {
+              ...element.dataSourceConfig,
+              ...(element.dataSourceType === 'production_schedule' ? { refresh: true } : {}),
+            },
+            rendererConfig: {
+              ...element.rendererConfig,
+              ...(element.title ? { title: element.title } : {}),
+            },
+          },
+          { width: element.width, height: element.height, title: element.title },
+        );
+        // Resize each overlay explicitly before compositing. Sharp schedules resize
+        // before composite internally, so keeping the logical-canvas coordinates
+        // here would otherwise make placement depend on the input canvas size.
+        overlays.push({
+          input: await sharp(output.buffer)
+            .resize(Math.max(1, Math.round(element.width * scaleX)), Math.max(1, Math.round(element.height * scaleY)), { fit: 'fill' })
+            .png()
+            .toBuffer(),
+          left: Math.round(element.x * scaleX),
+          top: Math.round(element.y * scaleY),
+        });
+      } catch (error) {
+        logger.warn({ err: error, elementId: element.id }, 'Signage canvas visualization element failed');
+        if (options.failOnVisualizationError) {
+          throw error;
+        }
+      }
+    }
+
+    return await sharp(Buffer.from(svg))
+      .resize(WIDTH, HEIGHT, { fit: 'fill' })
+      .composite(overlays)
+      .jpeg({ quality: 90, mozjpeg: true })
+      .toBuffer();
+  }
+
+  private buildCanvasBackgroundSvg(layout: SignageCanvasLayoutConfig): string {
+    const elements = layout.elements.map((element) => {
+      if (element.kind === 'text') return this.buildCanvasTextElementSvg(element);
+      return `<rect x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" rx="12" fill="#0f172a" stroke="#334155" stroke-width="2" />`;
+    }).join('\n');
+    return `<svg width="${layout.width}" height="${layout.height}" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="${layout.backgroundColor}" />${elements}</svg>`;
+  }
+
+  private buildCanvasTextElementSvg(element: SignageCanvasTextElement): string {
+    const style = element.style ?? {};
+    const fontSize = style.fontSize ?? 32;
+    const lineHeight = Math.round(fontSize * 1.25);
+    const lines = element.text.split(/\r?\n/u).slice(0, Math.max(1, Math.floor(element.height / lineHeight)));
+    const textX = style.align === 'middle'
+      ? element.x + element.width / 2
+      : style.align === 'end'
+        ? element.x + element.width - 16
+        : element.x + 16;
+    const textAnchor = style.align === 'middle' ? 'middle' : style.align === 'end' ? 'end' : 'start';
+    const contentHeight = lines.length * lineHeight;
+    const firstBaseline = style.verticalAlign === 'middle'
+      ? element.y + (element.height - contentHeight) / 2 + fontSize
+      : style.verticalAlign === 'bottom'
+        ? element.y + element.height - contentHeight + fontSize
+        : element.y + fontSize + 8;
+    const tspans = lines.map((line, index) => `<tspan x="${textX}" dy="${index === 0 ? 0 : lineHeight}">${this.escapeXml(line)}</tspan>`).join('');
+    return `<text x="${textX}" y="${firstBaseline}" text-anchor="${textAnchor}" font-size="${fontSize}" font-weight="${style.fontWeight ?? 'normal'}" fill="${style.color ?? '#f8fafc'}" font-family="sans-serif">${tspans}</text>`;
   }
 
   /**
@@ -460,6 +626,23 @@ export class SignageRenderer {
 
     return await sharp(Buffer.from(svg), { density: 240 })
       .jpeg({ quality: 92, mozjpeg: true })
+      .toBuffer();
+  }
+
+  /** ページ撮影コンテンツ（SignageWebCapture）の最新画像を全面に収める。未撮影なら案内を出す。 */
+  private async renderWebPageCapture(webCaptureId: string): Promise<Buffer> {
+    let image: Buffer | null = null;
+    try {
+      image = await WebCaptureStorage.read(webCaptureId);
+    } catch (error) {
+      logger.warn({ err: error, webCaptureId }, 'Failed to read signage web capture image');
+    }
+    if (!image) {
+      return await this.renderMessage('ページ撮影待ち');
+    }
+    return await sharp(image)
+      .resize(WIDTH, HEIGHT, { fit: 'contain', background: BACKGROUND })
+      .jpeg({ quality: 90, mozjpeg: true })
       .toBuffer();
   }
 
@@ -868,6 +1051,12 @@ export class SignageRenderer {
   ): Promise<SelfInspectionMachineBoardRotationViewModel> {
     const resolved = resolveSelfInspectionMachineBoardConfig(config);
     const build = async (): Promise<SelfInspectionMachineBoardRotationViewModel> => {
+      if (resolved.targetMode === 'kiosk_active_sessions') {
+        return buildKioskActiveSelfInspectionMachineBoardRotationViewModel({
+          partsPerPage,
+          detailTopN,
+        });
+      }
       if (resolved.targetMode === 'auto_from_leaderboard_status') {
         return buildAutoSelfInspectionMachineBoardRotationViewModel({
           deviceScopeKey: resolved.deviceScopeKey ?? '',
@@ -908,9 +1097,27 @@ export class SignageRenderer {
     detailTopN: number
   ): Promise<Buffer> {
     const resolved = resolveSelfInspectionMachineBoardConfig(config);
-    const vm = await this.getSelfInspectionMachineBoardRotationViewModel(config, partsPerPage, detailTopN);
+    // The wire value is intentionally bounded at render time as well as at
+    // config parsing: a stale caller must not produce an overfull signage page.
+    const cappedPartsPerPage = Math.min(
+      sanitizeSelfInspectionMachineBoardPartsPerPage(partsPerPage),
+      MAX_SELF_INSPECTION_MACHINE_BOARD_PARTS_PER_PAGE
+    );
+    const vm = await this.getSelfInspectionMachineBoardRotationViewModel(
+      config,
+      cappedPartsPerPage,
+      detailTopN
+    );
 
     if (vm.totalPages < 1) {
+      if (resolved.targetMode === 'kiosk_active_sessions') {
+        const activeNote = vm.activeSessionHasMore
+          ? `（最新${vm.activeSessionLimit ?? 200}件を表示・続きあり）`
+          : '';
+        return await this.renderMessage(
+          `自主検査ボード: 検査中・判定待ちの自主検査はありません${activeNote}`
+        );
+      }
       const capNote = buildScheduleRowCapNote({
         scheduleRowCap: vm.scheduleRowCap,
         scheduleRowHasMore: vm.scheduleRowHasMore,
@@ -944,7 +1151,7 @@ export class SignageRenderer {
         String(resolved.maxAutoMachines ?? DEFAULT_SELF_INSPECTION_MACHINE_BOARD_MAX_AUTO_MACHINES)
       );
     }
-    stateKeyParts.push(String(partsPerPage), String(detailTopN));
+    stateKeyParts.push(String(cappedPartsPerPage), String(detailTopN));
     const stateKey = stateKeyParts.join(':');
     const pageIndex = getRotatingSlideIndex(this.selfInspectionMachineBoardSlideState, {
       stateKey,
@@ -1449,24 +1656,13 @@ export class SignageRenderer {
 
   /**
    * Pi3のサイネージ端末の温度・CPU負荷を取得（ClientStatusから）
-   * Pi3のClientDeviceを特定して、そのstatusClientIdでClientStatusを取得
+   * inventoryのstatus_agent_client_idに対応するClientStatusから取得
    */
   private async getClientSystemMetricsText(): Promise<string | null> {
     try {
-      // Pi3のサイネージ端末を特定（apiKeyが'client-key-raspberrypi3-signage1'のもの）
-      const pi3Client = await prisma.clientDevice.findUnique({
-        where: { apiKey: 'client-key-raspberrypi3-signage1' }
-      }) as { statusClientId?: string | null } | null;
-
-      if (!pi3Client || !pi3Client.statusClientId) {
-        // Pi3のClientDeviceが見つからない、またはstatusClientIdが設定されていない場合は
-        // Pi5サーバー自身の温度を表示（フォールバック）
-        return await this.getSystemMetricsText();
-      }
-
       // ClientStatusからPi3の温度・CPU負荷を取得
       const clientStatus = await prisma.clientStatus.findUnique({
-        where: { clientId: pi3Client.statusClientId }
+        where: { clientId: 'raspberrypi3-signage1' }
       });
 
       if (!clientStatus) {
@@ -1546,4 +1742,3 @@ export class SignageRenderer {
     }
   }
 }
-

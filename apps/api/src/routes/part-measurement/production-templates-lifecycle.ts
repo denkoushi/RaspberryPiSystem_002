@@ -40,7 +40,8 @@ export function registerProductionTemplateLifecycleRoutes(app: FastifyInstance, 
           sourceTemplateId: body.sourceTemplateId,
           targetFhincd: body.fhincd,
           targetProcessGroup: processGroup,
-          targetResourceCd: body.resourceCd
+          targetResourceCd: body.resourceCd,
+          targetFkojun: body.fkojun
         });
         await enqueueDrawingOcrAndWake(result.template.visualTemplateId, 'template_clone_for_schedule_key');
         return {

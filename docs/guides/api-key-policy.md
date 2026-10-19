@@ -21,7 +21,7 @@ update-frequency: low
 | APIキー | クライアントID | 用途 | 初期表示モード |
 |---------|---------------|------|--------------|
 | `client-demo-key` | `5c88681a-1f1c-4c7f-a5c7-fbfc0a7387a2` | デモ・開発用 | `TAG` (2タグスキャン) |
-| `client-key-raspberrypi3-signage1` | `d1f81cfa-af3c-4958-9252-7da69d4b7e96` | Pi3サイネージ用 | `PHOTO` (写真撮影持出) |
+| Vault-managed Pi3 signage client key | `d1f81cfa-af3c-4958-9252-7da69d4b7e96` | Pi3サイネージ用 | `PHOTO` (写真撮影持出) |
 | `client-key-raspberrypi4-kiosk1` | `43bb79fd-6f4c-42fb-b342-5531687581be` | Pi4キオスク用 | `PHOTO` (写真撮影持出) |
 
 ## 問題の背景
@@ -68,7 +68,7 @@ const loans = await loanService.findActive({ clientId: query.clientId || undefin
 | APIキー | 用途 | 説明 |
 |---------|------|------|
 | `client-demo-key` | デモ・開発用 | 開発環境やデモ環境で使用。すべてのキオスクで使用可能 |
-| `client-key-raspberrypi3-signage1` | Pi3サイネージ用 | Pi3のサイネージ表示専用。サイネージの設定（`defaultMode`など）を取得するために使用 |
+| Vault-managed Pi3 signage client key | Pi3サイネージ用 | Pi3のサイネージ表示専用。サイネージの設定（`defaultMode`など）を取得するために使用 |
 | `client-key-raspberrypi4-kiosk1` | Pi4キオスク用 | Pi4のキオスク専用。キオスクの設定（`defaultMode`など）を取得するために使用 |
 
 ### 3. カメラAPIの認証
@@ -142,4 +142,3 @@ const loansQuery = useActiveLoans(undefined, resolvedClientKey);
 - [API仕様書](../modules/tools/api.md)
 - [認証API](../api/auth.md)
 - [キオスク設定ガイド](./kiosk-setup.md)
-

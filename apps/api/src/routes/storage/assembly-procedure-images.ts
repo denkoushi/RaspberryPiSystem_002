@@ -1,8 +1,10 @@
+import { sendStorageReadError } from './shared.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authorizeRoles } from '../../lib/auth.js';
 import { findClientDeviceByApiKey } from '../../services/clients/client-device-auth.service.js';
 import { AssemblyProcedureImageStorage } from '../../lib/assembly-procedure-image-storage.js';
 import { buildPdfPageEtag, ifNoneMatchSatisfied } from './pdf-page-http-cache.js';
+import { ApiError } from '../../lib/errors.js';
 
 const ASSEMBLY_PROCEDURE_IMAGE_CACHE_CONTROL = 'private, max-age=86400, immutable';
 const ASSEMBLY_PROCEDURE_IMAGE_RATE_LIMIT = { max: 240, timeWindow: '1 minute' };
@@ -43,12 +45,14 @@ export function registerAssemblyProcedureImageStorageRoutes(app: FastifyInstance
         reply.type(contentType);
         return reply.send(buffer);
       } catch (error) {
+        if (error instanceof ApiError) throw error;
         const err = error instanceof Error ? error : new Error(String(error));
-        if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-          return reply.status(404).send({ message: '手順書画像が見つかりません' });
-        }
-        request.log.error({ err, imageUrl }, '組立手順書画像の読み込みに失敗しました');
-        return reply.status(500).send({ message: '手順書画像の読み込みに失敗しました' });
+        return sendStorageReadError(request, reply, err, {
+          notFoundMessage: '手順書画像が見つかりません',
+          failedMessage: '手順書画像の読み込みに失敗しました',
+          logMessage: '組立手順書画像の読み込みに失敗しました',
+          logContext: { err, imageUrl },
+        });
       }
     }
   );

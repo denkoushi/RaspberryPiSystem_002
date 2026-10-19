@@ -32,10 +32,10 @@ export type SchedulerRuntimeState = {
 
 const ERROR_WINDOW_MS = 60_000;
 
-export function createSchedulerRuntimeState(): SchedulerRuntimeState {
-  let enabled = false;
+export function createSchedulerRuntimeState(initialEnabled = false): SchedulerRuntimeState {
+  let enabled = initialEnabled;
   let role: SchedulerRole = 'stopped';
-  let databaseConnection: SchedulerDatabaseConnection = 'not-used';
+  let databaseConnection: SchedulerDatabaseConnection = initialEnabled ? 'disconnected' : 'not-used';
   let transitionGeneration = 0;
   let lastTransitionAt: string | undefined;
   let lastError: Error | undefined;

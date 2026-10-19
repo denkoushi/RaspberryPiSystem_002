@@ -10,7 +10,7 @@ import { HttpOnDemandLocalLlmRuntimeController } from './http-on-demand-local-ll
 import type { LocalLlmRuntimeControllerPort, LocalLlmRuntimeUseCase } from './local-llm-runtime-control.port.js';
 import { NoopLocalLlmRuntimeController } from './noop-local-llm-runtime.controller.js';
 
-const ROUTED_RUNTIME_USE_CASES: readonly InferenceUseCase[] = ['photo_label', 'document_summary'];
+const ROUTED_RUNTIME_USE_CASES: readonly InferenceUseCase[] = ['photo_label', 'business_hermes', 'document_summary'];
 
 type ProviderLocalLlmRuntimeControllerDeps = {
   fetchImpl: typeof fetch;
@@ -130,7 +130,7 @@ export class ProviderLocalLlmRuntimeController implements LocalLlmRuntimeControl
     if (useCase === 'agent_container_task') {
       return undefined;
     }
-    if (useCase === 'admin_console_chat' || useCase === 'stackchan_chat') {
+    if (useCase === 'admin_console_chat') {
       return this.deps.resolveAdminProvider();
     }
     try {
@@ -198,7 +198,6 @@ export class ProviderLocalLlmRuntimeController implements LocalLlmRuntimeControl
     if (adminProvider?.id === provider.id) {
       const adminModel = this.deps.resolveAdminModel();
       models.admin_console_chat = adminModel;
-      models.stackchan_chat = adminModel;
     }
     for (const useCase of ROUTED_RUNTIME_USE_CASES) {
       try {

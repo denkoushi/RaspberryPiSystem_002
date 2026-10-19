@@ -1,0 +1,412 @@
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { flushSync } from 'react-dom';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import * as machineName from '../productionSchedule/machineName';
+
+import { PlanningBoardResourceView } from './PlanningBoardResourceView';
+
+import type {
+  GrindingPlanningBoardItem,
+  GrindingPlanningBoardResourceOrderPlacement
+} from '@raspi-system/shared-types';
+
+class TestPointerEvent extends MouseEvent {
+  readonly pointerId: number;
+
+  constructor(type: string, init: MouseEventInit & { pointerId?: number } = {}) {
+    super(type, init);
+    this.pointerId = init.pointerId ?? 0;
+  }
+}
+
+function item(itemId: string, resourceCd: string): GrindingPlanningBoardItem {
+  return {
+    itemId,
+    kind: 'row',
+    itemRevision: 'revision-' + itemId,
+    version: 2,
+    sourceRowId: 'source-' + itemId,
+    fseiban: '26-1041',
+    fhincd: 'PART-' + itemId,
+    fhinmei: '部品' + itemId,
+    machineName: '研削機',
+    productNo: 'PRODUCT-' + itemId,
+    processOrder: '10',
+    originalResourceCd: resourceCd,
+    effectiveResourceCd: null,
+    originalDueDate: '2026-09-12',
+    effectiveDueDate: null,
+    originalRank: null,
+    alternateRank: null,
+    plannedQuantity: 1,
+    requiredMinutes: 5,
+    requiredMinutesKnown: true,
+    isCompleted: false,
+    progress: { completed: 0, total: 1, quantityKnown: false }
+  };
+}
+
+function renderView(
+  onClick = vi.fn(),
+  onDrop = vi.fn(),
+  onReorder: (item: GrindingPlanningBoardItem, targetItem: GrindingPlanningBoardItem, placement: GrindingPlanningBoardResourceOrderPlacement) => void = vi.fn(),
+  options: { onSpecialDueClick?: (item: GrindingPlanningBoardItem) => void; onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void } = {}
+) {
+  const sourceItem = item('a', '305');
+  const targetItem = item('b', '584');
+  render(
+    <PlanningBoardResourceView
+      items={[sourceItem, targetItem]}
+      seibanOrder={['26-1041']}
+      resources={['305', '584']}
+      resourceNameMap={{}}
+      allocation="alternate"
+      selectedItemIds={new Set()}
+      onToggleItem={vi.fn()}
+      onResourceClick={onClick}
+      onResourceDrop={onDrop}
+      onResourceReorder={onReorder}
+      onSpecialDueClick={options.onSpecialDueClick}
+      onRankChange={options.onRankChange}
+    />
+  );
+  return { sourceItem, targetItem, onClick, onDrop };
+}
+
+describe('PlanningBoardResourceView resource chip drag', () => {
+  beforeEach(() => {
+    vi.stubGlobal('PointerEvent', TestPointerEvent);
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('閾値未満は既存の資源CDクリックとして扱う', () => {
+    const { onClick, onDrop } = renderView();
+    const source = screen.getByRole('button', { name: '資源CD 305を変更' });
+    const sourcePane = source.closest('[data-planning-board-resource-pane]')!;
+
+    fireEvent.pointerDown(source, { pointerId: 1, button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(sourcePane, { pointerId: 1, clientX: 19, clientY: 10 });
+    fireEvent.pointerUp(sourcePane, { pointerId: 1, clientX: 19, clientY: 10 });
+    fireEvent.click(source);
+
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  it('閾値超過後はpaneへ一度だけdropし、直後のclickを抑止して次操作を許可する', () => {
+    const { onClick, onDrop, sourceItem } = renderView();
+    const source = screen.getByRole('button', { name: '資源CD 305を変更' });
+    const sourceRow = source.closest('tr')!;
+    sourceRow.style.outline = '1px solid blue';
+    sourceRow.style.outlineOffset = '-1px';
+    sourceRow.style.backgroundColor = 'red';
+    const sourcePane = source.closest('[data-planning-board-resource-pane]')!;
+    const targetPane = screen.getByTestId('planning-board-resource-view').querySelector('[data-resource-code="584"]');
+    expect(targetPane).not.toBeNull();
+    Object.defineProperty(document, 'elementsFromPoint', {
+      configurable: true,
+      value: vi.fn(() => [targetPane!])
+    });
+
+    fireEvent.pointerDown(source, { pointerId: 2, button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(sourcePane, { pointerId: 2, clientX: 21, clientY: 10 });
+    fireEvent.pointerMove(sourcePane, { pointerId: 2, clientX: 40, clientY: 10 });
+    expect(sourceRow).toHaveAttribute('data-planning-board-drag-source', 'true');
+    expect(sourceRow).toHaveStyle({ outline: '3px solid rgb(251 191 36)', outlineOffset: '-3px', backgroundColor: 'rgba(251,191,36,0.12)' });
+    expect(source).toHaveStyle({ opacity: '0.35' });
+    const ghost = document.body.querySelector(':scope > div[aria-hidden="true"]');
+    expect(ghost).toHaveTextContent('305部品a');
+    expect(ghost).toHaveClass('border-2', 'border-amber-400');
+    fireEvent.pointerUp(sourcePane, { pointerId: 2, clientX: 40, clientY: 10 });
+    expect(sourceRow).not.toHaveAttribute('data-planning-board-drag-source');
+    expect(sourceRow.style.outline).toBe('1px solid blue');
+    expect(sourceRow.style.outlineOffset).toBe('-1px');
+    expect(sourceRow.style.backgroundColor).toBe('red');
+    expect(source.style.opacity).toBe('');
+    expect(ghost).not.toBeInTheDocument();
+    fireEvent.click(source);
+
+    expect(onDrop).toHaveBeenCalledTimes(1);
+    expect(onDrop).toHaveBeenCalledWith(sourceItem, '584');
+    expect(onClick).not.toHaveBeenCalled();
+
+    fireEvent.pointerDown(source, { pointerId: 2, button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(sourcePane, { pointerId: 2, clientX: 10, clientY: 10 });
+    fireEvent.click(source);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('pointermoveをrAFにまとめ、pane外のゴーストをcleanupする', () => {
+    const { onDrop } = renderView();
+    const source = screen.getByRole('button', { name: '資源CD 305を変更' });
+    const sourcePane = source.closest('[data-planning-board-resource-pane]')!;
+    const frames: FrameRequestCallback[] = [];
+    const requestAnimationFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const cancelAnimationFrame = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+    Object.defineProperty(document, 'elementsFromPoint', {
+      configurable: true,
+      value: vi.fn(() => [])
+    });
+
+    fireEvent.pointerDown(source, { pointerId: 3, button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(sourcePane, { pointerId: 3, clientX: 21, clientY: 10 });
+    fireEvent.pointerMove(sourcePane, { pointerId: 3, clientX: 31, clientY: 10 });
+
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(1);
+    expect(document.body.querySelector(':scope > div[aria-hidden="true"]')).toBeInTheDocument();
+    fireEvent.pointerCancel(sourcePane, { pointerId: 3, clientX: 31, clientY: 10 });
+
+    expect(cancelAnimationFrame).toHaveBeenCalledTimes(1);
+    expect(document.body.querySelector(':scope > div[aria-hidden="true"]')).not.toBeInTheDocument();
+    expect(source.closest('tr')).not.toHaveAttribute('data-planning-board-drag-source');
+    expect(source.closest('tr')!.style.outline).toBe('');
+    expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  it('同一paneでは行の前後を判定して並べ替えcallbackを呼ぶ', () => {
+    const onReorder = vi.fn();
+    const sourceItem = item('a', '305');
+    const targetItem = item('b', '305');
+    render(
+      <PlanningBoardResourceView
+        items={[sourceItem, targetItem]}
+        seibanOrder={['26-1041']}
+        resources={['305']}
+        resourceNameMap={{}}
+        allocation="alternate"
+        selectedItemIds={new Set()}
+        onToggleItem={vi.fn()}
+        onResourceClick={vi.fn()}
+        onResourceReorder={onReorder}
+      />
+    );
+    const source = screen.getAllByRole('button', { name: '資源CD 305を変更' })[0]!;
+    const pane = source.closest('[data-planning-board-resource-pane]')!;
+    const targetRow = screen.getByTestId('planning-board-item-b');
+    Object.defineProperty(document, 'elementsFromPoint', {
+      configurable: true,
+      value: vi.fn(() => [targetRow])
+    });
+    vi.spyOn(targetRow, 'getBoundingClientRect').mockReturnValue({ top: 100, bottom: 140, height: 40 } as DOMRect);
+
+    fireEvent.pointerDown(source, { pointerId: 4, button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(pane, { pointerId: 4, clientX: 10, clientY: 21 });
+    fireEvent.pointerUp(pane, { pointerId: 4, clientX: 10, clientY: 130 });
+
+    expect(onReorder).toHaveBeenCalledWith(sourceItem, targetItem, 'after');
+  });
+
+  it('特別納期モードは行本体・納期・badgeだけをtoggleし、既存controlでは発火しない', () => {
+    const sourceItem = { ...item('a', '305'), specialDue: { kind: 'today' as const, expiresAt: '2099-09-12T00:00:00.000Z' } };
+    const onSpecialDueClick = vi.fn();
+    const onRankChange = vi.fn();
+    render(
+      <PlanningBoardResourceView
+        items={[sourceItem]}
+        seibanOrder={['26-1041']}
+        resources={['305']}
+        resourceNameMap={{}}
+        allocation="alternate"
+        selectedItemIds={new Set()}
+        onToggleItem={vi.fn()}
+        onResourceClick={vi.fn()}
+        onSpecialDueClick={onSpecialDueClick}
+        onRankChange={onRankChange}
+        specialDueMode="today"
+      />
+    );
+    const row = screen.getByTestId('planning-board-item-a');
+
+    fireEvent.click(within(row).getByText('今日中'));
+    fireEvent.click(within(row).getByText('09/12'));
+    expect(onSpecialDueClick).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(within(row).getByRole('button', { name: '資源CD 305を変更' }));
+    fireEvent.click(within(row).getByLabelText('部品aを選択'));
+    const rankButton = within(row).getByRole('button', { name: '部品aの個別指定' });
+    fireEvent.click(rankButton);
+    expect(onSpecialDueClick).toHaveBeenCalledTimes(2);
+    expect(onRankChange).not.toHaveBeenCalled();
+  });
+
+  it('時刻更新で期限表示が変わる行だけ再描画し、期限と内容の変更を反映する', () => {
+    const deadline = Date.parse('2026-09-14T08:00:00Z');
+    const expiring = { ...item('a', '305'), specialDue: { kind: 'today' as const, expiresAt: new Date(deadline).toISOString() } };
+    const plain = item('b', '305');
+    const props = { items: [expiring, plain], seibanOrder: ['26-1041'], resources: ['305'], resourceNameMap: {},
+      allocation: 'alternate' as const, selectedItemIds: new Set<string>(), onToggleItem: vi.fn(), onResourceClick: vi.fn() };
+    const renders = vi.spyOn(machineName, 'normalizeMachineName');
+    const view = render(<PlanningBoardResourceView {...props} nowMs={deadline - 30_000} />);
+    renders.mockClear();
+    view.rerender(<PlanningBoardResourceView {...props} nowMs={deadline - 1} />);
+    expect(renders).not.toHaveBeenCalled();
+    expect(screen.getByText('今日中')).toHaveClass('text-amber-200');
+    view.rerender(<PlanningBoardResourceView {...props} nowMs={deadline} />);
+    expect(renders).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('今日中')).toHaveClass('text-rose-300');
+    renders.mockClear();
+    view.rerender(<PlanningBoardResourceView {...props} nowMs={deadline + 30_000} />);
+    expect(renders).not.toHaveBeenCalled();
+    view.rerender(<PlanningBoardResourceView {...props} nowMs={deadline - 1} />);
+    expect(renders).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('今日中')).toHaveClass('text-amber-200');
+    view.rerender(<PlanningBoardResourceView {...props} items={[{ ...expiring, fhinmei: '更新部品' }, plain]} nowMs={deadline - 1} />);
+    expect(screen.getByText('更新部品')).toBeInTheDocument();
+  });
+});
+
+describe('PlanningBoardResourceView pane layout', () => {
+  const props = {
+    items: Array.from({ length: 10 }, (_, index) => item(String(index), '305')),
+    resources: ['305', '584', '999'], seibanOrder: ['26-1041'], resourceNameMap: {},
+    allocation: 'alternate' as const, selectedItemIds: new Set<string>(),
+    onToggleItem: vi.fn(), onResourceClick: vi.fn(), preferenceScope: 'site:grinding'
+  };
+  const order = () => [...screen.getByTestId('planning-board-resource-view').children].map((slot) => (slot as HTMLElement).dataset.resourceSlot);
+  const handle = () => screen.getByRole('button', { name: '資源CD 305のペインを並べ替え' });
+  const target = () => screen.getByTestId('planning-board-resource-view').querySelector('[data-resource-code="584"]')!;
+
+  beforeEach(() => {
+    vi.stubGlobal('PointerEvent', TestPointerEvent);
+    localStorage.clear();
+    vi.useFakeTimers();
+    Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => [target()]) });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('記号だけで複数ペインを独立して伸縮し、元の配置枠とスクロール位置を維持する', () => {
+    render(<PlanningBoardResourceView {...props} />);
+    const first = screen.getByRole('button', { name: '資源CD 305を拡張' });
+    const slot = first.closest('[data-resource-slot]') as HTMLElement;
+    const height = slot.style.height;
+    const scroller = slot.querySelector('[data-resource-scroll]')!;
+    scroller.scrollTop = 120;
+    expect(first.textContent).toBe('↧');
+    expect(first).not.toHaveAttribute('title');
+    fireEvent.click(first);
+    fireEvent.click(screen.getByRole('button', { name: '資源CD 584を拡張' }));
+    expect(screen.getByRole('button', { name: '資源CD 305を縮小' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: '資源CD 584を縮小' })).toHaveAttribute('aria-expanded', 'true');
+    expect(slot.style.height).toBe(height);
+    fireEvent.click(first);
+    expect(first.textContent).toBe('↧');
+    expect(screen.getByRole('button', { name: '資源CD 584を縮小' })).toHaveAttribute('aria-expanded', 'true');
+    expect(scroller.scrollTop).toBe(120);
+    expect(scroller.querySelectorAll('tbody tr')).toHaveLength(10);
+    expect(order()).toEqual(props.resources);
+  });
+
+  it('長押し後だけ移動を確定し、再表示でも端末内の保存順を復元する', () => {
+    const view = render(<PlanningBoardResourceView {...props} />);
+    fireEvent.pointerDown(handle(), { pointerId: 20, button: 0, clientX: 5, clientY: 5 });
+    act(() => vi.advanceTimersByTime(449));
+    expect(document.querySelector('[data-planning-board-pane-ghost]')).toBeNull();
+    act(() => vi.advanceTimersByTime(1));
+    expect(document.querySelector('[data-planning-board-pane-ghost]')).not.toBeNull();
+    fireEvent.pointerMove(handle(), { pointerId: 20, clientX: 400, clientY: 5 });
+    fireEvent.pointerUp(handle(), { pointerId: 20, clientX: 400, clientY: 5 });
+    expect(order()).toEqual(['584', '305', '999']);
+    expect(document.querySelector('[data-planning-board-pane-ghost]')).toBeNull();
+    view.unmount();
+    render(<PlanningBoardResourceView {...props} />);
+    expect(order()).toEqual(['584', '305', '999']);
+  });
+
+  it.each(['short', 'early-move', 'cancel', 'capture-lost', 'blur', 'outside'] as const)('%sでは保存せずゴーストも残さない', (mode) => {
+    render(<PlanningBoardResourceView {...props} />);
+    fireEvent.pointerDown(handle(), { pointerId: 21, button: 0, clientX: 5, clientY: 5 });
+    if (mode === 'early-move') fireEvent.pointerMove(handle(), { pointerId: 21, clientX: 40, clientY: 5 });
+    if (mode !== 'short') act(() => vi.advanceTimersByTime(450));
+    if (mode === 'cancel') fireEvent.pointerCancel(handle(), { pointerId: 21 });
+    if (mode === 'capture-lost') fireEvent.lostPointerCapture(handle(), { pointerId: 21 });
+    if (mode === 'blur') fireEvent.blur(window);
+    if (mode === 'outside') vi.mocked(document.elementsFromPoint).mockReturnValue([]);
+    fireEvent.pointerUp(handle(), { pointerId: 21, clientX: 400, clientY: 5 });
+    act(() => vi.advanceTimersByTime(500));
+    expect(order()).toEqual(props.resources);
+    expect(document.querySelector('[data-planning-board-pane-ghost]')).toBeNull();
+    expect(localStorage.getItem('kiosk.planning-board.resource-panes:site:grinding')).toBeNull();
+  });
+
+  it('移動中のpointermoveは1フレームにまとめ、アンマウントで後始末する', () => {
+    const view = render(<PlanningBoardResourceView {...props} />);
+    fireEvent.pointerDown(handle(), { pointerId: 22, button: 0, clientX: 5, clientY: 5 });
+    act(() => vi.advanceTimersByTime(450));
+    const frame = vi.spyOn(window, 'requestAnimationFrame');
+    fireEvent.pointerMove(handle(), { pointerId: 22, clientX: 40, clientY: 5 });
+    fireEvent.pointerMove(handle(), { pointerId: 22, clientX: 50, clientY: 5 });
+    expect(frame).toHaveBeenCalledTimes(1);
+    view.unmount();
+    expect(document.querySelector('[data-planning-board-pane-ghost]')).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('保存順はスコープごとに分離し、新規資源は末尾へ、復帰資源は元の位置へ戻す', () => {
+    localStorage.setItem('kiosk.planning-board.resource-panes:site:grinding', JSON.stringify(['584', '305', '999']));
+    const view = render(<PlanningBoardResourceView {...props} />);
+    expect(order()).toEqual(['584', '305', '999']);
+    view.rerender(<PlanningBoardResourceView {...props} items={[]} resources={['305', '999', '777']} />);
+    expect(order()).toEqual(['305', '999', '777']);
+    view.rerender(<PlanningBoardResourceView {...props} />);
+    expect(order()).toEqual(['584', '305', '999']);
+    view.rerender(<PlanningBoardResourceView {...props} preferenceScope="site:cutting" />);
+    expect(order()).toEqual(props.resources);
+  });
+
+  it('壊れた保存データや保存不可でも表示とキーボード並べ替えを継続できる', () => {
+    localStorage.setItem('kiosk.planning-board.resource-panes:site:grinding', '{broken');
+    render(<PlanningBoardResourceView {...props} />);
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
+    fireEvent.keyDown(handle(), { key: 'ArrowRight', altKey: true });
+    expect(order()).toEqual(['584', '305', '999']);
+  });
+});
+
+describe('PlanningBoardResourceView height measurement', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('監視からの再計測が未反映のまま同期の再描画が来ても更新ループにならない', () => {
+    const observerCallbacks: Array<() => void> = [];
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: () => void) { observerCallbacks.push(callback); }
+      observe() {}
+      disconnect() {}
+    });
+    const innerHeight = vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(800);
+    const viewProps = {
+      seibanOrder: ['26-1041'],
+      resources: ['305', '584'],
+      resourceNameMap: {},
+      allocation: 'alternate' as const,
+      selectedItemIds: new Set<string>(),
+      onToggleItem: vi.fn(),
+      onResourceClick: vi.fn()
+    };
+    const view = render(<PlanningBoardResourceView {...viewProps} items={[item('a', '305')]} />);
+
+    // A low-priority remeasure stays queued behind the synchronous render below.
+    innerHeight.mockReturnValue(900);
+    observerCallbacks.at(-1)!();
+    innerHeight.mockReturnValue(1000);
+    expect(() => flushSync(() => {
+      view.rerender(<PlanningBoardResourceView {...viewProps} items={[item('a', '305'), item('b', '584')]} />);
+    })).not.toThrow();
+    expect(screen.getByTestId('planning-board-item-b')).toBeInTheDocument();
+  });
+});

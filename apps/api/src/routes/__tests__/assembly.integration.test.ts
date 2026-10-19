@@ -13,7 +13,9 @@ import {
   SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL
 } from '../../services/production-schedule/constants.js';
 import { normalizeMachineNameForCompare } from '../../services/production-schedule/machine-name-compare.js';
+import { resetMachineNameFseibanMatchCaches } from '../../services/production-schedule/machine-name-fseiban-match.service.js';
 import { SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION } from '../../services/production-schedule/production-schedule-settings.service.js';
+import { configureTestDueManagementAccessPassword } from '../../test/due-management-access-password.js';
 import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestUser } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -94,7 +96,8 @@ async function publishProcedureDocument(
   const publishRes = await app.inject({
     method: 'POST',
     url: `/api/assembly/procedure-documents/${documentId}/publish`,
-    headers: publishHeaders
+    headers: { ...publishHeaders, 'Content-Type': 'application/json' },
+    payload: { accessPassword: '2520' }
   });
   expect(publishRes.statusCode).toBe(200);
   expect(publishRes.json().document.status).toBe('published');
@@ -274,8 +277,250 @@ describe('assembly torque management API', () => {
   });
 
   beforeEach(async () => {
+    resetMachineNameFseibanMatchCaches();
     await cleanAssemblyTables();
+    await configureTestDueManagementAccessPassword();
     await cleanAssemblySeibanSearchFixtures();
+  });
+
+  it('REQUIREDテンプレートは適合グループ付きで作成し、不完全な締付条件は一切残さない', async () => {
+    const client = await createTestClientDevice();
+    const headers = {
+      'x-client-key': client.apiKey,
+      'Content-Type': 'application/json'
+    };
+    const document = await uploadPublishedProcedureDocument(
+      app,
+      headers,
+      'ガイド作成契約'
+    );
+    const capabilityGroup = await prisma.torqueWrenchCapabilityGroup.create({
+      data: {
+        name: `Assembly Guided Create ${randomUUID()}`,
+        nominalDiameter: 'M6',
+        boltLengthMm: 30,
+        material: 'SCM435',
+        strengthClass: '10.9'
+      }
+    });
+    const requiredPayload = (modelCode: string) => ({
+      modelCode,
+      procedurePattern: '標準',
+      name: `${modelCode} 標準`,
+      procedureDocumentId: document.id,
+      traceabilityMode: 'REQUIRED',
+      areas: [
+        {
+          sortOrder: 0,
+          processNo: '10',
+          areaCode: 'A1',
+          areaName: '本体組立',
+          unitCode: 'U1',
+          requireManualAdvance: true,
+          bolts: [
+            {
+              sortOrder: 0,
+              markerNo: 1,
+              xRatio: 0.5,
+              yRatio: 0.5,
+              boltSpec: 'M6×30 / SCM435 / 10.9',
+              nominalDiameter: 'Ｍ ６',
+              boltLengthMm: 30,
+              material: 'scm 435',
+              strengthClass: '10.9',
+              capabilityGroupId: capabilityGroup.id,
+              nominalTorque: 10,
+              lowerLimit: 9,
+              upperLimit: 11,
+              unit: 'N·m'
+            }
+          ]
+        }
+      ]
+    });
+
+    const createdResponse = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: requiredPayload('GUIDED-VALID')
+    });
+    expect(createdResponse.statusCode).toBe(200);
+    const createdId = createdResponse.json().template.id as string;
+    const stored = await prisma.assemblyTemplate.findUniqueOrThrow({
+      where: { id: createdId },
+      include: {
+        procedureDocument: true,
+        areas: { include: { bolts: true } }
+      }
+    });
+    expect(stored).toMatchObject({
+      modelCode: 'GUIDED-VALID',
+      traceabilityMode: 'REQUIRED',
+      procedureDocument: { id: document.id }
+    });
+    expect(stored.areas).toHaveLength(1);
+    expect(stored.areas[0]!.bolts).toHaveLength(1);
+    expect(stored.areas[0]!.bolts[0]).toMatchObject({
+      nominalDiameter: 'M6',
+      material: 'SCM435',
+      strengthClass: '10.9',
+      capabilityGroupId: capabilityGroup.id
+    });
+
+    const withoutBolts = requiredPayload('GUIDED-NO-BOLTS');
+    withoutBolts.areas[0]!.bolts = [];
+    const withoutBoltsResponse = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: withoutBolts
+    });
+    expect(withoutBoltsResponse.statusCode).toBe(400);
+
+    const withoutCondition = requiredPayload('GUIDED-NO-CONDITION');
+    withoutCondition.areas[0]!.bolts[0]!.nominalDiameter = '';
+    const withoutConditionResponse = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: withoutCondition
+    });
+    expect(withoutConditionResponse.statusCode).toBe(400);
+
+    const mismatchedGroup = requiredPayload('GUIDED-GROUP-MISMATCH');
+    mismatchedGroup.areas[0]!.bolts[0]!.material = 'SUS304';
+    const mismatchedGroupResponse = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: mismatchedGroup
+    });
+    expect(mismatchedGroupResponse.statusCode).toBe(400);
+
+    expect(
+      await prisma.assemblyTemplate.count({
+        where: { modelCode: { startsWith: 'GUIDED-', not: 'GUIDED-VALID' } }
+      })
+    ).toBe(0);
+
+    const changedPattern = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/templates/${createdId}/revise`,
+      headers,
+      payload: { procedurePattern: '別パターン' }
+    });
+    expect(changedPattern.statusCode).toBe(400);
+    expect(
+      await prisma.assemblyTemplate.findUnique({
+        where: { id: createdId },
+        select: { isActive: true, version: true }
+      })
+    ).toEqual({ isActive: true, version: 1 });
+  });
+
+  it('allows blank area labels and keeps tightening IDs scoped to their area', async () => {
+    const client = await createTestClientDevice();
+    const headers = {
+      'x-client-key': client.apiKey,
+      'Content-Type': 'application/json'
+    };
+    const document = await uploadPublishedProcedureDocument(
+      app,
+      headers,
+      '空欄工程契約'
+    );
+    const payload = buildTemplatePayload(document.id, {
+      modelCode: 'EMPTY-AREA-LABELS',
+      procedurePattern: '標準',
+      name: '空欄工程ラベル'
+    });
+    payload.areas[0] = {
+      ...payload.areas[0]!,
+      processNo: '  ',
+      areaCode: '',
+      areaName: '',
+      unitCode: ''
+    };
+    payload.areas.push({
+      ...payload.areas[0]!,
+      sortOrder: 1,
+      bolts: payload.areas[0]!.bolts.map((bolt) => ({
+        ...bolt,
+        markerNo: 2
+      }))
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload
+    });
+
+    expect(response.statusCode).toBe(200);
+    const savedAreas = response.json().template.areas as Array<{
+      processNo: string;
+      areaCode: string;
+      areaName: string;
+      unitCode: string;
+      bolts: Array<{ tighteningId: string }>;
+    }>;
+    expect(savedAreas).toHaveLength(2);
+    expect(
+      savedAreas.every(
+        (area) =>
+          area.processNo === '' &&
+          area.areaCode === '' &&
+          area.areaName === '' &&
+          area.unitCode === ''
+      )
+    ).toBe(true);
+    expect(savedAreas.map((area) => area.processNo)).toEqual(['', '']);
+    expect(savedAreas.map((area) => area.areaCode)).toEqual(['', '']);
+    expect(savedAreas.map((area) => area.areaName)).toEqual(['', '']);
+    expect(savedAreas.map((area) => area.unitCode)).toEqual(['', '']);
+    expect(savedAreas.map((area) => area.bolts[0]!.tighteningId)).toEqual([
+      'P7-A13-U1-B1',
+      'P7-A13-U1-B1'
+    ]);
+
+    const setAreaField = (
+      field: 'processNo' | 'areaCode' | 'areaName' | 'unitCode',
+      value: unknown
+    ) => {
+      const next = structuredClone(payload);
+      const area = next.areas[0] as unknown as Record<string, unknown>;
+      area[field] = value;
+      return next;
+    };
+    const omitAreaField = (
+      field: 'processNo' | 'areaCode' | 'areaName' | 'unitCode'
+    ) => {
+      const next = structuredClone(payload);
+      const area = next.areas[0] as unknown as Record<string, unknown>;
+      delete area[field];
+      return next;
+    };
+    const invalidPayloads = [
+      ...(['processNo', 'areaCode', 'areaName', 'unitCode'] as const).map(
+        (field) => [`${field} key omitted`, omitAreaField(field)] as const
+      ),
+      ...(['processNo', 'areaCode', 'areaName', 'unitCode'] as const).map(
+        (field) => [`${field} null`, setAreaField(field, null)] as const
+      ),
+      ['processNo over max', setAreaField('processNo', 'x'.repeat(81))] as const,
+      ['areaName over max', setAreaField('areaName', 'x'.repeat(201))] as const
+    ];
+    for (const [label, invalidPayload] of invalidPayloads) {
+      const invalidResponse = await app.inject({
+        method: 'POST',
+        url: '/api/assembly/templates',
+        headers,
+        payload: invalidPayload
+      });
+      expect(invalidResponse.statusCode, label).toBe(400);
+    }
   });
 
   it('同一作業セッションの同時取消は1件だけ成功する', async () => {
@@ -1092,7 +1337,11 @@ describe('assembly torque management API', () => {
       fseiban: 'ASMTEST-A1',
       machineName: 'MH-AX',
       machineNameSource: 'production_schedule',
-      activeTemplate: { id: activeTemplateId, name: 'MH-AX 標準' }
+      activeTemplate: {
+        id: activeTemplateId,
+        name: 'MH-AX 標準',
+        traceabilityMode: 'LEGACY'
+      }
     });
     expect(candidates[1]).toMatchObject({
       fseiban: 'ASMTEST-B2',
@@ -1106,6 +1355,71 @@ describe('assembly torque management API', () => {
       machineNameSource: 'unregistered',
       activeTemplate: null
     });
+  });
+
+  it('lists authenticated assembly machine-name candidates from winner and supplement data', async () => {
+    await ensureProductionScheduleDashboard();
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey };
+
+    await createScheduleRow({
+      FSEIBAN: 'ASMTEST-MACHINE-1',
+      FHINCD: 'MH001',
+      FHINMEI: 'Ｌ３００ＫＰ－２',
+      FSIGENCD: 'R1',
+      FKOJUN: '1',
+      ProductNo: '1'
+    });
+    await prisma.productionScheduleSeibanMachineNameSupplement.create({
+      data: {
+        sourceCsvDashboardId: PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
+        fseiban: 'ASMTEST-MACHINE-2',
+        machineName: 'L300KP-10'
+      }
+    });
+    resetMachineNameFseibanMatchCaches();
+
+    const unauthorized = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/machine-name-candidates?digitQuery=300&q=kp'
+    });
+    expect(unauthorized.statusCode).toBe(401);
+
+    const invalid = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/machine-name-candidates?digitQuery=30A',
+      headers
+    });
+    expect(invalid.statusCode).toBe(400);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/machine-name-candidates?digitQuery=300&q=kp&limit=40',
+      headers
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      candidates: ['Ｌ３００ＫＰ－２', 'L300KP-10'],
+      hasMore: false
+    });
+
+    await prisma.productionScheduleSeibanMachineNameSupplement.createMany({
+      data: Array.from({ length: 41 }, (_, index) => ({
+        sourceCsvDashboardId: PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
+        fseiban: `ASMTEST-CAP-${index + 1}`,
+        machineName: `CAPMODEL-${index + 1}`
+      }))
+    });
+    resetMachineNameFseibanMatchCaches();
+    const limited = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/machine-name-candidates?q=capmodel&limit=40',
+      headers
+    });
+    expect(limited.statusCode).toBe(200);
+    expect(limited.json().candidates).toHaveLength(40);
+    expect(limited.json().candidates.slice(0, 3)).toEqual(['CAPMODEL-1', 'CAPMODEL-2', 'CAPMODEL-3']);
+    expect(limited.json().hasMore).toBe(true);
   });
 
   it('resumes in-progress work by seiban and serial and lists in-progress summaries', async () => {
@@ -2584,7 +2898,7 @@ describe('assembly torque management API', () => {
     });
     expect(activeTemplate?._count.procedureItems).toBe(2);
 
-    const [movedLineage, staleMovedLineage] = await Promise.all([
+    const [movedLineage, secondMovedLineage] = await Promise.all([
       app.inject({
         method: 'POST',
         url: `/api/assembly/templates/${activeTemplate!.id}/revise`,
@@ -2598,13 +2912,13 @@ describe('assembly torque management API', () => {
         payload: { modelCode: 'UNIFIED-LOCK-MOVED-B' }
       })
     ]);
-    expect([movedLineage.statusCode, staleMovedLineage.statusCode].sort()).toEqual([200, 409]);
+    expect([movedLineage.statusCode, secondMovedLineage.statusCode].sort()).toEqual([400, 400]);
     expect(
       await prisma.assemblyTemplate.findUnique({
         where: { id: activeTemplate!.id },
         select: { isActive: true }
       })
-    ).toEqual({ isActive: false });
+    ).toEqual({ isActive: true });
     expect(
       await prisma.assemblyTemplate.count({
         where: {
@@ -2612,7 +2926,7 @@ describe('assembly torque management API', () => {
           isActive: true
         }
       })
-    ).toBe(1);
+    ).toBe(0);
   });
 
   it('reads the retained legacy sequence internally for an unversioned work session', async () => {

@@ -44,6 +44,8 @@ export function KioskInstrumentBorrowPage() {
   const selfInspectionSessionId = searchParams.get('selfInspectionSessionId')?.trim() ?? '';
   const selfInspectionEntryIndexRaw = searchParams.get('selfInspectionEntryIndex')?.trim() ?? '';
   const selfInspectionMode = searchParams.get('selfInspectionMode')?.trim() === 'inspector' ? 'inspector' : 'operator';
+  const measurementActorAuthenticationId =
+    searchParams.get('measurementActorAuthenticationId')?.trim() ?? '';
   const selfInspectionEntryIndex = Number(selfInspectionEntryIndexRaw);
   const isSelfInspectionPreUseMode =
     Boolean(selfInspectionSessionId) && Number.isFinite(selfInspectionEntryIndex) && selfInspectionEntryIndex >= 0;
@@ -347,6 +349,11 @@ export function KioskInstrumentBorrowPage() {
           setIsSubmitting(false);
           return;
         }
+        if (!measurementActorAuthenticationId) {
+          setMessage('作業者NFC認証がありません。自主検査画面で社員タグを再度スキャンしてください。');
+          setIsSubmitting(false);
+          return;
+        }
         const recordPreUseInspection =
           selfInspectionMode === 'inspector'
             ? recordSelfInspectionInspectorInstrumentPreUseInspection
@@ -356,7 +363,7 @@ export function KioskInstrumentBorrowPage() {
           Math.floor(selfInspectionEntryIndex),
           {
             instrumentTagUid: tagUid,
-            employeeTagUid: effectiveEmployeeUid
+            measurementActorAuthenticationId
           },
           resolvedClientKey
         );
@@ -445,6 +452,7 @@ export function KioskInstrumentBorrowPage() {
     resolvedClientId,
     resolvedClientKey,
     isSelfInspectionPreUseMode,
+    measurementActorAuthenticationId,
     selfInspectionMode,
     selfInspectionEntryIndex,
     selfInspectionSessionId

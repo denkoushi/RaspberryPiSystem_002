@@ -21,10 +21,16 @@
 
     - name: Archive directory on client
       become: true
-      ansible.builtin.archive:
-        path: "{{ client_dir_path }}"
-        dest: "/tmp/{{ inventory_hostname }}_{{ client_dir_path | basename }}.tar.gz"
-        format: gz
+      ansible.builtin.command:
+        argv:
+          - tar
+          - --create
+          - --gzip
+          - --file
+          - "/tmp/{{ inventory_hostname }}_{{ client_dir_path | basename }}.tar.gz"
+          - --directory
+          - "{{ client_dir_path | dirname }}"
+          - "{{ client_dir_path | basename }}"
       register: archive_result
       ignore_errors: true
 
@@ -57,5 +63,4 @@
         path: "/tmp/{{ inventory_hostname }}_{{ client_dir_path | basename }}.tar.gz"
         state: absent
       ignore_errors: true
-
 

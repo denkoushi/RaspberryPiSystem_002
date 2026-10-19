@@ -3,6 +3,7 @@ import { authorizeRoles } from '../../lib/auth.js';
 import { logger } from '../../lib/logger.js';
 import { assertKioskApiClientKeyValid } from '../../services/clients/client-device-auth.service.js';
 import {
+  getPartMeasurementDrawingDimensionMapService,
   getPartMeasurementDrawingOcrService,
   PART_MEASUREMENT_DRAWING_OCR_QUEUE_PRIORITY,
   PartMeasurementResolveService,
@@ -18,10 +19,12 @@ import { SelfInspectionPaperReportIssueService } from '../../services/part-measu
 import { SelfInspectionPaperReportResolver } from '../../services/part-measurement/self-inspection-paper-report-resolver.service.js';
 import { SelfInspectionPaperOcrReviewService } from '../../services/part-measurement/self-inspection-paper-ocr-review.service.js';
 import { SelfInspectionPaperImportService } from '../../services/part-measurement/self-inspection-paper-import.service.js';
+import { SelfInspectionItemLifecycleService } from '../../services/part-measurement/self-inspection-item-lifecycle.service.js';
 import { registerVisualTemplateRoutes } from './visual-templates.js';
 import { registerSheetRoutes } from './sheets.js';
 import { registerProductionTemplateReadRoutes } from './production-templates-read.js';
 import { registerSelfInspectionRoutes } from './self-inspection.js';
+import { registerSelfInspectionReductionRoutes } from './self-inspection-reduction.js';
 import { registerProductionTemplateCreateRoutes } from './production-templates-create.js';
 import { registerInspectionDrawingTemplateRoutes } from './inspection-drawing-templates.js';
 import { registerProductionTemplateLifecycleRoutes } from './production-templates-lifecycle.js';
@@ -80,6 +83,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     const sheetService = new PartMeasurementSheetService();
     const templateService = new PartMeasurementTemplateService();
     const selfInspectionService = new SelfInspectionService();
+    const selfInspectionItemLifecycleService = new SelfInspectionItemLifecycleService();
     const paperReportIssueService = new SelfInspectionPaperReportIssueService();
     const paperReportResolver = new SelfInspectionPaperReportResolver();
     const paperOcrReviewService = new SelfInspectionPaperOcrReviewService(paperReportResolver);
@@ -88,6 +92,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     const visualTemplateService = new PartMeasurementVisualTemplateService();
     const measurementLabelSettingsService = new InspectionDrawingMeasurementLabelSettingsService();
     const drawingOcrService = getPartMeasurementDrawingOcrService();
+    const drawingDimensionMapService = getPartMeasurementDrawingDimensionMapService();
 
     const enqueueDrawingOcrAndWake = async (
       visualTemplateId: string | null | undefined,
@@ -133,6 +138,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     sheetService,
     templateService,
     selfInspectionService,
+    selfInspectionItemLifecycleService,
     paperReportIssueService,
     paperReportResolver,
     paperOcrReviewService,
@@ -141,6 +147,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     visualTemplateService,
     measurementLabelSettingsService,
     drawingOcrService,
+    drawingDimensionMapService,
     enqueueDrawingOcrAndWake,
     createInspectionDrawingEvaluationSetup
   };
@@ -149,6 +156,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
   registerSheetRoutes(app, deps);
   registerProductionTemplateReadRoutes(app, deps);
   registerSelfInspectionRoutes(app, deps);
+  registerSelfInspectionReductionRoutes(app, deps);
   registerProductionTemplateCreateRoutes(app, deps);
   registerInspectionDrawingMeasurementLabelSettingRoutes(app, deps);
   registerInspectionDrawingTemplateRoutes(app, deps);

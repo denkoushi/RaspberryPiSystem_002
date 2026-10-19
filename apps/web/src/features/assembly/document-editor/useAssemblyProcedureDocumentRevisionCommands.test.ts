@@ -1,0 +1,249 @@
+import { act, renderHook } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const apiMocks = vi.hoisted(() => ({
+  remove: vi.fn(),
+  verifyPassword: vi.fn(),
+  createRevision: vi.fn(),
+  publish: vi.fn(), approvePublish: vi.fn(),
+  saveOverlays: vi.fn()
+}));
+
+vi.mock('../../../api/client', () => ({
+  deleteAssemblyProcedureDocument: apiMocks.remove,
+  verifyAssemblyTemplateAccessPassword: apiMocks.verifyPassword,
+  createAssemblyProcedureDocumentRevision: apiMocks.createRevision,
+  saveAssemblyProcedureDocumentOverlays: apiMocks.saveOverlays,
+  getAssemblyProcedureDocument: vi.fn(),
+  publishAssemblyProcedureDocument: apiMocks.publish,
+  approvePublishAssemblyProcedureDocument: apiMocks.approvePublish,
+  discardAssemblyProcedureDocumentRevision: vi.fn()
+}));
+
+import { useAssemblyProcedureDocumentRevisionCommands } from './useAssemblyProcedureDocumentRevisionCommands';
+
+import type { AssemblyProcedureDocumentDto } from '../types';
+import type { AssemblyProcedureDocumentRevisionCommandSession } from './useAssemblyProcedureDocumentRevisionCommands';
+
+const documentFixture: AssemblyProcedureDocumentDto = {
+  id: 'document-1',
+  name: '手順書',
+  imageRelativePath: '/pages/1.png',
+  status: 'draft',
+  publishedAt: null,
+  isActive: false,
+  isRevisionHead: true,
+  editVersion: 2,
+  pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [] }],
+  createdAt: '2026-08-21T00:00:00.000Z',
+  updatedAt: '2026-08-21T00:00:00.000Z'
+};
+
+function makeSession(
+  overrides: Partial<AssemblyProcedureDocumentRevisionCommandSession> = {}
+): AssemblyProcedureDocumentRevisionCommandSession {
+  return {
+    document: documentFixture,
+    elements: [],
+    passwordInput: '2520',
+    setPasswordInput: vi.fn(),
+    busy: false,
+    isDirty: true,
+    readOnly: false,
+    conflictEditVersion: null,
+    setAccessGranted: vi.fn(),
+    setBaselineSnapshot: vi.fn(),
+    setBusy: vi.fn(),
+    setConflict: vi.fn(),
+    setConflictEditVersion: vi.fn(),
+    setDocument: vi.fn(),
+    setMessage: vi.fn(),
+    setSelectedOverlayId: vi.fn(),
+    dispatch: vi.fn() as never,
+    recovery: { clear: vi.fn() },
+    onNavigateAfterDelete: vi.fn(),
+    onNavigateAfterDiscard: vi.fn(),
+    onNavigateAfterPublish: vi.fn(),
+    ...overrides
+  };
+}
+
+describe('useAssemblyProcedureDocumentRevisionCommands', () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it('deletes an unused DRAFT with the lease token and returns to manuals only on success', async () => {
+    apiMocks.remove.mockResolvedValue(undefined);
+    const session = makeSession({ holderToken: 'lease-token' });
+    const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
+    await act(async () => { await hook.result.current.deleteDocument(); });
+    expect(apiMocks.remove).toHaveBeenCalledExactlyOnceWith('document-1', 'lease-token');
+    expect(session.recovery.clear).toHaveBeenCalledOnce();
+    expect(session.onNavigateAfterDelete).toHaveBeenCalledOnce();
+  });
+
+  it('shows the short unlink message for a 409 and retains recovery and the editor', async () => {
+    apiMocks.remove.mockRejectedValue({ response: { status: 409, data: { message: '要領書の機種×工程割り当てで使用中の手順書は削除・公開取消できません' } } });
+    const session = makeSession();
+    const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
+    await act(async () => { await hook.result.current.deleteDocument(); });
+    expect(session.setMessage).toHaveBeenCalledWith('先に割り当てを外してください');
+    expect(session.onNavigateAfterDelete).not.toHaveBeenCalled();
+    expect(session.recovery.clear).not.toHaveBeenCalled();
+  });
+
+  it('shows the API reason for a 409 that is not an assignment', async () => {
+    apiMocks.remove.mockRejectedValue({ response: { status: 409, data: { message: 'マーカー参照で使用中の手順書は削除できません' } } });
+    const session = makeSession();
+    const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
+    await act(async () => { await hook.result.current.deleteDocument(); });
+    expect(session.setMessage).toHaveBeenCalledWith('マーカー参照で使用中の手順書は削除できません');
+    expect(session.onNavigateAfterDelete).not.toHaveBeenCalled();
+  });
+
+  it.each([{ document: { ...documentFixture, status: 'published' as const } }, { document: { ...documentFixture, supersedesDocumentId: 'root-1' } }, { busy: true }, { readOnly: true }])('guards deletion for %j', async overrides => {
+    const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(makeSession(overrides)));
+    await act(async () => { await hook.result.current.deleteDocument(); });
+    expect(apiMocks.remove).not.toHaveBeenCalled();
+  });
+
+  it('orchestrates password revision creation and optimistic-versioned saves', async () => {
+    const revision = { ...documentFixture, editVersion: 3 };
+    apiMocks.verifyPassword.mockResolvedValue({ success: true });
+    apiMocks.createRevision.mockResolvedValue(revision);
+    apiMocks.saveOverlays.mockResolvedValue(revision);
+    const session = makeSession();
+    const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
+
+    await act(async () => {
+      expect(await hook.result.current.verifyEditorPassword('2520')).toBe(true);
+    });
+    expect(apiMocks.verifyPassword).toHaveBeenCalledWith({ password: '2520' });
+    expect(apiMocks.createRevision).toHaveBeenCalledWith('document-1', '2520');
+    expect(session.setAccessGranted).toHaveBeenCalledWith(true);
+    expect(session.setPasswordInput).toHaveBeenCalledWith('2520');
+    expect(session.setBaselineSnapshot).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await hook.result.current.save();
+    });
+    expect(apiMocks.saveOverlays).toHaveBeenCalledWith({
+      id: 'document-1',
+      accessPassword: '2520',
+      expectedEditVersion: 2,
+      elements: []
+    });
+    expect(session.recovery.clear).toHaveBeenCalledTimes(1);
+    expect(session.setMessage).toHaveBeenCalledWith('オーバーレイを保存しました。');
+  });
+
+
+  it('sends applied caption ids on normal saves and conflict retries without clearing them', async () => {
+    apiMocks.saveOverlays.mockResolvedValue(documentFixture);
+    const session = makeSession({ appliedCaptionElementIds: ['first', 'second'], conflictEditVersion: 4 });
+    const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
+    await act(async () => { await hook.result.current.save(); });
+    expect(apiMocks.saveOverlays).toHaveBeenLastCalledWith(expect.objectContaining({ appliedCaptionElementIds: ['first', 'second'], expectedEditVersion: 2 }));
+    await act(async () => { await hook.result.current.retryConflictSave(); });
+    expect(apiMocks.saveOverlays).toHaveBeenLastCalledWith(expect.objectContaining({ appliedCaptionElementIds: ['first', 'second'], expectedEditVersion: 4 }));
+    expect(session.appliedCaptionElementIds).toEqual(['first', 'second']);
+  });
+
+  it('keeps all session ids while limiting each save payload to the latest 200', async () => {
+    apiMocks.saveOverlays.mockResolvedValue(documentFixture);
+    const ids = Array.from({ length: 201 }, (_, i) => `caption-${i}`);
+    const session = makeSession({ appliedCaptionElementIds: ids });
+    const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
+    await act(async () => { await hook.result.current.save(); });
+    expect(apiMocks.saveOverlays).toHaveBeenLastCalledWith(expect.objectContaining({ appliedCaptionElementIds: ids.slice(1) }));
+    expect(session.appliedCaptionElementIds).toHaveLength(201);
+  });
+
+  it('returns mismatch without creating a revision or retaining a wrong PIN', async () => {
+    apiMocks.verifyPassword.mockResolvedValue({ success: false });
+    const session = makeSession({ passwordInput: '' });
+    const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
+    await act(async () => { expect(await hook.result.current.verifyEditorPassword('0000')).toBe('mismatch'); });
+    expect(apiMocks.createRevision).not.toHaveBeenCalled();
+    expect(session.setAccessGranted).not.toHaveBeenCalledWith(true);
+    expect(session.setPasswordInput).not.toHaveBeenCalled();
+    expect(session.setBusy).toHaveBeenLastCalledWith(false);
+  });
+
+  it.each([
+    [401, 'mismatch'], [403, 'mismatch'], [429, 'rate-limited'], [500, 'network'], [undefined, 'network']
+  ] as const)('classifies verification and revision failures (%s) as %s', async (status, expected) => {
+    const error = { isAxiosError: true, response: status == null ? undefined : { status } };
+    for (const stage of ['verify', 'revision']) {
+      apiMocks.verifyPassword.mockReset();
+      apiMocks.createRevision.mockReset();
+      if (stage === 'verify') apiMocks.verifyPassword.mockRejectedValue(error);
+      else {
+        apiMocks.verifyPassword.mockResolvedValue({ success: true });
+        apiMocks.createRevision.mockRejectedValue(error);
+      }
+      const session = makeSession({ revokeAccess: vi.fn() });
+      const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
+      await act(async () => { expect(await hook.result.current.verifyEditorPassword('1234')).toBe(expected); });
+      expect(session.revokeAccess).toHaveBeenCalledOnce();
+      expect(session.setPasswordInput).not.toHaveBeenCalled();
+      expect(session.setAccessGranted).not.toHaveBeenCalledWith(true);
+      hook.unmount();
+    }
+  });
+
+  it.each(['password', 'tag'])('publishes via %s with the current edit version', async method => {
+    const published = { ...documentFixture, status: 'published' as const };
+    apiMocks.publish.mockResolvedValue(published);
+    apiMocks.approvePublish.mockResolvedValue(published);
+    const session = makeSession({ isDirty: false });
+    const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
+    await act(async () => {
+      expect(await hook.result.current.publish(method === 'tag' ? { reviewerTagUid: 'TAG', comment: '確認済み' } : undefined)).toBe(true);
+    });
+    if (method === 'tag') {
+      expect(apiMocks.approvePublish).toHaveBeenCalledExactlyOnceWith({ id: 'document-1', reviewerTagUid: 'TAG', expectedEditVersion: 2, comment: '確認済み' });
+      expect(apiMocks.publish).not.toHaveBeenCalled();
+    } else {
+      expect(apiMocks.publish).toHaveBeenCalledExactlyOnceWith({ id: 'document-1', accessPassword: '2520', expectedEditVersion: 2 });
+      expect(apiMocks.approvePublish).not.toHaveBeenCalled();
+    }
+    expect(session.setDocument).toHaveBeenCalledWith(published);
+    expect(session.recovery.clear).toHaveBeenCalledOnce();
+  });
+
+  it('preserves conflict handling for approval publication', async () => {
+    apiMocks.approvePublish.mockRejectedValue({ isAxiosError: true, response: { status: 409, data: { details: { currentEditVersion: 9 } } } });
+    const session = makeSession({ isDirty: false });
+    const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
+    await act(async () => { expect(await hook.result.current.publish({ reviewerTagUid: 'TAG' })).toBe(false); });
+    expect(session.setConflict).toHaveBeenCalledWith(true);
+    expect(session.setDocument).not.toHaveBeenCalled();
+  });
+
+  it('turns a 409 into explicit conflict state without replacing local elements', async () => {
+    apiMocks.saveOverlays.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 409, data: { details: { currentEditVersion: 9 } } }
+    });
+    const localElement = {
+      id: 'local-shape',
+      pageIndex: 0,
+      kind: 'SHAPE' as const,
+      shape: 'RECTANGLE' as const,
+      bbox: { xRatio: 0.1, yRatio: 0.1, widthRatio: 0.2, heightRatio: 0.2 },
+      zIndex: 0
+    };
+    const session = makeSession({ elements: [localElement] });
+    const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
+
+    await act(async () => {
+      await hook.result.current.save();
+    });
+    expect(session.setConflict).toHaveBeenCalledWith(true);
+    expect(session.setConflictEditVersion).toHaveBeenCalledWith(9);
+    expect(session.setMessage).toHaveBeenCalledWith(
+      '他の編集で更新されています。現在の入力内容は保持しています。別画面で最新内容を確認してください。'
+    );
+    expect(session.dispatch).not.toHaveBeenCalled();
+  });
+});

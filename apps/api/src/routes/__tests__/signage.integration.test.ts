@@ -208,14 +208,26 @@ async function seedSelfInspectionMachineBoardFixture(
     managementNumber: `SIMB-${suffix}`,
     rfidTagUid: `SIMB-INST-${suffix}`,
   });
+  const kioskClient = await createTestClientDevice();
+  const authenticationRes = await app.inject({
+    method: 'POST',
+    url: `/api/part-measurement/self-inspection/sessions/${sessionId}/measurement-actor-authentications`,
+    headers: { 'x-client-key': kioskClient.apiKey },
+    payload: {
+      employeeTagUid: employee.nfcTagUid,
+      measurementMode: 'operator',
+    },
+  });
+  expect(authenticationRes.statusCode).toBe(200);
+  const measurementActorAuthenticationId = authenticationRes.json().authentication.id as string;
 
   const createEntryRes = await app.inject({
     method: 'POST',
     url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
-    headers: createAuthHeader(adminToken),
+    headers: { ...createAuthHeader(adminToken), 'x-client-key': kioskClient.apiKey },
     payload: {
       entryIndex: 0,
-      employeeTagUid: employee.nfcTagUid,
+      measurementActorAuthenticationId,
       measuringInstrumentTagUid,
       values: [{ templateItemId, value: '10.01' }],
     },
@@ -686,7 +698,7 @@ describe('GET /api/signage/current-image with layoutConfig', () => {
   beforeEach(async () => {
     const admin = await createTestUser('ADMIN');
     adminToken = admin.token;
-    clientDevice = await getOrCreateTestClientDevice('client-key-raspberrypi3-signage1');
+    clientDevice = await getOrCreateTestClientDevice('test-signage-client-key');
   });
 
   afterAll(async () => {
@@ -851,16 +863,27 @@ describe('GET /api/signage/current-image with layoutConfig', () => {
     const summaryPages = viewModel.pages.filter((page) => page.kind === 'summary');
     const detailPages = viewModel.pages.filter((page) => page.kind === 'detail');
     expect(summaryPages.length).toBeGreaterThan(0);
+    expect(detailPages).toHaveLength(0);
     const summaryParts = [...summaryPages[0].scheduled, ...summaryPages[0].unscheduled].flatMap(
       (group) => group.parts
     );
     const seededPart = summaryParts.find((part) => part.fhincd === seeded.fhincd);
     expect(seededPart).toBeTruthy();
     expect(seededPart?.progressLabel).toBe('1/2');
-    expect(detailPages.length).toBeGreaterThan(0);
-    expect(detailPages[0]?.measurementPoints.length).toBeGreaterThan(0);
-    expect(buildSelfInspectionMachineBoardSvg(summaryPages[0], 1920, 1080)).toContain('自主検査');
-    expect(buildSelfInspectionMachineBoardSvg(detailPages[0], 1920, 1080)).toContain('寸法1');
+    expect(seededPart?.resources).toEqual([
+      expect.objectContaining({
+        resourceCd: 'RES-SIMB-INT',
+        progressLabel: '1/2',
+        outcome: 'in_progress',
+      }),
+    ]);
+    const summarySvg = buildSelfInspectionMachineBoardSvg(summaryPages[0], 1920, 1080);
+    expect(summarySvg).toContain('自主検査 部品別進捗');
+    expect(summarySvg).toContain('名称未登録');
+    expect(summarySvg).not.toContain('資源CD');
+    expect(summarySvg).not.toContain('RES-SIMB-INT');
+    expect(summarySvg).toContain('検査中');
+    expect(summarySvg).not.toContain('寸法1');
 
     const scheduleResponse = await app.inject({
       method: 'POST',
@@ -1503,6 +1526,26 @@ describe('GET /api/signage/content and current-image with targetClientKeys', () 
     });
     expect(targetedRes.statusCode).toBe(200);
     expect(targetedRes.json().schedule.targetClientKeys).toEqual([clientA.apiKey]);
+
+    const publicList = await app.inject({ method: 'GET', url: '/api/signage/schedules' });
+    expect(publicList.statusCode).toBe(200);
+    const publicTargeted = publicList.json().schedules.find(
+      (schedule: { id: string }) => schedule.id === targetedRes.json().schedule.id,
+    );
+    expect(publicTargeted).toBeDefined();
+    expect(publicTargeted).not.toHaveProperty('targetClientKeys');
+    expect(publicList.body).not.toContain(clientA.apiKey);
+
+    const managementList = await app.inject({
+      method: 'GET',
+      url: '/api/signage/schedules/management',
+      headers: createAuthHeader(adminToken),
+    });
+    expect(managementList.statusCode).toBe(200);
+    const managementTargeted = managementList.json().schedules.find(
+      (schedule: { id: string }) => schedule.id === targetedRes.json().schedule.id,
+    );
+    expect(managementTargeted?.targetClientKeys).toEqual([clientA.apiKey]);
 
     const forA = await app.inject({
       method: 'GET',

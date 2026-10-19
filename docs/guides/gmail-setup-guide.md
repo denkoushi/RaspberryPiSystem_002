@@ -439,7 +439,8 @@ docker compose -f docker-compose.server.yml restart api
 
 **GitHub Pagesでプライバシーポリシーを公開する方法**:
 - このリポジトリには `docs/index.html`（ホームページ）と `docs/privacy-policy.html`（プライバシーポリシー）が含まれています
-- GitHubリポジトリ → **Settings** → **Pages** で `main` ブランチの `/docs` フォルダを選択して公開
+- 公開元は `gh-pages` ブランチのルートで、公開されるのはこの2ページだけです（2026-10-01に `main` の `/docs` フォルダから変更）
+- `docs/` 配下の2ファイルは原稿です。変更は `main` で行い、その後 `gh-pages` へ複写しないと公開ページには反映されません。手順は下記KB-215を参照してください
 
 **詳細**: [KB-215: Gmail OAuthリフレッシュトークンの7日間制限問題](../knowledge-base/api.md#kb-215-gmail-oauthリフレッシュトークンの7日間制限問題未検証アプリ)
 

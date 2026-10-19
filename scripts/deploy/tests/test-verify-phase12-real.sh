@@ -10,15 +10,16 @@ fail() {
 }
 
 bash -n "$SCRIPT"
-grep -Fq 'name=^/bluegreen-api-(blue|green)-1$' "$SCRIPT" \
-  || fail 'Phase12 does not discover the active Blue/Green API container'
-grep -Fq 'if [ "${PI5_ACTIVE_API_COUNT}" = "1" ]' "$SCRIPT" \
-  || fail 'Phase12 does not require exactly one active Blue/Green API container'
-grep -Fq "docker exec '\${PI5_ACTIVE_API_CONTAINERS}' pnpm prisma migrate status" "$SCRIPT" \
-  || fail 'Phase12 does not run Prisma status in the active Blue/Green API container'
-grep -Fq 'docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate status' "$SCRIPT" \
-  || fail 'Phase12 lost the legacy API fallback'
-grep -Fq "API_LOGS_10M_COMMAND=\"docker logs --since=10m '\${PI5_ACTIVE_API_CONTAINERS}'\"" "$SCRIPT" \
-  || fail 'Phase12 does not inspect current Blue/Green API logs'
+if grep -Eq 'bluegreen-api|docker compose|docker exec|docker logs|prisma migrate|PI5_ACTIVE_API|MIGRATE_STATUS|API_LOGS' "$SCRIPT"; then
+  fail 'Phase12 still contains retired Pi5 runtime inspection'
+fi
+grep -Fq 'APIヘルス' "$SCRIPT" \
+  || fail 'Phase12 lost the shared application health smoke'
+grep -Fq 'api/system/deploy-status' "$SCRIPT" \
+  || fail 'Phase12 lost the shared deploy-status HTTP smoke'
+grep -Fq 'api/signage/current-image' "$SCRIPT" \
+  || fail 'Phase12 lost the shared signage HTTP smoke'
+grep -Fq 'PUT "${BASE_URL}/api/kiosk/production-schedule/due-management/global-rank/auto-generate"' "$SCRIPT" \
+  || fail 'Phase12 lost the shared auto-generate HTTP smoke'
 
-printf 'verify-phase12 Blue/Green migration contract passed\n'
+printf 'verify-phase12 shared HTTP smoke contract passed\n'

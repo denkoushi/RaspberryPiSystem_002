@@ -1,0 +1,98 @@
+---
+- name: Evaluate the standard Pi5 release lifecycle
+  block:
+    - name: Prepare the inactive Pi5 candidate
+      ansible.builtin.import_tasks: prepare.yml
+
+    - name: Apply the explicitly requested settled Hermes search trial maintenance
+      ansible.builtin.import_tasks: hermes-search-trial-maintenance-run.yml
+      when: release_pi5_trial_maintenance | default('') in ['on', 'off']
+
+    - name: Switch Pi5 traffic from a fresh release
+      ansible.builtin.import_tasks: switch.yml
+      when: release_pi5_route == 'fresh'
+
+    - name: Start consultation Hermes against the newly activated API
+      ansible.builtin.import_tasks: business-hermes-chat-start.yml
+      when:
+        - release_pi5_route == 'fresh'
+        - business_hermes_chat_enabled | default(false) | bool
+
+    - name: Verify isolated egress mounts before committing Pi5 traffic
+      ansible.builtin.import_tasks: business-hermes-egress-health.yml
+      when: release_pi5_egress_artifacts is defined
+
+    - name: Verify the bounded Pi5 stability samples
+      ansible.builtin.import_tasks: health.yml
+
+    - name: Commit the Pi5 scheduler handoff
+      ansible.builtin.import_tasks: commit.yml
+  rescue:
+    - name: Attempt consultation restoration without bypassing API rollback
+      when: release_pi5_chat_prepared | default(false) | bool
+      block:
+        - name: Restore the consultation runtime before the previous API
+          ansible.builtin.include_tasks: business-hermes-chat-rollback.yml
+      rescue:
+        - name: Record consultation restoration failure for operator recovery
+          ansible.builtin.set_fact:
+            release_pi5_chat_rollback_failed: true
+        - name: Report consultation restoration failure while continuing API rollback
+          ansible.builtin.debug:
+            msg: Consultation runtime restoration failed; preserve backups and inspect the failed task. Continuing standard API rollback.
+
+    - name: Restore the previous answer cache without bypassing API rollback
+      when: release_pi5_answer_cache_started | default(false) | bool
+      block:
+        - name: Restore the previous answer cache service
+          ansible.builtin.include_tasks: business-hermes-answer-cache-rollback.yml
+      rescue:
+        - name: Record answer cache restoration failure
+          ansible.builtin.set_fact:
+            release_pi5_answer_cache_rollback_failed: true
+        - name: Report cache restoration failure and continue API rollback
+          ansible.builtin.debug:
+            msg: Answer cache restoration failed. Preserve previous image and data; continuing standard API rollback.
+
+    - name: Restore the previous Pi5 route and scheduler
+      ansible.builtin.import_tasks: rollback.yml
+  always:
+    - name: Remove only safely retired Pi5 containers and run files
+      ansible.builtin.import_tasks: cleanup.yml
+
+- name: Keep the Pi5 system journal across reboots
+  ansible.builtin.import_tasks: host-journald.yml
+
+# Host configuration stays outside the API rollback boundary. A render or
+# heartbeat failure must still fail the release rather than hide a bad key.
+- name: Render the Pi5 status-agent configuration outside the immutable release tree
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/status-agent.conf.j2"
+    dest: /etc/raspi-status-agent.conf
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+
+- name: Warn before the Pi5 disk fills
+  ansible.builtin.import_tasks: host-status-agent-storage.yml
+
+# The oneshot service reads the file on each invocation. Run it even on an
+# unchanged retry so a previous authentication failure cannot become success.
+- name: Run the Pi5 status-agent once with the rendered configuration
+  ansible.builtin.systemd:
+    name: status-agent.service
+    state: restarted
+
+# Host policy converges even on settled releases, outside API rollback. Like
+# host-journald.yml, a failure here (for example an unreachable package
+# mirror) only reports; it never fails or rolls back the application release.
+- name: Converge the Pi5 unattended security update policy
+  when: "'server' in group_names"
+  block:
+    - name: Apply the Pi5 unattended security update policy
+      ansible.builtin.import_tasks: host-unattended-upgrades.yml
+  rescue:
+    - name: Report that the Pi5 unattended security update policy was not applied
+      ansible.builtin.debug:
+        msg: "The unattended security update policy was not applied on {{ inventory_hostname }}; the release continues."

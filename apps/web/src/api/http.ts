@@ -1,5 +1,7 @@
 import axios, { AxiosError, isAxiosError } from 'axios';
 
+import { readProductionBuildConfig } from '../config/productionBuildConfig';
+import { reportKioskApi } from '../features/kiosk/errorTelemetry';
 import { readViteApiTimeoutMs } from '../lib/api-timeout-ms';
 import {
   DEFAULT_CLIENT_KEY,
@@ -10,8 +12,8 @@ import {
 
 export { DEFAULT_CLIENT_KEY };
 
-export const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api';
-const wsBase = import.meta.env.VITE_WS_BASE_URL ?? '/ws';
+export const apiBase = readProductionBuildConfig().apiBaseUrl;
+const wsBase = readProductionBuildConfig().wsBaseUrl;
 const KIOSK_KEY_RESET_TS_KEY = 'kiosk-client-key-last-reset-at';
 const KIOSK_KEY_RESET_COOLDOWN_MS = 30000;
 
@@ -33,15 +35,21 @@ export function setAuthToken(token?: string) {
 }
 
 export function setClientKeyHeader(key?: string) {
-  api.defaults.headers.common['x-client-key'] =
-    key && key.length > 0 ? key : resolveClientKey({ allowDefaultFallback: true }).key;
+  const resolvedKey = key && key.length > 0 ? key : resolveClientKey({ allowDefaultFallback: true }).key;
+  if (resolvedKey.length > 0) {
+    api.defaults.headers.common['x-client-key'] = resolvedKey;
+  } else {
+    delete api.defaults.headers.common['x-client-key'];
+  }
 }
 
 const resetKioskClientKey = () => {
   if (typeof window === 'undefined') return;
   window.localStorage.removeItem('kiosk-client-key');
   const defaultKey = resolveClientKey({ allowDefaultFallback: true }).key;
-  setClientKeyToStorage(defaultKey);
+  if (defaultKey.length > 0) {
+    setClientKeyToStorage(defaultKey);
+  }
   setClientKeyHeader(defaultKey);
 
   // 同一セッションで短時間に401が続いた場合、リロードループを防ぐ。
@@ -69,21 +77,34 @@ if (typeof window !== 'undefined') {
   setClientKeyHeader(resolved);
 }
 
+const requestStartedAt = new WeakMap<object, number>();
+
 // すべてのリクエストで client-key を付与
 api.interceptors.request.use((config) => {
+  requestStartedAt.set(config, Date.now());
   const key = resolveClientKey({ allowDefaultFallback: true }).key;
   config.headers = config.headers ?? {};
-  if (!config.headers['x-client-key']) {
+  if (!config.headers['x-client-key'] && key.length > 0) {
     config.headers['x-client-key'] = key;
   }
   return config;
 });
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    reportKioskApi({ method: response.config.method, url: response.config.url, status: response.status,
+      streaming: response.config.responseType === 'stream' || String(response.headers['content-type'] ?? '').includes('text/event-stream'),
+      durationMs: Date.now() - (requestStartedAt.get(response.config) ?? Date.now()) });
+    return response;
+  },
   (error: unknown) => {
     if (isAxiosError(error)) {
       const ax = error as AxiosError<{ code?: unknown; message?: unknown }>;
+      reportKioskApi({ method: ax.config?.method, url: ax.config?.url, status: ax.response?.status,
+        streaming: ax.config?.responseType === 'stream',
+        code: ax.code, apiCode: (ax.response?.data as { errorCode?: unknown; code?: unknown })?.errorCode ?? ax.response?.data?.code,
+        requestId: (ax.response?.data as { requestId?: unknown })?.requestId,
+        durationMs: Date.now() - (ax.config ? requestStartedAt.get(ax.config) ?? Date.now() : Date.now()) });
       // axios: 請求タイムアウトは通常 ECONNABORTED を付与
       const isTimeout = ax.code === 'ECONNABORTED';
       if (isTimeout) {

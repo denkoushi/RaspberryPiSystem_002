@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('../env/load-dotenv.js', () => ({}));
+
 const ORIGINAL_ENV = { ...process.env };
 
 const loadEnvModule = async () => {
@@ -13,6 +15,25 @@ afterEach(() => {
 });
 
 describe('env secret policy', () => {
+  it.each([['true', true], ['false', false], [' TRUE ', true]])(
+    'parses ADMIN_MFA_REQUIRED=%s', async (raw, expected) => {
+      process.env.ADMIN_MFA_REQUIRED = raw;
+      const { env } = await loadEnvModule();
+      expect(env.ADMIN_MFA_REQUIRED).toBe(expected);
+    }
+  );
+
+  it('defaults ADMIN_MFA_REQUIRED to false', async () => {
+    delete process.env.ADMIN_MFA_REQUIRED;
+    const { env } = await loadEnvModule();
+    expect(env.ADMIN_MFA_REQUIRED).toBe(false);
+  });
+
+  it('rejects ambiguous ADMIN_MFA_REQUIRED', async () => {
+    process.env.ADMIN_MFA_REQUIRED = 'yes';
+    await expect(loadEnvModule()).rejects.toThrow(/ADMIN_MFA_REQUIRED/);
+  });
+
   it.each([
     ['true', true],
     ['1', true],
@@ -52,8 +73,22 @@ describe('env secret policy', () => {
     process.env.NODE_ENV = 'production';
     process.env.JWT_ACCESS_SECRET = 'prod-access-secret-0123456789-abcdefghijklmnopqrstuvwxyz';
     process.env.JWT_REFRESH_SECRET = 'prod-refresh-secret-0123456789-abcdefghijklmnopqrstuvwxyz';
+    process.env.DATABASE_URL = 'postgresql://raspi_app:strong-database-password@db:5432/borrow_return';
 
     await expect(loadEnvModule()).resolves.toBeDefined();
+  });
+
+  it.each([
+    'postgresql://postgres:postgres@db:5432/borrow_return',
+    'postgresql://postgres:strong-password@db:5432/borrow_return',
+    'postgresql://raspi_app:@db:5432/borrow_return',
+  ])('rejects an unsafe production database URL without echoing it (%s)', async (databaseUrl) => {
+    process.env.NODE_ENV = 'production';
+    process.env.JWT_ACCESS_SECRET = 'prod-access-secret-0123456789-abcdefghijklmnopqrstuvwxyz';
+    process.env.JWT_REFRESH_SECRET = 'prod-refresh-secret-0123456789-abcdefghijklmnopqrstuvwxyz';
+    process.env.DATABASE_URL = databaseUrl;
+
+    await expect(loadEnvModule()).rejects.toThrow(/DATABASE_URL.*dedicated non-postgres role/i);
   });
 
   it('fails when INFERENCE_PROVIDERS_JSON primary sharedToken mismatches LOCAL_LLM_SHARED_TOKEN', async () => {

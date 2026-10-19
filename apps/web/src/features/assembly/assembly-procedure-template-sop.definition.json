@@ -1,0 +1,216 @@
+{
+  "schemaVersion": 1,
+  "id": "assembly-procedure-template",
+  "title": "組立 手順書・テンプレート取説",
+  "entrySources": [
+    "apps/web/src/pages/kiosk/KioskAssemblyPage.tsx",
+    "apps/web/src/features/assembly/AssemblyProcedureLibrarySection.tsx",
+    "apps/web/src/pages/kiosk/KioskAssemblyProcedureDocumentEditorPage.tsx",
+    "apps/web/src/features/assembly/document-editor/AssemblyProcedureDocumentEditorAuthGate.tsx",
+    "apps/web/src/features/assembly/document-editor/AssemblyProcedureDocumentEditorCanvas.tsx",
+    "apps/web/src/features/assembly/document-editor/AssemblyProcedureDocumentEditorCanvasToolbar.tsx",
+    "apps/web/src/features/assembly/document-editor/AssemblyProcedureDocumentEditorInspector.tsx",
+    "apps/web/src/features/assembly/document-editor/AssemblyProcedureDocumentEditorScreen.tsx",
+    "apps/web/src/features/assembly/document-editor/AssemblyProcedureOverlayTypeDialog.tsx",
+    "apps/web/src/features/assembly/document-editor/useAssemblyProcedureDocumentEditorController.ts",
+    "apps/web/src/features/assembly/template-editor/AssemblyTemplateEditorAuthGate.tsx",
+    "apps/web/src/features/assembly/template-editor/AssemblyTemplateEditorHeader.tsx"
+  ],
+  "supplementalWatchGlobs": [
+    "apps/web/src/features/assembly/**",
+    "apps/web/src/features/kiosk-sop/**",
+    "apps/web/src/components/ui/**",
+    "apps/web/src/layouts/KioskLayout.tsx",
+    "apps/web/src/index.css",
+    "apps/web/tailwind.config.*",
+    "scripts/kiosk-sop/**",
+    "packages/kiosk-sop-core/src/**"
+  ],
+  "exclusions": [
+    { "id": "viewer-close", "reason": "取説ビューアー共通の閉じる操作" },
+    { "id": "manual-launcher", "reason": "取説を開く共通操作" },
+    { "id": "native-file-picker", "reason": "OS標準ファイル選択ダイアログ" }
+  ],
+  "scenarios": [
+    {
+      "id": "assembly-library",
+      "productionRoute": "/kiosk/assembly/library",
+      "fixtureId": "assembly-library-v1",
+      "viewport": { "width": 1366, "height": 768, "deviceScaleFactor": 1 },
+      "sheets": [
+        {
+          "id": "assembly-overview",
+          "title": "管理画面と全体の流れ",
+          "summary": "手順書を準備・公開してからテンプレートを新規作成・改版します。",
+          "steps": [
+            { "id": "register-file", "targetId": "assembly-library-refresh", "necessity": "required", "title": "管理画面を確認", "description": "一覧を再読込し、手順書を準備・公開してからテンプレートへ進みます。" }
+          ]
+        },
+        {
+          "id": "assembly-file-register",
+          "title": "ファイル選択・事前プレビュー・下書き登録",
+          "summary": "「ファイルから登録」を開き、ファイル・先頭ページを確認して下書き登録します。",
+          "steps": [
+            { "id": "preview-file", "targetId": "assembly-procedure-preview-file", "necessity": "required", "title": "ファイルと先頭ページを確認", "description": "登録モーダルでファイルを選択し、先頭ページのプレビューを確認して下書き登録へ進みます。" }
+          ]
+        },
+        {
+          "id": "assembly-gmail-publish",
+          "title": "Gmail取込・全ページ確認・公開",
+          "summary": "Gmailの対象添付は下書きとして取り込み、全ページを確認して公開します。",
+          "steps": [
+            { "id": "gmail-import", "targetId": "assembly-gmail-confirm", "necessity": "required", "title": "下書き取込を確認", "description": "Gmailの対象添付を下書き登録する確認ダイアログで承認します。" }
+          ]
+        },
+        {
+          "id": "assembly-revision",
+          "title": "改版・複製・履歴・無効化",
+          "summary": "画面へ戻り、パスワードを入力して認証→基本情報を済ませます。改版は同じ機種名・手順パターンに固定し、別系統は複製して新規にします。",
+          "steps": [
+            { "id": "revise-template", "targetId": "assembly-template-revise", "necessity": "required", "title": "改版を開始", "description": "上辺の「テンプレート」へ切り替え、有効版の鉛筆（改版）を開きます。識別子は変更できません。" },
+            { "id": "duplicate-template", "targetId": "assembly-template-duplicate", "necessity": "optional", "title": "複製して新規", "description": "別の機種名や手順パターンにしたい場合は複製します。" }
+          ]
+        },
+        {
+          "id": "assembly-procedure-edit",
+          "title": "手順書を編集・改版する",
+          "summary": "公開済みは「改版編集」、下書きは「編集」を開いてオーバーレイを修正します。",
+          "steps": [
+            { "id": "open-procedure-edit", "targetId": "assembly-procedure-edit", "necessity": "required", "title": "編集・改版を開く", "description": "公開済み手順書は「改版編集」、下書きは「編集」を押して専用エディタを開きます。" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "assembly-document-editor",
+      "productionRoute": "/kiosk/assembly/procedure-documents/sop-procedure-1/edit",
+      "fixtureId": "assembly-document-editor-v1",
+      "viewport": { "width": 1366, "height": 768, "deviceScaleFactor": 1 },
+      "sheets": [
+        {
+          "id": "assembly-document-editor-auth",
+          "title": "手順書エディタを認証する",
+          "summary": "改版編集を開いたらテンキーで暗証番号を入力して認証します。",
+          "steps": [
+            { "id": "document-editor-password", "targetId": "assembly-document-editor-password", "necessity": "required", "title": "暗証番号を入力", "description": "手順書オーバーレイ編集を始める前にテンキーで暗証番号を入力します。" },
+            { "id": "document-editor-authenticate", "targetId": "assembly-document-editor-authenticate", "necessity": "required", "title": "認証して改版を作成", "description": "4桁で自動認証し、公開済み手順書の編集用改版を作成します。再試行は「OK」を押します。" }
+          ]
+        },
+        {
+          "id": "assembly-document-editor-range",
+          "title": "編集範囲を選ぶ",
+          "summary": "「範囲」の記号を押し、元ページ上で編集する範囲をドラッグします。",
+          "steps": [
+            { "id": "document-editor-range-add", "targetId": "assembly-document-editor-range-add", "necessity": "required", "title": "範囲追加を開始", "description": "「範囲」の記号を押して範囲選択モードに切り替えます。" },
+            { "id": "document-editor-range-surface", "targetId": "assembly-document-editor-range-surface", "necessity": "required", "title": "編集範囲をドラッグ", "description": "元ページ上でテキスト・画像・図形にしたい範囲をドラッグします。" }
+          ]
+        },
+        {
+          "id": "assembly-document-editor-types",
+          "title": "オーバーレイ種類を選ぶ",
+          "summary": "選択範囲を文章、画像、図形・記号のいずれかへ変換します。",
+          "steps": [
+            { "id": "document-editor-type-text", "targetId": "assembly-document-editor-type-text", "necessity": "required", "title": "文章を選ぶ", "description": "文章として入力・修正する範囲は「文章」を選びます。" },
+            { "id": "document-editor-type-image", "targetId": "assembly-document-editor-type-image", "necessity": "required", "title": "画像を選ぶ", "description": "画像assetとして配置する範囲は「画像」を選びます。" },
+            { "id": "document-editor-type-shape", "targetId": "assembly-document-editor-type-shape", "necessity": "required", "title": "図形・記号を選ぶ", "description": "矩形・楕円・線・矢印を配置する範囲は「図形・記号」を選びます。" }
+          ]
+        },
+        {
+          "id": "assembly-document-editor-text-properties",
+          "title": "文章のプロパティを編集する",
+          "summary": "文章本文、文字サイズ・色・太さ・揃え、位置と大きさを確認・編集します。",
+          "steps": [
+            { "id": "document-editor-text-value", "targetId": "assembly-document-editor-text-value", "necessity": "required", "title": "文章を編集", "description": "右側の文章欄へ表示する文言を入力し、必要に応じて文字スタイルを調整します。" },
+            { "id": "document-editor-position-x", "targetId": "assembly-document-editor-position-x", "necessity": "optional", "title": "位置と大きさを調整", "description": "位置と大きさは元ページに対する割合(%)で入力します。" },
+            { "id": "document-editor-save-text", "targetId": "assembly-document-editor-save", "necessity": "required", "title": "変更を保存", "description": "入力内容を確認したら「保存」を押して改版へ確定します。" }
+          ]
+        },
+        {
+          "id": "assembly-document-editor-image-properties",
+          "title": "画像のプロパティを編集する",
+          "summary": "画像を素材から差し替え、画像の収まり方を指定します。",
+          "steps": [
+            { "id": "document-editor-image-asset", "targetId": "assembly-document-editor-image-asset", "necessity": "required", "title": "素材から差し替え", "description": "「素材から差し替え」を押して素材棚から選ぶと、選択中の画像だけが差し替わります。位置と大きさは変わりません。" }
+          ]
+        },
+        {
+          "id": "assembly-document-editor-shape-properties",
+          "title": "図形・記号のプロパティを編集する",
+          "summary": "図形の種類、線色・塗り色・線幅、位置と大きさを調整します。",
+          "steps": [
+            { "id": "document-editor-shape-kind", "targetId": "assembly-document-editor-shape-kind", "necessity": "required", "title": "図形の種類を指定", "description": "矩形・楕円・線・矢印から用途に合う種類を選びます。" }
+          ]
+        },
+        {
+          "id": "assembly-document-editor-conflict",
+          "title": "保存競合から復旧する",
+          "summary": "他の編集で更新された場合は、保持内容を再保存するか最新内容へ置き換えます。",
+          "steps": [
+            { "id": "document-editor-conflict-retry", "targetId": "assembly-document-editor-conflict-retry", "necessity": "required", "title": "保持内容を再保存", "description": "自分の入力を残す場合は「保持内容を再保存」を選びます。" },
+            { "id": "document-editor-conflict-reload", "targetId": "assembly-document-editor-conflict-reload", "necessity": "required", "title": "最新内容へ置換", "description": "他の編集を採用する場合は「最新を再読込（保持内容を破棄）」を選びます。" }
+          ]
+        },
+        {
+          "id": "assembly-document-editor-publish",
+          "title": "確認して公開する",
+          "summary": "保存済みの改版を確認し、公開確認で「公開する」を押します。",
+          "steps": [
+            { "id": "document-editor-publish", "targetId": "assembly-document-editor-publish", "necessity": "required", "title": "公開確認を開く", "description": "未保存の変更がないことを確認して「公開」を押します。" },
+            { "id": "document-editor-publish-confirm", "targetId": "assembly-document-editor-publish-confirm", "necessity": "required", "title": "改版を公開", "description": "確認内容に問題がなければ「公開する」を押して使用側へ反映します。" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "assembly-editor",
+      "productionRoute": "/kiosk/assembly/templates/new?procedureDocumentId=sop-procedure-1",
+      "fixtureId": "assembly-editor-v1",
+      "viewport": { "width": 1366, "height": 768, "deviceScaleFactor": 1 },
+      "sheets": [
+        {
+          "id": "assembly-template-auth-basics",
+          "title": "テンプレート新規作成・認証・基本情報",
+          "summary": "画面へ戻り、パスワードを入力して認証→左の「文書」タブの順に機種名・手順パターンを入力します。テンプレート名は左ペイン上部で入力します。",
+          "steps": [
+            { "id": "model-code", "targetId": "assembly-editor-model-code", "necessity": "required", "title": "機種名を入力", "description": "機種名を選択または入力します。" }
+          ]
+        },
+        {
+          "id": "assembly-template-documents",
+          "title": "文書タブで文書を追加",
+          "summary": "認証と基本情報の入力後、左の「文書」タブで文書を追加します。ページを選ぶときは「工程」、手順を確認するときは「手順」タブへ切り替えます。",
+          "steps": [
+            { "id": "document-add", "targetId": "assembly-editor-document-add", "necessity": "required", "title": "文書を追加", "description": "全ページを手順へ追加すると手順側へ移動します。文書だけ追加した場合は「工程」タブでページを選び、右の記号列の全体追加・矩形で手順化してください。保存前に各文書を1手順以上で使います。" }
+          ]
+        },
+        {
+          "id": "assembly-template-procedure",
+          "title": "表示ステップ・切抜き",
+          "summary": "文書追加後、左の「工程」タブでページを選び、右の記号列から全体追加・矩形を行います。",
+          "steps": [
+            { "id": "step-add-full", "targetId": "assembly-editor-step-add-full", "necessity": "required", "title": "全体を追加", "description": "「工程」タブでページを選び、ページ全体を表示ステップに追加します。" },
+            { "id": "step-add-crop", "targetId": "assembly-editor-step-add-crop", "necessity": "required", "title": "矩形を追加", "description": "「工程」タブでページを選び、「矩形」を押してページの範囲をドラッグして切り抜く表示ステップを追加します。" }
+          ]
+        },
+        {
+          "id": "assembly-template-markers",
+          "title": "工程・締結／チェックマーカー・条件設定",
+          "summary": "画面へ戻り、パスワードを入力して認証→基本情報を済ませてから、工程・締結・チェックを操作します。",
+          "steps": [
+            { "id": "area-add", "targetId": "assembly-editor-area-add", "necessity": "required", "title": "工程を追加", "description": "左の「工程」タブの＋ 工程から必要な工程を追加します。「文書」タブで、工程No.・エリアコード・ユニットコード・エリア名は詳細（任意）から開き、不要なら空欄のまま保存できます。" },
+            { "id": "marker-bolt", "targetId": "assembly-editor-marker-bolt", "necessity": "required", "title": "締結を選ぶ", "description": "締結マーカーを図面上へ配置します。適合グループ選択時、登録設定が1種類で未登録の混在がなければ空のトルク3欄へ入力します。複数設定は選択し、入力済み値の置換は確認します。" },
+            { "id": "marker-check", "targetId": "assembly-editor-marker-check", "necessity": "required", "title": "チェックを選ぶ", "description": "チェックマーカーを選び、図面上へ配置します。" }
+          ]
+        },
+        {
+          "id": "assembly-template-save",
+          "title": "未完了確認・途中復元・保存完了",
+          "summary": "画面へ戻り、パスワードを入力して認証→基本情報を済ませ、未保存内容を復元・破棄して保存完了を確認します。",
+          "steps": [
+            { "id": "save-template", "targetId": "assembly-editor-save", "necessity": "required", "title": "完成して保存", "description": "未完了確認を済ませて保存します。保存後は一覧で版番号を確認できます。" }
+          ]
+        }
+      ]
+    }
+  ]
+}

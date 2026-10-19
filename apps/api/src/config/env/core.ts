@@ -19,6 +19,19 @@ export const isWeakSecret = (secret: string): boolean => {
   return WEAK_SECRET_PATTERNS.some((pattern) => normalized.includes(pattern));
 };
 
+export const isUnsafeProductionDatabaseUrl = (rawUrl: string): boolean => {
+  try {
+    const parsed = new URL(rawUrl);
+    const protocol = parsed.protocol.toLowerCase();
+    if (protocol !== 'postgresql:' && protocol !== 'postgres:') return true;
+    const username = decodeURIComponent(parsed.username).trim().toLowerCase();
+    const password = decodeURIComponent(parsed.password).trim().toLowerCase();
+    return !username || username === 'postgres' || !password || password === 'postgres';
+  } catch {
+    return true;
+  }
+};
+
 export const coreEnvShape = {
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(8080),
@@ -46,6 +59,10 @@ export const coreEnvShape = {
     .default(60_000),
   JWT_ACCESS_SECRET: z.string().default('dev-access-secret-change-me'),
   JWT_REFRESH_SECRET: z.string().default('dev-refresh-secret-change-me'),
+  ADMIN_MFA_REQUIRED: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
+    z.enum(['true', 'false']).default('false')
+  ).transform((v) => v === 'true'),
   TOKEN_EXPIRES_IN: z.string().default('15m'),
   REFRESH_TOKEN_EXPIRES_IN: z.string().default('7d'),
   LOG_LEVEL: z

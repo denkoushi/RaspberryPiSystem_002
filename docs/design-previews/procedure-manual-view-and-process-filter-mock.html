@@ -1,0 +1,239 @@
+<title>作る・直す 見る＋工程絞り込み</title>
+<style>
+/* Layout: a note strip above one 1920×1080 kiosk stage, scaled to the page width. Single dark look = the kiosk's own palette. */
+:root{
+  color-scheme:dark;
+  --bg:#0f1317; --panel:#161c22; --line:#27313b; --edge:#344252; --hover:#1b222a;
+  --fg:#eef3f6; --mute:#9fadb9; --amber:#f6b93b; --green:#3ba776; --red:#e5484d; --focus:#7cc4ff;
+  --sans:"Hiragino Sans","Noto Sans JP","Yu Gothic UI",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+body{background:#080a0d;color:var(--fg);font-family:var(--sans);padding-inline:16px;padding-block:16px}
+.note{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:baseline;max-width:1920px;margin:0 auto 12px}
+.note h1{font-size:18px;margin:0;font-weight:800;letter-spacing:.06em}
+.note ol{display:flex;flex-wrap:wrap;gap:4px 20px;margin:0;padding:0 0 0 18px;color:var(--mute);font-size:14px}
+.note b{color:var(--amber);font-weight:700}
+.fit{max-width:1920px;margin:0 auto;aspect-ratio:16/9;position:relative;overflow:hidden;border:1px solid var(--line);border-radius:6px}
+.stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;background:var(--bg);display:grid;grid-template-rows:64px minmax(0,1fr)}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
+button:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.2;flex:none}
+header.bar{display:flex;align-items:center;gap:16px;border-bottom:1px solid var(--line);background:var(--panel);padding:0 20px}
+header.bar h2{font-size:26px;font-weight:900;letter-spacing:.1em;margin:0}
+.mode{display:inline-flex;height:40px;align-items:center;gap:8px;border-radius:99px;background:#f6b93b29;color:var(--amber);padding:0 14px;font-size:19px;font-weight:700}
+.act{display:inline-flex;min-height:44px;align-items:center;gap:8px;border:1px solid var(--edge);border-radius:8px;padding:0 16px;font-size:19px;font-weight:700}
+.act.yellow{min-height:48px;font-size:20px;border-color:var(--amber);background:var(--amber);color:#0b1a12}
+.act[disabled]{opacity:.35;cursor:default}
+.cols{display:grid;grid-template-columns:460px minmax(0,1fr);min-height:0}
+.left{display:flex;flex-direction:column;gap:10px;min-height:0;border-right:1px solid var(--line);background:var(--panel);padding:16px}
+.lab{font-size:16px;font-weight:700;letter-spacing:.1em;color:var(--mute);margin:0;display:flex;align-items:center;gap:8px}
+.new{font-size:12px;letter-spacing:.04em;color:#0b1a12;background:var(--amber);border-radius:4px;padding:1px 6px}
+.procs{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.proc{height:56px;border:1px solid var(--edge);border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:19px;font-weight:700;color:var(--mute);line-height:1.1}
+.proc small{font-family:var(--mono);font-size:14px;font-weight:400}
+.proc[aria-pressed=true]{background:var(--amber);border-color:var(--amber);color:#0b1a12}
+.search{height:48px;border-radius:8px;border:1px solid var(--edge);background:#fff;color:#0f1317;font:inherit;font-size:21px;padding:0 12px}
+.split{display:grid;grid-template-columns:200px minmax(0,1fr);gap:12px;min-height:0;flex:1}
+.digits{font-family:var(--mono);font-size:20px;height:26px}
+.keys{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;align-content:start}
+.keys button{height:52px;border:1px solid var(--edge);border-radius:8px;font-size:22px;font-weight:700}
+.models{display:flex;flex-direction:column;gap:2px;overflow:auto;min-height:0}
+.model{min-height:48px;flex:none;display:flex;align-items:center;border-radius:8px;padding:0 12px;font-family:var(--mono);font-size:18px;font-weight:700;text-align:left}
+.model span{margin-left:auto;padding-left:8px;font-size:16px;font-weight:400;color:var(--mute)}
+.model:hover,.model[aria-current=true]{background:var(--line)}
+.right{min-width:0;min-height:0;overflow:auto;padding:12px 16px}
+.head{display:flex;align-items:center;gap:12px;min-height:52px;margin-bottom:6px}
+.head h3{font-size:22px;font-weight:900;margin:0;display:flex;align-items:center;gap:8px}
+.crumb{display:inline-flex;align-items:center;gap:6px;height:40px;border:1px solid var(--edge);border-radius:8px;padding:0 6px 0 12px}
+.crumb.all{border-style:dashed;color:var(--mute);padding-right:12px;font-weight:700}
+.crumb button{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;color:var(--mute)}
+.count{font-family:var(--mono);font-size:18px;color:var(--mute)}
+.chips{display:flex;gap:6px;margin-left:12px}
+.chip{height:44px;border:1px solid var(--edge);border-radius:99px;padding:0 12px;font-size:17px;font-weight:700;color:var(--mute)}
+.chip[aria-pressed=true]{background:var(--line);color:var(--fg)}
+.name{height:44px;width:240px;border-radius:8px;border:1px solid var(--edge);background:#fff;color:#0f1317;font:inherit;font-size:18px;padding:0 12px}
+.row{display:grid;height:56px;align-items:center;gap:12px;border-bottom:1px solid var(--line);padding:0 10px}
+.row:hover{background:var(--hover)}
+.thumb{width:36px;height:26px;border:1px solid #777;border-radius:3px;background:#fff linear-gradient(#c9d3dc,#c9d3dc) 4px 5px/16px 3px no-repeat}
+.title{font-family:var(--mono);font-size:20px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ctx{font-size:17px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ctx.m{font-family:var(--mono)}
+.badge{display:inline-flex;height:30px;align-items:center;border:1px solid;border-radius:99px;padding:0 10px;font-size:16px;font-weight:700}
+.pub{color:var(--green)}.draft{color:var(--amber)}
+.use,.who{font-size:15px;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.who{font-size:16px}.rev{background:#f6b93b1f;color:var(--amber);border-radius:99px;padding:4px 10px}
+.pages{text-align:right;font-family:var(--mono);font-size:16px;color:var(--mute)}
+.ops{display:flex;gap:4px}
+.sym{width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:8px;color:var(--mute);position:relative}
+.sym.view{border-color:var(--edge);color:var(--fg)}
+.sym.fix{border-color:var(--amber);color:var(--amber)}
+.sym.gap{visibility:hidden}
+.sym:hover::after{content:attr(aria-label);position:absolute;bottom:48px;left:50%;transform:translateX(-50%);background:#000;color:#fff;border-radius:6px;padding:4px 10px;font-size:16px;font-weight:700;white-space:nowrap;z-index:2}
+.empty{color:var(--mute);font-size:18px;padding:16px 10px}
+.assign{margin-top:10px;min-height:48px;width:100%;border:1px dashed var(--edge);border-radius:10px;font-size:18px;color:var(--mute)}
+/* read-only viewer */
+.veil{position:absolute;inset:0;background:#000b;display:grid;place-items:center;z-index:5}
+.viewer{width:1560px;height:1000px;background:var(--panel);border:1px solid var(--edge);border-radius:12px;display:grid;grid-template-rows:60px minmax(0,1fr);overflow:hidden}
+.vbar{display:flex;align-items:center;gap:14px;padding:0 12px 0 18px;border-bottom:1px solid var(--line)}
+.vbar .eye{display:inline-flex;align-items:center;gap:8px;height:36px;border-radius:99px;background:#eef3f61a;padding:0 12px;font-size:17px;font-weight:700}
+.vbar strong{font-family:var(--mono);font-size:21px}
+.vbar .sub{color:var(--mute);font-size:16px}
+.vbar .nav{margin-left:auto;display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:19px}
+.vbody{display:grid;grid-template-columns:150px minmax(0,1fr);min-height:0}
+.strip{overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px;border-right:1px solid var(--line)}
+.pg{height:84px;flex:none;border-radius:4px;background:#fff;color:#0f1317;font-family:var(--mono);font-size:15px;display:flex;align-items:flex-end;justify-content:flex-end;padding:4px 6px;border:3px solid transparent}
+.pg[aria-current=true]{border-color:var(--focus)}
+.sheetwrap{display:grid;place-items:center;background:#0b0e11;min-height:0}
+.sheet{width:1240px;height:877px;background:#fff;color:#16202a;position:relative;padding:36px 44px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto 1fr;gap:20px 32px}
+.sheet h4{grid-column:1/-1;margin:0;font-size:30px;border-bottom:3px solid #16202a;padding-bottom:8px;display:flex;justify-content:space-between;align-items:baseline}
+.sheet h4 span{font-family:var(--mono);font-size:18px;font-weight:400}
+.sheet ol{margin:0;padding-left:28px;font-size:23px;line-height:2}
+.photo{background:repeating-linear-gradient(135deg,#dfe6ec 0 14px,#d2dbe3 14px 28px);border:1px solid #9fadb9;display:grid;place-items:center;color:#5b6b79;font-size:20px;position:relative}
+.mark{position:absolute;right:120px;top:150px;width:150px;height:96px;border:5px solid var(--red);border-radius:50%}
+.tag{position:absolute;right:96px;top:104px;background:var(--red);color:#fff;font-size:20px;font-weight:700;padding:2px 12px;border-radius:4px}
+</style>
+
+<div class="note">
+  <h1>作る・直す モック</h1>
+  <ol>
+    <li>行の先頭に <b>目のアイコン＝見る</b>（編集できない表示）</li>
+    <li>左上の <b>工程ボタン</b>で 組立・検査・切削・研削 に絞る（機種を選ばなくてよい）</li>
+    <li>機種を選ぶと両方で絞る。× で外す</li>
+  </ol>
+</div>
+<div class="fit" id="fit"><div class="stage" id="stage"></div></div>
+
+<script>
+const I={
+  eye:'<svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+  pen:'<svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>',
+  use:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>',
+  off:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg>',
+  bin:'<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13"/></svg>',
+  plus:'<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+  x:'<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  l:'<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>', r:'<svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>',
+  box:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/></svg>',
+  vid:'<svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>'
+};
+const PROCS=[['asm','組立'],['insp','検査'],['cut','切削'],['grind','研削']];
+const pname=id=>PROCS.find(p=>p[0]===id)[1];
+// 例のデータ（実データではありません）
+const ITEMS=[
+ ['GX-2400A','asm','主軸ユニット組付','pub',3,'GX-2410B · 組立','承認 佐藤 10/02',8],
+ ['GX-2400A','asm','配線取り回し','rev',2,'','改版中 · 田中 09:12〜',5],
+ ['GX-2400A','insp','出荷前外観検査','pub',4,'GX-2410B · 検査、MT-880 · 検査','承認 鈴木 09/28',6],
+ ['GX-2400A','insp','芯振れ測定','draft',null,'','',3],
+ ['GX-2400A','cut','ハウジング荒加工','pub',1,'','承認 佐藤 09/30',4],
+ ['GX-2410B','asm','カバー取付','pub',2,'','承認 佐藤 10/01',4],
+ ['GX-2410B','insp','出荷前外観検査','pub',4,'GX-2400A · 検査、MT-880 · 検査','承認 鈴木 09/28',6],
+ ['GX-2410B','grind','シャフト外径仕上げ','pub',2,'','承認 高橋 10/03',7],
+ ['MT-880','insp','出荷前外観検査','pub',4,'GX-2400A · 検査、GX-2410B · 検査','承認 鈴木 09/28',6],
+ ['MT-880','insp','寸法検査 三次元','pub',1,'','承認 鈴木 10/05',9],
+ ['MT-880','cut','フランジ穴あけ','draft',null,'','',2],
+ ['MT-880','grind','端面研削','rev',3,'','改版中 · 伊藤 13:40〜',5],
+ ['RS-1205','asm','減速機組立','pub',5,'','承認 佐藤 09/22',12],
+ ['RS-1205','insp','バックラッシ測定','pub',2,'','承認 鈴木 10/06',4],
+ ['RS-1205','cut','ギヤケース加工','pub',2,'','承認 高橋 09/19',6],
+ ['RS-1205','grind','歯面研削','draft',null,'','',3]
+].map((r,i)=>({id:i,model:r[0],proc:r[1],name:r[2],st:r[3],rev:r[4],other:r[5],who:r[6],pages:r[7]}));
+const S={proc:'insp',model:'',q:'',digits:'',status:'全て',name:'',view:null,page:1};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function render(){
+  const inModel=ITEMS.filter(i=>!S.model||i.model===S.model);
+  const inProc=ITEMS.filter(i=>!S.proc||i.proc===S.proc);
+  const q=S.q.toUpperCase().trim();
+  const models=[...new Set(inProc.map(i=>i.model))].filter(m=>(!q||m.includes(q))&&(!S.digits||m.replace(/\D/g,'').includes(S.digits)));
+  const rows=inProc.filter(i=>(!S.model||i.model===S.model)
+    &&(S.status==='全て'||(S.status==='公開'&&i.st==='pub')||(S.status==='下書き'&&i.st==='draft')||(S.status==='改版中'&&i.st==='rev'))
+    &&i.name.includes(S.name.trim()));
+  const ctx=S.model&&S.proc?'':S.model?'p':'m';
+  const grid=`grid-template-columns:36px minmax(220px,1fr) ${ctx?'180px ':''}150px 230px 170px 50px 188px`;
+  const both=S.model&&S.proc;
+  const v=S.view!=null?ITEMS[S.view]:null;
+  document.getElementById('stage').innerHTML=`
+  <header class="bar"><h2>要領書</h2><span class="mode">${I.pen}作る・直す</span>
+    <div style="margin-left:auto;display:flex;gap:16px"><span class="act">${I.box}素材 12</span><span class="act">${I.vid}動画 4</span><span class="act">組立へ戻る</span></div></header>
+  <div class="cols">
+    <section class="left">
+      <p class="lab">工程 <span class="new">新</span></p>
+      <div class="procs">
+        <button class="proc" data-proc="" aria-pressed="${!S.proc}">全て<small>${inModel.length}</small></button>
+        ${PROCS.map(([id,n])=>`<button class="proc" data-proc="${id}" aria-pressed="${S.proc===id}">${n}<small>${inModel.filter(i=>i.proc===id).length||'—'}</small></button>`).join('')}
+      </div>
+      <p class="lab" style="margin-top:6px">機種</p>
+      <input class="search" id="q" type="search" placeholder="型番で検索" value="${esc(S.q)}">
+      <div class="split">
+        <div><div class="digits">${esc(S.digits)}</div>
+          <div class="keys">${['1','2','3','4','5','6','7','8','9','C','0','⌫'].map(k=>`<button data-key="${k}">${k}</button>`).join('')}</div></div>
+        <div class="models">${models.length?models.map(m=>`<button class="model" data-model="${m}" aria-current="${S.model===m}">${m}<span>${inProc.filter(i=>i.model===m).length}</span></button>`).join(''):'<p class="empty">該当する機種がありません</p>'}</div>
+      </div>
+    </section>
+    <section class="right">
+      <div class="head">
+        <h3>${S.model?`<span class="crumb">${S.model}<button data-clear="model" aria-label="機種の絞り込みを外す">${I.x}</button></span>`:'<span class="crumb all">全機種</span>'}
+            ›
+            ${S.proc?`<span class="crumb">${pname(S.proc)}<button data-clear="proc" aria-label="工程の絞り込みを外す">${I.x}</button></span>`:'<span class="crumb all">全工程</span>'}</h3>
+        <span class="count">${rows.length} 件</span>
+        <div class="chips">${['全て','公開','下書き','改版中'].map(f=>`<button class="chip" data-status="${f}" aria-pressed="${S.status===f}">${f}</button>`).join('')}</div>
+        <input class="name" id="name" type="search" placeholder="名前で絞り込み" value="${esc(S.name)}">
+        <button class="act yellow" style="margin-left:auto" ${both?'':'disabled'}>${I.plus}作る</button>
+      </div>
+      ${rows.map(i=>`<div class="row" style="${grid}">
+        <div class="thumb"></div>
+        <div class="title">${i.name}</div>
+        ${ctx==='m'?`<div class="ctx m">${i.model}</div>`:ctx==='p'?`<div class="ctx">${pname(i.proc)}</div>`:''}
+        <div><span class="badge ${i.st==='draft'?'draft':'pub'}">${i.st==='draft'?'下書き':`公開 第${i.rev}版`}</span></div>
+        <div class="use">${i.other||'—'}</div>
+        <div class="who">${i.st==='rev'?`<span class="rev">${i.who}</span>`:i.who}</div>
+        <div class="pages">${i.pages}</div>
+        <div class="ops">
+          <button class="sym view" data-view="${i.id}" aria-label="見る">${I.eye}</button>
+          <button class="sym fix" aria-label="直す">${I.pen}</button>
+          <button class="sym ${i.st==='draft'?'gap':''}" aria-label="使う">${I.use}</button>
+          <button class="sym" aria-label="${i.st==='draft'&&!i.other?'削除':'外す'}">${i.st==='draft'&&!i.other?I.bin:I.off}</button>
+        </div></div>`).join('')||'<p class="empty">該当する要領書がありません</p>'}
+      ${both?'<button class="assign">＋ 既存の要領書を割り当てる</button>':''}
+    </section>
+  </div>
+  ${v?`<div class="veil" data-close="1"><div class="viewer">
+    <div class="vbar"><span class="eye">${I.eye}見る</span><strong>${v.name}</strong>
+      <span class="sub">${v.model} › ${pname(v.proc)}</span>
+      <span class="badge ${v.st==='draft'?'draft':'pub'}">${v.st==='draft'?'下書き':`公開 第${v.rev}版`}</span>
+      <div class="nav"><button class="sym view" data-pg="-1" aria-label="前のページ">${I.l}</button>${S.page} / ${v.pages}<button class="sym view" data-pg="1" aria-label="次のページ">${I.r}</button>
+        <button class="act" data-close="1" style="margin-left:12px">${I.x}閉じる</button></div></div>
+    <div class="vbody">
+      <div class="strip">${Array.from({length:v.pages},(_,n)=>`<button class="pg" data-goto="${n+1}" aria-current="${S.page===n+1}">${n+1}</button>`).join('')}</div>
+      <div class="sheetwrap"><div class="sheet">
+        <h4>${v.name}<span>${S.page} / ${v.pages}</span></h4>
+        <ol start="${(S.page-1)*3+1}"><li>部品を治具に載せる</li><li>赤丸の位置を確認する</li><li>規定トルクで締める</li></ol>
+        <div class="photo">写真<span class="mark"></span><span class="tag">ここ</span></div>
+      </div></div>
+    </div></div></div>`:''}`;
+}
+const stage=document.getElementById('stage');
+stage.addEventListener('click',e=>{
+  const t=e.target.closest('button,[data-close]'); if(!t) return;
+  const d=t.dataset;
+  if('proc' in d) S.proc=S.proc===d.proc?'':d.proc;
+  else if(d.model) S.model=S.model===d.model?'':d.model;
+  else if(d.clear) S[d.clear]='';
+  else if(d.status) S.status=d.status;
+  else if(d.key) S.digits=d.key==='C'?'':d.key==='⌫'?S.digits.slice(0,-1):(S.digits+d.key).slice(0,8);
+  else if(d.view){S.view=+d.view;S.page=1}
+  else if(d.pg){const n=ITEMS[S.view].pages;S.page=Math.min(n,Math.max(1,S.page+ +d.pg))}
+  else if(d.goto) S.page=+d.goto;
+  else if(d.close){ if(t.classList.contains('veil')&&e.target!==t) return; S.view=null }
+  else return;
+  render();
+});
+stage.addEventListener('input',e=>{
+  if(e.target.id!=='q'&&e.target.id!=='name') return;
+  const id=e.target.id, pos=e.target.selectionStart; S[id]=e.target.value; render();
+  const el=document.getElementById(id); el.focus(); try{el.setSelectionRange(pos,pos)}catch(_){}
+});
+const fit=()=>{stage.style.transform=`scale(${document.getElementById('fit').clientWidth/1920})`};
+new ResizeObserver(fit).observe(document.getElementById('fit'));
+render(); fit();
+</script>

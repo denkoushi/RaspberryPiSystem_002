@@ -7,11 +7,15 @@ import { mapManualImportRunError } from './import-schedule-error-mapper.js';
 import { detectGmailScheduleMinuteCollisions } from './import-schedule-policy.js';
 import { ensureProductionScheduleCsvImportSchedules } from './fkojunst-import-schedule.ensure.js';
 import { CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_ID } from './customer-scaw-import-schedule.policy.js';
+import { SCAW_STFUTEKIGO_CSV_IMPORT_SCHEDULE_ID } from './scaw-stfutekigo-import-schedule.policy.js';
 import { FKOBAINO_CSV_IMPORT_SCHEDULE_ID } from './fkobaino-import-schedule.policy.js';
 import { FKOJUNST_CSV_IMPORT_SCHEDULE_ID } from './fkojunst-import-schedule.policy.js';
 import { FKOJUNST_STATUS_MAIL_CSV_IMPORT_SCHEDULE_ID } from './fkojunst-status-mail-import-schedule.policy.js';
 import { SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID } from './seiban-machine-name-supplement-import-schedule.policy.js';
 import { RIGGING_SLINGS_INSPECTION_CSV_IMPORT_SCHEDULE_ID } from './slings-inspection-import-schedule.policy.js';
+import { PROCEDURE_MATERIAL_GMAIL_CSV_IMPORT_SCHEDULE_ID } from './procedure-material-import-schedule.policy.js';
+import { ITEM_INVENTORY_GMAIL_CSV_IMPORT_SCHEDULE_ID } from './item-inventory-import-schedule.policy.js';
+import { MACHINE_SIGNAL_GMAIL_CSV_IMPORT_SCHEDULE_ID } from './machine-signal-import-schedule.policy.js';
 import { normalizeSystemCsvImportRowForPersistence } from './system-csv-import-schedule-invariants.js';
 import { assertCsvGmailSubjectPatternAllowed } from '../gmail/gmail-subject-reservation.policy.js';
 
@@ -40,6 +44,7 @@ export type CsvImportScheduleCreateInput = {
   replaceExisting?: boolean;
   autoBackupAfterImport?: CsvImportSchedule['autoBackupAfterImport'];
   retryConfig?: CsvImportSchedule['retryConfig'];
+  metadata?: CsvImportSchedule['metadata'];
 };
 
 export type CsvImportScheduleUpdateInput = {
@@ -54,6 +59,7 @@ export type CsvImportScheduleUpdateInput = {
   replaceExisting?: boolean;
   autoBackupAfterImport?: CsvImportSchedule['autoBackupAfterImport'];
   retryConfig?: CsvImportSchedule['retryConfig'];
+  metadata?: CsvImportSchedule['metadata'];
 };
 
 export type RunScheduleContext = {
@@ -84,7 +90,8 @@ export class ImportScheduleAdminService {
 
     for (const target of schedule.targets ?? []) {
       // csvDashboards targets store a dashboard UUID, not a Gmail subject.
-      if (target.type !== 'csvDashboards') {
+      // machineSignalGmail は予約済みの件名そのものを使う専用の取り込みなので、予約チェックの対象外。
+      if (target.type !== 'csvDashboards' && target.type !== 'machineSignalGmail' && target.type !== 'procedureMaterialGmail') {
         assertCsvGmailSubjectPatternAllowed(target.source);
       }
     }
@@ -138,6 +145,7 @@ export class ImportScheduleAdminService {
       replaceExisting: input.replaceExisting ?? false,
       autoBackupAfterImport: input.autoBackupAfterImport ?? { enabled: false, targets: ['csv'] },
       retryConfig: input.retryConfig,
+      metadata: input.metadata,
     };
     this.assertGmailScheduleSubjectPatternsAllowed(config, newSchedule);
 
@@ -189,7 +197,11 @@ export class ImportScheduleAdminService {
       scheduleId === SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID ||
       scheduleId === CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_ID ||
       scheduleId === FKOBAINO_CSV_IMPORT_SCHEDULE_ID ||
-      scheduleId === RIGGING_SLINGS_INSPECTION_CSV_IMPORT_SCHEDULE_ID
+      scheduleId === RIGGING_SLINGS_INSPECTION_CSV_IMPORT_SCHEDULE_ID ||
+      scheduleId === SCAW_STFUTEKIGO_CSV_IMPORT_SCHEDULE_ID ||
+      scheduleId === ITEM_INVENTORY_GMAIL_CSV_IMPORT_SCHEDULE_ID ||
+      scheduleId === MACHINE_SIGNAL_GMAIL_CSV_IMPORT_SCHEDULE_ID ||
+      scheduleId === PROCEDURE_MATERIAL_GMAIL_CSV_IMPORT_SCHEDULE_ID
     ) {
       throw new ApiError(400, 'このスケジュールはシステムで固定されており削除できません');
     }

@@ -126,7 +126,7 @@ function LeaderOrderResourceCardInner({
     return computeGanttSlotLayout({
       rows: rowsWithFooter.map(({ row, footerChips }) => ({
         requiredMinutes: row.requiredMinutes,
-        hasFooterChips: footerChips.length > 0
+        hasFooterChips: footerChips.length > 0 || row.materialArrivalStatus != null
       })),
       availableWorkHeightPx,
       capacityMinutes

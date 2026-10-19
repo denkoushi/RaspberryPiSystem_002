@@ -1,4 +1,5 @@
 import { isManualDueDateSet, resolveDisplayDueDate } from '../../features/kiosk/productionSchedule/plannedDueDisplay';
+import { ProductionScheduleOrderSelect } from '../../features/kiosk/productionSchedule/ProductionScheduleOrderSelect';
 
 import type { KioskProductionScheduleCompletionIntent } from '../../api/client';
 import type { TableColumnDefinition } from '../../features/kiosk/columnWidth';
@@ -31,7 +32,7 @@ type ProductionScheduleTableProps = {
   processingTypeOptions: ProcessingTypeOption[];
   getAvailableOrders: (resourceCd: string, current: number | null) => number[];
   handleComplete: (rowId: string, intent: KioskProductionScheduleCompletionIntent) => void;
-  handleOrderChange: (rowId: string, resourceCd: string, nextValue: string) => void;
+  handleOrderChange: (rowId: string, resourceCd: string, nextValue: string) => void | Promise<unknown>;
   handleProcessingChange: (rowId: string, nextValue: string) => void;
   openDueDatePicker: (rowId: string, currentDueDate: string | null) => void;
   startNoteEdit: (rowId: string, currentNote: string | null) => void;
@@ -41,6 +42,7 @@ type ProductionScheduleTableProps = {
   PencilIcon: IconComponent;
   CalendarIcon: IconComponent;
   RulerIcon: IconComponent;
+  orderSelectVariant?: 'native' | 'leaderBoard';
 };
 
 type RowCellProps = {
@@ -56,7 +58,7 @@ type RowCellProps = {
   processingTypeOptions: ProcessingTypeOption[];
   getAvailableOrders: (resourceCd: string, current: number | null) => number[];
   handleComplete: (rowId: string, intent: KioskProductionScheduleCompletionIntent) => void;
-  handleOrderChange: (rowId: string, resourceCd: string, nextValue: string) => void;
+  handleOrderChange: (rowId: string, resourceCd: string, nextValue: string) => void | Promise<unknown>;
   handleProcessingChange: (rowId: string, nextValue: string) => void;
   openDueDatePicker: (rowId: string, currentDueDate: string | null) => void;
   startNoteEdit: (rowId: string, currentNote: string | null) => void;
@@ -66,6 +68,7 @@ type RowCellProps = {
   PencilIcon: IconComponent;
   CalendarIcon: IconComponent;
   RulerIcon: IconComponent;
+  orderSelectVariant?: 'native' | 'leaderBoard';
 };
 
 function ProductionScheduleTableCells({
@@ -90,7 +93,8 @@ function ProductionScheduleTableCells({
   formatDueDate,
   PencilIcon,
   CalendarIcon,
-  RulerIcon
+  RulerIcon,
+  orderSelectVariant = 'native'
 }: RowCellProps) {
   const productNo = String(row.data.ProductNo ?? '').trim();
   const resourceCd = String(row.data.FSIGENCD ?? '').trim();
@@ -129,17 +133,30 @@ function ProductionScheduleTableCells({
             (() => {
               const resourceCd = row.data.FSIGENCD ?? '';
               const options = getAvailableOrders(resourceCd, row.processingOrder);
+              const disabled =
+                completePending ||
+                row.isCompleted ||
+                resourceCd.length === 0 ||
+                orderPending ||
+                !canEditProcessingOrder;
+              if (orderSelectVariant === 'leaderBoard') {
+                return (
+                  <ProductionScheduleOrderSelect
+                    rowId={row.id}
+                    resourceCd={resourceCd}
+                    currentOrder={row.processingOrder}
+                    disabled={disabled}
+                    orderPending={orderPending}
+                    getAvailableOrders={getAvailableOrders}
+                    onChange={handleOrderChange}
+                  />
+                );
+              }
               return (
                 <select
                   value={row.processingOrder ?? ''}
                   onChange={(event) => handleOrderChange(row.id, resourceCd, event.target.value)}
-                  disabled={
-                    completePending ||
-                    row.isCompleted ||
-                    resourceCd.length === 0 ||
-                    orderPending ||
-                    !canEditProcessingOrder
-                  }
+                  disabled={disabled}
                   className="h-7 w-16 rounded border border-slate-300 bg-white px-2 text-sm text-black"
                 >
                   <option value="">-</option>
@@ -255,7 +272,8 @@ export function ProductionScheduleTable({
   formatDueDate,
   PencilIcon,
   CalendarIcon,
-  RulerIcon
+  RulerIcon,
+  orderSelectVariant = 'native'
 }: ProductionScheduleTableProps) {
   return (
     <div className="flex-1 overflow-auto">
@@ -344,6 +362,7 @@ export function ProductionScheduleTable({
                   PencilIcon={PencilIcon}
                   CalendarIcon={CalendarIcon}
                   RulerIcon={RulerIcon}
+                  orderSelectVariant={orderSelectVariant}
                 />
                 {isTwoColumn ? <td className="px-2 py-1.5" /> : null}
                 {isTwoColumn ? (
@@ -371,6 +390,7 @@ export function ProductionScheduleTable({
                       PencilIcon={PencilIcon}
                       CalendarIcon={CalendarIcon}
                       RulerIcon={RulerIcon}
+                      orderSelectVariant={orderSelectVariant}
                     />
                   ) : (
                     <>

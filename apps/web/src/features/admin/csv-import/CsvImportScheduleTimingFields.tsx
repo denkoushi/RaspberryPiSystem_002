@@ -144,17 +144,17 @@ export function CsvImportScheduleTimingFields({
             min={MIN_INTERVAL_MINUTES}
             value={intervalMinutes}
             onChange={(e) => onIntervalMinutesChange(e.target.value)}
-            className="w-full text-xs"
+            className="w-20 shrink-0 text-xs"
             disabled={!scheduleEditable}
           />
-          <span className="text-[10px] text-slate-600">分ごと</span>
+          <span className="whitespace-nowrap text-[10px] text-slate-600">分ごと</span>
         </div>
       ) : (
         <Input
           type="time"
           value={scheduleTime}
           onChange={(e) => onScheduleTimeChange(e.target.value)}
-          className="w-full text-xs"
+          className="min-w-[112px] text-xs"
           disabled={!scheduleEditable}
         />
       )}
@@ -164,7 +164,7 @@ export function CsvImportScheduleTimingFields({
             実行曜日（未選択の場合は毎日）
           </label>
         )}
-        <div className={isCreate ? 'flex gap-2 flex-wrap' : 'flex gap-1 flex-wrap'}>
+        <div className={isCreate ? 'flex gap-2 flex-wrap' : 'flex flex-nowrap gap-1 overflow-x-auto pb-1'}>
           {DAYS_OF_WEEK.map((day) => (
             <button
               key={day.value}
@@ -197,10 +197,10 @@ export function CsvImportScheduleTimingFields({
             max={59}
             value={offsetMinutes}
             onChange={(e) => onOffsetMinutesChange(e.target.value)}
-            className="w-full text-xs"
+            className="w-20 shrink-0 text-xs"
             disabled={!scheduleEditable}
           />
-          <span className="text-[10px] text-slate-600">分開始</span>
+          <span className="whitespace-nowrap text-[10px] text-slate-600">分開始</span>
         </div>
       )}
     </div>

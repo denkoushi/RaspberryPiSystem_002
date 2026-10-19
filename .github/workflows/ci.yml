@@ -13,6 +13,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, edited]
   merge_group:
   workflow_dispatch:
   schedule:
@@ -32,11 +33,21 @@ jobs:
       deploy_contract: ${{ steps.classify.outputs.deploy_contract }}
       client: ${{ steps.classify.outputs.client }}
       e2e: ${{ steps.classify.outputs.e2e }}
+      kiosk_sop: ${{ steps.classify.outputs.kiosk_sop }}
       docker_security: ${{ steps.classify.outputs.docker_security }}
+      signage_artifact: ${{ steps.classify.outputs.signage_artifact }}
+      codeql: ${{ steps.classify.outputs.codeql }}
+      docker_api: ${{ steps.classify.outputs.docker_api }}
+      docker_web: ${{ steps.classify.outputs.docker_web }}
+      release_pair: ${{ steps.classify.outputs.release_pair }}
+      runtime_rehearsal: ${{ steps.classify.outputs.runtime_rehearsal }}
+      docker_matrix: ${{ steps.classify.outputs.docker_matrix }}
+      pi4_agent_matrix: ${{ steps.classify.outputs.pi4_agent_matrix }}
+      pi4_agent_services: ${{ steps.classify.outputs.pi4_agent_services }}
       full_suite: ${{ steps.classify.outputs.full_suite }}
     steps:
       - name: Checkout code with history
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -48,56 +59,55 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          changes_file="$(mktemp)"
-          trap 'rm -f "$changes_file"' EXIT
-
-          force_full_reason=""
-          if [[ "$EVENT_NAME" != "pull_request" ]]; then
-            force_full_reason="$EVENT_NAME always runs the full suite"
-          elif [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
-            force_full_reason="event has no stable diff base"
-          elif ! python3 scripts/ci/collect_changed_files.py \
+          python3 scripts/ci/classify_event_changes.py \
             --event-name "$EVENT_NAME" \
             --base-sha "$BASE_SHA" \
             --head-sha "$HEAD_SHA" \
-            > "$changes_file"; then
-            force_full_reason="stable diff base is unavailable"
-          fi
+            --format json > "$RUNNER_TEMP/ci-classification.json" \
+            --github-output-file "$GITHUB_OUTPUT" \
+            --markdown-file "$GITHUB_STEP_SUMMARY"
 
-          classifier_args=()
-          if [[ -n "$force_full_reason" ]]; then
-            classifier_args+=(--force-full-reason "$force_full_reason")
-          fi
-          python3 scripts/ci/classify_changes.py \
-            --format github-output \
-            "${classifier_args[@]}" \
-            < "$changes_file" >> "$GITHUB_OUTPUT"
-          python3 scripts/ci/classify_changes.py \
-            --format markdown \
-            "${classifier_args[@]}" \
-            < "$changes_file" >> "$GITHUB_STEP_SUMMARY"
+      - name: Validate PR Deploy impact declaration
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          python3 scripts/ci/validate_deploy_impact.py \
+            --event-path "$GITHUB_EVENT_PATH" \
+            --classification-json "$RUNNER_TEMP/ci-classification.json" \
+            --markdown-file "$GITHUB_STEP_SUMMARY"
 
   repo-policy:
     name: repo-policy
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.repo_policy == 'true' }}
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.repo_policy == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Test classifier and workflow contracts
         run: python3 -m unittest discover -s scripts/ci/tests -p 'test_*.py'
+
+      - name: Validate dependency exception metadata
+        run: python3 scripts/ci/validate_dependency_exceptions.py
+
+      - name: Validate production secret structure
+        run: python3 scripts/ci/validate_production_secret_structure.py
+
+      # Every kiosk screen route must have a floor-facing operation guide the Chat can answer from.
+      - name: Check kiosk operation guide coverage
+        run: |
+          node --test scripts/docs/check-kiosk-operation-guide.test.mjs
+          node scripts/docs/check-kiosk-operation-guide.mjs
 
   # Fast feedback shared by API, Web, and shared-package changes.
   workspace-quality:
     name: workspace-quality
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.workspace_quality == 'true' }}
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.workspace_quality == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -108,6 +118,7 @@ jobs:
       - name: Build shared packages
         run: |
           pnpm --filter @raspi-system/shared-types build
+          pnpm --filter @raspi-system/kiosk-sop-core build
           pnpm --filter @raspi-system/part-search-core build
           pnpm --filter @raspi-system/shelf-layout-core build
 
@@ -117,12 +128,11 @@ jobs:
       - name: Run shelf-layout-core tests
         run: pnpm --filter @raspi-system/shelf-layout-core test
 
-      # pnpm 9 uses npm's retired audit endpoint. Keep the workspace toolchain
-      # unchanged and isolate the bulk-advisory client after all Node 20 work.
+      # pnpm 10 still uses legacy audit endpoints; keep the bulk client isolated.
       - name: Setup Node.js for bulk advisory audit
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Security scan (pnpm bulk audit)
         env:
@@ -132,15 +142,19 @@ jobs:
   api:
     name: api (${{ matrix.shard }})
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.api == 'true' }}
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.api == 'true' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(github.event_name == 'pull_request' && '[{"shard":"all","shard_id":"all","coverage":false,"build":true}]' || '[{"shard":"1/3","shard_id":"1-of-3","coverage":true,"build":true},{"shard":"2/3","shard_id":"2-of-3","coverage":true,"build":false},{"shard":"3/3","shard_id":"3-of-3","coverage":true,"build":false}]') }}
+        # Every event runs three shards; api-coverage merges them and enforces thresholds.
+        include:
+          - { shard: "1/3", shard_id: "1-of-3", build: true }
+          - { shard: "2/3", shard_id: "2-of-3", build: false }
+          - { shard: "3/3", shard_id: "3-of-3", build: false }
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -148,6 +162,7 @@ jobs:
       - name: Build shared packages
         run: |
           pnpm --filter @raspi-system/shared-types build
+          pnpm --filter @raspi-system/kiosk-sop-core build
           pnpm --filter @raspi-system/part-search-core build
           pnpm --filter @raspi-system/shelf-layout-core build
 
@@ -184,60 +199,83 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
-      - name: Run API tests (PR, no coverage)
-        if: ${{ !matrix.coverage }}
-        run: |
-          cd apps/api
-          docker exec postgres-test psql -U postgres -d borrow_return -c "SELECT 1;"
-          BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) \
-            pnpm test -- --fileParallelism=true --maxWorkers=1
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
-          JWT_ACCESS_SECRET: test-access-secret-1234567890
-          JWT_REFRESH_SECRET: test-refresh-secret-1234567890
-          CAMERA_TYPE: mock
-          PHOTO_STORAGE_DIR: /tmp/test-photo-storage
-          BACKUP_STORAGE_DIR: /tmp/test-backups
-          NODE_ENV: test
-          PERF_RESPONSE_TIME_THRESHOLD_MS: '1800'
-
       - name: Run API tests (coverage shard)
-        if: matrix.coverage
         run: |
           cd apps/api
           docker exec postgres-test psql -U postgres -d borrow_return -c "SELECT 1;"
           BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) \
-            pnpm test:coverage -- --shard=${{ matrix.shard }} --fileParallelism=true --maxWorkers=1
+            pnpm test:coverage --shard=${{ matrix.shard }} --fileParallelism=true --maxWorkers=1 \
+              --reporter=default --reporter=blob \
+              --outputFile.blob=vitest-blob/blob-${{ matrix.shard_id }}.json
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+          GRINDING_PLANNING_DUE_SCOPE_CI: '1'
           JWT_ACCESS_SECRET: test-access-secret-1234567890
           JWT_REFRESH_SECRET: test-refresh-secret-1234567890
           CAMERA_TYPE: mock
-          PHOTO_STORAGE_DIR: /tmp/test-photo-storage
+          FILE_STORAGE_ROOT: /tmp/test-file-storage
+          PDF_STORAGE_DIR: /tmp/test-file-storage
+          PHOTO_STORAGE_DIR: /tmp/test-file-storage
           BACKUP_STORAGE_DIR: /tmp/test-backups
           NODE_ENV: test
           PERF_RESPONSE_TIME_THRESHOLD_MS: '1800'
+          COVERAGE_ENFORCE_THRESHOLDS: 'false'
 
-      - name: Upload API coverage artifact
-        if: ${{ always() && matrix.coverage }}
-        uses: actions/upload-artifact@v6
+      - name: Upload API test blob
+        uses: actions/upload-artifact@v7
         with:
-          name: api-coverage-${{ matrix.shard_id }}
-          path: apps/api/coverage/
-          retention-days: 7
+          name: api-blob-${{ matrix.shard_id }}
+          path: apps/api/vitest-blob/
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Cleanup PostgreSQL
         if: always()
         run: docker stop postgres-test && docker rm postgres-test || true
 
-  web:
-    name: web
-    needs: change-classification
-    if: ${{ needs.change-classification.outputs.web == 'true' }}
+  api-coverage:
+    name: api-coverage
+    needs: [change-classification, api]
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.api == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm workspace
+        uses: ./.github/actions/setup-pnpm-monorepo
+
+      - name: Download API test blobs
+        uses: actions/download-artifact@v8
+        with:
+          pattern: api-blob-*
+          path: apps/api/vitest-blob
+          merge-multiple: true
+
+      - name: Merge shard coverage and enforce thresholds
+        working-directory: apps/api
+        env:
+          COVERAGE_ENFORCE_THRESHOLDS: 'true'
+        run: |
+          test "$(find vitest-blob -name 'blob-*.json' | wc -l)" -eq 3
+          pnpm exec vitest run --merge-reports=vitest-blob --coverage --coverage.provider=v8
+
+      - name: Upload API coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: api-coverage
+          path: apps/api/coverage/
+          retention-days: 7
+
+  web:
+    name: web
+    needs: change-classification
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.web == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -245,11 +283,12 @@ jobs:
       - name: Build shared packages
         run: |
           pnpm --filter @raspi-system/shared-types build
+          pnpm --filter @raspi-system/kiosk-sop-core build
           pnpm --filter @raspi-system/part-search-core build
           pnpm --filter @raspi-system/shelf-layout-core build
 
-      - name: Run Web tests
-        run: pnpm --filter @raspi-system/web test
+      - name: Run Web tests with coverage floor
+        run: pnpm --filter @raspi-system/web test:coverage
 
       - name: Build Web
         run: pnpm --filter @raspi-system/web build
@@ -257,11 +296,11 @@ jobs:
   db-infra:
     name: db-infra
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.db_infra == 'true' }}
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.db_infra == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -269,6 +308,7 @@ jobs:
       - name: Build shared packages
         run: |
           pnpm --filter @raspi-system/shared-types build
+          pnpm --filter @raspi-system/kiosk-sop-core build
           pnpm --filter @raspi-system/part-search-core build
           pnpm --filter @raspi-system/shelf-layout-core build
 
@@ -302,13 +342,35 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
+      - name: Test client key rotation with isolated PostgreSQL
+        run: |
+          python3 scripts/deploy/tests/test_rotate_client_key_transport.py
+          bash scripts/deploy/tests/test-rotate-client-key-postgres.sh
+
+      - name: Generate isolated production-mode database credentials
+        run: |
+          CI_APP_DB_PASSWORD="$(openssl rand -hex 24)"
+          CI_MIGRATION_DB_PASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::$CI_APP_DB_PASSWORD"
+          echo "::add-mask::$CI_MIGRATION_DB_PASSWORD"
+          echo "CI_APP_DB_PASSWORD=$CI_APP_DB_PASSWORD" >> "$GITHUB_ENV"
+          echo "CI_MIGRATION_DB_PASSWORD=$CI_MIGRATION_DB_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Prepare least-privilege roles for production-mode API
+        run: |
+          docker exec -i postgres-test psql -U postgres -d borrow_return \
+            -v migration_password="$CI_MIGRATION_DB_PASSWORD" \
+            -v app_password="$CI_APP_DB_PASSWORD" \
+            -f - < scripts/deploy/postgres-role-bootstrap.sql
+
       - name: Build API
         run: pnpm --filter @raspi-system/api build
 
       - name: Start API server for monitoring tests
         run: |
           cd apps/api
-          NODE_ENV=production pnpm start > /tmp/api-server.log 2>&1 &
+          DATABASE_URL="postgresql://raspi_app:${CI_APP_DB_PASSWORD}@localhost:5432/borrow_return" \
+            NODE_ENV=production pnpm start > /tmp/api-server.log 2>&1 &
           API_PID=$!
           echo "API_PID=$API_PID" >> "$GITHUB_ENV"
           timeout=30
@@ -322,7 +384,6 @@ jobs:
             elapsed=$((elapsed + 1))
           done
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
           JWT_ACCESS_SECRET: ci-prod-access-secret-0123456789-abcdefghijklmnopqrstuvwxyz
           JWT_REFRESH_SECRET: ci-prod-refresh-secret-0123456789-abcdefghijklmnopqrstuvwxyz
           PORT: 8080
@@ -350,11 +411,11 @@ jobs:
   deploy-contract:
     name: deploy-contract
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.deploy_contract == 'true' }}
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.deploy_contract == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code with migration base
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2
 
@@ -374,7 +435,7 @@ jobs:
           command -v ansible-playbook
 
       - name: Cache Ansible collections
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.ansible/collections
           key: ansible-collections-${{ runner.os }}-community-general-v1
@@ -382,17 +443,91 @@ jobs:
       - name: Validate deploy contracts
         run: bash scripts/ci/run-deploy-contracts-local.sh --install-collections
 
+  container-runtime-rehearsal:
+    name: container-runtime-rehearsal
+    needs: change-classification
+    if: >-
+      ${{
+        github.event_name != 'push' &&
+        needs.change-classification.outputs.runtime_rehearsal == 'true'
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact candidate source
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # Reuse the layer cache that docker-security writes for the same Dockerfiles.
+      # docker-security proves provenance-only build args keep filesystem layers,
+      # so the cached layers are the same ones a clean build would produce.
+      - name: Build native production API image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: infrastructure/docker/Dockerfile.api
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: raspi-runtime-audit-api:${{ github.sha }}
+          build-args: |
+            BUILD_COMMIT=${{ github.sha }}
+            BUILD_CONFIG_HASH=production-path-audit
+          cache-from: type=gha,scope=api
+
+      - name: Build native production Web image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: infrastructure/docker/Dockerfile.web
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: raspi-runtime-audit-web:${{ github.sha }}
+          build-args: |
+            BUILD_COMMIT=${{ github.sha }}
+            BUILD_CONFIG_HASH=production-path-audit
+            VITE_RELEASE_SHA=${{ github.sha }}
+          cache-from: type=gha,scope=web
+
+      - name: Run isolated native runtime rehearsal
+        env:
+          API_IMAGE: raspi-runtime-audit-api:${{ github.sha }}
+          WEB_IMAGE: raspi-runtime-audit-web:${{ github.sha }}
+        run: >-
+          bash scripts/ci/rehearse-release-runtime.sh
+          --api-image "$API_IMAGE"
+          --web-image "$WEB_IMAGE"
+          --sha "$GITHUB_SHA"
+          --platform linux/amd64
+          --skip-pull
+          --stable-seconds 10
+
   client:
     name: client
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.client == 'true' }}
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.client == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install client test runner
-        run: python3 -m pip install --user pytest==8.4.2
+        run: |
+          python3 -m pip install --user \
+            pytest==8.4.2 \
+            fastapi==0.111.0 \
+            httpx==0.27.0 \
+            python-dotenv==1.0.1 \
+            uvicorn==0.29.0
+
+      - name: Setup torque-agent test environment
+        run: |
+          python3 -m pip install --user poetry==1.8.5
+          cd clients/torque-agent
+          poetry install --with dev --no-interaction
 
       - name: Validate client scripts and tests
         env:
@@ -405,28 +540,503 @@ jobs:
           python3 -m pytest clients/haizen-agent/tests clients/nfc-agent/tests
           python3 -m unittest discover -s clients/status-agent/tests -p 'test_*.py'
 
-  docker-security:
-    name: docker-security (${{ matrix.image }})
+      - name: Validate torque-agent
+        run: |
+          cd clients/torque-agent
+          poetry run pytest tests
+          poetry run ruff check torque_agent tests
+
+  pi4-agent-image-contract:
+    name: pi4-agent-image-contract (${{ matrix.service }}, ${{ matrix.platform }})
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.docker_security == 'true' }}
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.pi4_agent_matrix != '[]' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - image: api
-            dockerfile: ./infrastructure/docker/Dockerfile.api
-            tag: raspisys-api:ci
-          - image: web
-            dockerfile: ./infrastructure/docker/Dockerfile.web
-            tag: raspisys-web:ci
+        include: ${{ fromJSON(needs.change-classification.outputs.pi4_agent_matrix) }}
+    steps:
+      - name: Checkout exact candidate source
+        uses: actions/checkout@v7
+
+      - name: Set up QEMU for the selected Pi4 platform
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build the Pi4 agent image contract
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platform }}
+          push: false
+          load: true
+          tags: ${{ matrix.image }}:${{ github.sha }}-${{ matrix.platform_tag }}
+          cache-from: |
+            type=gha,scope=pi4-agent-${{ matrix.service }}-${{ matrix.platform_tag }}
+            type=gha,scope=pi4-${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=pi4-agent-${{ matrix.service }}-${{ matrix.platform_tag }},ignore-error=true
+
+      - name: Scan the Pi4 agent image contract
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ matrix.image }}:${{ github.sha }}-${{ matrix.platform_tag }}
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          scanners: vuln,secret
+          trivyignores: .trivyignore
+
+  signage-artifact-contract:
+    name: signage-artifact-contract
+    needs: change-classification
+    if: ${{ needs.change-classification.outputs.signage_artifact == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact candidate source
+        uses: actions/checkout@v7
+
+      - name: Install the exact Signage attestation verifier
+        if: ${{ github.event_name != 'push' }}
+        env:
+          SIGNAGE_GH_VERSION: 2.96.0
+          SIGNAGE_GH_ARCHIVE_SHA256: 83d5c2ccad5498f58bf6368acb1ab32588cf43ab3a4b1c301bf36328b1c8bd60
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/gh_${SIGNAGE_GH_VERSION}_linux_amd64.tar.gz"
+          curl --fail --location --silent --show-error \
+            "https://github.com/cli/cli/releases/download/v${SIGNAGE_GH_VERSION}/gh_${SIGNAGE_GH_VERSION}_linux_amd64.tar.gz" \
+            --output "$archive"
+          echo "${SIGNAGE_GH_ARCHIVE_SHA256}  $archive" | sha256sum --check --strict
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP"
+          signage_gh="$RUNNER_TEMP/gh_${SIGNAGE_GH_VERSION}_linux_amd64/bin/gh"
+          test "$("$signage_gh" --version | sed -n '1p')" = "gh version 2.96.0 (2026-07-02)"
+          echo "SIGNAGE_GH=$signage_gh" >> "$GITHUB_ENV"
+
+      - name: Run real Signage artifact contracts
+        if: ${{ github.event_name != 'push' }}
+        run: |
+          python3 -m unittest scripts.deploy.tests.test_signage_distribution_artifact
+          python3 -m unittest \
+            scripts.deploy.tests.test_signage_artifact_stage.ProductionAttestationBoundary
+
+      - name: Build and verify the exact candidate artifact
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy/signage-distribution-artifact.py build \
+            --root . \
+            --source-sha "$GITHUB_SHA" \
+            --output signage-release.tar \
+            --descriptor signage-release-descriptor.json
+          python3 scripts/deploy/signage-distribution-artifact.py verify \
+            --artifact signage-release.tar \
+            --descriptor signage-release-descriptor.json \
+            --expected-source-sha "$GITHUB_SHA"
+
+      - name: Require deterministic Signage artifact bytes
+        if: ${{ github.event_name != 'push' }}
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy/signage-distribution-artifact.py build \
+            --root . \
+            --source-sha "$GITHUB_SHA" \
+            --output "$RUNNER_TEMP/signage-release-second.tar" \
+            --descriptor "$RUNNER_TEMP/signage-release-second.json"
+          cmp signage-release.tar "$RUNNER_TEMP/signage-release-second.tar"
+          cmp signage-release-descriptor.json "$RUNNER_TEMP/signage-release-second.json"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build exact Signage artifact image without publication
+        run: |
+          set -euo pipefail
+          artifact_sha="$(python3 -c 'import json; print(json.load(open("signage-release-descriptor.json"))["artifactSha256"])')"
+          manifest_sha="$(python3 -c 'import json; print(json.load(open("signage-release-descriptor.json"))["manifestSha256"])')"
+          docker buildx build --load --platform linux/amd64 \
+            --file infrastructure/docker/Dockerfile.signage-release \
+            --tag "raspisys-pi3-signage-contract:$GITHUB_SHA" \
+            --build-arg "BUILD_COMMIT=$GITHUB_SHA" \
+            --build-arg "ARTIFACT_SHA256=$artifact_sha" \
+            --build-arg "MANIFEST_SHA256=$manifest_sha" .
+
+      - name: Security scan exact Signage artifact image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
+        with:
+          scan-type: 'image'
+          image-ref: raspisys-pi3-signage-contract:${{ github.sha }}
+          ignore-unfixed: true
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+          scanners: 'vuln,secret'
+          trivyignores: '.trivyignore'
+
+      - name: Upload the verified and scanned Signage artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: pi3-signage-release-${{ github.sha }}
+          path: |
+            signage-release.tar
+            signage-release-descriptor.json
+          if-no-files-found: error
+          retention-days: 7
+
+  hermes-answer-cache:
+    name: hermes-answer-cache
+    needs: change-classification
+    if: ${{ needs.change-classification.outputs.release_pair == 'true' }}
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v7
+      - name: Check catalogue and nightly regression boundaries
+        run: |
+          python3 -m pip install -r services/hermes-answer-cache/requirements.txt
+          python3 -m unittest discover -s services/hermes-answer-cache -p 'test_*.py'
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Log in for exact main publication
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build the ARM64 cache with its offline embedding model
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: services/hermes-answer-cache
+          platforms: linux/arm64
+          load: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: ghcr.io/denkoushi/raspisys-hermes-answer-cache:${{ github.sha }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=hermes-answer-cache
+          cache-to: type=gha,scope=hermes-answer-cache,mode=max
+      - name: Security scan the cache image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
+        env:
+          TRIVY_PLATFORM: linux/arm64
+        with:
+          scan-type: image
+          image-ref: ghcr.io/denkoushi/raspisys-hermes-answer-cache:${{ github.sha }}
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          scanners: vuln
+          trivyignores: .trivyignore
+      - name: Attest the exact production cache image
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ghcr.io/denkoushi/raspisys-hermes-answer-cache
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Verify the registry image with the production attestation checks
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CACHE_IMAGE: ghcr.io/denkoushi/raspisys-hermes-answer-cache:${{ github.sha }}
+        run: |
+          docker image pull "$CACHE_IMAGE"
+          exact_reference="$(docker image inspect --format '{{index .RepoDigests 0}}' "$CACHE_IMAGE")"
+          gh attestation verify "oci://$exact_reference" \
+            --bundle-from-oci --repo "$GITHUB_REPOSITORY" \
+            --source-digest "$GITHUB_SHA" --source-ref refs/heads/main \
+            --deny-self-hosted-runners
+
+  release-build-contract:
+    name: release-build-contract
+    needs: change-classification
+    if: >-
+      ${{
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        needs.change-classification.outputs.release_pair == 'true'
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      config_hash: ${{ steps.contract.outputs.config_hash }}
+    steps:
+      - name: Checkout exact main source
+        uses: actions/checkout@v7
+
+      - name: Install Ansible renderer
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user ansible-core
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Render and seal non-secret production build inputs
+        id: contract
+        run: |
+          set -euo pipefail
+          contract="$RUNNER_TEMP/release-build-contract.json"
+          scripts/ci/render-release-build-contract.sh \
+            --inventory infrastructure/ansible/inventory.yml \
+            --sha "$GITHUB_SHA" \
+            --output "$contract"
+          config_hash="$(
+            python3 scripts/deploy/release_build_contract.py hash \
+              --release-sha "$GITHUB_SHA" <"$contract"
+          )"
+          echo "config_hash=$config_hash" >> "$GITHUB_OUTPUT"
+
+      - name: Upload sealed build contract
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-build-contract-${{ github.sha }}
+          path: ${{ runner.temp }}/release-build-contract.json
+          if-no-files-found: error
+          retention-days: 7
+
+  release-api-image:
+    name: release-api-image
+    needs:
+      - change-classification
+      - release-build-contract
+    if: >-
+      ${{
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        needs.change-classification.outputs.release_pair == 'true'
+      }}
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      repository: ${{ steps.identity.outputs.repository }}
+    steps:
+      - name: Checkout exact main source
+        uses: actions/checkout@v7
+
+      - name: Download sealed build contract
+        uses: actions/download-artifact@v8
+        with:
+          name: release-build-contract-${{ github.sha }}
+          path: ${{ runner.temp }}/release-contract
+
+      - name: Define immutable API repository
+        id: identity
+        run: echo "repository=ghcr.io/denkoushi/raspisys-api" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR for this job
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push exact ARM64 API image
+        id: build
+        env:
+          IMAGE_REPOSITORY: ${{ steps.identity.outputs.repository }}
+          CONFIG_HASH: ${{ needs.release-build-contract.outputs.config_hash }}
+        run: |
+          set -euo pipefail
+          digest="$(
+            python3 scripts/ci/build_release_image.py \
+              --contract "$RUNNER_TEMP/release-contract/release-build-contract.json" \
+              --service api \
+              --sha "$GITHUB_SHA" \
+              --config-hash "$CONFIG_HASH" \
+              --repository "$IMAGE_REPOSITORY" \
+              --metadata-file "$RUNNER_TEMP/release-api-metadata.json"
+          )"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Pull exact ARM64 API digest for scanning
+        env:
+          IMAGE_REFERENCE: ${{ steps.identity.outputs.repository }}@${{ steps.build.outputs.digest }}
+        run: docker pull --platform linux/arm64 "$IMAGE_REFERENCE"
+
+      - name: Select exact ARM64 API image manifest
+        env:
+          IMAGE_REFERENCE: ${{ steps.identity.outputs.repository }}@${{ steps.build.outputs.digest }}
+          IMAGE_REPOSITORY: ${{ steps.identity.outputs.repository }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools inspect --raw "$IMAGE_REFERENCE" \
+            > "$RUNNER_TEMP/release-api-index.json"
+          manifest_digest="$(
+            python3 scripts/ci/validate_release_image_budget.py select-linux-arm64 \
+              < "$RUNNER_TEMP/release-api-index.json"
+          )"
+          docker buildx imagetools inspect --raw "${IMAGE_REPOSITORY}@${manifest_digest}" \
+            > "$RUNNER_TEMP/release-api-manifest.json"
+
+      - name: Enforce compressed API image budget
+        run: >-
+          python3 scripts/ci/validate_release_image_budget.py validate-api
+          < "$RUNNER_TEMP/release-api-manifest.json"
+
+      - name: Security scan exact ARM64 API digest
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
+        with:
+          scan-type: 'image'
+          image-ref: ${{ steps.identity.outputs.repository }}@${{ steps.build.outputs.digest }}
+          ignore-unfixed: true
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+          scanners: 'vuln'
+          trivyignores: '.trivyignore'
+
+  release-web-image:
+    name: release-web-image
+    needs:
+      - change-classification
+      - release-build-contract
+    if: >-
+      ${{
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        needs.change-classification.outputs.release_pair == 'true'
+      }}
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      repository: ${{ steps.identity.outputs.repository }}
+    steps:
+      - name: Checkout exact main source
+        uses: actions/checkout@v7
+
+      - name: Download sealed build contract
+        uses: actions/download-artifact@v8
+        with:
+          name: release-build-contract-${{ github.sha }}
+          path: ${{ runner.temp }}/release-contract
+
+      - name: Define immutable Web repository
+        id: identity
+        run: echo "repository=ghcr.io/denkoushi/raspisys-web" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR for this job
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push exact ARM64 Web image
+        id: build
+        env:
+          IMAGE_REPOSITORY: ${{ steps.identity.outputs.repository }}
+          CONFIG_HASH: ${{ needs.release-build-contract.outputs.config_hash }}
+        run: |
+          set -euo pipefail
+          digest="$(
+            python3 scripts/ci/build_release_image.py \
+              --contract "$RUNNER_TEMP/release-contract/release-build-contract.json" \
+              --service web \
+              --sha "$GITHUB_SHA" \
+              --config-hash "$CONFIG_HASH" \
+              --repository "$IMAGE_REPOSITORY" \
+              --metadata-file "$RUNNER_TEMP/release-web-metadata.json"
+          )"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Pull exact ARM64 Web digest for scanning
+        env:
+          IMAGE_REFERENCE: ${{ steps.identity.outputs.repository }}@${{ steps.build.outputs.digest }}
+        run: docker pull --platform linux/arm64 "$IMAGE_REFERENCE"
+
+      - name: Security scan exact ARM64 Web digest
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
+        with:
+          scan-type: 'image'
+          image-ref: ${{ steps.identity.outputs.repository }}@${{ steps.build.outputs.digest }}
+          ignore-unfixed: true
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+          scanners: 'vuln'
+          trivyignores: '.trivyignore'
+
+  release-runtime-rehearsal:
+    name: release-runtime-rehearsal
+    needs:
+      - change-classification
+      - release-api-image
+      - release-web-image
+    if: >-
+      ${{
+        always() &&
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        needs.change-classification.outputs.release_pair == 'true' &&
+        needs['release-api-image'].result == 'success' &&
+        needs['release-web-image'].result == 'success'
+      }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout exact main source
+        uses: actions/checkout@v7
+
+      - name: Log in to GHCR for exact digest rehearsal
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rehearse exact ARM64 release pair with five health samples
+        env:
+          API_IMAGE: ${{ needs['release-api-image'].outputs.repository }}@${{ needs['release-api-image'].outputs.digest }}
+          WEB_IMAGE: ${{ needs['release-web-image'].outputs.repository }}@${{ needs['release-web-image'].outputs.digest }}
+        run: >-
+          bash scripts/ci/rehearse-release-runtime.sh
+          --api-image "$API_IMAGE"
+          --web-image "$WEB_IMAGE"
+          --sha "$GITHUB_SHA"
+
+  docker-security:
+    name: docker-security (${{ matrix.image }})
+    needs: change-classification
+    if: >-
+      ${{
+        github.event_name != 'push' &&
+        needs.change-classification.outputs.docker_security == 'true'
+      }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.change-classification.outputs.docker_matrix) }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Security scan (Trivy fs)
         if: matrix.image == 'api'
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
           scan-type: 'fs'
           ignore-unfixed: true
@@ -486,7 +1096,7 @@ jobs:
             = 4444444444444444444444444444444444444444444444444444444444444444
 
       - name: Security scan (Trivy image ${{ matrix.image }})
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
           scan-type: 'image'
           image-ref: ${{ matrix.tag }}
@@ -499,11 +1109,11 @@ jobs:
   e2e-smoke:
     name: e2e-smoke
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.e2e == 'true' }}
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.e2e == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -541,6 +1151,11 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
+      - name: Configure synthetic E2E administrator (smoke)
+        run: |
+          echo "E2E_ADMIN_USERNAME=ci-e2e-admin" >> "$GITHUB_ENV"
+          echo "E2E_ADMIN_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+
       - name: Seed database (smoke)
         run: pnpm --filter @raspi-system/api exec prisma db seed
         env:
@@ -549,6 +1164,7 @@ jobs:
       - name: Build shared packages (smoke)
         run: |
           pnpm --filter @raspi-system/shared-types build
+          pnpm --filter @raspi-system/kiosk-sop-core build
           pnpm --filter @raspi-system/part-search-core build
           pnpm --filter @raspi-system/shelf-layout-core build
 
@@ -559,18 +1175,62 @@ jobs:
           VITE_KIOSK_DEFAULT_MODE: TAG
         run: pnpm test:e2e:smoke
 
+      - name: Report flaky E2E smoke tests
+        if: always()
+        run: >-
+          python3 scripts/ci/report_playwright_flaky.py e2e-results/results.json
+          --label "E2E smoke"
+          --summary-file "$GITHUB_STEP_SUMMARY"
+
       - name: Cleanup PostgreSQL (smoke)
         if: always()
         run: docker stop postgres-e2e-smoke && docker rm postgres-e2e-smoke || true
 
-  e2e-tests:
-    name: e2e-tests
+  kiosk-sop:
+    name: kiosk-sop
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.e2e == 'true' }}
-    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.kiosk_sop == 'true' }}
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Fails in seconds on a stale manifest digest, before the Docker build and generation.
+      - name: Check committed source digests
+        run: |
+          node --test scripts/kiosk-sop/source-digest.test.mjs
+          node scripts/kiosk-sop/source-digest.mjs check
+
+      - name: Verify semantic freshness, integrity, geometry, and visual contract
+        env:
+          KIOSK_SOP_DIAGNOSTICS_DIR: ${{ runner.temp }}/kiosk-sop-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+        run: bash scripts/ci/run-kiosk-sop-artifact-contract.sh
+
+      - name: Upload generated candidate, visual report, and diff diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: kiosk-sop-diagnostics-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/kiosk-sop-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}/
+          retention-days: 7
+
+  e2e-tests:
+    name: e2e-tests (${{ matrix.shard }})
+    needs: change-classification
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.e2e == 'true' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { shard: "1/3", shard_id: "1-of-3" }
+          - { shard: "2/3", shard_id: "2-of-3" }
+          - { shard: "3/3", shard_id: "3-of-3" }
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -583,8 +1243,13 @@ jobs:
       - name: Build shared packages
         run: |
           pnpm --filter @raspi-system/shared-types build
+          pnpm --filter @raspi-system/kiosk-sop-core build
           pnpm --filter @raspi-system/part-search-core build
           pnpm --filter @raspi-system/shelf-layout-core build
+
+      - name: Run kiosk runtime recovery browser contract
+        if: matrix.shard_id == '1-of-3'
+        run: pnpm test:e2e:runtime-recovery
 
       - name: Generate Prisma Client
         run: pnpm --filter @raspi-system/api exec prisma generate
@@ -614,6 +1279,11 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
+      - name: Configure synthetic E2E administrator
+        run: |
+          echo "E2E_ADMIN_USERNAME=ci-e2e-admin" >> "$GITHUB_ENV"
+          echo "E2E_ADMIN_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+
       - name: Seed database
         run: pnpm --filter @raspi-system/api exec prisma db seed
         env:
@@ -628,21 +1298,28 @@ jobs:
           JWT_REFRESH_SECRET: test-refresh-secret-1234567890
           BACKUP_CONFIG_PATH: /tmp/e2e-backup.json
           BACKUP_STORAGE_DIR: /tmp/e2e-backups
-        run: pnpm test:e2e
+        run: pnpm test:e2e --shard=${{ matrix.shard }}
+
+      - name: Report flaky E2E tests
+        if: always()
+        run: >-
+          python3 scripts/ci/report_playwright_flaky.py e2e-results/results.json
+          --label "E2E shard ${{ matrix.shard }}"
+          --summary-file "$GITHUB_STEP_SUMMARY"
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard_id }}
           path: playwright-report/
           retention-days: 30
 
       - name: Upload Playwright traces (on failure)
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
-          name: playwright-traces
+          name: playwright-traces-${{ matrix.shard_id }}
           path: test-results/
           retention-days: 7
 
@@ -652,58 +1329,494 @@ jobs:
           docker stop postgres-e2e || true
           docker rm postgres-e2e || true
 
+  hermes-retrieval:
+    name: hermes-retrieval
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Run retrieval tests
+        working-directory: scripts/hermes-search
+        run: node --test retrieval/
+
   ci-required:
     name: ci-required
     if: ${{ always() }}
     needs:
+      - hermes-retrieval
+      - hermes-answer-cache
       - change-classification
       - repo-policy
       - workspace-quality
       - api
+      - api-coverage
       - web
       - db-infra
       - deploy-contract
+      - container-runtime-rehearsal
       - client
+      - pi4-agent-image-contract
+      - release-build-contract
+      - release-api-image
+      - release-web-image
+      - release-runtime-rehearsal
       - docker-security
       - e2e-smoke
       - e2e-tests
+      - kiosk-sop
+      - signage-artifact-contract
     runs-on: ubuntu-latest
     steps:
       - name: Checkout aggregate validator
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Require every selected CI job to pass
         env:
+          HERMES_CACHE_SELECTED: ${{ needs['change-classification'].outputs.release_pair }}
+          HERMES_CACHE_RESULT: ${{ needs['hermes-answer-cache'].result }}
+          HERMES_RETRIEVAL_RESULT: ${{ needs['hermes-retrieval'].result }}
           CHANGE_CLASSIFICATION: ${{ needs['change-classification'].result }}
-          REPO_POLICY_SELECTED: ${{ needs['change-classification'].outputs.repo_policy }}
+          REPO_POLICY_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.repo_policy == 'true' }}
           REPO_POLICY_RESULT: ${{ needs['repo-policy'].result }}
-          WORKSPACE_QUALITY_SELECTED: ${{ needs['change-classification'].outputs.workspace_quality }}
+          WORKSPACE_QUALITY_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.workspace_quality == 'true' }}
           WORKSPACE_QUALITY_RESULT: ${{ needs['workspace-quality'].result }}
-          API_SELECTED: ${{ needs['change-classification'].outputs.api }}
+          API_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.api == 'true' }}
           API_RESULT: ${{ needs.api.result }}
-          WEB_SELECTED: ${{ needs['change-classification'].outputs.web }}
+          API_COVERAGE_RESULT: ${{ needs['api-coverage'].result }}
+          WEB_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.web == 'true' }}
           WEB_RESULT: ${{ needs.web.result }}
-          DB_INFRA_SELECTED: ${{ needs['change-classification'].outputs.db_infra }}
+          DB_INFRA_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.db_infra == 'true' }}
           DB_INFRA_RESULT: ${{ needs['db-infra'].result }}
-          DEPLOY_CONTRACT_SELECTED: ${{ needs['change-classification'].outputs.deploy_contract }}
+          DEPLOY_CONTRACT_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.deploy_contract == 'true' }}
           DEPLOY_CONTRACT_RESULT: ${{ needs['deploy-contract'].result }}
-          CLIENT_SELECTED: ${{ needs['change-classification'].outputs.client }}
+          CONTAINER_RUNTIME_REHEARSAL_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.runtime_rehearsal == 'true' }}
+          CONTAINER_RUNTIME_REHEARSAL_RESULT: ${{ needs['container-runtime-rehearsal'].result }}
+          CLIENT_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.client == 'true' }}
           CLIENT_RESULT: ${{ needs.client.result }}
-          DOCKER_SECURITY_SELECTED: ${{ needs['change-classification'].outputs.docker_security }}
+          PI4_AGENT_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.pi4_agent_matrix != '[]' }}
+          PI4_AGENT_IMAGE_RESULT: ${{ needs['pi4-agent-image-contract'].result }}
+          RELEASE_PAIR_SELECTED: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs['change-classification'].outputs.release_pair == 'true' }}
+          RELEASE_BUILD_CONTRACT_RESULT: ${{ needs['release-build-contract'].result }}
+          RELEASE_API_RESULT: ${{ needs['release-api-image'].result }}
+          RELEASE_WEB_RESULT: ${{ needs['release-web-image'].result }}
+          RELEASE_RUNTIME_REHEARSAL_RESULT: ${{ needs['release-runtime-rehearsal'].result }}
+          DOCKER_SECURITY_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.docker_security == 'true' }}
           DOCKER_SECURITY_RESULT: ${{ needs['docker-security'].result }}
-          E2E_SELECTED: ${{ needs['change-classification'].outputs.e2e }}
+          E2E_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.e2e == 'true' }}
           E2E_SMOKE: ${{ needs['e2e-smoke'].result }}
           E2E_TESTS: ${{ needs['e2e-tests'].result }}
+          KIOSK_SOP_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.kiosk_sop == 'true' }}
+          KIOSK_SOP_RESULT: ${{ needs['kiosk-sop'].result }}
+          SIGNAGE_ARTIFACT_SELECTED: ${{ needs['change-classification'].outputs.signage_artifact }}
+          SIGNAGE_ARTIFACT_RESULT: ${{ needs['signage-artifact-contract'].result }}
         run: |
           python3 scripts/ci/validate_required_results.py \
             --classification-result "$CHANGE_CLASSIFICATION" \
+            "hermes-answer-cache=$HERMES_CACHE_SELECTED:$HERMES_CACHE_RESULT" \
+            "hermes-retrieval=true:$HERMES_RETRIEVAL_RESULT" \
             "repo-policy=$REPO_POLICY_SELECTED:$REPO_POLICY_RESULT" \
             "workspace-quality=$WORKSPACE_QUALITY_SELECTED:$WORKSPACE_QUALITY_RESULT" \
             "api=$API_SELECTED:$API_RESULT" \
+            "api-coverage=$API_SELECTED:$API_COVERAGE_RESULT" \
             "web=$WEB_SELECTED:$WEB_RESULT" \
             "db-infra=$DB_INFRA_SELECTED:$DB_INFRA_RESULT" \
             "deploy-contract=$DEPLOY_CONTRACT_SELECTED:$DEPLOY_CONTRACT_RESULT" \
+            "container-runtime-rehearsal=$CONTAINER_RUNTIME_REHEARSAL_SELECTED:$CONTAINER_RUNTIME_REHEARSAL_RESULT" \
             "client=$CLIENT_SELECTED:$CLIENT_RESULT" \
+            "pi4-agent-image-contract=$PI4_AGENT_SELECTED:$PI4_AGENT_IMAGE_RESULT" \
+            "release-build-contract=$RELEASE_PAIR_SELECTED:$RELEASE_BUILD_CONTRACT_RESULT" \
+            "release-api-image=$RELEASE_PAIR_SELECTED:$RELEASE_API_RESULT" \
+            "release-web-image=$RELEASE_PAIR_SELECTED:$RELEASE_WEB_RESULT" \
+            "release-runtime-rehearsal=$RELEASE_PAIR_SELECTED:$RELEASE_RUNTIME_REHEARSAL_RESULT" \
             "docker-security=$DOCKER_SECURITY_SELECTED:$DOCKER_SECURITY_RESULT" \
             "e2e-smoke=$E2E_SELECTED:$E2E_SMOKE" \
-            "e2e-tests=$E2E_SELECTED:$E2E_TESTS"
+            "e2e-tests=$E2E_SELECTED:$E2E_TESTS" \
+            "kiosk-sop=$KIOSK_SOP_SELECTED:$KIOSK_SOP_RESULT" \
+            "signage-artifact-contract=$SIGNAGE_ARTIFACT_SELECTED:$SIGNAGE_ARTIFACT_RESULT"
+
+  pi4-agent-images-publish:
+    name: pi4-agent-images-publish (${{ matrix.service }})
+    needs:
+      - change-classification
+      - ci-required
+    if: >-
+      ${{
+        always() &&
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        needs.change-classification.outputs.pi4_agent_matrix != '[]' &&
+        needs['ci-required'].result == 'success'
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: nfc-agent
+            repository: ghcr.io/denkoushi/raspisys-nfc-agent
+            dockerfile: infrastructure/docker/Dockerfile.nfc-agent
+          - service: barcode-agent
+            repository: ghcr.io/denkoushi/raspisys-barcode-agent
+            dockerfile: infrastructure/docker/Dockerfile.barcode-agent
+          - service: torque-agent
+            repository: ghcr.io/denkoushi/raspisys-torque-agent
+            dockerfile: infrastructure/docker/Dockerfile.torque-agent
+    steps:
+      - name: Checkout exact main source
+        uses: actions/checkout@v7
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU for Pi4 platforms
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Publish the exact-SHA multi-platform Pi4 agent image
+        id: publish
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/arm64,linux/arm/v7
+          push: true
+          tags: ${{ matrix.repository }}:${{ github.sha }}
+          cache-from: type=gha,scope=pi4-${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=pi4-${{ matrix.service }}
+          provenance: mode=min
+          sbom: true
+
+      - name: Security scan exact published Pi4 agent ARM64 digest
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
+        env:
+          TRIVY_PLATFORM: linux/arm64
+        with:
+          scan-type: image
+          image-ref: ${{ matrix.repository }}@${{ steps.publish.outputs.digest }}
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          scanners: vuln,secret
+          trivyignores: .trivyignore
+
+      - name: Security scan exact published Pi4 agent ARMv7 digest
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
+        env:
+          TRIVY_PLATFORM: linux/arm/v7
+        with:
+          scan-type: image
+          image-ref: ${{ matrix.repository }}@${{ steps.publish.outputs.digest }}
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          scanners: vuln,secret
+          trivyignores: .trivyignore
+
+  signage-artifact-gates:
+    name: signage-artifact-gates
+    needs:
+      - change-classification
+      - ci-required
+    if: >-
+      ${{
+        always() &&
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        needs.change-classification.outputs.signage_artifact == 'true' &&
+        needs['ci-required'].result == 'success'
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: read
+    steps:
+      - name: Checkout exact-main Signage publication gate
+        uses: actions/checkout@v7
+
+      - name: Require fixed external checks on the exact SHA
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 scripts/ci/wait_for_release_checks.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --sha "$GITHUB_SHA" \
+            --required codeql \
+            --required gitleaks \
+            --timeout 1800 \
+            --interval 10
+
+  signage-artifact-publish:
+    name: signage-artifact-publish
+    needs:
+      - change-classification
+      - signage-artifact-contract
+      - signage-artifact-gates
+    if: >-
+      ${{
+        always() &&
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        needs.change-classification.outputs.signage_artifact == 'true' &&
+        needs['signage-artifact-contract'].result == 'success' &&
+        needs['signage-artifact-gates'].result == 'success'
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+      packages: write
+    steps:
+      - name: Checkout exact main source
+        uses: actions/checkout@v7
+
+      - name: Download the verified and scanned Signage artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: pi3-signage-release-${{ github.sha }}
+          path: .
+
+      - name: Install the exact Signage attestation verifier
+        env:
+          SIGNAGE_GH_VERSION: 2.96.0
+          SIGNAGE_GH_ARCHIVE_SHA256: 83d5c2ccad5498f58bf6368acb1ab32588cf43ab3a4b1c301bf36328b1c8bd60
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/gh_${SIGNAGE_GH_VERSION}_linux_amd64.tar.gz"
+          curl --fail --location --silent --show-error \
+            "https://github.com/cli/cli/releases/download/v${SIGNAGE_GH_VERSION}/gh_${SIGNAGE_GH_VERSION}_linux_amd64.tar.gz" \
+            --output "$archive"
+          echo "${SIGNAGE_GH_ARCHIVE_SHA256}  $archive" | sha256sum --check --strict
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP"
+          signage_gh="$RUNNER_TEMP/gh_${SIGNAGE_GH_VERSION}_linux_amd64/bin/gh"
+          test "$("$signage_gh" --version | sed -n '1p')" = "gh version 2.96.0 (2026-07-02)"
+          echo "SIGNAGE_GH=$signage_gh" >> "$GITHUB_ENV"
+
+      - name: Verify exact-main Signage artifact identity
+        id: identity
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy/signage-distribution-artifact.py verify \
+            --artifact signage-release.tar \
+            --descriptor signage-release-descriptor.json \
+            --expected-source-sha "$GITHUB_SHA"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          descriptor = json.loads(Path("signage-release-descriptor.json").read_text())
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"artifact_sha256={descriptor['artifactSha256']}\n")
+              output.write(f"manifest_sha256={descriptor['manifestSha256']}\n")
+          predicate = {
+              "artifactKind": descriptor["artifactKind"],
+              "artifactSha256": descriptor["artifactSha256"],
+              "manifestSha256": descriptor["manifestSha256"],
+              "schemaVersion": descriptor["schemaVersion"],
+              "sourceSha": descriptor["sourceSha"],
+          }
+          Path("signage-release-attestation.json").write_text(
+              json.dumps(predicate, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Log in to GHCR for signed Signage publication
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Publish exact-main Signage artifact as immutable OCI image
+        id: publish
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: infrastructure/docker/Dockerfile.signage-release
+          platforms: linux/arm/v7
+          push: true
+          tags: ghcr.io/denkoushi/raspisys-pi3-signage:${{ github.sha }}
+          build-args: |
+            BUILD_COMMIT=${{ github.sha }}
+            ARTIFACT_SHA256=${{ steps.identity.outputs.artifact_sha256 }}
+            MANIFEST_SHA256=${{ steps.identity.outputs.manifest_sha256 }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Verify the published exact OCI digest exists
+        env:
+          IMAGE_REFERENCE: ghcr.io/denkoushi/raspisys-pi3-signage@${{ steps.publish.outputs.digest }}
+        run: docker buildx imagetools inspect "$IMAGE_REFERENCE"
+
+      - name: Attest source, artifact, and manifest identities
+        uses: actions/attest@v4
+        with:
+          subject-name: ghcr.io/denkoushi/raspisys-pi3-signage
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          predicate-type: https://github.com/denkoushi/RaspberryPiSystem_002/attestations/pi3-signage-release/v1
+          predicate-path: signage-release-attestation.json
+          push-to-registry: true
+
+      - name: Production-equivalent verification of the published attestation
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy/rolling_release/signage_artifact_stage.py \
+            --verify-published-attestation \
+            --gh "$SIGNAGE_GH" \
+            --exact-reference "ghcr.io/denkoushi/raspisys-pi3-signage@${{ steps.publish.outputs.digest }}" \
+            --source-sha "$GITHUB_SHA" \
+            --artifact-sha256 "${{ steps.identity.outputs.artifact_sha256 }}" \
+            --manifest-sha256 "${{ steps.identity.outputs.manifest_sha256 }}"
+
+  release-gates:
+    name: release-gates
+    needs:
+      - change-classification
+      - ci-required
+    if: >-
+      ${{
+        always() &&
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        needs.change-classification.outputs.release_pair == 'true' &&
+        needs['ci-required'].result == 'success'
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: read
+    steps:
+      - name: Checkout release gate
+        uses: actions/checkout@v7
+
+      - name: Require fixed external checks on the exact SHA
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 scripts/ci/wait_for_release_checks.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --sha "$GITHUB_SHA" \
+            --required codeql \
+            --required gitleaks \
+            --timeout 1800 \
+            --interval 10
+
+  release-set:
+    name: release-set
+    needs:
+      - change-classification
+      - release-build-contract
+      - release-api-image
+      - release-web-image
+      - release-runtime-rehearsal
+      - release-gates
+    if: >-
+      ${{
+        always() &&
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        needs.change-classification.outputs.release_pair == 'true' &&
+        needs['release-build-contract'].result == 'success' &&
+        needs['release-api-image'].result == 'success' &&
+        needs['release-web-image'].result == 'success' &&
+        needs['release-runtime-rehearsal'].result == 'success' &&
+        needs['release-gates'].result == 'success'
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+      packages: write
+    steps:
+      - name: Checkout exact main source
+        uses: actions/checkout@v7
+
+      - name: Log in to GHCR for signed release publication
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Create strict API/Web release set
+        env:
+          CONFIG_HASH: ${{ needs.release-build-contract.outputs.config_hash }}
+          API_REPOSITORY: ${{ needs.release-api-image.outputs.repository }}
+          API_DIGEST: ${{ needs.release-api-image.outputs.digest }}
+          WEB_REPOSITORY: ${{ needs.release-web-image.outputs.repository }}
+          WEB_DIGEST: ${{ needs.release-web-image.outputs.digest }}
+          AGENT_SERVICES_JSON: ${{ needs.change-classification.outputs.pi4_agent_services }}
+        run: |
+          python3 scripts/deploy/release_artifact_contract.py create \
+            --repository "$GITHUB_REPOSITORY" \
+            --sha "$GITHUB_SHA" \
+            --config-hash "$CONFIG_HASH" \
+            --api-repository "$API_REPOSITORY" \
+            --api-digest "$API_DIGEST" \
+            --web-repository "$WEB_REPOSITORY" \
+            --web-digest "$WEB_DIGEST" \
+            --agent-services-json "$AGENT_SERVICES_JSON" \
+            --workflow .github/workflows/ci.yml \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            > release-set.json
+
+      - name: Publish release set as an immutable OCI image
+        id: publish-release-set
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: infrastructure/docker/Dockerfile.release-set
+          platforms: linux/arm64
+          push: true
+          tags: ghcr.io/denkoushi/raspisys-release-set:${{ github.sha }}-${{ needs.release-build-contract.outputs.config_hash }}
+          build-args: |
+            BUILD_COMMIT=${{ github.sha }}
+            BUILD_CONFIG_HASH=${{ needs.release-build-contract.outputs.config_hash }}
+          provenance: mode=min
+          sbom: true
+
+      - name: Attest exact ARM64 API image
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ needs.release-api-image.outputs.repository }}
+          subject-digest: ${{ needs.release-api-image.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest exact ARM64 Web image
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ needs.release-web-image.outputs.repository }}
+          subject-digest: ${{ needs.release-web-image.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest the release set after all fixed gates
+        uses: actions/attest@v4
+        with:
+          subject-name: ghcr.io/denkoushi/raspisys-release-set
+          subject-digest: ${{ steps.publish-release-set.outputs.digest }}
+          push-to-registry: true

@@ -27,7 +27,7 @@ update-frequency: high
 ## 私用 Pi5 `stackchan-bridge` との区別（境界・read-only）
 
 - **本 Runbook の主対象**は **職場 Pi5 API** が **`LOCAL_LLM_*`** 経由で扱う **DGX system-prod gateway**（単一キュー・用途別 keep-warm 含む）。
-- **自宅の StackChan 等**は [`scripts/private-pi5-stackchan-bridge`](../../scripts/private-pi5-stackchan-bridge/README.md) により **私用 Pi5 から DGX へ直接** HTTP する。**職場 Pi5 API の `stackchan_chat` 契約とは別系統**（JWT・キューを通さない）。**2系統の正本**: [計画 §2系統](../plans/stackchan-private-pi5-tailnet-workflow-plan.md#two-path-architecture-private-work-2026-05-10)·[KB-365 §私用 bridge](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#private-pi5-stackchan-bridge-boundary-2026-05-10)。
+- **自宅の StackChan 等**は `scripts/private-pi5-stackchan-bridge`（DGXSparkControlPlane へ移動） により **私用 Pi5 から DGX へ直接** HTTP する。**職場 Pi5 API の `stackchan_chat` 契約とは別系統**（JWT・キューを通さない）。**2系統の正本**: 計画 §2系統（DGXSparkControlPlane `docs/private-history/plans/stackchan-private-pi5-tailnet-workflow-plan.md`）·[KB-365 §私用 bridge](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#private-pi5-stackchan-bridge-boundary-2026-05-10)。
 
 ## 管理コンソール: DGX リソース（Pi5 API 経由）
 
@@ -36,7 +36,9 @@ update-frequency: high
 **UI ルート**:
 
 - 推奨: **管理コンソール** → `/admin/tools/dgx-resource`
-- 後方互換: `/admin/dgx-resource`
+- 後方互換: `/admin/dgx-resource`（`/admin/tools/dgx-resource` へ転送）
+
+> **2026-10-17 以降の正本**: 画面と API は業務 LLM 専用になった（[ADR-20261017](../decisions/ADR-20261017-dgx-resource-business-llm-only.md)）。actions は `RETURN_TO_BUSINESS` / `STOP_BUSINESS_LLM` / `PREVIEW_MODEL_STORAGE_DELETE` / `EXECUTE_MODEL_STORAGE_DELETE` の 4 種だけ。以下に残る `operator`・`targets[]`・`EXECUTE_TARGET_ACTION`・`SET_POLICY`・運用モード・切替シナリオ・`START_MODEL_PROFILE`・実験ラボ・Agent の記述は履歴で、現行の業務画面には無い。個人用ワークロードの起停は DGX 側（Control Plane）で行う。
 
 **サーバ API（管理者・マネージャー）**:
 
@@ -140,7 +142,7 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 
 **本番反映（2026-05-10・メインAI 単一キュー・調停から gateway 自動停止除外・Pi5 API のみ）**: ブランチ **`feature/dgx-single-queue-stop-policy`**（**`23bce3bf`**·**`4d658897`**）を **`raspberrypi5` のみ**へ反映（**`--limit raspberrypi5`・1 台**）。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feature/dgx-single-queue-stop-policy infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）。**Detach `20260510-114418-29512`**·`PLAY RECAP`: **`ok=134` `changed=4` `failed=0` / `unreachable=0`**·**`--follow` 約 559s**。**実機** `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 130s**。Pi4/Pi3 は play **no hosts matched**・**Pi3 専用手順不要**）。**正本**: [deployment.md §2026-05-10](../archive/deployments/2026-05.md#dgx-main-llm-single-queue-stop-policy-2026-05-10)·[KB-365 §本番反映（2026-05-10）](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-10-dgx-main-llm-single-queue)。**トラブルシュート**: 挙動が旧（推論と UI 起停が交叉・実験優先で gateway が止まる）→ Pi5 **`api` Docker イメージ**の ref と **Detach `Git: changed`** を確認。
 
-**本番反映（2026-05-24・私用 Pi5 Hermes Phase D0・DGX gateway のみ・1 台）**: **対象外**: 業務 Pi5 / Pi4 / Pi3。**手順**: repo の [`gateway-server.py`](../../scripts/dgx-local-llm-system/gateway-server.py) と [`gateway_llm_auth.py`](../../scripts/dgx-local-llm-system/gateway_llm_auth.py) を **`scp`** → **`gateway-server.pid` の PID を `kill` → PID ファイル削除 → **`start-gateway-server.sh`**（[private-pi5-hermes-deploy.md §本番反映 2026-05-24](./private-pi5-hermes-deploy.md#本番反映2026-05-24phase-d0-骨格私用-pi5--dgx-順次)）。**実機**: `healthz` **200**。**注意**: `gateway-server.py` は同ディレクトリの `gateway_llm_auth` を import するため **両ファイル必須**。`LLM_SHARED_ADDITIONAL_TOKENS` は未設定でも既存 `LLM_SHARED_TOKEN` で後方互換。
+**本番反映（2026-05-24・私用 Pi5 Hermes Phase D0・DGX gateway のみ・1 台）**: **対象外**: 業務 Pi5 / Pi4 / Pi3。**手順**: repo の [`gateway-server.py`](../../scripts/dgx-local-llm-system/gateway-server.py) と [`gateway_llm_auth.py`](../../scripts/dgx-local-llm-system/gateway_llm_auth.py) を **`scp`** → **`gateway-server.pid` の PID を `kill` → PID ファイル削除 → **`start-gateway-server.sh`**（private-pi5-hermes-deploy.md §本番反映 2026-05-24（DGXSparkControlPlane `docs/private-history/runbooks/private-pi5-hermes-deploy.md`））。**実機**: `healthz` **200**。**注意**: `gateway-server.py` は同ディレクトリの `gateway_llm_auth` を import するため **両ファイル必須**。`LLM_SHARED_ADDITIONAL_TOKENS` は未設定でも既存 `LLM_SHARED_TOKEN` で後方互換。
 
 **本番反映（2026-05-10・AgentContainer・Control Target `agent-container`・Pi5→DGX 順次・各 1 台）**: **① Pi5 のみ** — `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/agent-container-control-target infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は第2引数 `main`**）。**Detach `20260510-125420-15123`**·`PLAY RECAP`: **`ok=139` `changed=8` `failed=0` / `unreachable=0`**·リモート **`exit` `0`**·**`--follow` 約 669s**。Pi4／Pi3 は **`skipping: no hosts matched`**（**Pi3 playbook は未適用**）。**② DGX** — **`scp scripts/dgx-local-llm-system/gateway-server.py ubudgxkoushi@100.118.82.72:/srv/dgx/system-prod/bin/gateway-server.py`**。**再起動の実績手順**: **`start-gateway-server.sh`** は **PID ファイルが生存 PID を指すと新コードを読まず `exit 0`** となるため、**`/srv/dgx/system-prod/logs/gateway-server.pid` の PID を `kill`** → **`rm -f` PID ファイル** → **`bash /srv/dgx/system-prod/bin/start-gateway-server.sh`**。**`curl http://127.0.0.1:38081/healthz`** は **起動直後に一度 `Connection refused`** になり得るが **1s 以内の再試行で 200** を確認済み。**実機** `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 57s**）。**正本**: [deployment.md §AgentContainer](../archive/deployments/2026-05.md#dgx-agent-container-control-target-2026-05-10)·[KB-365 §AgentContainer](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-10-dgx-agent-container)。**ロールバック**: Pi5 は安定 ref へ **`update-all-clients.sh`** を再実行。DGX は **`gateway-server.py` を復元**して **同一の PID 終了→`start-gateway-server.sh`**。
 
@@ -705,7 +707,7 @@ GREEN_LLM_BASE_URL=http://127.0.0.1:38082
 BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 ```
 
-**複数トークン**: repo [`gateway_llm_auth.py`](../../scripts/dgx-local-llm-system/gateway_llm_auth.py) は `X-LLM-Token` / `Authorization: Bearer` のいずれかが primary または additional に一致すれば 200。私用 Pi5 Hermes の手順は [private-pi5-hermes-deploy.md §Phase D0](./private-pi5-hermes-deploy.md#phase-d0--トークン分離tools-プロファイル2026-05-24)。
+**複数トークン**: repo [`gateway_llm_auth.py`](../../scripts/dgx-local-llm-system/gateway_llm_auth.py) は `X-LLM-Token` / `Authorization: Bearer` のいずれかが primary または additional に一致すれば 200。私用 Pi5 Hermes の手順は private-pi5-hermes-deploy.md §Phase D0（DGXSparkControlPlane `docs/private-history/runbooks/private-pi5-hermes-deploy.md`）。
 
 メモ:
 
@@ -713,7 +715,7 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 - 新しい設定では `BLUE_SERVER_*` / `BLUE_MODEL_DIR` / `BLUE_EXTRA_DOCKER_ARGS` の別名も使える
 - profile 指定の blue 起動では、launcher が `BLUE_SERVER_COMMAND` / `TRTLLM_SERVER_COMMAND` を空上書きする。既存 env に legacy fallback command を残す運用でも、管理コンソールの profile 起動は manifest 側のモデルを使う
 - **snapshot path の解決**: `vllm_command_builder.py` が `cat ${BLUE_MODEL_DIR}/refs/main` 相当を実行し、`snapshots/<sha>` を `vllm serve` に渡す。secret に snapshot SHA 直書きは不要
-- **Hermes `/task` 復旧（2026-06-05）**: repo id ではなく **snapshot path** · **`gpu-memory-utilization 0.65`** · **`language_model_only`** が実機で必須だった — 詳細 [KB-366 §8.1](./../knowledge-base/KB-366-dgx-spark-operational-understanding.md#81-blue-27b-起動失敗と-hermes-task-5022026-06-05) · [KB `/task` blue 502](./../knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md#追記--blue-backend-起動失敗で-v1models-5022026-06-05)
+- **Hermes `/task` 復旧（2026-06-05）**: repo id ではなく **snapshot path** · **`gpu-memory-utilization 0.65`** · **`language_model_only`** が実機で必須だった — 詳細 [KB-366 §8.1](./../knowledge-base/KB-366-dgx-spark-operational-understanding.md#81-blue-27b-起動失敗と-hermes-task-5022026-06-05) · KB `/task` blue 502（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md`）
 
 ### トラブルシュート — blue backend 起動失敗 / `/v1/models` 502（2026-06-05）
 
@@ -722,7 +724,7 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 | `POST /start` 200 だが `/v1/models` **502** | `docker ps` · `docker logs system-prod-trtllm` | 起動中なら **数分待ち**（compile/autotune）。container exit なら下記 |
 | vLLM が HF metadata で落ちる | `BLUE_SERVER_COMMAND` が残っていないか、`BLUE_MODEL_DIR/refs/main` と `snapshots/<sha>` があるか | `BLUE_SERVER_COMMAND` を空にし、`BLUE_MODEL_DIR` + `vllm_command_builder.py` に snapshot path を解決させる |
 | `CUDA out of memory` / メモリ不足 | `--gpu-memory-utilization` | **`0.65`** から試す（実機で Hermes `/task` 復旧確認済） |
-| Hermes `/task` のみ失敗・業務 Pi5 は別症状 | Pi5 から `curl …/v1/models`（tools Bearer） | DGX backend 正本。profile 切替は [Hermes Runbook §profile 復帰](./private-pi5-hermes-deploy.md#本番反映--task-dgx-通常-profile-復帰2026-05-30) |
+| Hermes `/task` のみ失敗・業務 Pi5 は別症状 | Pi5 から `curl …/v1/models`（tools Bearer） | DGX backend 正本。profile 切替は Hermes Runbook §profile 復帰（DGXSparkControlPlane `docs/private-history/runbooks/private-pi5-hermes-deploy.md`） |
 
 **反映手順（DGX のみ）**: `control-server.env` 編集 → **control-server 再起動**（PID ガード手順）→ **`POST /start`**（`business_qwen36_27b_nvfp4`）→ `curl http://127.0.0.1:38083/v1/models` が **200** になるまで待つ。
 - image 既定 entrypoint が shell でない場合は `BLUE_SERVER_ENTRYPOINT=bash` を併用する
@@ -766,6 +768,97 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 - blue（vLLM）起動例で `--ipc host` を付与する場合、**IPC 名前空間がホストと共有**される。これは性能目的の**意図的なトレード**であり、**仮想マシン相当の厳密分離**ではない。必要なら Runbook / launcher の `BLUE_EXTRA_DOCKER_ARGS` を見直す。
 - **混信（データの混入）**の観点では、**Pi5 用 token / 業務データ path を他用途の Compose に mount しない**こと、**別 tailnet 入口**（ACL で Pi5 から `llm:38081` のみ、等）を維持することが主な防御策である。
 
+
+## `/dev/shm` の残骸と週次掃除（2026-10-12）
+
+- **原因**: blue（vLLM）は `--ipc host` で動くため、コンテナが起動するたびに `psm_*` などの共有メモリファイルがホストの `/dev/shm` に残る。DGX は GPU と CPU でメモリを共有するので、残骸はそのままモデルに使える量を減らす。
+- **実測（2026-10-12）**: 1,544 ファイル、実サイズ 2.2 GiB（ほぼ全部が `psm_*` 269 個）。1 日以上前で未使用の 1,487 件（2,101 MiB）を削除し、110 MiB になった。削除後も `system-prod-trtllm` と `system-prod-embedding` は正常。
+- **掃除スクリプト**: DGX の `/usr/local/sbin/dgx-shm-cleanup`（root 所有、内容は下の「スクリプトとユニットの内容」）。root で実行する。引数なしは一覧表示のみ、`--delete` で削除する。対象は `/dev/shm` 直下のファイルのうち、1 日以上前で、どのプロセスも開いておらずマップもしていないもの。
+- **週次タイマー**: `dgx-shm-cleanup.service` / `dgx-shm-cleanup.timer` を `/etc/systemd/system/` に導入済み。毎週日曜 4:00 に実行し、`Persistent=true` で取りこぼしは次回起動時に実行する。標準デプロイからは配布しない。
+- **確認**: `systemctl list-timers dgx-shm-cleanup.timer`、`journalctl -u dgx-shm-cleanup.service`、`df -h /dev/shm`。
+- **再導入**: スクリプトを `/usr/local/sbin/dgx-shm-cleanup` に `install -o root -g root -m 0755` で置き、ユニット 2 つを `/etc/systemd/system/` に置いて `systemctl daemon-reload && systemctl enable --now dgx-shm-cleanup.timer`。root のタイマーが実行するので、スクリプトを一般ユーザーが書き換えられる場所に置かない。
+- **停止**: `sudo systemctl disable --now dgx-shm-cleanup.timer`。
+
+### スクリプトとユニットの内容
+
+`/usr/local/sbin/dgx-shm-cleanup`:
+
+```bash
+#!/usr/bin/env bash
+# /dev/shm に残った古い共有メモリファイルを消す。
+# 既定は一覧表示のみ。--delete を付けたときだけ削除する。
+# 対象: 1 日以上前のファイルで、どのプロセスも開いておらず、マップもしていないもの。
+set -euo pipefail
+
+if [ "$(id -u)" != 0 ]; then
+  echo "root で実行してください (sudo bash $0 [--delete])" >&2
+  exit 1
+fi
+
+mode=${1:-}
+min_age_min=1440
+inuse=$(mktemp)
+trap 'rm -f "$inuse"' EXIT
+
+# root なら全プロセス(コンテナ内も含む)の fd と maps が見える
+for p in /proc/[0-9]*; do
+  ls -l "$p/fd" 2>/dev/null | grep -o '/dev/shm/[^ ]*' || true
+  grep -o '/dev/shm/[^ ]*' "$p/maps" 2>/dev/null || true
+done | sort -u > "$inuse"
+
+echo "使用中として除外する名前: $(wc -l < "$inuse") 件"
+echo "実行前: $(df -h /dev/shm | tail -1)"
+
+count=0
+kb=0
+skipped=0
+while IFS= read -r -d '' f; do
+  if grep -qxF "$f" "$inuse"; then
+    skipped=$((skipped + 1))
+    continue
+  fi
+  size=$(du -k "$f" | cut -f1)
+  count=$((count + 1))
+  kb=$((kb + size))
+  if [ "$mode" = "--delete" ]; then
+    rm -f -- "$f"
+  fi
+done < <(find /dev/shm -xdev -maxdepth 1 -type f -mmin +"$min_age_min" -print0)
+
+if [ "$mode" = "--delete" ]; then
+  echo "削除: $count 件, $((kb / 1024)) MiB (使用中で除外: $skipped 件)"
+  echo "実行後: $(df -h /dev/shm | tail -1)"
+else
+  echo "削除対象: $count 件, $((kb / 1024)) MiB (使用中で除外: $skipped 件)"
+  echo "まだ何も消していません。消すには --delete を付けて実行してください。"
+fi
+```
+
+`/etc/systemd/system/dgx-shm-cleanup.service`:
+
+```ini
+[Unit]
+Description=Remove stale shared memory files left in /dev/shm by restarted containers
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/dgx-shm-cleanup --delete
+```
+
+`/etc/systemd/system/dgx-shm-cleanup.timer`:
+
+```ini
+[Unit]
+Description=Weekly cleanup of stale /dev/shm files
+
+[Timer]
+OnCalendar=Sun 04:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
 ## トラブルシューティング補足（blue・Pi5 連携）
 
 - **DGX へ SSH / Tailscale が通らない**: cold start 中の高負荷に加え、**ホスト全体の応答不良**でも banner 前で落ちることがある。ローカル LAN や**物理コンソール**を試し、必要なら**再起動**。常に **`docker logs`（vLLM / gateway）**で起動段階を先に追う。
@@ -788,7 +881,7 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 - **Tailscale / SSH**: 既定 ACL では **Pi5 → DGX の `38081` は通るが `22` は通らない**ことが多い（`38081` のみ許可のため）。ホストへ直接配置する場合は **一時 grant**（`tag:server` → `tag:llm`, `tcp:22`）→ 作業後 **grants から除去**。[tailscale-policy.md](../security/tailscale-policy.md)・[KB-357](../knowledge-base/infrastructure/security.md)。
 - **到達経路の例**: `tag:admin`（Mac）から DGX tailnet IP への直 **HTTP は ACL で届かない**ことが多い → **Pi5 経由**の疎通確認、または **工場 LAN**（例: `192.168.128.156`）と **登録済み SSH 鍵**（LAN と tailnet で同じ公開鍵を `authorized_keys` に載せる必要あり）。
 - **疎通時の注意（blue / vLLM）**: cold start 中は **`127.0.0.1:38083`** および gateway 経由の **`/v1/models`** が **502** や **connection reset** になり得る。`docker logs`（`system-prod-trtllm` 等）で **重み load・`torch.compile`・autotune** 完了まで待つ。最小チャット検証では **`chat_template_kwargs: { "enable_thinking": false }`** を付けないと **`message.content` が空**になりやすい。
-- **gateway 既定注入（2026-05-24・私用 Pi5 Hermes）**: `ACTIVE_LLM_BACKEND=blue` のとき、`gateway-server.py` の **`inject_blue_chat_completions_defaults`** が **`POST /v1/chat/completions`** 本文に **`enable_thinking: false`** を付与（クライアントが省略した場合）。Hermes は `request_overrides` を毎ターン空で上書きするため **Pi5 config だけでは不足**し得る。**記録**: [KB-private-pi5-hermes-discord-e2e-and-latency.md](../knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md)。
+- **gateway 既定注入（2026-05-24・私用 Pi5 Hermes）**: `ACTIVE_LLM_BACKEND=blue` のとき、`gateway-server.py` の **`inject_blue_chat_completions_defaults`** が **`POST /v1/chat/completions`** 本文に **`enable_thinking: false`** を付与（クライアントが省略した場合）。Hermes は `request_overrides` を毎ターン空で上書きするため **Pi5 config だけでは不足**し得る。**記録**: DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md`。
 - **`keep_warm`**: `BLUE_LLM_RUNTIME_STOP_MODE=keep_warm`（または互換 `BLUE_LLM_RUNTIME_KEEP_WARM=true`）かつ active backend が blue のとき、**`POST /stop` 後も** trtllm コンテナと **`/v1/models` が生存**する挙動を確認できる（本番ではリソース方針に合わせ ADR のとおり）。
 
 ### 2026-05-03 blue vLLM と ComfyUI の GPU 競合（502・inference-backend WARN）
@@ -1215,3 +1308,72 @@ NODE
 4. 性能劣化・OOM の場合は `maxModelLen` を 8192 に戻し、`gpuMemoryUtilization` を下げる。
 
 **参照**: [docs/plans/dgx-spark-optimization-execplan-202607.md](../plans/dgx-spark-optimization-execplan-202607.md) · [ADR-20260705](../decisions/ADR-20260705-dgx-spark-gb10-inference-performance-parameters.md)
+
+## Nemotron 3.5 Lightning + DSpark の段階導入
+
+対象は `business_nemotron35_lightning_dspark_nvfp4`。初期manifestは **disabled / 非推奨 / textのみ**。
+これは導入候補であり、実機起動・業務回答品質・10秒以内は未検証。Pi5のHermes、DB、MCPは変更しない。
+[NVIDIA公式手順](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4#quick-start)の
+vLLM 0.27.1 + DSpark K=3 + Marlin + FP8 KV + Mamba flashinfer/alignを既存blue起動経路で使用する。
+Qwen専用PLE adapterは利用しない。`reasoning-parser=nemotron_v3`、ツールparserは `qwen3_coder`。
+
+### 固定する配布物と準備
+
+- 本体revision: `bee7596271d1495f6992ae224aefde4410e816b8`
+- DSpark revision: `8a0177116d138011e63103110f136ec0ca09ebbf`
+- vLLM 0.27.1 linux/arm64 digest: `sha256:1c8e60a0841b333c700488cb029d3664807249da0c071e862191b00fe34b228c`
+- 重み約22.91GB、圧縮コンテナ約10.53GB。新規通信量は合計約33.44GB。RAM使用量ではない。
+- 保存先は実行ユーザー所有の `/srv/dgx/system-prod/data/nemotron35-hf-cache`。
+  `blueHfCacheDir` が同じディレクトリをコンテナへ渡す。既存の共有 `hf-cache/hub` がroot所有でも、
+  その所有権を変更せず専用保存先で取得する。既存Qwenのcacheは変更しない。
+- 準備時の空き容量チェックは保守的な **70GiB**。展開と一時ファイルを見込んだ運用予算であり実測値ではない。
+  Docker data-rootがHF cacheと別filesystemなら、両方の空き容量を別途確認する。
+
+実機接続・反映にはAGENTS.mdの対象SHA/CI確認と承認境界を適用する。
+承認済みSHAから、従来のDGX専用反映手順で次を配布する（通常のPi5 fleet deployだけでは反映されない）：
+
+- `profile_launcher.py`、`vllm_command_builder.py`、`start-trtllm-server.sh`、`nemotron35_dspark_cache.py`
+- 新規manifest → `/srv/dgx/shared-models/registry/business_nemotron35_lightning_dspark_nvfp4/manifest.json`
+
+先に既存runtimeファイルとactive profile、常駐モデル設定を保存する。Qwenのmanifest、重み、imageは保持する。
+control-serverはPython moduleを常駐importするため、反映時は既存の管理方式で再読込が必要。
+実際に使われているsystemd/起動wrapperを確認し、独立したcontrol-serverを追加起動しない。
+
+DGXの永続実行ユーザーで、配布済みディレクトリから明示実行する：
+
+```bash
+python3 nemotron35_dspark_cache.py plan
+python3 nemotron35_dspark_cache.py fetch
+python3 nemotron35_dspark_cache.py verify
+```
+
+`plan` は変更なし。`fetch` は固定imageを取得し、そのHub clientで両モデルの固定revisionを取得する。
+取得用コンテナはGPU・ポート・常駐サービスを使わず、active profileや `refs/main` も変更しない。
+`verify` と通常起動はネットワーク取得をせず、両snapshotの設定・重みの存在とsafetensorsの長さを確認する。
+DSparkは本体のtokenizerを使うため、draft側のtokenizerファイルを要求しない。
+この起動時検査は全重量ファイルのchecksum再計算ではない。欠損・切断・明らかな未完了取得を拒否する。
+通常起動は `--pull never` とHub/Transformers offlineを指定し、モデル・イメージの起動時ダウンロードを禁止する。
+
+### 試験切替と復帰
+
+1. 取得とverify成功後、試験時間帯の排他・常駐維持設定を確認する。
+   ControlPlaneの `DGX_KEEP_WARM_PROFILE_ID` が別モデルを指定している場合は競合させない。
+   設定変更が必要ならControlPlaneの既存手順で行い、業務優先・Lease制御を迂回しない。
+2. 試験対象manifestだけ `enabled=true` にして、既存orchestrationの停止→モデル指定業務復帰で切り替える。
+   稼働中の同じblueコンテナへの単発 `/start` は切替にならないため使わない。
+3. `/v1/models` に加え `activeProfileId`、backend、実際の起動ログのmodel/draft snapshotを確認する。
+4. Hermes経由で日本語、ツール呼び出し、根拠付き回答、該当なし、聞き返し、継続会話を確認する。
+   既存の `enable_thinking=false` を継続する。画像を読む用途はQwenを必要とする。
+5. 同じ業務質問・データ・会話条件でQwenと比較し、正答と質問送信から最終回答完了まで10秒以内を評価する。
+   最初の文字やtok/sだけで合格にしない。初回/温まった状態、繰り返しの分布、冷起動を区別する。
+6. 試験後は旧Qwen profileへ同じorchestration経路で戻し、profile一致と実際の回答まで確認する。
+   常駐維持設定も保存した値に戻す。Nemotronは再びdisabledとし、推薦変更は合格後に判断する。
+
+初期予算は同時1要求・64K文脈・GPU割当0.65・batch 2048。
+64Kは現行Hermesの最小文脈条件を満たす値で、Qwen3.8の262Kと同容量ではない。
+既存業務入力が64Kに収まることを確認し、切捨てや検索不成立を速度改善と数えない。
+公式例の最大1M文脈やGPU割当0.85を無条件に転記せず、実機の空きメモリと予約を確認してから調整する。
+失敗時は旧Qwenへ戻す。起動処理の回帰なら保存したruntimeファイルを復元してcontrolを再読込する。
+
+ローカル検証は `tests/test_nemotron35_dspark.py`、既存profile launcher / vLLM builder / Qwen adapterのテストを対象とする。
+Macでの偽Dockerによる確認は起動契約の検証であり、GB10上の実際の推論・メモリ・応答性能の証拠にはしない。

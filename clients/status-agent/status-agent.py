@@ -22,6 +22,12 @@ from typing import Dict, Optional
 import shutil
 
 import storage_health
+import terminal_agent_health
+
+try:
+    import network_health
+except Exception:  # optional observations must never stop status reporting
+    network_health = None
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_STORAGE_HEALTH_STATE_FILE = Path("/run/raspi-status-agent/storage-health-last-run")
@@ -69,6 +75,19 @@ def parse_config_file(path: Path) -> Dict[str, str]:
     config.setdefault("STORAGE_HEALTH_DISK_ERROR_PCT", "90")
     config.setdefault("STORAGE_HEALTH_INTERVAL_SECONDS", str(storage_health.DEFAULT_INTERVAL_SECONDS))
     config.setdefault("STORAGE_HEALTH_STATE_FILE", str(DEFAULT_STORAGE_HEALTH_STATE_FILE))
+    config.setdefault("STORAGE_HEALTH_WEAR_STATE_FILE", str(storage_health.DEFAULT_WEAR_STATE_FILE))
+    config.setdefault(
+        "STORAGE_HEALTH_WRITE_WARN_GB_PER_DAY", f"{storage_health.DEFAULT_WRITE_WARN_GB_PER_DAY:g}"
+    )
+    config.setdefault("TERMINAL_AGENT_HEALTH_NFC_ENABLED", "0")
+    config.setdefault("TERMINAL_AGENT_HEALTH_BARCODE_ENABLED", "0")
+    config.setdefault("TERMINAL_AGENT_HEALTH_TORQUE_ENABLED", "0")
+    config.setdefault("TERMINAL_AGENT_MAINTENANCE_LEASES_JSON", "{}")
+    config.setdefault(
+        "TERMINAL_AGENT_HEALTH_STATE_FILE",
+        str(terminal_agent_health.DEFAULT_STATE_FILE),
+    )
+    config.setdefault("NETWORK_HEALTH_ENABLED", "1")
     config.setdefault("STATUS_AGENT_LOG_SUCCESS", "0")
     return config
 
@@ -267,12 +286,26 @@ def build_payload(config: Dict[str, str], *, force_storage_health: bool = False)
             ]
         finally:
             mark_storage_health_checked(config)
+    logs.extend(terminal_agent_health.collect_logs(config))
+    if network_health is not None:
+        network_health.append_log(config, logs)
     payload["logs"] = logs
 
     return payload
 
 
 def post_payload(config: Dict[str, str], payload: Dict[str, object]) -> None:
+    started = time.monotonic()
+    ok = False
+    try:
+        _post_payload(config, payload)
+        ok = True
+    finally:
+        if network_health is not None:
+            network_health.record_post(config, (time.monotonic() - started) * 1000, ok)
+
+
+def _post_payload(config: Dict[str, str], payload: Dict[str, object]) -> None:
     api_base = config["API_BASE_URL"].rstrip("/")
     url = f"{api_base}/clients/status"
     data = json.dumps(payload).encode("utf-8")
@@ -319,6 +352,8 @@ def main() -> int:
             return 0
 
         post_payload(config, payload)
+        terminal_agent_health.mark_logs_delivered(config, list(payload.get("logs", [])))
+        storage_health.mark_wear_logs_delivered(config, list(payload.get("logs", [])))
         if storage_health.is_truthy(config.get("STATUS_AGENT_LOG_SUCCESS")):
             location = config.get("LOCATION")
             suffix = f" ({location})" if location else ""

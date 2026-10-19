@@ -1,10 +1,10 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { logger } from './logger.js';
+import { getFileStorageRoot } from '../services/file-storage/file-storage-config.js';
+import { getFileStorageRuntime } from '../services/file-storage/file-storage-runtime.js';
 
-const getStorageBaseDir = () =>
-  process.env.CSV_DASHBOARD_STORAGE_DIR ||
-  (process.env.NODE_ENV === 'test' ? '/tmp/test-csv-dashboard-storage' : '/opt/RaspberryPiSystem_002/storage');
+const getStorageBaseDir = () => getFileStorageRoot();
 
 /**
  * CSVダッシュボード用のストレージ管理
@@ -18,7 +18,7 @@ export class CsvDashboardStorage {
    */
   static async initialize(): Promise<void> {
     try {
-      await fs.mkdir(this.CSV_DASHBOARDS_DIR, { recursive: true });
+      await getFileStorageRuntime().store.initialize(['csv-dashboards']);
       logger?.info({ dir: this.CSV_DASHBOARDS_DIR }, '[CsvDashboardStorage] Directory initialized');
     } catch (error) {
       logger?.error({ err: error, dir: this.CSV_DASHBOARDS_DIR }, '[CsvDashboardStorage] Failed to initialize directory');
@@ -45,11 +45,14 @@ export class CsvDashboardStorage {
     const dashboardDir = path.join(this.CSV_DASHBOARDS_DIR, dashboardId);
     const rawDir = path.join(dashboardDir, 'raw', String(year), month);
 
-    // ディレクトリを作成
-    await fs.mkdir(rawDir, { recursive: true });
-
     const filePath = path.join(rawDir, filename);
-    await fs.writeFile(filePath, csvContent, 'utf-8');
+    const storageKey = path.relative(this.BASE_DIR, filePath).split(path.sep).join('/');
+    await getFileStorageRuntime().store.write({
+      key: storageKey,
+      data: csvContent,
+      mode: 'create',
+      integrity: true,
+    });
 
     logger?.info(
       { dashboardId, filePath, size: csvContent.length },
@@ -95,6 +98,14 @@ export class CsvDashboardStorage {
 
             // 前々年(例: 2024)は削除（前年は保持）
             if (year <= twoYearsAgo) {
+              const files = await this.listFilesRecursively(yearPath);
+              for (const filePath of files) {
+                await getFileStorageRuntime().store.delete(
+                  path.relative(this.BASE_DIR, filePath).split(path.sep).join('/'),
+                  { integrity: true }
+                );
+                deletedCount++;
+              }
               await fs.rm(yearPath, { recursive: true, force: true });
               logger?.info({ year, path: yearPath }, '[CsvDashboardStorage] Deleted old year directory');
               continue;
@@ -124,7 +135,10 @@ export class CsvDashboardStorage {
                   for (const file of files) {
                     const filePath = path.join(monthPath, file);
                     const stats = await fs.stat(filePath);
-                    await fs.unlink(filePath);
+                    await getFileStorageRuntime().store.delete(
+                      path.relative(this.BASE_DIR, filePath).split(path.sep).join('/'),
+                      { integrity: true }
+                    );
                     deletedCount++;
                     deletedSize += stats.size;
                   }
@@ -153,5 +167,18 @@ export class CsvDashboardStorage {
       logger?.error({ err: error }, '[CsvDashboardStorage] Cleanup failed');
       throw error;
     }
+  }
+
+  private static async listFilesRecursively(directory: string): Promise<string[]> {
+    const files: string[] = [];
+    for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        files.push(...(await this.listFilesRecursively(entryPath)));
+      } else if (entry.isFile()) {
+        files.push(entryPath);
+      }
+    }
+    return files;
   }
 }

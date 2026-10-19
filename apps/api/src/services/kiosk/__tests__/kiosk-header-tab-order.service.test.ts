@@ -7,11 +7,14 @@ describe('kiosk-header-tab-order normalization', () => {
     expect(normalizeKioskHeaderTabOrder(['leader_order_board', 'unknown', 'borrow'])).toEqual([
       'leader_order_board',
       'borrow',
+      'inventory_settings',
       'self_inspection',
       'instruments_borrow',
       'rigging_borrow',
+      'tag_desk',
       'production_schedule',
       'manual_order',
+      'grinding_planning_board',
       'progress_overview',
       'load_balancing',
       'purchase_order_lookup',
@@ -22,6 +25,7 @@ describe('kiosk-header-tab-order normalization', () => {
       'part_measurement',
       'inspection_drawing',
       'rigging_analytics',
+      'machine_signal',
       'due_management',
       'call'
     ]);
@@ -33,11 +37,14 @@ describe('kiosk-header-tab-order normalization', () => {
     ).toEqual([
       'borrow',
       'self_inspection',
+      'inventory_settings',
       'instruments_borrow',
       'rigging_borrow',
+      'tag_desk',
       'production_schedule',
       'manual_order',
       'leader_order_board',
+      'grinding_planning_board',
       'progress_overview',
       'load_balancing',
       'purchase_order_lookup',
@@ -48,6 +55,7 @@ describe('kiosk-header-tab-order normalization', () => {
       'part_measurement',
       'inspection_drawing',
       'rigging_analytics',
+      'machine_signal',
       'due_management',
       'call'
     ]);

@@ -1,0 +1,498 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import http from 'node:http';
+import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { records } from './fixtures/synthetic-records.mjs';
+import { loadNonconformityCatalog } from './catalog.mjs';
+import {
+  attachEnrichment,
+  parseEnrichmentPayload,
+  promptSha256,
+  recordText,
+  sourceRecordHash,
+  toRetrievalEnrichment,
+  verifyEvidence,
+} from './enrichment-contract.mjs';
+import { ENRICHMENT_MAX_TOKENS, withinWindow } from './enrichment-dgx.mjs';
+import {
+  MAX_CONTENT_ATTEMPTS, selectRecords, needsEnrichment, readIdAllowlist, runEnrichmentBatch,
+} from './enrichment-runner.mjs';
+import {
+  failuresPathFor, readEnrichmentFailures, readEnrichmentStore, writeAtomic, writeEnrichmentStore,
+} from './enrichment-store.mjs';
+import { createRetrievalAnswering } from './worker.mjs';
+
+const catalog = loadNonconformityCatalog();
+
+function payloadFor(record) {
+  const text = recordText(record, catalog);
+  return {
+    facets: {
+      phenomenon: [{ value: 'demo mark', evidence: record.condition.trim() }],
+      cause: [],
+      process: [],
+      part: [{ value: 'demo part', evidence: record.partName }],
+      treatment: [],
+    },
+    queries: ['この部品の状態は？', '同じ機械の記録は？', '処置済みの記録は？'],
+    summary: 'demo summary',
+  };
+}
+
+function listen(handler) {
+  const server = http.createServer(handler);
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => resolve(server));
+  });
+}
+
+test('schema rejects a summary over 60 characters and accepts a valid payload', () => {
+  const record = records[0];
+  const parsed = parseEnrichmentPayload(payloadFor(record));
+  assert.equal(parsed.summary, 'demo summary');
+  assert.throws(() => parseEnrichmentPayload({ ...payloadFor(record), summary: 'x'.repeat(61) }), /60/u);
+});
+
+test('aliases keep only terms from the record and require two expanded queries', () => {
+  const record = records[0];
+  const text = recordText(record, catalog);
+  const base = payloadFor(record);
+  const parsed = parseEnrichmentPayload({
+    ...base,
+    queries: ['ギアボックスの傷は？', 'ゴロゴロ音の記録は？', 'この部品の状態は？'],
+    aliases: [
+      { term: record.partName, alts: ['ギアボックス', record.partName] },
+      { term: 'missing-from-record', alts: ['別名称'] },
+      { term: 'scratch', alts: ['ゴロゴロ'] },
+    ],
+  });
+  const verified = verifyEvidence(parsed, text, record.id);
+  assert.equal(verified.enrichmentSchemaVersion, 2);
+  assert.equal(verified.aliasesKept, 2);
+  assert.ok(verified.aliasesDropped >= 1);
+  assert.deepEqual(verified.aliases[0].alts, ['ギアボックス']);
+  assert.throws(() => verifyEvidence({
+    ...parsed,
+    queries: ['この部品の状態は？', '同じ機械の記録は？', '処置済みの記録は？'],
+  }, text, record.id), /alias alternatives/u);
+  const attached = toRetrievalEnrichment(verified);
+  assert.ok(attached.tags.includes('ギアボックス'));
+});
+
+test('a stored row with aliases is current and is not enriched again', () => {
+  const record = records[0];
+  const promptHash = promptSha256(catalog);
+  const verified = verifyEvidence(parseEnrichmentPayload({
+    ...payloadFor(record),
+    queries: ['ギアボックスの状態は？', 'ギアボックスの記録は？', '処置済みの記録は？'],
+    aliases: [{ term: record.partName, alts: ['ギアボックス'] }],
+  }), recordText(record, catalog), record.id);
+  assert.equal(verified.enrichmentSchemaVersion, 2);
+  const row = {
+    enrichmentSchemaVersion: verified.enrichmentSchemaVersion,
+    promptSha256: promptHash,
+    sourceRecordHash: sourceRecordHash(record, catalog),
+  };
+  assert.equal(needsEnrichment(row, record, catalog, promptHash), false);
+  assert.equal(needsEnrichment({ ...row, enrichmentSchemaVersion: 3 }, record, catalog, promptHash), true);
+});
+
+test('the alias fallback keeps the record without aliases when the alias rule fails', () => {
+  const record = records[0];
+  const text = recordText(record, catalog);
+  const parsed = parseEnrichmentPayload({
+    ...payloadFor(record),
+    aliases: [{ term: record.partName, alts: ['ギアボックス'] }],
+  });
+  const verified = verifyEvidence(parsed, text, record.id, { aliasFallback: true });
+  assert.equal(verified.aliasesRejected, true);
+  assert.deepEqual(verified.aliases, []);
+  assert.equal(verified.aliasesKept, 0);
+  assert.equal(verified.aliasesDropped, 1);
+  assert.equal(verified.enrichmentSchemaVersion, 1);
+  assert.equal(verified.summary, 'demo summary');
+  assert.equal(verified.queries.length, 3);
+});
+
+test('evidence that is not in the record text is dropped and counted', () => {
+  const record = records[0];
+  const parsed = parseEnrichmentPayload(payloadFor(record));
+  parsed.facets.cause.push({ value: 'invented', evidence: 'not-in-source' });
+  const verified = verifyEvidence(parsed, recordText(record, catalog), record.id);
+  assert.equal(verified.evidenceDropped, 1);
+  assert.equal(verified.facets.cause.length, 0);
+  assert.equal(verified.facets.phenomenon.length, 1);
+  const attached = attachEnrichment([record], new Map([[record.id, verified]]));
+  assert.deepEqual(attached[0].enrichment, toRetrievalEnrichment(verified));
+  assert.deepEqual(attached[0].enrichment.tags, ['demo mark', 'demo part']);
+});
+
+test('unchanged records are skipped and the store rewrite is atomic', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-'));
+  const storePath = path.join(directory, 'retrieval-enrichment.jsonl');
+  const statusPath = path.join(directory, 'retrieval-enrichment-status.json');
+  let calls = 0;
+  const server = await listen((request, response) => {
+    calls += 1;
+    const chunks = [];
+    request.on('data', (chunk) => chunks.push(chunk));
+    request.on('end', () => {
+      const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      const user = body.messages.at(-1).content;
+      const record = records.find((item) => user.includes(item.condition.trim()));
+      response.setHeader('content-type', 'application/json');
+      response.end(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify(payloadFor(record)) } }],
+        usage: { prompt_tokens: 11, completion_tokens: 7 },
+      }));
+    });
+  });
+  const address = server.address();
+  const settings = {
+    enabled: true,
+    maxRecords: 100,
+    concurrency: 1,
+    timeoutMs: 5000,
+    window: '',
+    origin: `http://127.0.0.1:${address.port}`,
+    token: 'synthetic-token-value',
+    egress: '',
+    model: 'mock-model',
+    profile: 'business_qwen36_27b_nvfp4',
+  };
+  const fetchImpl = (url, options) => fetch(url, options);
+  const first = await runEnrichmentBatch({
+    records: records.slice(0, 1), catalog, storePath, statusPath, settings, fetchImpl, sleep: async () => {},
+  });
+  assert.equal(first.succeeded, 1);
+  assert.equal(first.evidenceDropped, 0);
+  assert.equal(calls, 1);
+  const stored = await readEnrichmentStore(storePath);
+  assert.equal(needsEnrichment(stored.get(records[0].id), records[0], catalog, promptSha256(catalog)), false);
+  const second = await runEnrichmentBatch({
+    records: records.slice(0, 1), catalog, storePath, statusPath, settings, fetchImpl, sleep: async () => {},
+  });
+  assert.equal(second.skipped, 1);
+  assert.equal(second.succeeded, 0);
+  assert.equal(calls, 1);
+  const names = await readdir(directory);
+  assert.equal(names.some((name) => name.endsWith('.tmp')), false);
+  await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+});
+
+test('a failed atomic write leaves the previous store intact', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-atomic-'));
+  const storePath = path.join(directory, 'retrieval-enrichment.jsonl');
+  const byId = new Map([['rec-alpha', { schema: 'hermes-retrieval-enrichment/v1', recordId: 'rec-alpha', summary: 'kept' }]]);
+  await writeEnrichmentStore(storePath, byId);
+  const before = await readFile(storePath, 'utf8');
+  const blocked = path.join(directory, 'blocked');
+  await (await import('node:fs/promises')).mkdir(blocked);
+  await assert.rejects(writeAtomic(blocked, 'next'));
+  assert.equal(await readFile(storePath, 'utf8'), before);
+  const names = await readdir(directory);
+  assert.equal(names.some((name) => name.includes('.tmp')), false);
+});
+
+test('an id list puts listed records first, keeps the others, and rejects other file text', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-ids-'));
+  const allowPath = path.join(directory, 'ids.txt');
+  const kept = '11111111-1111-4111-8111-111111111111';
+  const dropped = '22222222-2222-4222-8222-222222222222';
+  await writeFile(allowPath, `${kept}\n`);
+  assert.deepEqual([...(await readIdAllowlist(allowPath))], [kept]);
+  await writeFile(allowPath, 'not-an-id\n');
+  await assert.rejects(readIdAllowlist(allowPath), /not an id/);
+  const settings = {
+    enabled: true, maxRecords: 100, concurrency: 1, timeoutMs: 5000, window: '22-6',
+    idAllowlist: allowPath, origin: 'http://127.0.0.1:9', token: 'synthetic-token-value',
+    egress: '', model: 'mock-model', profile: 'business_qwen36_27b_nvfp4',
+  };
+  await writeFile(allowPath, `${kept}\n`);
+  let calls = 0;
+  const status = await runEnrichmentBatch({
+    records: [{ ...records[0], id: kept }, { ...records[1], id: dropped }],
+    catalog, storePath: path.join(directory, 'store.jsonl'), statusPath: path.join(directory, 'status.json'),
+    settings, fetchImpl: async () => { calls += 1; throw new Error('unused'); }, sleep: async () => {},
+    now: () => new Date('2026-01-15T03:30:00Z'),
+  });
+  assert.equal(status.reason, 'outside_window');
+  assert.equal(status.allowlistCount, 1);
+  assert.equal(status.allowlistMatched, 1);
+  assert.equal(status.corpusCount, 2);
+  assert.equal(calls, 0);
+  const order = [];
+  const storePath = path.join(directory, 'order.jsonl');
+  const run = () => runEnrichmentBatch({
+    records: [{ ...records[1], id: dropped }, { ...records[0], id: kept }],
+    catalog, storePath, settings: { ...settings, window: '', maxRecords: 1 },
+    fetchImpl: async (url, options) => {
+      const user = JSON.parse(options.body).messages.at(-1).content;
+      const record = user.includes(records[0].condition.trim()) ? records[0] : records[1];
+      order.push(record === records[0] ? kept : dropped);
+      return chatResponse(record);
+    },
+    sleep: async () => {},
+    now: () => new Date('2026-01-15T03:30:00Z'),
+  });
+  await run();
+  await run();
+  assert.deepEqual(order, [kept, dropped]);
+});
+
+test('the enrichment window accepts an overnight range and rejects an open gate by default', () => {
+  const night = new Date('2026-01-15T15:30:00Z');
+  const day = new Date('2026-01-15T03:30:00Z');
+  assert.equal(withinWindow('22-6', night), true);
+  assert.equal(withinWindow('22-6', day), false);
+  assert.equal(withinWindow('', day), true);
+});
+
+function batchSettings(overrides) {
+  return {
+    enabled: true,
+    maxRecords: 100,
+    concurrency: 1,
+    timeoutMs: 5000,
+    window: '',
+    origin: 'http://127.0.0.1:9',
+    token: 'synthetic-token-value',
+    egress: '',
+    model: 'mock-model',
+    profile: 'business_qwen36_27b_nvfp4',
+    ...overrides,
+  };
+}
+
+function chatResponse(record) {
+  return {
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({
+      choices: [{ message: { content: JSON.stringify(payloadFor(record)) } }],
+      usage: { prompt_tokens: 11, completion_tokens: 7 },
+    }),
+  };
+}
+
+test('enrichment stops before the next record when the window closes and keeps completed rows', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-window-'));
+  const storePath = path.join(directory, 'retrieval-enrichment.jsonl');
+  const inside = new Date('2026-01-15T15:30:00Z');
+  const outside = new Date('2026-01-15T03:30:00Z');
+  let calls = 0;
+  const status = await runEnrichmentBatch({
+    records: records.slice(0, 3),
+    catalog,
+    storePath,
+    statusPath: path.join(directory, 'status.json'),
+    settings: batchSettings({ window: '22-6', maxRecords: 3 }),
+    fetchImpl: async () => chatResponse(records[calls++]),
+    sleep: async () => {},
+    now: () => (calls < 1 ? inside : outside),
+  });
+  assert.equal(status.reason, 'outside_window');
+  assert.equal(status.succeeded, 1);
+  assert.equal(status.failed, 0);
+  assert.equal(calls, 1);
+  const stored = await readEnrichmentStore(storePath);
+  assert.equal(stored.has(records[0].id), true);
+  assert.equal(stored.has(records[1].id), false);
+});
+
+test('enrichment without a window runs through the record cap', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-cap-'));
+  let calls = 0;
+  const status = await runEnrichmentBatch({
+    records,
+    catalog,
+    storePath: path.join(directory, 'store.jsonl'),
+    settings: batchSettings({ window: '', maxRecords: 2 }),
+    fetchImpl: async () => chatResponse(records[calls++]),
+    sleep: async () => {},
+    now: () => new Date('2026-01-15T03:30:00Z'),
+  });
+  assert.equal(status.reason, 'completed');
+  assert.equal(status.succeeded, 2);
+  assert.equal(status.deferred, records.length - 2);
+  assert.equal(calls, 2);
+});
+
+test('an enrichment retry does not start after the window closes', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-retry-'));
+  const inside = new Date('2026-01-15T15:30:00Z');
+  const outside = new Date('2026-01-15T03:30:00Z');
+  let calls = 0;
+  const status = await runEnrichmentBatch({
+    records: records.slice(0, 2),
+    catalog,
+    storePath: path.join(directory, 'store.jsonl'),
+    settings: batchSettings({ window: '22-6', maxRecords: 2 }),
+    fetchImpl: async () => {
+      calls += 1;
+      return { ok: false, status: 400, text: async () => '' };
+    },
+    sleep: async () => {},
+    now: () => (calls < 1 ? inside : outside),
+  });
+  assert.equal(calls, 1);
+  assert.equal(status.reason, 'outside_window');
+  assert.equal(status.failed, 0);
+  assert.equal(status.succeeded, 0);
+});
+
+function recordOf(options) {
+  const user = JSON.parse(options.body).messages.at(-1).content;
+  return records.find((item) => user.includes(item.condition.trim()));
+}
+
+function contentResponse(content, finishReason = 'stop') {
+  return {
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({ choices: [{ message: { content }, finish_reason: finishReason }] }),
+  };
+}
+
+test('a record the model cannot answer is set aside and does not block the rest', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-poison-'));
+  const storePath = path.join(directory, 'store.jsonl');
+  const poison = records[0];
+  const calls = [];
+  const run = (maxRecords) => runEnrichmentBatch({
+    records: records.slice(0, 3),
+    catalog,
+    storePath,
+    settings: batchSettings({ maxRecords }),
+    fetchImpl: async (url, options) => {
+      const record = recordOf(options);
+      calls.push(record.id);
+      return record === poison ? contentResponse('{"facets": ') : chatResponse(record);
+    },
+    sleep: async () => { throw new Error('content failures must not back off'); },
+    now: () => new Date('2026-01-15T03:30:00Z'),
+  });
+  const first = await run(1);
+  assert.equal(first.failed, 1);
+  assert.equal(first.failureCounts.invalid_json, 1);
+  assert.equal(first.reason, 'completed');
+  const ledger = await readEnrichmentFailures(failuresPathFor(storePath));
+  assert.equal(ledger.get(poison.id).attempts, 1);
+  assert.equal(ledger.get(poison.id).lastErrorClass, 'invalid_json');
+  const second = await run(1);
+  assert.equal(second.succeeded, 1);
+  assert.notEqual(calls.at(-1), poison.id);
+  for (let index = 0; index < MAX_CONTENT_ATTEMPTS; index += 1) await run(3);
+  const last = await run(3);
+  assert.equal(last.gaveUp, 1);
+  assert.equal(last.examined, 0);
+  assert.equal(calls.filter((id) => id === poison.id).length, MAX_CONTENT_ATTEMPTS * 2);
+  const stored = await readEnrichmentStore(storePath);
+  assert.equal(stored.size, 2);
+});
+
+test('a truncated answer is named and is not retried without the schema', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-truncated-'));
+  let calls = 0;
+  const status = await runEnrichmentBatch({
+    records: records.slice(0, 1),
+    catalog,
+    storePath: path.join(directory, 'store.jsonl'),
+    settings: batchSettings({ maxRecords: 1 }),
+    fetchImpl: async () => {
+      calls += 1;
+      return contentResponse('{"facets": {', 'length');
+    },
+    sleep: async () => {},
+    now: () => new Date('2026-01-15T03:30:00Z'),
+  });
+  assert.equal(calls, 1);
+  assert.deepEqual(status.failureCounts, { truncated: 1 });
+  assert.equal(status.parseFailures, 1);
+});
+
+test('a schema mismatch keeps its fixed reason and a JSON syntax error keeps none', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-schema-'));
+  const status = await runEnrichmentBatch({
+    records: records.slice(0, 2),
+    catalog,
+    storePath: path.join(directory, 'store.jsonl'),
+    settings: batchSettings({ maxRecords: 2 }),
+    fetchImpl: async (url, options) => (recordOf(options) === records[0]
+      ? contentResponse(JSON.stringify({ ...payloadFor(records[0]), summary: 'x'.repeat(61) }))
+      : contentResponse('not json at all')),
+    sleep: async () => {},
+    now: () => new Date('2026-01-15T03:30:00Z'),
+  });
+  assert.equal(status.failureCounts.schema_mismatch, 1);
+  assert.equal(status.failureCounts.invalid_json, 1);
+  assert.deepEqual(Object.keys(status.failureDetails), ['summary must be one line of at most 60 characters']);
+});
+
+test('the request asks for the widened token cap and the row records a rejected alias set', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-cap-tokens-'));
+  const storePath = path.join(directory, 'store.jsonl');
+  const record = records[0];
+  const bodies = [];
+  const status = await runEnrichmentBatch({
+    records: [record],
+    catalog,
+    storePath,
+    settings: batchSettings({ maxRecords: 1 }),
+    fetchImpl: async (url, options) => {
+      bodies.push(JSON.parse(options.body));
+      return contentResponse(JSON.stringify({
+        ...payloadFor(record),
+        aliases: [{ term: record.partName, alts: ['ギアボックス'] }],
+      }));
+    },
+    sleep: async () => {},
+    now: () => new Date('2026-01-15T03:30:00Z'),
+  });
+  assert.equal(bodies[0].max_tokens, ENRICHMENT_MAX_TOKENS);
+  assert.equal(status.aliasesRejected, 1);
+  const stored = await readEnrichmentStore(storePath);
+  assert.equal(stored.get(record.id).metrics.aliasesRejected, true);
+});
+
+test('DGX transport failures still back off', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-backoff-'));
+  const sleeps = [];
+  const status = await runEnrichmentBatch({
+    records: records.slice(0, 4),
+    catalog,
+    storePath: path.join(directory, 'store.jsonl'),
+    settings: batchSettings({ maxRecords: 4 }),
+    fetchImpl: async () => ({ ok: false, status: 503, text: async () => '' }),
+    sleep: async (ms) => { sleeps.push(ms); },
+    now: () => new Date('2026-01-15T03:30:00Z'),
+  });
+  assert.equal(status.reason, 'backoff');
+  assert.equal(status.examined, 3);
+  assert.deepEqual(status.failureCounts, { http: 3 });
+  assert.equal(sleeps.length, 3);
+  assert.deepEqual(await readEnrichmentFailures(failuresPathFor(path.join(directory, 'store.jsonl'))), new Map());
+});
+
+test('the retrieval worker attaches the agreed enrichment shape when a store entry exists', async () => {
+  const answering = createRetrievalAnswering({
+    records: records.slice(0, 1),
+    catalog,
+    enrichmentById: new Map([[records[0].id, {
+      summary: 'demo summary',
+      queries: ['この部品の状態は？', '同じ機械の記録は？', '処置済みの記録は？'],
+      facets: { phenomenon: [{ value: 'demo mark' }], cause: [], process: [], part: [], treatment: [] },
+    }]]),
+  });
+  const replaced = await answering.replaceCorpus({ mode: 'full', records: [], asOf: '2026-01-15T00:00:00Z' });
+  assert.equal(replaced.ok, true);
+  assert.equal(replaced.count, 0);
+});
+
+
+test('enrichment excludes rank-only API rows and snapshot records', () => {
+  const hidden = { id: 'material', bodyText: 'private material' };
+  assert.deepEqual(selectRecords([...records, { ...hidden, kind: 'procedure_material' }, { ...hidden, sourceId: 'procedure_material' }]), records);
+});

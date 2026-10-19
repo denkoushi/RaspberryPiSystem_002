@@ -1,8 +1,11 @@
+import { sendStorageReadError } from './shared.js';
+import { createDeviceReadRateLimit } from '../../lib/device-read-rate-limit.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authorizeRoles } from '../../lib/auth.js';
 import { findClientDeviceByApiKey } from '../../services/clients/client-device-auth.service.js';
 import { PartMeasurementDrawingStorage, parseDerivativeWidth } from '../../lib/part-measurement-drawing-storage.js';
 import { buildPdfPageEtag, ifNoneMatchSatisfied } from './pdf-page-http-cache.js';
+import { ApiError } from '../../lib/errors.js';
 
 const PART_MEASUREMENT_DRAWING_CACHE_CONTROL = 'private, max-age=86400, immutable';
 
@@ -13,7 +16,7 @@ const PART_MEASUREMENT_DRAWING_CACHE_CONTROL = 'private, max-age=86400, immutabl
 export function registerPartMeasurementDrawingStorageRoutes(app: FastifyInstance): void {
   const canView = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
 
-  app.get('/storage/part-measurement-drawings/*', async (request: FastifyRequest, reply: FastifyReply) => {
+  app.get('/storage/part-measurement-drawings/*', { config: { rateLimit: createDeviceReadRateLimit() } }, async (request: FastifyRequest, reply: FastifyReply) => {
     const headerKey = request.headers['x-client-key'];
     if (headerKey) {
       const apiKey = Array.isArray(headerKey) ? headerKey[0] : headerKey;
@@ -64,12 +67,13 @@ export function registerPartMeasurementDrawingStorageRoutes(app: FastifyInstance
       reply.type(contentType);
       return reply.send(buffer);
     } catch (error) {
+      if (error instanceof ApiError) throw error;
       const err = error instanceof Error ? error : new Error(String(error));
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        return reply.status(404).send({ message: '図面が見つかりません' });
-      }
-      request.log.error({ err, drawingUrl }, '図面の読み込みに失敗しました');
-      return reply.status(500).send({ message: '図面の読み込みに失敗しました' });
+      return sendStorageReadError(request, reply, err, {
+        notFoundMessage: '図面が見つかりません',
+        failedMessage: '図面の読み込みに失敗しました',
+        logContext: { err, drawingUrl },
+      });
     }
   });
 }

@@ -1,0 +1,190 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  canDiscardAssemblyProcedureDocumentRevision,
+  canPublishAssemblyProcedureDocument,
+  convertOverlayShapeKind,
+  createOverlayForRange,
+  lineEndpointsForDirection,
+  normalizeOverlayBBox,
+  overlayDraftReducer
+  , updateOverlayBBox
+} from './assemblyDocumentEditorDraft';
+
+const bbox = { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.2, heightRatio: 0.2 };
+
+describe('lineEndpointsForDirection', () => {
+  it.each([
+    ['up', 0.375, 0.5, 0.375, 0.25],
+    ['up-right', 0.125, 0.5, 0.625, 0.25],
+    ['right', 0.125, 0.375, 0.625, 0.375],
+    ['down-right', 0.125, 0.25, 0.625, 0.5],
+    ['down', 0.375, 0.25, 0.375, 0.5],
+    ['down-left', 0.625, 0.25, 0.125, 0.5],
+    ['left', 0.625, 0.375, 0.125, 0.375],
+    ['up-left', 0.625, 0.5, 0.125, 0.25]
+  ] as const)('sets %s endpoints without changing the bbox', (direction, startX, startY, endX, endY) => {
+    const bounds = Object.freeze({ xRatio: 0.125, yRatio: 0.25, widthRatio: 0.5, heightRatio: 0.25 });
+    expect(lineEndpointsForDirection(bounds, direction)).toEqual({
+      start: { xRatio: startX, yRatio: startY },
+      end: { xRatio: endX, yRatio: endY }
+    });
+    expect(bounds).toEqual({ xRatio: 0.125, yRatio: 0.25, widthRatio: 0.5, heightRatio: 0.25 });
+  });
+});
+
+describe('assembly document editor draft reducer', () => {
+  it.each(['TEXT', 'IMAGE', 'SHAPE'] as const)('places a new %s above only its own page', kind => {
+    const elements = [
+      { ...createOverlayForRange('SHAPE', 0, bbox), zIndex: 8 },
+      { ...createOverlayForRange('SHAPE', 0, bbox), zIndex: 3 },
+      { ...createOverlayForRange('SHAPE', 1, bbox), zIndex: 100 }
+    ];
+    expect(createOverlayForRange(kind, 0, bbox, elements).zIndex).toBe(9);
+    expect(createOverlayForRange(kind, 2, bbox, elements).zIndex).toBe(0);
+    const createdWithoutContext = createOverlayForRange(kind, 0, bbox);
+    expect(overlayDraftReducer(elements, { type: 'add', element: createdWithoutContext }).at(-1)?.zIndex).toBe(9);
+    expect(elements.map(element => element.zIndex)).toEqual([8, 3, 100]);
+  });
+
+  it.each(['TEXT', 'IMAGE', 'SHAPE'] as const)('duplicates %s with independent properties and a page-local front z-index', kind => {
+    const source = createOverlayForRange(kind, 2, bbox);
+    const front = { ...createOverlayForRange('SHAPE', 0, bbox), zIndex: 7 };
+    const initial = [source, front];
+    const next = overlayDraftReducer(initial, { type: 'duplicate', sourceId: source.id, id: 'copy', pageIndex: 0 });
+    const copy = next[2];
+    expect(copy).toEqual({ ...source, id: 'copy', pageIndex: 0, zIndex: 8 });
+    expect(next.slice(0, 2)).toEqual(initial);
+    expect(copy.bbox).not.toBe(source.bbox);
+    copy.bbox.xRatio = 0.4;
+    expect(source.bbox.xRatio).toBe(0.1);
+    if (copy.kind === 'TEXT' && source.kind === 'TEXT') {
+      expect(copy.style).not.toBe(source.style);
+      expect(copy.mask).not.toBe(source.mask);
+    }
+    if (copy.kind === 'IMAGE' && source.kind === 'IMAGE') expect(copy.assetId).toBe(source.assetId);
+    expect(overlayDraftReducer(initial, { type: 'duplicate', sourceId: 'missing', id: 'none', pageIndex: 0 })).toBe(initial);
+    expect(overlayDraftReducer([source], { type: 'duplicate', sourceId: source.id, id: 'empty', pageIndex: 1 })[1].zIndex).toBe(0);
+  });
+
+  it('starts at zero on an empty page and handles negative existing z-indices', () => {
+    const created = createOverlayForRange('SHAPE', 0, bbox);
+    expect(overlayDraftReducer([], { type: 'add', element: created })[0].zIndex).toBe(0);
+    expect(createOverlayForRange('SHAPE', 0, bbox, [{ ...created, zIndex: -3 }]).zIndex).toBe(-2);
+  });
+
+  it('defaults text and image ranges to a white mask', () => {
+    expect(createOverlayForRange('TEXT', 0, bbox)).toMatchObject({
+      kind: 'TEXT',
+      mask: { enabled: true, color: '#ffffff' }
+    });
+    expect(createOverlayForRange('IMAGE', 0, bbox)).toMatchObject({
+      kind: 'IMAGE',
+      mask: { enabled: true, color: '#ffffff' }
+    });
+  });
+
+  it('moves z-order within a page and clamps keyboard nudges', () => {
+    const elements = [
+      { ...createOverlayForRange('SHAPE', 0, bbox), id: 'back', zIndex: 0 },
+      { ...createOverlayForRange('SHAPE', 0, bbox), id: 'front', zIndex: 1 },
+      { ...createOverlayForRange('SHAPE', 1, bbox), id: 'other-page', zIndex: 0 }
+    ];
+    const raised = overlayDraftReducer(elements, { type: 'bringForward', id: 'back' });
+    expect(raised.find((element) => element.id === 'back')?.zIndex).toBe(1);
+    expect(raised.find((element) => element.id === 'front')?.zIndex).toBe(0);
+
+    const nudged = overlayDraftReducer(
+      [{ ...elements[0]!, bbox: { ...bbox, xRatio: 0.9, yRatio: 0.9 } }],
+      { type: 'nudge', id: 'back', dxRatio: 0.2, dyRatio: 0.2 }
+    );
+    expect(nudged[0]?.bbox).toMatchObject({ xRatio: 0.8, yRatio: 0.8 });
+  });
+
+  it('allows a root draft to publish while keeping discard revision-only', () => {
+    expect(canPublishAssemblyProcedureDocument({ status: 'draft', isRevisionHead: undefined }, false)).toBe(true);
+    expect(canPublishAssemblyProcedureDocument({ status: 'draft', isRevisionHead: false }, false)).toBe(false);
+    expect(canPublishAssemblyProcedureDocument({ status: 'draft', isRevisionHead: true }, true)).toBe(false);
+    expect(canDiscardAssemblyProcedureDocumentRevision({ status: 'draft', supersedesDocumentId: null })).toBe(false);
+    expect(canDiscardAssemblyProcedureDocumentRevision({ status: 'draft', supersedesDocumentId: 'base-1' })).toBe(true);
+  });
+
+  it.each([
+    ['bringForward', 'first', ['middle', 'first', 'last']],
+    ['sendBackward', 'last', ['first', 'last', 'middle']],
+    ['bringToFront', 'first', ['middle', 'last', 'first']],
+    ['sendToBack', 'last', ['last', 'first', 'middle']]
+  ] as const)('reorders equal z-indices with %s and leaves other pages unchanged', (type, id, order) => {
+    const otherPage = { ...createOverlayForRange('SHAPE', 1, bbox), id: 'other-page', zIndex: 7 };
+    const elements = [
+      { ...createOverlayForRange('SHAPE', 0, bbox), id: 'first', zIndex: 5 },
+      otherPage,
+      { ...createOverlayForRange('SHAPE', 0, bbox), id: 'middle', zIndex: 5 },
+      { ...createOverlayForRange('SHAPE', 0, bbox), id: 'last', zIndex: 5 }
+    ];
+    const reordered = overlayDraftReducer(elements, { type, id });
+    const page = reordered.filter((element) => element.pageIndex === 0).sort((a, b) => a.zIndex - b.zIndex);
+    expect(page.map((element) => element.id)).toEqual(order);
+    expect(page.map((element) => element.zIndex)).toEqual([0, 1, 2]);
+    expect(reordered.find((element) => element.id === otherPage.id)).toBe(otherPage);
+    expect(elements.map((element) => element.zIndex)).toEqual([5, 7, 5, 5]);
+  });
+
+  it('sorts by z-index before moving and renumbers the whole page', () => {
+    const elements = [
+      { ...createOverlayForRange('SHAPE', 0, bbox), id: 'front', zIndex: 9 },
+      { ...createOverlayForRange('SHAPE', 0, bbox), id: 'back', zIndex: 2 },
+      { ...createOverlayForRange('SHAPE', 0, bbox), id: 'middle', zIndex: 5 }
+    ];
+    const reordered = overlayDraftReducer(elements, { type: 'bringForward', id: 'back' });
+    expect(reordered.map((element) => [element.id, element.zIndex])).toEqual([
+      ['front', 2], ['back', 1], ['middle', 0]
+    ]);
+  });
+
+  it.each([
+    ['bringForward', 'front'], ['bringToFront', 'front'],
+    ['sendBackward', 'back'], ['sendToBack', 'back']
+  ] as const)('keeps boundary order for %s', (type, id) => {
+    const elements = [
+      { ...createOverlayForRange('SHAPE', 0, bbox), id: 'back', zIndex: 0 },
+      { ...createOverlayForRange('SHAPE', 0, bbox), id: 'front', zIndex: 1 }
+    ];
+    expect(overlayDraftReducer(elements, { type, id })).toEqual(elements);
+    expect(overlayDraftReducer(elements, { type, id: 'missing' })).toBe(elements);
+  });
+
+  it('keeps bbox values inside the page with a positive minimum size', () => {
+    expect(normalizeOverlayBBox({ xRatio: 0.9, yRatio: -1, widthRatio: 0.2, heightRatio: 2 })).toEqual({
+      xRatio: 0.8,
+      yRatio: 0,
+      widthRatio: 0.2,
+      heightRatio: 1
+    });
+  });
+
+  it('preserves line endpoints in local coordinates when the bbox changes', () => {
+    const line = {
+      ...createOverlayForRange('SHAPE', 0, bbox),
+      shape: 'LINE' as const,
+      start: { xRatio: 0.1, yRatio: 0.3 },
+      end: { xRatio: 0.3, yRatio: 0.4 }
+    };
+    const resized = updateOverlayBBox(line, { xRatio: 0.2, yRatio: 0.1, widthRatio: 0.4, heightRatio: 0.4 });
+    expect(resized.bbox).toEqual({ xRatio: 0.2, yRatio: 0.1, widthRatio: 0.4, heightRatio: 0.4 });
+    expect(resized.start?.xRatio).toBeCloseTo(0.2);
+    expect(resized.start?.yRatio).toBeCloseTo(0.3);
+    expect(resized.end?.xRatio).toBeCloseTo(0.6);
+    expect(resized.end?.yRatio).toBeCloseTo(0.5);
+  });
+
+  it('creates endpoints for line variants and clears them for closed shapes', () => {
+    const rectangle = createOverlayForRange('SHAPE', 0, bbox);
+    const arrow = convertOverlayShapeKind(rectangle, 'ARROW');
+    expect(arrow.start).toEqual({ xRatio: bbox.xRatio, yRatio: bbox.yRatio });
+    expect(arrow.end).toEqual({ xRatio: bbox.xRatio + bbox.widthRatio, yRatio: bbox.yRatio + bbox.heightRatio });
+    const ellipse = convertOverlayShapeKind(arrow, 'ELLIPSE');
+    expect(ellipse.start).toBeUndefined();
+    expect(ellipse.end).toBeUndefined();
+  });
+});

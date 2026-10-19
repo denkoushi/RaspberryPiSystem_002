@@ -1678,6 +1678,11 @@ def restore(
             "manifestSha256": manifest["manifestSha256"],
             "count": len(entries),
             "destinations": [entry["destination"] for entry in entries],
+            "absentDestinations": [
+                entry["destination"]
+                for entry in entries
+                if entry["previousState"] == "absent"
+            ],
             "repository": repository,
         }
 

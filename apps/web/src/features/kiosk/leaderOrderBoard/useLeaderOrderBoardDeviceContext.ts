@@ -5,11 +5,11 @@ import {
   useKioskProductionScheduleManualOrderSiteDevices
 } from '../../../api/hooks';
 import { stripSitePrefixFromDeviceLabel } from '../manualOrder/manualOrderDeviceDisplayLabel';
+import { KIOSK_DEFAULT_SITE_KEY, useKioskSiteKeys } from '../sites/useKioskSiteKeys';
 
 import { LEADER_BOARD_DEVICE_SNAPSHOT_REFETCH_MS } from './performance/leaderBoardRefetchPolicy';
 
 const MANUAL_ORDER_PAGE_SITE_KEY = 'manual-order-page-site';
-const DEFAULT_SITES = ['第2工場', 'トークプラザ', '第1工場'] as const;
 
 export type LeaderOrderBoardDeviceCard = {
   deviceScopeKey: string;
@@ -21,10 +21,11 @@ export type LeaderOrderBoardDeviceCard = {
  * 順位ボード専用: 端末一覧と資源割当のみ取得（manual-order-overview の重い集約を避ける）。
  */
 export function useLeaderOrderBoardDeviceContext() {
+  const siteKeys = useKioskSiteKeys();
   const [siteKey, setSiteKey] = useState<string>(() => {
-    if (typeof window === 'undefined') return DEFAULT_SITES[0];
+    if (typeof window === 'undefined') return KIOSK_DEFAULT_SITE_KEY;
     const stored = window.localStorage.getItem(MANUAL_ORDER_PAGE_SITE_KEY)?.trim();
-    return stored && stored.length > 0 ? stored : DEFAULT_SITES[0];
+    return stored && stored.length > 0 ? stored : KIOSK_DEFAULT_SITE_KEY;
   });
 
   const siteEnabled = Boolean(siteKey.trim());
@@ -69,7 +70,7 @@ export function useLeaderOrderBoardDeviceContext() {
 
   return {
     siteKey,
-    defaultSites: DEFAULT_SITES,
+    defaultSites: siteKeys,
     deviceCards,
     handleSiteChange,
     siteDevicesQuery,

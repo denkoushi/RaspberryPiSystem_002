@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { useEffect, useMemo, useState } from 'react';
 
+import { FIXED_GMAIL_SUBJECT_BY_TARGET_TYPE, type CsvImportSchedule, type CsvImportSubjectPattern, type CsvImportSubjectPatternType } from '../../../api/backup';
 import {
   useCsvImportScheduleMutations,
   useCsvImportSchedules
@@ -13,8 +14,6 @@ import {
   parseCronSchedule,
   type ScheduleMode
 } from './csvImportScheduleUtils';
-
-import type { CsvImportSchedule, CsvImportSubjectPattern, CsvImportSubjectPatternType } from '../../../api/backup';
 
 export const DEFAULT_CSV_IMPORT_FORM_DATA: Partial<CsvImportSchedule> = {
   id: '',
@@ -262,6 +261,10 @@ export function useCsvImportScheduleForm({ subjectPatterns }: UseCsvImportSchedu
         formDataToSet.targets.push({ type: 'items', source: schedule.itemsPath });
       }
     }
+    formDataToSet.targets = formDataToSet.targets?.map((target) => {
+      const fixedSubject = FIXED_GMAIL_SUBJECT_BY_TARGET_TYPE[target.type];
+      return fixedSubject ? { ...target, source: fixedSubject } : target;
+    });
     setFormData(formDataToSet);
     const parsed = parseCronSchedule(schedule.schedule);
     setScheduleTime(parsed.time);

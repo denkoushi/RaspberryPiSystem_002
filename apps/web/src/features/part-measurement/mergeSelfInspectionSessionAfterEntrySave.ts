@@ -1,5 +1,7 @@
+import { selfInspectionQueryKeys } from '../../api/queryKeys/selfInspection';
 
 import { areRequiredSelfInspectionSlotsFilled } from './selfInspectionEntrySlots';
+import { isSelfInspectionSessionSeedPending } from './selfInspectionSessionPlaceholder';
 
 import type { SelfInspectionLotEntryDto, SelfInspectionSessionDetailDto } from './types';
 import type { QueryClient } from '@tanstack/react-query';
@@ -107,10 +109,12 @@ export function patchSelfInspectionSessionCachesAfterEntrySave(
   savedEntry: SelfInspectionLotEntryDto
 ): void {
   const queries = queryClient.getQueryCache().findAll({
-    queryKey: ['self-inspection-session', sessionId]
+    queryKey: selfInspectionQueryKeys.sessionEntriesAll(sessionId)
   });
 
   for (const query of queries) {
+    // 仮表示中の entry はサーバー取得で置き換えるまで触らない（取得完了を書き込み再開の合図にするため）。
+    if (isSelfInspectionSessionSeedPending(query.state)) continue;
     const keyEntryIndex = query.queryKey[2];
     const queryEntryIndex =
       typeof keyEntryIndex === 'number' && Number.isFinite(keyEntryIndex) ? keyEntryIndex : null;
@@ -121,7 +125,7 @@ export function patchSelfInspectionSessionCachesAfterEntrySave(
 
   if (queries.length === 0) {
     queryClient.setQueryData<SelfInspectionSessionDetailDto>(
-      ['self-inspection-session', sessionId, savedEntry.entryIndex],
+      selfInspectionQueryKeys.session(sessionId, savedEntry.entryIndex),
       (previous) => applySelfInspectionEntrySaveToSessionCache(previous, savedEntry, savedEntry.entryIndex)
     );
   }

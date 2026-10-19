@@ -53,7 +53,9 @@ export async function registerClientCoreRoutes(app: FastifyInstance): Promise<vo
       defaultMode: body.defaultMode ?? undefined,
       kioskInitialRoute: body.kioskInitialRoute,
       haizenEdgeEnabled: body.haizenEdgeEnabled,
-      shelfLayoutEditEnabled: body.shelfLayoutEditEnabled
+      shelfLayoutEditEnabled: body.shelfLayoutEditEnabled,
+      siteKey: body.siteKey,
+      canProxyOtherDevices: body.canProxyOtherDevices
     });
     return { client };
   });
@@ -89,6 +91,7 @@ export async function registerClientCoreRoutes(app: FastifyInstance): Promise<vo
       requestId: request.id,
       clientId: query.clientId,
       level: query.level,
+      category: query.category,
       limit: query.limit,
       since: query.since
     });

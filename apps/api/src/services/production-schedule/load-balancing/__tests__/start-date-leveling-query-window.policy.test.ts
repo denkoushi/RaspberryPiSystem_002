@@ -14,4 +14,20 @@ describe('buildStartDateLevelingQueryWindowWhereSql', () => {
     expect(sql).toContain('"supplement"."plannedstartdate" <');
     expect(sql).toContain('>=');
   });
+
+  it('includeOverdueBefore を渡すと納期遅れ行も通し、渡さなければ条件を足さない', () => {
+    const range = {
+      rangeStart: new Date('2026-09-01T00:00:00.000Z'),
+      rangeEndExclusive: new Date('2026-12-01T00:00:00.000Z')
+    };
+    const withOverdue = buildStartDateLevelingQueryWindowWhereSql({
+      ...range,
+      includeOverdueBefore: new Date('2026-09-30T00:00:00.000Z')
+    });
+    const without = buildStartDateLevelingQueryWindowWhereSql(range);
+
+    expect(withOverdue.sql).toContain('OR COALESCE("n"."dueDate", "supplement"."plannedEndDate") <');
+    expect(withOverdue.values).toContainEqual(new Date('2026-09-30T00:00:00.000Z'));
+    expect(without.values).toHaveLength(2);
+  });
 });

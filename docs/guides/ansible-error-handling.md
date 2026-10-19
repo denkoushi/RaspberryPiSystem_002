@@ -147,9 +147,9 @@ raspberrypi3 | FAILED! => {"msg": "Could not find the requested service"}
    systemctl list-units --type=service --state=running | grep -E 'signage|kiosk'
    ```
 
-2. プレイブックのサービスリストを確認:
+2. canonical roleのサービス定義を確認:
    ```bash
-   cat infrastructure/ansible/playbooks/update-clients.yml | grep -A 5 "services_to_restart"
+   rg -n "status-agent|signage|kiosk" infrastructure/ansible/roles/release_pi5 infrastructure/ansible/roles/release_kiosk infrastructure/ansible/roles/release_signage
    ```
 
 3. 存在しないサービスは`ignore_errors: true`でスキップされる（正常動作）
@@ -179,18 +179,16 @@ ls -lt logs/ansible-update-*.log | head -1
 ### 1. 更新前の確認
 
 ```bash
-# ドライランで確認
-ansible-playbook -i infrastructure/ansible/inventory.yml \
-  infrastructure/ansible/playbooks/update-clients.yml \
-  --check
+# read-only planで確認
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
+  --print-plan --limit raspberrypi3
 ```
 
 ### 2. 段階的な更新
 
 ```bash
-# 1台ずつ更新して確認
-ansible-playbook -i infrastructure/ansible/inventory.yml \
-  infrastructure/ansible/playbooks/update-clients.yml \
+# 1台ずつ標準routeで更新して確認
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
   --limit raspberrypi3
 ```
 
@@ -211,4 +209,3 @@ ansible-playbook -i infrastructure/ansible/inventory.yml \
 - [クイックスタートガイド](./quick-start-deployment.md)
 - [運用マニュアル](./operation-manual.md)
 - [トラブルシューティングナレッジベース](../knowledge-base/index.md)
-

@@ -1,13 +1,13 @@
 import type { NormalizedRowData } from '../../csv-dashboard/csv-dashboard.types.js';
 import {
-  PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS,
   PRODUCTION_SCHEDULE_PRODUCT_NO_COLUMN,
+  productionScheduleKeyColumnsForRow,
 } from './constants.js';
 
 const normalizeValue = (value: unknown): string => String(value ?? '').trim();
 
 const toLogicalKey = (row: NormalizedRowData): string =>
-  PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS.map((column) => normalizeValue(row[column])).join('|');
+  JSON.stringify(productionScheduleKeyColumnsForRow(row).map((column) => normalizeValue(row[column])));
 
 const toProductNo = (row: NormalizedRowData): string => normalizeValue(row[PRODUCTION_SCHEDULE_PRODUCT_NO_COLUMN]);
 

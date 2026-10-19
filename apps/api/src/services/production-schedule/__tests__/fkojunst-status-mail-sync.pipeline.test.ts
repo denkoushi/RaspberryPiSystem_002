@@ -329,16 +329,10 @@ describe('fkojunst-status-mail-sync.pipeline', () => {
   });
 
   it('replaces process-change residual evidence inside mail replacement transaction', async () => {
-    const sourceRowsRevision = '1:2026-01-01T00:00:00.000Z:2026-01-02T00:00:00.000Z';
+    const sourceRowsRevision = '42';
     const tx = {
       $executeRaw: vi.fn().mockResolvedValue(0),
-      $queryRaw: vi.fn().mockResolvedValue([
-        {
-          rowsCount: 1n,
-          rowsLatestCreatedAt: new Date('2026-01-01T00:00:00.000Z'),
-          rowsLatestUpdatedAt: new Date('2026-01-02T00:00:00.000Z')
-        }
-      ]),
+      $queryRaw: vi.fn().mockResolvedValue([{ revision: 42n }]),
       productionScheduleProcessChangeResidualEvidence: {
         deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
         createMany: vi.fn().mockResolvedValue({ count: 1 })

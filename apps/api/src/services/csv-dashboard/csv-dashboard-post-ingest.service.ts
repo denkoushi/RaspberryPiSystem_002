@@ -1,3 +1,4 @@
+import { markProductionScheduleResourceCdsCacheStale } from '../production-schedule/production-schedule-query/resources.js';
 import { logger } from '../../lib/logger.js';
 import {
   PRODUCTION_SCHEDULE_CUSTOMER_SCAW_DASHBOARD_ID,
@@ -30,6 +31,9 @@ import {
   RiggingInspectionProjectionService,
 } from '../rigging/inspection/rigging-inspection-projection.service.js';
 import type { RiggingInspectionSyncResult } from '../rigging/inspection/rigging-inspection-sync.pipeline.js';
+import { SCAW_STFUTEKIGO_DASHBOARD_ID } from '../scaw-stfutekigo/constants.js';
+import { ScawStfutekigoSyncService } from '../scaw-stfutekigo/sync.service.js';
+import type { ScawStfutekigoSyncResult } from '../scaw-stfutekigo/types.js';
 
 export type CsvDashboardIngestSource = 'gmail' | 'manual';
 
@@ -41,6 +45,7 @@ export type CsvDashboardPostIngestResult = {
   customerScawSync: CustomerScawSyncResult | null;
   purchaseOrderLookupSync: PurchaseOrderLookupSyncResult | null;
   riggingInspectionSync: RiggingInspectionSyncResult | null;
+  scawStfutekigoSync: ScawStfutekigoSyncResult | null;
 };
 
 /**
@@ -56,7 +61,8 @@ export class CsvDashboardPostIngestService {
     private readonly seibanMachineNameSupplementSyncService: ProductionScheduleSeibanMachineNameSupplementSyncService = new ProductionScheduleSeibanMachineNameSupplementSyncService(),
     private readonly customerScawSyncService: ProductionScheduleCustomerScawSyncService = new ProductionScheduleCustomerScawSyncService(),
     private readonly purchaseOrderLookupSyncService: PurchaseOrderLookupSyncService = new PurchaseOrderLookupSyncService(),
-    private readonly riggingInspectionProjectionService: RiggingInspectionProjectionService = new RiggingInspectionProjectionService()
+    private readonly riggingInspectionProjectionService: RiggingInspectionProjectionService = new RiggingInspectionProjectionService(),
+    private readonly scawStfutekigoSyncService: ScawStfutekigoSyncService = new ScawStfutekigoSyncService()
   ) {}
 
   async runAfterSuccessfulIngest(params: {
@@ -71,6 +77,7 @@ export class CsvDashboardPostIngestService {
     let customerScawSync: CustomerScawSyncResult | null = null;
     let purchaseOrderLookupSync: PurchaseOrderLookupSyncResult | null = null;
     let riggingInspectionSync: RiggingInspectionSyncResult | null = null;
+    let scawStfutekigoSync: ScawStfutekigoSyncResult | null = null;
 
     if (params.dashboardId === PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID) {
       orderSupplementSync = await this.orderSupplementSyncService.syncFromSupplementDashboard();
@@ -99,6 +106,7 @@ export class CsvDashboardPostIngestService {
     }
 
     if (params.dashboardId === PRODUCTION_SCHEDULE_DASHBOARD_ID) {
+      markProductionScheduleResourceCdsCacheStale();
       const externalCompletionSync = await this.externalCompletionSyncService.syncFromCurrentStatusMailDashboard();
       logger.info(
         { dashboardId: params.dashboardId, ingestSource: params.ingestSource, syncResult: externalCompletionSync },
@@ -182,6 +190,24 @@ export class CsvDashboardPostIngestService {
       );
     }
 
+    if (params.dashboardId === SCAW_STFUTEKIGO_DASHBOARD_ID) {
+      if (!params.ingestRunId) {
+        throw new Error('[CsvDashboardPostIngestService] ingestRunId is required for scawSTFUTEKIGO sync');
+      }
+      scawStfutekigoSync = await this.scawStfutekigoSyncService.syncFromScawStfutekigoDashboard({
+        ingestRunId: params.ingestRunId,
+      });
+      logger.info(
+        {
+          dashboardId: params.dashboardId,
+          ingestSource: params.ingestSource,
+          ingestRunId: params.ingestRunId,
+          syncResult: scawStfutekigoSync,
+        },
+        '[CsvDashboardPostIngestService] scawSTFUTEKIGO sync completed'
+      );
+    }
+
     if (
       orderSupplementSync === null &&
       fkojunstSync === null &&
@@ -189,7 +215,8 @@ export class CsvDashboardPostIngestService {
       seibanMachineNameSupplementSync === null &&
       customerScawSync === null &&
       purchaseOrderLookupSync === null &&
-      riggingInspectionSync === null
+      riggingInspectionSync === null &&
+      scawStfutekigoSync === null
     ) {
       return {
         orderSupplementSync: null,
@@ -199,6 +226,7 @@ export class CsvDashboardPostIngestService {
         customerScawSync: null,
         purchaseOrderLookupSync: null,
         riggingInspectionSync: null,
+        scawStfutekigoSync: null,
       };
     }
 
@@ -210,6 +238,7 @@ export class CsvDashboardPostIngestService {
       customerScawSync,
       purchaseOrderLookupSync,
       riggingInspectionSync,
+      scawStfutekigoSync,
     };
   }
 }

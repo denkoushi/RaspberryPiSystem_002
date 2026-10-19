@@ -1,0 +1,117 @@
+---
+- name: Require the fixed Pi5 record pilot artifact boundary
+  ansible.builtin.assert:
+    that:
+      - hermes_search_record_pilot_artifact is match('^/opt/RaspberryPiSystem_002/storage/hermes-search/record-pilot/{{ release_run_id }}$')
+      - hermes_search_record_pilot_artifact == release_pi5_project_dir ~ '/storage/hermes-search/record-pilot/' ~ release_run_id
+      - hermes_search_record_pilot_typesafe_api_key is defined
+      - hermes_search_record_pilot_typesafe_api_key | length >= 16
+    fail_msg: The record pilot requires the exact staged Pi5 artifact and a Vault-provided TypeSafe key.
+  no_log: true
+
+- name: Inspect the staged record pilot directory without following links
+  ansible.builtin.stat:
+    path: "{{ hermes_search_record_pilot_artifact }}"
+    follow: false
+  register: hermes_search_record_pilot_artifact_stat
+
+- name: Require a private regular record pilot directory
+  ansible.builtin.assert:
+    that:
+      - hermes_search_record_pilot_artifact_stat.stat.isdir | default(false) | bool
+      - not (hermes_search_record_pilot_artifact_stat.stat.islnk | default(false) | bool)
+    fail_msg: The staged record pilot artifact directory is not a regular private directory.
+
+- name: Inspect the fixed record pilot files and their checksums
+  ansible.builtin.stat:
+    path: "{{ hermes_search_record_pilot_artifact }}/{{ item }}"
+    follow: false
+    checksum_algorithm: sha256
+  loop: "{{ ['artifact.json'] + hermes_search_record_pilot_artifact_files }}"
+  register: hermes_search_record_pilot_files
+  no_log: true
+
+- name: Require regular record pilot files
+  ansible.builtin.assert:
+    that:
+      - item.stat.isreg | default(false) | bool
+      - not (item.stat.islnk | default(false) | bool)
+  loop: "{{ hermes_search_record_pilot_files.results }}"
+  no_log: true
+
+- name: Read the sealed record pilot manifest
+  ansible.builtin.slurp:
+    src: "{{ hermes_search_record_pilot_artifact }}/artifact.json"
+  register: hermes_search_record_pilot_manifest_raw
+  no_log: true
+
+- name: Validate the fixed record pilot manifest
+  ansible.builtin.set_fact:
+    hermes_search_record_pilot_manifest: "{{ hermes_search_record_pilot_manifest_raw.content | b64decode | from_json }}"
+
+- name: Require the six-record six-question pilot manifest
+  ansible.builtin.assert:
+    that:
+      - hermes_search_record_pilot_manifest.schema == 'hermes-record-pilot/v1'
+      - hermes_search_record_pilot_manifest.fixtureId == 'hermes-jev-record-pilot-expanded-v1'
+      - hermes_search_record_pilot_manifest.recordCount | int == 6
+      - hermes_search_record_pilot_manifest.queryCount | int == 6
+      - hermes_search_record_pilot_manifest.files.keys() | list | sort == hermes_search_record_pilot_artifact_files | sort
+      - >-
+        (hermes_search_record_pilot_files.results[1].stat.checksum == hermes_search_record_pilot_manifest.files['fixture.mjs'])
+        and (hermes_search_record_pilot_files.results[2].stat.checksum == hermes_search_record_pilot_manifest.files['base-fixture.json'])
+        and (hermes_search_record_pilot_files.results[3].stat.checksum == hermes_search_record_pilot_manifest.files['store.json'])
+    fail_msg: The staged record pilot manifest or checksum boundary is invalid.
+  no_log: true
+
+- name: Read the persisted fictional classification store
+  ansible.builtin.slurp:
+    src: "{{ hermes_search_record_pilot_artifact }}/store.json"
+  register: hermes_search_record_pilot_store_raw
+  no_log: true
+
+- name: Validate the persisted six-record classification store
+  ansible.builtin.assert:
+    that:
+      - (hermes_search_record_pilot_store_raw.content | b64decode | from_json).schemaVersion | int == 1
+      - (hermes_search_record_pilot_store_raw.content | b64decode | from_json).fixtureId == hermes_search_record_pilot_manifest.fixtureId
+      - (hermes_search_record_pilot_store_raw.content | b64decode | from_json).records | length == 6
+      - (hermes_search_record_pilot_store_raw.content | b64decode | from_json).classifications | length == 6
+    fail_msg: The persisted record pilot store does not match the fixed six-record boundary.
+  no_log: true
+
+- name: Create a run-scoped candidate Compose environment when no consultation environment exists
+  ansible.builtin.copy:
+    src: "{{ release_pi5_compose_env_source }}"
+    dest: "{{ release_pi5_run_dir }}/record-pilot-compose.env"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+  when: release_pi5_candidate_env_file is not defined
+  no_log: true
+
+- name: Bind the record pilot to the candidate Compose environment
+  ansible.builtin.set_fact:
+    release_pi5_candidate_env_file: "{{ release_pi5_candidate_env_file | default(release_pi5_run_dir ~ '/record-pilot-compose.env') }}"
+    release_pi5_record_pilot_container_dir: "/app/storage/hermes-search/record-pilot/{{ release_run_id }}"
+
+- name: Inject only the fixed pilot settings and server-side TypeSafe key
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_candidate_env_file }}"
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+    create: false
+    mode: '0600'
+  loop:
+    - {key: HERMES_SEARCH_TRIAL_ENABLED, value: 'true'}
+    - {key: HERMES_SEARCH_TRIAL_JEV_ENABLED, value: 'true'}
+    - {key: HERMES_JEV_PROVIDER, value: 'typesafe-direct'}
+    - {key: HERMES_SEARCH_TRIAL_RECORD_PILOT_FIXTURE, value: "{{ release_pi5_record_pilot_container_dir }}/fixture.mjs"}
+    - {key: HERMES_SEARCH_TRIAL_RECORD_PILOT_STORE, value: "{{ release_pi5_record_pilot_container_dir }}/store.json"}
+    - {key: TYPESAFE_API_KEY, value: "{{ hermes_search_record_pilot_typesafe_api_key }}"}
+  no_log: true
+
+- name: Bind candidate Compose services to the pilot-only environment
+  ansible.builtin.set_fact:
+    release_pi5_compose_environment: "{{ release_pi5_compose_environment | combine({'PI5_ENV_FILE': release_pi5_candidate_env_file}) }}"

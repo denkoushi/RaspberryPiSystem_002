@@ -1,6 +1,6 @@
 import { normalizeKioskProductionScheduleSearchHistory } from '@raspi-system/shared-types';
 import type { DataSource } from '../data-source.interface.js';
-import type { TableVisualizationData, VisualizationData } from '../../visualization.types.js';
+import type { KpiVisualizationData, SeriesVisualizationData, TableVisualizationData, VisualizationData } from '../../visualization.types.js';
 import { prisma } from '../../../../lib/prisma.js';
 import { fetchSeibanProgressRows } from '../../../production-schedule/seiban-progress.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../../production-schedule/constants.js';
@@ -35,7 +35,15 @@ export class ProductionScheduleDataSource implements DataSource {
   readonly type = 'production_schedule';
   private cache: { key: string; data: TableVisualizationData; fetchedAt: number } | null = null;
 
-  async fetchData(): Promise<VisualizationData> {
+  async fetchData(config: Record<string, unknown> = {}): Promise<VisualizationData> {
+    const table = await this.fetchTableData(config);
+    const view = config.view === 'kpi' || config.view === 'series' ? config.view : 'table';
+    if (view === 'kpi') return toKpiData(table);
+    if (view === 'series') return toSeriesData(table);
+    return table;
+  }
+
+  private async fetchTableData(config: Record<string, unknown>): Promise<TableVisualizationData> {
     const sharedState = await prisma.kioskProductionScheduleSearchState.findUnique({
       where: {
         csvDashboardId_location: {
@@ -55,7 +63,7 @@ export class ProductionScheduleDataSource implements DataSource {
     const cacheKey = history.join('|');
     const now = Date.now();
 
-    if (this.cache && this.cache.key === cacheKey && now - this.cache.fetchedAt <= CACHE_TTL_MS) {
+    if (config.refresh !== true && this.cache && this.cache.key === cacheKey && now - this.cache.fetchedAt <= CACHE_TTL_MS) {
       return this.cache.data;
     }
 
@@ -129,4 +137,39 @@ export class ProductionScheduleDataSource implements DataSource {
     this.cache = { key: cacheKey, data, fetchedAt: now };
     return data;
   }
+}
+
+function toKpiData(table: TableVisualizationData): KpiVisualizationData {
+  const totalSeiban = table.rows.length;
+  const totalParts = table.rows.reduce((sum, row) => sum + toFiniteNumber(row.total), 0);
+  const completedParts = table.rows.reduce((sum, row) => sum + toFiniteNumber(row.completed), 0);
+  const progressRate = totalParts > 0 ? Math.round((completedParts / totalParts) * 100) : 0;
+  return {
+    kind: 'kpi',
+    items: [
+      { label: '対象製番数', value: totalSeiban, unit: '件' },
+      { label: '総部品数', value: totalParts, unit: '件' },
+      { label: '完了部品数', value: completedParts, unit: '件', isGood: true },
+      { label: '全体進捗率', value: progressRate, unit: '%', isGood: progressRate >= 70 },
+    ],
+    metadata: table.metadata,
+  };
+}
+
+function toSeriesData(table: TableVisualizationData): SeriesVisualizationData {
+  return {
+    kind: 'series',
+    labels: table.rows.map((row) => String(row.FSEIBAN ?? '未設定')),
+    datasets: [{
+      label: '進捗率',
+      values: table.rows.map((row) => toFiniteNumber(row.percent)),
+    }],
+    metadata: table.metadata,
+  };
+}
+
+function toFiniteNumber(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && Number.isFinite(Number(value))) return Number(value);
+  return 0;
 }

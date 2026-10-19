@@ -1,7 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { INSPECTION_DRAWING_POINT_NUDGE_STEP_RATIO } from '../inspectionDrawingPointPosition';
 import { InspectionDrawingPointSettingsPanel } from '../InspectionDrawingPointSettingsPanel';
 
 import type { InspectionDrawingPoint } from '../types';
@@ -31,27 +30,51 @@ function visibleToleranceCandidateButtons(): string[] {
 }
 
 describe('InspectionDrawingPointSettingsPanel', () => {
-  it('renders nudge controls above the settings title and omits tolerance helper text', () => {
+  it('omits nudge controls and tolerance helper text', () => {
     render(<InspectionDrawingPointSettingsPanel point={point} onChange={vi.fn()} />);
 
-    expect(screen.getByRole('group', { name: '測定点の位置調整' })).toBeInTheDocument();
-    expect(screen.getByText('測定点の設定（No.1）')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: '測定点の位置調整' })).not.toBeInTheDocument();
+    expect(screen.getByText('測定点')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '番号 1 を入れ替える' })).not.toBeInTheDocument();
     expect(
       screen.queryByText(/合格範囲は「基準値＋下限公差」/)
     ).not.toBeInTheDocument();
   });
 
-  it('forwards nudge patch through onChange', () => {
-    const onChange = vi.fn();
+  it('swaps the marker number from the number picker', () => {
+    const onSwapMarkerNo = vi.fn();
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={point}
+        onChange={vi.fn()}
+        markerNos={[1, 2, 5]}
+        onSwapMarkerNo={onSwapMarkerNo}
+      />
+    );
 
-    render(<InspectionDrawingPointSettingsPanel point={point} onChange={onChange} />);
+    expect(screen.queryByRole('group', { name: '入れ替える番号' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '番号 1 を入れ替える' }));
+    fireEvent.click(screen.getByRole('button', { name: '番号 1' }));
+    expect(onSwapMarkerNo).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole('button', { name: '上へ移動' }));
+    fireEvent.click(screen.getByRole('button', { name: '番号 1 を入れ替える' }));
+    fireEvent.click(screen.getByRole('button', { name: '番号 5' }));
+    expect(onSwapMarkerNo).toHaveBeenCalledWith(5);
+    expect(screen.queryByRole('group', { name: '入れ替える番号' })).not.toBeInTheDocument();
+  });
 
-    expect(onChange).toHaveBeenCalledWith({
-      xRatio: 0.4,
-      yRatio: 0.6 - INSPECTION_DRAWING_POINT_NUDGE_STEP_RATIO
-    });
+  it('hides the number picker when disabled', () => {
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={point}
+        disabled
+        onChange={vi.fn()}
+        markerNos={[1, 2]}
+        onSwapMarkerNo={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: '番号 1 を入れ替える' })).not.toBeInTheDocument();
   });
 
   it('renders selected-point delete and all delete actions', () => {
@@ -97,6 +120,58 @@ describe('InspectionDrawingPointSettingsPanel', () => {
     expect(screen.queryByLabelText('上限公差')).not.toBeInTheDocument();
   });
 
+  it('shows the same measurement/through controls for キリ穴深さ', () => {
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={{ ...point, name: 'キリ穴深さ', depthMode: 'measured' }}
+        onChange={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('group', { name: '通し切替' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '測定' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '通し' })).toBeInTheDocument();
+  });
+
+  it('turns 管用 into a fixed ネジ穴深さ OK/NG judgement without numeric or through settings', () => {
+    const onChange = vi.fn();
+    const pipePoint = {
+      ...point,
+      name: 'ネジ穴深さ',
+      threadNominal: '管用',
+      valueKind: 'judgement' as const,
+      nominalRaw: '',
+      upperToleranceRaw: '',
+      lowerToleranceRaw: ''
+    };
+    render(<InspectionDrawingPointSettingsPanel point={pipePoint} onChange={onChange} />);
+
+    expect(screen.getByLabelText('名称')).toBeDisabled();
+    expect(screen.queryByRole('group', { name: '通し切替' })).toBeNull();
+    expect(screen.queryByLabelText('基準値')).toBeNull();
+    expect(screen.queryByLabelText('上限公差')).toBeNull();
+    expect(screen.getByText(/管用ネジ形状をOK\/NGで判定/)).toBeInTheDocument();
+  });
+
+  it('selecting 管用 fixes the judgement configuration in one patch', () => {
+    const onChange = vi.fn();
+    render(<InspectionDrawingPointSettingsPanel point={point} onChange={onChange} />);
+
+    fireEvent.change(screen.getByLabelText('呼び径'), { target: { value: '管用' } });
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadNominal: '管用',
+        name: 'ネジ穴深さ',
+        valueKind: 'judgement',
+        depthMode: 'measured',
+        nominalRaw: '',
+        upperToleranceRaw: '',
+        lowerToleranceRaw: ''
+      })
+    );
+  });
+
   it('renders OCR candidate chips and applies selected value', () => {
     const onApplyOcrCandidate = vi.fn();
 
@@ -127,7 +202,50 @@ describe('InspectionDrawingPointSettingsPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '25' }));
 
-    expect(onApplyOcrCandidate).toHaveBeenCalledWith('25');
+    expect(onApplyOcrCandidate).toHaveBeenCalledWith('25', expect.objectContaining({ valueText: '25' }));
+    expect(screen.queryByRole('button', { name: '2つの和' })).not.toBeInTheDocument();
+  });
+
+  it('adds two candidates when the sum chip is active', () => {
+    const onApplyOcrCandidate = vi.fn();
+    const base = {
+      rawText: '',
+      confidence: null,
+      score: 0.01,
+      distanceRatio: 0.01,
+      xRatio: 0.6,
+      yRatio: 0.5,
+      widthRatio: 0,
+      heightRatio: 0,
+      passKind: 'full' as const,
+      preprocessKind: 'raw' as const,
+      rotation: 0,
+      source: 'dimensionMap' as const
+    };
+
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={point}
+        onChange={vi.fn()}
+        ocrCandidates={[
+          { ...base, valueText: '12.5', rawText: '12.5' },
+          { ...base, valueText: '30', rawText: '30', xRatio: 0.7 }
+        ]}
+        ocrCandidateStatus="completed"
+        onApplyOcrCandidate={onApplyOcrCandidate}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '2つの和' }));
+    fireEvent.click(screen.getByRole('button', { name: '12.5' }));
+    expect(onApplyOcrCandidate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '30' }));
+
+    expect(onApplyOcrCandidate).toHaveBeenCalledTimes(1);
+    expect(onApplyOcrCandidate).toHaveBeenCalledWith('42.5');
+    // 和を入れたら通常の 1 回押しに戻る
+    fireEvent.click(screen.getByRole('button', { name: '30' }));
+    expect(onApplyOcrCandidate).toHaveBeenLastCalledWith('30', expect.objectContaining({ valueText: '30' }));
   });
 
   it('does not render OCR waiting states in the nominal value candidate row', () => {

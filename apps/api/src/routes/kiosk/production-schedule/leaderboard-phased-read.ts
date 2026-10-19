@@ -104,6 +104,7 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
 
     const assignmentLocationKey = await resolveProductionScheduleAssignmentLocationKey({
       actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
+      actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
       targetDeviceScopeKey: query.targetDeviceScopeKey
     });
     const { generationToken, processChangeResidualMaterialization } =
@@ -148,6 +149,7 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
 
     const assignmentLocationKey = await resolveProductionScheduleAssignmentLocationKey({
       actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
+      actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
       targetDeviceScopeKey: body.targetDeviceScopeKey
     });
     const { generationToken, processChangeResidualMaterialization } =
@@ -193,6 +195,7 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
 
     const assignmentLocationKey = await resolveProductionScheduleAssignmentLocationKey({
       actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
+      actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
       targetDeviceScopeKey: query.targetDeviceScopeKey
     });
     const { processChangeResidualMaterialization } = await resolveKioskLeaderboardProcessChangeResidualContext();
@@ -226,6 +229,7 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
 
     const assignmentLocationKey = await resolveProductionScheduleAssignmentLocationKey({
       actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
+      actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
       targetDeviceScopeKey: body.targetDeviceScopeKey
     });
 
@@ -264,6 +268,7 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
     const body = productionScheduleLeaderboardLaborMetadataBodySchema.parse(request.body ?? {});
     const assignmentLocationKey = await resolveProductionScheduleAssignmentLocationKey({
       actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
+      actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
       targetDeviceScopeKey: body.targetDeviceScopeKey
     });
 
@@ -305,6 +310,7 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
 
     const assignmentLocationKey = await resolveProductionScheduleAssignmentLocationKey({
       actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
+      actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
       targetDeviceScopeKey: query.targetDeviceScopeKey
     });
 
@@ -363,6 +369,7 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
 
     const assignmentLocationKey = await resolveProductionScheduleAssignmentLocationKey({
       actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
+      actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
       targetDeviceScopeKey: body.targetDeviceScopeKey
     });
 

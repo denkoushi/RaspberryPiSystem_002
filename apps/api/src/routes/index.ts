@@ -25,6 +25,12 @@ import { registerPartMeasurementRoutes } from './part-measurement/index.js';
 import { registerMobilePlacementRoutes } from './mobile-placement/index.js';
 import { registerLoanReportRoutes } from './reports/loan-report.js';
 import { registerTorqueWrenchRoutes } from './torque-wrenches/index.js';
+import { registerTorqueTrainingRoutes } from './torque-training/index.js';
+import { registerWorkInstructionRoutes } from './work-instructions/index.js';
+import { registerHermesKnowledgeRoutes } from './hermes-knowledge.js';
+import { registerItemInventoryRoutes } from './item-inventory/index.js';
+import { registerMachineSignalRoutes } from './machine-signal/index.js';
+import { registerKioskTagDeskRoutes } from './kiosk/tag-desk.js';
 
 /**
  * すべてのルートを登録
@@ -38,7 +44,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       await registerSystemRoutes(subApp);
       await registerAuthRoutes(subApp);
       await registerAssemblyRoutes(subApp);
+      registerHermesKnowledgeRoutes(subApp);
       await registerTorqueWrenchRoutes(subApp);
+      await registerTorqueTrainingRoutes(subApp);
 
       // ツール管理モジュール（パス: /api/tools/*）
       await registerToolsRoutes(subApp);
@@ -76,6 +84,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       registerKioskSettingsRoutes(subApp);
       // 管理コンソール向けレポート
       registerLoanReportRoutes(subApp);
+      // SharePoint作業要領の取り込み・参照
+      registerWorkInstructionRoutes(subApp);
+      registerItemInventoryRoutes(subApp);
+      // 設備稼働ログ（信号灯センサーの日報）の可視化と設定
+      registerMachineSignalRoutes(subApp);
+      // キオスク「タグ管理」（NFCタグの付け外しとマスター編集）
+      await registerKioskTagDeskRoutes(subApp);
     },
     { prefix: '/api' },
   );

@@ -19,8 +19,10 @@ export function parseInspectionDrawingCreatePreviewScenario(
 }
 
 export type InspectionDrawingCreatePreviewScenarioConfig = {
+  isEditing: boolean;
   lineageLocked: boolean;
   fhincd: string;
+  fkojun: string;
   resourceCd: string;
   resourceSelectOptions: ReadonlyArray<{ value: string; label: string }>;
   processGroup: PartMeasurementProcessGroup;
@@ -38,6 +40,7 @@ export function getInspectionDrawingCreatePreviewScenarioConfig(
 ): InspectionDrawingCreatePreviewScenarioConfig {
   const base = {
     fhincd: 'SD000107240',
+    fkojun: '10',
     resourceCd: '033',
     resourceSelectOptions: LONG_RESOURCE_OPTIONS,
     processGroup: 'cutting' as PartMeasurementProcessGroup,
@@ -51,6 +54,7 @@ export function getInspectionDrawingCreatePreviewScenarioConfig(
     case 'fixed_count':
       return {
         ...base,
+        isEditing: true,
         lineageLocked: true,
         selfInspectionMode: 'fixed_count',
         selfInspectionFixedCount: '3',
@@ -59,6 +63,7 @@ export function getInspectionDrawingCreatePreviewScenarioConfig(
     case 'create_new':
       return {
         ...base,
+        isEditing: false,
         lineageLocked: false,
         selfInspectionMode: 'first_last',
         selfInspectionFixedCount: '',
@@ -68,6 +73,7 @@ export function getInspectionDrawingCreatePreviewScenarioConfig(
     default:
       return {
         ...base,
+        isEditing: true,
         lineageLocked: true,
         selfInspectionMode: 'single',
         selfInspectionFixedCount: '',
@@ -83,6 +89,7 @@ export function toPreviewMetadataRowProps(
   InspectionDrawingCreateMetadataRowProps,
   | 'lineageLocked'
   | 'fhincd'
+  | 'fkojun'
   | 'resourceCd'
   | 'resourceSelectOptions'
   | 'processGroup'
@@ -96,6 +103,7 @@ export function toPreviewMetadataRowProps(
   return {
     lineageLocked: config.lineageLocked,
     fhincd: config.fhincd,
+    fkojun: config.fkojun,
     resourceCd: config.resourceCd,
     resourceSelectOptions: config.resourceSelectOptions,
     processGroup: config.processGroup,

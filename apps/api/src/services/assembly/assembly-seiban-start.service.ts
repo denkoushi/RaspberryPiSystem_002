@@ -22,6 +22,7 @@ export type AssemblySeibanCandidate = {
     procedurePattern: string;
     name: string;
     version: number;
+    traceabilityMode: 'LEGACY' | 'REQUIRED';
   } | null;
 };
 
@@ -88,7 +89,8 @@ export class AssemblySeibanStartService {
 
   private async resolveMachineNames(fseibans: string[]): Promise<Map<string, MachineNameResolution>> {
     const result = new Map<string, MachineNameResolution>();
-    const progressRows = await fetchSeibanProgressRows(fseibans);
+    // 補完テーブル由来かどうかを machineNameSource で返すため、補完はここで行う
+    const progressRows = await fetchSeibanProgressRows(fseibans, undefined, { supplementMachineName: false });
     const progressByFseiban = new Map(progressRows.map((row) => [row.fseiban, row.machineName] as const));
 
     const needSupplement: string[] = [];
@@ -126,6 +128,7 @@ export class AssemblySeibanStartService {
         procedurePattern: string;
         name: string;
         version: number;
+        traceabilityMode: 'LEGACY' | 'REQUIRED';
       }
     >
   > {
@@ -145,16 +148,27 @@ export class AssemblySeibanStartService {
         modelCode: true,
         procedurePattern: true,
         name: true,
-        version: true
+        version: true,
+        traceabilityMode: true
       },
       orderBy: [{ updatedAt: 'desc' }, { version: 'desc' }]
     });
 
-    const byMachineName = new Map<string, (typeof templates)[number]>();
+    const byMachineName = new Map<string, {
+      id: string;
+      modelCode: string;
+      procedurePattern: string;
+      name: string;
+      version: number;
+      traceabilityMode: 'LEGACY' | 'REQUIRED';
+    }>();
     for (const template of templates) {
       const key = normalizeMachineNameForCompare(template.modelCode);
       if (!byMachineName.has(key)) {
-        byMachineName.set(key, template);
+        byMachineName.set(key, {
+          ...template,
+          traceabilityMode: template.traceabilityMode === 'REQUIRED' ? 'REQUIRED' : 'LEGACY'
+        });
       }
     }
     return byMachineName;

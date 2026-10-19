@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <!-- Preserve the host's theme and existing shortcuts. -->
+  <theme>
+    <name>PiXflat</name>
+  </theme>
+  <keyboard>
+    <keybind key="A-F4"><action name="Close" /></keybind>
+    <!-- BEGIN ANSIBLE MANAGED: show-kiosk-panel -->
+    <keybind key="W-S-p">
+      <action name="Execute">
+        <command>/usr/local/bin/show-kiosk-panel.sh</command>
+      </action>
+    </keybind>
+    <!-- END ANSIBLE MANAGED: show-kiosk-panel -->
+  </keyboard>
+  <windowRules>
+    <windowRule identifier="Kodi" serverDecoration="yes" />
+  </windowRules>
+</openbox_config>

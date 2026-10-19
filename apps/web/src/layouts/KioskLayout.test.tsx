@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -6,7 +6,9 @@ import { kioskWebNavigation } from '../features/kiosk/kioskWebActivation';
 
 import { KioskLayout } from './KioskLayout';
 
+const revealMode = vi.hoisted(() => ({ real: false }));
 const acknowledgeDeployStatus = vi.fn();
+const proveNfcRuntimeReady = vi.fn();
 let deployStatus: Record<string, unknown> | undefined;
 const BUNDLE_RELEASE_SHA = 'a'.repeat(40);
 const OTHER_RELEASE_SHA = 'b'.repeat(40);
@@ -28,27 +30,67 @@ vi.mock('../api/hooks', () => ({
   useKioskConfig: () => ({ data: {} })
 }));
 
-vi.mock('../components/kiosk/KioskHeader', () => ({ KioskHeader: () => <div>kiosk-header</div> }));
-vi.mock('../components/kiosk/KioskMaintenanceScreen', () => ({ KioskMaintenanceScreen: () => <div>maintenance-screen</div> }));
-vi.mock('../components/kiosk/KioskSupportModal', () => ({ KioskSupportModal: () => null }));
-vi.mock('../components/KioskRedirect', () => ({ KioskRedirect: () => <div>normal-kiosk-content</div> }));
-vi.mock('../hooks/useKioskBottomRightHeaderReveal', () => ({
-  useKioskBottomRightHeaderReveal: () => ({
-    isVisible: true,
-    onHotZoneEnter: vi.fn(),
-    onHeaderMouseEnter: vi.fn(),
-    onHeaderMouseLeave: vi.fn()
-  })
+vi.mock('../features/nfc/nfcRuntimeContract', () => ({
+  resolveNfcRuntimeContract: () => ({
+    policy: 'localOnly',
+    streamUrls: ['ws://localhost:7071/stream'],
+    statusUrl: 'http://127.0.0.1:7071/api/agent/status'
+  }),
+  proveNfcRuntimeReady: (...args: unknown[]) => proveNfcRuntimeReady(...args)
 }));
 
+vi.mock('../components/kiosk/KioskHeader', () => ({ KioskHeader: () => <div>kiosk-header</div> }));
+vi.mock('../components/kiosk/KioskMaintenanceScreen', () => ({ KioskMaintenanceScreen: () => <div>maintenance-screen</div> }));
+vi.mock('../components/KioskRedirect', () => ({ KioskRedirect: () => <div>normal-kiosk-content</div> }));
+vi.mock('../features/kiosk/InventoryNfcRouter', () => ({ InventoryNfcRouter: () => null }));
+vi.mock('../hooks/useKioskBottomRightHeaderReveal', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../hooks/useKioskBottomRightHeaderReveal')>();
+  return {
+    useKioskBottomRightHeaderReveal: (...args: Parameters<typeof actual.useKioskBottomRightHeaderReveal>) => revealMode.real
+      ? actual.useKioskBottomRightHeaderReveal(...args)
+      : {
+        isVisible: true,
+        close: vi.fn(),
+        onHotZoneEnter: vi.fn(),
+        onHeaderMouseEnter: vi.fn(),
+        onHeaderMouseLeave: vi.fn()
+      }
+  };
+});
+
 describe('KioskLayout deploy status handling', () => {
+  it.each([['/kiosk/assembly/manuals', false], ['/kiosk/assembly/manuals/workshop', false], ['/kiosk/assembly', true]])('reserves the full height only for manuals (%s)', (path, padded) => {
+    deployStatus = { isMaintenance: false };
+    render(<MemoryRouter initialEntries={[path]}><KioskLayout /></MemoryRouter>);
+    const main = screen.getByRole('main');
+    if (padded) expect(main).toHaveClass('px-4', 'py-4');
+    else { expect(main).toHaveClass('overflow-hidden'); expect(main).not.toHaveClass('px-4', 'py-4'); }
+  });
+
   beforeEach(() => {
+    revealMode.real = false;
     deployStatus = undefined;
     acknowledgeDeployStatus.mockReset();
     acknowledgeDeployStatus.mockResolvedValue({ acknowledged: true });
+    proveNfcRuntimeReady.mockReset();
+    proveNfcRuntimeReady.mockResolvedValue(true);
     vi.spyOn(kioskWebNavigation, 'replace').mockImplementation(() => undefined);
     window.sessionStorage.clear();
     vi.stubEnv('VITE_RELEASE_SHA', BUNDLE_RELEASE_SHA);
+  });
+
+  it('does not mount kiosk content before the initial deploy status is known', () => {
+    const { rerender } = render(
+      <MemoryRouter initialEntries={['/kiosk']}><KioskLayout /></MemoryRouter>
+    );
+
+    expect(screen.getByText('maintenance-screen')).toBeInTheDocument();
+    expect(screen.queryByText('normal-kiosk-content')).not.toBeInTheDocument();
+
+    deployStatus = { isMaintenance: false };
+    rerender(<MemoryRouter initialEntries={['/kiosk']}><KioskLayout /></MemoryRouter>);
+
+    expect(screen.getByText('normal-kiosk-content')).toBeInTheDocument();
   });
 
   afterEach(() => {
@@ -97,6 +139,23 @@ describe('KioskLayout deploy status handling', () => {
       BUNDLE_RELEASE_SHA,
       RELEASE_VERIFICATION_ID
     ));
+  });
+
+  it('withholds ready acknowledgement while the local NFC proof is unhealthy', async () => {
+    proveNfcRuntimeReady.mockResolvedValue(false);
+    deployStatus = {
+      isMaintenance: true,
+      runId: 'run-nfc-unhealthy',
+      phase: 'verifying',
+      desiredReleaseSha: BUNDLE_RELEASE_SHA,
+      verificationId: RELEASE_VERIFICATION_ID
+    };
+    render(<MemoryRouter initialEntries={['/kiosk']}><KioskLayout /></MemoryRouter>);
+
+    await waitFor(() => expect(proveNfcRuntimeReady).toHaveBeenCalled());
+    expect(
+      acknowledgeDeployStatus.mock.calls.some(([, phase]) => phase === 'ready')
+    ).toBe(false);
   });
 
   it('does not let a cached stale bundle acknowledge a newer desired release', async () => {
@@ -255,4 +314,76 @@ describe('KioskLayout deploy status handling', () => {
       ['run-repeat', 'ready', BUNDLE_RELEASE_SHA, ROLLBACK_VERIFICATION_ID]
     ]);
   });
+
+  it('uses a hidden bottom dock and a handle on non-immersive call routes', () => {
+    revealMode.real = true;
+    deployStatus = { isMaintenance: false };
+    const { container } = render(<MemoryRouter initialEntries={['/kiosk/call']}><KioskLayout /></MemoryRouter>);
+    const dock = container.querySelector('header')!;
+    expect(dock).toHaveClass('fixed', 'bottom-0', 'pointer-events-none', 'invisible', 'translate-y-full');
+    expect(dock).toHaveAttribute('inert');
+    expect(dock).toHaveAttribute('aria-hidden', 'true');
+    const handle = screen.getByRole('button', { name: 'メニューを開く' });
+    expect(handle).toHaveAttribute('aria-expanded', 'false');
+    expect(handle).toHaveAttribute('aria-controls', dock.id);
+    expect(screen.getByRole('main').parentElement).toHaveClass('min-h-dvh');
+    fireEvent.click(handle);
+    expect(dock).toHaveClass('visible', 'translate-y-0');
+    expect(dock).not.toHaveAttribute('inert');
+    expect(handle).not.toBeVisible();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(dock).toHaveAttribute('inert');
+    expect(handle).toBeVisible();
+  });
+
+  it('reveals on handle hover and closes after leave or outside pointerdown', () => {
+    vi.useFakeTimers();
+    revealMode.real = true;
+    deployStatus = { isMaintenance: false };
+    const { container } = render(<MemoryRouter initialEntries={['/kiosk/call']}><KioskLayout /></MemoryRouter>);
+    const dock = container.querySelector('header')!;
+    fireEvent.mouseEnter(screen.getByRole('button', { name: 'メニューを開く' }));
+    fireEvent.mouseEnter(dock);
+    fireEvent.mouseLeave(dock);
+    act(() => vi.advanceTimersByTime(199));
+    expect(dock).toHaveClass('visible');
+    act(() => vi.advanceTimersByTime(1));
+    expect(dock).toHaveClass('invisible');
+    fireEvent.mouseMove(window, { clientX: window.innerWidth - 2, clientY: window.innerHeight - 2 });
+    expect(dock).toHaveClass('visible');
+    fireEvent.pointerDown(screen.getByRole('main'));
+    expect(dock).toHaveClass('invisible');
+  });
+
+  it('keeps the dock open while a dock overlay handles leave, Escape and pointerdown', () => {
+    vi.useFakeTimers();
+    revealMode.real = true;
+    deployStatus = { isMaintenance: false };
+    const { container } = render(<MemoryRouter initialEntries={['/kiosk/call']}><KioskLayout /></MemoryRouter>);
+    const dock = container.querySelector('header')!;
+    fireEvent.click(screen.getByRole('button', { name: 'メニューを開く' }));
+    const overlayMarker = screen.getByText('kiosk-header');
+    overlayMarker.setAttribute('data-kiosk-dock-overlay', 'true');
+    fireEvent.mouseLeave(dock);
+    act(() => vi.advanceTimersByTime(200));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.pointerDown(document.body);
+    expect(dock).toHaveClass('visible');
+    overlayMarker.removeAttribute('data-kiosk-dock-overlay');
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(dock).toHaveClass('invisible');
+  });
+});
+
+it('keeps the portal header visible at the top without a dock handle', () => {
+  deployStatus = { isMaintenance: false };
+  revealMode.real = true;
+  render(<MemoryRouter initialEntries={['/kiosk/portal']}><KioskLayout /></MemoryRouter>);
+  const header = screen.getByRole('banner');
+  expect(header).toHaveAttribute('aria-hidden', 'false');
+  expect(header).not.toHaveAttribute('inert');
+  expect(header).not.toHaveClass('fixed');
+  expect(screen.queryByRole('button', { name: 'メニューを開く' })).not.toBeInTheDocument();
+  expect(screen.getByRole('main')).toHaveClass('overflow-hidden');
+  revealMode.real = false;
 });

@@ -4,10 +4,16 @@ import { SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL } from '../constants.js';
 import {
   resolveSeibanMachineDisplayNames,
   resolveSeibanMachineDisplayNamesBatched,
+  resolveSeibanMachineDisplayNamesForWinnerRows,
 } from '../seiban-machine-display-names.service.js';
 import { fetchSeibanProgressRows } from '../seiban-progress.service.js';
 
 const findByFseibans = vi.fn();
+const queryRaw = vi.fn();
+
+vi.mock('../../../lib/prisma.js', () => ({
+  prisma: { $queryRaw: (...args: unknown[]) => queryRaw(...args) }
+}));
 
 vi.mock('../seiban-progress.service.js', () => ({
   fetchSeibanProgressRows: vi.fn()
@@ -72,6 +78,24 @@ describe('resolveSeibanMachineDisplayNames', () => {
     expect(r.machineNames).toEqual({ 'C-3': '補完Z' });
   });
 
+  it('MH/SH の未登録ラベルも未解決として扱い、後日の補完値で上書きできる', async () => {
+    vi.mocked(fetchSeibanProgressRows).mockResolvedValue([
+      {
+        fseiban: 'D-4',
+        total: 1,
+        completed: 0,
+        incompleteProductNames: [],
+        machineName: SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL
+      }
+    ]);
+    findByFseibans.mockResolvedValue(new Map([['D-4', '後日解決した正本機種名']]));
+
+    const r = await resolveSeibanMachineDisplayNames(['D-4']);
+
+    expect(findByFseibans).toHaveBeenCalledWith(['D-4']);
+    expect(r.machineNames).toEqual({ 'D-4': '後日解決した正本機種名' });
+  });
+
   it('入力は 100 件までは保持し、trim と重複除去だけ行う', async () => {
     const inputs = [' A-1 ', ...Array.from({ length: 60 }, (_, i) => `S-${i + 1}`), 'A-1'];
     vi.mocked(fetchSeibanProgressRows).mockResolvedValue([]);
@@ -112,5 +136,41 @@ describe('resolveSeibanMachineDisplayNamesBatched', () => {
     expect(Object.keys(result.machineNames)).toHaveLength(130);
     expect(result.machineNames['S-1']).toBe('機種-S-1');
     expect(result.machineNames['S-130']).toBe('機種-S-130');
+  });
+});
+
+describe('resolveSeibanMachineDisplayNamesForWinnerRows', () => {
+  beforeEach(() => {
+    queryRaw.mockReset();
+    findByFseibans.mockReset();
+    findByFseibans.mockResolvedValue(new Map());
+    vi.mocked(fetchSeibanProgressRows).mockReset();
+  });
+
+  it('引く製番が無ければクエリしない', async () => {
+    expect(await resolveSeibanMachineDisplayNamesForWinnerRows({ fseibans: [' ', ''], winnerRowIds: ['r1'] })).toEqual({
+      machineNames: {}
+    });
+    expect(queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('100 件を超えても 1 回のクエリで引き、進捗集計は使わず、MH/SH → 補完 → 未登録の順で埋める', async () => {
+    const fseibans = Array.from({ length: 250 }, (_, index) => `S-${index}`);
+    queryRaw.mockResolvedValue([
+      { fseiban: 'S-0', machineName: 'NVD-5000' },
+      { fseiban: 'S-1', machineName: '' }
+    ]);
+    findByFseibans.mockResolvedValue(new Map([['S-1', 'HX-630']]));
+
+    const { machineNames } = await resolveSeibanMachineDisplayNamesForWinnerRows({ fseibans, winnerRowIds: ['r1', 'r2'] });
+
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    expect(fetchSeibanProgressRows).not.toHaveBeenCalled();
+    expect(Object.keys(machineNames)).toHaveLength(250);
+    expect(machineNames['S-0']).toBe('NVD-5000');
+    expect(machineNames['S-1']).toBe('HX-630');
+    expect(machineNames['S-249']).toBe(SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL);
+    expect(findByFseibans).toHaveBeenCalledTimes(1);
+    expect(findByFseibans.mock.calls[0]![0]).toHaveLength(249);
   });
 });

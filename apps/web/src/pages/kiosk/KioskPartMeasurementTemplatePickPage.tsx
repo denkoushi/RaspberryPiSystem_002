@@ -8,6 +8,7 @@ import {
   getResolvedClientKey,
   listPartMeasurementTemplateCandidates
 } from '../../api/client';
+import { selfInspectionQueryKeys } from '../../api/queryKeys/selfInspection';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { resolveKioskPartMeasurementSheetEditPathAfterCreate } from '../../features/part-measurement/kioskPartMeasurementSheetNavigation';
@@ -47,13 +48,14 @@ export function KioskPartMeasurementTemplatePickPage() {
       fhincd: ctx.fhincd,
       processGroup: ctx.processGroup,
       resourceCd: ctx.resourceCd,
+      fkojun: ctx.fkojun == null ? '' : String(ctx.fkojun),
       fhinmei: ctx.fhinmei,
       q: filterQ.trim() || undefined
     };
   }, [ctx, filterQ]);
 
   const candidatesQuery = useQuery({
-    queryKey: ['part-measurement-template-candidates', queryParams],
+    queryKey: selfInspectionQueryKeys.partMeasurementTemplateCandidates(queryParams),
     enabled: queryParams != null,
     queryFn: async () => listPartMeasurementTemplateCandidates(queryParams!, clientKey)
   });
@@ -73,6 +75,7 @@ export function KioskPartMeasurementTemplatePickPage() {
       state: {
         fhincd: ctx.fhincd,
         resourceCd: ctx.resourceCd,
+        fkojun: ctx.fkojun == null ? '' : String(ctx.fkojun),
         processGroup: ctx.processGroup,
         fhinmei: ctx.fhinmei
       }
@@ -91,7 +94,8 @@ export function KioskPartMeasurementTemplatePickPage() {
             sourceTemplateId: c.template.id,
             fhincd: ctx.fhincd,
             processGroup: ctx.processGroup,
-            resourceCd: ctx.resourceCd
+            resourceCd: ctx.resourceCd,
+            fkojun: ctx.fkojun == null ? '' : String(ctx.fkojun)
           },
           clientKey
         );

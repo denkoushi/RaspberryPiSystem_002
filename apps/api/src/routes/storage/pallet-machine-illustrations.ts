@@ -1,5 +1,7 @@
+import { sendStorageReadError } from './shared.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { PalletMachineIllustrationStorage } from '../../lib/pallet-machine-illustration-storage.js';
+import { ApiError } from '../../lib/errors.js';
 
 /**
  * GET /api/storage/pallet-machine-illustrations/*
@@ -20,12 +22,13 @@ export function registerPalletMachineIllustrationStorageRoutes(app: FastifyInsta
       reply.type(contentType);
       return reply.send(buffer);
     } catch (error) {
+      if (error instanceof ApiError) throw error;
       const err = error instanceof Error ? error : new Error(String(error));
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        return reply.status(404).send({ message: 'イラストが見つかりません' });
-      }
-      request.log.error({ err, illustrationUrl }, 'イラストの読み込みに失敗しました');
-      return reply.status(500).send({ message: 'イラストの読み込みに失敗しました' });
+      return sendStorageReadError(request, reply, err, {
+        notFoundMessage: 'イラストが見つかりません',
+        failedMessage: 'イラストの読み込みに失敗しました',
+        logContext: { err, illustrationUrl },
+      });
     }
   });
 }

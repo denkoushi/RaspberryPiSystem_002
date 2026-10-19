@@ -1,7 +1,10 @@
+import { sendStorageReadError } from './shared.js';
+import { createDeviceReadRateLimit } from '../../lib/device-read-rate-limit.js';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { PhotoStorage } from '../../lib/photo-storage.js';
 import { authorizeRoles } from '../../lib/auth.js';
 import { findClientDeviceByApiKey } from '../../services/clients/client-device-auth.service.js';
+import { ApiError } from '../../lib/errors.js';
 
 /**
  * 写真配信ルート
@@ -20,7 +23,7 @@ export function registerPhotoStorageRoutes(app: FastifyInstance): void {
    * 元画像を配信する
    * パス例: /api/storage/photos/2025/11/20251127_123456_employee-uuid.jpg
    */
-  app.get('/storage/photos/*', async (request: FastifyRequest, reply: FastifyReply) => {
+  app.get('/storage/photos/*', { config: { rateLimit: createDeviceReadRateLimit() } }, async (request: FastifyRequest, reply: FastifyReply) => {
     const headerKey = request.headers['x-client-key'];
     if (headerKey) {
       // client-key が提供されている場合は優先的に検証し、無効な場合はJWTにフォールバック
@@ -48,20 +51,18 @@ export function registerPhotoStorageRoutes(app: FastifyInstance): void {
 
       // Content-Typeを設定
       reply.type('image/jpeg');
+      reply.header('Cache-Control', 'private, max-age=86400');
       
       // 画像データを返す
       return reply.send(imageBuffer);
     } catch (error) {
+      if (error instanceof ApiError) throw error;
       const err = error instanceof Error ? error : new Error(String(error));
-      
-      // ファイルが存在しない場合
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        return reply.status(404).send({ message: '写真が見つかりません' });
-      }
-
-      request.log.error({ err, photoUrl: `/api/storage/photos/${urlPath}` }, '写真の読み込みに失敗しました');
-      return reply.status(500).send({ message: '写真の読み込みに失敗しました' });
+      return sendStorageReadError(request, reply, err, {
+        notFoundMessage: '写真が見つかりません',
+        failedMessage: '写真の読み込みに失敗しました',
+        logContext: { err, photoUrl: `/api/storage/photos/${urlPath}` },
+      });
     }
   });
 }
-

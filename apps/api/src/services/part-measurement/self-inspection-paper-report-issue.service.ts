@@ -3,11 +3,17 @@ import { Prisma, type PartMeasurementProcessGroup } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
+import { isUnassignedProductionSeiban } from '../production-schedule/row-resolver/constants.js';
 import { resolveProductionSchedulePlannedQuantity } from '../production-schedule/self-inspection-schedule-eligibility.js';
 import { verifyProductionScheduleRowOrThrow } from '../production-schedule/verify-production-schedule-row.js';
 
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
 import { resetSelfInspectionMachineBoardScheduleRowCaches } from './self-inspection-machine-board-cache-invalidation.js';
+import {
+  assertSelfInspectionSessionActive,
+  selfInspectionInvalidationConflict
+} from './self-inspection-invalidation-errors.js';
+import { lockSelfInspectionItemBusinessKey } from './self-inspection-item-lock.repository.js';
 import { SelfInspectionPaperQrCodec } from './self-inspection-paper-qr-codec.js';
 import {
   buildSelfInspectionPaperReportPagePlans,
@@ -74,21 +80,47 @@ export class SelfInspectionPaperReportIssueService {
     if (fhincd !== normalizeText(template.fhincd)) {
       throw new ApiError(400, '品番がテンプレートと一致しません');
     }
-    if (resourceCd !== normalizeText(template.resourceCd)) {
-      throw new ApiError(400, '資源CDがテンプレートと一致しません');
-    }
-
-    await verifyProductionScheduleRowOrThrow(scheduleRowId, {
+    const scheduleRowData = await verifyProductionScheduleRowOrThrow(scheduleRowId, {
       productNo,
       fseiban,
       fhincd,
-      resourceCd
+      resourceCd: template.resourceCd
     });
+    const scheduleFkojun = normalizeText(String(scheduleRowData.FKOJUN ?? ''));
+    if (normalizeText(template.fkojun) && normalizeText(template.fkojun) !== scheduleFkojun) {
+      throw new ApiError(400, '自主検査テンプレートの工順が日程行と一致しません');
+    }
+    let actualResourceTemplate = template;
+    if (resourceCd !== normalizeText(template.resourceCd)) {
+      if (!template.siblingGroupId) {
+        throw new ApiError(400, '選択した資源はこの自主検査テンプレートに登録されていません');
+      }
+      const sibling = await prisma.partMeasurementTemplate.findFirst({
+        where: {
+          siblingGroupId: template.siblingGroupId,
+          fhincd: template.fhincd,
+          processGroup: template.processGroup,
+          OR: normalizeText(template.fkojun)
+            ? [{ fkojun: normalizeText(template.fkojun) }]
+            : [{ fkojun: '' }, { fkojun: null }],
+          resourceCd,
+          isActive: true,
+          templateScope: 'THREE_KEY'
+        },
+        include: partMeasurementTemplateFullInclude
+      });
+      if (!sibling) {
+        throw new ApiError(400, '選択した資源の有効な自主検査テンプレートがありません');
+      }
+      assertTemplateSupportsSelfInspectionPaperReport(sibling);
+      actualResourceTemplate = sibling;
+    }
 
     const supplement = await prisma.productionScheduleOrderSupplement.findFirst({
       where: {
         csvDashboardRowId: scheduleRowId,
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        ...(isUnassignedProductionSeiban(fseiban) ? { productNo } : {})
       },
       select: { plannedQuantity: true }
     });
@@ -100,28 +132,39 @@ export class SelfInspectionPaperReportIssueService {
       throw new ApiError(400, `指示数は${SELF_INSPECTION_MAX_EXPECTED_ENTRY_COUNT}以下である必要があります`);
     }
 
-    const templateConfig = templateConfigFromTemplate(template);
+    const templateConfig = templateConfigFromTemplate(actualResourceTemplate);
     const expectedEntryCount = tryResolveExpectedEntryCount(templateConfig, plannedQuantity);
     if (expectedEntryCount == null) {
       throw new ApiError(409, '自主検査の必要件数を解決できません');
     }
-    const pagePlans = buildSelfInspectionPaperReportPagePlans(template, plannedQuantity);
+    const pagePlans = buildSelfInspectionPaperReportPagePlans(actualResourceTemplate, plannedQuantity);
     const now = new Date();
     const sessionBusinessKey = buildSessionBusinessKey({
       productNo,
       processGroup: template.processGroup,
-      resourceCd,
+      resourceCd: template.resourceCd,
       scheduleRowId
     });
 
     const report = await prisma.$transaction(async (tx) => {
+      await lockSelfInspectionItemBusinessKey(tx, sessionBusinessKey);
+      const invalidation = await tx.selfInspectionItemInvalidation.findUnique({
+        where: { itemBusinessKey: sessionBusinessKey },
+        select: { id: true }
+      });
+      if (invalidation) {
+        throw selfInspectionInvalidationConflict(
+          '削除済みの自主検査アイテムは紙帳票を再発行できません'
+        );
+      }
       const session = await tx.selfInspectionSession.upsert({
         where: { sessionBusinessKey },
         create: {
           sessionBusinessKey,
-          templateId: template.id,
+          templateId: actualResourceTemplate.id,
           productNo,
           processGroup: template.processGroup,
+          scheduleResourceCd: template.resourceCd,
           resourceCd,
           scheduleRowId,
           fseiban,
@@ -138,10 +181,11 @@ export class SelfInspectionPaperReportIssueService {
           template: true
         }
       });
+      assertSelfInspectionSessionActive(session);
       if (session.completedAt) {
         throw new ApiError(409, '完了済みの自主検査は紙帳票を再発行できません');
       }
-      if (session.templateId !== template.id) {
+      if (session.templateId !== actualResourceTemplate.id) {
         throw new ApiError(
           409,
           '既存の自主検査セッションのテンプレートと印刷テンプレートが異なります。リセット後に再発行してください。'
@@ -163,12 +207,12 @@ export class SelfInspectionPaperReportIssueService {
         data: {
           sessionId: session.id,
           scheduleRowId,
-          templateId: template.id,
+          templateId: actualResourceTemplate.id,
           status: 'ISSUED',
           issuedAt: now,
           clientDeviceId: input.clientDeviceId ?? null,
           plannedQuantity,
-          templateVersion: template.version
+          templateVersion: actualResourceTemplate.version
         }
       });
 
@@ -206,6 +250,7 @@ export class SelfInspectionPaperReportIssueService {
     if (!report) {
       throw new ApiError(404, '紙帳票が見つかりません');
     }
+    assertSelfInspectionSessionActive(report.session);
     return report;
   }
 }

@@ -1,0 +1,1175 @@
+import { randomUUID } from 'node:crypto';
+
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import type { Prisma } from '@prisma/client';
+import type { GrindingPlanningBoardItem, GrindingPlanningBoardResponse } from '@raspi-system/shared-types';
+
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
+
+/**
+ * This file intentionally has no localhost/database fallback. The production
+ * schedule dashboard is shared by many tests and must never be modified by an
+ * integration run that did not opt into an isolated database.
+ */
+const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim() ?? '';
+const databaseName = (() => {
+  try {
+    return new URL(testDatabaseUrl).pathname.replace(/^\//, '').split('?')[0] ?? '';
+  } catch {
+    return '';
+  }
+})();
+const hasDedicatedDatabase = Boolean(testDatabaseUrl) && !['borrow_return', 'postgres', 'template1'].includes(databaseName);
+const originalDatabaseUrl = process.env.DATABASE_URL;
+
+type PrismaClient = import('@prisma/client').PrismaClient;
+type BoardService = typeof import('../grinding-planning-board.service.js');
+type CandidateService = typeof import('../grinding-planning-board-seiban-candidates.service.js');
+type SnapshotStore = ReturnType<typeof import('../leaderboard/leaderboard-shell-snapshot.store.js').createInMemoryLeaderboardShellSnapshotStore>;
+
+let dbClient: PrismaClient | undefined;
+let boardService: BoardService | undefined;
+let candidateService: CandidateService | undefined;
+let createSnapshotStore: typeof import('../leaderboard/leaderboard-shell-snapshot.store.js').createInMemoryLeaderboardShellSnapshotStore | undefined;
+
+if (hasDedicatedDatabase) {
+  process.env.DATABASE_URL = testDatabaseUrl;
+  ({ prisma: dbClient } = await import('../../../lib/prisma.js'));
+  boardService = await import('../grinding-planning-board.service.js');
+  candidateService = await import('../grinding-planning-board-seiban-candidates.service.js');
+  ({ createInMemoryLeaderboardShellSnapshotStore: createSnapshotStore } = await import('../leaderboard/leaderboard-shell-snapshot.store.js'));
+}
+
+const describeIntegration = hasDedicatedDatabase ? describe : describe.skip;
+
+function db(): PrismaClient {
+  if (!dbClient) throw new Error('TEST_DATABASE_URL must point to a dedicated database');
+  return dbClient;
+}
+
+function service(): BoardService {
+  if (!boardService) throw new Error('TEST_DATABASE_URL must point to a dedicated database');
+  return boardService;
+}
+
+function snapshotStore(): SnapshotStore {
+  if (!createSnapshotStore) throw new Error('TEST_DATABASE_URL must point to a dedicated database');
+  return createSnapshotStore({ defaultTtlMs: 60_000 });
+}
+
+function candidates(): CandidateService {
+  if (!candidateService) throw new Error('TEST_DATABASE_URL must point to a dedicated database');
+  return candidateService;
+}
+
+type RowSpec = {
+  fseiban: string;
+  fhincd?: string;
+  fhinmei?: string;
+  resourceCd?: string;
+  processOrder?: string;
+  productNo?: string;
+  dueDate?: string;
+  requiredMinutes?: string | null;
+  plannedQuantity?: number | null;
+  completed?: boolean;
+  externallyCompleted?: boolean;
+  rank?: number;
+  splitQuantity?: number;
+};
+
+type Fixture = {
+  prefix: string;
+  siteKey: string;
+  rowIds: string[];
+  seibans: string[];
+  splitIds: string[];
+  resourceNames: string[];
+  sharedStateBefore: { id: string; csvDashboardId: string; location: string; state: Prisma.JsonValue } | null;
+};
+
+const fixtures: Fixture[] = [];
+
+async function ensureDashboard(): Promise<void> {
+  await db().csvDashboard.upsert({
+    where: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+    create: {
+      id: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      name: 'grinding-planning-board-integration',
+      columnDefinitions: [],
+      templateType: 'TABLE',
+      templateConfig: {},
+      ingestMode: 'DEDUP',
+      dedupKeyColumns: ['FSEIBAN', 'FHINCD', 'FSIGENCD', 'FKOJUN'],
+      enabled: true
+    },
+    update: {}
+  });
+}
+
+async function createFixture(): Promise<Fixture> {
+  const prefix = `grinding-board-it-${randomUUID()}`;
+  const sharedState = await db().kioskProductionScheduleSearchState.findUnique({
+    where: { csvDashboardId_location: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: 'shared' } }
+  });
+  const fixture: Fixture = {
+    prefix,
+    siteKey: `${prefix}-site`,
+    rowIds: [],
+    seibans: [],
+    splitIds: [],
+    resourceNames: [`${prefix}-305`, `${prefix}-581`, `${prefix}-1`],
+    sharedStateBefore: sharedState
+      ? { id: sharedState.id, csvDashboardId: sharedState.csvDashboardId, location: sharedState.location, state: sharedState.state }
+      : null
+  };
+  await db().productionScheduleResourceMaster.createMany({
+    data: [
+      { resourceCd: '305', resourceName: fixture.resourceNames[0]!, resourceClassCd: 'M02', resourceGroupCd: 'IT' },
+      { resourceCd: '581', resourceName: fixture.resourceNames[1]!, resourceClassCd: 'M02', resourceGroupCd: 'IT' },
+      { resourceCd: '1', resourceName: fixture.resourceNames[2]!, resourceClassCd: 'M02', resourceGroupCd: 'IT' }
+    ]
+  });
+  fixtures.push(fixture);
+  return fixture;
+}
+
+function rowData(spec: RowSpec, index: number): Record<string, string> {
+  return {
+    FSEIBAN: spec.fseiban,
+    FHINCD: spec.fhincd ?? `PART-${index}`,
+    FSIGENCD: spec.resourceCd ?? '305',
+    FKOJUN: spec.processOrder ?? String(index + 1),
+    ProductNo: spec.productNo ?? String(index + 1),
+    FHINMEI: spec.fhinmei ?? 'integration part',
+    FSIGENSHOYORYO: spec.requiredMinutes === undefined ? '30' : spec.requiredMinutes ?? ''
+  };
+}
+
+async function addRows(fixture: Fixture, specs: readonly RowSpec[]): Promise<string[]> {
+  for (const spec of specs) {
+    if (!fixture.seibans.includes(spec.fseiban)) fixture.seibans.push(spec.fseiban);
+  }
+  const rows: Array<{ id: string; data: Record<string, string>; spec: RowSpec }> = [];
+  for (const [index, spec] of specs.entries()) {
+    const data = rowData(spec, index);
+    const row = await db().csvDashboardRow.create({
+      data: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        occurredAt: new Date('2026-09-09T00:00:00.000Z'),
+        dataHash: `${fixture.prefix}-${index}-${randomUUID()}`,
+        rowData: data
+      },
+      select: { id: true }
+    });
+    rows.push({ id: row.id, data, spec });
+    fixture.rowIds.push(row.id);
+  }
+
+  if (rows.length > 0) {
+    await db().productionScheduleOrderSupplement.createMany({
+      data: rows.map(({ id, data, spec }) => ({
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        csvDashboardRowId: id,
+        // The production table allows the same numeric ProductNo to recur in
+        // different source imports. Keep parallel fixtures independent from
+        // the source-import uniqueness key without changing winner identity.
+        sourceCsvDashboardId: fixture.prefix,
+        productNo: data.ProductNo!,
+        resourceCd: data.FSIGENCD!,
+        processOrder: data.FKOJUN!,
+        plannedQuantity: spec.plannedQuantity === undefined ? 5 : spec.plannedQuantity,
+        plannedEndDate: new Date(`${spec.dueDate ?? '2026-09-20'}T00:00:00.000Z`)
+      }))
+    });
+    await db().productionScheduleRowNote.createMany({
+      data: rows.map(({ id, spec }) => ({
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        csvDashboardRowId: id,
+        note: 'integration fixture',
+        dueDate: new Date(`${spec.dueDate ?? '2026-09-20'}T00:00:00.000Z`)
+      }))
+    });
+
+    // Each isolated fixture needs a registered seiban order so the planning
+    // board exercises its normal shared-history seed path. Restore the exact
+    // pre-fixture shared row during cleanup below.
+    const historyRows = await Promise.all(fixture.rowIds.map((id) => db().csvDashboardRow.findUniqueOrThrow({ where: { id }, select: { rowData: true } })));
+    const history = historyRows.map((row) => String((row.rowData as Record<string, unknown>).FSEIBAN ?? '')).filter(Boolean);
+    await db().kioskProductionScheduleSearchState.upsert({
+      where: { csvDashboardId_location: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: 'shared' } },
+      create: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: 'shared', state: { history } },
+      update: { state: { history } }
+    });
+  }
+
+  for (const { id, data, spec } of rows) {
+    if (spec.rank !== undefined) {
+      await db().productionScheduleOrderAssignment.create({
+        data: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          csvDashboardRowId: id,
+          location: fixture.siteKey,
+          siteKey: fixture.siteKey,
+          resourceCd: data.FSIGENCD!,
+          orderNumber: spec.rank
+        }
+      });
+    }
+    if (spec.completed) {
+      await db().productionScheduleProgress.create({
+        data: { csvDashboardRowId: id, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, isCompleted: true }
+      });
+    }
+    if (spec.externallyCompleted) {
+      await db().productionScheduleExternalCompletion.create({
+        data: { csvDashboardRowId: id, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, isExternallyCompleted: true }
+      });
+    }
+    if (spec.splitQuantity !== undefined) {
+      const split = await db().productionScheduleOrderSplit.create({
+        data: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          parentCsvDashboardRowId: id,
+          splitNo: 1,
+          splitQuantity: spec.splitQuantity,
+          dueDate: new Date(`${spec.dueDate ?? '2026-09-20'}T00:00:00.000Z`)
+        },
+        select: { id: true }
+      });
+      fixture.splitIds.push(split.id);
+    }
+  }
+  return rows.map(({ id }) => id);
+}
+
+async function cleanupFixture(fixture: Fixture): Promise<void> {
+  await db().productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { siteKey: fixture.siteKey } });
+  await db().productionScheduleGrindingPlanningBoardState.deleteMany({ where: { siteKey: fixture.siteKey } });
+  if (fixture.splitIds.length > 0) {
+    await db().productionScheduleOrderSplitAssignment.deleteMany({ where: { splitId: { in: fixture.splitIds } } });
+    await db().productionScheduleOrderSplit.deleteMany({ where: { id: { in: fixture.splitIds } } });
+  }
+  if (fixture.rowIds.length > 0) {
+    const where = { csvDashboardRowId: { in: fixture.rowIds } };
+    await db().productionScheduleProgress.deleteMany({ where });
+    await db().productionScheduleExternalCompletion.deleteMany({ where });
+    await db().productionScheduleSeibanDueDate.deleteMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: { in: fixture.seibans } } });
+    await db().productionScheduleRowNote.deleteMany({ where });
+    await db().productionScheduleOrderSupplement.deleteMany({ where });
+    await db().productionScheduleOrderAssignment.deleteMany({ where });
+    await db().csvDashboardRow.deleteMany({ where: { id: { in: fixture.rowIds } } });
+  }
+  await db().kioskProductionScheduleSearchState.deleteMany({
+    where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: fixture.siteKey }
+  });
+  await db().productionScheduleResourceMaster.deleteMany({ where: { resourceName: { in: fixture.resourceNames } } });
+  if (fixture.sharedStateBefore) {
+    await db().kioskProductionScheduleSearchState.upsert({
+      where: { id: fixture.sharedStateBefore.id },
+      create: fixture.sharedStateBefore,
+      update: { state: fixture.sharedStateBefore.state }
+    });
+  } else {
+    await db().kioskProductionScheduleSearchState.deleteMany({
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: 'shared' }
+    });
+  }
+}
+
+function boardItem(response: GrindingPlanningBoardResponse, predicate: (item: GrindingPlanningBoardItem) => boolean): GrindingPlanningBoardItem {
+  const item = response.items.find(predicate);
+  if (!item) throw new Error(`fixture item not found in board response: ${JSON.stringify(response.items)}`);
+  return item;
+}
+
+async function boardFor(fixture: Fixture, options: Partial<Parameters<BoardService['getGrindingPlanningBoard']>[0]> = {}): Promise<GrindingPlanningBoardResponse> {
+  return service().getGrindingPlanningBoard({
+    siteKey: fixture.siteKey,
+    category: 'grinding',
+    view: 'seiban',
+    pageSize: 160,
+    ...options
+  });
+}
+
+async function updateItem(fixture: Fixture, item: GrindingPlanningBoardItem, options: { resourceCd?: string | null; due?: { kind: 'date'; date: string } | { kind: 'offsetDays'; days: number } | { kind: 'restore' }; alternateRank?: number | null; specialDue?: 'today' | 'overnight' | null }, sourceRevision: string) {
+  return service().updateGrindingPlanningBoardOverrides({
+    siteKey: fixture.siteKey,
+    sourceRevision,
+    items: [{ itemId: item.itemId, itemRevision: item.itemRevision, ...options }]
+  });
+}
+
+describeIntegration('grinding planning board service real Postgres integration', () => {
+  beforeEach(async () => {
+    await ensureDashboard();
+  });
+
+  afterEach(async () => {
+    while (fixtures.length > 0) {
+      const fixture = fixtures.pop();
+      if (fixture) await cleanupFixture(fixture);
+    }
+  });
+
+  afterAll(async () => {
+    await dbClient?.$disconnect();
+    if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = originalDatabaseUrl;
+  });
+
+
+  it('reuses first pages and observes CSV, progress, and other-terminal overrides on the next read', async () => {
+    const f = await createFixture();
+    await addRows(f, [{ fseiban: `${f.prefix}-ORDER`, fhincd: 'PART-A' }, { fseiban: `${f.prefix}-ORDER`, fhincd: 'PART-B' }]);
+    const store = snapshotStore();
+    const options = { snapshotStore: store, completionFilter: 'incomplete' as const };
+    const first = await boardFor(f, options);
+    expect(await boardFor(f, options)).toEqual({ ...first, snapshotId: expect.any(String) });
+    const rowId = f.rowIds[0]!;
+    const original = await db().csvDashboardRow.findUniqueOrThrow({ where: { id: rowId } });
+    await db().csvDashboardRow.update({ where: { id: rowId }, data: { rowData: { ...(original.rowData as Record<string, string>), FHINMEI: 'changed CSV part' } } });
+    const csvChanged = await boardFor(f, options);
+    expect(csvChanged.snapshotId).not.toBe(first.snapshotId);
+    expect(csvChanged.items.find((item) => item.sourceRowId === rowId)?.fhinmei).toBe('changed CSV part');
+    await db().productionScheduleProgress.create({ data: { csvDashboardRowId: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, isCompleted: true } });
+    const progressChanged = await boardFor(f, options);
+    expect(progressChanged.items).toHaveLength(1);
+    expect(Object.values(progressChanged.seibanProgress!)[0]).toMatchObject({ completed: 1, total: 2 });
+    await updateItem(f, progressChanged.items[0]!, { resourceCd: '581' }, progressChanged.sourceRevision);
+    const overridden = await boardFor(f, options);
+    expect(overridden.items[0]?.effectiveResourceCd).toBe('581');
+    expect(overridden.snapshotId).not.toBe(progressChanged.snapshotId);
+    expect(await boardFor(f, options)).toEqual({ ...overridden, snapshotId: expect.any(String) });
+  });
+
+  it('invalidates reusable first pages when resource or machine-name masters change', async () => {
+    const f = await createFixture();
+    const fseiban = `${f.prefix}-ORDER`;
+    await addRows(f, [{ fseiban }]);
+    const store = snapshotStore();
+    const options = { snapshotStore: store };
+    const first = await boardFor(f, options);
+    const resourceName = `${f.prefix}-582`;
+    f.resourceNames.push(resourceName);
+    await db().productionScheduleResourceMaster.create({ data: { resourceCd: '582', resourceName, resourceClassCd: 'M02', resourceGroupCd: 'IT' } });
+    const resourcesChanged = await boardFor(f, options);
+    expect(resourcesChanged.snapshotId).not.toBe(first.snapshotId);
+    expect(resourcesChanged.resources).toContain('582');
+    const { PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID } = await import('../constants.js');
+    const supplement = await db().productionScheduleSeibanMachineNameSupplement.create({ data: { sourceCsvDashboardId: PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID, fseiban, machineName: 'New machine' } });
+    try {
+      const nameChanged = await boardFor(f, options);
+      expect(nameChanged.items[0]?.machineName).toBe('New machine');
+      expect(nameChanged.snapshotId).not.toBe(resourcesChanged.snapshotId);
+    } finally {
+      await db().productionScheduleSeibanMachineNameSupplement.delete({ where: { id: supplement.id } });
+    }
+  });
+
+  it('seeds the site order from shared history once and keeps later site order isolated', async () => {
+    const fixture = await createFixture();
+    await addRows(fixture, [
+      { fseiban: `${fixture.prefix}-A`, fhincd: 'PART-A', processOrder: '1', productNo: '1' },
+      { fseiban: `${fixture.prefix}-B`, fhincd: 'PART-B', processOrder: '1', productNo: '2' }
+    ]);
+    const oldShared = await db().kioskProductionScheduleSearchState.findUnique({
+      where: { csvDashboardId_location: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: 'shared' } }
+    });
+    const sharedHistory = [`${fixture.prefix}-B`, `${fixture.prefix}-A`];
+    try {
+      await db().kioskProductionScheduleSearchState.upsert({
+        where: { csvDashboardId_location: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: 'shared' } },
+        create: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: 'shared', state: { history: sharedHistory } },
+        update: { state: { history: sharedHistory } }
+      });
+      const first = await boardFor(fixture);
+      expect(first.registeredFseibans.slice(0, 2)).toEqual(sharedHistory);
+      const reordered = await service().updateGrindingPlanningBoardSeibanOrder({
+        siteKey: fixture.siteKey,
+        sourceRevision: first.sourceRevision,
+        fseibans: [sharedHistory[1]!, sharedHistory[0]!]
+      });
+      expect(reordered.seibanOrder).toEqual([sharedHistory[1]!, sharedHistory[0]!]);
+
+      const secondSite = { ...fixture, siteKey: `${fixture.prefix}-other-site` };
+      const second = await boardFor(secondSite);
+      expect(second.registeredFseibans.slice(0, 2)).toEqual(sharedHistory);
+      expect((await db().productionScheduleGrindingPlanningBoardState.findUnique({ where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: fixture.siteKey } } }))?.seibanOrder).toEqual([sharedHistory[1]!, sharedHistory[0]!]);
+      expect((await db().productionScheduleGrindingPlanningBoardState.findUnique({ where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: secondSite.siteKey } } }))?.seibanOrder).toEqual(sharedHistory);
+      await db().productionScheduleGrindingPlanningBoardState.deleteMany({ where: { siteKey: secondSite.siteKey } });
+    } finally {
+      if (oldShared) {
+        await db().kioskProductionScheduleSearchState.upsert({
+          where: { id: oldShared.id },
+          create: { id: oldShared.id, csvDashboardId: oldShared.csvDashboardId, location: oldShared.location, state: oldShared.state },
+          update: { state: oldShared.state }
+        });
+      } else {
+        await db().kioskProductionScheduleSearchState.deleteMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: 'shared' } });
+      }
+    }
+  });
+
+  it('retrieves all 400 items from one snapshot and rejects wrong-site or changed-filter cursors', async () => {
+    const fixture = await createFixture();
+    await addRows(fixture, Array.from({ length: 400 }, (_, index) => ({
+      fseiban: `${fixture.prefix}-400`,
+      fhincd: `PART-${index}`,
+      processOrder: String(index + 1),
+      productNo: String(index + 1)
+    })));
+    const store = snapshotStore();
+    const hydrateModule = await import('../leaderboard/leaderboard-shell-hydrate.service.js');
+    const hydrateSpy = vi.spyOn(hydrateModule, 'fetchLeaderboardScheduleHydratedRowsOrderedByIds');
+    const first = await boardFor(fixture, { snapshotStore: store });
+    const all = [...first.items];
+    let cursor = first.nextCursor;
+    const hydrationCallsAfterFirstPage = hydrateSpy.mock.calls.length;
+    expect(hydrationCallsAfterFirstPage).toBeGreaterThan(0);
+    hydrateSpy.mockImplementation(async () => {
+      throw new Error('continuation must use the stored snapshot payload');
+    });
+    while (cursor != null) {
+      const page = await boardFor(fixture, { cursor: Number(cursor), snapshotId: first.snapshotId, snapshotStore: store });
+      all.push(...page.items);
+      cursor = page.nextCursor;
+    }
+    expect(hydrateSpy.mock.calls.length).toBe(hydrationCallsAfterFirstPage);
+    hydrateSpy.mockRestore();
+    expect(all).toHaveLength(400);
+    expect(new Set(all.map((item) => item.itemId)).size).toBe(400);
+    await expect(boardFor({ ...fixture, siteKey: `${fixture.siteKey}-wrong` }, { cursor: 160, snapshotId: first.snapshotId, snapshotStore: store })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_SNAPSHOT' });
+    await expect(boardFor(fixture, { category: 'cutting', cursor: 0, snapshotId: first.snapshotId, snapshotStore: store })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_SNAPSHOT' });
+  });
+
+  it('invalidates a snapshot and refreshes the item after an in-place CSV rowData update', async () => {
+    const fixture = await createFixture();
+    const [updatedRow] = await addRows(fixture, [
+      { fseiban: `${fixture.prefix}-IN-PLACE`, fhincd: 'PART-1', processOrder: '1', productNo: '1' },
+      { fseiban: `${fixture.prefix}-IN-PLACE`, fhincd: 'PART-2', processOrder: '2', productNo: '2' }
+    ]);
+    const store = snapshotStore();
+    const first = await boardFor(fixture, { pageSize: 1, snapshotStore: store });
+    expect(first.nextCursor).toBe('1');
+    const before = await db().csvDashboardRow.findUniqueOrThrow({ where: { id: updatedRow }, select: { createdAt: true, rowData: true } });
+    const rowCountBefore = await db().csvDashboardRow.count({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID } });
+    await db().csvDashboardRow.update({
+      where: { id: updatedRow },
+      data: {
+        rowData: { ...(before.rowData as Record<string, unknown>), FHINMEI: 'updated in place' },
+        updatedAt: new Date(Date.now() + 1_000)
+      }
+    });
+    const after = await db().csvDashboardRow.findUniqueOrThrow({ where: { id: updatedRow }, select: { createdAt: true, rowData: true } });
+    expect(after.createdAt).toEqual(before.createdAt);
+    expect(await db().csvDashboardRow.count({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID } })).toBe(rowCountBefore);
+
+    await expect(boardFor(fixture, { cursor: 1, snapshotId: first.snapshotId, snapshotStore: store, pageSize: 1 })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_SNAPSHOT' });
+    const refreshed = await boardFor(fixture, { pageSize: 1, snapshotStore: store });
+    expect(boardItem(refreshed, (item) => item.sourceRowId === updatedRow).fhinmei).toBe('updated in place');
+  });
+
+  it('rejects a continuation after the board state changes', async () => {
+    const fixture = await createFixture();
+    await addRows(fixture, [
+      { fseiban: `${fixture.prefix}-STATE`, processOrder: '1', productNo: '1' },
+      { fseiban: `${fixture.prefix}-STATE`, processOrder: '2', productNo: '2' }
+    ]);
+    const store = snapshotStore();
+    const first = await boardFor(fixture, { pageSize: 1, snapshotStore: store });
+    expect(first.nextCursor).toBe('1');
+    const state = await db().productionScheduleGrindingPlanningBoardState.findUniqueOrThrow({
+      where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: fixture.siteKey } },
+      select: { id: true, version: true }
+    });
+    await db().productionScheduleGrindingPlanningBoardState.update({
+      where: { id: state.id },
+      data: { version: state.version + 1 }
+    });
+
+    await expect(boardFor(fixture, { cursor: 1, snapshotId: first.snapshotId, snapshotStore: store, pageSize: 1 })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_SNAPSHOT' });
+  });
+
+  it('rejects a continuation after an override changes', async () => {
+    const fixture = await createFixture();
+    await addRows(fixture, [
+      { fseiban: `${fixture.prefix}-OVERRIDE`, processOrder: '1', productNo: '1' },
+      { fseiban: `${fixture.prefix}-OVERRIDE`, processOrder: '2', productNo: '2' }
+    ]);
+    const store = snapshotStore();
+    const first = await boardFor(fixture, { pageSize: 1, snapshotStore: store });
+    expect(first.nextCursor).toBe('1');
+    const item = first.items[0];
+    if (!item) throw new Error('fixture item not found');
+    await updateItem(fixture, item, { resourceCd: '581' }, first.sourceRevision);
+
+    await expect(boardFor(fixture, { cursor: 1, snapshotId: first.snapshotId, snapshotStore: store, pageSize: 1 })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_SNAPSHOT' });
+  });
+
+  it('keeps registered items scoped while load includes an unregistered seiban', async () => {
+    const fixture = await createFixture();
+    await addRows(fixture, [
+      { fseiban: `${fixture.prefix}-REGISTERED`, fhincd: 'PART-REGISTERED', processOrder: '1', productNo: '1', requiredMinutes: '10' },
+      { fseiban: `${fixture.prefix}-UNREGISTERED`, fhincd: 'PART-UNREGISTERED', processOrder: '1', productNo: '2', requiredMinutes: '20' }
+    ]);
+    await db().kioskProductionScheduleSearchState.update({
+      where: { csvDashboardId_location: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: 'shared' } },
+      data: { state: { history: [`${fixture.prefix}-REGISTERED`] } }
+    });
+
+    const response = await boardFor(fixture);
+    expect(response.registeredFseibans).toEqual([`${fixture.prefix}-REGISTERED`]);
+    expect(response.items.map((item) => item.fseiban)).toEqual([`${fixture.prefix}-REGISTERED`]);
+    const resourceLoad = response.load.find((entry) => entry.resourceCd === '305');
+    expect(resourceLoad).toMatchObject({
+      originalItemCount: 2,
+      alternateItemCount: 2,
+      originalRequiredMinutes: 30,
+      alternateRequiredMinutes: 30,
+      unfinishedItemCount: 2
+    });
+  });
+
+  it('counts every registered process in progress and caps the copied seiban order at 50', async () => {
+    const progressFixture = await createFixture();
+    await addRows(progressFixture, [
+      { fseiban: `${progressFixture.prefix}-PROGRESS`, fhincd: 'PART-PROGRESS', resourceCd: '305', processOrder: '1', productNo: '1', completed: true },
+      { fseiban: `${progressFixture.prefix}-PROGRESS`, fhincd: 'PART-PROGRESS', resourceCd: '1', processOrder: '2', productNo: '1' }
+    ]);
+    const progressResponse = await boardFor(progressFixture);
+    expect(progressResponse.items).toHaveLength(1);
+    expect(progressResponse.seibanProgress[`${progressFixture.prefix}-PROGRESS`]).toEqual({ completed: 1, total: 2 });
+
+    const cappedFixture = await createFixture();
+    await addRows(cappedFixture, Array.from({ length: 52 }, (_, index) => ({
+      fseiban: `${cappedFixture.prefix}-${String(index + 1).padStart(2, '0')}`,
+      fhincd: `PART-${index + 1}`,
+      processOrder: '1',
+      productNo: String(index + 1),
+      requiredMinutes: '1'
+    })));
+    const cappedResponse = await boardFor(cappedFixture);
+    expect(cappedResponse.registeredFseibans).toHaveLength(50);
+    expect(cappedResponse.items).toHaveLength(50);
+    expect(cappedResponse.load.find((entry) => entry.resourceCd === '305')).toMatchObject({
+      originalItemCount: 52,
+      alternateItemCount: 52,
+      originalRequiredMinutes: 52,
+      alternateRequiredMinutes: 52
+    });
+  });
+
+  it('applies resource and due together, clears rank, preserves originals, and makes a true no-op', async () => {
+    const fixture = await createFixture();
+    const [rowId] = await addRows(fixture, [{ fseiban: `${fixture.prefix}-BULK`, rank: 3, dueDate: '2026-09-20' }]);
+    await db().productionScheduleProgress.create({
+      data: { csvDashboardRowId: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, isCompleted: false }
+    });
+    await db().kioskProductionScheduleSearchState.create({
+      data: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        location: fixture.siteKey,
+        state: { history: [`${fixture.prefix}-BULK`] }
+      }
+    });
+    const before = await Promise.all([
+      db().csvDashboardRow.findUniqueOrThrow({ where: { id: rowId }, select: { rowData: true, updatedAt: true } }),
+      db().productionScheduleRowNote.findUniqueOrThrow({ where: { csvDashboardRowId: rowId }, select: { dueDate: true, note: true } }),
+      db().productionScheduleOrderAssignment.findFirstOrThrow({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: fixture.siteKey, resourceCd: '305' }, select: { orderNumber: true, resourceCd: true } }),
+      db().productionScheduleOrderSupplement.findUniqueOrThrow({ where: { csvDashboardRowId: rowId }, select: { plannedQuantity: true, plannedEndDate: true, resourceCd: true, processOrder: true } }),
+      db().productionScheduleProgress.findUniqueOrThrow({ where: { csvDashboardRowId: rowId }, select: { isCompleted: true, updatedAt: true } }),
+      db().kioskProductionScheduleSearchState.findUniqueOrThrow({ where: { csvDashboardId_location: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: fixture.siteKey } }, select: { state: true, updatedAt: true } }),
+      db().productionScheduleResourceMaster.findMany({ where: { resourceName: { in: fixture.resourceNames } }, orderBy: { resourceName: 'asc' }, select: { resourceCd: true, resourceName: true, resourceClassCd: true, resourceGroupCd: true } })
+    ]);
+    const initial = await boardFor(fixture);
+    const item = boardItem(initial, (candidate) => candidate.sourceRowId === rowId);
+    expect(item.originalRank).toBe(3);
+    const rankResult = await service().updateGrindingPlanningBoardRank({
+      siteKey: fixture.siteKey,
+      sourceRevision: initial.sourceRevision,
+      itemId: item.itemId,
+      itemRevision: item.itemRevision,
+      overrideVersion: item.version,
+      alternateRank: 4
+    });
+    expect(rankResult).toMatchObject({
+      sourceRevision: initial.sourceRevision,
+      itemId: item.itemId,
+      itemRevision: expect.any(String),
+      overrideVersion: 1,
+      alternateRank: 4
+    });
+    const secondRankResult = await service().updateGrindingPlanningBoardRank({
+      siteKey: fixture.siteKey,
+      sourceRevision: initial.sourceRevision,
+      itemId: item.itemId,
+      itemRevision: rankResult.itemRevision,
+      overrideVersion: rankResult.overrideVersion,
+      alternateRank: 5
+    });
+    expect(secondRankResult).toMatchObject({
+      itemId: item.itemId,
+      itemRevision: expect.any(String),
+      overrideVersion: 2,
+      alternateRank: 5
+    });
+    const ranked = await boardFor(fixture);
+    const rankedItem = boardItem(ranked, (candidate) => candidate.sourceRowId === rowId);
+    expect(rankedItem.alternateRank).toBe(5);
+    expect(rankedItem.itemRevision).toBe(secondRankResult.itemRevision);
+    expect(rankedItem.version).toBe(secondRankResult.overrideVersion);
+
+    const overrideResult = await updateItem(fixture, rankedItem, { resourceCd: '581', due: { kind: 'offsetDays', days: 2 } }, ranked.sourceRevision);
+    expect(overrideResult.items).toHaveLength(1);
+    expect(overrideResult.items[0]).toMatchObject({
+      itemId: rankedItem.itemId,
+      itemRevision: expect.any(String),
+      version: 3,
+      effectiveResourceCd: '581',
+      effectiveDueDate: '2026-09-22',
+      alternateRank: null
+    });
+    const changed = await boardFor(fixture);
+    const changedItem = boardItem(changed, (candidate) => candidate.sourceRowId === rowId);
+    expect(changedItem.effectiveResourceCd).toBe('581');
+    expect(changedItem.effectiveDueDate).toBe('2026-09-22');
+    expect(changedItem.alternateRank).toBeNull();
+    const override = await db().productionScheduleGrindingPlanningBoardOverride.findUniqueOrThrow({ where: { csvDashboardId_siteKey_itemKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: fixture.siteKey, itemKey: changedItem.itemId } } });
+    const versionBeforeNoop = override.version;
+
+    await updateItem(fixture, changedItem, { resourceCd: '581', due: { kind: 'date', date: '2026-09-22' } }, changed.sourceRevision);
+    const afterNoop = await db().productionScheduleGrindingPlanningBoardOverride.findUniqueOrThrow({ where: { id: override.id } });
+    expect(afterNoop.version).toBe(versionBeforeNoop);
+    expect(await Promise.all([
+      db().csvDashboardRow.findUniqueOrThrow({ where: { id: rowId }, select: { rowData: true, updatedAt: true } }),
+      db().productionScheduleRowNote.findUniqueOrThrow({ where: { csvDashboardRowId: rowId }, select: { dueDate: true, note: true } }),
+      db().productionScheduleOrderAssignment.findFirstOrThrow({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: fixture.siteKey, resourceCd: '305' }, select: { orderNumber: true, resourceCd: true } }),
+      db().productionScheduleOrderSupplement.findUniqueOrThrow({ where: { csvDashboardRowId: rowId }, select: { plannedQuantity: true, plannedEndDate: true, resourceCd: true, processOrder: true } }),
+      db().productionScheduleProgress.findUniqueOrThrow({ where: { csvDashboardRowId: rowId }, select: { isCompleted: true, updatedAt: true } }),
+      db().kioskProductionScheduleSearchState.findUniqueOrThrow({ where: { csvDashboardId_location: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: fixture.siteKey } }, select: { state: true, updatedAt: true } }),
+      db().productionScheduleResourceMaster.findMany({ where: { resourceName: { in: fixture.resourceNames } }, orderBy: { resourceName: 'asc' }, select: { resourceCd: true, resourceName: true, resourceClassCd: true, resourceGroupCd: true } })
+    ])).toEqual(before);
+  });
+
+  it('persists special due per site, orders by expiry, preserves base rank, and rejects stale updates', async () => {
+    const fixture = await createFixture();
+    await addRows(fixture, [
+      { fseiban: `${fixture.prefix}-TODAY`, fhincd: 'PART-TODAY', productNo: '1', processOrder: '1' },
+      { fseiban: `${fixture.prefix}-OVERNIGHT`, fhincd: 'PART-OVERNIGHT', productNo: '2', processOrder: '2' },
+      { fseiban: `${fixture.prefix}-PLAIN`, fhincd: 'PART-PLAIN', productNo: '3', processOrder: '3' }
+    ]);
+
+    const initial = await boardFor(fixture, { view: 'resource' });
+    const today = boardItem(initial, (item) => item.fseiban.endsWith('-TODAY'));
+    const overnight = boardItem(initial, (item) => item.fseiban.endsWith('-OVERNIGHT'));
+    const plain = boardItem(initial, (item) => item.fseiban.endsWith('-PLAIN'));
+
+    const ranked = await service().updateGrindingPlanningBoardRank({
+      siteKey: fixture.siteKey,
+      sourceRevision: initial.sourceRevision,
+      itemId: plain.itemId,
+      itemRevision: plain.itemRevision,
+      overrideVersion: plain.version,
+      alternateRank: 2
+    });
+    const afterRank = await boardFor(fixture, { view: 'resource' });
+    const rankedPlain = boardItem(afterRank, (item) => item.itemId === plain.itemId);
+    expect(rankedPlain.alternateRank).toBe(2);
+
+    const afterToday = await updateItem(fixture, today, { specialDue: 'today' }, initial.sourceRevision);
+    const afterOvernight = await updateItem(fixture, overnight, { specialDue: 'overnight' }, afterToday.sourceRevision);
+    expect(afterToday.items[0]).toMatchObject({ itemId: today.itemId, specialDue: { kind: 'today', expiresAt: expect.any(String) } });
+    expect(afterOvernight.items.find((item) => item.itemId === overnight.itemId)).toMatchObject({ specialDue: { kind: 'overnight', expiresAt: expect.any(String) } });
+
+    const saved = await db().productionScheduleGrindingPlanningBoardOverride.findMany({
+      where: { siteKey: fixture.siteKey },
+      orderBy: { itemKey: 'asc' },
+      select: { itemKey: true, alternateRank: true, specialDueKind: true, specialDueExpiresAt: true }
+    });
+    expect(saved.filter((item) => item.specialDueKind)).toHaveLength(2);
+    expect(saved.find((item) => item.itemKey === plain.itemId)?.alternateRank).toBe(2);
+
+    const resourceBoard = await boardFor(fixture, { view: 'resource' });
+    expect(resourceBoard.items.slice(0, 2).map((item) => item.itemId)).toEqual([today.itemId, overnight.itemId]);
+    expect(resourceBoard.items[2]?.itemId).toBe(plain.itemId);
+    const reloadedToday = boardItem(resourceBoard, (item) => item.itemId === today.itemId);
+    const changedToday = await updateItem(fixture, reloadedToday, { resourceCd: '581', due: { kind: 'offsetDays', days: 1 } }, resourceBoard.sourceRevision);
+    expect(changedToday.items[0]).toMatchObject({ itemId: today.itemId, specialDue: { kind: 'today' } });
+
+    await expect(updateItem(fixture, today, { specialDue: null }, initial.sourceRevision)).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_ITEM' });
+    const current = await boardFor(fixture, { view: 'resource' });
+    const currentToday = boardItem(current, (item) => item.itemId === today.itemId);
+    const cleared = await updateItem(fixture, currentToday, { specialDue: null }, current.sourceRevision);
+    expect(cleared.items.find((item) => item.itemId === today.itemId)).toMatchObject({ specialDue: null });
+
+    const afterClear = await boardFor(fixture, { view: 'resource' });
+    expect(boardItem(afterClear, (item) => item.itemId === plain.itemId).alternateRank).toBe(2);
+
+    const otherSite = { ...fixture, siteKey: `${fixture.siteKey}-other` };
+    try {
+      const otherBoard = await boardFor(otherSite, { view: 'resource' });
+      expect(otherBoard.items.every((item) => item.specialDue == null)).toBe(true);
+    } finally {
+      await db().productionScheduleGrindingPlanningBoardState.deleteMany({ where: { siteKey: otherSite.siteKey } });
+    }
+
+    expect(ranked.itemRevision).not.toBe(plain.itemRevision);
+  });
+
+  it('bulk resource order persists ranks atomically and returns current revisions', async () => {
+    const fixture = await createFixture();
+    await addRows(fixture, [{ fseiban: `${fixture.prefix}-A` }, { fseiban: `${fixture.prefix}-B` }]);
+    const board = await boardFor(fixture, { view: 'resource' });
+    const items = [...board.items].reverse();
+    const result = await service().updateGrindingPlanningBoardResourceOrderBulk({ siteKey: fixture.siteKey,
+      sourceRevision: board.sourceRevision, resourceCd: '305',
+      items: items.map((item) => ({ itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version })) });
+    expect(result.items.map((item) => item.itemId)).toEqual(items.map((item) => item.itemId));
+    expect(result.items.map((item) => item.alternateRank)).toEqual([1, 2]);
+    expect(result.items.every((item, index) => item.itemRevision !== items[index]!.itemRevision)).toBe(true);
+    const refreshed = await boardFor(fixture, { view: 'resource' });
+    expect(refreshed.items.map((item) => item.itemId)).toEqual(result.items.map((item) => item.itemId));
+  });
+
+  it.each(['resource', 'revision', 'board', 'version', 'completed'] as const)('bulk order rejects %s mismatch without partial writes', async (failure) => {
+    const fixture = await createFixture();
+    await addRows(fixture, [{ fseiban: `${fixture.prefix}-A` }, { fseiban: `${fixture.prefix}-B`, completed: failure === 'completed' }]);
+    const board = await boardFor(fixture, { view: 'resource', completionFilter: 'all' });
+    await expect(service().updateGrindingPlanningBoardResourceOrderBulk({ siteKey: fixture.siteKey,
+      sourceRevision: failure === 'board' ? 'stale' : board.sourceRevision, resourceCd: failure === 'resource' ? '581' : '305',
+      items: board.items.map((item, index) => ({ itemId: item.itemId,
+        itemRevision: failure === 'revision' && index === 1 ? 'stale' : item.itemRevision,
+        overrideVersion: failure === 'version' && index === 1 ? item.version + 1 : item.version }))
+    })).rejects.toMatchObject({ statusCode: 409 });
+    expect(await db().productionScheduleGrindingPlanningBoardOverride.count({ where: { siteKey: fixture.siteKey } })).toBe(0);
+  });
+
+  it('reorders a resource pane across seibans and reindexes hidden completed siblings atomically', async () => {
+    const fixture = await createFixture();
+    await addRows(fixture, [
+      { fseiban: `${fixture.prefix}-A`, fhincd: 'PART-A', productNo: 'Z', processOrder: '20', dueDate: '2026-09-20' },
+      { fseiban: `${fixture.prefix}-B`, fhincd: 'PART-B', productNo: 'A', processOrder: '30', dueDate: '2026-09-12' },
+      { fseiban: `${fixture.prefix}-C`, fhincd: 'PART-C', productNo: 'B', processOrder: '10', dueDate: '2026-09-13' },
+      { fseiban: `${fixture.prefix}-DONE`, fhincd: 'PART-DONE', productNo: 'C', processOrder: '1', dueDate: '2026-09-11', completed: true }
+    ]);
+    const incomplete = await boardFor(fixture, { view: 'resource', completionFilter: 'incomplete' });
+    const source = boardItem(incomplete, (item) => item.fseiban.endsWith('-C'));
+    const target = boardItem(incomplete, (item) => item.fseiban.endsWith('-A'));
+    const result = await service().updateGrindingPlanningBoardResourceOrder({
+      siteKey: fixture.siteKey,
+      sourceRevision: incomplete.sourceRevision,
+      itemId: source.itemId,
+      itemRevision: source.itemRevision,
+      overrideVersion: source.version,
+      targetItemId: target.itemId,
+      targetItemRevision: target.itemRevision,
+      targetOverrideVersion: target.version,
+      placement: 'before'
+    });
+    expect(result.items.map((item) => item.fseiban)).toEqual([
+      `${fixture.prefix}-C`,
+      `${fixture.prefix}-A`,
+      `${fixture.prefix}-B`,
+      `${fixture.prefix}-DONE`
+    ]);
+    expect(result.items.map((item) => item.alternateRank)).toEqual([1, 2, 3, 4]);
+    expect(result.items.find((item) => item.fseiban.endsWith('-DONE'))?.isCompleted).toBe(true);
+
+    const saved = await db().productionScheduleGrindingPlanningBoardOverride.findMany({
+      where: { siteKey: fixture.siteKey },
+      orderBy: { itemKey: 'asc' },
+      select: { itemKey: true, alternateRank: true, version: true }
+    });
+    expect(saved).toHaveLength(4);
+    const versionsBeforeNoop = saved.map((item) => ({ itemKey: item.itemKey, version: item.version }));
+    const afterNoop = await service().updateGrindingPlanningBoardResourceOrder({
+      siteKey: fixture.siteKey,
+      sourceRevision: result.sourceRevision,
+      itemId: result.items[0]!.itemId,
+      itemRevision: result.items[0]!.itemRevision,
+      overrideVersion: result.items[0]!.version,
+      targetItemId: result.items[1]!.itemId,
+      targetItemRevision: result.items[1]!.itemRevision,
+      targetOverrideVersion: result.items[1]!.version,
+      placement: 'before'
+    });
+    expect(afterNoop.items.map((item) => item.itemId)).toEqual(result.items.map((item) => item.itemId));
+    expect(await db().productionScheduleGrindingPlanningBoardOverride.findMany({
+      where: { siteKey: fixture.siteKey },
+      orderBy: { itemKey: 'asc' },
+      select: { itemKey: true, version: true }
+    })).toEqual(versionsBeforeNoop);
+  });
+
+  it('reorders moved split children consecutively without changing another resource', async () => {
+    const previousSplitFlag = process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
+    vi.stubEnv('KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED', 'true');
+    try {
+      const fixture = await createFixture();
+      await addRows(fixture, [
+        { fseiban: `${fixture.prefix}-A`, resourceCd: '305' },
+        { fseiban: `${fixture.prefix}-SPLIT`, resourceCd: '581', splitQuantity: 2 },
+        { fseiban: `${fixture.prefix}-OTHER`, resourceCd: '581' }
+      ]);
+      const initial = await boardFor(fixture, { view: 'resource' });
+      const split = boardItem(initial, (item) => item.kind === 'split');
+      await updateItem(fixture, split, { resourceCd: '305' }, initial.sourceRevision);
+      const ready = await boardFor(fixture, { view: 'resource' });
+      const source = boardItem(ready, (item) => item.kind === 'split');
+      const target = boardItem(ready, (item) => item.fseiban.endsWith('-A'));
+      const reorder = (item: GrindingPlanningBoardItem, anchor: GrindingPlanningBoardItem) => service().updateGrindingPlanningBoardResourceOrder({
+        siteKey: fixture.siteKey, sourceRevision: ready.sourceRevision,
+        itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version,
+        targetItemId: anchor.itemId, targetItemRevision: anchor.itemRevision, targetOverrideVersion: anchor.version,
+        placement: 'before'
+      });
+      const first = await reorder(source, target);
+      expect(first.items.map((item) => item.itemId)).toEqual([source.itemId, target.itemId]);
+      const second = await reorder(first.items[1]!, first.items[0]!);
+      expect(second.items.map((item) => item.itemId)).toEqual([target.itemId, source.itemId]);
+      await expect(reorder(source, target)).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_ITEM' });
+      const other = boardItem(ready, (item) => item.fseiban.endsWith('-OTHER'));
+      expect(await db().productionScheduleGrindingPlanningBoardOverride.count({ where: { siteKey: fixture.siteKey, itemKey: other.itemId } })).toBe(0);
+    } finally {
+      if (previousSplitFlag === undefined) delete process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
+      else vi.stubEnv('KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED', previousSplitFlag);
+    }
+  });
+
+  it('persists dense resource ranks beyond ten and rejects stale or completed order targets atomically', async () => {
+    const fixture = await createFixture();
+    await addRows(fixture, [
+      ...Array.from({ length: 12 }, (_, index) => ({
+        fseiban: `${fixture.prefix}-ACTIVE-${String(index + 1).padStart(2, '0')}`,
+        fhincd: `${fixture.prefix}-PART-${index + 1}`,
+        productNo: String(index + 1),
+        processOrder: String(index + 1),
+        dueDate: '2026-09-20'
+      })),
+      {
+        fseiban: `${fixture.prefix}-DONE`,
+        fhincd: `${fixture.prefix}-PART-DONE`,
+        productNo: '13',
+        processOrder: '13',
+        dueDate: '2026-09-20',
+        completed: true
+      }
+    ]);
+
+    const initial = await boardFor(fixture, { view: 'resource', completionFilter: 'incomplete' });
+    const rankedItem = boardItem(initial, (item) => item.fseiban.endsWith('-ACTIVE-11'));
+    const rankResult = await service().updateGrindingPlanningBoardRank({
+      siteKey: fixture.siteKey,
+      sourceRevision: initial.sourceRevision,
+      itemId: rankedItem.itemId,
+      itemRevision: rankedItem.itemRevision,
+      overrideVersion: rankedItem.version,
+      alternateRank: 11
+    });
+    expect(rankResult.alternateRank).toBe(11);
+
+    const ranked = await boardFor(fixture, { view: 'resource', completionFilter: 'incomplete' });
+    const source = boardItem(ranked, (item) => item.fseiban.endsWith('-ACTIVE-12'));
+    const target = boardItem(ranked, (item) => item.fseiban.endsWith('-ACTIVE-01'));
+    const reordered = await service().updateGrindingPlanningBoardResourceOrder({
+      siteKey: fixture.siteKey,
+      sourceRevision: ranked.sourceRevision,
+      itemId: source.itemId,
+      itemRevision: source.itemRevision,
+      overrideVersion: source.version,
+      targetItemId: target.itemId,
+      targetItemRevision: target.itemRevision,
+      targetOverrideVersion: target.version,
+      placement: 'before'
+    });
+    expect(reordered.items).toHaveLength(13);
+    expect(reordered.items.map((item) => item.alternateRank)).toEqual(Array.from({ length: 13 }, (_, index) => index + 1));
+    expect(reordered.items.some((item) => item.isCompleted)).toBe(true);
+    expect(await db().productionScheduleGrindingPlanningBoardOverride.count({ where: { siteKey: fixture.siteKey } })).toBe(13);
+
+    const staleTarget = reordered.items[1]!;
+    const staleSource = reordered.items[0]!;
+    const changedTarget = await service().updateGrindingPlanningBoardRank({
+      siteKey: fixture.siteKey,
+      sourceRevision: reordered.sourceRevision,
+      itemId: staleTarget.itemId,
+      itemRevision: staleTarget.itemRevision,
+      overrideVersion: staleTarget.version,
+      alternateRank: 12
+    });
+    expect(changedTarget.itemRevision).not.toBe(staleTarget.itemRevision);
+    const savedBeforeStale = await db().productionScheduleGrindingPlanningBoardOverride.findMany({
+      where: { siteKey: fixture.siteKey },
+      orderBy: { itemKey: 'asc' },
+      select: { itemKey: true, alternateRank: true, version: true }
+    });
+    await expect(service().updateGrindingPlanningBoardResourceOrder({
+      siteKey: fixture.siteKey,
+      sourceRevision: changedTarget.sourceRevision,
+      itemId: staleSource.itemId,
+      itemRevision: staleSource.itemRevision,
+      overrideVersion: staleSource.version,
+      targetItemId: staleTarget.itemId,
+      targetItemRevision: staleTarget.itemRevision,
+      targetOverrideVersion: staleTarget.version,
+      placement: 'before'
+    })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_ITEM' });
+    expect(await db().productionScheduleGrindingPlanningBoardOverride.findMany({
+      where: { siteKey: fixture.siteKey },
+      orderBy: { itemKey: 'asc' },
+      select: { itemKey: true, alternateRank: true, version: true }
+    })).toEqual(savedBeforeStale);
+
+    const latest = await boardFor(fixture, { view: 'resource' });
+    const completed = boardItem(latest, (item) => item.isCompleted);
+    const active = boardItem(latest, (item) => !item.isCompleted);
+    await expect(service().updateGrindingPlanningBoardResourceOrder({
+      siteKey: fixture.siteKey,
+      sourceRevision: latest.sourceRevision,
+      itemId: completed.itemId,
+      itemRevision: completed.itemRevision,
+      overrideVersion: completed.version,
+      targetItemId: active.itemId,
+      targetItemRevision: active.itemRevision,
+      targetOverrideVersion: active.version,
+      placement: 'before'
+    })).rejects.toMatchObject({ code: 'COMPLETED_ITEM' });
+    await expect(service().updateGrindingPlanningBoardResourceOrder({
+      siteKey: fixture.siteKey,
+      sourceRevision: latest.sourceRevision,
+      itemId: active.itemId,
+      itemRevision: active.itemRevision,
+      overrideVersion: active.version,
+      targetItemId: completed.itemId,
+      targetItemRevision: completed.itemRevision,
+      targetOverrideVersion: completed.version,
+      placement: 'before'
+    })).rejects.toMatchObject({ code: 'COMPLETED_ITEM' });
+    expect(await db().productionScheduleGrindingPlanningBoardOverride.findMany({
+      where: { siteKey: fixture.siteKey },
+      orderBy: { itemKey: 'asc' },
+      select: { itemKey: true, alternateRank: true, version: true }
+    })).toEqual(savedBeforeStale);
+  });
+
+  it('rejects completed and externally completed items without writing overrides', async () => {
+    const fixture = await createFixture();
+    const [completedRow, externalRow] = await addRows(fixture, [
+      { fseiban: `${fixture.prefix}-DONE`, completed: true, processOrder: '1' },
+      { fseiban: `${fixture.prefix}-EXTERNAL`, externallyCompleted: true, processOrder: '2' }
+    ]);
+    const response = await boardFor(fixture);
+    for (const rowId of [completedRow, externalRow]) {
+      const item = boardItem(response, (candidate) => candidate.sourceRowId === rowId);
+      expect(item.isCompleted).toBe(true);
+      await expect(updateItem(fixture, item, { resourceCd: '581' }, response.sourceRevision)).rejects.toMatchObject({ code: 'COMPLETED_ITEM' });
+    }
+    expect(await db().productionScheduleGrindingPlanningBoardOverride.count({ where: { siteKey: fixture.siteKey } })).toBe(0);
+  });
+
+  it('rejects a row item id with non-string logical-key parts as invalid input', async () => {
+    const fixture = await createFixture();
+    const response = await boardFor(fixture);
+    const itemId = `row:${Buffer.from(JSON.stringify([{ toString: null }, '', '', '']), 'utf8').toString('base64url')}`;
+    await expect(service().updateGrindingPlanningBoardOverrides({
+      siteKey: fixture.siteKey,
+      sourceRevision: response.sourceRevision,
+      items: [{ itemId, itemRevision: 0, resourceCd: '581' }]
+    })).rejects.toMatchObject({ code: 'INVALID_ITEM_ID' });
+  });
+
+  it('rolls back the entire bulk mutation when one item revision is stale', async () => {
+    const fixture = await createFixture();
+    const [firstRow, secondRow] = await addRows(fixture, [
+      { fseiban: `${fixture.prefix}-STALE`, processOrder: '1' },
+      { fseiban: `${fixture.prefix}-STALE`, processOrder: '2' }
+    ]);
+    const response = await boardFor(fixture);
+    const first = boardItem(response, (item) => item.sourceRowId === firstRow);
+    const second = boardItem(response, (item) => item.sourceRowId === secondRow);
+    const current = await db().csvDashboardRow.findUniqueOrThrow({ where: { id: secondRow }, select: { rowData: true } });
+    await db().csvDashboardRow.update({ where: { id: secondRow }, data: { rowData: { ...(current.rowData as Record<string, unknown>), FHINMEI: 'stale fixture update' } } });
+    await expect(service().updateGrindingPlanningBoardOverrides({
+      siteKey: fixture.siteKey,
+      sourceRevision: response.sourceRevision,
+      items: [
+        { itemId: first.itemId, itemRevision: first.itemRevision, resourceCd: '581' },
+        { itemId: second.itemId, itemRevision: second.itemRevision, resourceCd: '581' }
+      ]
+    })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_ITEM' });
+    expect(await db().productionScheduleGrindingPlanningBoardOverride.count({ where: { siteKey: fixture.siteKey } })).toBe(0);
+  });
+
+  it('serializes the same item to one success and one conflict, while distinct items both succeed', async () => {
+    const fixture = await createFixture();
+    const [sameRow] = await addRows(fixture, [{ fseiban: `${fixture.prefix}-CONCURRENT`, processOrder: '1' }]);
+    const initial = await boardFor(fixture);
+    const same = boardItem(initial, (item) => item.sourceRowId === sameRow);
+    const concurrentSame = await Promise.allSettled([
+      updateItem(fixture, same, { resourceCd: '581' }, initial.sourceRevision),
+      updateItem(fixture, same, { resourceCd: '581' }, initial.sourceRevision)
+    ]);
+    expect(concurrentSame.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(concurrentSame.filter((result) => result.status === 'rejected')).toHaveLength(1);
+
+    const separateFixture = await createFixture();
+    const [firstRow, secondRow] = await addRows(separateFixture, [
+      { fseiban: `${separateFixture.prefix}-CONCURRENT`, processOrder: '1' },
+      { fseiban: `${separateFixture.prefix}-CONCURRENT`, processOrder: '2' }
+    ]);
+    const separate = await boardFor(separateFixture);
+    const first = boardItem(separate, (item) => item.sourceRowId === firstRow);
+    const second = boardItem(separate, (item) => item.sourceRowId === secondRow);
+    const concurrentDifferent = await Promise.allSettled([
+      updateItem(separateFixture, first, { resourceCd: '581' }, separate.sourceRevision),
+      updateItem(separateFixture, second, { resourceCd: '581' }, separate.sourceRevision)
+    ]);
+    expect(concurrentDifferent.every((result) => result.status === 'fulfilled')).toBe(true);
+    expect(await db().productionScheduleGrindingPlanningBoardOverride.count({ where: { siteKey: separateFixture.siteKey } })).toBe(2);
+  });
+
+  it('keeps an override on a same-logical-key winner, rejects deleted splits, and does not inherit parent overrides', async () => {
+    const fixture = await createFixture();
+    const [oldRow] = await addRows(fixture, [{ fseiban: `${fixture.prefix}-WINNER`, fhincd: 'PART-W', processOrder: '1', productNo: '1' }]);
+    const first = await boardFor(fixture);
+    const oldItem = boardItem(first, (item) => item.sourceRowId === oldRow);
+    await updateItem(fixture, oldItem, { resourceCd: '581' }, first.sourceRevision);
+    const [newRow] = await addRows(fixture, [{ fseiban: `${fixture.prefix}-WINNER`, fhincd: 'PART-W', processOrder: '1', productNo: '2' }]);
+    const afterWinner = await boardFor(fixture);
+    const winnerItem = boardItem(afterWinner, (item) => item.fseiban === `${fixture.prefix}-WINNER`);
+    expect(winnerItem.sourceRowId).toBe(newRow);
+    expect(winnerItem.itemId).toBe(oldItem.itemId);
+    expect(winnerItem.effectiveResourceCd).toBe('581');
+    await db().productionScheduleRowNote.deleteMany({ where: { csvDashboardRowId: oldRow } });
+    await db().productionScheduleOrderSupplement.deleteMany({ where: { csvDashboardRowId: oldRow } });
+    await db().productionScheduleOrderAssignment.deleteMany({ where: { csvDashboardRowId: oldRow } });
+    await db().csvDashboardRow.delete({ where: { id: oldRow } });
+    const afterOldWinnerDelete = await boardFor(fixture);
+    expect(boardItem(afterOldWinnerDelete, (item) => item.fseiban === `${fixture.prefix}-WINNER`)).toMatchObject({ sourceRowId: newRow, itemId: oldItem.itemId, effectiveResourceCd: '581' });
+
+    const splitFixture = await createFixture();
+    const [parentRow] = await addRows(splitFixture, [{ fseiban: `${splitFixture.prefix}-SPLIT`, splitQuantity: 2 }]);
+    const previousSplitFlag = process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
+    vi.stubEnv('KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED', 'true');
+    try {
+      const withSplit = await boardFor(splitFixture);
+      const parent = boardItem(withSplit, (item) => item.sourceRowId === parentRow);
+      expect(parent.kind).toBe('split');
+      expect(parent.effectiveResourceCd).toBe(parent.originalResourceCd);
+      await expect(updateItem(splitFixture, parent, { resourceCd: '581' }, withSplit.sourceRevision)).resolves.toBeDefined();
+
+      vi.stubEnv('KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED', 'false');
+      const splitOff = await boardFor(splitFixture);
+      const parentWhenOff = boardItem(splitOff, (item) => item.sourceRowId === parentRow);
+      expect(parentWhenOff.kind).toBe('row');
+      expect(parentWhenOff.effectiveResourceCd).toBe(parentWhenOff.originalResourceCd);
+
+      vi.stubEnv('KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED', 'true');
+      const splitId = splitFixture.splitIds[0]!;
+      await db().productionScheduleOrderSplit.delete({ where: { id: splitId } });
+      await expect(updateItem(splitFixture, parent, { resourceCd: '581' }, withSplit.sourceRevision)).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_ITEM' });
+    } finally {
+      if (previousSplitFlag === undefined) vi.unstubAllEnvs();
+      else vi.stubEnv('KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED', previousSplitFlag);
+    }
+  });
+
+  it('lists due-window seiban candidates with canonical due precedence and effective completion', async () => {
+    const fixture = await createFixture();
+    const seiban = (label: string) => `${fixture.prefix.slice(-8)}-${label}`;
+    const canonical = seiban('A');
+    const done = seiban('DONE');
+    const external = seiban('EXT');
+    const edge = seiban('EDGE');
+    const outside = seiban('OUT');
+    const cutting = seiban('CUT');
+
+    await addRows(fixture, [
+      { fseiban: canonical, fhincd: 'MH-A', fhinmei: '機種Ａ', dueDate: '2026-09-20', processOrder: '1' },
+      { fseiban: canonical, fhincd: 'PART-A', fhinmei: '部品Ａ', dueDate: '2026-10-11', processOrder: '2' },
+      { fseiban: done, fhincd: 'PART-DONE', dueDate: '2026-09-15', completed: true },
+      { fseiban: external, fhincd: 'PART-EXT', dueDate: '2026-09-15', externallyCompleted: true },
+      { fseiban: edge, fhincd: 'PART-EDGE', dueDate: '2026-10-11' },
+      { fseiban: outside, fhincd: 'PART-OUT', dueDate: '2026-08-10', processOrder: '1' },
+      { fseiban: outside, fhincd: 'PART-OUT-2', dueDate: '2026-09-15', processOrder: '2' },
+      { fseiban: cutting, fhincd: 'PART-CUT', resourceCd: '700', dueDate: '2026-09-16' }
+    ]);
+    await db().kioskProductionScheduleSearchState.update({
+      where: { csvDashboardId_location: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: 'shared' } },
+      data: { state: { history: [] } }
+    });
+    expect((await db().kioskProductionScheduleSearchState.findUniqueOrThrow({
+      where: { csvDashboardId_location: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, location: 'shared' } },
+      select: { state: true }
+    })).state).toEqual({ history: [] });
+    await db().productionScheduleSeibanDueDate.create({
+      data: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        fseiban: canonical,
+        dueDate: new Date('2026-08-11T00:00:00.000Z')
+      }
+    });
+
+    const incomplete = await candidates().getGrindingPlanningBoardSeibanCandidates({
+      siteKey: fixture.siteKey,
+      category: 'grinding',
+      completionFilter: 'incomplete',
+      now: new Date('2026-09-10T15:00:00.000Z')
+    });
+    expect(incomplete).toMatchObject({
+      today: '2026-09-11',
+      rangeStart: '2026-08-11',
+      rangeEnd: '2026-10-11',
+      completionFilter: 'incomplete'
+    });
+    expect(incomplete.candidates).toEqual([
+      expect.objectContaining({
+        fseiban: canonical,
+        machineName: '機種Ａ',
+        dueDate: '2026-08-11',
+        completedProcessCount: 0,
+        totalProcessCount: 2,
+        isCompleted: false
+      }),
+      expect.objectContaining({ fseiban: edge, dueDate: '2026-10-11', isCompleted: false })
+    ]);
+    expect(incomplete.candidates.some((candidate) => candidate.fseiban === done)).toBe(false);
+    expect(incomplete.candidates.some((candidate) => candidate.fseiban === outside)).toBe(false);
+    expect(incomplete.candidates.some((candidate) => candidate.fseiban === cutting)).toBe(false);
+
+    const all = await candidates().getGrindingPlanningBoardSeibanCandidates({
+      siteKey: fixture.siteKey,
+      category: 'grinding',
+      completionFilter: 'all',
+      now: new Date('2026-09-10T15:00:00.000Z')
+    });
+    expect(all.candidates.map((candidate) => candidate.fseiban)).toEqual([canonical, done, external, edge]);
+    expect(all.candidates.find((candidate) => candidate.fseiban === done)).toMatchObject({
+      completedProcessCount: 1,
+      totalProcessCount: 1,
+      isCompleted: true
+    });
+    expect(all.candidates.find((candidate) => candidate.fseiban === external)).toMatchObject({
+      completedProcessCount: 1,
+      totalProcessCount: 1,
+      isCompleted: true
+    });
+
+    const cuttingCandidates = await candidates().getGrindingPlanningBoardSeibanCandidates({
+      siteKey: fixture.siteKey,
+      category: 'cutting',
+      completionFilter: 'incomplete',
+      now: new Date('2026-09-10T15:00:00.000Z')
+    });
+    expect(cuttingCandidates.candidates.map((candidate) => candidate.fseiban)).toEqual([cutting]);
+
+    await expect(service().updateGrindingPlanningBoardSeibanOrder({
+      siteKey: fixture.siteKey,
+      sourceRevision: 'unused-for-limit-check',
+      fseibans: Array.from({ length: 51 }, (_, index) => `OVER-${index + 1}`)
+    })).rejects.toMatchObject({ code: 'SEIBAN_LIMIT_EXCEEDED' });
+  });
+});

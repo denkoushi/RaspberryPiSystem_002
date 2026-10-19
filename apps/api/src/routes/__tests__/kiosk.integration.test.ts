@@ -353,6 +353,31 @@ describe('GET /api/kiosk/config', () => {
     expect(body.initialKioskPath).toBe('/kiosk/production-schedule/leader-order-board');
   });
 
+  it('should return explicit self-inspection initial route and path', async () => {
+    const client = await prisma.clientDevice.findUnique({
+      where: { apiKey: clientKey }
+    });
+    if (!client) throw new Error('client not found');
+    await prisma.clientDevice.update({
+      where: { id: client.id },
+      data: { defaultMode: 'PHOTO', kioskInitialRoute: 'self_inspection' }
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/config',
+      headers: {
+        'x-client-key': clientKey
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.defaultMode).toBe('PHOTO');
+    expect(body.initialKioskRoute).toBe('self_inspection');
+    expect(body.initialKioskPath).toBe('/kiosk/part-measurement/self-inspection');
+  });
+
   it('should fallback to defaultMode path when kioskInitialRoute is unknown in DB', async () => {
     const client = await prisma.clientDevice.findUnique({
       where: { apiKey: clientKey }
@@ -572,7 +597,7 @@ describe('GET /api/kiosk/signage-preview/options + PUT /api/kiosk/signage-previe
     expect(body.errorCode).toBe('CLIENT_KEY_REQUIRED');
   });
 
-  it('returns candidates and effectivePreviewApiKey defaults to kiosk key when no selection', async () => {
+  it('returns candidates and effectivePreviewClientDeviceId defaults to kiosk ID when no selection', async () => {
     const kiosk = await createTestClientDevice('client-key-raspberrypi4-kiosk-sp');
     const signage = await createTestClientDevice('client-key-pi3-signage-sp-001');
 
@@ -584,17 +609,20 @@ describe('GET /api/kiosk/signage-preview/options + PUT /api/kiosk/signage-previe
 
     expect(res.statusCode).toBe(200);
     const body = res.json() as {
-      candidates: Array<{ apiKey: string }>;
-      selectedApiKey: string | null;
-      effectivePreviewApiKey: string;
+      candidates: Array<{ id: string; name: string; location: string | null }>;
+      selectedClientDeviceId: string | null;
+      effectivePreviewClientDeviceId: string;
     };
     expect(body.candidates).toHaveLength(1);
-    expect(body.candidates[0].apiKey).toBe(signage.apiKey);
-    expect(body.selectedApiKey).toBeNull();
-    expect(body.effectivePreviewApiKey).toBe(kiosk.apiKey);
+    expect(res.body).not.toContain(signage.apiKey);
+    expect(res.body).not.toContain(kiosk.apiKey);
+    expect(body.candidates[0]).not.toHaveProperty('apiKey');
+    expect(body.candidates[0].id).toBe(signage.id);
+    expect(body.selectedClientDeviceId).toBeNull();
+    expect(body.effectivePreviewClientDeviceId).toBe(kiosk.id);
   });
 
-  it('PUT stores signage target and GET reflects effectivePreviewApiKey', async () => {
+  it('PUT stores signage target and GET reflects effectivePreviewClientDeviceId', async () => {
     const kiosk = await createTestClientDevice('client-key-kiosk-sp-save');
     const signage = await createTestClientDevice('client-key-signage-sp-save');
 
@@ -602,9 +630,11 @@ describe('GET /api/kiosk/signage-preview/options + PUT /api/kiosk/signage-previe
       method: 'PUT',
       url: '/api/kiosk/signage-preview/selection',
       headers: { 'x-client-key': kiosk.apiKey, 'Content-Type': 'application/json' },
-      payload: { signagePreviewTargetApiKey: signage.apiKey }
+      payload: { signagePreviewTargetClientDeviceId: signage.id }
     });
     expect(put.statusCode).toBe(200);
+    expect(put.body).not.toContain(signage.apiKey);
+    expect((await prisma.clientDevice.findUniqueOrThrow({ where: { id: kiosk.id } })).signagePreviewTargetApiKey).toBe(signage.id);
 
     const get = await app.inject({
       method: 'GET',
@@ -612,9 +642,9 @@ describe('GET /api/kiosk/signage-preview/options + PUT /api/kiosk/signage-previe
       headers: { 'x-client-key': kiosk.apiKey }
     });
     expect(get.statusCode).toBe(200);
-    const body = get.json() as { selectedApiKey: string | null; effectivePreviewApiKey: string };
-    expect(body.selectedApiKey).toBe(signage.apiKey);
-    expect(body.effectivePreviewApiKey).toBe(signage.apiKey);
+    const body = get.json() as { selectedClientDeviceId: string | null; effectivePreviewClientDeviceId: string };
+    expect(body.selectedClientDeviceId).toBe(signage.id);
+    expect(body.effectivePreviewClientDeviceId).toBe(signage.id);
   });
 
   it('PUT rejects apiKey that is not a signage display key', async () => {
@@ -632,6 +662,26 @@ describe('GET /api/kiosk/signage-preview/options + PUT /api/kiosk/signage-previe
     expect(body.errorCode).toBe('INVALID_SIGNAGE_PREVIEW_TARGET');
   });
 
+  it('preserves legacy saved references and serves authorized JPEG without returning credentials', async () => {
+    const kiosk = await createTestClientDevice('client-key-fixture-only-kiosk-legacy-preview');
+    const signage = await createTestClientDevice('client-key-fixture-only-signage-legacy-preview');
+    await prisma.clientDevice.update({ where: { id: kiosk.id }, data: { signagePreviewTargetApiKey: signage.apiKey } });
+    const headers = { 'x-client-key': kiosk.apiKey };
+    const options = await app.inject({ method: 'GET', url: '/api/kiosk/signage-preview/options', headers });
+    expect(options.statusCode).toBe(200);
+    expect(options.json().selectedClientDeviceId).toBe(signage.id);
+    expect(options.body).not.toContain(signage.apiKey);
+    const image = await app.inject({ method: 'GET', url: '/api/kiosk/signage-preview/image', headers });
+    expect(image.statusCode).toBe(200);
+    expect(image.headers['content-type']).toContain('image/jpeg');
+    expect(image.rawPayload.length).toBeGreaterThan(1000);
+    expect(image.rawPayload.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]));
+    expect((await prisma.clientDevice.findUniqueOrThrow({ where: { id: kiosk.id } })).signagePreviewTargetApiKey).toBe(signage.apiKey);
+    const unavailable = await createTestClientDevice('client-key-fixture-only-other-kiosk-preview');
+    const denied = await app.inject({ method: 'GET', url: '/api/kiosk/signage-preview/image?clientDeviceId=' + unavailable.id, headers });
+    expect(denied.statusCode).toBe(404);
+  });
+
   it('PUT null clears selection', async () => {
     const kiosk = await createTestClientDevice('client-key-kiosk-sp-null');
     const signage = await createTestClientDevice('client-key-signage-sp-null');
@@ -640,14 +690,14 @@ describe('GET /api/kiosk/signage-preview/options + PUT /api/kiosk/signage-previe
       method: 'PUT',
       url: '/api/kiosk/signage-preview/selection',
       headers: { 'x-client-key': kiosk.apiKey, 'Content-Type': 'application/json' },
-      payload: { signagePreviewTargetApiKey: signage.apiKey }
+      payload: { signagePreviewTargetClientDeviceId: signage.id }
     });
 
     const put2 = await app.inject({
       method: 'PUT',
       url: '/api/kiosk/signage-preview/selection',
       headers: { 'x-client-key': kiosk.apiKey, 'Content-Type': 'application/json' },
-      payload: { signagePreviewTargetApiKey: null }
+      payload: { signagePreviewTargetClientDeviceId: null }
     });
     expect(put2.statusCode).toBe(200);
 
@@ -656,7 +706,74 @@ describe('GET /api/kiosk/signage-preview/options + PUT /api/kiosk/signage-previe
       url: '/api/kiosk/signage-preview/options',
       headers: { 'x-client-key': kiosk.apiKey }
     });
-    const body = get.json() as { selectedApiKey: string | null };
-    expect(body.selectedApiKey).toBeNull();
+    const body = get.json() as { selectedClientDeviceId: string | null };
+    expect(body.selectedClientDeviceId).toBeNull();
+  });
+});
+
+describe('PUT /api/kiosk/initial-route', () => {
+  let app: Awaited<ReturnType<typeof buildServer>>;
+  let device: Awaited<ReturnType<typeof createTestClientDevice>>;
+
+  beforeAll(async () => { app = await buildServer(); });
+  beforeEach(async () => { device = await createTestClientDevice(); });
+  afterAll(async () => { await app?.close(); });
+
+  const put = (payload: object, key?: string) => app.inject({
+    method: 'PUT', url: '/api/kiosk/initial-route',
+    headers: key ? { 'x-client-key': key } : {}, payload
+  });
+
+  it('saves only the authenticated device field and returns the same path as config', async () => {
+    const other = await createTestClientDevice();
+    await prisma.clientDevice.update({ where: { id: other.id }, data: { kioskInitialRoute: 'assembly' } });
+    const before = await prisma.clientDevice.findUniqueOrThrow({ where: { id: device.id } });
+    const response = await put({ initialRoute: 'inspection_drawing' }, device.apiKey);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ ok: true, initialKioskRoute: 'inspection_drawing', initialKioskPath: '/kiosk/part-measurement/inspection' });
+    const after = await prisma.clientDevice.findUniqueOrThrow({ where: { id: device.id } });
+    expect(after).toEqual({ ...before, kioskInitialRoute: 'inspection_drawing', updatedAt: after.updatedAt });
+    expect((await prisma.clientDevice.findUniqueOrThrow({ where: { id: other.id } })).kioskInitialRoute).toBe('assembly');
+    const config = await app.inject({ method: 'GET', url: '/api/kiosk/config', headers: { 'x-client-key': device.apiKey } });
+    expect(config.json().initialKioskPath).toBe(response.json().initialKioskPath);
+  });
+
+  it.each(['PHOTO', 'TAG'] as const)('clears the setting with null and falls back to %s', async (mode) => {
+    await prisma.clientDevice.update({ where: { id: device.id }, data: { defaultMode: mode, kioskInitialRoute: 'assembly' } });
+    const response = await put({ initialRoute: null }, device.apiKey);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ ok: true, initialKioskRoute: null, initialKioskPath: mode === 'PHOTO' ? '/kiosk/photo' : '/kiosk/tag' });
+    expect((await prisma.clientDevice.findUniqueOrThrow({ where: { id: device.id } })).kioskInitialRoute).toBeNull();
+  });
+
+  it.each(['unknown', 'tag_desk', 'due_management'])('rejects route %s', async (initialRoute) => {
+    const response = await put({ initialRoute }, device.apiKey);
+    expect(response.statusCode).toBe(400);
+  });
+
+  it.each([{}, { initialRoute: 1 }, { initialRoute: 'assembly', clientId: 'another-device' }, { initialRoute: 'assembly', defaultMode: 'PHOTO' }])('requires a strict body: %j', async (payload) => {
+    expect((await put(payload, device.apiKey)).statusCode).toBe(400);
+  });
+
+  it('rejects a missing key', async () => {
+    const response = await put({ initialRoute: 'assembly' });
+    expect(response.statusCode).toBe(401);
+    expect(response.json().errorCode).toBe('CLIENT_KEY_REQUIRED');
+  });
+
+  it('rejects an unregistered key like other requireClientDevice routes', async () => {
+    const response = await put({ initialRoute: 'assembly' }, 'unregistered-key');
+    expect(response.statusCode).toBe(401);
+    expect(response.json().errorCode).toBe('INVALID_CLIENT_KEY');
+  });
+
+  it('accepts all expanded IDs through both kiosk and admin updates', async () => {
+    const { KIOSK_INITIAL_ROUTE_IDS } = await import('@raspi-system/shared-types');
+    const { token } = await createTestUser('ADMIN');
+    for (const initialRoute of KIOSK_INITIAL_ROUTE_IDS) {
+      expect((await put({ initialRoute }, device.apiKey)).statusCode).toBe(200);
+      const response = await app.inject({ method: 'PUT', url: `/api/clients/${device.id}`, headers: createAuthHeader(token), payload: { kioskInitialRoute: initialRoute } });
+      expect(response.statusCode).toBe(200);
+    }
   });
 });

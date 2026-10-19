@@ -13,6 +13,16 @@ const provider: InferenceProviderDefinition = {
 };
 
 describe('OpenAiCompatibleTextAdapter', () => {
+  it('sends the fixed background alias and returns deferred on busy without blind replay', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 429 });
+    const router = new InferenceRouter({ providers: [{ ...provider, defaultModel: 'system-prod-primary' }],
+      routes: { business_hermes: { providerId: 'default' } } });
+    const adapter = new OpenAiCompatibleTextAdapter({ router, fetchImpl });
+    await expect(adapter.complete({ useCase: 'business_hermes', messages: [], maxTokens: 10,
+      temperature: 0, enableThinking: false, background: true })).rejects.toMatchObject({ name: 'InferenceDeferredError' });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchImpl.mock.calls[0]![1].body)).toMatchObject({ model: 'dgx-background-preparation' });
+  });
   it('posts chat completion and returns assistant text', async () => {
     const fetchImpl = vi.fn(async () => ({
       ok: true,
@@ -26,9 +36,9 @@ describe('OpenAiCompatibleTextAdapter', () => {
       providers: [provider],
       routes: {
         photo_label: { providerId: 'default' },
+        business_hermes: { providerId: 'default' },
         document_summary: { providerId: 'default' },
         admin_console_chat: { providerId: 'default' },
-        stackchan_chat: { providerId: 'default' },
       },
     });
 
@@ -64,9 +74,9 @@ describe('OpenAiCompatibleTextAdapter', () => {
       providers: [provider],
       routes: {
         photo_label: { providerId: 'default' },
+        business_hermes: { providerId: 'default' },
         document_summary: { providerId: 'default' },
         admin_console_chat: { providerId: 'default' },
-        stackchan_chat: { providerId: 'default' },
       },
     });
 
@@ -93,9 +103,9 @@ describe('OpenAiCompatibleTextAdapter', () => {
       providers: [provider],
       routes: {
         photo_label: { providerId: 'default' },
+        business_hermes: { providerId: 'default' },
         document_summary: { providerId: 'default' },
         admin_console_chat: { providerId: 'default' },
-        stackchan_chat: { providerId: 'default' },
       },
     });
 

@@ -1,0 +1,97 @@
+{# Dedicated business consultation Hermes. The guide instance remains unchanged. #}
+model:
+  default: {{ business_hermes_chat_model | to_json }}
+  provider: custom:business-chat-dgx
+  base_url: {{ business_hermes_chat_dgx_base_url | default('http://100.118.82.72:38081') }}/v1
+  max_tokens: 4000
+  api_mode: chat_completions
+
+custom_providers:
+  - name: business-chat-dgx
+    base_url: {{ business_hermes_chat_dgx_base_url | default('http://100.118.82.72:38081') }}/v1
+    key_env: BUSINESS_HERMES_CHAT_DGX_TOKEN
+    extra_headers:
+      X-LLM-Token: "${env:BUSINESS_HERMES_CHAT_DGX_TOKEN}"
+    default_model: {{ business_hermes_chat_model | to_json }}
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: false
+
+# The business API saves the title from the main answer; do not ask the same
+# model for a second, internal Hermes session title in the background.
+auxiliary:
+  background_review:
+    enabled: false
+  title_generation:
+    enabled: false
+
+tools:
+  # Keep MCP tools directly visible. The deferred search bridge adds latency and
+  # hides the bounded business API surface from the consultation model.
+  tool_search:
+    enabled: "off"
+
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+
+mcp_servers:
+  business_api:
+    url: "{{ business_hermes_chat_mcp_url | default('https://gateway/api/internal/business-hermes/mcp') }}"
+    headers:
+      Authorization: "Bearer ${env:BUSINESS_HERMES_MCP_API_KEY}"
+    # The internal gateway uses the existing Pi5 deployment certificate. The
+    # request stays on the private Docker bridge and follows active Caddy
+    # routing; no public CA trust is required for this hop.
+    ssl_verify: false
+    timeout: 120
+    connect_timeout: 10
+
+agent:
+  # Signage needs source discovery, data lookup, proposal validation, then the answer.
+  max_turns: 12
+  reasoning_effort: medium
+  disabled_toolsets:
+    - memory
+    - session_search
+    - browser
+    - code_execution
+    - cronjob
+    - delegation
+    - file
+    - image_gen
+    - terminal
+    - todo
+    - vision
+    - web
+    - messaging
+    - kanban
+    - discord
+    - computer_use
+
+skills:
+  # Official Hermes write gate: skill_manage may be visible for standard Skill
+  # loading, but every mutation is staged and requires an explicit approval.
+  write_approval: true
+
+curator:
+  enabled: false
+
+platform_toolsets:
+  api_server:
+    # The consultation Skill is already included in SOUL at template rendering.
+    - business_api
+
+terminal:
+  backend: local
+  cwd: /opt/data/home
+  home_mode: profile
+  env_passthrough: []
+
+gateway:
+  api_server:
+    enabled: true
+    host: 0.0.0.0
+    port: 8642
+    model_name: business-hermes-chat
+    max_concurrent_runs: 2

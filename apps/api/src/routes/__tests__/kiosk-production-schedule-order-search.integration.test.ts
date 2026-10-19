@@ -29,10 +29,12 @@ describe('Kiosk Production Schedule Order Search API', () => {
     await prisma.csvDashboardRow.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.csvDashboard.deleteMany({ where: { id: DASHBOARD_ID } });
 
+    // 拠点は明示設定だけで決まる（Milestone 5）。以前 location から推測していた拠点を明示する。
+    await prisma.site.upsert({ where: { key: 'Test' }, update: {}, create: { key: 'Test', displayName: 'Test' } });
     await prisma.clientDevice.upsert({
       where: { apiKey: CLIENT_KEY },
-      update: { name: 'Test Client', location: 'Test', defaultMode: 'TAG' },
-      create: { apiKey: CLIENT_KEY, name: 'Test Client', location: 'Test', defaultMode: 'TAG' }
+      update: { name: 'Test Client', location: 'Test', defaultMode: 'TAG', siteKey: 'Test' },
+      create: { apiKey: CLIENT_KEY, name: 'Test Client', location: 'Test', defaultMode: 'TAG', siteKey: 'Test' }
     });
 
     await prisma.csvDashboard.create({

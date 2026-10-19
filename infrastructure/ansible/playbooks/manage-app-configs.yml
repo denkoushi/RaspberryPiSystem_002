@@ -10,8 +10,16 @@
     - name: Validate required API variables
       ansible.builtin.assert:
         that:
-          - api_database_url is defined
-        fail_msg: "API環境変数（DATABASE_URL）が定義されていません（inventory.ymlを確認してください）"
+          - postgres_superuser_password is defined
+          - postgres_superuser_password | length >= 16
+          - app_database_url is defined
+          - app_database_url is match('^postgresql://raspi_app:[^@]+@db:5432/borrow_return(?:[?].*)?$')
+          - migration_database_url is defined
+          - migration_database_url is match('^postgresql://raspi_migrator:[^@]+@db:5432/borrow_return(?:[?].*)?$')
+        fail_msg: >-
+          Dedicated PostgreSQL superuser, application, and migration inputs
+          are required and must use the fixed production roles and endpoint.
+      no_log: true
       when: '"server" in group_names'
 
     - name: Validate required Web variables
@@ -28,6 +36,35 @@
           - docker_server_ip is defined
         fail_msg: "Docker Compose用SERVER_IPが定義されていません（inventory.ymlを確認してください）"
       when: '"server" in group_names'
+
+    - name: Ensure the root-managed PostgreSQL authority directory exists
+      ansible.builtin.file:
+        path: /etc/raspi-database
+        state: directory
+        owner: root
+        group: "{{ ansible_user }}"
+        mode: '0750'
+      when: '"server" in group_names'
+
+    - name: Deploy the PostgreSQL bootstrap password file
+      ansible.builtin.copy:
+        content: "{{ postgres_superuser_password }}\n"
+        dest: /etc/raspi-database/postgres-superuser-password
+        owner: root
+        group: root
+        mode: '0400'
+      when: '"server" in group_names'
+      no_log: true
+
+    - name: Deploy the ephemeral Prisma migration environment
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/migration.env.j2"
+        dest: /etc/raspi-database/migration.env
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+      when: '"server" in group_names'
+      no_log: true
 
     - name: Validate required NFC agent variables
       ansible.builtin.assert:
@@ -125,6 +162,21 @@
       when: '"server" in group_names'
       no_log: true
 
+    - name: Converge Business Hermes runtime configuration
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/business-hermes-runtime.yml"
+      vars:
+        business_hermes_config_repo_path: "{{ repo_path }}"
+        business_hermes_sync_candidate_env: false
+      when:
+        - '"server" in group_names'
+        - business_hermes_enabled | default(false) | bool
+
+    - name: Converge Business Hermes consultation runtime configuration
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/business-hermes-chat-runtime.yml"
+      when:
+        - '"server" in group_names'
+        - business_hermes_chat_enabled | default(false) | bool
+
     # INFERENCE_PROVIDERS_JSON と LOCAL_LLM_* の整合（DGX / Pi5 の token ドリフト防止）
     - name: Parse INFERENCE_PROVIDERS_JSON for LocalLLM alignment (server)
       ansible.builtin.set_fact:
@@ -146,6 +198,38 @@
       when:
         - '"server" in group_names'
         - _parsed_inference_providers is defined
+      no_log: true
+
+    - name: Resolve photo label inference provider for Business Hermes alignment (server)
+      ansible.builtin.set_fact:
+        _llm_photo_inference_provider: >-
+          {{
+            (_parsed_inference_providers | selectattr('id', 'equalto', inference_photo_label_provider_id) | list | first)
+          }}
+      when:
+        - '"server" in group_names'
+        - _parsed_inference_providers is defined
+        - business_hermes_enabled | default(false) | bool
+        - (business_hermes_provider | default('dgx')) == 'dgx'
+      no_log: true
+
+    - name: Assert DGX Business Hermes follows photo label inference settings (server)
+      ansible.builtin.assert:
+        that:
+          - _llm_photo_inference_provider is defined
+          - api_local_llm_base_url == 'http://100.118.82.72:38081'
+          - _llm_photo_inference_provider.baseUrl == 'http://100.118.82.72:38081'
+          - _llm_photo_inference_provider.baseUrl == api_local_llm_base_url
+          - _llm_photo_inference_provider.sharedToken == business_hermes_dgx_token
+          - (_llm_photo_inference_provider.defaultModel | default('')) == inference_photo_label_model
+          - business_hermes_model == inference_photo_label_model
+        fail_msg: >-
+          DGX Business Hermes must use the photo_label provider URL, token, and model.
+          Keep the existing image route and Business Hermes settings aligned.
+      when:
+        - '"server" in group_names'
+        - business_hermes_enabled | default(false) | bool
+        - (business_hermes_provider | default('dgx')) == 'dgx'
       no_log: true
 
     - name: Assert inference route provider ids exist in INFERENCE_PROVIDERS_JSON (server)
@@ -231,7 +315,6 @@
         mode: '0600'
       when: '"server" in group_names'
       register: api_env_result
-      notify: restart api
 
     # Web環境変数ファイルの管理（サーバーのみ）
     - name: Ensure Web .env directory exists
@@ -250,7 +333,6 @@
         mode: '0600'
       when: '"server" in group_names'
       register: web_env_result
-      notify: restart web
 
     # NFCエージェント環境変数ファイルの管理（クライアントのみ）
     - name: Ensure NFC agent .env directory exists
@@ -320,7 +402,6 @@
         mode: '0600'
       when: '"server" in group_names'
       register: docker_env_result
-      notify: restart docker compose services
 
     - name: Validate API .env syntax
       ansible.builtin.shell: |
@@ -528,13 +609,25 @@
             }
           }
         dest: "{{ repo_path }}/config/backup.json"
-        owner: root
-        group: root
-        mode: '0644'
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
       when:
         - '"server" in group_names'
         - not (backup_json_stat.stat.exists | default(false))
       register: backup_json_created
+
+    - name: Restrict backup.json to the non-root API runtime owner
+      ansible.builtin.file:
+        path: "{{ repo_path }}/config/backup.json"
+        state: file
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+      when:
+        - '"server" in group_names'
+        - (backup_json_stat.stat.exists | default(false)) or (backup_json_created.changed | default(false))
+      no_log: true
 
     - name: Warn about backup.json creation
       ansible.builtin.debug:
@@ -567,40 +660,3 @@
         - '"clients" in group_names'
         - nfc_agent_env_result.changed | default(false)
       changed_when: false
-
-  handlers:
-    - name: restart api
-      ansible.builtin.shell: |
-        set -euo pipefail
-        {{ repo_path }}/scripts/deploy/pi5-phase3-legacy-guard.sh
-        cd {{ repo_path }}/infrastructure/docker
-        docker compose -f docker-compose.server.yml up -d --force-recreate api
-      args:
-        executable: /bin/bash
-      when:
-        - '"server" in group_names'
-        - api_env_result.changed | default(false)
-
-    - name: restart web
-      ansible.builtin.shell: |
-        set -euo pipefail
-        {{ repo_path }}/scripts/deploy/pi5-phase3-legacy-guard.sh
-        cd {{ repo_path }}/infrastructure/docker
-        docker compose -f docker-compose.server.yml up -d --force-recreate web
-      args:
-        executable: /bin/bash
-      when:
-        - '"server" in group_names'
-        - web_env_result.changed | default(false)
-
-    - name: restart docker compose services
-      ansible.builtin.shell: |
-        set -euo pipefail
-        {{ repo_path }}/scripts/deploy/pi5-phase3-legacy-guard.sh
-        cd {{ repo_path }}/infrastructure/docker
-        docker compose -f docker-compose.server.yml up -d --force-recreate api
-      when:
-        - '"server" in group_names'
-        - docker_env_result.changed | default(false)
-      ignore_errors: true
-

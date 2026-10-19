@@ -17,13 +17,36 @@ const baseRouter = () =>
     providers: [provider],
     routes: {
       photo_label: { providerId: 'default' },
+      business_hermes: { providerId: 'default' },
       document_summary: { providerId: 'default' },
       admin_console_chat: { providerId: 'default' },
-      stackchan_chat: { providerId: 'default' },
     },
   });
 
 describe('RoutedVisionCompletionAdapter', () => {
+  it('uses existing background admission for vision and preserves caller cancellation', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response('', { status: 429 }));
+    const router = new InferenceRouter({ providers: [{ ...provider, defaultModel: 'system-prod-primary' }], routes: {
+      photo_label: { providerId: 'default' }, business_hermes: { providerId: 'default' }, document_summary: { providerId: 'default' },
+      admin_console_chat: { providerId: 'default' },
+    } });
+    const adapter = new RoutedVisionCompletionAdapter({ router, fetchImpl, useCase: 'photo_label', getMaxTokens: () => 100, getTemperature: () => 0 });
+    const controller = new AbortController();
+    await expect(adapter.complete({ userText: '写真', imageBytes: Buffer.from('jpeg'), mimeType: 'image/jpeg', background: true, signal: controller.signal })).rejects.toThrow('deferred');
+    expect(JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body)).model).toBe('dgx-background-preparation');
+    controller.abort();
+    expect(fetchImpl.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+  });
+  it('sends response_format only when jsonOutput is requested', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () =>
+      new Response(JSON.stringify({ choices: [{ message: { content: '{"dimensions": []}' } }] }), { status: 200 })
+    );
+    const adapter = new RoutedVisionCompletionAdapter({ router: baseRouter(), fetchImpl, useCase: 'photo_label', getMaxTokens: () => 100, getTemperature: () => 0 });
+    await adapter.complete({ userText: '図面', imageBytes: Buffer.from('jpeg'), mimeType: 'image/jpeg', jsonOutput: true, timeoutMs: 115_000 });
+    await adapter.complete({ userText: '写真', imageBytes: Buffer.from('jpeg'), mimeType: 'image/jpeg' });
+    expect(JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body)).response_format).toEqual({ type: 'json_object' });
+    expect(JSON.parse(String(fetchImpl.mock.calls[1]?.[1]?.body))).not.toHaveProperty('response_format');
+  });
   it('returns assistant text on 200', async () => {
     const fetchImpl = vi.fn(async () => ({
       ok: true,

@@ -1,0 +1,669 @@
+{
+  "artifacts": {
+    "manual.html": "1c64a0ee709469479d90d911582dafa9020fd57a5cef8cb41e85f56725091f28",
+    "screens/edit-advanced-point.png": "e35f4e24cc1d62645d235076720dfb5c8465501c228cc10a109731942b196fd4",
+    "screens/edit-basics.png": "997356b385c7c733f159d7d4c36a2b698fc17e36d26f519793e9952aef9fc146",
+    "screens/edit-group-history.png": "aecf95bd91aa04d19564e0e125183a1188630a72fb310b9931d781f682ac608f",
+    "screens/edit-point-management.png": "997356b385c7c733f159d7d4c36a2b698fc17e36d26f519793e9952aef9fc146",
+    "screens/edit-required-point.png": "997356b385c7c733f159d7d4c36a2b698fc17e36d26f519793e9952aef9fc146",
+    "screens/edit-trial-report.png": "997356b385c7c733f159d7d4c36a2b698fc17e36d26f519793e9952aef9fc146",
+    "screens/edit-visual-source.png": "755548d8f33ae035625c32258f5773dca0b4d49b602e8611cccc34aba770e968",
+    "screens/library-entry-search.png": "28a721cdb9c1d4b20a468348bb2b12afea8b9bb5157c73b1a92bdcd037ca8e55",
+    "screens/library-template-management.png": "28a721cdb9c1d4b20a468348bb2b12afea8b9bb5157c73b1a92bdcd037ca8e55",
+    "screens/library-visual-management.png": "24590300258ebb14fc990b04f77abf3e12a10d705d77ff4534c919d883812d62",
+    "sheets/edit-advanced-point.png": "d69d9952e5a1b277a9cd460dc1d808ef6e920033b9c2786936dc5b668e2b5281",
+    "sheets/edit-basics.png": "7affcd3163d15120da6014cfd95ed1a9a74890b6e65d41eb7fdba2acf5265f2c",
+    "sheets/edit-group-history.png": "3072ecdd055d8f43871a3f5dac544e8fa25da9d50db97d1738285f5d039b45cd",
+    "sheets/edit-point-management.png": "1c70e1bf865b6c4bf144a1b16ddc6645209779f20cf1fe48b32eb398d8ab32df",
+    "sheets/edit-required-point.png": "22358bb58a584e4fc9f5b0e0c579600c5413eab6bcf58c2544ed70ad501deff5",
+    "sheets/edit-trial-report.png": "87bb6bbb216fcb7a8bfb966ef2bed671905533881740e6beeb81d06f811af3dc",
+    "sheets/edit-visual-source.png": "5698ed03f9fa398b1f2ba48f18b00db8b18111eed2b09d1530babe84863ab27d",
+    "sheets/library-entry-search.png": "0a5b68b6ce4b759611a71c2d2bcdfc694b9535bd932b142a84760e5d074fefa2",
+    "sheets/library-template-management.png": "6d90b67ae73e52ca1d7f5c0dda177eb76aa702f274947431bc3aa83b991ed2f4",
+    "sheets/library-visual-management.png": "de6e575f33320a2feebc8cf0b6b0cd0c06414df3e139467090457353372528b9"
+  },
+  "browserVersion": "141.0.7390.37",
+  "definitionSha256": "b07cc7dbe4f1b9d7f004d8c708baf828731fac3bd12419d402eddae24127ee5e",
+  "generatorVersion": "1.3.0",
+  "geometry": {
+    "edit-advanced-point": [
+      {
+        "id": "set-depth-mode",
+        "semantics": {
+          "ariaLabel": "通し切替",
+          "role": "group",
+          "tagName": "div",
+          "text": "測定 通し"
+        },
+        "target": {
+          "x": 0.9765625,
+          "y": 0.4305555555555556
+        },
+        "targetId": "depth-mode"
+      },
+      {
+        "id": "set-face-thread",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "div",
+          "text": "面 面なし 正面 背面 両面 呼び径 呼び径なし M3 M3.5 M4 M4.5 M5 M6 M7 M8 M9 M10 M11 M12 M14 M16 M18 M20 M22 M24 M27 M30 管用 直接入力"
+        },
+        "target": {
+          "x": 0.9765625,
+          "y": 0.5188621238425926
+        },
+        "targetId": "face-thread"
+      },
+      {
+        "id": "set-direct-label",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "input",
+          "text": ""
+        },
+        "target": {
+          "x": 0.9765523274739584,
+          "y": 0.5188621238425926
+        },
+        "targetId": "direct-label"
+      },
+      {
+        "id": "use-ocr-candidate",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "div",
+          "text": "12"
+        },
+        "target": {
+          "x": 0.9765625,
+          "y": 0.6167896412037037
+        },
+        "targetId": "ocr-candidate"
+      }
+    ],
+    "edit-basics": [
+      {
+        "id": "confirm-template-meta",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "dl",
+          "text": "品番 PART-9000 工順 (FKOJUN) 資源 R001（旋盤1号） 工程 切削 研削 テンプレ 検査数 全数 抜き取り1個 最初と最後 指定数 指定数"
+        },
+        "target": {
+          "x": 0.9543965657552084,
+          "y": 0.0798611111111111
+        },
+        "targetId": "template-metadata"
+      },
+      {
+        "id": "open-visual-source",
+        "semantics": {
+          "ariaLabel": "図面ソースを選択",
+          "role": null,
+          "tagName": "button",
+          "text": "既存: 図面71-A61"
+        },
+        "target": {
+          "x": 0.18073527018229166,
+          "y": 0.13541666666666666
+        },
+        "targetId": "open-visual-source"
+      },
+      {
+        "id": "set-self-inspection",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "div",
+          "text": "検査数 全数 抜き取り1個 最初と最後 指定数"
+        },
+        "target": {
+          "x": 0.8025919596354166,
+          "y": 0.0798611111111111
+        },
+        "targetId": "self-inspection-setting"
+      },
+      {
+        "id": "save-revision",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "保存"
+        },
+        "target": {
+          "x": 0.3057352701822917,
+          "y": 0.13310185185185186
+        },
+        "targetId": "save-revision"
+      }
+    ],
+    "edit-group-history": [
+      {
+        "id": "choose-group-save",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "label",
+          "text": "兄弟テンプレをまとめて改版"
+        },
+        "target": {
+          "x": 0.20374552408854166,
+          "y": 0.2326388888888889
+        },
+        "targetId": "group-save"
+      },
+      {
+        "id": "choose-single-save",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "label",
+          "text": "この資源だけ個別改版"
+        },
+        "target": {
+          "x": 0.3237406412760417,
+          "y": 0.2326388888888889
+        },
+        "targetId": "single-save"
+      },
+      {
+        "id": "add-group-resource",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "資源追加"
+        },
+        "target": {
+          "x": 0.7253926595052084,
+          "y": 0.2326388888888889
+        },
+        "targetId": "add-group-resource"
+      },
+      {
+        "id": "activate-history",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "この版を有効化して編集"
+        },
+        "target": {
+          "x": 0.15226236979166666,
+          "y": 0.2916666666666667
+        },
+        "targetId": "activate-history"
+      },
+      {
+        "id": "confirm-save-scope",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "span",
+          "text": "保存範囲"
+        },
+        "target": {
+          "x": 0.055338541666666664,
+          "y": 0.22106481481481483
+        },
+        "targetId": "save-scope-warning"
+      }
+    ],
+    "edit-point-management": [
+      {
+        "id": "add-point",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "丸数字"
+        },
+        "target": {
+          "x": 0.8551737467447916,
+          "y": 0.32060185185185186
+        },
+        "targetId": "add-point"
+      },
+      {
+        "id": "place-callout",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "矢視"
+        },
+        "target": {
+          "x": 0.880584716796875,
+          "y": 0.32060185185185186
+        },
+        "targetId": "place-callout"
+      },
+      {
+        "id": "select-point-list",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "div",
+          "text": "測定点一覧 No.1外径 基準 20·上限 0.02·下限 -0.02 No.2全長指 基準 71·上限 0.1·下限 -0.1 No.3ネジ穴深さ 基準 12·上限 0.1·下限 -0.1"
+        },
+        "target": {
+          "x": 0.982421875,
+          "y": 0.96875
+        },
+        "targetId": "point-list"
+      },
+      {
+        "id": "delete-one-point",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "一点削除"
+        },
+        "target": {
+          "x": 0.896484375,
+          "y": 0.6985134548611112
+        },
+        "targetId": "delete-one-point"
+      },
+      {
+        "id": "delete-all-points",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "全削除"
+        },
+        "target": {
+          "x": 0.9765625,
+          "y": 0.6985134548611112
+        },
+        "targetId": "delete-all-points"
+      }
+    ],
+    "edit-required-point": [
+      {
+        "id": "select-point",
+        "semantics": {
+          "ariaLabel": "測定点 No.1 外径 を選択",
+          "role": null,
+          "tagName": "button",
+          "text": "No.1外径 基準 20·上限 0.02·下限 -0.02"
+        },
+        "target": {
+          "x": 0.97265625,
+          "y": 0.7992078993055556
+        },
+        "targetId": "select-point"
+      },
+      {
+        "id": "set-measurement-name",
+        "semantics": {
+          "ariaLabel": "名称",
+          "role": null,
+          "tagName": "select",
+          "text": "外径"
+        },
+        "target": {
+          "x": 0.9765625,
+          "y": 0.38425925925925924
+        },
+        "targetId": "measurement-name"
+      },
+      {
+        "id": "set-nominal",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "label",
+          "text": "基準値"
+        },
+        "target": {
+          "x": 0.9765625,
+          "y": 0.5288266782407407
+        },
+        "targetId": "nominal-value"
+      },
+      {
+        "id": "set-upper-tolerance",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "label",
+          "text": "上限公差"
+        },
+        "target": {
+          "x": 0.896484375,
+          "y": 0.6637912326388888
+        },
+        "targetId": "upper-tolerance"
+      },
+      {
+        "id": "set-lower-tolerance",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "label",
+          "text": "下限公差"
+        },
+        "target": {
+          "x": 0.9765625,
+          "y": 0.6637912326388888
+        },
+        "targetId": "lower-tolerance"
+      }
+    ],
+    "edit-trial-report": [
+      {
+        "id": "open-test-input",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "テスト入力"
+        },
+        "target": {
+          "x": 0.5246175130208334,
+          "y": 0.13310185185185186
+        },
+        "targetId": "test-input"
+      },
+      {
+        "id": "open-guided-trial",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "ガイド試行"
+        },
+        "target": {
+          "x": 0.6034749348958334,
+          "y": 0.13310185185185186
+        },
+        "targetId": "guided-trial"
+      },
+      {
+        "id": "zoom-drawing",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "div",
+          "text": "− ＋ □"
+        },
+        "target": {
+          "x": 0.2588602701822917,
+          "y": 0.13078703703703703
+        },
+        "targetId": "zoom-drawing"
+      },
+      {
+        "id": "open-saved-report",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "a",
+          "text": "保存済み帳票"
+        },
+        "target": {
+          "x": 0.4457600911458333,
+          "y": 0.13541666666666666
+        },
+        "targetId": "saved-report"
+      },
+      {
+        "id": "return-library",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "a",
+          "text": "一覧へ戻る"
+        },
+        "target": {
+          "x": 0.7253011067708334,
+          "y": 0.13541666666666666
+        },
+        "targetId": "return-library"
+      }
+    ],
+    "edit-visual-source": [
+      {
+        "id": "pick-existing-visual",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "図面71-A61 選択中"
+        },
+        "target": {
+          "x": 0.7298177083333334,
+          "y": 0.4363425925925926
+        },
+        "targetId": "pick-existing-visual"
+      },
+      {
+        "id": "upload-new-visual",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "input",
+          "text": ""
+        },
+        "target": {
+          "x": 0.73046875,
+          "y": 0.22453703703703703
+        },
+        "targetId": "upload-new-visual"
+      }
+    ],
+    "library-entry-search": [
+      {
+        "id": "open-inspection-drawing",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "div",
+          "text": "検査図面"
+        },
+        "target": {
+          "x": 0.08828125,
+          "y": 0.085
+        },
+        "targetId": "inspection-navigation"
+      },
+      {
+        "id": "search-drawing-digits",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "div",
+          "text": "7 8 9 4 5 6 1 2 3 0 リセット"
+        },
+        "target": {
+          "x": 0.92392578125,
+          "y": 0.08875
+        },
+        "targetId": "drawing-digit-search"
+      },
+      {
+        "id": "filter-part-number",
+        "semantics": {
+          "ariaLabel": "品番",
+          "role": null,
+          "tagName": "input",
+          "text": ""
+        },
+        "target": {
+          "x": 0.16875,
+          "y": 0.643828125
+        },
+        "targetId": "part-number-filter"
+      },
+      {
+        "id": "filter-resource",
+        "semantics": {
+          "ariaLabel": "資源CD",
+          "role": null,
+          "tagName": "select",
+          "text": ""
+        },
+        "target": {
+          "x": 0.578125,
+          "y": 0.643828125
+        },
+        "targetId": "resource-filter"
+      },
+      {
+        "id": "reload-library",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "再読込"
+        },
+        "target": {
+          "x": 0.90250244140625,
+          "y": 0.643828125
+        },
+        "targetId": "reload-library"
+      }
+    ],
+    "library-template-management": [
+      {
+        "id": "edit-template",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "a",
+          "text": "編集"
+        },
+        "target": {
+          "x": 0.85703125,
+          "y": 0.77607421875
+        },
+        "targetId": "edit-template"
+      },
+      {
+        "id": "open-report",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "a",
+          "text": "帳票"
+        },
+        "target": {
+          "x": 0.8833984375,
+          "y": 0.77607421875
+        },
+        "targetId": "open-report"
+      },
+      {
+        "id": "open-history",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "履歴"
+        },
+        "target": {
+          "x": 0.9361328125,
+          "y": 0.77607421875
+        },
+        "targetId": "open-history"
+      },
+      {
+        "id": "include-inactive",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "無効ON"
+        },
+        "target": {
+          "x": 0.75966796875,
+          "y": 0.643828125
+        },
+        "targetId": "include-inactive"
+      },
+      {
+        "id": "retire-template",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "無効"
+        },
+        "target": {
+          "x": 0.9625,
+          "y": 0.77607421875
+        },
+        "targetId": "retire-template"
+      }
+    ],
+    "library-visual-management": [
+      {
+        "id": "register-visual",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "図面を登録"
+        },
+        "target": {
+          "x": 0.3720458984375,
+          "y": 0.18125
+        },
+        "targetId": "register-visual"
+      },
+      {
+        "id": "search-visual-name",
+        "semantics": {
+          "ariaLabel": "図面名で検索",
+          "role": null,
+          "tagName": "input",
+          "text": ""
+        },
+        "target": {
+          "x": 0.24366455078125,
+          "y": 0.18125
+        },
+        "targetId": "visual-name-search"
+      },
+      {
+        "id": "rename-visual",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "名称"
+        },
+        "target": {
+          "x": 0.9625,
+          "y": 0.29875
+        },
+        "targetId": "rename-visual"
+      },
+      {
+        "id": "create-from-visual",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "a",
+          "text": "新規"
+        },
+        "target": {
+          "x": 0.9296875,
+          "y": 0.29875
+        },
+        "targetId": "create-from-visual"
+      }
+    ]
+  },
+  "htmlSha256": "1c64a0ee709469479d90d911582dafa9020fd57a5cef8cb41e85f56725091f28",
+  "schemaVersion": 1,
+  "sourceSha256": "1d48e72e1f13887fef55aa44e0e366c7ae201403818aaf04d82446acc7dec73f"
+}

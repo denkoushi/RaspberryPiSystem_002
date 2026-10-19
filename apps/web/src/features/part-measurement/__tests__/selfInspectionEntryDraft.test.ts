@@ -102,6 +102,24 @@ describe('selfInspectionEntryDraft', () => {
     expect(empty['item-1']).toBe('');
   });
 
+  it('restores a pipe-thread judgement result as the OK/NG draft value', () => {
+    const session = sessionFixture(1);
+    session.template.items[0] = {
+      ...session.template.items[0]!,
+      measurementLabel: 'ネジ穴深さ',
+      measurementPoint: 'ネジ穴深さ 管用',
+      valueKind: 'judgement',
+      nominalValue: null,
+      lowerLimit: null,
+      upperLimit: null
+    };
+    session.focusedEntry!.values = [
+      { id: 'v-pipe', templateItemId: 'item-1', value: null, judgementResult: 'FAIL' }
+    ];
+
+    expect(buildSelfInspectionEntryDraft(session, 99)['item-1']).toBe('FAIL');
+  });
+
   it('pages entry slots for full mode', () => {
     const session = sessionFixture(100);
     const slots = listSelfInspectionEntrySlots(session);

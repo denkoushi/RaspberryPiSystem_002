@@ -1,0 +1,262 @@
+#!/usr/bin/env node
+// Night summary of the synthetic question flywheel, from copied questions-YYYY-MM-DD.jsonl files
+// (hermes-synthetic-question-flywheel-execplan.md, Milestone 3). The files hold ids and grades
+// only, so the report can be read anywhere.
+// Usage: node retrieval/flywheel-report.mjs path/to/questions-2026-10-03.jsonl [more files]
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { bareId } from './flywheel-pairs.mjs';
+import { filterOutcome } from './flywheel-filter-check.mjs';
+import { parseReceiptLines, summarizeReceipts, formatRouteReport } from './receipt-report.mjs';
+
+export function nightOfFile(filePath) {
+  const match = /(?:questions|real|receipts)-(\d{4}-\d{2}-\d{2})\.jsonl$/u.exec(path.basename(filePath));
+  return match ? match[1] : path.basename(filePath);
+}
+
+export function readNightRows(text) {
+  const rows = [];
+  for (const line of String(text ?? '').split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      rows.push(JSON.parse(line));
+    } catch {
+      // A torn line is skipped.
+    }
+  }
+  return rows;
+}
+
+export function summarizeLearned(rows) {
+  const summary = { candidates: 0, active: 0, rejected: 0, lastDecision: null };
+  for (const row of rows) {
+    if (row?.state === 'candidate') summary.candidates += 1;
+    else if (row?.state === 'active' || row?.state === 'rejected') {
+      summary[row.state] += 1;
+      if (!summary.lastDecision || (row.decidedAt ?? row.at ?? '') >= (summary.lastDecision.decidedAt ?? '')) {
+        summary.lastDecision = { state: row.state, check: row.check ?? null, decidedAt: row.decidedAt ?? row.at ?? null };
+      }
+    }
+  }
+  return summary;
+}
+
+function formatLearnedReport(summary) {
+  const last = summary.lastDecision;
+  const check = last?.check;
+  return `learned: candidates ${summary.candidates}, active ${summary.active}, rejected ${summary.rejected}, last decision ${last?.state ?? 'none'}`
+    + ` (heldout ${check?.heldout?.gained ?? 0}/${check?.heldout?.lost ?? 0}, real ${check?.real?.gained ?? 0}/${check?.real?.lost ?? 0})`;
+}
+
+export function summarizeNight(rows, { labels = null } = {}) {
+  const filterRows = rows.filter((row) => row.kind === 'filter');
+  rows = rows.filter((row) => row.kind !== 'filter');
+  const summary = {
+    rows: rows.length,
+    generated: 0,
+    kept: 0,
+    dropped: {},
+    styles: {},
+    medianLength: null,
+    medianOverlap: null,
+    unavailableReasons: {},
+    askedBackTerms: {},
+    ambiguousDroppedTerms: {},
+    filter: summarizeSyntheticFilters(filterRows),
+    live: { scored: 0, shown: 0, otherShown: 0, notInPool: 0, judgeRejected: 0, status: 0, failed: 0, notRun: 0, denseFallbacks: 0, labelled: 0 },
+  };
+  if (labels != null) summary.live.shownAfterLabels = 0;
+  const lengths = [];
+  const overlaps = [];
+  for (const row of rows) {
+    if (typeof row.question === 'string' && row.question) summary.generated += 1;
+    if (row.kept !== true) {
+      const key = row.reason ?? 'unknown';
+      summary.dropped[key] = (summary.dropped[key] ?? 0) + 1;
+      continue;
+    }
+    summary.kept += 1;
+    lengths.push(row.question.length);
+    if (typeof row.overlap === 'number') overlaps.push(row.overlap);
+    const style = row.seed?.style ?? 'unknown';
+    summary.styles[style] = (summary.styles[style] ?? 0) + 1;
+    const live = row.live;
+    if (!live || typeof live !== 'object') {
+      summary.live.notRun += 1;
+      continue;
+    }
+    summary.live.scored += 1;
+    if (live.outcome === 'unavailable' || live.outcome === 'failed') {
+      const reason = typeof live.reason === 'string' && live.reason.trim()
+        ? live.reason.replace(/^relevance judgment failed:\s*/u, '') : 'unknown';
+      summary.unavailableReasons[reason] = (summary.unavailableReasons[reason] ?? 0) + 1;
+    }
+    const shownAfterLabels = labels != null && live.loss === 'other_shown'
+      && (live.shown ?? []).some((id) => labels[bareId(row.a)]?.[bareId(id)]?.g === 3);
+    if (live.labelled === true) summary.live.labelled += 1;
+    else if (shownAfterLabels) {
+      summary.live.shownAfterLabels += 1;
+      summary.live.labelled += 1;
+    }
+    if (live.vectorStatus === 'timeout' || live.vectorStatus === 'failed') summary.live.denseFallbacks += 1;
+    for (const item of Array.isArray(live.plan?.ambiguousDropped) ? live.plan.ambiguousDropped : []) {
+      if (typeof item?.field !== 'string') continue;
+      summary.ambiguousDroppedTerms[item.field] = (summary.ambiguousDroppedTerms[item.field] ?? 0) + 1;
+    }
+    if (live.loss == null || shownAfterLabels) summary.live.shown += 1;
+    else if (live.loss === 'other_shown') summary.live.otherShown += 1;
+    else if (live.loss === 'not_in_pool') summary.live.notInPool += 1;
+    else if (live.loss === 'judge_rejected') summary.live.judgeRejected += 1;
+    else if (live.loss === 'status') {
+      summary.live.status += 1;
+      for (const term of Array.isArray(live.unresolved) ? live.unresolved : []) {
+        summary.askedBackTerms[term] = (summary.askedBackTerms[term] ?? 0) + 1;
+      }
+    } else summary.live.failed += 1;
+  }
+  lengths.sort((left, right) => left - right);
+  summary.medianLength = lengths.length ? lengths[lengths.length >> 1] : null;
+  overlaps.sort((left, right) => left - right);
+  summary.medianOverlap = overlaps.length ? overlaps[overlaps.length >> 1] : null;
+  return summary;
+}
+
+export function summarizeSyntheticFilters(rows) {
+  const summary = { questions: 0, supported: 0, ok: 0, mismatch: 0, unsupported: 0, clarified: 0, failed: 0, issues: [] };
+  for (const row of rows) {
+    if (row.source !== 'synthetic' || row.kind !== 'filter') continue;
+    summary.questions += 1;
+    if (row.filterCheck?.supported === true) summary.supported += 1;
+    const outcome = filterOutcome(row);
+    summary[outcome] += 1;
+    if (outcome === 'mismatch' || outcome === 'unsupported') {
+      summary.issues.push({ id: row.id, template: row.seed?.template ?? null, value: row.seed?.value ?? null });
+    }
+  }
+  return summary;
+}
+
+function formatSyntheticFilters(summary) {
+  if (!summary?.questions) return [];
+  return [
+    `  synthetic filter: questions ${summary.questions}, supported ${summary.supported}, ok ${summary.ok}, mismatch ${summary.mismatch}, unsupported ${summary.unsupported}, clarified ${summary.clarified}, failed ${summary.failed}`,
+    ...summary.issues.map(({ id, template, value }) => `    ${id}: template=${JSON.stringify(template)} value=${JSON.stringify(value)}`),
+  ];
+}
+
+function counts(record) {
+  return Object.entries(record).sort((left, right) => right[1] - left[1]).map(([key, value]) => `${key} ${value}`).join(', ');
+}
+
+export function summarizeReal(rows) {
+  const summary = { questions: 0, withRelevant: 0, shown: 0, lossStages: {}, dayOutcomes: {}, filter: { questions: 0, supported: 0, ok: 0, mismatch: 0 } };
+  for (const row of rows) {
+    if (row?.source !== 'real') continue;
+    summary.questions += 1;
+    const outcome = row.dayOutcome;
+    summary.dayOutcomes[outcome] = (summary.dayOutcomes[outcome] ?? 0) + 1;
+    if (row.kind === 'filter') {
+      summary.filter.questions += 1;
+      if (row.filterCheck?.supported === true) {
+        summary.filter.supported += 1;
+        if (row.filterCheck.ok === true) summary.filter.ok += 1;
+        else if (row.filterCheck.ok === false) summary.filter.mismatch += 1;
+      }
+    }
+    if (!row.relevant?.length) continue;
+    summary.withRelevant += 1;
+    if (row.live && row.live.loss == null) summary.shown += 1;
+    else if (row.live?.loss != null) {
+      const loss = row.live.loss;
+      summary.lossStages[loss] = (summary.lossStages[loss] ?? 0) + 1;
+    }
+  }
+  return summary;
+}
+
+export function formatRealReport(night, summary) {
+  const losses = summary.lossStages;
+  const nothing = (losses.not_in_pool ?? 0) + (losses.judge_rejected ?? 0) + (losses.status ?? 0);
+  return `real ${night}: questions ${summary.questions}, with relevant ${summary.withRelevant}, relevant shown ${summary.shown}, nothing shown ${nothing}`
+    + ` (outside judged candidates ${losses.not_in_pool ?? 0}, rejected by judge ${losses.judge_rejected ?? 0}, asked back or out of scope ${losses.status ?? 0})`
+    + (losses.other_shown ? `, other records shown ${losses.other_shown}` : '')
+    + (losses.failed ? `, failed ${losses.failed}` : '')
+    + `, day outcomes ${Object.keys(summary.dayOutcomes).length ? counts(summary.dayOutcomes) : 'none'}`
+    + `\n  filter questions ${summary.filter.questions}, correct ${summary.filter.ok}, mismatch ${summary.filter.mismatch}, unsupported ${summary.filter.questions - summary.filter.supported}`;
+}
+
+export function formatReport(night, summary) {
+  const live = summary.live;
+  const nothing = live.notInPool + live.judgeRejected + live.status;
+  const lines = [
+    `night ${night}: pairs ${summary.rows}, generated ${summary.generated}, kept ${summary.kept}` + (summary.medianLength == null ? '' : ` (median ${summary.medianLength} chars`
+      + (summary.medianOverlap == null ? ')' : `, anchor overlap ${summary.medianOverlap.toFixed(2)})`)),
+    `  dropped: ${Object.keys(summary.dropped).length ? counts(summary.dropped) : 'none'}`,
+    `  styles: ${Object.keys(summary.styles).length ? counts(summary.styles) : 'none'}`,
+  ];
+  if (live.scored === 0) {
+    lines.push(`  live: not run for ${live.notRun} kept questions`);
+    lines.push(...formatSyntheticFilters(summary.filter));
+    return lines.join('\n');
+  }
+  lines.push(
+    `  live (${live.scored} scored): relevant shown ${live.shown}`
+      + (live.shownAfterLabels == null ? '' : `, labelled relevant ${live.labelled}`)
+      + `, other records shown ${live.otherShown}, nothing shown ${nothing}`
+      + ` (outside judged candidates ${live.notInPool}, rejected by judge ${live.judgeRejected}, asked back or out of scope ${live.status})`
+      + (live.failed ? `, failed ${live.failed}` : '')
+      + (live.notRun ? `, not run ${live.notRun}` : ''),
+  );
+  if (live.denseFallbacks) lines.push(`  dense fallbacks: ${live.denseFallbacks}`);
+  const askedBack = Object.entries(summary.askedBackTerms ?? {}).sort((left, right) => right[1] - left[1]);
+  if (askedBack.length) lines.push(`  asked back on: ${askedBack.map(([term, count]) => `${term} ${count}`).join(', ')}`);
+  const ambiguousDropped = Object.entries(summary.ambiguousDroppedTerms ?? {}).sort((left, right) => right[1] - left[1]);
+  if (ambiguousDropped.length) lines.push(`  ambiguous filter dropped for content search: ${ambiguousDropped.map(([term, count]) => `${term} ${count}`).join(', ')}`);
+  const reasons = Object.entries(summary.unavailableReasons ?? {}).sort((left, right) => right[1] - left[1]);
+  if (reasons.length) lines.push(`  unavailable reasons: ${reasons.map(([reason, count]) => `${reason}=${count}`).join(', ')}`);
+  lines.push(...formatSyntheticFilters(summary.filter));
+  return lines.join('\n');
+}
+
+export function main(argv = process.argv.slice(2)) {
+  const files = [];
+  let labels = null;
+  let learned = null;
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] === '--learned') {
+      const file = argv[++index];
+      if (!file || file.startsWith('--')) throw new Error('--learned needs a path');
+      learned = summarizeLearned(readNightRows(readFileSync(file, 'utf8')));
+      continue;
+    }
+    if (argv[index] !== '--labels') {
+      files.push(argv[index]);
+      continue;
+    }
+    const file = argv[++index];
+    if (!file || file.startsWith('--')) throw new Error('--labels needs a path');
+    const stored = JSON.parse(readFileSync(file, 'utf8'));
+    labels = stored.schema === 'hermes-flywheel-labels/v1' ? stored.labels : stored;
+  }
+  if (!files.length && !learned) {
+    console.error('usage: flywheel-report.mjs questions-YYYY-MM-DD.jsonl [more files] [--labels labels.json] [--learned learned-queries.jsonl]');
+    process.exitCode = 2;
+    return;
+  }
+  for (const file of files) {
+    if (/^receipts-\d{4}-\d{2}-\d{2}\.jsonl$/u.test(path.basename(file))) {
+      console.log(formatRouteReport(nightOfFile(file), summarizeReceipts(parseReceiptLines(readFileSync(file, 'utf8')))));
+      continue;
+    }
+    const rows = readNightRows(readFileSync(file, 'utf8'));
+    console.log(/^real-\d{4}-\d{2}-\d{2}\.jsonl$/u.test(path.basename(file))
+      ? formatRealReport(nightOfFile(file), summarizeReal(rows))
+      : formatReport(nightOfFile(file), summarizeNight(rows, { labels })));
+  }
+  if (learned) console.log(formatLearnedReport(learned));
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main();
+}

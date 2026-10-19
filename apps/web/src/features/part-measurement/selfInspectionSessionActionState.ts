@@ -15,6 +15,7 @@ import type { SelfInspectionSessionDetailDto } from './types';
 
 export type SelfInspectionActionReason =
   | 'read_only'
+  | 'syncing_latest'
   | 'saving'
   | 'completing'
   | 'no_changes'
@@ -91,6 +92,9 @@ export function resolveCurrentEntryDraftSaveBlockReason(
       continue;
     }
     if (status === 'ng') {
+      if (point.valueKind === 'judgement') {
+        continue;
+      }
       if (outOfToleranceAcknowledgedByPointId[point.id] === true) {
         continue;
       }
@@ -257,6 +261,8 @@ export function selfInspectionActionReasonMessage(
   switch (reason) {
     case 'read_only':
       return 'このセッションは読み取り専用です。';
+    case 'syncing_latest':
+      return '最新の状態を確認中です。';
     case 'saving':
       return '保存処理中です。';
     case 'completing':
@@ -270,7 +276,7 @@ export function selfInspectionActionReasonMessage(
     case 'invalid_value':
       return '不正な測定値があります。修正してから保存してください。';
     case 'ng_value':
-      return '公差外の測定値があるため保存できません。';
+      return '公差外（NG）の測定値が未確認です。「公差外のまま進む」で確認してください。';
     case 'tolerance_error':
       return '基準・公差が未設定の測定点があります。';
     case 'missing_required_entries':

@@ -28,7 +28,7 @@
 各端末で以下のクライアントキーが設定されていること：
 
 - Pi4: `client-key-raspberrypi4-kiosk1`
-- Pi3: `client-key-raspberrypi3-signage1`
+- Pi3: Ansible Vault-managed signage client key
 - Pi5: `client-key-raspberrypi5-server`
 - Mac: `client-key-mac-kiosk1`（ブラウザのlocalStorageに設定）
 

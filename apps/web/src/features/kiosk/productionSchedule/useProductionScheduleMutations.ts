@@ -156,7 +156,11 @@ export const useProductionScheduleMutations = ({
 
       if (splitId) {
         splitOrderMutation.mutate(
-          { splitId, payload },
+          {
+            splitId,
+            payload,
+            cachePolicy: productionScheduleOrderCachePolicy ?? 'default'
+          },
           {
             onSuccess: (data) => {
               writeSuccessListenersRef.current?.onOrderSuccess?.({
@@ -205,7 +209,11 @@ export const useProductionScheduleMutations = ({
       };
 
       if (splitId) {
-        const data = await splitOrderMutation.mutateAsync({ splitId, payload });
+        const data = await splitOrderMutation.mutateAsync({
+          splitId,
+          payload,
+          cachePolicy: productionScheduleOrderCachePolicy ?? 'default'
+        });
         writeSuccessListenersRef.current?.onOrderSuccess?.({
           rowId,
           orderNumber: data.orderNumber ?? null
@@ -243,7 +251,7 @@ export const useProductionScheduleMutations = ({
       if (noteMutation.isPending) return;
       const sanitized = sanitizeNote(note, noteMaxLength);
       noteMutation.mutate(
-        { rowId, note: sanitized },
+        { rowId, note: sanitized, cachePolicy: productionScheduleOrderCachePolicy ?? 'default' },
         {
           onSuccess: (data) => {
             writeSuccessListenersRef.current?.onNoteSuccess?.({
@@ -255,7 +263,7 @@ export const useProductionScheduleMutations = ({
         }
       );
     },
-    [noteMaxLength, noteMutation]
+    [noteMaxLength, noteMutation, productionScheduleOrderCachePolicy]
   );
 
   const commitDueDate = useCallback(
@@ -280,7 +288,7 @@ export const useProductionScheduleMutations = ({
 
       if (dueDateMutation.isPending) return;
       dueDateMutation.mutate(
-        { rowId, dueDate },
+        { rowId, dueDate, cachePolicy: productionScheduleOrderCachePolicy ?? 'default' },
         {
           onSuccess: (data) => {
             writeSuccessListenersRef.current?.onDueDateSuccess?.({
@@ -292,7 +300,7 @@ export const useProductionScheduleMutations = ({
         }
       );
     },
-    [dueDateMutation, splitDueDateMutation]
+    [dueDateMutation, productionScheduleOrderCachePolicy, splitDueDateMutation]
   );
 
   const completeRow = useCallback(

@@ -7,15 +7,19 @@
       server_release_mode must be full or host-config-only. The coordinator
       uses host-config-only so it remains the sole Pi5 runtime executor.
 
-- name: Ensure docker restart summary fact exists
-  ansible.builtin.set_fact:
-    docker_restart_summary: "{{ docker_restart_summary | default([]) }}"
-
 - name: Validate required API variables
   ansible.builtin.assert:
     that:
-      - api_database_url is defined
-    fail_msg: "API環境変数（DATABASE_URL）が定義されていません（inventory.ymlを確認してください）"
+      - postgres_superuser_password is defined
+      - postgres_superuser_password | length >= 16
+      - app_database_url is defined
+      - app_database_url is match('^postgresql://raspi_app:[^@]+@db:5432/' ~ (app_database_name | default('borrow_return')) ~ '(?:[?].*)?$')
+      - migration_database_url is defined
+      - migration_database_url is match('^postgresql://raspi_migrator:[^@]+@db:5432/' ~ (app_database_name | default('borrow_return')) ~ '(?:[?].*)?$')
+    fail_msg: >-
+      Dedicated PostgreSQL superuser, application, and migration inputs are
+      required and must use the fixed production roles and Docker endpoint.
+  no_log: true
 
 - name: Validate required Web variables
   ansible.builtin.assert:
@@ -29,6 +33,147 @@
     that:
       - docker_server_ip is defined
     fail_msg: "Docker Compose用SERVER_IPが定義されていません（inventory.ymlを確認してください）"
+
+- name: Ensure the root-managed PostgreSQL authority directory exists
+  ansible.builtin.file:
+    path: /etc/raspi-database
+    state: directory
+    owner: root
+    group: "{{ ansible_user }}"
+    mode: '0750'
+
+- name: Deploy the PostgreSQL bootstrap password file
+  ansible.builtin.copy:
+    content: "{{ postgres_superuser_password }}\n"
+    dest: /etc/raspi-database/postgres-superuser-password
+    owner: root
+    group: root
+    mode: '0400'
+  no_log: true
+
+- name: Deploy the ephemeral Prisma migration environment
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/migration.env.j2"
+    dest: /etc/raspi-database/migration.env
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0600'
+  no_log: true
+
+- name: Resolve the non-root Pi5 runtime UID
+  ansible.builtin.command:
+    argv: [/usr/bin/id, -u, "{{ ansible_user }}"]
+  register: pi5_runtime_uid_probe
+  changed_when: false
+
+- name: Resolve the non-root Pi5 runtime GID
+  ansible.builtin.command:
+    argv: [/usr/bin/id, -g, "{{ ansible_user }}"]
+  register: pi5_runtime_gid_probe
+  changed_when: false
+
+- name: Validate the non-root Pi5 runtime identity
+  ansible.builtin.assert:
+    that:
+      - pi5_runtime_uid_probe.stdout is match('^[1-9][0-9]*$')
+      - pi5_runtime_gid_probe.stdout is match('^[1-9][0-9]*$')
+    fail_msg: The Pi5 API/Web runtime identity must exist and must not be root.
+
+- name: Record the non-root Pi5 runtime identity
+  ansible.builtin.set_fact:
+    pi5_runtime_uid: "{{ pi5_runtime_uid_probe.stdout }}"
+    pi5_runtime_gid: "{{ pi5_runtime_gid_probe.stdout }}"
+
+- name: Prepare the shared Pi5 durable storage directories
+  ansible.builtin.include_role:
+    name: pi5_storage
+  vars:
+    pi5_storage_root: "{{ repo_path }}/storage"
+    pi5_storage_manage_existing: true
+
+- name: Ensure enumerated Pi5 writable roots exist for the runtime user
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0750'
+  loop:
+    - "{{ repo_path }}/storage"
+    - "{{ repo_path }}/storage/part-measurement-drawings-derivatives"
+    - "{{ repo_path }}/storage/assembly-procedure-assets"
+    - "{{ repo_path }}/storage/work-instruction-assets"
+    - "{{ repo_path }}/alerts"
+    - "{{ repo_path }}/power-actions"
+    - "{{ repo_path }}/config"
+    - "{{ pi5_backup_dir }}"
+    - "{{ pi5_caddy_log_dir }}"
+
+- name: Verify existing Pi5 writable trees are ready for the non-root runtime
+  ansible.builtin.shell: |
+    set -euo pipefail
+    for runtime_path in \
+      {{ repo_path | quote }}/storage \
+      {{ repo_path | quote }}/alerts \
+      {{ repo_path | quote }}/power-actions \
+      {{ repo_path | quote }}/config \
+      {{ pi5_backup_dir | quote }} \
+      {{ pi5_caddy_log_dir | quote }}; do
+      test -d "${runtime_path}"
+      test -r "${runtime_path}" && test -w "${runtime_path}" && test -x "${runtime_path}"
+      blocked="$(find "${runtime_path}" -type d \( ! -readable -o ! -writable -o ! -executable \) -print -quit)"
+      test -z "${blocked}"
+    done
+    test ! -e {{ repo_path | quote }}/config/backup.json || test -r {{ repo_path | quote }}/config/backup.json
+  args:
+    executable: /bin/bash
+  become: true
+  become_user: "{{ ansible_user }}"
+  changed_when: false
+  failed_when: false
+  register: pi5_runtime_write_probe
+  no_log: true
+
+- name: Require non-root Pi5 runtime path readiness
+  ansible.builtin.assert:
+    that:
+      - pi5_runtime_write_probe.rc == 0
+    fail_msg: >-
+      Existing Pi5 runtime data is not writable by the non-root runtime user.
+      Run prepare-pi5-runtime-permissions.yml with its explicit approval gate
+      before retrying the standard release.
+
+- name: Ensure the root-managed backup Ansible boundary exists
+  ansible.builtin.file:
+    path: /etc/raspi-backup-ansible
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Generate the credential-free backup client inventory
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/backup-client-inventory.yml.j2"
+    dest: /etc/raspi-backup-ansible/inventory.yml
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Install the client file backup playbook
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/backup-clients.yml"
+    dest: /etc/raspi-backup-ansible/backup-clients.yml
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Install the client directory backup playbook
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/backup-client-directory.yml"
+    dest: /etc/raspi-backup-ansible/backup-client-directory.yml
+    owner: root
+    group: root
+    mode: '0644'
 
 - name: Include SSH loopback authorized_keys guard (Pi5 self-SSH / ansible preflight)
   ansible.builtin.import_tasks: ssh-loopback-authorized.yml
@@ -137,6 +282,87 @@
     mode: '0600'
   register: web_env_result
 
+- name: Ensure release artifact configuration directory exists
+  ansible.builtin.file:
+    path: /etc/raspi-release
+    state: directory
+    owner: root
+    group: "{{ ansible_user }}"
+    mode: '0750'
+
+- name: Probe the Debian package architecture for the verifier
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/dpkg
+      - --print-architecture
+  register: pi5_artifact_debian_architecture
+  changed_when: false
+  when: pi5_artifact_promotion_enabled | default(false) | bool
+
+- name: Validate the pinned GitHub attestation verifier contract
+  ansible.builtin.assert:
+    that:
+      - pi5_artifact_debian_architecture.stdout | trim == 'arm64'
+      - pi5_artifact_gh_version | string is match('^[0-9]+\.[0-9]+\.[0-9]+$')
+      - pi5_artifact_gh_arm64_sha256 | string is match('^[0-9a-f]{64}$')
+    fail_msg: The GitHub attestation verifier requires a pinned Linux ARM64 package.
+  when: pi5_artifact_promotion_enabled | default(false) | bool
+
+- name: Ensure pinned verifier package cache exists
+  ansible.builtin.file:
+    path: /var/cache/raspi-release
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: pi5_artifact_promotion_enabled | default(false) | bool
+
+- name: Download the pinned GitHub attestation verifier
+  ansible.builtin.get_url:
+    url: "https://github.com/cli/cli/releases/download/v{{ pi5_artifact_gh_version }}/gh_{{ pi5_artifact_gh_version }}_linux_arm64.deb"
+    dest: "/var/cache/raspi-release/gh_{{ pi5_artifact_gh_version }}_linux_arm64.deb"
+    checksum: "sha256:{{ pi5_artifact_gh_arm64_sha256 }}"
+    owner: root
+    group: root
+    mode: '0644'
+  when: pi5_artifact_promotion_enabled | default(false) | bool
+
+- name: Install the pinned GitHub attestation verifier
+  ansible.builtin.apt:
+    deb: "/var/cache/raspi-release/gh_{{ pi5_artifact_gh_version }}_linux_arm64.deb"
+    state: present
+  when: pi5_artifact_promotion_enabled | default(false) | bool
+
+- name: Probe the installed GitHub attestation verifier
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/gh
+      - attestation
+      - verify
+      - --help
+  register: pi5_artifact_gh_capability
+  changed_when: false
+  when: pi5_artifact_promotion_enabled | default(false) | bool
+
+- name: Require the complete GitHub attestation verification policy
+  ansible.builtin.assert:
+    that:
+      - "'--bundle-from-oci' in pi5_artifact_gh_capability.stdout"
+      - "'--deny-self-hosted-runners' in pi5_artifact_gh_capability.stdout"
+      - "'--source-digest' in pi5_artifact_gh_capability.stdout"
+      - "'--source-ref' in pi5_artifact_gh_capability.stdout"
+    fail_msg: The installed GitHub CLI cannot enforce the release attestation policy.
+  when: pi5_artifact_promotion_enabled | default(false) | bool
+
+- name: Deploy release-runner-only artifact promotion policy
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/artifact-promotion.json.j2"
+    dest: /etc/raspi-release/artifact-promotion.json
+    owner: root
+    group: "{{ ansible_user }}"
+    mode: '0640'
+  no_log: true
+
 - name: Ensure Docker Compose .env directory exists
   ansible.builtin.file:
     path: "{{ repo_path }}/infrastructure/docker"
@@ -151,40 +377,7 @@
     group: "{{ ansible_user }}"
     mode: '0755'
   register: power_actions_dir_result
-  notify: restart api
   when: server_release_mode == 'full'
-
-- name: Ensure part measurement drawing storage directory exists
-  ansible.builtin.file:
-    path: "{{ repo_path }}/storage/part-measurement-drawings"
-    state: directory
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
-    mode: '0755'
-
-- name: Ensure assembly procedure image storage directory exists
-  ansible.builtin.file:
-    path: "{{ repo_path }}/storage/assembly-procedure-images"
-    state: directory
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
-    mode: '0755'
-
-- name: Ensure measuring instrument genre image storage directory exists
-  ansible.builtin.file:
-    path: "{{ repo_path }}/storage/measuring-instrument-genres"
-    state: directory
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
-    mode: '0755'
-
-- name: Ensure pallet machine illustration storage directory exists
-  ansible.builtin.file:
-    path: "{{ repo_path }}/storage/pallet-machine-illustrations"
-    state: directory
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
-    mode: '0755'
 
 - name: Stat existing Docker Compose .env
   ansible.builtin.stat:
@@ -238,6 +431,22 @@
           (
             (docker_env_slurp.content | b64decode)
             | regex_findall('^DROPBOX_APP_SECRET=(.*)$', multiline=True)
+          )
+          | first
+        )
+        | default('')
+      }}
+  when: docker_env_stat.stat.exists | default(false)
+  no_log: true
+
+- name: Extract existing BACKUP_ENCRYPTION_KEY from Docker Compose .env
+  ansible.builtin.set_fact:
+    existing_backup_encryption_key: >-
+      {{
+        (
+          (
+            (docker_env_slurp.content | b64decode)
+            | regex_findall('^BACKUP_ENCRYPTION_KEY=(.*)$', multiline=True)
           )
           | first
         )
@@ -358,22 +567,6 @@
   when: docker_env_stat.stat.exists | default(false)
   no_log: true
 
-- name: Extract existing VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED from Docker Compose .env
-  ansible.builtin.set_fact:
-    existing_vite_kiosk_due_mgmt_layout_v2_enabled: >-
-      {{
-        (
-          (
-            (docker_env_slurp.content | b64decode)
-            | regex_findall('^VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED=(.*)$', multiline=True)
-          )
-          | first
-        )
-        | default('')
-      }}
-  when: docker_env_stat.stat.exists | default(false)
-  no_log: true
-
 - name: Deploy Docker Compose environment variables
   ansible.builtin.template:
     src: "{{ playbook_dir }}/../templates/docker.env.j2"
@@ -453,381 +646,11 @@
   ansible.builtin.import_tasks: monitoring.yml
   when: server_release_mode == 'full'
 
-# 計測機器ジャンル画像は compose 永続化前はコンテナ書き込み層にのみ存在し得る。api 再作成で失われるため、
-# coordinatorのruntime handoff前にホストのbind先へ退避する（既存ホストファイルは上書きしない）。
-- name: Rescue measuring instrument genre images from api container before recreate
-  ansible.builtin.shell: |
-    set -euo pipefail
-    cd "{{ repo_path }}"
-    DESTINATION="{{ repo_path }}/storage/measuring-instrument-genres"
-    SOURCE_DIR="/app/storage/measuring-instrument-genres"
-
-    if ! API_IDS="$(docker compose -f infrastructure/docker/docker-compose.server.yml ps --all --quiet api)"; then
-      echo "[ERROR] could not enumerate legacy api containers" >&2
-      exit 1
-    fi
-
-    API_CID=""
-    while IFS= read -r cid; do
-      [ -n "${cid}" ] || continue
-      if [[ ! "${cid}" =~ ^[0-9a-fA-F]{12,64}$ ]]; then
-        echo "[ERROR] compose returned an invalid legacy api container id" >&2
-        exit 1
-      fi
-      if [ -n "${API_CID}" ]; then
-        echo "[ERROR] multiple legacy api containers found; refusing ambiguous rescue" >&2
-        exit 1
-      fi
-      API_CID="${cid}"
-    done <<<"${API_IDS}"
-
-    if [ -z "${API_CID}" ]; then
-      echo "[INFO] legacy api container not found; skip genre image rescue"
-      exit 0
-    fi
-
-    WORK_DIR="$(mktemp -d /tmp/genre-image-rescue.XXXXXX)"
-    ARCHIVE="${WORK_DIR}/source.tar"
-    COPY_ERROR="${WORK_DIR}/docker-cp.stderr"
-    cleanup_genre_rescue() {
-      rm -rf -- "${WORK_DIR}"
-    }
-    trap cleanup_genre_rescue EXIT HUP INT TERM
-
-    # docker cp works for stopped containers. Stream an archive instead of
-    # extracting it directly so hostile names and links can be rejected first.
-    if ! docker cp "${API_CID}:${SOURCE_DIR}/." - >"${ARCHIVE}" 2>"${COPY_ERROR}"; then
-      if grep -Fq "${SOURCE_DIR}" "${COPY_ERROR}" \
-        && grep -Eqi 'could not find the file|no such file or directory' "${COPY_ERROR}"; then
-        echo "[INFO] no measuring-instrument-genres dir in legacy api container; skip"
-        exit 0
-      fi
-      echo "[ERROR] could not archive genre images from legacy api container" >&2
-      sed 's/^/[docker cp] /' "${COPY_ERROR}" >&2
-      exit 1
-    fi
-
-    python3 "{{ repo_path }}/scripts/deploy/preserve-container-archive.py" \\
-      --archive "${ARCHIVE}" \\
-      --destination "${DESTINATION}"
-  args:
-    executable: /bin/bash
-  when: >-
-    server_release_mode == 'host-config-only'
-    or (
-      server_release_mode == 'full'
-      and (
-        (force_docker_rebuild | default(false) | bool)
-        or (server_docker_build_needed | default(repo_changed) | bool)
-        or (docker_env_result.changed | default(false))
-      )
-    )
-  changed_when: false
-
-- name: Rebuild and restart Docker services on server when repo changed
-  block:
-    - name: Rebuild/Restart docker compose services
-      ansible.builtin.shell: |
-        set -euo pipefail
-        {{ repo_path }}/scripts/deploy/pi5-phase3-legacy-guard.sh
-        cd {{ repo_path }}
-        docker compose --env-file infrastructure/docker/.env -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build api web
-      args:
-        executable: /bin/bash
-      register: docker_restart_result
-      retries: 3
-      delay: 10
-      until: docker_restart_result is succeeded
-      failed_when: docker_restart_result.rc != 0
-
-    - name: Record docker restart success
-      ansible.builtin.set_fact:
-        docker_restart_summary: "{{ docker_restart_summary + [ {'status': 'ok'} ] }}"
-  rescue:
-    - name: Capture docker compose logs
-      ansible.builtin.shell: |
-        set -euo pipefail
-        if command -v docker >/dev/null 2>&1; then
-          cd {{ repo_path }} && docker compose -f infrastructure/docker/docker-compose.server.yml logs --tail=50 api web
-        else
-          echo "[WARN] docker command not found. Showing systemd logs instead."
-          journalctl -u docker.service -n 100 || true
-        fi
-      args:
-        executable: /bin/bash
-      register: docker_restart_logs
-      changed_when: false
-
-    - name: Record docker restart failure
-      ansible.builtin.set_fact:
-        docker_restart_summary: "{{ docker_restart_summary + [ {'status': 'failed', 'log': docker_restart_logs.stdout | default('')} ] }}"
-
-    - name: Fail current host due to docker restart failure
-      ansible.builtin.fail:
-        msg: >
-          Docker Compose restart failed on {{ inventory_hostname }}.
-          See captured logs above for details.
-  when:
-    - server_release_mode == 'full'
-    - not (pi5_minimal_downtime_deploy_enabled | default(false) | bool)
-    - not (pi5_blue_green_deploy_enabled | default(false) | bool)
-    - (force_docker_rebuild | default(false) | bool) or (server_docker_build_needed | default(repo_changed) | bool)
-
-- name: Reject retired Ansible-owned Pi5 release executors
-  ansible.builtin.fail:
-    msg: >-
-      pi5_minimal_downtime_deploy_enabled and pi5_blue_green_deploy_enabled no
-      longer authorize Ansible to build, migrate, switch, or roll back Pi5.
-      Run the canonical rolling-release coordinator, which supplies the sealed
-      run ID, migration plan, resource evidence, and sole rollback authority.
-  when:
-    - server_release_mode == 'full'
-    - >-
-      (pi5_minimal_downtime_deploy_enabled | default(false) | bool)
-      or (pi5_blue_green_deploy_enabled | default(false) | bool)
-
-- name: Force recreate api when Docker .env changed
-  ansible.builtin.shell: |
-    set -euo pipefail
-    {{ repo_path }}/scripts/deploy/pi5-phase3-legacy-guard.sh
-    cd {{ repo_path }}
-    docker compose --env-file infrastructure/docker/.env -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate api
-  args:
-    executable: /bin/bash
-  when:
-    - server_release_mode == 'full'
-    - docker_env_result.changed | default(false)
-    - not (pi5_minimal_downtime_deploy_enabled | default(false) | bool)
-    - not (pi5_blue_green_deploy_enabled | default(false) | bool)
-
-- name: Rebuild and recreate web when Docker .env changed (VITE_* build args)
-  ansible.builtin.shell: |
-    set -euo pipefail
-    {{ repo_path }}/scripts/deploy/pi5-phase3-legacy-guard.sh
-    cd {{ repo_path }}
-    docker compose --env-file infrastructure/docker/.env -f infrastructure/docker/docker-compose.server.yml up -d --build --force-recreate web
-  args:
-    executable: /bin/bash
-  when:
-    - server_release_mode == 'full'
-    - docker_env_result.changed | default(false)
-    - not (pi5_minimal_downtime_deploy_enabled | default(false) | bool)
-    - not (pi5_blue_green_deploy_enabled | default(false) | bool)
-
-- name: Ensure api and web containers are running before Prisma migrate
-  ansible.builtin.shell: |
-    set -euo pipefail
-    {{ repo_path }}/scripts/deploy/pi5-phase3-legacy-guard.sh
-    cd {{ repo_path }}
-    docker compose --env-file infrastructure/docker/.env -f infrastructure/docker/docker-compose.server.yml up -d api web
-  args:
-    executable: /bin/bash
-  when:
-    - server_release_mode == 'full'
-    - not (pi5_minimal_downtime_deploy_enabled | default(false) | bool)
-    - not (pi5_blue_green_deploy_enabled | default(false) | bool)
-
-- name: Run Prisma migrations on server (fail-fast)
-  block:
-    - name: Run prisma migrate deploy
-      ansible.builtin.shell: |
-        set -euo pipefail
-        cd {{ repo_path }}
-        docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate deploy
-      args:
-        executable: /bin/bash
-      register: prisma_migrate_deploy_result
-      retries: 3
-      delay: 5
-      until: prisma_migrate_deploy_result is succeeded
-      changed_when: false
-
-    - name: Run prisma migrate status
-      ansible.builtin.shell: |
-        set -euo pipefail
-        cd {{ repo_path }}
-        docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate status
-      args:
-        executable: /bin/bash
-      register: prisma_migrate_status_result
-      changed_when: false
-  rescue:
-    - name: Capture docker compose logs after migration failure
-      ansible.builtin.shell: |
-        set -euo pipefail
-        cd {{ repo_path }}
-        docker compose -f infrastructure/docker/docker-compose.server.yml logs --tail=80 api db
-      args:
-        executable: /bin/bash
-      register: prisma_migrate_logs
-      changed_when: false
-
-    - name: Fail current host due to migration failure
-      ansible.builtin.fail:
-        msg: >
-          Prisma migration failed on {{ inventory_hostname }}.
-          See captured logs above for details.
-  when:
-    - server_release_mode == 'full'
-    - not (pi5_minimal_downtime_deploy_enabled | default(false) | bool)
-    - not (pi5_blue_green_deploy_enabled | default(false) | bool)
-
-# api/web rebuild 直後は起動直後 memory spike で一時 503 degraded になり得るため、最大約120秒待つ。
-- name: Wait for API health endpoint to recover
-  ansible.builtin.uri:
-    url: "{{ api_healthcheck_url }}"
-    method: GET
-    status_code: 200
-    return_content: true
-    validate_certs: false  # 自己署名証明書対応
-  register: api_health_result
-  retries: 24
-  delay: 5
-  until:
-    - api_health_result.status == 200
-    - (api_health_result.json.status | default('')) == 'ok'
-  when:
-    - server_release_mode == 'full'
-
-- name: Verify API container environment variables after .env update
-  ansible.builtin.shell: |
-    set -euo pipefail
-    cd {{ repo_path }}
-    ENV_OUTPUT="$(docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api printenv)"
-
-    get_env_value() {
-      local key="$1"
-      printf "%s\n" "${ENV_OUTPUT}" | awk -F= -v k="${key}" '$1==k {print substr($0, index($0,"=")+1)}'
-    }
-
-    missing=()
-    dispatcher_enabled="$(get_env_value 'ALERTS_DISPATCHER_ENABLED')"
-
-    if [ "${dispatcher_enabled}" = "true" ]; then
-      for key in ALERTS_SLACK_WEBHOOK_DEPLOY ALERTS_SLACK_WEBHOOK_OPS ALERTS_SLACK_WEBHOOK_SECURITY ALERTS_SLACK_WEBHOOK_SUPPORT; do
-        value="$(get_env_value "${key}")"
-        if [ -z "${value}" ]; then
-          missing+=("${key}")
-        fi
-      done
-    fi
-
-    kiosk_support="$(get_env_value 'SLACK_KIOSK_SUPPORT_WEBHOOK_URL')"
-    if [ -z "${kiosk_support}" ]; then
-      missing+=("SLACK_KIOSK_SUPPORT_WEBHOOK_URL")
-    fi
-
-    local_llm_base="{{ api_local_llm_base_url | default('') }}"
-    local_llm_token="{{ api_local_llm_shared_token | default('') }}"
-    local_llm_model="{{ api_local_llm_model | default('') }}"
-    if [ -n "${local_llm_base}" ] || [ -n "${local_llm_token}" ] || [ -n "${local_llm_model}" ]; then
-      for key in LOCAL_LLM_BASE_URL LOCAL_LLM_SHARED_TOKEN LOCAL_LLM_MODEL; do
-        value="$(get_env_value "${key}")"
-        if [ -z "${value}" ]; then
-          missing+=("${key}")
-        fi
-      done
-    fi
-
-    embedding_on_raw="$(get_env_value 'PHOTO_TOOL_EMBEDDING_ENABLED')"
-    embedding_on="$(printf '%s' "${embedding_on_raw}" | tr '[:upper:]' '[:lower:]')"
-    if [ "${embedding_on}" = "true" ]; then
-      for key in PHOTO_TOOL_EMBEDDING_URL PHOTO_TOOL_EMBEDDING_MODEL_ID; do
-        value="$(get_env_value "${key}")"
-        if [ -z "${value}" ]; then
-          missing+=("${key}")
-        fi
-      done
-    fi
-
-    missing_count=0
-    for _ in "${missing[@]}"; do
-      missing_count=$((missing_count + 1))
-    done
-    if [ "${missing_count}" -gt 0 ]; then
-      printf "Missing required environment variables: %s\n" "$(IFS=,; echo "${missing[*]}")" >&2
-      exit 1
-    fi
-  args:
-    executable: /bin/bash
-  when:
-    - server_release_mode == 'full'
-    - docker_env_result.changed | default(false)
-  changed_when: false
-
 - name: Apply status-agent configuration and systemd units
   ansible.builtin.import_tasks: status-agent.yml
   when: server_release_mode == 'full'
 
 
-- name: Resolve deploy user groups for Blue/Green reconcile Docker access
-  ansible.builtin.command:
-    cmd: "id -nG {{ ansible_user }}"
-  register: pi5_bluegreen_deploy_user_groups
-  changed_when: false
-  check_mode: false
-  when: server_release_mode == 'full'
-
-- name: Assert deploy user is in the docker group for Blue/Green reconcile
-  ansible.builtin.assert:
-    that:
-      - "'docker' in pi5_bluegreen_deploy_user_groups.stdout.split()"
-    fail_msg: >-
-      Blue/Green reconcile runs as {{ ansible_user }} with SupplementaryGroups=docker.
-      Add {{ ansible_user }} to the docker group before enabling pi5-blue-green-reconcile.service.
-  when: server_release_mode == 'full'
-
-- name: Deploy Pi5 Blue/Green boot reconciliation service
-  ansible.builtin.template:
-    src: "{{ playbook_dir }}/../templates/pi5-blue-green-reconcile.service.j2"
-    dest: /etc/systemd/system/pi5-blue-green-reconcile.service
-    owner: root
-    group: root
-    mode: '0644'
-  when: server_release_mode == 'full'
-
-- name: Enable Pi5 Blue/Green boot reconciliation service
-  ansible.builtin.systemd:
-    name: pi5-blue-green-reconcile.service
-    enabled: true
-    daemon_reload: true
-  when: server_release_mode == 'full'
-
-- name: Deploy Pi5 power dispatcher script
-  ansible.builtin.template:
-    src: "{{ playbook_dir }}/../templates/pi5-power-dispatcher.sh.j2"
-    dest: /usr/local/bin/pi5-power-dispatcher.sh
-    owner: root
-    group: root
-    mode: '0755'
-  when: server_release_mode == 'full'
-
-- name: Deploy Pi5 power dispatcher systemd service
-  ansible.builtin.template:
-    src: "{{ playbook_dir }}/../templates/pi5-power-dispatcher.service.j2"
-    dest: /etc/systemd/system/pi5-power-dispatcher.service
-    owner: root
-    group: root
-    mode: '0644'
-  when: server_release_mode == 'full'
-
-- name: Deploy Pi5 power dispatcher systemd path
-  ansible.builtin.template:
-    src: "{{ playbook_dir }}/../templates/pi5-power-dispatcher.path.j2"
-    dest: /etc/systemd/system/pi5-power-dispatcher.path
-    owner: root
-    group: root
-    mode: '0644'
-  when: server_release_mode == 'full'
-
-- name: Reload systemd for power dispatcher units
-  ansible.builtin.systemd:
-    daemon_reload: true
-  when: server_release_mode == 'full'
-
-- name: Enable and start power dispatcher path
-  ansible.builtin.systemd:
-    name: pi5-power-dispatcher.path
-    enabled: true
-    state: started
+- name: Deploy Pi5 power dispatcher
+  ansible.builtin.import_tasks: power-dispatcher.yml
   when: server_release_mode == 'full'

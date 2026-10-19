@@ -15,8 +15,8 @@ export function templateItemHasInspectionMarker(item: PartMeasurementTemplateIte
   return (
     parseOptionalNumber(item.markerXRatio) != null &&
     parseOptionalNumber(item.markerYRatio) != null &&
-    parseOptionalNumber(item.lowerLimit) != null &&
-    parseOptionalNumber(item.upperLimit) != null
+    (item.valueKind === 'judgement' ||
+      (parseOptionalNumber(item.lowerLimit) != null && parseOptionalNumber(item.upperLimit) != null))
   );
 }
 

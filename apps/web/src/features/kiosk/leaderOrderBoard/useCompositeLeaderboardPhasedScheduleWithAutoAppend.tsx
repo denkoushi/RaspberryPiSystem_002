@@ -9,6 +9,8 @@ import {
   type ProductionScheduleListResponse
 } from '../../../api/client';
 import { useKioskProductionScheduleLeaderboardBoard } from '../../../api/hooks';
+import { productionScheduleQueryKeys } from '../../../api/queryKeys/productionSchedule';
+import { readProductionBuildConfig } from '../../../config/productionBuildConfig';
 
 import { buildLeaderboardBoardContinuePayload } from './buildLeaderboardBoardContinuePayload';
 import { normalizeLeaderboardSeibanOrTokens } from './cache/filterLeaderboardBoardBySeibanOr';
@@ -75,7 +77,7 @@ const SCHEDULE_QUERY_DISABLED = {
 
 const EMPTY_LABOR_METADATA_RESOURCE_CDS: readonly string[] = [];
 const DEFER_RESIDUAL_SUMMARY_ENABLED =
-  import.meta.env.VITE_KIOSK_LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED === 'true';
+  readProductionBuildConfig().leaderboardDeferResidualSummaryEnabled;
 
 function isLeaderboardLaborRequestEnabled(includeLabor: unknown): boolean {
   return includeLabor === true || includeLabor === 'true';
@@ -112,7 +114,7 @@ function invalidateLeaderboardDecorationsQueries(queryClient: ReturnType<typeof 
   return queryClient.invalidateQueries({
     predicate: (q) =>
       Array.isArray(q.queryKey) &&
-      q.queryKey[0] === 'kiosk-production-schedule' &&
+      q.queryKey[0] === productionScheduleQueryKeys.scheduleAll[0] &&
       q.queryKey[1] === 'leaderboard-decorations'
   });
 }
@@ -625,7 +627,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
             resetDecorations();
             purgeCache();
             await Promise.all([
-              queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] }),
+              queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll }),
               invalidateLeaderboardDecorationsQueries(queryClient)
             ]);
             break;

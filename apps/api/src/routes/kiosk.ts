@@ -1,9 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { registerProductionScheduleRoutes } from './kiosk/production-schedule/index.js';
 import { registerKioskEmployeesRoute } from './kiosk/employees.js';
+import { registerKioskPortalCardsRoute } from './kiosk/portal-cards.js';
+import { registerKioskInitialRoute } from './kiosk/initial-route.js';
 import { registerKioskConfigRoute } from './kiosk/config.js';
+import { registerKioskSitesRoute } from './kiosk/sites.js';
 import { registerKioskCallTargetsRoute } from './kiosk/call-targets.js';
 import { registerKioskSupportRoute } from './kiosk/support.js';
+import { registerKioskInquiryRoutes } from './kiosk/inquiries.js';
 import { registerKioskPowerRoute } from './kiosk/power.js';
 import { registerKioskSignagePreviewRoutes } from './kiosk/signage-preview.js';
 import { registerPurchaseOrderLookupRoute } from './kiosk/purchase-order-lookup.js';
@@ -14,6 +18,7 @@ import {
 import { registerKioskAssemblyRecordApprovalAuthRoute } from './kiosk/assembly-record-approval-auth.js';
 import { registerKioskAssemblyTemplateAuthRoute } from './kiosk/assembly-template-auth.js';
 import { registerKioskAssemblyTraceabilityAuthRoute } from './kiosk/assembly-traceability-auth.js';
+import { registerSelfInspectionNonconformityRoutes } from './kiosk/self-inspection-nonconformities.js';
 import {
   checkPowerRateLimit,
   checkRateLimit,
@@ -45,6 +50,8 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     requireClientDevice
   });
 
+  await registerSelfInspectionNonconformityRoutes(app);
+
   await registerProductionScheduleRoutes(app, {
     requireClientDevice,
     resolveLocationScopeContext,
@@ -54,6 +61,13 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
 
   await registerKioskConfigRoute(app, {
     normalizeClientKey
+  });
+
+  await registerKioskInitialRoute(app, { requireClientDevice });
+  await registerKioskPortalCardsRoute(app, { requireClientDevice });
+
+  await registerKioskSitesRoute(app, {
+    requireClientDevice
   });
 
   await registerKioskCallTargetsRoute(app, {
@@ -66,6 +80,8 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     checkRateLimit,
     resolveLocationScopeContext
   });
+
+  await registerKioskInquiryRoutes(app);
 
   await registerKioskPowerRoute(app, {
     requireClientDevice,

@@ -14,6 +14,7 @@ import {
 } from './inspectionDrawingKioskUi';
 import { InspectionDrawingResourceCdMultiSelect } from './InspectionDrawingResourceCdMultiSelect';
 import { InspectionDrawingResourceCdSelect } from './InspectionDrawingResourceCdSelect';
+import { inspectionDrawingSopTargetProps } from './inspectionDrawingSopAnnotations';
 
 import type { InspectionDrawingCreateMetadataRowProps } from './InspectionDrawingCreateMetadataRow';
 import type { PartMeasurementProcessGroup, SelfInspectionMode } from '../types';
@@ -23,6 +24,8 @@ export function InspectionDrawingCreateMetaChipList({
   lineageLocked,
   fhincd,
   onFhincdChange,
+  fkojun,
+  onFkojunChange,
   resourceCd,
   onResourceCdChange,
   resourceCds,
@@ -46,6 +49,7 @@ export function InspectionDrawingCreateMetaChipList({
 >) {
   const baseId = useId();
   const fhincdFieldId = `${baseId}-fhincd`;
+  const fkojunFieldId = `${baseId}-fkojun`;
   const templateNameFieldId = `${baseId}-template-name`;
   const selfInspectionModeFieldId = `${baseId}-self-inspection-mode`;
   const selfInspectionFixedCountFieldId = `${baseId}-self-inspection-fixed-count`;
@@ -54,6 +58,7 @@ export function InspectionDrawingCreateMetaChipList({
 
   return (
     <dl
+      {...inspectionDrawingSopTargetProps('template-metadata')}
       data-testid="inspection-drawing-create-meta-row"
       className={inspectionDrawingCreateFlatMetaRowClassName}
     >
@@ -61,6 +66,9 @@ export function InspectionDrawingCreateMetaChipList({
         <>
           <InspectionDrawingCreateMetaChip term="品番">
             <span className={inspectionDrawingCreateMetaChipReadonlyValueClassName}>{fhincd}</span>
+          </InspectionDrawingCreateMetaChip>
+          <InspectionDrawingCreateMetaChip term="工順 (FKOJUN)" controlId={fkojunFieldId}>
+            <Input id={fkojunFieldId} value={fkojun} disabled readOnly className={inspectionDrawingCreateMetaChipInputClassName} />
           </InspectionDrawingCreateMetaChip>
           <InspectionDrawingCreateMetaChip term="資源">
             <span
@@ -99,6 +107,15 @@ export function InspectionDrawingCreateMetaChipList({
               disabled={contentReadOnly}
             />
           </InspectionDrawingCreateMetaChip>
+          <InspectionDrawingCreateMetaChip term="工順 (FKOJUN)" controlId={fkojunFieldId}>
+            <Input
+              id={fkojunFieldId}
+              value={fkojun}
+              onChange={(e) => onFkojunChange(e.target.value)}
+              className={inspectionDrawingCreateMetaChipInputClassName}
+              disabled={contentReadOnly}
+            />
+          </InspectionDrawingCreateMetaChip>
           {resourceCds && onResourceCdsChange ? (
             <InspectionDrawingResourceCdMultiSelect
               values={resourceCds}
@@ -128,7 +145,11 @@ export function InspectionDrawingCreateMetaChipList({
           disabled={contentReadOnly}
         />
       </InspectionDrawingCreateMetaChip>
-      <InspectionDrawingCreateMetaChip term="検査数" controlId={selfInspectionModeFieldId}>
+      <InspectionDrawingCreateMetaChip
+        term="検査数"
+        controlId={selfInspectionModeFieldId}
+        annotationProps={inspectionDrawingSopTargetProps('self-inspection-setting')}
+      >
         <select
           id={selfInspectionModeFieldId}
           className={inspectionDrawingCreateMetaChipSelectClassName}

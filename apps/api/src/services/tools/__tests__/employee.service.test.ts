@@ -15,6 +15,9 @@ vi.mock('../../../lib/prisma.js', () => ({
       update: vi.fn(),
       delete: vi.fn(),
     },
+    inventoryNfcTag: {
+      findFirst: vi.fn(),
+    },
   },
 }));
 
@@ -217,6 +220,16 @@ describe('EmployeeService', () => {
       });
     });
 
+    it('部署(section)を保存する', async () => {
+      vi.mocked(prisma.employee.create).mockResolvedValue({ id: 'employee-1' } as any);
+
+      await employeeService.create({ employeeCode: 'EMP001', displayName: 'New Employee', section: '加工1課' });
+
+      expect(prisma.employee.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ section: '加工1課' }),
+      });
+    });
+
     it('オプショナルフィールドがnullの場合、undefinedとして扱う', async () => {
       const input = {
         employeeCode: 'EMP001',
@@ -256,6 +269,14 @@ describe('EmployeeService', () => {
           status: 'ACTIVE',
         },
       });
+    });
+
+    it('在庫NFCタグと同じUIDの従業員を作成できない', async () => {
+      vi.mocked(prisma.inventoryNfcTag.findFirst).mockResolvedValue({ id: 'inventory-tag-1' } as any);
+
+      await expect(employeeService.create({ employeeCode: 'EMP001', nfcTagUid: 'INV-TAG-1' }))
+        .rejects.toMatchObject({ statusCode: 409 });
+      expect(prisma.employee.create).not.toHaveBeenCalled();
     });
   });
 
@@ -336,4 +357,3 @@ describe('EmployeeService', () => {
     });
   });
 });
-

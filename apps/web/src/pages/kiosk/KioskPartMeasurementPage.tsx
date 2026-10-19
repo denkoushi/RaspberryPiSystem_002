@@ -135,6 +135,7 @@ export function KioskPartMeasurementPage() {
         fhincd: c.fhincd,
         fhinmei: c.fhinmei,
         resourceCd: c.resourceCd,
+        fkojun: c.fkojun,
         processGroup,
         machineName: c.machineName,
         scheduleRowId: c.scheduleRowId,

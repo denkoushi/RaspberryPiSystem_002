@@ -85,7 +85,28 @@ const inProgressSession = {
       }
     ]
   },
-  torqueRecords: [],
+  torqueRecords: [
+    {
+      id: 'torque-record-ok',
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      templateBoltId: 'bolt-e2e',
+      markerNo: 1,
+      value: '10',
+      judgement: 'ok',
+      accepted: true,
+      recordedAt: timestamp
+    },
+    {
+      id: 'torque-record-ignored',
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      templateBoltId: 'bolt-e2e',
+      markerNo: 1,
+      value: '10',
+      judgement: 'ignored',
+      accepted: false,
+      recordedAt: timestamp
+    }
+  ],
   restartLogs: [],
   approval: null,
   areaTorqueSummaries: [],
@@ -239,7 +260,7 @@ type ApiEvidence = {
 async function installMockNfcWebSocket(page: Page): Promise<void> {
   await page.addInitScript(() => {
     type TestWindow = Window & {
-      __emitAssemblyNfc?: (uid: string) => void;
+      __emitAssemblyNfc?: (uid: string) => number;
     };
     type MockSocket = {
       readyState: number;
@@ -285,22 +306,31 @@ async function installMockNfcWebSocket(page: Page): Promise<void> {
         uid,
         timestamp: new Date(Date.now() + 1_000).toISOString()
       });
+      let delivered = 0;
       for (const socket of sockets) {
-        if (socket.readyState === MockWebSocket.OPEN) {
-          socket.onmessage?.(new MessageEvent('message', { data: payload }));
+        if (socket.readyState === MockWebSocket.OPEN && socket.onmessage) {
+          socket.onmessage(new MessageEvent('message', { data: payload }));
+          delivered += 1;
         }
       }
+      return delivered;
     };
   });
 }
 
 async function emitNfc(page: Page, uid: string): Promise<void> {
-  await page.evaluate((value) => {
-    const testWindow = window as Window & {
-      __emitAssemblyNfc?: (nextUid: string) => void;
-    };
-    testWindow.__emitAssemblyNfc?.(value);
-  }, uid);
+  // 遅い CI では画面が NFC を待ち受ける前に送ると読み取りが失われるため、確認ダイアログを待ち、受け手に届くまで送り直す。
+  await expect(page.getByRole('dialog', { name: '作業者確認' })).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate((value) => {
+        const testWindow = window as Window & {
+          __emitAssemblyNfc?: (nextUid: string) => number;
+        };
+        return testWindow.__emitAssemblyNfc?.(value) ?? 0;
+      }, uid)
+    )
+    .toBeGreaterThan(0);
 }
 
 async function mockAssemblyApis(
@@ -314,6 +344,14 @@ async function mockAssemblyApis(
 
     if (path.startsWith('/src/api/')) {
       await route.continue();
+      return;
+    }
+    if (path === '/api/kiosk/inquiries/summary') {
+      await route.fulfill({ json: { isReceiver: false, unreadCount: 0 } });
+      return;
+    }
+    if (path === '/api/system/local-llm/availability') {
+      await route.fulfill({ json: { available: true } });
       return;
     }
     if (path === '/api/kiosk/config') {
@@ -447,17 +485,47 @@ for (const viewport of [
       has: page.getByRole('heading', { name: '組立作業' })
     });
     await expect(workHeader.getByText('要領書', { exact: true })).toBeVisible();
+    const integratedStatus = page.getByTestId('assembly-work-session-status');
+    await expect(integratedStatus).toBeVisible();
+    const statusInsideHeader = await integratedStatus.evaluate((element) => {
+      const header = element.closest('header');
+      if (!header) return false;
+      const statusRect = element.getBoundingClientRect();
+      const headerRect = header.getBoundingClientRect();
+      return statusRect.top >= headerRect.top && statusRect.bottom <= headerRect.bottom;
+    });
+    expect(statusInsideHeader).toBe(true);
     const fullPageView = page.getByTestId('assembly-procedure-image-with-markers');
     await expect(fullPageView).toBeVisible();
-    await expect(fullPageView.getByRole('button', { name: 'BOLT-E2E' })).toHaveAttribute(
+    const fullPageMarker = fullPageView.getByRole('button', { name: 'BOLT-E2E' });
+    await expect(fullPageMarker).toHaveAttribute(
       'data-marker-id',
       'bolt-e2e'
     );
+    await expect(fullPageMarker).toHaveClass(/bg-emerald-500/);
+    await expect(fullPageMarker).toHaveClass(/outline-sky-400/);
     await expect(fullPageView.locator('svg line')).toHaveCount(1);
     await expect(page.getByRole('button', { name: '全手順' })).toBeVisible();
     await expect(page.getByRole('button', { name: '現在の丸数字へ' })).toBeVisible();
     await expect(page.getByRole('button', { name: '前手順' })).toBeDisabled();
     await expect(page.getByRole('button', { name: '次手順' })).toBeDisabled();
+    const historyHeading = page.getByRole('heading', { name: '履歴' });
+    await historyHeading.scrollIntoViewIfNeeded();
+    await expect(historyHeading).toBeVisible();
+    await expect(page.getByText('OK', { exact: true })).toHaveClass(/text-2xl/);
+    await expect(page.getByText('IGNORED', { exact: true })).toHaveClass(/text-sm/);
+
+    if (viewport.width >= 1366) {
+      const canvasRatio = await page.getByTestId('assembly-work-layout').evaluate((element) => {
+        const canvas = element.querySelector<HTMLElement>(
+          '[data-testid="assembly-work-procedure-pane"]'
+        );
+        return canvas
+          ? canvas.getBoundingClientRect().width / element.getBoundingClientRect().width
+          : 0;
+      });
+      expect(canvasRatio).toBeGreaterThanOrEqual(0.55);
+    }
 
     const pageOverflow = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,
@@ -484,10 +552,13 @@ for (const viewport of [
     await expect(page.getByText('手順 1/2 · 中央を重点確認')).toBeVisible();
     await expect(page.getByText('丸数字1を確認してから締め付ける')).toBeVisible();
     await expect(page.getByText('⚠ 注意 · 中央を重点確認')).toBeVisible();
-    const cropView = page.getByTestId('assembly-procedure-crop-view');
+    const stepCanvas = page.getByTestId('assembly-work-step-canvas');
+    const cropView = stepCanvas.getByTestId('assembly-procedure-crop-view');
     const marker = cropView.getByRole('button', { name: 'BOLT-E2E' });
     await expect(cropView).toBeVisible();
     await expect(marker).toBeVisible();
+    await expect(marker).toHaveClass(/bg-emerald-500/);
+    await expect(marker).toHaveClass(/outline-sky-400/);
     await expect(cropView.locator('svg line')).toHaveCount(1);
     await expect(page.getByTestId('assembly-procedure-crop-minimap')).toBeVisible();
     const alignment = await cropView.evaluate((element, markerElement) => {
@@ -529,7 +600,7 @@ for (const viewport of [
       'data-marker-id',
       'bolt-e2e'
     );
-    await expect(page.getByTestId('assembly-procedure-crop-view')).toHaveCount(0);
+    await expect(stepCanvas.getByTestId('assembly-procedure-crop-view')).toHaveCount(0);
     await page.getByRole('button', { name: '矩形へ戻る' }).click();
     await expect(cropView).toBeVisible();
     await page.getByRole('button', { name: '次手順' }).click();

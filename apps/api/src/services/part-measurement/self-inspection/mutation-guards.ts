@@ -4,6 +4,7 @@ import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { resolveProductionSchedulePlannedQuantity } from '../../production-schedule/self-inspection-schedule-eligibility.js';
 import { partMeasurementTemplateFullInclude } from '../part-measurement-template-include.js';
+import { assertSelfInspectionSessionActive } from '../self-inspection-invalidation-errors.js';
 import { SELF_INSPECTION_MAX_EXPECTED_ENTRY_COUNT } from '../self-inspection-config.js';
 import {
   isSelfInspectionLotEntryRegistrationCompleteForPolicy,
@@ -42,6 +43,7 @@ export async function loadSessionForMutation(
   if (!session) {
     throw new ApiError(404, '自主検査セッションが見つかりません');
   }
+  assertSelfInspectionSessionActive(session);
   if (session.completedAt) {
     throw new ApiError(409, '完了済みの自主検査は編集できません');
   }
@@ -100,6 +102,28 @@ export function validateMeasurementPayload(
     if (!item) {
       throw new ApiError(400, '測定点の指定が不正です');
     }
+    if (item.valueKind === 'JUDGEMENT') {
+      if (!isBlankValue(value.value)) {
+        throw new ApiError(400, '管用ネジの測定値はOKまたはNGで入力してください');
+      }
+      if (value.judgementResult !== 'PASS' && value.judgementResult !== 'FAIL') {
+        throw new ApiError(400, '管用ネジのOKまたはNGを選択してください');
+      }
+      return {
+        templateItemId: value.templateItemId,
+        value: null,
+        judgementResult: value.judgementResult,
+        reviewStatus: 'NOT_REQUIRED',
+        outOfToleranceAcknowledgedAt: null,
+        approvedAt: null,
+        approvedByUserId: null,
+        approvedByUsername: null,
+        approvalComment: null
+      };
+    }
+    if (value.judgementResult != null) {
+      throw new ApiError(400, '数値測定点にOK/NG判定は入力できません');
+    }
     const decimalValue = parseDecimal(value.value);
     if (!isBlankValue(value.value) && decimalValue == null) {
       throw new ApiError(400, '測定値は数値で入力してください');
@@ -124,6 +148,7 @@ export function validateMeasurementPayload(
       return {
         templateItemId: value.templateItemId,
         value: decimalValue,
+        judgementResult: null,
         reviewStatus: 'NOT_REQUIRED',
         outOfToleranceAcknowledgedAt: null,
         approvedAt: null,
@@ -136,6 +161,7 @@ export function validateMeasurementPayload(
       return {
         templateItemId: value.templateItemId,
         value: decimalValue,
+        judgementResult: null,
         reviewStatus: existingValue.reviewStatus,
         outOfToleranceAcknowledgedAt: existingValue.outOfToleranceAcknowledgedAt,
         approvedAt: existingValue.approvedAt,
@@ -150,6 +176,7 @@ export function validateMeasurementPayload(
     return {
       templateItemId: value.templateItemId,
       value: decimalValue,
+      judgementResult: null,
       reviewStatus: 'PENDING',
       outOfToleranceAcknowledgedAt: acknowledgedAt,
       approvedAt: null,
@@ -174,6 +201,12 @@ export async function assertAllEntriesReviewReady(
     const valuesByItem = new Map(entry.values.map((value) => [value.templateItemId, value]));
     for (const item of template.items) {
       const stored = valuesByItem.get(item.id);
+      if (item.valueKind === 'JUDGEMENT') {
+        if (stored?.judgementResult == null) {
+          throw new ApiError(409, '管用ネジのOK/NG判定が未登録のため完了できません');
+        }
+        continue;
+      }
       if (stored?.value == null) {
         throw new ApiError(409, '測定値が未登録のため完了できません');
       }
@@ -257,18 +290,6 @@ export async function assertAllInspectorEntriesHaveRegistration(
   }
 }
 
-export async function assertInspectorRemeasurementNotStarted(
-  db: Prisma.TransactionClient,
-  sessionId: string
-): Promise<void> {
-  const inspectorEntryCount = await db.selfInspectionInspectorEntry.count({
-    where: { sessionId }
-  });
-  if (inspectorEntryCount > 0) {
-    throw new ApiError(409, '検査員の再測定が開始済みのためオペレータ測定値は変更できません');
-  }
-}
-
 export function assertLotEntryValuesMatchPayload(
   existing: Prisma.SelfInspectionLotEntryGetPayload<{ include: { values: true } }>,
   normalized: NormalizedMeasurementValue[]
@@ -276,15 +297,20 @@ export function assertLotEntryValuesMatchPayload(
   if (existing.values.length !== normalized.length) {
     throw new ApiError(409, '他端末で既に登録された入力と競合しています');
   }
-  const existingByItem = new Map(
-    existing.values.map((value) => [value.templateItemId, value.value])
-  );
+  const existingByItem = new Map(existing.values.map((value) => [value.templateItemId, value]));
   for (const value of normalized) {
     const existingValue = existingByItem.get(value.templateItemId);
-    if (existingValue == null) {
+    if (!existingValue) {
       throw new ApiError(409, '他端末で既に登録された入力と競合しています');
     }
-    if (!existingValue.equals(value.value)) {
+    if (existingValue.judgementResult !== value.judgementResult) {
+      throw new ApiError(409, '他端末で既に登録された判定と競合しています');
+    }
+    if (existingValue.value == null || value.value == null) {
+      if (existingValue.value === value.value) continue;
+      throw new ApiError(409, '他端末で既に登録された測定値と競合しています');
+    }
+    if (!existingValue.value.equals(value.value)) {
       throw new ApiError(409, '他端末で既に登録された測定値と競合しています');
     }
   }

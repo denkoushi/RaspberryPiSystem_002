@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type {
   PartMeasurementProcessGroup,
+  InspectionResult,
   SelfInspectionMeasurementReviewStatus,
   SelfInspectionMode
 } from '@prisma/client';
@@ -10,7 +11,6 @@ import { resolveProductionSchedulePlannedQuantity } from '../../production-sched
 import { partMeasurementTemplateFullInclude } from '../part-measurement-template-include.js';
 import {
   isSessionCompletionReady,
-  listRequiredEntrySlots,
   tryResolveExpectedEntryCount,
   type SelfInspectionTemplateConfig,
   SELF_INSPECTION_MAX_EXPECTED_ENTRY_COUNT
@@ -84,7 +84,8 @@ export function parseDecimal(value: string | number | null | undefined): Prisma.
 export function hasInspectionDrawingTemplate(template: SelfInspectionTemplate): boolean {
   if (!template.isActive || !template.visualTemplate?.drawingImageRelativePath?.trim()) return false;
   return template.items.length > 0 && template.items.every((item) => {
-    return item.markerXRatio != null && item.markerYRatio != null && item.lowerLimit != null && item.upperLimit != null;
+    if (item.markerXRatio == null || item.markerYRatio == null) return false;
+    return item.valueKind === 'JUDGEMENT' || (item.lowerLimit != null && item.upperLimit != null);
   });
 }
 
@@ -202,13 +203,15 @@ export type SelfInspectionInspectorMeasurementState =
 
 export type SelfInspectionMeasurementPayloadValue = {
   templateItemId: string;
-  value: string | number | null;
+  value?: string | number | null;
+  judgementResult?: InspectionResult | null;
   outOfToleranceAcknowledged?: boolean;
 };
 
 export type ExistingMeasurementReviewValue = {
   templateItemId: string;
   value: Prisma.Decimal | null;
+  judgementResult: InspectionResult | null;
   reviewStatus: SelfInspectionMeasurementReviewStatus;
   outOfToleranceAcknowledgedAt: Date | null;
   approvedAt: Date | null;
@@ -219,7 +222,8 @@ export type ExistingMeasurementReviewValue = {
 
 export type NormalizedMeasurementValue = {
   templateItemId: string;
-  value: Prisma.Decimal;
+  value: Prisma.Decimal | null;
+  judgementResult: InspectionResult | null;
   reviewStatus: SelfInspectionMeasurementReviewStatus;
   outOfToleranceAcknowledgedAt: Date | null;
   approvedAt: Date | null;
@@ -228,81 +232,8 @@ export type NormalizedMeasurementValue = {
   approvalComment: string | null;
 };
 
-export type InspectorEntryValueCompletionSource = {
-  entryIndex: number;
-  values: Array<{
-    templateItemId: string;
-    inspectorValue: Prisma.Decimal | null;
-  }>;
-};
-
-export function buildInspectorMeasurementCompletion(input: {
-  inspectorRemeasurementRequiredAt?: Date | null;
-  recordApproval?: unknown | null;
-  completedAt?: Date | null;
-  template: SelfInspectionTemplateConfig & { itemIds?: string[] };
-  plannedQuantity: number;
-  inspectorEntries?: InspectorEntryValueCompletionSource[];
-}): {
-  state: SelfInspectionInspectorMeasurementState;
-  requiredEntryCount: number;
-  completedRequiredEntryCount: number;
-  missingRequiredEntryCount: number;
-  incompleteValueEntryCount: number;
-} {
-  const requiredSlots = listRequiredEntrySlots(input.template, input.plannedQuantity);
-  const requiredItemIds = input.template.itemIds ?? [];
-  if (!input.inspectorRemeasurementRequiredAt || input.recordApproval || input.completedAt) {
-    return {
-      state: 'not_required',
-      requiredEntryCount: requiredSlots.length,
-      completedRequiredEntryCount: 0,
-      missingRequiredEntryCount: 0,
-      incompleteValueEntryCount: 0
-    };
-  }
-
-  const entriesByIndex = new Map(
-    (input.inspectorEntries ?? []).map((entry) => [entry.entryIndex, entry])
-  );
-  let completedRequiredEntryCount = 0;
-  let missingRequiredEntryCount = 0;
-  let incompleteValueEntryCount = 0;
-
-  for (const slot of requiredSlots) {
-    const entry = entriesByIndex.get(slot.entryIndex);
-    if (!entry) {
-      missingRequiredEntryCount += 1;
-      continue;
-    }
-    completedRequiredEntryCount += 1;
-    const valuesByItemId = new Map(entry.values.map((value) => [value.templateItemId, value]));
-    const hasMissingValue = requiredItemIds.some((itemId) => {
-      const value = valuesByItemId.get(itemId);
-      return value?.inspectorValue == null;
-    });
-    if (hasMissingValue) {
-      incompleteValueEntryCount += 1;
-    }
-  }
-
-  const state =
-    missingRequiredEntryCount === 0 &&
-    incompleteValueEntryCount === 0 &&
-    requiredSlots.length > 0
-      ? 'complete'
-      : completedRequiredEntryCount > 0
-        ? 'in_progress'
-        : 'pending';
-
-  return {
-    state,
-    requiredEntryCount: requiredSlots.length,
-    completedRequiredEntryCount,
-    missingRequiredEntryCount,
-    incompleteValueEntryCount
-  };
-}
+export type { InspectorEntryValueCompletionSource } from './inspector-slot-state.js';
+export { buildInspectorMeasurementCompletion } from './inspector-slot-state.js';
 
 export function resolveStatus(input: {
   completedEntryCount: number;

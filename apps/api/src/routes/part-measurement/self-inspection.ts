@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { prisma } from '../../lib/prisma.js';
 
 
 
@@ -13,6 +14,7 @@ import {
   getSelfInspectionRegistrationPolicy,
   updateSelfInspectionRegistrationPolicy
 } from '../../services/part-measurement/self-inspection-registration-policy.service.js';
+import { SelfInspectionRegistrationPolicyAccessService } from '../../services/part-measurement/self-inspection-registration-policy-access.service.js';
 
 
 
@@ -31,6 +33,7 @@ import {
   selfInspectionUpdateInspectorEntryBodySchema,
   selfInspectionInspectorJudgementsBodySchema,
   selfInspectionInstrumentPreUseInspectionBodySchema,
+  selfInspectionMeasurementActorAuthenticationBodySchema,
   selfInspectionResetSessionBodySchema,
   approveSelfInspectionOutOfToleranceReviewBodySchema,
   listSelfInspectionRecordApprovalsQuerySchema,
@@ -43,6 +46,9 @@ import {
   selfInspectionPaperQrPayloadBodySchema,
   createSelfInspectionPaperOcrReviewBodySchema,
   confirmSelfInspectionPaperOcrReviewBodySchema,
+  invalidateSelfInspectionItemBodySchema,
+  listSelfInspectionInvalidationsQuerySchema,
+  selfInspectionInvalidationIdParamsSchema,
   serializeTemplate,
   serializeSelfInspectionPaperReportPage,
   serializeSelfInspectionPaperReport,
@@ -53,17 +59,80 @@ import {
   type PartMeasurementRouteDeps
 } from './shared.js';
 
+// NFC UID の総当たり・認証レコードの過剰作成を防ぎつつ、キオスクの再スキャンを許容する。
+const selfInspectionMeasurementActorAuthenticationRateLimit = { max: 20, timeWindow: '1 minute' };
+const selfInspectionRegistrationPolicyRateLimit = { max: 10, timeWindow: '1 minute' };
+
 export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMeasurementRouteDeps): void {
   const {
     allowView,
     allowWriteKiosk,
     canWrite,
     selfInspectionService,
+    selfInspectionItemLifecycleService,
     paperReportIssueService,
     paperReportResolver,
     paperOcrReviewService,
     paperImportService
   } = deps;
+  const registrationPolicyAccessService = new SelfInspectionRegistrationPolicyAccessService();
+
+    app.post(
+      '/part-measurement/self-inspection/items/invalidate',
+      { preHandler: allowWriteKiosk },
+      async (request) => {
+        const body = invalidateSelfInspectionItemBodySchema.parse(request.body);
+        const clientDeviceId = await tryGetClientDeviceId(request.headers);
+        const clientDevice = clientDeviceId
+          ? await prisma.clientDevice.findUnique({
+              where: { id: clientDeviceId },
+              select: { name: true }
+            })
+          : null;
+        const target =
+          body.target.kind === 'session'
+            ? body.target
+            : {
+                ...body.target,
+                processGroup:
+                  body.target.processGroup === 'grinding'
+                    ? ('GRINDING' as const)
+                    : ('CUTTING' as const)
+              };
+        const invalidation = await selfInspectionItemLifecycleService.invalidate({
+          target,
+          accessPassword: body.accessPassword,
+          reason: body.reason,
+          requestId: body.requestId,
+          actor: {
+            username: request.user?.username ?? null,
+            clientDeviceId: clientDeviceId ?? null,
+            clientDeviceNameSnapshot: clientDevice?.name ?? null
+          }
+        });
+        return { invalidation };
+      }
+    );
+
+    app.get(
+      '/part-measurement/self-inspection/invalidations',
+      { preHandler: allowView },
+      async (request) => {
+        const query = listSelfInspectionInvalidationsQuerySchema.parse(request.query ?? {});
+        return selfInspectionItemLifecycleService.list(query);
+      }
+    );
+
+    app.get(
+      '/part-measurement/self-inspection/invalidations/:id',
+      { preHandler: allowView },
+      async (request) => {
+        const params = selfInspectionInvalidationIdParamsSchema.parse(request.params);
+        return {
+          invalidation: await selfInspectionItemLifecycleService.getById(params.id)
+        };
+      }
+    );
 
     app.post('/part-measurement/self-inspection/nfc-tags/resolve', { preHandler: allowView }, async (request) => {
       const body = z.object({ uid: z.string().min(1).max(200) }).parse(request.body);
@@ -71,20 +140,47 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
       return { result };
     });
 
+    app.post(
+      '/part-measurement/self-inspection/sessions/:id/measurement-actor-authentications',
+      {
+        preHandler: allowWriteKiosk,
+        config: { rateLimit: selfInspectionMeasurementActorAuthenticationRateLimit }
+      },
+      async (request) => {
+        const params = selfInspectionSessionIdParamsSchema.parse(request.params);
+        const body = selfInspectionMeasurementActorAuthenticationBodySchema.parse(request.body);
+        const clientDeviceId = await tryGetClientDeviceId(request.headers);
+        return {
+          authentication: await selfInspectionService.authenticateMeasurementActor(params.id, {
+            employeeTagUid: body.employeeTagUid,
+            measurementMode: body.measurementMode,
+            clientDeviceId
+          })
+        };
+      }
+    );
+
     app.get('/part-measurement/self-inspection/registration-policy', { preHandler: allowView }, async () => {
       const policy = await getSelfInspectionRegistrationPolicy();
       return { policy: serializeSelfInspectionRegistrationPolicy(policy) };
     });
 
-    app.put('/part-measurement/self-inspection/registration-policy', { preHandler: allowWriteKiosk }, async (request) => {
+    app.put(
+      '/part-measurement/self-inspection/registration-policy',
+      { preHandler: allowWriteKiosk, config: { rateLimit: selfInspectionRegistrationPolicyRateLimit } },
+      async (request) => {
       const body = selfInspectionRegistrationPolicyBodySchema.parse(request.body);
       const clientDeviceId = request.user ? undefined : await tryGetClientDeviceId(request.headers);
+      if (!request.user) {
+        await registrationPolicyAccessService.requireAccessPassword(body.accessPassword);
+      }
       const policy = await updateSelfInspectionRegistrationPolicy({
         requireMeasuringInstrumentTag: body.requireMeasuringInstrumentTag,
         updatedBy: request.user?.username ?? clientDeviceId ?? 'kiosk'
       });
       return { policy: serializeSelfInspectionRegistrationPolicy(policy) };
-    });
+      }
+    );
 
     app.post('/part-measurement/self-inspection/sessions/resolve-or-create', { preHandler: allowWriteKiosk }, async (request) => {
       const body = selfInspectionSessionResolveBodySchema.parse(request.body);
@@ -120,7 +216,8 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
         productNo: query.productNo,
         resourceCd: query.resourceCd,
         processGroup: query.processGroup ? (query.processGroup === 'grinding' ? 'GRINDING' : 'CUTTING') : undefined,
-        state: query.state
+        state: query.state,
+        scope: query.scope
       });
     });
 
@@ -185,11 +282,13 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
     app.post('/part-measurement/self-inspection/sessions/:id/entries', { preHandler: allowWriteKiosk }, async (request) => {
       const params = selfInspectionSessionIdParamsSchema.parse(request.params);
       const body = selfInspectionCreateEntryBodySchema.parse(request.body);
+      const clientDeviceId = await tryGetClientDeviceId(request.headers);
       const entry = await selfInspectionService.createEntry(params.id, {
         entryIndex: body.entryIndex,
-        employeeTagUid: body.employeeTagUid,
+        measurementActorAuthenticationId: body.measurementActorAuthenticationId,
         measuringInstrumentTagUid: body.measuringInstrumentTagUid,
-        values: body.values
+        values: body.values,
+        clientDeviceId
       });
       return { entry };
     });
@@ -197,12 +296,14 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
     app.post('/part-measurement/self-inspection/sessions/:id/entries/draft', { preHandler: allowWriteKiosk }, async (request) => {
       const params = selfInspectionSessionIdParamsSchema.parse(request.params);
       const body = selfInspectionUpsertDraftEntryBodySchema.parse(request.body);
+      const clientDeviceId = await tryGetClientDeviceId(request.headers);
       const entry = await selfInspectionService.upsertDraftEntry(params.id, {
         entryIndex: body.entryIndex,
-        employeeTagUid: body.employeeTagUid,
+        measurementActorAuthenticationId: body.measurementActorAuthenticationId,
         measuringInstrumentTagUid: body.measuringInstrumentTagUid,
         ifUnmodifiedSince: body.ifUnmodifiedSince,
-        values: body.values
+        values: body.values,
+        clientDeviceId
       });
       return { entry };
     });
@@ -213,7 +314,7 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
       const clientDeviceId = await tryGetClientDeviceId(request.headers);
       const entry = await selfInspectionService.createInspectorEntry(params.id, {
         entryIndex: body.entryIndex,
-        employeeTagUid: body.employeeTagUid,
+        measurementActorAuthenticationId: body.measurementActorAuthenticationId,
         measuringInstrumentTagUid: body.measuringInstrumentTagUid,
         values: body.values,
         clientDeviceId
@@ -228,7 +329,7 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
       const entry = await selfInspectionService.updateInspectorEntry(params.id, params.entryId, {
         entryIndex: body.entryIndex,
         ifUnmodifiedSince: body.ifUnmodifiedSince,
-        employeeTagUid: body.employeeTagUid,
+        measurementActorAuthenticationId: body.measurementActorAuthenticationId,
         measuringInstrumentTagUid: body.measuringInstrumentTagUid,
         values: body.values,
         clientDeviceId
@@ -248,9 +349,10 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
       const body = selfInspectionUpdateEntryBodySchema.parse(request.body);
       const entry = await selfInspectionService.updateEntry(params.id, params.entryId, {
         ifUnmodifiedSince: body.ifUnmodifiedSince,
-        employeeTagUid: body.employeeTagUid,
+        measurementActorAuthenticationId: body.measurementActorAuthenticationId,
         measuringInstrumentTagUid: body.measuringInstrumentTagUid,
-        values: body.values
+        values: body.values,
+        clientDeviceId: await tryGetClientDeviceId(request.headers)
       });
       return { entry };
     });
@@ -264,7 +366,7 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
         const clientDeviceId = await tryGetClientDeviceId(request.headers);
         return selfInspectionService.recordInstrumentPreUseInspection(params.id, params.entryIndex, {
           instrumentTagUid: body.instrumentTagUid,
-          employeeTagUid: body.employeeTagUid,
+          measurementActorAuthenticationId: body.measurementActorAuthenticationId,
           clientDeviceId
         });
       }
@@ -279,7 +381,7 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
         const clientDeviceId = await tryGetClientDeviceId(request.headers);
         return selfInspectionService.recordInspectorInstrumentPreUseInspection(params.id, params.entryIndex, {
           instrumentTagUid: body.instrumentTagUid,
-          employeeTagUid: body.employeeTagUid,
+          measurementActorAuthenticationId: body.measurementActorAuthenticationId,
           clientDeviceId
         });
       }

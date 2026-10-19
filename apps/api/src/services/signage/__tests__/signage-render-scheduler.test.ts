@@ -69,4 +69,25 @@ describe('SignageRenderScheduler deploy lifecycle', () => {
       'Signage render scheduler did not become active'
     );
   });
+
+  it('runs the pre-render task before rendering and still renders when it fails', async () => {
+    const order: string[] = [];
+    const renderer = {
+      renderCurrentContent: vi.fn(async () => {
+        order.push('render');
+        return renderResult;
+      }),
+    } as unknown as SignageRenderer;
+    const preRenderTask = vi.fn(async () => {
+      order.push('pre');
+      throw new Error('capture failed');
+    });
+    const scheduler = new SignageRenderScheduler(renderer, 3_600, preRenderTask);
+    schedulers.push(scheduler);
+
+    await scheduler.resumeAfterDeploy();
+    await vi.waitFor(() => expect(renderer.renderCurrentContent).toHaveBeenCalledOnce());
+
+    expect(order).toEqual(['pre', 'render']);
+  });
 });

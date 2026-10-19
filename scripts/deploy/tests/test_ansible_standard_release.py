@@ -1,0 +1,3659 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+import hashlib
+import os
+import re
+import runpy
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
+
+import yaml
+from jinja2 import Environment, StrictUndefined
+
+ROOT = Path(__file__).resolve().parents[3]
+ANSIBLE = ROOT / "infrastructure/ansible"
+PLAYBOOK = (ANSIBLE / "playbooks/deploy-release-standard.yml").read_text(
+    encoding="utf-8"
+)
+_DEPLOY_SCRIPTS = str(ROOT / "scripts/deploy")
+sys.path.insert(0, _DEPLOY_SCRIPTS)
+try:
+    STANDARD_RELEASE = runpy.run_path(
+        str(ROOT / "scripts/deploy/standard-ansible-release.py"),
+        run_name="standard_release_test",
+    )
+finally:
+    sys.path.remove(_DEPLOY_SCRIPTS)
+_FORBIDDEN_CLEANUP_COMMANDS = frozenset({"stop", "kill", "wait", "restart"})
+_COMMAND_WORD_RE = re.compile(r"(?<![A-Za-z0-9_-])(stop|kill|wait|restart)(?![A-Za-z0-9_-])")
+
+
+def cleanup_command_violations(
+    tasks: list[dict[str, object]], allowed_task_name: str | tuple[str, ...]
+) -> list[str]:
+    allowed_task_names = (
+        {allowed_task_name}
+        if isinstance(allowed_task_name, str)
+        else set(allowed_task_name)
+    )
+    violations: list[str] = []
+    for task in tasks:
+        if task.get("name") in allowed_task_names:
+            continue
+        command = task.get("ansible.builtin.command")
+        if not isinstance(command, dict):
+            continue
+        argv = command.get("argv")
+        if isinstance(argv, list):
+            tokens = {str(token).strip("'\"").lower() for token in argv}
+            violations.extend(sorted(tokens & _FORBIDDEN_CLEANUP_COMMANDS))
+            if "caddy" in tokens and "reload" in tokens:
+                violations.append("caddy reload")
+            continue
+        text = str(argv)
+        violations.extend(match.group(1).lower() for match in _COMMAND_WORD_RE.finditer(text))
+        if re.search(r"(?<![A-Za-z0-9_-])caddy(?![A-Za-z0-9_-]).*?(?<![A-Za-z0-9_-])reload(?![A-Za-z0-9_-])", text):
+            violations.append("caddy reload")
+    return violations
+
+
+def role_text(role: str) -> str:
+    root = ANSIBLE / "roles" / role
+    return "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted(root.rglob("*.yml"))
+    )
+
+
+class StandardReleaseAnsibleTests(unittest.TestCase):
+    def test_consultation_candidate_rotates_all_shared_inference_consumers(self) -> None:
+        tasks = yaml.safe_load((ANSIBLE / "roles/release_pi5/tasks/business-hermes-chat-prepare.yml").read_text())
+        task = next(item for item in tasks if item["name"] == "Bind consultation credentials only to the candidate API environment")
+        bindings = {item["key"]: item["value"] for item in task["loop"]}
+        self.assertIn("api_local_llm_shared_token", bindings["LOCAL_LLM_SHARED_TOKEN"])
+        self.assertIn("inference_providers_json", bindings["INFERENCE_PROVIDERS_JSON"])
+        # Dropbox backup encryption key reaches the API from Vault (docker .env is not re-rendered by the release)
+        self.assertIn("backup_encryption_key", bindings["BACKUP_ENCRYPTION_KEY"])
+        # The photo gallery model id and distances reach the API the same way (inventory alone does not)
+        self.assertIn("photo_tool_embedding_model_id", bindings["PHOTO_TOOL_EMBEDDING_MODEL_ID"])
+        self.assertIn("photo_tool_similarity_max_cosine_distance", bindings["PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE"])
+        self.assertIn("photo_tool_label_assist_max_cosine_distance", bindings["PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE"])
+        # The procedure speech-to-text flag reaches the API the same way, off unless the inventory sets it
+        self.assertIn("procedure_speech_to_text_enabled | default(false)", bindings["PROCEDURE_SPEECH_TO_TEXT_ENABLED"])
+        self.assertIn("procedure_material_split_suggestion_enabled | default(false)", bindings["PROCEDURE_MATERIAL_SPLIT_SUGGESTION_ENABLED"])
+        self.assertIn("hermes_search_typesafe_api_key | default('')", bindings["TYPESAFE_API_KEY"])
+        self.assertEqual(sum(item["key"] == "TYPESAFE_API_KEY" for item in task["loop"]), 1)
+        self.assertEqual(task["ansible.builtin.lineinfile"]["regexp"], "^{{ item.key }}=")
+        self.assertTrue(task["no_log"])
+        self.assertEqual(task["ansible.builtin.lineinfile"]["mode"], "0600")
+
+    def test_omitted_trial_toggle_preserves_the_approved_private_search_settings(self) -> None:
+        tasks = yaml.safe_load((ANSIBLE / "roles/release_pi5/tasks/business-hermes-chat-prepare.yml").read_text())
+        preserve = next(item for item in tasks if item["name"] == "Preserve approved search trial settings when the toggle is omitted")
+        self.assertTrue(preserve["no_log"])
+        self.assertIn("lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ENABLED') == ''", preserve["when"])
+        preserved = str(next(item for item in tasks if item["name"] == "Select the approved search trial settings to preserve"))
+        for key in (
+            "HERMES_SEARCH_TRIAL_ENABLED",
+            "HERMES_SEARCH_TRIAL_JEV_ENABLED",
+            "HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED",
+            "HERMES_JEV_PROVIDER",
+            "HERMES_SEARCH_RECORD_SOURCE",
+            "HERMES_SEARCH_RECORD_CLASSIFICATION_STORE",
+            "TYPESAFE_API_KEY",
+            "HERMES_RETRIEVAL_V2_ENABLED",
+        ):
+            self.assertIn(key, preserved)
+
+    def test_answer_cache_credentials_use_private_env_file_in_start_and_rollback(self) -> None:
+        tasks_root = ANSIBLE / "roles/release_pi5/tasks"
+        tasks = yaml.safe_load((tasks_root / "business-hermes-answer-cache.yml").read_text())
+        bindings = [task["ansible.builtin.set_fact"]["release_pi5_compose_environment"]
+                    for task in tasks if "release_pi5_compose_environment" in task.get("ansible.builtin.set_fact", {})]
+        self.assertEqual(len(bindings), 1)
+        self.assertNotIn("TOKEN", bindings[0])
+        self.assertNotIn("api_key", bindings[0])
+        private_file = next(task for task in tasks if "ansible.builtin.lineinfile" in task)
+        self.assertTrue(private_file["no_log"])
+        self.assertEqual(private_file["ansible.builtin.lineinfile"]["mode"], "0600")
+        self.assertIn("BUSINESS_HERMES_ANSWER_CACHE_TOKEN", [item["key"] for item in private_file["loop"]])
+        self.assertIn("ANSWER_CACHE_EMBEDDING_TOKEN", [item["key"] for item in private_file["loop"]])
+        for filename in ("business-hermes-answer-cache.yml", "business-hermes-answer-cache-rollback.yml"):
+            for task in yaml.safe_load((tasks_root / filename).read_text()):
+                argv = task.get("ansible.builtin.command", {}).get("argv", "")
+                if "'up'" in str(argv):
+                    self.assertIn("['--env-file', release_pi5_chat_env_file, 'up'", argv)
+
+    def test_shared_torque_inventory_contract_executes_with_complete_settings(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            playbook = Path(directory) / "contract.yml"
+            playbook.write_text(
+                """---
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    torque_agent_enabled: true
+    torque_connection_lease_enabled: true
+    torque_agent_api_base_url: https://pi5.example.test
+    torque_agent_client_key: test-only-key
+    torque_agent_tls_verify_mode: system
+    torque_agent_local_port: 7073
+    torque_agent_heartbeat_ttl_seconds: 8
+    torque_agent_browser_origins: [https://pi5.example.test]
+    torque_agent_bluetooth_adapter:
+      usb_vendor_id: '2357'
+      usb_product_id: '0604'
+    torque_agent_hid_devices:
+      - path: /dev/input/by-id/bluetooth-TOHNICHI_702902S-event-kbd
+        parserProfile: cem3-btla-hogp-v1
+        serialNumber: 702902S
+    torque_agent_hid_links:
+      - link_name: bluetooth-TOHNICHI_702902S-event-kbd
+        name: TOHNICHI_702902S
+        uniq: c4:90:43:98:7e:c3
+        vendor_id: 2f84
+        product_id: '0001'
+  roles:
+    - torque_agent_contract
+""",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                ["ansible-playbook", str(playbook)],
+                cwd=ROOT,
+                env={
+                    **{
+                        key: value
+                        for key, value in os.environ.items()
+                        if key != "ANSIBLE_CONFIG"
+                    },
+                    "ANSIBLE_ROLES_PATH": str(ANSIBLE / "roles"),
+                },
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_candidate_status_agent_runtime_closure_executes(self) -> None:
+        prepare_tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        runtime_declarations = []
+        source_prefix = "{{ playbook_dir }}/../../../"
+        for task in prepare_tasks:
+            copy_task = task.get("ansible.builtin.copy")
+            if not isinstance(copy_task, dict):
+                continue
+            source = str(copy_task.get("src", ""))
+            destination = str(copy_task.get("dest", ""))
+            if (
+                "{{ release_kiosk_stage_dir }}/" not in destination
+                or not source.endswith(".py")
+            ):
+                continue
+            self.assertTrue(source.startswith(source_prefix), source)
+            runtime_declarations.append(
+                (
+                    ROOT / source[len(source_prefix) :],
+                    Path(destination.rsplit("/", 1)[-1]),
+                )
+            )
+
+        self.assertTrue(runtime_declarations)
+        prepare_text = (
+            ANSIBLE / "roles/release_kiosk/tasks/prepare.yml"
+        ).read_text(encoding="utf-8")
+        for source_path, destination_name in runtime_declarations:
+            self.assertTrue(source_path.is_file(), source_path)
+            self.assertIn(
+                f"/usr/local/lib/raspi-status-agent/{destination_name}",
+                prepare_text,
+            )
+
+        with tempfile.TemporaryDirectory() as temporary_root:
+            temporary_path = Path(temporary_root)
+            runtime_path = temporary_path / "usr/local/lib/raspi-status-agent"
+            runtime_path.mkdir(parents=True)
+            for source_path, destination_name in runtime_declarations:
+                shutil.copy2(source_path, runtime_path / destination_name)
+
+            config_path = temporary_path / "status-agent.conf"
+            config_lines = [
+                "API_BASE_URL=__API_BASE_URL__",
+                "CLIENT_ID=fixture-status-agent",
+                "CLIENT_KEY=fixture-key",
+                "LOG_FILE=",
+                "REQUEST_TIMEOUT=3",
+                "STORAGE_HEALTH_ENABLED=0",
+                "STORAGE_HEALTH_STATE_FILE="
+                + str(temporary_path / "storage-health-state"),
+                "TERMINAL_AGENT_HEALTH_NFC_ENABLED=0",
+                "TERMINAL_AGENT_HEALTH_BARCODE_ENABLED=0",
+                "TERMINAL_AGENT_HEALTH_TORQUE_ENABLED=0",
+                "TERMINAL_AGENT_MAINTENANCE_LEASES_JSON={}",
+                "TERMINAL_AGENT_HEALTH_STATE_FILE="
+                + str(temporary_path / "terminal-agent-health-state.json"),
+                "STATUS_AGENT_LOG_SUCCESS=0",
+            ]
+
+            class StatusHandler(BaseHTTPRequestHandler):
+                received = False
+
+                def do_POST(self) -> None:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    self.rfile.read(length)
+                    type(self).received = True
+                    self.send_response(200)
+                    self.end_headers()
+
+                def log_message(self, *_args: object) -> None:
+                    return
+
+            server = None
+            command = [
+                "/usr/bin/env",
+                "python3",
+                "-c",
+                (
+                    "import runpy, sys; "
+                    "sys.path.insert(0, str(__import__('pathlib').Path(sys.argv[1]).parent)); "
+                    "module = runpy.run_path(sys.argv[1], run_name='status_agent_candidate'); "
+                    "module['main'].__globals__['build_payload'] = lambda config, force_storage_health=False: {'logs': []}; "
+                    "module['main'].__globals__['post_payload'] = lambda config, payload: None; "
+                    "sys.argv = [sys.argv[0]]; "
+                    "sys.exit(module['main']())"
+                ),
+                str(runtime_path / "status-agent.py"),
+            ]
+            if Path("/proc/stat").is_file():
+                server = ThreadingHTTPServer(("127.0.0.1", 0), StatusHandler)
+                config_lines[0] = (
+                    f"API_BASE_URL=http://127.0.0.1:{server.server_port}/api"
+                )
+                command = ["/usr/bin/env", "python3", str(runtime_path / "status-agent.py")]
+                server_thread = threading.Thread(
+                    target=server.serve_forever, daemon=True
+                )
+                server_thread.start()
+            config_path.write_text("\n".join(config_lines), encoding="utf-8")
+            environment = os.environ.copy()
+            environment["STATUS_AGENT_CONFIG"] = str(config_path)
+            try:
+                result = subprocess.run(
+                    command,
+                    env=environment,
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                    check=False,
+                )
+            finally:
+                if server is not None:
+                    server.shutdown()
+                    server.server_close()
+                    server_thread.join(timeout=2)
+
+        self.assertEqual(
+            result.returncode,
+            0,
+            msg=f"stdout={result.stdout}\nstderr={result.stderr}",
+        )
+        if server is not None:
+            self.assertTrue(StatusHandler.received)
+
+    def test_release_launcher_resolves_chromium_without_compat_symlink(self) -> None:
+        resolver = (ANSIBLE / "roles/kiosk/tasks/resolve-browser.yml").read_text(
+            encoding="utf-8"
+        )
+        defaults = (ANSIBLE / "roles/kiosk/defaults/main.yml").read_text(
+            encoding="utf-8"
+        )
+        launcher = (ANSIBLE / "templates/kiosk-launch.sh.j2").read_text(
+            encoding="utf-8"
+        )
+
+        # Debian trixie kiosks only ship /usr/bin/chromium; the release path must not
+        # bake the missing compatibility path into the launcher.
+        self.assertIn("chromium_configured_binary_stat", resolver)
+        self.assertIn("kiosk_browser_exec_path: /usr/bin/chromium\n", resolver)
+        self.assertLess(
+            resolver.index("Resolve chromium executable path"),
+            resolver.index("Fall back to the chromium binary"),
+        )
+        # IME on Chromium 135+ needs both X11 and the GTK3 IM module.
+        self.assertIn('- "--ozone-platform=x11"', defaults)
+        self.assertIn('- "--gtk-version=3"', defaults)
+
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = lambda value: str(value).lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        environment.filters["regex_replace"] = lambda value, pattern, replacement: re.sub(
+            pattern, replacement, value
+        )
+        rendered = environment.from_string(launcher).render(
+            ansible_user="kiosk",
+            kiosk_url="https://server.example/kiosk?clientKey=k",
+            kiosk_browser_engine="chromium",
+            kiosk_browser_exec_path="/usr/bin/chromium",
+            kiosk_browser_flags_chromium=["--ozone-platform=x11", "--gtk-version=3"],
+            kiosk_release_sha="a" * 40,
+        )
+        self.assertIn('BROWSER_BIN="/usr/bin/chromium"', rendered)
+        self.assertIn("    --gtk-version=3\n", rendered)
+        self.assertIn('--app="${KIOSK_TARGET_URL}"', rendered)
+        self.assertIn("&_appRef=${APP_REF}", rendered)
+
+    def test_release_launcher_gets_kiosk_role_chromium_flags(self) -> None:
+        """Role defaults are out of scope in release_kiosk; it must load them itself."""
+
+        import yaml
+
+        prepare = (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
+            encoding="utf-8"
+        )
+        tasks = yaml.safe_load(prepare)
+        names = [task.get("name") for task in tasks]
+        read = names.index("Read the kiosk role browser flag defaults for the launcher")
+        chromium = names.index(
+            "Apply the kiosk role Chromium flags unless the host overrides them"
+        )
+        guard = names.index("Refuse to stage a Chromium launcher without its required flags")
+        stage = names.index("Stage the SHA-bound kiosk launcher")
+        self.assertLess(names.index("Reuse kiosk role browser executable resolution for release staging"), guard)
+        self.assertLess(read, chromium)
+        self.assertLess(chromium, guard)
+        self.assertLess(guard, stage)
+        self.assertIn("/../kiosk/defaults/main.yml", tasks[read]["ansible.builtin.set_fact"]["release_kiosk_browser_defaults"])
+        self.assertIn("kiosk_browser_flags_chromium is not defined", tasks[chromium]["when"])
+
+        defaults = yaml.safe_load(
+            (ANSIBLE / "roles/kiosk/defaults/main.yml").read_text(encoding="utf-8")
+        )
+        flags = defaults["kiosk_browser_flags_chromium"]
+        for required in ("--ozone-platform=x11", "--gtk-version=3", "--password-store=basic"):
+            self.assertIn(required, flags)
+            self.assertIn(f"'{required}' in kiosk_browser_flags_chromium", prepare)
+
+        # Rendered the way the release does once the defaults are applied.
+        launcher = (ANSIBLE / "templates/kiosk-launch.sh.j2").read_text(encoding="utf-8")
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = lambda value: str(value).lower() in {"1", "true", "yes", "on"}
+        environment.filters["regex_replace"] = lambda value, pattern, replacement: re.sub(
+            pattern, replacement, value
+        )
+        rendered = environment.from_string(launcher).render(
+            ansible_user="kiosk",
+            kiosk_url="https://server.example/kiosk?clientKey=k",
+            kiosk_browser_engine="chromium",
+            kiosk_browser_exec_path="/usr/bin/chromium",
+            kiosk_browser_flags_chromium=flags,
+            kiosk_browser_flags_common=defaults["kiosk_browser_flags_common"],
+            kiosk_release_sha="a" * 40,
+        )
+        for flag in flags + defaults["kiosk_browser_flags_common"]:
+            self.assertIn(f"  {flag}\n", rendered)
+
+    def test_chromium_launcher_pins_the_server_certificate_key(self) -> None:
+        import yaml
+
+        launcher = (ANSIBLE / "templates/kiosk-launch.sh.j2").read_text(encoding="utf-8")
+        defaults = yaml.safe_load(
+            (ANSIBLE / "roles/kiosk/defaults/main.yml").read_text(encoding="utf-8")
+        )
+        prepare_text = (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
+            encoding="utf-8"
+        )
+        names = [task.get("name") for task in yaml.safe_load(prepare_text)]
+
+        # The blanket switch must come only from the template's no-pin branch.
+        self.assertNotIn("--ignore-certificate-errors", defaults["kiosk_browser_flags_chromium"])
+        self.assertEqual(defaults["kiosk_server_cert_spki_sha256"], "")
+        read = names.index("Read the server key the kiosk sees for the Chromium certificate pin")
+        guard = names.index(
+            "Refuse to stage a Chromium launcher whose certificate pin does not match the server"
+        )
+        self.assertLess(read, guard)
+        self.assertLess(guard, names.index("Stage the SHA-bound kiosk launcher"))
+
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = lambda value: str(value).lower() in {"1", "true", "yes", "on"}
+        environment.filters["regex_replace"] = lambda value, pattern, replacement: re.sub(
+            pattern, replacement, value
+        )
+
+        def render(**extra: object) -> str:
+            return environment.from_string(launcher).render(
+                ansible_user="kiosk",
+                kiosk_url="https://server.example/kiosk?clientKey=k",
+                kiosk_browser_engine="chromium",
+                kiosk_browser_exec_path="/usr/bin/chromium",
+                kiosk_browser_flags_chromium=defaults["kiosk_browser_flags_chromium"],
+                kiosk_release_sha="a" * 40,
+                **extra,
+            )
+
+        pinned = render(kiosk_server_cert_spki_sha256="abc123=")
+        self.assertIn("    --ignore-certificate-errors-spki-list=abc123=\n", pinned)
+        self.assertIn("    --user-data-dir=/home/kiosk/.config/chromium\n", pinned)
+        self.assertNotIn("    --ignore-certificate-errors\n", pinned)
+
+        for unpinned in (render(), render(kiosk_server_cert_spki_sha256="")):
+            self.assertIn("    --ignore-certificate-errors\n", unpinned)
+            self.assertNotIn("--ignore-certificate-errors-spki-list", unpinned)
+            self.assertNotIn("--user-data-dir", unpinned)
+
+    def test_pi4_image_pull_retries_and_cleanup_targets_the_candidate(self) -> None:
+        import yaml
+
+        prepare = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(encoding="utf-8")
+        )
+        pull = next(
+            task
+            for task in prepare
+            if task.get("name") == "Pull enabled Pi4 images while the normal kiosk remains active"
+        )
+        self.assertGreaterEqual(pull["retries"], 3)
+        self.assertEqual(pull["until"], "release_kiosk_pull.rc == 0")
+
+        cleanup = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/cleanup.yml").read_text(encoding="utf-8")
+        )
+        remove = cleanup[0]
+        self.assertEqual(
+            remove["ansible.builtin.command"]["argv"][-1],
+            "{{ release_kiosk_candidate_images[item.item] }}",
+        )
+        self.assertIn("item.rc | default(1) == 0", remove["when"])
+
+    def test_release_launcher_uses_shared_firefox_resolution(self) -> None:
+        prepare = (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
+            encoding="utf-8"
+        )
+        resolver = (ANSIBLE / "roles/kiosk/tasks/resolve-browser.yml").read_text(
+            encoding="utf-8"
+        )
+        launcher = (ANSIBLE / "templates/kiosk-launch.sh.j2").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("name: kiosk", prepare)
+        self.assertIn("tasks_from: resolve-browser", prepare)
+        self.assertIn("kiosk_browser_firefox_binary", resolver)
+        self.assertIn("kiosk_browser_exec_path", resolver)
+
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = lambda value: str(value).lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        environment.filters["regex_replace"] = lambda value, pattern, replacement: re.sub(
+            pattern, replacement, value
+        )
+        rendered = environment.from_string(launcher).render(
+            ansible_user="kiosk",
+            kiosk_url="https://server.example/kiosk",
+            kiosk_browser_engine="firefox",
+            kiosk_browser_exec_path="/usr/bin/firefox",
+            kiosk_release_sha="a" * 40,
+        )
+        self.assertIn('BROWSER_BIN="/usr/bin/firefox"', rendered)
+        self.assertNotIn('BROWSER_BIN="/usr/bin/chromium-browser"', rendered)
+        # KB-412: the automation-only focus pref must be dropped before Firefox starts.
+        guard = "sed -i '/^user_pref(\"focusmanager\\.testmode\"/d' \"${FF_PROFILE}/prefs.js\""
+        self.assertIn(guard, rendered)
+        self.assertLess(
+            rendered.index(guard),
+            rendered.index('exec "${BROWSER_BIN}" "${PROFILE_ARGS[@]}"'),
+        )
+
+    def test_display_health_wait_is_bounded_and_fails_after_timeout(self) -> None:
+        health = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/health_checks.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        display = health[0]
+        self.assertEqual(display["name"], "Verify Pi4 display services")
+        self.assertEqual(display["retries"], 10)
+        self.assertEqual(display["delay"], 2)
+        self.assertEqual(display["until"], "release_kiosk_display_health is succeeded")
+        self.assertGreater(display["retries"], 0)
+        self.assertGreater(display["delay"], 0)
+        status_service = health[2]
+        self.assertEqual(
+            status_service["name"],
+            "Verify the Pi4 status-agent service is loaded and healthy",
+        )
+        status_until = " ".join(status_service["until"])
+        self.assertIn("'LoadState=loaded'", status_until)
+        self.assertIn("'Result=success'", status_until)
+        self.assertIn("'ExecMainStatus=0'", status_until)
+
+    def test_switch_and_rollback_run_status_agent_before_timer_and_health(self) -> None:
+        switch = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/switch.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        switch_names = [task["name"] for task in switch]
+        switch_run_index = switch_names.index(
+            "Run the staged status-agent service once before its timer"
+        )
+        switch_timer_index = switch_names.index(
+            "Ensure the status-agent timer uses the staged implementation"
+        )
+        self.assertLess(switch_run_index, switch_timer_index)
+        self.assertEqual(
+            switch[switch_run_index]["ansible.builtin.systemd"],
+            {"name": "status-agent.service", "state": "started"},
+        )
+
+        rollback = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/rollback.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        rollback_names = [task["name"] for task in rollback]
+        rollback_run_index = rollback_names.index(
+            "Run the restored status-agent service once before its timer"
+        )
+        rollback_timer_index = rollback_names.index(
+            "Restart restored Pi4 status-agent timer"
+        )
+        rollback_health_index = rollback_names.index(
+            "Verify the complete restored Pi4 runtime"
+        )
+        self.assertLess(rollback_run_index, rollback_timer_index)
+        self.assertLess(rollback_timer_index, rollback_health_index)
+        self.assertEqual(
+            rollback[rollback_run_index]["ansible.builtin.systemd"],
+            {"name": "status-agent.service", "state": "started"},
+        )
+
+    def test_rollback_restores_prerequisites_before_compose_and_deletion(self) -> None:
+        rollback_path = ANSIBLE / "roles/release_kiosk/tasks/rollback.yml"
+        tasks = yaml.safe_load(rollback_path.read_text(encoding="utf-8"))
+        names = [task["name"] for task in tasks]
+        prerequisite_index = names.index(
+            "Verify rollback prerequisites before agent compose restore"
+        )
+        compose_index = names.index(
+            "Restore Pi4 agents from the captured image tags"
+        )
+        removal_index = names.index(
+            "Remove newly introduced Pi4 files without a backup"
+        )
+        restore_index = names.index("Restore backed-up Pi4 release files")
+        reload_index = names.index("Reload restored Pi4 systemd units")
+        self.assertLess(restore_index, removal_index)
+        self.assertLess(removal_index, reload_index)
+        self.assertLess(reload_index, prerequisite_index)
+        self.assertLess(prerequisite_index, compose_index)
+        self.assertIn("/etc/raspi-status-agent.conf", " ".join(
+            (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
+                encoding="utf-8"
+            ).splitlines()
+        ))
+        removal = tasks[removal_index]
+        self.assertIn(
+            "item.item.dest not in (release_kiosk_rollback_prerequisites | default([]))",
+            removal["when"],
+        )
+
+    def test_disabled_agent_is_not_a_rollback_health_requirement(self) -> None:
+        prepare = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        health = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/health_checks.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        service_selection = next(
+            task for task in prepare if task["name"] == "Select agents enabled for this Pi4"
+        )
+        selection = service_selection["ansible.builtin.set_fact"]["release_kiosk_enabled_services"]
+        self.assertIn("barcode_agent_enabled | default(false) | bool", selection)
+        barcode_health = next(
+            task for task in health if task["name"] == "Verify the Pi4 barcode agent"
+        )
+        self.assertIn("release_kiosk_services", barcode_health["when"])
+
+    def test_empty_agent_selection_only_restarts_browser_and_checks_web(self) -> None:
+        prepare = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        switch = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/switch.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        health = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/health_checks.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        rollback = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/rollback.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        cleanup = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/cleanup.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+
+        prepare_names = {task["name"]: task for task in prepare}
+        for name in (
+            "Capture current Pi4 agent images as temporary rollback tags",
+            "Verify captured rollback image identities are locally recoverable",
+            "Pull enabled Pi4 images while the normal kiosk remains active",
+            "Inspect exact local Pi4 candidate identities",
+            "Render the candidate Pi4 Compose file without build directives",
+            "Render the rollback Pi4 Compose file",
+            "Render staged status-agent configuration",
+        ):
+            task = prepare_names[name]
+            expression = str(task.get("loop", "")) + " " + str(task.get("when", ""))
+            self.assertIn("release_kiosk_services", expression, name)
+
+        for name in (
+            "Stage the SHA-bound kiosk launcher",
+            "Stage the kiosk browser unit",
+        ):
+            self.assertIn("release_kiosk_services", str(prepare_names[name]["when"]), name)
+        files_expression = prepare_names["Define the Pi4 staged file transaction"]["ansible.builtin.set_fact"]["release_kiosk_files"]
+        self.assertIn("kiosk-launch.sh", files_expression)
+        self.assertIn("if release_kiosk_services | length > 0 else []", files_expression)
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = lambda value: str(value).lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        self.assertEqual(
+            environment.from_string(files_expression).render(
+                release_kiosk_services=[],
+                release_kiosk_stage_dir="/stage",
+                release_kiosk_project_dir="/project",
+                release_kiosk_candidate_compose="/candidate-compose.yml",
+                release_torque_cutover=False,
+            ).strip(),
+            "[]",
+        )
+
+        switch_names = {task["name"]: task for task in switch}
+        self.assertIn(
+            "release_kiosk_services",
+            str(switch_names["Create stable Pi4 release directories"]["when"]),
+        )
+        self.assertIn(
+            "release_kiosk_services",
+            str(switch_names["Recreate only enabled Pi4 agents from pre-pulled images"]["when"]),
+        )
+        self.assertIn(
+            "release_kiosk_services",
+            str(switch_names["Reload Pi4 systemd units after the staged file switch"]["when"]),
+        )
+        self.assertEqual(
+            switch_names["Restart the kiosk browser to apply the exact release SHA"]["ansible.builtin.systemd"],
+            {"name": "kiosk-browser.service", "state": "restarted", "enabled": True},
+        )
+        self.assertNotIn(
+            "release_kiosk_services",
+            str(switch_names["Restart the kiosk browser to apply the exact release SHA"].get("when", "")),
+        )
+
+        health_names = {task["name"]: task for task in health}
+        for name in (
+            "Verify the Pi4 status-agent configuration is present",
+            "Verify the Pi4 status-agent service is loaded and healthy",
+        ):
+            self.assertIn("release_kiosk_services", str(health_names[name]["when"]))
+        self.assertNotIn("release_kiosk_services", str(health_names["Verify the kiosk Web endpoint"].get("when", "")))
+        self.assertIn("ansible.builtin.uri", health_names["Verify the kiosk Web endpoint"])
+
+        rollback_names = {task["name"]: task for task in rollback}
+        self.assertIn(
+            "release_kiosk_services",
+            str(rollback_names["Restore Pi4 agents from the captured image tags"]["when"]),
+        )
+        self.assertIn(
+            "release_kiosk_services",
+            str(rollback_names["Reload restored Pi4 systemd units"]["when"]),
+        )
+        self.assertNotIn(
+            "release_kiosk_services",
+            str(rollback_names["Restart restored Pi4 display unit"].get("when", "")),
+        )
+        cleanup_names = {task["name"]: task for task in cleanup}
+        self.assertIn(
+            "release_kiosk_services",
+            str(cleanup_names["Remove Pi4 rollback image tags after a verified outcome"]["when"]),
+        )
+
+    def test_hotcorner_files_are_released_without_agents_only_when_browser_managed(self) -> None:
+        import ast
+
+        role = ANSIBLE / "roles/release_kiosk"
+        prepare = {task["name"]: task for task in yaml.safe_load((role / "tasks/prepare.yml").read_text())}
+        expression = prepare["Define the Pi4 staged file transaction"]["ansible.builtin.set_fact"]["release_kiosk_files"]
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = bool
+        context = dict(
+            release_kiosk_services=[], release_kiosk_stage_dir="/stage",
+            release_kiosk_project_dir="/project", release_kiosk_candidate_compose="/candidate",
+            release_kiosk_labwc_dir="/home/kiosk/.config/labwc", ansible_user="kiosk",
+            release_kiosk_user_gid={"stdout": "1000"},
+        )
+        for torque in (False, True):
+            context["release_torque_cutover"] = torque
+            self.assertEqual(ast.literal_eval(environment.from_string(expression).render(**context, manage_kiosk_browser=False)), [])
+            entries = ast.literal_eval(environment.from_string(expression).render(**context, manage_kiosk_browser=True))
+            self.assertEqual({item["dest"] for item in entries}, {
+                "/usr/local/bin/kiosk-hotcorner.py", "/usr/local/bin/kiosk-labwc-config.py",
+                "/usr/local/bin/show-kiosk-panel.sh", "/etc/systemd/system/kiosk-hotcorner.service",
+            })
+        self.assertIn("manage_kiosk_browser", prepare["Prepare the kiosk hotcorner transaction"]["when"])
+        stage = yaml.safe_load((role / "tasks/prepare_hotcorner.yml").read_text())
+        for task in stage:
+            if "ansible.builtin.copy" in task and "loop" in task:
+                for item in task["loop"]:
+                    self.assertTrue((role / "files" / item["src"]).is_file())
+        # labwc -m also runs /etc/xdg/labwc/autostart, so the first release's user
+        # override is removed only when it is byte-for-byte that override.
+        legacy = b"/usr/bin/lwrespawn /usr/bin/pcmanfm-pi &\n/usr/bin/kanshi &\n/usr/bin/lxsession-xdg-autostart\n"
+        self.assertIn(hashlib.sha1(legacy).hexdigest(), (role / "tasks/prepare_hotcorner.yml").read_text())
+        self.assertFalse((role / "files/labwc-autostart").exists())
+        switch_tasks = {task["name"]: task for task in yaml.safe_load((role / "tasks/switch.yml").read_text())}
+        removal = switch_tasks["Remove the obsolete labwc autostart override"]
+        self.assertEqual(removal["ansible.builtin.file"]["state"], "absent")
+        rollback_tasks = {task["name"]: task for task in yaml.safe_load((role / "tasks/rollback.yml").read_text())}
+        self.assertIn("labwc-autostart.original", rollback_tasks["Restore the labwc autostart override"]["ansible.builtin.copy"]["src"])
+        self.assertFalse(rollback_tasks["Reconfigure the restored labwc session"]["failed_when"])
+        unit = environment.from_string((role / "templates/kiosk-hotcorner.service.j2").read_text()).render(
+            ansible_user="kiosk", release_kiosk_user_uid={"stdout": "1001"},
+        )
+        for expected in ("User=kiosk", "After=graphical.target kiosk-browser.service", "Wants=graphical.target", "Restart=always", "RestartSec=3",
+                         "XAUTHORITY=/home/kiosk/.Xauthority", "XDG_RUNTIME_DIR=/run/user/1001",
+                         "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1001/bus"):
+            self.assertIn(expected, unit)
+        shortcut = (ANSIBLE / "roles/kiosk/templates/show-kiosk-panel.sh.j2").read_text()
+        self.assertIn('pkill -USR1 -u "$(id -u)" -f kiosk-hotcorner.py', shortcut)
+        self.assertNotIn("wayland-1", shortcut)
+
+    def test_hotcorner_switch_and_rollback_preserve_files_and_service_state(self) -> None:
+        role = ANSIBLE / "roles/release_kiosk/tasks"
+        switch_list = yaml.safe_load((role / "switch.yml").read_text())
+        rollback_list = yaml.safe_load((role / "rollback.yml").read_text())
+        switch = {task["name"]: task for task in switch_list}
+        rollback = {task["name"]: task for task in rollback_list}
+        install = switch["Install the staged Pi4 release files with standard backups"]["ansible.builtin.copy"]
+        self.assertTrue(install["backup"])
+        self.assertIn("item.owner", install["owner"])
+        names = [task["name"] for task in switch_list]
+        self.assertLess(names.index("Apply the validated kiosk labwc configuration"), names.index("Reconfigure labwc for the kiosk user"))
+        self.assertLess(names.index("Reconfigure labwc for the kiosk user"), names.index("Restart the kiosk browser to apply the exact release SHA"))
+        self.assertEqual(sum(task.get("ansible.builtin.systemd", {}).get("name") == "kiosk-browser.service" for task in switch_list), 1)
+        self.assertEqual(switch["Reconfigure labwc for the kiosk user"]["become_user"], "{{ ansible_user }}")
+        stop = rollback["Stop the candidate hotcorner before restoring files"]["ansible.builtin.systemd"]
+        self.assertEqual((stop["state"], stop["enabled"]), ("stopped", False))
+        restore = rollback["Restore backed-up Pi4 release files"]["ansible.builtin.copy"]
+        for field, original in (("owner", "uid"), ("group", "gid"), ("mode", "mode")):
+            self.assertIn("release_kiosk_original_files.results[file_index].stat." + original, restore[field])
+        remove = rollback["Remove newly introduced Pi4 files without a backup"]
+        self.assertIn("not release_kiosk_original_files.results[file_index].stat.exists", remove["when"])
+        self.assertIn("Restore metadata when only Pi4 file ownership or mode changed", rollback)
+        self.assertIn("release_kiosk_hotcorner_previous | length > 0", rollback["Restore the previous hotcorner service state"]["when"])
+        restore_xml = rollback["Restore the original labwc configuration"]["ansible.builtin.copy"]
+        self.assertTrue(restore_xml["remote_src"])
+        self.assertTrue(restore_xml["src"].endswith("/rc.xml.original"))
+        self.assertIn("Restore the original labwc directory ownership and mode", rollback)
+        health = yaml.safe_load((role / "health_checks.yml").read_text())
+        display = next(task for task in health if task["name"] == "Verify Pi4 display services")
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = bool
+        for managed, previous_running in ((True, False), (True, True), (False, False)):
+            context = dict(manage_kiosk_browser=managed, release_kiosk_services=[], release_torque_cutover=False)
+            candidate = environment.from_string(display["loop"]).render(**context)
+            self.assertEqual("kiosk-hotcorner.service" in candidate, managed)
+            restored = environment.from_string(display["loop"]).render(**context, release_kiosk_check_hotcorner=previous_running)
+            self.assertEqual("kiosk-hotcorner.service" in restored, previous_running)
+        self.assertIn("release_kiosk_hotcorner_previous.state", rollback["Verify the complete restored Pi4 runtime"]["vars"]["release_kiosk_check_hotcorner"])
+        # The installed helper may have been removed already; rollback uses the
+        # release source on stdin under the kiosk user's Wayland environment.
+        reconfigure = rollback["Reconfigure the restored labwc session"]
+        self.assertEqual(reconfigure["ansible.builtin.command"]["argv"], ["/usr/bin/python3", "-", "--reconfigure"])
+        self.assertEqual(reconfigure["become_user"], "{{ ansible_user }}")
+
+    def test_pi4_rollback_image_capture_uses_unique_compose_labels(self) -> None:
+        prepare_tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        capture = next(
+            task
+            for task in prepare_tasks
+            if task["name"] == "Capture current Pi4 agent images as temporary rollback tags"
+        )
+        shell = capture["ansible.builtin.shell"]
+        self.assertNotIn("docker compose", shell)
+        self.assertNotIn("release_kiosk_existing_compose", shell)
+        self.assertIn("docker ps --all", shell)
+        self.assertIn(
+            "label=com.docker.compose.project={{ release_kiosk_compose_project }}",
+            shell,
+        )
+        self.assertIn(
+            "label=com.docker.compose.service={{ item }}",
+            shell,
+        )
+        self.assertIn('container_count="$(printf', shell)
+        self.assertIn('[[ "${container_count}" -eq 1 ]]', shell)
+        self.assertIn("docker inspect --format", shell)
+        self.assertRegex(shell, r"\[\[ \"\$\{image_id\}\" =~ \^sha256:\[0-9a-f\]\{64\}\$ \]\]")
+        self.assertIn("docker image tag", shell)
+        formatter = next(
+            line for line in shell.splitlines() if line.strip().startswith("image_format=")
+        )
+        generated = subprocess.run(
+            ["/bin/bash", "-c", f"{formatter}; printf '%s' \"$image_format\""],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(generated.stdout, "{{.Image}}")
+        self.assertEqual(capture["register"], "release_kiosk_rollback_capture")
+        self.assertFalse(capture["failed_when"])
+        capture_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task["name"] == "Capture current Pi4 agent images as temporary rollback tags"
+        )
+        record = prepare_tasks[capture_index + 1]
+        self.assertEqual(record["name"], "Record Pi4 rollback tags created by this run")
+        self.assertIn("selectattr('rc', 'defined')", record["ansible.builtin.set_fact"]["release_kiosk_captured_services"])
+        self.assertIn("selectattr('rc', 'equalto', 0)", record["ansible.builtin.set_fact"]["release_kiosk_captured_services"])
+
+    def test_pi4_rollback_capture_result_fixtures(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            playbook = Path(directory) / "capture-results.yml"
+            playbook.write_text(
+                """---
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    capture_cases:
+      - name: one-success
+        services: [torque-agent]
+        results:
+          - {item: torque-agent, rc: 0}
+        expected: [torque-agent]
+        complete: true
+      - name: two-success
+        services: [torque-agent, nfc-agent]
+        results:
+          - {item: torque-agent, rc: 0}
+          - {item: nfc-agent, rc: 0}
+        expected: [torque-agent, nfc-agent]
+        complete: true
+      - name: one-failure
+        services: [torque-agent, nfc-agent]
+        results:
+          - {item: torque-agent, rc: 0}
+          - {item: nfc-agent, rc: 1}
+        expected: [torque-agent]
+        complete: false
+      - name: one-disconnected
+        services: [torque-agent, nfc-agent]
+        results:
+          - {item: torque-agent, rc: 0}
+          - {item: nfc-agent, unreachable: true}
+        expected: [torque-agent]
+        complete: false
+  tasks:
+    - ansible.builtin.set_fact:
+        captured: >-
+          {{ item.results
+             | selectattr('rc', 'defined')
+             | selectattr('rc', 'equalto', 0)
+             | map(attribute='item')
+             | list }}
+      loop: "{{ capture_cases }}"
+      register: captures
+    - ansible.builtin.assert:
+        that:
+          - item.ansible_facts.captured == item.item.expected
+          - >-
+            ((item.ansible_facts.captured | length) == (item.item.services | length))
+            == item.item.complete
+      loop: "{{ captures.results }}"
+""",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                ["ansible-playbook", str(playbook)],
+                cwd=ROOT,
+                env={
+                    key: value
+                    for key, value in os.environ.items()
+                    if key != "ANSIBLE_CONFIG"
+                },
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_pi4_rollback_capture_finds_a_stopped_existing_container(self) -> None:
+        prepare_tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        capture = next(
+            task
+            for task in prepare_tasks
+            if task["name"] == "Capture current Pi4 agent images as temporary rollback tags"
+        )
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["quote"] = shlex.quote
+        command = environment.from_string(capture["ansible.builtin.shell"]).render(
+            release_kiosk_compose_project="clients",
+            item="torque-agent",
+            release_kiosk_rollback_images={
+                "torque-agent": "raspi-standard-rollback:test-torque-agent"
+            },
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            temporary = Path(directory)
+            docker = temporary / "docker"
+            calls = temporary / "calls"
+            docker.write_text(
+                """#!/bin/bash
+set -euo pipefail
+printf '%s\\n' "$*" >> "$DOCKER_CALLS"
+case "$1" in
+  ps)
+    [[ " $* " == *" --all "* ]]
+    printf '%s\\n' stopped-torque-container
+    ;;
+  inspect)
+    printf 'sha256:%064d\\n' 0
+    ;;
+  image)
+    [[ "$2" == tag ]]
+    ;;
+  *) exit 64 ;;
+esac
+""",
+                encoding="utf-8",
+            )
+            docker.chmod(0o755)
+            result = subprocess.run(
+                ["/bin/bash", "-c", command],
+                cwd=ROOT,
+                env={
+                    **os.environ,
+                    "PATH": f"{temporary}:{os.environ.get('PATH', '')}",
+                    "DOCKER_CALLS": str(calls),
+                },
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            call_log = calls.read_text(encoding="utf-8")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("ps --all", call_log)
+        self.assertIn("inspect --format {{.Image}} stopped-torque-container", call_log)
+        self.assertIn(
+            "image tag sha256:" + "0" * 64 + " raspi-standard-rollback:test-torque-agent",
+            call_log,
+        )
+
+    def test_top_level_route_is_explicit_and_serial(self) -> None:
+        plays = yaml.safe_load(PLAYBOOK)
+        self.assertEqual(PLAYBOOK.count("  serial: 1\n"), 3)
+        self.assertLess(PLAYBOOK.index("role: release_pi5"), PLAYBOOK.index("role: release_kiosk"))
+        self.assertLess(
+            PLAYBOOK.index("role: release_kiosk"),
+            PLAYBOOK.index("role: release_signage"),
+        )
+        self.assertNotIn("terminal-profile-registry", PLAYBOOK)
+        self.assertNotIn("rolling_release", PLAYBOOK)
+        self.assertEqual(
+            [play["hosts"] for play in plays],
+            [
+                "server",
+                "kiosk",
+                "kiosk",
+                "server",
+                "kiosk",
+                "kiosk",
+                "server",
+                "server",
+                "kiosk",
+                "kiosk",
+                "signage",
+            ],
+        )
+        self.assertTrue(all("torque-cutover" in play["tags"] for play in plays[:7]))
+        self.assertEqual(plays[0]["connection"], "local")
+        self.assertEqual(plays[3]["connection"], "local")
+        self.assertEqual(plays[6]["connection"], "local")
+        self.assertEqual(plays[7]["connection"], "local")
+        self.assertIn("torque-cutover", plays[9]["tags"])
+
+    def test_torque_cutover_is_quiesce_pi5_stage_then_resume(self) -> None:
+        plays = yaml.safe_load(PLAYBOOK)
+        self.assertEqual(
+            [play["name"] for play in plays[:10]],
+            [
+                "Stage Pi5 release images before torque ownership is quiesced",
+                "Stage every selected torque kiosk while current services remain unchanged",
+                "Aggregate PREPARED before any torque endpoint stops",
+                "Finalize PREPARED and clean Pi5 candidates on shared failure",
+                "Quiesce all selected torque ownership endpoints before the API changes",
+                "Aggregate QUIESCED and restore all reachable kiosks on shared failure",
+                "Finalize QUIESCED before changing the control plane",
+                "Prepare and switch the Pi5 control plane",
+                "Update Pi4 kiosks one target at a time",
+                "Aggregate all selected torque candidates before ownership resumes",
+            ],
+        )
+        quiesce = role_text("release_torque_cutover")
+        contract = role_text("torque_agent_contract")
+        self.assertIn("state: stopped", quiesce)
+        self.assertIn(
+            "Initialize the shared stage boundary before any kiosk can disconnect",
+            quiesce,
+        )
+        self.assertIn("release_kiosk_stage_succeeded: false", quiesce)
+        self.assertIn("name: torque_agent_contract", quiesce)
+        self.assertIn("torque_connection_lease_enabled", contract)
+        self.assertIn("torque_agent_bluetooth_adapter", contract)
+        self.assertIn("torque_agent_hid_devices", contract)
+        self.assertNotIn("raspi4-assembly-01", quiesce)
+        self.assertNotIn("raspi4-kensaku-stonebase01", quiesce)
+        self.assertIn("intent.json", quiesce)
+        self.assertIn("release_torque_lease_ttl_seconds", quiesce)
+        self.assertIn("release_torque_guard_grace_seconds", quiesce)
+        self.assertIn("torque-bluetooth-adapter --status", quiesce)
+        self.assertIn("docker-compose.client.yml", quiesce)
+        self.assertIn("release_kiosk_candidate_compose", quiesce)
+        self.assertIn("release_torque_all_staged", quiesce)
+        self.assertIn("release_torque_all_agents_ready", quiesce)
+        self.assertIn("release_torque_all_browsers_ready", quiesce)
+        self.assertGreaterEqual(quiesce.count("default(false)"), 6)
+        self.assertTrue(plays[9]["ignore_unreachable"])
+        self.assertIn("selfOwnedToken", quiesce)
+        self.assertIn("torque-bluetooth-guard.service", quiesce)
+        self.assertNotIn("nfc-agent", quiesce)
+        self.assertNotIn("barcode-agent", quiesce)
+
+    def test_torque_prepared_pulls_and_verifies_everything_before_quiesce(self) -> None:
+        plays = yaml.safe_load(PLAYBOOK)
+        names = [play["name"] for play in plays]
+        self.assertLess(
+            names.index("Stage Pi5 release images before torque ownership is quiesced"),
+            names.index("Quiesce all selected torque ownership endpoints before the API changes"),
+        )
+        self.assertLess(
+            names.index("Aggregate PREPARED before any torque endpoint stops"),
+            names.index("Quiesce all selected torque ownership endpoints before the API changes"),
+        )
+
+        pi5_prefetch = (
+            ANSIBLE / "roles/release_pi5/tasks/prefetch.yml"
+        ).read_text(encoding="utf-8")
+        pi5_prepare = (
+            ANSIBLE / "roles/release_pi5/tasks/prepare.yml"
+        ).read_text(encoding="utf-8")
+        pi5_storage_prepare = (
+            ANSIBLE / "roles/release_pi5/tasks/prepare-storage.yml"
+        ).read_text(encoding="utf-8")
+        kiosk_prepare = (
+            ANSIBLE / "roles/release_kiosk/tasks/prepare.yml"
+        ).read_text(encoding="utf-8")
+        prepared_finalize = (
+            ANSIBLE / "roles/release_torque_cutover/tasks/prepared-finalize.yml"
+        ).read_text(encoding="utf-8")
+        kiosk_main = (
+            ANSIBLE / "roles/release_kiosk/tasks/main.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("Pull exact Pi5 candidates without starting containers", pi5_prefetch)
+        self.assertIn("Require exact ARM64 Pi5 candidates on this host", pi5_prefetch)
+        self.assertIn("Require recoverable running Pi5 API and Web images", pi5_prefetch)
+        self.assertIn("include_tasks: prepare-storage.yml", pi5_prefetch)
+        self.assertIn("include_tasks: prepare-storage.yml", pi5_prepare)
+        self.assertIn("Prepare the shared Pi5 durable storage directories before any Compose command", pi5_storage_prepare)
+        self.assertIn("Materialize and validate all phase3 external durable volumes", pi5_storage_prepare)
+        self.assertIn("release_pi5_storage_prepared_run_id: \"{{ release_run_id }}\"", pi5_storage_prepare)
+        self.assertIn("PI5_GATEWAY_IMAGE", pi5_prefetch)
+        self.assertIn("(release_pi5_storage_prepared_run_id | default('')) != release_run_id", pi5_prepare)
+        prepare_tasks = yaml.safe_load(pi5_prepare)
+        storage_fallback = next(
+            task
+            for task in prepare_tasks
+            if task.get("name") == "Prepare Pi5 storage before the first phase3 Compose command when needed"
+        )
+        self.assertEqual(
+            storage_fallback["when"],
+            "(release_pi5_storage_prepared_run_id | default('')) != release_run_id",
+        )
+        self.assertNotIn("release_torque_cutover", storage_fallback["when"])
+        self.assertLess(
+            pi5_prefetch.index("Define complete Pi5 Compose interpolation before storage PREPARED"),
+            pi5_prefetch.index("include_tasks: prepare-storage.yml"),
+        )
+        self.assertLess(
+            pi5_prepare.index("include_tasks: prepare-storage.yml"),
+            pi5_prepare.index("Resolve active and opposite Pi5 Compose container IDs"),
+        )
+        self.assertLess(
+            pi5_prefetch.index("include_tasks: prepare-storage.yml"),
+            pi5_prefetch.index("Record completed Pi5 PREPARED identity"),
+        )
+        self.assertNotIn("name: pi5_storage", pi5_prepare)
+        self.assertNotIn("release_pi5_volume_materialization", pi5_prepare)
+        self.assertNotIn("state: stopped", pi5_prefetch)
+        self.assertIn("Verify captured rollback image identities are locally recoverable", kiosk_prepare)
+        self.assertIn("Require the manifest-bound torque candidate and host architecture", kiosk_prepare)
+        self.assertIn("Read the selected Pi4 kernel architecture", kiosk_prepare)
+        self.assertIn("aarch64", kiosk_prepare)
+        self.assertIn("armv7", kiosk_prepare)
+        self.assertIn("Read Pi4 disk headroom before pulling candidates", kiosk_prepare)
+        self.assertIn("release_torque_all_prepared", prepared_finalize)
+        self.assertIn("delegate_facts: true", prepared_finalize)
+        self.assertIn("groups['server'] | first", prepared_finalize)
+        self.assertNotIn("release_torque_cutover_hosts | first", prepared_finalize)
+        prepared_control_plane = (
+            ANSIBLE
+            / "roles/release_torque_cutover/tasks/prepared-control-plane.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("running services were not stopped", prepared_control_plane)
+        self.assertIn("default(false)", prepared_finalize)
+        self.assertIn("default(false)", prepared_control_plane)
+        self.assertIn("release_kiosk_prepared_run_id == release_run_id", kiosk_main)
+
+        quiesce_finalize = (
+            ANSIBLE / "roles/release_torque_cutover/tasks/quiesce-finalize.yml"
+        ).read_text(encoding="utf-8")
+        final_cutover = (
+            ANSIBLE / "roles/release_torque_cutover/tasks/finalize.yml"
+        ).read_text(encoding="utf-8")
+        for aggregate in (quiesce_finalize, final_cutover):
+            self.assertIn("delegate_facts: true", aggregate)
+            self.assertNotIn("release_torque_cutover_hosts | first", aggregate)
+        self.assertIn("release_torque_host_result", final_cutover)
+
+    def test_torque_allowlist_stages_stopped_candidate_and_preserves_other_agents(self) -> None:
+        prepare = (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
+            encoding="utf-8"
+        )
+        switch = (ANSIBLE / "roles/release_kiosk/tasks/switch.yml").read_text(
+            encoding="utf-8"
+        )
+        rollback = (ANSIBLE / "roles/release_kiosk/tasks/rollback.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("release_kiosk_service_allowlist", prepare)
+        self.assertIn("intersect(release_kiosk_service_allowlist)", prepare)
+        self.assertIn("create --force-recreate --no-build torque-agent", switch)
+        self.assertIn("not (release_torque_cutover", switch)
+        self.assertIn("create --force-recreate --no-build", rollback)
+        self.assertIn("without restarting torque ownership", rollback)
+
+    def test_three_host_stage_missing_fact_still_reaches_shared_no_browser_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inventory = root / "inventory.yml"
+            playbook = root / "playbook.yml"
+            inventory.write_text(
+                "all:\n  children:\n    kiosk:\n      hosts:\n        kiosk-a:\n          ansible_connection: local\n        kiosk-b:\n          ansible_connection: local\n        kiosk-c:\n          ansible_connection: local\n",
+                encoding="utf-8",
+            )
+            playbook.write_text(
+                """---
+- hosts: kiosk
+  gather_facts: false
+  serial: 1
+  max_fail_percentage: 100
+  tasks:
+    - block:
+        - ansible.builtin.set_fact:
+            simulated_stage: true
+          when: inventory_hostname != 'kiosk-b'
+        - ansible.builtin.fail:
+            msg: simulated second-host stage failure
+          when: inventory_hostname == 'kiosk-b'
+      rescue:
+        - ansible.builtin.debug:
+            msg: simulated unreachable host has no stage fact
+- hosts: kiosk
+  gather_facts: false
+  tasks:
+    - ansible.builtin.set_fact:
+        simulated_all_staged: true
+    - ansible.builtin.set_fact:
+        simulated_all_staged: >-
+          {{ simulated_all_staged | bool and (hostvars[item].simulated_stage | default(false) | bool) }}
+      loop: "{{ groups['kiosk'] }}"
+    - ansible.builtin.debug:
+        msg: "AGGREGATE={{ simulated_all_staged }} host={{ inventory_hostname }}"
+    - ansible.builtin.debug:
+        msg: BROWSER_START_MUST_NOT_APPEAR
+      when: simulated_all_staged | bool
+    - ansible.builtin.fail:
+        msg: aggregate failure after all hosts observed the boundary
+      when: not (simulated_all_staged | bool)
+""",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                ["ansible-playbook", "-i", str(inventory), str(playbook)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        output = result.stdout + result.stderr
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("AGGREGATE=False host=kiosk-a", output)
+        self.assertIn("AGGREGATE=False host=kiosk-b", output)
+        self.assertIn("AGGREGATE=False host=kiosk-c", output)
+        self.assertNotIn('"msg": "BROWSER_START_MUST_NOT_APPEAR"', output)
+
+    def test_pi4_notice_contract_and_policy_constants(self) -> None:
+        role = ANSIBLE / 'roles/release_kiosk'
+        main = yaml.safe_load((role / 'tasks/main.yml').read_text())[0]
+        imports = [task.get('ansible.builtin.import_tasks') for task in main['block']]
+        notice_index = imports.index('notice.yml')
+        self.assertGreater(notice_index, imports.index('prepare.yml'))
+        self.assertLess(notice_index, next(i for i, task in enumerate(main['block']) if 'block' in task))
+        condition = ' '.join(main['block'][notice_index]['when'])
+        self.assertIn('not (release_torque_cutover', condition)
+        self.assertIn('release_kiosk_notice_enabled', condition)
+        clear = main['always'][0]
+        self.assertIn('clear', clear['ansible.builtin.command']['argv'])
+        self.assertFalse(clear['failed_when'])
+        self.assertIn('not (release_torque_cutover', ' '.join(clear['when']))
+        self.assertIn("status_agent_client_id | default('') | trim | length > 0", clear['when'])
+        self.assertEqual(main['always'][-1]['ansible.builtin.import_tasks'], 'cleanup.yml')
+        notice_tasks = yaml.safe_load((role / 'tasks/notice.yml').read_text())
+        start = next(task for task in notice_tasks if 'ansible.builtin.command' in task)
+        for task in (start, clear):
+            self.assertEqual(task['delegate_to'], 'localhost')
+            self.assertIs(task['become'], False)
+        self.assertIn("status_agent_client_id | default('') | trim | length > 0", start['when'])
+        self.assertIn('WARNING', notice_tasks[0]['ansible.builtin.debug']['msg'])
+        defaults = yaml.safe_load((role / 'defaults/main.yml').read_text())
+        policy = runpy.run_path(str(ROOT / 'scripts/deploy/terminal_notice.py'))
+        self.assertEqual(defaults['release_kiosk_notice_duration_seconds'], policy['NOTICE_DURATION_SECONDS'])
+        self.assertEqual(defaults['release_kiosk_notice_ack_timeout_seconds'], policy['NOTICE_ACK_TIMEOUT_SECONDS'])
+        self.assertIs(defaults['release_kiosk_notice_enabled'], True)
+        self.assertEqual(defaults['release_kiosk_notice_project_dir'], '{{ playbook_dir }}/../../..')
+
+    def test_pi4_and_pi3_use_prepare_block_rescue_always(self) -> None:
+        for role in ("release_kiosk", "release_signage"):
+            main = yaml.safe_load(
+                (ANSIBLE / f"roles/{role}/tasks/main.yml").read_text(
+                    encoding="utf-8"
+                )
+            )
+            with self.subTest(role=role):
+                self.assertEqual(len(main), 1)
+                outer = main[0]
+                self.assertEqual(
+                    outer["block"][0]["ansible.builtin.import_tasks"],
+                    "prepare.yml",
+                )
+                if role == "release_kiosk":
+                    switch_health = next(
+                        task for task in outer["block"] if "block" in task
+                    )
+                    self.assertEqual(
+                        [
+                            task["ansible.builtin.import_tasks"]
+                            for task in switch_health["block"]
+                            if "ansible.builtin.import_tasks" in task
+                        ],
+                        ["switch.yml", "health.yml"],
+                    )
+                    rescue = switch_health["rescue"]
+                else:
+                    self.assertEqual(
+                        [
+                            task["ansible.builtin.import_tasks"]
+                            for task in outer["block"]
+                        ],
+                        ["prepare.yml", "switch.yml", "health.yml"],
+                    )
+                    rescue = outer["rescue"]
+                self.assertEqual(
+                    [task["ansible.builtin.import_tasks"] for task in rescue],
+                    ["rollback.yml"],
+                )
+                self.assertEqual(
+                    [
+                        task["ansible.builtin.import_tasks"]
+                        for task in outer["always"]
+                        if "ansible.builtin.import_tasks" in task
+                    ],
+                    ["cleanup.yml"],
+                )
+                if role == "release_kiosk":
+                    self.assertIn("release_torque_cutover", " ".join(outer["always"][0]["when"]))
+
+    def test_pi3_recovers_failures_after_stopping_before_transfer(self) -> None:
+        prepare_tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_signage/tasks/prepare.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        names = [task["name"] for task in prepare_tasks]
+        stop_index = names.index(
+            "Stop only the Pi3 display and Signage units before transfer"
+        )
+        self.assertLess(
+            stop_index,
+            names.index(
+                "Transfer the complete Pi3 artifact after releasing display resources"
+            ),
+        )
+        self.assertLess(
+            stop_index,
+            names.index(
+                "Expand the complete Pi3 artifact while display services remain stopped"
+            ),
+        )
+
+        controller_temp = next(
+            task
+            for task in prepare_tasks
+            if task["name"]
+            == "Create a private controller artifact directory for the launcher user"
+        )
+        extraction = next(
+            task
+            for task in prepare_tasks
+            if task["name"]
+            == "Extract the complete Pi3 artifact from GHCR on the controller"
+        )
+        self.assertFalse(controller_temp["become"])
+        self.assertFalse(extraction["become"])
+
+        legacy_cleanup = next(
+            task
+            for task in prepare_tasks
+            if task["name"] == "Remove an incomplete one-time Pi3 legacy snapshot"
+        )
+        legacy_stat = next(
+            task
+            for task in prepare_tasks
+            if task["name"] == "Inspect currently installed Pi3 payloads"
+        )
+        legacy_copy = next(
+            task
+            for task in prepare_tasks
+            if task["name"] == "Capture the currently installed Pi3 runtime once"
+        )
+        legacy_assert = next(
+            task
+            for task in prepare_tasks
+            if task["name"]
+            == "Require existing Pi3 legacy payloads to be regular files"
+        )
+        self.assertEqual(
+            legacy_cleanup["ansible.builtin.file"],
+            {"path": "{{ release_signage_legacy }}", "state": "absent"},
+        )
+        self.assertFalse(legacy_stat["ansible.builtin.stat"]["follow"])
+        self.assertIn(
+            "item.stat.isreg | default(false) | bool",
+            legacy_assert["ansible.builtin.assert"]["that"][0],
+        )
+        self.assertEqual(
+            legacy_copy["loop"],
+            "{{ release_signage_legacy_payload_stats.results | default([]) }}",
+        )
+        self.assertEqual(
+            legacy_copy["when"], "item.stat.exists | default(false) | bool"
+        )
+
+    def test_pi3_release_contains_only_signage_runtime_services(self) -> None:
+        signage = role_text("release_signage")
+        for forbidden in (
+            "nfc-agent",
+            "barcode-agent",
+            "torque-agent",
+            "docker compose",
+        ):
+            self.assertNotIn(forbidden, signage)
+        self.assertIn("signage-lite.service", signage)
+        self.assertIn("lightdm.service", signage)
+
+    def test_pi3_health_uses_bounded_cold_display_wait_and_runtime_env(self) -> None:
+        health_tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_signage/tasks/health_checks.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        unit_health = next(
+            task
+            for task in health_tasks
+            if task["name"] == "Verify Pi3 display and Signage units"
+        )
+        endpoint_health = next(
+            task
+            for task in health_tasks
+            if task["name"] == "Verify authenticated Pi3 Signage endpoints"
+        )
+        self.assertEqual(unit_health["retries"], 7)
+        self.assertEqual(unit_health["delay"], 5)
+        endpoint_command = endpoint_health["ansible.builtin.script"]["cmd"]
+        self.assertIn("--runtime-env", endpoint_command)
+        self.assertIn("release_signage_config_root", endpoint_command)
+
+    def test_pi4_builds_are_outside_the_terminal_route(self) -> None:
+        kiosk = role_text("release_kiosk")
+        prepare = (
+            ANSIBLE / "roles/release_kiosk/tasks/prepare.yml"
+        ).read_text(encoding="utf-8")
+        switch = (
+            ANSIBLE / "roles/release_kiosk/tasks/switch.yml"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("--build", kiosk)
+        self.assertNotRegex(kiosk, r"\bbuild:\s*")
+        self.assertIn("docker\n      - image\n      - pull", prepare)
+        self.assertIn("up -d --no-build", switch)
+
+    def test_pi4_removes_only_this_run_backups_after_verified_outcome(self) -> None:
+        cleanup_path = ANSIBLE / "roles/release_kiosk/tasks/cleanup.yml"
+        cleanup_tasks = yaml.safe_load(cleanup_path.read_text(encoding="utf-8"))
+        backup_cleanup = next(
+            task
+            for task in cleanup_tasks
+            if task["name"] == "Remove this run's Pi4 file backups after a verified outcome"
+        )
+        self.assertEqual(
+            backup_cleanup["ansible.builtin.file"],
+            {"path": "{{ item.backup_file }}", "state": "absent"},
+        )
+        self.assertEqual(
+            backup_cleanup["loop"],
+            "{{ release_kiosk_install.results | default([]) }}",
+        )
+        self.assertEqual(
+            backup_cleanup["when"],
+            [
+                "item.changed | default(false) | bool",
+                "item.backup_file is defined",
+                "release_kiosk_healthy | default(false) | bool or release_kiosk_rolled_back | default(false) | bool or not (release_kiosk_switch_attempted | default(false) | bool)",
+            ],
+        )
+        self.assertTrue(backup_cleanup["no_log"])
+
+    def test_pi4_cleanup_covers_success_pre_switch_failure_and_preserves_failed_rollback(self) -> None:
+        cleanup_tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/cleanup.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        tag_cleanup = next(
+            task
+            for task in cleanup_tasks
+            if task["name"] == "Remove Pi4 rollback image tags after a verified outcome"
+        )
+        stage_cleanup = cleanup_tasks[-1]
+        expected_pre_switch = "not (release_kiosk_switch_attempted | default(false) | bool)"
+        self.assertIn("release_kiosk_healthy | default(false) | bool", tag_cleanup["when"])
+        self.assertIn("release_kiosk_rolled_back | default(false) | bool", tag_cleanup["when"])
+        self.assertIn(expected_pre_switch, tag_cleanup["when"])
+        self.assertIn(expected_pre_switch, " ".join(stage_cleanup["when"]))
+        self.assertEqual(tag_cleanup["loop"], "{{ release_kiosk_captured_services | default([]) }}")
+
+        rollback = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/rollback.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        names = [task["name"] for task in rollback]
+        removal_index = names.index("Remove newly introduced Pi4 files without a backup")
+        restore_index = names.index("Restore backed-up Pi4 release files")
+        reload_index = names.index("Reload restored Pi4 systemd units")
+        prerequisite_index = names.index("Verify rollback prerequisites before agent compose restore")
+        compose_index = names.index("Restore Pi4 agents from the captured image tags")
+        health_index = names.index("Verify the complete restored Pi4 runtime")
+        self.assertLess(restore_index, removal_index)
+        self.assertLess(removal_index, reload_index)
+        self.assertLess(reload_index, prerequisite_index)
+        self.assertLess(prerequisite_index, compose_index)
+        self.assertLess(removal_index, compose_index)
+        self.assertLess(compose_index, health_index)
+
+    def test_pi3_has_one_target_hash_and_no_target_network_fetch(self) -> None:
+        signage = role_text("release_signage")
+        prepare = (
+            ANSIBLE / "roles/release_signage/tasks/prepare.yml"
+        ).read_text(encoding="utf-8")
+        switch = (
+            ANSIBLE / "roles/release_signage/tasks/switch.yml"
+        ).read_text(encoding="utf-8")
+        self.assertEqual(signage.count("sha256sum"), 1)
+        self.assertIn("delegate_to: localhost", prepare)
+        target_section = prepare.split(
+            "- name: Select the controller-local Pi3 artifact", 1
+        )[1]
+        controller_section = prepare.split(
+            "- name: Extract the complete Pi3 artifact from GHCR on the controller",
+            1,
+        )[1].split("- name: Select the controller-local Pi3 artifact", 1)[0]
+        self.assertIn(
+            'docker image pull --platform linux/arm/v7 "${image}"',
+            controller_section,
+        )
+        for forbidden in ("git fetch", "git clone", "docker image pull", "curl ", "wget "):
+            self.assertNotIn(forbidden, target_section)
+        self.assertIn("/current", switch)
+        self.assertIn("/previous", switch)
+        self.assertGreaterEqual(switch.count("mv -Tf"), 2)
+
+    def test_pi3_scratch_artifact_create_has_an_explicit_command(self) -> None:
+        prepare_tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_signage/tasks/prepare.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        extraction = next(
+            task
+            for task in prepare_tasks
+            if task["name"] == "Extract the complete Pi3 artifact from GHCR on the controller"
+        )
+        shell = extraction["ansible.builtin.shell"]
+        self.assertIn('docker create "${image}" /signage-release.tar', shell)
+
+    def test_pi3_does_not_rewrite_the_verified_candidate_tree(self) -> None:
+        prepare = (
+            ANSIBLE / "roles/release_signage/tasks/prepare.yml"
+        ).read_text(encoding="utf-8")
+        after_hash = prepare.split(
+            "- name: Require the Pi3 artifact bytes to match the one expected SHA-256",
+            1,
+        )[1]
+        self.assertNotRegex(
+            after_hash,
+            r"ansible\.builtin\.(?:copy|template):[\s\S]{0,300}"
+            r"dest:.*release_signage_candidate",
+        )
+        self.assertIn("dest: \"{{ release_signage_config_root }}/runtime.env\"", after_hash)
+        self.assertNotIn(".artifact-sha256", after_hash)
+
+    def test_pi3_renders_the_status_agent_configuration_every_release(self) -> None:
+        prepare_tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_signage/tasks/prepare.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        names = [task["name"] for task in prepare_tasks]
+        runtime_index = names.index(
+            "Render Pi3 host settings outside the immutable release tree"
+        )
+        conf_index = names.index(
+            "Render the Pi3 status-agent configuration outside the immutable release tree"
+        )
+        self.assertEqual(conf_index, runtime_index + 1)
+        conf = prepare_tasks[conf_index]
+        template = conf["ansible.builtin.template"]
+        self.assertEqual(
+            template["src"], "{{ playbook_dir }}/../templates/status-agent.conf.j2"
+        )
+        self.assertEqual(template["dest"], "/etc/raspi-status-agent.conf")
+        self.assertEqual(template["mode"], "0600")
+        self.assertTrue(conf["no_log"])
+        inventory = yaml.safe_load(
+            (ANSIBLE / "inventory.yml").read_text(encoding="utf-8")
+        )
+        pi3 = inventory["all"]["children"]["clients"]["children"]["signage"]["hosts"][
+            "raspberrypi3"
+        ]
+        self.assertEqual(pi3["status_agent_storage_health_enabled"], "1")
+
+    def test_pi3_publishes_only_a_complete_atomic_candidate(self) -> None:
+        prepare = (
+            ANSIBLE / "roles/release_signage/tasks/prepare.yml"
+        ).read_text(encoding="utf-8")
+        cleanup_path = (
+            ANSIBLE / "roles/release_signage/tasks/cleanup.yml"
+        )
+        cleanup = cleanup_path.read_text(encoding="utf-8")
+        cleanup_tasks = yaml.safe_load(cleanup)
+        self.assertIn("validate-layout", prepare)
+        self.assertIn('dest: "{{ release_signage_candidate_temp }}"', prepare)
+        self.assertNotIn('dest: "{{ release_signage_candidate }}"', prepare)
+        self.assertRegex(
+            prepare,
+            r"(?s)Validate the fixed Pi3 payload allowlist before extraction"
+            r".*Expand the complete Pi3 artifact"
+            r".*Validate the extracted Pi3 tree against the fixed payload allowlist"
+            r".*Make the expanded Pi3 release tree immutable"
+            r".*Atomically publish the complete Pi3 candidate directory",
+        )
+        self.assertIn('path: "{{ release_signage_candidate_temp }}"', cleanup)
+        self.assertEqual(
+            cleanup_tasks[0]["ansible.builtin.file"],
+            {"path": "{{ release_signage_candidate_temp }}", "state": "absent"},
+        )
+        self.assertNotIn(
+            {"path": "{{ release_signage_candidate }}", "state": "absent"},
+            [task.get("ansible.builtin.file") for task in cleanup_tasks],
+        )
+
+    def test_new_route_has_no_historical_admission_contract(self) -> None:
+        route = "\n".join(
+            [PLAYBOOK, role_text("release_pi5"), role_text("release_kiosk"), role_text("release_signage")]
+        ).lower()
+        for forbidden in (
+            "readinessadmission",
+            "releaseclaims",
+            "fleet-release-state",
+            "route_preflight",
+            "manifestsha256",
+            "payloaddigest",
+        ):
+            self.assertNotIn(forbidden, route)
+
+    def test_pi5_standard_route_has_no_custom_subsystem_or_sealed_evidence(self) -> None:
+        pi5 = role_text("release_pi5")
+        for forbidden in (
+            "pi5-blue-green.sh",
+            "lib/pi5-blue-green",
+            "validate-expand-only-migrations.py",
+            "pi5-release-evidence.py",
+            "resource-evidence",
+            "migration-plan",
+            "--resource-evidence",
+            "--migration-plan",
+        ):
+            self.assertNotIn(forbidden, pi5)
+        self.assertIn("prisma migrate deploy", pi5)
+        self.assertIn("Require Pi5 memory and disk headroom immediately", pi5)
+
+    def test_pi5_waits_for_post_pull_load_before_candidate_mutation(self) -> None:
+        prepare_path = ANSIBLE / "roles/release_pi5/tasks/prepare.yml"
+        prepare_tasks = yaml.safe_load(prepare_path.read_text(encoding="utf-8"))
+        names = [task["name"] for task in prepare_tasks]
+        pull_index = names.index(
+            "Pull immutable Pi5 candidate images while active traffic remains live"
+        )
+        capacity_index = names.index(
+            "Require Pi5 memory and disk headroom immediately"
+        )
+        load_index = names.index("Wait bounded time for post-pull Pi5 load to settle")
+        migration_index = names.index("Reject unfinished or rolled-back Prisma ledger before deploy")
+        candidate_index = names.index("Start only inactive Pi5 API and Web services")
+        self.assertLess(pull_index, capacity_index)
+        self.assertLess(capacity_index, load_index)
+        self.assertLess(load_index, migration_index)
+        self.assertLess(migration_index, candidate_index)
+
+        pull = prepare_tasks[pull_index]
+        self.assertEqual(
+            pull["loop"],
+            ["{{ release_pi5_api_image }}", "{{ release_pi5_web_image }}"],
+        )
+        self.assertEqual(pull["register"], "release_pi5_pull")
+        self.assertEqual(pull["retries"], 3)
+        self.assertEqual(pull["delay"], 10)
+        self.assertEqual(pull["until"], "release_pi5_pull is succeeded")
+        self.assertNotIn("ignore_errors", pull)
+        self.assertNotIn("failed_when", pull)
+
+        capacity = prepare_tasks[capacity_index]
+        self.assertEqual(
+            capacity["ansible.builtin.assert"]["that"],
+            [
+                "(release_pi5_capacity.stdout | from_json).memoryMb | int >= release_pi5_min_memory_mb | int",
+                "(release_pi5_capacity.stdout | from_json).diskGb | int >= release_pi5_min_disk_gb | int",
+            ],
+        )
+        self.assertNotIn("retries", capacity)
+        self.assertNotIn("delay", capacity)
+        self.assertNotIn("until", capacity)
+
+        load_wait = prepare_tasks[load_index]
+        self.assertEqual(load_wait["retries"], "{{ release_pi5_load_retries }}")
+        self.assertEqual(load_wait["delay"], "{{ release_pi5_load_delay }}")
+        self.assertEqual(load_wait["register"], "release_pi5_load")
+        self.assertNotIn("ignore_errors", load_wait)
+        self.assertNotIn("failed_when", load_wait)
+        self.assertNotIn("no_log", load_wait)
+        load_shell = load_wait["ansible.builtin.shell"]
+        self.assertIn("/proc/loadavg", load_shell)
+        self.assertIn("_NPROCESSORS_ONLN", load_shell)
+        self.assertIn("* 0.75", load_shell)
+        self.assertIn("{\"load\":%s,\"maxLoad\":%s}", load_shell)
+        self.assertNotIn("MemAvailable", load_shell)
+        self.assertNotIn("df -", load_shell)
+        self.assertIn("release_pi5_load.stdout", load_wait["until"])
+        self.assertIn(".load | float", load_wait["until"])
+        self.assertIn(".maxLoad | float", load_wait["until"])
+
+    def test_pi5_fresh_enabled_hermes_materializes_private_env_before_start(self) -> None:
+        prepare_path = ANSIBLE / "roles/release_pi5/tasks/prepare.yml"
+        prepare_tasks = yaml.safe_load(prepare_path.read_text(encoding="utf-8"))
+        config_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Materialize Business Hermes credentials and candidate environment before startup"
+        )
+        hermes_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Start the independent business Hermes runtime before candidate traffic"
+        )
+        config_task = prepare_tasks[config_index]
+        self.assertLess(config_index, hermes_index)
+        source_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Inspect the persistent Business Hermes Compose environment source before the first Compose command"
+        )
+        source_assert_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Require a regular persistent Business Hermes Compose environment source"
+        )
+        source_resolve_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Resolve the existing Pi5 Compose environment source"
+        )
+        initial_compose_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Define complete Pi5 Compose interpolation before the first Compose command"
+        )
+        self.assertLess(source_index, source_assert_index)
+        self.assertLess(source_assert_index, source_resolve_index)
+        self.assertLess(source_resolve_index, initial_compose_index)
+        source_stat = prepare_tasks[source_index]["ansible.builtin.stat"]
+        self.assertIn("/etc/raspi-business-hermes/compose.env", source_stat["path"])
+        self.assertFalse(source_stat["follow"])
+        source_assert = prepare_tasks[source_assert_index]
+        source_assert_text = str(source_assert["ansible.builtin.assert"])
+        self.assertIn("isreg", source_assert_text)
+        self.assertIn("islnk", source_assert_text)
+        self.assertIn("pw_name", source_assert_text)
+        self.assertIn("mode", source_assert_text)
+        source_fact = prepare_tasks[source_resolve_index]["ansible.builtin.set_fact"]
+        self.assertIn("release_pi5_business_hermes_candidate_env_file", source_fact["release_pi5_compose_env_source"])
+        self.assertIn("release_pi5_env_file", source_fact["release_pi5_compose_env_source"])
+        initial_compose = prepare_tasks[initial_compose_index]["ansible.builtin.set_fact"][
+            "release_pi5_compose_environment"
+        ]
+        self.assertEqual(initial_compose["PI5_ENV_FILE"], "{{ release_pi5_compose_env_source }}")
+        exact_images_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Define exact slot-specific Compose images"
+        )
+        rollback_capture_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Capture the original Pi5 Compose environment for rollback"
+        )
+        self.assertLess(exact_images_index, rollback_capture_index)
+        self.assertLess(rollback_capture_index, config_index)
+        exact_environment = prepare_tasks[exact_images_index]["ansible.builtin.set_fact"][
+            "release_pi5_compose_environment"
+        ]
+        self.assertEqual(exact_environment["PI5_ENV_FILE"], "{{ release_pi5_compose_env_source }}")
+        rollback_capture = prepare_tasks[rollback_capture_index]["ansible.builtin.set_fact"]
+        self.assertEqual(
+            rollback_capture["release_pi5_rollback_compose_environment"],
+            "{{ release_pi5_compose_environment }}",
+        )
+        existing_env_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Inspect the existing Business Hermes container environment"
+        )
+        existing_env_guard_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Refuse a running Business Hermes container with mismatched credentials"
+        )
+        pre_rollout_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Record the independent business Hermes pre-rollout state"
+        )
+        self.assertLess(existing_env_index, config_index)
+        self.assertLess(existing_env_guard_index, config_index)
+        self.assertLess(pre_rollout_index, existing_env_index)
+        self.assertTrue(prepare_tasks[existing_env_index]["no_log"])
+        self.assertTrue(prepare_tasks[existing_env_guard_index]["no_log"])
+        self.assertIn("difference", prepare_tasks[existing_env_guard_index]["ansible.builtin.assert"]["that"][0])
+
+        egress_existing_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Capture an existing independent business Hermes egress container before fresh rollout"
+        )
+        egress_identity_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Inspect the existing independent business Hermes egress container"
+        )
+        egress_state_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Record the independent business Hermes egress pre-rollout state"
+        )
+        egress_image_guard_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Refuse to replace an independent business Hermes egress image during API/Web rollback window"
+        )
+        self.assertLess(egress_existing_index, egress_identity_index)
+        self.assertLess(egress_identity_index, egress_state_index)
+        self.assertLess(egress_state_index, config_index)
+        self.assertIn("business-hermes-egress", str(prepare_tasks[egress_existing_index]))
+        self.assertIn("release_pi5_business_hermes_egress_existing_running", str(prepare_tasks[egress_state_index]))
+        self.assertIn("release_pi5_business_hermes_egress_image", str(prepare_tasks[egress_image_guard_index]))
+
+        proxy_stat_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Inspect the Business Hermes egress proxy before candidate startup"
+        )
+        proxy_assert_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Require a regular Business Hermes egress proxy before candidate startup"
+        )
+        proxy_mode_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name")
+            == "Ensure the Business Hermes egress proxy is readable before candidate startup"
+        )
+        self.assertLess(config_index, proxy_stat_index)
+        self.assertLess(proxy_stat_index, proxy_assert_index)
+        self.assertLess(proxy_assert_index, proxy_mode_index)
+        self.assertLess(proxy_mode_index, hermes_index)
+        self.assertFalse(prepare_tasks[proxy_stat_index]["ansible.builtin.stat"]["follow"])
+        self.assertIn("isreg", str(prepare_tasks[proxy_assert_index]["ansible.builtin.assert"]))
+        self.assertIn("islnk", str(prepare_tasks[proxy_assert_index]["ansible.builtin.assert"]))
+        self.assertEqual(prepare_tasks[proxy_mode_index]["ansible.builtin.file"]["mode"], "0644")
+        self.assertEqual(prepare_tasks[proxy_mode_index]["ansible.builtin.file"]["state"], "file")
+        self.assertEqual(
+            config_task["ansible.builtin.include_tasks"],
+            "{{ playbook_dir }}/../tasks/business-hermes-runtime.yml",
+        )
+        self.assertEqual(
+            config_task["when"],
+            [
+                "release_pi5_route == 'fresh'",
+                "release_pi5_business_hermes_enabled | bool",
+            ],
+        )
+        self.assertEqual(
+            next(
+                task
+                for task in prepare_tasks
+                if task.get("name") == "Define Business Hermes rollback environment targets"
+            )["ansible.builtin.set_fact"]["business_hermes_candidate_env_file"],
+            "/etc/raspi-business-hermes/compose.env",
+        )
+        target_fact = next(
+            task
+            for task in prepare_tasks
+            if task.get("name") == "Define Business Hermes rollback environment targets"
+        )["ansible.builtin.set_fact"]
+        self.assertEqual(target_fact["business_hermes_backup_dir"], "{{ release_pi5_run_dir }}")
+        self.assertTrue(target_fact["business_hermes_backup_env_files"])
+        self.assertEqual(target_fact["business_hermes_config_file"], "/etc/raspi-business-hermes/config.yaml")
+        self.assertIn("PI5_ENV_FILE", prepare_path.read_text(encoding="utf-8"))
+        self.assertIn("release_pi5_compose_environment", prepare_path.read_text(encoding="utf-8"))
+        self.assertIn("release_pi5_rollback_compose_environment", prepare_path.read_text(encoding="utf-8"))
+        self.assertIn("BUSINESS_HERMES_CONFIG_FILE", prepare_path.read_text(encoding="utf-8"))
+        rollback_tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_pi5/tasks/rollback.yml").read_text(encoding="utf-8")
+        )
+        rollback_names = [task["name"] for task in rollback_tasks]
+        self.assertEqual(rollback_names[0], "Restore the previous Business Hermes runtime environment")
+        self.assertEqual(rollback_names[1], "Remove a newly created Business Hermes runtime environment after rollback")
+        self.assertIn("Restore the previous Business Hermes candidate environment", rollback_names)
+        self.assertIn("Remove a newly created Business Hermes candidate environment after rollback", rollback_names)
+        self.assertIn("Restore the previous Business Hermes configuration", rollback_names)
+        self.assertIn("Remove a newly created Business Hermes configuration after rollback", rollback_names)
+        self.assertLess(
+            rollback_names.index("Restore the previous Business Hermes candidate environment"),
+            rollback_names.index("Restore the original Pi5 Compose environment before rollback"),
+        )
+        self.assertIn(
+            "release_pi5_rollback_compose_environment",
+            rollback_tasks[rollback_names.index("Restore the original Pi5 Compose environment before rollback")][
+                "ansible.builtin.set_fact"
+            ]["release_pi5_compose_environment"],
+        )
+
+        runtime_tasks = yaml.safe_load(
+            (ANSIBLE / "tasks/business-hermes-runtime.yml").read_text(encoding="utf-8")
+        )
+        validation_text = (ANSIBLE / "tasks/business-hermes-runtime.yml").read_text(encoding="utf-8")
+        self.assertIn("business_hermes_api_key | length >= 16", validation_text)
+        self.assertIn("business_hermes_dgx_token is defined and business_hermes_dgx_token | length >= 16", validation_text)
+        runtime_copy = next(
+            task
+            for task in runtime_tasks
+            if task.get("name") == "Deploy the independent business Hermes runtime credentials"
+        )
+        candidate_copy = next(
+            task
+            for task in runtime_tasks
+            if task.get("name") == "Copy the managed Compose environment into the private candidate scope"
+        )
+        candidate_sync = next(
+            task
+            for task in runtime_tasks
+            if task.get("name") == "Sync Business Hermes settings into the candidate Compose environment"
+        )
+        runtime_backup = next(
+            task
+            for task in runtime_tasks
+            if task.get("name") == "Back up the existing Business Hermes runtime environment"
+        )
+        candidate_backup = next(
+            task
+            for task in runtime_tasks
+            if task.get("name") == "Back up the existing Business Hermes candidate environment"
+        )
+        config_render = next(
+            task
+            for task in runtime_tasks
+            if task.get("name") == "Render the Business Hermes single-purpose configuration"
+        )
+        config_copy = next(
+            task
+            for task in runtime_tasks
+            if task.get("name") == "Install the rendered Business Hermes configuration"
+        )
+        self.assertEqual(runtime_copy["ansible.builtin.copy"]["mode"], "0600")
+        self.assertTrue(runtime_copy["no_log"])
+        self.assertIn("Back up the existing Business Hermes runtime environment", runtime_names := [task.get("name") for task in runtime_tasks])
+        self.assertIn("Back up the existing Business Hermes candidate environment", runtime_names)
+        self.assertEqual(runtime_backup["ansible.builtin.copy"]["mode"], "0600")
+        self.assertEqual(candidate_backup["ansible.builtin.copy"]["mode"], "0600")
+        self.assertTrue(runtime_backup["no_log"])
+        self.assertTrue(candidate_backup["no_log"])
+        self.assertEqual(config_render["ansible.builtin.template"]["mode"], "{{ '0600' if (business_hermes_backup_env_files | default(false) | bool) else '0644' }}")
+        self.assertEqual(config_copy["ansible.builtin.copy"]["mode"], "0644")
+        self.assertTrue(config_render["no_log"])
+        self.assertTrue(config_copy["no_log"])
+        self.assertIn(
+            "business_hermes_runtime_env_materialized",
+            next(
+                task["ansible.builtin.set_fact"]
+                for task in runtime_tasks
+                if task.get("name") == "Mark the Business Hermes runtime environment materialized"
+            ),
+        )
+        self.assertIn(
+            "business_hermes_candidate_env_materialized",
+            next(
+                task["ansible.builtin.set_fact"]
+                for task in runtime_tasks
+                if task.get("name") == "Mark the Business Hermes candidate environment materialized"
+            ),
+        )
+        self.assertEqual(candidate_copy["ansible.builtin.copy"]["mode"], "0600")
+        self.assertTrue(candidate_copy["no_log"])
+        self.assertIn("business_hermes_candidate_env_needs_copy", str(candidate_copy["when"]))
+        self.assertTrue(candidate_sync["no_log"])
+        self.assertEqual(candidate_sync["ansible.builtin.lineinfile"]["create"], False)
+        self.assertIn("BUSINESS_HERMES_API_KEY", str(candidate_sync["loop"]))
+        self.assertNotIn("apps/api/.env", candidate_copy["ansible.builtin.copy"]["dest"])
+        config_template = (ANSIBLE / "templates/business-hermes-config.yaml.j2").read_text(encoding="utf-8")
+        self.assertIn("default: {{ business_hermes_model | to_json }}", config_template)
+        self.assertIn("max_tokens: 512", config_template)
+        for toolset in [
+            "browser",
+            "code_execution",
+            "cronjob",
+            "delegation",
+            "file",
+            "image_gen",
+            "terminal",
+            "todo",
+            "vision",
+            "web",
+        ]:
+            self.assertIn(f"    - {toolset}", config_template)
+        self.assertNotIn('default: "${env:BUSINESS_HERMES_MODEL}"', config_template)
+        compose_text = (ANSIBLE.parent / "docker/docker-compose.phase3.yml").read_text(encoding="utf-8")
+        self.assertIn("source: ${BUSINESS_HERMES_CONFIG_FILE:-/etc/raspi-business-hermes/config.yaml}", compose_text)
+
+
+class Pi5UnattendedSecurityUpgradeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.group = yaml.safe_load((ANSIBLE / "group_vars/all.yml").read_text())
+        self.inventory = yaml.safe_load((ANSIBLE / "inventory.yml").read_text())
+        self.tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_pi5/tasks/host-unattended-upgrades.yml").read_text()
+        )
+        self.environment = Environment(undefined=StrictUndefined)
+        self.environment.filters["bool"] = lambda value: str(value).lower() in {
+            "1", "true", "yes", "on"
+        }
+        self.template = self.environment.from_string(
+            (ANSIBLE / "roles/release_pi5/templates/unattended-upgrades.conf.j2").read_text()
+        )
+
+    def render(self, **overrides: object) -> str:
+        return self.template.render(**{**self.group, **overrides})
+
+    def test_policy_runs_on_standard_pi5_releases_outside_api_rollback(self) -> None:
+        main = yaml.safe_load((ANSIBLE / "roles/release_pi5/tasks/main.yml").read_text())
+        policy = next(task for task in main if task.get("name") == "Converge the Pi5 unattended security update policy")
+        self.assertEqual(policy["block"][0]["ansible.builtin.import_tasks"], "host-unattended-upgrades.yml")
+        self.assertEqual(policy["when"], "'server' in group_names")
+        condition = self.environment.compile_expression(policy["when"])
+        self.assertTrue(condition(group_names=["server"]))
+        for group in ("kiosk", "signage"):
+            self.assertFalse(condition(group_names=[group]))
+        self.assertGreater(main.index(policy), 0)
+        # An unreachable mirror must not fail the application release.
+        self.assertEqual(list(policy["rescue"][0]), ["name", "ansible.builtin.debug"])
+        play = next(play for play in yaml.safe_load(PLAYBOOK)
+                    if {"role": "release_pi5"} in play.get("roles", []))
+        self.assertEqual(play["hosts"], "server")
+
+    def test_only_pi5_opts_in_by_default(self) -> None:
+        self.assertIs(self.group["unattended_upgrades_enabled"], False)
+        enabled_hosts = []
+
+        def visit(group: dict[str, object]) -> None:
+            for name, variables in group.get("hosts", {}).items():
+                if (variables or {}).get("unattended_upgrades_enabled", self.group["unattended_upgrades_enabled"]):
+                    enabled_hosts.append(name)
+            for child in group.get("children", {}).values():
+                visit(child)
+
+        visit(self.inventory["all"])
+        self.assertEqual(enabled_hosts, ["raspberrypi5"])
+
+    def test_rendered_policy_clears_vendor_origins_and_allows_only_security(self) -> None:
+        rendered = self.render(unattended_upgrades_enabled=True)
+        origin_block = re.search(r"Unattended-Upgrade::Origins-Pattern\s*\{(.*?)\};", rendered, re.S)
+        self.assertIsNotNone(origin_block)
+        self.assertEqual(re.findall(r'"([^"\n]+)";', origin_block.group(1)), [
+            "origin=Debian,codename=${distro_codename}-security,label=Debian-Security"
+        ])
+        for mechanism in ("Allowed-Origins", "Origins-Pattern"):
+            self.assertLess(rendered.index(f"#clear Unattended-Upgrade::{mechanism};"), origin_block.start())
+        for directive, value in (
+            ("Unattended-Upgrade::Automatic-Reboot", "false"),
+            ("Unattended-Upgrade::Remove-Unused-Kernel-Packages", "false"),
+            ("APT::Periodic::Update-Package-Lists", "1"),
+            ("APT::Periodic::Unattended-Upgrade", "1"),
+            ("APT::Periodic::AutocleanInterval", "7"),
+        ):
+            self.assertIn(f'{directive} "{value}";', rendered)
+        self.assertIn('"--force-confdef";', rendered)
+        self.assertIn('"--force-confold";', rendered)
+
+    def test_rendered_blacklist_matches_protected_packages_and_is_overridable(self) -> None:
+        rendered = self.render(unattended_upgrades_enabled=True)
+        block = re.search(r"Unattended-Upgrade::Package-Blacklist\s*\{(.*?)\};", rendered, re.S)
+        patterns = re.findall(r'"([^"\n]+)";', block.group(1))
+        self.assertEqual(patterns, self.group["unattended_upgrades_package_blacklist"])
+        for package in (
+            "docker-ce", "docker-ce-cli", "containerd.io", "docker-buildx-plugin",
+            "docker-compose-plugin", "tailscale", "linux-image-rpi-2712",
+            "linux-image-6.12.0-rpi", "linux-headers-rpi-2712", "raspi-firmware",
+            "raspberrypi-kernel", "raspberrypi-bootloader", "rpi-eeprom",
+            "rpi-eeprom-images", "firmware-brcm80211", "chromium", "chromium-common",
+        ):
+            with self.subTest(package=package):
+                self.assertTrue(any(re.match(pattern, package) for pattern in patterns))
+        for package in ("openssl", "libssl3t64", "libc6", "ca-certificates", "containerdXio"):
+            with self.subTest(package=package):
+                self.assertFalse(any(re.match(pattern, package) for pattern in patterns))
+        custom = self.render(unattended_upgrades_package_blacklist=["^fixture-package$"])
+        self.assertIn('"^fixture-package$";', custom)
+        self.assertNotIn('"^docker-ce$";', custom)
+        self.assertNotIn("#clear Unattended-Upgrade::Package-Blacklist", custom)
+
+    def test_disabled_hosts_are_untouched_and_previous_installs_are_disabled(self) -> None:
+        template_task = next(task for task in self.tasks if "ansible.builtin.template" in task)
+        condition = self.environment.compile_expression(template_task["when"])
+        for enabled, exists, expected in ((False, False, False), (False, True, True), (True, False, True)):
+            with self.subTest(enabled=enabled, exists=exists):
+                self.assertEqual(condition(unattended_upgrades_enabled=enabled,
+                                           release_pi5_unattended_policy={"stat": {"exists": exists}}), expected)
+        disabled = self.render(unattended_upgrades_enabled=False)
+        for directive in ("Update-Package-Lists", "Unattended-Upgrade", "AutocleanInterval"):
+            self.assertIn(f'APT::Periodic::{directive} "0";', disabled)
+        for task in self.tasks:
+            if "ansible.builtin.apt" in task or "ansible.builtin.systemd" in task:
+                self.assertFalse(self.environment.compile_expression(task["when"])(unattended_upgrades_enabled=False))
+
+    def test_convergence_preserves_vendor_files_and_does_not_run_an_upgrade(self) -> None:
+        template_task = next(task for task in self.tasks if "ansible.builtin.template" in task)
+        destination = "/etc/apt/apt.conf.d/52raspi-unattended-upgrades"
+        self.assertEqual(template_task["ansible.builtin.template"], {
+            "src": "unattended-upgrades.conf.j2", "dest": destination,
+            "owner": "root", "group": "root", "mode": "0644",
+        })
+        inspect = self.tasks[0]
+        self.assertEqual(inspect["ansible.builtin.stat"]["path"], destination)
+        install = next(task for task in self.tasks if "ansible.builtin.apt" in task)
+        self.assertLess(self.tasks.index(template_task), self.tasks.index(install))
+        self.assertEqual(install["ansible.builtin.apt"]["name"], "unattended-upgrades")
+        self.assertEqual(install["ansible.builtin.apt"]["state"], "present")
+        self.assertNotIn("upgrade", install["ansible.builtin.apt"])
+        timers = next(task for task in self.tasks if "ansible.builtin.systemd" in task)
+        self.assertEqual(timers["loop"], ["apt-daily.timer", "apt-daily-upgrade.timer"])
+        self.assertEqual(timers["ansible.builtin.systemd"], {
+            "name": "{{ item }}", "enabled": True, "state": "started",
+        })
+        for task in self.tasks:
+            self.assertFalse({"ansible.builtin.command", "ansible.builtin.shell", "rescue", "ignore_errors"} & task.keys())
+
+
+class Pi5CanonicalStandardRouteTests(unittest.TestCase):
+    def test_pi5_renders_and_runs_status_agent_outside_api_rollback(self) -> None:
+        tasks = yaml.safe_load(self.task_text("main"))
+        names = [task["name"] for task in tasks]
+        conf_index = names.index(
+            "Render the Pi5 status-agent configuration outside the immutable release tree"
+        )
+        self.assertEqual(conf_index, names.index("Keep the Pi5 system journal across reboots") + 1)
+        self.assertEqual(names[conf_index + 1], "Warn before the Pi5 disk fills")
+        self.assertEqual(tasks[conf_index + 1]["ansible.builtin.import_tasks"], "host-status-agent-storage.yml")
+        self.assertEqual(
+            tasks[conf_index]["ansible.builtin.template"],
+            {
+                "src": "{{ playbook_dir }}/../templates/status-agent.conf.j2",
+                "dest": "/etc/raspi-status-agent.conf",
+                "owner": "root",
+                "group": "root",
+                "mode": "0600",
+            },
+        )
+        self.assertTrue(tasks[conf_index]["no_log"])
+        run = tasks[conf_index + 2]
+        self.assertEqual(run["name"], "Run the Pi5 status-agent once with the rendered configuration")
+        self.assertEqual(
+            run["ansible.builtin.systemd"],
+            {"name": "status-agent.service", "state": "restarted"},
+        )
+        for task in (tasks[conf_index], run):
+            for suppressed in ("when", "ignore_errors", "failed_when", "rescue"):
+                self.assertNotIn(suppressed, task)
+        self.assertEqual(tasks[0]["block"][-1]["ansible.builtin.import_tasks"], "commit.yml")
+        self.assertEqual(tasks[0]["always"][0]["ansible.builtin.import_tasks"], "cleanup.yml")
+        self.assertNotIn("status-agent", self.task_text("rollback"))
+        service = (ROOT / "clients/status-agent/status-agent.service").read_text()
+        self.assertIn("Type=oneshot", service)
+        self.assertIn("Environment=STATUS_AGENT_CONFIG=/etc/raspi-status-agent.conf", service)
+        self.assertNotIn("RemainAfterExit=yes", service)
+        self.assertIn(
+            "Unit=status-agent.service",
+            (ROOT / "clients/status-agent/status-agent.timer").read_text(),
+        )
+
+    def test_pi5_rendered_status_agent_preserves_existing_settings(self) -> None:
+        inventory = yaml.safe_load((ANSIBLE / "inventory.yml").read_text())
+        pi5 = inventory["all"]["children"]["server"]["hosts"]["raspberrypi5"]
+        self.assertEqual(pi5["status_agent_client_key"], "{{ vault_status_agent_client_key }}")
+        self.assertEqual(pi5["status_agent_api_base_url"], "{{ api_base_url }}")
+        self.assertEqual(pi5["status_agent_storage_health_enabled"], "1")
+        self.assertEqual(pi5["status_agent_storage_health_write_warn_gb_per_day"], "300")
+        variables = {
+            key: value for key, value in pi5.items() if key.startswith("status_agent_")
+        }
+        # Resolve only the non-secret URL dependencies; never load host Vaults.
+        group = yaml.safe_load((ANSIBLE / "group_vars/all.yml").read_text())
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = lambda value: str(value).lower() in {"1", "true", "yes", "on"}
+        environment.filters["to_json"] = json.dumps
+        network = environment.compile_expression(group["current_network"][3:-3])(**group)
+        url_variables = {**group, "current_network": network}
+        for key in ("server_ip", "server_base_url", "api_base_url"):
+            url_variables[key] = environment.from_string(group[key]).render(**url_variables)
+        variables["status_agent_api_base_url"] = environment.from_string(
+            variables["status_agent_api_base_url"]
+        ).render(**url_variables)
+        variables["status_agent_client_key"] = "fixture-key"
+        rendered = environment.from_string(
+            (ANSIBLE / "templates/status-agent.conf.j2").read_text()
+        ).render(**variables)
+        agent_dir = ROOT / "clients/status-agent"
+        sys.path.insert(0, str(agent_dir))
+        try:
+            agent = runpy.run_path(str(agent_dir / "status-agent.py"))
+        finally:
+            sys.path.remove(str(agent_dir))
+        with tempfile.TemporaryDirectory() as directory:
+            conf = Path(directory) / "status-agent.conf"
+            conf.write_text(rendered)
+            config = agent["parse_config_file"](conf)
+        self.assertEqual(
+            config,
+            {
+                "API_BASE_URL": "https://100.106.158.2/api",
+                "CLIENT_ID": "raspberrypi5-server",
+                "CLIENT_KEY": "fixture-key",
+                "LOCATION": "ラズパイ5 - サーバー",
+                "LOG_FILE": "/var/log/raspi-status-agent.log",
+                "STATUS_AGENT_LOG_SUCCESS": "0",
+                "NETWORK_HEALTH_ENABLED": "1",
+                "REQUEST_TIMEOUT": "10",
+                "TLS_SKIP_VERIFY": "1",
+                "STORAGE_HEALTH_ENABLED": "1",
+                "STORAGE_HEALTH_INTERVAL_SECONDS": "3600",
+                "STORAGE_HEALTH_DISK_WARN_PCT": "80",
+                "STORAGE_HEALTH_DISK_ERROR_PCT": "90",
+                "STORAGE_HEALTH_STATE_FILE": "/run/raspi-status-agent/storage-health-last-run",
+                "STORAGE_HEALTH_WEAR_STATE_FILE": "/run/raspi-status-agent/storage-wear-state.json",
+                "STORAGE_HEALTH_WRITE_WARN_GB_PER_DAY": "300",
+                "TERMINAL_AGENT_HEALTH_NFC_ENABLED": "0",
+                "TERMINAL_AGENT_HEALTH_BARCODE_ENABLED": "0",
+                "TERMINAL_AGENT_HEALTH_TORQUE_ENABLED": "0",
+                "TERMINAL_AGENT_MAINTENANCE_LEASES_JSON": "{}",
+                "TERMINAL_AGENT_HEALTH_STATE_FILE": "/run/raspi-status-agent/terminal-agent-health.json",
+            },
+        )
+        self.assertNotIn("TEMPERATURE_FILE", config)
+        self.assertNotIn("STORAGE_HEALTH_KERNEL_LOG_SINCE", config)
+        storage_tasks = yaml.safe_load(self.task_text("host-status-agent-storage"))[0]["block"]
+        self.assertEqual(
+            storage_tasks[1]["loop"],
+            [
+                {"key": "STORAGE_HEALTH_ENABLED", "value": config["STORAGE_HEALTH_ENABLED"]},
+                {"key": "STORAGE_HEALTH_WRITE_WARN_GB_PER_DAY", "value": config["STORAGE_HEALTH_WRITE_WARN_GB_PER_DAY"]},
+            ],
+        )
+
+    def test_finalized_search_read_distinguishes_required_reads_from_legitimate_skips(self) -> None:
+        production = yaml.safe_load((ANSIBLE / 'roles/release_pi5/tasks/prepare.yml').read_text())
+        selected = [task for task in production if task['name'] in {
+            'Read the finalized Hermes search environment before candidate startup',
+            'Require the finalized search environment when a fresh consultation API needs it',
+            'Determine the effective Hermes search trial setting',
+        }]
+        cases = [('settled', True, None, True), ('fresh', False, None, True),
+                 ('fresh', True, None, True), ('fresh', True, {'skipped': True}, False),
+                 ('fresh', True, {'failed': True}, False), ('fresh', True, {}, False),
+                 ('fresh', True, {'content': ''}, False)]
+        for route, chat, unread, success in cases:
+            with self.subTest(route=route, chat=chat, unread=unread), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                env_file = root / 'compose.env'
+                env_file.write_text('HERMES_SEARCH_TRIAL_ENABLED=true\n')
+                marker = root / 'continued'
+                tasks = selected if unread is None else selected[1:]
+                variables = {'release_pi5_route': route, 'business_hermes_chat_enabled': chat,
+                             'release_pi5_chat_env_file': str(env_file)}
+                if unread is not None:
+                    variables['release_pi5_finalized_search_env'] = unread
+                playbook = root / 'check.yml'
+                playbook.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local',
+                    'gather_facts': False, 'vars': variables, 'tasks': tasks + [
+                        {'ansible.builtin.copy': {'dest': str(marker),
+                         'content': '{{ release_pi5_search_trial_effective_enabled | default("not-required") }}'}}
+                    ]}], sort_keys=False))
+                (root / 'ansible.cfg').write_text('[defaults]\nretry_files_enabled = False\n')
+                result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(playbook)],
+                    env=dict(os.environ, ANSIBLE_CONFIG=str(root / 'ansible.cfg'), ANSIBLE_NOCOLOR='1'),
+                    capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode == 0, success, result.stdout[-3000:] + result.stderr[-1000:])
+                self.assertEqual(marker.exists(), success)
+                if success:
+                    self.assertEqual(marker.read_text().lower(), 'true' if route == 'fresh' and chat else 'not-required')
+
+    def test_maintenance_gate_is_applied_and_verified_before_recreation(self) -> None:
+        task_root = ANSIBLE / 'roles/release_pi5/tasks'
+        preflight = yaml.safe_load((task_root / 'hermes-search-trial-maintenance.yml').read_text())
+        start = next(i for i, t in enumerate(preflight) if t['name'] == 'Read the current trial environment before any maintenance mutation')
+        end = next(i for i, t in enumerate(preflight) if t['name'] == 'Locate the single existing sealed Hermes search artifact on the Pi5 SSD')
+        mutation = yaml.safe_load((task_root / 'hermes-search-trial-maintenance-mutate.yml').read_text())
+        names = ['Apply the explicitly requested record classification gate for maintenance',
+                 'Read the finalized maintenance environment before API recreation',
+                 'Verify the final classification gate before API recreation']
+        gate_tasks = [t for t in mutation if t['name'] in names]
+        recreate_index = next(i for i, t in enumerate(mutation) if t['name'] == 'Recreate only the same active API service with the requested trial setting')
+        self.assertLess(max(i for i, t in enumerate(mutation) if t['name'] in names), recreate_index)
+        api_tasks = [t for t in mutation if t['name'] in {
+            'Inspect the recreated API classification gate before any worker request',
+            'Require the recreated API to inherit the verified classification gate'}]
+        key = 'HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED'
+        cases = [(None, 'false', 'false'), ('true', 'false', 'false'), ('false', None, 'false'),
+                 ('true', None, 'true'), ('false', 'true', 'true'), (None, None, None)]
+        for before, requested, expected in cases:
+            with self.subTest(before=before, requested=requested), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                env_file = root / 'compose.env'
+                original = 'UNCHANGED=preserve\n' + (f'{key}={before}\n' if before else '')
+                env_file.write_text(original)
+                marker = root / 'api-start-env.json'
+                # Existing Ansible executable-task pattern: capture the environment at
+                # the recreation boundary, then inspect that same inherited environment.
+                docker = root / 'docker'
+                docker.write_text('#!/usr/bin/env python3\nimport json,os,sys\nfrom pathlib import Path\n'
+                    'p=Path(os.environ["CAPTURE_ENV"])\n'
+                    'if sys.argv[1]=="inspect": print(p.read_text())\n'
+                    'else: p.write_text(json.dumps(Path(os.environ["PI5_ENV_FILE"]).read_text().splitlines()))\n')
+                docker.chmod(0o755)
+                variables = {'release_pi5_trial_maintenance': 'on', 'release_pi5_compose_env_source': str(env_file),
+                    'release_pi5_trial_maintenance_env_file': str(env_file), 'release_pi5_active_api_id': 'fixture-api',
+                    'release_pi5_compose_argv': [str(docker), 'compose'], 'release_pi5_active_slot': 'green',
+                    'release_pi5_compose_wait_seconds': 10,
+                    'release_pi5_compose_environment': {'PI5_ENV_FILE': str(env_file), 'CAPTURE_ENV': str(marker)}}
+                playbook = root / 'check.yml'
+                playbook.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local',
+                    'gather_facts': False, 'vars': variables, 'environment': {'CAPTURE_ENV': str(marker)},
+                    'tasks': preflight[start:end] + gate_tasks + [mutation[recreate_index]] + api_tasks
+                }], sort_keys=False))
+                (root / 'ansible.cfg').write_text('[defaults]\nretry_files_enabled = False\n')
+                environment = dict(os.environ, ANSIBLE_CONFIG=str(root / 'ansible.cfg'), ANSIBLE_NOCOLOR='1',
+                                   PATH=str(root) + os.pathsep + os.environ['PATH'])
+                environment.pop(key, None)
+                if requested is not None:
+                    environment[key] = requested
+                result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(playbook)],
+                    env=environment, capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode == 0, expected is not None,
+                                 result.stdout[-3000:] + result.stderr[-1000:])
+                self.assertEqual(marker.exists(), expected is not None)
+                if expected is None:
+                    self.assertEqual(env_file.read_text(), original)
+                else:
+                    self.assertIn(f'{key}={expected}', json.loads(marker.read_text()))
+                    self.assertIn('UNCHANGED=preserve', env_file.read_text())
+
+    ROLE = "release_pi5"
+
+    def task_text(self, name: str) -> str:
+        return (ANSIBLE / f"roles/{self.ROLE}/tasks/{name}.yml").read_text(
+            encoding="utf-8"
+        )
+
+    def test_canonical_launcher_has_one_pi5_standard_route(self) -> None:
+        launcher = (ROOT / "scripts/deploy/standard-ansible-release.py").read_text(
+            encoding="utf-8"
+        )
+        wrapper = (ROOT / "scripts/update-all-clients.sh").read_text(encoding="utf-8")
+        play = next(
+            item
+            for item in yaml.safe_load(PLAYBOOK)
+            if item["name"] == "Prepare and switch the Pi5 control plane"
+        )
+        self.assertIn('PLAYBOOK = ANSIBLE / "playbooks/deploy-release-standard.yml"', launcher)
+        self.assertIn("standard-ansible-release.py", wrapper)
+        self.assertEqual(play["roles"], [{"role": "release_pi5"}])
+        self.assertEqual(play["hosts"], "server")
+        self.assertEqual(play["connection"], "local")
+        self.assertFalse(play["gather_facts"])
+        self.assertTrue(play["become"])
+        self.assertEqual(play["serial"], 1)
+        self.assertEqual(play["order"], "inventory")
+        self.assertFalse((ANSIBLE / "playbooks/verify-pi5-standard-candidate.yml").exists())
+        self.assertFalse((ANSIBLE / "roles/release_pi5_standard_candidate").exists())
+        server = (ANSIBLE / "roles/server/tasks/main.yml").read_text(encoding="utf-8")
+        self.assertNotIn("pi5-blue-green-reconcile.service", server)
+        self.assertFalse(
+            (ANSIBLE / "templates/pi5-blue-green-reconcile.service.j2").exists()
+        )
+
+    def test_pi5_call_graph_is_direct_ansible_lifecycle(self) -> None:
+        main = yaml.safe_load(self.task_text("main"))[0]
+        self.assertEqual(
+            [task["ansible.builtin.import_tasks"] for task in main["block"]],
+            ["prepare.yml", "hermes-search-trial-maintenance-run.yml", "switch.yml", "business-hermes-chat-start.yml", "business-hermes-egress-health.yml", "health.yml", "commit.yml"],
+        )
+        self.assertEqual(
+            [task["ansible.builtin.import_tasks"] for task in main["rescue"] if "ansible.builtin.import_tasks" in task],
+            ["rollback.yml"],
+        )
+        cache_restore = main["rescue"][1]
+        self.assertEqual(cache_restore["block"][0]["ansible.builtin.include_tasks"], "business-hermes-answer-cache-rollback.yml")
+        self.assertTrue(cache_restore["rescue"][0]["ansible.builtin.set_fact"]["release_pi5_answer_cache_rollback_failed"])
+        chat_restore = main["rescue"][0]
+        self.assertEqual(chat_restore["block"][0]["ansible.builtin.include_tasks"], "business-hermes-chat-rollback.yml")
+        self.assertTrue(chat_restore["rescue"][0]["ansible.builtin.set_fact"]["release_pi5_chat_rollback_failed"])
+        self.assertEqual(
+            [task["ansible.builtin.import_tasks"] for task in main["always"]],
+            ["cleanup.yml"],
+        )
+
+    def test_hermes_trial_maintenance_is_scoped_and_has_same_api_recovery(self) -> None:
+        tasks_root = ANSIBLE / "roles/release_pi5/tasks"
+        preflight = (tasks_root / "hermes-search-trial-maintenance.yml").read_text(encoding="utf-8")
+        mutation = yaml.safe_load(
+            (tasks_root / "hermes-search-trial-maintenance-mutate.yml").read_text(encoding="utf-8")
+        )
+        run = (tasks_root / "hermes-search-trial-maintenance-run.yml").read_text(encoding="utf-8")
+
+        self.assertIn("release_pi5_route == 'settled'", preflight)
+        self.assertIn("release_pi5_trial_maintenance == 'on'", preflight)
+        self.assertIn("release_pi5_trial_maintenance_manifest.files", preflight)
+        self.assertIn("hermes_search_typesafe_api_key", preflight)
+        self.assertIn("HERMES_SEARCH_TRIAL_JEV_ENABLED", str(mutation))
+        self.assertIn("'value': ('true' if release_pi5_trial_maintenance == 'on' else 'false')", str(mutation))
+        self.assertIn("HERMES_SEARCH_RECORD_SOURCE", str(mutation))
+        self.assertIn("HERMES_SEARCH_RECORD_CLASSIFICATION_STORE", str(mutation))
+        self.assertIn("HERMES_JEV_PROVIDER", str(mutation))
+        self.assertIn("TYPESAFE_API_KEY", str(mutation))
+        recreate = next(
+            task["ansible.builtin.command"]
+            for task in mutation
+            if task.get("name") == "Recreate only the same active API service with the requested trial setting"
+        )
+        self.assertIn("api-' + release_pi5_active_slot", recreate["argv"])
+        self.assertNotIn("web-", recreate["argv"])
+        self.assertIn("hermes-search-trial-maintenance.env.before", run)
+        self.assertIn("Recreate the same active API with the original environment", run)
+        self.assertIn("include_tasks: health.yml", run)
+
+    def test_record_classification_gate_is_distributed_separately_from_jev_search(self) -> None:
+        launcher = (ROOT / "scripts/deploy/standard-ansible-release.py").read_text(encoding="utf-8")
+        trial_prepare = (ANSIBLE / "roles/release_pi5/tasks/hermes-search-trial.yml").read_text(encoding="utf-8")
+        prepare = (ANSIBLE / "roles/release_pi5/tasks/prepare.yml").read_text(encoding="utf-8")
+        self.assertIn("HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED", launcher)
+        self.assertIn("HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED", trial_prepare)
+        self.assertIn("hermes_search_record_classification_enabled", prepare)
+        self.assertIn("Apply record classification gate when explicitly configured", trial_prepare)
+        self.assertIn("hermes_search_record_classification_enabled in ['true', 'false']", trial_prepare)
+        self.assertIn("HERMES_SEARCH_TRIAL_JEV_ENABLED", launcher)
+        self.assertNotIn(
+            "classification_enabled = os.environ.get(\"HERMES_SEARCH_TRIAL_JEV_ENABLED\"",
+            launcher,
+        )
+        self.assertIn("HERMES_RETRIEVAL_V2_ENABLED", launcher)
+        self.assertIn("HERMES_RETRIEVAL_V2_ENABLED", trial_prepare)
+        self.assertIn("hermes_retrieval_v2_enabled", prepare)
+        self.assertIn("Apply retrieval v2 gate when explicitly configured", trial_prepare)
+        self.assertIn("hermes_retrieval_v2_enabled in ['true', 'false']", trial_prepare)
+        self.assertIn("HERMES_RETRIEVAL_SOURCES", launcher)
+        self.assertIn("HERMES_RETRIEVAL_SOURCES", trial_prepare)
+        self.assertIn("hermes_retrieval_sources: \"{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_SOURCES') }}\"", prepare)
+        sources_task = next(task for task in yaml.safe_load(trial_prepare)
+                            if task["name"] == "Apply retrieval sources when explicitly configured")
+        condition = sources_task["when"][1]
+        self.assertEqual(condition, "hermes_retrieval_sources | default('') | length > 0")
+        check = Environment(undefined=StrictUndefined).compile_expression(condition)
+        self.assertFalse(check())
+        self.assertFalse(check(hermes_retrieval_sources=""))
+        self.assertTrue(check(hermes_retrieval_sources="nonconformity,knowledge_procedure"))
+        self.assertIn("HERMES_RETRIEVAL_ENRICHMENT_ENABLED", launcher)
+        self.assertIn("HERMES_RETRIEVAL_ENRICHMENT_ENABLED", trial_prepare)
+        self.assertIn("hermes_retrieval_enrichment_enabled", prepare)
+        self.assertIn("Apply retrieval enrichment gate when explicitly configured", trial_prepare)
+        self.assertIn("hermes_retrieval_enrichment_enabled in ['true', 'false']", trial_prepare)
+        chat_prepare = (ANSIBLE / "roles/release_pi5/tasks/business-hermes-chat-prepare.yml").read_text(encoding="utf-8")
+        maintenance = (ANSIBLE / "roles/release_pi5/tasks/hermes-search-trial-maintenance.yml").read_text(encoding="utf-8")
+        self.assertIn("HERMES_RETRIEVAL_ENRICHMENT_ENABLED", chat_prepare)
+        self.assertIn("HERMES_RETRIEVAL_ENRICHMENT_ENABLED", maintenance)
+        self.assertIn("HERMES_RETRIEVAL_ENRICHMENT_IDS", launcher)
+        self.assertIn("HERMES_RETRIEVAL_ENRICHMENT_IDS", trial_prepare)
+        self.assertIn("HERMES_RETRIEVAL_ENRICHMENT_IDS", chat_prepare)
+        self.assertIn("HERMES_RETRIEVAL_ENRICHMENT_IDS", maintenance)
+        mutate = (ANSIBLE / "roles/release_pi5/tasks/hermes-search-trial-maintenance-mutate.yml").read_text(encoding="utf-8")
+        for name in ("HERMES_FLYWHEEL_ENABLED", "HERMES_FLYWHEEL_MAX_QUESTIONS", "HERMES_RETRIEVAL_SOURCES"):
+            self.assertIn(name, launcher)
+            self.assertIn(name, trial_prepare)
+            self.assertIn(name, chat_prepare)
+            self.assertIn(name, maintenance)
+            self.assertIn(name, mutate)
+        self.assertIn("release_pi5_trial_retrieval_sources: \"{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_SOURCES') }}\"", maintenance)
+        self.assertIn("{ key: HERMES_RETRIEVAL_SOURCES, value: \"{{ release_pi5_trial_retrieval_sources | default('') }}\" }", mutate)
+        sources_maintenance_task = next(task for task in yaml.safe_load(mutate)
+                                        if task["name"] == "Apply synthetic question flywheel settings for maintenance")
+        self.assertEqual(sources_maintenance_task["when"], "item.value | length > 0")
+        self.assertIn("hermes_flywheel_enabled", prepare)
+        self.assertIn("Disable the synthetic question flywheel when the search trial is disabled", trial_prepare)
+        self.assertIn("HERMES_RETRIEVAL_DENSE_PROVIDER", launcher)
+        self.assertIn("HERMES_RETRIEVAL_DENSE_PROVIDER", trial_prepare)
+        self.assertIn("hermes_retrieval_dense_provider", prepare)
+        self.assertIn("HERMES_RETRIEVAL_DENSE_INDEX_ENABLED", launcher)
+        self.assertIn("HERMES_RETRIEVAL_DENSE_INDEX_ENABLED", trial_prepare)
+        self.assertIn("HERMES_RETRIEVAL_DENSE_PROVIDER", chat_prepare)
+        self.assertIn("HERMES_RETRIEVAL_DENSE_INDEX_ENABLED", chat_prepare)
+        self.assertIn("HERMES_RETRIEVAL_DENSE_PROVIDER", maintenance)
+        mutate = (ANSIBLE / "roles/release_pi5/tasks/hermes-search-trial-maintenance-mutate.yml").read_text(encoding="utf-8")
+        self.assertIn("HERMES_RETRIEVAL_DENSE_PROVIDER", mutate)
+        self.assertIn("HERMES_RETRIEVAL_DENSE_INDEX_ENABLED", mutate)
+
+    def test_candidate_retrieval_sources_allow_preservation_and_require_explicit_values(self) -> None:
+        prepare = yaml.safe_load(
+            (ANSIBLE / "roles/release_pi5/tasks/prepare.yml").read_text(encoding="utf-8")
+        )
+        task = next(task for task in prepare
+                    if task["name"] == "Require the candidate API to receive the finalized Hermes search environment")
+        conditions = [condition for condition in task["ansible.builtin.assert"]["that"]
+                      if "HERMES_RETRIEVAL_SOURCES" in condition]
+        self.assertEqual(len(conditions), 2)
+        self.assertIn("^HERMES_RETRIEVAL_SOURCES=[a-z_,]+$", conditions[1])
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["from_json"] = json.loads
+        environment.tests["match"] = lambda value, pattern: re.match(pattern, value) is not None
+        checks = [environment.compile_expression(condition) for condition in conditions]
+        valid = "HERMES_RETRIEVAL_SOURCES=nonconformity,knowledge_procedure"
+        for requested, lines, expected in (
+            ("", [], True),
+            ("", [valid], True),
+            ("", [valid, valid], False),
+            ("nonconformity,knowledge_procedure", [], False),
+            ("nonconformity,knowledge_procedure", [valid], True),
+            ("nonconformity,knowledge_procedure", ["HERMES_RETRIEVAL_SOURCES=INVALID"], False),
+            ("nonconformity,knowledge_procedure", [valid, valid], False),
+        ):
+            with self.subTest(requested=requested, lines=lines):
+                result = all(check(
+                    lookup=lambda plugin, name: requested,
+                    release_pi5_candidate_search_env={"stdout": json.dumps(lines)},
+                ) for check in checks)
+                self.assertEqual(result, expected)
+
+    def test_explicit_trial_rebinds_the_candidate_api_to_the_finalized_chat_env(self) -> None:
+        prepare_tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_pi5/tasks/prepare.yml").read_text(encoding="utf-8")
+        )
+        trial_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Prepare the explicitly enabled SSD search trial"
+        )
+        rebind_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Bind the finalized search environment to the candidate API"
+        )
+        startup_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Start only inactive Pi5 API and Web services"
+        )
+        self.assertLess(trial_index, rebind_index)
+        self.assertLess(rebind_index, startup_index)
+        rebind = prepare_tasks[rebind_index]
+        self.assertEqual(
+            rebind["ansible.builtin.set_fact"]["release_pi5_compose_environment"],
+            "{{ release_pi5_compose_environment | combine({'PI5_ENV_FILE': release_pi5_chat_env_file}) }}",
+        )
+        self.assertEqual(
+            rebind["when"],
+            [
+                "release_pi5_route == 'fresh'",
+                "business_hermes_chat_enabled | default(false) | bool",
+            ],
+        )
+        effective = next(
+            task for task in prepare_tasks
+            if task.get("name") == "Determine the effective Hermes search trial setting"
+        )
+        self.assertIn("HERMES_SEARCH_TRIAL_ENABLED=true", str(effective))
+        inspect_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Read the candidate API Hermes search environment without exposing secrets"
+        )
+        assert_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Require the candidate API to receive the finalized Hermes search environment"
+        )
+        ids_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task.get("name") == "Record fresh Pi5 candidate container IDs"
+        )
+        self.assertLess(trial_index, rebind_index)
+        self.assertLess(rebind_index, startup_index)
+        self.assertLess(startup_index, ids_index)
+        self.assertLess(ids_index, inspect_index)
+        self.assertLess(inspect_index, assert_index)
+        self.assertIn("release_pi5_search_trial_effective_enabled", str(prepare_tasks[inspect_index]))
+        self.assertIn("HERMES_SEARCH_TRIAL_ENABLED=true", str(prepare_tasks[assert_index]))
+        self.assertIn("HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED=false", str(prepare_tasks[assert_index]))
+        self.assertIn("HERMES_JEV_PROVIDER=typesafe-direct", str(prepare_tasks[assert_index]))
+        self.assertIn("TYPESAFE_API_KEY=.+", str(prepare_tasks[assert_index]))
+        self.assertTrue(prepare_tasks[inspect_index]["no_log"])
+        self.assertTrue(prepare_tasks[assert_index]["no_log"])
+
+    def test_omitting_record_classification_setting_preserves_existing_private_env_value(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = Path(directory)
+            files = {}
+            for name in ("qmd-index.sqlite", "snapshot.json", "reviewed.json"):
+                data = ("sealed:" + name).encode()
+                (artifact / name).write_bytes(data)
+                files[name] = hashlib.sha256(data).hexdigest()
+            (artifact / "artifact.json").write_text(
+                json.dumps({"schema": "hermes-device-index/v1", "files": files}),
+                encoding="utf-8",
+            )
+            with mock.patch.dict(os.environ, {
+                "HERMES_SEARCH_TRIAL_ENABLED": "true",
+                "HERMES_SEARCH_TRIAL_ARTIFACT": str(artifact),
+            }, clear=True):
+                _source, environment = STANDARD_RELEASE["hermes_trial_configuration"](
+                    SimpleNamespace(full_fleet=False),
+                    (("pi5", ("raspberrypi5",)),),
+                    Path("/opt/RaspberryPiSystem_002"),
+                    "test-run",
+                )
+            self.assertNotIn("HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED", environment)
+
+            with mock.patch.dict(os.environ, {
+                "HERMES_SEARCH_TRIAL_ENABLED": "true",
+                "HERMES_SEARCH_TRIAL_ARTIFACT": str(artifact),
+                "HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED": "false",
+            }, clear=True):
+                _source, environment = STANDARD_RELEASE["hermes_trial_configuration"](
+                    SimpleNamespace(full_fleet=False),
+                    (("pi5", ("raspberrypi5",)),),
+                    Path("/opt/RaspberryPiSystem_002"),
+                    "test-run",
+                )
+            self.assertEqual(environment["HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED"], "false")
+
+            with mock.patch.dict(os.environ, {
+                "HERMES_SEARCH_TRIAL_ENABLED": "true",
+                "HERMES_SEARCH_TRIAL_ARTIFACT": str(artifact),
+                "HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED": "true",
+            }, clear=True):
+                _source, environment = STANDARD_RELEASE["hermes_trial_configuration"](
+                    SimpleNamespace(full_fleet=False),
+                    (("pi5", ("raspberrypi5",)),),
+                    Path("/opt/RaspberryPiSystem_002"),
+                    "test-run",
+                )
+            self.assertEqual(environment["HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED"], "true")
+
+    def test_omitting_retrieval_v2_setting_preserves_existing_private_env_value(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = Path(directory)
+            files = {}
+            for name in ("qmd-index.sqlite", "snapshot.json", "reviewed.json"):
+                data = ("sealed:" + name).encode()
+                (artifact / name).write_bytes(data)
+                files[name] = hashlib.sha256(data).hexdigest()
+            (artifact / "artifact.json").write_text(
+                json.dumps({"schema": "hermes-device-index/v1", "files": files}),
+                encoding="utf-8",
+            )
+            with mock.patch.dict(os.environ, {
+                "HERMES_SEARCH_TRIAL_ENABLED": "true",
+                "HERMES_SEARCH_TRIAL_ARTIFACT": str(artifact),
+            }, clear=True):
+                _source, environment = STANDARD_RELEASE["hermes_trial_configuration"](
+                    SimpleNamespace(full_fleet=False),
+                    (("pi5", ("raspberrypi5",)),),
+                    Path("/opt/RaspberryPiSystem_002"),
+                    "test-run",
+                )
+            self.assertNotIn("HERMES_RETRIEVAL_V2_ENABLED", environment)
+
+            with mock.patch.dict(os.environ, {
+                "HERMES_SEARCH_TRIAL_ENABLED": "true",
+                "HERMES_SEARCH_TRIAL_ARTIFACT": str(artifact),
+                "HERMES_RETRIEVAL_V2_ENABLED": "false",
+            }, clear=True):
+                _source, environment = STANDARD_RELEASE["hermes_trial_configuration"](
+                    SimpleNamespace(full_fleet=False),
+                    (("pi5", ("raspberrypi5",)),),
+                    Path("/opt/RaspberryPiSystem_002"),
+                    "test-run",
+                )
+            self.assertEqual(environment["HERMES_RETRIEVAL_V2_ENABLED"], "false")
+
+            with mock.patch.dict(os.environ, {
+                "HERMES_SEARCH_TRIAL_ENABLED": "true",
+                "HERMES_SEARCH_TRIAL_ARTIFACT": str(artifact),
+                "HERMES_RETRIEVAL_V2_ENABLED": "true",
+            }, clear=True):
+                _source, environment = STANDARD_RELEASE["hermes_trial_configuration"](
+                    SimpleNamespace(full_fleet=False),
+                    (("pi5", ("raspberrypi5",)),),
+                    Path("/opt/RaspberryPiSystem_002"),
+                    "test-run",
+                )
+            self.assertEqual(environment["HERMES_RETRIEVAL_V2_ENABLED"], "true")
+
+            with mock.patch.dict(os.environ, {
+                "HERMES_SEARCH_TRIAL_ENABLED": "true",
+                "HERMES_SEARCH_TRIAL_ARTIFACT": str(artifact),
+                "HERMES_RETRIEVAL_V2_ENABLED": "yes",
+            }, clear=True):
+                with self.assertRaisesRegex(STANDARD_RELEASE["UsageError"], "HERMES_RETRIEVAL_V2_ENABLED must be true or false"):
+                    STANDARD_RELEASE["hermes_trial_configuration"](
+                        SimpleNamespace(full_fleet=False),
+                        (("pi5", ("raspberrypi5",)),),
+                        Path("/opt/RaspberryPiSystem_002"),
+                        "test-run",
+                    )
+
+    def test_trial_retrieval_sources_are_optional_and_normalized(self) -> None:
+        key = "HERMES_RETRIEVAL_SOURCES"
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = Path(directory)
+            files = {}
+            for name in ("qmd-index.sqlite", "snapshot.json", "reviewed.json"):
+                data = ("sealed:" + name).encode()
+                (artifact / name).write_bytes(data)
+                files[name] = hashlib.sha256(data).hexdigest()
+            (artifact / "artifact.json").write_text(
+                json.dumps({"schema": "hermes-device-index/v1", "files": files}),
+                encoding="utf-8",
+            )
+            trial_environment = {
+                "HERMES_SEARCH_TRIAL_ENABLED": "true",
+                "HERMES_SEARCH_TRIAL_ARTIFACT": str(artifact),
+            }
+            for value, expected in (
+                (None, None),
+                ("", None),
+                (" , , ", None),
+                ("nonconformity,knowledge_procedure", "nonconformity,knowledge_procedure"),
+                (" knowledge_procedure , nonconformity ", "knowledge_procedure,nonconformity"),
+                ("nonconformity,,knowledge_procedure,nonconformity,", "nonconformity,knowledge_procedure"),
+            ):
+                overrides = {} if value is None else {key: value}
+                with self.subTest(value=value), mock.patch.dict(
+                    os.environ, {**trial_environment, **overrides}, clear=True
+                ):
+                    _source, environment = STANDARD_RELEASE["hermes_trial_configuration"](
+                        SimpleNamespace(full_fleet=False),
+                        (("pi5", ("raspberrypi5",)),),
+                        Path("/opt/RaspberryPiSystem_002"),
+                        "test-run",
+                    )
+                    if expected is None:
+                        self.assertNotIn(key, environment)
+                    else:
+                        self.assertEqual(environment[key], expected)
+            with mock.patch.dict(os.environ, {
+                **trial_environment, key: "nonconformity, unknown "
+            }, clear=True):
+                with self.assertRaisesRegex(
+                    STANDARD_RELEASE["UsageError"],
+                    "^HERMES_RETRIEVAL_SOURCES contains an unknown source: unknown$",
+                ):
+                    STANDARD_RELEASE["hermes_trial_configuration"](
+                        SimpleNamespace(full_fleet=False),
+                        (("pi5", ("raspberrypi5",)),),
+                        Path("/opt/RaspberryPiSystem_002"),
+                        "test-run",
+                    )
+
+    def test_pi5_has_no_legacy_subsystem_or_new_framework(self) -> None:
+        candidate = role_text(self.ROLE)
+        defaults = yaml.safe_load(
+            (ANSIBLE / f"roles/{self.ROLE}/defaults/main.yml").read_text()
+        )
+        canonical = "\n".join((PLAYBOOK, candidate)).lower()
+        self.assertEqual(defaults["release_pi5_run_root"], "/var/lib/raspi-release/standard")
+        for identifier in (
+            "evaluation-only",
+            "standard-candidate",
+            "release_pi5_standard_candidate",
+        ):
+            self.assertNotIn(identifier, canonical)
+        for forbidden in (
+            "pi5-blue-green.sh",
+            "lib/pi5-blue-green",
+            "validate-expand-only-migrations.py",
+            "releaseEvidence",
+            "resource-evidence",
+            "migration-plan",
+            "state.json",
+            "reconcile",
+            "claims",
+            "community.docker",
+        ):
+            self.assertNotIn(forbidden, candidate)
+        self.assertNotRegex(candidate, r"ansible\.builtin\.(?:script|raw):")
+
+    def test_pi5_uses_only_explicit_routes_and_strict_identities(self) -> None:
+        defaults = (
+            ANSIBLE / f"roles/{self.ROLE}/defaults/main.yml"
+        ).read_text(encoding="utf-8")
+        prepare = self.task_text("prepare")
+        self.assertIn("Caddyfile.gateway.template", defaults)
+        self.assertIn("cmp -s", prepare)
+        self.assertIn("matches neither known route", prepare)
+        self.assertIn("{{.Config.Image}}|{{.Image}}|{{.State.Running}}", prepare)
+        self.assertIn("PI5_GATEWAY_IMAGE", prepare)
+        self.assertNotIn("reverse_proxy", prepare)
+        self.assertNotIn("Caddyfile.gateway.http.template", defaults)
+
+    def test_pi5_gateway_admin_allowlist_is_written_before_any_route_is_loaded(self) -> None:
+        prepare_tasks = yaml.safe_load(self.task_text("prepare"))
+        names = [task["name"] for task in prepare_tasks]
+        require_index = names.index(
+            "Require a bounded explicit administrator allowlist for the gateway"
+        )
+        write_index = names.index(
+            "Write the gateway administrator allowlist imported by known routes"
+        )
+        compose_index = names.index("Resolve active and opposite Pi5 Compose container IDs")
+        self.assertLess(require_index, write_index)
+        self.assertLess(write_index, compose_index)
+
+        write = prepare_tasks[write_index]["ansible.builtin.copy"]
+        self.assertEqual(write["dest"], "{{ release_pi5_admin_allow_file }}")
+        self.assertEqual(
+            write["content"], "not remote_ip {{ admin_allow_nets | join(' ') }}\n"
+        )
+        defaults = (
+            ANSIBLE / f"roles/{self.ROLE}/defaults/main.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            'release_pi5_admin_allow_file: "{{ release_pi5_gateway_config_dir }}/admin-allow-nets.caddy"',
+            defaults,
+        )
+
+    def test_pi5_first_compose_command_has_complete_image_interpolation(self) -> None:
+        prepare = yaml.safe_load(self.task_text("prepare"))
+        names = [task["name"] for task in prepare]
+        discovery_index = names.index(
+            "Read the running Pi5 gateway image before the first Compose command"
+        )
+        environment_index = names.index(
+            "Define complete Pi5 Compose interpolation before the first Compose command"
+        )
+        compose_index = names.index(
+            "Resolve active and opposite Pi5 Compose container IDs"
+        )
+        exact_index = names.index("Define exact slot-specific Compose images")
+        self.assertLess(discovery_index, environment_index)
+        self.assertLess(environment_index, compose_index)
+        self.assertLess(compose_index, exact_index)
+
+        discovery_argv = prepare[discovery_index]["ansible.builtin.command"]["argv"]
+        self.assertEqual(discovery_argv[:2], ["docker", "ps"])
+        self.assertNotIn("compose", discovery_argv)
+        self.assertIn(
+            "label=com.docker.compose.service=gateway",
+            discovery_argv,
+        )
+
+        required_images = {
+            "PI5_BLUE_API_IMAGE",
+            "PI5_GREEN_API_IMAGE",
+            "PI5_BLUE_WEB_IMAGE",
+            "PI5_GREEN_WEB_IMAGE",
+            "PI5_GATEWAY_IMAGE",
+        }
+        initial_environment = prepare[environment_index]["ansible.builtin.set_fact"][
+            "release_pi5_compose_environment"
+        ]
+        self.assertTrue(required_images.issubset(initial_environment))
+        self.assertIn("release_pi5_gateway_discovery", initial_environment["PI5_GATEWAY_IMAGE"])
+
+        first_compose = next(
+            task
+            for task in prepare
+            if "release_pi5_compose_argv"
+            in str(task.get("ansible.builtin.command", {}).get("argv", ""))
+        )
+        self.assertIs(first_compose, prepare[compose_index])
+        self.assertEqual(
+            first_compose["environment"],
+            "{{ release_pi5_compose_environment }}",
+        )
+        exact_environment = prepare[exact_index]["ansible.builtin.set_fact"][
+            "release_pi5_compose_environment"
+        ]
+        self.assertTrue(required_images.issubset(exact_environment))
+
+    def test_every_pi5_compose_command_uses_the_complete_environment(self) -> None:
+        task_root = ANSIBLE / f"roles/{self.ROLE}/tasks"
+        compose_tasks = []
+        for path in sorted(task_root.glob("*.yml")):
+            pending = list(yaml.safe_load(path.read_text(encoding="utf-8")) or [])
+            while pending:
+                task = pending.pop(0)
+                for section in ("block", "rescue", "always"):
+                    pending.extend(task.get(section, []))
+                argv = task.get("ansible.builtin.command", {}).get("argv", "")
+                argv_text = str(argv)
+                if (
+                    "release_pi5_compose_argv" in argv_text
+                    or "release_pi5_migration_argv" in argv_text
+                    or (isinstance(argv, list) and argv[:2] == ["docker", "compose"])
+                ):
+                    compose_tasks.append((path.name, task))
+
+        self.assertTrue(compose_tasks)
+        for path_name, task in compose_tasks:
+            with self.subTest(path=path_name, task=task["name"]):
+                expected_environment = (
+                    "{{ release_pi5_compose_environment | default({}) }}"
+                    if path_name == "cleanup.yml"
+                    else "{{ release_pi5_compose_environment }}"
+                )
+                self.assertEqual(
+                    task.get("environment"),
+                    expected_environment,
+                )
+
+    def test_pi5_fresh_prepare_mutates_only_inactive_services(self) -> None:
+        prepare = yaml.safe_load(self.task_text("prepare"))
+        start = next(
+            task
+            for task in prepare
+            if task["name"] == "Start only inactive Pi5 API and Web services"
+        )
+        argv = start["ansible.builtin.command"]["argv"]
+        for required in ("--no-build", "never", "--no-deps", "--wait"):
+            self.assertIn(required, argv)
+        self.assertIn("'api-' + release_pi5_slot", argv)
+        self.assertIn("'web-' + release_pi5_slot", argv)
+        self.assertEqual(start["when"], "release_pi5_route == 'fresh'")
+
+    def test_pi5_egress_timeout_transition_is_scoped_and_rollback_safe(self) -> None:
+        prepare = yaml.safe_load(self.task_text("prepare"))
+        prepare_names = [task["name"] for task in prepare]
+        state = next(
+            task
+            for task in prepare
+            if task["name"] == "Record the independent business Hermes egress pre-rollout state"
+        )
+        state_fact = state["ansible.builtin.set_fact"]
+        self.assertIn("release_pi5_business_hermes_egress_existing_env_lines", state_fact)
+        self.assertIn("release_pi5_business_hermes_egress_existing_timeout_key_present", state_fact)
+
+        provider_guard = next(
+            task
+            for task in prepare
+            if task["name"] == "Refuse to change the existing Business Hermes egress provider"
+        )
+        self.assertIn("existing_provider", str(provider_guard["ansible.builtin.assert"]))
+
+        marker_index = prepare_names.index("Mark the Business Hermes egress transition boundary")
+        apply_index = prepare_names.index("Apply the Business Hermes egress timeout before candidate traffic")
+        verify_index = prepare_names.index("Require the Business Hermes egress timeout transition to be ready")
+        hermes_index = prepare_names.index("Start the independent business Hermes runtime before candidate traffic")
+        self.assertLess(marker_index, apply_index)
+        self.assertLess(apply_index, verify_index)
+        self.assertLess(verify_index, hermes_index)
+        apply = prepare[apply_index]
+        self.assertEqual(apply["environment"], "{{ release_pi5_compose_environment }}")
+        apply_argv = apply["ansible.builtin.command"]["argv"]
+        for required in ("--no-deps", "--wait", "business-hermes-egress", "--force-recreate"):
+            self.assertIn(required, apply_argv)
+        self.assertNotIn("business_hermes_remote_preparation_enabled", apply_argv)
+        self.assertIn("release_pi5_business_hermes_egress_transition_required | bool", apply["when"])
+
+        isolate_index = prepare_names.index("Isolate egress runtime files from deployment checkouts")
+        candidate_hash_index = prepare_names.index("Compute the candidate Business Hermes egress Compose configuration hash")
+        existing_hash_index = prepare_names.index("Read the existing Business Hermes egress Compose configuration hash")
+        hash_gate_index = prepare_names.index("Require a Business Hermes egress transition when its Compose configuration changed")
+        self.assertLess(isolate_index, candidate_hash_index)
+        self.assertLess(candidate_hash_index, hash_gate_index)
+        self.assertLess(existing_hash_index, hash_gate_index)
+        self.assertLess(hash_gate_index, marker_index)
+        candidate_hash = prepare[candidate_hash_index]
+        self.assertEqual(candidate_hash["environment"], "{{ release_pi5_compose_environment }}")
+        for required in ("'--profile', 'business-hermes'", "'config', '--hash', 'business-hermes-egress'"):
+            self.assertIn(required, candidate_hash["ansible.builtin.command"]["argv"])
+        self.assertIn(
+            "com.docker.compose.config-hash",
+            str(prepare[existing_hash_index]["ansible.builtin.command"]["argv"]),
+        )
+
+        egress_prepare = yaml.safe_load(self.task_text("business-hermes-egress-prepare"))
+        self.assertNotIn("release_pi5_business_hermes_egress_transition_required", str(egress_prepare))
+
+        runtime = yaml.safe_load(
+            (ANSIBLE / "tasks/business-hermes-runtime.yml").read_text(encoding="utf-8")
+        )
+        expected = next(
+            task
+            for task in runtime
+            if task["name"] == "Define the expected Business Hermes runtime environment"
+        )["ansible.builtin.set_fact"]["business_hermes_candidate_env_expected_service_lines"]
+        self.assertTrue(
+            any(
+                line.startswith("BUSINESS_HERMES_TIMEOUT_MS=")
+                for line in expected
+            )
+        )
+        self.assertFalse(any(line.startswith("BUSINESS_HERMES_CHAT_TIMEOUT_MS=") for line in expected))
+        self.assertFalse(any(line.startswith("BUSINESS_HERMES_EGRESS_TIMEOUT_MS=") for line in expected))
+
+        rollback = yaml.safe_load(self.task_text("rollback"))
+        rollback_names = [task["name"] for task in rollback]
+        egress_block = next(
+            task
+            for task in rollback
+            if task["name"] == "Restore the previous Business Hermes egress runtime after a timeout transition"
+        )
+        egress_block_names = [task["name"] for task in egress_block["block"]]
+        resolve_absent_index = egress_block_names.index("Resolve Business Hermes egress after restoring its absent state")
+        remove_index = egress_block_names.index("Remove a Business Hermes egress created by a failed timeout transition")
+        self.assertLess(resolve_absent_index, remove_index)
+        remove = egress_block["block"][remove_index]
+        self.assertIn("after_restore_candidates.stdout", str(remove["ansible.builtin.command"]))
+        self.assertIn("rescue", egress_block)
+        rescue_names = [task["name"] for task in egress_block["rescue"]]
+        self.assertIn("Stop a Business Hermes egress left running after an incomplete rollback", rescue_names)
+        self.assertTrue(egress_block["rescue"][-1]["ansible.builtin.set_fact"]["release_pi5_business_hermes_egress_restore_failed"])
+        self.assertLess(
+            rollback_names.index("Restore the previous Business Hermes egress runtime after a timeout transition"),
+            rollback_names.index("Restore the previous Pi5 scheduler and route"),
+        )
+
+        cleanup = yaml.safe_load(self.task_text("cleanup"))
+        egress_stop = next(
+            task
+            for task in cleanup
+            if task["name"] == "Stop only the prior inactive business Hermes egress after failed fresh release"
+        )
+        egress_remove = next(
+            task
+            for task in cleanup
+            if task["name"] == "Remove a business Hermes egress created by a failed fresh release"
+        )
+        self.assertIn("not (release_pi5_business_hermes_egress_transition_attempted | default(false) | bool)", egress_stop["when"])
+        self.assertIn("not (release_pi5_business_hermes_egress_transition_attempted | default(false) | bool)", egress_remove["when"])
+
+    def test_pi5_egress_transition_decision_handles_legacy_and_new_env(self) -> None:
+        prepare = yaml.safe_load(self.task_text("prepare"))
+        source_tasks = [
+            next(
+                task
+                for task in prepare
+                if task["name"] == name
+            )
+            for name in (
+                "Record the independent business Hermes egress pre-rollout state",
+                "Derive the captured Business Hermes egress timeout",
+                "Derive the legacy Business Hermes egress timeout for conflict checking",
+                "Decide whether the Business Hermes egress requires a controlled timeout transition",
+            )
+        ]
+        transition_tasks = [
+            {"ansible.builtin.set_fact": task["ansible.builtin.set_fact"]}
+            for task in source_tasks
+        ]
+        plays = []
+        for environment, expected_timeout, expected_legacy_timeout, key_present, transition_required, remote_preparation in (
+            (["BUSINESS_HERMES_TIMEOUT_MS=60000"], 60000, 60000, False, True, False),
+            (["BUSINESS_HERMES_EGRESS_TIMEOUT_MS=60000"], 60000, 60000, True, False, False),
+            (["BUSINESS_HERMES_TIMEOUT_MS=60000", "BUSINESS_HERMES_EGRESS_TIMEOUT_MS=60000"], 60000, 60000, True, False, False),
+            # Remote preparation no longer forces a recreate; the Compose hash gate decides.
+            (["BUSINESS_HERMES_EGRESS_TIMEOUT_MS=60000"], 60000, 60000, True, False, True),
+        ):
+            plays.append(
+                {
+                    "hosts": "localhost",
+                    "connection": "local",
+                    "gather_facts": False,
+                    "vars": {
+                        "release_pi5_route": "fresh",
+                        "release_pi5_business_hermes_enabled": True,
+                        "release_pi5_business_hermes_egress_existing": {"stdout": "old-egress"},
+                        "release_pi5_business_hermes_egress_existing_identity": {"stdout": "old-image|true"},
+                        "release_pi5_business_hermes_egress_existing_env_probe": {
+                            "stdout": json.dumps(environment)
+                        },
+                        "release_pi5_business_hermes_egress_existing_health_probe": {"stdout": "healthy"},
+                        "business_hermes_provider": "dgx",
+                        "business_hermes_egress_timeout_ms": 60000,
+                        "business_hermes_remote_preparation_enabled": remote_preparation,
+                    },
+                    "tasks": transition_tasks
+                    + [
+                        {
+                            "ansible.builtin.assert": {
+                                "that": [
+                                    "release_pi5_business_hermes_egress_existing_timeout_ms | int == "
+                                    + str(expected_timeout),
+                                    "release_pi5_business_hermes_egress_existing_legacy_timeout_ms | int == "
+                                    + str(expected_legacy_timeout),
+                                    "release_pi5_business_hermes_egress_existing_timeout_key_present | bool == "
+                                    + str(key_present).lower(),
+                                    "release_pi5_business_hermes_egress_transition_required | bool == "
+                                    + str(transition_required).lower(),
+                                ]
+                            }
+                        }
+                    ],
+                }
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            playbook = Path(directory) / "egress-transition.yml"
+            playbook.write_text(yaml.safe_dump(plays, sort_keys=False), encoding="utf-8")
+            result = subprocess.run(
+                ["ansible-playbook", str(playbook)],
+                cwd=ROOT,
+                env={key: value for key, value in os.environ.items() if key != "ANSIBLE_CONFIG"},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        conflict_guard = next(
+            task
+            for task in prepare
+            if task["name"] == "Refuse conflicting Business Hermes egress timeout keys"
+        )
+        conflict_play = {
+            "hosts": "localhost",
+            "connection": "local",
+            "gather_facts": False,
+            "vars": {
+                "release_pi5_route": "fresh",
+                "release_pi5_business_hermes_enabled": True,
+                "release_pi5_business_hermes_egress_existing": {"stdout": "old-egress"},
+                "release_pi5_business_hermes_egress_existing_identity": {"stdout": "old-image|true"},
+                "release_pi5_business_hermes_egress_existing_env_probe": {
+                    "stdout": json.dumps(["BUSINESS_HERMES_TIMEOUT_MS=8000", "BUSINESS_HERMES_EGRESS_TIMEOUT_MS=60000"])
+                },
+                "release_pi5_business_hermes_egress_existing_health_probe": {"stdout": "healthy"},
+                "business_hermes_provider": "dgx",
+                "business_hermes_egress_timeout_ms": 60000,
+            },
+            "tasks": transition_tasks + [conflict_guard],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            playbook = Path(directory) / "egress-transition-conflict.yml"
+            playbook.write_text(yaml.safe_dump([conflict_play], sort_keys=False), encoding="utf-8")
+            result = subprocess.run(
+                ["ansible-playbook", str(playbook)],
+                cwd=ROOT,
+                env={key: value for key, value in os.environ.items() if key != "ANSIBLE_CONFIG"},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_pi5_egress_is_recreated_only_when_its_compose_hash_changes(self) -> None:
+        prepare = yaml.safe_load(self.task_text("prepare"))
+        gate = next(
+            task
+            for task in prepare
+            if task["name"] == "Require a Business Hermes egress transition when its Compose configuration changed"
+        )
+        current = "a" * 64
+        skipped = {"skipped": True}
+        cases = (
+            # (already required, candidate hash result, existing hash result, expected)
+            (False, {"rc": 0, "stdout": f"business-hermes-egress {current}"}, {"rc": 0, "stdout": f"{current}\n"}, False),
+            (True, {"rc": 0, "stdout": f"business-hermes-egress {current}"}, {"rc": 0, "stdout": current}, True),
+            (False, {"rc": 0, "stdout": f"business-hermes-egress {'b' * 64}"}, {"rc": 0, "stdout": current}, True),
+            (False, {"rc": 1, "stdout": ""}, {"rc": 0, "stdout": current}, True),
+            (False, {"rc": 0, "stdout": f"business-hermes-egress {current}"}, {"rc": 1, "stdout": ""}, True),
+            (False, {"rc": 0, "stdout": f"business-hermes-egress {current}"}, {"rc": 0, "stdout": "\n"}, True),
+            (False, {"rc": 0, "stdout": f"business-hermes {current}"}, {"rc": 0, "stdout": current}, True),
+            (False, {"rc": 0, "stdout": ""}, {"rc": 0, "stdout": current}, True),
+            (False, skipped, skipped, True),
+        )
+        plays = [
+            {
+                "hosts": "localhost",
+                "connection": "local",
+                "gather_facts": False,
+                "vars": {
+                    "release_pi5_route": "fresh",
+                    "release_pi5_business_hermes_enabled": True,
+                    "release_pi5_business_hermes_egress_candidate_hash": candidate,
+                    "release_pi5_business_hermes_egress_existing_hash": existing,
+                },
+                "tasks": [
+                    # Facts outlive a play, so reset the prior decision as a fact.
+                    {
+                        "ansible.builtin.set_fact": {
+                            "release_pi5_business_hermes_egress_transition_required": already_required
+                        }
+                    },
+                    {"ansible.builtin.set_fact": gate["ansible.builtin.set_fact"]},
+                    {
+                        "ansible.builtin.assert": {
+                            "that": [
+                                "release_pi5_business_hermes_egress_transition_required | bool == "
+                                + str(expected).lower()
+                            ]
+                        }
+                    },
+                ],
+            }
+            for already_required, candidate, existing, expected in cases
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            playbook = Path(directory) / "egress-hash-gate.yml"
+            playbook.write_text(yaml.safe_dump(plays, sort_keys=False), encoding="utf-8")
+            result = subprocess.run(
+                ["ansible-playbook", str(playbook)],
+                cwd=ROOT,
+                env={key: value for key, value in os.environ.items() if key != "ANSIBLE_CONFIG"},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_pre_switch_fresh_failure_removes_only_inactive_services(self) -> None:
+        prepare = yaml.safe_load(self.task_text("prepare"))
+        marker = next(
+            task
+            for task in prepare
+            if task["name"] == "Mark the inactive Pi5 candidate startup boundary"
+        )
+        start = next(
+            task
+            for task in prepare
+            if task["name"] == "Start only inactive Pi5 API and Web services"
+        )
+        self.assertLess(prepare.index(marker), prepare.index(start))
+        self.assertEqual(
+            marker["ansible.builtin.set_fact"],
+            {"release_pi5_start_attempted": True},
+        )
+
+        cleanup = yaml.safe_load(self.task_text("cleanup"))
+        incomplete = next(
+            task
+            for task in cleanup
+            if task["name"]
+            == "Remove an incomplete fresh Pi5 candidate before traffic switch"
+        )
+        argv = incomplete["ansible.builtin.command"]["argv"]
+        for required in ("'rm'", "'-f'", "'-s'", "'api-'", "'web-'"):
+            self.assertIn(required, argv)
+        self.assertIn("release_pi5_slot | default('')", argv)
+        for forbidden in (
+            "release_pi5_active_slot",
+            "release_pi5_previous_slot",
+            "gateway",
+        ):
+            self.assertNotIn(forbidden, argv)
+        conditions = "\n".join(incomplete["when"])
+        self.assertIn("release_pi5_start_attempted | default(false)", conditions)
+        self.assertIn("release_pi5_switch_attempted | default(false)", conditions)
+        self.assertIn("release_pi5_route | default('') == 'fresh'", conditions)
+        self.assertIn("release_pi5_slot | default('') in ['blue', 'green']", conditions)
+        self.assertIn("default({})", incomplete["environment"])
+
+    def test_pi5_migration_boundary_is_prisma_and_small_ledger_only(self) -> None:
+        prepare = self.task_text("prepare")
+        self.assertIn("prisma migrate deploy", prepare)
+        self.assertIn("prisma migrate status", prepare)
+        self.assertGreaterEqual(
+            prepare.count("finished_at IS NULL OR rolled_back_at IS NOT NULL"), 2
+        )
+        for forbidden in ("git ", "migration manifest", "repair", "checksum"):
+            self.assertNotIn(forbidden, prepare.lower())
+
+    def test_pi5_commit_and_rollback_order_is_crash_safe(self) -> None:
+        switch = self.task_text("switch")
+        commit = self.task_text("commit")
+        rollback = self.task_text("rollback")
+        self.assertIn("Caddyfile.{{ release_run_id }}", switch)
+        self.assertNotIn("mv -Tf", switch)
+        self.assertLess(commit.index("mv -Tf"), commit.index("Stop the previous Pi5 API"))
+        self.assertLess(
+            commit.index("Stop the previous Pi5 API"),
+            commit.index("Wait for the committed Pi5 scheduler leader"),
+        )
+        self.assertLess(
+            rollback.index("Restart previous Pi5 API"),
+            rollback.index("Wait for restored previous Pi5 scheduler leader"),
+        )
+        self.assertLess(
+            rollback.index("Wait for restored previous Pi5 scheduler leader"),
+            rollback.index("Atomically restore previous known Pi5 routing"),
+        )
+        self.assertLess(
+            rollback.index("Atomically restore previous known Pi5 routing"),
+            rollback.index("Reload restored canonical Pi5 routing"),
+        )
+
+    def test_pi5_distinguishes_three_rerun_states(self) -> None:
+        prepare = self.task_text("prepare")
+        for required in (
+            "fresh",
+            "settled",
+            "interrupted",
+            "same-release leader",
+            "old API is already stopped",
+            "old leader for interrupted",
+            "opposite_api_identity",
+            "opposite_web_identity",
+        ):
+            self.assertIn(required, prepare)
+        self.assertIn("release_pi5_route in ['fresh', 'interrupted']", self.task_text("commit"))
+
+    def test_interrupted_health_failure_has_rollback_authority(self) -> None:
+        prepare = yaml.safe_load(self.task_text("prepare"))
+        marker = next(
+            task
+            for task in prepare
+            if task["name"]
+            == "Mark interrupted Pi5 commit as an existing switched recovery boundary"
+        )
+        self.assertEqual(
+            marker["ansible.builtin.set_fact"],
+            {"release_pi5_switch_attempted": True},
+        )
+        self.assertEqual(marker["when"], "release_pi5_route == 'interrupted'")
+        rollback = self.task_text("rollback")
+        self.assertIn(
+            "release_pi5_switch_attempted | default(false) | bool",
+            rollback,
+        )
+        self.assertIn("Restart previous Pi5 API with its captured image", rollback)
+        self.assertIn("Atomically restore previous known Pi5 routing", rollback)
+        self.assertIn("Reload restored canonical Pi5 routing", rollback)
+
+    def test_settled_rerun_removes_only_opposite_cleanup_residue(self) -> None:
+        cleanup = yaml.safe_load(self.task_text("cleanup"))
+        retired = next(
+            task
+            for task in cleanup
+            if task["name"]
+            == "Remove previous Pi5 slot only after committed healthy handoff"
+        )
+        self.assertIn("release_pi5_previous_slot | default('')", retired["ansible.builtin.command"]["argv"])
+        condition = retired["when"][1]
+        self.assertIn("release_pi5_route | default('') == 'settled'", condition)
+        self.assertIn("release_pi5_opposite_api_id | default('') | length > 0", condition)
+        self.assertIn("release_pi5_opposite_web_id | default('') | length > 0", condition)
+        self.assertNotIn("release_pi5_active_slot", retired["ansible.builtin.command"]["argv"])
+
+    def test_pi5_monitor_is_bounded_and_cleanup_has_no_handoff(self) -> None:
+        defaults = yaml.safe_load(
+            (ANSIBLE / f"roles/{self.ROLE}/defaults/main.yml").read_text()
+        )
+        health = self.task_text("health")
+        sample = self.task_text("health-sample")
+        cleanup = yaml.safe_load(self.task_text("cleanup"))
+        self.assertEqual(defaults["release_pi5_health_sample_count"], 5)
+        self.assertEqual(defaults["release_pi5_health_interval_seconds"], 10)
+        self.assertIn("range(0", health)
+        self.assertIn("release_pi5_health_sample_count", health)
+        self.assertIn(
+            "(item | int) + 1 < (release_pi5_health_sample_count | int)",
+            sample,
+        )
+        self.assertIn("standby", sample)
+        self.assertIn("leader", sample)
+        hermes_stop = next(
+            task
+            for task in cleanup
+            if task["name"]
+            == "Stop only the prior inactive business Hermes runtime after failed fresh release"
+        )
+        self.assertEqual(
+            hermes_stop["ansible.builtin.command"]["argv"],
+            [
+                "docker",
+                "stop",
+                "--time",
+                "10",
+                "{{ release_pi5_business_hermes_after_failure.stdout | trim }}",
+            ],
+        )
+        hermes_when = hermes_stop["when"]
+        for required_condition in (
+            "release_pi5_business_hermes_start_attempted | default(false) | bool",
+            "not (release_pi5_healthy | default(false) | bool)",
+            "release_pi5_route | default('') == 'fresh'",
+            "release_pi5_business_hermes_existing_id | default('') | trim | length > 0",
+            "not (release_pi5_business_hermes_existing_running | default(false) | bool)",
+            "release_pi5_business_hermes_after_failure_state.stdout | default('false') | trim == 'true'",
+        ):
+            self.assertIn(required_condition, hermes_when)
+        self.assertEqual(
+            cleanup_command_violations(
+                cleanup,
+                (
+                    "Stop only the prior inactive business Hermes runtime after failed fresh release",
+                    "Stop only the prior inactive business Hermes egress after failed fresh release",
+                ),
+            ),
+            [],
+        )
+        hermes_remove = next(
+            task
+            for task in cleanup
+            if task["name"] == "Remove a business Hermes runtime created by a failed fresh release"
+        )
+        self.assertEqual(
+            hermes_remove["ansible.builtin.command"]["argv"],
+            ["docker", "rm", "--force", "{{ release_pi5_business_hermes_after_failure.stdout | trim }}"],
+        )
+        hermes_remove_when = hermes_remove["when"]
+        for required_condition in (
+            "release_pi5_business_hermes_start_attempted | default(false) | bool",
+            "not (release_pi5_healthy | default(false) | bool)",
+            "release_pi5_route | default('') == 'fresh'",
+            "release_pi5_business_hermes_existing_id | default('') | trim | length == 0",
+            "release_pi5_business_hermes_after_failure.stdout | trim | length > 0",
+        ):
+            self.assertIn(required_condition, hermes_remove_when)
+
+        egress_find = next(
+            task
+            for task in cleanup
+            if task["name"]
+            == "Find the business Hermes egress container after a failed fresh release"
+        )
+        egress_state = next(
+            task
+            for task in cleanup
+            if task["name"]
+            == "Inspect the business Hermes egress running state after a failed fresh release"
+        )
+        egress_stop = next(
+            task
+            for task in cleanup
+            if task["name"]
+            == "Stop only the prior inactive business Hermes egress after failed fresh release"
+        )
+        self.assertIn("business-hermes-egress", str(egress_find))
+        self.assertIn("release_pi5_business_hermes_egress_after_failure", str(egress_state))
+        self.assertEqual(
+            egress_stop["ansible.builtin.command"]["argv"],
+            [
+                "docker",
+                "stop",
+                "--time",
+                "10",
+                "{{ release_pi5_business_hermes_egress_after_failure.stdout | trim }}",
+            ],
+        )
+        for required_condition in (
+            "release_pi5_business_hermes_start_attempted | default(false) | bool",
+            "not (release_pi5_healthy | default(false) | bool)",
+            "release_pi5_route | default('') == 'fresh'",
+            "release_pi5_business_hermes_egress_existing_id | default('') | trim | length > 0",
+            "not (release_pi5_business_hermes_egress_existing_running | default(false) | bool)",
+            "release_pi5_business_hermes_egress_after_failure_state.stdout | default('false') | trim == 'true'",
+        ):
+            self.assertIn(required_condition, egress_stop["when"])
+
+        egress_remove = next(
+            task
+            for task in cleanup
+            if task["name"] == "Remove a business Hermes egress created by a failed fresh release"
+        )
+        self.assertEqual(
+            egress_remove["ansible.builtin.command"]["argv"],
+            [
+                "docker",
+                "rm",
+                "--force",
+                "{{ release_pi5_business_hermes_egress_after_failure.stdout | trim }}",
+            ],
+        )
+        for required_condition in (
+            "release_pi5_business_hermes_start_attempted | default(false) | bool",
+            "not (release_pi5_healthy | default(false) | bool)",
+            "release_pi5_route | default('') == 'fresh'",
+            "release_pi5_business_hermes_egress_existing_id | default('') | trim | length == 0",
+            "release_pi5_business_hermes_egress_after_failure.stdout | trim | length > 0",
+        ):
+            self.assertIn(required_condition, egress_remove["when"])
+
+    def test_cleanup_command_guard_rejects_unscoped_stop(self) -> None:
+        self.assertEqual(
+            cleanup_command_violations(
+                [
+                    {
+                        "name": "Unexpected API cleanup",
+                        "ansible.builtin.command": {
+                            "argv": ["docker", "stop", "api-blue"]
+                        },
+                    }
+                ],
+                "Stop only the prior inactive business Hermes runtime after failed fresh release",
+            ),
+            ["stop"],
+        )
+
+
+class ConsultationRuntimeReleaseTests(unittest.TestCase):
+    """Execute the real Ansible start/rescue tasks against a stateful Docker double."""
+
+    def test_consultation_start_and_rollback_preserve_container_and_network_state(self) -> None:
+        docker_script = r'''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+p = Path(os.environ['CHAT_DOCKER_STATE'])
+s = json.loads(p.read_text())
+a = sys.argv[1:]
+s['events'].append(a)
+code = 0
+if a[0] == 'inspect':
+    print(json.dumps({'bluegreen_business-hermes': {}} if s['network'] else {}))
+elif a[:2] == ['network', 'connect']:
+    s['network'] = True
+elif a[:2] == ['network', 'disconnect']:
+    s['network'] = False
+elif a[0] == 'compose':
+    service = a[-1]
+    if 'up' in a:
+        s['services'][service] = True
+        if service == 'business-hermes-chat' and s.get('fail_start'):
+            s['fail_start'] = False
+            code = 1
+    elif 'rm' in a:
+        s['services'].pop(service, None)
+    elif 'stop' in a:
+        s['services'][service] = False
+p.write_text(json.dumps(s))
+sys.exit(code)
+'''
+        for existing, fail_start, trial_enabled in [(False, False, False), (False, True, False), (True, False, False), (True, False, True), (True, True, True)]:
+            with self.subTest(existing=existing, fail_start=fail_start, trial_enabled=trial_enabled), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                executable = root / 'docker'
+                executable.write_text(docker_script)
+                executable.chmod(0o755)
+                initial = {'business-hermes-chat-egress': True, 'business-hermes-chat': False} if existing else {}
+                state = root / 'state.json'
+                state.write_text(json.dumps({'services': initial, 'network': existing, 'events': [], 'fail_start': fail_start}))
+                before = [{'service': service, 'id': 'existing' if existing else '', 'running': running}
+                          for service, running in [('business-hermes-chat-egress', existing), ('business-hermes-chat', False)]]
+                task_root = ANSIBLE / 'roles/release_pi5/tasks'
+                playbook = root / 'check.yml'
+                playbook.write_text(yaml.safe_dump([{
+                    'hosts': 'localhost', 'connection': 'local', 'gather_facts': False,
+                    'vars': {'release_pi5_compose_argv': [str(executable), 'compose'],
+                             'release_pi5_compose_environment': {'CHAT_DOCKER_STATE': str(state)},
+                             'release_pi5_compose_project': 'bluegreen', 'release_pi5_compose_wait_seconds': 10,
+                             'release_pi5_gateway_id': 'gateway-fixture', 'release_pi5_chat_before': before,
+                             'release_pi5_chat_gateway_connected': False,
+                             'business_hermes_chat_rendered_files': {'changed': True, 'results': []}},
+                    'environment': {'CHAT_DOCKER_STATE': str(state)},
+                    'tasks': [{'block': [
+                        {'ansible.builtin.import_tasks': str(task_root / 'business-hermes-chat-start.yml')},
+                        {'ansible.builtin.fail': {'msg': 'Simulate later API health failure'}}
+                    ], 'rescue': [
+                        {'ansible.builtin.import_tasks': str(task_root / 'business-hermes-chat-rollback.yml')}
+                    ]}]
+                }], sort_keys=False))
+                (root / 'ansible.cfg').write_text('[defaults]\nretry_files_enabled = False\n')
+                env = dict(os.environ, ANSIBLE_CONFIG=str(root / 'ansible.cfg'), ANSIBLE_NOCOLOR='1', PATH=str(root) + os.pathsep + os.environ['PATH'])
+                # Match the canonical controller environment. The lowercase
+                # variable exists only inside prepare.yml's include_tasks.
+                env.pop('HERMES_SEARCH_TRIAL_ENABLED', None)
+                if trial_enabled or existing:
+                    env['HERMES_SEARCH_TRIAL_ENABLED'] = 'true' if trial_enabled else 'false'
+                result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(playbook)],
+                                        env=env, capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode, 0, result.stdout[-4000:] + result.stderr[-1000:])
+                actual = json.loads(state.read_text())
+                self.assertEqual(actual['services'], initial)
+                self.assertEqual(actual['network'], existing)
+                if not existing:
+                    connect = next(event for event in actual['events'] if event[:2] == ['network', 'connect'])
+                    self.assertEqual(connect[2:4], ['--alias', 'gateway'])
+                self.assertFalse(any('-v' in event or '--volumes' in event for event in actual['events']))
+                up = [event for event in actual['events'] if 'up' in event]
+                self.assertEqual(up[0][-1], 'business-hermes-chat-egress')
+                self.assertEqual('--force-recreate' in up[0], trial_enabled)
+                self.assertIn('--no-deps', up[0])
+                self.assertEqual(up[1][-1], 'business-hermes-chat')
+
+
+if __name__ == "__main__":
+    unittest.main()

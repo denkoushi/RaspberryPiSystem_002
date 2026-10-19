@@ -19,9 +19,13 @@ export default defineConfig({
         return Number.isFinite(n) && n > 0 ? Math.floor(n) : 2;
       })()
     : undefined,
-  reporter: 'html',
+  // CI also writes JSON so scripts/ci/report_playwright_flaky.py can surface
+  // tests that only passed after a retry.
+  reporter: process.env.CI
+    ? [['dot'], ['html', { open: 'never' }], ['json', { outputFile: 'e2e-results/results.json' }]]
+    : 'html',
   use: {
-    baseURL: 'http://localhost:4173',
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:4173',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -56,6 +60,9 @@ export default defineConfig({
         JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || 'test-refresh-secret-1234567890',
         BACKUP_CONFIG_PATH: process.env.BACKUP_CONFIG_PATH || '/tmp/e2e-backup.json',
         BACKUP_STORAGE_DIR: process.env.BACKUP_STORAGE_DIR || '/tmp/e2e-backups',
+        FILE_STORAGE_ROOT: process.env.FILE_STORAGE_ROOT || '/tmp/e2e-file-storage',
+        PDF_STORAGE_DIR: process.env.PDF_STORAGE_DIR || '/tmp/e2e-file-storage',
+        PHOTO_STORAGE_DIR: process.env.PHOTO_STORAGE_DIR || '/tmp/e2e-file-storage',
       },
     },
     {
@@ -74,4 +81,3 @@ export default defineConfig({
     },
   ] : undefined,
 });
-

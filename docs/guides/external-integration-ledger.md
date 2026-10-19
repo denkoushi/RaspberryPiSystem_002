@@ -44,8 +44,8 @@ update-frequency: medium
 
 **設定項目**:
 ```yaml
-vault_dropbox_app_key: "1k8mig5my0zk0ms"  # Dropbox App Key
-vault_dropbox_app_secret: "es8m5ngz2vzxlbh"  # Dropbox App Secret
+vault_dropbox_app_key: "<DROPBOX_APP_KEY>"  # Dropbox App Key
+vault_dropbox_app_secret: "<DROPBOX_APP_SECRET>"  # Dropbox App Secret
 vault_dropbox_refresh_token: "..."  # Dropbox Refresh Token（OAuth取得後）
 ```
 

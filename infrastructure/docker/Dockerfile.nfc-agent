@@ -1,13 +1,70 @@
 # syntax=docker/dockerfile:1
-FROM python:3.11-slim
-WORKDIR /app
+# Poetry runs on the build host, never under emulation: its own dependencies
+# have no linux/arm/v7 wheels, and compiling them under QEMU took 23-37 minutes
+# of every uncached Pi4 agent build. The target stage installs only what
+# poetry.lock names, and pip verifies each file against the lock's hashes.
+FROM --platform=$BUILDPLATFORM python:3.11-slim AS lock-export
+WORKDIR /export
+RUN pip install --no-cache-dir poetry==2.4.1 poetry-plugin-export==1.10.1
+COPY clients/nfc-agent/pyproject.toml clients/nfc-agent/poetry.lock ./
+RUN poetry export --only main --format requirements.txt --output requirements.txt
+FROM python:3.11-slim AS builder
+WORKDIR /build
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    pcscd pcsc-tools libpcsclite-dev build-essential swig && rm -rf /var/lib/apt/lists/*
-COPY clients/nfc-agent/pyproject.toml ./pyproject.toml
-RUN pip install poetry && poetry config virtualenvs.create false && \
-    poetry install --without dev --no-root
+    libpcsclite-dev libffi-dev build-essential swig && rm -rf /var/lib/apt/lists/*
+RUN python -m venv /opt/venv
+ENV VIRTUAL_ENV="/opt/venv"
+ENV PATH="/opt/venv/bin:$PATH"
+COPY --from=lock-export /export/requirements.txt ./
+RUN pip install --no-cache-dir --require-hashes -r requirements.txt \
+    && python -m pip uninstall --yes pip setuptools wheel
+
+FROM python:3.11-slim AS runtime
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PATH="/opt/venv/bin:$PATH"
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pcscd pcsc-tools libpcsclite1 \
+    && apt-get install -y --only-upgrade --no-install-recommends \
+      gzip libexpat1 libpcre2-8-0 libsqlite3-0 perl-base libglib2.0-0t64 libperl5.40 perl perl-modules-5.40 \
+      libssl3t64 openssl openssl-provider-legacy \
+    && for package in libssl3t64 openssl openssl-provider-legacy; do \
+      version="$(dpkg-query -W -f='${Version}' "$package")"; \
+      dpkg --compare-versions "$version" ge '3.5.7-1~deb13u3' \
+        || { echo "$package remains below the CVE-2026-75804/CVE-2026-84782 fixed version: $version" >&2; exit 1; }; \
+    done \
+    && for requirement in \
+      gzip:1.13-1+deb13u1 \
+      libexpat1:2.9.0-1~deb13u1 \
+      libpcre2-8-0:10.46-1~deb13u2 \
+      libsqlite3-0:3.46.1-7+deb13u2 \
+      perl-base:5.40.1-6+deb13u1 \
+      libglib2.0-0t64:2.84.4-3~deb13u4 \
+      libperl5.40:5.40.1-6+deb13u1 \
+      perl:5.40.1-6+deb13u1 \
+      perl-modules-5.40:5.40.1-6+deb13u1 \
+    ; do \
+      package="${requirement%%:*}"; fixed_version="${requirement#*:}"; \
+      version="$(dpkg-query -W -f='${Version}' "$package")"; \
+      dpkg --compare-versions "$version" ge "$fixed_version" \
+        || { echo "$package is below the required fixed version: $version" >&2; exit 1; }; \
+    done \
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m pip uninstall --yes pip setuptools wheel
+
+RUN groupadd --gid 10001 agent \
+    && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin agent \
+    && mkdir -p /data \
+    && chown 10001:10001 /data \
+    && chmod 0750 /data
+COPY --from=builder /opt/venv /opt/venv
 COPY clients/nfc-agent ./nfc-agent
 WORKDIR /app/nfc-agent
+RUN mkdir -p /app/nfc-agent/data \
+    && chown 10001:10001 /app/nfc-agent/data \
+    && chmod 0750 /app/nfc-agent/data
+USER 10001:10001
 CMD ["python", "-m", "nfc_agent"]

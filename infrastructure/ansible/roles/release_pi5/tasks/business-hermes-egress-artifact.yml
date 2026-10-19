@@ -1,0 +1,35 @@
+---
+- name: Inspect the egress program to publish
+  ansible.builtin.stat:
+    path: "{{ egress_artifact_source }}"
+    checksum_algorithm: sha256
+    follow: false
+  register: egress_artifact_stat
+
+- name: Require a regular egress program
+  ansible.builtin.assert:
+    that:
+      - egress_artifact_stat.stat.isreg | default(false)
+      - not (egress_artifact_stat.stat.islnk | default(false))
+      - egress_artifact_stat.stat.checksum is match('^[0-9a-f]{64}$')
+
+- name: Create the content-addressed egress directory
+  ansible.builtin.file:
+    path: "{{ release_pi5_egress_artifact_root }}/{{ egress_artifact_stat.stat.checksum }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Publish the isolated egress program with container-readable permissions
+  ansible.builtin.copy:
+    src: "{{ egress_artifact_source }}"
+    dest: "{{ release_pi5_egress_artifact_root }}/{{ egress_artifact_stat.stat.checksum }}/proxy.mjs"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Record the immutable egress program path
+  ansible.builtin.set_fact:
+    release_pi5_egress_artifacts: "{{ release_pi5_egress_artifacts | default({}) | combine({egress_artifact_key: release_pi5_egress_artifact_root ~ '/' ~ egress_artifact_stat.stat.checksum ~ '/proxy.mjs'}) }}"

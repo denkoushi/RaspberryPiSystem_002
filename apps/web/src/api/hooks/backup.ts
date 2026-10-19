@@ -6,6 +6,7 @@ import {
   restoreFromDropbox,
   restoreDryRun,
   getCsvImportSchedules,
+  getRecentCsvImportHistory,
   createCsvImportSchedule,
   updateCsvImportSchedule,
   deleteCsvImportSchedule,
@@ -45,17 +46,18 @@ import {
   type CsvImportColumnDefinition,
   type CsvImportStrategy
 } from '../backup';
+import { backupQueryKeys } from '../queryKeys/backup';
 
 export function useBackupHistory(filters?: BackupHistoryFilters) {
   return useQuery({
-    queryKey: ['backup-history', filters],
+    queryKey: backupQueryKeys.history(filters),
     queryFn: () => getBackupHistory(filters)
   });
 }
 
 export function useBackupHistoryById(id: string) {
   return useQuery({
-    queryKey: ['backup-history', id],
+    queryKey: backupQueryKeys.historyById(id),
     queryFn: () => getBackupHistoryById(id),
     enabled: !!id
   });
@@ -66,7 +68,7 @@ export function useRestoreFromDropbox() {
   return useMutation({
     mutationFn: (request: RestoreFromDropboxRequest) => restoreFromDropbox(request),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['backup-history'] });
+      queryClient.invalidateQueries({ queryKey: backupQueryKeys.historyAll });
     }
   });
 }
@@ -81,8 +83,16 @@ export function useRestoreDryRun() {
 
 export function useCsvImportSchedules() {
   return useQuery({
-    queryKey: ['csv-import-schedules'],
+    queryKey: backupQueryKeys.csvImportSchedulesAll,
     queryFn: getCsvImportSchedules
+  });
+}
+
+export function useRecentCsvImportHistory() {
+  return useQuery({
+    queryKey: backupQueryKeys.recentImportHistory,
+    queryFn: () => getRecentCsvImportHistory(),
+    staleTime: 60_000
   });
 }
 
@@ -90,14 +100,14 @@ export function useCsvImportSchedules() {
 
 export function useBackupConfig() {
   return useQuery({
-    queryKey: ['backup-config'],
+    queryKey: backupQueryKeys.configAll,
     queryFn: getBackupConfig
   });
 }
 
 export function useCsvImportSubjectPatterns(importType?: CsvImportSubjectPatternType, dashboardId?: string) {
   return useQuery({
-    queryKey: ['csv-import-subject-patterns', importType, dashboardId],
+    queryKey: backupQueryKeys.csvImportSubjectPatterns(importType, dashboardId),
     queryFn: () => getCsvImportSubjectPatterns(importType, dashboardId)
   });
 }
@@ -113,7 +123,7 @@ export function useCsvImportSubjectPatternMutations() {
       enabled?: boolean;
     }) => createCsvImportSubjectPattern(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['csv-import-subject-patterns'] });
+      queryClient.invalidateQueries({ queryKey: backupQueryKeys.csvImportSubjectPatternsAll });
     }
   });
 
@@ -123,14 +133,14 @@ export function useCsvImportSubjectPatternMutations() {
       data: Partial<Pick<CsvImportSubjectPattern, 'pattern' | 'priority' | 'enabled'>>;
     }) => updateCsvImportSubjectPattern(payload.id, payload.data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['csv-import-subject-patterns'] });
+      queryClient.invalidateQueries({ queryKey: backupQueryKeys.csvImportSubjectPatternsAll });
     }
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => deleteCsvImportSubjectPattern(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['csv-import-subject-patterns'] });
+      queryClient.invalidateQueries({ queryKey: backupQueryKeys.csvImportSubjectPatternsAll });
     }
   });
 
@@ -138,8 +148,8 @@ export function useCsvImportSubjectPatternMutations() {
     mutationFn: (payload: { importType: CsvImportSubjectPatternType; dashboardId?: string | null; orderedIds: string[] }) =>
       reorderCsvImportSubjectPatterns(payload),
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['csv-import-subject-patterns', variables.importType, variables.dashboardId] });
-      queryClient.invalidateQueries({ queryKey: ['csv-import-subject-patterns'] });
+      queryClient.invalidateQueries({ queryKey: backupQueryKeys.csvImportSubjectPatterns(variables.importType, variables.dashboardId) });
+      queryClient.invalidateQueries({ queryKey: backupQueryKeys.csvImportSubjectPatternsAll });
     }
   });
 
@@ -148,14 +158,14 @@ export function useCsvImportSubjectPatternMutations() {
 
 export function useCsvImportConfigs() {
   return useQuery({
-    queryKey: ['csv-import-configs'],
+    queryKey: backupQueryKeys.csvImportConfigsAll,
     queryFn: getCsvImportConfigs
   });
 }
 
 export function useCsvImportConfig(importType: CsvImportConfigType) {
   return useQuery({
-    queryKey: ['csv-import-config', importType],
+    queryKey: backupQueryKeys.csvImportConfig(importType),
     queryFn: () => getCsvImportConfig(importType),
   });
 }
@@ -177,8 +187,8 @@ export function useCsvImportConfigMutations() {
       };
     }) => upsertCsvImportConfig(importType, payload),
     onSuccess: async (config) => {
-      await queryClient.invalidateQueries({ queryKey: ['csv-import-config', config.importType] });
-      await queryClient.invalidateQueries({ queryKey: ['csv-import-configs'] });
+      await queryClient.invalidateQueries({ queryKey: backupQueryKeys.csvImportConfig(config.importType) });
+      await queryClient.invalidateQueries({ queryKey: backupQueryKeys.csvImportConfigsAll });
     }
   });
 
@@ -187,7 +197,7 @@ export function useCsvImportConfigMutations() {
 
 export function useBackupConfigHealth() {
   return useQuery({
-    queryKey: ['backup-config-health'],
+    queryKey: backupQueryKeys.configHealthAll,
     queryFn: getBackupConfigHealth,
     refetchInterval: 60000 // 1分ごとに自動更新
   });
@@ -195,21 +205,21 @@ export function useBackupConfigHealth() {
 
 export function useBackupTargetTemplates() {
   return useQuery({
-    queryKey: ['backup-target-templates'],
+    queryKey: backupQueryKeys.targetTemplatesAll,
     queryFn: getBackupTargetTemplates
   });
 }
 
 export function useBackupConfigHistory(params?: { offset?: number; limit?: number }) {
   return useQuery({
-    queryKey: ['backup-config-history', params],
+    queryKey: backupQueryKeys.configHistory(params),
     queryFn: () => getBackupConfigHistory(params)
   });
 }
 
 export function useBackupConfigHistoryById(id?: string) {
   return useQuery({
-    queryKey: ['backup-config-history', id],
+    queryKey: backupQueryKeys.configHistoryById(id),
     queryFn: () => getBackupConfigHistoryById(id!),
     enabled: Boolean(id)
   });
@@ -220,45 +230,45 @@ export function useBackupConfigMutations() {
   const updateConfig = useMutation({
     mutationFn: updateBackupConfig,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['backup-config'] });
-      queryClient.invalidateQueries({ queryKey: ['backup-config-health'] });
+      queryClient.invalidateQueries({ queryKey: backupQueryKeys.configAll });
+      queryClient.invalidateQueries({ queryKey: backupQueryKeys.configHealthAll });
     }
   });
   const addTarget = useMutation({
     mutationFn: addBackupTarget,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['backup-config'] });
-      queryClient.invalidateQueries({ queryKey: ['backup-config-health'] });
+      queryClient.invalidateQueries({ queryKey: backupQueryKeys.configAll });
+      queryClient.invalidateQueries({ queryKey: backupQueryKeys.configHealthAll });
     }
   });
   const updateTarget = useMutation({
     mutationFn: ({ index, target }: { index: number; target: Partial<BackupTarget> }) =>
       updateBackupTarget(index, target),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['backup-config'] });
-      queryClient.invalidateQueries({ queryKey: ['backup-config-health'] });
+      queryClient.invalidateQueries({ queryKey: backupQueryKeys.configAll });
+      queryClient.invalidateQueries({ queryKey: backupQueryKeys.configHealthAll });
     }
   });
   const deleteTarget = useMutation({
     mutationFn: (index: number) => deleteBackupTarget(index),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['backup-config'] });
-      queryClient.invalidateQueries({ queryKey: ['backup-config-health'] });
+      queryClient.invalidateQueries({ queryKey: backupQueryKeys.configAll });
+      queryClient.invalidateQueries({ queryKey: backupQueryKeys.configHealthAll });
     }
   });
   const runBackupMutation = useMutation({
     mutationFn: (request: RunBackupRequest) => runBackup(request),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['backup-history'] });
-      queryClient.invalidateQueries({ queryKey: ['backup-config'] });
+      queryClient.invalidateQueries({ queryKey: backupQueryKeys.historyAll });
+      queryClient.invalidateQueries({ queryKey: backupQueryKeys.configAll });
     }
   });
   const addFromTemplate = useMutation({
     mutationFn: (params: Parameters<typeof addBackupTargetFromTemplate>[0]) => addBackupTargetFromTemplate(params),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['backup-config'] });
-      queryClient.invalidateQueries({ queryKey: ['backup-config-health'] });
-      queryClient.invalidateQueries({ queryKey: ['backup-target-templates'] });
+      queryClient.invalidateQueries({ queryKey: backupQueryKeys.configAll });
+      queryClient.invalidateQueries({ queryKey: backupQueryKeys.configHealthAll });
+      queryClient.invalidateQueries({ queryKey: backupQueryKeys.targetTemplatesAll });
     }
   });
   return { updateConfig, addTarget, addFromTemplate, updateTarget, deleteTarget, runBackup: runBackupMutation };
@@ -268,23 +278,23 @@ export function useCsvImportScheduleMutations() {
   const queryClient = useQueryClient();
   const create = useMutation({
     mutationFn: (schedule: Parameters<typeof createCsvImportSchedule>[0]) => createCsvImportSchedule(schedule),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['csv-import-schedules'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: backupQueryKeys.csvImportSchedulesAll })
   });
   const update = useMutation({
     mutationFn: ({ id, schedule }: { id: string; schedule: Parameters<typeof updateCsvImportSchedule>[1] }) =>
       updateCsvImportSchedule(id, schedule),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['csv-import-schedules'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: backupQueryKeys.csvImportSchedulesAll })
   });
   const remove = useMutation({
     mutationFn: (id: string) => deleteCsvImportSchedule(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['csv-import-schedules'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: backupQueryKeys.csvImportSchedulesAll })
   });
   const run = useMutation({
     mutationFn: (id: string) => runCsvImportSchedule(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['csv-import-schedules'] });
-      queryClient.invalidateQueries({ queryKey: ['import-history'] });
-      queryClient.invalidateQueries({ queryKey: ['backup-history'] });
+      queryClient.invalidateQueries({ queryKey: backupQueryKeys.csvImportSchedulesAll });
+      queryClient.invalidateQueries({ queryKey: backupQueryKeys.importHistoryAll });
+      queryClient.invalidateQueries({ queryKey: backupQueryKeys.historyAll });
     }
   });
   return { create, update, remove, run };
@@ -294,7 +304,7 @@ export function useCsvImportScheduleMutations() {
 
 export function useGmailConfig() {
   return useQuery({
-    queryKey: ['gmail-config'],
+    queryKey: backupQueryKeys.gmailConfigAll,
     queryFn: getGmailConfig
   });
 }
@@ -303,11 +313,11 @@ export function useGmailConfigMutations() {
   const queryClient = useQueryClient();
   const update = useMutation({
     mutationFn: (config: GmailConfigUpdateRequest) => updateGmailConfig(config),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['gmail-config'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: backupQueryKeys.gmailConfigAll })
   });
   const remove = useMutation({
     mutationFn: () => deleteGmailConfig(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['gmail-config'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: backupQueryKeys.gmailConfigAll })
   });
   const authorize = useMutation({
     mutationFn: () => getGmailOAuthAuthorizeUrl(),
@@ -318,7 +328,7 @@ export function useGmailConfigMutations() {
   });
   const refresh = useMutation({
     mutationFn: () => refreshGmailToken(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['gmail-config'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: backupQueryKeys.gmailConfigAll })
   });
   return { update, remove, authorize, refresh };
 }

@@ -126,6 +126,121 @@ class SqlAllowListTests(unittest.TestCase):
             with self.subTest(statement=statement):
                 self.assert_allowed(statement)
 
+    def test_procedure_material_pdf_enum_expansion_is_allowed(self) -> None:
+        path = ROOT / validator.MIGRATION_ROOT / "20261007150000_add_procedure_material_pdf_kind/migration.sql"
+        validator.validate_sql(path.read_bytes(), str(path))
+        for sql in [
+            'ALTER TYPE "OtherKind" ADD VALUE \'PDF\';',
+            'ALTER TYPE "ProcedureMaterialKind" ADD VALUE \'OTHER\';',
+            'ALTER TYPE "ProcedureMaterialKind" RENAME VALUE \'PHOTO\' TO \'PDF\';',
+        ]:
+            with self.subTest(sql=sql):
+                self.assert_disallowed(sql)
+
+    def test_procedure_manual_common_enum_expansion_is_allowed(self) -> None:
+        self.assert_allowed('ALTER TYPE "ProcedureManualSubjectKind" ADD VALUE \'COMMON\';')
+        for sql in [
+            'ALTER TYPE "OtherKind" ADD VALUE \'COMMON\';',
+            'ALTER TYPE "ProcedureManualSubjectKind" ADD VALUE \'OTHER\';',
+            'ALTER TYPE "ProcedureManualSubjectKind" RENAME VALUE \'MODEL\' TO \'COMMON\';',
+            'ALTER TYPE "ProcedureManualSubjectKind" ADD VALUE \'COMMON\' BEFORE \'MODEL\';',
+            'ALTER TYPE "ProcedureManualSubjectKind" ADD VALUE \'COMMON\' DROP TYPE "OtherKind";',
+            'ALTER TYPE "ProcedureManualSubjectKind" ADD VALUE \'COMMON\'; DROP TYPE "OtherKind";',
+        ]:
+            with self.subTest(sql=sql):
+                self.assert_disallowed(sql)
+
+    def test_knowledge_rank_check_expansion_is_allowed(self) -> None:
+        path = (
+            ROOT
+            / validator.MIGRATION_ROOT
+            / "20261007160000_expand_knowledge_position_ranks/migration.sql"
+        )
+        validator.validate_sql(path.read_bytes(), str(path))
+        for sql in [
+            'ALTER TABLE "Employee" DROP CONSTRAINT "KnowledgePositionRank_rank_check";',
+            'ALTER TABLE "KnowledgePositionRank" DROP CONSTRAINT "KnowledgePositionRank_pkey";',
+            'ALTER TABLE "KnowledgePositionRank" ADD CONSTRAINT "KnowledgePositionRank_rank_check" '
+            "CHECK (\"rank\" IN ('general','leader'));",
+            'ALTER TABLE "KnowledgeProcedureReview" ADD CONSTRAINT "KnowledgePositionRank_rank_check" '
+            "CHECK (\"rank\" IN ('general','leader','section_chief','manager','general_manager','executive'));",
+        ]:
+            with self.subTest(sql=sql):
+                self.assert_disallowed(sql)
+
+    def test_procedure_material_work_instruction_origin_expansion_is_allowed(self) -> None:
+        path = (
+            ROOT
+            / validator.MIGRATION_ROOT
+            / "20261007000000_add_procedure_material_work_instruction_origin/migration.sql"
+        )
+        validator.validate_sql(path.read_bytes(), str(path))
+        for sql in [
+            'ALTER TYPE "OtherOrigin" ADD VALUE \'WORK_INSTRUCTION\';',
+            'ALTER TYPE "ProcedureMaterialOrigin" ADD VALUE \'OTHER\';',
+            'ALTER TYPE "ProcedureMaterialOrigin" RENAME VALUE \'GMAIL\' TO \'WORK_INSTRUCTION\';',
+        ]:
+            with self.subTest(sql=sql):
+                self.assert_disallowed(sql)
+
+    def test_procedure_video_link_scene_foreign_key_is_allowed(self) -> None:
+        path = (
+            ROOT
+            / validator.MIGRATION_ROOT
+            / "20261008140000_add_procedure_video_scenes/migration.sql"
+        )
+        validator.validate_sql(path.read_bytes(), str(path))
+        for sql in [
+            'ALTER TABLE "ProcedureVideo" ADD CONSTRAINT "ProcedureVideoLink_sceneId_fkey" '
+            'FOREIGN KEY ("sceneId") REFERENCES "ProcedureVideoScene"("id") '
+            "ON DELETE RESTRICT ON UPDATE CASCADE;",
+            'ALTER TABLE "ProcedureVideoLink" ADD CONSTRAINT "ProcedureVideoLink_sceneId_fkey" '
+            'FOREIGN KEY ("videoId") REFERENCES "ProcedureVideoScene"("id") '
+            "ON DELETE RESTRICT ON UPDATE CASCADE;",
+            'ALTER TABLE "ProcedureVideoLink" ADD CONSTRAINT "ProcedureVideoLink_sceneId_fkey" '
+            'FOREIGN KEY ("sceneId") REFERENCES "ProcedureVideoScene"("id") '
+            "ON DELETE CASCADE ON UPDATE CASCADE;",
+        ]:
+            with self.subTest(sql=sql):
+                self.assert_disallowed(sql)
+
+    def test_only_torque_confirmation_setting_history_nullability_drops_are_allowed(self) -> None:
+        statements = [
+            'ALTER TABLE "AssemblyTorqueWrenchConfirmation" '
+            'ALTER COLUMN "settingHistoryId" DROP NOT NULL;',
+            'ALTER TABLE "TorqueTrainingWrenchConfirmation" '
+            'ALTER COLUMN "settingHistoryId" DROP NOT NULL;',
+        ]
+        for statement in statements:
+            with self.subTest(statement=statement):
+                self.assert_allowed(statement)
+
+    def test_near_miss_nullability_drops_remain_rejected(self) -> None:
+        statements = [
+            'ALTER TABLE "OtherTorqueWrenchConfirmation" '
+            'ALTER COLUMN "settingHistoryId" DROP NOT NULL;',
+            'ALTER TABLE "AssemblyTorqueWrenchConfirmation" '
+            'ALTER COLUMN "otherId" DROP NOT NULL;',
+            'ALTER TABLE "TorqueTrainingWrenchConfirmation" '
+            'ALTER COLUMN "settingHistoryID" DROP NOT NULL;',
+            'ALTER TABLE "AssemblyTorqueWrenchConfirmation" '
+            'ALTER COLUMN "settingHistoryId" SET NOT NULL;',
+            'ALTER TABLE "AssemblyTorqueWrenchConfirmation" '
+            'ALTER COLUMN "settingHistoryId" DROP DEFAULT;',
+            'ALTER TABLE ONLY "AssemblyTorqueWrenchConfirmation" '
+            'ALTER COLUMN "settingHistoryId" DROP NOT NULL;',
+            'ALTER TABLE IF EXISTS "AssemblyTorqueWrenchConfirmation" '
+            'ALTER COLUMN "settingHistoryId" DROP NOT NULL;',
+            'ALTER TABLE "public"."AssemblyTorqueWrenchConfirmation" '
+            'ALTER COLUMN "settingHistoryId" DROP NOT NULL;',
+            'ALTER TABLE "AssemblyTorqueWrenchConfirmation" '
+            'ALTER COLUMN "settingHistoryId" DROP NOT NULL, '
+            'ALTER COLUMN "otherId" DROP NOT NULL;',
+        ]
+        for statement in statements:
+            with self.subTest(statement=statement):
+                self.assert_disallowed(statement)
+
     def test_comments_and_quoted_constructs_do_not_change_statement_boundaries(self) -> None:
         self.assert_allowed(
             '/* outer /* nested */ comment */ CREATE TABLE "dash--board" ("id" INTEGER);\n'

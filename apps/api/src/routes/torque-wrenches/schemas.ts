@@ -7,6 +7,11 @@ const status = z.enum(['AVAILABLE', 'IN_USE', 'MAINTENANCE', 'RETIRED']);
 
 export const torqueWrenchIdParamsSchema = z.object({ id });
 
+/** Optional session context enables exact-owner token redaction on status reads. */
+export const torqueWrenchConnectionLeaseStatusQuerySchema = z.object({
+  sessionId: id.optional()
+});
+
 export const torqueWrenchListQuerySchema = z.object({
   includeInactive: z.coerce.boolean().optional().default(false)
 });
@@ -19,6 +24,7 @@ export const torqueWrenchModelCreateSchema = z.object({
   resolutionNm: decimal.nullable().optional(),
   communicationType: z.string().trim().min(1).max(80).optional(),
   outputProfile: z.string().trim().max(120).nullable().optional(),
+  settingVerificationMode: z.enum(['REGISTERED_SETTING', 'BOLT_CONDITION_ONLY']).optional(),
   isActive: z.boolean().optional()
 });
 

@@ -47,6 +47,44 @@ describe('SelfInspectionKioskButton', () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
+  it('uses a visible selected style when pressed', () => {
+    render(<SelfInspectionKioskButton pressed>1件目</SelfInspectionKioskButton>);
+    const button = screen.getByRole('button', { name: '1件目' });
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+    expect(button.className).toContain('bg-cyan-400');
+    expect(button.className).toContain('ring-2');
+  });
+
+  it('uses semantic success and danger colors for final judgements', () => {
+    render(
+      <>
+        <SelfInspectionKioskButton tone="success" pressed>
+          最終OK
+        </SelfInspectionKioskButton>
+        <SelfInspectionKioskButton tone="danger" pressed>
+          最終NG
+        </SelfInspectionKioskButton>
+      </>
+    );
+    expect(screen.getByRole('button', { name: '最終OK' }).className).toContain(
+      'bg-emerald-400'
+    );
+    expect(screen.getByRole('button', { name: '最終NG' }).className).toContain(
+      'bg-red-400'
+    );
+  });
+
+  it('keeps disabled styling ahead of pressed semantic styling', () => {
+    render(
+      <SelfInspectionKioskButton tone="danger" pressed disabled>
+        最終NG
+      </SelfInspectionKioskButton>
+    );
+    const button = screen.getByRole('button', { name: '最終NG' });
+    expect(button.className).not.toContain('bg-red-400');
+    expect(button.className).toContain('opacity-40');
+  });
+
   it('mirrors session page wiring: save and complete highlight only when enabled', () => {
     const saveEnabled = true;
     const completeEnabled = false;

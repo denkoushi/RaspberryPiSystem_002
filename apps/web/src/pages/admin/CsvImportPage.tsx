@@ -4,6 +4,7 @@ import { useCsvImportConfig, useCsvImportConfigMutations } from '../../api/hooks
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { ProcedureMaterialGmailScheduleCard } from '../../features/admin/csv-import/ProcedureMaterialGmailScheduleCard';
 
 import { CsvImportSchedulePage } from './CsvImportSchedulePage';
 import { MasterImportPage } from './MasterImportPage';
@@ -159,6 +160,7 @@ export function CsvImportPage() {
 
   return (
     <div className="space-y-6">
+      <ProcedureMaterialGmailScheduleCard />
       <Card title="CSV取り込み">
         <div className="space-y-4">
           <div className="flex flex-wrap gap-4">

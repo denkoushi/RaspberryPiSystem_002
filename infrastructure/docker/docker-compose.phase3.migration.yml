@@ -1,0 +1,10 @@
+services:
+  api-blue:
+    # Loaded only by the ephemeral migration command, never by slot startup.
+    env_file:
+      - ${MIGRATION_DATABASE_ENV_FILE:?MIGRATION_DATABASE_ENV_FILE is required}
+
+  api-green:
+    # Loaded only by the ephemeral migration command, never by slot startup.
+    env_file:
+      - ${MIGRATION_DATABASE_ENV_FILE:?MIGRATION_DATABASE_ENV_FILE is required}

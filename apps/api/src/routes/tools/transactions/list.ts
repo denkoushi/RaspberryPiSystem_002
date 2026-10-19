@@ -1,3 +1,4 @@
+import { toTransactionResponse } from '../../../lib/loan-response.js';
 import type { FastifyInstance } from 'fastify';
 import { authorizeRoles } from '../../../lib/auth.js';
 import { TransactionService } from '../../../services/tools/transaction.service.js';
@@ -9,7 +10,11 @@ export function registerTransactionListRoute(app: FastifyInstance, transactionSe
   app.get('/transactions', { preHandler: canView, config: { rateLimit: false } }, async (request) => {
     const query = transactionQuerySchema.parse(request.query);
     const result = await transactionService.findAll(query);
-    return result;
+    return {
+      transactions: result.transactions.map(toTransactionResponse),
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize,
+    };
   });
 }
-

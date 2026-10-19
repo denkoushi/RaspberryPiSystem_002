@@ -1,3 +1,4 @@
+import { readProductionBuildConfig } from '../../config/productionBuildConfig';
 import { resolveClientKey } from '../../lib/client-key';
 import { buildSignageCurrentImageUrl } from '../../lib/signage/buildSignageCurrentImageUrl';
 import { api } from '../http';
@@ -19,8 +20,11 @@ export interface SignageSlotConfig {
   cardsPerPage?: number;
   /** mobile_placement_parts_shelf_grid: ゾーンあたりの最大表示行数（省略時はサーバ既定） */
   maxItemsPerZone?: number;
-  /** self_inspection_machine_board: manual / auto 選定モード */
-  targetMode?: 'manual_machine_name' | 'auto_from_leaderboard_status';
+  /**
+   * self_inspection_machine_board の選定モード。
+   * kiosk_active_sessions は現行管理 UI の標準値、auto_from_leaderboard_status は legacy wire 値。
+   */
+  targetMode?: 'manual_machine_name' | 'kiosk_active_sessions' | 'auto_from_leaderboard_status';
   /** self_inspection_machine_board manual: 機種名（生産日程 machineName と正規化比較） */
   machineName?: string;
   /** self_inspection_machine_board auto: 連結する機種数上限 */
@@ -29,6 +33,8 @@ export interface SignageSlotConfig {
   partsPerPage?: number;
   /** self_inspection_machine_board: 詳細ヒートストリップ対象部品数 */
   detailTopN?: number;
+  /** web_page: 表示するページ撮影コンテンツ（SignageWebCapture）の ID */
+  webCaptureId?: string;
 }
 
 export interface SignageSlot {
@@ -42,14 +48,43 @@ export interface SignageSlot {
     | 'kiosk_leader_order_cards'
     | 'mobile_placement_parts_shelf_grid'
     | 'self_inspection_machine_board'
+    | 'web_page'
     | 'message';
   config: SignageSlotConfig | Record<string, never>;
 }
 
-export interface SignageLayoutConfig {
-  layout: 'FULL' | 'SPLIT';
-  slots: SignageSlot[];
+export interface SignageCanvasElement {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  kind: 'text' | 'visualization';
+  text?: string;
+  title?: string;
+  style?: {
+    fontSize?: number;
+    fontWeight?: 'normal' | '600' | '700';
+    color?: string;
+    align?: 'start' | 'middle' | 'end';
+    verticalAlign?: 'top' | 'middle' | 'bottom';
+  };
+  dataSourceType?: string;
+  dataSourceConfig?: Record<string, unknown>;
+  rendererType?: string;
+  rendererConfig?: Record<string, unknown>;
 }
+
+export interface SignageCanvasPreviewSpec {
+  width: number;
+  height: number;
+  backgroundColor: string;
+  elements: SignageCanvasElement[];
+}
+
+export type SignageLayoutConfig =
+  | { layout: 'FULL' | 'SPLIT'; slots: SignageSlot[]; a2ui?: NonNullable<import('./assembly').BusinessHermesSignageProposal['a2ui']> }
+  | { layout: 'CANVAS'; width: number; height: number; backgroundColor: string; elements: SignageCanvasElement[] };
 
 export interface SignageSchedule {
   id: string;
@@ -248,9 +283,17 @@ export async function getSignageContent() {
   return data;
 }
 
+/** 業務Hermesの提案キャンバスを保存せず、実データ込みのJPEGとして取得する。 */
+export async function renderSignageCanvasPreview(spec: SignageCanvasPreviewSpec): Promise<Blob> {
+  const { data } = await api.post<Blob>('/signage/canvas-preview', spec, {
+    responseType: 'blob',
+  });
+  return data;
+}
+
 /** 可視化ダッシュボードのレンダリング画像URL（Web /signage 表示用） */
 export function getSignageVisualizationImageUrl(dashboardId: string): string {
-  const base = import.meta.env.VITE_API_BASE_URL ?? '/api';
+  const base = readProductionBuildConfig().apiBaseUrl;
   const normalized = base.replace(/\/$/, '');
   return `${normalized}/signage/visualization-image/${dashboardId}`;
 }
@@ -274,7 +317,7 @@ export function getSignageCurrentImageUrl(
 
 /** 要領書PDFページ画像URL（/api/storage/pdf-pages/... をフルURL化） */
 export function resolveKioskDocumentPageImageUrl(apiPath: string): string {
-  const base = import.meta.env.VITE_API_BASE_URL ?? '/api';
+  const base = readProductionBuildConfig().apiBaseUrl;
   const normalized = base.replace(/\/$/, '');
   const suffix = apiPath.startsWith('/api') ? apiPath.slice(4) : apiPath.startsWith('/') ? apiPath : `/${apiPath}`;
   return `${normalized}${suffix}`;
@@ -297,5 +340,123 @@ export interface SignageRenderStatus {
 
 export async function getSignageRenderStatus() {
   const { data } = await api.get<SignageRenderStatus>('/signage/render/status');
+  return data;
+}
+
+// ページ撮影コンテンツ（管理画面のページを撮ってサイネージに出す）
+export type SignageWebCaptureWaitMode = 'network_idle' | 'fixed_delay';
+
+export interface SignageWebCaptureSettings {
+  path: string;
+  viewportWidth: number;
+  viewportHeight: number;
+  waitMode: SignageWebCaptureWaitMode;
+  waitSeconds: number;
+  hideSelectors: string[];
+  clipSelector: string | null;
+}
+
+export interface SignageWebCaptureInput extends SignageWebCaptureSettings {
+  name: string;
+  refreshIntervalSeconds: 60 | 300 | 900;
+  enabled: boolean;
+}
+
+export interface SignageWebCapture extends SignageWebCaptureInput {
+  id: string;
+  lastCapturedAt: string | null;
+  lastStatus: 'never' | 'success' | 'failed';
+  lastError: string | null;
+  lastDurationMs: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** プレビュー上で「隠す部分」に選べる領域 */
+export interface SignageWebCaptureRegion {
+  selector: string;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface SignageWebCapturePreview {
+  imageDataUrl: string;
+  regions: SignageWebCaptureRegion[];
+  durationMs: number;
+  /** autoHideLandmarks で自動的に隠したセレクタ */
+  autoHiddenSelectors: string[];
+  /** ページの最初の見出し（名前の初期値に使う） */
+  pageTitle: string | null;
+}
+
+export async function getSignageWebCaptures() {
+  const { data } = await api.get<{ webCaptures: SignageWebCapture[] }>('/signage/web-captures');
+  return data.webCaptures;
+}
+
+export async function createSignageWebCapture(payload: SignageWebCaptureInput) {
+  const { data } = await api.post<{ webCapture: SignageWebCapture }>('/signage/web-captures', payload);
+  return data.webCapture;
+}
+
+export async function updateSignageWebCapture(id: string, payload: Partial<SignageWebCaptureInput>) {
+  const { data } = await api.put<{ webCapture: SignageWebCapture }>(`/signage/web-captures/${id}`, payload);
+  return data.webCapture;
+}
+
+export async function deleteSignageWebCapture(id: string) {
+  await api.delete(`/signage/web-captures/${id}`);
+}
+
+export async function captureSignageWebCaptureNow(id: string) {
+  const { data } = await api.post<{ webCapture: SignageWebCapture }>(`/signage/web-captures/${id}/capture`);
+  return data.webCapture;
+}
+
+export async function previewSignageWebCapture(settings: SignageWebCaptureSettings, options: { autoHideLandmarks?: boolean } = {}) {
+  const { data } = await api.post<SignageWebCapturePreview>('/signage/web-captures/capture-preview', {
+    ...settings,
+    autoHideLandmarks: options.autoHideLandmarks ?? false,
+  });
+  return data;
+}
+
+export async function getSignageWebCaptureImage(id: string): Promise<Blob> {
+  const { data } = await api.get<Blob>(`/signage/web-captures/${id}/image`, { responseType: 'blob' });
+  return data;
+}
+
+// サイネージ管理の概況（端末ごとの描画時刻と、端末が最後に画像を取りに来た時刻）
+export interface SignageManagementOverview {
+  generatedAt: string;
+  renderIntervalSeconds: number;
+  /** 同じ時間に複数の予定があるとき、1 件を映す秒数 */
+  scheduleSwitchIntervalSeconds: number;
+  clients: Array<{
+    apiKey: string;
+    lastFetchedAt: string | null;
+    rotation: SignageRotation;
+  }>;
+}
+
+/** 端末でいま順番に映している予定 */
+export interface SignageRotation {
+  scheduleIds: string[];
+  currentIndex: number;
+  secondsUntilSwitch: number | null;
+  /** いまの時刻に当たる予定がなく、代わりの予定を映している */
+  isFallback: boolean;
+}
+
+export async function getSignageManagementOverview() {
+  const { data } = await api.get<SignageManagementOverview>('/signage/management/overview');
+  return data;
+}
+
+export async function getSignageCsvDashboardPreviewImage(id: string): Promise<Blob> {
+  const { data } = await api.get<Blob>(`/signage/preview/csv-dashboard/${id}`, { responseType: 'blob' });
   return data;
 }

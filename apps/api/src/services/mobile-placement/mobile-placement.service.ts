@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
-import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
+import { findProductionSchedulePlacementBarcodeSnapshot } from '../production-schedule/production-schedule-snapshot.service.js';
 
 export type MobilePlacementRegisterInput = {
   clientDeviceId: string;
@@ -39,37 +39,21 @@ async function assertBarcodeMatchesScheduleRow(params: {
   csvDashboardRowId: string;
   itemBarcodeRaw: string;
   item: { itemCode: string } | null;
-}): Promise<{ rowData: unknown }> {
-  const row = await prisma.csvDashboardRow.findFirst({
-    where: {
-      id: params.csvDashboardRowId,
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID
-    },
-    select: { rowData: true }
-  });
+}): Promise<Record<string, unknown>> {
+  const row = await findProductionSchedulePlacementBarcodeSnapshot(params.csvDashboardRowId);
   if (!row) {
     throw new ApiError(404, '指定のスケジュール行が見つかりません');
   }
 
-  const rd = (row.rowData ?? {}) as Record<string, unknown>;
-  const productNo = typeof rd.ProductNo === 'string' ? rd.ProductNo.trim() : '';
-  const fseiban = typeof rd.FSEIBAN === 'string' ? rd.FSEIBAN.trim() : '';
-  const fhincd = typeof rd.FHINCD === 'string' ? rd.FHINCD.trim() : '';
-
   const scan = normalizePlacementToken(params.itemBarcodeRaw);
   const scanUpper = scan.toUpperCase();
 
-  const matchesField =
-    (productNo.length > 0 && scanUpper === productNo.toUpperCase()) ||
-    (fseiban.length > 0 && scanUpper === fseiban.toUpperCase()) ||
-    (fhincd.length > 0 && scanUpper === fhincd.toUpperCase());
+  const matchesField = row.barcodeMatchValues.some((value) => scanUpper === value.toUpperCase());
 
   const itemCodeUpper = params.item?.itemCode.trim().toUpperCase() ?? '';
   const matchesItem =
     itemCodeUpper.length > 0 &&
-    ((productNo.length > 0 && itemCodeUpper === productNo.toUpperCase()) ||
-      (fseiban.length > 0 && itemCodeUpper === fseiban.toUpperCase()) ||
-      (fhincd.length > 0 && itemCodeUpper === fhincd.toUpperCase()));
+    row.barcodeMatchValues.some((value) => itemCodeUpper === value.toUpperCase());
 
   if (!matchesField && !matchesItem) {
     throw new ApiError(
@@ -80,7 +64,12 @@ async function assertBarcodeMatchesScheduleRow(params: {
     );
   }
 
-  return { rowData: row.rowData };
+  return {
+    ProductNo: row.manufacturingOrderNo,
+    FSEIBAN: row.seiban,
+    FHINCD: row.partCode,
+    FHINMEI: row.partName
+  };
 }
 
 export async function registerPlacement(input: MobilePlacementRegisterInput) {
@@ -113,18 +102,11 @@ export async function registerPlacement(input: MobilePlacementRegisterInput) {
 
   let scheduleSnapshot: Record<string, unknown> | undefined;
   if (input.csvDashboardRowId && input.csvDashboardRowId.trim().length > 0) {
-    const { rowData } = await assertBarcodeMatchesScheduleRow({
+    scheduleSnapshot = await assertBarcodeMatchesScheduleRow({
       csvDashboardRowId: input.csvDashboardRowId.trim(),
       itemBarcodeRaw: itemScan,
       item: { itemCode: item.itemCode }
     });
-    const rd = (rowData ?? {}) as Record<string, unknown>;
-    scheduleSnapshot = {
-      ProductNo: rd.ProductNo ?? null,
-      FSEIBAN: rd.FSEIBAN ?? null,
-      FHINCD: rd.FHINCD ?? null,
-      FHINMEI: rd.FHINMEI ?? null
-    };
   }
 
   const previousStorageLocation = item.storageLocation;

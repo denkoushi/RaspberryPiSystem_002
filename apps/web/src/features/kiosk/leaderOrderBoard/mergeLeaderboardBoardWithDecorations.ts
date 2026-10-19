@@ -1,3 +1,5 @@
+import { buildLeaderboardPartKeyFromScheduleRow } from './leaderboardDecorationStalePolicy';
+
 import type {
   ProductionScheduleLeaderboardBoardResponse,
   ProductionScheduleLeaderboardDecorationsResponse,
@@ -13,21 +15,35 @@ export type LeaderboardRowDecoration = {
   selfInspectionTemplateId: string | null;
   selfInspectionStatus: SelfInspectionStatus | null;
   selfInspectionEntryPath: string | null;
+  selfInspectionResourceCds?: string[];
+  selfInspectionResourceCd?: string | null;
 };
 
 type LeaderboardFooterChipsByPartKey = NonNullable<
   ProductionScheduleListResponse['leaderboardFooterChipsByPartKey']
 >;
 
+type LeaderboardMaterialArrivalByPartKey = NonNullable<
+  ProductionScheduleListResponse['leaderboardMaterialArrivalByPartKey']
+>;
+
+type LeaderboardMaterialArrivalBasisByPartKey = NonNullable<
+  ProductionScheduleListResponse['leaderboardMaterialArrivalBasisByPartKey']
+>;
+
 export type AccumulatedLeaderboardDecorations = {
   rowDecorationsById: Map<string, LeaderboardRowDecoration>;
   leaderboardFooterChipsByPartKey: LeaderboardFooterChipsByPartKey;
+  leaderboardMaterialArrivalByPartKey: LeaderboardMaterialArrivalByPartKey;
+  leaderboardMaterialArrivalBasisByPartKey: LeaderboardMaterialArrivalBasisByPartKey;
 };
 
 export function createEmptyAccumulatedLeaderboardDecorations(): AccumulatedLeaderboardDecorations {
   return {
     rowDecorationsById: new Map(),
-    leaderboardFooterChipsByPartKey: {}
+    leaderboardFooterChipsByPartKey: {},
+    leaderboardMaterialArrivalByPartKey: {},
+    leaderboardMaterialArrivalBasisByPartKey: {}
   };
 }
 
@@ -44,14 +60,48 @@ export function mergeLeaderboardDecorationsIntoAccumulator(
       hasSelfInspectionDrawing: d.hasSelfInspectionDrawing,
       selfInspectionTemplateId: d.selfInspectionTemplateId ?? null,
       selfInspectionStatus: d.selfInspectionStatus ?? null,
-      selfInspectionEntryPath: d.selfInspectionEntryPath ?? null
+      selfInspectionEntryPath: d.selfInspectionEntryPath ?? null,
+      selfInspectionResourceCds: d.selfInspectionResourceCds ?? [],
+      selfInspectionResourceCd: d.selfInspectionResourceCd ?? null
     });
   }
   const leaderboardFooterChipsByPartKey: LeaderboardFooterChipsByPartKey = {
     ...prev.leaderboardFooterChipsByPartKey,
     ...(response.leaderboardFooterChipsByPartKey ?? {})
   };
-  return { rowDecorationsById, leaderboardFooterChipsByPartKey };
+  return {
+    rowDecorationsById,
+    leaderboardFooterChipsByPartKey,
+    leaderboardMaterialArrivalByPartKey: mergeLeaderboardMaterialArrivalByPartKey(prev, response),
+    leaderboardMaterialArrivalBasisByPartKey: mergeLeaderboardMaterialArrivalBasisByPartKey(prev, response)
+  };
+}
+
+/**
+ * 材料の入荷状況を累積へマージする。応答は「材料行がある部品」だけを返すので、
+ * 今回の応答で工程チップが届いた部品（＝再取得した部品）は一度消してから上書きし、
+ * 材料行が無くなった部品のバッジが残らないようにする。
+ */
+function mergeLeaderboardMaterialArrivalByPartKey(
+  prev: AccumulatedLeaderboardDecorations,
+  response: ProductionScheduleLeaderboardDecorationsResponse
+): LeaderboardMaterialArrivalByPartKey {
+  const next: LeaderboardMaterialArrivalByPartKey = { ...prev.leaderboardMaterialArrivalByPartKey };
+  for (const partKey of Object.keys(response.leaderboardFooterChipsByPartKey ?? {})) {
+    delete next[partKey];
+  }
+  return { ...next, ...(response.leaderboardMaterialArrivalByPartKey ?? {}) };
+}
+
+function mergeLeaderboardMaterialArrivalBasisByPartKey(
+  prev: AccumulatedLeaderboardDecorations,
+  response: ProductionScheduleLeaderboardDecorationsResponse
+): LeaderboardMaterialArrivalBasisByPartKey {
+  const next = { ...prev.leaderboardMaterialArrivalBasisByPartKey };
+  for (const partKey of Object.keys(response.leaderboardFooterChipsByPartKey ?? {})) {
+    delete next[partKey];
+  }
+  return { ...next, ...(response.leaderboardMaterialArrivalBasisByPartKey ?? {}) };
 }
 
 export function mergeLeaderboardBoardWithDecorations(
@@ -68,7 +118,12 @@ export function mergeLeaderboardBoardWithDecorations(
 > {
   const rows = board.rows.map((row): ProductionScheduleRow => {
     const deco = decorations.rowDecorationsById.get(row.id);
-    return deco ? { ...row, ...deco } : row;
+    const materialArrivalStatus =
+      decorations.leaderboardMaterialArrivalByPartKey?.[buildLeaderboardPartKeyFromScheduleRow(row)] ?? null;
+    const materialArrivalBasis =
+      decorations.leaderboardMaterialArrivalBasisByPartKey?.[buildLeaderboardPartKeyFromScheduleRow(row)] ?? null;
+    if (!deco && materialArrivalStatus == null) return row;
+    return { ...row, ...deco, materialArrivalStatus, materialArrivalBasis };
   });
   const footerKeys = Object.keys(decorations.leaderboardFooterChipsByPartKey);
   return {

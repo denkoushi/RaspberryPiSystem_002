@@ -89,10 +89,4 @@ describe('enqueueMainLocalLlmRuntimeControl', () => {
       MAIN_LOCAL_LLM_RUNTIME_CONTROL_PRIORITIES.agent
     );
   });
-
-  it('maps stackchan_chat to agent priority tier', () => {
-    expect(resolveMainLocalLlmRuntimeControlPriorityForUseCase('stackchan_chat')).toBe(
-      MAIN_LOCAL_LLM_RUNTIME_CONTROL_PRIORITIES.agent
-    );
-  });
 });

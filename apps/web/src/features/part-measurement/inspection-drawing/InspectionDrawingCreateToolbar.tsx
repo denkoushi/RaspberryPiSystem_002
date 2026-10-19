@@ -11,8 +11,10 @@ import {
   inspectionDrawingKioskDisabledButtonClass,
   inspectionDrawingKioskToggleInactiveClass
 } from './inspectionDrawingKioskUi';
+import { inspectionDrawingSopTargetProps } from './inspectionDrawingSopAnnotations';
 
 import type { PartMeasurementProcessGroup } from '../types';
+import type { ReactNode } from 'react';
 
 export type InspectionDrawingToolbarMode = 'place' | 'callout' | 'test' | 'guidedTrial';
 
@@ -27,6 +29,8 @@ type Props = {
   saveDisabled?: boolean;
   saveBusy?: boolean;
   saveStatus?: InspectionDrawingCreateSaveStatus;
+  /** 指定時は状態ラベルの代わりに表示（保存不可の理由など） */
+  saveStatusText?: string | null;
   /** 編集時は系譜キー（品番・工程）を変えられないため非表示 */
   showProcessGroup?: boolean;
   /** 指定時は保存ボタン右に戻るリンクを表示 */
@@ -35,6 +39,8 @@ type Props = {
   returnLabel?: string;
   /** 保存済みテンプレートの帳票プレビュー（新しいタブ）。未保存変更は反映されない */
   savedPrintPath?: string;
+  /** 画面固有の補助操作。右側操作群の戻るリンク直前に表示 */
+  supplementalAction?: ReactNode;
 };
 
 export function InspectionDrawingCreateToolbar({
@@ -48,10 +54,12 @@ export function InspectionDrawingCreateToolbar({
   saveDisabled = false,
   saveBusy = false,
   saveStatus,
+  saveStatusText,
   showProcessGroup = true,
   returnTo,
   returnLabel,
-  savedPrintPath
+  savedPrintPath,
+  supplementalAction
 }: Props) {
   const toggleClass = (isActive: boolean) =>
     clsx(inspectionDrawingKioskToggleInactiveClass(isActive), inspectionDrawingKioskDisabledButtonClass);
@@ -60,9 +68,9 @@ export function InspectionDrawingCreateToolbar({
   const guidedTrialDisabled = testDisabled;
   const saveBlocked = saveDisabled || saveBusy || !onSave;
   const saveStatusClassName = clsx(
-    'inline-flex min-h-9 shrink-0 items-center rounded border px-1.5 text-[0.85rem] font-semibold',
+    'inline-flex min-h-9 max-w-[22rem] shrink-0 items-center truncate rounded border px-1.5 text-[0.85rem] font-semibold',
     saveStatus === 'dirty' && 'border-amber-300/55 bg-amber-400/15 text-amber-100',
-    saveStatus === 'blocked' && 'border-white/15 bg-white/5 text-white/65',
+    saveStatus === 'blocked' && 'border-rose-300/55 bg-rose-400/10 text-rose-100',
     saveStatus === 'saved' && 'border-emerald-300/35 bg-emerald-400/10 text-emerald-100',
     saveStatus === 'saving' && 'border-cyan-300/45 bg-cyan-400/10 text-cyan-100',
     saveStatus === 'read_only' && 'border-sky-300/35 bg-sky-400/10 text-sky-100'
@@ -100,6 +108,7 @@ export function InspectionDrawingCreateToolbar({
         ) : null}
 
         <Button
+          {...inspectionDrawingSopTargetProps('save-revision')}
           type="button"
           variant="primary"
           className={inspectionDrawingKioskDisabledButtonClass}
@@ -110,13 +119,19 @@ export function InspectionDrawingCreateToolbar({
         </Button>
 
         {saveStatus ? (
-          <span className={saveStatusClassName} aria-live="polite">
-            {INSPECTION_DRAWING_CREATE_SAVE_STATUS_LABEL[saveStatus]}
+          <span
+            data-testid="inspection-drawing-create-save-status"
+            className={saveStatusClassName}
+            aria-live="polite"
+            title={saveStatusText ?? undefined}
+          >
+            {saveStatusText || INSPECTION_DRAWING_CREATE_SAVE_STATUS_LABEL[saveStatus]}
           </span>
         ) : null}
 
         {savedPrintPath ? (
           <Link
+            {...inspectionDrawingSopTargetProps('saved-report')}
             to={savedPrintPath}
             target="_blank"
             rel="noopener noreferrer"
@@ -133,6 +148,7 @@ export function InspectionDrawingCreateToolbar({
         className="ml-auto flex shrink-0 items-center gap-2"
       >
         <Button
+          {...inspectionDrawingSopTargetProps('test-input')}
           type="button"
           variant="primary"
           aria-pressed={mode === 'test'}
@@ -143,6 +159,7 @@ export function InspectionDrawingCreateToolbar({
           テスト入力
         </Button>
         <Button
+          {...inspectionDrawingSopTargetProps('guided-trial')}
           type="button"
           variant="primary"
           aria-pressed={mode === 'guidedTrial'}
@@ -153,8 +170,14 @@ export function InspectionDrawingCreateToolbar({
           ガイド試行
         </Button>
 
+        {supplementalAction}
+
         {returnTo && returnLabel ? (
-          <Link to={returnTo} className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1rem]')}>
+          <Link
+            {...inspectionDrawingSopTargetProps('return-library')}
+            to={returnTo}
+            className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1rem]')}
+          >
             {returnLabel}
           </Link>
         ) : null}

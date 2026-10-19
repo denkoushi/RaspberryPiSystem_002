@@ -1,5 +1,7 @@
 import { Prisma } from '@prisma/client';
 import {
+  type MaterialArrivalBasis,
+  type MaterialArrivalStatus,
   type ProductionScheduleResourceCategory
 } from '@raspi-system/shared-types';
 
@@ -22,6 +24,8 @@ export type ProductionScheduleRow = {
   /** 生産日程一覧と progress-overview を製番単位で突合するための専用キー。 */
   seibanJoinKey: string | null;
   occurredAt: Date;
+  /** CSV 行の最終更新日時。旧データでは null。 */
+  updatedAt: Date | null;
   rowData: Prisma.JsonValue;
   processingOrder: number | null;
   globalRank: number | null;
@@ -41,6 +45,8 @@ export type ProductionScheduleRow = {
   hasSelfInspectionDrawing?: boolean;
   selfInspectionStatus?: ProductionScheduleSelfInspectionStatus | null;
   selfInspectionEntryPath?: string | null;
+  selfInspectionResourceCds?: string[];
+  selfInspectionResourceCd?: string | null;
   /** 順位ボード: 機械行の FSIGENSHOYORYO（分）。`+人` OFF 時の表示基準。 */
   machineRequiredMinutes?: number;
   /** 順位ボード: 同一 ProductNo + FKOJUN の FSIGENCD=10 人工数（分）。 */
@@ -81,6 +87,8 @@ export type ProductionScheduleListParams = {
   processChangeResidualMode?: ProcessChangeResidualMode;
   /** {@link materializeProcessChangeResidualStrongEvidence} を同一リクエスト内 1 回だけ実行した結果。 */
   processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>;
+  /** Internal planning source scope; applied as an exact FSEIBAN IN predicate. */
+  planningFseibans?: readonly string[];
 };
 
 export type ProductionScheduleListResult = {
@@ -91,6 +99,9 @@ export type ProductionScheduleListResult = {
   rows: ProductionScheduleRow[];
   /** `responseProfile=leaderboard` のときのみ。progress-overview を二重取得せず行下工程チップへ供給する。 */
   leaderboardFooterChipsByPartKey?: Record<string, LeaderboardPartFooterProcessItem[]>;
+  /** `responseProfile=leaderboard` のときのみ。部品キー → 材料の入荷状況。 */
+  leaderboardMaterialArrivalByPartKey?: Record<string, MaterialArrivalStatus>;
+  leaderboardMaterialArrivalBasisByPartKey?: Record<string, MaterialArrivalBasis>;
   /** `selfInspectionEligibleOnly` のとき。さらに候補がありうる（走査上限または未走査の日程が残る） */
   hasMore?: boolean;
 };

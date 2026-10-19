@@ -13,6 +13,24 @@ beforeEach(() => {
   resetProcessChangeResidualStrongEvidenceMaterializationCacheForTests();
 });
 
+const MOCK_RAW_MAIL_REVISION = 7n;
+
+function isRawRevisionQuery(query: unknown): boolean {
+  const strings = (query as { strings?: readonly string[] } | undefined)?.strings ?? [];
+  return strings.join('').includes('"CsvDashboardRawRevision"');
+}
+
+/** 永続 revision 読み取りと raw rows 読み取りを SQL で振り分ける $queryRaw モック。 */
+function rawQueryMock(rows: unknown[] | Promise<unknown[]>) {
+  return vi.fn((query: unknown) =>
+    isRawRevisionQuery(query) ? Promise.resolve([{ revision: MOCK_RAW_MAIL_REVISION }]) : Promise.resolve(rows)
+  );
+}
+
+function rawRowFetchCount(queryRaw: ReturnType<typeof rawQueryMock>): number {
+  return queryRaw.mock.calls.filter(([query]) => !isRawRevisionQuery(query)).length;
+}
+
 describe('leaderboard-process-change-residual.materialization key helper', () => {
   it('buildProcessChangeResidualStrongEvidenceKey normalizes resource cd', () => {
     expect(
@@ -185,8 +203,8 @@ describe('materializeProcessChangeResidualStrongEvidence cache key', () => {
 
   it('falls back to raw rows when persisted evidence revision is stale', async () => {
     const requestedRevision = 'requested-revision';
-    const observedRevision = '1:2026-04-23T00:00:00.000Z:2026-04-24T00:00:00.000Z';
-    const queryRaw = vi.fn().mockResolvedValue([
+    const observedRevision = String(MOCK_RAW_MAIL_REVISION);
+    const queryRaw = rawQueryMock([
       {
         id: 'raw-1',
         FKOJUN: '210',
@@ -219,13 +237,13 @@ describe('materializeProcessChangeResidualStrongEvidence cache key', () => {
 
     expect(findUnique).toHaveBeenCalledTimes(1);
     expect(findMany).not.toHaveBeenCalled();
-    expect(queryRaw).toHaveBeenCalledTimes(1);
+    expect(rawRowFetchCount(queryRaw)).toBe(1);
     expect(materialization.rawMailRowsRevision).toBe(observedRevision);
   });
 
   it('reuses materialization by raw mail revision', async () => {
-    const rowsRevision = '1:2026-04-23T00:00:00.000Z:2026-04-23T00:00:00.000Z';
-    const queryRaw = vi.fn().mockResolvedValue([
+    const rowsRevision = String(MOCK_RAW_MAIL_REVISION);
+    const queryRaw = rawQueryMock([
       {
         id: 'raw-1',
         FKOJUN: '210',
@@ -253,12 +271,12 @@ describe('materializeProcessChangeResidualStrongEvidence cache key', () => {
 
     expect(second).toBe(first);
     expect(first.rawMailRowsRevision).toBe(rowsRevision);
-    expect(queryRaw).toHaveBeenCalledTimes(1);
+    expect(rawRowFetchCount(queryRaw)).toBe(1);
   });
 
   it('emits cache-hit telemetry without refetching source rows', async () => {
-    const rowsRevision = '1:2026-04-23T00:00:00.000Z:2026-04-23T00:00:00.000Z';
-    const queryRaw = vi.fn().mockResolvedValue([
+    const rowsRevision = String(MOCK_RAW_MAIL_REVISION);
+    const queryRaw = rawQueryMock([
       {
         id: 'raw-1',
         FKOJUN: '210',
@@ -286,7 +304,7 @@ describe('materializeProcessChangeResidualStrongEvidence cache key', () => {
       telemetry
     });
 
-    expect(queryRaw).toHaveBeenCalledTimes(1);
+    expect(rawRowFetchCount(queryRaw)).toBe(1);
     expect(telemetry).toHaveBeenCalledWith({
       cacheHit: true,
       strongEvidenceKeyCount: 0
@@ -294,12 +312,12 @@ describe('materializeProcessChangeResidualStrongEvidence cache key', () => {
   });
 
   it('shares an in-flight materialization across concurrent calls', async () => {
-    const rowsRevision = '1:2026-04-23T00:00:00.000Z:2026-04-23T00:00:00.000Z';
+    const rowsRevision = String(MOCK_RAW_MAIL_REVISION);
     let resolveRows: (rows: unknown[]) => void = () => {};
     const rowsPromise = new Promise<unknown[]>((resolve) => {
       resolveRows = resolve;
     });
-    const queryRaw = vi.fn().mockReturnValue(rowsPromise);
+    const queryRaw = rawQueryMock(rowsPromise);
     const prisma = {
       $queryRaw: queryRaw
     };
@@ -315,9 +333,9 @@ describe('materializeProcessChangeResidualStrongEvidence cache key', () => {
       telemetry: secondTelemetry
     });
 
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(queryRaw).toHaveBeenCalledTimes(1);
+    expect(rawRowFetchCount(queryRaw)).toBe(1);
     resolveRows([
       {
         id: 'raw-1',
@@ -338,7 +356,7 @@ describe('materializeProcessChangeResidualStrongEvidence cache key', () => {
 
     expect(secondResult).toBe(firstResult);
     expect(firstResult.rawMailRowsRevision).toBe(rowsRevision);
-    expect(queryRaw).toHaveBeenCalledTimes(1);
+    expect(rawRowFetchCount(queryRaw)).toBe(1);
     expect(firstTelemetry).toHaveBeenCalledWith(
       expect.objectContaining({
         cacheHit: false,
@@ -352,7 +370,7 @@ describe('materializeProcessChangeResidualStrongEvidence cache key', () => {
   });
 
   it('emits source row counts and stage durations on cache miss', async () => {
-    const queryRaw = vi.fn().mockResolvedValue([
+    const queryRaw = rawQueryMock([
       {
         id: 'raw-1',
         FKOJUN: '210',
@@ -396,7 +414,7 @@ describe('materializeProcessChangeResidualStrongEvidence cache key', () => {
   });
 
   it('does not fail materialization when telemetry callback throws', async () => {
-    const queryRaw = vi.fn().mockResolvedValue([
+    const queryRaw = rawQueryMock([
       {
         id: 'raw-1',
         FKOJUN: '210',
@@ -423,13 +441,13 @@ describe('materializeProcessChangeResidualStrongEvidence cache key', () => {
       })
     ).resolves.toEqual(
       expect.objectContaining({
-        rawMailRowsRevision: '1:2026-04-23T00:00:00.000Z:2026-04-24T00:00:00.000Z'
+        rawMailRowsRevision: String(MOCK_RAW_MAIL_REVISION)
       })
     );
   });
 
   it('stamps materialization with the revision observed from fetched raw rows', async () => {
-    const queryRaw = vi.fn().mockResolvedValue([
+    const queryRaw = rawQueryMock([
       {
         id: 'raw-1',
         FKOJUN: '210',
@@ -452,10 +470,8 @@ describe('materializeProcessChangeResidualStrongEvidence cache key', () => {
       fkojunstStatusMailRowsRevision: 'stale-requested-revision'
     });
 
-    expect(materialization.rawMailRowsRevision).toBe(
-      '1:2026-04-23T00:00:00.000Z:2026-04-24T00:00:00.000Z'
-    );
-    expect(queryRaw).toHaveBeenCalledTimes(1);
+    expect(materialization.rawMailRowsRevision).toBe(String(MOCK_RAW_MAIL_REVISION));
+    expect(rawRowFetchCount(queryRaw)).toBe(1);
   });
 });
 

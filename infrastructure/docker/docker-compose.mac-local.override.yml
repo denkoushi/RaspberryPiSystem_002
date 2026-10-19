@@ -37,6 +37,8 @@ services:
       ALERTS_DIR: /app/alerts
       POWER_ACTIONS_DIR: /app/power-actions
       BACKUP_STORAGE_DIR: /opt/backups
+      # 大容量バックアップはRAM上の/tmp tmpfsを避け、ディスクへ保存する
+      BACKUP_TEMP_DIR: ${BACKUP_TEMP_DIR:-/opt/backups/.tmp}
       DROPBOX_ACCESS_TOKEN: ${DROPBOX_ACCESS_TOKEN:-}
       DROPBOX_APP_KEY: ${DROPBOX_APP_KEY:-}
       DROPBOX_APP_SECRET: ${DROPBOX_APP_SECRET:-}
@@ -50,9 +52,18 @@ services:
       - ../../.docker/local/storage/pdf-pages:/app/storage/pdf-pages
       - ../../.docker/local/storage/signage-rendered:/app/storage/signage-rendered
       - ../../.docker/local/storage/part-measurement-drawings:/app/storage/part-measurement-drawings
+      - ../../.docker/local/storage/part-measurement-drawings-derivatives:/app/storage/part-measurement-drawings-derivatives
       - ../../.docker/local/storage/assembly-procedure-images:/app/storage/assembly-procedure-images
+      - ../../.docker/local/storage/assembly-procedure-assets:/app/storage/assembly-procedure-assets
+      - ../../.docker/local/storage/work-instruction-assets:/app/storage/work-instruction-assets
+      - ../../.docker/local/storage/knowledge-assets:/app/storage/knowledge-assets
+      - ../../.docker/local/storage/procedure-materials:/app/storage/procedure-materials
+      - ../../.docker/local/storage/procedure-videos:/app/storage/procedure-videos
+      - ../../.docker/local/storage/knowledge-git:/app/storage/knowledge-git
       - ../../.docker/local/storage/measuring-instrument-genres:/app/storage/measuring-instrument-genres
       - ../../.docker/local/storage/pallet-machine-illustrations:/app/storage/pallet-machine-illustrations
+      - ../../.docker/local/storage/csv-dashboards:/app/storage/csv-dashboards
+      - ../../.docker/local/storage/.integrity:/app/storage/.integrity
       - ../../.docker/local/alerts:/app/alerts
       - ../../.docker/local/power-actions:/app/power-actions
       - ../../.docker/local/config:/app/config
@@ -62,8 +73,24 @@ services:
       - ../../infrastructure/docker:/app/host/infrastructure/docker:ro
       - ../../clients/nfc-agent:/app/host/clients/nfc-agent:ro
       - ../../.docker/local/certs:/app/host/certs:ro
-      - ../../infrastructure/ansible:/app/host/infrastructure/ansible:ro
-      - ../../.docker/local/ssh:/root/.ssh:ro
+      - type: bind
+        source: ../../.docker/local/backup-ansible
+        target: /app/backup-ansible
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../../.docker/local/ssh/id_ed25519
+        target: /run/secrets/backup-ssh/id_ed25519
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../../.docker/local/ssh/known_hosts
+        target: /run/secrets/backup-ssh/known_hosts
+        read_only: true
+        bind:
+          create_host_path: false
     ports:
       - "8080:8080"
 

@@ -1,18 +1,19 @@
 ---
 id: ADR-20260724-assembly-torque-low-latency-refresh
 status: accepted
-scope: assembly torque-agent delivery and kiosk work-session refresh
+scope: assembly torque-agent delivery and kiosk assembly/training session refresh
 date: 2026-07-24
 source_of_truth: docs/decisions/ADR-20260724-assembly-torque-low-latency-refresh.md
 related_code:
   - clients/torque-agent/torque_agent
   - apps/web/src/features/assembly
+  - apps/web/src/pages/kiosk/KioskAssemblyTrainingPage.tsx
 related_docs:
   - docs/plans/assembly-torque-display-latency-execplan.md
   - docs/runbooks/assembly-torque-agent.md
 validation:
   - torque-agent unit and latency tests
-  - kiosk work-session refresh tests
+  - kiosk assembly/training session refresh tests
   - isolated PostgreSQL integration and query-plan checks
 supersedes: []
 superseded_by: []
@@ -55,6 +56,9 @@ the schema would not address the cause.
 8. The WebSocket remains bound to `127.0.0.1` and accepts only exact configured
    browser origins. A slow or disconnected browser is removed after a bounded
    send attempt and cannot block durable API delivery.
+9. Torque training consumes the same session-scoped invalidation event and
+   reloads the authoritative training-session API. Its existing two-second
+   session poll remains only as the degraded-mode fallback.
 
 ## Consequences
 
@@ -63,6 +67,8 @@ the schema would not address the cause.
   idempotency key remain authoritative and unchanged.
 - Old browser/new agent and new browser/old agent combinations remain safe
   because the polling path is unchanged.
+- Assembly work and torque training share the same notification transport while
+  retaining their separate authoritative session APIs and state transitions.
 - A WebSocket failure can still take slightly longer than one second to appear,
   but it cannot lose an acknowledged record.
 - No Prisma migration or public assembly API change is required.

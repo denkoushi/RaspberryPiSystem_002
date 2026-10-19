@@ -1,4 +1,8 @@
-import { TORQUE_WRENCH_STORAGE_LOCATIONS, type TorqueWrenchStorageLocation } from '@raspi-system/shared-types';
+import {
+  TORQUE_WRENCH_STORAGE_LOCATIONS,
+  type TorqueWrenchSettingVerificationMode,
+  type TorqueWrenchStorageLocation
+} from '@raspi-system/shared-types';
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 
 import {
@@ -40,7 +44,10 @@ export function TorqueWrenchesPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const [modelForm, setModelForm] = useState({ manufacturer: '', modelNumber: '', min: '', max: '', resolution: '' });
+  const [modelForm, setModelForm] = useState({
+    manufacturer: '', modelNumber: '', min: '', max: '', resolution: '',
+    settingVerificationMode: 'REGISTERED_SETTING' as TorqueWrenchSettingVerificationMode
+  });
   const [wrenchForm, setWrenchForm] = useState({
     name: '', managementNumber: '', modelId: '', serialNumber: '', storageLocation: 'TalkPlazaF1' as TorqueWrenchStorageLocation,
     calibrationExpiryDate: ''
@@ -91,7 +98,8 @@ export function TorqueWrenchesPage() {
         modelNumber: modelForm.modelNumber,
         torqueMinNm: Number(modelForm.min),
         torqueMaxNm: Number(modelForm.max),
-        resolutionNm: modelForm.resolution ? Number(modelForm.resolution) : null
+        resolutionNm: modelForm.resolution ? Number(modelForm.resolution) : null,
+        settingVerificationMode: modelForm.settingVerificationMode
       }),
       '型番を登録しました。'
     );
@@ -158,9 +166,22 @@ export function TorqueWrenchesPage() {
               <Field label="最大 N·m"><Input required type="number" step="any" value={modelForm.max} onChange={(e) => setModelForm({ ...modelForm, max: e.target.value })} /></Field>
             </div>
             <Field label="分解能 N·m"><Input type="number" step="any" value={modelForm.resolution} onChange={(e) => setModelForm({ ...modelForm, resolution: e.target.value })} /></Field>
+            <Field label="設定照合方式">
+              <select
+                className="min-h-10 rounded bg-slate-950 px-2"
+                value={modelForm.settingVerificationMode}
+                onChange={(event) => setModelForm({
+                  ...modelForm,
+                  settingVerificationMode: event.target.value as TorqueWrenchSettingVerificationMode
+                })}
+              >
+                <option value="REGISTERED_SETTING">登録設定を照合</option>
+                <option value="BOLT_CONDITION_ONLY">ボルト条件のみ（設定照合対象外）</option>
+              </select>
+            </Field>
             <Button type="submit" variant="primary" disabled={busy}>登録</Button>
           </form>
-          <div className="overflow-x-auto rounded border border-white/15 bg-slate-900/70"><table className="w-full text-sm"><thead className="bg-white/10"><tr><th className="p-3 text-left">メーカー</th><th className="p-3 text-left">型番</th><th className="p-3">測定範囲 N·m</th><th className="p-3">状態</th></tr></thead><tbody>{models.map((model) => <tr key={model.id} className="border-t border-white/10"><td className="p-3">{model.manufacturer}</td><td className="p-3 font-semibold">{model.modelNumber}</td><td className="p-3 text-center">{model.torqueMinNm}–{model.torqueMaxNm}</td><td className="p-3 text-center"><Button type="button" className="px-2 py-1 text-xs" variant={model.isActive ? 'danger' : 'secondary'} disabled={busy} onClick={() => void run(() => updateTorqueWrenchModel(model.id, { isActive: !model.isActive }), model.isActive ? '型番を利用停止しました。' : '型番を再開しました。')}>{model.isActive ? '利用停止' : '再開'}</Button></td></tr>)}</tbody></table></div>
+          <div className="overflow-x-auto rounded border border-white/15 bg-slate-900/70"><table className="w-full text-sm"><thead className="bg-white/10"><tr><th className="p-3 text-left">メーカー</th><th className="p-3 text-left">型番</th><th className="p-3">測定範囲 N·m</th><th className="p-3">設定照合方式</th><th className="p-3">状態</th></tr></thead><tbody>{models.map((model) => <tr key={model.id} className="border-t border-white/10"><td className="p-3">{model.manufacturer}</td><td className="p-3 font-semibold">{model.modelNumber}</td><td className="p-3 text-center">{model.torqueMinNm}–{model.torqueMaxNm}</td><td className="p-3 text-center"><select className="min-h-9 rounded bg-slate-950 px-2 text-xs" disabled={busy} value={model.settingVerificationMode} aria-label={`${model.modelNumber} 設定照合方式`} onClick={(event) => event.stopPropagation()} onChange={(event) => { event.stopPropagation(); const settingVerificationMode = event.target.value as TorqueWrenchSettingVerificationMode; void run(() => updateTorqueWrenchModel(model.id, { settingVerificationMode }), '型番の設定照合方式を更新しました。'); }}><option value="REGISTERED_SETTING">登録設定を照合</option><option value="BOLT_CONDITION_ONLY">設定照合対象外</option></select></td><td className="p-3 text-center"><Button type="button" className="px-2 py-1 text-xs" variant={model.isActive ? 'danger' : 'secondary'} disabled={busy} onClick={() => void run(() => updateTorqueWrenchModel(model.id, { isActive: !model.isActive }), model.isActive ? '型番を利用停止しました。' : '型番を再開しました。')}>{model.isActive ? '利用停止' : '再開'}</Button></td></tr>)}</tbody></table></div>
         </div>
       ) : null}
 

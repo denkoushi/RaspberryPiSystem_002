@@ -9,6 +9,7 @@ import {
 import { getProductionScheduleSearchState } from './production-schedule-search-state.service.js';
 import { getResourceNameMapByResourceCds } from './resource-master.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
+import { findSupplementMachineNamesForMissing } from './seiban-machine-name-supplement-backfill.js';
 import { buildProductionScheduleEffectiveCompletedSql } from './production-schedule-effective-completion.sql.js';
 
 type ProgressOverviewRowRaw = {
@@ -311,6 +312,15 @@ export async function getProductionScheduleProgressOverview(
       processOrder: parseProcessOrder(row.fkojun),
       isCompleted: row.isCompleted
     });
+  });
+
+  // MH/SH 行に機種名が無い製番は補完テーブルで埋める（resolveSeibanMachineDisplayNames と同じ解決順）
+  const supplementMachineNames = await findSupplementMachineNamesForMissing(
+    Array.from(seibanMap.values()).map((seibanItem) => [seibanItem.fseiban, seibanItem.machineName] as const)
+  );
+  supplementMachineNames.forEach((machineName, fseiban) => {
+    const seibanItem = seibanMap.get(fseiban);
+    if (seibanItem) seibanItem.machineName = machineName;
   });
 
   const overviewItems: ProductionScheduleProgressOverviewSeibanItem[] = Array.from(seibanMap.values()).map((seibanItem) => {

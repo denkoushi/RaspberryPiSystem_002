@@ -1,0 +1,709 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { loadNonconformityCatalog } from './catalog.mjs';
+import {
+  execute,
+  fuseRankings,
+  RRF_K,
+  RECENT_CONTENT_LEXICAL_FRACTION,
+  RECENT_CONTENT_DENSE_FRACTION,
+  RECENT_CONTENT_MAX_BATCHES,
+  RECENT_CONTENT_DEADLINE_MS,
+  RECENT_CONTENT_BATCH_ESTIMATE_MS,
+  buildRecentContentPool,
+} from './executor.mjs';
+import { records } from './fixtures/synthetic-records.mjs';
+import { QUERY_PLAN_SCHEMA } from './query-plan.mjs';
+import { createRelevanceJudge } from './relevance-jev.mjs';
+
+const catalog = loadNonconformityCatalog();
+const display = ['nonconformityNo', 'originDepartmentName', 'discoveredOn', 'condition', 'remarks', 'correctiveContent', 'disposition'];
+
+test('both relevance paths preserve diagnostic, attempts and relevanceMs on failure', async () => {
+  for (const sort of ['relevance', { field: 'discoveredOn', direction: 'desc' }]) {
+    const executed = await execute(plan({ semanticQuery: 'surface scratch', sort }), {
+      records, catalog,
+      relevance: async () => {
+        throw Object.assign(new Error('private key and bodies'), {
+          hermesDiagnostic: { provider: 'typesafe-direct', failureCode: 'upstream_http', httpStatus: 429 },
+          attempts: 2, relevanceMs: 123,
+        });
+      },
+    });
+    assert.equal(executed.status, 'unavailable');
+    assert.equal(executed.reason, 'relevance judgment failed: upstream_http 429');
+    assert.equal(executed.attempts, 2);
+    assert.equal(executed.timings.retried, true);
+    assert.equal(executed.timings.relevanceMs, 123);
+    assert.deepEqual(executed.results, []);
+  }
+});
+
+test('executor records a successful judge retry in timings', async () => {
+  let calls = 0;
+  const judge = createRelevanceJudge({
+    sleep: async () => {},
+    evaluate: async ({ questions }) => {
+      if (++calls === 1) throw Object.assign(new Error('timeout'), { hermesDiagnostic: { failureCode: 'timeout' } });
+      return { answers: Object.fromEntries(Object.keys(questions).map((key) => [key, { type: 'noul', noul: 0.9 }])) };
+    },
+  });
+  const result = await execute(plan({ semanticQuery: 'surface scratch' }), { records, catalog, relevance: (input) => judge.judge(input) });
+  assert.equal(result.status, 'answer');
+  assert.equal(result.timings.retried, true);
+  assert.equal(calls, 2);
+});
+
+function plan(overrides = {}) {
+  return {
+    schema: QUERY_PLAN_SCHEMA,
+    sources: ['nonconformity'],
+    filters: [],
+    semanticQuery: '',
+    sort: 'relevance',
+    limit: 5,
+    display,
+    unresolved: [],
+    ...overrides,
+  };
+}
+
+test('executor filters, sorts, limits, and returns original field text', async () => {
+  const executed = await execute(plan({
+    filters: [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['North Shop'] }],
+    sort: { field: 'discoveredOn', direction: 'desc' },
+    limit: 2,
+  }), { records, catalog });
+  assert.equal(executed.status, 'answer');
+  assert.deepEqual(executed.results.map((result) => result.recordId), ['rec-beta', 'rec-delta']);
+  assert.equal(executed.results[0].sourceId, 'nonconformity');
+  const alpha = records[0];
+  const semantic = await execute(plan({
+    semanticQuery: 'surface scratch',
+    sort: 'relevance',
+    limit: 1,
+  }), { records, catalog });
+  assert.deepEqual(semantic.results.map((result) => result.recordId), ['rec-alpha']);
+  assert.equal(semantic.results[0].fields.condition, alpha.condition);
+  assert.equal(semantic.results[0].fields.condition, '  surface scratch  ');
+  assert.equal(semantic.timings.vectorStatus, 'skipped');
+});
+
+test('executor reports no_result when nothing matches', async () => {
+  const missing = await execute(plan({
+    filters: [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['Missing Shop'] }],
+  }), { records, catalog });
+  assert.equal(missing.status, 'no_result');
+  assert.deepEqual(missing.results, []);
+
+  const semantic = await execute(plan({ semanticQuery: 'qqqqxxxxx' }), {
+    records,
+    catalog,
+    relevance: async () => ({ ok: true, ranked: [] }),
+  });
+  assert.equal(semantic.status, 'no_result');
+
+  const unfiltered = await execute(plan({
+    diagnostics: { contentDecision: { jev: false, residualTokens: [], final: false } },
+  }), { records, catalog });
+  assert.equal(unfiltered.status, 'no_result');
+  assert.deepEqual(unfiltered.results, []);
+});
+
+test('date and exclusion filters keep unmatched original text out of the answer', async () => {
+  const before = await execute(plan({
+    filters: [{ source: 'nonconformity', field: 'discoveredOn', op: 'before', values: ['2024-06-01'] }],
+    sort: { field: 'discoveredOn', direction: 'asc' },
+    limit: 10,
+  }), { records, catalog });
+  assert.deepEqual(before.results.map((result) => result.recordId), ['rec-alpha', 'rec-gamma']);
+
+  const excluded = await execute(plan({
+    filters: [{ source: 'nonconformity', field: 'originDepartmentName', op: 'not_in', values: ['North Shop'] }],
+  }), { records, catalog });
+  assert.deepEqual(excluded.results.map((result) => result.recordId), ['rec-gamma']);
+  assert.equal(excluded.results[0].fields.condition, 'gap too wide');
+});
+
+test('date sort keeps older relevant records ahead of newer weak matches', async () => {
+  const dated = [
+    {
+      id: 'old-relevant',
+      discoveredOn: '2020-01-01',
+      condition: 'relevantphrase found on the fixture',
+      remarks: '',
+      correctiveContent: '',
+      disposition: '',
+    },
+    {
+      id: 'new-weak',
+      discoveredOn: '2024-12-31',
+      condition: 'qqqqxxxx only',
+      remarks: '',
+      correctiveContent: '',
+      disposition: '',
+    },
+  ];
+  const executed = await execute(plan({
+    semanticQuery: 'relevantphrase',
+    sort: { field: 'discoveredOn', direction: 'desc' },
+    limit: 1,
+    display: ['condition', 'discoveredOn'],
+  }), {
+    records: dated,
+    bodyFields: ['condition', 'remarks', 'correctiveContent', 'disposition'],
+    relevance: async () => ({ ok: true, ranked: [{ id: 'old-relevant', probability: 0.9 }] }),
+  });
+  assert.equal(executed.status, 'answer');
+  assert.deepEqual(executed.results.map((result) => result.recordId), ['old-relevant']);
+  assert.equal(executed.results[0].fields.condition, 'relevantphrase found on the fixture');
+});
+
+test('a rare content term outranks a frequent generic term', async () => {
+  const body = ['condition', 'remarks', 'correctiveContent', 'disposition'];
+  const dated = [];
+  for (let index = 0; index < 24; index += 1) {
+    dated.push({
+      id: `common-${index}`,
+      discoveredOn: '2024-12-01',
+      condition: 'qqqqcommon filler',
+      remarks: '',
+      correctiveContent: '',
+      disposition: '',
+    });
+  }
+  dated.push({
+    id: 'rare-hit',
+    discoveredOn: '2020-01-01',
+    condition: 'zzzzrare marker',
+    remarks: '',
+    correctiveContent: '',
+    disposition: '',
+  });
+  const executed = await execute(plan({
+    semanticQuery: 'zzzzrareのqqqqcommon',
+    sort: 'relevance',
+    limit: 1,
+    display: ['condition'],
+  }), { records: dated, bodyFields: body });
+  assert.equal(executed.status, 'answer');
+  assert.deepEqual(executed.results.map((result) => result.recordId), ['rare-hit']);
+});
+
+test('a single kanji or katakana character matches as its own token', async () => {
+  const body = ['condition', 'remarks', 'correctiveContent', 'disposition'];
+  const dated = [];
+  for (let index = 0; index < 12; index += 1) {
+    dated.push({
+      id: `plain-${index}`,
+      discoveredOn: '2024-12-01',
+      condition: 'qqqqcommon filler',
+      remarks: '',
+      correctiveContent: '',
+      disposition: '',
+    });
+  }
+  dated.push({
+    id: 'kanji-hit',
+    discoveredOn: '2020-01-01',
+    condition: 'mark 禾 only',
+    remarks: '',
+    correctiveContent: '',
+    disposition: '',
+  });
+  dated.push({
+    id: 'kana-hit',
+    discoveredOn: '2021-01-01',
+    condition: 'mark ヰ only',
+    remarks: '',
+    correctiveContent: '',
+    disposition: '',
+  });
+  const kanji = await execute(plan({
+    semanticQuery: '禾',
+    sort: 'relevance',
+    limit: 3,
+    display: ['condition'],
+  }), { records: dated, bodyFields: body });
+  assert.equal(kanji.status, 'answer');
+  assert.equal(kanji.results[0].recordId, 'kanji-hit');
+
+  const kana = await execute(plan({
+    semanticQuery: 'ヰ',
+    sort: 'relevance',
+    limit: 3,
+    display: ['condition'],
+  }), { records: dated, bodyFields: body });
+  assert.equal(kana.results[0].recordId, 'kana-hit');
+});
+
+test('fuseRankings keeps a lexical hit or a vector rank of 20 and caps the list', () => {
+  assert.equal(RRF_K, 60);
+  const lexical = [{ id: 'lexical-hit', contentTokenScore: 1 }];
+  const vector = [];
+  for (let index = 0; index < 21; index += 1) vector.push({ id: `vec-${index}` });
+  const fused = fuseRankings(lexical, vector);
+  const ids = new Set(fused.map((item) => item.id));
+  assert.equal(ids.has('lexical-hit'), true);
+  assert.equal(ids.has('vec-0'), true);
+  assert.equal(ids.has('vec-20'), false);
+  assert.ok(fused.length <= 15);
+});
+
+test('a failed vector ranker leaves the lexical order in place', async () => {
+  const executed = await execute(plan({
+    semanticQuery: 'surface scratch',
+    sort: 'relevance',
+    limit: 1,
+  }), {
+    records,
+    catalog,
+    vector: async () => { throw new Error('vector unavailable'); },
+  });
+  assert.equal(executed.status, 'answer');
+  assert.deepEqual(executed.results.map((result) => result.recordId), ['rec-alpha']);
+  assert.equal(executed.timings.vectorStatus, 'failed');
+  assert.match(executed.timings.vectorReason, /vector unavailable/);
+  assert.equal(executed.results[0].fields.condition, '  surface scratch  ');
+});
+
+test('a selected filter value does not outrank a content token', async () => {
+  const body = ['condition'];
+  const dated = [];
+  for (let index = 0; index < 20; index += 1) {
+    dated.push({
+      id: `org-${index}`,
+      originDepartmentName: 'North Shop',
+      condition: 'North Shop filler',
+    });
+  }
+  dated.push({ id: 'content-hit', originDepartmentName: 'North Shop', condition: 'qxrare marker' });
+  const executed = await execute(plan({
+    semanticQuery: 'North Shopのqxrare',
+    filters: [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['North Shop'] }],
+    sort: 'relevance',
+    limit: 1,
+    display: ['condition'],
+  }), { records: dated, bodyFields: body });
+  assert.equal(executed.results[0].recordId, 'content-hit');
+});
+
+test('enrichment text ranks like body text', async () => {
+  const body = ['condition'];
+  const recordsWithExtra = [
+    { id: 'plain', condition: 'ordinary note', enrichment: { summary: '', queries: [], tags: [] } },
+    { id: 'tagged', condition: 'ordinary note', enrichment: { summary: 'qxenrich marker', queries: ['qxenrich lookup'], tags: ['qxenrich'] } },
+  ];
+  const executed = await execute(plan({
+    semanticQuery: 'qxenrich',
+    sort: 'relevance',
+    limit: 1,
+    display: ['condition'],
+  }), { records: recordsWithExtra, bodyFields: body });
+  assert.deepEqual(executed.results.map((result) => result.recordId), ['tagged']);
+});
+
+function recentContentPlan(overrides = {}) {
+  return plan({
+    semanticQuery: 'qxrare',
+    sort: { field: 'discoveredOn', direction: 'desc' },
+    limit: 2,
+    display: ['condition', 'discoveredOn'],
+    diagnostics: { contentDecision: { jev: true, residualTokens: [], final: true }, limitExplicit: true },
+    ...overrides,
+  });
+}
+
+function bodyRecord(id, discoveredOn, condition, extra = {}) {
+  return {
+    id,
+    discoveredOn,
+    originDepartmentName: 'North Shop',
+    condition,
+    remarks: '',
+    correctiveContent: '',
+    disposition: '',
+    ...extra,
+  };
+}
+
+test('recent content checks newest low-score matches before older high-score matches', async () => {
+  assert.equal(RECENT_CONTENT_LEXICAL_FRACTION, 0.2);
+  assert.equal(RECENT_CONTENT_MAX_BATCHES, 3);
+  assert.equal(RECENT_CONTENT_DEADLINE_MS, 4500);
+  assert.equal(RECENT_CONTENT_BATCH_ESTIMATE_MS, 900);
+  const dated = [];
+  for (let index = 0; index < 20; index += 1) {
+    dated.push(bodyRecord(
+      `old-${index}`,
+      `2020-01-${String(index + 1).padStart(2, '0')}`,
+      'qxrare qxrare qxrare qxrare',
+    ));
+  }
+  dated.push(bodyRecord('new-low-1', '2026-04-01', 'qxrare once'));
+  dated.push(bodyRecord('new-low-2', '2026-05-01', 'qxrare once'));
+  dated.push(bodyRecord('new-low-3', '2026-06-01', 'qxrare once'));
+  const batches = [];
+  const executed = await execute(recentContentPlan(), {
+    records: dated,
+    catalog,
+    relevance: async ({ candidates }) => {
+      batches.push(candidates.map((item) => item.id));
+      const ranked = candidates
+        .filter((item) => item.id.startsWith('new-low'))
+        .map((item) => ({ id: item.id, probability: 0.9 }));
+      return { ok: true, ranked };
+    },
+  });
+  assert.equal(executed.status, 'answer');
+  assert.deepEqual(executed.results.map((result) => result.recordId), ['new-low-3', 'new-low-2']);
+  assert.equal(executed.insufficient, false);
+  assert.equal(batches.length, 1);
+  assert.deepEqual(batches[0].slice(0, 3), ['new-low-3', 'new-low-2', 'new-low-1']);
+});
+
+test('recent content stops at the batch cap and the time budget with insufficient', async () => {
+  const dated = [];
+  for (let index = 0; index < 40; index += 1) {
+    dated.push(bodyRecord(`match-${String(index).padStart(2, '0')}`, `2024-02-${String((index % 28) + 1).padStart(2, '0')}`, 'qxrare once'));
+  }
+  let calls = 0;
+  const capped = await execute(recentContentPlan({ limit: 5 }), {
+    records: dated,
+    catalog,
+    relevance: async () => {
+      calls += 1;
+      return { ok: true, ranked: [] };
+    },
+  });
+  assert.equal(calls, RECENT_CONTENT_MAX_BATCHES);
+  assert.equal(capped.status, 'no_result');
+  assert.equal(capped.insufficient, true);
+  assert.equal(capped.returned, 0);
+  assert.equal(capped.requested, 5);
+
+  calls = 0;
+  let elapsed = 2100;
+  const partial = await execute(recentContentPlan({ limit: 5 }), {
+    records: dated,
+    catalog,
+    requestStartedAt: 0,
+    now: () => elapsed,
+    relevance: async ({ candidates }) => {
+      calls += 1;
+      elapsed += 2000;
+      return { ok: true, ranked: [{ id: candidates[0].id, probability: 0.9 }] };
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(partial.status, 'answer');
+  assert.equal(partial.returned, 1);
+  assert.equal(partial.insufficient, true);
+  assert.match(partial.results[0].recordId, /^match-/);
+
+  calls = 0;
+  elapsed = 4000;
+  const tooLate = await execute(recentContentPlan({ limit: 5 }), {
+    records: dated,
+    catalog,
+    requestStartedAt: 0,
+    now: () => elapsed,
+    relevance: async () => {
+      calls += 1;
+      return { ok: true, ranked: [] };
+    },
+  });
+  assert.equal(calls, 0);
+  assert.equal(tooLate.status, 'no_result');
+  assert.equal(tooLate.insufficient, true);
+  assert.equal(tooLate.returned, 0);
+});
+
+test('recent content applies hard filters and a period before the date-ordered gate', async () => {
+  const dated = [
+    bodyRecord('other-shop', '2026-07-01', 'qxrare once', { originDepartmentName: 'South Shop' }),
+    bodyRecord('too-new', '2027-01-01', 'qxrare once'),
+    bodyRecord('in-period-new', '2026-06-01', 'qxrare once'),
+    bodyRecord('in-period-old', '2025-02-01', 'qxrare qxrare qxrare qxrare'),
+    bodyRecord('before-period', '2024-12-01', 'qxrare qxrare qxrare qxrare'),
+  ];
+  const executed = await execute(recentContentPlan({
+    filters: [
+      { source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['North Shop'] },
+      { source: 'nonconformity', field: 'discoveredOn', op: 'between', values: ['2025-01-01', '2026-12-31'] },
+    ],
+    limit: 1,
+  }), {
+    records: dated,
+    catalog,
+    relevance: async ({ candidates }) => ({
+      ok: true,
+      ranked: candidates.map((item) => ({ id: item.id, probability: 0.9 })),
+    }),
+  });
+  assert.deepEqual(executed.results.map((result) => result.recordId), ['in-period-new']);
+  assert.equal(executed.results[0].fields.condition, 'qxrare once');
+});
+
+test('relevance sort and filter-only questions keep the previous candidate order', async () => {
+  const dated = [];
+  for (let index = 0; index < 20; index += 1) {
+    dated.push(bodyRecord(`old-${index}`, '2020-01-02', 'qxrare qxrare qxrare qxrare'));
+  }
+  dated.push(bodyRecord('new-low', '2026-06-01', 'qxrare once'));
+  const relevanceSorted = await execute(plan({
+    semanticQuery: 'qxrare',
+    sort: 'relevance',
+    limit: 1,
+    display: ['condition'],
+    diagnostics: { contentDecision: { jev: true, residualTokens: [], final: true }, limitExplicit: true },
+  }), { records: dated, catalog });
+  assert.notEqual(relevanceSorted.results[0].recordId, 'new-low');
+
+  const filterOnly = await execute(plan({
+    filters: [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['North Shop'] }],
+    sort: { field: 'discoveredOn', direction: 'desc' },
+    limit: 1,
+    display: ['discoveredOn'],
+    diagnostics: { contentDecision: { jev: false, residualTokens: [], final: false }, limitExplicit: true },
+  }), { records: dated, catalog });
+  assert.equal(filterOnly.results[0].recordId, 'new-low');
+  assert.equal(filterOnly.timings.relevanceMs, null);
+});
+
+test('hybrid recent content also admits a dense hit near the top cosine', () => {
+  assert.equal(RECENT_CONTENT_DENSE_FRACTION, 0.75);
+  const byId = new Map([
+    ['lexical-old', { id: 'lexical-old' }],
+    ['dense-new', { id: 'dense-new' }],
+    ['weak-dense', { id: 'weak-dense' }],
+  ]);
+  const pool = buildRecentContentPool({
+    lexicalRows: [
+      { id: 'lexical-old', score: 4, contentTokenScore: 4 },
+      { id: 'dense-new', score: 0.1, contentTokenScore: 0.1 },
+      { id: 'weak-dense', score: 0, contentTokenScore: 0 },
+    ],
+    vectorOrdered: [
+      { id: 'dense-new', cosine: 0.9 },
+      { id: 'weak-dense', cosine: 0.2 },
+    ],
+    retriever: 'hybrid',
+    byId,
+  });
+  assert.deepEqual(pool.map((item) => item.record.id).sort(), ['dense-new', 'lexical-old']);
+});
+
+test('hybrid falls back to lexical when query embedding times out', async () => {
+  const executed = await execute(plan({
+    semanticQuery: 'qxrare',
+    sort: 'relevance',
+    limit: 5,
+    display: ['condition'],
+  }), {
+    records,
+    catalog,
+    retriever: 'hybrid',
+    vectorBudgetMs: 20,
+    vector: () => new Promise(() => {}),
+  });
+  assert.equal(executed.timings.vectorStatus, 'timeout');
+  assert.ok(executed.results.length >= 1);
+});
+
+function syntheticDated(count, department = 'North Shop') {
+  return Array.from({ length: count }, (_, index) => bodyRecord(
+    `syn-${String(index).padStart(2, '0')}`,
+    `2026-${String((index % 12) + 1).padStart(2, '0')}-15`,
+    'synthetic note',
+    { originDepartmentName: department },
+  ));
+}
+
+test('coverage reports an exact date-desc total when the default cap hides matches', async () => {
+  const executed = await execute(plan({
+    filters: [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['North Shop'] }],
+    sort: { field: 'discoveredOn', direction: 'desc' },
+    limit: 5,
+    diagnostics: { limitExplicit: false },
+    display: ['discoveredOn'],
+  }), { records: syntheticDated(19), catalog });
+  assert.equal(executed.returned, 5);
+  assert.deepEqual(executed.coverage, { known: true, total: 19, shown: 5, order: 'date_desc' });
+});
+
+test('coverage keeps the exact total when the user asked for fewer than the matches', async () => {
+  const executed = await execute(plan({
+    filters: [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['North Shop'] }],
+    sort: { field: 'discoveredOn', direction: 'desc' },
+    limit: 2,
+    diagnostics: { limitExplicit: true },
+    display: ['discoveredOn'],
+  }), { records: syntheticDated(19), catalog });
+  assert.equal(executed.returned, 2);
+  assert.deepEqual(executed.coverage, { known: true, total: 19, shown: 2, order: 'date_desc' });
+});
+
+test('coverage is omitted when every match is shown', async () => {
+  const executed = await execute(plan({
+    filters: [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['North Shop'] }],
+    sort: { field: 'discoveredOn', direction: 'desc' },
+    limit: 5,
+    diagnostics: { limitExplicit: false },
+    display: ['discoveredOn'],
+  }), { records: syntheticDated(3), catalog });
+  assert.equal(executed.returned, 3);
+  assert.equal(executed.coverage, undefined);
+  assert.equal(executed.groups, undefined);
+});
+
+test('coverage stays inexact when relevance only judged the top candidate pool', async () => {
+  const dated = Array.from({ length: 40 }, (_, index) => bodyRecord(
+    `cand-${String(index).padStart(2, '0')}`,
+    `2026-03-${String((index % 28) + 1).padStart(2, '0')}`,
+    'qxrare once',
+  ));
+  let judged = 0;
+  const executed = await execute(plan({
+    semanticQuery: 'qxrare',
+    sort: 'relevance',
+    limit: 5,
+    display: ['condition'],
+  }), {
+    records: dated,
+    catalog,
+    relevance: async ({ candidates }) => {
+      judged = candidates.length;
+      return { ok: true, ranked: candidates.map((item) => ({ id: item.id, probability: 0.9 })) };
+    },
+  });
+  assert.equal(judged, 30);
+  assert.equal(executed.returned, 5);
+  assert.deepEqual(executed.coverage, { known: false, total: null, floor: 30, shown: 5, order: 'relevance' });
+  assert.equal(executed.groups, undefined);
+});
+
+test('groups use all filtered records, role-derived keys, and caps of 8 organizations / 12 months', async () => {
+  const renamedCatalog = { ...catalog, fields: catalog.fields.map(field => ({ ...field,
+    key: field.role === 'organization' ? 'department' : field.role === 'date' ? 'foundDate' : field.key,
+  })) };
+  const rows = Array.from({ length: 35 }, (_, index) => ({
+    id: `group-${index}`, partNumber: 'included', department: `部署${String(index).padStart(2, '0')}`,
+    foundDate: `${2024 + Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, '0')}-15`,
+  }));
+  rows.push(...Array.from({ length: 5 }, (_, index) => ({ ...rows[0], id: `repeat-${index}` })),
+    { id: 'empty', partNumber: 'included', department: '', foundDate: '' },
+    { id: 'excluded', partNumber: 'excluded', department: '対象外', foundDate: '2027-01-01' });
+  const executed = await execute(plan({
+    filters: [{ source: 'nonconformity', field: 'partNumber', op: 'eq', values: ['included'] }],
+    sort: { field: 'foundDate', direction: 'desc' }, limit: 20, display: ['department', 'foundDate'],
+  }), { records: rows, catalog: renamedCatalog });
+  assert.equal(executed.results.length, 20);
+  assert.equal(executed.coverage.total, 41);
+  const [organization, month] = executed.groups;
+  assert.equal(organization.field, 'department');
+  assert.equal(organization.axis, 'organization');
+  assert.equal(organization.buckets.length, 8);
+  assert.deepEqual(organization.buckets[0], { value: '部署00', label: '部署00', count: 6 });
+  assert.equal(organization.otherCount, 28);
+  assert.equal(month.field, 'foundDate');
+  assert.equal(month.axis, 'month');
+  assert.equal(month.buckets.length, 12);
+  assert.deepEqual(month.buckets[0], { value: '2026-11', label: '2026年11月', count: 1 });
+  assert.equal(month.buckets.at(-1).value, '2025-12');
+  assert.equal(month.otherCount, 29);
+  for (const group of executed.groups) {
+    assert.equal(group.buckets.reduce((sum, bucket) => sum + bucket.count, group.otherCount), 41);
+  }
+});
+
+test('coverage stays inexact when a deadline stops before the pool is judged', async () => {
+  const dated = Array.from({ length: 40 }, (_, index) => bodyRecord(
+    `late-${String(index).padStart(2, '0')}`,
+    `2024-04-${String((index % 28) + 1).padStart(2, '0')}`,
+    'qxrare once',
+  ));
+  let elapsed = 2100;
+  const executed = await execute(recentContentPlan({ limit: 5 }), {
+    records: dated,
+    catalog,
+    requestStartedAt: 0,
+    now: () => elapsed,
+    relevance: async ({ candidates }) => {
+      elapsed += 2000;
+      return { ok: true, ranked: [{ id: candidates[0].id, probability: 0.9 }] };
+    },
+  });
+  assert.equal(executed.returned, 1);
+  assert.deepEqual(executed.coverage, { known: false, total: null, floor: null, shown: 1, order: 'date_desc' });
+});
+
+test('the relevance judge receives the content condition without counts or the source name', async () => {
+  const seen = [];
+  await execute(plan({ semanticQuery: 'surface scratchの不適合３件', limit: 3 }), {
+    records,
+    catalog,
+    relevance: async ({ semanticQuery, candidates }) => {
+      seen.push(semanticQuery);
+      return { ok: true, ranked: candidates.map((candidate) => ({ id: candidate.id, probability: 0.9 })) };
+    },
+  });
+  assert.deepEqual(seen, ['surface scratch']);
+});
+
+test('records already shown are hidden after ranking and counted', async () => {
+  const shown = await execute(plan({ semanticQuery: 'surface scratch', limit: 5 }), { records, catalog });
+  const ids = shown.results.map((result) => result.recordId);
+  assert.ok(ids.length >= 1);
+  const hidden = await execute(plan({ semanticQuery: 'surface scratch', limit: 5 }), { records, catalog, excludeIds: new Set(ids) });
+  assert.equal(hidden.excludedMatches, ids.length);
+  assert.equal(hidden.results.some((result) => ids.includes(result.recordId)), false);
+});
+
+test('the relevance judge reads the planner content span instead of the whole question', async () => {
+  const seen = [];
+  const relevance = async ({ semanticQuery, candidates }) => {
+    seen.push(semanticQuery);
+    return { ok: true, ranked: candidates.map((candidate) => ({ id: candidate.id, probability: 0.9 })) };
+  };
+  await execute(plan({ semanticQuery: 'surface scratchはほかにある', limit: 3, diagnostics: { contentSpan: 'surface scratch' } }), { records, catalog, relevance });
+  await execute(plan({ semanticQuery: 'surface scratch', limit: 3 }), { records, catalog, relevance });
+  assert.deepEqual(seen, ['surface scratch', 'surface scratch']);
+});
+
+test('cause grouping uses executor ids, taxonomy tie order and unclassified counts after catalog filters', async () => {
+  const rows = Array.from({ length: 43 }, (_, index) => ({ id: `cause-${index}`, partNumber: 'included', discoveredOn: '2026-01-01' }));
+  const causeById = new Map(rows.slice(0, 30).map((row, index) => [row.id, index < 10 ? 'drawing' : index < 20 ? 'assume' : 'check']));
+  rows.push({ id: 'excluded', partNumber: 'excluded' });
+  causeById.set('excluded', 'check');
+  const list = plan({ filters: [{ source: 'nonconformity', field: 'partNumber', op: 'eq', values: ['included'] }], limit: 20 });
+  const result = await execute(list, { records: rows, catalog, causeById });
+  assert.deepEqual(result.groups.find(group => group.axis === 'cause'), {
+    axis: 'cause', field: 'causeCategory', label: '要因', otherCount: 13, otherLabel: '未分類', buckets: [
+      { value: 'check', label: '確認・検査の漏れ', count: 10 },
+      { value: 'assume', label: '思い込み・勘違い', count: 10 },
+      { value: 'drawing', label: '図面・設計の誤り', count: 10 },
+    ],
+  });
+  const refined = await execute({ ...list, limit: 5, causeCategory: 'check' }, { records: rows, catalog, causeById });
+  assert.equal(refined.timings.filteredCount, 10);
+  assert.equal(refined.coverage.total, 10);
+  assert.equal(refined.results.length, 5);
+  assert.ok(refined.results.every(row => causeById.get(row.recordId) === 'check'));
+  for (const map of [undefined, new Map(), new Map([['excluded', 'check']])]) {
+    const result = await execute(list, { records: rows, catalog, causeById: map });
+    assert.equal(result.groups.some(group => group.axis === 'cause'), false);
+  }
+  // An empty store keeps the cause condition closed; a source without a store (null) is not narrowed.
+  const missing = await execute({ ...list, causeCategory: 'check' }, { records: rows, catalog, causeById: new Map() });
+  assert.equal(missing.timings.filteredCount, 0);
+});
+
+test('a cause condition does not narrow a source that has no cause store', async () => {
+  const rows = Array.from({ length: 4 }, (_, index) => ({ id: `plain-${index}`, partNumber: 'included', discoveredOn: '2026-01-01' }));
+  const list = plan({ filters: [{ source: 'nonconformity', field: 'partNumber', op: 'eq', values: ['included'] }], limit: 20, causeCategory: 'drawing' });
+  const withoutStore = await execute(list, { records: rows, catalog, causeById: null });
+  assert.equal(withoutStore.results.length, 4);
+  const withStore = await execute(list, { records: rows, catalog, causeById: new Map([['plain-0', 'drawing']]) });
+  assert.deepEqual(withStore.results.map(row => row.recordId), ['plain-0']);
+});

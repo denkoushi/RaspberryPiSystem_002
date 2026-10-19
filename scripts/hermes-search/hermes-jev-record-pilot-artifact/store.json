@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "hermes-jev-record-pilot-expanded-v1",
+  "classificationDefinitionSha256": "d88f9346b2d301b8f2ed2b39ba058c7903e3ef229ddd4934564d461c38a7029b",
+  "records": [
+    { "id": "fixture-nc-001", "rawText": "工程：旋盤加工。現象：外径が規格上限を0.12 mm超過。処置：再加工を実施。原因は記載なし。", "rawTextSha256": "26028318b202c1138c0154df899f03336d2f98673c5d32a9f57cc9bd9f9470f3" },
+    { "id": "fixture-nc-002", "rawText": "工程：フライス加工。現象：側面に打痕を確認。処置：選別して隔離。", "rawTextSha256": "6f5b805e059fe746a4c942a51d08053131522ddf9e17ca0340daf7e7137ed16e" },
+    { "id": "fixture-nc-003", "rawText": "工程：検査。現象：刻印が一部欠落。処置：設計へ確認依頼。原因：工具摩耗。", "rawTextSha256": "e2adadadb2f53ba8e7512dc3b6adf4f49a66add17fc09497dda6da747cc1abdf" },
+    { "id": "fixture-nc-004", "rawText": "工程：旋盤加工。現象：外径が規格上限を0.08 mm超過。処置：選別して隔離。", "rawTextSha256": "5931f964c9b5b7cc687fea8436faca1f8e00a88d42e53efec153a9406c3387a4" },
+    { "id": "fixture-nc-005", "rawText": "工程：フライス加工。現象：側面に打痕を確認。処置：再加工を実施。", "rawTextSha256": "3ceeec0e97ebed2e11c344c0ac8a1ec8a43c3b9d344f451561527199e30e7b02" },
+    { "id": "fixture-nc-006", "rawText": "工程：検査。現象：刻印が一部欠落。処置：選別して隔離。原因は記載なし。", "rawTextSha256": "5c0fdc7ac34296644365084ef6ee231fec559095bef11248d3af757bba8bc3b3" }
+  ],
+  "classifications": [
+    { "id": "fixture-nc-001", "process": "turning", "phenomenon": "oversize", "treatment": "rework", "cause": "unknown" },
+    { "id": "fixture-nc-002", "process": "milling", "phenomenon": "surface_damage", "treatment": "segregate", "cause": "unknown" },
+    { "id": "fixture-nc-003", "process": "inspection", "phenomenon": "missing_marking", "treatment": "design_consultation", "cause": "tool_wear" },
+    { "id": "fixture-nc-004", "process": "turning", "phenomenon": "oversize", "treatment": "segregate", "cause": "unknown" },
+    { "id": "fixture-nc-005", "process": "milling", "phenomenon": "surface_damage", "treatment": "rework", "cause": "unknown" },
+    { "id": "fixture-nc-006", "process": "inspection", "phenomenon": "missing_marking", "treatment": "segregate", "cause": "unknown" }
+  ]
+}

@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AssemblyProcedureSequenceViewer } from './AssemblyProcedureSequenceViewer';
@@ -6,6 +7,19 @@ import { AssemblyProcedureSequenceViewer } from './AssemblyProcedureSequenceView
 import type { AssemblyProcedureSequenceDto } from './types';
 
 const mockUseProtectedImageBlobUrl = vi.fn();
+
+vi.mock('@tanstack/react-virtual', () => ({
+  useVirtualizer: ({ count }: { count: number }) => ({
+    getVirtualItems: () =>
+      Array.from({ length: Math.min(count, 10) }, (_, index) => ({
+        index,
+        start: index * 62
+      })),
+    getTotalSize: () => count * 62,
+    measureElement: vi.fn(),
+    scrollToIndex: vi.fn()
+  })
+}));
 
 vi.mock('../../hooks/useProtectedImageBlobUrl', () => ({
   useProtectedImageBlobUrl: (...args: unknown[]) => mockUseProtectedImageBlobUrl(...args)
@@ -51,6 +65,35 @@ describe('AssemblyProcedureSequenceViewer', () => {
     expect(screen.getByRole('img')).toHaveAttribute('src', 'blob:sequence-image');
   });
 
+  it.each(['assembly_procedure_document', 'kiosk_document'] as const)('starts document B on its first page (%s), and defaults to A without a start', documentType => {
+    const sequence: AssemblyProcedureSequenceDto = {
+      ...assemblySequence,
+      documents: [baseDocument, {
+        ...baseDocument, orderItemId: 'item-b', documentType,
+        assemblyProcedureDocumentId: documentType === 'assembly_procedure_document' ? 'doc-b' : null,
+        kioskDocumentId: documentType === 'kiosk_document' ? 'doc-b' : null,
+        title: '公開文書B', pageCount: 2, pageUrls: ['/b-first.png', '/b-second.png']
+      }]
+    };
+    const onPageChange = vi.fn();
+    const view = render(<AssemblyProcedureSequenceViewer sequence={sequence} layout="manuals" initialDocumentId="doc-b" onCurrentPageChange={onPageChange} />);
+    expect(onPageChange).toHaveBeenLastCalledWith(expect.objectContaining({ documentId: 'doc-b', pageIndex: 0, pageUrl: '/b-first.png' }));
+    expect(screen.getByLabelText('ページ番号')).toHaveTextContent('2/3');
+    fireEvent.click(screen.getByRole('button', { name: '次手順' }));
+    expect(onPageChange).toHaveBeenLastCalledWith(expect.objectContaining({ documentId: 'doc-b', pageIndex: 1 }));
+    view.rerender(<AssemblyProcedureSequenceViewer sequence={sequence} layout="manuals" onCurrentPageChange={onPageChange} />);
+    expect(onPageChange).toHaveBeenLastCalledWith(expect.objectContaining({ documentId: 'doc-1', pageIndex: 0 }));
+    view.rerender(<AssemblyProcedureSequenceViewer sequence={sequence} layout="manuals" initialDocumentId="missing" onCurrentPageChange={onPageChange} />);
+    expect(onPageChange).toHaveBeenLastCalledWith(expect.objectContaining({ documentId: 'doc-1', pageIndex: 0 }));
+  });
+
+  it('keeps the current-marker button by default and hides it for manual browsing', () => {
+    const view = render(<AssemblyProcedureSequenceViewer sequence={assemblySequence} />);
+    expect(screen.getByRole('button', { name: '現在の丸数字へ' })).toBeInTheDocument();
+    view.rerender(<AssemblyProcedureSequenceViewer sequence={assemblySequence} showCurrentMarkerButton={false} />);
+    expect(screen.queryByRole('button', { name: '現在の丸数字へ' })).not.toBeInTheDocument();
+  });
+
   it('renders pdf page images without protected image fetch', () => {
     const pdfSequence: AssemblyProcedureSequenceDto = {
       ...assemblySequence,
@@ -61,7 +104,7 @@ describe('AssemblyProcedureSequenceViewer', () => {
     expect(screen.getByRole('img').getAttribute('src')).toContain('/api/storage/pdf-pages/doc/page-1.png');
   });
 
-  it('navigates explicit crop steps with instructions, minimap, and crop-local marker coordinates', () => {
+  it('navigates explicit crop steps with instructions, minimap, and crop-local marker coordinates', async () => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       x: 0,
       y: 0,
@@ -140,6 +183,7 @@ describe('AssemblyProcedureSequenceViewer', () => {
             checked: true
           }
         ]}
+        inputTargetBoltId="bolt-1"
       />
     );
     expect(screen.getByText(/手順 1\/2/)).toBeInTheDocument();
@@ -154,6 +198,12 @@ describe('AssemblyProcedureSequenceViewer', () => {
       'data-marker-id',
       'check-1'
     );
+    fireEvent.click(screen.getByRole('button', { name: '全手順' }));
+    const cropThumbnail = await screen.findByTestId('assembly-work-step-thumbnail-0');
+    expect(cropThumbnail.querySelector('[data-marker-id="bolt-1"]')).toHaveClass(
+      'outline-sky-400'
+    );
+    expect(cropThumbnail.querySelector('[data-marker-id="check-1"]')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '次手順' }));
     expect(screen.getByText(/手順 2\/2/)).toBeInTheDocument();
     expect(screen.getAllByText(/全体確認/).length).toBeGreaterThan(0);
@@ -165,5 +215,132 @@ describe('AssemblyProcedureSequenceViewer', () => {
       'data-marker-id',
       'check-1'
     );
+  });
+
+  it('places the seven named SVG actions in a 64px rail with a two-line page indicator', () => {
+    render(<AssemblyProcedureSequenceViewer sequence={assemblySequence} layout="manuals" onToggleList={vi.fn()} onToggleTwoPages={vi.fn()} />);
+    const rail = screen.getByRole('toolbar', { name: 'ページ操作' });
+    expect(rail).toHaveClass('w-16', 'bg-[#161c22]', 'border-l');
+    const buttons = within(rail).getAllByRole('button');
+    expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(['一覧を開閉', '2 ページ表示', '全手順', '全体', '幅いっぱい', '前手順', '次手順']);
+    buttons.forEach(button => { expect(button).toHaveClass('h-12', 'w-12'); expect(button.querySelector('svg')).toBeInTheDocument(); });
+    expect(rail.parentElement).toHaveClass('pr-16');
+    expect(screen.getByRole('button', { name: '次手順' })).toHaveClass('bg-[#3ba776]');
+    expect(screen.getByRole('button', { name: '前手順' })).toBeDisabled();
+    expect(screen.getByLabelText('ページ番号').querySelector('br')).toBeInTheDocument();
+  });
+
+  it('shows consecutive pages with their own overlays and advances two steps, including the odd last page', () => {
+    const pages = Array.from({ length: 5 }, (_, index) => ({ source: 'assembly_procedure_document' as const, documentId: 'doc-1', pageIndex: index, pageUrl: `/page-${index}`, overlays: [{ id: `text-${index}`, pageIndex: index, kind: 'TEXT' as const, bbox: { xRatio: 0.1, yRatio: 0.1, widthRatio: 0.5, heightRatio: 0.1 }, text: `ページ本文${index}`, fontSize: 16, fontWeight: 'normal' as const, color: '#000000', align: 'left' as const, zIndex: 1 }] }));
+    const sequence = { ...assemblySequence, documents: [{ ...baseDocument, pages }] };
+    function Spread() {
+      const [twoPages, setTwoPages] = useState(false);
+      return <AssemblyProcedureSequenceViewer sequence={sequence} layout="manuals" twoPages={twoPages} onToggleTwoPages={() => setTwoPages(value => !value)} />;
+    }
+    render(<Spread />);
+    fireEvent.click(screen.getByRole('button', { name: '2 ページ表示' }));
+    expect(screen.getByTestId('procedure-page-spread')).toHaveAttribute('data-pages', '2');
+    expect(within(screen.getByTestId('procedure-second-page')).getByText('ページ本文1')).toBeInTheDocument();
+    // ページ同士を中央で突き合わせ、あいだに大きな余白を作らない
+    const spread = screen.getByTestId('procedure-page-spread');
+    expect(spread).toHaveClass('gap-1.5');
+    expect(within(spread.firstElementChild as HTMLElement).getByTestId('assembly-procedure-image-with-markers')).toHaveClass('!justify-end');
+    expect(within(screen.getByTestId('procedure-second-page')).getByTestId('assembly-procedure-image-with-markers')).toHaveClass('!justify-start');
+    fireEvent.click(screen.getByRole('button', { name: '次手順' }));
+    expect(screen.getByLabelText('ページ番号')).toHaveTextContent('3/5');
+    expect(screen.getByText('ページ本文2')).toBeInTheDocument();
+    expect(within(screen.getByTestId('procedure-second-page')).getByText('ページ本文3')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '次手順' }));
+    expect(screen.getByLabelText('ページ番号')).toHaveTextContent('5/5');
+    expect(screen.getByTestId('procedure-second-page')).toBeEmptyDOMElement();
+    expect(screen.getByRole('button', { name: '次手順' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '前手順' }));
+    expect(screen.getByLabelText('ページ番号')).toHaveTextContent('3/5');
+    fireEvent.click(screen.getByRole('button', { name: '2 ページ表示' }));
+    expect(screen.queryByTestId('procedure-second-page')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '次手順' }));
+    expect(screen.getByLabelText('ページ番号')).toHaveTextContent('4/5');
+  });
+
+  it.each([[700, 1000, '全体', 'contain'], [1000, 700, '幅いっぱい', 'width']])('defaults to the page image aspect ratio (%s × %s) and allows switching', (width, height, label, mode) => {
+    const onStep = vi.fn();
+    render(<AssemblyProcedureSequenceViewer sequence={assemblySequence} layout="manuals" showCurrentMarkerButton={false} onCurrentStepChange={onStep} />);
+    const canvas = screen.getByTestId('assembly-work-step-canvas');
+    const image = within(canvas).getByRole('img');
+    Object.defineProperties(image, { naturalWidth: { value: width }, naturalHeight: { value: height } });
+    fireEvent.load(image);
+    expect(screen.queryByTestId('assembly-procedure-sequence-toolbar')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '現在の丸数字へ' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: label })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('procedure-page-viewport')).toHaveAttribute('data-fit-mode', mode);
+    expect(onStep).toHaveBeenLastCalledWith(expect.objectContaining({ pageIndex: 0 }), 0, 1);
+    fireEvent.click(screen.getByRole('button', { name: label === '全体' ? '幅いっぱい' : '全体' }));
+    expect(screen.getByTestId('procedure-page-viewport')).toHaveAttribute('data-fit-mode', mode === 'width' ? 'contain' : 'width');
+    if (mode === 'contain') {
+      expect(screen.getByTestId('procedure-page-viewport')).toHaveClass('overflow-y-auto');
+      expect(within(canvas).getByRole('img')).toHaveClass('h-auto');
+    }
+  });
+  it('resets width scrolling and determines the next page default independently', () => {
+    const sequence = { ...assemblySequence, documents: [{ ...baseDocument, pageUrls: [...baseDocument.pageUrls, '/api/storage/assembly-procedure-images/landscape.png'] }] };
+    render(<AssemblyProcedureSequenceViewer sequence={sequence} layout="manuals" />);
+    const first = within(screen.getByTestId('assembly-work-step-canvas')).getByRole('img');
+    Object.defineProperties(first, { naturalWidth: { value: 700 }, naturalHeight: { value: 1000 } });
+    fireEvent.load(first);
+    fireEvent.click(screen.getByRole('button', { name: '幅いっぱい' }));
+    screen.getByTestId('procedure-page-viewport').scrollTop = 300;
+    fireEvent.click(screen.getByRole('button', { name: '次手順' }));
+    expect(screen.getByTestId('procedure-page-viewport').scrollTop).toBe(0);
+    const second = within(screen.getByTestId('assembly-work-step-canvas')).getByRole('img');
+    Object.defineProperties(second, { naturalWidth: { value: 1000 }, naturalHeight: { value: 700 } });
+    fireEvent.load(second);
+    expect(screen.getByRole('button', { name: '幅いっぱい' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('ページ番号')).toHaveTextContent('2/2');
+  });
+  it('keeps crop viewing and temporary full page navigation in manuals layout', () => {
+    const sequence: AssemblyProcedureSequenceDto = { ...assemblySequence, steps: [{
+      id: 'crop', sortOrder: 0, kioskDocumentId: null, assemblyProcedureDocumentId: 'doc-1', pageIndex: 0,
+      viewMode: 'crop', cropXRatio: 0, cropYRatio: 0, cropWidthRatio: 0.5, cropHeightRatio: 0.5,
+      title: '切抜き', instructionText: null, emphasis: 'normal', documentType: 'assembly_procedure_document',
+      documentTitle: '文書', pageUrl: baseDocument.pageUrls[0]
+    }] };
+    render(<AssemblyProcedureSequenceViewer sequence={sequence} layout="manuals" />);
+    expect(screen.getByTestId('assembly-procedure-crop-minimap')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '全体' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '全体を一時表示' }));
+    expect(screen.getByRole('button', { name: '全体' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: '矩形へ戻る' }));
+    expect(screen.getByRole('button', { name: '全体' })).toBeDisabled();
+  });
+
+  it('keeps the open storyboard virtualized for 300 steps', async () => {
+    const sequence: AssemblyProcedureSequenceDto = {
+      ...assemblySequence,
+      stepSource: 'template_steps',
+      steps: Array.from({ length: 300 }, (_, index) => ({
+        id: `step-${index}`,
+        sortOrder: index,
+        kioskDocumentId: null,
+        assemblyProcedureDocumentId: 'doc-1',
+        pageIndex: 0,
+        viewMode: 'full_page' as const,
+        cropXRatio: null,
+        cropYRatio: null,
+        cropWidthRatio: null,
+        cropHeightRatio: null,
+        title: `手順 ${index + 1}`,
+        instructionText: null,
+        emphasis: 'normal' as const,
+        documentType: 'assembly_procedure_document' as const,
+        documentTitle: 'MH-AX 締付手順',
+        pageUrl: '/api/storage/assembly-procedure-images/mh-ax.png'
+      }))
+    };
+
+    render(<AssemblyProcedureSequenceViewer sequence={sequence} />);
+    fireEvent.click(screen.getByRole('button', { name: '全手順' }));
+
+    expect(await screen.findAllByTestId(/assembly-work-step-thumbnail-/)).toHaveLength(10);
+    expect(screen.getAllByTestId(/assembly-work-step-thumbnail-/).length).toBeLessThanOrEqual(30);
   });
 });

@@ -153,11 +153,12 @@ export function assemblyProcedureStepDraftReducer(
     case 'insert':
       return insertAfter(steps, action.step, action.afterLocalId);
     case 'append_pages':
+      if (action.pages.length > ASSEMBLY_PROCEDURE_STEP_MAX_COUNT - steps.length) {
+        return steps;
+      }
       return [
         ...steps,
-        ...action.pages
-          .slice(0, ASSEMBLY_PROCEDURE_STEP_MAX_COUNT - steps.length)
-          .map(createFullPageStepDraft)
+        ...action.pages.map(createFullPageStepDraft)
       ];
     case 'duplicate': {
       const source = steps.find((step) => step.localId === action.localId);
@@ -282,6 +283,20 @@ export function orderProcedureItemsByFirstStep(
     const item = byKey.get(key);
     return item ? [item] : [];
   });
+}
+
+export function orderProcedureItemsForDisplay(
+  items: AssemblyTemplateProcedureDraftItem[],
+  steps: AssemblyProcedureStepDraft[]
+): Array<{ item: AssemblyTemplateProcedureDraftItem; used: boolean }> {
+  const ordered = orderProcedureItemsByFirstStep(items, steps);
+  const usedIds = new Set(ordered.map((item) => item.localId));
+  return [
+    ...ordered.map((item) => ({ item, used: true })),
+    ...items
+      .filter((item) => !usedIds.has(item.localId))
+      .map((item) => ({ item, used: false }))
+  ];
 }
 
 export function getPrimaryAssemblyDocumentIdFromSteps(

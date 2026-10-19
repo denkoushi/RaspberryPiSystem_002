@@ -1,0 +1,101 @@
+---
+- name: Prepare existing Pi5 writable data for non-root API and Web containers
+  hosts: server
+  gather_facts: false
+  become: true
+  serial: 1
+  vars:
+    repo_path: "{{ project_root | default('/opt/RaspberryPiSystem_002') }}"
+    pi5_runtime_backup_dir: "{{ pi5_backup_dir | default('/opt/backups') }}"
+    pi5_runtime_caddy_log_dir: "{{ pi5_caddy_log_dir | default('/var/log/caddy') }}"
+    pi5_runtime_permission_migration_approved: false
+
+  vars_files:
+    - ../vars/pi5-storage-contract.yml
+
+  pre_tasks:
+    - name: Require explicit one-time permission migration approval
+      ansible.builtin.assert:
+        that:
+          - pi5_runtime_permission_migration_approved | bool
+        fail_msg: >-
+          This playbook recursively changes ownership of existing runtime data.
+          Re-run only after approval with
+          -e pi5_runtime_permission_migration_approved=true.
+
+    - name: Resolve the target runtime UID
+      ansible.builtin.command:
+        argv: [/usr/bin/id, -u, "{{ ansible_user }}"]
+      register: runtime_uid
+      changed_when: false
+
+    - name: Require a non-root target runtime UID
+      ansible.builtin.assert:
+        that:
+          - runtime_uid.stdout is match('^[1-9][0-9]*$')
+        fail_msg: Refusing to prepare runtime data for root.
+
+  tasks:
+    - name: Transfer Pi5 durable storage trees to the runtime user
+      ansible.builtin.file:
+        path: "{{ repo_path }}/storage/{{ item.suffix }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        recurse: true
+      loop: "{{ pi5_phase3_storage_contract }}"
+      loop_control:
+        label: "{{ item.suffix }}"
+      no_log: true
+
+    - name: Transfer other enumerated writable trees to the runtime user
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        recurse: true
+      loop:
+        - "{{ repo_path }}/storage"
+        - "{{ repo_path }}/alerts"
+        - "{{ repo_path }}/power-actions"
+        - "{{ repo_path }}/config"
+        - "{{ pi5_runtime_backup_dir }}"
+        - "{{ pi5_runtime_caddy_log_dir }}"
+      no_log: true
+
+    - name: Verify every durable storage directory is usable by the target user
+      ansible.builtin.shell: |
+        set -euo pipefail
+        blocked="$(find {{ runtime_storage_path | quote }} -type d \( ! -readable -o ! -writable -o ! -executable \) -print -quit)"
+        test -z "${blocked}"
+      args:
+        executable: /bin/bash
+      become: true
+      become_user: "{{ ansible_user }}"
+      changed_when: false
+      loop: "{{ pi5_phase3_storage_contract }}"
+      loop_control:
+        label: "{{ item.suffix }}"
+      vars:
+        runtime_storage_path: "{{ repo_path }}/storage/{{ item.suffix }}"
+      no_log: true
+
+    - name: Verify every other runtime directory is usable by the target user
+      ansible.builtin.shell: |
+        set -euo pipefail
+        blocked="$(find {{ item | quote }} -type d \( ! -readable -o ! -writable -o ! -executable \) -print -quit)"
+        test -z "${blocked}"
+      args:
+        executable: /bin/bash
+      become: true
+      become_user: "{{ ansible_user }}"
+      changed_when: false
+      loop:
+        - "{{ repo_path }}/storage"
+        - "{{ repo_path }}/alerts"
+        - "{{ repo_path }}/power-actions"
+        - "{{ repo_path }}/config"
+        - "{{ pi5_runtime_backup_dir }}"
+        - "{{ pi5_runtime_caddy_log_dir }}"
+      no_log: true

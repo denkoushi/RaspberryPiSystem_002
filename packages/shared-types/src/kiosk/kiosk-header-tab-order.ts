@@ -8,12 +8,15 @@ export const KIOSK_HEADER_TAB_ORDER_SCOPE_SHARED = 'shared';
 /** 画面遷移タブ + 納期管理 + 通話（サイネージ・管理・問い合わせは固定） */
 export const KIOSK_REORDERABLE_HEADER_TAB_IDS = [
   'borrow',
+  'inventory_settings',
   'self_inspection',
   'instruments_borrow',
   'rigging_borrow',
+  'tag_desk',
   'production_schedule',
   'manual_order',
   'leader_order_board',
+  'grinding_planning_board',
   'progress_overview',
   'load_balancing',
   'purchase_order_lookup',
@@ -24,6 +27,7 @@ export const KIOSK_REORDERABLE_HEADER_TAB_IDS = [
   'part_measurement',
   'inspection_drawing',
   'rigging_analytics',
+  'machine_signal',
   'due_management',
   'call'
 ] as const;

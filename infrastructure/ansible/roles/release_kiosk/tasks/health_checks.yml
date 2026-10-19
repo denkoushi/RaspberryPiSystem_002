@@ -1,0 +1,100 @@
+---
+- name: Verify Pi4 display services
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - "{{ item }}"
+  loop: >-
+    {{
+      ['lightdm.service']
+      + ([] if (release_torque_cutover | default(false) | bool) else ['kiosk-browser.service'])
+      + (['kiosk-hotcorner.service'] if (release_kiosk_check_hotcorner | default(manage_kiosk_browser | default(false)) | bool) and not (release_torque_cutover | default(false) | bool) else [])
+      + (['status-agent.timer'] if release_kiosk_services | length > 0 else [])
+    }}
+  register: release_kiosk_display_health
+  retries: 10
+  delay: 2
+  until: release_kiosk_display_health is succeeded
+  changed_when: false
+
+- name: Verify the Pi4 status-agent configuration is present
+  ansible.builtin.command:
+    argv:
+      - test
+      - -s
+      - /etc/raspi-status-agent.conf
+  register: release_kiosk_status_agent_config_health
+  retries: 5
+  delay: 3
+  until: release_kiosk_status_agent_config_health.rc == 0
+  changed_when: false
+  when: release_kiosk_services | length > 0
+
+- name: Verify the Pi4 status-agent service is loaded and healthy
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - show
+      - status-agent.service
+      - --property=LoadState,Result,ExecMainStatus
+  register: release_kiosk_status_agent_service_health
+  retries: 5
+  delay: 3
+  until:
+    - release_kiosk_status_agent_service_health.rc == 0
+    - "'LoadState=loaded' in release_kiosk_status_agent_service_health.stdout_lines"
+    - "'Result=success' in release_kiosk_status_agent_service_health.stdout_lines"
+    - "'ExecMainStatus=0' in release_kiosk_status_agent_service_health.stdout_lines"
+  changed_when: false
+  when: release_kiosk_services | length > 0
+
+- name: Verify the Pi4 NFC agent
+  ansible.builtin.uri:
+    url: http://127.0.0.1:7071/api/agent/status
+    method: GET
+    status_code: 200
+    timeout: 10
+  register: release_kiosk_nfc_health
+  retries: 5
+  delay: 3
+  until: release_kiosk_nfc_health.status == 200
+  when: "'nfc-agent' in release_kiosk_services"
+
+- name: Verify the Pi4 barcode agent
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ barcode_agent_rest_port | default(7072) }}/api/agent/status"
+    method: GET
+    status_code: 200
+    timeout: 10
+  register: release_kiosk_barcode_health
+  retries: 5
+  delay: 3
+  until: release_kiosk_barcode_health.status == 200
+  when: "'barcode-agent' in release_kiosk_services"
+
+- name: Verify the Pi4 torque agent
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ torque_agent_local_port | default(7073) }}/health"
+    method: GET
+    status_code: 200
+    timeout: 10
+  register: release_kiosk_torque_health
+  retries: 5
+  delay: 3
+  until: release_kiosk_torque_health.status == 200
+  when:
+    - "'torque-agent' in release_kiosk_services"
+    - not (release_torque_cutover | default(false) | bool)
+
+- name: Verify the kiosk Web endpoint
+  ansible.builtin.uri:
+    url: "{{ kiosk_url }}"
+    method: GET
+    validate_certs: false
+    status_code: 200
+    timeout: 10
+  register: release_kiosk_web_health
+  retries: 5
+  delay: 3
+  until: release_kiosk_web_health.status == 200

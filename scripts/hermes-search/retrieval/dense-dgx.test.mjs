@@ -1,0 +1,325 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import http from 'node:http';
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { loadNonconformityCatalog, fieldsWithRole } from './catalog.mjs';
+import { execute } from './executor.mjs';
+import { QUERY_PLAN_SCHEMA } from './query-plan.mjs';
+import { createRetrievalAnswering, noteDenseFallback } from './worker.mjs';
+import {
+  DGX_EMBED_BATCH,
+  DGX_EMBED_DIM,
+  DGX_MAX_INPUT_CHARS,
+  denseDocumentText,
+  denseQueryText,
+  denseSettings,
+  createDgxEmbedder,
+  refreshDenseIndex,
+  createDenseQueryRanker,
+  createDenseRuntime,
+  readDenseStore,
+  denseRefreshLimits,
+  DENSE_BULK_WINDOW,
+  DAY_MAX_EMBED,
+  DAY_EMBED_BATCH,
+  DAY_PAUSE_MS,
+} from './dense-dgx.mjs';
+
+const catalog = loadNonconformityCatalog();
+const bodyFields = fieldsWithRole(catalog, 'body');
+
+function vector(seed) {
+  const values = new Float32Array(DGX_EMBED_DIM);
+  values[0] = seed;
+  values[1] = 1;
+  return values;
+}
+
+function fakeServer(handler) {
+  const server = http.createServer(handler);
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => resolve(server));
+  });
+}
+
+test('dgx settings stay off unless the provider is dgx and the index flag is separate', () => {
+  assert.equal(denseSettings({}).queryEnabled, false);
+  assert.equal(denseSettings({}).indexEnabled, false);
+  assert.equal(denseSettings({ HERMES_RETRIEVAL_DENSE_PROVIDER: 'off' }).queryEnabled, false);
+  assert.equal(denseSettings({
+    HERMES_RETRIEVAL_DENSE_PROVIDER: 'dgx',
+    HERMES_RETRIEVAL_DENSE_INDEX_ENABLED: 'true',
+  }).queryEnabled, true);
+  assert.equal(denseSettings({ HERMES_RETRIEVAL_DENSE_INDEX_ENABLED: 'true' }).indexEnabled, true);
+  assert.equal(denseSettings({ HERMES_RETRIEVAL_DENSE_INDEX_ENABLED: 'true' }).queryEnabled, false);
+  assert.match(denseQueryText('qxprobe'), /^Instruct: .+\nQuery: qxprobe$/u);
+  assert.equal(denseQueryText('qxprobe').includes('passage:'), false);
+});
+
+test('document embedding batches at most 8 inputs and does not prefix documents', async () => {
+  const seen = [];
+  const server = await fakeServer((request, response) => {
+    const chunks = [];
+    request.on('data', (chunk) => chunks.push(chunk));
+    request.on('end', () => {
+      const body = JSON.parse(Buffer.concat(chunks).toString());
+      seen.push(body.input);
+      const data = body.input.map((text, index) => ({
+        index,
+        embedding: Array.from(vector(index + 1)),
+      }));
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ data }));
+    });
+  });
+  const embedder = createDgxEmbedder({ baseUrl: `http://127.0.0.1:${server.address().port}` });
+  const texts = Array.from({ length: DGX_EMBED_BATCH + 1 }, (_, index) => `doc-${index}`);
+  const vectors = await embedder.embed(texts, { role: 'document' });
+  server.close();
+  assert.equal(seen.length, 2);
+  assert.equal(seen[0].length, DGX_EMBED_BATCH);
+  assert.equal(seen[1].length, 1);
+  assert.deepEqual(seen[0], texts.slice(0, DGX_EMBED_BATCH));
+  assert.equal(seen[0].some((text) => text.startsWith('Instruct:')), false);
+  assert.equal(vectors.length, texts.length);
+  assert.equal(vectors[0].length, DGX_EMBED_DIM);
+});
+
+test('query embedding uses the instruction prefix only', async () => {
+  let input;
+  const server = await fakeServer((request, response) => {
+    const chunks = [];
+    request.on('data', (chunk) => chunks.push(chunk));
+    request.on('end', () => {
+      input = JSON.parse(Buffer.concat(chunks).toString()).input;
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ data: [{ index: 0, embedding: Array.from(vector(3)) }] }));
+    });
+  });
+  const embedder = createDgxEmbedder({ baseUrl: `http://127.0.0.1:${server.address().port}`, timeoutMs: 800 });
+  await embedder.embed(['qxprobe'], { role: 'query' });
+  server.close();
+  assert.deepEqual(input, [denseQueryText('qxprobe')]);
+});
+
+test('index refresh skips an unchanged text hash and resumes after a partial write', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'dense-dgx-'));
+  const storePath = path.join(directory, 'retrieval-dense-dgx.bin');
+  const records = [
+    { id: 'a', condition: 'alpha note' },
+    { id: 'b', condition: 'beta note' },
+    { id: 'c', condition: 'gamma note' },
+  ];
+  const embed = async (texts) => texts.map((_, index) => vector(index + 1));
+  const first = await refreshDenseIndex({
+    records: records.slice(0, 2),
+    bodyFields,
+    storePath,
+    embed: async () => {
+      throw new Error('embedding unavailable');
+    },
+  });
+  assert.equal(first.failed, 2);
+  assert.equal(first.embedded, 0);
+  const second = await refreshDenseIndex({ records, bodyFields, storePath, embed });
+  assert.equal(second.embedded, 3);
+  const stored = await readDenseStore(storePath);
+  assert.deepEqual(stored.map((entry) => entry.id).sort(), ['a', 'b', 'c']);
+  const before = await readFile(storePath);
+  const third = await refreshDenseIndex({ records, bodyFields, storePath, embed });
+  assert.equal(third.skipped, 3);
+  assert.equal(third.embedded, 0);
+  assert.deepEqual(await readFile(storePath), before);
+  const changed = { ...records[0], condition: 'alpha note changed' };
+  const fourth = await refreshDenseIndex({
+    records: [changed, records[1], records[2]],
+    bodyFields,
+    storePath,
+    embed,
+  });
+  assert.equal(fourth.embedded, 1);
+  assert.equal(fourth.skipped, 2);
+  assert.equal(denseDocumentText(changed, bodyFields).includes('changed'), true);
+});
+
+test('a query timeout falls back to lexical and hybrid fusion still ranks a dense hit', async () => {
+  const records = [
+    { id: 'lexical-hit', condition: 'qxrare marker qxrare marker', discoveredOn: '2024-01-01', originDepartmentName: 'North Shop' },
+    { id: 'dense-hit', condition: 'unrelated beta', discoveredOn: '2024-01-02', originDepartmentName: 'North Shop' },
+  ];
+  const entries = [
+    { id: 'dense-hit', hash: Buffer.alloc(32), vector: vector(9) },
+    { id: 'lexical-hit', hash: Buffer.alloc(32), vector: vector(0.1) },
+  ];
+  const hanging = createDenseQueryRanker(() => entries, () => new Promise(() => {}));
+  const timed = await execute({
+    schema: QUERY_PLAN_SCHEMA,
+    sources: ['nonconformity'],
+    filters: [],
+    semanticQuery: 'qxrare marker',
+    sort: 'relevance',
+    limit: 2,
+    display: ['condition'],
+    unresolved: [],
+  }, {
+    records,
+    catalog,
+    retriever: 'hybrid',
+    vectorBudgetMs: 30,
+    vector: hanging,
+  });
+  assert.equal(timed.timings.vectorStatus, 'timeout');
+  assert.equal(timed.results[0].recordId, 'lexical-hit');
+
+  const fused = await execute({
+    schema: QUERY_PLAN_SCHEMA,
+    sources: ['nonconformity'],
+    filters: [],
+    semanticQuery: 'qxrare marker',
+    sort: 'relevance',
+    limit: 2,
+    display: ['condition'],
+    unresolved: [],
+  }, {
+    records,
+    catalog,
+    retriever: 'hybrid',
+    vector: createDenseQueryRanker(() => entries, async () => [vector(9)]),
+  });
+  assert.equal(fused.timings.vectorStatus, 'ok');
+  assert.equal(fused.results.some((result) => result.recordId === 'dense-hit'), true);
+
+  const logs = [];
+  const original = console.info;
+  console.info = (line) => logs.push(line);
+  noteDenseFallback('timeout');
+  console.info = original;
+  assert.match(logs[0], /dense fallback count=1 status=timeout/u);
+
+  const answering = createRetrievalAnswering({
+    records,
+    catalog,
+    valueIndex: null,
+    dense: {
+      queryEnabled: true,
+      rank: async () => ({ ok: false, reason: 'missing vectors' }),
+    },
+    evaluate: async () => ({ plan: null }),
+  });
+  assert.equal(typeof answering.answer, 'function');
+});
+
+test('a rejected record is retried alone so the rest of its batch is still stored', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'dense-dgx-'));
+  const storePath = path.join(directory, 'retrieval-dense-dgx.bin');
+  const records = Array.from({ length: DGX_EMBED_BATCH }, (_, index) => ({
+    id: `r${index}`,
+    condition: index === 3 ? 'too long for the gateway' : `note ${index}`,
+  }));
+  const calls = [];
+  const embed = async (texts) => {
+    calls.push(texts.length);
+    if (texts.some((text) => text.includes('too long'))) throw new Error('embedding http failed');
+    return texts.map((_, index) => vector(index + 1));
+  };
+  const result = await refreshDenseIndex({ records, bodyFields, storePath, embed });
+  assert.equal(result.embedded, DGX_EMBED_BATCH - 1);
+  assert.equal(result.failed, 1);
+  assert.deepEqual(calls, [DGX_EMBED_BATCH, ...Array(DGX_EMBED_BATCH).fill(1)]);
+  const stored = await readDenseStore(storePath);
+  assert.deepEqual(stored.map((entry) => entry.id).sort(), records.map((r) => r.id).filter((id) => id !== 'r3').sort());
+});
+
+test('document text is capped below the DGX per-slot token limit', () => {
+  const text = denseDocumentText({ id: 'long', condition: '寸'.repeat(DGX_MAX_INPUT_CHARS + 500) }, bodyFields);
+  assert.equal(text.length <= DGX_MAX_INPUT_CHARS, true);
+  assert.equal(DGX_MAX_INPUT_CHARS < 800, true);
+});
+
+test('bulk embedding runs only in the 4-6 hours and is limited while enrichment runs', () => {
+  const day = new Date('2026-01-15T03:30:00Z');
+  const enrichmentHours = new Date('2026-01-15T15:30:00Z');
+  const bulkHours = new Date('2026-01-15T19:30:00Z');
+  const limited = { maxEmbed: DAY_MAX_EMBED, batchSize: DAY_EMBED_BATCH, pauseMs: DAY_PAUSE_MS };
+  assert.equal(DENSE_BULK_WINDOW, '4-6');
+  assert.deepEqual(denseRefreshLimits('', day), {});
+  assert.deepEqual(denseRefreshLimits('22-6', bulkHours), {});
+  assert.deepEqual(denseRefreshLimits('22-6', enrichmentHours), limited);
+  assert.deepEqual(denseRefreshLimits('22-6', day), limited);
+});
+
+test('a deferred or failed record keeps its previous vector and the day pauses between requests', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'dense-day-'));
+  const storePath = path.join(directory, 'retrieval-dense-dgx.bin');
+  const records = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, condition: `${id} note` }));
+  await refreshDenseIndex({ records, bodyFields, storePath, embed: async (texts) => texts.map(() => vector(1)) });
+  const changed = records.map((record) => ({ ...record, condition: `${record.id} note enriched` }));
+  const batches = [];
+  const pauses = [];
+  const result = await refreshDenseIndex({
+    records: changed,
+    bodyFields,
+    storePath,
+    maxEmbed: 3,
+    batchSize: 2,
+    pauseMs: 5,
+    sleep: async (ms) => { pauses.push(ms); },
+    embed: async (texts) => {
+      batches.push(texts.length);
+      if (texts.some((text) => text.startsWith('c '))) throw new Error('rejected');
+      return texts.map(() => vector(2));
+    },
+  });
+  assert.deepEqual(batches, [2, 1]);
+  assert.deepEqual(pauses, [5]);
+  assert.equal(result.embedded, 2);
+  assert.equal(result.failed, 1);
+  assert.equal(result.deferred, 2);
+  const stored = await readDenseStore(storePath);
+  assert.deepEqual(stored.map((entry) => entry.id).sort(), ['a', 'b', 'c', 'd', 'e']);
+  const fresh = new Set(stored.filter((entry) => entry.vector[0] === 2).map((entry) => entry.id));
+  assert.deepEqual([...fresh].sort(), ['a', 'b']);
+});
+
+test('the dense runtime applies day limits from the enrichment window', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'dense-runtime-'));
+  const records = Array.from({ length: DAY_MAX_EMBED + 4 }, (_, index) => ({ id: `r${index}`, condition: `note ${index}` }));
+  const sizes = [];
+  const pauses = [];
+  const runtime = createDenseRuntime({
+    settings: { indexEnabled: true, origin: 'http://127.0.0.1:9', storePath: path.join(directory, 'store.bin'), window: '22-6' },
+    embed: async (texts) => { sizes.push(texts.length); return texts.map(() => vector(1)); },
+    now: () => new Date('2026-01-15T03:30:00Z'),
+    sleep: async (ms) => { pauses.push(ms); },
+  });
+  await runtime.schedule(records, bodyFields);
+  assert.equal(sizes.reduce((sum, size) => sum + size, 0), DAY_MAX_EMBED);
+  assert.ok(sizes.every((size) => size <= DAY_EMBED_BATCH));
+  assert.equal(pauses.length, sizes.length - 1);
+  assert.ok(pauses.every((ms) => ms === DAY_PAUSE_MS));
+  assert.equal(runtime.entries().length, records.length - 4);
+});
+
+
+test('obsolete mail vectors cannot rank or consume the material re-embedding budget', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'hermes-material-migration-'));
+  const storePath = path.join(directory, 'dense.procedure_material');
+  const oldRecords = [{ id: 'mail:old', bodyText: 'old mail' }];
+  const embed = async texts => texts.map(() => vector(1));
+  await refreshDenseIndex({ records: oldRecords, bodyFields: ['bodyText'], storePath, embed });
+  const previous = await readDenseStore(storePath);
+  const current = [{ id: 'material:1', bodyText: 'first.pdf first content' }, { id: 'material:2', bodyText: 'second.png second content' }];
+  const ranked = await createDenseQueryRanker(() => previous, embed)('query', current);
+  assert.equal(ranked.ok, false);
+  const result = await refreshDenseIndex({ records: current, bodyFields: ['bodyText'], storePath, embed, maxEmbed: 1 });
+  assert.equal(result.embedded, 1);
+  assert.equal(result.deferred, 1);
+  assert.deepEqual((await readDenseStore(storePath)).map(entry => entry.id), ['material:1']);
+  const next = await refreshDenseIndex({ records: current, bodyFields: ['bodyText'], storePath, embed, maxEmbed: 1 });
+  assert.equal(next.embedded, 1);
+  assert.equal(next.skipped, 1);
+  assert.equal(next.deferred, 0);
+  assert.deepEqual((await readDenseStore(storePath)).map(entry => entry.id), ['material:1', 'material:2']);
+});

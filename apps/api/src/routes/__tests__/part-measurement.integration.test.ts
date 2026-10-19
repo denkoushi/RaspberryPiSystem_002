@@ -6,6 +6,7 @@ import { promisify } from 'util';
 import { buildServer } from '../../app.js';
 import { buildMinimalValidPdfBuffer } from '../../lib/__tests__/fixtures/minimal-pdf.js';
 import * as drawingImport from '../../lib/part-measurement-drawing-import.js';
+import { PartMeasurementDrawingStorage } from '../../lib/part-measurement-drawing-storage.js';
 import { prisma } from '../../lib/prisma.js';
 import { PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD } from '../../services/part-measurement/part-measurement-constants.js';
 import {
@@ -14,9 +15,16 @@ import {
   PART_MEASUREMENT_DRAWING_OCR_PAYLOAD_SCHEMA_VERSION,
   PART_MEASUREMENT_DRAWING_OCR_VERSION
 } from '../../services/part-measurement/part-measurement-drawing-ocr-payload.js';
+import {
+  encodePartMeasurementDrawingDimensionMapPayload,
+  PART_MEASUREMENT_DRAWING_DIMENSION_MAP_PAYLOAD_ENCODING,
+  PART_MEASUREMENT_DRAWING_DIMENSION_MAP_PAYLOAD_SCHEMA_VERSION,
+  PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION
+} from '../../services/part-measurement/part-measurement-drawing-dimension-map-payload.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../services/production-schedule/constants.js';
 import { SelfInspectionService } from '../../services/part-measurement/self-inspection.service.js';
 import { getPartMeasurementDrawingOcrService } from '../../services/part-measurement/part-measurement-drawing-ocr.service.js';
+import { configureTestDueManagementAccessPassword } from '../../test/due-management-access-password.js';
 import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestMeasuringInstrumentWithTag, createTestUser } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -179,6 +187,26 @@ async function createInstrumentWithInspectionItem(input: {
   return { instrument, rfidTagUid, inspectionItem };
 }
 
+async function authenticateSelfInspectionActor(input: {
+  app: Awaited<ReturnType<typeof buildServer>>;
+  sessionId: string;
+  employeeTagUid: string;
+  clientKey: string;
+  measurementMode?: 'operator' | 'inspector';
+}): Promise<string> {
+  const response = await input.app.inject({
+    method: 'POST',
+    url: `/api/part-measurement/self-inspection/sessions/${input.sessionId}/measurement-actor-authentications`,
+    headers: { 'x-client-key': input.clientKey },
+    payload: {
+      employeeTagUid: input.employeeTagUid,
+      measurementMode: input.measurementMode ?? 'operator'
+    }
+  });
+  expect(response.statusCode).toBe(200);
+  return response.json().authentication.id as string;
+}
+
 function buildMultipartPng(name: string, png: Buffer): { body: Buffer; contentType: string } {
   return buildMultipartDrawingFile(name, png, { filename: 't.png', contentType: 'image/png' });
 }
@@ -290,6 +318,7 @@ describe('part-measurement templates API', () => {
 
   beforeEach(async () => {
     await cleanPartMeasurementTables();
+    await configureTestDueManagementAccessPassword();
     const admin = await createTestUser('ADMIN');
     adminToken = admin.token;
     const manager = await createTestUser('MANAGER');
@@ -560,6 +589,94 @@ describe('part-measurement templates API', () => {
       if (previousLocalOcr === undefined) delete process.env.PART_MEASUREMENT_DRAWING_OCR_LOCAL_ENABLED;
       else process.env.PART_MEASUREMENT_DRAWING_OCR_LOCAL_ENABLED = previousLocalOcr;
     }
+  });
+
+  it('prefers the completed dimension map over OCR for marker candidates', async () => {
+    const { body, contentType } = buildMultipartPng('dimmap-completed-visual', MIN_PNG);
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    expect(up.statusCode).toBe(200);
+    const vid = up.json().visualTemplate.id as string;
+
+    const before = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/visual-templates/${vid}/ocr`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(before.statusCode).toBe(200);
+    expect(before.json().dimensionMap).toEqual({ status: 'none', dimensionCount: 0, finishedAt: null });
+    const fingerprint = before.json().ocr.drawingImageFingerprint as string;
+
+    const compressed = await encodePartMeasurementDrawingDimensionMapPayload({
+      schemaVersion: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_PAYLOAD_SCHEMA_VERSION,
+      analysisVersion: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION,
+      createdAt: new Date().toISOString(),
+      image: { width: 1000, height: 1000 },
+      tiles: [{ id: 'r0c0', box: { x0: 0, y0: 0, x1: 1, y1: 1 }, status: 'ok', dimensionCount: 3 }],
+      dimensions: [
+        { text: 'φ20H7', nominal: 20, upperTolerance: 0.021, lowerTolerance: 0, kind: 'hole', depth: null, xRatio: 0.3, yRatio: 0.3, tileId: 'r0c0' },
+        { text: '55', nominal: 55, upperTolerance: null, lowerTolerance: null, kind: 'len', depth: null, xRatio: 0.21, yRatio: 0.3, tileId: 'r0c0' },
+        { text: 'M6深12', nominal: 6, upperTolerance: null, lowerTolerance: null, kind: 'thread', depth: 12, xRatio: 0.25, yRatio: 0.32, tileId: 'r0c0' }
+      ]
+    });
+    await prisma.partMeasurementDrawingDimensionMap.create({
+      data: {
+        visualTemplateId: vid,
+        analysisVersion: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION,
+        drawingImageFingerprint: fingerprint,
+        status: 'COMPLETED',
+        payloadCompressed: compressed,
+        payloadEncoding: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_PAYLOAD_ENCODING,
+        imageWidth: 1000,
+        imageHeight: 1000,
+        dimensionCount: 3,
+        tileCount: 1,
+        finishedAt: new Date()
+      }
+    });
+
+    const after = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/visual-templates/${vid}/ocr`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(after.json().dimensionMap.status).toBe('completed');
+    expect(after.json().dimensionMap.dimensionCount).toBe(3);
+
+    const hole = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/visual-templates/${vid}/ocr/candidates`,
+      headers: { ...createAuthHeader(viewerToken), 'content-type': 'application/json' },
+      payload: { xRatio: 0.2, yRatio: 0.3, markerNo: 1, limit: 5, measurementLabel: '穴径', depthMode: 'measured' }
+    });
+    expect(hole.statusCode).toBe(200);
+    expect(hole.json().status).toBe('completed');
+    expect(hole.json().source).toBe('dimensionMap');
+    // 穴径: φ 付きを先頭に、残りは距離順（M6深12 は基準値 6）
+    expect(hole.json().candidates.map((c: { valueText: string }) => c.valueText)).toEqual(['20', '55', '6']);
+    expect(hole.json().candidates[0]).toMatchObject({
+      dimensionText: 'φ20H7',
+      suggestedUpperTolerance: '+0.021',
+      suggestedLowerTolerance: '0'
+    });
+    expect(hole.json().cache.drawingImageFingerprint).toBe(fingerprint);
+
+    const depth = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/visual-templates/${vid}/ocr/candidates`,
+      headers: { ...createAuthHeader(viewerToken), 'content-type': 'application/json' },
+      payload: { xRatio: 0.2, yRatio: 0.3, limit: 5, measurementLabel: 'ネジ穴深さ', depthMode: 'measured' }
+    });
+    expect(depth.json().candidates[0]).toMatchObject({
+      valueText: '12',
+      dimensionText: 'M6深12',
+      suggestedUpperTolerance: null,
+      suggestedLowerTolerance: '0'
+    });
   });
 
   it('treats includeInactive=false as false and only returns inactive visual when true', async () => {
@@ -2779,11 +2896,35 @@ describe('part-measurement templates API', () => {
     expect(defaultRegistrationPolicyRes.json().policy.requireMeasuringInstrumentTag).toBe(false);
     expect(defaultRegistrationPolicyRes.json().policy.updatedAt).toBeNull();
 
-    const requireInstrumentPolicyRes = await app.inject({
+    const missingRegistrationPolicyPasswordRes = await app.inject({
       method: 'PUT',
       url: '/api/part-measurement/self-inspection/registration-policy',
       headers: { 'x-client-key': kioskClient.apiKey },
       payload: { requireMeasuringInstrumentTag: true }
+    });
+    expect(missingRegistrationPolicyPasswordRes.statusCode).toBe(403);
+
+    const wrongRegistrationPolicyPasswordRes = await app.inject({
+      method: 'PUT',
+      url: '/api/part-measurement/self-inspection/registration-policy',
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { requireMeasuringInstrumentTag: true, accessPassword: 'wrong' }
+    });
+    expect(wrongRegistrationPolicyPasswordRes.statusCode).toBe(403);
+
+    const managerRegistrationPolicyRes = await app.inject({
+      method: 'PUT',
+      url: '/api/part-measurement/self-inspection/registration-policy',
+      headers: createAuthHeader(managerToken),
+      payload: { requireMeasuringInstrumentTag: true }
+    });
+    expect(managerRegistrationPolicyRes.statusCode).toBe(200);
+
+    const requireInstrumentPolicyRes = await app.inject({
+      method: 'PUT',
+      url: '/api/part-measurement/self-inspection/registration-policy',
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { requireMeasuringInstrumentTag: true, accessPassword: '2520' }
     });
     expect(requireInstrumentPolicyRes.statusCode).toBe(200);
     expect(requireInstrumentPolicyRes.json().policy.requireMeasuringInstrumentTag).toBe(true);
@@ -2793,7 +2934,7 @@ describe('part-measurement templates API', () => {
       method: 'PUT',
       url: '/api/part-measurement/self-inspection/registration-policy',
       headers: { 'x-client-key': kioskClient.apiKey },
-      payload: { requireMeasuringInstrumentTag: false }
+      payload: { requireMeasuringInstrumentTag: false, accessPassword: '2520' }
     });
     expect(optionalInstrumentPolicyRes.statusCode).toBe(200);
     expect(optionalInstrumentPolicyRes.json().policy.requireMeasuringInstrumentTag).toBe(false);
@@ -2819,9 +2960,15 @@ describe('part-measurement templates API', () => {
       rfidTagUid: `INST-SELF-${Date.now()}`
     });
     const entryRegistrationTags = {
-      employeeTagUid: auditEmployee.nfcTagUid,
       measuringInstrumentTagUid: instrumentTagUid
     };
+    const operatorAuthenticationId = await authenticateSelfInspectionActor({
+      app,
+      sessionId,
+      employeeTagUid: auditEmployee.nfcTagUid,
+      clientKey: kioskClient.apiKey
+    });
+    const kioskWriteHeaders = { ...createAuthHeader(adminToken), 'x-client-key': kioskClient.apiKey };
 
     await prisma.productionScheduleOrderSupplement.deleteMany({
       where: { csvDashboardRowId: scheduleRowId }
@@ -2866,10 +3013,10 @@ describe('part-measurement templates API', () => {
     const createEntryRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         entryIndex: 0,
-        employeeTagUid: auditEmployee.nfcTagUid,
+        measurementActorAuthenticationId: operatorAuthenticationId,
         values: [{ templateItemId, value: '10.01' }]
       }
     });
@@ -2895,10 +3042,10 @@ describe('part-measurement templates API', () => {
     const auditedUpdateRes = await app.inject({
       method: 'PATCH',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries/${firstEntryId}`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         ifUnmodifiedSince: createEntryRes.json().entry.updatedAt as string,
-        employeeTagUid: auditEmployee.nfcTagUid,
+        measurementActorAuthenticationId: operatorAuthenticationId,
         values: [{ templateItemId, value: '10.01' }]
       }
     });
@@ -2991,9 +3138,10 @@ describe('part-measurement templates API', () => {
     const idempotentRetryRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         entryIndex: 0,
+        measurementActorAuthenticationId: operatorAuthenticationId,
         values: [{ templateItemId, value: '10.01' }]
       }
     });
@@ -3003,9 +3151,10 @@ describe('part-measurement templates API', () => {
     const negativeValueRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         entryIndex: 1,
+        measurementActorAuthenticationId: operatorAuthenticationId,
         ...entryRegistrationTags,
         values: [{ templateItemId, value: '-1' }]
       }
@@ -3015,9 +3164,10 @@ describe('part-measurement templates API', () => {
     const outOfToleranceRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         entryIndex: 1,
+        measurementActorAuthenticationId: operatorAuthenticationId,
         ...entryRegistrationTags,
         values: [{ templateItemId, value: '10.5' }]
       }
@@ -3028,9 +3178,10 @@ describe('part-measurement templates API', () => {
     const numericPrecisionRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         entryIndex: 1,
+        measurementActorAuthenticationId: operatorAuthenticationId,
         ...entryRegistrationTags,
         values: [{ templateItemId, value: 10.001 }]
       }
@@ -3095,7 +3246,7 @@ describe('part-measurement templates API', () => {
       method: 'PUT',
       url: '/api/part-measurement/self-inspection/registration-policy',
       headers: { 'x-client-key': kioskClient.apiKey },
-      payload: { requireMeasuringInstrumentTag: true }
+      payload: { requireMeasuringInstrumentTag: true, accessPassword: '2520' }
     });
     expect(requireInstrumentPolicyBeforeSecondEntryRes.statusCode).toBe(200);
     expect(requireInstrumentPolicyBeforeSecondEntryRes.json().policy.requireMeasuringInstrumentTag).toBe(true);
@@ -3103,10 +3254,10 @@ describe('part-measurement templates API', () => {
     const secondEntryMissingInstrumentWhenRequiredRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         entryIndex: 1,
-        employeeTagUid: auditEmployee.nfcTagUid,
+        measurementActorAuthenticationId: operatorAuthenticationId,
         values: [{ templateItemId, value: '10.5', outOfToleranceAcknowledged: true }]
       }
     });
@@ -3116,9 +3267,10 @@ describe('part-measurement templates API', () => {
     const secondEntryRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         entryIndex: 1,
+        measurementActorAuthenticationId: operatorAuthenticationId,
         ...entryRegistrationTags,
         values: [{ templateItemId, value: '10.5', outOfToleranceAcknowledged: true }]
       }
@@ -3155,9 +3307,10 @@ describe('part-measurement templates API', () => {
     const fillSecondRegistrationRes = await app.inject({
       method: 'PATCH',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries/${secondEntryId}`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         ifUnmodifiedSince: secondEntryWithoutRegistration.updatedAt.toISOString(),
+        measurementActorAuthenticationId: operatorAuthenticationId,
         ...entryRegistrationTags,
         values: [{ templateItemId, value: '10.5', outOfToleranceAcknowledged: true }]
       }
@@ -3180,9 +3333,10 @@ describe('part-measurement templates API', () => {
     const duplicateIndexRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         entryIndex: 0,
+        measurementActorAuthenticationId: operatorAuthenticationId,
         values: [{ templateItemId, value: '10.02' }]
       }
     });
@@ -3292,7 +3446,7 @@ describe('part-measurement templates API', () => {
       method: 'PUT',
       url: '/api/part-measurement/self-inspection/registration-policy',
       headers: { 'x-client-key': kioskClient.apiKey },
-      payload: { requireMeasuringInstrumentTag: false }
+      payload: { requireMeasuringInstrumentTag: false, accessPassword: '2520' }
     });
     expect(disableInstrumentRequirementBeforeApprovalRes.statusCode).toBe(200);
     expect(disableInstrumentRequirementBeforeApprovalRes.json().policy.requireMeasuringInstrumentTag).toBe(false);
@@ -3322,6 +3476,20 @@ describe('part-measurement templates API', () => {
       displayName: 'Self Inspection Inspector',
       nfcTagUid: `EMP-INSPECTOR-${Date.now()}`
     });
+    const operatorInspectorAuthenticationId = await authenticateSelfInspectionActor({
+      app,
+      sessionId,
+      employeeTagUid: auditEmployee.nfcTagUid,
+      clientKey: kioskClient.apiKey,
+      measurementMode: 'inspector'
+    });
+    const inspectorAuthenticationId = await authenticateSelfInspectionActor({
+      app,
+      sessionId,
+      employeeTagUid: inspectorEmployee.nfcTagUid,
+      clientKey: kioskClient.apiKey,
+      measurementMode: 'inspector'
+    });
 
     const sameEmployeeInspectorRes = await app.inject({
       method: 'POST',
@@ -3329,7 +3497,7 @@ describe('part-measurement templates API', () => {
       headers: { 'x-client-key': kioskClient.apiKey },
       payload: {
         entryIndex: 0,
-        employeeTagUid: auditEmployee.nfcTagUid,
+        measurementActorAuthenticationId: operatorInspectorAuthenticationId,
         values: [{ templateItemId, value: '10.01' }]
       }
     });
@@ -3342,7 +3510,7 @@ describe('part-measurement templates API', () => {
       headers: { 'x-client-key': kioskClient.apiKey },
       payload: {
         entryIndex: 0,
-        employeeTagUid: inspectorEmployee.nfcTagUid,
+        measurementActorAuthenticationId: inspectorAuthenticationId,
         values: [{ templateItemId, value: '10.02' }]
       }
     });
@@ -3355,10 +3523,10 @@ describe('part-measurement templates API', () => {
     const operatorUpdateAfterInspectorStartRes = await app.inject({
       method: 'PATCH',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries/${firstEntryId}`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         ifUnmodifiedSince: auditedUpdateRes.json().entry.updatedAt as string,
-        employeeTagUid: auditEmployee.nfcTagUid,
+        measurementActorAuthenticationId: operatorAuthenticationId,
         values: [{ templateItemId, value: '10.02' }]
       }
     });
@@ -3381,7 +3549,7 @@ describe('part-measurement templates API', () => {
       headers: { 'x-client-key': kioskClient.apiKey },
       payload: {
         entryIndex: 1,
-        employeeTagUid: inspectorEmployee.nfcTagUid,
+        measurementActorAuthenticationId: inspectorAuthenticationId,
         values: [{ templateItemId, value: '10.51', outOfToleranceAcknowledged: true }]
       }
     });
@@ -3575,6 +3743,25 @@ describe('part-measurement templates API', () => {
       )
     ).toBe(true);
 
+    const completedRecordsScopeRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?scope=completed_records',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(completedRecordsScopeRes.statusCode).toBe(200);
+    expect(
+      (completedRecordsScopeRes.json().sessions as Array<Record<string, unknown>>).some(
+        (row) => row.id === sessionId
+      )
+    ).toBe(true);
+
+    const conflictingRecordApprovalQueryRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?scope=completed_records&state=active',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(conflictingRecordApprovalQueryRes.statusCode).toBe(400);
+
     const completeAgainRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/complete`,
@@ -3610,9 +3797,10 @@ describe('part-measurement templates API', () => {
     const updateAfterCompleteRes = await app.inject({
       method: 'PATCH',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries/${detailRes.json().session.entries[0].id}`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         ifUnmodifiedSince: detailRes.json().session.entries[0].updatedAt as string,
+        measurementActorAuthenticationId: operatorAuthenticationId,
         values: [{ templateItemId, value: '10.00' }]
       }
     });
@@ -3711,6 +3899,19 @@ describe('part-measurement templates API', () => {
       managementNumber: `MI-FINAL-INSP-${Date.now()}`,
       rfidTagUid: `INST-FINAL-INSP-${Date.now()}`
     });
+    const operatorAuthenticationId = await authenticateSelfInspectionActor({
+      app,
+      sessionId: session.id,
+      employeeTagUid: operator.nfcTagUid,
+      clientKey: kioskClient.apiKey
+    });
+    const inspectorAuthenticationId = await authenticateSelfInspectionActor({
+      app,
+      sessionId: session.id,
+      employeeTagUid: inspector.nfcTagUid,
+      clientKey: kioskClient.apiKey,
+      measurementMode: 'inspector'
+    });
 
     for (const [entryIndex, value] of ['10.5', '10.6'].entries()) {
       const operatorEntryRes = await app.inject({
@@ -3719,7 +3920,7 @@ describe('part-measurement templates API', () => {
         headers: { 'x-client-key': kioskClient.apiKey },
         payload: {
           entryIndex,
-          employeeTagUid: operator.nfcTagUid,
+          measurementActorAuthenticationId: operatorAuthenticationId,
           measuringInstrumentTagUid: operatorInstrument.rfidTagUid,
           values: [
             {
@@ -3734,6 +3935,46 @@ describe('part-measurement templates API', () => {
       expect(operatorEntryRes.json().entry.values[0]?.reviewStatus).toBe('PENDING');
     }
 
+    const inspectorPendingListRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=inspector_measurement_pending',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(inspectorPendingListRes.statusCode).toBe(200);
+    const inspectorPendingRow = (
+      inspectorPendingListRes.json().sessions as Array<{
+        id: string;
+        recordApprovalState: string;
+        pendingReviewCount: number;
+      }>
+    ).find((row) => row.id === session.id);
+    expect(inspectorPendingRow).toMatchObject({
+      id: session.id,
+      recordApprovalState: 'inspector_measurement_pending',
+      pendingReviewCount: 2
+    });
+
+    const operatorResultsDetailRes = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/self-inspection/record-approvals/sessions/${session.id}`,
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(operatorResultsDetailRes.statusCode).toBe(200);
+    expect(operatorResultsDetailRes.json().session.recordApprovalState).toBe(
+      'inspector_measurement_pending'
+    );
+    expect(
+      operatorResultsDetailRes.json().session.requiredEntries.map(
+        (entry: { values: Array<{ value: string; inspectorValue: string | null }> }) => ({
+          value: entry.values[0]?.value,
+          inspectorValue: entry.values[0]?.inspectorValue
+        })
+      )
+    ).toEqual([
+      { value: '10.5', inspectorValue: null },
+      { value: '10.6', inspectorValue: null }
+    ]);
+
     const inspectorEntryIds: string[] = [];
     for (const [entryIndex, value] of ['10.1', '10.2'].entries()) {
       const inspectorEntryRes = await app.inject({
@@ -3742,7 +3983,7 @@ describe('part-measurement templates API', () => {
         headers: { 'x-client-key': kioskClient.apiKey },
         payload: {
           entryIndex,
-          employeeTagUid: inspector.nfcTagUid,
+          measurementActorAuthenticationId: inspectorAuthenticationId,
           values: [{ templateItemId: templateItem.id, value }]
         }
       });
@@ -3752,17 +3993,50 @@ describe('part-measurement templates API', () => {
       inspectorEntryIds.push(inspectorEntryRes.json().entry.id as string);
     }
 
-    const listedForLegacyApprovalRes = await app.inject({
+    const listedForRecordConfirmationRes = await app.inject({
       method: 'GET',
       url: '/api/part-measurement/self-inspection/record-approvals?state=active',
       headers: { 'x-client-key': kioskClient.apiKey }
     });
-    expect(listedForLegacyApprovalRes.statusCode).toBe(200);
+    expect(listedForRecordConfirmationRes.statusCode).toBe(200);
+    const finalJudgementPendingRow = (
+      listedForRecordConfirmationRes.json().sessions as Array<{
+        id: string;
+        recordApprovalState: string;
+        pendingReviewCount: number;
+      }>
+    ).find((row) => row.id === session.id);
+    expect(finalJudgementPendingRow).toMatchObject({
+      id: session.id,
+      recordApprovalState: 'final_judgement_pending',
+      pendingReviewCount: 2
+    });
+
+    const inspectorResultsDetailRes = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/self-inspection/record-approvals/sessions/${session.id}`,
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(inspectorResultsDetailRes.statusCode).toBe(200);
+    expect(inspectorResultsDetailRes.json().session.requiredEntries).toHaveLength(2);
     expect(
-      (listedForLegacyApprovalRes.json().sessions as Array<{ id: string }>).some(
-        (row) => row.id === session.id
+      inspectorResultsDetailRes.json().session.requiredEntries.map(
+        (entry: {
+          values: Array<{
+            value: string;
+            inspectorValue: string;
+            differenceValue: string;
+          }>;
+        }) => ({
+          value: entry.values[0]?.value,
+          inspectorValue: entry.values[0]?.inspectorValue,
+          differenceValue: entry.values[0]?.differenceValue
+        })
       )
-    ).toBe(false);
+    ).toEqual([
+      { value: '10.5', inspectorValue: '10.1', differenceValue: '-0.4' },
+      { value: '10.6', inspectorValue: '10.2', differenceValue: '-0.4' }
+    ]);
     const legacyApprovalAttemptRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${session.id}/record-approval/approve`,
@@ -3801,7 +4075,7 @@ describe('part-measurement templates API', () => {
       payload: {
         entryIndex: 0,
         ifUnmodifiedSince: finalOkRes.json().entry.updatedAt,
-        employeeTagUid: inspector.nfcTagUid,
+        measurementActorAuthenticationId: inspectorAuthenticationId,
         values: [{ templateItemId: templateItem.id, value: '10.11' }]
       }
     });
@@ -3831,11 +4105,29 @@ describe('part-measurement templates API', () => {
     expect(finalNgRes.json().entry.values[0]?.judgementStatus).toBe('FINAL_NG');
     expect(finalNgRes.json().entry.values[0]?.operatorReviewStatus).toBe('REJECTED');
 
+    const finalizationReadyListRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=finalization_ready',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(finalizationReadyListRes.statusCode).toBe(200);
+    expect(
+      (finalizationReadyListRes.json().sessions as Array<{
+        id: string;
+        recordApprovalState: string;
+        pendingReviewCount: number;
+      }>).find((row) => row.id === session.id)
+    ).toMatchObject({
+      id: session.id,
+      recordApprovalState: 'finalization_ready',
+      pendingReviewCount: 0
+    });
+
     const requireInstrumentPolicyRes = await app.inject({
       method: 'PUT',
       url: '/api/part-measurement/self-inspection/registration-policy',
       headers: { 'x-client-key': kioskClient.apiKey },
-      payload: { requireMeasuringInstrumentTag: true }
+      payload: { requireMeasuringInstrumentTag: true, accessPassword: '2520' }
     });
     expect(requireInstrumentPolicyRes.statusCode).toBe(200);
 
@@ -3848,6 +4140,22 @@ describe('part-measurement templates API', () => {
     expect(completeWithInspectorRegistrationMissingRes.statusCode).toBe(409);
     expect(completeWithInspectorRegistrationMissingRes.json().message).toContain('検査員入力件 1');
     expect(completeWithInspectorRegistrationMissingRes.json().message).toContain('計測機器');
+
+    const registrationIncompleteListRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=registration_incomplete',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(registrationIncompleteListRes.statusCode).toBe(200);
+    expect(
+      (registrationIncompleteListRes.json().sessions as Array<{
+        id: string;
+        recordApprovalState: string;
+      }>).find((row) => row.id === session.id)
+    ).toMatchObject({
+      id: session.id,
+      recordApprovalState: 'registration_incomplete'
+    });
 
     const inspectorValuesAfterBlockedCompletion =
       await prisma.selfInspectionInspectorMeasurementValue.findMany({
@@ -3865,11 +4173,23 @@ describe('part-measurement templates API', () => {
         headers: { 'x-client-key': kioskClient.apiKey },
         payload: {
           instrumentTagUid: inspectorInstrument.rfidTagUid,
-          employeeTagUid: inspector.nfcTagUid
+          measurementActorAuthenticationId: inspectorAuthenticationId
         }
       });
       expect(registrationRes.statusCode).toBe(200);
     }
+
+    const readyAfterRegistrationRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=finalization_ready',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(readyAfterRegistrationRes.statusCode).toBe(200);
+    expect(
+      (readyAfterRegistrationRes.json().sessions as Array<{ id: string }>).some(
+        (row) => row.id === session.id
+      )
+    ).toBe(true);
 
     const completeRes = await app.inject({
       method: 'POST',
@@ -3880,6 +4200,50 @@ describe('part-measurement templates API', () => {
     expect(completeRes.statusCode).toBe(200);
     expect(completeRes.json().session.status).toBe('completed');
     expect(completeRes.json().session.pendingReviewCount).toBe(0);
+
+    const completedRecordListRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=completed',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(completedRecordListRes.statusCode).toBe(200);
+    expect(
+      (completedRecordListRes.json().sessions as Array<{
+        id: string;
+        recordApprovalState: string;
+      }>).find((row) => row.id === session.id)
+    ).toMatchObject({
+      id: session.id,
+      recordApprovalState: 'completed'
+    });
+
+    const completedRecordsScopeRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?scope=completed_records',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(completedRecordsScopeRes.statusCode).toBe(200);
+    expect(
+      (completedRecordsScopeRes.json().sessions as Array<{
+        id: string;
+        recordApprovalState: string;
+      }>).find((row) => row.id === session.id)
+    ).toMatchObject({
+      id: session.id,
+      recordApprovalState: 'completed'
+    });
+
+    const activeAfterCompletionRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=active',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(activeAfterCompletionRes.statusCode).toBe(200);
+    expect(
+      (activeAfterCompletionRes.json().sessions as Array<{ id: string }>).some(
+        (row) => row.id === session.id
+      )
+    ).toBe(false);
 
     const operatorValues = await prisma.selfInspectionMeasurementValue.findMany({
       where: { entry: { sessionId: session.id } },
@@ -3924,6 +4288,12 @@ describe('part-measurement templates API', () => {
       managementNumber: `MI-PREUSE-B-${Date.now()}`,
       rfidTagUid: `INST-PREUSE-B-${Date.now()}`
     });
+    const measurementActorAuthenticationId = await authenticateSelfInspectionActor({
+      app,
+      sessionId: session.id,
+      employeeTagUid: employee.nfcTagUid,
+      clientKey: kioskClient.apiKey
+    });
 
     const firstRes = await app.inject({
       method: 'POST',
@@ -3931,7 +4301,7 @@ describe('part-measurement templates API', () => {
       headers: { 'x-client-key': kioskClient.apiKey },
       payload: {
         instrumentTagUid: firstInstrument.rfidTagUid,
-        employeeTagUid: employee.nfcTagUid
+        measurementActorAuthenticationId
       }
     });
     expect(firstRes.statusCode).toBe(200);
@@ -3965,7 +4335,7 @@ describe('part-measurement templates API', () => {
       headers: { 'x-client-key': kioskClient.apiKey },
       payload: {
         instrumentTagUid: secondInstrument.rfidTagUid,
-        employeeTagUid: employee.nfcTagUid
+        measurementActorAuthenticationId
       }
     });
     expect(secondRes.statusCode).toBe(200);
@@ -3984,7 +4354,7 @@ describe('part-measurement templates API', () => {
       headers: { 'x-client-key': kioskClient.apiKey },
       payload: {
         instrumentTagUid: secondInstrument.rfidTagUid,
-        employeeTagUid: employee.nfcTagUid
+        measurementActorAuthenticationId
       }
     });
     expect(duplicateRes.statusCode).toBe(200);
@@ -4064,6 +4434,12 @@ describe('part-measurement templates API', () => {
       where: { id: { in: [reusableInstrument.instrument.id, blockedInstrument.instrument.id] } },
       data: { status: 'IN_USE' }
     });
+    const measurementActorAuthenticationId = await authenticateSelfInspectionActor({
+      app,
+      sessionId: session.id,
+      employeeTagUid: employee.nfcTagUid,
+      clientKey: kioskClient.apiKey
+    });
 
     const reuseRes = await app.inject({
       method: 'POST',
@@ -4071,7 +4447,7 @@ describe('part-measurement templates API', () => {
       headers: { 'x-client-key': kioskClient.apiKey },
       payload: {
         instrumentTagUid: reusableInstrument.rfidTagUid,
-        employeeTagUid: employee.nfcTagUid
+        measurementActorAuthenticationId
       }
     });
     expect(reuseRes.statusCode).toBe(200);
@@ -4099,7 +4475,7 @@ describe('part-measurement templates API', () => {
       headers: { 'x-client-key': kioskClient.apiKey },
       payload: {
         instrumentTagUid: blockedInstrument.rfidTagUid,
-        employeeTagUid: employee.nfcTagUid
+        measurementActorAuthenticationId
       }
     });
     expect(blockedRes.statusCode).toBe(409);
@@ -4212,14 +4588,21 @@ describe('part-measurement templates API', () => {
       managementNumber: `MI-SELF-LEGACY-${Date.now()}`,
       rfidTagUid: `INST-SELF-LEGACY-${Date.now()}`
     });
+    const kioskClient = await createTestClientDevice();
+    const measurementActorAuthenticationId = await authenticateSelfInspectionActor({
+      app,
+      sessionId,
+      employeeTagUid: employee.nfcTagUid,
+      clientKey: kioskClient.apiKey
+    });
 
     const createEntryRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
-      headers: createAuthHeader(adminToken),
+      headers: { ...createAuthHeader(adminToken), 'x-client-key': kioskClient.apiKey },
       payload: {
         entryIndex: 0,
-        employeeTagUid: employee.nfcTagUid,
+        measurementActorAuthenticationId,
         measuringInstrumentTagUid: instrumentTagUid,
         values: [{ templateItemId, value: '10.5', outOfToleranceAcknowledged: true }]
       }
@@ -4227,7 +4610,6 @@ describe('part-measurement templates API', () => {
     expect(createEntryRes.statusCode).toBe(200);
     expect(createEntryRes.json().entry.values[0]?.reviewStatus).toBe('PENDING');
 
-    const kioskClient = await createTestClientDevice();
     const recordApprovalListRes = await app.inject({
       method: 'GET',
       url: '/api/part-measurement/self-inspection/record-approvals?state=active',
@@ -4824,6 +5206,7 @@ describe('part-measurement drawing PDF import', () => {
 
   beforeEach(async () => {
     await cleanPartMeasurementTables();
+    await configureTestDueManagementAccessPassword();
     const admin = await createTestUser('ADMIN');
     adminToken = admin.token;
   });
@@ -4856,6 +5239,12 @@ describe('part-measurement drawing PDF import', () => {
     });
     expect(img.statusCode).toBe(200);
     expect(img.headers['content-type']).toMatch(/image\/jpeg/);
+
+    const saved = await prisma.partMeasurementVisualTemplate.findUniqueOrThrow({
+      where: { id: up.json().visualTemplate.id as string }
+    });
+    expect(saved.drawingSourceStorageKey).toMatch(/^part-measurement-drawings\/sources\/[0-9a-f-]{36}\.pdf$/);
+    expect(await PartMeasurementDrawingStorage.readDrawingSource(saved.drawingSourceStorageKey!)).toEqual(MIN_PDF);
   });
 
   it('accepts application/octet-stream with .pdf filename', async (ctx) => {
@@ -4968,6 +5357,7 @@ describe('part-measurement visual template cleanup DELETE', () => {
 
   beforeEach(async () => {
     await cleanPartMeasurementTables();
+    await configureTestDueManagementAccessPassword();
     const admin = await createTestUser('ADMIN');
     adminToken = admin.token;
   });

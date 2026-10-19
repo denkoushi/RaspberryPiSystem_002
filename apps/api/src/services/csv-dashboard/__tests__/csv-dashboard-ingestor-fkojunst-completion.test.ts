@@ -167,7 +167,7 @@ describe('CsvDashboardIngestor FKOJUNST completion transaction boundary', () => 
       expect.objectContaining({ csvDashboardRow: expect.any(Object) }),
       [expect.objectContaining({ id: 'existing-row-1', sourceIngestRunId: 'run-processing' })]
     );
-    expect(deleteDuplicateLosersForKeys).toHaveBeenCalledTimes(1);
+    expect(deleteDuplicateLosersForKeys).not.toHaveBeenCalled();
   });
 
   it('acquires the shared advisory lock inside the completion transaction', async () => {

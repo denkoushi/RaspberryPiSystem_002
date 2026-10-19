@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -7,6 +7,7 @@ import { KioskAssemblyWorkSessionPage } from './KioskAssemblyWorkSessionPage';
 import type { AssemblyProcedureSequenceDto, AssemblyWorkSessionDto } from '../../features/assembly/types';
 
 const mockGetAssemblyWorkSession = vi.fn();
+const mockGetHermesGuide = vi.fn();
 const mockGetProcedureSequence = vi.fn();
 const mockRecordAssemblyTorque = vi.fn();
 const mockAdvanceAssemblyArea = vi.fn();
@@ -20,6 +21,7 @@ let mockNfcEvent: { uid: string; timestamp: string } | null = null;
 
 vi.mock('../../api/client', () => ({
   getAssemblyWorkSession: (...args: unknown[]) => mockGetAssemblyWorkSession(...args),
+  getBusinessHermesAssemblyGuide: (...args: unknown[]) => mockGetHermesGuide(...args),
   getAssemblyWorkSessionProcedureSequence: (...args: unknown[]) => mockGetProcedureSequence(...args),
   recordAssemblyTorque: (...args: unknown[]) => mockRecordAssemblyTorque(...args),
   recordAssemblyCheck: vi.fn(),
@@ -147,16 +149,28 @@ const compatibleTorqueWrenches = [{
   profile: {
     id: 'profile-1',
     serialNumber: 'TW-A103',
-    model: { modelNumber: 'CEM20N3X10D-BTLA' },
+    model: { modelNumber: 'CEM20N3X10D-BTLA', settingVerificationMode: 'REGISTERED_SETTING' },
     settingHistories: [{ nominalTorque: '10', unit: 'N·m' }]
   },
   conditionFingerprint: 'condition-1'
 }];
 
+const boltConditionTorqueWrenches = [{
+  profile: {
+    id: 'profile-bolt-1',
+    serialNumber: 'TW-BOLT-01',
+    model: { modelNumber: 'CEM20N3X10D-BTLA', settingVerificationMode: 'BOLT_CONDITION_ONLY' },
+    settingHistories: []
+  },
+  conditionFingerprint: 'condition-bolt-1'
+}];
+
 const reusableTorqueConfirmation = [{
   id: 'confirmation-1',
   torqueWrenchProfileId: 'profile-1',
-  settingHistoryId: 'setting-1'
+  settingHistoryId: 'setting-1',
+  settingVerificationMode: 'REGISTERED_SETTING',
+  target: { lowerLimit: '9', nominalTorque: '10', upperLimit: '11', unit: 'N-m' }
 }];
 
 function agentStatus(overrides: Record<string, unknown> = {}) {
@@ -269,6 +283,13 @@ const expandedFallbackSequence: AssemblyProcedureSequenceDto = {
   ]
 };
 
+// Hermes の uiRevision は要領書シーケンスの現在ページを含む。解決前に押すと、応答後の
+// revision 更新で案内が破棄され、表示されるかが解決と応答の順序に依存するため先に待つ。
+async function findHermesButtonAfterProcedureSettles() {
+  await screen.findByText(/手順 1\/2/, undefined, { timeout: 5000 });
+  return screen.getByRole('button', { name: 'Hermesに確認' });
+}
+
 function renderPage(withAccessGrant = true) {
   return render(
     <MemoryRouter
@@ -293,6 +314,7 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
 
   beforeEach(() => {
     mockGetAssemblyWorkSession.mockReset();
+    mockGetHermesGuide.mockReset();
     mockGetProcedureSequence.mockReset();
     mockRecordAssemblyTorque.mockReset();
     mockAdvanceAssemblyArea.mockReset();
@@ -337,7 +359,7 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     renderPage();
 
     expect(await screen.findByRole('heading', { name: '組立作業' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '組立トップ' })).toHaveAttribute('href', '/kiosk/assembly');
+    expect(screen.getByRole('link', { name: '組立へ戻る' })).toHaveAttribute('href', '/kiosk/assembly');
     expect(screen.queryByRole('link', { name: 'テンプレ' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Excel' })).not.toBeInTheDocument();
     expect(screen.queryByText('要領書 / ページ送り')).not.toBeInTheDocument();
@@ -347,6 +369,59 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     });
     expect(screen.queryByText('BOLT-1')).not.toBeInTheDocument();
     expect(screen.getAllByText('丸数字 1').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('labels the missing-session back link as 組立へ戻る', async () => {
+    mockGetAssemblyWorkSession.mockResolvedValue(null);
+    renderPage();
+
+    expect(await screen.findByRole('link', { name: '組立へ戻る' })).toHaveAttribute('href', '/kiosk/assembly');
+  });
+
+  it('places restart after history and restarts only after confirmation', async () => {
+    mockRestartAssemblyArea.mockResolvedValue(session);
+    renderPage();
+
+    const restart = await screen.findByRole('button', { name: 'やり直し' });
+    expect(restart).toHaveClass('min-h-11', 'self-start', 'border-[#e5484d]');
+    expect(restart.previousElementSibling?.previousElementSibling).toBe(screen.getByRole('heading', { name: '履歴' }));
+    expect(restart.parentElement?.lastElementChild).toBe(restart);
+    fireEvent.click(restart);
+    expect(mockRestartAssemblyArea).not.toHaveBeenCalled();
+    const dialog = within(screen.getByRole('dialog', { name: 'このエリアをやり直しますか？' }));
+    expect(dialog.getAllByRole('button').map((button) => button.textContent)).toEqual(['キャンセル', 'やり直す']);
+    fireEvent.click(dialog.getByRole('button', { name: 'やり直す' }));
+
+    await waitFor(() => expect(mockRestartAssemblyArea).toHaveBeenCalledExactlyOnceWith('session-1', { reason: '画面操作によるエリアやり直し' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('does not restart when confirmation is cancelled', async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'やり直し' }));
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mockRestartAssemblyArea).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the process position when the current area name is blank', async () => {
+    mockGetAssemblyWorkSession.mockResolvedValueOnce({
+      ...session,
+      template: {
+        ...session.template,
+        areas: session.template.areas.map((area) => ({
+          ...area,
+          sortOrder: 1,
+          areaName: ''
+        }))
+      }
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('工程2')).toBeInTheDocument();
   });
 
   it('renders configured PDF procedure sequence with flat step navigation', async () => {
@@ -396,6 +471,77 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
 
     resolveSequence(expandedFallbackSequence);
     expect(await screen.findByText(/手順 1\/1/)).toBeInTheDocument();
+  });
+
+  it('keeps torque recording available when Hermes is unavailable', async () => {
+    mockGetHermesGuide.mockImplementation((_sessionId: string, payload: { uiRevision: string }) => Promise.resolve({ status: 'unavailable', uiRevision: payload.uiRevision, message: null, targetKey: null, evidence: [] }));
+    mockRecordAssemblyTorque.mockResolvedValue({
+      session,
+      outcome: { kind: 'accepted_ok' }
+    });
+    renderPage();
+
+    const button = await findHermesButtonAfterProcedureSettles();
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    const unavailableMessage = await screen.findByText('案内は現在利用できません。作業画面はそのまま使用できます。');
+    fireEvent.change(screen.getByPlaceholderText('トルク値'), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'トルク記録' }));
+    await waitFor(() => expect(mockRecordAssemblyTorque).toHaveBeenCalledWith('session-1', expect.objectContaining({ value: 10 })));
+    expect(unavailableMessage).toBeInTheDocument();
+  });
+
+  it('renders a ready Hermes guide with its evidence and current-bolt target', async () => {
+    mockGetHermesGuide.mockImplementation((_sessionId: string, payload: { uiRevision: string }) => Promise.resolve({
+      status: 'ready',
+      uiRevision: payload.uiRevision,
+      message: '締結部を対角順に10 N-mで締め付けます。',
+      targetKey: 'current-bolt',
+      evidence: [{
+        sourceKind: 'assembly_procedure_step',
+        documentId: 'procedure-1',
+        documentTitle: '公開手順書',
+        pageIndex: 2,
+        bodyAvailable: true,
+        documentUpdatedAt: '2026-07-06T00:00:00.000Z',
+        bodyScope: 'page'
+      }]
+    }));
+    renderPage();
+
+    const button = await findHermesButtonAfterProcedureSettles();
+    fireEvent.click(button);
+
+    expect(await screen.findByText('締結部を対角順に10 N-mで締め付けます。')).toBeInTheDocument();
+    expect(screen.getByText('根拠: 公開手順書 / 3ページ')).toBeInTheDocument();
+    expect(document.querySelector('[data-hermes-target="current-bolt"]')).toHaveClass('ring-2', 'ring-cyan-300');
+  });
+
+  it('does not render an Hermes response after the work target changes', async () => {
+    let resolveGuide: ((value: unknown) => void) | null = null;
+    mockGetHermesGuide.mockReturnValue(new Promise((resolve) => { resolveGuide = resolve; }));
+    const updatedSession = {
+      ...session,
+      currentBoltId: null,
+      updatedAt: '2026-07-06T00:00:01.000Z'
+    };
+    mockRecordAssemblyTorque.mockResolvedValue({ session: updatedSession, outcome: { kind: 'accepted_ok' } });
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Hermesに確認' });
+    fireEvent.click(screen.getByRole('button', { name: 'Hermesに確認' }));
+    fireEvent.change(screen.getByPlaceholderText('トルク値'), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'トルク記録' }));
+    await waitFor(() => expect(mockRecordAssemblyTorque).toHaveBeenCalled());
+    resolveGuide?.({
+      status: 'ready',
+      uiRevision: 'old-revision',
+      message: '古い対象への案内',
+      targetKey: 'current-bolt',
+      evidence: []
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByText('古い対象への案内')).not.toBeInTheDocument();
   });
 
   it('retries a failed sequence request without showing the legacy procedure canvas', async () => {
@@ -476,6 +622,10 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     renderPage();
 
     expect(await screen.findByText('同じ締付条件の現物確認を引継ぎ済み・使用開始が必要です')).toBeInTheDocument();
+    const tighteningPane = screen.getByRole('heading', { name: '締付' }).closest('section');
+    expect(tighteningPane).not.toBeNull();
+    expect(tighteningPane).toHaveClass('overflow-x-hidden', 'overflow-y-auto');
+    expect(screen.getByLabelText('使用する物理トルクレンチ')).toHaveClass('w-full', 'min-w-0', 'max-w-full');
     expect(screen.getByText('使用開始待ち')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '現物確認済み' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'このレンチを使用開始' })).toBeEnabled();
@@ -551,8 +701,26 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     });
 
     expect(await screen.findByText('4.24')).toBeInTheDocument();
+    expect(screen.getByText('4.24')).toHaveClass('text-2xl', 'font-bold', 'tabular-nums');
+    expect(screen.getByText('OK')).toHaveClass('text-2xl', 'font-bold', 'tabular-nums');
     expect(screen.getByText('丸数字 1 / TW-A103')).toBeInTheDocument();
     expect(mockGetAssemblyWorkSession).toHaveBeenCalledTimes(2);
+  });
+
+  it('enables and highlights manual torque recording only for a valid numeric value', async () => {
+    renderPage();
+    await screen.findByRole('heading', { name: '組立作業' });
+
+    const recordButton = screen.getByRole('button', { name: 'トルク記録' });
+    expect(recordButton).toBeDisabled();
+    expect(recordButton).not.toHaveClass('bg-emerald-500');
+
+    fireEvent.change(screen.getByPlaceholderText('トルク値'), { target: { value: 'invalid' } });
+    expect(recordButton).toBeDisabled();
+
+    fireEvent.change(screen.getByPlaceholderText('トルク値'), { target: { value: '10.5' } });
+    expect(recordButton).toBeEnabled();
+    expect(recordButton).toHaveClass('bg-emerald-500');
   });
 
   it('reports a failed explicit acquire request as loopback communication loss', async () => {
@@ -633,6 +801,13 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
       return Promise.resolve(jsonResponse(agentStatus({
         state: 'owned_by_self',
         leaseOwned: true,
+        selfOwnedToken: {
+          targetKind: 'assembly',
+          sessionId: 'session-1',
+          torqueWrenchProfileId: 'profile-1',
+          leaseId: 'lease-1',
+          generation: 1
+        },
         ready: heartbeatCount > 1,
         bluetoothPowered: heartbeatCount > 1,
         hidExclusive: heartbeatCount > 1
@@ -644,12 +819,13 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
 
     expect(await screen.findByText('Bluetooth接続待ち')).toBeInTheDocument();
     const statusRegion = screen.getByTestId('assembly-work-session-status');
-    expect(statusRegion).toHaveClass('h-14', 'shrink-0', 'overflow-y-auto');
+    expect(statusRegion).not.toHaveClass('h-14', 'overflow-y-auto');
+    expect(statusRegion.closest('header')).not.toBeNull();
     expect(screen.getByText('接続権を取得しました。Bluetooth接続を待っています。')).toBeInTheDocument();
     await waitFor(() => expect(screen.getAllByText('入力待機中').length).toBeGreaterThanOrEqual(1), { timeout: 3500 });
     expect(screen.queryByText('接続権を取得しました。Bluetooth接続を待っています。')).not.toBeInTheDocument();
     expect(screen.getByTestId('assembly-work-session-status')).toBe(statusRegion);
-    expect(statusRegion).toHaveClass('h-14', 'shrink-0', 'overflow-y-auto');
+    expect(statusRegion.closest('header')).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '使用終了' }));
     await waitFor(() => {
       expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/lease/release'))).toBe(true);
@@ -720,5 +896,156 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
 
     await waitFor(() => expect(agentFetch).toHaveBeenCalled());
     expect(screen.getByText('通信断')).toBeInTheDocument();
+  });
+
+  it('shows the BOLT target before connection and performs one idempotent confirm/acquire action', async () => {
+    mockGetAssemblyWorkSession.mockResolvedValue(requiredSession);
+    mockListCompatibleTorqueWrenches.mockResolvedValue(boltConditionTorqueWrenches);
+    const agentFetch = vi.fn().mockImplementation((url: string) => String(url).endsWith('/lease/acquire')
+      ? jsonResponse(agentStatus({
+          state: 'owned_by_self',
+          leaseOwned: true,
+          selfOwnedToken: {
+            targetKind: 'assembly',
+            sessionId: 'session-1',
+            torqueWrenchProfileId: 'profile-bolt-1',
+            leaseId: 'lease-bolt-1',
+            generation: 1
+          }
+        }))
+      : jsonResponse(agentStatus()));
+    mockConfirmAssemblyTorqueWrench.mockResolvedValue({
+      id: 'confirmation-bolt-1',
+      torqueWrenchProfileId: 'profile-bolt-1',
+      settingHistoryId: null,
+      settingVerificationMode: 'BOLT_CONDITION_ONLY'
+    });
+    vi.stubGlobal('fetch', agentFetch);
+
+    renderPage();
+
+    const target = await screen.findByTestId('assembly-bolt-condition-target');
+    expect(target).toHaveTextContent('設定照合対象外');
+    expect(target).toHaveTextContent('TW-BOLT-01');
+    expect(target).toHaveTextContent('MH-AX / 標準');
+    expect(target).toHaveTextContent('9 N-m');
+    expect(target).toHaveTextContent('10 N-m');
+    expect(target).toHaveTextContent('11 N-m');
+    expect(mockListCurrentTorqueWrenchConfirmations).not.toHaveBeenCalled();
+
+    const connect = screen.getByRole('button', { name: 'レンチ本体を表示値に設定して接続' });
+    await waitFor(() => expect(connect).toBeEnabled());
+    fireEvent.click(connect);
+    fireEvent.click(connect);
+
+    await waitFor(() => {
+      expect(mockConfirmAssemblyTorqueWrench).toHaveBeenCalledTimes(1);
+      expect(agentFetch.mock.calls.filter(([url]) => String(url).endsWith('/lease/acquire'))).toHaveLength(1);
+    });
+  });
+
+  it('keeps the BOLT confirmation/requestId for an ordinary connection retry', async () => {
+    mockGetAssemblyWorkSession.mockResolvedValue(requiredSession);
+    mockListCompatibleTorqueWrenches.mockResolvedValue(boltConditionTorqueWrenches);
+    let acquireAttempts = 0;
+    const agentFetch = vi.fn().mockImplementation((url: string) => {
+      if (String(url).endsWith('/lease/acquire')) {
+        acquireAttempts += 1;
+        if (acquireAttempts === 1) return Promise.reject(new TypeError('connection refused'));
+        return Promise.resolve(jsonResponse(agentStatus({
+          state: 'owned_by_self',
+          leaseOwned: true,
+          selfOwnedToken: {
+            targetKind: 'assembly',
+            sessionId: 'session-1',
+            torqueWrenchProfileId: 'profile-bolt-1',
+            leaseId: 'lease-bolt-1',
+            generation: 1
+          }
+        })));
+      }
+      return Promise.resolve(jsonResponse(agentStatus()));
+    });
+    mockConfirmAssemblyTorqueWrench.mockResolvedValue({
+      id: 'confirmation-bolt-1',
+      torqueWrenchProfileId: 'profile-bolt-1',
+      settingHistoryId: null,
+      settingVerificationMode: 'BOLT_CONDITION_ONLY'
+    });
+    vi.stubGlobal('fetch', agentFetch);
+
+    renderPage();
+    const connect = await screen.findByRole('button', { name: 'レンチ本体を表示値に設定して接続' });
+    await waitFor(() => expect(connect).toBeEnabled());
+    fireEvent.click(connect);
+    expect(await screen.findAllByText('確認済み・接続を再試行')).not.toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'レンチ本体を表示値に設定して接続' }));
+    await waitFor(() => {
+      expect(mockConfirmAssemblyTorqueWrench).toHaveBeenCalledTimes(1);
+      expect(agentFetch.mock.calls.filter(([url]) => String(url).endsWith('/lease/acquire'))).toHaveLength(2);
+    });
+    const acquireBodies = agentFetch.mock.calls
+      .filter(([url]) => String(url).endsWith('/lease/acquire'))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as { requestId: string });
+    expect(acquireBodies[0]?.requestId).toBe(acquireBodies[1]?.requestId);
+  });
+
+  it('clears the BOLT confirmation after release so the next connection confirms afresh', async () => {
+    mockGetAssemblyWorkSession.mockResolvedValue(requiredSession);
+    mockListCompatibleTorqueWrenches.mockResolvedValue(boltConditionTorqueWrenches);
+    let acquired = false;
+    const agentFetch = vi.fn().mockImplementation((url: string) => {
+      if (String(url).endsWith('/lease/release')) {
+        acquired = false;
+        return Promise.resolve(jsonResponse(agentStatus()));
+      }
+      if (String(url).endsWith('/lease/acquire')) {
+        acquired = true;
+        return Promise.resolve(jsonResponse(agentStatus({
+          state: 'owned_by_self',
+          leaseOwned: true,
+          selfOwnedToken: {
+            targetKind: 'assembly',
+            sessionId: 'session-1',
+            torqueWrenchProfileId: 'profile-bolt-1',
+            leaseId: 'lease-bolt-1',
+            generation: 1
+          }
+        })));
+      }
+      return Promise.resolve(jsonResponse(agentStatus(acquired ? {
+        state: 'owned_by_self',
+        leaseOwned: true,
+        selfOwnedToken: {
+          targetKind: 'assembly',
+          sessionId: 'session-1',
+          torqueWrenchProfileId: 'profile-bolt-1',
+          leaseId: 'lease-bolt-1',
+          generation: 1
+        }
+      } : {})));
+    });
+    mockConfirmAssemblyTorqueWrench.mockImplementation(async () => ({
+      id: `confirmation-bolt-${mockConfirmAssemblyTorqueWrench.mock.calls.length + 1}`,
+      torqueWrenchProfileId: 'profile-bolt-1',
+      settingHistoryId: null,
+      settingVerificationMode: 'BOLT_CONDITION_ONLY'
+    }));
+    vi.stubGlobal('fetch', agentFetch);
+
+    renderPage();
+    const connect = await screen.findByRole('button', { name: 'レンチ本体を表示値に設定して接続' });
+    await waitFor(() => expect(connect).toBeEnabled());
+    fireEvent.click(connect);
+    await waitFor(() => expect(mockConfirmAssemblyTorqueWrench).toHaveBeenCalledTimes(1));
+    fireEvent.click(await screen.findByRole('button', { name: '使用終了' }));
+    await waitFor(() => {
+      expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/lease/release'))).toBe(true);
+      expect(screen.getByRole('button', { name: 'レンチ本体を表示値に設定して接続' })).toBeEnabled();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'レンチ本体を表示値に設定して接続' }));
+    await waitFor(() => expect(mockConfirmAssemblyTorqueWrench).toHaveBeenCalledTimes(2));
   });
 });

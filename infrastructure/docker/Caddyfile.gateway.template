@@ -7,21 +7,32 @@
 :443 {
   tls /srv/certs/cert.pem /srv/certs/key.pem
 
+  @internal_backup_api path /api/backup/internal /api/backup/internal/*
   @internal_deploy_readiness path /api/system/deploy-readiness/internal
-  respond @internal_deploy_readiness 404
-
   @api {
     path /api/* /ws/*
   }
-  reverse_proxy @api __BLUE_GREEN_API_UPSTREAM__ {
-    transport http {
-      versions 1.1
-    }
+  # /admin is limited to the administrator networks. The allowlist lives in a
+  # separate file so changing it never alters the canonical slot route.
+  @admin_protect {
+    path /admin*
+    import /srv/bluegreen/admin-allow-nets.caddy
   }
 
-  reverse_proxy __BLUE_GREEN_WEB_UPSTREAM__ {
-    transport http {
-      versions 1.1
+  route {
+    respond @internal_backup_api 404
+    respond @internal_deploy_readiness 404
+    respond @admin_protect "Forbidden" 403
+    reverse_proxy @api __BLUE_GREEN_API_UPSTREAM__ {
+      transport http {
+        versions 1.1
+      }
+    }
+
+    reverse_proxy __BLUE_GREEN_WEB_UPSTREAM__ {
+      transport http {
+        versions 1.1
+      }
     }
   }
 
@@ -42,8 +53,12 @@
 }
 
 :80 {
+  @internal_backup_api path /api/backup/internal /api/backup/internal/*
   @internal_deploy_readiness path /api/system/deploy-readiness/internal
-  respond @internal_deploy_readiness 404
 
-  redir https://{host}{uri} permanent
+  route {
+    respond @internal_backup_api 404
+    respond @internal_deploy_readiness 404
+    redir https://{host}{uri} permanent
+  }
 }

@@ -131,6 +131,8 @@ export async function startSchedulerRuntime(
     };
   }
 
+  state.setStopped({ enabled: true, databaseConnection: 'disconnected' });
+
   let stopping = false;
   let failedClosed = false;
   let consecutiveFailures = 0;

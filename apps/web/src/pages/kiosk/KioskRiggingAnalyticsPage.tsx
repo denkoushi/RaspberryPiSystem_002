@@ -2,12 +2,14 @@ import { KioskAnalyticsKpiStrip } from '../../components/kiosk/analytics/KioskAn
 import {
   AssetBorrowFrequencyPanel,
   EmployeeBarsPanel,
-  ReturnRatePanel,
+  OpenLoansPanel,
   TodayEventsPane
 } from '../../components/kiosk/analytics/KioskAnalyticsPanels';
 import { KioskAnalyticsPanelsGrid } from '../../components/kiosk/analytics/KioskAnalyticsPanelsGrid';
 import { KioskAnalyticsPeriodFilterControls } from '../../components/kiosk/analytics/KioskAnalyticsPeriodFilterControls';
 import { KioskAnalyticsShell } from '../../components/kiosk/analytics/KioskAnalyticsShell';
+import { kioskAnalyticsThemeStyle } from '../../components/kiosk/analytics/kioskAnalyticsTheme';
+import '../../components/kiosk/analytics/kioskAnalytics.css';
 
 import { useKioskRiggingAnalyticsPageModel } from './useKioskRiggingAnalyticsPageModel';
 
@@ -17,7 +19,7 @@ export function KioskRiggingAnalyticsPage() {
 
   if (m.activeState.isPending) {
     return (
-      <div className="flex flex-1 items-center justify-center text-lg" style={{ color: t.textMuted }} role="status">
+      <div className="flex flex-1 items-center justify-center text-lg" style={{ color: t.muted }} role="status">
         読み込み中…
       </div>
     );
@@ -26,18 +28,11 @@ export function KioskRiggingAnalyticsPage() {
   if (m.activeState.isError || !m.view || !m.todayView) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
-        <p className="text-lg" style={{ color: 'var(--color-primitive-red-200)' }}>
-          データを取得できませんでした。
-        </p>
-        <p className="max-w-md text-sm" style={{ color: t.textSub }}>
+        <p className="text-lg" style={{ color: t.alert }}>データを取得できませんでした。</p>
+        <p className="max-w-md text-base" style={{ color: t.muted }}>
           {m.activeState.error instanceof Error ? m.activeState.error.message : '不明なエラー'}
         </p>
-        <button
-          type="button"
-          className="px-4 py-2 font-bold transition-opacity hover:opacity-90"
-          style={{ borderRadius: t.radius6, backgroundColor: t.primaryUi, color: t.text, border: `1px solid ${t.borderSubtle}` }}
-          onClick={() => void m.refetchAll()}
-        >
+        <button type="button" className="px-4 py-2 text-base font-bold" style={{ borderRadius: t.pillRadius, backgroundColor: t.surface, color: t.text, border: `1px solid ${t.line}` }} onClick={() => void m.refetchAll()}>
           再試行
         </button>
       </div>
@@ -45,93 +40,42 @@ export function KioskRiggingAnalyticsPage() {
   }
 
   const { view } = m;
-  const periodRangeLabel = `${new Date(view.periodFrom).toLocaleDateString('ja-JP')} — ${new Date(view.periodTo).toLocaleDateString('ja-JP')}`;
-
   return (
-    <div
-      className="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden"
-      style={{ color: t.text, fontFamily: 'var(--font-family-sans)' }}
-    >
+    <div className="kanalytics flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden" style={kioskAnalyticsThemeStyle}>
       <KioskAnalyticsShell
-        theme={t}
-        periodRangeLabel={periodRangeLabel}
         periodFilterControls={
           <KioskAnalyticsPeriodFilterControls
-            theme={t}
             targetPeriod={m.targetPeriod}
+            isLatest={m.isLatest}
+            onShiftPeriod={m.onShiftPeriod}
             monthPickerOpen={m.monthPickerOpen}
             onMonthPickerOpen={() => m.setMonthPickerOpen(true)}
             onMonthPickerCancel={() => m.setMonthPickerOpen(false)}
-            onMonthPickerCommit={(next) => {
-              m.setTargetPeriod(next);
-              m.setMonthPickerOpen(false);
-            }}
+            onMonthPickerCommit={(next) => { m.setTargetPeriod(next); m.setMonthPickerOpen(false); }}
             datasetTab={m.datasetTab}
             rigging={{ value: m.selectedRiggingGearId, onChange: m.setSelectedRiggingGearId, options: m.riggingOptions }}
             items={{ value: m.selectedItemId, onChange: m.setSelectedItemId, options: m.itemOptions }}
-            instruments={{
-              value: m.selectedInstrumentId,
-              onChange: m.setSelectedInstrumentId,
-              options: m.instrumentOptions
-            }}
+            instruments={{ value: m.selectedInstrumentId, onChange: m.setSelectedInstrumentId, options: m.instrumentOptions }}
           />
         }
         datasetTab={m.datasetTab}
         onDatasetTabChange={m.setDatasetTab}
-        listModeToggle={{
-          classNameForButton: m.listModeToggleButtonClass,
-          onTop: () => m.setListMode('top'),
-          onAll: () => m.setListMode('all'),
-          isTop: m.listMode === 'top',
-          isAll: m.listMode === 'all'
-        }}
+        listMode={m.listMode}
+        onListModeChange={m.setListMode}
       />
-
       <KioskAnalyticsKpiStrip
-        theme={t}
-        openLoanCount={view.openLoanCount}
-        overdueOpenCount={view.overdueOpenCount}
-        totalMasterCount={view.totalMasterCount}
-        periodBorrowCount={view.periodBorrowCount}
-        periodReturnCount={view.periodReturnCount}
+        view={view}
+        periodLabel={m.periodLabel}
+        availableCount={m.availableCount}
+        longestOverdue={m.longestOverdue}
+        borrowChangePercent={m.borrowChangePercent}
         returnCompletionPercent={m.returnCompletionPct}
       />
-
       <KioskAnalyticsPanelsGrid>
-        <div className="min-h-0 min-w-0 overflow-hidden">
-          <EmployeeBarsPanel rows={m.rankedEmployees} theme={t} rankBadge={m.employeeRankBadge} />
-        </div>
-        <div className="min-h-0 min-w-0 overflow-hidden">
-          <AssetBorrowFrequencyPanel
-            rows={m.rankedAssets}
-            theme={t}
-            title={`持出回数（${view.assetFilterLabel}）`}
-            rankBadge={m.assetRankBadge}
-            inventory={m.assetInventory}
-          />
-        </div>
-        <div className="min-h-0 min-w-0 overflow-hidden">
-          <ReturnRatePanel
-            borrow={view.periodBorrowCount}
-            ret={view.periodReturnCount}
-            theme={t}
-            title={`${view.assetFilterLabel}の事象比（持出/返却）`}
-            footerNote={`未返却 ${view.openLoanCount} 件（うち期限超過 ${view.overdueOpenCount} 件）`}
-          />
-        </div>
-        <div className="min-h-0 min-w-0 overflow-hidden">
-          <TodayEventsPane
-            rows={m.todayEventRows}
-            theme={t}
-            title="当日の持出返却状況"
-            captionBadge={m.todayCaptionBadge}
-            todaySummary={{
-              borrowCount: m.todayKinds.borrowCount,
-              returnCount: m.todayKinds.returnCount,
-              returnCompletionPercent: m.todayReturnCompletion
-            }}
-          />
-        </div>
+        <OpenLoansPanel rows={m.openLoans} openCount={view.openLoanCount} overdueCount={view.overdueOpenCount} remainingCount={m.openLoansRemaining} mode={m.listMode} />
+        <EmployeeBarsPanel rows={m.rankedEmployees} mode={m.listMode} totalCount={view.employees.length} />
+        <AssetBorrowFrequencyPanel rows={m.rankedAssets} title={`${view.datasetLabel}別`} mode={m.listMode} totalCount={view.assets.length} />
+        <TodayEventsPane rows={m.todayEventRows} mode={m.listMode} borrowCount={m.todayKinds.borrowCount} returnCount={m.todayKinds.returnCount} totalCount={m.todayView.periodEvents.length} />
       </KioskAnalyticsPanelsGrid>
     </div>
   );

@@ -72,6 +72,31 @@ describe('displayRowDerivation machine/part filters', () => {
     expect(extractPartNameOptions(filtered)).toEqual(['部品X', '部品Y']);
   });
 
+  it('MH/SH行が無く補完テーブルで機種名が解決された製番も機種名で拾う', () => {
+    const mixedRows = [
+      ...sourceRows,
+      {
+        id: 'supplement-part-row',
+        rowData: { FSEIBAN: 'S003', FHINCD: 'P004', FHINMEI: '部品W', FSIGENCD: '305' },
+        resolvedMachineName: '機種A'
+      },
+      {
+        id: 'unregistered-part-row',
+        rowData: { FSEIBAN: 'S004', FHINCD: 'P005', FHINMEI: '部品V', FSIGENCD: '305' },
+        resolvedMachineName: '機種名未登録'
+      }
+    ];
+    const machineToSeibanIndex = buildMachineToSeibanIndex(mixedRows);
+    const rows = normalizeScheduleRows(mixedRows);
+
+    const filtered = filterRowsByMachineAndPart(rows, machineToSeibanIndex, '機種A', '', {
+      skipMachineFilterIfNoIndexHit: true
+    });
+
+    expect(filtered.map((row) => row.data.FSEIBAN)).toEqual(['S001', 'S001', 'S003']);
+    expect(extractMachineNameOptions(mixedRows)).toEqual(['機種A', '機種B']);
+  });
+
   it('選択した製造order番号だけを表示対象にする', () => {
     const rows = normalizeScheduleRows([
       {

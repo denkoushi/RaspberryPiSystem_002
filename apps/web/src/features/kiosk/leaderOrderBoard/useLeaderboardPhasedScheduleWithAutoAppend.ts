@@ -12,8 +12,10 @@ import {
   useKioskProductionScheduleLeaderboardShell,
   useKioskProductionScheduleLeaderboardTotal
 } from '../../../api/hooks';
+import { productionScheduleQueryKeys } from '../../../api/queryKeys/productionSchedule';
 
 import { LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE } from './constants';
+import { buildLeaderboardPartKeyFromScheduleRow } from './leaderboardDecorationStalePolicy';
 
 import type { LeaderboardAppendAcquire } from './leaderboard-append-concurrency';
 import type { SelfInspectionStatus } from '../../part-measurement/types';
@@ -22,7 +24,7 @@ function invalidateLeaderboardDecorationsQueries(queryClient: ReturnType<typeof 
   return queryClient.invalidateQueries({
     predicate: (q) =>
       Array.isArray(q.queryKey) &&
-      q.queryKey[0] === 'kiosk-production-schedule' &&
+      q.queryKey[0] === productionScheduleQueryKeys.scheduleAll[0] &&
       q.queryKey[1] === 'leaderboard-decorations'
   });
 }
@@ -228,8 +230,8 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
 
           if (more.snapshotExpired) {
             await Promise.all([
-              queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-shell'] }),
-              queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-total'] }),
+              queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.leaderboardShellAll }),
+              queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.leaderboardTotalAll }),
               invalidateLeaderboardDecorationsQueries(queryClient)
             ]);
             break;
@@ -324,6 +326,8 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
         selfInspectionTemplateId: string | null;
         selfInspectionStatus: SelfInspectionStatus | null;
         selfInspectionEntryPath: string | null;
+        selfInspectionResourceCds: string[];
+        selfInspectionResourceCd: string | null;
       }
     >();
     for (const d of decorationsQuery.data?.rowDecorations ?? []) {
@@ -333,7 +337,9 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
         hasSelfInspectionDrawing: d.hasSelfInspectionDrawing,
         selfInspectionTemplateId: d.selfInspectionTemplateId ?? null,
         selfInspectionStatus: d.selfInspectionStatus ?? null,
-        selfInspectionEntryPath: d.selfInspectionEntryPath ?? null
+        selfInspectionEntryPath: d.selfInspectionEntryPath ?? null,
+        selfInspectionResourceCds: d.selfInspectionResourceCds ?? [],
+        selfInspectionResourceCd: d.selfInspectionResourceCd ?? null
       });
     }
     return m;
@@ -346,10 +352,15 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
       hasFreshTotal && typeof totalQuery.data?.total === 'number'
         ? totalQuery.data.total
         : mergedRows.length;
+    const materialArrivalByPartKey = decorationsQuery.data?.leaderboardMaterialArrivalByPartKey ?? {};
+    const materialArrivalBasisByPartKey = decorationsQuery.data?.leaderboardMaterialArrivalBasisByPartKey ?? {};
     const rows = mergedRows.map((row): ProductionScheduleRow => {
       if (!includeDecorations) return row;
       const deco = leaderboardDecorationByRowId.get(row.id);
-      return deco ? { ...row, ...deco } : row;
+      const materialArrivalStatus = materialArrivalByPartKey[buildLeaderboardPartKeyFromScheduleRow(row)] ?? null;
+      const materialArrivalBasis = materialArrivalBasisByPartKey[buildLeaderboardPartKeyFromScheduleRow(row)] ?? null;
+      if (!deco && materialArrivalStatus == null) return row;
+      return { ...row, ...deco, materialArrivalStatus, materialArrivalBasis };
     });
     return {
       page: shellQuery.data.page,
@@ -360,6 +371,8 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
     };
   }, [
     decorationsQuery.data?.leaderboardFooterChipsByPartKey,
+    decorationsQuery.data?.leaderboardMaterialArrivalByPartKey,
+    decorationsQuery.data?.leaderboardMaterialArrivalBasisByPartKey,
     includeDecorations,
     leaderboardDecorationByRowId,
     mergedRows,

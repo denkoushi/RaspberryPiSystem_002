@@ -1,3 +1,20 @@
+// Size ratchet: new source files stay within 600 lines; files listed in the baseline were
+// already larger and are capped at their recorded size. Regenerate with
+// `node scripts/ci/max-lines-baseline.mjs update web` (it only lowers caps).
+const maxLinesBaseline = require('./eslint-max-lines-baseline.json');
+const maxLinesOptions = { skipBlankLines: true, skipComments: true };
+const maxLinesOverrides = [
+  {
+    files: ['src/**/*.ts', 'src/**/*.tsx'],
+    excludedFiles: ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx', '**/__tests__/**', 'src/test/**', 'src/generated/**'],
+    rules: { 'max-lines': ['error', { max: 600, ...maxLinesOptions }] }
+  },
+  ...Object.entries(maxLinesBaseline).map(([file, max]) => ({
+    files: [file],
+    rules: { 'max-lines': ['error', { max, ...maxLinesOptions }] }
+  }))
+];
+
 module.exports = {
   root: true,
   env: {
@@ -84,5 +101,85 @@ module.exports = {
         ]
       }
     ]
-  }
+  },
+  overrides: [
+    ...maxLinesOverrides,
+    {
+      files: [
+        'src/pages/kiosk/KioskAssemblyTemplateEditorPage.tsx',
+        'src/features/assembly/KioskAssemblyTemplateEditorFeature.tsx'
+      ],
+      rules: {
+        'max-lines': ['error', { max: 180, skipBlankLines: true, skipComments: true }],
+        'no-restricted-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: ['**/api/client'],
+                message: '組立テンプレート編集のルート層からAPI clientを直接参照しないでください。'
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      files: ['src/features/assembly/template-editor/AssemblyTemplateEditor*.tsx'],
+      rules: {
+        'max-lines': ['error', { max: 400, skipBlankLines: true, skipComments: true }],
+        'max-lines-per-function': [
+          'error',
+          { max: 220, skipBlankLines: true, skipComments: true }
+        ],
+        'no-restricted-imports': [
+          'error',
+          {
+            paths: [
+              {
+                name: 'react-router-dom',
+                message: '表示部品はルーターに依存せず、ルート層からナビゲーションを受け取ってください。'
+              }
+            ],
+            patterns: [
+              {
+                group: ['../../../api/*', '../../../pages/*'],
+                message: '表示部品からAPI clientまたはpages層への依存は禁止です。'
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      files: [
+        'src/features/assembly/template-editor/useAssemblyTemplate*.ts',
+        'src/features/assembly/template-editor/buildAssemblyTemplateSaveInput.ts'
+      ],
+      rules: {
+        'max-lines': ['error', { max: 500, skipBlankLines: true, skipComments: true }],
+        'max-lines-per-function': [
+          'error',
+          { max: 500, skipBlankLines: true, skipComments: true }
+        ],
+        'no-restricted-imports': [
+          'error',
+          {
+            paths: [
+              {
+                name: 'react-router-dom',
+                message: '編集ロジックはルーターに依存しないでください。'
+              }
+            ],
+            patterns: [
+              {
+                group: ['../../../pages/*'],
+                message: 'template-editorからpages層への逆依存は禁止です。'
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 };

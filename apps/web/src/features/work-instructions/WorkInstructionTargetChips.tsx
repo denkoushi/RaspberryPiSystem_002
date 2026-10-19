@@ -1,0 +1,50 @@
+export type WorkInstructionTargetChipsProps = {
+  targets: readonly string[];
+  counts?: Record<string, number>;
+  onSelect: (target: string) => void;
+  disabled?: boolean;
+  similarMatch?: { scannedPartNumber: string; canonicalPartNumber: string } | null;
+};
+
+/**
+ * Displays the available shooting targets as a compact, touch-friendly strip.
+ * Selection and target ordering stay with the page/controller.
+ */
+export function WorkInstructionTargetChips({
+  targets,
+  counts,
+  onSelect,
+  disabled = false,
+  similarMatch = null
+}: WorkInstructionTargetChipsProps) {
+  if (targets.length === 0) return null;
+
+  return (
+    <div
+      className="flex min-w-0 flex-1 flex-nowrap gap-1.5 overflow-x-auto whitespace-nowrap"
+      role="group"
+      aria-label="撮影対象"
+    >
+      {targets.map((target, index) => (
+        <button
+          key={`${target}-${index}`}
+          type="button"
+          className={similarMatch
+            ? 'min-h-11 shrink-0 rounded-full border border-amber-200/60 bg-amber-950/70 px-2.5 text-sm font-bold text-amber-50 hover:bg-amber-900/80 disabled:cursor-not-allowed disabled:opacity-60'
+            : 'min-h-11 shrink-0 rounded-full border border-cyan-200/50 bg-cyan-950/60 px-2.5 text-sm font-bold text-cyan-50 hover:bg-cyan-900/80 disabled:cursor-not-allowed disabled:opacity-60'}
+          onClick={() => onSelect(target)}
+          disabled={disabled}
+          aria-label={similarMatch
+            ? `類似・${target}（読取品番 ${similarMatch.scannedPartNumber} から正式品番 ${similarMatch.canonicalPartNumber}）`
+            : target}
+          title={similarMatch
+            ? `読取品番 ${similarMatch.scannedPartNumber} → 正式品番 ${similarMatch.canonicalPartNumber}`
+            : undefined}
+        >
+          {similarMatch ? `類似・${target}` : target}
+          {(counts?.[target] ?? 0) > 1 ? <span aria-label={`${counts![target]}件`} className="ml-1.5 rounded-full bg-white/15 px-1.5 text-xs">{counts![target]}</span> : null}
+        </button>
+      ))}
+    </div>
+  );
+}

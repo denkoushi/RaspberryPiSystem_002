@@ -3,7 +3,6 @@ import {
   ensureSelfInspectionTemplatesForRows,
   type SelfInspectionDecorationCache
 } from '../../part-measurement/self-inspection.service.js';
-import { enrichProductionScheduleRowsWithResolvedMachineName } from '../production-schedule-machine-name-enrichment.service.js';
 import { prepareProductionScheduleDashboardFilters } from './filters.js';
 import { fetchProductionScheduleDashboardRowsRawPage } from './raw-page.js';
 import { enrichProductionScheduleRowsForSelfInspectionCandidate } from './self-inspection-eligible.js';
@@ -15,6 +14,7 @@ export type SignageAutoTargetSelectorScheduleRow = Pick<
   | 'id'
   | 'seibanJoinKey'
   | 'occurredAt'
+  | 'updatedAt'
   | 'rowData'
   | 'dueDate'
   | 'plannedQuantity'
@@ -33,6 +33,7 @@ function mapSignageAutoTargetSelectorScheduleRows(
     id: row.id,
     seibanJoinKey: row.seibanJoinKey,
     occurredAt: row.occurredAt,
+    updatedAt: row.updatedAt,
     rowData: row.rowData,
     dueDate: row.dueDate,
     plannedQuantity: row.plannedQuantity,
@@ -186,15 +187,7 @@ export async function decorateRowsForSelfInspectionMachineTargetSelector(params:
     params.siteKey,
     params.decorationCache
   );
-  const withMachineName = await enrichProductionScheduleRowsWithResolvedMachineName(
-    withSelfInspection.map((row) => ({
-      ...row,
-      actualPerPieceMinutes: null,
-      customerName: null,
-    }))
-  );
-
-  return withMachineName.map((row) => ({
+  return withSelfInspection.map((row) => ({
     id: row.id,
     resolvedMachineName: row.resolvedMachineName ?? null,
     hasSelfInspectionDrawing: row.hasSelfInspectionDrawing ?? false,

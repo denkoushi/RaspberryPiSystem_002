@@ -26,6 +26,6 @@ export interface ImportJob {
 export * from './production-schedule-resource-category.js';
 export * from './production-schedule-search-limits.js';
 export * from './loan-analytics-period-events.js';
-
+export * from './production-schedule-grinding-planning-board.js';
 
 

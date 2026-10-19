@@ -1,3 +1,8 @@
+import {
+  buildSelfInspectionMachineBoardConfig,
+  createResetSelfInspectionMachineBoardEditorFields,
+  parseSelfInspectionMachineBoardConfig,
+} from './selfInspectionMachineBoardConfig';
 import { DEFAULT_SCHEDULE_FORM_DATA, parseResourceCdListInput } from './signageScheduleDisplay';
 
 import type {
@@ -16,14 +21,18 @@ export type SignageFullSlotKind =
   | 'kiosk_progress_overview'
   | 'kiosk_leader_order_cards'
   | 'mobile_placement_parts_shelf_grid'
-  | 'self_inspection_machine_board';
+  | 'self_inspection_machine_board'
+  | 'web_page';
 
 export type SignageSplitSlotKind = 'loans' | 'pdf' | 'csv_dashboard' | 'visualization';
 
-export type SignageSelfInspectionTargetMode = 'manual_machine_name' | 'auto_from_leaderboard_status';
+/** 管理 UI の選択肢。auto_from_leaderboard_status は legacy wire 値としてのみ受理する。 */
+export type SignageSelfInspectionTargetMode = 'kiosk_active_sessions' | 'manual_machine_name';
 
 export interface SignageScheduleEditorState {
   formData: Partial<SignageSchedule>;
+  /** 管理UIがまだ編集できないCANVASを、既存内容のまま再保存するための保持値。 */
+  preservedCanvasLayoutConfig: SignageLayoutConfig | null;
   useNewLayout: boolean;
   layoutType: 'FULL' | 'SPLIT';
   leftSlotKind: SignageSplitSlotKind;
@@ -38,6 +47,8 @@ export interface SignageScheduleEditorState {
   fullPdfId: string | null;
   fullCsvDashboardId: string | null;
   fullVisualizationDashboardId: string | null;
+  /** web_page: ページ撮影コンテンツの ID */
+  fullWebCaptureId: string | null;
   fullKioskDeviceScopeKey: string;
   fullKioskSlideIntervalStr: string;
   fullKioskSeibanPerPageStr: string;
@@ -53,6 +64,8 @@ export interface SignageScheduleEditorState {
   fullSelfInspectionMaxAutoMachinesStr: string;
   fullSelfInspectionSlideIntervalStr: string;
   fullSelfInspectionPartsPerPageStr: string;
+  fullSelfInspectionLegacyAutoMigrationNotice: boolean;
+  /** legacy detailTopN の読込保持用。UI と新規 build では使用しない。 */
   fullSelfInspectionDetailTopNStr: string;
 }
 
@@ -67,6 +80,7 @@ export function createResetFullSlotSpecificFieldsPatch(): SignageScheduleEditorS
     fullPdfId: null,
     fullCsvDashboardId: null,
     fullVisualizationDashboardId: null,
+    fullWebCaptureId: null,
     fullKioskDeviceScopeKey: '',
     fullKioskSlideIntervalStr: '',
     fullKioskSeibanPerPageStr: '',
@@ -75,14 +89,7 @@ export function createResetFullSlotSpecificFieldsPatch(): SignageScheduleEditorS
     fullLeaderOrderSlideIntervalStr: '',
     fullLeaderOrderCardsPerPageStr: '',
     fullPartsShelfMaxItemsStr: '',
-    fullSelfInspectionTargetMode: 'manual_machine_name',
-    fullSelfInspectionMachineName: '',
-    fullSelfInspectionDeviceScopeKey: '',
-    fullSelfInspectionResourceCdsText: '',
-    fullSelfInspectionMaxAutoMachinesStr: '',
-    fullSelfInspectionSlideIntervalStr: '',
-    fullSelfInspectionPartsPerPageStr: '',
-    fullSelfInspectionDetailTopNStr: '',
+    ...createResetSelfInspectionMachineBoardEditorFields(),
   };
 }
 
@@ -106,6 +113,7 @@ export function createDefaultEditorState(): SignageScheduleEditorState {
 
 export function createResetEditorStatePatch(): SignageScheduleEditorStatePatch {
   return {
+    preservedCanvasLayoutConfig: null,
     useNewLayout: false,
     layoutType: 'FULL',
     fullSlotKind: 'loans',
@@ -125,14 +133,21 @@ export function createResetEditorStatePatch(): SignageScheduleEditorStatePatch {
 export function parseScheduleToEditorStatePatch(schedule: SignageSchedule): SignageScheduleEditorStatePatch {
   const hasLayoutConfig = schedule.layoutConfig !== null && schedule.layoutConfig !== undefined;
   const patch: SignageScheduleEditorStatePatch = {
+    preservedCanvasLayoutConfig: null,
     useNewLayout: hasLayoutConfig,
   };
 
   if (hasLayoutConfig && schedule.layoutConfig) {
     const config = schedule.layoutConfig;
-    patch.layoutType = config.layout;
+    if (config.layout === 'CANVAS' || (config.layout === 'FULL' && config.a2ui)) {
+      // The legacy editor has no canvas controls. Keep its validated payload
+      // intact instead of interpreting it as FULL/SPLIT and losing elements.
+      patch.preservedCanvasLayoutConfig = config;
+      patch.useNewLayout = false;
+    } else {
+      patch.layoutType = config.layout;
 
-    if (config.layout === 'FULL') {
+      if (config.layout === 'FULL') {
       const slot = config.slots[0];
       Object.assign(patch, createResetFullSlotSpecificFieldsPatch());
       if (slot) {
@@ -146,6 +161,9 @@ export function parseScheduleToEditorStatePatch(schedule: SignageSchedule): Sign
           patch.fullSlotKind = 'visualization';
           patch.fullVisualizationDashboardId =
             'visualizationDashboardId' in slot.config ? slot.config.visualizationDashboardId ?? null : null;
+        } else if (slot.kind === 'web_page') {
+          patch.fullSlotKind = 'web_page';
+          patch.fullWebCaptureId = 'webCaptureId' in slot.config ? slot.config.webCaptureId ?? null : null;
         } else if (slot.kind === 'kiosk_progress_overview') {
           patch.fullSlotKind = 'kiosk_progress_overview';
           patch.fullKioskDeviceScopeKey =
@@ -183,42 +201,12 @@ export function parseScheduleToEditorStatePatch(schedule: SignageSchedule): Sign
               : '';
         } else if (slot.kind === 'self_inspection_machine_board') {
           patch.fullSlotKind = 'self_inspection_machine_board';
-          patch.fullSelfInspectionTargetMode =
-            'targetMode' in slot.config &&
-            slot.config.targetMode === 'auto_from_leaderboard_status'
-              ? 'auto_from_leaderboard_status'
-              : 'manual_machine_name';
-          patch.fullSelfInspectionMachineName =
-            'machineName' in slot.config ? String(slot.config.machineName ?? '').trim() : '';
-          patch.fullSelfInspectionDeviceScopeKey =
-            'deviceScopeKey' in slot.config ? String(slot.config.deviceScopeKey ?? '').trim() : '';
-          const resourceCds =
-            'resourceCds' in slot.config && Array.isArray(slot.config.resourceCds)
-              ? (slot.config.resourceCds as string[])
-              : [];
-          patch.fullSelfInspectionResourceCdsText =
-            resourceCds.map((cd) => String(cd).trim()).filter(Boolean).join('\n');
-          patch.fullSelfInspectionMaxAutoMachinesStr =
-            'maxAutoMachines' in slot.config && slot.config.maxAutoMachines != null
-              ? String(slot.config.maxAutoMachines)
-              : '';
-          patch.fullSelfInspectionSlideIntervalStr =
-            'slideIntervalSeconds' in slot.config && slot.config.slideIntervalSeconds != null
-              ? String(slot.config.slideIntervalSeconds)
-              : '';
-          patch.fullSelfInspectionPartsPerPageStr =
-            'partsPerPage' in slot.config && slot.config.partsPerPage != null
-              ? String(slot.config.partsPerPage)
-              : '';
-          patch.fullSelfInspectionDetailTopNStr =
-            'detailTopN' in slot.config && slot.config.detailTopN != null
-              ? String(slot.config.detailTopN)
-              : '';
+          Object.assign(patch, parseSelfInspectionMachineBoardConfig(slot.config));
         } else {
           patch.fullSlotKind = 'loans';
         }
       }
-    } else {
+      } else {
       Object.assign(patch, createResetFullSlotSpecificFieldsPatch());
       const leftSlot = config.slots.find((s) => s.position === 'LEFT');
       const rightSlot = config.slots.find((s) => s.position === 'RIGHT');
@@ -269,6 +257,7 @@ export function parseScheduleToEditorStatePatch(schedule: SignageSchedule): Sign
           patch.rightVisualizationDashboardId = null;
         }
       }
+      }
     }
   } else {
     // 旧形式から初期値を設定
@@ -317,6 +306,7 @@ export function buildLayoutConfigFromEditorState(
     fullPdfId,
     fullCsvDashboardId,
     fullVisualizationDashboardId,
+    fullWebCaptureId,
     fullKioskDeviceScopeKey,
     fullKioskSlideIntervalStr,
     fullKioskSeibanPerPageStr,
@@ -332,7 +322,6 @@ export function buildLayoutConfigFromEditorState(
     fullSelfInspectionMaxAutoMachinesStr,
     fullSelfInspectionSlideIntervalStr,
     fullSelfInspectionPartsPerPageStr,
-    fullSelfInspectionDetailTopNStr,
     leftSlotKind,
     rightSlotKind,
     leftPdfId,
@@ -344,7 +333,7 @@ export function buildLayoutConfigFromEditorState(
   } = state;
 
   if (!useNewLayout) {
-    return null; // 旧形式を使用
+    return state.preservedCanvasLayoutConfig ?? null; // 旧形式を使用
   }
 
   if (layoutType === 'FULL') {
@@ -389,6 +378,11 @@ export function buildLayoutConfigFromEditorState(
             },
           },
         ],
+      };
+    } else if (fullSlotKind === 'web_page' && fullWebCaptureId) {
+      return {
+        layout: 'FULL',
+        slots: [{ position: 'FULL', kind: 'web_page', config: { webCaptureId: fullWebCaptureId } }],
       };
     } else if (fullSlotKind === 'kiosk_progress_overview' && fullKioskDeviceScopeKey.trim()) {
       const config: SignageSlotConfig = {
@@ -466,55 +460,17 @@ export function buildLayoutConfigFromEditorState(
         ],
       };
     } else if (fullSlotKind === 'self_inspection_machine_board') {
-      const boardConfig: SignageSlotConfig = {
-        targetMode: fullSelfInspectionTargetMode,
-      };
-      if (fullSelfInspectionTargetMode === 'manual_machine_name') {
-        const machineName = fullSelfInspectionMachineName.trim();
-        if (!machineName) {
-          return null;
-        }
-        boardConfig.machineName = machineName;
-      } else {
-        const deviceScopeKey = fullSelfInspectionDeviceScopeKey.trim();
-        const resourceCds = parseResourceCdListInput(fullSelfInspectionResourceCdsText);
-        if (!deviceScopeKey || resourceCds.length === 0) {
-          return null;
-        }
-        boardConfig.deviceScopeKey = deviceScopeKey;
-        boardConfig.resourceCds = resourceCds;
-      }
-      if (
-        fullSelfInspectionTargetMode === 'manual_machine_name' &&
-        fullSelfInspectionDeviceScopeKey.trim() !== ''
-      ) {
-        boardConfig.deviceScopeKey = fullSelfInspectionDeviceScopeKey.trim();
-      }
-      if (fullSelfInspectionTargetMode === 'auto_from_leaderboard_status') {
-        if (fullSelfInspectionMaxAutoMachinesStr.trim() !== '') {
-          const n = Number(fullSelfInspectionMaxAutoMachinesStr);
-          if (Number.isFinite(n) && n >= 1) {
-            boardConfig.maxAutoMachines = Math.min(20, Math.floor(n));
-          }
-        }
-      }
-      if (fullSelfInspectionSlideIntervalStr.trim() !== '') {
-        const n = Number(fullSelfInspectionSlideIntervalStr);
-        if (Number.isFinite(n) && n > 0) {
-          boardConfig.slideIntervalSeconds = n;
-        }
-      }
-      if (fullSelfInspectionPartsPerPageStr.trim() !== '') {
-        const n = Number(fullSelfInspectionPartsPerPageStr);
-        if (Number.isFinite(n) && n >= 1) {
-          boardConfig.partsPerPage = Math.min(12, Math.floor(n));
-        }
-      }
-      if (fullSelfInspectionDetailTopNStr.trim() !== '') {
-        const n = Number(fullSelfInspectionDetailTopNStr);
-        if (Number.isFinite(n) && n >= 0) {
-          boardConfig.detailTopN = Math.min(20, Math.floor(n));
-        }
+      const boardConfig = buildSelfInspectionMachineBoardConfig({
+        fullSelfInspectionTargetMode,
+        fullSelfInspectionMachineName,
+        fullSelfInspectionDeviceScopeKey,
+        fullSelfInspectionResourceCdsText,
+        fullSelfInspectionMaxAutoMachinesStr,
+        fullSelfInspectionSlideIntervalStr,
+        fullSelfInspectionPartsPerPageStr,
+      });
+      if (!boardConfig) {
+        return null;
       }
       return {
         layout: 'FULL',

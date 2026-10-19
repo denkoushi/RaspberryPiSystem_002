@@ -4,6 +4,8 @@ import re
 import unittest
 from pathlib import Path
 
+from jinja2 import Environment, StrictUndefined
+
 
 ROOT = Path(__file__).resolve().parents[3]
 CLIENT_ROLE = ROOT / "infrastructure/ansible/roles/client"
@@ -85,6 +87,54 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
             'SYMLINK+="input/by-id/{{ wrench.link_name }}"',
         ):
             self.assertIn(fragment, rule)
+        self.assertNotIn('MODE="0666"', rule)
+
+    def test_guard_unit_and_hid_permissions_are_opt_in(self) -> None:
+        environment = Environment(undefined=StrictUndefined, trim_blocks=True, lstrip_blocks=True)
+        environment.filters["bool"] = lambda value: str(value).lower() in {"1", "true", "yes", "on"}
+        unit = environment.from_string((
+            CLIENT_ROLE / "templates/torque-bluetooth-guard.service.j2"
+        ).read_text())
+        rule = environment.from_string((
+            CLIENT_ROLE / "templates/99-torque-wrench-hid.rules.j2"
+        ).read_text())
+        identity = {
+            "vendor_id": "1234", "product_id": "5678", "name": "wrench",
+            "uniq": "AA:BB:CC:DD:EE:FF", "link_name": "fixture-event-kbd",
+        }
+        legacy_unit = unit.render()
+        legacy_rule = rule.render(torque_agent_hid_links=[identity])
+        for value in (None, False, True, "false", "true"):
+            variables = {} if value is None else {"client_agents_hardened": value}
+            hardened = value is True or value == "true"
+            with self.subTest(mode=value):
+                rendered_unit = unit.render(**variables)
+                rendered_rule = rule.render(torque_agent_hid_links=[identity], **variables)
+                if hardened:
+                    for line in (
+                        "Group=10001", "RuntimeDirectoryMode=0770",
+                        "Environment=TORQUE_GUARD_RUNTIME_MODE=0770",
+                    ):
+                        self.assertIn(line + "\n", rendered_unit)
+                        rendered_unit = rendered_unit.replace(line + "\n", "")
+                    rendered_unit = rendered_unit.replace(
+                        "# Keep the host guard root; only its intent directory is shared with the agent GID.\n", ""
+                    )
+                    self.assertEqual(rendered_rule.count('GROUP="input", MODE="0660", '), 2)
+                    rendered_rule = rendered_rule.replace('GROUP="input", MODE="0660", ', "")
+                else:
+                    self.assertNotIn("Group=", rendered_unit)
+                    self.assertNotIn("RuntimeDirectoryMode=", rendered_unit)
+                    self.assertNotIn("TORQUE_GUARD_RUNTIME_MODE", rendered_unit)
+                    self.assertNotIn("GROUP=", rendered_rule)
+                    self.assertNotIn("MODE=", rendered_rule)
+                self.assertEqual(rendered_unit, legacy_unit)
+                self.assertEqual(rendered_rule, legacy_rule)
+                for action in ("add", "change"):
+                    self.assertIn(f'ACTION=="{action}"', rendered_rule)
+                for key in ("id/vendor", "id/product", "name", "uniq"):
+                    self.assertIn(f'ATTRS{{{key}}}==', rendered_rule)
+                self.assertIn('SYMLINK+="input/by-id/fixture-event-kbd"', rendered_rule)
 
     def test_stonebase_inventory_uses_stable_identities_and_verified_parser(self) -> None:
         inventory = (ROOT / "infrastructure/ansible/inventory.yml").read_text()
@@ -99,6 +149,7 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
             'usb_product_id: "0604"',
             'path: "/dev/input/by-id/bluetooth-TOHNICHI_702902S-event-kbd"',
             'parserProfile: "cem3-btla-hogp-v1"',
+            'serialNumber: "702902S"',
         ):
             self.assertIn(fragment, host)
         self.assertIsNone(re.search(r"/dev/input/event[0-9]+", host))
@@ -106,11 +157,19 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
 
     def test_configuration_task_validates_and_installs_both_identity_adapters(self) -> None:
         tasks = (CLIENT_ROLE / "tasks/torque-agent.yml").read_text()
+        contract = (
+            ROOT / "infrastructure/ansible/roles/torque_agent_contract/tasks/main.yml"
+        ).read_text()
+        self.assertIn("name: torque_agent_contract", tasks)
         for fragment in (
             "torque_agent_bluetooth_adapter.usb_vendor_id",
             "torque_agent_hid_links",
             "cem3-btla-hogp-v1",
+            "serialNumber",
             "torque_agent_tls_verify_mode",
+        ):
+            self.assertIn(fragment, contract)
+        for fragment in (
             "90-torque-bluetooth-adapter.rules",
             "99-torque-wrench-hid.rules",
             "torque-bluetooth-adapter@.service",
@@ -143,24 +202,6 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
             "(torque_bluetooth_guard_initial_status.stdout | from_json).powered | bool",
             tasks,
         )
-
-    def test_device_identity_files_are_in_the_sealed_rollback_contract(self) -> None:
-        backend = (ROOT / "scripts/deploy/rolling_release/backends/ansible.py").read_text()
-        registry = (ROOT / "scripts/deploy/terminal-profile-registry.json").read_text()
-        safety = (ROOT / "scripts/deploy/tests/test-deploy-safety-contracts.sh").read_text()
-
-        for destination in (
-            "/usr/local/libexec/torque-bluetooth-adapter",
-            "/usr/local/libexec/torque-bluetooth-guard",
-            "/etc/systemd/system/torque-bluetooth-adapter@.service",
-            "/etc/systemd/system/torque-bluetooth-guard.service",
-            "/etc/udev/rules.d/90-torque-bluetooth-adapter.rules",
-            "/etc/udev/rules.d/99-torque-wrench-hid.rules",
-        ):
-            self.assertIn(destination, backend)
-            self.assertIn(destination, registry)
-            self.assertIn(destination, safety)
-
 
 if __name__ == "__main__":
     unittest.main()

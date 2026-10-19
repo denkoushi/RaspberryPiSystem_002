@@ -8,8 +8,8 @@ import {
 import {
   listScheduleRowsByProductNo,
   resolveMachineNameForSeiban,
-  type PartMeasurementScheduleRowCandidate
-} from './part-measurement-schedule-lookup.service.js';
+  type ProductionScheduleLookupRow
+} from '../production-schedule/production-schedule-lookup.service.js';
 import { PartMeasurementTemplateService } from './part-measurement-template.service.js';
 
 type ActiveTemplate = Awaited<ReturnType<PartMeasurementTemplateService['findActiveByFhincdGroupAndResource']>>;
@@ -24,7 +24,7 @@ export type ResolveTicketInput = {
   deviceScopeKey?: string | null;
 };
 
-export type ResolvedTicketCandidate = PartMeasurementScheduleRowCandidate & {
+export type ResolvedTicketCandidate = ProductionScheduleLookupRow & {
   machineName: string | null;
 };
 
@@ -84,13 +84,23 @@ export class PartMeasurementResolveService {
     const prismaGroup = apiProcessGroupToPrisma(group);
     const templateFhincd = selected?.fhincd.trim() ?? '';
     const templateResourceCd = selected?.fsigencd.trim() ?? wantResource;
+    const templateFkojun = selected?.fkojun == null ? '' : String(selected.fkojun);
     const template =
       templateFhincd.length > 0 && templateResourceCd.length > 0
-        ? await this.templates.findActiveByFhincdGroupAndResource(
+        ? (await this.templates.findActiveByFhincdGroupAndResource(
             templateFhincd,
             prismaGroup,
-            templateResourceCd
-          )
+            templateResourceCd,
+            templateFkojun
+          )) ??
+          (templateFkojun
+            ? await this.templates.findActiveByFhincdGroupAndResource(
+                templateFhincd,
+                prismaGroup,
+                templateResourceCd,
+                ''
+              )
+            : null)
         : null;
 
     return {

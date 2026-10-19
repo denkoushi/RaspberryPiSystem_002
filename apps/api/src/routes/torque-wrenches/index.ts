@@ -27,7 +27,8 @@ import {
   torqueWrenchConnectionLeaseAcquireSchema,
   torqueWrenchConnectionLeaseEnforcementSchema,
   torqueWrenchConnectionLeaseTakeoverSchema,
-  torqueWrenchConnectionLeaseTokenSchema
+  torqueWrenchConnectionLeaseTokenSchema,
+  torqueWrenchConnectionLeaseStatusQuerySchema
 } from './schemas.js';
 
 export async function registerTorqueWrenchRoutes(app: FastifyInstance): Promise<void> {
@@ -43,6 +44,7 @@ export async function registerTorqueWrenchRoutes(app: FastifyInstance): Promise<
         await canView(request, reply);
         return;
       } catch (error) {
+        if (error instanceof ApiError && error.code === 'MFA_SETUP_REQUIRED') throw error;
         if (!request.headers['x-client-key']) throw error;
       }
     }
@@ -141,7 +143,8 @@ export async function registerTorqueWrenchRoutes(app: FastifyInstance): Promise<
     async (request) => {
       const { id } = torqueWrenchIdParamsSchema.parse(request.params);
       const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
-      return { lease: await connectionLeaseService.getStatus(id, clientDevice.id) };
+      const query = torqueWrenchConnectionLeaseStatusQuerySchema.parse(request.query);
+      return { lease: await connectionLeaseService.getStatus(id, clientDevice.id, query.sessionId) };
     }
   );
 
@@ -205,13 +208,12 @@ export async function registerTorqueWrenchRoutes(app: FastifyInstance): Promise<
       const { id } = torqueWrenchIdParamsSchema.parse(request.params);
       const body = torqueWrenchConnectionLeaseTokenSchema.parse(request.body);
       const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
-      return {
-        lease: await connectionLeaseService.release({
-          torqueWrenchProfileId: id,
-          clientDeviceId: clientDevice.id,
-          ...body
-        })
-      };
+      const released = await connectionLeaseService.release({
+        torqueWrenchProfileId: id,
+        clientDeviceId: clientDevice.id,
+        ...body
+      });
+      return { lease: released.status, result: released.result, status: released.status };
     }
   );
 
@@ -262,6 +264,7 @@ export async function registerTorqueWrenchRoutes(app: FastifyInstance): Promise<
         try {
           await canWrite(request, reply);
         } catch (error) {
+          if (error instanceof ApiError && error.code === 'MFA_SETUP_REQUIRED') throw error;
           if (!request.headers['x-client-key']) throw error;
           const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
           clientDeviceId = clientDevice.id;

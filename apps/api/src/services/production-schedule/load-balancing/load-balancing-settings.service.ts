@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 
-import { resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
+import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
 import { logger } from '../../../lib/logger.js';
 import { prisma } from '../../../lib/prisma.js';
+import { toUpperTrimmedCode as normalizeResourceCd } from '../../../lib/string-normalize.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import {
   mergeLoadBalancingItemsByResourceCd,
@@ -17,9 +18,7 @@ import { parseYearMonthRangeInclusive } from './year-month-range.js';
 export { SHARED_LOAD_BALANCING_SITE_KEY } from './load-balancing-settings-merge.js';
 
 const normalizeLocation = (location: string): string => location.trim();
-const normalizeSiteKey = (location: string): string => resolveSiteKeyFromScopeKey(normalizeLocation(location));
-
-const normalizeResourceCd = (value: string): string => value.trim().toUpperCase();
+const normalizeSiteKey = (location: string): string => resolveSiteKeyForScopeKey(normalizeLocation(location));
 
 function logLoadBalancingSiteSharedResolution(params: {
   siteKey: string;
@@ -168,6 +167,32 @@ export async function replaceLoadBalancingCapacityBase(params: {
   });
 
   return listLoadBalancingCapacityBase(siteKey);
+}
+
+/** キオスクから 1 資源だけ基準能力を保存する（他資源の行は触らない） */
+export async function upsertLoadBalancingCapacityBaseItem(params: {
+  siteKeyInput: string;
+  resourceCd: string;
+  baseAvailableMinutes: number;
+}): Promise<{ siteKey: string; items: LoadBalancingCapacityBaseItem[] }> {
+  const siteKey = normalizeSiteKey(params.siteKeyInput);
+  const resourceCd = normalizeResourceCd(params.resourceCd);
+  if (!resourceCd) {
+    throw new Error('資源CDを指定してください');
+  }
+  const key = {
+    csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+    siteKey,
+    resourceCd
+  };
+  const baseAvailableMinutes = Math.max(0, Math.floor(params.baseAvailableMinutes));
+  await prisma.productionScheduleResourceCapacityBase.upsert({
+    where: { csvDashboardId_siteKey_resourceCd: key },
+    create: { id: randomUUID(), ...key, baseAvailableMinutes },
+    update: { baseAvailableMinutes }
+  });
+
+  return listLoadBalancingCapacityBaseResolved(siteKey);
 }
 
 async function fetchLoadBalancingMonthlyCapacityItems(

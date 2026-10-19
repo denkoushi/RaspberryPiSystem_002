@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { prisma } from '../../../lib/prisma.js';
 
 import {
   PRODUCTION_SCHEDULE_DASHBOARD_ID,
@@ -50,8 +51,12 @@ export function buildLeaderboardShellListWhereSql(params: {
   completionFilter?: ProductionScheduleCompletionFilter;
   processChangeResidualMode?: ProcessChangeResidualMode;
   processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>;
+  /** Planning ID selection omits the legacy FKOJUNST visibility predicate. */
+  includeLegacyVisibility?: boolean;
 }): Prisma.Sql {
-  const visibilitySql = buildFkojunstProductionScheduleListVisibilityWhereSql();
+  const visibilitySql = params.includeLegacyVisibility === false
+    ? Prisma.empty
+    : buildFkojunstProductionScheduleListVisibilityWhereSql();
   const completionSql = buildProductionScheduleCompletionFilterWhereSql(params.completionFilter);
   const residualFilterSql = buildLeaderboardProcessChangeResidualFilterWhereSql(
     params.processChangeResidualMode,
@@ -578,6 +583,31 @@ export async function fetchLeaderboardShellRowsContinuationChunk(params: {
     excludeRowIds: exclude,
     takeCount: params.chunkSize
   });
+}
+
+/** Planning source: enumerate only parent IDs already restricted by the registered seiban/category scope. */
+export async function fetchLeaderboardPlanningScopedParentRowIds(params: {
+  leaderboardMaterializedBaseWhere: Prisma.Sql;
+  queryWhere: Prisma.Sql;
+  completionFilter?: ProductionScheduleCompletionFilter;
+  processChangeResidualMode?: ProcessChangeResidualMode;
+  processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>;
+}): Promise<string[]> {
+  const where = buildLeaderboardShellListWhereSql({
+    leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere,
+    queryWhere: params.queryWhere,
+    completionFilter: params.completionFilter,
+    processChangeResidualMode: params.processChangeResidualMode,
+    processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys,
+    includeLegacyVisibility: false
+  });
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT "CsvDashboardRow"."id"
+    FROM "CsvDashboardRow"
+    WHERE ${where}
+    ORDER BY "CsvDashboardRow"."id" ASC
+  `);
+  return rows.map((row) => row.id).filter((id): id is string => typeof id === 'string' && id.length > 0);
 }
 
 /**

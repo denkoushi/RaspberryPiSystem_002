@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
 COPY apps/web/package.json apps/web/
@@ -13,27 +13,55 @@ RUN --mount=type=cache,id=raspi-pnpm-store,target=/pnpm/store,sharing=locked \
     npm_config_fetch_timeout=30000 \
     pnpm install --frozen-lockfile --store-dir=/pnpm/store --network-concurrency=4
 WORKDIR /app/packages/shared-types
-RUN pnpm build
+RUN nice -n 10 pnpm build
+WORKDIR /app/packages/kiosk-sop-core
+RUN nice -n 10 pnpm build
 WORKDIR /app/packages/part-search-core
-RUN pnpm build
+RUN nice -n 10 pnpm build
 WORKDIR /app/packages/shelf-layout-core
-RUN pnpm build
+RUN nice -n 10 pnpm build
 WORKDIR /app
 COPY apps/web ./apps/web
 # NFCエージェントのWebSocket URLをビルド時に設定可能にする
 ARG VITE_AGENT_WS_URL=ws://localhost:7071/stream
 ENV VITE_AGENT_WS_URL=${VITE_AGENT_WS_URL}
+# local を指定したキオスクは、各端末の localhost NFC エージェントだけへ接続する。
+# 未指定時も本番の fail-closed local-only 契約を維持する。
+ARG VITE_AGENT_WS_MODE=local
+ENV VITE_AGENT_WS_MODE=${VITE_AGENT_WS_MODE}
 # ラズパイ5のAPIサーバーのURLをビルド時に設定可能にする
 ARG VITE_API_BASE_URL=/api
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ARG VITE_API_TIMEOUT_MS=120000
+ENV VITE_API_TIMEOUT_MS=${VITE_API_TIMEOUT_MS}
+ARG VITE_WS_BASE_URL=/ws
+ENV VITE_WS_BASE_URL=${VITE_WS_BASE_URL}
+ARG VITE_BARCODE_AGENT_WS_URL=ws://localhost:7072/stream
+ENV VITE_BARCODE_AGENT_WS_URL=${VITE_BARCODE_AGENT_WS_URL}
+ARG VITE_ENABLE_DEBUG_LOGS=false
+ENV VITE_ENABLE_DEBUG_LOGS=${VITE_ENABLE_DEBUG_LOGS}
 ARG VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED=true
 ENV VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED=${VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED}
-ARG VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED=false
+ARG VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED=true
 ENV VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED=${VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED}
+ARG VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED=true
+ENV VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED=${VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED}
 ARG VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED=false
 ENV VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED=${VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED}
 ARG VITE_KIOSK_LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED=false
 ENV VITE_KIOSK_LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED=${VITE_KIOSK_LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED}
+ARG VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED=true
+ENV VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED=${VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED}
+ARG VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_PHASE2_SWR=true
+ENV VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_PHASE2_SWR=${VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_PHASE2_SWR}
+ARG VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION=true
+ENV VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION=${VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION}
+ARG VITE_KIOSK_LEADERBOARD_SEIBAN_OR_CLIENT_FILTER=true
+ENV VITE_KIOSK_LEADERBOARD_SEIBAN_OR_CLIENT_FILTER=${VITE_KIOSK_LEADERBOARD_SEIBAN_OR_CLIENT_FILTER}
+ARG VITE_KIOSK_LEADERBOARD_BOARD_CLIENT_PERF_LOG=false
+ENV VITE_KIOSK_LEADERBOARD_BOARD_CLIENT_PERF_LOG=${VITE_KIOSK_LEADERBOARD_BOARD_CLIENT_PERF_LOG}
+ARG VITE_KIOSK_SOP_POPUP_ENABLED=true
+ENV VITE_KIOSK_SOP_POPUP_ENABLED=${VITE_KIOSK_SOP_POPUP_ENABLED}
 # Release identity belongs to the compiled app. Keep this argument after the
 # dependency layers so changing a release SHA only invalidates the Web build.
 # Empty is permitted for non-release development images; such bundles can
@@ -43,9 +71,9 @@ RUN if [ -n "$VITE_RELEASE_SHA" ] && ! printf '%s' "$VITE_RELEASE_SHA" | grep -E
       echo 'VITE_RELEASE_SHA must be empty or a full lowercase Git SHA' >&2; exit 1; \
     fi \
     && cd apps/web \
-    && VITE_RELEASE_SHA="$VITE_RELEASE_SHA" pnpm run build
+    && GOMAXPROCS=1 VITE_RELEASE_SHA="$VITE_RELEASE_SHA" nice -n 10 pnpm run build
 
-FROM golang:1.26.5-alpine AS caddy-build
+FROM golang:1.26.9-alpine AS caddy-build
 WORKDIR /src
 ARG TARGETOS=linux
 ARG TARGETARCH
@@ -57,7 +85,7 @@ go 1.26
 
 require github.com/caddyserver/caddy/v2 v2.11.4
 
-replace google.golang.org/grpc => google.golang.org/grpc v1.82.1
+replace google.golang.org/grpc => google.golang.org/grpc v1.83.2
 
 replace github.com/jackc/pgx/v5 => github.com/jackc/pgx/v5 v5.9.0
 replace github.com/jackc/puddle/v2 => github.com/jackc/puddle/v2 v2.2.2
@@ -67,6 +95,10 @@ replace go.opentelemetry.io/otel => go.opentelemetry.io/otel v1.43.0
 replace go.opentelemetry.io/otel/sdk => go.opentelemetry.io/otel/sdk v1.43.0
 replace go.opentelemetry.io/otel/trace => go.opentelemetry.io/otel/trace v1.43.0
 replace go.opentelemetry.io/otel/metric => go.opentelemetry.io/otel/metric v1.43.0
+
+replace golang.org/x/net => golang.org/x/net v0.60.0
+replace golang.org/x/crypto => golang.org/x/crypto v0.55.0
+replace golang.org/x/text => golang.org/x/text v0.41.0
 
 replace github.com/go-jose/go-jose/v3 => github.com/go-jose/go-jose/v3 v3.0.5
 replace github.com/go-jose/go-jose/v4 => github.com/go-jose/go-jose/v4 v4.1.4
@@ -83,16 +115,30 @@ func main() {
 	caddycmd.Main()
 }
 EOF
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -mod=mod -trimpath -ldflags="-s -w" -o /usr/bin/caddy main.go
+RUN --mount=type=cache,id=raspi-caddy-go-mod,target=/go/pkg/mod,sharing=locked \
+  --mount=type=cache,id=raspi-caddy-go-build,target=/root/.cache/go-build,sharing=locked \
+  CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOMAXPROCS=1 \
+  nice -n 10 go build -p 1 -mod=mod -trimpath -ldflags="-s -w" -o /usr/bin/caddy main.go
 
 FROM alpine:3.23
 WORKDIR /srv
 # envsubst を導入し、CI の Trivy が検出した Alpine の修正版パッケージへ追従する
-RUN apk add --no-cache ca-certificates gettext libcap \
-  && apk upgrade --no-cache musl musl-utils openssl libcrypto3 libssl3 zlib libxml2
-RUN mkdir -p /srv/phase2-maintenance
+RUN apk add --no-cache ca-certificates gettext \
+  && apk upgrade --no-cache musl musl-utils openssl libcrypto3 libssl3 zlib libxml2 \
+  && for package in libcrypto3 libssl3; do \
+    installed_package="$(apk info -e -v "$package")" \
+      || { echo "$package is not installed" >&2; exit 1; }; \
+    installed_version="${installed_package#"$package"-}"; \
+    case "$(apk version -t "$installed_version" '3.5.8-r0')" in \
+      '='|'>') ;; \
+      *) echo "$package remains below the CVE-2026-14456 fixed version: $installed_version" >&2; exit 1 ;; \
+    esac; \
+  done \
+  && addgroup -g 1000 -S caddy \
+  && adduser -u 1000 -S -D -H -G caddy caddy \
+  && mkdir -p /srv/phase2-maintenance /data /config /var/log/caddy \
+  && chown caddy:caddy /data /config /var/log/caddy
 COPY --from=caddy-build /usr/bin/caddy /usr/bin/caddy
-RUN setcap cap_net_bind_service=+ep /usr/bin/caddy
 COPY --from=build /app/apps/web/dist ./site
 COPY infrastructure/docker/Caddyfile ./Caddyfile
 COPY infrastructure/docker/Caddyfile.production ./Caddyfile.production
@@ -108,8 +154,13 @@ ARG BUILD_COMMIT=unknown
 ARG BUILD_CONFIG_HASH=unknown
 LABEL org.opencontainers.image.revision=${BUILD_COMMIT}
 LABEL org.opencontainers.image.config-hash=${BUILD_CONFIG_HASH}
+ENV HOME=/tmp/caddy-home
+ENV XDG_CONFIG_HOME=/config
+ENV XDG_DATA_HOME=/data
+ENV SLOT_CADDY_CONFIG_FILE=/tmp/Caddyfile.slot
 # Caddyfileの選択ロジック:
 # 1. USE_LOCAL_CERTS環境変数が設定されている場合 → Caddyfile.local（自己署名証明書）
 # 2. DOMAIN環境変数が設定されている場合 → Caddyfile.production（Let's Encrypt）
 # 3. それ以外 → Caddyfile（HTTPのみ、開発用）
-CMD ["sh", "-c", "if [ -n \"$GATEWAY_CONFIG_FILE\" ]; then caddy run --config \"$GATEWAY_CONFIG_FILE\"; elif [ -n \"$SLOT_API_UPSTREAM\" ]; then envsubst < /srv/Caddyfile.slot.template > /srv/Caddyfile.slot && caddy run --config /srv/Caddyfile.slot; elif [ -n \"$USE_LOCAL_CERTS\" ]; then export NFC_AGENT_HOST=${NFC_AGENT_HOST:-192.168.10.223} && envsubst < /srv/Caddyfile.local.template > /srv/Caddyfile.local && caddy run --config /srv/Caddyfile.local; elif [ -n \"$DOMAIN\" ]; then caddy run --config /srv/Caddyfile.production; else caddy run --config /srv/Caddyfile; fi"]
+USER caddy
+CMD ["sh", "-c", "if [ -n \"$GATEWAY_CONFIG_FILE\" ]; then caddy run --config \"$GATEWAY_CONFIG_FILE\"; elif [ -n \"$SLOT_API_UPSTREAM\" ]; then envsubst < /srv/Caddyfile.slot.template > \"$SLOT_CADDY_CONFIG_FILE\" && caddy run --config \"$SLOT_CADDY_CONFIG_FILE\"; elif [ -n \"$USE_LOCAL_CERTS\" ]; then caddy run --config /srv/Caddyfile.local.template; elif [ -n \"$DOMAIN\" ]; then caddy run --config /srv/Caddyfile.production; else caddy run --config /srv/Caddyfile; fi"]

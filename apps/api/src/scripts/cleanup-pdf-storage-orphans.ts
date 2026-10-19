@@ -15,10 +15,10 @@ import path from 'path';
 import { PrismaClient } from '@prisma/client';
 
 import { PDF_PAGES_DIR } from '../lib/pdf-storage.js';
+import { getFileStorageRoot } from '../services/file-storage/file-storage-config.js';
+import { getFileStorageRuntime } from '../services/file-storage/file-storage-runtime.js';
 
-const getStorageBaseDir = () =>
-  process.env.PDF_STORAGE_DIR ||
-  (process.env.NODE_ENV === 'test' ? '/tmp/test-photo-storage' : '/opt/RaspberryPiSystem_002/storage');
+const getStorageBaseDir = () => getFileStorageRoot();
 const getPdfsDir = () => path.join(getStorageBaseDir(), 'pdfs');
 
 const UUID_DIR =
@@ -83,7 +83,7 @@ async function main() {
         console.log(`[orphan-pdf] ${full}`);
         wouldRemoveFiles += 1;
         if (execute) {
-          await fs.unlink(full);
+          await getFileStorageRuntime().store.delete(`pdfs/${name}`, { integrity: true });
         }
       }
     } catch (e) {

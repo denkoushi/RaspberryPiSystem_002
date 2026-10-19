@@ -13,27 +13,27 @@ import { registerLocalLlmGateway } from './plugins/local-llm-gateway.js';
 import { registerRoutes } from './routes/index.js';
 import { initializeCsvImporters } from './services/imports/index.js';
 import { initializeVisualizationModules } from './services/visualization/index.js';
-import { MeasuringInstrumentGenreImageStorage } from './lib/measuring-instrument-genre-image-storage.js';
-import { AssemblyProcedureImageStorage } from './lib/assembly-procedure-image-storage.js';
-import { PartMeasurementDrawingStorage } from './lib/part-measurement-drawing-storage.js';
-import { PalletMachineIllustrationStorage } from './lib/pallet-machine-illustration-storage.js';
-import { PhotoStorage } from './lib/photo-storage.js';
-import { PdfStorage } from './lib/pdf-storage.js';
-import { SignageRenderStorage } from './lib/signage-render-storage.js';
-import { CsvDashboardStorage } from './lib/csv-dashboard-storage.js';
+import { initializeFileStorageRuntime } from './services/file-storage/file-storage-runtime.js';
 import { SignageRenderScheduler } from './services/signage/signage-render-scheduler.js';
 import { SignageRenderer } from './services/signage/signage.renderer.js';
 import { SignageService } from './services/signage/index.js';
+import { getSignageWebCaptureService } from './services/signage/web-capture/signage-web-capture.service.js';
 import { probePlaywrightChromiumAvailability } from './services/signage/loan-grid/playwright/playwright-chromium-availability.js';
 import { refreshProductionScheduleOrderSplitPilotGateCache } from './services/production-schedule/order-split/production-schedule-order-split-feature.js';
+import { isCandidateValidationMode } from './bootstrap/candidate-validation.js';
 import { createSchedulerRuntimeState } from './bootstrap/scheduler-runtime-state.js';
 import { createDeployReadinessObservability } from './services/system/deploy-readiness-observability.js';
+import { prisma } from './lib/prisma.js';
+import { ensureProcedureManualProcesses } from './services/assembly/procedure-manual-reference-data.js';
+import { enableSiteDirectoryFailClosed, ensureSiteDirectoryFresh, refreshSiteDirectory } from './lib/site-directory.js';
 
 export async function buildServer(): Promise<FastifyInstance> {
   const app = Fastify({ logger: { level: env.LOG_LEVEL } });
   registerErrorHandler(app);
   registerRequestLogger(app);
-  app.decorate('schedulerRuntimeState', createSchedulerRuntimeState());
+  // Declare the expected scheduler before listen so startup cannot appear ready.
+  const schedulerEnabled = process.env['PI5_SCHEDULER_LEADER_ENABLED'] === '1' && !isCandidateValidationMode();
+  app.decorate('schedulerRuntimeState', createSchedulerRuntimeState(schedulerEnabled));
   app.decorate('deployReadinessObservability', createDeployReadinessObservability());
 
   // NOTE:
@@ -47,7 +47,7 @@ export async function buildServer(): Promise<FastifyInstance> {
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       // Web側はapi clientで x-client-key をデフォルト付与するため、preflightで許可が必要
-      allowedHeaders: ['Authorization', 'Content-Type', 'x-client-key', 'Idempotency-Key']
+      allowedHeaders: ['Authorization', 'Content-Type', 'x-client-key', 'Idempotency-Key', 'x-due-management-token']
     });
   }
 
@@ -67,34 +67,32 @@ export async function buildServer(): Promise<FastifyInstance> {
     }
   });
   
-  // ストレージディレクトリを初期化（I/O 並列化で起動クリティカルパス短縮）
-  const storageTasks: Array<{ label: string; run: () => Promise<unknown> }> = [
-    { label: 'Photo storage directories', run: () => PhotoStorage.initialize() },
-    { label: 'Assembly procedure image storage', run: () => AssemblyProcedureImageStorage.initialize() },
-    { label: 'Measuring instrument genre image storage', run: () => MeasuringInstrumentGenreImageStorage.initialize() },
-    { label: 'Part-measurement drawing storage', run: () => PartMeasurementDrawingStorage.initialize() },
-    { label: 'Pallet machine illustration storage', run: () => PalletMachineIllustrationStorage.initialize() },
-    { label: 'PDF storage directories', run: () => PdfStorage.initialize() },
-    { label: 'Signage render storage', run: () => SignageRenderStorage.initialize() },
-    { label: 'CSV dashboard storage', run: () => CsvDashboardStorage.initialize() }
-  ];
-
-  const settled = await Promise.allSettled(storageTasks.map((t) => t.run()));
-  for (let i = 0; i < settled.length; i += 1) {
-    const task = storageTasks[i]!;
-    const r = settled[i]!;
-    if (r.status === 'fulfilled') {
-      app.log.info(`${task.label} initialized`);
-    } else {
-      app.log.warn({ err: r.reason }, `${task.label}: init failed (may not be critical)`);
+  try {
+    const fileStorage = await initializeFileStorageRuntime();
+    const snapshot = fileStorage.health.snapshot();
+    if (snapshot.status === 'error' && env.NODE_ENV === 'production') {
+      throw new Error(`File storage startup check failed: ${snapshot.reason ?? 'unavailable'}`);
     }
+    app.log.info(
+      {
+        status: snapshot.status,
+        reason: snapshot.reason,
+        usagePercent: snapshot.usagePercent,
+      },
+      'File storage initialized'
+    );
+  } catch (error) {
+    if (env.NODE_ENV === 'production') {
+      throw error;
+    }
+    app.log.warn({ err: error }, 'File storage startup check failed outside production');
   }
 
-  const playwrightAvailability = probePlaywrightChromiumAvailability();
+  const playwrightAvailability = await probePlaywrightChromiumAvailability();
   if (playwrightAvailability.available) {
     app.log.info(
-      { executablePath: playwrightAvailability.executablePath },
-      'Playwright Chromium is available'
+      { browserVersion: playwrightAvailability.browserVersion },
+      'Playwright headless Chromium is available'
     );
   } else {
     app.log.warn(playwrightAvailability.message);
@@ -103,7 +101,9 @@ export async function buildServer(): Promise<FastifyInstance> {
   // サイネージレンダリングスケジューラーを作成（ルートからアクセス可能にするため）
   const signageService = new SignageService();
   const signageRenderer = new SignageRenderer(signageService);
-  const scheduler = new SignageRenderScheduler(signageRenderer, env.SIGNAGE_RENDER_INTERVAL_SECONDS);
+  const scheduler = new SignageRenderScheduler(signageRenderer, env.SIGNAGE_RENDER_INTERVAL_SECONDS, () =>
+    getSignageWebCaptureService().runDueCaptures(),
+  );
   
   // アプリケーションコンテキストにスケジューラーを保存
   app.decorate('signageRenderScheduler', scheduler);
@@ -126,6 +126,28 @@ export async function buildServer(): Promise<FastifyInstance> {
     }
   }
   
+  // 端末の明示拠点の対応表（docs/plans/explicit-site-scope-execplan.md）。
+  // 読み込むまでは拠点の解決だけを 503 で止める（拠点を使わない処理・ヘルスチェックは止めない）。
+  enableSiteDirectoryFailClosed();
+  try {
+    await refreshSiteDirectory(prisma);
+  } catch (err) {
+    app.log.warn({ err }, 'Site directory could not be loaded yet; site resolution returns 503 until a request-time reload succeeds');
+  }
+  app.addHook('onRequest', async (request) => {
+    try {
+      await ensureSiteDirectoryFresh(prisma);
+    } catch (err) {
+      request.log.warn({ err }, 'Site directory refresh failed; keeping the previous directory');
+    }
+  });
+
+  try {
+    await ensureProcedureManualProcesses(prisma);
+  } catch (err) {
+    app.log.warn({ err }, 'Procedure manual processes could not be initialized');
+  }
+
   // ルートを登録
   await registerRoutes(app);
   return app;

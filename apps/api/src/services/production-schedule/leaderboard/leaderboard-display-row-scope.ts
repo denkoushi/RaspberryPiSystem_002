@@ -14,7 +14,11 @@ export const LEADERBOARD_DISPLAY_ROW_SCOPE_ABS_MAX = 8000;
 /**
  * 表示順を保ったまま trim・重複除去する。
  */
-export function normalizeLeaderboardDisplayRowIdScope(orderedRowIds: readonly string[]): string[] {
+export function normalizeLeaderboardDisplayRowIdScope(
+  orderedRowIds: readonly string[],
+  maxRows: number = LEADERBOARD_DISPLAY_ROW_SCOPE_ABS_MAX
+): string[] {
+  const limit = Math.max(1, Math.floor(maxRows));
   const seen = new Set<string>();
   const out: string[] = [];
   for (const raw of orderedRowIds) {
@@ -22,7 +26,7 @@ export function normalizeLeaderboardDisplayRowIdScope(orderedRowIds: readonly st
     if (!id.length || seen.has(id)) continue;
     seen.add(id);
     out.push(id);
-    if (out.length >= LEADERBOARD_DISPLAY_ROW_SCOPE_ABS_MAX) {
+    if (out.length >= limit) {
       break;
     }
   }

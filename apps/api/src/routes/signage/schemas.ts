@@ -1,4 +1,6 @@
+import { parseSignageA2uiProposal, signageA2uiProposalSchema } from '../../services/signage/signage-a2ui.js';
 import { z } from 'zod';
+import { signageCanvasLayoutSchema } from '../../services/signage/signage-canvas.js';
 
 // layoutConfigのスキーマ定義
 const pdfSlotConfigSchema = z
@@ -49,6 +51,7 @@ const mobilePlacementPartsShelfGridSlotConfigSchema = z
 
 const selfInspectionMachineBoardTargetModeSchema = z.enum([
   'manual_machine_name',
+  'kiosk_active_sessions',
   'auto_from_leaderboard_status',
 ]);
 
@@ -59,13 +62,22 @@ const selfInspectionMachineBoardSlotConfigSchema = z
     deviceScopeKey: z.string().min(1).max(200).optional(),
     resourceCds: z.array(z.string().trim().min(1).max(100)).min(1).max(32).optional(),
     slideIntervalSeconds: z.number().int().positive().optional(),
+    /** wire contract remains 1–12; the admin UI caps newly saved values at 6 */
     partsPerPage: z.number().int().min(1).max(12).optional(),
+    /** legacy settings remain readable; the admin UI no longer writes this field */
     detailTopN: z.number().int().min(0).max(20).optional(),
     maxAutoMachines: z.number().int().min(1).max(20).optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
     const targetMode = value.targetMode ?? 'manual_machine_name';
+    if (targetMode === 'kiosk_active_sessions') {
+      // kiosk_active_sessions supersedes the legacy auto fields. Keep accepting
+      // them on the wire so old clients/settings can be read; the runtime
+      // resolver deliberately ignores these fields for the kiosk mode.
+      return;
+    }
+
     if (targetMode === 'manual_machine_name') {
       if (!value.machineName?.trim()) {
         ctx.addIssue({
@@ -157,18 +169,28 @@ const slotSchema = z.discriminatedUnion('kind', [
     kind: z.literal('self_inspection_machine_board'),
     config: selfInspectionMachineBoardSlotConfigSchema,
   }),
+  z.object({
+    position: z.literal('FULL'),
+    kind: z.literal('web_page'),
+    config: z.object({ webCaptureId: z.string().uuid() }).strict(),
+  }),
 ]);
 
-const layoutConfigSchema = z
+const legacyLayoutConfigSchema = z
   .object({
     layout: z.enum(['FULL', 'SPLIT']),
-    slots: z.array(slotSchema).min(1),
+    slots: z.array(slotSchema),
+    a2ui: signageA2uiProposalSchema.refine((value) => Boolean(parseSignageA2uiProposal(value))).optional(),
   })
   .optional()
   .nullable()
   .superRefine((value, ctx) => {
     if (!value) {
       return;
+    }
+
+    if (value.a2ui ? value.layout !== 'FULL' || value.slots.length !== 0 : value.slots.length === 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['slots'], message: 'A2UI requires FULL with no slots; other layouts require slots' });
     }
 
     value.slots.forEach((slot, index) => {
@@ -188,6 +210,8 @@ const layoutConfigSchema = z
       }
     });
   });
+
+const layoutConfigSchema = z.union([legacyLayoutConfigSchema, signageCanvasLayoutSchema]).optional().nullable();
 
 export const scheduleSchema = z.object({
   name: z.string().min(1),
@@ -233,3 +257,48 @@ export const emergencySchema = z.object({
   expiresAt: z.coerce.date().optional().nullable(),
 });
 
+const webCaptureSelectorSchema = z.string().trim().min(1).max(200).regex(/^[^{}<;@\\]+$/u);
+
+const webCaptureSettingsShape = {
+  path: z.string().trim().min(1).max(500),
+  viewportWidth: z.number().int().min(640).max(3840).default(1920),
+  viewportHeight: z.number().int().min(360).max(2160).default(1080),
+  waitMode: z.enum(['network_idle', 'fixed_delay']).default('network_idle'),
+  waitSeconds: z.number().int().min(0).max(20).default(3),
+  hideSelectors: z.array(webCaptureSelectorSchema).max(12).default([]),
+  clipSelector: webCaptureSelectorSchema.nullable().default(null),
+};
+
+export const webCaptureSettingsSchema = z.object(webCaptureSettingsShape).strict();
+
+/** 試し撮り用：設定に加えて「ページ全体の枠を自動で隠す」を指定できる */
+export const webCapturePreviewSchema = z
+  .object({ ...webCaptureSettingsShape, autoHideLandmarks: z.boolean().default(false) })
+  .strict();
+
+export const webCaptureSchema = z
+  .object({
+    ...webCaptureSettingsShape,
+    name: z.string().trim().min(1).max(80),
+    refreshIntervalSeconds: z.union([z.literal(60), z.literal(300), z.literal(900)]).default(300),
+    enabled: z.boolean().default(true),
+  })
+  .strict();
+
+export const webCaptureUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    path: webCaptureSettingsShape.path,
+    viewportWidth: z.number().int().min(640).max(3840),
+    viewportHeight: z.number().int().min(360).max(2160),
+    waitMode: z.enum(['network_idle', 'fixed_delay']),
+    waitSeconds: z.number().int().min(0).max(20),
+    hideSelectors: z.array(webCaptureSelectorSchema).max(12),
+    clipSelector: webCaptureSelectorSchema.nullable(),
+    refreshIntervalSeconds: z.union([z.literal(60), z.literal(300), z.literal(900)]),
+    enabled: z.boolean(),
+  })
+  .partial()
+  .strict();
+
+export const webCaptureParamsSchema = z.object({ id: z.string().uuid() });

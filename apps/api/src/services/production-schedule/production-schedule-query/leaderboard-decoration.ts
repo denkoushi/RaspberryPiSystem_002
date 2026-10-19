@@ -6,6 +6,7 @@ import {
   SelfInspectionService,
 } from '../../part-measurement/self-inspection.service.js';
 import type { LeaderboardPartFooterProcessItem } from '../leaderboard/leaderboard-part-footer-processes.service.js';
+import { buildLeaderboardMaterialArrivalByPartKeyForScheduleRows } from '../leaderboard/leaderboard-part-material-arrival.service.js';
 import {
   fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds,
 } from '../leaderboard/leaderboard-split-expansion.service.js';
@@ -15,6 +16,7 @@ import {
   getResourceCategoryPolicy,
   resolvePartMeasurementProcessGroupForApi,
 } from '../policies/resource-category-policy.service.js';
+import type { MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
 import type {
   ProductionScheduleListResult,
   ProductionScheduleRow,
@@ -42,7 +44,9 @@ export async function decorateLeaderboardShellRowsForKioskFromHydratedRows(param
   if (hydratedRows.length === 0) {
     return {
       rowDecorations: [],
-      leaderboardFooterChipsByPartKey: {}
+      leaderboardFooterChipsByPartKey: {},
+      leaderboardMaterialArrivalByPartKey: {},
+      leaderboardMaterialArrivalBasisByPartKey: {}
     };
   }
 
@@ -66,6 +70,8 @@ export async function decorateLeaderboardShellRowsForKioskFromHydratedRows(param
     siteKey,
     preferredDisplayRowIds: preferredFooterScope
   });
+  const { leaderboardMaterialArrivalByPartKey, leaderboardMaterialArrivalBasisByPartKey } =
+    await buildLeaderboardMaterialArrivalByPartKeyForScheduleRows(enrichedRows);
 
   return {
     rowDecorations: enrichedRows.map((r) => ({
@@ -75,9 +81,13 @@ export async function decorateLeaderboardShellRowsForKioskFromHydratedRows(param
       hasSelfInspectionDrawing: selfInspectionById.get(r.id)?.hasSelfInspectionDrawing ?? false,
       selfInspectionTemplateId: selfInspectionById.get(r.id)?.selfInspectionTemplateId ?? null,
       selfInspectionStatus: selfInspectionById.get(r.id)?.selfInspectionStatus ?? null,
-      selfInspectionEntryPath: selfInspectionById.get(r.id)?.selfInspectionEntryPath ?? null
+      selfInspectionEntryPath: selfInspectionById.get(r.id)?.selfInspectionEntryPath ?? null,
+      selfInspectionResourceCds: selfInspectionById.get(r.id)?.selfInspectionResourceCds ?? [],
+      selfInspectionResourceCd: selfInspectionById.get(r.id)?.selfInspectionResourceCd ?? null
     })),
-    leaderboardFooterChipsByPartKey: leaderboardFooterChipsByPartKey ?? {}
+    leaderboardFooterChipsByPartKey: leaderboardFooterChipsByPartKey ?? {},
+    leaderboardMaterialArrivalByPartKey,
+    leaderboardMaterialArrivalBasisByPartKey
   };
 }
 
@@ -94,7 +104,9 @@ export async function decorateLeaderboardShellRowsForKiosk(params: {
   if (preferredDisplayRowIds.length === 0) {
     return {
       rowDecorations: [],
-      leaderboardFooterChipsByPartKey: {}
+      leaderboardFooterChipsByPartKey: {},
+      leaderboardMaterialArrivalByPartKey: {},
+      leaderboardMaterialArrivalBasisByPartKey: {}
     };
   }
 
@@ -131,8 +143,13 @@ export type ProductionScheduleLeaderboardDecorationPayload = {
     selfInspectionTemplateId: string | null;
     selfInspectionStatus: ProductionScheduleSelfInspectionStatus | null;
     selfInspectionEntryPath: string | null;
+    selfInspectionResourceCds: string[];
+    selfInspectionResourceCd: string | null;
   }>;
   leaderboardFooterChipsByPartKey: Record<string, LeaderboardPartFooterProcessItem[]>;
+  /** 部品キー → 材料の入荷状況（材料の購買行が無い部品は含めない） */
+  leaderboardMaterialArrivalByPartKey: Record<string, MaterialArrivalStatus>;
+  leaderboardMaterialArrivalBasisByPartKey: Record<string, MaterialArrivalBasis>;
 };
 
 export async function enrichLeaderboardListRowsAndFooter(params: {
@@ -184,7 +201,9 @@ export async function enrichLeaderboardListRowsAndFooter(params: {
       hasSelfInspectionDrawing: decoration?.hasSelfInspectionDrawing ?? false,
       selfInspectionTemplateId: decoration?.selfInspectionTemplateId ?? null,
       selfInspectionStatus: decoration?.selfInspectionStatus ?? null,
-      selfInspectionEntryPath: decoration?.selfInspectionEntryPath ?? null
+      selfInspectionEntryPath: decoration?.selfInspectionEntryPath ?? null,
+      selfInspectionResourceCds: decoration?.selfInspectionResourceCds ?? [],
+      selfInspectionResourceCd: decoration?.selfInspectionResourceCd ?? null
     };
   });
 
@@ -194,12 +213,16 @@ export async function enrichLeaderboardListRowsAndFooter(params: {
     siteKey,
     preferredDisplayRowIds: normalizeLeaderboardDisplayRowIdScope(rowsWithSelfInspection.map((r) => r.id))
   });
+  const { leaderboardMaterialArrivalByPartKey, leaderboardMaterialArrivalBasisByPartKey } =
+    await buildLeaderboardMaterialArrivalByPartKeyForScheduleRows(rowsWithSelfInspection);
 
   return {
     page,
     pageSize,
     total,
     rows: rowsWithSelfInspection,
-    ...(leaderboardFooterChipsByPartKey ? { leaderboardFooterChipsByPartKey } : {})
+    ...(leaderboardFooterChipsByPartKey ? { leaderboardFooterChipsByPartKey } : {}),
+    leaderboardMaterialArrivalByPartKey,
+    leaderboardMaterialArrivalBasisByPartKey
   };
 }

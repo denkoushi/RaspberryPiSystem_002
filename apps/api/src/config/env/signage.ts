@@ -10,6 +10,10 @@ const strictBooleanFromEnvironment = z.preprocess((value) => {
   return value;
 }, z.boolean());
 
+/** compose / env テンプレートが空文字で渡す「未設定」を undefined として扱う */
+const emptyAsUndefined = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess((value) => (typeof value === 'string' && value.trim() === '' ? undefined : value), schema);
+
 export const signageEnvShape = {
   // Candidate validation must not start Chromium/signage work. Production
   // remains enabled by default; the host-local deploy endpoint may pause the
@@ -33,6 +37,13 @@ export const signageEnvShape = {
   SIGNAGE_LOAN_GRID_ENGINE: z.enum(['svg_legacy', 'playwright_html']).default('svg_legacy'),
   /** Playwright スクリーンショットの deviceScaleFactor（1〜2）。高いほど縁取りが細かいが負荷増 */
   SIGNAGE_PLAYWRIGHT_DEVICE_SCALE_FACTOR: z.coerce.number().min(1).max(2).default(1),
+  /**
+   * ページ撮影コンテンツ（管理Webのページを撮ってサイネージに出す）の起点URL。
+   * 本番は Web コンテナの Docker 内部専用入口（例: http://web:8081）。未設定なら撮影は「未設定」で失敗する。
+   */
+  SIGNAGE_WEB_CAPTURE_BASE_URL: emptyAsUndefined(z.string().url().optional()),
+  /** 撮影専用ユーザー名（role MANAGER の実在ユーザー）。未設定なら撮影は「未設定」で失敗する。 */
+  SIGNAGE_WEB_CAPTURE_USERNAME: emptyAsUndefined(z.string().min(1).optional()),
   // Optional dedicated credential for the host-local deploy endpoint. Existing
   // installations use the protected access secret during the first rollout.
   DEPLOY_CONTROL_TOKEN: z.string().min(1).optional(),

@@ -14,7 +14,17 @@ describe('selfInspectionKioskButtonClass', () => {
     expect(actionCompact).not.toContain('min-h-8');
   });
 
-  it.each(['default', 'compact', 'icon', 'actionCompact'] as const)(
+  it('entryDense is the explicit 22px entry-selector exception', () => {
+    const entryDense = selfInspectionKioskButtonClass({ size: 'entryDense', pressed: true });
+    expect(entryDense).toContain('h-[22px]');
+    expect(entryDense).toContain('min-h-[22px]');
+    expect(entryDense).toContain('px-2');
+    expect(entryDense).toContain('text-base');
+    expect(entryDense).toContain('leading-none');
+    expect(entryDense).toContain('bg-cyan-400');
+  });
+
+  it.each(['default', 'compact', 'icon', 'actionCompact', 'entryDense'] as const)(
     'size %s does not use opacity-60 or grayscale for enabled/disabled',
     (size) => {
       const enabled = selfInspectionKioskButtonClass({ disabled: false, size });

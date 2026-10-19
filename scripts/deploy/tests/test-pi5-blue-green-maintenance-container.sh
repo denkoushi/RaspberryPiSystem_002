@@ -44,6 +44,17 @@ wait_for_status() {
   fail "expected HTTP $expected from $url, got ${status:-no response}"
 }
 
+assert_status() {
+  local method="$1"
+  local url="$2"
+  local expected="$3"
+  local status
+  status="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 2 \
+    --request "$method" "$url" || true)"
+  [[ "$status" == "$expected" ]] \
+    || fail "expected HTTP $expected from $method $url, got ${status:-no response}"
+}
+
 container_port() {
   docker port "$1" 80/tcp | sed -nE 's/.*:([0-9]+)$/\1/p' | head -n 1
 }
@@ -98,10 +109,19 @@ gateway="$NAME_PREFIX-gateway"
 start_maintenance "$gateway" "$GATEWAY_CONFIG"
 port="$(container_port "$gateway")"
 [[ -n "$port" ]] || fail 'could not determine the gateway host port'
-url="http://127.0.0.1:${port}/"
+base_url="http://127.0.0.1:${port}"
+url="${base_url}/"
 wait_for_status "$url" 200
 curl --fail --silent --show-error "$url" | grep -Fq 'ただいま更新中です' \
   || fail 'gateway did not serve the packaged maintenance page'
+for internal_path in \
+  /api/backup/internal \
+  /api/backup/internal/ \
+  /api/backup/internal/example
+do
+  assert_status POST "${base_url}${internal_path}" 404
+done
+assert_status GET "${base_url}/api/backup/internality" 200
 
 # Failure injection: after the gateway frees the port, an incomplete recovery
 # listener without the maintenance asset returns 404.  Once removed, gateway
@@ -122,5 +142,14 @@ stop_container "$recovery"
 legacy="$NAME_PREFIX-legacy"
 start_maintenance "$legacy" "$LEGACY_CONFIG" "$port"
 wait_for_status "$url" 200
+
+stop_container "$legacy"
+cleanup
+trap - EXIT
+for name in "${CONTAINERS[@]}"; do
+  if docker inspect "$name" >/dev/null 2>&1; then
+    fail "temporary container remains after cleanup: $name"
+  fi
+done
 
 echo 'PASS: Pi5 Blue/Green maintenance container recovery'

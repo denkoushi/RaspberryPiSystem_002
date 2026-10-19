@@ -60,7 +60,17 @@ export async function assertKioskApiClientKeyValid(rawClientKey: unknown): Promi
 
 export async function requireKioskClientDevice(rawClientKey: unknown): Promise<{
   clientKey: string;
-  clientDevice: { id: string; apiKey: string; name: string; location: string | null; statusClientId: string | null };
+  clientDevice: {
+    id: string;
+    apiKey: string;
+    name: string;
+    location: string | null;
+    statusClientId: string | null;
+    siteKey: string | null;
+    canProxyOtherDevices: boolean;
+    inquiryReceiverEnabled: boolean;
+    systemNoticeReceiverEnabled: boolean;
+  };
 }> {
   const clientKey = normalizeClientKey(rawClientKey);
   if (!clientKey) {

@@ -2,12 +2,15 @@ import type { KioskReorderableHeaderTabId } from '@raspi-system/shared-types';
 
 export const KIOSK_HEADER_TAB_LABELS: Record<KioskReorderableHeaderTabId, string> = {
   borrow: '持出',
+  inventory_settings: '在庫',
   self_inspection: '自主検査',
   instruments_borrow: '計測機器 持出',
   rigging_borrow: '吊具 持出',
+  tag_desk: 'タグ管理',
   production_schedule: '生産スケジュール',
   manual_order: '手動順番',
   leader_order_board: '順位ボード',
+  grinding_planning_board: '製番ボード',
   progress_overview: '進捗一覧',
   load_balancing: '負荷調整',
   purchase_order_lookup: '購買照会',
@@ -18,6 +21,7 @@ export const KIOSK_HEADER_TAB_LABELS: Record<KioskReorderableHeaderTabId, string
   part_measurement: '部品測定',
   inspection_drawing: '検査図面',
   rigging_analytics: '集計',
+  machine_signal: '設備稼働',
   due_management: '納期管理',
   call: '通話'
 };

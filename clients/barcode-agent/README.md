@@ -6,7 +6,7 @@ Pi4 キオスク上で `/dev/ttyACM*` 等のシリアル（CDC ACM）バーコ�
 
 | 変数 | 説明 | 既定 |
 |------|------|------|
-| `REST_HOST` | HTTP/WS バインド | `0.0.0.0` |
+| `REST_HOST` | HTTP/WS バインド | `127.0.0.1` |
 | `REST_PORT` | ポート（7072 推奨、7071 は nfc-agent） | `7072` |
 | `SERIAL_DEVICE` | デバイスパス | `/dev/ttyACM0` |
 | `SERIAL_BAUD` | ボーレート | `9600` |

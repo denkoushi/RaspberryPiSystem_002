@@ -1,9 +1,19 @@
 import clsx from 'clsx';
 import { useLayoutEffect, useRef, useState } from 'react';
 
-import { ImageMarkerCalloutOverlay } from '../kiosk/image-canvas';
+import {
+  clampImageMarkerRatio,
+  ImageMarkerCalloutOverlay,
+  shouldConfirmImageCanvasTap
+} from '../kiosk/image-canvas';
+import {
+  KIOSK_MARKER_STATUS_CLASS,
+  kioskMarkerInputTargetOutlineClass,
+  type KioskMarkerStatus
+} from '../kiosk/kioskMarkerTheme';
 
 import type { ZoomedImageCanvasLayout } from '../kiosk/image-canvas';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 
 type AssemblyCanvasCallout = {
   calloutTipXRatio?: number | null;
@@ -17,6 +27,8 @@ export type AssemblyCanvasBolt = AssemblyCanvasCallout & {
   yRatio: number;
   label: string;
   status?: 'pending' | 'current' | 'ok' | 'ng' | 'ignored';
+  /** 編集画面が条件別の色を渡すときだけ使う。未指定なら状態の色。 */
+  accentClass?: string;
 };
 
 export type AssemblyCanvasCheckItem = AssemblyCanvasCallout & {
@@ -29,25 +41,42 @@ export type AssemblyCanvasCheckItem = AssemblyCanvasCallout & {
   checked: boolean;
 };
 
+export type AssemblyProcedureMarkerPoint = {
+  xRatio: number;
+  yRatio: number;
+};
+
+export type AssemblyProcedureBoltMoveHandler = (
+  id: string,
+  point: AssemblyProcedureMarkerPoint
+) => void;
+
+export type AssemblyProcedureCheckMoveHandler = AssemblyProcedureBoltMoveHandler;
+
 export type AssemblyProcedureMarkerLayerProps = {
   bolts: AssemblyCanvasBolt[];
   checkItems?: AssemblyCanvasCheckItem[];
   selectedBoltId?: string | null;
+  inputTargetBoltId?: string | null;
   selectedCheckItemId?: string | null;
   onSelectBolt?: (id: string) => void;
+  onMoveBolt?: AssemblyProcedureBoltMoveHandler;
   onSelectCheckItem?: (id: string) => void;
+  onMoveCheckItem?: AssemblyProcedureCheckMoveHandler;
+  /** 選択中のマーカーに出す取っ手をドラッグした先を、矢視の先端にする（編集画面のみ）。 */
+  onMoveBoltCallout?: AssemblyProcedureBoltMoveHandler;
+  onMoveCheckItemCallout?: AssemblyProcedureCheckMoveHandler;
   onToggleCheckItem?: (id: string) => void;
   density?: 'default' | 'compact';
   layoutSize?: { width: number; height: number };
 };
 
-function boltMarkerClass(status: AssemblyCanvasBolt['status'], selected: boolean): string {
+function boltMarkerClass(status: AssemblyCanvasBolt['status'], selected: boolean, accentClass?: string): string {
   if (selected) return 'bg-cyan-300 text-slate-950 ring-4 ring-cyan-100';
-  if (status === 'current') return 'bg-amber-300 text-slate-950 ring-4 ring-amber-100';
-  if (status === 'ok') return 'bg-emerald-500 text-white ring-2 ring-emerald-200';
-  if (status === 'ng') return 'bg-rose-600 text-white ring-2 ring-rose-200';
-  if (status === 'ignored') return 'bg-slate-500 text-white ring-2 ring-slate-200';
-  return 'bg-white text-slate-950 ring-2 ring-slate-400';
+  if (accentClass) return accentClass;
+  const markerStatus: KioskMarkerStatus =
+    status === 'ok' ? 'ok' : status === 'ng' ? 'ng' : 'pending';
+  return KIOSK_MARKER_STATUS_CLASS[markerStatus];
 }
 
 function checkMarkerClass(item: AssemblyCanvasCheckItem, selected: boolean): string {
@@ -76,16 +105,190 @@ function zeroOffsetLayout(width: number, height: number): ZoomedImageCanvasLayou
   };
 }
 
+type MarkerPointerInteraction = {
+  markerId: string;
+  onMove?: AssemblyProcedureBoltMoveHandler;
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  maxMovementPx: number;
+  dragging: boolean;
+  captureTarget: HTMLButtonElement;
+  originalStyle: {
+    left: string;
+    top: string;
+  };
+  pendingPoint: AssemblyProcedureMarkerPoint | null;
+  animationFrameId: number | null;
+};
+
+function markerPointFromPointer(
+  event: Pick<ReactPointerEvent<HTMLButtonElement>, 'clientX' | 'clientY'>,
+  target: HTMLElement | null
+): AssemblyProcedureMarkerPoint | null {
+  const rect = target?.getBoundingClientRect();
+  if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+  return {
+    xRatio: clampImageMarkerRatio((event.clientX - rect.left) / rect.width),
+    yRatio: clampImageMarkerRatio((event.clientY - rect.top) / rect.height)
+  };
+}
+
+function setMarkerPosition(
+  target: HTMLElement,
+  point: AssemblyProcedureMarkerPoint
+): void {
+  target.style.left = `${point.xRatio * 100}%`;
+  target.style.top = `${point.yRatio * 100}%`;
+}
+
+/** 矢視があればその先端、なければマーカーの右上に取っ手を置く。 */
+function calloutHandleStyle(marker: AssemblyCanvasCallout & AssemblyProcedureMarkerPoint) {
+  return marker.calloutTipXRatio != null && marker.calloutTipYRatio != null
+    ? { left: `${marker.calloutTipXRatio * 100}%`, top: `${marker.calloutTipYRatio * 100}%` }
+    : { left: `calc(${marker.xRatio * 100}% + 2rem)`, top: `calc(${marker.yRatio * 100}% - 2rem)` };
+}
+
+function releasePointerCapture(interaction: MarkerPointerInteraction): void {
+  if (!interaction.captureTarget.releasePointerCapture) return;
+  try {
+    interaction.captureTarget.releasePointerCapture(interaction.pointerId);
+  } catch {
+    // Pointer capture may already have been released by the browser.
+  }
+}
+
+function cancelMarkerAnimationFrame(interaction: MarkerPointerInteraction): void {
+  if (interaction.animationFrameId == null) return;
+  cancelAnimationFrame(interaction.animationFrameId);
+  interaction.animationFrameId = null;
+}
+
 export function AssemblyMarkerOverlay({
   bolts,
   checkItems = [],
   selectedBoltId,
+  inputTargetBoltId,
   selectedCheckItemId,
   onSelectBolt,
+  onMoveBolt,
+  onMoveCheckItem,
+  onMoveBoltCallout,
+  onMoveCheckItemCallout,
   onSelectCheckItem,
   onToggleCheckItem,
   density = 'default'
 }: AssemblyProcedureMarkerLayerProps) {
+  const markerPointerRef = useRef<MarkerPointerInteraction | null>(null);
+
+  useLayoutEffect(() => {
+    return () => {
+      const interaction = markerPointerRef.current;
+      if (!interaction) return;
+      cancelMarkerAnimationFrame(interaction);
+      releasePointerCapture(interaction);
+      markerPointerRef.current = null;
+    };
+  }, []);
+
+  const handleMarkerPointerDown = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    markerId: string,
+    onMove?: AssemblyProcedureBoltMoveHandler
+  ) => {
+    event.stopPropagation();
+    if (event.button != null && event.button !== 0) return;
+    const target = event.currentTarget;
+    markerPointerRef.current = {
+      markerId,
+      onMove,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      maxMovementPx: 0,
+      dragging: false,
+      captureTarget: target,
+      originalStyle: {
+        left: target.style.left,
+        top: target.style.top
+      },
+      pendingPoint: null,
+      animationFrameId: null
+    };
+    target.setPointerCapture?.(event.pointerId);
+  };
+
+  const handleMarkerPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const interaction = markerPointerRef.current;
+    if (!interaction || interaction.pointerId !== event.pointerId) return;
+    event.stopPropagation();
+    interaction.maxMovementPx = Math.max(
+      interaction.maxMovementPx,
+      Math.hypot(
+        event.clientX - interaction.startClientX,
+        event.clientY - interaction.startClientY
+      )
+    );
+    if (shouldConfirmImageCanvasTap(interaction.maxMovementPx)) return;
+
+    interaction.dragging = true;
+    const point = markerPointFromPointer(event, event.currentTarget.parentElement);
+    if (!point) return;
+    interaction.pendingPoint = point;
+    event.preventDefault();
+    if (interaction.animationFrameId != null) return;
+    interaction.animationFrameId = requestAnimationFrame(() => {
+      const current = markerPointerRef.current;
+      if (current !== interaction) return;
+      current.animationFrameId = null;
+      if (current.dragging && current.pendingPoint) {
+        setMarkerPosition(current.captureTarget, current.pendingPoint);
+      }
+    });
+  };
+
+  const endMarkerPointerInteraction = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    cancelled: boolean
+  ) => {
+    const interaction = markerPointerRef.current;
+    if (!interaction || interaction.pointerId !== event.pointerId) return;
+    event.stopPropagation();
+    interaction.maxMovementPx = Math.max(
+      interaction.maxMovementPx,
+      Math.hypot(
+        event.clientX - interaction.startClientX,
+        event.clientY - interaction.startClientY
+      )
+    );
+    if (!cancelled) {
+      interaction.dragging = !shouldConfirmImageCanvasTap(interaction.maxMovementPx);
+    }
+    const point = markerPointFromPointer(event, event.currentTarget.parentElement);
+    cancelMarkerAnimationFrame(interaction);
+    if (cancelled) {
+      interaction.captureTarget.style.left = interaction.originalStyle.left;
+      interaction.captureTarget.style.top = interaction.originalStyle.top;
+    } else if (!cancelled && interaction.dragging && point) {
+      event.preventDefault();
+      setMarkerPosition(interaction.captureTarget, point);
+      interaction.onMove?.(interaction.markerId, point);
+    }
+    markerPointerRef.current = null;
+    releasePointerCapture(interaction);
+  };
+
+  const selectedBolt = onMoveBoltCallout ? bolts.find((bolt) => bolt.id === selectedBoltId) : undefined;
+  const selectedCheck = onMoveCheckItemCallout
+    ? checkItems.find((item) => item.id === selectedCheckItemId)
+    : undefined;
+  // 取っ手の名前にマーカー名を入れない。「丸数字1」で探したときにマーカー本体と取っ手の2つに当たるため。
+  const calloutHandle = selectedBolt
+    ? { marker: selectedBolt, onMove: onMoveBoltCallout }
+    : selectedCheck
+      ? { marker: selectedCheck, onMove: onMoveCheckItemCallout }
+      : null;
+
   if (density === 'compact') {
     return (
       <div className="pointer-events-none absolute inset-0 z-10" aria-hidden="true">
@@ -95,7 +298,9 @@ export function AssemblyMarkerOverlay({
             data-marker-id={bolt.id}
             className={clsx(
               'absolute flex h-4 w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-[0.48rem] font-bold shadow',
-              boltMarkerClass(bolt.status, false)
+              boltMarkerClass(bolt.status, false, bolt.accentClass),
+              inputTargetBoltId === bolt.id &&
+                'outline outline-2 outline-offset-1 outline-sky-400'
             )}
             style={{ left: `${bolt.xRatio * 100}%`, top: `${bolt.yRatio * 100}%` }}
           >
@@ -132,10 +337,15 @@ export function AssemblyMarkerOverlay({
             event.stopPropagation();
             onSelectBolt?.(bolt.id);
           }}
-          onPointerDown={(event) => event.stopPropagation()}
-          className={clsx(
+          onPointerDown={onMoveBolt ? (event) => handleMarkerPointerDown(event, bolt.id, onMoveBolt) : undefined}
+          onPointerMove={onMoveBolt ? handleMarkerPointerMove : undefined}
+          onPointerUp={onMoveBolt ? (event) => endMarkerPointerInteraction(event, false) : undefined}
+          onPointerCancel={onMoveBolt ? (event) => endMarkerPointerInteraction(event, true) : undefined}
+          className={clsx('pointer-events-auto',
             'absolute z-10 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-sm font-bold shadow-lg',
-            boltMarkerClass(bolt.status, selectedBoltId === bolt.id)
+            boltMarkerClass(bolt.status, selectedBoltId === bolt.id, bolt.accentClass),
+            kioskMarkerInputTargetOutlineClass(inputTargetBoltId === bolt.id),
+            onMoveBolt && 'touch-none cursor-move'
           )}
           style={{ left: `${bolt.xRatio * 100}%`, top: `${bolt.yRatio * 100}%` }}
         >
@@ -157,16 +367,40 @@ export function AssemblyMarkerOverlay({
             }
             onSelectCheckItem?.(item.id);
           }}
-          onPointerDown={(event) => event.stopPropagation()}
-          className={clsx(
+          onPointerDown={onMoveCheckItem ? (event) => handleMarkerPointerDown(event, item.id, onMoveCheckItem) : (event) => event.stopPropagation()}
+          onPointerMove={onMoveCheckItem ? handleMarkerPointerMove : undefined}
+          onPointerUp={onMoveCheckItem ? (event) => endMarkerPointerInteraction(event, false) : undefined}
+          onPointerCancel={onMoveCheckItem ? (event) => endMarkerPointerInteraction(event, true) : undefined}
+          className={clsx('pointer-events-auto',
             'absolute z-10 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-xs font-bold shadow-lg',
-            checkMarkerClass(item, selectedCheckItemId === item.id)
+            checkMarkerClass(item, selectedCheckItemId === item.id),
+            onMoveCheckItem && 'touch-none cursor-move'
           )}
           style={{ left: `${item.xRatio * 100}%`, top: `${item.yRatio * 100}%` }}
         >
           ✓{item.markerNo}
         </button>
       ))}
+      {calloutHandle ? (
+        <button
+          key={`callout-handle-${calloutHandle.marker.id}`}
+          type="button"
+          aria-label="矢視をドラッグで置く"
+          title="ドラッグで矢視"
+          data-callout-handle-for={calloutHandle.marker.id}
+          onClick={(event) => event.stopPropagation()}
+          onPointerDown={(event) => handleMarkerPointerDown(event, calloutHandle.marker.id, calloutHandle.onMove)}
+          onPointerMove={handleMarkerPointerMove}
+          onPointerUp={(event) => endMarkerPointerInteraction(event, false)}
+          onPointerCancel={(event) => endMarkerPointerInteraction(event, true)}
+          className="pointer-events-auto absolute z-20 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 cursor-grab touch-none items-center justify-center rounded-full border-2 border-dashed border-slate-900 bg-white/90 text-slate-900 shadow-lg"
+          style={calloutHandleStyle(calloutHandle.marker)}
+        >
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M6 18L18 6M9 6h9v9" />
+          </svg>
+        </button>
+      ) : null}
     </>
   );
 }
@@ -175,8 +409,13 @@ export function AssemblyProcedureMarkerLayer({
   bolts,
   checkItems = [],
   selectedBoltId,
+  inputTargetBoltId,
   selectedCheckItemId,
   onSelectBolt,
+  onMoveBolt,
+  onMoveCheckItem,
+  onMoveBoltCallout,
+  onMoveCheckItemCallout,
   onSelectCheckItem,
   onToggleCheckItem,
   density = 'default',
@@ -215,7 +454,8 @@ export function AssemblyProcedureMarkerLayer({
   return (
     <div
       ref={rootRef}
-      className="absolute inset-0"
+      // The root must not swallow taps meant for the overlay layer beneath it; only the markers are interactive.
+      className="pointer-events-none absolute inset-0"
       data-testid={`assembly-procedure-marker-layer-${density}`}
     >
       {calloutLayout ? (
@@ -230,8 +470,13 @@ export function AssemblyProcedureMarkerLayer({
         bolts={bolts}
         checkItems={checkItems}
         selectedBoltId={selectedBoltId}
+        inputTargetBoltId={inputTargetBoltId}
         selectedCheckItemId={selectedCheckItemId}
         onSelectBolt={onSelectBolt}
+        onMoveBolt={onMoveBolt}
+        onMoveCheckItem={onMoveCheckItem}
+        onMoveBoltCallout={onMoveBoltCallout}
+        onMoveCheckItemCallout={onMoveCheckItemCallout}
         onSelectCheckItem={onSelectCheckItem}
         onToggleCheckItem={onToggleCheckItem}
         density={density}

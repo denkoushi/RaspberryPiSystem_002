@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs';
 import { ApiError } from '../../lib/errors.js';
 import { AssemblyTraceabilityService } from './assembly-traceability.service.js';
 import { AssemblyWorkSessionService, type AssemblyWorkSessionDetail } from './assembly-work-session.service.js';
+import { normalizeTorqueWrenchSettingVerificationMode } from '../torque-wrenches/torque-wrench-setting-mode.policy.js';
 
 function fmtDate(date: Date | null | undefined): string {
   return date ? date.toISOString().replace('T', ' ').slice(0, 19) : '';
@@ -31,6 +32,22 @@ function styleHeader(row: ExcelJS.Row): void {
     fgColor: { argb: 'FFE5E7EB' }
   };
   row.alignment = { vertical: 'middle' };
+}
+
+function settingVerificationLabel(value: string | null | undefined): string {
+  return normalizeTorqueWrenchSettingVerificationMode(value) === 'BOLT_CONDITION_ONLY'
+    ? '設定照合対象外'
+    : '登録設定を照合';
+}
+
+function settingEvidenceValue<T>(
+  value: T | null | undefined,
+  mode: string | null | undefined,
+  format: (value: T) => number | string | null
+): number | string | null {
+  return normalizeTorqueWrenchSettingVerificationMode(mode) === 'BOLT_CONDITION_ONLY'
+    ? '対象外'
+    : value == null ? null : format(value);
 }
 
 export class AssemblyExcelExportService {
@@ -156,6 +173,7 @@ export class AssemblyExcelExportService {
       { header: '製造番号', key: 'serialNumber', width: 18 },
       { header: 'メーカー', key: 'manufacturer', width: 18 },
       { header: '型番', key: 'modelNumber', width: 18 },
+      { header: '設定照合方式', key: 'settingVerificationMode', width: 18 },
       { header: '設定下限', key: 'settingLower', width: 12 },
       { header: '設定規定', key: 'settingNominal', width: 12 },
       { header: '設定上限', key: 'settingUpper', width: 12 },
@@ -191,10 +209,19 @@ export class AssemblyExcelExportService {
           serialNumber: record?.serialNumberSnapshot ?? '',
           manufacturer: record?.manufacturerSnapshot ?? '',
           modelNumber: record?.modelNumberSnapshot ?? '',
-          settingLower: decimalNumber(record?.settingLowerLimitSnapshot),
-          settingNominal: decimalNumber(record?.settingNominalTorqueSnapshot),
-          settingUpper: decimalNumber(record?.settingUpperLimitSnapshot),
-          settingUnit: record?.settingUnitSnapshot ?? '',
+          settingVerificationMode: record ? settingVerificationLabel(record.settingVerificationMode) : '',
+          settingLower: record
+            ? settingEvidenceValue(record.settingLowerLimitSnapshot, record.settingVerificationMode, decimalNumber)
+            : null,
+          settingNominal: record
+            ? settingEvidenceValue(record.settingNominalTorqueSnapshot, record.settingVerificationMode, decimalNumber)
+            : null,
+          settingUpper: record
+            ? settingEvidenceValue(record.settingUpperLimitSnapshot, record.settingVerificationMode, decimalNumber)
+            : null,
+          settingUnit: record
+            ? settingEvidenceValue(record.settingUnitSnapshot, record.settingVerificationMode, (value) => value)
+            : '',
           overrideReason: record?.overrideReason ?? '',
           recordedAt: fmtDate(record?.recordedAt),
           attempt: record?.attempt ?? ''
@@ -221,6 +248,7 @@ export class AssemblyExcelExportService {
       { header: '製造番号', key: 'serialNumber', width: 18 },
       { header: 'メーカー', key: 'manufacturer', width: 18 },
       { header: '型番', key: 'modelNumber', width: 18 },
+      { header: '設定照合方式', key: 'settingVerificationMode', width: 18 },
       { header: '判定', key: 'judgement', width: 10 },
       { header: '無視理由', key: 'ignoredReason', width: 24 },
       { header: '入力元', key: 'inputSource', width: 12 },
@@ -241,6 +269,7 @@ export class AssemblyExcelExportService {
         serialNumber: record.serialNumberSnapshot ?? '',
         manufacturer: record.manufacturerSnapshot ?? '',
         modelNumber: record.modelNumberSnapshot ?? '',
+        settingVerificationMode: settingVerificationLabel(record.settingVerificationMode),
         judgement: record.judgement,
         ignoredReason: record.ignoredReason ?? '',
         inputSource: record.inputSource,

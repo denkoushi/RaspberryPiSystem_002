@@ -98,17 +98,25 @@ describe('leaderboardBoardCacheRecord', () => {
       hasSelfInspectionDrawing: true,
       selfInspectionTemplateId: 'tpl-1',
       selfInspectionStatus: 'in_progress',
-      selfInspectionEntryPath: '/kiosk/part-measurement/self-inspection/sessions/s1'
+      selfInspectionEntryPath: '/kiosk/part-measurement/self-inspection/sessions/s1',
+      selfInspectionResourceCds: ['R2', 'R3'],
+      selfInspectionResourceCd: 'R2'
     });
+    acc.leaderboardMaterialArrivalByPartKey['part-1'] = 'ordered';
+    acc.leaderboardMaterialArrivalBasisByPartKey['part-1'] = 'part';
     const ser = serializeAccumulatedDecorations(acc);
     const back = deserializeAccumulatedDecorations(ser);
+    expect(back.leaderboardMaterialArrivalByPartKey).toEqual({ 'part-1': 'ordered' });
+    expect(back.leaderboardMaterialArrivalBasisByPartKey).toEqual({ 'part-1': 'part' });
     expect(back.rowDecorationsById.get('r1')).toEqual({
       resolvedMachineName: 'M',
       customerName: 'C',
       hasSelfInspectionDrawing: true,
       selfInspectionTemplateId: 'tpl-1',
       selfInspectionStatus: 'in_progress',
-      selfInspectionEntryPath: '/kiosk/part-measurement/self-inspection/sessions/s1'
+      selfInspectionEntryPath: '/kiosk/part-measurement/self-inspection/sessions/s1',
+      selfInspectionResourceCds: ['R2', 'R3'],
+      selfInspectionResourceCd: 'R2'
     });
   });
 
@@ -125,7 +133,9 @@ describe('leaderboardBoardCacheRecord', () => {
       hasSelfInspectionDrawing: false,
       selfInspectionTemplateId: null,
       selfInspectionStatus: null,
-      selfInspectionEntryPath: null
+      selfInspectionEntryPath: null,
+      selfInspectionResourceCds: [],
+      selfInspectionResourceCd: null
     });
   });
 
@@ -188,5 +198,10 @@ describe('leaderboardBoardCacheRecord', () => {
       rows: [{ id: '1' }, { id: '2' }] as ProductionScheduleLeaderboardBoardResponse['rows']
     });
     expect(fingerprintLeaderboardBoardRowIds(b)).toBe('1\u00012');
+  });
+
+  it('restores an empty basis map from older cache records', () => {
+    const back = deserializeAccumulatedDecorations({ rowDecorationsById: {}, leaderboardFooterChipsByPartKey: {} });
+    expect(back.leaderboardMaterialArrivalBasisByPartKey).toEqual({});
   });
 });

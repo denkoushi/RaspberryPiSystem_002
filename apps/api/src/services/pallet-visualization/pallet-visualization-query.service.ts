@@ -1,4 +1,5 @@
 import { prisma } from '../../lib/prisma.js';
+import { toUpperTrimmedCode as normalizeCd } from '../../lib/string-normalize.js';
 import type {
   PalletVisualizationBoardResponse,
   PalletVisualizationHistoryResponse,
@@ -9,17 +10,17 @@ import type {
   PalletVisualizationMachineSummary,
 } from './pallet-visualization.types.js';
 import { getResourceNameMapByResourceCds } from '../production-schedule/resource-master.service.js';
+import { listProductionSchedulePalletDisplaySnapshots } from '../production-schedule/production-schedule-snapshot.service.js';
+import { findSupplementMachineNamesForMissing } from '../production-schedule/seiban-machine-name-supplement-backfill.js';
+import { isMissingSeibanMachineName } from '../production-schedule/seiban-machine-name-state.js';
 import { listRegisteredMachineCds } from './pallet-visualization-resource.service.js';
 import { DEFAULT_MACHINE_PALLET_COUNT } from './pallet-count-bounds.js';
 import { ApiError } from '../../lib/errors.js';
 import {
   buildPalletMachineNameDisplay,
-  extractOutsideDimensionsDisplay,
   formatPlannedStartDateForPalletDisplay,
   readPalletItemDisplayFromScheduleSnapshot,
 } from './pallet-visualization-display-fields.js';
-
-const normalizeCd = (value: string): string => value.trim().toUpperCase();
 
 function toItem(row: {
   id: string;
@@ -151,30 +152,22 @@ async function loadMachineBoardsForOrderedCds(filteredMachineCds: string[]): Pro
   ]);
 
   const rowIds = Array.from(new Set(items.map((item) => item.csvDashboardRowId).filter((id): id is string => Boolean(id))));
-  const csvRows =
-    rowIds.length > 0
-      ? await prisma.csvDashboardRow.findMany({
-          where: { id: { in: rowIds } },
-          select: {
-            id: true,
-            rowData: true,
-            orderSupplements: {
-              take: 1,
-              select: { plannedQuantity: true, plannedStartDate: true },
-            },
-          },
-        })
-      : [];
-  const csvRowMap = new Map(csvRows.map((row) => [row.id, row]));
+  const snapshots = await listProductionSchedulePalletDisplaySnapshots(rowIds);
+  const snapshotMap = new Map(snapshots.map((snapshot) => [snapshot.rowId, snapshot]));
+  // 登録時に機種名を引けず null で保存された行は、表示時に補完テーブルで埋める（保存値は変えない）
+  const supplementMachineNames = await findSupplementMachineNamesForMissing(
+    items.map((item) => [item.fseiban, item.machineName] as const)
+  );
   const itemsWithFallback = items.map((item) => {
-    const csvRow = item.csvDashboardRowId ? csvRowMap.get(item.csvDashboardRowId) : null;
-    const rowData = (csvRow?.rowData ?? null) as Record<string, unknown> | null;
-    const supplement = csvRow?.orderSupplements[0];
+    const snapshot = item.csvDashboardRowId ? snapshotMap.get(item.csvDashboardRowId) : null;
     return {
       ...item,
-      fallbackPlannedStartDateDisplay: formatPlannedStartDateForPalletDisplay(supplement?.plannedStartDate ?? null),
-      fallbackPlannedQuantity: supplement?.plannedQuantity ?? null,
-      fallbackOutsideDimensionsDisplay: rowData ? extractOutsideDimensionsDisplay(rowData) : null,
+      machineName: isMissingSeibanMachineName(item.machineName)
+        ? (supplementMachineNames.get(item.fseiban.trim()) ?? item.machineName)
+        : item.machineName,
+      fallbackPlannedStartDateDisplay: formatPlannedStartDateForPalletDisplay(snapshot?.plannedStartDate ?? null),
+      fallbackPlannedQuantity: snapshot?.plannedQuantity ?? null,
+      fallbackOutsideDimensionsDisplay: snapshot?.outsideDimensionsDisplay ?? null,
     };
   });
 

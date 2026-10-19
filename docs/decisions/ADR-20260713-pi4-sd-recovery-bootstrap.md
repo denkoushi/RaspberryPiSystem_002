@@ -1,98 +1,127 @@
 ---
 id: ADR-20260713-pi4-sd-recovery-bootstrap
-title: Pi4 SD-card recovery through Pi5 bootstrap and local endpoint override
+title: Pi4 SD recovery through a verified dynamic LAN bootstrap endpoint
 status: accepted
-date: 2026-07-13
+date: 2026-08-01
 source_of_truth: true
-scope: explicitly enabled standard-site Pi4 kiosk recovery after SD-card replacement
+scope: explicitly enabled standard Pi4 kiosk recovery after SD-card replacement
 related_code:
   - scripts/deploy/recover-pi4.py
+  - scripts/deploy/recovery/bootstrap.py
+  - scripts/deploy/recovery/inventory.py
+  - scripts/deploy/recovery/network.py
+  - infrastructure/ansible/playbooks/resolve-pi4-recovery-contract.yml
   - infrastructure/ansible/playbooks/recover-pi4.yml
-  - infrastructure/ansible/playbooks/recover-pi4-verify.yml
 related_docs:
   - ../runbooks/pi4-sd-recovery.md
-  - ../plans/pi4-sd-recovery-bootstrap.md
+  - ../plans/pi4-sd-recovery-dynamic-bootstrap-execplan.md
   - ../guides/client-initial-setup.md
-validation: unit tests, Ansible syntax checks, isolated Postgres regression, and a future blank-Pi4 acceptance drill
+validation: dynamic endpoint, SSH identity, resolver, Fleet State, Ansible, and isolated regression tests; physical blank-SD drill pending
 open_items:
-  - Execute and record one blank-Pi4 acceptance drill after the feature is released to Pi5.
+  - Deploy the exact merged SHA to Pi5 after approval.
+  - Execute and record one blank-Pi4 acceptance drill.
 ---
 
-# ADR-20260713: Pi4 SD-card recovery through Pi5 bootstrap and local endpoint override
+# ADR-20260713: Pi4 SD recovery through a verified dynamic LAN bootstrap endpoint
 
 ## Status
 
-accepted
+Accepted. This revision supersedes both the un-deployed recovery OAuth design
+and the fixed target-LAN endpoint decision. Normal Tailscale behavior outside
+SD recovery is unchanged.
 
 ## Context
 
-The normal rolling-release coordinator assumes that a terminal already has its
-repository, Docker, browser, service user, and Tailscale endpoint. A corrupted
-Pi4 SD card has none of those prerequisites. Existing client backup targets
-retain selected files but do not provide a safe automatic restore path, and
-restoring Tailscale state or SSH private keys would clone device identity.
+The operator workflow is fixed by the physical failure: buy a new SD, install
+Raspberry Pi OS, join Wi-Fi, then report the old logical terminal, the new OS
+hostname, and its current IP. DHCP may not reuse the former address.
 
-The operator can write Raspberry Pi OS Desktop (64-bit), configure Wi-Fi, and
-seed the existing terminal user with the Pi5 SSH public key and password-free
-sudo through Raspberry Pi Imager. The Pi5 must perform every later step.
+Live factory evidence confirmed that Inventory is not authoritative for current
+LAN assignment. `raspberrypi4` was healthy at `192.168.10.223` while its declared
+address was `.224`; Sessaku was healthy at `192.168.10.104` while its declared
+address was on `192.168.128.187`. A fixed-address recovery precondition would
+therefore reject healthy, correctly reachable replacements.
+
+Accepting an arbitrary IP without identity verification would be unsafe. The
+repository's global Ansible configuration also disables host-key checking, so
+merely running SSH as the expected user would not prove that every later
+Ansible connection reached the same OS.
 
 ## Decision
 
-Use a Pi5-only recovery coordinator that receives an existing Pi4 inventory
-hostname and a temporary LAN IPv4 address. Its read-only `plan` command proves
-the target's inventory contract and the immutable SHA currently active on Pi5.
-Its confirmed `run` command refuses an online old endpoint, configures the
-fresh Pi4 through a dedicated playbook, then verifies the new Tailscale address
-and services.
+Keep the Pi5-only coordinator, Ansible-evaluated secret-free Inventory contract,
+immutable Pi5 release proof, Fleet Lock, and local-mode provisioning. Replace
+the target fixed endpoint with a dynamic bootstrap contract:
 
-Eligibility is explicit per host: the inventory must set
-`pi4_recovery_enabled: true` and use the standard Tailscale recovery model.
-Talkplaza's LAN/DNS recovery is outside this ADR and remains fail-closed until
-a separate site-specific decision and implementation exist.
+- `--bootstrap-host` is the current literal RFC1918 IPv4 supplied for this run.
+- `--bootstrap-hostname` is the short hostname configured on the new OS.
+- Inventory supplies the expected SSH username and logical terminal identity.
+- `plan` reads exactly one ED25519 public host key, pins it in a temporary
+  mode-0600 known-hosts file, and verifies the username and hostname read-only.
+- `plan` returns the public `SHA256:` fingerprint; `run` requires it through
+  `--bootstrap-host-key` and repeats all checks inside the Fleet Lock.
+- Recovery and final verification use strict host-key checking with the same
+  temporary known-hosts entry, regardless of the global Ansible default.
 
-The coordinator reuses `common`, `client`, and `kiosk` Ansible roles after a
-small bootstrap role installs operating-system prerequisites. This keeps NFC,
-status-agent, barcode, and kiosk settings in their existing Inventory/Vault
-sources of truth. It never invokes client registration, writes application DB
-state, restores old Tailscale state, or restores user SSH private keys.
+The resolver's schema-v3 `recoveryNetwork` contains only mode, configured state,
+and the Pi5 LAN service endpoint. `pi4_recovery_lan_endpoint` is removed from
+the five hosts. Eligibility remains the explicit `pi4_recovery_enabled: true`
+capability; Assembly and other device classes remain excluded.
 
-After structured Tailscale JSON identifies the new endpoint, the coordinator
-writes an ignored JSON-as-YAML file at
-`infrastructure/ansible/host_vars/<target>/recovery-runtime.yml` on Pi5. The
-file overrides only `ansible_host`, retains the prior endpoint for retry safety,
-and is atomically replaced with mode `0600`. It is intentionally not committed:
-Pi5 is the controller for normal deployments, while source-controlled inventory
-must not accumulate changing Tailscale addresses.
+Runtime metadata distinguishes `original_ansible_host` (the earliest endpoint)
+from `previous_ansible_host` (the immediately previous active endpoint) and
+also stores the reported hostname and public SSH fingerprint. A different live
+previous endpoint blocks recovery. A previously recorded SSH identity blocks
+recovery even if it appears at another IP. The same DHCP IP may be reused only
+when the new OS has a different host key and all user/hostname checks pass.
 
-The release SHA is accepted only when the durable Pi5 marker, the active
-Blue/Green slot, and both active API/Web image tags agree. Missing or ambiguous
-state fails closed; recovery never substitutes `main`.
+Ansible still forces `network_mode=local` and `tailscale_enabled=false`, derives
+terminal service URLs from Pi5's LAN endpoint, and does not restore an old SSH
+private key or Tailscale state. Before endpoint persistence, the play proves the
+supplied IPv4 remains assigned to the rebuilt Pi4.
 
 ## Alternatives
 
-- Keep a full SD-card clone and restore it — rejected as the primary path. It
-  copies stale machine identity and turns security/configuration drift into a
-  recovery dependency.
-- Restore Tailscale and SSH state from backup — rejected because duplicate
-  device identity can disrupt the live Tailnet and access controls.
-- Edit tracked static Tailscale IPs after every recovery — rejected because it
-  creates noisy commits and makes Pi5's live endpoint depend on manual edits.
-- Extend the normal rolling-release coordinator — rejected because an offline
-  bare-metal rebuild has different safety and maintenance semantics.
+- Fixed DHCP reservation or static target address: rejected as a mandatory
+  recovery identity because actual terminal addresses drift and the operator
+  already knows the current address. Sites may still reserve addresses for
+  convenience.
+- Search the LAN by hostname or MAC: rejected because discovery can select the
+  wrong machine and broadens network access beyond the supplied endpoint.
+- Trust only username and hostname: rejected because both can be duplicated;
+  the SSH host key binds every later connection to the OS reviewed in `plan`.
+- Auto-accept a changed host key: rejected because DHCP reassignment between
+  plan and run must fail closed.
+- Recovery-specific Tailscale OAuth or reusable key: rejected because recovery
+  must not depend on an external commercial account, expiring secret, or old
+  overlay identity.
+- Restore a complete SD image: rejected because it restores stale software and
+  duplicate machine identity.
 
 ## Consequences
 
-The Pi5 SSD must retain the deployed repository, Inventory/Vault access, the
-Pi5 release marker, and the normal Blue/Green state. A newly imaged Pi4 needs
-only the specified Imager seed and temporary Pi5-reachable LAN address. The
-operator receives a deterministic recovery state log under `logs/recovery/`.
+The operator must report one additional simple value, the new OS hostname, and
+copy the fingerprint from plan into run. In return, recovery works with a new
+DHCP address and prevents silent connection to a different LAN device.
 
-This is not Pi5 host redundancy. A second Pi5 remains the future solution for
-Pi5 or power-domain failure.
+Pi5-to-Pi4 and Pi4-to-Pi5 routing remain hard dependencies. A fresh Pi4 at home
+is not reachable from a factory Pi5 through this LAN-only design unless an
+explicit route exists. The feature does not solve Pi5 failure, router failure,
+site-wide outage, Pi4 board replacement, or Assembly hardware acceptance.
+
+`plan` now performs read-only network I/O but no state mutation. Host keys and
+fingerprints are public data, not credentials. Temporary known-hosts files are
+deleted on success and exceptions; runtime and recovery state contain no SSH
+private key or application secret.
 
 ## Validation
 
-`scripts/deploy/tests/test_recover_pi4.py` covers immutable release validation,
-Pi4 inventory eligibility, secret-free endpoint persistence, failed bootstrap
-behavior, and final standard-Ansible verification. The Runbook defines the
-required physical acceptance drill.
+Focused tests cover dynamic RFC1918 addresses, exact five-host eligibility,
+hostname and username mismatch, missing/multiple host keys, fingerprint drift,
+temporary-file cleanup, plan immutability, lock-time revalidation, same-IP/new-
+key acceptance, moved-old-OS rejection, endpoint history, pinned Ansible/SSH,
+observed-address drift, atomic mode-0600 persistence, Fleet failure closure, and
+service/SHA verification. Ansible syntax and production-shaped resolver checks
+cover schema-v3 evaluation. The complete deploy-contract suite must also apply
+all migrations to an isolated temporary PostgreSQL database, run SQL/EXPLAIN
+and related API tests, and remove only its UUID-labelled Docker resources.

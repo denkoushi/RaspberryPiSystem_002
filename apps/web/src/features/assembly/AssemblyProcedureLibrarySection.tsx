@@ -1,56 +1,80 @@
-import { Fragment, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import {
   deleteAssemblyProcedureDocument,
-  publishAssemblyProcedureDocument,
   unpublishAssemblyProcedureDocument
 } from '../../api/client';
 import { KioskFilterCombobox, type KioskFilterOption } from '../../components/kiosk/KioskFilterCombobox';
 import { Button, buttonClassName } from '../../components/ui/Button';
+import { IconActionTooltip } from '../../components/ui/IconActionTooltip';
+import { useProtectedImageBlobUrl } from '../../hooks/useProtectedImageBlobUrl';
 
+import { AssemblyLibraryActionIcon } from './AssemblyLibraryActionIcon';
 import { AssemblyProcedureRenameModal } from './AssemblyProcedureRenameModal';
-import { kioskAssemblyTemplateNewPath } from './assemblyRoutes';
+import { kioskAssemblyProcedureDocumentEditPath, kioskAssemblyTemplateNewPath } from './assemblyRoutes';
 import {
   assemblyProcedureDocumentPageCount,
   resolveAssemblyDocumentStatus
 } from './assemblyTemplateDraft';
 import {
-  assemblyProcedureStatusClassName,
-  assemblyProcedureStatusLabel,
   formatAssemblyTimestamp,
   readAssemblyApiErrorMessage
 } from './assemblyUiHelpers';
+import { splitProcedureManualName } from './procedure-manuals/procedure-manual-name';
 import { useAssemblyLibraryFilterOptions } from './useAssemblyLibraryFilterOptions';
 import { useAssemblyProcedureLibrary } from './useAssemblyProcedureLibrary';
 
 import type { AssemblyProcedureDocumentDto, AssemblyProcedureDocumentSummaryDto } from './types';
+import type { MouseEvent, ReactNode } from 'react';
+
+export type AssemblyProcedureLibraryStatusFilter = 'all' | 'published' | 'draft' | 'unused';
 
 type Props = {
   refreshToken?: number;
+  libraryState?: ReturnType<typeof useAssemblyProcedureLibrary>;
+  toolbarStart?: ReactNode;
+  toolbarEnd?: ReactNode;
+  initialSearchQuery?: string;
+  initialStatusFilter?: AssemblyProcedureLibraryStatusFilter;
+  onSearchQueryChange?: (query: string) => void;
+  onStatusFilterChange?: (status: AssemblyProcedureLibraryStatusFilter) => void;
   onRegisterClick: () => void;
   onImportClick?: () => void;
   importing?: boolean;
   importMessage?: string | null;
+  statusMessage?: string | null;
   onChanged?: (message: string) => void;
+  onPreviewClick?: (document: AssemblyProcedureDocumentSummaryDto) => void;
   previewDocuments?: AssemblyProcedureDocumentSummaryDto[];
 };
 
 export function AssemblyProcedureLibrarySection({
   refreshToken,
+  libraryState,
+  toolbarStart,
+  toolbarEnd,
+  initialSearchQuery = '',
+  initialStatusFilter = 'all',
+  onSearchQueryChange,
+  onStatusFilterChange,
   onRegisterClick,
   onImportClick,
   importing = false,
   importMessage,
+  statusMessage,
   onChanged,
+  onPreviewClick,
   previewDocuments
 }: Props) {
+  const [statusFilter, setStatusFilter] = useState(initialStatusFilter);
   const isPreview = previewDocuments != null;
-  const [previewSearchQuery, setPreviewSearchQuery] = useState('');
+  const [previewSearchQuery, setPreviewSearchQuery] = useState(initialSearchQuery);
   const [renameTarget, setRenameTarget] = useState<AssemblyProcedureDocumentSummaryDto | null>(null);
   const [busyDocumentId, setBusyDocumentId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const apiState = useAssemblyProcedureLibrary({ refreshToken, enabled: !isPreview });
+  const localApiState = useAssemblyProcedureLibrary({ refreshToken, enabled: !isPreview && !libraryState, initialSearchQuery });
+  const apiState = libraryState ?? localApiState;
   const apiFilterOptions = useAssemblyLibraryFilterOptions({
     field: 'procedureDocumentName',
     query: isPreview ? '' : apiState.searchQuery,
@@ -64,7 +88,12 @@ export function AssemblyProcedureLibrarySection({
     return previewDocuments.filter((document) => document.name.toLowerCase().includes(q));
   }, [isPreview, previewDocuments, previewSearchQuery]);
 
-  const documents = isPreview ? previewFilteredDocuments : apiState.documents;
+  const availableDocuments = isPreview ? previewFilteredDocuments : apiState.documents;
+  const unusedCount = availableDocuments.filter(document => document.manualAssignments.length === 0).length;
+  const documents = availableDocuments.filter(document =>
+    statusFilter === 'all' || (statusFilter === 'unused' ? document.manualAssignments.length === 0
+      : document.isActive && resolveAssemblyDocumentStatus(document) === statusFilter)
+  );
   const searchQuery = isPreview ? previewSearchQuery : apiState.searchQuery;
   const setSearchQuery = isPreview ? setPreviewSearchQuery : apiState.setSearchQuery;
   const loading = isPreview ? false : apiState.loading;
@@ -83,21 +112,6 @@ export function AssemblyProcedureLibrarySection({
     setRenameTarget(null);
     onChanged?.(`手順書名を変更しました: ${document.name}`);
     reload();
-  };
-
-  const handlePublish = async (document: AssemblyProcedureDocumentSummaryDto) => {
-    if (isPreview) return;
-    setBusyDocumentId(document.id);
-    setActionError(null);
-    try {
-      await publishAssemblyProcedureDocument(document.id);
-      onChanged?.(`手順書「${document.name}」を公開しました。テンプレート・表示順で使用できます。`);
-      reload();
-    } catch (e: unknown) {
-      setActionError(readAssemblyApiErrorMessage(e, '公開に失敗しました。'));
-    } finally {
-      setBusyDocumentId(null);
-    }
   };
 
   const handleUnpublish = async (document: AssemblyProcedureDocumentSummaryDto) => {
@@ -135,190 +149,169 @@ export function AssemblyProcedureLibrarySection({
   };
 
   return (
-    <section
-      className="flex min-h-0 w-full max-w-full flex-col gap-2 rounded border border-white/15 bg-slate-900/70 p-2 2xl:w-[33rem] 2xl:shrink-0"
-      aria-labelledby="assembly-procedure-library-heading"
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <h2 id="assembly-procedure-library-heading" className="shrink-0 text-[1.15rem] font-bold leading-tight">
-          手順書ライブラリ
-        </h2>
-        <div className="w-[10rem] max-w-full shrink-0">
-          <KioskFilterCombobox
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder="手順書名で検索"
-            ariaLabel="手順書名で検索"
-            options={filterOptions}
-            loading={apiFilterOptions.loading}
-            optionUpdateMode="live"
-            inputClassName="min-h-9 px-2 text-[0.9rem]"
-          />
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-labelledby="assembly-procedure-library-heading">
+      <h2 id="assembly-procedure-library-heading" className="sr-only">手順書ライブラリ</h2>
+      <div className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 whitespace-nowrap border-b border-white/15 bg-slate-900 px-3 py-1.5">
+        {toolbarStart}
+        <Button type="button" data-kiosk-sop-target="assembly-file-register" variant="primary" className="h-11 shrink-0 !bg-[#3ba776] !px-3 !py-0 text-sm" onClick={onRegisterClick}>＋ ファイルから登録</Button>
+        {onImportClick ? <Button type="button" data-kiosk-sop-target="assembly-gmail-import" variant="ghostOnDark" className="h-11 shrink-0 !px-3 !py-0 text-sm"
+          disabled={importing} onClick={onImportClick} aria-label={importing ? '取込中…' : 'Gmailから取り込む'} title="Gmailから取り込む">{importing ? '取込中…' : 'Gmail から取込'}</Button> : null}
+        <div className="w-80 shrink-0">
+          <KioskFilterCombobox value={searchQuery} onChange={query => { setSearchQuery(query); onSearchQueryChange?.(query); }} placeholder="名前で検索" ariaLabel="手順書名で検索"
+            options={filterOptions} loading={apiFilterOptions.loading} optionUpdateMode="live" inputClassName="h-11 min-h-11 px-2 text-sm" />
         </div>
-        <Button
-          type="button"
-          variant="ghostOnDark"
-          className="min-h-9 shrink-0 !px-2 !py-0 text-[0.86rem]"
-          disabled={loading}
-          onClick={() => reload()}
-        >
-          {loading ? '更新中…' : '再読込'}
-        </Button>
-        <Button
-          type="button"
-          variant="ghostOnDark"
-          className="min-h-9 shrink-0 !px-2 !py-0 text-[0.86rem]"
-          onClick={onRegisterClick}
-        >
-          登録
-        </Button>
-        {onImportClick ? (
-          <Button
-            type="button"
-            variant="ghostOnDark"
-            className="min-h-9 shrink-0 !px-2 !py-0 text-[0.86rem]"
-            disabled={importing}
-            onClick={onImportClick}
-          >
-            {importing ? '取込中…' : '取込'}
-          </Button>
+        <div className="flex shrink-0 gap-1" aria-label="手順書の状態">
+          {([['all', '全て'], ['published', '公開'], ['draft', '下書き'], ['unused', '未使用']] as const).map(([value, label]) => (
+            <button key={value} type="button" aria-pressed={statusFilter === value} onClick={() => { setStatusFilter(value); onStatusFilterChange?.(value); }}
+              className={`h-11 rounded-full border px-3 text-sm font-semibold ${statusFilter === value ? value === 'unused' ? 'border-amber-400 bg-amber-400/20 text-amber-200' : 'border-emerald-400 bg-emerald-400/20 text-emerald-100' : 'border-white/20 text-white/60'}`}>{label}{value === 'unused' ? <span className="ml-2 font-mono">{unusedCount}</span> : null}</button>
+          ))}
+        </div>
+        <Button type="button" data-kiosk-sop-target="assembly-library-refresh" variant="ghostOnDark" className="h-11 w-11 shrink-0 !p-0 text-2xl"
+          aria-label={loading ? '更新中…' : '再読込'} title="再読込" disabled={loading} onClick={() => reload()}><span aria-hidden="true">↻</span></Button>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {toolbarEnd}
+        </div>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col px-5 py-3">
+        {importMessage ? (
+          <p className="px-1 text-[0.9rem] font-semibold text-amber-100">{importMessage}</p>
         ) : null}
-      </div>
+        {statusMessage ? <p className="px-1 text-[0.9rem] font-semibold text-emerald-100">{statusMessage}</p> : null}
 
-      <p className="px-1 text-[0.78rem] font-semibold text-white/55">
-        インポート後は下書きです。「公開」してからテンプレート・表示順設定で使用してください。
-      </p>
-
-      {importMessage ? (
-        <p className="px-1 text-[0.9rem] font-semibold text-amber-100">{importMessage}</p>
-      ) : null}
-
-      {error ?? actionError ?? apiFilterOptions.error ? (
-        <p className="text-[0.98rem] font-semibold text-amber-200">
-          {error ?? actionError ?? apiFilterOptions.error}
-        </p>
-      ) : null}
-
-      <div className="min-h-0 flex-1 overflow-auto rounded border border-white/10 bg-slate-950/40 p-1.5">
-        {loading && documents.length === 0 ? (
-          <p className="py-4 text-center text-[0.88rem] text-white/60">読込中…</p>
-        ) : documents.length === 0 ? (
-          <p className="py-4 text-center text-[0.88rem] text-white/60">
-            {searchQuery.trim() ? '条件に合う手順書はありません。' : '登録済み手順書はありません。'}
+        {error ?? actionError ?? apiFilterOptions.error ? (
+          <p className="text-[0.98rem] font-semibold text-amber-200">
+            {error ?? actionError ?? apiFilterOptions.error}
           </p>
-        ) : (
-          <table className="w-full table-fixed border-collapse text-left text-[0.82rem]" aria-label="手順書ライブラリ">
-            <colgroup>
-              <col className="w-[22%]" />
-              <col className="w-[14%]" />
-              <col className="w-[22%]" />
-              <col className="w-[42%]" />
-            </colgroup>
-            <thead className="sticky top-0 bg-slate-900 text-[0.74rem] text-white/70">
-              <tr className="border-b border-white/10">
-                <th className="px-2 py-1.5 font-bold">状態</th>
-                <th className="px-2 py-1.5 font-bold">頁</th>
-                <th className="px-2 py-1.5 font-bold">テンプレ</th>
-                <th className="px-2 py-1.5 text-right font-bold">更新</th>
-              </tr>
-            </thead>
-            <tbody>
-              {documents.map((document) => {
-                const status = resolveAssemblyDocumentStatus(document);
-                const pageCount = assemblyProcedureDocumentPageCount(document);
-                const isPublished = status === 'published';
-                const busy = busyDocumentId === document.id;
-                return (
-                  <Fragment key={document.id}>
-                    <tr className="border-t border-white/10 first:border-t-0">
-                      <td className="whitespace-nowrap px-2 pb-0.5 pt-1.5">
-                        <span
-                          className={`inline-flex rounded px-1.5 py-0.5 text-[0.68rem] font-semibold ${assemblyProcedureStatusClassName(status)}`}
-                        >
-                          {assemblyProcedureStatusLabel(status)}
-                        </span>
-                      </td>
-                      <td className="whitespace-nowrap px-2 pb-0.5 pt-1.5 font-semibold text-white/70">{pageCount}</td>
-                      <td className="whitespace-nowrap px-2 pb-0.5 pt-1.5 font-semibold text-white/70">
-                        {document.activeTemplateCount}/{document.totalTemplateCount}
-                      </td>
-                      <td className="whitespace-nowrap px-2 pb-0.5 pt-1.5 text-right font-semibold text-white/65">
-                        {formatAssemblyTimestamp(document.updatedAt)}
-                      </td>
-                    </tr>
-                    <tr className="border-b border-white/10 last:border-b-0">
-                      <td colSpan={4} className="px-2 pb-1.5 pt-0.5">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="min-w-0 flex-1 truncate font-bold text-white" title={document.name}>
-                            {document.name}
-                          </span>
-                          <div className="ml-auto flex shrink-0 flex-nowrap justify-end gap-1">
-                        {!isPublished ? (
-                          <Button
-                            type="button"
-                            variant="primary"
-                            className="min-h-6 shrink-0 rounded !px-1.5 !py-0 text-[0.68rem] leading-none"
-                            disabled={isPreview || busy}
-                            onClick={() => void handlePublish(document)}
-                          >
-                            公開
-                          </Button>
-                        ) : (
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            className="min-h-6 shrink-0 rounded !px-1.5 !py-0 text-[0.68rem] leading-none"
-                            disabled={isPreview || busy}
-                            onClick={() => void handleUnpublish(document)}
-                          >
-                            公開取消
-                          </Button>
-                        )}
-                        <Link
-                          to={kioskAssemblyTemplateNewPath({ procedureDocumentId: document.id })}
-                          className={buttonClassName(
-                            'primary',
-                            `inline-flex min-h-6 shrink-0 items-center rounded !px-1.5 !py-0 text-[0.68rem] leading-none ${!isPublished ? 'pointer-events-none opacity-40' : ''}`
-                          )}
-                          aria-disabled={!isPublished}
-                          title={!isPublished ? '公開後にテンプレート作成できます' : '新規テンプレート'}
-                          onClick={(event) => {
-                            if (!isPublished) event.preventDefault();
-                          }}
-                        >
-                          新規
-                        </Link>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          className="min-h-6 shrink-0 rounded !px-1.5 !py-0 text-[0.68rem] leading-none"
-                          disabled={isPreview || busy}
-                          onClick={() => setRenameTarget(document)}
-                        >
-                          名称
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="danger"
-                          className="min-h-6 shrink-0 rounded !px-1.5 !py-0 text-[0.68rem] leading-none"
-                          disabled={isPreview || busy || document.totalTemplateCount > 0}
-                          title={document.totalTemplateCount > 0 ? 'テンプレートで使用中のため削除できません' : '削除'}
-                          onClick={() => void handleDelete(document)}
-                        >
-                          削除
-                        </Button>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
+        ) : null}
 
+        <div className="min-h-0 flex-1 overflow-auto">
+          {loading && documents.length === 0 ? (
+            <p className="py-4 text-center text-[0.88rem] text-white/60">読込中…</p>
+          ) : documents.length === 0 ? (
+            <p className="py-4 text-center text-[0.88rem] text-white/60">
+              {searchQuery.trim() ? '条件に合う手順書はありません。' : '登録済み手順書はありません。'}
+            </p>
+          ) : (
+            <table className="w-full min-w-[1280px] table-fixed border-collapse text-left text-base" aria-label="手順書ライブラリ">
+              <colgroup>
+                <col className="w-[60px]" />
+                {[15, 15, 11, 13, 10].map((weight, index) => <col key={index} style={{ width: `calc((100% - 1102px) * ${weight} / 64)` }} />)}
+                <col className="w-[142px]" /><col className="w-[300px]" /><col className="w-[70px]" />
+                <col className="w-[90px]" /><col className="w-[140px]" /><col className="w-[300px]" />
+              </colgroup>
+              <thead className="sr-only"><tr>
+                {['サムネイル', '品名', '品番', '工程', '作業', '補足', '状態', '使用先', '頁', 'テンプレ', '更新', '操作'].map(label => <th key={label} scope="col">{label}</th>)}
+              </tr></thead>
+              <tbody>
+                {documents.map((document) => {
+                  const name = splitProcedureManualName(document.name);
+                  const status = resolveAssemblyDocumentStatus(document);
+                  const pageCount = assemblyProcedureDocumentPageCount(document);
+                  const isPublished = status === 'published';
+                  const busy = busyDocumentId === document.id;
+                  return (
+                    <tr key={document.id} title={document.name} className="h-14 border-b border-white/10">
+                      <td className="px-2"><ProcedureThumbnail url={document.pages?.find(page => page.pageIndex === 0)?.imageRelativePath || document.imageRelativePath} /></td>
+                      {name ? <>
+                        <td className="truncate px-2 text-xl font-bold">{name.partName}</td>
+                        <td className="truncate px-2 font-mono font-bold">{name.subjectKey}</td>
+                        <td className="truncate px-2">{name.process}</td>
+                        <td className="truncate px-2">{name.work}</td>
+                      </> : <td colSpan={4} className="truncate px-2 text-xl font-bold">{document.name}</td>}
+                      <td className="truncate px-2 text-white/60">{name?.supplement || '—'}</td>
+                      <td className="px-2"><span className={`inline-flex whitespace-nowrap rounded-full border px-2 py-1 text-sm font-semibold ${!document.isActive ? 'border-red-400 text-red-200' : isPublished ? 'border-emerald-400 text-emerald-100' : 'border-amber-400 text-amber-100'}`}>
+                        {!document.isActive ? '無効' : isPublished ? `公開 第${document.revisionNumber ?? 1}版` : '下書き'}
+                      </span></td>
+                      <td className="px-2"><div className="flex min-w-0 items-center gap-1.5">
+                        {document.manualAssignments.length ? <>
+                          <span className="inline-flex min-w-0 items-center gap-1.5 rounded-md bg-[#1b2530] px-2.5 py-1 text-[15px]">
+                            <span className="truncate"><b className="font-mono">{document.manualAssignments[0].modelCode}</b><span className="text-white/60"> · </span>{document.manualAssignments[0].processName}</span>
+                          </span>
+                          {document.manualAssignments.length > 1 ? <span className="shrink-0 font-mono text-[15px] text-white/60">+{document.manualAssignments.length - 1}</span> : null}
+                        </> : <span className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-amber-400 px-2.5 py-1 text-[15px] font-bold text-amber-400">
+                          <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><circle cx="12" cy="12" r="9" /><path d="M12 7v6M12 16.5v.5" /></svg>未使用
+                        </span>}
+                      </div></td>
+                      <td className="px-2 text-right font-mono text-white/60">{pageCount}</td>
+                      <td className="px-2 text-right font-mono text-white/60">{document.activeTemplateCount}/{document.totalTemplateCount}</td>
+                      <td className="whitespace-nowrap px-2 text-right font-mono text-white/60">{formatAssemblyTimestamp(document.updatedAt)}</td>
+                      <td className="px-2"><div className="flex justify-end gap-1">
+                          <IconActionTooltip label={isPublished ? '内容確認' : '内容確認・公開'} disabled={isPreview || busy}><Button
+                            type="button"
+                            data-kiosk-sop-target="assembly-procedure-preview"
+                            variant="ghostOnDark"
+                            aria-label={isPublished ? '内容確認' : '内容確認・公開'}
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded !p-0"
+                            disabled={isPreview || busy}
+                            onClick={() => onPreviewClick?.(document)}
+                          >
+                            <AssemblyLibraryActionIcon action="preview" />
+                          </Button></IconActionTooltip>
+                          <IconActionTooltip label={isPublished ? '改版編集' : '編集'}><Link
+                            to={kioskAssemblyProcedureDocumentEditPath(document.id)}
+                            data-kiosk-sop-target="assembly-procedure-edit"
+                            aria-label={isPublished ? '改版編集' : '編集'}
+                            className={buttonClassName(
+                              'ghostOnDark',
+                              'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded !p-0 !border-amber-400 !text-amber-200'
+                            )}
+                          >
+                            <AssemblyLibraryActionIcon action="edit" />
+                          </Link></IconActionTooltip>
+                          <IconActionTooltip label={!isPublished ? '公開後にテンプレート作成できます' : 'テンプレート新規作成'} disabled={!isPublished}><Link
+                            to={kioskAssemblyTemplateNewPath({ procedureDocumentId: document.id })}
+                            data-kiosk-sop-target="assembly-template-new"
+                            className={buttonClassName(
+                              'ghostOnDark',
+                              `inline-flex h-11 w-11 shrink-0 items-center justify-center rounded !p-0 !border-emerald-400 !text-emerald-200 ${!isPublished ? 'pointer-events-none opacity-40' : ''}`
+                            )}
+                            aria-disabled={!isPublished}
+                            aria-label="テンプレート新規作成"
+                            onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+                              if (!isPublished) event.preventDefault();
+                            }}
+                          >
+                            <AssemblyLibraryActionIcon action="create" />
+                          </Link></IconActionTooltip>
+                          {!isPublished || document.revisionRootId != null ? null : (
+                            <IconActionTooltip label="公開取消" disabled={isPreview || busy}><Button
+                              type="button"
+                              variant="ghostOnDark"
+                              className="flex h-11 w-11 shrink-0 items-center justify-center rounded !p-0"
+                              disabled={isPreview || busy}
+                              aria-label="公開取消" onClick={() => void handleUnpublish(document)}
+                            >
+                              <AssemblyLibraryActionIcon action="unpublish" />
+                            </Button></IconActionTooltip>
+                          )}
+                          <IconActionTooltip label="名前変更" disabled={isPreview || busy}><Button
+                            type="button"
+                            variant="ghostOnDark"
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded !p-0"
+                            disabled={isPreview || busy}
+                            aria-label="名前変更" onClick={() => setRenameTarget(document)}
+                          >
+                            <AssemblyLibraryActionIcon action="rename" />
+                          </Button></IconActionTooltip>
+                          <IconActionTooltip label={document.manualAssignments.length > 0 ? '使用中は削除できません' : document.totalTemplateCount > 0 ? 'テンプレートで使用中のため削除できません' : '削除'} disabled={isPreview || busy || document.totalTemplateCount > 0 || document.manualAssignments.length > 0}><Button
+                            type="button"
+                            variant="ghostOnDark"
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded !border-red-400 !p-0 !text-red-300"
+                            disabled={isPreview || busy || document.totalTemplateCount > 0 || document.manualAssignments.length > 0}
+                            aria-label="削除" onClick={() => void handleDelete(document)}
+                          >
+                            <AssemblyLibraryActionIcon action="delete" />
+                          </Button></IconActionTooltip>
+                      </div></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+      </div>
       <AssemblyProcedureRenameModal
         isOpen={renameTarget != null}
         document={renameTarget}
@@ -327,4 +320,25 @@ export function AssemblyProcedureLibrarySection({
       />
     </section>
   );
+}
+
+function ProcedureThumbnailImage({ url }: { url: string }) {
+  const { blobUrl } = useProtectedImageBlobUrl(url);
+  return blobUrl ? <img src={blobUrl} alt="1ページ目" className="h-full w-full object-contain" /> : null;
+}
+
+function ProcedureThumbnail({ url }: { url?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(() => typeof IntersectionObserver === 'undefined');
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined' || !url) return;
+    const observer = new IntersectionObserver(entries => {
+      setVisible(entries.some(entry => entry.isIntersecting));
+    }, { rootMargin: '200px' });
+    if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, [url]);
+  return <div ref={ref} className="h-[26px] w-9 overflow-hidden rounded-[3px] border border-white/30 bg-white/10">
+    {visible && url ? <ProcedureThumbnailImage url={url} /> : null}
+  </div>;
 }

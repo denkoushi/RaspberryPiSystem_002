@@ -76,10 +76,42 @@ ALTER_ADD_COLUMN = re.compile(
     rf"(?:IF\s+NOT\s+EXISTS\s+)?{IDENTIFIER}\s+(?P<definition>[\s\S]+)$",
     re.IGNORECASE,
 )
+ALLOW_SETTING_HISTORY_DROP_NOT_NULL = re.compile(
+    r'^(?i:ALTER)\s+(?i:TABLE)\s+'
+    r'"(?:AssemblyTorqueWrenchConfirmation|TorqueTrainingWrenchConfirmation)"\s+'
+    r'(?i:ALTER)\s+(?i:COLUMN)\s+"settingHistoryId"\s+'
+    r'(?i:DROP)\s+(?i:NOT)\s+(?i:NULL)$'
+)
+ALLOW_PROCEDURE_MATERIAL_PDF_ADD_VALUE = re.compile(
+    r'^(?i:ALTER)\s+(?i:TYPE)\s+"ProcedureMaterialKind"\s+'
+    r"(?i:ADD)\s+(?i:VALUE)\s+'PDF'$"
+)
+ALLOW_PROCEDURE_MANUAL_COMMON_ADD_VALUE = re.compile(
+    r'^(?i:ALTER)\s+(?i:TYPE)\s+"ProcedureManualSubjectKind"\s+'
+    r"(?i:ADD)\s+(?i:VALUE)\s+'COMMON'$"
+)
+ALLOW_KNOWLEDGE_RANK_CHECK_EXPANSION = re.compile(
+    r'^(?i:ALTER)\s+(?i:TABLE)\s+"(?P<table>KnowledgePositionRank|KnowledgeProcedureReview)"\s+'
+    r'(?:(?i:DROP)\s+(?i:CONSTRAINT)\s+"(?P=table)_rank_check"'
+    r'|(?i:ADD)\s+(?i:CONSTRAINT)\s+"(?P=table)_rank_check"\s+'
+    r'(?i:CHECK)\s*\(\s*"(?:rank|employeeRankSnapshot)"\s+(?i:IN)\s*'
+    r"\('general','leader','section_chief','manager','general_manager','executive'\)\s*\))$"
+)
 DISALLOWED_COLUMN_CLAUSE = re.compile(
     r"\b(DEFAULT|NULL|CONSTRAINT|UNIQUE|PRIMARY|REFERENCES|CHECK|GENERATED|"
     r"IDENTITY|SERIAL|BIGSERIAL|SMALLSERIAL|DROP|ALTER|RENAME|SET|ADD)\b",
     re.IGNORECASE,
+)
+ALLOW_PROCEDURE_MATERIAL_WORK_INSTRUCTION_ADD_VALUE = re.compile(
+    r'^(?i:ALTER)\s+(?i:TYPE)\s+"ProcedureMaterialOrigin"\s+'
+    r"(?i:ADD)\s+(?i:VALUE)\s+'WORK_INSTRUCTION'$"
+)
+ALLOW_PROCEDURE_VIDEO_LINK_SCENE_FOREIGN_KEY = re.compile(
+    r'^(?i:ALTER)\s+(?i:TABLE)\s+"ProcedureVideoLink"\s+'
+    r'(?i:ADD)\s+(?i:CONSTRAINT)\s+"ProcedureVideoLink_sceneId_fkey"\s+'
+    r'(?i:FOREIGN)\s+(?i:KEY)\s*\(\s*"sceneId"\s*\)\s+'
+    r'(?i:REFERENCES)\s+"ProcedureVideoScene"\s*\(\s*"id"\s*\)\s+'
+    r"(?i:ON)\s+(?i:DELETE)\s+(?i:RESTRICT)\s+(?i:ON)\s+(?i:UPDATE)\s+(?i:CASCADE)$"
 )
 BUILTIN_COLUMN_TYPE = re.compile(
     r"^(?:(?:BOOL|BOOLEAN)|"
@@ -334,6 +366,18 @@ def validate_statement(
     if not _balanced_parentheses(code):
         raise ValueError(f"unbalanced parentheses in {label}: {statement.text[:120]}")
 
+    if ALLOW_SETTING_HISTORY_DROP_NOT_NULL.fullmatch(statement.text.strip()) is not None:
+        return
+
+    if ALLOW_PROCEDURE_MATERIAL_PDF_ADD_VALUE.fullmatch(statement.text.strip()) is not None:
+        return
+
+    if ALLOW_PROCEDURE_MANUAL_COMMON_ADD_VALUE.fullmatch(statement.text.strip()) is not None:
+        return
+
+    if ALLOW_KNOWLEDGE_RANK_CHECK_EXPANSION.fullmatch(statement.text.strip()) is not None:
+        return
+
     create_table = CREATE_TABLE.match(code)
     if create_table is not None and _parenthesized_body_ends_statement(
         code, create_table.end() - 1
@@ -368,6 +412,14 @@ def validate_statement(
             and not _has_top_level_comma(code)
         ):
             return
+
+    if (
+        ALLOW_PROCEDURE_MATERIAL_WORK_INSTRUCTION_ADD_VALUE.fullmatch(statement.text.strip())
+        is not None
+    ):
+        return
+    if ALLOW_PROCEDURE_VIDEO_LINK_SCENE_FOREIGN_KEY.fullmatch(statement.text.strip()) is not None:
+        return
 
     raise ValueError(f"disallowed statement in {label}: {statement.text[:120]}")
 

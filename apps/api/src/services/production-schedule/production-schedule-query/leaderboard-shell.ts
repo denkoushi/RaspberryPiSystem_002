@@ -16,6 +16,7 @@ import {
 import { buildLeaderboardShellFilterFingerprint } from '../leaderboard/leaderboard-shell-snapshot-fingerprint.js';
 import { resolveLeaderboardShellSnapshotGenerationToken } from '../leaderboard/leaderboard-shell-snapshot-generation.js';
 import type { LeaderboardShellSnapshotStore } from '../leaderboard/leaderboard-shell-snapshot.store.js';
+import { putLeaderboardCanonicalRows } from '../leaderboard/leaderboard-canonical-row-cache.js';
 import {
   isLeaderboardShellSnapshotStaleForContinue,
   sliceLeaderboardSnapshotIdsByCursor,
@@ -102,6 +103,9 @@ export async function listLeaderboardShellProductionScheduleRows(
     : await resolveLeaderboardMaterializedBaseWhere(prisma, options.leaderboardMaterializedBaseWhere);
 
   const seibanExpansion = shouldExpandLeaderboardSeibanAcrossResources(params.resourceCds);
+  // Capture the source generation before selection.  A row cache entry is only
+  // safe to share when the selection completed in the same generation.
+  const generationBeforeSelection = await resolveLeaderboardShellSnapshotGenerationToken(options.generationToken);
 
   const leaderboardShellListWhere = buildLeaderboardShellListWhereSql({
     leaderboardMaterializedBaseWhere,
@@ -123,15 +127,19 @@ export async function listLeaderboardShellProductionScheduleRows(
     processChangeResidualMode: params.processChangeResidualMode,
     processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
   });
+  const generationAfterSelection = await resolveLeaderboardShellSnapshotGenerationToken();
+  const selectionStable = generationBeforeSelection === generationAfterSelection;
 
-  const { expandedDisplayItems: expandedDisplayItemsRaw } = await resolveLeaderboardShellDisplayItemPrefix({
+  const { mergedPrefix, expandedDisplayItems: expandedDisplayItemsRaw } = await resolveLeaderboardShellDisplayItemPrefix({
     mergedPrefixInitial,
     mergeFullyCompletedInitial: mergeFullyCompleted,
     pageSize,
     locationKey,
     siteScopedGlobalRankLocation,
     leaderboardMaterializedBaseWhere,
-    leaderboardShellListWhere
+    leaderboardShellListWhere,
+    canonicalSourceGenerationToken: selectionStable ? generationBeforeSelection : undefined,
+    canonicalSourceSiteKey: params.siteKey ?? locationKey
   });
   const expandedDisplayItems = filterProductionScheduleDisplayRowsByDueDate(
     expandedDisplayItemsRaw,
@@ -139,7 +147,54 @@ export async function listLeaderboardShellProductionScheduleRows(
   );
 
   const orderedRowIds = expandedDisplayItems.map((row) => row.id);
-  const generationToken = await resolveLeaderboardShellSnapshotGenerationToken(options.generationToken);
+  const generationAfterDisplay = await resolveLeaderboardShellSnapshotGenerationToken();
+  const generationStable = selectionStable && generationBeforeSelection === generationAfterDisplay;
+  const generationToken = generationStable ? generationBeforeSelection : generationAfterDisplay;
+
+  if (generationStable) {
+    putLeaderboardCanonicalRows({
+      key: {
+        siteKey: params.siteKey ?? locationKey,
+        generationToken: generationBeforeSelection,
+        rankContext: `${locationKey}|${siteScopedGlobalRankLocation}`
+      },
+      rows: mergedPrefix.map((row) => ({
+        id: row.id,
+        seibanJoinKey: row.seibanJoinKey,
+        occurredAt: row.occurredAt,
+        updatedAt: row.updatedAt,
+        rowData: row.rowData,
+        processingOrder: row.processingOrder,
+        globalRank: row.globalRank,
+        note: row.note,
+        processingType: row.processingType,
+        dueDate: row.dueDate,
+        plannedQuantity: row.plannedQuantity,
+        plannedStartDate: row.plannedStartDate,
+        plannedEndDate: row.plannedEndDate
+      })),
+      coverage: 'rank'
+    });
+    putLeaderboardCanonicalRows({
+      key: { siteKey: params.siteKey ?? locationKey, generationToken: generationBeforeSelection, rankContext: 'none' },
+      rows: mergedPrefix.map((row) => ({
+        id: row.id,
+        seibanJoinKey: row.seibanJoinKey,
+        occurredAt: row.occurredAt,
+        updatedAt: row.updatedAt,
+        rowData: row.rowData,
+        processingOrder: row.processingOrder,
+        globalRank: row.globalRank,
+        note: row.note,
+        processingType: row.processingType,
+        dueDate: row.dueDate,
+        plannedQuantity: row.plannedQuantity,
+        plannedStartDate: row.plannedStartDate,
+        plannedEndDate: row.plannedEndDate
+      })),
+      coverage: 'identity'
+    });
+  }
 
   const filterFingerprint = buildLeaderboardShellFilterFingerprint({
     locationKey,
@@ -364,7 +419,9 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
         orderedDisplayItemIds: sliceIds,
         locationKey,
         siteScopedGlobalRankLocation,
-        leaderboardMaterializedBaseWhere
+        leaderboardMaterializedBaseWhere,
+        canonicalSourceGenerationToken: snapForHasMore?.generationToken ?? snap.generationToken,
+        canonicalSourceSiteKey: params.siteKey ?? locationKey
       });
 
       const rows: ProductionScheduleRow[] = leaderboardRows.map((r) => ({

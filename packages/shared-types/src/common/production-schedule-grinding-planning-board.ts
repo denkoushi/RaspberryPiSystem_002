@@ -1,0 +1,257 @@
+/** キオスク研削順位ボードのページ専用API契約。既存順位ボードの順位・割当とは別管理。 */
+export type GrindingPlanningBoardView = 'seiban' | 'resource';
+export type GrindingPlanningBoardCategory = 'grinding' | 'cutting' | 'all';
+
+export type GrindingPlanningBoardDueScope =
+  | { kind: 'seiban' }
+  | { kind: 'processing'; processingType: string };
+
+export interface GrindingPlanningBoardDueDetailProcess {
+  rowId: string;
+  resourceCd: string;
+  resourceNames?: string[];
+  processOrder: number | null;
+  isCompleted: boolean;
+}
+
+export interface GrindingPlanningBoardDueDetailPart {
+  productNo: string;
+  fhincd: string;
+  fhinmei: string;
+  note: string | null;
+  processCount: number;
+  totalRequiredMinutes: number;
+  processingType: string | null;
+  processingPriority: number;
+  completedProcessCount: number;
+  totalProcessCount: number;
+  actualPerPieceMinutes: number | null;
+  actualEstimatedMinutes: number;
+  actualCoverageRatio: number;
+  processes: GrindingPlanningBoardDueDetailProcess[];
+  currentPriorityRank: number | null;
+  suggestedPriorityRank: number;
+  plannedQuantity?: number | null;
+  plannedStartDate?: string | null;
+  plannedEndDate?: string | null;
+  effectiveDueDate?: string | null;
+  effectiveDueDateSource?: 'manual' | 'csv' | null;
+}
+
+export interface GrindingPlanningBoardDueDetail {
+  fseiban: string;
+  machineName: string | null;
+  dueDate: string | null;
+  parts: GrindingPlanningBoardDueDetailPart[];
+  processingTypeDueDates?: Array<{ processingType: string; dueDate: string | null }>;
+}
+
+export interface GrindingPlanningBoardDueScopeSnapshot {
+  original: GrindingPlanningBoardDueDetail;
+  alternate: GrindingPlanningBoardDueDetail;
+  sourceGenerationToken: string;
+  scopeRevision: string;
+}
+
+export interface GrindingPlanningBoardDueScopeRequest {
+  sourceGenerationToken: string;
+  scopeRevision: string;
+  scope: GrindingPlanningBoardDueScope;
+  dueDate: string;
+}
+
+export type GrindingPlanningBoardDueRequest =
+  | { kind: 'date'; date: string }
+  | { kind: 'offsetDays'; days: number }
+  | { kind: 'restore' };
+
+export type GrindingPlanningBoardSpecialDueKind = 'today' | 'overnight';
+
+export interface GrindingPlanningBoardSpecialDue {
+  kind: GrindingPlanningBoardSpecialDueKind;
+  expiresAt: string;
+}
+
+export type GrindingPlanningBoardItemKind = 'row' | 'split';
+
+/**
+ * 材料（鋳物・鋼材など）の入荷状況。購買CSV `FKOBAIST` 由来。
+ * received=全数入荷済 / partial=一部入荷済 / ordered=注文済・未入荷 / unordered=未発注。
+ */
+export type MaterialArrivalStatus = 'received' | 'partial' | 'ordered' | 'unordered';
+export type MaterialArrivalBasis = 'material' | 'part';
+
+export interface GrindingPlanningBoardItem {
+  itemId: string;
+  kind: GrindingPlanningBoardItemKind;
+  itemRevision: string;
+  version: number;
+  sourceRowId: string;
+  fseiban: string;
+  fhincd: string;
+  fhinmei: string | null;
+  machineName: string | null;
+  productNo: string;
+  processOrder: string;
+  originalResourceCd: string | null;
+  effectiveResourceCd: string | null;
+  originalDueDate: string | null;
+  effectiveDueDate: string | null;
+  originalRank: number | null;
+  alternateRank: number | null;
+  specialDue?: GrindingPlanningBoardSpecialDue | null;
+  orderPinned?: boolean;
+  plannedQuantity: number | null;
+  requiredMinutes: number | null;
+  requiredMinutesKnown: boolean;
+  isCompleted: boolean;
+  completionSource?: 'manual' | 'import' | null;
+  progress: { completed: number; total: number; quantityKnown: boolean };
+  /** 材料の購買行が無い部品は null / 省略 */
+  materialArrivalStatus?: MaterialArrivalStatus | null;
+  materialArrivalBasis?: MaterialArrivalBasis;
+}
+
+export interface GrindingPlanningBoardLoad {
+  resourceCd: string;
+  originalItemCount: number;
+  alternateItemCount: number;
+  originalRequiredMinutes: number | null;
+  alternateRequiredMinutes: number | null;
+  unfinishedItemCount: number;
+  requiredMinutes: number | null;
+  unknownItemCount: number;
+  originalUnknownItemCount: number;
+  alternateUnknownItemCount: number;
+}
+
+export interface GrindingPlanningBoardLoadResponse {
+  load: GrindingPlanningBoardLoad[];
+  unknownRequiredMinutesCount: number;
+}
+
+export interface GrindingPlanningBoardResponse {
+  siteKey: string;
+  category: GrindingPlanningBoardCategory;
+  view: GrindingPlanningBoardView;
+  sourceRevision: string;
+  boardVersion: number;
+  registeredFseibans: string[];
+  seibanOrder: string[];
+  resources: string[];
+  resourceCategories?: Record<string, 'grinding' | 'cutting'>;
+  items: GrindingPlanningBoardItem[];
+  load: GrindingPlanningBoardLoad[];
+  unknownRequiredMinutesCount: number;
+  loadDeferred?: boolean;
+  seibanProgress: Record<string, { completed: number; total: number }>;
+  /** 登録済み製番すべての機種表示名（その区分に工程が無い製番も含む） */
+  machineNames?: Record<string, string | null>;
+  snapshotId: string;
+  nextCursor: string | null;
+}
+
+export interface GrindingPlanningBoardOverridesResponse {
+  sourceRevision: string;
+  items: GrindingPlanningBoardItem[];
+}
+
+export interface GrindingPlanningBoardOverrideItemRequest {
+  itemId: string;
+  itemRevision: string;
+  overrideVersion?: number;
+  resourceCd?: string | null;
+  due?: GrindingPlanningBoardDueRequest;
+  specialDue?: GrindingPlanningBoardSpecialDueKind | null;
+}
+
+export interface GrindingPlanningBoardOverridesRequest {
+  sourceRevision: string;
+  items: GrindingPlanningBoardOverrideItemRequest[];
+}
+
+export interface GrindingPlanningBoardPinsRequest {
+  sourceRevision: string;
+  items: { itemId: string; itemRevision: string; overrideVersion?: number }[];
+  pinned: boolean;
+}
+
+export interface GrindingPlanningBoardRankRequest {
+  sourceRevision: string;
+  itemId: string;
+  itemRevision: string;
+  overrideVersion?: number;
+  alternateRank: number | null;
+}
+
+export interface GrindingPlanningBoardRankResponse {
+  sourceRevision: string;
+  itemId: string;
+  itemRevision: string;
+  overrideVersion: number;
+  alternateRank: number | null;
+}
+
+export type GrindingPlanningBoardResourceOrderPlacement = 'before' | 'after';
+
+export interface GrindingPlanningBoardResourceOrderRequest {
+  sourceRevision: string;
+  itemId: string;
+  itemRevision: string;
+  overrideVersion?: number;
+  targetItemId: string;
+  targetItemRevision: string;
+  targetOverrideVersion?: number;
+  placement: GrindingPlanningBoardResourceOrderPlacement;
+}
+
+export interface GrindingPlanningBoardResourceOrderBulkRequest {
+  sourceRevision: string;
+  resourceCd: string;
+  items: { itemId: string; itemRevision: string; overrideVersion?: number }[];
+}
+
+export interface GrindingPlanningBoardResourceOrderResponse {
+  sourceRevision: string;
+  items: GrindingPlanningBoardItem[];
+}
+
+export interface GrindingPlanningBoardSeibanOrderRequest {
+  sourceRevision: string;
+  fseibans: string[];
+}
+
+/** 製番登録ペインに表示する、期間内の製番候補。 */
+export interface GrindingPlanningBoardSeibanCandidate {
+  fseiban: string;
+  machineName: string | null;
+  dueDate: string;
+  completedProcessCount: number;
+  totalProcessCount: number;
+  isCompleted: boolean;
+}
+
+export interface GrindingPlanningBoardSeibanCandidatesResponse {
+  today: string;
+  rangeStart: string;
+  rangeEnd: string;
+  completionFilter: 'all' | 'incomplete';
+  candidates: GrindingPlanningBoardSeibanCandidate[];
+}
+
+/** ガント表示で棒の長さを決める、資源CDごとの1日あたり稼働時間。サイト共有。 */
+export const GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS = [8, 10, 24] as const;
+export type GrindingPlanningBoardResourceDailyHours = (typeof GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS)[number];
+export const GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS: GrindingPlanningBoardResourceDailyHours = 8;
+
+/** 既定値(8時間)以外が保存された資源CDだけを返す。 */
+export interface GrindingPlanningBoardResourceCapacityResponse {
+  dailyHoursByResource: Record<string, GrindingPlanningBoardResourceDailyHours>;
+  runsThroughBreaksResources: string[];
+}
+
+export interface GrindingPlanningBoardResourceCapacityRequest {
+  resourceCd: string;
+  dailyHours?: GrindingPlanningBoardResourceDailyHours;
+  runsThroughBreaks?: boolean;
+}

@@ -26,6 +26,7 @@ function mapHydratedSqlRowToProductionScheduleRow(row: LeaderboardScheduleRowSql
     id: row.id,
     seibanJoinKey: row.seibanJoinKey,
     occurredAt: row.occurredAt,
+    updatedAt: row.updatedAt,
     rowData: row.rowData,
     processingOrder: row.processingOrder,
     globalRank: row.globalRank,
@@ -83,6 +84,8 @@ export async function fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemId
   locationKey: string;
   siteScopedGlobalRankLocation: string;
   leaderboardMaterializedBaseWhere?: Prisma.Sql;
+  canonicalSourceGenerationToken?: string;
+  canonicalSourceSiteKey?: string;
 }): Promise<ProductionScheduleRow[]> {
   const enabled = isProductionScheduleOrderSplitEnabled();
   const sourceRowIds = await resolveHydrateSourceRowIdsFromDisplayItemIds(params.orderedDisplayItemIds);
@@ -95,7 +98,9 @@ export async function fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemId
     orderedRowIds: sourceRowIds,
     locationKey: params.locationKey,
     siteScopedGlobalRankLocation: params.siteScopedGlobalRankLocation,
-    leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere
+    leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere,
+    canonicalSourceGenerationToken: params.canonicalSourceGenerationToken,
+    canonicalSourceSiteKey: params.canonicalSourceSiteKey
   });
 
   const parentProductionRows = hydratedParentRows.map(mapHydratedSqlRowToProductionScheduleRow);

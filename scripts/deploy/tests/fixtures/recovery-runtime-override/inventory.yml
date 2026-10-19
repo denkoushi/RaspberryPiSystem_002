@@ -1,5 +1,0 @@
-all:
-  hosts:
-    raspi4-recovery-precedence:
-      ansible_host: 100.80.10.20
-      ansible_user: recovery-user

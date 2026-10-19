@@ -1,0 +1,20 @@
+---
+- name: Locate the previous egress container
+  ansible.builtin.command:
+    argv: [docker, ps, -a, --filter, "label=com.docker.compose.project={{ release_pi5_compose_project }}", --filter, "label=com.docker.compose.service={{ egress_service }}", --format, "{{ '{{.ID}}' }}"]
+  register: egress_previous_container
+  changed_when: false
+
+- name: Preserve the previous mounted program independently of the checkout
+  when: egress_previous_container.stdout | trim | length > 0
+  block:
+    - name: Capture the exact program from the previous container
+      ansible.builtin.command:
+        argv: [docker, cp, "{{ egress_previous_container.stdout | trim }}:/opt/business-hermes-egress/proxy.mjs", "{{ release_pi5_run_dir }}/{{ egress_service }}-before.mjs"]
+      changed_when: true
+
+    - name: Publish the previous egress program for rollback
+      ansible.builtin.include_tasks: business-hermes-egress-artifact.yml
+      vars:
+        egress_artifact_source: "{{ release_pi5_run_dir }}/{{ egress_service }}-before.mjs"
+        egress_artifact_key: "{{ egress_service }}"

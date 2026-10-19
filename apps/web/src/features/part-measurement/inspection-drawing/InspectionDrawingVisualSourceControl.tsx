@@ -14,6 +14,7 @@ import {
   inspectionDrawingKioskDialogTitleClassName,
   inspectionDrawingKioskDisabledButtonClass
 } from './inspectionDrawingKioskUi';
+import { inspectionDrawingSopTargetProps } from './inspectionDrawingSopAnnotations';
 
 import type { InspectionDrawingVisualSource } from './inspectionDrawingCreateDraft';
 import type { PartMeasurementVisualTemplateDto } from '../types';
@@ -81,6 +82,7 @@ export function InspectionDrawingVisualSourceControl({
       >
         <span className="whitespace-nowrap text-[0.9rem] font-semibold text-slate-400">図面</span>
         <Button
+          {...inspectionDrawingSopTargetProps('open-visual-source')}
           type="button"
           variant="ghostOnDark"
           className={`min-h-11 max-w-[12rem] truncate px-2 text-sm ${inspectionDrawingKioskDisabledButtonClass}`}
@@ -109,6 +111,7 @@ export function InspectionDrawingVisualSourceControl({
             <label className="grid gap-1 text-sm font-semibold text-white/80">
               {PART_MEASUREMENT_DRAWING_FILE_LABEL}
               <input
+                {...inspectionDrawingSopTargetProps('upload-new-visual')}
                 type="file"
                 accept={PART_MEASUREMENT_DRAWING_FILE_ACCEPT}
                 className="text-sm text-white/80 file:mr-2 file:rounded file:border-0 file:bg-white/10 file:px-2 file:py-1 file:text-xs file:text-white"
@@ -146,6 +149,7 @@ export function InspectionDrawingVisualSourceControl({
                   {visuals.map((visual) => (
                     <li key={visual.id}>
                       <button
+                        {...inspectionDrawingSopTargetProps('pick-existing-visual')}
                         type="button"
                         className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-white/5"
                         aria-pressed={selectedVisualTemplateId === visual.id}

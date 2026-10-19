@@ -89,9 +89,9 @@ describe('inference-use-case-runtime-intent', () => {
       providers,
       routes: {
         photo_label: { providerId: 'dgx_primary' },
+        business_hermes: { providerId: 'dgx_primary' },
         document_summary: { providerId: 'dgx_primary' },
         admin_console_chat: { providerId: 'dgx_primary' },
-        stackchan_chat: { providerId: 'dgx_primary' },
       },
     });
     expect(() =>
@@ -111,6 +111,7 @@ describe('inference-use-case-runtime-intent', () => {
         sharedToken: 't',
         timeoutMs: 60_000,
         defaultModel: 'system-prod-primary',
+        runtimeStartProfileId: 'business_qwen36_27b_nvfp4',
       },
       {
         id: 'ubuntu_vlm',
@@ -125,9 +126,9 @@ describe('inference-use-case-runtime-intent', () => {
       providers,
       routes: {
         photo_label: { providerId: 'ubuntu_vlm' },
+        business_hermes: { providerId: 'dgx_primary' },
         document_summary: { providerId: 'ubuntu_vlm' },
         admin_console_chat: { providerId: 'dgx_primary' },
-        stackchan_chat: { providerId: 'dgx_primary' },
       },
     });
     expect(() =>

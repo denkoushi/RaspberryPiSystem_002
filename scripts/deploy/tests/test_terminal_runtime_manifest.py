@@ -955,6 +955,32 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
         self.assertEqual(self.fake.mutation_calls, [])
         self.assertFalse(self.storage.exists())
 
+    def test_capture_and_restore_seal_device_groups_and_hotplug_rules(self):
+        expected = {"GroupAdd": ["20"], "DeviceCgroupRules": ["c 166:* rw", "c 188:* rw"]}
+        self.fake.service_host_config_extra["barcode-agent"].update(expected)
+        self.fake.service_security["barcode-agent"].update({
+            "user": "10001:10001", "networkMode": "host",
+            "capDrop": ["ALL"], "securityOpt": ["no-new-privileges:true"],
+        })
+        prior = image_id("serial-hotplug-contract")
+        self.fake.add_container("barcode-agent", prior, running=True)
+        self.probe_capture(services=["barcode-agent"])
+        captured = self.capture(services=["barcode-agent"])
+        # Same image with changed host permissions must still be recreated.
+        self.fake.service_host_config_extra["barcode-agent"].update({
+            "GroupAdd": [], "DeviceCgroupRules": [],
+        })
+        self.fake.add_container("barcode-agent", prior, running=True)
+        self.fake.service_host_config_extra["barcode-agent"].update(expected)
+        self.restore(captured["manifestSha256"])
+        restored = self.fake.containers[(self.compose["project"], "barcode-agent")]
+        for key, value in expected.items():
+            self.assertEqual(restored["hostConfig"][key], value)
+        self.assertEqual(restored["security"]["user"], "10001:10001")
+        self.assertEqual(restored["security"]["capDrop"], ["ALL"])
+        self.assertEqual(restored["security"]["securityOpt"], ["no-new-privileges:true"])
+        self.assertFalse(restored["security"]["privileged"])
+
     def test_same_image_functional_runtime_drift_is_recreated_from_compose(self):
         prior = image_id("same-image-runtime-config")
         self.fake.add_container("barcode-agent", prior, running=True)
@@ -979,6 +1005,83 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
             if call[:2] == ["docker", "compose"] and "config" not in call
         ]
         self.assertEqual(len(compose_mutations), 1)
+
+    def test_compose_metadata_and_daemon_defaults_are_not_runtime_contract(self):
+        container_id = hashlib.sha256(b"baseline-container").hexdigest()
+        baseline_config = {
+            "Env": ["TOKEN=secret"],
+            "Image": "agent:latest",
+            "Hostname": container_id[:12],
+            "WorkingDir": "/app/agent",
+            "Healthcheck": None,
+            "ExposedPorts": None,
+            "Labels": {
+                "com.docker.compose.project": "docker",
+                "com.docker.compose.service": "nfc-agent",
+                "com.docker.compose.version": "2.20.0",
+                "com.docker.compose.config-hash": "old-hash",
+            },
+        }
+        recreated_config = copy.deepcopy(baseline_config)
+        recreated_config["Hostname"] = "terminal-host"
+        recreated_config["Labels"].update(
+            {
+                "com.docker.compose.version": "5.1.1",
+                "com.docker.compose.config-hash": "new-hash",
+                "com.docker.compose.image": image_id("metadata-image"),
+                "com.docker.compose.replace": "nfc-agent-1",
+            }
+        )
+        baseline_host = {
+            **copy.deepcopy(self.fake.service_host_config_extra["nfc-agent"]),
+            "CgroupnsMode": "",
+            "IpcMode": "",
+            "Runtime": "",
+            "ShmSize": 0,
+        }
+        recreated_host = {
+            **copy.deepcopy(baseline_host),
+            "CgroupnsMode": "private",
+            "IpcMode": "private",
+            "Runtime": "runc",
+            "ShmSize": 67_108_864,
+        }
+
+        baseline = MODULE._functional_runtime_digest(
+            baseline_config,
+            baseline_host,
+            container_id=container_id,
+            require_supported_capture=True,
+        )
+        recreated = MODULE._functional_runtime_digest(
+            recreated_config,
+            recreated_host,
+            container_id=hashlib.sha256(b"recreated-container").hexdigest(),
+            require_supported_capture=True,
+        )
+
+        self.assertEqual(recreated, baseline)
+
+    def test_legacy_manifest_uses_separately_sealed_runtime_fields(self):
+        prior = image_id("legacy-prior")
+        self.fake.add_container("nfc-agent", prior, running=True)
+        self.capture(services=["nfc-agent"])
+        legacy = json.loads(self.manifest_path.read_text(encoding="utf-8"))
+        legacy["version"] = 2
+        legacy["docker"][0].pop("runtimeConfigVersion")
+        legacy["docker"][0]["runtimeConfigSha256"] = "f" * 64
+        legacy = MODULE._seal(legacy, "manifestSha256")
+        self.manifest_path.write_text(
+            json.dumps(legacy, sort_keys=True, separators=(",", ":")),
+            encoding="utf-8",
+        )
+        self.candidate("nfc-agent")
+
+        restored = self.restore(legacy["manifestSha256"])
+
+        self.assertTrue(restored["restored"])
+        current = self.fake.containers[(self.compose["project"], "nfc-agent")]
+        self.assertEqual(current["imageId"], prior)
 
     def test_two_services_restore_in_reverse_and_partial_failure_is_retryable(self):
         prior_nfc = image_id("prior-nfc")
@@ -1751,6 +1854,30 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
         )
         self.assertEqual(self.fake.mutation_calls, [])
 
+    def test_capture_waits_for_signage_update_within_bounded_window(self):
+        unit = "signage-lite-update.service"
+        self.fake.add_unit(unit, unit_file="static", active="active")
+        # Production observations show that this 30-second timer can spend
+        # 6-18 seconds fetching or falling back to its cached signage image.
+        # The read-only probe must wait for that legitimate invocation without
+        # weakening the finite fail-closed deadline.
+        active_observations = 18
+        self.fake.unit_show_transitions[unit] = (
+            ["active"] * (active_observations - 1) + ["inactive"]
+        )
+
+        with mock.patch.object(MODULE.time, "sleep") as sleep:
+            captured = self.capture(units=[unit])
+
+        self.assertEqual(captured["unitCount"], 1)
+        self.assertEqual(sleep.call_count, active_observations)
+        self.assertEqual(
+            MODULE.TRANSIENT_ONESHOT_STABILIZATION_TIMEOUT_SECONDS,
+            30,
+        )
+        self.assertEqual(self.fake.units[unit]["ActiveState"], "inactive")
+        self.assertEqual(self.fake.mutation_calls, [])
+
     def test_sealed_active_transient_oneshot_is_rejected_before_restore(self):
         self.fake.add_unit(
             "signage-daily-reboot.service", unit_file="static", active="inactive"
@@ -2061,8 +2188,13 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
             self.restore(captured["manifestSha256"])
         self.assertEqual(self.fake.mutation_calls, [])
 
+        version_field = f'"version": {MODULE.MANIFEST_VERSION}'
         self.manifest_path.write_text(
-            original.replace('"version": 2', '"version": 2, "version": 2', 1),
+            original.replace(
+                version_field,
+                f'{version_field}, {version_field}',
+                1,
+            ),
             encoding="utf-8",
         )
         with self.assertRaisesRegex(MODULE.RuntimeManifestError, "duplicate key"):
@@ -2070,7 +2202,7 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
         self.assertEqual(self.fake.mutation_calls, [])
 
         self.manifest_path.write_text(
-            original.replace('"version": 2', '"version": NaN', 1),
+            original.replace(version_field, '"version": NaN', 1),
             encoding="utf-8",
         )
         with self.assertRaisesRegex(MODULE.RuntimeManifestError, "non-finite constant"):

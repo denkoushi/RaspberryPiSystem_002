@@ -71,15 +71,17 @@ export function useZoneLayoutDraft(zoneId: MacroZoneId | null) {
 
   const handleAssign = (
     machines: MachineMasterDto[],
-    onError: (msg: string) => void
+    onError: (msg: string) => void,
+    assignment?: { kind: DraftEntity['entityKind']; machineCd?: string }
   ): string | undefined => {
-    if (!zoneQuery.data || !pendingKind) return undefined;
+    const kind = assignment?.kind ?? pendingKind;
+    if (!zoneQuery.data || !kind) return undefined;
     const result = applyLayoutAssignment({
       draftEntities,
       selectedCells,
-      pendingKind,
+      pendingKind: kind,
       machines,
-      selectedMachineCd,
+      selectedMachineCd: assignment?.machineCd ?? selectedMachineCd,
       gridSize,
       shelfPrefix: zoneQuery.data.shelfPrefix,
       baseNextShelfSlot: zoneQuery.data.nextShelfSlot
@@ -156,6 +158,15 @@ export function useZoneLayoutDraft(zoneId: MacroZoneId | null) {
       setPendingKind(null);
       setSelectedMachineCd('');
       setMultiMode(false);
+    },
+    discardDraft: () => {
+      if (baseline) {
+        setGridSize(baseline.gridSize);
+        setDraftEntities(entitiesFromZone(baseline.entities));
+      }
+      setSelectedCells([]);
+      setPendingKind(null);
+      setSelectedMachineCd('');
     },
     saveLayout
   };

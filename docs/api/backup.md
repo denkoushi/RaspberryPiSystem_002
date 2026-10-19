@@ -383,8 +383,8 @@ DELETE /api/backup/%2Fbackups%2Fdatabase%2F2025-12-29T00-00-01-695Z%2Fborrow_ret
       "basePath": "/backups",
       "accessToken": "sl.u.AGOKAyeFfm...",
       "refreshToken": "mhzePpDIJ2kAAAA...",
-      "appKey": "1k8mig5my0zk0ms",
-      "appSecret": "es8m5ngz2vzxlbh"
+      "appKey": "<DROPBOX_APP_KEY>",
+      "appSecret": "<DROPBOX_APP_SECRET>"
     }
   },
   "targets": [
@@ -968,9 +968,9 @@ CSVデータのバックアップ。データベースからCSV形式でエク�
 
 クライアント端末（Pi3、Pi4など）のディレクトリのバックアップ。Ansibleを使用してディレクトリを`tar.gz`形式でアーカイブして取得します。
 
-**source例**: `raspberrypi3:/var/lib/tailscale`、`raspberrypi4:/home/tools03/.ssh`
+**source例**: `raspberrypi3:/var/lib/tailscale`
 
-**注意**: Pi5自身のディレクトリには使用しないでください。Pi5自身のディレクトリは`directory` kindを使用します。
+**注意**: Pi5自身のディレクトリには使用しないでください。Pi5自身のディレクトリは`directory` kindを使用します。端末の`.ssh`以下は秘密鍵を含むため、`client-file`と`client-directory`のどちらでも拒否されます。
 
 ---
 

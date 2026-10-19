@@ -30,23 +30,35 @@ update-frequency: medium
 
 <a id="self-inspection-machine-board"></a>
 
-**自主検査 機種別進捗ボード（2026-06-08・ブランチ `feat/signage-self-inspection-machine-board`）**:
+**自主検査 部品別進捗（2026-06-08・ブランチ `feat/signage-self-inspection-machine-board`）**:
 FULL スロット **`self_inspection_machine_board`**。
-`machineName` をキーに生産日程を正本として仕掛中の全製番・全部品の自主検査進捗一覧（summary）と、
-注目部品の測定点別ヒートストリップ（detail）を **flat page list** でローテーション
-（`getRotatingSlideIndex` 共有）。
-設定: `targetMode`（`manual_machine_name` / `auto_from_leaderboard_status`・未指定は manual）・
-`machineName`（manual 必須）・`resourceCds`（auto 必須・順位ボード相当の資源CD）・
+自主検査の対象部品を資源別に集約した部品カード（進捗バー＋状態バッジ）だけを
+**flat page list** でローテーション
+（`getRotatingSlideIndex` 共有）。旧 summary と detail/ヒートストリップの別ページは生成しない。
+設定: `targetMode`（新規管理UIは `kiosk_active_sessions` / `manual_machine_name`、
+`auto_from_leaderboard_status` は legacy wire/runtime 互換、未指定は manual）・
+`machineName`（manual 必須）・`resourceCds`（legacy auto 必須・順位ボード相当の資源CD）・
 `deviceScopeKey`（manual 推奨 / auto 必須・拠点別 policy）・`maxAutoMachines`（auto のみ保存可・任意・既定5・最大20）・
-`slideIntervalSeconds`・`partsPerPage`（既定12・最大12）・`detailTopN`（既定5）。
+`slideIntervalSeconds`・`partsPerPage`（管理UIの新規保存は既定6・最大6。API wire は既存設定互換のため1〜12を受理）。
+`detailTopN` は旧設定を読み込むための legacy 項目で、管理UIには表示せず、新規保存にも書き出さない。
+`kiosk_active_sessions` はキオスク自主検査の未検索時と同じ、無効化・完了を除く
+入力中／判定待ちセッションを更新日時順に最大200件取得し、機種名や資源CDの手入力なしで表示する。
+200件を超えた場合も最新200件は表示し、続きがあることを注記する。
 auto は `deviceScopeKey + resourceCds` 母集団を raw page 走査（500件/chunk・最大 2000 行）し、
 自主検査 rowDecorations のみ解決して黄（`in_progress`）機種を選定する（full 一覧・顧客名・フッタチップは省略。
 走査上限到達は 1 件プローブで後続有無を判定し、続きがある場合のみ warn ログ＋表示注記。
 候補同点時の納期は手動 `dueDate` 優先・無ければ `plannedEndDate`（順位ボードと同じ `displayDue`）。
 auto ローテーション ViewModel は **60 秒 TTL** で render 跨ぎ再利用（`SELF_INSPECTION_MACHINE_BOARD_AUTO_ROTATION_VM_CACHE_TTL_MS`））。
-選定後の各機種ボードは既存どおり機種内 eligible 部品全体（未開始/入力中/完了）を表示する。
-auto 複数機種は pages を連結後に全体通番へ再採番する。
-詳細取得は **detailTopN 件のみ** full session（entries/values）。ヒートストリップ横セル上限 32。
+選定後は各機種の eligible 部品を資源CD単位で集約し、合格・不合格・判定待ち・検査中・未検査の状態を
+カードの状態バッジへ反映する。進捗バーは資源CDごとの neutral 表現とし、色は状態バッジだけに付ける。
+カード内は項目ラベルを付けず、製番と品名を36px、半角化した機種名を16px基準で表示する。
+機種名は製番の右へ2文字分空けて配置し、カードの更新日時（秒なし、27px）は状態バッジの左へ表示する。
+資源CDは集約用の内部キーに限定し、画面には資源マスタの日本語名だけを表示する
+（複数名は ` / `、未登録は `名称未登録`）。資源名は31px、進捗件数は36pxの白文字とし、
+白い進捗バーは資源名の表示領域を確保するため従来比70%の幅で表示する。
+auto 複数機種は機種ごとの pages を先に連結せず、全機種のカードを混在させた列へ一括でページングする。
+カードの高さは資源行数に応じて動的に調整し、1ページは最大6枚（2列×3段）。高さに収まらない資源行は続きカードへ分割する。
+`detailTopN` は旧設定を受理するだけの legacy 項目で、現行 VM では使用せず、詳細取得・ヒートストリップ生成も行わない。
 **SPLIT 未対応**（pane-resolver は空 loans ペイン）。折れ線グラフは初版未実装。
 機種名→FSEIBAN 解決は `machine-name-fseiban-match.service.ts` の短 TTL インデックスキャッシュ
 （`PRODUCTION_SCHEDULE_MACHINE_NAME_FSEIBAN_CACHE_TTL_MS` 既定60秒）。
@@ -105,7 +117,7 @@ eligible のみ集約、**表示優先度ソート後**に **2000** 件 cap
 **Context**:
 
 - 端末: inventory **`raspberrypi3`** · Tailscale **`raspberrypi-2`** · **`100.105.224.86`** · **`tag:signage`**
-- クライアントキー: **`client-key-raspberrypi3-signage1`**
+- クライアントキー: **Ansible Vault-managed Pi3 signage client key**
 - 表示経路: Pi3 の **`signage-lite`**（`feh` 全画面）が Pi5 の **`GET /api/signage/current-image`**（`x-client-key`）から JPEG を取得（[signage-lite.md](../../modules/signage/signage-lite.md)）
 - ネットワーク: `group_vars/all.yml` の **`network_mode: tailscale`**。Pi5 は通常 **`192.168.10.230`**（`local_network`）、Pi3 は **`192.168.128.152`**（別サブネット）。**Pi5 → Pi3 の LAN ping/SSH は不通**（tailnet または同一 10.x 上の direct が前提）
 
@@ -115,7 +127,7 @@ eligible のみ集約、**表示優先度ソート後**に **2000** 件 cap
 2. Pi3 本体は **電源 ON**（ユーザー認識: 「Pi3 は起動している」）
 3. Tailscale 管理画面: **`raspberrypi-2` · Expired 23 hours ago**（Key expiry）
 4. Pi5 から: `tailscale ping 100.105.224.86` → **`peer's node key has expired`** または **timeout** · Ansible **`UNREACHABLE`**
-5. Pi5 側 API: `curl -k -H 'x-client-key: client-key-raspberrypi3-signage1' https://127.0.0.1/api/signage/current-image` → **HTTP 200**（約 190KB JPEG）— **サーバ・スケジュールは正常**
+5. Pi5 側 API: secure operator environmentで事前設定した `$PI3_SIGNAGE_CLIENT_KEY` を使い `https://127.0.0.1/api/signage/current-image` を確認 → **HTTP 200**（約 190KB JPEG）— **サーバ・スケジュールは正常**
 
 **Investigation**:
 
@@ -606,7 +618,7 @@ sudo systemctl restart signage-lite.service
 - **結論**: サイネージ正常表示を確認
 
 **トラブルシューティング（CI/デプロイ）**:
-- **getOrCreateTestClientDevice**: `signage.integration.test.ts` で `createTestClientDevice('client-key-raspberrypi3-signage1')` の P2002（apiKey 重複）対策として `getOrCreateTestClientDevice` を追加。既存レコードがあれば取得、なければ作成。
+- **getOrCreateTestClientDevice**: `signage.integration.test.ts` で非本番の `test-signage-client-key` を使い、P2002（apiKey 重複）対策として `getOrCreateTestClientDevice` を追加。既存レコードがあれば取得、なければ作成。
 - **raspberrypi4 unreachable=1**: デプロイ時に Pi4 がオフラインの場合、`unreachable=1` が発生するが、Pi5/Pi3 は正常デプロイ可能。`tailscale status` で到達不可端末を先に切り分け、`--limit` で到達可能ホストのみデプロイする運用（KB-281 参照）。
 
 **関連ファイル**:
@@ -665,16 +677,16 @@ sudo systemctl restart signage-lite.service
 
 **有効だった対策**: 
 - ✅ **解決済み**（2026-01-03）:
-  1. `getClientSystemMetricsText()`を実装し、Pi3の`ClientDevice`を特定（`apiKey: 'client-key-raspberrypi3-signage1'`）
-  2. `ClientDevice.statusClientId`から`ClientStatus`を取得し、Pi3の温度を取得
+  1. `getClientSystemMetricsText()`を実装し、既存の`ClientStatus.clientId: 'raspberrypi3-signage1'`からPi3の状態を取得
+  2. `ClientStatus.clientId`に既存のPi3 status-agent client idを指定して、Pi3の温度を取得
   3. `buildSplitScreenSvg`と`buildToolsScreenSvg`に温度表示を追加
-  4. フォールバック: Pi3の`ClientDevice`が見つからない場合はPi5の温度を表示
+  4. フォールバック: 対応する`ClientStatus`が見つからない場合はPi5の温度を表示
   5. 左ペインのタイトルを「工具管理データ」→「持出中アイテム」に変更
   6. Pi3側の処理は一切変更不要（サーバー側のみの変更）
 
 **学んだこと**:
 - サイネージ画像はPi5側のサーバーでレンダリングされるため、Pi3へのデプロイは不要
-- `ClientDevice.statusClientId`を使用することで、`x-client-key`なしでもPi3を特定できる
+- `ClientStatus.clientId`を使用することで、`x-client-key`なしでもPi3を特定できる
 - サーバー側レンダリングの利点: Pi3のリソースを消費せずに機能を追加できる
 
 **解決状況**: ✅ **解決済み**（2026-01-03）

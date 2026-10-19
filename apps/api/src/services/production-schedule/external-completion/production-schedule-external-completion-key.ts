@@ -1,7 +1,6 @@
+import { toTrimmedString as normalizeToken } from '../../../lib/string-normalize.js';
 import type { NormalizedRowData } from '../../csv-dashboard/csv-dashboard.types.js';
 import { normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
-
-const normalizeToken = (value: unknown): string => String(value ?? '').trim();
 
 export function buildProductionScheduleExternalCompletionKey(parts: {
   fkojun: unknown;

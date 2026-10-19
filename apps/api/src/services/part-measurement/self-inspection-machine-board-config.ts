@@ -6,7 +6,18 @@ import {
 
 export type ResolvedSelfInspectionMachineBoardTargetMode =
   | 'manual_machine_name'
-  | 'auto_from_leaderboard_status';
+  | 'auto_from_leaderboard_status'
+  | 'kiosk_active_sessions';
+
+/** route/signage 側の保存契約が段階移行中でも読める active mode の入力型。 */
+export type SelfInspectionMachineBoardTargetMode = ResolvedSelfInspectionMachineBoardTargetMode;
+
+export type SelfInspectionMachineBoardConfigInput = Omit<
+  SelfInspectionMachineBoardSlotConfig,
+  'targetMode'
+> & {
+  targetMode?: SelfInspectionMachineBoardTargetMode;
+};
 
 export type ResolvedSelfInspectionMachineBoardConfig = {
   targetMode: ResolvedSelfInspectionMachineBoardTargetMode;
@@ -22,9 +33,20 @@ function normalizeText(value: string | null | undefined): string {
 }
 
 export function resolveSelfInspectionMachineBoardTargetMode(
-  config: Pick<SelfInspectionMachineBoardSlotConfig, 'targetMode'>
+  config: { targetMode?: string | null }
 ): ResolvedSelfInspectionMachineBoardTargetMode {
-  return config.targetMode ?? 'manual_machine_name';
+  switch (config.targetMode) {
+    case 'auto_from_leaderboard_status':
+      return 'auto_from_leaderboard_status';
+    case 'kiosk_active_sessions':
+      return 'kiosk_active_sessions';
+    case 'manual_machine_name':
+    case undefined:
+    case null:
+      return 'manual_machine_name';
+    default:
+      throw new Error(`Unsupported self-inspection machine board targetMode: ${config.targetMode}`);
+  }
 }
 
 export function sanitizeSelfInspectionMachineBoardMaxAutoMachines(value: number | undefined): number {
@@ -42,17 +64,26 @@ export function sanitizeSelfInspectionMachineBoardMaxAutoMachines(value: number 
 }
 
 export function resolveSelfInspectionMachineBoardConfig(
-  config: SelfInspectionMachineBoardSlotConfig
+  config: SelfInspectionMachineBoardConfigInput
 ): ResolvedSelfInspectionMachineBoardConfig {
   const targetMode = resolveSelfInspectionMachineBoardTargetMode(config);
   const deviceScopeKey = normalizeText(config.deviceScopeKey) || undefined;
 
+  if (targetMode === 'kiosk_active_sessions') {
+    return { targetMode };
+  }
+
   if (targetMode === 'auto_from_leaderboard_status') {
+    const resourceCds = (config.resourceCds ?? [])
+      .map((cd) => cd.trim())
+      .filter(Boolean);
     return {
       targetMode,
       deviceScopeKey,
-      resourceCds: (config.resourceCds ?? []).map((cd) => cd.trim()).filter(Boolean),
-      maxAutoMachines: sanitizeSelfInspectionMachineBoardMaxAutoMachines(config.maxAutoMachines),
+      resourceCds,
+      ...(targetMode === 'auto_from_leaderboard_status'
+        ? { maxAutoMachines: sanitizeSelfInspectionMachineBoardMaxAutoMachines(config.maxAutoMachines) }
+        : {}),
     };
   }
 

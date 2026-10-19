@@ -2,9 +2,11 @@
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
 
 const AUDIT_PATH = '/-/npm/v1/security/advisories/bulk';
@@ -123,6 +125,28 @@ function close(server) {
   });
 }
 
+async function prepareAuditWorkspace(workspace, version) {
+  const auditWorkspace = await mkdtemp(join(tmpdir(), 'raspisys-pnpm-audit-'));
+  const manifest = JSON.parse(await readFile(join(workspace, 'package.json'), 'utf8'));
+
+  // pnpm 10 still uses legacy audit endpoints. Keep the pnpm 11 bulk client
+  // against an immutable lockfile copy, isolated from the workspace engine.
+  manifest.packageManager = `pnpm@${version}`;
+  manifest.engines = { ...manifest.engines, pnpm: version };
+  delete manifest.pnpm;
+  await writeFile(
+    join(auditWorkspace, 'package.json'),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    'utf8'
+  );
+  await copyFile(join(workspace, 'pnpm-lock.yaml'), join(auditWorkspace, 'pnpm-lock.yaml'));
+  await copyFile(
+    join(workspace, 'pnpm-workspace.yaml'),
+    join(auditWorkspace, 'pnpm-workspace.yaml')
+  );
+  return auditWorkspace;
+}
+
 function runPinnedPnpmAudit({ auditLevel, proxyRegistry, version, workspace }) {
   return new Promise((resolve, reject) => {
     const child = spawn(
@@ -171,6 +195,7 @@ async function runCriticalAudit(options) {
 async function main() {
   const version = process.env.AUDIT_PNPM_VERSION ?? '11.4.0';
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
+  const auditWorkspace = await prepareAuditWorkspace(workspace, version);
   const server = createServer((request, response) => {
     void handleProxyRequest(request, response);
   });
@@ -182,20 +207,21 @@ async function main() {
 
   try {
     process.stdout.write('=== pnpm bulk audit: critical+ (required gate) ===\n');
-    await runCriticalAudit({ proxyRegistry, version, workspace });
+    await runCriticalAudit({ proxyRegistry, version, workspace: auditWorkspace });
 
     process.stdout.write('=== pnpm bulk audit: high+ (informational; fix tracked separately) ===\n');
     const highExitCode = await runPinnedPnpmAudit({
       auditLevel: 'high',
       proxyRegistry,
       version,
-      workspace
+      workspace: auditWorkspace
     });
     if (highExitCode !== 0) {
       process.stderr.write('::warning::pnpm bulk audit reported high severity issues; see log above\n');
     }
   } finally {
     await close(server);
+    await rm(auditWorkspace, { recursive: true, force: true });
   }
 }
 

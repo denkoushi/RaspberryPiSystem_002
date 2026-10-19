@@ -1,12 +1,15 @@
+import { sendStorageReadError } from './shared.js';
+import { createDeviceReadRateLimit } from '../../lib/device-read-rate-limit.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authorizeRoles } from '../../lib/auth.js';
 import { findClientDeviceByApiKey } from '../../services/clients/client-device-auth.service.js';
 import { MeasuringInstrumentGenreImageStorage } from '../../lib/measuring-instrument-genre-image-storage.js';
+import { ApiError } from '../../lib/errors.js';
 
 export function registerMeasuringInstrumentGenreStorageRoutes(app: FastifyInstance): void {
   const canView = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
 
-  app.get('/storage/measuring-instrument-genres/*', async (request: FastifyRequest, reply: FastifyReply) => {
+  app.get('/storage/measuring-instrument-genres/*', { config: { rateLimit: createDeviceReadRateLimit() } }, async (request: FastifyRequest, reply: FastifyReply) => {
     const headerKey = request.headers['x-client-key'];
     if (headerKey) {
       const apiKey = Array.isArray(headerKey) ? headerKey[0] : headerKey;
@@ -29,12 +32,14 @@ export function registerMeasuringInstrumentGenreStorageRoutes(app: FastifyInstan
       reply.type(contentType);
       return reply.send(buffer);
     } catch (error) {
+      if (error instanceof ApiError) throw error;
       const err = error instanceof Error ? error : new Error(String(error));
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        return reply.status(404).send({ message: '画像が見つかりません' });
-      }
-      request.log.error({ err, imageUrl }, 'ジャンル画像の読み込みに失敗しました');
-      return reply.status(500).send({ message: '画像の読み込みに失敗しました' });
+      return sendStorageReadError(request, reply, err, {
+        notFoundMessage: '画像が見つかりません',
+        failedMessage: '画像の読み込みに失敗しました',
+        logMessage: 'ジャンル画像の読み込みに失敗しました',
+        logContext: { err, imageUrl },
+      });
     }
   });
 }

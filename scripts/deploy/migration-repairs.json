@@ -6,6 +6,12 @@
       "oldChecksum": "7fa8226cf22389fcf6d4a5eff414d55b4609a917af2797bfd717e651b9a38f08",
       "newChecksum": "360130d0ded95030a6038b83c49065cda13c5ab2cdfd335582af00638813457f",
       "reason": "The migration was merged but remained unapplied in production; replace existing-table alterations with a new source sidecar table."
+    },
+    {
+      "migration": "20260731120000_self_inspection_item_invalidation",
+      "oldChecksum": "f92bfde0e60c9768d2650eb8f11431ab575b288bcb63d187a67d222203bcde76",
+      "newChecksum": "0a212b394085a2b671a5c3b65b47ec04baa3c1799f20fb24bd5f53792b41962f",
+      "reason": "The migration was merged but remained unapplied in production; remove the redundant existing-table partial index rejected by the Expand-only gate."
     }
   ]
 }

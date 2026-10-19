@@ -10,9 +10,9 @@ vi.mock('../../../services/system/db-health.service.js', () => ({
   checkDatabaseConnection: (...args: unknown[]) => checkDatabaseConnection(...args),
 }));
 
-function createApp() {
+function createApp(initialEnabled = false) {
   const app = Fastify();
-  app.decorate('schedulerRuntimeState', createSchedulerRuntimeState());
+  app.decorate('schedulerRuntimeState', createSchedulerRuntimeState(initialEnabled));
   app.decorate('deployReadinessObservability', createDeployReadinessObservability());
   registerDeployReadinessRoute(app);
   return app;
@@ -28,6 +28,25 @@ describe('GET /system/deploy-readiness/internal', () => {
     }
     checkDatabaseConnection.mockReset();
     checkDatabaseConnection.mockResolvedValue(undefined);
+  });
+
+  it('rejects an enabled scheduler before initialization starts', async () => {
+    const app = createApp(true);
+    apps.push(app);
+    const response = await app.inject('/system/deploy-readiness/internal');
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({
+      ready: false,
+      scheduler: { enabled: true, role: 'stopped', databaseConnection: 'disconnected' },
+    });
+  });
+
+  it('keeps explicitly disabled scheduler mode ready with a healthy database', async () => {
+    const app = createApp(false);
+    apps.push(app);
+    const response = await app.inject('/system/deploy-readiness/internal');
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ ready: true, scheduler: { enabled: false } });
   });
 
   it('accepts a standby whose advisory-lock session is connected', async () => {

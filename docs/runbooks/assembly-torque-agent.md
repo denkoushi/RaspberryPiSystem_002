@@ -200,6 +200,16 @@ WebSocketが切断されても異常な記録経路へ切り替えない。現�
 
 ## 作業前・作業中の確認
 
+### 組立・訓練を横断する共通所有権
+
+共通所有権版を別承認でデプロイした後は、通常組立と訓練を同じ物理レンチの所有候補として扱う。Pi5の`TorqueWrenchUsageLease`が端末数や機能にかかわらず現在所有者を0または1に限定し、localhostのtorque-agentだけがWebからBluetooth・HIDを操作する。WebからPi5のlease routeを直接呼ばない。
+
+組立から訓練、訓練から組立、同種画面間の移動はいずれも、元画面で使用終了してから新画面で使用開始するのが通常経路である。元画面を終了できなかった場合は、新画面に表示された所有端末名・場所・機能を確認し、既存の二段階現物確認で引き継ぐ。引継ぎは旧generationを先に無効化し、旧期限と安全待機を過ぎるまで新端末を`Bluetooth接続待ち`に保つ。`接続準備完了`または入力可能表示はagentの`ready=true`を確認した後だけである。
+
+画面離脱、作業者変更、組立完了、訓練完了のreleaseは、その画面が取得したprofile、lease ID、generation、owner kind、session IDを送る。agentの現在tokenと一致すれば`released`、すでに無ければ`already_absent`、新画面が別tokenを取得済みなら`stale_noop`になる。3結果はいずれも旧画面のcleanup成功として扱い、遷移を止めない。`stale_noop`では現在のbinding、guard intent、Bluetooth、server leaseを変更してはいけない。
+
+一時的にPi5との通信が切れた場合、agentは直ちにguard intentを削除し、外付けBluetoothとHID入力を停止する。ブラウザheartbeatが継続し、最後に確認したlease期限内であれば、agentは新規取得ではなく同じprofile、lease ID、generation、owner kind、session、clientのrenew確認だけを行う。全項目がPi5の現在所有権と一致した場合は`同一接続権を確認中`から`Bluetooth接続待ち`を経て自動復旧できる。fenced、expired、released、別owner、別session、別generation、またはbrowser heartbeat失効の場合はOFFを維持し、画面の明示的な使用開始または二段階引継ぎへ戻る。通信復旧を理由にacquireやtakeoverを自動実行してはいけない。
+
 1. REQUIRED組立作業を開き、現在の丸数字と締付条件を確認する。
 2. 候補の製造番号を選び、現物の製造番号と下限・規定・上限表示を照合して確認する。
 3. `このレンチを使用開始`を押す。既存確認が再利用されても、自動的には接続リースを取得しない。
@@ -242,7 +252,7 @@ PY
 - `HID_DECODE_FAILED`: 未対応キーを含むため、文字を黙って落としたpayloadはAPIへ送っていない。終端とキー監査を実機fixture調査へ回し、既知文字への推測変換はしない。
 - `CONNECTION_LEASE_REQUIRED`: 強制有効化後にリース無しで届いた入力である。使用開始操作とagentのリース状態を確認する。イベントは監査保存され、工程は進まない。
 - `CONNECTION_LEASE_FENCED`: 引継ぎ後の旧世代イベントである。再送を止めるためAPIは業務拒否をHTTP 200でackする。旧画面から自動再取得せず、新しい使用開始操作を行う。
-- `通信断`または`ready=false`: Pi5更新、ガード電源、HID存在、排他取得のいずれかが成立していない。9秒以内に外付けBluetoothがOFFになることを優先し、復旧前の締付入力は行わない。
+- `通信断`または`ready=false`: Pi5更新、ガード電源、HID存在、排他取得のいずれかが成立していない。直ちにguard intentが消え、9秒以内に外付けBluetoothがOFFになることを優先し、復旧前の締付入力は行わない。画面が`同一接続権を確認中`なら同一token renewの結果を待つ。`fenced`や所有者不一致へ移った場合は自動復旧を待ち続けず、現物と所有者表示を確認して明示操作へ戻る。
 
 ## 安全な再起動
 

@@ -2,7 +2,7 @@
 title: バックアップ設定ガイド
 tags: [運用, バックアップ, 設定, Dropbox]
 audience: [運用者, 開発者]
-last-verified: 2026-07-12
+last-verified: 2026-09-30
 related: [backup-and-restore.md, dropbox-setup-guide.md, monitoring.md]
 category: guides
 update-frequency: medium
@@ -65,11 +65,21 @@ sudo journalctl -u backup-verify-quarterly.service -n 200
 
 本ガイドでは、モジュール化されたバックアップ機能の設定方法を説明します。バックアップ機能は設定ファイルベースで動作し、ローカルストレージまたはDropboxへの自動バックアップをサポートします。
 
-## Pi5本番の現在方針（2026-07-12）
+## Pi5本番の現在方針（2026-09-30）
+
+- **Dropboxに秘密情報を置かない。** `.vault-pass`、`vault.yml`、`.env`、`backup.json`、証明書、`.ssh`、各端末のTailscale状態・nfc-agent `.env`・status-agent設定は、Dropboxのバックアップ対象から外した（2026-09-30）。これらはGoogle Driveの暗号化DR（[ADR-20260820](../decisions/ADR-20260820-google-drive-disaster-recovery.md)）に含まれる。キオスクはAnsibleで再構築し、新しい端末IDで復旧する。
+- **Dropboxへ送るバックアップは暗号化する。** `BACKUP_ENCRYPTION_KEY`（32バイトbase64、Vaultの `vault_backup_encryption_key` → `infrastructure/docker/.env`）があると、APIはAES-256-GCMで暗号化してから送る。保存先のパスは変えない。復元時は先頭の目印 `RPBKENC1` で暗号化済みか判定し、暗号化前の平文バックアップもそのまま復元できる。鍵が未設定の環境では従来どおり平文で送り、警告ログを出す。
+- **鍵の保全。** 鍵を失うと暗号化済みのDropboxバックアップは復元できない。鍵はVault（git管理・`.vault-pass` で復号）とGoogle Drive DR（`infrastructure/docker/.env` を含む）の両方に残る。
+- Dropboxの割り当ては2.15GBで、DBダンプは1本約460MB。DBのDropbox保持は3世代とし、長期の世代はGoogle Drive DR（日7/週5/月12）で持つ。
+
+## 旧方針（2026-08-04、2026-09-30に一部廃止）
+
 
 - `/app/storage/pdfs` は `enabled: false`。PDFは中核機能の稼働に必須ではないため、2GB Dropboxの推奨対象から外します。
-- `raspi4-sessaku-01` と `raspi4-assembly-01` のNFCエージェント `.env`、運用ユーザーSSH、Tailscale状態、status-agent設定を `client-file` / `client-directory` の推奨対象として管理します。
-- 上記クライアント対象は日次（`0 2 * * *`）、Dropbox、保持14日・最大4世代です。
+- ~~キオスクのNFCエージェント `.env`、Tailscale状態、status-agent設定を推奨対象として管理する~~（2026-09-30廃止。秘密情報のため推奨カタログから削除）
+- 端末の `.ssh` は秘密鍵を含むためバックアップ対象にできません。復旧時は鍵を再生成し、承認済み公開鍵を再登録します。既存設定に `.ssh` ターゲットがある場合、その削除は本番設定変更として別承認で行います。
+- APIはホスト運用ユーザーの `.ssh` を参照しません。端末バックアップには、読み取り専用の専用鍵と固定 `known_hosts` だけを使用し、ホスト鍵が一致しない接続を拒否します。
+- APIは通常のAnsible inventoryやVaultパスワードも参照しません。通常inventoryから接続先とユーザーだけを抽出したroot管理の専用inventoryと、2本のバックアップPlaybookだけをread-onlyで使用します。
 - 実機検証と容量回復の詳細は [バックアップ・リストア関連KB](../knowledge-base/infrastructure/backup-restore.md#backup-restore-20260712) を参照してください。
 
 ## 設定ファイルの場所
@@ -311,18 +321,16 @@ Pi5本番で中核機能の環境再構築に必要な永続・一次ファイ�
 
 **前提条件**:
 - AnsibleがPi5（サーバー）にインストールされていること（Dockerコンテナ内にインストール済み）
-- Ansible inventory（`infrastructure/ansible/inventory.yml`）にクライアント端末が登録されていること
-- Pi5からクライアント端末へのSSH接続が可能であること（パスワード認証またはSSH鍵認証）
-- SSH鍵がDockerコンテナ内にマウントされていること（`docker-compose.server.yml`で`/home/denkon5sd02/.ssh:/root/.ssh:ro`をマウント）
-- `group_vars/all.yml`の`network_mode`が正しく設定されていること（`local`または`tailscale`）
+- 通常inventoryにクライアント端末が登録され、標準デプロイが資格情報を含まない `/etc/raspi-backup-ansible/inventory.yml` を生成済みであること
+- バックアップ専用SSH公開鍵が対象端末へ承認済み権限で登録され、専用秘密鍵と固定`known_hosts`だけがAPIへread-only mountされていること
+- パスワード認証、ホスト鍵の自動受理、通常inventoryのVault復号をバックアップ処理へ追加しないこと
 
 **AnsibleとTailscale連携の注意事項**:
 
-- **変数展開の仕組み**:
-  - Ansible Playbookは`hosts: "{{ client_host }}"`で実行されるため、`inventory.yml`の変数が正しく展開される
-  - `network_mode: "tailscale"`の場合、`kiosk_ip`は`tailscale_network.raspberrypi4_ip`に解決される
-  - `network_mode: "local"`の場合、`kiosk_ip`は`local_network.raspberrypi4_ip`に解決される
-  - 詳細は [Ansible SSH接続アーキテクチャの説明](./ansible-ssh-architecture.md) と [KB-102](../knowledge-base/infrastructure/backup-restore.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題) を参照
+- **接続先の解決**:
+  - 標準デプロイ時に、通常inventoryで解決済みの`ansible_host`と`ansible_user`だけを専用inventoryへ転記する
+  - APIコンテナ内では専用inventoryを正本とし、Vault参照、端末API鍵、becomeパスワードを含めない
+  - SSH接続時はAPIが専用鍵、`IdentitiesOnly=yes`、`StrictHostKeyChecking=yes`、固定`known_hosts`を強制する
 
 - **エラーハンドリング**:
   - ファイルが存在しない場合、404エラーが返される
@@ -750,7 +758,7 @@ curl http://localhost:8080/api/backup \
 
 2. **アクセストークンの管理**: Dropboxアクセストークンは環境変数で管理することも検討してください
 
-3. **バックアップの暗号化**: 機密情報を含むバックアップは暗号化することを推奨します
+3. **バックアップの暗号化**: Dropboxへ送るバックアップは `BACKUP_ENCRYPTION_KEY` で暗号化される（上記「Pi5本番の現在方針」）。秘密情報そのものはDropboxの対象にしない
 
 4. **ネットワークセキュリティ**: Dropboxへの通信はTLS 1.2以上で保護され、証明書ピニングが実装されています
    - **証明書更新時の対応**: Dropboxが証明書を更新した場合、証明書ピニング検証が失敗しバックアップが500エラーになることがあります

@@ -28,6 +28,7 @@ export {
   normalizeTemplateBusinessKey,
   resolveInspectionDrawingCreateKeyCollision,
   resolveInspectionDrawingCreateKeyCollisionForResources,
+  resolveInspectionDrawingCreateSaveBlockLabel,
   resolveInspectionDrawingCreateSaveBlockReason,
   resolveInspectionDrawingCreateSaveStatus,
   suggestInspectionDrawingTemplateName,
@@ -180,8 +181,10 @@ export {
 } from './selfInspectionMeasurementValueOptions';
 export {
   applyHundredthsDigitToDimensionValue,
+  applyThousandthsDigitToDimensionValue,
   buildSelfInspectionDimensionTenthsOptions,
   formatDimensionTenthsProvisionalValue,
+  resolveSelfInspectionDimensionKeypadDigitCount,
   resolveSelfInspectionMeasurementValueInputKind,
   SELF_INSPECTION_DIMENSION_MEASUREMENT_LABELS,
   type SelfInspectionMeasurementValueInputKind
@@ -260,3 +263,7 @@ export {
   sheetUsesProductionInspectionDrawingUi
 } from './productionInspectionDrawingPolicy';
 export type { InspectionDrawingEditMode } from './productionInspectionDrawingPolicy';
+export { INSPECTION_DRAWING_SOP_BY_SCREEN } from './inspectionDrawingSop';
+export { inspectionDrawingSopTargetProps } from './inspectionDrawingSopAnnotations';
+export type { InspectionDrawingSopTargetId } from './inspectionDrawingSopAnnotations';
+export type { InspectionDrawingSopTargetProps } from './inspectionDrawingSopAnnotations';

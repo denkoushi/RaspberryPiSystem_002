@@ -1,5 +1,5 @@
 import { env } from '../../../config/env.js';
-import { resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
+import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
 
 /**
  * サイネージ設定の deviceScopeKey から生産スケジュール一覧クエリ用のキーを解決する。
@@ -13,6 +13,6 @@ export async function resolveSignageLeaderOrderQueryKeys(deviceScopeKey: string)
   if (!env.KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED) {
     return { locationKey: trimmed, siteKey: undefined };
   }
-  const siteKey = await resolveSiteKeyFromScopeKey(trimmed);
+  const siteKey = await resolveSiteKeyForScopeKey(trimmed);
   return { locationKey: siteKey, siteKey };
 }

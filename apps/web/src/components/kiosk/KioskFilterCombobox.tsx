@@ -15,6 +15,7 @@ export type KioskFilterComboboxProps = {
   placeholder: string;
   options: readonly KioskFilterOption[];
   loading?: boolean;
+  disabled?: boolean;
   optionUpdateMode?: 'snapshot' | 'live';
   emptyMessage?: string;
   className?: string;
@@ -31,6 +32,7 @@ export function KioskFilterCombobox({
   placeholder,
   options,
   loading = false,
+  disabled = false,
   optionUpdateMode = 'snapshot',
   emptyMessage = '候補がありません',
   className,
@@ -99,13 +101,16 @@ export function KioskFilterCombobox({
           aria-controls={listboxId}
           aria-activedescendant={activeIndex >= 0 ? `${listboxId}-${activeIndex}` : undefined}
           autoComplete="off"
+          disabled={disabled}
           className={clsx(kioskInputClassName, 'min-w-0 flex-1 rounded-r-none pr-2', inputClassName)}
           value={value}
           placeholder={placeholder}
           onFocus={() => {
+            if (disabled) return;
             if (!open) openWithSnapshot();
           }}
           onChange={(event) => {
+            if (disabled) return;
             if (!open) openWithSnapshot();
             onChange(event.target.value);
             setActiveIndex(-1);
@@ -133,8 +138,10 @@ export function KioskFilterCombobox({
           type="button"
           aria-label={`${ariaLabel}の候補を表示`}
           aria-expanded={open}
+          disabled={disabled}
           className="inline-flex min-h-9 w-10 shrink-0 items-center justify-center rounded-r border border-l-0 border-white/25 bg-slate-900 text-base text-white hover:bg-slate-700"
           onClick={() => {
+            if (disabled) return;
             if (open) {
               setOpen(false);
               setActiveIndex(-1);

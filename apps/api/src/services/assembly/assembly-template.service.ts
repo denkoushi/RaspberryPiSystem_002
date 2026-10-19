@@ -33,6 +33,14 @@ import { runAssemblyTransaction } from './assembly-transaction.js';
 const procedureDocumentInclude = {
   pages: {
     orderBy: { pageIndex: 'asc' as const }
+  },
+  overlayElements: {
+    orderBy: [
+      { pageIndex: 'asc' as const },
+      { zIndex: 'asc' as const },
+      { createdAt: 'asc' as const }
+    ],
+    include: { asset: true }
   }
 } satisfies Prisma.AssemblyProcedureDocumentInclude;
 
@@ -173,6 +181,10 @@ function normalizeKey(value: string, fieldName: string): string {
   return trimmed;
 }
 
+function normalizeOptionalAreaText(value: string, maxLength: number): string {
+  return value.trim().slice(0, maxLength);
+}
+
 function clampRatio(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(1, value));
@@ -251,10 +263,10 @@ function normalizeAreas(
       return {
         ...area,
         sortOrder: areaIndex,
-        processNo: normalizeKey(area.processNo, '工程No.').slice(0, 80),
-        areaCode: normalizeKey(area.areaCode, 'エリアコード').slice(0, 80),
-        areaName: normalizeKey(area.areaName, 'エリア名').slice(0, 200),
-        unitCode: normalizeKey(area.unitCode, 'ユニットコード').slice(0, 80),
+        processNo: normalizeOptionalAreaText(area.processNo, 80),
+        areaCode: normalizeOptionalAreaText(area.areaCode, 80),
+        areaName: normalizeOptionalAreaText(area.areaName, 200),
+        unitCode: normalizeOptionalAreaText(area.unitCode, 80),
         bolts: [...area.bolts]
           .sort((a, b) => a.sortOrder - b.sortOrder)
           .map((bolt, boltIndex) => {
@@ -853,6 +865,17 @@ export class AssemblyTemplateService {
   async revise(id: string, input: Partial<AssemblyTemplateUpsertInput>): Promise<AssemblyTemplateDetail> {
     const source = await this.getById(id, { includeInactive: true });
     if (!source) throw new ApiError(404, 'テンプレートが見つかりません');
+    const sourceModelCode = normalizeKey(source.modelCode, '型番/FHINCD').slice(0, 120);
+    const sourceProcedurePattern = normalizeKey(source.procedurePattern, '手順パターン').slice(0, 120);
+    if (input.modelCode != null && normalizeKey(input.modelCode, '型番/FHINCD').slice(0, 120) !== sourceModelCode) {
+      throw new ApiError(400, '改版では機種名を変更できません。「複製して新規」を使用してください');
+    }
+    if (
+      input.procedurePattern != null &&
+      normalizeKey(input.procedurePattern, '手順パターン').slice(0, 120) !== sourceProcedurePattern
+    ) {
+      throw new ApiError(400, '改版では手順パターンを変更できません。「複製して新規」を使用してください');
+    }
     const areas =
       input.areas ??
       source.areas.map((area) => ({

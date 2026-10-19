@@ -166,6 +166,13 @@ export function buildInspectionDrawingPrintViewModel(
   const { template, resourceName, issuedAt, plannedQuantity } = input;
   const drawingPath = template.visualTemplate?.drawingImageRelativePath ?? null;
 
+  if (template.items.some((item) => item.valueKind === 'judgement')) {
+    throw new InspectionDrawingPrintBuildError(
+      'unsupported_template',
+      '管用ネジのOK/NG判定を含むテンプレートは紙帳票の対象外です。'
+    );
+  }
+
   if (!templateSupportsInspectionDrawing(template.items, drawingPath)) {
     throw new InspectionDrawingPrintBuildError(
       'unsupported_template',

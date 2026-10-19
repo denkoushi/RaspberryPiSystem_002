@@ -66,6 +66,7 @@ class SignageRuntimeProofTest(unittest.TestCase):
         self.cache = self.base / "cache"
         self.cache.mkdir(mode=0o755)
         self.script = self.base / "signage-update.sh"
+        self.runtime_env = self.base / "runtime.env"
         self._write_script("signage-image-secret")
 
     def tearDown(self):
@@ -101,6 +102,16 @@ class SignageRuntimeProofTest(unittest.TestCase):
             capture_output=True,
             env={"PATH": os.environ.get("PATH", "")},
         )
+
+    def _write_runtime_env(self, image_key: str = "signage-image-secret") -> None:
+        host, port = self.server.server_address
+        self.runtime_env.write_text(
+            f'SIGNAGE_SERVER_URL="http://{host}:{port}"\n'
+            f'SIGNAGE_IMAGE_CLIENT_KEY="{image_key}"\n'
+            'SIGNAGE_ALLOW_INSECURE_TLS=0\n',
+            encoding="utf-8",
+        )
+        self.runtime_env.chmod(0o600)
 
     def _seal(self, image: bytes) -> subprocess.CompletedProcess[str]:
         temporary = self.cache / "release-run-123-maintenance.jpg"
@@ -182,6 +193,39 @@ class SignageRuntimeProofTest(unittest.TestCase):
             EndpointHandler.requests,
             [("/api/signage/render/status", "rejected-signage-key")],
         )
+
+    def test_root_managed_runtime_env_proves_endpoints(self):
+        self._write_runtime_env()
+
+        result = self._run(
+            "--runtime-env",
+            str(self.runtime_env),
+            "--check-endpoints",
+            "--ansible-marker",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("SIGNAGE_ENDPOINT_PROOF_OK:", result.stdout)
+        self.assertNotIn("signage-image-secret", result.stdout + result.stderr)
+        self.assertEqual(
+            EndpointHandler.requests,
+            [
+                ("/api/signage/render/status", "signage-image-secret"),
+                ("/api/signage/current-image", "signage-image-secret"),
+            ],
+        )
+
+    def test_runtime_env_must_not_be_group_or_other_writable(self):
+        self._write_runtime_env()
+        self.runtime_env.chmod(0o666)
+
+        result = self._run(
+            "--runtime-env", str(self.runtime_env), "--check-endpoints"
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("group/other writable", result.stderr)
+        self.assertEqual(EndpointHandler.requests, [])
 
     def test_download_equal_to_run_maintenance_artifact_fails_before_write(self):
         EndpointHandler.image = JPEG

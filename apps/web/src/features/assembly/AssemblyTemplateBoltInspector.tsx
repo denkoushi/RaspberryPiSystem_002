@@ -1,0 +1,300 @@
+import { useState } from 'react';
+
+import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
+import {
+  clearImageMarkerCalloutTip,
+  imageMarkerHasCalloutTip
+} from '../kiosk/image-canvas';
+
+import {
+  buildAutomaticAssemblyBoltSpec,
+  resolveAssemblyBoltSpec
+} from './assemblyTemplateDraft';
+import { AssemblyTorqueWrenchSettingAssistant } from './AssemblyTorqueWrenchSettingAssistant';
+
+import type { AssemblyDraftBolt } from './assemblyTemplateDraft';
+import type { AssemblyTorqueWrenchProfileCatalogStatus } from './assemblyTemplateInputAssistance';
+import type {
+  TorqueWrenchCapabilityGroupApi,
+  TorqueWrenchProfileApi
+} from '../../api/domains/torque-wrenches';
+
+type Props = {
+  bolt: AssemblyDraftBolt | null;
+  pageLabel: string;
+  capabilityGroups: TorqueWrenchCapabilityGroupApi[];
+  capabilityCatalogStatus: 'loading' | 'ready' | 'error';
+  torqueWrenchProfiles?: TorqueWrenchProfileApi[];
+  torqueWrenchProfilesStatus?: AssemblyTorqueWrenchProfileCatalogStatus;
+  busy: boolean;
+  readOnly: boolean;
+  inheritCondition: boolean;
+  rangeStart: number;
+  rangeEnd: number;
+  onPatch: (boltId: string, patch: Partial<AssemblyDraftBolt>) => void;
+  onDelete: () => void;
+  onInheritConditionChange: (value: boolean) => void;
+  onRangeStartChange: (value: number) => void;
+  onRangeEndChange: (value: number) => void;
+  onApplyRange: () => void;
+  onRetryCapabilityCatalog: () => void;
+  onRetryTorqueWrenchProfiles?: () => void;
+};
+
+function nullableNumber(raw: string): number | null {
+  if (raw.trim() === '') return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
+}
+
+export function AssemblyTemplateBoltInspector({
+  bolt,
+  pageLabel,
+  capabilityGroups,
+  capabilityCatalogStatus,
+  torqueWrenchProfiles = [],
+  torqueWrenchProfilesStatus = 'loading',
+  busy,
+  readOnly,
+  inheritCondition,
+  rangeStart,
+  rangeEnd,
+  onPatch,
+  onDelete,
+  onInheritConditionChange,
+  onRangeStartChange,
+  onRangeEndChange,
+  onApplyRange,
+  onRetryCapabilityCatalog,
+  onRetryTorqueWrenchProfiles = () => undefined
+}: Props) {
+  const [rangeExpanded, setRangeExpanded] = useState(false);
+  if (!bolt) {
+    return (
+      <>
+        <h2 className="text-[1.02rem] font-bold">締付条件</h2>
+        <div className="mt-3 rounded border border-dashed border-white/20 p-3 text-sm text-white/60">
+          未選択
+        </div>
+      </>
+    );
+  }
+
+  const automaticSpec = buildAutomaticAssemblyBoltSpec(bolt);
+  const effectiveSpec = resolveAssemblyBoltSpec(bolt);
+
+  return (
+    <>
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-baseline gap-2">
+            <h2 className="text-sm font-bold">締付条件</h2>
+            <div className="truncate text-[1.02rem] font-extrabold">丸数字 {bolt.markerNo}</div>
+          </div>
+          <div className="mt-0.5 truncate text-[0.68rem] text-white/55">
+            ページ: {pageLabel}
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="danger"
+          className="min-h-8 shrink-0 !px-2 !py-1 text-xs"
+          disabled={busy || readOnly}
+          onClick={onDelete}
+        >
+          削除
+        </Button>
+      </div>
+
+      <div className="mt-2 grid min-w-0 grid-cols-1 gap-2">
+        <div className="flex min-h-8 min-w-0 items-center gap-1 rounded border border-white/10 bg-slate-950/60 px-1.5 py-1">
+          <span className="shrink-0 text-[0.68rem] font-semibold text-white/70">
+            {imageMarkerHasCalloutTip(bolt) ? '矢視 あり' : '矢視 なし'}
+          </span>
+          <Button
+            type="button"
+            variant="ghostOnDark"
+            className="min-h-8 shrink-0 !px-1.5 !py-0.5 text-[0.68rem]"
+            disabled={busy || readOnly || !imageMarkerHasCalloutTip(bolt)}
+            onClick={() => onPatch(bolt.id, clearImageMarkerCalloutTip())}
+          >
+            矢視削除
+          </Button>
+        </div>
+
+        <label className="flex min-h-8 min-w-0 items-center gap-2 rounded border border-white/10 bg-slate-950/60 px-2 py-1 text-[0.7rem] font-semibold text-white/80">
+          <input
+            type="checkbox"
+            checked={inheritCondition}
+            disabled={busy || readOnly}
+            onChange={(event) => onInheritConditionChange(event.target.checked)}
+          />
+          次の丸数字へこの条件を引き継ぐ
+        </label>
+
+        <Button
+          type="button"
+          variant="ghostOnDark"
+          className="min-h-8 w-full !px-2 !py-1 text-xs"
+          aria-expanded={rangeExpanded}
+          onClick={() => setRangeExpanded((current) => !current)}
+        >
+          条件を一括反映
+        </Button>
+        {rangeExpanded ? (
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-1 rounded border border-cyan-300/20 bg-cyan-950/20 p-1.5">
+          <label className="grid min-w-0 gap-0.5 text-[0.65rem] font-semibold text-white/70">
+            反映開始
+            <Input
+              className="h-8 min-w-0 !px-2 !py-1 text-sm"
+              type="number"
+              min={1}
+              value={rangeStart}
+              onChange={(event) => onRangeStartChange(Number(event.target.value))}
+            />
+          </label>
+          <label className="grid min-w-0 gap-0.5 text-[0.65rem] font-semibold text-white/70">
+            反映終了
+            <Input
+              className="h-8 min-w-0 !px-2 !py-1 text-sm"
+              type="number"
+              min={1}
+              value={rangeEnd}
+              onChange={(event) => onRangeEndChange(Number(event.target.value))}
+            />
+          </label>
+          <Button
+            type="button"
+            variant="ghostOnDark"
+            className="min-h-8 whitespace-nowrap !px-2 !py-1 text-[0.68rem]"
+            disabled={busy || readOnly}
+            onClick={onApplyRange}
+          >
+            条件反映
+          </Button>
+        </div>
+        ) : null}
+
+        <div
+          data-testid="assembly-editor-bolt-fields"
+          className="grid min-w-0 grid-cols-1 gap-1.5"
+        >
+          <AssemblyTorqueWrenchSettingAssistant
+            bolt={bolt}
+            capabilityGroups={capabilityGroups}
+            capabilityCatalogStatus={capabilityCatalogStatus}
+            torqueWrenchProfiles={torqueWrenchProfiles}
+            torqueWrenchProfilesStatus={torqueWrenchProfilesStatus}
+            disabled={busy || readOnly}
+            onPatch={onPatch}
+            onRetryCapabilityCatalog={onRetryCapabilityCatalog}
+            onRetryTorqueWrenchProfiles={onRetryTorqueWrenchProfiles}
+          />
+
+          <div className="grid min-w-0 grid-cols-3 gap-1.5">
+            {([
+              ['lowerLimit', '下限'],
+              ['nominalTorque', '規定'],
+              ['upperLimit', '上限']
+            ] as const).map(([key, label]) => (
+              <label
+                key={key}
+                className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70"
+              >
+                {label}
+                <Input
+                  id={`assembly-bolt-${bolt.id}-${key}`}
+                  className="h-8 min-w-0 !px-2 !py-1 text-sm"
+                  type="number"
+                  value={bolt[key] ?? ''}
+                  disabled={busy || readOnly}
+                  onChange={(event) =>
+                    onPatch(bolt.id, { [key]: nullableNumber(event.target.value) })
+                  }
+                />
+              </label>
+            ))}
+          </div>
+          <label className="flex min-w-0 items-center gap-2 text-[0.68rem] font-semibold text-white/70">
+            単位
+            <select
+              id={`assembly-bolt-${bolt.id}-unit`}
+              className="h-8 min-w-0 w-28 rounded border border-white/10 bg-slate-950 px-1.5 text-xs text-white"
+              value={bolt.unit}
+              disabled={busy || readOnly}
+              onChange={(event) => onPatch(bolt.id, { unit: event.target.value })}
+            >
+              <option value="">選択</option>
+              <option value="N·m">N·m</option>
+              <option value="kgf·cm">kgf·cm</option>
+            </select>
+          </label>
+
+          <div className="min-w-0 rounded border border-white/10 bg-slate-950/55 p-2 text-[0.68rem]">
+            <div className="font-semibold text-white/70">Excel出力用ボルト仕様</div>
+            <div className="mt-1 flex min-w-0 items-center gap-1 font-bold text-white">
+              <span className="min-w-0 truncate" title={effectiveSpec || '未設定'}>
+                {effectiveSpec || '未設定'}
+              </span>
+              <span className="shrink-0 text-white/45">
+                （{bolt.boltSpecMode === 'custom' ? '個別指定' : '自動'}）
+              </span>
+            </div>
+            {bolt.boltSpecMode === 'custom' ? (
+              <div className="mt-2 grid min-w-0 grid-cols-1 gap-1">
+                <Input
+                  id={`assembly-bolt-${bolt.id}-boltSpecCustom`}
+                  className="h-8 min-w-0 !px-2 !py-1 text-sm"
+                  value={bolt.boltSpecCustom}
+                  maxLength={200}
+                  disabled={busy || readOnly}
+                  onChange={(event) =>
+                    onPatch(bolt.id, { boltSpecCustom: event.target.value })
+                  }
+                  onBlur={() => {
+                    if (!bolt.boltSpecCustom.trim()) {
+                      onPatch(bolt.id, {
+                        boltSpecMode: 'auto',
+                        boltSpecCustom: ''
+                      });
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="ghostOnDark"
+                  className="min-h-8"
+                  disabled={busy || readOnly}
+                  onClick={() =>
+                    onPatch(bolt.id, {
+                      boltSpecMode: 'auto',
+                      boltSpecCustom: ''
+                    })
+                  }
+                >
+                  自動生成へ戻す
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="ghostOnDark"
+                className="mt-2 min-h-8"
+                disabled={busy || readOnly || !automaticSpec}
+                onClick={() =>
+                  onPatch(bolt.id, {
+                    boltSpecMode: 'custom',
+                    boltSpecCustom: automaticSpec
+                  })
+                }
+              >
+                表示名を個別指定
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}

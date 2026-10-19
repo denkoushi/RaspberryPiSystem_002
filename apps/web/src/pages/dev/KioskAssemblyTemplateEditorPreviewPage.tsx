@@ -43,7 +43,9 @@ export function KioskAssemblyTemplateEditorPreviewPage() {
         yRatio: 0.42,
         calloutTipXRatio: 0.2,
         calloutTipYRatio: 0.2,
-        boltSpec: 'M6x30',
+        boltSpecMode: 'custom',
+        boltSpecCustom: 'M6x30',
+        boltLengthMm: 30,
         nominalTorque: 90,
         lowerLimit: 81,
         upperLimit: 99,
@@ -56,7 +58,9 @@ export function KioskAssemblyTemplateEditorPreviewPage() {
         markerNo: 2,
         xRatio: 0.58,
         yRatio: 0.45,
-        boltSpec: 'M6x30',
+        boltSpecMode: 'custom',
+        boltSpecCustom: 'M6x30',
+        boltLengthMm: 30,
         nominalTorque: 90,
         lowerLimit: 81,
         upperLimit: 99,
@@ -285,7 +289,7 @@ export function KioskAssemblyTemplateEditorPreviewPage() {
                     </div>
                     <div className="grid min-w-0 grid-cols-2 gap-1.5">
                       <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold">強度区分<input className="h-8 min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-1 text-sm" defaultValue="10.9" /></label>
-                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold">表示用ボルト仕様<input className="h-8 min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-1 text-sm" defaultValue={selectedBolt.boltSpec} /></label>
+                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold">表示用ボルト仕様<input className="h-8 min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-1 text-sm" defaultValue={selectedBolt.boltSpecCustom} /></label>
                     </div>
                     <div className="grid min-w-0 grid-cols-4 gap-1.5">
                       <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold">下限<input className="h-8 min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-1 text-sm" defaultValue="81" /></label>

@@ -131,6 +131,104 @@ describe('CsvImportExecutionService', () => {
     expect(save).toHaveBeenCalled();
   });
 
+  it('routes itemInventoryGmail targets to the JSON+JPEG intake service', async () => {
+    const createFromConfig = vi.fn();
+    const processCsvImportFromTargets = vi.fn();
+    const runOnce = vi.fn().mockResolvedValue({
+      scanned: 1,
+      processed: 1,
+      pending: 1,
+      duplicate: 0,
+      retryable: 0,
+      skipped: 0,
+      errors: [],
+    });
+
+    const svc = new CsvImportExecutionService({
+      storageProviderFactory: { createFromConfig },
+      configStore: { load: vi.fn(), save: vi.fn() },
+      createCsvImportSourceService: () => ({ downloadMasterCsv: vi.fn() } as any),
+      createCsvDashboardImportService: () => ({ ingestTargets: vi.fn() } as any),
+      createCsvImportConfigService: () => ({ getEffectiveConfig: vi.fn() } as any),
+      createItemInventoryGmailIngestionService: () => ({ runOnce } as any),
+      processCsvImportFromTargets: processCsvImportFromTargets as any,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    const config = {
+      storage: { provider: 'gmail', options: { gmail: { refreshToken: 'x' } } },
+      csvImports: [],
+      itemInventoryGmailIngest: { enabled: false, subjectTokens: ['[ItemlistRaspi-photo]'] },
+    } as unknown as BackupConfig;
+
+    const summary = await svc.execute({
+      config,
+      importSchedule: {
+        id: 'item-inventory-gmail',
+        name: 'Raspberry Pi在庫写真メール取込',
+        enabled: true,
+        schedule: '*/5 * * * *',
+        provider: 'gmail',
+        targets: [{ type: 'itemInventoryGmail', source: '[ItemlistRaspi-photo]' }],
+      } as any,
+      skipRetry: true,
+    });
+
+    expect(createFromConfig).not.toHaveBeenCalled();
+    expect(processCsvImportFromTargets).not.toHaveBeenCalled();
+    expect(runOnce).toHaveBeenCalledWith(expect.objectContaining({
+      allowWait: true,
+      manual: true,
+      config: expect.objectContaining({
+        itemInventoryGmailIngest: expect.objectContaining({ enabled: true }),
+      }),
+    }));
+    expect(summary.itemInventoryGmail).toEqual(expect.objectContaining({ processed: 1, pending: 1 }));
+  });
+
+  it('routes machineSignalGmail targets to the machine signal intake, without a CSV storage provider', async () => {
+    const createFromConfig = vi.fn();
+    const processCsvImportFromTargets = vi.fn();
+    const runOnce = vi.fn().mockResolvedValue({ scanned: 1, processed: 1, skipped: 0, runs: [] });
+    const svc = new CsvImportExecutionService({
+      storageProviderFactory: { createFromConfig },
+      configStore: { load: vi.fn(), save: vi.fn() },
+      createCsvImportSourceService: () => ({ downloadMasterCsv: vi.fn() } as any),
+      createCsvDashboardImportService: () => ({ ingestTargets: vi.fn() } as any),
+      createCsvImportConfigService: () => ({ getEffectiveConfig: vi.fn() } as any),
+      createMachineSignalGmailIngestionService: () => ({ runOnce }),
+      processCsvImportFromTargets: processCsvImportFromTargets as any,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+    const config = {
+      storage: { provider: 'gmail', options: { gmail: { refreshToken: 'x' } } },
+      csvImports: [],
+    } as unknown as BackupConfig;
+    const importSchedule = {
+      id: 'machine-signal-gmail',
+      name: '設備稼働ログ（信号灯の日報）取込',
+      enabled: true,
+      schedule: '47 * * * *',
+      provider: 'gmail',
+      targets: [{ type: 'machineSignalGmail', source: 'AirGridFlexSignal' }],
+    } as any;
+
+    const summary = await svc.execute({ config, importSchedule, skipRetry: true });
+
+    expect(createFromConfig).not.toHaveBeenCalled();
+    expect(processCsvImportFromTargets).not.toHaveBeenCalled();
+    expect(runOnce).toHaveBeenCalledWith({ config, allowWait: true });
+    expect(summary.machineSignalGmail).toEqual({ scanned: 1, processed: 1, skipped: 0, runs: [] });
+
+    await expect(
+      svc.execute({
+        config,
+        importSchedule: { ...importSchedule, targets: [{ type: 'machineSignalGmail', source: 'Other' }] },
+        skipRetry: true,
+      })
+    ).rejects.toThrow('設備稼働ログの件名はAirGridFlexSignalで固定です');
+  });
+
   it('should execute productionActualHours target and include canonical summary', async () => {
     const storageProvider: StorageProvider = {
       upload: vi.fn(),
@@ -228,4 +326,3 @@ describe('CsvImportExecutionService', () => {
     rebuildFeaturesSpy.mockRestore();
   });
 });
-

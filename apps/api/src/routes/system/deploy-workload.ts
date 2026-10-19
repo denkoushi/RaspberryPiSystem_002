@@ -5,16 +5,11 @@ import { z } from 'zod';
 
 import { env } from '../../config/env.js';
 import { ApiError } from '../../lib/errors.js';
+import { isLoopbackAddress } from '../../lib/loopback-address.js';
 
 const requestSchema = z.object({
   action: z.enum(['pause-signage', 'resume-signage']),
 });
-
-function isLoopbackAddress(address: string | undefined): boolean {
-  if (address === '::1') return true;
-  const ipv4 = address?.startsWith('::ffff:') ? address.slice('::ffff:'.length) : address;
-  return Boolean(ipv4 && /^127(?:\.[0-9]{1,3}){3}$/.test(ipv4));
-}
 
 function tokenMatches(provided: string | undefined): boolean {
   const expected = env.DEPLOY_CONTROL_TOKEN ?? env.JWT_ACCESS_SECRET;
@@ -56,7 +51,7 @@ export function registerDeployWorkloadRoute(app: FastifyInstance): void {
   app.post('/system/deploy-workload/internal', {
     config: { rateLimit: false },
   }, async (request, reply) => {
-    const remoteAddress = request.socket.remoteAddress || request.ip;
+    const remoteAddress = request.socket.remoteAddress;
     if (!isLoopbackAddress(remoteAddress)) {
       throw new ApiError(403, 'Deploy workload control is only accessible from the host runtime');
     }

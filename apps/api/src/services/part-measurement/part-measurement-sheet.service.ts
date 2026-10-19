@@ -6,9 +6,9 @@ import { EmployeeService } from '../tools/employee.service.js';
 import { apiProcessGroupToPrisma, parseApiProcessGroup } from './part-measurement-process-group.adapter.js';
 import {
   PART_MEASUREMENT_EDIT_LOCK_TTL_MS,
-  PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD,
-  PART_MEASUREMENT_LEGACY_RESOURCE_CD
+  PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD
 } from './part-measurement-constants.js';
+import { normalizePartMeasurementResourceCd as normalizeResourceCd } from './part-measurement-resource-cd.js';
 import {
   isInspectionDrawingEvaluationTemplate,
   productionPartMeasurementSheetWhere
@@ -92,6 +92,7 @@ export type FindOrOpenInput = {
   productNo: string;
   processGroup: string;
   resourceCd: string;
+  fkojun?: string | null;
   /** 日程行からヘッダを埋める（検証用） */
   scheduleRowId?: string | null;
   fseiban?: string | null;
@@ -101,12 +102,6 @@ export type FindOrOpenInput = {
   scannedBarcodeRaw?: string | null;
   clientDeviceId?: string | null;
 };
-
-function normalizeResourceCd(raw: string): string {
-  const t = raw.trim();
-  if (t.length === 0) return PART_MEASUREMENT_LEGACY_RESOURCE_CD;
-  return t;
-}
 
 function lockExpiryFromNow(): Date {
   return new Date(Date.now() + PART_MEASUREMENT_EDIT_LOCK_TTL_MS);
@@ -136,6 +131,14 @@ function isBlankValue(value: string | number | null | undefined): boolean {
   if (value === null || value === undefined) return true;
   if (typeof value === 'string') return value.trim().length === 0;
   return false;
+}
+
+function assertNumericOnlyMeasurementTemplate(template: {
+  items: Array<{ valueKind?: string | null }>;
+}) {
+  if (template.items.some((item) => String(item.valueKind ?? 'NUMERIC').toUpperCase() === 'JUDGEMENT')) {
+    throw new ApiError(409, 'OK/NG判定を含むテンプレートは通常の数値測定表・紙帳票では使用できません');
+  }
 }
 
 function countDecimalPlacesString(raw: string): number {
@@ -255,16 +258,29 @@ export class PartMeasurementSheetService {
       return { mode: 'needs_resolve' as const, sheet: null };
     }
 
-    const template = await prisma.partMeasurementTemplate.findFirst({
-      where: {
-        fhincd,
-        processGroup: prismaGroup,
-        resourceCd,
-        isActive: true
-      },
-      orderBy: { version: 'desc' },
-      include: partMeasurementTemplateFullInclude
-    });
+    const fkojun = input.fkojun?.trim() || '';
+    const templateWhere = {
+      fhincd,
+      processGroup: prismaGroup,
+      resourceCd,
+      isActive: true
+    };
+    const template =
+      (await prisma.partMeasurementTemplate.findFirst({
+        where: {
+          ...templateWhere,
+          OR: fkojun ? [{ fkojun }, { fkojun: '' }, { fkojun: null }] : [{ fkojun: '' }, { fkojun: null }]
+        },
+        orderBy: { version: 'desc' },
+        include: partMeasurementTemplateFullInclude
+      })) ??
+      (fkojun
+        ? await prisma.partMeasurementTemplate.findFirst({
+        where: { ...templateWhere, OR: [{ fkojun: '' }, { fkojun: null }] },
+            orderBy: { version: 'desc' },
+            include: partMeasurementTemplateFullInclude
+          })
+        : null);
     if (!template) {
       return {
         mode: 'needs_template' as const,
@@ -276,7 +292,8 @@ export class PartMeasurementSheetService {
           fhinmei,
           machineName: input.machineName?.trim() || null,
           resourceCd,
-          processGroup: group
+          processGroup: group,
+          fkojun
         }
       };
     }
@@ -320,6 +337,7 @@ export class PartMeasurementSheetService {
         '評価用テンプレートから記録表を作るには POST /part-measurement/inspection-drawing/evaluation-sheets を使用してください'
       );
     }
+    assertNumericOnlyMeasurementTemplate(template);
     if (template.fhincd.trim().toUpperCase() !== input.fhincd.trim().toUpperCase()) {
       throw new ApiError(400, 'テンプレートと品番が一致しません');
     }
@@ -380,6 +398,7 @@ export class PartMeasurementSheetService {
     if (!isInspectionDrawingEvaluationTemplate(template)) {
       throw new ApiError(409, '評価用テンプレートのみこの API で記録表を作成できます');
     }
+    assertNumericOnlyMeasurementTemplate(template);
     if (template.processGroup !== 'CANDIDATE_FHINMEI_ONLY') {
       throw new ApiError(409, '検査図面評価用テンプレートの工程が不正です');
     }
@@ -595,6 +614,9 @@ export class PartMeasurementSheetService {
           include: { template: { include: partMeasurementTemplateFullInclude } }
         });
         const items = template?.template?.items ?? [];
+        if (template?.template) {
+          assertNumericOnlyMeasurementTemplate(template.template);
+        }
         const itemIds = new Set(items.map((i) => i.id));
         const qty = template?.quantity;
 
@@ -673,6 +695,9 @@ export class PartMeasurementSheetService {
         throw new ApiError(400, '個数を入力してください');
       }
       const items = sheet.template?.items ?? [];
+      if (sheet.template) {
+        assertNumericOnlyMeasurementTemplate(sheet.template);
+      }
       if (items.length === 0) {
         throw new ApiError(400, 'テンプレート項目がありません');
       }
@@ -763,6 +788,9 @@ export class PartMeasurementSheetService {
   }
 
   buildSheetCsv(sheet: Awaited<ReturnType<PartMeasurementSheetService['getById']>>): string {
+    if (sheet.template) {
+      assertNumericOnlyMeasurementTemplate(sheet.template);
+    }
     const lines: string[] = [];
     const esc = (v: string | number | null | undefined) => {
       const s = v === null || v === undefined ? '' : String(v);

@@ -1,0 +1,185 @@
+---
+- name: Stop the candidate hotcorner before restoring files
+  ansible.builtin.systemd:
+    name: kiosk-hotcorner.service
+    state: stopped
+    enabled: false
+  when: release_kiosk_hotcorner_start_attempted | default(false) | bool
+
+- name: Restore backed-up Pi4 release files
+  ansible.builtin.copy:
+    src: "{{ item.backup_file }}"
+    dest: "{{ item.item.dest }}"
+    remote_src: true
+    owner: "{{ release_kiosk_original_files.results[file_index].stat.uid }}"
+    group: "{{ release_kiosk_original_files.results[file_index].stat.gid }}"
+    mode: "{{ release_kiosk_original_files.results[file_index].stat.mode }}"
+  loop: "{{ release_kiosk_install.results | default([]) }}"
+  loop_control:
+    index_var: file_index
+  when:
+    - item.changed | default(false) | bool
+    - item.backup_file is defined
+  no_log: true
+
+- name: Restore metadata when only Pi4 file ownership or mode changed
+  ansible.builtin.file:
+    path: "{{ item.item.dest }}"
+    owner: "{{ release_kiosk_original_files.results[file_index].stat.uid }}"
+    group: "{{ release_kiosk_original_files.results[file_index].stat.gid }}"
+    mode: "{{ release_kiosk_original_files.results[file_index].stat.mode }}"
+  loop: "{{ release_kiosk_install.results | default([]) }}"
+  loop_control:
+    index_var: file_index
+  when:
+    - item.changed | default(false) | bool
+    - item.backup_file is not defined
+    - release_kiosk_original_files.results[file_index].stat.exists
+  no_log: true
+
+- name: Remove newly introduced Pi4 files without a backup
+  ansible.builtin.file:
+    path: "{{ item.item.dest }}"
+    state: absent
+  loop: "{{ release_kiosk_install.results | default([]) }}"
+  loop_control:
+    index_var: file_index
+  when:
+    - item.changed | default(false) | bool
+    - item.backup_file is not defined
+    - not release_kiosk_original_files.results[file_index].stat.exists
+    - item.item.dest not in (release_kiosk_rollback_prerequisites | default([]))
+  no_log: true
+
+- name: Restore the original labwc directory ownership and mode
+  ansible.builtin.file:
+    path: "{{ release_kiosk_labwc_dir }}"
+    owner: "{{ release_kiosk_labwc_directory_original.stat.uid }}"
+    group: "{{ release_kiosk_labwc_directory_original.stat.gid }}"
+    mode: "{{ release_kiosk_labwc_directory_original.stat.mode }}"
+  when: release_kiosk_labwc_directory_install.changed | default(false) | bool
+
+- name: Reload restored Pi4 systemd units
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: release_kiosk_services | length > 0 or (manage_kiosk_browser | default(false) | bool)
+
+- name: Verify rollback prerequisites before agent compose restore
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: "{{ release_kiosk_rollback_prerequisites | default([]) }}"
+  register: release_kiosk_rollback_prerequisite_stats
+  failed_when: false
+  changed_when: false
+
+- name: Fail closed when rollback prerequisites are missing
+  ansible.builtin.assert:
+    that: item.stat.exists | default(false) | bool
+    fail_msg: "Rollback prerequisite is missing: {{ item.item }}"
+  loop: "{{ release_kiosk_rollback_prerequisite_stats.results | default([]) }}"
+  no_log: true
+
+- name: Restore Pi4 agents from the captured image tags without restarting torque ownership
+  ansible.builtin.command: >-
+    docker compose --project-name {{ release_kiosk_compose_project | quote }}
+    -f {{ release_kiosk_rollback_compose | quote }}
+    create --force-recreate --no-build {{ release_kiosk_services | join(' ') }}
+  when:
+    - release_kiosk_switch_attempted | default(false) | bool
+    - release_torque_cutover | default(false) | bool
+    - release_kiosk_services | length > 0
+  changed_when: true
+
+- name: Restore Pi4 agents from the captured image tags
+  ansible.builtin.command: >-
+    docker compose --project-name {{ release_kiosk_compose_project | quote }}
+    -f {{ release_kiosk_rollback_compose | quote }}
+    up -d --no-build {{ release_kiosk_services | join(' ') }}
+  when:
+    - release_kiosk_switch_attempted | default(false) | bool
+    - not (release_torque_cutover | default(false) | bool)
+    - release_kiosk_services | length > 0
+  changed_when: true
+
+- name: Restore the original labwc configuration
+  ansible.builtin.copy:
+    src: "{{ release_kiosk_stage_dir }}/rc.xml.original"
+    dest: "{{ release_kiosk_labwc_dir }}/rc.xml"
+    remote_src: true
+    owner: "{{ release_kiosk_labwc_original.stat.uid }}"
+    group: "{{ release_kiosk_labwc_original.stat.gid }}"
+    mode: "{{ release_kiosk_labwc_original.stat.mode }}"
+  when: release_kiosk_labwc_edit_attempted | default(false) | bool
+
+- name: Restore the labwc autostart override
+  ansible.builtin.copy:
+    src: "{{ release_kiosk_stage_dir }}/labwc-autostart.original"
+    dest: "{{ release_kiosk_labwc_dir }}/autostart"
+    remote_src: true
+    owner: "{{ release_kiosk_legacy_autostart.stat.uid }}"
+    group: "{{ release_kiosk_legacy_autostart.stat.gid }}"
+    mode: "{{ release_kiosk_legacy_autostart.stat.mode }}"
+  when:
+    - release_kiosk_labwc_edit_attempted | default(false) | bool
+    - release_kiosk_legacy_autostart_obsolete | default(false) | bool
+
+- name: Reconfigure the restored labwc session
+  ansible.builtin.command:
+    argv: [/usr/bin/python3, '-', --reconfigure]
+    stdin: "{{ lookup('ansible.builtin.file', role_path ~ '/files/kiosk-hotcorner.py') }}"
+  become: true
+  become_user: "{{ ansible_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ release_kiosk_user_uid.stdout }}"
+  register: release_kiosk_labwc_rollback_reconfigure
+  changed_when: true
+  # The restored rc.xml is read at the next login anyway; a missing session
+  # must not stop the browser and hotcorner service from being restored.
+  failed_when: false
+  when: release_kiosk_labwc_edit_attempted | default(false) | bool
+
+- name: Restart restored Pi4 display unit
+  ansible.builtin.systemd:
+    name: kiosk-browser.service
+    state: restarted
+  when: not (release_torque_cutover | default(false) | bool)
+
+- name: Restore the previous hotcorner service state
+  ansible.builtin.systemd:
+    name: kiosk-hotcorner.service
+    enabled: "{{ release_kiosk_hotcorner_previous.status == 'enabled' }}"
+    state: "{{ 'restarted' if release_kiosk_hotcorner_previous.state == 'running' else 'stopped' }}"
+  when:
+    - release_kiosk_hotcorner_start_attempted | default(false) | bool
+    - release_kiosk_hotcorner_previous | length > 0
+
+- name: Run the restored status-agent service once before its timer
+  ansible.builtin.systemd:
+    name: status-agent.service
+    state: started
+  when: release_kiosk_services | length > 0
+
+- name: Restart restored Pi4 status-agent timer
+  ansible.builtin.systemd:
+    name: status-agent.timer
+    state: restarted
+  when: release_kiosk_services | length > 0
+
+- name: Verify the complete restored Pi4 runtime
+  ansible.builtin.import_tasks: health_checks.yml
+  vars:
+    release_kiosk_check_hotcorner: "{{ release_kiosk_hotcorner_previous.state | default('') == 'running' }}"
+  when: not (release_torque_cutover | default(false) | bool)
+
+- name: Record completed Pi4 rollback
+  ansible.builtin.set_fact:
+    release_kiosk_rolled_back: true
+
+- name: Fail the release after verified Pi4 rollback
+  ansible.builtin.fail:
+    msg: >-
+      Pi4 candidate failed health verification on {{ inventory_hostname }};
+      previous files and agent images were restored.
+  when:
+    - release_kiosk_rollback_terminal_failure | default(true) | bool
+    - not (release_torque_cutover | default(false) | bool)

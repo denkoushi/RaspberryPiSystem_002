@@ -346,6 +346,8 @@ export function useSelfInspectionNfcRegistration(options: {
   nfcEvent: NfcEvent | null | undefined;
   enabled: boolean;
   requireMeasuringInstrumentTag: boolean;
+  /** 画面単位の認証が社員タグを処理する場合、entry登録用には社員タグを取り込まない。 */
+  ignoreEmployeeTags?: boolean;
   onInstrumentTagResolved?: (instrument: {
     id: string;
     name: string;
@@ -359,7 +361,8 @@ export function useSelfInspectionNfcRegistration(options: {
     nfcEvent,
     enabled,
     requireMeasuringInstrumentTag,
-    onInstrumentTagResolved
+    onInstrumentTagResolved,
+    ignoreEmployeeTags = false
   } = options;
   const registrationPolicy = useMemo(
     () => ({ requireMeasuringInstrumentTag }),
@@ -432,6 +435,10 @@ export function useSelfInspectionNfcRegistration(options: {
         if (result.kind === 'instrument' && onInstrumentTagResolved?.(result.instrument) === true) {
           return;
         }
+        if (ignoreEmployeeTags && result.kind === 'employee') {
+          dispatch({ type: 'reset_context' });
+          return;
+        }
         dispatch({
           type: 'resolve_result',
           entryIndex,
@@ -446,7 +453,7 @@ export function useSelfInspectionNfcRegistration(options: {
         dispatch({ type: 'resolve_failed' });
       }
     },
-    [enabled, isLocked, onInstrumentTagResolved, savedEntry, savedRegistration, selectedEntryIndex]
+    [enabled, ignoreEmployeeTags, isLocked, onInstrumentTagResolved, savedEntry, savedRegistration, selectedEntryIndex]
   );
 
   useEffect(() => {

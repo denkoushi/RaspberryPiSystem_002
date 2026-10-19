@@ -1,4 +1,5 @@
 import type { SelfInspectionStatus } from '../../part-measurement/types';
+import type { MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
 
 export type LeaderBoardRow = {
   id: string;
@@ -36,6 +37,11 @@ export type LeaderBoardRow = {
   selfInspectionTemplateId: string | null;
   selfInspectionStatus: SelfInspectionStatus | null;
   selfInspectionEntryPath: string | null;
+  selfInspectionResourceCds?: string[];
+  selfInspectionResourceCd?: string | null;
+  /** 材料の入荷状況。材料の購買行が無い部品は null */
+  materialArrivalStatus: MaterialArrivalStatus | null;
+  materialArrivalBasis?: MaterialArrivalBasis | null;
   /** display item 契約 */
   sourceRowId: string;
   splitId: string | null;

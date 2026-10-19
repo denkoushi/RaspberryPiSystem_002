@@ -11,6 +11,7 @@ import {
   retirePartMeasurementTemplate,
   revisePartMeasurementTemplate
 } from '../../api/client';
+import { partMeasurementTemplatesQueryKeys } from '../../api/queryKeys/partMeasurementTemplates';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
@@ -24,7 +25,7 @@ import {
   PART_MEASUREMENT_DRAWING_FILE_LABEL,
   PART_MEASUREMENT_DRAWING_FILE_REQUIRED_MESSAGE
 } from '../../features/part-measurement/partMeasurementDrawingFileInput';
-import { selfInspectionModeDisplayLabel } from '../../features/part-measurement/selfInspectionEntrySlots';
+import { selfInspectionModeDisplayLabel } from '../../features/part-measurement/selfInspectionModeDisplayLabel';
 import { buildSelfInspectionTemplateApiBody } from '../../features/part-measurement/selfInspectionTemplateForm';
 
 import type {
@@ -79,12 +80,12 @@ export function PartMeasurementTemplatesPage() {
   const [submitBusy, setSubmitBusy] = useState(false);
 
   const listQuery = useQuery({
-    queryKey: ['part-measurement-templates', { includeInactive: showInactiveTemplates }],
+    queryKey: partMeasurementTemplatesQueryKeys.templates({ includeInactive: showInactiveTemplates }),
     queryFn: () => listPartMeasurementTemplates({ includeInactive: showInactiveTemplates })
   });
 
   const visualsQuery = useQuery({
-    queryKey: ['part-measurement-visual-templates'],
+    queryKey: partMeasurementTemplatesQueryKeys.visualTemplatesAll,
     queryFn: () => listPartMeasurementVisualTemplates({ includeInactive: true })
   });
 
@@ -108,8 +109,8 @@ export function PartMeasurementTemplatesPage() {
   const createMutation = useMutation({
     mutationFn: (body: Parameters<typeof createPartMeasurementTemplate>[0]) => createPartMeasurementTemplate(body),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['part-measurement-templates'] });
-      void qc.invalidateQueries({ queryKey: ['part-measurement-visual-templates'] });
+      void qc.invalidateQueries({ queryKey: partMeasurementTemplatesQueryKeys.templatesAll });
+      void qc.invalidateQueries({ queryKey: partMeasurementTemplatesQueryKeys.visualTemplatesAll });
       setMessage('テンプレートを登録しました。');
       resetNewForm();
     },
@@ -121,7 +122,7 @@ export function PartMeasurementTemplatesPage() {
   const activateMutation = useMutation({
     mutationFn: (templateId: string) => activatePartMeasurementTemplate(templateId),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['part-measurement-templates'] });
+      void qc.invalidateQueries({ queryKey: partMeasurementTemplatesQueryKeys.templatesAll });
       setMessage('有効版を切り替えました。');
     },
     onError: (e: Error & { response?: { data?: { message?: string } } }) => {
@@ -133,8 +134,8 @@ export function PartMeasurementTemplatesPage() {
     mutationFn: (args: { templateId: string; body: Parameters<typeof revisePartMeasurementTemplate>[1] }) =>
       revisePartMeasurementTemplate(args.templateId, args.body),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['part-measurement-templates'] });
-      void qc.invalidateQueries({ queryKey: ['part-measurement-visual-templates'] });
+      void qc.invalidateQueries({ queryKey: partMeasurementTemplatesQueryKeys.templatesAll });
+      void qc.invalidateQueries({ queryKey: partMeasurementTemplatesQueryKeys.visualTemplatesAll });
       setMessage('保存しました。');
       resetNewForm();
     },
@@ -146,7 +147,7 @@ export function PartMeasurementTemplatesPage() {
   const retireMutation = useMutation({
     mutationFn: (templateId: string) => retirePartMeasurementTemplate(templateId),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['part-measurement-templates'] });
+      void qc.invalidateQueries({ queryKey: partMeasurementTemplatesQueryKeys.templatesAll });
       setMessage('有効版を削除しました（無効版も表示で確認できます）。');
       resetNewForm();
     },

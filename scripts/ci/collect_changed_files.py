@@ -32,6 +32,8 @@ def stable_diff_base(repo: Path, event_name: str, base_sha: str, head_sha: str) 
     for label, sha in (("base", base_sha), ("head", head_sha)):
         if not sha:
             raise DiffBaseError(f"{label} SHA is empty")
+        if set(sha) == {"0"}:
+            raise DiffBaseError(f"{label} SHA is all zeros")
         git_output(repo, "cat-file", "-e", f"{sha}^{{commit}}")
 
     if event_name == "pull_request":
@@ -40,6 +42,18 @@ def stable_diff_base(repo: Path, event_name: str, base_sha: str, head_sha: str) 
             raise DiffBaseError("pull request merge base is unavailable")
         return merge_base
     if event_name == "push":
+        try:
+            subprocess.run(
+                ["git", "merge-base", "--is-ancestor", base_sha, head_sha],
+                cwd=repo,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        except subprocess.CalledProcessError as error:
+            raise DiffBaseError(
+                "push before SHA is not an ancestor of the head SHA"
+            ) from error
         return base_sha
     raise DiffBaseError(f"event {event_name!r} has no stable diff policy")
 

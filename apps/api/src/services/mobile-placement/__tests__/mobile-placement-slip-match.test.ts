@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateSlipPairMatch, pickPrimaryScheduleRowForOrder } from '../mobile-placement-slip-match.js';
-import type { PartMeasurementScheduleRowCandidate } from '../../part-measurement/part-measurement-schedule-lookup.service.js';
+import type { ProductionScheduleLookupRow } from '../../production-schedule/production-schedule-lookup.service.js';
 
-const row = (over: Partial<PartMeasurementScheduleRowCandidate>): PartMeasurementScheduleRowCandidate => ({
+const row = (over: Partial<ProductionScheduleLookupRow>): ProductionScheduleLookupRow => ({
   rowId: 'r1',
   fseiban: 'FS1',
   productNo: 'P1',

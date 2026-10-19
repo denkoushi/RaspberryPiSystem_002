@@ -8,9 +8,10 @@ alwaysApply: false
 ## 原則
 
 - 変更は目的ごとに分割し、混在を避ける（1コミット=1意図）
-- push/merge/release/deploy は**明示依頼がある時のみ**行う
-- 既定フローは **main最新同期 → featureブランチ作成 → PR → mainマージ** とする
-- `main` への直作業（直接コミット）は禁止し、必ず feature ブランチで作業する
+- push/merge/release/deploy は明示依頼がある時のみ行う
+- 既定フローは `start` → feature branch/worktree作業 → PR → mainマージ → `finish` → `audit` とする
+- `main` への直接コミットは行わず、feature ブランチで作業する
+- task worktreeの起点はfetch済みの正確な`origin/main`とする。main worktreeのdirtyまたはdivergedは対象taskを止める理由にしない。
 
 ## コミットメッセージ
 
@@ -19,7 +20,8 @@ alwaysApply: false
 
 ## 危険操作の扱い
 
-- `--force`、履歴改変、main直系へのpush は原則禁止（必要なら理由・手順・影響を明記）
+- `--force`、履歴改変（`rebase`/`amend` 等）、main直系へのpushは、明示的なユーザー依頼がない限り行わない
+- task cleanupで`git worktree remove --force`、`git branch -D`、wildcard削除、remote refの直接削除を使わない。GitHubのmerge後remote branch削除設定を正本とする。
 
 ## 最低限チェック（git操作時）
 
@@ -28,23 +30,30 @@ alwaysApply: false
 - `git diff --check` で空白・差分破損を確認
 - 変更に未コミットのユーザー作業が混ざっていないことを確認
 
-## ドキュメント変更時の追加チェック
+## ドキュメント変更時
 
-- 追加・変更した Markdown の相対リンクが壊れていないこと
-- 不自然な連続疑問符などの文字化けを追加していないこと
-- 1,000文字を超える長大な1行を追加していないこと
-- `docs/INDEX.md` と `docs/knowledge-base/index.md` に本文級の追記をしていないこと
-- 同じ事実を KB / Runbook / ADR / Plan / Index / `EXEC_PLAN.md` へ全文コピーしていないこと
-- `EXEC_PLAN.md` へ詳細ログを追記していないこと
+- ドキュメント変更時は `.cursor/rules/30-docs-maintenance.mdc` のチェックに従う
 
-## 実行手順（固定）
+## PRとCI
 
-1. `git checkout main && git pull --ff-only origin main`
-2. `git checkout -b feat/<scope>`
-3. 変更を実装し、`lint/test/build` を通す
-4. PR を作成してレビュー後に main へマージ
+- PR本文は最初から `.github/pull_request_template.md` の Deploy impact 表を埋める。内容は `python3 scripts/ci/validate_deploy_impact.py` で事前に検証できる（分類JSONは `scripts/ci/classify_event_changes.py` の出力が要る）
+- CIは待機コマンドを1回使って待つ（例: `gh pr checks <PR> --watch`）。短いsleepと状態確認を繰り返さない
+- PR本文を直した後は、古いrunを `gh run rerun` しない。再実行は古い本文のイベントで動き、本文編集で起動した新しいrunも同時実行制御で打ち切られる。必要なら本文編集で起動した新しいrunの方を再実行する
+
+## タスク開始・監査・完了（固定）
+
+実装入口は`python3 -m scripts.git_lifecycle.cli`に固定する。
+
+1. 作業前に`python3 -m scripts.git_lifecycle.cli audit --json`を実行し、既存のworktree、local branch、PR、remote-tracking refを読む。auditは削除や更新を行わない。
+2. `python3 -m scripts.git_lifecycle.cli start --branch feat/<scope>`を実行する。`start`は`git fetch --prune origin`と正確な`origin/main`の確認に成功した場合だけ起点を確定し、専用worktreeを作る。mainがdirtyまたはdivergedならmainを変更せず、`main_sync=skipped_dirty|skipped_diverged`を警告として返す。fetch失敗時やbranch/path衝突時は作成せず、既存内容を保持する。
+3. 変更を実装し、通常のlint/test/buildとPRレビューを行う。
+4. PR merge後に`python3 -m scripts.git_lifecycle.cli finish --worktree <exact-path> --pr <number>`を実行する。同一repositoryのmerged PR、head branch/SHA一致、通常status clean、特殊index flagなしを確認し、合格した対象1件だけをforceなしで削除する。ignored materialは件数を警告するがcleanupを止めず、秘密資格情報はworktree外へ置く。local branchは期待SHAとのcompare-and-deleteで削除する。
+5. `finish`は対象cleanup後にmain同期を独立して試みる。cleanかつfast-forward可能なら`main_sync=updated`、既に同期済みなら`already_current`、dirtyなら`skipped_dirty`、divergedなら`skipped_diverged`とする。main同期をskipしても対象cleanup成功を取り消さない。
+6. 終了後に`python3 -m scripts.git_lifecycle.cli audit --json`を再実行し、PR・merge SHA・対象cleanup・main同期結果・保護した項目を完了報告へ記録する。
+
+このCLIは開発端末で明示実行し、Deploy、Ansible、Docker build、fleet deploy、Git hook、CI共通preflightへ組み込まない。PR全件ページングは明示的なlifecycle操作時だけ行う。
 
 ## マージ後
 
-- ローカルを `main` に戻し、`git pull --ff-only origin main` で最新化する
+- まず対象taskの`finish`と終了後`audit`を完了する。mainがcleanかつfast-forward可能な場合だけ`finish`がmainを更新する。dirtyまたはdivergedならmainの内容を保持し、`main_sync=skipped_dirty|skipped_diverged`を次回同期の要対応として報告する。
 - 未コミット変更が残る場合は、自分の作業かユーザーの既存作業かを区別して報告する

@@ -1,4 +1,4 @@
-import type { SelfInspectionMode, SelfInspectionSessionDetailDto } from './types';
+import type { SelfInspectionSessionDetailDto } from './types';
 
 export type SelfInspectionEntrySlot = {
   entryIndex: number;
@@ -53,18 +53,4 @@ export function areRequiredSelfInspectionSlotsFilled(
       .map((entry) => entry.entryIndex)
   );
   return required.every((slot) => present.has(slot.entryIndex));
-}
-
-export function selfInspectionModeDisplayLabel(mode: SelfInspectionMode, fixedCount: number | null): string {
-  switch (mode) {
-    case 'single':
-      return '抜き取り1個';
-    case 'first_last':
-      return '最初と最後';
-    case 'fixed_count':
-      return `指定数 ${fixedCount ?? '—'} 件`;
-    case 'full':
-    default:
-      return '全数';
-  }
 }

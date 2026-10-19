@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { parse } from 'csv-parse/sync';
 import { Prisma, type PrismaClient } from '@prisma/client';
 
+import { toTrimmedString as normalizeToken } from '../../lib/string-normalize.js';
 import {
   PRODUCTION_SCHEDULE_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
@@ -33,7 +34,8 @@ export {
 
 const CREATE_MANY_CHUNK_SIZE = 200;
 const PROCESS_CHANGE_RESIDUAL_EVIDENCE_CREATE_MANY_CHUNK_SIZE = 200;
-const REPLACEMENT_TX_TIMEOUT_MS = 60_000;
+// Pi5で約8万行の世代確認と全件置換が60秒を超えるため、同一原子処理の上限を確保する。
+const REPLACEMENT_TX_TIMEOUT_MS = 300_000;
 const REPLACEMENT_TX_MAX_WAIT_MS = 15_000;
 
 const ALLOWED_STATUS = new Set(['C', 'P', 'S', 'R', 'X', 'O']);
@@ -64,8 +66,6 @@ export type FkojunstMailSyncResult = {
   upserted: number;
   pruned: number;
 };
-
-const normalizeToken = (value: unknown): string => String(value ?? '').trim();
 
 function normalizeStatusCode(value: unknown): string | null {
   const s = normalizeToken(value).toUpperCase();

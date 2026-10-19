@@ -5,9 +5,9 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
 import { ApiError } from '../../lib/errors.js';
 import {
-  PRODUCTION_SCHEDULE_HASH_KEY_COLUMNS,
   PRODUCTION_SCHEDULE_PRODUCT_NO_COLUMN,
   PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS,
+  calculateProductionScheduleDataHash,
   resolveToMaxProductNoPerLogicalKey,
 } from '../production-schedule/row-resolver/index.js';
 import {
@@ -28,6 +28,7 @@ import {
   FKOJUNST_STATUS_MAIL_COMPLETION_TX_TIMEOUT_MS,
   type FkojunstDeferredRowUpdate,
 } from './fkojunst-status-mail-ingest-publication.js';
+import { SCAW_STFUTEKIGO_DASHBOARD_ID } from '../scaw-stfutekigo/constants.js';
 
 /**
  * CSVダッシュボード取り込みサービス
@@ -49,7 +50,8 @@ export class CsvDashboardIngestor {
     csvContent: string,
     messageId?: string,
     messageSubject?: string,
-    csvFilePath?: string
+    csvFilePath?: string,
+    sourceReceivedAt?: Date | null
   ): Promise<{
     ingestRunId: string;
     rowsProcessed: number;
@@ -76,6 +78,7 @@ export class CsvDashboardIngestor {
         messageId: messageId ?? null,
         messageSubject: messageSubject ?? null,
         csvFilePath: csvFilePath ?? null,
+        sourceReceivedAt: sourceReceivedAt ?? null,
       },
     });
 
@@ -108,7 +111,11 @@ export class CsvDashboardIngestor {
 
       for (let i = 1; i < rows.length; i++) {
         const row = rows[i];
-        const normalized = this.normalizeRow(row, columnMapping);
+        const normalized = this.normalizeRow(
+          row,
+          columnMapping,
+          dashboardId === SCAW_STFUTEKIGO_DASHBOARD_ID
+        );
         const occurredAt = this.extractOccurredAt(row, dateColumnIndex, {
           dashboardId,
           dateColumnName: dashboard.dateColumnName ?? null,
@@ -159,10 +166,6 @@ export class CsvDashboardIngestor {
             }));
       const productNoDedupSkippedRows = oneYearFilteredRows.length - productionScheduleDedupRows.length;
       const preDedupSkippedRows = oneYearDroppedCount + productNoDedupSkippedRows;
-      const dedupKeyColumns =
-        isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP'
-          ? [...PRODUCTION_SCHEDULE_HASH_KEY_COLUMNS]
-          : dashboard.dedupKeyColumns;
       const ingestRows: Array<{
         data: NormalizedRowData;
         occurredAt: Date;
@@ -174,7 +177,9 @@ export class CsvDashboardIngestor {
         dashboard.ingestMode === 'DEDUP'
           ? productionScheduleDedupRows.map((row) => ({
               ...row,
-              hash: this.calculateDataHash(row.data, dedupKeyColumns),
+              hash: isProductionScheduleDashboard
+                ? calculateProductionScheduleDataHash(row.data)
+                : this.calculateDataHash(row.data, dashboard.dedupKeyColumns),
             }))
           : productionScheduleDedupRows;
 
@@ -366,12 +371,13 @@ export class CsvDashboardIngestor {
         }
       );
 
-      // DEDUP全体: 今回観測したキー範囲に限定して重複 loser を即時削除（ベストエフォート）
-      if (dashboard.ingestMode === 'DEDUP') {
+      // FKOJUNST_Status は dataHash で取込時に重複を防ぎ、公開時にも最新行へ絞る。
+      // JSON列の全件走査になる loser 削除は行わない。
+      if (dashboard.ingestMode === 'DEDUP' && !isFkojunstStatusMailDashboard) {
         try {
           const keyColumns =
             isProductionScheduleDashboard && dashboard.dedupKeyColumns.length === 0
-              ? [...PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS]
+              ? [...PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS, PRODUCTION_SCHEDULE_PRODUCT_NO_COLUMN]
               : dashboard.dedupKeyColumns;
           const dedupKeys = CsvDashboardIngestor.extractDedupKeysFromRows({
             rows: productionScheduleDedupRows,
@@ -519,12 +525,14 @@ export class CsvDashboardIngestor {
    */
   private normalizeRow(
     row: string[],
-    columnMapping: Array<{ csvIndex: number; internalName: string; columnDef: ColumnDefinition }>
+    columnMapping: Array<{ csvIndex: number; internalName: string; columnDef: ColumnDefinition }>,
+    preserveSourceStrings = false
   ): NormalizedRowData {
     const normalized: NormalizedRowData = {};
 
     for (const mapping of columnMapping) {
-      const csvValue = row[mapping.csvIndex]?.trim() || '';
+      const sourceValue = row[mapping.csvIndex] ?? '';
+      const csvValue = preserveSourceStrings ? sourceValue : sourceValue.trim();
       const colDef = mapping.columnDef;
 
       // データ型に応じて変換

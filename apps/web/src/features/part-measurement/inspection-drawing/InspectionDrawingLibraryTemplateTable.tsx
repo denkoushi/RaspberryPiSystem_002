@@ -2,6 +2,7 @@ import { Fragment } from 'react';
 import { Link } from 'react-router-dom';
 
 import { Button, buttonClassName } from '../../../components/ui/Button';
+import { selfInspectionModeDisplayLabel } from '../selfInspectionModeDisplayLabel';
 
 import {
   inspectionDrawingLibraryRowActionClassName,
@@ -9,6 +10,7 @@ import {
 } from './inspectionDrawingKioskUi';
 import { InspectionDrawingResourceCdChipList } from './InspectionDrawingResourceCdChipList';
 import { activeResourceCdsForTemplate } from './inspectionDrawingResourceCdHelpers';
+import { inspectionDrawingSopTargetProps } from './inspectionDrawingSopAnnotations';
 import {
   INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE,
   kioskInspectionDrawingCreatePathWithSource,
@@ -138,12 +140,23 @@ function TemplateTablePane({
                         <InspectionDrawingResourceCdChipList
                           resourceCds={activeResourceCds}
                           resourceNameMap={resourceNameMap}
+                          className="flex-1"
                         />
+                        <span
+                          className="shrink-0 whitespace-nowrap font-semibold text-white/75"
+                          data-testid="inspection-template-frequency"
+                        >
+                          頻度: {selfInspectionModeDisplayLabel(
+                            template.selfInspectionMode,
+                            template.selfInspectionFixedCount
+                          )}
+                        </span>
                         <div
                           className={inspectionDrawingLibraryRowActionsWidthClassName}
                           data-testid="inspection-template-secondary-actions"
                         >
                           <Link
+                            {...inspectionDrawingSopTargetProps('edit-template')}
                             to={editPath(template.id)}
                             state={linkState}
                             title="編集"
@@ -153,6 +166,7 @@ function TemplateTablePane({
                           </Link>
                           {printPath ? (
                             <Link
+                              {...inspectionDrawingSopTargetProps('open-report')}
                               to={printPath(template.id)}
                               target="_blank"
                               rel="noopener noreferrer"
@@ -173,6 +187,7 @@ function TemplateTablePane({
                             </Link>
                           ) : null}
                           <Button
+                            {...inspectionDrawingSopTargetProps('open-history')}
                             type="button"
                             variant="ghostOnDark"
                             className={inspectionDrawingLibraryRowActionClassName}
@@ -182,6 +197,7 @@ function TemplateTablePane({
                           </Button>
                           {onRetireClick ? (
                             <Button
+                              {...inspectionDrawingSopTargetProps('retire-template')}
                               type="button"
                               variant="ghostOnDark"
                               className={inspectionDrawingLibraryRowActionClassName}

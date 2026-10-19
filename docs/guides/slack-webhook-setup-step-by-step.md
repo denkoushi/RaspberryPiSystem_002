@@ -110,9 +110,8 @@
 
 1. **Ansibleで設定をデプロイ**
    ```bash
-   cd /opt/RaspberryPiSystem_002/infrastructure/ansible
-   ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles \
-   ansible-playbook -i inventory.yml playbooks/deploy.yml --limit raspberrypi5
+   cd /opt/RaspberryPiSystem_002
+   scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5
    ```
 
 2. **デプロイが完了するまで待つ**

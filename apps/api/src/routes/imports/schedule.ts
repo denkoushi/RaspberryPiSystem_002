@@ -8,10 +8,33 @@ import {
   extractIntervalMinutes,
   MIN_CSV_IMPORT_INTERVAL_MINUTES,
 } from '../../services/imports/import-schedule-policy.js';
+import {
+  ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS,
+  PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS,
+  MACHINE_SIGNAL_GMAIL_SUBJECT,
+} from '../../services/gmail/gmail-subject-reservation.policy.js';
 
 const csvImportTargetSchema = z.object({
-  type: z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears', 'machines', 'csvDashboards', 'productionActualHours']),
+  type: z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears', 'machines', 'csvDashboards', 'productionActualHours', 'itemInventoryGmail', 'machineSignalGmail', 'procedureMaterialGmail']),
   source: z.string().min(1, 'sourceは必須です'),
+}).superRefine((target, ctx) => {
+  if (target.type === 'itemInventoryGmail' && target.source !== ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS[0]) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['source'],
+      message: `Raspberry Pi在庫写真メールの件名は${ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS[0]}で固定です`,
+    });
+  }
+  if (target.type === 'procedureMaterialGmail' && target.source !== PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS[0]) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['source'], message: `要領書の素材の件名は${PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS[0]}で固定です` });
+  }
+  if (target.type === 'machineSignalGmail' && target.source !== MACHINE_SIGNAL_GMAIL_SUBJECT) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['source'],
+      message: `設備稼働ログの件名は${MACHINE_SIGNAL_GMAIL_SUBJECT}で固定です`,
+    });
+  }
 });
 
 const csvImportScheduleSchema = z.object({
@@ -35,6 +58,7 @@ const csvImportScheduleSchema = z.object({
     retryInterval: z.number().min(1).default(60), // 秒
     exponentialBackoff: z.boolean().default(true),
   }).optional(),
+  metadata: z.record(z.unknown()).optional(),
 }).refine((data) => {
   // 新形式または旧形式のいずれかが必須
   if (data.targets && data.targets.length > 0) {
@@ -106,6 +130,7 @@ const csvImportScheduleUpdateSchema = z.object({
     retryInterval: z.number().min(1).default(60),
     exponentialBackoff: z.boolean().default(true),
   }).optional(),
+  metadata: z.record(z.unknown()).optional(),
 }).refine((data) => {
   // 更新時は既存の値が保持されるため、新形式または旧形式のいずれかが存在すればOK
   if (data.targets && data.targets.length > 0) {

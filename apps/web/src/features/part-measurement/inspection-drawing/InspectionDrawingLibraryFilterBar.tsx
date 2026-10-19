@@ -10,6 +10,7 @@ import {
 import { formatResourceCdWithJapaneseNames } from '../../kiosk/leaderOrderBoard/formatResourceCdWithJapaneseNames';
 
 import { inspectionDrawingBoundedSelectClassName } from './inspectionDrawingKioskUi';
+import { inspectionDrawingSopTargetProps } from './inspectionDrawingSopAnnotations';
 
 import type { PartMeasurementProcessGroup } from '../types';
 
@@ -81,6 +82,7 @@ export function InspectionDrawingLibraryFilterBar({
     <div className="flex min-w-0 flex-wrap items-center gap-1.5 rounded border border-white/10 bg-slate-900/60 px-2 py-1.5">
       <div className="w-[11rem] max-w-full shrink-0">
         <input
+          {...inspectionDrawingSopTargetProps('part-number-filter')}
           value={fhincd}
           onChange={(e) => onFhincdChange(e.target.value)}
           className={clsx(kioskInputClassName, 'h-11 w-full text-sm')}
@@ -101,6 +103,7 @@ export function InspectionDrawingLibraryFilterBar({
 
       <div className="w-[19rem] max-w-full shrink-0 overflow-hidden rounded-md">
         <select
+          {...inspectionDrawingSopTargetProps('resource-filter')}
           value={resourceCd}
           aria-label="資源CD"
           onChange={(e) => onResourceCdChange(e.target.value)}
@@ -139,6 +142,7 @@ export function InspectionDrawingLibraryFilterBar({
       </label>
 
       <Button
+        {...inspectionDrawingSopTargetProps('include-inactive')}
         type="button"
         variant={showInactiveTemplates ? 'danger' : 'ghostOnDark'}
         aria-pressed={showInactiveTemplates}
@@ -151,6 +155,7 @@ export function InspectionDrawingLibraryFilterBar({
 
       <div className="ml-auto flex shrink-0 items-center justify-start gap-2">
         <button
+          {...inspectionDrawingSopTargetProps('reload-library')}
           type="button"
           className={clsx(kioskButtonSecondaryClassName, 'min-w-[4.8rem] !px-2 !py-0 text-sm')}
           onClick={onReload}

@@ -50,7 +50,13 @@ class ResendWorker:
                 # WebSocket経由で再配信
                 payload_with_id = dict(payload)
                 payload_with_id.setdefault("eventId", event_id)
-                await self.event_manager.broadcast(payload_with_id)
+                delivered = await self.event_manager.broadcast(payload_with_id)
+                if not delivered:
+                    LOGGER.info(
+                        "Queued NFC event %d has no active receiver; preserving queue order",
+                        event_id,
+                    )
+                    break
                 successful_ids.append(event_id)
                 # 少し間隔を空けて送信（負荷軽減）
                 await asyncio.sleep(0.1)
@@ -108,4 +114,3 @@ class ResendWorker:
                 await self._task
             except asyncio.CancelledError:
                 pass
-

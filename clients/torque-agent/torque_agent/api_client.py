@@ -19,6 +19,11 @@ from .queue_store import QueueStore
 
 LOGGER = logging.getLogger("torque_agent.sender")
 
+TERMINAL_CONFLICT_CODES = {
+    "training": frozenset({"TRAINING_SESSION_STATE_CONFLICT", "TRAINING_ATTEMPTS_COMPLETE"}),
+    "assembly": frozenset({"ASSEMBLY_WORK_UNIT_INVALIDATED", "EVENT_SESSION_MISMATCH"}),
+}
+
 
 class TorqueRecordApi(Protocol):
     async def post(self, session_id: str, event_id: str, payload: dict[str, object]) -> httpx.Response: ...
@@ -39,8 +44,13 @@ class HttpxTorqueRecordApi:
     async def post(self, session_id: str, event_id: str, payload: dict[str, object]) -> httpx.Response:
         body = dict(payload)
         body["sourceEventKey"] = event_id
+        target_kind = body.pop("targetKind", "assembly")
+        if target_kind == "training":
+            path = f"{self._api_base_url}/api/torque-training/sessions/{session_id}/attempts/from-agent"
+        else:
+            path = f"{self._api_base_url}/api/assembly/work-sessions/{session_id}/record-torque"
         return await self._client.post(
-            f"{self._api_base_url}/api/assembly/work-sessions/{session_id}/record-torque",
+            path,
             headers={"x-client-key": self._client_key},
             json=body,
         )
@@ -91,6 +101,24 @@ class OutboxSender:
                             event_id,
                         )
                 else:
+                    error_code = None
+                    if response.status_code == 409:
+                        try:
+                            body = response.json()
+                            error_code = body.get("errorCode") if isinstance(body, dict) else None
+                        except ValueError:
+                            pass
+                    if isinstance(error_code, str) and error_code in TERMINAL_CONFLICT_CODES.get(
+                        payload.get("targetKind", "assembly"), frozenset()
+                    ):
+                        self.queue.reject(event_id, response.status_code, error_code, response.text)
+                        LOGGER.warning(
+                            "Torque record %s moved to rejected outbox: HTTP %s, %s",
+                            event_id,
+                            response.status_code,
+                            error_code,
+                        )
+                        continue
                     self.queue.mark_attempt(event_id, f"HTTP {response.status_code}: {response.text}")
                     return False
             except (httpx.TimeoutException, httpx.NetworkError) as error:

@@ -4,7 +4,7 @@ After=network-online.target
 
 [Timer]
 OnBootSec=1min
-OnUnitActiveSec={{ signage_update_interval | default(30) }}s
+OnUnitActiveSec=30s
 # systemd timerのデフォルトAccuracySec(1min)だと、30秒タイマーでも1分単位に丸められ
 # 「更新が30秒おきにならない → ページが飛ぶ」事象につながるため、精度を明示する。
 AccuracySec=1s
@@ -12,4 +12,3 @@ RandomizedDelaySec=0
 
 [Install]
 WantedBy=timers.target
-

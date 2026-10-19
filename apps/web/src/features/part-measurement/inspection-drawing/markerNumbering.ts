@@ -40,6 +40,30 @@ export function nextAvailableMarkerNo(points: Array<{ markerNo: number }>): numb
   return candidate;
 }
 
+/** 選択点の丸数字を targetMarkerNo に変え、その番号を使っていた点と入れ替える（位置・設定は動かさない） */
+export function swapInspectionDrawingMarkerNo<T extends { id: string; markerNo: number }>(
+  points: readonly T[],
+  pointId: string,
+  targetMarkerNo: number
+): T[] {
+  const source = points.find((p) => p.id === pointId);
+  if (!source || source.markerNo === targetMarkerNo) return [...points];
+  const sourceMarkerNo = source.markerNo;
+  return points.map((p) => {
+    if (p.id === pointId) return { ...p, markerNo: targetMarkerNo };
+    if (p.markerNo === targetMarkerNo) return { ...p, markerNo: sourceMarkerNo };
+    return p;
+  });
+}
+
+/** 保存順（sortOrder）を丸数字順に揃える。同番号は元の並びを保つ */
+export function sortInspectionDrawingPointsByMarkerNo<T extends { markerNo: number }>(points: readonly T[]): T[] {
+  return points
+    .map((point, index) => ({ point, index }))
+    .sort((a, b) => a.point.markerNo - b.point.markerNo || a.index - b.index)
+    .map(({ point }) => point);
+}
+
 export function createInspectionDrawingPoint(
   xRatio: number,
   yRatio: number,
@@ -52,6 +76,7 @@ export function createInspectionDrawingPoint(
     surfaceSide: '',
     supplementText: '',
     depthMode: INSPECTION_DRAWING_DEPTH_MODE_MEASURED,
+    valueKind: 'numeric',
     markerNo,
     xRatio,
     yRatio,
@@ -73,7 +98,8 @@ export function templateItemToDrawingPoint(
   const markerNo = fromMarker ?? item.sortOrder + 1;
   const depthMode = normalizeInspectionDrawingDepthMode(item.depthMode);
   const isThrough = depthMode === INSPECTION_DRAWING_DEPTH_MODE_THROUGH;
-  const toleranceFields = isThrough
+  const valueKind = item.valueKind === 'judgement' ? 'judgement' : 'numeric';
+  const toleranceFields = valueKind === 'judgement' || isThrough
     ? {
         nominalRaw: '',
         upperToleranceRaw: '',
@@ -95,6 +121,7 @@ export function templateItemToDrawingPoint(
     name: item.measurementLabel,
     ...supplement,
     depthMode,
+    valueKind,
     markerNo,
     xRatio: parseOptionalNumber(item.markerXRatio) ?? 0,
     yRatio: parseOptionalNumber(item.markerYRatio) ?? 0,
@@ -136,6 +163,12 @@ export function pointUsesGeometricTolerance(
       options.measurementLabelSettings ?? []
     ) === 'geometric'
   );
+}
+
+export function isInspectionDrawingJudgementPoint(
+  pt: Pick<InspectionDrawingPoint, 'valueKind'>
+): boolean {
+  return pt.valueKind === 'judgement';
 }
 
 function parseGeometricUpperLimitRaw(raw: string): number | { error: string } {
@@ -194,6 +227,9 @@ export function resolvePointToleranceBoundsForSave(
   pt: InspectionDrawingPoint,
   options: InspectionDrawingPointToleranceOptions = {}
 ): ResolvedPointToleranceBounds | { error: string } {
+  if (isInspectionDrawingJudgementPoint(pt)) {
+    return { error: 'OK/NG判定には数値の基準値・公差を設定できません' };
+  }
   if (isInspectionDrawingThroughDepthMode(pt.depthMode)) {
     return {
       kind: 'absolute',
@@ -264,19 +300,40 @@ export function drawingPointToTemplateItemInput(
   calloutTipXRatio: number | null;
   calloutTipYRatio: number | null;
   nominalValue: number | null;
-  lowerLimit: number;
-  upperLimit: number;
+  lowerLimit: number | null;
+  upperLimit: number | null;
   depthMode: 'measured' | 'through';
+  valueKind: 'numeric' | 'judgement';
 } {
   const label = pt.name.trim() || `測定点${pt.markerNo}`;
   const measurementPoint = buildInspectionDrawingMeasurementPoint(label, pt);
+  const valueKind = isInspectionDrawingJudgementPoint(pt) ? 'judgement' : 'numeric';
   const depthMode = isInspectionDrawingThroughDepthMode(pt.depthMode)
     ? INSPECTION_DRAWING_DEPTH_MODE_THROUGH
     : INSPECTION_DRAWING_DEPTH_MODE_MEASURED;
-  const bounds = resolvePointToleranceBoundsForSave(pt, options);
-  if ('error' in bounds) {
-    throw new Error(bounds.error);
+  if (valueKind === 'judgement') {
+    return {
+      sortOrder,
+      datumSurface: '—',
+      measurementPoint,
+      measurementLabel: 'ネジ穴深さ',
+      displayMarker: String(pt.markerNo),
+      unit: null,
+      allowNegative: false,
+      decimalPlaces: 0,
+      markerXRatio: pt.xRatio,
+      markerYRatio: pt.yRatio,
+      calloutTipXRatio: pt.calloutTipXRatio ?? null,
+      calloutTipYRatio: pt.calloutTipYRatio ?? null,
+      nominalValue: null,
+      lowerLimit: null,
+      upperLimit: null,
+      depthMode: INSPECTION_DRAWING_DEPTH_MODE_MEASURED,
+      valueKind
+    };
   }
+  const bounds = resolvePointToleranceBoundsForSave(pt, options);
+  if ('error' in bounds) throw new Error(bounds.error);
   const inferredDp =
     pointUsesGeometricTolerance(pt, options) && bounds.kind === 'absolute'
       ? inferDecimalPlacesFromToleranceRaw({
@@ -311,7 +368,8 @@ export function drawingPointToTemplateItemInput(
       nominalValue: null,
       lowerLimit: INSPECTION_DRAWING_THROUGH_SENTINEL_LIMIT,
       upperLimit: INSPECTION_DRAWING_THROUGH_SENTINEL_LIMIT,
-      depthMode
+      depthMode,
+      valueKind
     };
   }
 
@@ -332,7 +390,8 @@ export function drawingPointToTemplateItemInput(
       nominalValue: null,
       lowerLimit: bounds.lowerLimit,
       upperLimit: bounds.upperLimit,
-      depthMode
+      depthMode,
+      valueKind
     };
   }
   return {
@@ -351,7 +410,8 @@ export function drawingPointToTemplateItemInput(
     nominalValue: bounds.nominal,
     lowerLimit: bounds.lowerLimit,
     upperLimit: bounds.upperLimit,
-    depthMode
+    depthMode,
+    valueKind
   };
 }
 
@@ -359,6 +419,9 @@ export function toleranceBoundsFromPoint(
   pt: InspectionDrawingPoint,
   options: InspectionDrawingPointToleranceOptions = {}
 ): ParsedToleranceBounds | { error: string } {
+  if (isInspectionDrawingJudgementPoint(pt)) {
+    return { error: 'OK/NG判定です' };
+  }
   if (isInspectionDrawingThroughDepthMode(pt.depthMode)) {
     return {
       nominal: INSPECTION_DRAWING_THROUGH_SENTINEL_LIMIT,
@@ -390,6 +453,16 @@ export function toleranceBoundsFromPoint(
     lowerToleranceRaw: pt.lowerToleranceRaw,
     upperToleranceRaw: pt.upperToleranceRaw
   });
+}
+
+/** テンプレ保存前の測定点チェック: OK/NG判定点は公差を持たないため対象外 */
+export function resolveInspectionDrawingPointSaveError(
+  pt: InspectionDrawingPoint,
+  options: InspectionDrawingPointToleranceOptions = {}
+): string | null {
+  if (isInspectionDrawingJudgementPoint(pt)) return null;
+  const bounds = toleranceBoundsFromPoint(pt, options);
+  return 'error' in bounds ? bounds.error : null;
 }
 
 /** 公差欄の明示編集時に legacy スナップショットを外し、必要なら legacy から offset を seed */

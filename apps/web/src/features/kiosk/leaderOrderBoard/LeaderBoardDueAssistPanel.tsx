@@ -4,21 +4,28 @@ import { KioskResourceProcessChips } from '../../../components/kiosk/resourcePro
 import { formatDueDate } from '../productionSchedule/formatDueDate';
 import { formatPlannedDateLabel, formatPlannedQuantityLabel } from '../productionSchedule/plannedDueDisplay';
 
-import type { ProductionScheduleDueManagementPartItem, ProductionScheduleDueManagementSeibanDetail } from '../../../api/client';
+import type {
+  GrindingPlanningBoardDueDetail,
+  GrindingPlanningBoardDueDetailPart
+} from '@raspi-system/shared-types';
 
 type Props = {
   isOpen: boolean;
   selectedFseiban: string | null;
-  detail: ProductionScheduleDueManagementSeibanDetail | undefined;
+  detail: GrindingPlanningBoardDueDetail | undefined;
   loading: boolean;
   error: boolean;
   dueUpdatePending: boolean;
+  readOnly?: boolean;
+  conflict?: boolean;
+  errorMessage?: string | null;
+  onRefresh?: () => void;
   onClose: () => void;
   onOpenSeibanDueDatePicker: () => void;
   onOpenProcessingDueDatePicker: (processingType: string, dueDate: string | null) => void;
 };
 
-function PartRow({ part }: { part: ProductionScheduleDueManagementPartItem }) {
+function PartRow({ part }: { part: GrindingPlanningBoardDueDetailPart }) {
   return (
     <tr className="border-b border-white/10">
       <td className="px-2 py-2 font-mono">{part.fhincd || '-'}</td>
@@ -49,6 +56,10 @@ export function LeaderBoardDueAssistPanel({
   loading,
   error,
   dueUpdatePending,
+  readOnly = false,
+  conflict = false,
+  errorMessage = null,
+  onRefresh,
   onClose,
   onOpenSeibanDueDatePicker,
   onOpenProcessingDueDatePicker
@@ -81,11 +92,21 @@ export function LeaderBoardDueAssistPanel({
       </header>
 
       <div className="border-b border-white/10 px-4 py-3">
+        {errorMessage ? (
+          <div className="mb-2 flex items-start justify-between gap-2 rounded border border-rose-300/40 bg-rose-950/40 px-2 py-2 text-xs text-rose-200" role="alert">
+            <span>{errorMessage}</span>
+            {conflict && onRefresh ? (
+              <button type="button" className="min-h-9 shrink-0 rounded border border-rose-300/50 px-2 text-rose-100 hover:bg-rose-900/50" onClick={onRefresh}>
+                最新状態を取得
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={onOpenSeibanDueDatePicker}
-            disabled={!detail?.fseiban || dueUpdatePending}
+            disabled={!detail?.fseiban || dueUpdatePending || readOnly}
             className="rounded-md bg-slate-700 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-600 disabled:opacity-60"
           >
             納期日: {formatDueDate(detail?.dueDate ?? null)}
@@ -96,7 +117,7 @@ export function LeaderBoardDueAssistPanel({
               type="button"
               onClick={() => onOpenProcessingDueDatePicker(item.processingType, item.dueDate)}
               className="rounded-md bg-cyan-700 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-600 disabled:opacity-60"
-              disabled={!detail?.fseiban || dueUpdatePending}
+              disabled={!detail?.fseiban || dueUpdatePending || readOnly}
             >
               {item.processingType}: {formatDueDate(item.dueDate)}
             </button>

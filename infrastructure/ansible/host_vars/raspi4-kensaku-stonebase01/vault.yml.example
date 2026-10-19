@@ -1,0 +1,4 @@
+# Copy to vault.yml, replace every placeholder, and encrypt with ansible-vault.
+vault_raspi4_kensaku_stonebase01_status_agent_client_key: "REPLACE_WITH_UNIQUE_STATUS_AGENT_KEY"
+vault_raspi4_kensaku_stonebase01_nfc_agent_client_secret: "REPLACE_WITH_UNIQUE_NFC_AGENT_SECRET"
+vault_raspi4_kensaku_stonebase01_torque_agent_client_key: "REPLACE_WITH_UNIQUE_TORQUE_AGENT_KEY"

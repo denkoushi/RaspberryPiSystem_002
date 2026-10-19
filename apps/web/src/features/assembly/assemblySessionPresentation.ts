@@ -13,7 +13,10 @@ export function progressPercent(session: Pick<AssemblyWorkSessionSummaryDto, 'ac
 export function areaStatusText(
   session: Pick<AssemblyWorkSessionSummaryDto, 'currentAreaName' | 'currentBoltMarkerNo'>
 ): string {
-  const areaName = session.currentAreaName ?? 'エリア完了';
+  const areaName =
+    session.currentAreaName === null
+      ? 'エリア完了'
+      : session.currentAreaName.trim() || '工程名なし';
   const position = session.currentBoltMarkerNo
     ? `締付位置 #${session.currentBoltMarkerNo}`
     : '次工程待ち';

@@ -6,11 +6,21 @@
   serial: 1
   order: inventory
   vars:
-    repo_path: /opt/RaspberryPiSystem_002
+    repo_path: "{{ project_root | default('/opt/RaspberryPiSystem_002') }}"
     repo_version: "{{ lookup('env', 'ANSIBLE_REPO_VERSION') }}"
     server_release_mode: host-config-only
 
   pre_tasks:
+    - name: Require explicit staging deployment enablement
+      ansible.builtin.assert:
+        that:
+          - >-
+            not (staging_environment | default(false) | bool) or
+            (staging_deploy_enabled | default(false) | bool)
+        fail_msg: >-
+          staging_deploy_enabled must be explicitly enabled in private staging
+          variables before host configuration can be mutated.
+
     - name: Require canonical rolling release context
       ansible.builtin.import_tasks: "../tasks/assert-release-orchestration.yml"
 

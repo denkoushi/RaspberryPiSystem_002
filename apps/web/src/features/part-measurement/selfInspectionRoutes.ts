@@ -3,6 +3,7 @@ export const KIOSK_SELF_INSPECTION_LIST_PATH = KIOSK_SELF_INSPECTION_PATH_PREFIX
 export const KIOSK_SELF_INSPECTION_START_PATH = `${KIOSK_SELF_INSPECTION_PATH_PREFIX}/start`;
 export const KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH =
   `${KIOSK_SELF_INSPECTION_PATH_PREFIX}/record-approvals`;
+export const KIOSK_SELF_INSPECTION_REDUCTION_PATH = `${KIOSK_SELF_INSPECTION_PATH_PREFIX}/reduction`;
 
 function normalizePathname(pathname: string): string {
   const trimmed = pathname.trim();
@@ -22,4 +23,9 @@ export function kioskSelfInspectionSessionPath(sessionId: string): string {
 
 export function kioskSelfInspectionInspectorSessionPath(sessionId: string): string {
   return `${kioskSelfInspectionSessionPath(sessionId)}/inspector`;
+}
+
+export function kioskSelfInspectionRecordConfirmationPath(sessionId?: string): string {
+  if (!sessionId) return KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH;
+  return `${KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH}?sessionId=${encodeURIComponent(sessionId)}`;
 }

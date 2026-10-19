@@ -2,6 +2,17 @@ services:
   api-blue:
     image: ${PI5_BLUE_API_IMAGE:?PI5_BLUE_API_IMAGE is required}
     restart: unless-stopped
+    user: "${API_RUNTIME_UID:-1000}:${API_RUNTIME_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,mode=1777,size=1g
+    init: true
+    # Preserve Pi4-facing API capacity while candidate build work competes for
+    # Pi5 CPU. Shares are relative and do not reserve idle CPU.
+    cpu_shares: 4096
     healthcheck:
       test:
         [
@@ -18,7 +29,7 @@ services:
       - ../../apps/api/.env.example
       - ${PI5_ENV_FILE:-.env}
     environment: &api-environment
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/borrow_return
+      DATABASE_URL: ${APP_DATABASE_URL:?APP_DATABASE_URL is required}
       PHOTO_STORAGE_DIR: /app/storage
       PDF_STORAGE_DIR: /app/storage
       SIGNAGE_RENDER_DIR: /app/storage/signage-rendered
@@ -27,15 +38,24 @@ services:
       ALERTS_DIR: /app/alerts
       POWER_ACTIONS_DIR: /app/power-actions
       BACKUP_STORAGE_DIR: /opt/backups
+      # 大容量バックアップはRAM上の/tmp tmpfsを避け、ディスクへ保存する
+      BACKUP_TEMP_DIR: ${BACKUP_TEMP_DIR:-/opt/backups/.tmp}
       DROPBOX_ACCESS_TOKEN: ${DROPBOX_ACCESS_TOKEN:-}
       DROPBOX_APP_KEY: ${DROPBOX_APP_KEY:-}
       DROPBOX_APP_SECRET: ${DROPBOX_APP_SECRET:-}
       DROPBOX_REFRESH_TOKEN: ${DROPBOX_REFRESH_TOKEN:-}
+      # BACKUP_ENCRYPTION_KEY は env_file（PI5_ENV_FILE=compose.env）から渡す。ここで ${} 展開すると docker/.env の空値で上書きされる
       SLACK_KIOSK_SUPPORT_WEBHOOK_URL: ${SLACK_KIOSK_SUPPORT_WEBHOOK_URL:-}
       WEBRTC_ENABLED: ${WEBRTC_ENABLED:-true}
       PI5_SCHEDULER_LEADER_ENABLED: "1"
+      # Operation guide copied into the API image; unset disables the Hermes source.
+      KIOSK_OPERATION_GUIDE_DIR: /app/docs/kiosk-operation-guide
       PI5_SCHEDULER_LEASE_FILE: /app/alerts/.pi5-scheduler-leader
       PI5_SCHEDULER_LEASE_INTERVAL_MS: "2000"
+      # DGXリソースの「PI5 業務意図」を再起動・スロット切替後も残す（ホストの config/ に保存）
+      INFERENCE_BUSINESS_PROFILE_INTENT_FILE_PATH: /app/config/business-profile-intent.json
+      # ページ撮影（サイネージ）は同じスロットの Web の内部入口を開く。ホストへは公開されない。
+      SIGNAGE_WEB_CAPTURE_BASE_URL: http://web-blue
     volumes: &api-volumes
       - photo-storage:/app/storage/photos
       - thumbnail-storage:/app/storage/thumbnails
@@ -43,9 +63,19 @@ services:
       - pdf-pages-storage:/app/storage/pdf-pages
       - signage-rendered-storage:/app/storage/signage-rendered
       - part-measurement-drawings-storage:/app/storage/part-measurement-drawings
+      - part-measurement-drawings-derivatives-storage:/app/storage/part-measurement-drawings-derivatives
       - assembly-procedure-images-storage:/app/storage/assembly-procedure-images
+      - assembly-procedure-assets-storage:/app/storage/assembly-procedure-assets
+      - work-instruction-assets-storage:/app/storage/work-instruction-assets
+      - knowledge-assets-storage:/app/storage/knowledge-assets
+      - procedure-materials-storage:/app/storage/procedure-materials
+      - procedure-videos-storage:/app/storage/procedure-videos
+      - knowledge-git-storage:/app/storage/knowledge-git
       - measuring-instrument-genres-storage:/app/storage/measuring-instrument-genres
       - pallet-machine-illustrations-storage:/app/storage/pallet-machine-illustrations
+      - csv-dashboard-storage:/app/storage/csv-dashboards
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/hermes-search:/app/storage/hermes-search
+      - file-integrity-storage:/app/storage/.integrity
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/alerts:/app/alerts
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/power-actions:/app/power-actions
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/config:/app/config
@@ -55,14 +85,39 @@ services:
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/infrastructure/docker:/app/host/infrastructure/docker:ro
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/clients/nfc-agent:/app/host/clients/nfc-agent:ro
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/certs:/app/host/certs:ro
-      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/infrastructure/ansible:/app/host/infrastructure/ansible:ro
-      - ${PI5_SSH_DIR:-/home/denkon5sd02/.ssh}:/root/.ssh:ro
+      - type: bind
+        source: /etc/raspi-backup-ansible
+        target: /app/backup-ansible
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${BACKUP_SSH_PRIVATE_KEY_HOST_PATH:-/opt/RaspberryPiSystem_002/secrets/backup-ssh/id_ed25519}
+        target: /run/secrets/backup-ssh/id_ed25519
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${BACKUP_SSH_KNOWN_HOSTS_HOST_PATH:-/opt/RaspberryPiSystem_002/secrets/backup-ssh/known_hosts}
+        target: /run/secrets/backup-ssh/known_hosts
+        read_only: true
+        bind:
+          create_host_path: false
       - /sys/class/thermal:/sys/class/thermal:ro
-    networks: [pi5]
+    networks: [pi5, business-hermes]
 
   api-green:
     image: ${PI5_GREEN_API_IMAGE:?PI5_GREEN_API_IMAGE is required}
     restart: unless-stopped
+    user: "${API_RUNTIME_UID:-1000}:${API_RUNTIME_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,mode=1777,size=1g
+    init: true
+    cpu_shares: 4096
     healthcheck:
       test:
         [
@@ -78,17 +133,32 @@ services:
     env_file:
       - ../../apps/api/.env.example
       - ${PI5_ENV_FILE:-.env}
-    environment: *api-environment
+    environment:
+      <<: *api-environment
+      SIGNAGE_WEB_CAPTURE_BASE_URL: http://web-green
     volumes: *api-volumes
-    networks: [pi5]
+    networks: [pi5, business-hermes]
 
   web-blue:
     image: ${PI5_BLUE_WEB_IMAGE:?PI5_BLUE_WEB_IMAGE is required}
     restart: unless-stopped
+    user: "${WEB_RUNTIME_UID:-1000}:${WEB_RUNTIME_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "80"
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,mode=1777,size=64m
+      - /config:rw,nosuid,nodev,mode=0700,uid=${WEB_RUNTIME_UID:-1000},gid=${WEB_RUNTIME_GID:-1000},size=16m
+      - /data:rw,nosuid,nodev,mode=0700,uid=${WEB_RUNTIME_UID:-1000},gid=${WEB_RUNTIME_GID:-1000},size=64m
+    init: true
+    cpu_shares: 2048
     environment: &web-environment
       SLOT_API_UPSTREAM: api-blue:8080
       NFC_AGENT_HOST: ${NFC_AGENT_HOST:-192.168.10.224}
-      ADMIN_ALLOW_NETS: ${ADMIN_ALLOW_NETS:-"192.168.10.0/24 192.168.128.0/24 100.64.0.0/10 127.0.0.1/32"}
+      ADMIN_ALLOW_NETS: ${ADMIN_ALLOW_NETS:?ADMIN_ALLOW_NETS is required}
     volumes: &web-volumes
       - thumbnail-storage:/srv/storage/thumbnails:ro
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/certs:/srv/certs:ro
@@ -98,6 +168,19 @@ services:
   web-green:
     image: ${PI5_GREEN_WEB_IMAGE:?PI5_GREEN_WEB_IMAGE is required}
     restart: unless-stopped
+    user: "${WEB_RUNTIME_UID:-1000}:${WEB_RUNTIME_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "80"
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,mode=1777,size=64m
+      - /config:rw,nosuid,nodev,mode=0700,uid=${WEB_RUNTIME_UID:-1000},gid=${WEB_RUNTIME_GID:-1000},size=16m
+      - /data:rw,nosuid,nodev,mode=0700,uid=${WEB_RUNTIME_UID:-1000},gid=${WEB_RUNTIME_GID:-1000},size=64m
+    init: true
+    cpu_shares: 2048
     environment:
       <<: *web-environment
       SLOT_API_UPSTREAM: api-green:8080
@@ -107,21 +190,271 @@ services:
   gateway:
     image: ${PI5_GATEWAY_IMAGE:?PI5_GATEWAY_IMAGE is required}
     restart: unless-stopped
+    user: "${WEB_RUNTIME_UID:-1000}:${WEB_RUNTIME_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "80"
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,mode=1777,size=64m
+      - /config:rw,nosuid,nodev,mode=0700,uid=${WEB_RUNTIME_UID:-1000},gid=${WEB_RUNTIME_GID:-1000},size=16m
+      - /data:rw,nosuid,nodev,mode=0700,uid=${WEB_RUNTIME_UID:-1000},gid=${WEB_RUNTIME_GID:-1000},size=64m
+    init: true
+    cpu_shares: 2048
     environment:
       GATEWAY_CONFIG_FILE: /srv/bluegreen/Caddyfile
     volumes:
-      - ${PI5_BLUE_GREEN_CONFIG_DIR:-/opt/RaspberryPiSystem_002/logs/deploy/bluegreen}:/srv/bluegreen
+      - ${PI5_BLUE_GREEN_CONFIG_DIR:-/opt/RaspberryPiSystem_002/logs/deploy/bluegreen}:/srv/bluegreen:ro
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/certs:/srv/certs:ro
       - ${PI5_CADDY_LOG_DIR:-/var/log/caddy}:/var/log/caddy
     ports:
       - "80:80"
       - "443:443"
-    networks: [pi5]
+    # The stable gateway is the only API entrypoint shared with the private
+    # Hermes bridge. It resolves the canonical blue/green slot from its
+    # deployed Caddyfile; the chat container never selects api-blue/api-green.
+    networks: [pi5, business-hermes]
+
+  business-hermes-egress:
+    profiles: [business-hermes]
+    image: ${BUSINESS_HERMES_EGRESS_IMAGE:-node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,mode=1777,size=16m
+    init: true
+    mem_limit: 64m
+    cpus: "0.25"
+    pids_limit: 32
+    command: [node, /opt/business-hermes-egress/proxy.mjs]
+    environment:
+      DGX_GATEWAY_HOST: ${BUSINESS_HERMES_DGX_GATEWAY_HOST:-100.118.82.72}
+      DGX_GATEWAY_PORT: ${BUSINESS_HERMES_DGX_GATEWAY_PORT:-38081}
+      BUSINESS_HERMES_PROVIDER: ${BUSINESS_HERMES_PROVIDER:-dgx}
+      BUSINESS_HERMES_EGRESS_TIMEOUT_MS: ${BUSINESS_HERMES_EGRESS_TIMEOUT_MS:-60000}
+    volumes:
+      - type: bind
+        source: ${BUSINESS_HERMES_EGRESS_PROXY_FILE:-${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/infrastructure/docker/business-hermes-egress/proxy.mjs}
+        target: /opt/business-hermes-egress/proxy.mjs
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3128/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 2s
+    networks: [business-hermes, business-hermes-egress]
+
+  business-hermes:
+    profiles: [business-hermes]
+    image: ${BUSINESS_HERMES_IMAGE:-nousresearch/hermes-agent:latest@sha256:23d7fdefc42ef4f874938835dcc9543468b45c3fe082415095ab48056c56c32a}
+    restart: unless-stopped
+    user: "10000:10000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,mode=1777,size=128m
+    init: true
+    mem_limit: 1g
+    cpus: "1.0"
+    pids_limit: 128
+    env_file:
+      - ${BUSINESS_HERMES_RUNTIME_ENV_FILE:-/etc/raspi-business-hermes/runtime.env}
+    environment:
+      HERMES_HOME: /opt/data
+      HOME: /opt/data/home
+      HERMES_DOCKER_BINARY: ""
+      HTTPS_PROXY: http://business-hermes-egress:3128
+      HTTP_PROXY: http://business-hermes-egress:3128
+      ALL_PROXY: http://business-hermes-egress:3128
+      NO_PROXY: 127.0.0.1,localhost,business-hermes,business-hermes-egress
+    entrypoint: [/opt/hermes/.venv/bin/hermes]
+    command: [gateway, run, --no-supervise]
+    volumes:
+      - business-hermes-data:/opt/data
+      - type: bind
+        source: ${BUSINESS_HERMES_CONFIG_FILE:-/etc/raspi-business-hermes/config.yaml}
+        target: /opt/data/config.yaml
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      business-hermes-egress:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python3, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8642/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    networks: [business-hermes]
+
+  # Dedicated consultation Hermes. It is opt-in and keeps the existing
+  # assembly-guide instance/configuration untouched.
+  business-hermes-chat-egress:
+    profiles: [business-hermes-chat]
+    image: ${BUSINESS_HERMES_CHAT_EGRESS_IMAGE:-node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,mode=1777,size=16m
+    init: true
+    mem_limit: 64m
+    cpus: "0.25"
+    pids_limit: 32
+    command: [node, /opt/business-hermes-egress/proxy.mjs]
+    environment:
+      DGX_GATEWAY_HOST: ${BUSINESS_HERMES_CHAT_DGX_GATEWAY_HOST:-100.118.82.72}
+      DGX_GATEWAY_PORT: ${BUSINESS_HERMES_CHAT_DGX_GATEWAY_PORT:-38081}
+      BUSINESS_HERMES_PROVIDER: ${BUSINESS_HERMES_CHAT_PROVIDER:-dgx}
+      BUSINESS_HERMES_EGRESS_TIMEOUT_MS: ${BUSINESS_HERMES_CHAT_EGRESS_TIMEOUT_MS:-60000}
+    volumes:
+      - type: bind
+        source: ${BUSINESS_HERMES_CHAT_EGRESS_PROXY_FILE:-${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/infrastructure/docker/business-hermes-egress/proxy.mjs}
+        target: /opt/business-hermes-egress/proxy.mjs
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3128/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 2s
+    networks: [business-hermes, business-hermes-chat-egress]
+
+  business-hermes-chat:
+    profiles: [business-hermes-chat]
+    image: ${BUSINESS_HERMES_CHAT_IMAGE:-nousresearch/hermes-agent:latest@sha256:23d7fdefc42ef4f874938835dcc9543468b45c3fe082415095ab48056c56c32a}
+    restart: unless-stopped
+    user: "10000:10000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,mode=1777,size=128m
+    init: true
+    mem_limit: 1g
+    cpus: "1.0"
+    pids_limit: 128
+    env_file:
+      - ${BUSINESS_HERMES_CHAT_RUNTIME_ENV_FILE:-/etc/raspi-business-hermes-chat/runtime.env}
+    environment:
+      HERMES_HOME: /opt/data
+      HOME: /opt/data/home
+      HERMES_DOCKER_BINARY: ""
+      HTTPS_PROXY: http://business-hermes-chat-egress:3128
+      HTTP_PROXY: http://business-hermes-chat-egress:3128
+      ALL_PROXY: http://business-hermes-chat-egress:3128
+      NO_PROXY: 127.0.0.1,localhost,business-hermes,business-hermes-chat,business-hermes-chat-egress,gateway
+    entrypoint: [/opt/hermes/.venv/bin/hermes]
+    command: [gateway, run, --no-supervise]
+    volumes:
+      - business-hermes-chat-data:/opt/data
+      - type: bind
+        source: ${BUSINESS_HERMES_CHAT_CONFIG_FILE:-/etc/raspi-business-hermes-chat/config.yaml}
+        target: /opt/data/config.yaml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${BUSINESS_HERMES_CHAT_SOUL_FILE:-/etc/raspi-business-hermes-chat/SOUL.md}
+        target: /opt/data/SOUL.md
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${BUSINESS_HERMES_CHAT_CONTEXT_FILE:-/etc/raspi-business-hermes-chat/AGENTS.md}
+        target: /opt/data/home/AGENTS.md
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${BUSINESS_HERMES_CHAT_NO_BUNDLED_SKILLS_FILE:-/etc/raspi-business-hermes-chat/.no-bundled-skills}
+        target: /opt/data/.no-bundled-skills
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${BUSINESS_HERMES_CHAT_SKILLS_DIR:-/etc/raspi-business-hermes-chat/skills}/business-consultation/SKILL.md
+        target: /opt/data/skills/business-consultation/SKILL.md
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      business-hermes-chat-egress:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python3, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8642/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    networks: [business-hermes]
+
+  business-hermes-answer-cache:
+    profiles: [business-hermes-answer-cache]
+    image: ${BUSINESS_HERMES_ANSWER_CACHE_IMAGE:-unused-answer-cache:disabled}
+    restart: unless-stopped
+    user: "${API_RUNTIME_UID:-1000}:${API_RUNTIME_GID:-1000}"
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,nosuid,nodev,size=64m"]
+    mem_limit: 1400m
+    cpus: 2
+    cpu_shares: 256
+    environment:
+      ANSWER_CACHE_TOKEN: ${BUSINESS_HERMES_ANSWER_CACHE_TOKEN:-}
+      ANSWER_CACHE_MAINTENANCE: 'true'
+      ANSWER_CACHE_EMBEDDING_ORIGIN: ${ANSWER_CACHE_EMBEDDING_ORIGIN:-}
+      ANSWER_CACHE_EMBEDDING_TOKEN: ${ANSWER_CACHE_EMBEDDING_TOKEN:-}
+      ANSWER_CACHE_EMBEDDING_EGRESS: http://business-hermes-egress:3128
+      ANSWER_CACHE_REMOTE_PREPARATION: ${ANSWER_CACHE_REMOTE_PREPARATION:-false}
+      ANSWER_CACHE_SOURCES: /data/sources.json
+      OMP_NUM_THREADS: '2'
+      OPENBLAS_NUM_THREADS: '2'
+    volumes:
+      - type: bind
+        source: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/hermes-search/answer-cache
+        target: /data
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8650/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 90s
+    networks: [business-hermes]
 
 networks:
   pi5:
     external: true
     name: ${PI5_DOCKER_NETWORK:-docker_default}
+  # The business agent has no route to the normal Pi5 network. Only the API
+  # the allowlisted egress sidecar, and the stable gateway join this private
+  # bridge. The gateway is the only route from Hermes to the active API slot.
+  business-hermes:
+    internal: true
+  business-hermes-chat-egress:
+    name: ${PI5_BUSINESS_HERMES_CHAT_EGRESS_NETWORK:-business-hermes-chat-egress}
+  business-hermes-egress:
+    name: ${PI5_BUSINESS_HERMES_EGRESS_NETWORK:-business-hermes-egress}
 
 volumes:
   photo-storage:
@@ -142,12 +475,43 @@ volumes:
   part-measurement-drawings-storage:
     external: true
     name: ${PI5_VOLUME_PREFIX:-docker}_part-measurement-drawings-storage
+  part-measurement-drawings-derivatives-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_part-measurement-drawings-derivatives-storage
   assembly-procedure-images-storage:
     external: true
     name: ${PI5_VOLUME_PREFIX:-docker}_assembly-procedure-images-storage
+  assembly-procedure-assets-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_assembly-procedure-assets-storage
+  work-instruction-assets-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_work-instruction-assets-storage
   measuring-instrument-genres-storage:
     external: true
     name: ${PI5_VOLUME_PREFIX:-docker}_measuring-instrument-genres-storage
   pallet-machine-illustrations-storage:
     external: true
     name: ${PI5_VOLUME_PREFIX:-docker}_pallet-machine-illustrations-storage
+  csv-dashboard-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_csv-dashboard-storage
+  file-integrity-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_file-integrity-storage
+  business-hermes-data:
+    name: ${PI5_VOLUME_PREFIX:-docker}_business-hermes-data
+  business-hermes-chat-data:
+    name: ${PI5_VOLUME_PREFIX:-docker}_business-hermes-chat-data
+  knowledge-assets-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_knowledge-assets-storage
+  procedure-materials-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_procedure-materials-storage
+  procedure-videos-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_procedure-videos-storage
+  knowledge-git-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_knowledge-git-storage

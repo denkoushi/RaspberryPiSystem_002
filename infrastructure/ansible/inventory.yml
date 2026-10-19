@@ -4,10 +4,14 @@ all:
       hosts:
         raspberrypi5:
           ansible_host: "{{ server_ip }}"
+          deploy_executor_host: 100.106.158.2
           ansible_user: denkon5sd02
           ansible_python_interpreter: /usr/bin/python3
           ansible_command_timeout: 900
+          unattended_upgrades_enabled: true
           tailscale_enabled: true
+          # 毎晩の DR。false にすると次の playbook 実行でタイマーが止まる
+          google_drive_dr_timer_enabled: true
           # キオスクお問い合わせ（Slack通知）
           # NOTE: vaultで管理し、Ansibleで /opt/RaspberryPiSystem_002/infrastructure/docker/.env に反映する
           slack_kiosk_support_webhook_url: "{{ vault_slack_kiosk_support_webhook_url | default('') }}"
@@ -17,6 +21,8 @@ all:
           dropbox_app_secret: "{{ vault_dropbox_app_secret | default('') }}"
           dropbox_refresh_token: "{{ vault_dropbox_refresh_token | default('') }}"
           dropbox_access_token: "{{ vault_dropbox_access_token | default('') }}"
+          # Dropboxへ送るバックアップの暗号鍵（32バイトbase64）。Google Drive DRと.vault-passで別途保全される
+          backup_encryption_key: "{{ vault_backup_encryption_key | default('') }}"
           # Alerts Dispatcher設定
           # NOTE: vaultで管理し、Ansibleで /opt/RaspberryPiSystem_002/infrastructure/docker/.env に反映する
           alerts_dispatcher_enabled: "{{ vault_alerts_dispatcher_enabled | default('true') }}"
@@ -28,9 +34,74 @@ all:
           alerts_slack_webhook_security: "{{ vault_alerts_slack_webhook_security | default('') }}"
           alerts_slack_webhook_support: "{{ vault_alerts_slack_webhook_support | default('') }}"
           # API環境変数
-          api_database_url: "postgresql://postgres:postgres@db:5432/borrow_return"
-          api_jwt_access_secret: "{{ vault_api_jwt_access_secret | default('change-me-in-production') }}"
-          api_jwt_refresh_secret: "{{ vault_api_jwt_refresh_secret | default('change-me-in-production') }}"
+          postgres_superuser_password: "{{ vault_postgres_superuser_password }}"
+          app_database_url: "{{ vault_app_database_url }}"
+          migration_database_url: "{{ vault_migration_database_url }}"
+          api_jwt_access_secret: "{{ vault_api_jwt_access_secret }}"
+          api_jwt_refresh_secret: "{{ vault_api_jwt_refresh_secret }}"
+          # Server-side JEV credential for incremental classification of the
+          # authorized nonconformity snapshot. It is never sent to browser assets.
+          hermes_search_typesafe_api_key: "{{ vault_hermes_search_record_pilot_typesafe_api_key | default('') }}"
+          procedure_material_split_suggestion_enabled: true
+          # Business Hermes runs as an independent container on this Pi5. Keep
+          # both credentials in Vault; they are never shared with Private Pi5
+          # Hermes or the ordinary API .env beyond the API-side bearer key.
+          business_hermes_enabled: "{{ vault_business_hermes_enabled | default(false) }}"
+          business_hermes_provider: "{{ vault_business_hermes_provider | default('dgx') }}"
+          business_hermes_dgx_token: "{{ vault_api_local_llm_shared_token | default('') }}"
+          business_hermes_api_key: "{{ vault_business_hermes_api_key | default('') }}"
+          business_hermes_openai_api_key: "{{ vault_business_hermes_openai_api_key | default('') }}"
+          business_hermes_image: "nousresearch/hermes-agent:latest@sha256:23d7fdefc42ef4f874938835dcc9543468b45c3fe082415095ab48056c56c32a"
+          business_hermes_egress_image: "node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293"
+          business_hermes_runtime_env_file: "/etc/raspi-business-hermes/runtime.env"
+          business_hermes_model: "{{ inference_photo_label_model if (business_hermes_provider | default('dgx')) == 'dgx' else (vault_business_hermes_model | default('')) }}"
+          api_business_hermes_base_url: "{{ 'http://business-hermes:8642' if (business_hermes_enabled | bool) else '' }}"
+          # The API's A2UI renderer follows the active Blue/Green web slot through
+          # the stable internal gateway; this is not a Mac localhost setting.
+          business_hermes_web_base_url: "https://gateway"
+          api_business_hermes_api_key: "{{ business_hermes_api_key }}"
+          api_business_hermes_model: "{{ business_hermes_model }}"
+          api_business_hermes_timeout_ms: "8000"
+          api_business_hermes_chat_timeout_ms: "180000"
+          # Independent consultation Hermes. It is opt-in so the existing
+          # assembly-guide service keeps its current behavior. Enabled by the approved rollout.
+          # Dedicated domain-separated keys derive from the existing Vault secret unless overridden.
+          business_hermes_chat_enabled: "{{ vault_business_hermes_chat_enabled | default(true) }}"
+          business_hermes_answer_cache_enabled: true
+          hermes_knowledge_enabled: true
+          # Nightly inspection-drawing dimension map on the DGX background lane (00:20-05:20 JST).
+          part_measurement_drawing_dimension_map_enabled: true
+          procedure_speech_to_text_enabled: true
+          # The answer-cache improvement batch (business-hermes-nightly) is stopped.
+          # Chat answers moved to cross-source retrieval on 2026-09-24, which parked
+          # the GPTCache answer cache; the cache had no hits after 2026-09-13, while
+          # the batch failed every minute from 2026-09-22 and filled ~106 GB of jobs.
+          # The answer-cache service itself keeps serving the consultation lookups.
+          business_hermes_nightly_enabled: false
+          business_hermes_background_enabled: false
+          business_hermes_remote_preparation_enabled: true
+          business_hermes_chat_api_key: "{{ vault_business_hermes_chat_api_key | default(((business_hermes_api_key ~ ':consultation-api:v1') | hash('sha256')) if business_hermes_api_key | length >= 16 else '') }}"
+          business_hermes_chat_mcp_api_key: "{{ vault_business_hermes_chat_mcp_api_key | default(((business_hermes_api_key ~ ':consultation-mcp:v1') | hash('sha256')) if business_hermes_api_key | length >= 16 else '') }}"
+          business_hermes_chat_dgx_token: "{{ vault_api_local_llm_shared_token | default('') }}"
+          business_hermes_chat_model: "{{ vault_business_hermes_chat_model | default('system-prod-primary') }}"
+          # Resolve through the stable Caddy gateway so blue/green activation
+          # follows the canonical active slot instead of pinning api-blue/api-green.
+          business_hermes_chat_mcp_url: "{{ vault_business_hermes_chat_mcp_url | default('https://gateway/api/internal/business-hermes/mcp') }}"
+          business_hermes_chat_dgx_base_url: "{{ private_pi5_dgx_base_url | default('http://100.118.82.72:38081') }}"
+          business_hermes_chat_image: "nousresearch/hermes-agent:latest@sha256:23d7fdefc42ef4f874938835dcc9543468b45c3fe082415095ab48056c56c32a"
+          business_hermes_chat_egress_image: "node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293"
+          business_hermes_chat_runtime_env_file: "/etc/raspi-business-hermes-chat/runtime.env"
+          business_hermes_chat_config_file: "/etc/raspi-business-hermes-chat/config.yaml"
+          business_hermes_chat_soul_file: "/etc/raspi-business-hermes-chat/SOUL.md"
+          business_hermes_chat_context_file: "/etc/raspi-business-hermes-chat/AGENTS.md"
+          business_hermes_chat_skills_dir: "/etc/raspi-business-hermes-chat/skills"
+          business_hermes_chat_no_bundled_skills_file: "/etc/raspi-business-hermes-chat/.no-bundled-skills"
+          business_hermes_chat_egress_timeout_ms: "60000"
+          api_business_hermes_chat_base_url: "{{ 'http://business-hermes-chat:8642' if (business_hermes_chat_enabled | bool) else '' }}"
+          api_business_hermes_chat_api_key: "{{ business_hermes_chat_api_key }}"
+          api_business_hermes_chat_model: "{{ business_hermes_chat_model }}"
+          api_business_hermes_chat_mcp_api_key: "{{ business_hermes_chat_mcp_api_key }}"
+          business_hermes_egress_timeout_ms: "60000"
           api_local_llm_base_url: "http://100.118.82.72:38081"
           api_local_llm_shared_token: "{{ vault_api_local_llm_shared_token | default('') }}"
           api_local_llm_model: "system-prod-primary"
@@ -51,13 +122,9 @@ all:
           api_local_llm_runtime_warm_window_end_hour: "23"
           # DGXリソース管理（未設定時は監視/起停を自動有効化しない）
           api_dgx_resource_metrics_url: "{{ vault_api_dgx_resource_metrics_url | default('') }}"
-          api_dgx_resource_comfyui_health_url: "{{ vault_api_dgx_resource_comfyui_health_url | default('http://100.118.82.72:38081/private-comfyui/health') }}"
           api_dgx_resource_embedding_health_url: "{{ vault_api_dgx_resource_embedding_health_url | default('') }}"
           api_dgx_resource_spark_host_status_url: "{{ vault_api_dgx_resource_spark_host_status_url | default('') }}"
           api_dgx_resource_probe_timeout_ms: "{{ vault_api_dgx_resource_probe_timeout_ms | default('10000') }}"
-          api_dgx_resource_private_comfyui_runtime_start_url: "{{ vault_api_dgx_resource_private_comfyui_runtime_start_url | default('http://100.118.82.72:38081/private-comfyui/start') }}"
-          api_dgx_resource_private_comfyui_runtime_stop_url: "{{ vault_api_dgx_resource_private_comfyui_runtime_stop_url | default('http://100.118.82.72:38081/private-comfyui/stop') }}"
-          api_dgx_resource_private_comfyui_runtime_control_token: "{{ vault_api_dgx_resource_private_comfyui_runtime_control_token | default(vault_api_local_llm_runtime_control_token | default('')) }}"
           api_dgx_resource_experiment_lab_runtime_start_url: "{{ vault_api_dgx_resource_experiment_lab_runtime_start_url | default('http://100.118.82.72:38081/experiment-lab/start') }}"
           api_dgx_resource_experiment_lab_runtime_stop_url: "{{ vault_api_dgx_resource_experiment_lab_runtime_stop_url | default('http://100.118.82.72:38081/experiment-lab/stop') }}"
           api_dgx_resource_experiment_lab_runtime_control_token: "{{ vault_api_dgx_resource_experiment_lab_runtime_control_token | default(vault_api_local_llm_runtime_control_token | default('')) }}"
@@ -83,14 +150,15 @@ all:
           photo_tool_embedding_enabled: "{{ vault_photo_tool_embedding_enabled | default('false') }}"
           photo_tool_embedding_url: "{{ vault_photo_tool_embedding_url | default('') }}"
           photo_tool_embedding_api_key: "{{ vault_photo_tool_embedding_api_key | default('') }}"
-          photo_tool_embedding_model_id: "{{ vault_photo_tool_embedding_model_id | default('') }}"
+          # 秘密値ではないため inventory に置く。DGX の埋め込みサーバーのモデルと必ず一致させる（ADR-20261007）
+          photo_tool_embedding_model_id: "embeddinggemma-2-512d"
           photo_tool_embedding_timeout_ms: "{{ vault_photo_tool_embedding_timeout_ms | default('30000') }}"
           photo_tool_embedding_dimension: "{{ vault_photo_tool_embedding_dimension | default('512') }}"
           photo_tool_similarity_max_candidates: "{{ vault_photo_tool_similarity_max_candidates | default('5') }}"
-          photo_tool_similarity_max_cosine_distance: "{{ vault_photo_tool_similarity_max_cosine_distance | default('0.22') }}"
+          photo_tool_similarity_max_cosine_distance: "{{ vault_photo_tool_similarity_max_cosine_distance | default('0.14') }}"
           photo_tool_similarity_pipeline_version: "{{ vault_photo_tool_similarity_pipeline_version | default('vision_jpeg_v1') }}"
           photo_tool_label_assist_shadow_enabled: "{{ vault_photo_tool_label_assist_shadow_enabled | default('false') }}"
-          photo_tool_label_assist_max_cosine_distance: "{{ vault_photo_tool_label_assist_max_cosine_distance | default('0.14') }}"
+          photo_tool_label_assist_max_cosine_distance: "{{ vault_photo_tool_label_assist_max_cosine_distance | default('0.10') }}"
           photo_tool_label_assist_min_neighbors: "{{ vault_photo_tool_label_assist_min_neighbors | default('2') }}"
           photo_tool_label_assist_convergence_top_k: "{{ vault_photo_tool_label_assist_convergence_top_k | default('2') }}"
           photo_tool_label_assist_query_neighbor_limit: "{{ vault_photo_tool_label_assist_query_neighbor_limit | default('40') }}"
@@ -106,25 +174,19 @@ all:
           part_measurement_drawing_ocr_rapidocr_enabled: "true"
           part_measurement_drawing_ocr_rapidocr_timeout_ms: "20000"
           part_measurement_drawing_ocr_rapidocr_weak_score: "0.12"
-          # Web環境変数
-          web_api_base_url: "/api"
-          web_ws_base_url: "/ws"
-          web_agent_ws_url: "{{ websocket_agent_url }}"
           # 実績基準時間: actor locationに特徴量が無い場合はshared-global-rankへフォールバック
           actual_hours_shared_fallback_enabled: "true"
-          # kiosk増台に備え、kiosk端末では localhost のNFC Agentを優先（失敗時は従来経路へフォールバック）
-          web_agent_ws_mode: "local"
-          # 納期管理キオスク新レイアウト（V2）有効化（実機検証後 true に切り替え）
-          web_kiosk_due_mgmt_layout_v2_enabled: "true"
           # 順位ボードの生産指示分割（Step 1 pilotまではfalse。API/Webで値を揃える）
           kiosk_production_schedule_order_split_enabled: "false"
-          web_kiosk_production_schedule_order_split_enabled: "false"
           # Docker Compose環境変数はgroup_vars/all.ymlで定義済み
           # status-agent設定
           status_agent_client_id: raspberrypi5-server
+          # Also set on every release by release_pi5/tasks/host-status-agent-storage.yml.
+          status_agent_storage_health_enabled: "1"
+          status_agent_storage_health_write_warn_gb_per_day: "300"
           status_agent_location: "ラズパイ5 - サーバー"
           status_agent_tls_skip_verify: "1"
-          status_agent_client_key: "{{ vault_status_agent_client_key | default('client-key-raspberrypi5-server') }}"
+          status_agent_client_key: "{{ vault_status_agent_client_key }}"
           status_agent_api_base_url: "{{ api_base_url }}"
     clients:
       # clientsは子グループ（kiosk/signage）に分割して管理する。
@@ -133,14 +195,16 @@ all:
         kiosk:
           vars:
             status_agent_storage_health_enabled: "1"
+            # Chromium は Pi5 証明書の公開鍵だけを許可する（KB-413）。証明書を作り直したら先に更新する
+            kiosk_server_cert_spki_sha256: "r/YEhqMVoGQ+qmTUCn2lUq+a0XWS1IgGBbpunlszobE="
+          # Each kiosk's status agent, NFC agent, torque agent and browser start URL share one
+          # per-device credential from host_vars/<host>/vault.yml. A changed value reaches a
+          # kiosk only through a release of that host (docs/plans/security-client-key-rotation-phase-b.md).
           hosts:
             raspberrypi4:
               ansible_host: "{{ kiosk_ip }}"
               ansible_user: tools03
-              # Recovery is an explicit per-host capability; never inherit it
-              # into a newly-added kiosk or a LAN/DNS-only site.
-              pi4_recovery_enabled: true
-              kiosk_browser_engine: "firefox"
+              kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               # IBus 単一オーナー化（KB-287: 日本語入力不安定の解消。robodrill01 で有効だった設定を kensakuMain にも適用）
               ibus_owner_mode: "single-owner"
@@ -148,7 +212,7 @@ all:
               tailscale_enabled: true
               ansible_command_timeout: 600
               status_agent_client_id: raspberrypi4-kiosk1
-              status_agent_client_key: "{{ vault_status_agent_client_key | default('client-key-raspberrypi4-kiosk1') }}"
+              status_agent_client_key: "{{ vault_status_agent_client_key }}"
               status_agent_location: "第2工場 - kensakuMain"
               kiosk_url: "{{ kiosk_full_url }}?clientKey={{ status_agent_client_key }}"
               # kiosk-browser.serviceを管理対象にする
@@ -173,14 +237,13 @@ all:
               # NFCエージェント環境変数
               nfc_agent_api_base_url: "{{ api_base_url }}"
               nfc_agent_client_id: "raspberrypi4-kiosk1"
-              nfc_agent_client_secret: "{{ vault_nfc_agent_client_secret | default('client-key-raspberrypi4-kiosk1') }}"
+              nfc_agent_client_secret: "{{ vault_nfc_agent_client_secret }}"
             raspi4-robodrill01:
               # RoboDrill01 キオスク（Pi4増設）
               # NOTE: group_vars/all.yml の local_network / tailscale_network に raspi4_robodrill01_ip を追加済み
               ansible_host: "{{ current_network.raspi4_robodrill01_ip | default(local_network.raspi4_robodrill01_ip) }}"
               ansible_user: tools04
-              pi4_recovery_enabled: true
-              kiosk_browser_engine: "firefox"
+              kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               # IBus 単一オーナー化は robodrill 先行で段階導入する
               ibus_owner_mode: "single-owner"
@@ -188,8 +251,8 @@ all:
               tailscale_enabled: true
               ansible_command_timeout: 600
               status_agent_client_id: raspi4-robodrill01-kiosk1
-              # 登録スクリプト（scripts/register-clients.sh）でそのまま使えるよう、キーは文字列で固定する
-              status_agent_client_key: "client-key-raspi4-robodrill01-kiosk1"
+              # 端末固有キーはexact-host Vaultからのみ解決し、inventoryへ平文を戻さない
+              status_agent_client_key: "{{ vault_raspi4_robodrill01_status_agent_client_key }}"
               status_agent_location: "第2工場 - RoboDrill01"
               kiosk_url: "{{ kiosk_full_url }}?clientKey={{ status_agent_client_key }}"
               manage_kiosk_browser: true
@@ -211,21 +274,20 @@ all:
                 - /usr/bin/systemctl restart status-agent.timer
               nfc_agent_api_base_url: "{{ api_base_url }}"
               nfc_agent_client_id: "raspi4-robodrill01-kiosk1"
-              nfc_agent_client_secret: "client-key-raspi4-robodrill01-kiosk1"
+              nfc_agent_client_secret: "{{ vault_raspi4_robodrill01_nfc_agent_client_secret }}"
             raspi4-fjv60-80:
               # FJV60/80 キオスク（Pi4 3台目）
               # NOTE: group_vars/all.yml の local_network / tailscale_network に raspi4_fjv60_80_ip を定義
               ansible_host: "{{ current_network.raspi4_fjv60_80_ip | default(local_network.raspi4_fjv60_80_ip) }}"
               ansible_user: raspi4-fjv60-80
-              pi4_recovery_enabled: true
-              kiosk_browser_engine: "firefox"
+              kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               ibus_owner_mode: "single-owner"
               ibus_disable_competing_autostart: true
               tailscale_enabled: true
               ansible_command_timeout: 600
               status_agent_client_id: raspi4-fjv60-80-kiosk1
-              status_agent_client_key: "client-key-raspi4-fjv60-80-kiosk1"
+              status_agent_client_key: "{{ vault_raspi4_fjv60_80_status_agent_client_key }}"
               status_agent_location: "第2工場 - FJV60/80"
               kiosk_url: "{{ kiosk_full_url }}?clientKey={{ status_agent_client_key }}"
               manage_kiosk_browser: true
@@ -247,21 +309,20 @@ all:
                 - /usr/bin/systemctl restart status-agent.timer
               nfc_agent_api_base_url: "{{ api_base_url }}"
               nfc_agent_client_id: "raspi4-fjv60-80-kiosk1"
-              nfc_agent_client_secret: "client-key-raspi4-fjv60-80-kiosk1"
+              nfc_agent_client_secret: "{{ vault_raspi4_fjv60_80_nfc_agent_client_secret }}"
             raspi4-kensaku-stonebase01:
               # Kensaku StoneBase01 キオスク（Pi4 4台目）
               # NOTE: Pi5 から LAN 直が無い場合は新 Pi4 で Tailscale 参加後、group_vars/all.yml の tailscale_network に 100.x を追加
               ansible_host: "{{ current_network.raspi4_kensaku_stonebase01_ip | default(local_network.raspi4_kensaku_stonebase01_ip) }}"
               ansible_user: raspi4-kensaku-stonebase01
-              pi4_recovery_enabled: true
-              kiosk_browser_engine: "firefox"
+              kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               ibus_owner_mode: "single-owner"
               ibus_disable_competing_autostart: true
               tailscale_enabled: true
               ansible_command_timeout: 600
               status_agent_client_id: raspi4-kensaku-stonebase01-kiosk1
-              status_agent_client_key: "client-key-raspi4-kensaku-stonebase01-kiosk1"
+              status_agent_client_key: "{{ vault_raspi4_kensaku_stonebase01_status_agent_client_key }}"
               status_agent_location: "第2工場 - StoneBase01"
               kiosk_url: "{{ kiosk_full_url }}?clientKey={{ status_agent_client_key }}"
               manage_kiosk_browser: true
@@ -283,17 +344,24 @@ all:
                 - /usr/bin/systemctl restart status-agent.timer
               nfc_agent_api_base_url: "{{ api_base_url }}"
               nfc_agent_client_id: "raspi4-kensaku-stonebase01-kiosk1"
-              nfc_agent_client_secret: "client-key-raspi4-kensaku-stonebase01-kiosk1"
+              nfc_agent_client_secret: "{{ vault_raspi4_kensaku_stonebase01_nfc_agent_client_secret }}"
               # USB シリアル(CDC ACM)バーコードリーダー → localhost WebSocket（profile=barcode）
               barcode_agent_enabled: true
               barcode_agent_serial_device: "/dev/ttyACM0"
               barcode_agent_serial_baud: 9600
               barcode_agent_rest_port: 7072
+              # The reader remains intentionally detached during development.
+              # This separately approved bounded lease expires automatically
+              # at 2026-08-11 11:15 JST; renew or reconnect only after review.
+              terminal_agent_maintenance_leases:
+                barcode-agent:
+                  reasonCode: "temporary-development-detach"
+                  expiresAt: "2026-08-11T02:15:00Z"
               # 外付けRTL8761BUと実測済みCEM3-BTLAだけをtorque-agentへ公開する。
               torque_agent_enabled: true
               torque_connection_lease_enabled: true
               torque_agent_api_base_url: "{{ server_base_url }}"
-              torque_agent_client_key: "{{ status_agent_client_key }}"
+              torque_agent_client_key: "{{ vault_raspi4_kensaku_stonebase01_torque_agent_client_key }}"
               # Pi5 currently presents a self-signed Caddy certificate. This exception is scoped to StoneBase.
               torque_agent_tls_verify_mode: "insecure"
               torque_agent_browser_origins:
@@ -310,20 +378,20 @@ all:
               torque_agent_hid_devices:
                 - path: "/dev/input/by-id/bluetooth-TOHNICHI_702902S-event-kbd"
                   parserProfile: "cem3-btla-hogp-v1"
+                  serialNumber: "702902S"
             raspi4-sessaku-01:
               # Sessaku-01 キオスク（Pi4 5台目）
               # NOTE: 通常運用は Tailscale、初期セットアップ時のみ local_network にフォールバックする
               ansible_host: "{{ current_network.raspi4_sessaku_01_ip | default(local_network.raspi4_sessaku_01_ip) }}"
               ansible_user: raspi4-sessaku-01
-              pi4_recovery_enabled: true
-              kiosk_browser_engine: "firefox"
+              kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               ibus_owner_mode: "single-owner"
               ibus_disable_competing_autostart: true
               tailscale_enabled: true
               ansible_command_timeout: 600
               status_agent_client_id: raspi4-sessaku-01-kiosk1
-              status_agent_client_key: "client-key-raspi4-sessaku-01-kiosk1"
+              status_agent_client_key: "{{ vault_raspi4_sessaku_01_status_agent_client_key }}"
               status_agent_location: "第2工場 - Sessaku-01"
               kiosk_url: "{{ kiosk_full_url }}?clientKey={{ status_agent_client_key }}"
               manage_kiosk_browser: true
@@ -345,14 +413,13 @@ all:
                 - /usr/bin/systemctl restart status-agent.timer
               nfc_agent_api_base_url: "{{ api_base_url }}"
               nfc_agent_client_id: "raspi4-sessaku-01-kiosk1"
-              nfc_agent_client_secret: "client-key-raspi4-sessaku-01-kiosk1"
+              nfc_agent_client_secret: "{{ vault_raspi4_sessaku_01_nfc_agent_client_secret }}"
             raspi4-assembly-01:
               # Assembly-01 キオスク（Pi4 6台目）
               # NOTE: Tailscale IP 登録前は local_network にフォールバックする
               ansible_host: "{{ current_network.raspi4_assembly_01_ip | default(local_network.raspi4_assembly_01_ip) }}"
               ansible_user: raspi4-assembly-01
-              # pi4_recovery_enabled は実機復旧受入れ完了後に限り明示的に有効化する
-              kiosk_browser_engine: "firefox"
+              kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               ibus_owner_mode: "single-owner"
               ibus_disable_competing_autostart: true
@@ -361,7 +428,7 @@ all:
               tailscale_auth_key: "{{ hostvars['raspberrypi5'].vault_tailscale_auth_key | default('') }}"
               ansible_command_timeout: 600
               status_agent_client_id: raspi4-assembly-01-kiosk1
-              status_agent_client_key: "client-key-raspi4-assembly-01-kiosk1"
+              status_agent_client_key: "{{ vault_raspi4_assembly_01_status_agent_client_key }}"
               status_agent_location: "第2工場 - Assembly-01"
               kiosk_initial_route: "assembly"
               kiosk_url: "{{ kiosk_full_url }}?clientKey={{ status_agent_client_key }}"
@@ -384,12 +451,12 @@ all:
                 - /usr/bin/systemctl restart status-agent.timer
               nfc_agent_api_base_url: "{{ api_base_url }}"
               nfc_agent_client_id: "raspi4-assembly-01-kiosk1"
-              nfc_agent_client_secret: "client-key-raspi4-assembly-01-kiosk1"
+              nfc_agent_client_secret: "{{ vault_raspi4_assembly_01_nfc_agent_client_secret }}"
               # Release A installs the fail-closed lease path. Pairing remains a manual Release B gate.
               torque_agent_enabled: true
               torque_connection_lease_enabled: true
               torque_agent_api_base_url: "{{ server_base_url }}"
-              torque_agent_client_key: "{{ status_agent_client_key }}"
+              torque_agent_client_key: "{{ vault_raspi4_assembly_01_torque_agent_client_key }}"
               torque_agent_tls_verify_mode: "insecure"
               torque_agent_browser_origins:
                 - "{{ server_base_url }}"
@@ -405,6 +472,41 @@ all:
               torque_agent_hid_devices:
                 - path: "/dev/input/by-id/bluetooth-TOHNICHI_702902S-event-kbd"
                   parserProfile: "cem3-btla-hogp-v1"
+                  serialNumber: "702902S"
+            raspi4-kensaku-02:
+              # Kensaku-02 キオスク（Pi4 7台目）
+              ansible_host: "{{ current_network.raspi4_kensaku_02_ip | default(local_network.raspi4_kensaku_02_ip) }}"
+              ansible_user: raspi4-kensaku-02
+              kiosk_browser_engine: "chromium"
+              kiosk_browser_mode: "app-like"
+              ibus_owner_mode: "single-owner"
+              ibus_disable_competing_autostart: true
+              tailscale_enabled: true
+              ansible_command_timeout: 600
+              status_agent_client_id: raspi4-kensaku-02-kiosk1
+              status_agent_client_key: "{{ vault_raspi4_kensaku_02_status_agent_client_key }}"
+              status_agent_location: "第2工場 - Kensaku-02"
+              kiosk_url: "{{ kiosk_full_url }}?clientKey={{ status_agent_client_key }}"
+              manage_kiosk_browser: true
+              services_to_restart:
+                - kiosk-browser.service
+                - status-agent.service
+                - status-agent.timer
+              sudo_nopasswd_commands:
+                - /usr/bin/systemctl start kiosk-browser.service
+                - /usr/bin/systemctl stop kiosk-browser.service
+                - /usr/bin/systemctl restart kiosk-browser.service
+                - /usr/bin/systemctl reboot
+                - /usr/bin/systemctl poweroff
+                - /usr/bin/systemctl start status-agent.service
+                - /usr/bin/systemctl stop status-agent.service
+                - /usr/bin/systemctl restart status-agent.service
+                - /usr/bin/systemctl start status-agent.timer
+                - /usr/bin/systemctl stop status-agent.timer
+                - /usr/bin/systemctl restart status-agent.timer
+              nfc_agent_api_base_url: "{{ api_base_url }}"
+              nfc_agent_client_id: "raspi4-kensaku-02-kiosk1"
+              nfc_agent_client_secret: "{{ vault_raspi4_kensaku_02_nfc_agent_client_secret }}"
         signage:
           hosts:
             raspberrypi3:
@@ -417,10 +519,15 @@ all:
               # デバイスタイプ: Pi3（メモリ416MB、lightdm停止が必要）
               device_type: "pi3"
               status_agent_client_id: raspberrypi3-signage1
-              status_agent_client_key: "{{ vault_status_agent_client_key | default('client-key-raspberrypi3-signage1') }}"
+              status_agent_client_key: "{{ vault_status_agent_client_key }}"
+              # Rendered into /etc/raspi-status-agent.conf by release_signage; matches
+              # the value release_signage/tasks/host-status-agent-storage.yml enforces.
+              status_agent_storage_health_enabled: "1"
               status_agent_location: "第2工場 - signageMakoRoom"
+              # 低メモリ時のTLS handshake遅延を通常の10秒より長く許容する
+              status_agent_request_timeout: "30"
               signage_server_url: "{{ server_base_url }}"
-              signage_client_key: "{{ vault_signage_client_key | default('client-key-raspberrypi3-signage1') }}"
+              signage_client_key: "{{ vault_signage_client_key }}"
               # signage-lite.serviceを管理対象にする
               manage_signage_lite: true
               # このホストで再起動するサービスリスト
@@ -433,6 +540,7 @@ all:
                 - /usr/bin/systemctl start signage-lite.service
                 - /usr/bin/systemctl stop signage-lite.service
                 - /usr/bin/systemctl restart signage-lite.service
+                - /usr/bin/systemctl start signage-lite-update.service
                 - /usr/bin/systemctl start signage-lite-update.timer
                 - /usr/bin/systemctl stop signage-lite-update.timer
                 - /usr/bin/systemctl restart signage-lite-update.timer

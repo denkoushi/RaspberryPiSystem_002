@@ -1,20 +1,31 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { KIOSK_ANALYTICS_DADS_THEME } from '../../components/kiosk/analytics/kioskAnalyticsTheme';
+import { KIOSK_ANALYTICS_THEME } from '../../components/kiosk/analytics/kioskAnalyticsTheme';
 import { useItemLoanAnalytics } from '../../features/item-analytics/useItemLoanAnalytics';
 import {
   ANALYTICS_KIOSK_DISPLAY_LIMITS,
-  ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS,
   type AnalyticsListMode,
   countPeriodEventKinds,
-  isFullListTruncated,
+  longestOverdueDays,
+  overdueDays,
+  previousMonthBorrowChangePercent,
+  selectOpenLoansForDisplay,
   periodReturnCompletionRatePercent,
   selectAssetsForDisplay,
   selectEmployeesForDisplay,
   summarizeAssetInventory,
   takeTodayEventsForDisplay
 } from '../../features/kiosk-loan-analytics/analyticsDisplayPolicy';
-import { periodRangeToIso, toDayInputValue, toMonthInputValue } from '../../features/kiosk-loan-analytics/period';
+import {
+  formatDueDateJa,
+  formatShortPeriodLabel,
+  formatTimeJa,
+  isLatestPeriod,
+  periodRangeToIso,
+  shiftPeriod,
+  toDayInputValue,
+  toMonthInputValue
+} from '../../features/kiosk-loan-analytics/period';
 import { type DatasetTab, type ViewModel, mapResponseToViewModel } from '../../features/kiosk-loan-analytics/view-model';
 import { useMeasuringInstrumentLoanAnalytics } from '../../features/measuring-instrument-analytics/useMeasuringInstrumentLoanAnalytics';
 import { useRiggingLoanAnalytics } from '../../features/rigging-analytics/useRiggingLoanAnalytics';
@@ -23,14 +34,14 @@ import { isNotFoundQueryError } from './isNotFoundQueryError';
 
 import type { AssetFilterOption } from '../../components/kiosk/analytics/kioskAnalyticsTypes';
 
-const theme = KIOSK_ANALYTICS_DADS_THEME;
+const theme = KIOSK_ANALYTICS_THEME;
 
 /**
  * 集計ページの取得・派生 view・ローカルUI状態。JSX を持たない（単一責任）。
  * 3 系統＋「今日」用の 6 クエリは従来どおり常時有効（第 1 弾スコープ）。
  */
 export function useKioskRiggingAnalyticsPageModel() {
-  const [targetPeriod, setTargetPeriod] = useState(() => toMonthInputValue());
+  const [targetPeriod, updateTargetPeriod] = useState(() => toMonthInputValue());
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
   const period = useMemo(() => periodRangeToIso(targetPeriod), [targetPeriod]);
   const todayPeriod = useMemo(() => periodRangeToIso(toDayInputValue()), []);
@@ -104,32 +115,33 @@ export function useKioskRiggingAnalyticsPageModel() {
       : undefined
   );
 
-  useEffect(() => {
-    if (!selectedRiggingGearId) {
-      setRiggingOptions((riggingQ.data?.byGear ?? []).map((g) => ({ value: g.gearId, label: `${g.managementNumber} ${g.name}` })));
-    }
-  }, [riggingQ.data, selectedRiggingGearId]);
-  useEffect(() => {
-    if (!selectedItemId) {
-      setItemOptions((itemQ.data?.byItem ?? []).map((it) => ({ value: it.itemId, label: it.name || it.itemCode || it.itemId })));
-    }
-  }, [itemQ.data, selectedItemId]);
-  useEffect(() => {
-    if (!selectedInstrumentId) {
-      setInstrumentOptions(
-        (instrumentQ.data?.byInstrument ?? []).map((row) => ({ value: row.instrumentId, label: `${row.managementNumber} ${row.name}` }))
-      );
-    }
-  }, [instrumentQ.data, selectedInstrumentId]);
+  // 未選択時はレスポンスから導出し、選択操作で候補を保持する（絞り込み後も全候補を残す）。
+  const currentRiggingOptions = selectedRiggingGearId ? riggingOptions : (riggingQ.data?.byGear ?? []).map((g) => ({ value: g.gearId, label: `${g.managementNumber} ${g.name}` }));
+  const currentItemOptions = selectedItemId ? itemOptions : (itemQ.data?.byItem ?? []).map((it) => ({ value: it.itemId, label: it.name || it.itemCode || it.itemId }));
+  const currentInstrumentOptions = selectedInstrumentId ? instrumentOptions : (instrumentQ.data?.byInstrument ?? []).map((row) => ({ value: row.instrumentId, label: `${row.managementNumber} ${row.name}` }));
 
-  useEffect(() => {
+  const changeRiggingGearId = (value: string) => {
+    if (!selectedRiggingGearId) setRiggingOptions(currentRiggingOptions);
+    setSelectedRiggingGearId(value);
+  };
+  const changeItemId = (value: string) => {
+    if (!selectedItemId) setItemOptions(currentItemOptions);
+    setSelectedItemId(value);
+  };
+  const changeInstrumentId = (value: string) => {
+    if (!selectedInstrumentId) setInstrumentOptions(currentInstrumentOptions);
+    setSelectedInstrumentId(value);
+  };
+  const setTargetPeriod = (next: string) => {
+    if (next === targetPeriod) return;
     setSelectedRiggingGearId('');
     setSelectedItemId('');
     setSelectedInstrumentId('');
     setRiggingOptions([]);
     setItemOptions([]);
     setInstrumentOptions([]);
-  }, [targetPeriod]);
+    updateTargetPeriod(next);
+  };
 
   useEffect(() => {
     if (selectedRiggingGearId && riggingQ.isError && isNotFoundQueryError(riggingQ.error)) setSelectedRiggingGearId('');
@@ -158,7 +170,7 @@ export function useKioskRiggingAnalyticsPageModel() {
     () => selectAssetsForDisplay(view?.assets ?? [], ANALYTICS_KIOSK_DISPLAY_LIMITS.topRankedAssets, listMode),
     [view, listMode]
   );
-  const assetInventory = useMemo(() => (view?.assets.length ? summarizeAssetInventory(view.assets) : null), [view]);
+  const availableCount = useMemo(() => (view?.assets.length ? summarizeAssetInventory(view.assets).availableCount : null), [view]);
   const returnCompletionPct = useMemo(
     () => (view ? periodReturnCompletionRatePercent(view.periodBorrowCount, view.periodReturnCount) : null),
     [view]
@@ -169,10 +181,22 @@ export function useKioskRiggingAnalyticsPageModel() {
     [todayView, listMode]
   );
   const todayKinds = useMemo(() => countPeriodEventKinds(todayView?.periodEvents ?? []), [todayView]);
-  const todayReturnCompletion = useMemo(
-    () => periodReturnCompletionRatePercent(todayKinds.borrowCount, todayKinds.returnCount),
-    [todayKinds]
-  );
+  const now = new Date();
+  const openLoans = selectOpenLoansForDisplay(view?.assets ?? [], listMode).map((row) => {
+    const days = overdueDays(row.dueAt, now);
+    const dueLabel = days === null || !row.dueAt ? '—' : row.openIsOverdue
+      ? days > 0 ? `${days}日超過` : '—'
+      : `${formatDueDateJa(row.dueAt)} まで`;
+    return { ...row, dueLabel };
+  });
+  const openLoansRemaining = Math.max(0, (view?.assets.filter((row) => row.isOutNow).length ?? 0) - openLoans.length);
+  const longestOverdue = longestOverdueDays(view?.assets ?? [], now);
+  const borrowChangePercent = previousMonthBorrowChangePercent(targetPeriod, view?.periodBorrowCount ?? 0, view?.monthlyTrend ?? []);
+  const isLatest = isLatestPeriod(targetPeriod, now);
+  const onShiftPeriod = (delta: number) => {
+    if (delta > 0 && isLatest) return;
+    setTargetPeriod(shiftPeriod(targetPeriod, delta));
+  };
 
   const refetchAll = useCallback(() => {
     void riggingQ.refetch();
@@ -183,44 +207,6 @@ export function useKioskRiggingAnalyticsPageModel() {
     void instrumentTodayQ.refetch();
   }, [riggingQ, itemQ, instrumentQ, riggingTodayQ, itemTodayQ, instrumentTodayQ]);
 
-  const employeeRankBadge = useMemo(
-    () =>
-      listMode === 'top'
-        ? `Top ${ANALYTICS_KIOSK_DISPLAY_LIMITS.topRankedEmployees}`
-        : isFullListTruncated(view?.employees.length ?? 0, listMode)
-          ? `全件（最大${ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS}件）`
-          : '全件',
-    [listMode, view?.employees.length]
-  );
-
-  const assetRankBadge = useMemo(
-    () =>
-      listMode === 'top'
-        ? `Top ${ANALYTICS_KIOSK_DISPLAY_LIMITS.topRankedAssets}`
-        : isFullListTruncated(view?.assets.length ?? 0, listMode)
-          ? `全件（最大${ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS}件）`
-          : '全件',
-    [listMode, view?.assets.length]
-  );
-
-  const todayCaptionBadge = useMemo(
-    () =>
-      listMode === 'top'
-        ? `直近 ${ANALYTICS_KIOSK_DISPLAY_LIMITS.todayEventsMax} 件`
-        : isFullListTruncated(todayView?.periodEvents.length ?? 0, listMode)
-          ? `全件（最大${ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS}件）`
-          : '全件',
-    [listMode, todayView?.periodEvents.length]
-  );
-
-  const listModeToggleButtonClass = useCallback(
-    (active: boolean) =>
-      `rounded px-2 py-0.5 text-[11px] font-bold transition-opacity hover:opacity-90 ${
-        active ? 'ring-1 ring-white/25' : 'opacity-80'
-      }`,
-    []
-  );
-
   return {
     theme,
     targetPeriod,
@@ -228,14 +214,14 @@ export function useKioskRiggingAnalyticsPageModel() {
     monthPickerOpen,
     setMonthPickerOpen,
     selectedRiggingGearId,
-    setSelectedRiggingGearId,
+    setSelectedRiggingGearId: changeRiggingGearId,
     selectedItemId,
-    setSelectedItemId,
+    setSelectedItemId: changeItemId,
     selectedInstrumentId,
-    setSelectedInstrumentId,
-    riggingOptions,
-    itemOptions,
-    instrumentOptions,
+    setSelectedInstrumentId: changeInstrumentId,
+    riggingOptions: currentRiggingOptions,
+    itemOptions: currentItemOptions,
+    instrumentOptions: currentInstrumentOptions,
     datasetTab,
     setDatasetTab,
     listMode,
@@ -246,14 +232,16 @@ export function useKioskRiggingAnalyticsPageModel() {
     refetchAll,
     rankedEmployees,
     rankedAssets,
-    assetInventory,
+    availableCount,
     returnCompletionPct,
-    todayEventRows,
+    todayEventRows: todayEventRows.map((row) => ({ ...row, timeLabel: formatTimeJa(row.eventAt) })),
     todayKinds,
-    todayReturnCompletion,
-    employeeRankBadge,
-    assetRankBadge,
-    todayCaptionBadge,
-    listModeToggleButtonClass
+    openLoans,
+    openLoansRemaining,
+    longestOverdue,
+    borrowChangePercent,
+    periodLabel: formatShortPeriodLabel(targetPeriod),
+    isLatest,
+    onShiftPeriod
   };
 }

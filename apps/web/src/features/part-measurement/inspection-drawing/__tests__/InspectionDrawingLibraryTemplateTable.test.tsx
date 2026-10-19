@@ -117,12 +117,16 @@ describe('InspectionDrawingLibraryTemplateTable', () => {
     expect(screen.getByTestId('inspection-template-secondary-actions')).toHaveClass('ml-auto');
     expect(screen.getByTestId('inspection-template-secondary-actions')).toHaveClass('max-w-[11.5rem]');
     expect(screen.getByTestId('inspection-template-secondary-actions')).toHaveClass('justify-end');
+    expect(screen.getByTestId('inspection-template-frequency')).toHaveTextContent('頻度: 全数');
+    expect(screen.getByTestId('inspection-template-frequency').nextElementSibling).toBe(
+      screen.getByTestId('inspection-template-secondary-actions')
+    );
     for (const label of ['編集', '帳票', '雛形', '履歴', '無効']) {
       const action = screen.getByRole(
         label === '履歴' || label === '無効' ? 'button' : 'link',
         { name: label }
       );
-      expect(action).toHaveClass('min-h-[30.8px]');
+      expect(action).toHaveClass('!h-[30.8px]');
     }
     expect(screen.getByRole('link', { name: '雛形' })).toHaveAttribute('title', '雛形新規');
 
@@ -131,6 +135,27 @@ describe('InspectionDrawingLibraryTemplateTable', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '無効' }));
     expect(onRetireClick).toHaveBeenCalledWith(expect.objectContaining({ id: 'template-1' }));
+  });
+
+  it.each([
+    ['full', null, '頻度: 全数'],
+    ['single', null, '頻度: 抜き取り1個'],
+    ['first_last', null, '頻度: 最初と最後'],
+    ['fixed_count', 5, '頻度: 指定数 5 件'],
+    ['fixed_count', null, '頻度: 指定数 — 件']
+  ] as const)('renders %s inspection frequency next to actions', (mode, fixedCount, label) => {
+    render(
+      <MemoryRouter>
+        <InspectionDrawingLibraryTemplateTable
+          templates={[{ ...template, selfInspectionMode: mode, selfInspectionFixedCount: fixedCount }]}
+          resourceNameMap={{}}
+          onHistoryClick={vi.fn()}
+          lineageGroupKey={(row) => row.id}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('inspection-template-frequency')).toHaveTextContent(label);
   });
 
   it('renders loading empty state', () => {

@@ -1,83 +1,106 @@
 ---
-title: Pi5 Blue/Green診断Runbook
+title: Pi5標準Ansible診断Runbook
 status: active
-scope: standard coordinator Pi5 API/Web release diagnosis
-last_verified: 2026-07-16
+scope: standard Ansible Pi5 API and Web release diagnosis
+last_verified: 2026-08-08
 source_of_truth: docs/runbooks/pi5-blue-green-deploy.md
 related_docs:
   - ../guides/deployment.md
   - ./deploy-status-recovery.md
-  - ../plans/deployment-foundation-refactor-execplan.md
+  - ../architecture/deployment-modules.md
 ---
 
-# Pi5 Blue/Green診断Runbook
+# Pi5標準Ansible診断Runbook
 
-Pi5の通常デプロイは `scripts/update-all-clients.sh` のcoordinatorだけが実行する。このRunbookは状態の読み取りと原因調査に使い、Blue/Green内部commandを手で進める手順ではない。
+このRunbookは、canonical standard Ansible routeのPi5結果を読み取り、失敗箇所を切り分けるために使う。デプロイの入口は `scripts/update-all-clients.sh` だけであり、Pi5専用の旧scriptや個別container操作は行わない。
 
 ## 標準状態確認
 
-```bash
-scripts/update-all-clients.sh --status RUN_ID
-```
-
-Pi5について次を確認する。
-
-- phaseがhost config、migration、candidate build、switch、stability、cleanupのどこか
-- desired/current SHA
-- active slotとAPI/Web image
-- config digestとmigration digest
-- load evidenceと5分安定化の期限
-- rollbackまたはcleanup結果
-
-## 正常な処理順
-
-1. host configをrun専用manifestで収束する。
-2. migration planとlive ledgerを検証する。
-3. run-scoped candidate API/Web imageをbuildする。
-4. inactive slotを準備してhealthとloadを確認する。
-5. gatewayをcandidateへ切り替える。
-6. 5分間の安定化を観測する。
-7. previous slotをcleanupし、live image/config/migration evidenceをfleet stateへ記録する。
-
-candidate build後のload証跡は最終gateで再利用する。5分の安定化時間は維持する。
-
-## 失敗時
-
-実行中なら理由付きの協調cancelを使う。
+まず対象SHAとinventoryをread-onlyで確認する。
 
 ```bash
-scripts/update-all-clients.sh --cancel RUN_ID --reason "中止理由"
-scripts/update-all-clients.sh --status RUN_ID
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan --limit raspberrypi5
+scripts/update-all-clients.sh --status RUN_ID --inventory infrastructure/ansible/inventory.yml
 ```
 
-coordinatorはmanifestに基づいてhost config、image/runtime、gatewayを復旧し、検証できない場合はmaintenanceを維持してPi5 evidenceを `unknown` にする。後続端末へは進まない。
+`--print-plan` は対象host、release SHA、Ansible playbook/tasksを表示するだけで、hostやruntimeを変更しない。実行結果は `deploy-release-standard.yml` のPi5 playと `release_pi5` roleのrecap、health、rollback結果で確認する。
 
-原因修正後は、対象SHAのCI成功を確認し、新しいread-only planから標準runを開始する。interrupted handoffがあればcoordinatorが先に整合・cleanupし、成功を確認してから新releaseを計画する。
+## Pi5結果の確認
 
-## healthの必須条件
+- `release_pi5` のprepare、switch、health、cleanupがrole内の順序で完了している。
+- APIとWebのcanonical health確認が成功している。
+- migration確認が成功し、Ansible recapのfailed/unreachableが0である。
+- 対象SHAとroleへ渡されたimage identityが一致している。
+- 失敗時はroleのrescue rollbackとrollback healthの結果を確認する。
 
-- checkout HEADが目標SHA
-- active API/Web imageが目標releaseに一致
-- active slot、gateway、scheduler roleが整合
-- config digestとmigration digestが一致
-- API/Web healthと認証済みendpointが成功
-- migration ledgerの欠落・checksum不一致なし
+`scripts/deploy/verify-phase12-real.sh` は共有application HTTP smoke用であり、Pi5のmigration、runtime discovery、log判定、rollback判定を重複実装しない。
 
-HTTP 401、取得失敗、古いimage、digest不一致を成功扱いにしない。
+## Pi5 Docker旧リリースイメージ整理
 
-## database
+`storage-maintenance.timer` は毎日03:00に起動する。`storage-maintenance.sh` は、当日（JST）の完了マーカーが未完了の場合だけ、次の2つの非ブロッキングロックを取得して整理を実行する。2026-09まで整理は月1回だったが、1リリース約3.4GB・1日約21GBの増加で月末前にSSDが84%まで埋まったため、2026-10から毎日に変えた。旧形式 `YYYY-MM` のマーカーも有効で、切り替え直後に1回整理が走る。
 
-databaseをdown migrationしない。実行可能なのは、旧APIと新APIの両方が動作できるExpand-only migrationだけである。rollback時もschemaを戻さず、旧API互換を維持する。
+- fleetデプロイ共通ロック: `/opt/RaspberryPiSystem_002/logs/deploy/fleet-release-state.lock`
+- イメージ整理ロック: `/var/lib/raspi-release/image-retention-maintenance.lock`
 
-## 禁止事項
+デプロイまたは別の整理が実行中なら、Docker変更も完了マーカー更新も行わず、翌日のタイマーで再試行する。保持状態が欠落・不正、plan/applyが失敗、または一部削除が未解決の場合は `storage-maintenance-failed` アラートを生成し、完了マーカーを古いまま残す。
 
-- 内部Blue/Green scriptのprepare、switch、rollback、cleanup、reconcileを手動実行する
-- Phase 2やlegacy Composeへ迂回する
-- container、gateway、schedulerを個別に操作して成功状態を作る
-- coordinator processをkillする
-- lockやfleet/run stateを削除・編集する
-- migrationを手動で巻き戻す
+整理対象のallowlistは固定されている。対象はAPIリポジトリ（`ghcr.io/denkoushi/raspisys-api`、旧ローカル `raspi-system-api` / `docker-api`）、Webリポジトリ（`ghcr.io/denkoushi/raspisys-web`、旧ローカル `raspi-system-web` / `docker-web`）、および `ghcr.io/denkoushi/raspisys-release-set` の未使用イメージだけである。現行・直前版、稼働コンテナが参照するイメージ、24時間未満のイメージは保持する。DB、gateway、Postgres、Pi3、BuildKit内部、volume、業務ファイルは対象外である。
 
-追加調査はsystemd journal、container/image inspect、認証済みhealth endpointを読み取り専用で行う。変更操作が必要なら、対象、理由、手順を整理して新しい明示承認を得る。
+手動確認でも、planとapplyの各操作ごとにfleetデプロイ共通ロックとイメージ整理ロックを非ブロッキング取得する。root shellで次を実行し、どちらかのロックが使用中なら終了コード75で中断する。
 
-当時の直接操作と2026-07-12の受入記録は [historical Pi5 Runbook](../archive/runbooks/pi5-blue-green-deploy-legacy-2026-07.md) に保存した。現行の復旧全般は [deploy status recovery](./deploy-status-recovery.md) を参照する。
+```bash
+set -euo pipefail
+FLEET_LOCK=/opt/RaspberryPiSystem_002/logs/deploy/fleet-release-state.lock
+MAINTENANCE_LOCK=/var/lib/raspi-release/image-retention-maintenance.lock
+STATE_FILE=/var/lib/raspi-release/image-retention.json
+PLAN_FILE=/var/lib/raspi-release/image-retention-plan.json
+
+run_retention_locked() {
+  (
+    exec 9>>"${FLEET_LOCK}"
+    flock -n 9 || { echo 'fleet deploy lock is busy' >&2; exit 75; }
+    exec 8>>"${MAINTENANCE_LOCK}"
+    flock -n 8 || { echo 'image retention lock is busy' >&2; exit 75; }
+    "$@"
+  )
+}
+
+run_retention_locked python3 scripts/server/docker-release-image-maintenance.py plan \
+  --state-file "${STATE_FILE}" \
+  --output "${PLAN_FILE}" \
+  --minimum-age-hours 24
+MARKER_FILE=/var/lib/raspi-release/image-retention.last-success
+MARKER_TMP=''
+apply_and_mark() {
+  python3 scripts/server/docker-release-image-maintenance.py apply \
+    --state-file "${STATE_FILE}" \
+    --plan "${PLAN_FILE}"
+  MARKER_TMP="$(mktemp /var/lib/raspi-release/.image-retention.last-success.tmp.XXXXXX)"
+  trap 'rm -f -- "${MARKER_TMP}"' EXIT
+  printf '2026-09\n' >"${MARKER_TMP}"
+  chown root:root "${MARKER_TMP}"
+  chmod 0644 "${MARKER_TMP}"
+  mv -f -- "${MARKER_TMP}" "${MARKER_FILE}"
+  MARKER_TMP=''
+  trap - EXIT
+}
+run_retention_locked apply_and_mark
+```
+
+planはDocker一覧と保持状態のsealed snapshotを含む。planとapplyの間にデプロイ、状態ファイル変更、Dockerイメージ変更などがあればapplyは `snapshot_changed` として拒否し、削除せず完了マーカーも更新しない。ロック競合またはsealed snapshot拒否後は、古いplanを再利用せず、ロック取得後にplanから取り直す。
+
+applyと9月完了マーカーの作成は同じ `run_retention_locked` サブシェル内で連続して実行する。applyが終了コード0で成功した場合だけ、完了マーカーをシェルのリダイレクトで直接上書きせず、同じディレクトリのroot所有一時ファイルから原子的に作成する。通常の自動経路では `docker-release-image-monthly.sh` がこの処理を行う。マーカーは `YYYY-MM-DD`（旧形式 `YYYY-MM` も可）と改行1つだけでなければならず、余分な行や改行欠落を作らない。apply失敗時はこの作成手順を実行せず、古いマーカーを残して翌日の自動再試行に任せる。
+
+`docker system prune`、`docker image prune -a`、volume prune、BuildKit以外の一括prune、または業務保存ディレクトリの削除は禁止する。通常の日次処理は固定allowlistの完全なイメージIDだけを個別に扱う。
+
+## 失敗時の切り分け
+
+1. CI、対象SHA、inventory、`--print-plan`の対象hostを確認する。
+2. `--status RUN_ID` とsystemd journalから、Ansible playまたは `release_pi5` taskの最初の失敗を確認する。
+3. 原因修正後、同じcanonical entrypointで新しいread-only planを作る。
+
+SSH先でのcheckout、個別container操作、直接Ansible playbook実行、DBのdown migration、旧deploy scriptの実行で成功状態を作らない。実機に対する追加操作は別途明示承認が必要である。
+
+## Database
+
+database rollbackは行わない。migrationの安全性と適用確認は `release_pi5` roleが所有し、失敗時はroleのrollback手順に従う。

@@ -39,14 +39,14 @@ CSVダッシュボード機能により、Gmail経由で取得したCSVファイ
 - **資源CD優先並び**: 登録製番が1件以上アクティブなとき、検索結果に含まれる資源CDを左側に優先表示（出現有無のみで判定、1件でもヒットした資源CDを左寄せ）。工程カテゴリフィルタの後に適用
 - **加工順序割当**: 各アイテムに資源CDごとに独立して加工順序番号（1-10）を割当可能。完了時に自動で詰め替え（例: 1,2,3,4 → 3完了で 4→3）
 - **検索状態同期**: 同一location（`ClientDevice.location`）の複数端末間で検索条件を同期（poll + debounce）
-- **製造order番号の繰り上がりルール**: 同一キー（`FSEIBAN + FHINCD + FSIGENCD + FKOJUN`）で`ProductNo`が複数ある場合、**数字が大きい方のみ有効**として扱う（インポート時・表示時の両方で適用）✅ **実機検証完了（2026-02-10）**
+- **製造order番号の繰り上がりルール**: 確定済み製番では同一キー（`FSEIBAN + FHINCD + FSIGENCD + FKOJUN`）の最大`ProductNo`のみ有効。`FSEIBAN=********`は在庫用の仮製番なので、異なる`ProductNo`を別注文として保持・表示する。
 - **部品納期個数（補助CSV）連携**: 件名 `部品納期個数` のCSVを別ダッシュボードで取得し、`FKOJUN + FSIGENCD + ProductNo` で既存 winner 行に照合して、`plannedQuantity` / `plannedStartDate` / `plannedEndDate` を補助テーブルで管理（`dueDate` とは別意味）。**Gmail 取込と管理画面の手動 `POST .../csv-dashboards/:id/upload`** はともに取込直後に補助同期が走る（経路差の是正: [KB-326](../knowledge-base/KB-326-manual-upload-order-supplement-sync.md)）。**実機回帰**: `scripts/deploy/verify-phase12-real.sh` が **PASS 41 / WARN 0 / FAIL 0** であること（2026-04-03 時点の項目数基準・API応答に `plannedQuantity` を含む grep あり；詳細は `docs/guides/verification-checklist.md` §6.6.16）
 - **製番→機種名補完（`FHINMEI_MH_SH`）**: Gmail 件名 **`FHINMEI_MH_SH`** のCSVを専用ダッシュボード（固定ID・seed 参照）で取り込み、列 **`FSEIBAN`** / **`FHINMEI_MH_SH`** を `ProductionScheduleSeibanMachineNameSupplement` に同期する。同期対象は **今回の取り込みrunで追加された行だけ**で、その行群を **`createdAt` / `id` 昇順**に走査し、同一製番は **末尾行が勝ち**。**`POST /kiosk/production-schedule/seiban-machine-names`** は **既存 MH/SH（`fetchSeibanProgressRows`）→ 補完テーブル → どちらも無い場合は `機種名未登録`** の順で解決する。デフォルトの Gmail スケジュール例は `apps/api` の `defaultBackupConfig.csvImports`（**日曜 6:18 JST 相当の cron `18 6 * * 0`・既定は無効**）。運用・前提は [KB-350](../knowledge-base/KB-350-seiban-machine-name-supplement-fhinmei-mh-sh.md)。
 - **CustomerSCAW（製番→顧客名）**: Gmail 件名 **`CustomerSCAW`**・列 **`Customer`** / **`FANKENMEI`** /（任意）**`FANKENYMD`**。MH/SH winner 行の **`FHINMEI`** と `FANKENMEI` を正規化照合し、同一機種が複数顧客にまたがる場合は **`FANKENYMD` と補助 `plannedStartDate`（着手日）の近さ**で顧客を選ぶ（同距離は着手日以前の日付を優先し、さらに同率なら CSV 後勝ち）。**着手日**は **製番単位に `plannedStartDate` を集約**した値を用いる（行単位 JOIN だけだと MH 側が null になり近傍が効かない場合がある）。`plannedStartDate` が無い、または有効な `FANKENYMD` が無い行は **CSV 後勝ち**。`ProductionScheduleFseibanCustomerScaw` は **取込ソースごと全置換**。生産日程一覧・`responseProfile=leaderboard` とも **トップレベル `customerName`** を返す。固定スケジュール **`csv-import-productionschedule-customer-scaw`**（**日曜 5:31 JST 相当 `31 5 * * 0`・既定 enabled**）。**本番反映**: [deployment.md](../guides/deployment.md)・[KB-361](../knowledge-base/KB-361-customer-scaw-gmail-csv.md)（2026-04-30 近傍拡張 `8d95c2dd`・製番集約・パース拡張 `0ca15b5c`・いずれも Phase12 **PASS 43/0/0**）。
 - **日付列・日時字句（PowerAutomate 互換・2026-05-01）**: `CsvDashboardIngestor` の **`occurredAt`** は [`csv-dashboard-datetime-parse.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-datetime-parse.ts) の **`parseCsvDashboardDateColumnToUtc`** で解釈。**従来** `YYYY/M/D H:M`（JST とみなし UTC）に加え **`YYYY-MM-DDTHH:mm:ss[.SSS]Z`（ISO8601）** を受理。受理不能時は **現在時刻**へフォールバックし **`[CsvDashboardIngestor]`** へ **warn**（`dashboardId` / `dateColumnName` 付き）。**FKOJUNST_Status** の **`FUPDTEDT`** 最大選定は **`parseFkojunstStatusMailFupdteDt`**（**`MM/DD/YYYY HH:mm:ss`** ＋ 同上 ISO。**日付のみ ISO は拒否**）。運用記録: [deployment.md](../guides/deployment.md) 補足（2026-05-01 PowerAutomate 日時）・[KB-297 §PowerAutomate 日時互換](../knowledge-base/KB-297-kiosk-due-management-workflow.md#powerautomate-csv-datetime-compat-2026-05-01)。
 - **`ProductionSchedule_Mishima_Grinding`（三島研削・2026-05-01 確認）**: 固定 `CsvDashboard` ID **`3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01`**。設定の **`dateColumnName`** は **`registeredAt`** だが、**上流 CSV に実日時が無い**（`registeredAt` / `updatedAt` が **無いか全行空**）。この場合 **`occurredAt` は取込時刻フォールバック**となり **warn は想定内**。必須キー・**`FSIGENSHOYORYO`** は手動取込で整合。**2026-05-06 追記**: PowerAutomate 由来で **BOM のみ等の極小添付** → **`CSV_HEADER_MISMATCH`・NON_RETRIABLE・ゴミ箱**は想定内。**同一実行内に正しいメールがあるとき全体失敗にしない**修正は [KB-297 §空BOM・廃棄](../knowledge-base/KB-297-kiosk-due-management-workflow.md#mishima-grinding-empty-csv-bom-nonretriable-2026-05-06)・[PR #259](https://github.com/denkoushi/RaspberryPiSystem_002/pull/259)（**`main` `e47ad84c`**）。**詳細**: [KB-297 §三島研削](../knowledge-base/KB-297-kiosk-due-management-workflow.md#mishima-grinding-csv-no-date-2026-05-01)。
 - **削除ルール（生産スケジュールのみ）**:
-  - **重複loserの削除**: 同一キー（`FSEIBAN + FHINCD + FSIGENCD + FKOJUN`）の複数行がDBに残っている場合、`ProductNo`が最大の行をwinnerとして残し、それ以外（loser）を削除
+  - **重複loserの削除**: 確定済み製番では同一4列キーの最大`ProductNo`を残す。仮製番`********`では`ProductNo`もキーに含め、異なる注文を削除しない
   - **1年超過は保存しない**: `max(rowData.updatedAt, occurredAt)` を基準日として、1年を超えた行は取り込み時点で保存しない（UIにも出ない）
   - **日次クリーンアップ**: 取り込み漏れや過去データの残存を収束させるため、日次で「1年超過削除」と「重複loser削除」を実行
   - **影響**: 行削除はカスケード前提のため、当該行に紐づく備考/納期/割当/完了状態も削除される（復旧・履歴保持はしない方針）
@@ -124,6 +124,7 @@ CSVダッシュボードのGmail取り込みは、CSVインポートスケジュ
 - 管理コンソールのスケジュール設定は **「時刻指定」または「間隔（N分ごと）」** を選択できます（**最小5分**）。間隔指定の場合は `*/N * * * *` のcronに変換されます。
 - **システム固定スケジュール行の保存（2026-04-29）**: 固定 ID（例: FKOJUNST / FKOBAINO / 製番→機種名補完）を管理画面から更新するとき、API は [`system-csv-import-schedule-invariants.ts`](../../apps/api/src/services/imports/system-csv-import-schedule-invariants.ts) で **`provider`・`targets`・`replaceExisting` 等をレジストリに整合**し、**cron が文法的に有効でポリシー上許容ならユーザー設定を保持**する（無効・最短間隔違反は既定へ）。本番デプロイ記録は [deployment.md](./deployment.md) 補足（2026-04-29・システム CSV スケジュール）。
 - **Gmail csvDashboards スケジュール衝突（2026-06-17）**: 有効な Gmail csvDashboards スケジュールが **同じ分・時・曜日**で重なると、`GmailImportOrchestrator` は先に走ったサイクル実行中に **後続を履歴なしでスキップ**し得る。管理コンソールの CSV 取込タブは **`GET/POST/PUT /api/imports/schedule` の `warnings`** で衝突候補を表示する（判定不能な cron 形状も warning のみ）。**本番既存設定はコードで自動変更しない**。衝突が出た場合は cron をずらす（例: `FHINMEI_MH_SH` を `15 6 * * 0` → `18 6 * * 0` または `20 6 * * 0`）。**デプロイ後の復旧**: 管理コンソールで cron を修正 → **`csv-import-seiban-machine-name-supplement` を手動実行**して未処理 Gmail を再取込。
+- **取込スケジュール画面（時刻表、2026-10-01）**: 管理コンソールの取込スケジュールは、24時間の帯と「選んだ1時間」の盤面で全取込を並べて表示する。重なりは画面側で計算する（[`scheduleTimeline.ts`](../../apps/web/src/features/admin/csv-import/scheduleTimeline.ts)）。**赤＝別の Gmail csvDashboards 取込の実行中に発火（スキップされる）**、**橙＝2分以上かかる取込の終了から2分以内**。所要時間は `GET /api/imports/history` の直近10回の最長（実績なしは仮に60秒）。時刻は目印のドラッグ・空き場所のクリック・右欄で変更し、重なりが残る保存は2回押しで確認する。**自動調整**は毎時くり返す取込の「分」だけを動かし、1日1回の取込は動かさない（保存は手動）。API の `warnings` は画面では表示しない。日・月指定を含む cron は盤面に出さず、右欄に cron のまま表示する（有効/無効だけ変更可）。
 - **`FKOJUNST_Status` Gmail 取込タイムアウト（2026-06-18）**: advisory lock 修正（KB-391・PR #452）後、完了トランザクション内の **大量 `csvDashboardRow.update`（500件並列 × 多数チャンク）** が Prisma **P2028 / `Transaction already closed`** を起こす。**修正**: 完了 tx 内で advisory lock 取得後、**`UPDATE ... FROM (VALUES ...)` のバッチ更新**で行内容と source 公開を**原子化**（完了前の行更新は行わない）。詳細・本番実機検証（管理画面手動取込 **COMPLETED**）は [KB-391](../knowledge-base/KB-391-gmail-csv-import-reliability.md#admin-console-manual-verification-2026-06-18)。
 
 #### 生産日程 `FKOJUNST` 系と 2CSV 消滅照合（2026-05-17） {#fkojunst-2csv-disappearance-schedule-notes}
@@ -337,7 +338,7 @@ FHINCD,FSEIBAN,ProductNo,FSIGENCD,FHINMEI,FSIGENSHOYORYO,FKOJUN
 **注意事項**:
 - FSEIBANが`********`（8個のアスタリスク）の場合も正常に取り込まれます（割当がない場合の運用に対応）
 - バリデーションエラーの詳細は、エラーメッセージに`value`と`length`が含まれます（デバッグ用）
-- 同一キーで`ProductNo`が繰り上がるケースでは、小さい`ProductNo`は表示対象から除外されます（最大`ProductNo`のみ返却）
+- 確定済み製番で`ProductNo`が繰り上がる場合は最大番号のみ返却します。仮製番`********`の異なる番号はそれぞれ返却します
 
 ### 実機検証
 
@@ -413,6 +414,7 @@ FHINCD,FSEIBAN,ProductNo,FSIGENCD,FHINMEI,FSIGENSHOYORYO,FKOJUN
 | 列名 | 形式 | 説明 | 例 |
 |------|------|------|-----|
 | `department` | 文字列 | 所属部署 | `製造部` |
+| `positionName`（別名: `職位`） | 文字列 | 人事データの職位名。列なしは既存値を保持、空欄は削除 | `主任` |
 | `nfcTagUid` | 文字列 | NFCタグUID（14文字の16進数） | `04C362E1330289` |
 | `status` | 文字列 | ステータス（`ACTIVE` / `INACTIVE` / `SUSPENDED`、未指定時は`ACTIVE`） | `ACTIVE` |
 
@@ -1078,4 +1080,3 @@ CSVフォーマット仕様実装の実機検証手順は、[検証チェック�
 - [KB-253: 加工機CSVインポートのデフォルト列定義とDB設定不整合問題](../knowledge-base/api.md#kb-253-加工機csvインポートのデフォルト列定義とdb設定不整合問題)
 - [KB-254: 加工機マスタのメンテナンスページ追加（CRUD機能）](../knowledge-base/frontend.md#kb-254-加工機マスタのメンテナンスページ追加crud機能)
 - [検証チェックリスト](./verification-checklist.md#6-csvフォーマット仕様実装の検証2025-12-31)
-

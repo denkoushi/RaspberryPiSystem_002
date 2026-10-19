@@ -27,20 +27,35 @@
     }
   }
 
-  # サムネイルの静的ファイル配信（認証不要）
-  handle_path /storage/thumbnails/* {
-    root * /srv/storage/thumbnails
-    file_server
-    header Cache-Control "public, max-age=86400" # 1日キャッシュ
+  # 管理画面へのIP制限。ADMIN_ALLOW_NETS は標準リリース前に明示設定する。
+  @admin_protect {
+    path /admin*
+    not remote_ip {$ADMIN_ALLOW_NETS}
+  }
+  respond @admin_protect "Forbidden" 403
+
+  # 公開URLは維持しつつ、APIでSHA-256整合性を確認して配信する。
+  handle /storage/thumbnails/* {
+    uri replace /storage/thumbnails/ /api/storage/thumbnails/
+    reverse_proxy api:8080
   }
 
-  @spa {
-    not path /api/*
-    not path /storage/*
-    not file
+  @static_site {
+    not path /api/* /storage/*
   }
-  rewrite @spa /index.html
-  file_server
+  route @static_site {
+    @spa {
+      not path /assets/*
+      not file
+    }
+    rewrite @spa /index.html
+
+    # HTMLは常に再検証し、配備前のentrypointから削除済みchunkを参照させない。
+    @document path / /index.html
+    header @document Cache-Control "no-store, no-cache, must-revalidate"
+
+    file_server
+  }
 
   # セキュリティヘッダー
   header {
@@ -67,4 +82,3 @@
 
   redir https://{host}{uri} permanent
 }
-

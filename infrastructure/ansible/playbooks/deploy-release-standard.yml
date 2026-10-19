@@ -1,0 +1,185 @@
+---
+# Canonical Ansible-first release route invoked by the standard launcher.
+- name: Stage Pi5 release images before torque ownership is quiesced
+  hosts: server
+  connection: local
+  gather_facts: false
+  become: true
+  any_errors_fatal: true
+  tags:
+    - torque-cutover
+  pre_tasks:
+    - name: Require explicit staging deployment enablement
+      tags:
+        - always
+      ansible.builtin.assert:
+        that:
+          - >-
+            not (staging_environment | default(false) | bool) or
+            (staging_deploy_enabled | default(false) | bool)
+        fail_msg: >-
+          staging_deploy_enabled must be explicitly enabled in private staging
+          variables before this mutation playbook can run.
+  tasks:
+    - name: Pull and verify Pi5 candidates without starting them
+      block:
+        - name: Enter the Pi5 PREPARED boundary
+          ansible.builtin.include_role:
+            name: release_pi5
+            tasks_from: prefetch
+      rescue:
+        - name: Clean unused Pi5 candidates after PREPARED failure
+          ansible.builtin.include_role:
+            name: release_pi5
+            tasks_from: prefetch-cleanup
+        - name: Stop before kiosk mutation after Pi5 PREPARED failure
+          ansible.builtin.fail:
+            msg: Pi5 PREPARED failed before any torque endpoint was stopped.
+      when: not (staging_environment | default(false) | bool)
+
+- name: Stage every selected torque kiosk while current services remain unchanged
+  hosts: kiosk
+  gather_facts: false
+  become: true
+  ignore_unreachable: true
+  tags:
+    - torque-cutover
+  pre_tasks:
+    - name: Require explicit staging deployment enablement
+      tags:
+        - always
+      ansible.builtin.assert:
+        that:
+          - >-
+            not (staging_environment | default(false) | bool) or
+            (staging_deploy_enabled | default(false) | bool)
+        fail_msg: >-
+          staging_deploy_enabled must be explicitly enabled in private staging
+          variables before this mutation playbook can run.
+  tasks:
+    - name: Prepare this kiosk without quiescing it
+      ansible.builtin.include_role:
+        name: release_torque_cutover
+        tasks_from: prepared-kiosk
+      when: not (staging_environment | default(false) | bool)
+
+- name: Aggregate PREPARED before any torque endpoint stops
+  hosts: kiosk
+  gather_facts: false
+  become: true
+  tags:
+    - torque-cutover
+  tasks:
+    - name: Cross the shared PREPARED boundary
+      ansible.builtin.include_role:
+        name: release_torque_cutover
+        tasks_from: prepared-finalize
+      when: not (staging_environment | default(false) | bool)
+
+- name: Finalize PREPARED and clean Pi5 candidates on shared failure
+  hosts: server
+  connection: local
+  gather_facts: false
+  become: true
+  any_errors_fatal: true
+  tags:
+    - torque-cutover
+  tasks:
+    - name: Require every target before torque ownership is quiesced
+      ansible.builtin.include_role:
+        name: release_torque_cutover
+        tasks_from: prepared-control-plane
+      when: not (staging_environment | default(false) | bool)
+
+- name: Quiesce all selected torque ownership endpoints before the API changes
+  hosts: kiosk
+  gather_facts: false
+  become: true
+  ignore_unreachable: true
+  tags:
+    - torque-cutover
+  tasks:
+    - name: Attempt the complete quiesce boundary on this kiosk
+      ansible.builtin.include_role:
+        name: release_torque_cutover
+        tasks_from: quiesce-kiosk
+      when: not (staging_environment | default(false) | bool)
+
+- name: Aggregate QUIESCED and restore all reachable kiosks on shared failure
+  hosts: kiosk
+  gather_facts: false
+  become: true
+  ignore_unreachable: true
+  tags:
+    - torque-cutover
+  tasks:
+    - name: Cross the shared quiesce boundary
+      ansible.builtin.include_role:
+        name: release_torque_cutover
+        tasks_from: quiesce-finalize
+      when: not (staging_environment | default(false) | bool)
+
+- name: Finalize QUIESCED before changing the control plane
+  hosts: server
+  connection: local
+  gather_facts: false
+  become: true
+  any_errors_fatal: true
+  tags:
+    - torque-cutover
+  tasks:
+    - name: Require every kiosk to be quiesced before Pi5 mutation
+      ansible.builtin.include_role:
+        name: release_torque_cutover
+        tasks_from: quiesce-control-plane
+      when: not (staging_environment | default(false) | bool)
+
+- name: Prepare and switch the Pi5 control plane
+  hosts: server
+  connection: local
+  gather_facts: false
+  become: true
+  serial: 1
+  any_errors_fatal: "{{ release_torque_cutover | default(false) | bool }}"
+  order: inventory
+  tags:
+    - pi5
+  roles:
+    - role: release_pi5
+
+- name: Update Pi4 kiosks one target at a time
+  hosts: kiosk
+  gather_facts: false
+  become: true
+  serial: 1
+  max_fail_percentage: "{{ 100 if (release_torque_cutover | default(false) | bool) else 0 }}"
+  order: inventory
+  tags:
+    - pi4
+  roles:
+    - role: release_kiosk
+
+- name: Aggregate all selected torque candidates before ownership resumes
+  hosts: kiosk
+  gather_facts: false
+  become: true
+  ignore_unreachable: true
+  tags:
+    - torque-cutover
+  tasks:
+    - name: Cross the stage, agent-health, and browser-resume boundaries together
+      ansible.builtin.include_role:
+        name: release_torque_cutover
+        tasks_from: finalize
+      when: not (staging_environment | default(false) | bool)
+
+- name: Switch the prepared Pi3 Signage artifact
+  hosts: signage
+  gather_facts: false
+  become: true
+  serial: 1
+  order: inventory
+  tags:
+    - pi3
+  roles:
+    - role: release_signage

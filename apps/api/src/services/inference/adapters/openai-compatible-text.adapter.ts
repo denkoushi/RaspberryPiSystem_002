@@ -1,17 +1,10 @@
+import { createTimeoutSignal } from '../../../lib/timeout-signal.js';
 import { emitInferenceCallOutcome } from '../observability/inference-observability.js';
 import { InferenceRouter } from '../routing/inference-router.js';
 
 import type { TextCompletionPort, TextCompletionRequest, TextCompletionResult } from '../ports/text-completion.port.js';
+import { InferenceDeferredError } from '../ports/text-completion.port.js';
 import { extractTextFromOpenAiStylePayload, type OpenAiStyleChatResponse } from './openai-chat-response.util.js';
-
-const createTimeoutSignal = (timeoutMs: number): { signal: AbortSignal; cleanup: () => void } => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  return {
-    signal: controller.signal,
-    cleanup: () => clearTimeout(timeout),
-  };
-};
 
 function inputSizeForMessages(messages: TextCompletionRequest['messages']): number {
   return messages.reduce((acc, m) => acc + Buffer.byteLength(m.content, 'utf8'), 0);
@@ -31,6 +24,7 @@ export class OpenAiCompatibleTextAdapter implements TextCompletionPort {
   async complete(request: TextCompletionRequest): Promise<TextCompletionResult> {
     const started = performance.now();
     const { provider, model } = this.deps.router.resolve(request.useCase);
+    if (request.background && model !== 'system-prod-primary') throw new Error('Background admission requires the DGX model alias');
     const inputSize = inputSizeForMessages(request.messages);
     let result: 'ok' | 'failure' = 'failure';
     let errorReason: string | undefined;
@@ -45,7 +39,8 @@ export class OpenAiCompatibleTextAdapter implements TextCompletionPort {
           'X-LLM-Token': provider.sharedToken,
         },
         body: JSON.stringify({
-          model,
+          model: request.background ? 'dgx-background-preparation' : model,
+          ...(request.jsonOutput ? { response_format: { type: 'json_object' } } : {}),
           messages: request.messages,
           max_tokens: request.maxTokens,
           temperature: request.temperature,
@@ -53,10 +48,11 @@ export class OpenAiCompatibleTextAdapter implements TextCompletionPort {
             enable_thinking: request.enableThinking,
           },
         }),
-        signal,
+        signal: request.signal ? AbortSignal.any([signal, request.signal]) : signal,
       });
 
       if (!response.ok) {
+        if (request.background && [429, 503].includes(response.status)) throw new InferenceDeferredError();
         errorReason = `upstream_http_${response.status}`;
         throw new Error(`Inference text upstream error: HTTP ${response.status}`);
       }

@@ -1,43 +1,34 @@
-/**
- * キオスク集計パネル共通のテーマ（DADS トークン参照）。
- * コンポーネント間で見た目を揃えるための値オブジェクト。
- */
-export type KioskAnalyticsTheme = {
-  chartBorrow: string;
-  chartReturn: string;
-  strokeBar: string;
-  surface: string;
-  border: string;
-  borderSubtle: string;
-  text: string;
-  textMuted: string;
-  textSub: string;
-  primaryUi: string;
-  tabInactive: string;
-  error: string;
-  radius8: string;
-  radius6: string;
-};
+import type { CSSProperties } from 'react';
 
-/**
- * キオスク集計（/kiosk/rigging-analytics）の単一のテーマ解決。
- * デザインプレビュー docs/design-previews/kiosk-analytics-dads-system-refactor-preview.html の DADS 意図に合わせる。
- */
-export const KIOSK_ANALYTICS_DADS_THEME: KioskAnalyticsTheme = {
-  /** 持出系: 青・水色の近接を避け橙で識別 */
-  chartBorrow: 'var(--color-primitive-orange-500, #f97316)',
-  /** 返却系: 補色寄りの緑で持出と二値判別しやすく */
-  chartReturn: 'var(--color-primitive-emerald-500, #10b981)',
-  strokeBar: 'var(--color-neutral-solid-gray-900)',
-  surface: 'var(--color-neutral-solid-gray-800)',
-  border: 'var(--color-neutral-solid-gray-600)',
-  borderSubtle: 'var(--color-neutral-solid-gray-700)',
-  text: 'var(--color-neutral-white)',
-  textMuted: 'var(--color-neutral-solid-gray-300)',
-  textSub: 'var(--color-neutral-solid-gray-400)',
-  primaryUi: 'var(--color-primitive-blue-900)',
-  tabInactive: 'var(--color-neutral-solid-gray-700)',
-  error: 'var(--color-semantic-error-1)',
-  radius8: 'var(--border-radius-8)',
-  radius6: 'var(--border-radius-6)'
-};
+/** 承認済み action-first モックの色・角丸。 */
+export const KIOSK_ANALYTICS_THEME = {
+  background: '#0a101c',
+  surface: '#121a2a',
+  surface2: '#18233a',
+  line: 'rgba(160,180,220,.14)',
+  rowLine: 'rgba(160,180,220,.07)',
+  text: '#f4f6fb',
+  muted: '#9aa8c0',
+  faint: '#63718c',
+  borrow: '#f9853a',
+  borrowBg: 'rgba(249,133,58,.12)',
+  borrowPillBg: 'rgba(249,133,58,.14)',
+  return: '#19b98a',
+  returnBg: 'rgba(25,185,138,.12)',
+  returnPillBg: 'rgba(25,185,138,.14)',
+  alert: '#ff5d55',
+  alertBg: 'rgba(255,93,85,.12)',
+  alertLine: 'rgba(255,93,85,.45)',
+  panelRadius: '12px',
+  controlRadius: '10px',
+  buttonRadius: '7px',
+  pillRadius: '6px',
+  trackRadius: '4px',
+  barRadius: '3px 3px 0 0',
+  legendRadius: '2px',
+  roundRadius: '999px'
+} as const;
+
+export const kioskAnalyticsThemeStyle = Object.fromEntries(
+  Object.entries(KIOSK_ANALYTICS_THEME).map(([key, value]) => [`--ka-${key}`, value])
+) as CSSProperties;

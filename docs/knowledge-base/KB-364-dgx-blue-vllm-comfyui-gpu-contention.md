@@ -36,12 +36,12 @@ category: knowledge-base
 
 - 運用プロファイル **`private_ok`** は **ComfyUI 等との競合を許容**する一方、**`business_first`** では **業務 blue との同時フル稼働は期待しない**（UI・Runbook の説明と整合）
 - 管理 UI の WARN は **裏側が変わらない限り「待つ」だけでは直らない**（ポーリング間隔は UI 側の更新周期に依存）
-- **FLUX.2 Klein 9B 私用生成時**: `system-prod-trtllm`（VLLM::EngineCore）が **約57GB** 占有していると Comfy が遅化しうる（2026-05-25 実測）。Comfy 優先時は `docker stop system-prod-trtllm`、業務復帰時は `docker start`（[KB-379](./KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md)）
+- **FLUX.2 Klein 9B 私用生成時**: `system-prod-trtllm`（VLLM::EngineCore）が **約57GB** 占有していると Comfy が遅化しうる（2026-05-25 実測）。Comfy 優先時は `docker stop system-prod-trtllm`、業務復帰時は `docker start`（KB-379（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md`））
 
 ## References
 
 - [Runbook: dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)（トラブルシューティング補足・コンテナ混在）
-- [Runbook: dgx-private-comfyui.md](../runbooks/dgx-private-comfyui.md) と [KB-378](./KB-378-dgx-private-comfyui-mac-ssh-access.md)（**Mac と SSH とトンネル**。**本 KB の GPU と独立**だが運用セットで並読）
+- DGXSparkControlPlane `docs/private-history/runbooks/dgx-private-comfyui.md` と KB-378（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md`）（**Mac と SSH とトンネル**。**本 KB の GPU と独立**だが運用セットで並読）
 - [KB-363](./KB-363-dgx-resource-spark-status-fallback.md)（別事象: `sparkHost` フォールバック）
 - [KB-366](./KB-366-dgx-spark-operational-understanding.md)（運用理解: メモリ KPI・モード切替・Comfy 両立不可の正本）
 - [ADR-20260502-dgx-resource-control-targets.md](../decisions/ADR-20260502-dgx-resource-control-targets.md)

@@ -9,6 +9,7 @@ import {
   useCsvDashboards,
   useVisualizationDashboards,
   useSignageScheduleEditorClients,
+  useSignageWebCaptures,
 } from '../../../api/hooks';
 
 import {
@@ -22,7 +23,7 @@ import {
   type SignageSelfInspectionTargetMode,
   type SignageSplitSlotKind,
 } from './signageLayoutConfigModel';
-import { DEFAULT_SCHEDULE_FORM_DATA, parseResourceCdListInput } from './signageScheduleDisplay';
+import { DEFAULT_SCHEDULE_FORM_DATA } from './signageScheduleDisplay';
 
 import type { SignageSchedule } from '../../../api/client';
 
@@ -30,6 +31,7 @@ function applyEditorStatePatch(
   patch: SignageScheduleEditorStatePatch,
   setters: {
     setFormData: (value: Partial<SignageSchedule>) => void;
+    setPreservedCanvasLayoutConfig: (value: NonNullable<SignageSchedule['layoutConfig']> | null) => void;
     setUseNewLayout: (value: boolean) => void;
     setLayoutType: (value: 'FULL' | 'SPLIT') => void;
     setLeftSlotKind: (value: SignageSplitSlotKind) => void;
@@ -44,6 +46,7 @@ function applyEditorStatePatch(
     setFullPdfId: (value: string | null) => void;
     setFullCsvDashboardId: (value: string | null) => void;
     setFullVisualizationDashboardId: (value: string | null) => void;
+    setFullWebCaptureId: (value: string | null) => void;
     setFullKioskDeviceScopeKey: (value: string) => void;
     setFullKioskSlideIntervalStr: (value: string) => void;
     setFullKioskSeibanPerPageStr: (value: string) => void;
@@ -59,10 +62,12 @@ function applyEditorStatePatch(
     setFullSelfInspectionMaxAutoMachinesStr: (value: string) => void;
     setFullSelfInspectionSlideIntervalStr: (value: string) => void;
     setFullSelfInspectionPartsPerPageStr: (value: string) => void;
+    setFullSelfInspectionLegacyAutoMigrationNotice: (value: boolean) => void;
     setFullSelfInspectionDetailTopNStr: (value: string) => void;
   }
 ) {
   if (patch.formData !== undefined) setters.setFormData(patch.formData);
+  if (patch.preservedCanvasLayoutConfig !== undefined) setters.setPreservedCanvasLayoutConfig(patch.preservedCanvasLayoutConfig);
   if (patch.useNewLayout !== undefined) setters.setUseNewLayout(patch.useNewLayout);
   if (patch.layoutType !== undefined) setters.setLayoutType(patch.layoutType);
   if (patch.leftSlotKind !== undefined) setters.setLeftSlotKind(patch.leftSlotKind);
@@ -83,6 +88,7 @@ function applyEditorStatePatch(
   if (patch.fullVisualizationDashboardId !== undefined) {
     setters.setFullVisualizationDashboardId(patch.fullVisualizationDashboardId);
   }
+  if (patch.fullWebCaptureId !== undefined) setters.setFullWebCaptureId(patch.fullWebCaptureId);
   if (patch.fullKioskDeviceScopeKey !== undefined) {
     setters.setFullKioskDeviceScopeKey(patch.fullKioskDeviceScopeKey);
   }
@@ -128,6 +134,9 @@ function applyEditorStatePatch(
   if (patch.fullSelfInspectionPartsPerPageStr !== undefined) {
     setters.setFullSelfInspectionPartsPerPageStr(patch.fullSelfInspectionPartsPerPageStr);
   }
+  if (patch.fullSelfInspectionLegacyAutoMigrationNotice !== undefined) {
+    setters.setFullSelfInspectionLegacyAutoMigrationNotice(patch.fullSelfInspectionLegacyAutoMigrationNotice);
+  }
   if (patch.fullSelfInspectionDetailTopNStr !== undefined) {
     setters.setFullSelfInspectionDetailTopNStr(patch.fullSelfInspectionDetailTopNStr);
   }
@@ -140,12 +149,16 @@ export function useSignageScheduleEditor() {
   const csvDashboardsQuery = useCsvDashboards({ enabled: true });
   /** サイネージ割当用: 無効なダッシュボードも表示（ラベルで区別）。未作成のパレット用は optgroup が空になる。 */
   const visualizationDashboardsQuery = useVisualizationDashboards();
+  const webCapturesQuery = useSignageWebCaptures();
   const { create, update, remove } = useSignageScheduleMutations();
   const renderMutation = useSignageRenderMutation();
   const renderStatusQuery = useSignageRenderStatus();
   const [isCreating, setIsCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<SignageSchedule>>(DEFAULT_SCHEDULE_FORM_DATA);
+  const [preservedCanvasLayoutConfig, setPreservedCanvasLayoutConfig] = useState<
+    NonNullable<SignageSchedule['layoutConfig']> | null
+  >(null);
   const [useNewLayout, setUseNewLayout] = useState(false); // 新形式を使用するか
   const [layoutType, setLayoutType] = useState<'FULL' | 'SPLIT'>('FULL'); // レイアウトタイプ
   const [leftSlotKind, setLeftSlotKind] = useState<'loans' | 'pdf' | 'csv_dashboard' | 'visualization'>('loans'); // 左スロットの種類
@@ -165,10 +178,12 @@ export function useSignageScheduleEditor() {
     | 'kiosk_leader_order_cards'
     | 'mobile_placement_parts_shelf_grid'
     | 'self_inspection_machine_board'
+    | 'web_page'
   >('loans'); // 全体スロットの種類
   const [fullPdfId, setFullPdfId] = useState<string | null>(null); // 全体スロットのPDF（kind='pdf'の場合）
   const [fullCsvDashboardId, setFullCsvDashboardId] = useState<string | null>(null); // 全体スロットのCSVダッシュボード（kind='csv_dashboard'の場合）
   const [fullVisualizationDashboardId, setFullVisualizationDashboardId] = useState<string | null>(null); // 全体スロットの可視化（kind='visualization'の場合）
+  const [fullWebCaptureId, setFullWebCaptureId] = useState<string | null>(null); // 全体スロットのページ撮影（kind='web_page'の場合）
   const [fullKioskDeviceScopeKey, setFullKioskDeviceScopeKey] = useState('');
   const [fullKioskSlideIntervalStr, setFullKioskSlideIntervalStr] = useState('');
   const [fullKioskSeibanPerPageStr, setFullKioskSeibanPerPageStr] = useState('');
@@ -178,18 +193,21 @@ export function useSignageScheduleEditor() {
   const [fullLeaderOrderCardsPerPageStr, setFullLeaderOrderCardsPerPageStr] = useState('');
   const [fullPartsShelfMaxItemsStr, setFullPartsShelfMaxItemsStr] = useState('');
   const [fullSelfInspectionTargetMode, setFullSelfInspectionTargetMode] = useState<
-    'manual_machine_name' | 'auto_from_leaderboard_status'
-  >('manual_machine_name');
+    'kiosk_active_sessions' | 'manual_machine_name'
+  >('kiosk_active_sessions');
   const [fullSelfInspectionMachineName, setFullSelfInspectionMachineName] = useState('');
   const [fullSelfInspectionDeviceScopeKey, setFullSelfInspectionDeviceScopeKey] = useState('');
   const [fullSelfInspectionResourceCdsText, setFullSelfInspectionResourceCdsText] = useState('');
   const [fullSelfInspectionMaxAutoMachinesStr, setFullSelfInspectionMaxAutoMachinesStr] = useState('');
   const [fullSelfInspectionSlideIntervalStr, setFullSelfInspectionSlideIntervalStr] = useState('');
   const [fullSelfInspectionPartsPerPageStr, setFullSelfInspectionPartsPerPageStr] = useState('');
+  const [fullSelfInspectionLegacyAutoMigrationNotice, setFullSelfInspectionLegacyAutoMigrationNotice] =
+    useState(false);
   const [fullSelfInspectionDetailTopNStr, setFullSelfInspectionDetailTopNStr] = useState('');
 
   const editorSetters = {
     setFormData,
+    setPreservedCanvasLayoutConfig,
     setUseNewLayout,
     setLayoutType,
     setLeftSlotKind,
@@ -204,6 +222,7 @@ export function useSignageScheduleEditor() {
     setFullPdfId,
     setFullCsvDashboardId,
     setFullVisualizationDashboardId,
+    setFullWebCaptureId,
     setFullKioskDeviceScopeKey,
     setFullKioskSlideIntervalStr,
     setFullKioskSeibanPerPageStr,
@@ -219,6 +238,7 @@ export function useSignageScheduleEditor() {
     setFullSelfInspectionMaxAutoMachinesStr,
     setFullSelfInspectionSlideIntervalStr,
     setFullSelfInspectionPartsPerPageStr,
+    setFullSelfInspectionLegacyAutoMigrationNotice,
     setFullSelfInspectionDetailTopNStr,
   };
 
@@ -232,6 +252,7 @@ export function useSignageScheduleEditor() {
 
   const getEditorState = (): SignageScheduleEditorState => ({
     formData,
+    preservedCanvasLayoutConfig,
     useNewLayout,
     layoutType,
     leftSlotKind,
@@ -246,6 +267,7 @@ export function useSignageScheduleEditor() {
     fullPdfId,
     fullCsvDashboardId,
     fullVisualizationDashboardId,
+    fullWebCaptureId,
     fullKioskDeviceScopeKey,
     fullKioskSlideIntervalStr,
     fullKioskSeibanPerPageStr,
@@ -261,6 +283,7 @@ export function useSignageScheduleEditor() {
     fullSelfInspectionMaxAutoMachinesStr,
     fullSelfInspectionSlideIntervalStr,
     fullSelfInspectionPartsPerPageStr,
+    fullSelfInspectionLegacyAutoMigrationNotice,
     fullSelfInspectionDetailTopNStr,
   });
 
@@ -285,16 +308,6 @@ export function useSignageScheduleEditor() {
         alert('手入力モードでは機種名（machineName）が必須です。');
         return;
       }
-      if (fullSelfInspectionTargetMode === 'auto_from_leaderboard_status') {
-        if (fullSelfInspectionDeviceScopeKey.trim() === '') {
-          alert('自動選定モードでは deviceScopeKey が必須です。');
-          return;
-        }
-        if (parseResourceCdListInput(fullSelfInspectionResourceCdsText).length === 0) {
-          alert('自動選定モードでは resourceCds が必須です。');
-          return;
-        }
-      }
     }
 
     try {
@@ -306,7 +319,10 @@ export function useSignageScheduleEditor() {
 
       if (layoutConfig) {
         // 新形式を使用する場合、contentTypeとpdfIdをlayoutConfigから推論
-        if (layoutConfig.layout === 'FULL') {
+        if (layoutConfig.layout === 'CANVAS') {
+          // CANVAS is produced by Business Hermes and preserved by this
+          // legacy editor; do not infer or replace its content metadata.
+        } else if (layoutConfig.layout === 'FULL') {
           const slot = layoutConfig.slots[0];
           if (slot.kind === 'pdf') {
             contentType = 'PDF';
@@ -406,6 +422,8 @@ export function useSignageScheduleEditor() {
     isCreating,
     editingId,
     formData,
+    preservedCanvasLayoutConfig,
+    setPreservedCanvasLayoutConfig,
     setFormData,
     useNewLayout,
     setUseNewLayout,
@@ -435,6 +453,9 @@ export function useSignageScheduleEditor() {
     setFullCsvDashboardId,
     fullVisualizationDashboardId,
     setFullVisualizationDashboardId,
+    fullWebCaptureId,
+    setFullWebCaptureId,
+    webCapturesQuery,
     fullKioskDeviceScopeKey,
     setFullKioskDeviceScopeKey,
     fullKioskSlideIntervalStr,
@@ -465,6 +486,8 @@ export function useSignageScheduleEditor() {
     setFullSelfInspectionSlideIntervalStr,
     fullSelfInspectionPartsPerPageStr,
     setFullSelfInspectionPartsPerPageStr,
+    fullSelfInspectionLegacyAutoMigrationNotice,
+    setFullSelfInspectionLegacyAutoMigrationNotice,
     fullSelfInspectionDetailTopNStr,
     setFullSelfInspectionDetailTopNStr,
     resetFullSlotSpecificFields,

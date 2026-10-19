@@ -26,7 +26,9 @@ poetry run python -m nfc_agent
 
 - `GET /api/agent/status`: リーダー接続状況・最後のイベント・キュー数を返す
 - `GET /api/agent/queue`: 未送信イベントのプレビュー（最大50件）
-- `POST /api/agent/flush`: 現状はローカルキューをクリア（将来はサーバーへ再送）
+- NFC APIは端末loopbackだけで待ち受けます。`flush`、`reboot`、`poweroff`
+  の制御APIは提供しません。未送信キューは自動削除せず、接続中のブラウザへ
+  実際に送信できたイベントだけを順序どおり削除します。
 - `WebSocket /stream`: JSON `{uid, reader, timestamp}` をリアルタイム配信
 
 これらのインターフェースは将来 PDF ビューワーや物流管理機能が端末情報を取得する際にも再利用できるよう設計されています。

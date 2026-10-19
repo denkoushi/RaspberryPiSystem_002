@@ -1,0 +1,271 @@
+import { randomUUID } from 'node:crypto';
+
+import type { Prisma, PrismaClient, KnowledgeProcedure, KnowledgeProcedureRevision } from '@prisma/client';
+import type { KnowledgeProcedureDocument, KnowledgeProcedureSummary } from '@raspi-system/shared-types';
+
+import type { KnowledgeProcedureReviewRepositoryPort, NewProcedureRevision } from './knowledge-procedure.port.js';
+import { resolveKnowledgeEmployee } from './prisma-knowledge-reviewer.repository.js';
+import type { KnowledgeReviewEmployee } from './knowledge-position-rank.js';
+import { reviewCommentSchema } from './procedure-review-input.js';
+import { procedureContentSchema, procedureHeaderSchema, PROCEDURE_REVIEW_TIERS, PROCEDURE_REVISION_STATES } from './procedure-content.js';
+
+const asJson = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+const orUndefined = (value: string | null) => value ?? undefined;
+
+function identifiers(row: KnowledgeProcedure) {
+  return { partNumber: orUndefined(row.partNumber), drawingNumber: orUndefined(row.drawingNumber), processName: orUndefined(row.processName) };
+}
+function reviewTier(row: KnowledgeProcedure) {
+  const tier = PROCEDURE_REVIEW_TIERS.find(value => value === row.reviewTier);
+  if (!tier) throw new Error(`Unknown procedure review tier: ${row.reviewTier}`);
+  return tier;
+}
+const BUILD_LEASE_MS = 60_000;
+const MAX_BUILD_ATTEMPTS = 5;
+
+function topicRecord(row: KnowledgeProcedure) {
+  return {
+    procedureId: row.id,
+    header: { title: row.title, category: row.category, identifiers: identifiers(row), reviewTier: reviewTier(row) },
+    parts: row.target && row.workType ? { target: row.target, workType: row.workType, ...(row.detail ? { detail: row.detail } : {}) } : null,
+  };
+}
+
+function toDocument(procedure: KnowledgeProcedure, revision: KnowledgeProcedureRevision): KnowledgeProcedureDocument {
+  const state = PROCEDURE_REVISION_STATES.find(value => value === revision.state);
+  if (!state) throw new Error(`Unknown procedure revision state: ${revision.state}`);
+  return {
+    formatVersion: 1, procedureId: procedure.id, revisionId: revision.id, revisionNumber: revision.revisionNumber,
+    title: procedure.title, category: procedure.category, identifiers: identifiers(procedure), reviewTier: reviewTier(procedure),
+    state, createdAt: revision.createdAt.toISOString(), steps: procedureContentSchema.parse(revision.content).steps,
+  };
+}
+
+export class PrismaKnowledgeProcedureRepository implements KnowledgeProcedureReviewRepositoryPort {
+  constructor(private readonly db: PrismaClient) {}
+
+  async createDraft(input: NewProcedureRevision) {
+    const header = procedureHeaderSchema.parse(input.header);
+    const content = procedureContentSchema.parse(input.content);
+    const fields = {
+      title: header.title, category: header.category, reviewTier: header.reviewTier,
+      partNumber: header.identifiers.partNumber ?? null, drawingNumber: header.identifiers.drawingNumber ?? null,
+      processName: header.identifiers.processName ?? null,
+    };
+    return this.db.$transaction(async tx => {
+      const procedureId = input.procedureId ?? randomUUID();
+      if (input.procedureId) await tx.knowledgeProcedure.update({ where: { id: procedureId }, data: fields });
+      else await tx.knowledgeProcedure.create({ data: { id: procedureId, ...fields } });
+      const latest = await tx.knowledgeProcedureRevision.aggregate({ where: { procedureId }, _max: { revisionNumber: true } });
+      const revisionNumber = (latest._max.revisionNumber ?? 0) + 1;
+      // The (procedureId, revisionNumber) unique index rejects a concurrent writer instead of duplicating a number.
+      const revision = await tx.knowledgeProcedureRevision.create({ data: {
+        id: randomUUID(), procedureId, revisionNumber, state: 'draft', content: asJson(content), createdByKey: input.createdByKey,
+      } });
+      return { procedureId, revisionId: revision.id, revisionNumber };
+    });
+  }
+
+  async publishAutomatic(revisionId: string) {
+    await this.db.$transaction(async tx => {
+      const revision = await this.lockRevision(tx, revisionId);
+      if (reviewTier(revision.procedure) !== 'auto_publish') throw new Error('PROCEDURE_REQUIRES_APPROVAL');
+      if (revision.state !== 'draft') throw new Error('PROCEDURE_REVISION_NOT_DRAFT');
+      const previous = revision.procedure.publishedRevisionId;
+      if (previous) await tx.knowledgeProcedureRevision.update({ where: { id: previous }, data: { state: 'superseded' } });
+      // An error-reported older revision must not be approvable over this newer publication.
+      await tx.knowledgeProcedureRevision.updateMany({
+        where: { procedureId: revision.procedureId, state: 'pending_approval', revisionNumber: { lt: revision.revisionNumber } }, data: { state: 'superseded' },
+      });
+      await tx.knowledgeProcedureRevision.update({ where: { id: revisionId }, data: { state: 'published' } });
+      await tx.knowledgeProcedure.update({ where: { id: revision.procedureId }, data: { publishedRevisionId: revisionId } });
+    });
+  }
+
+  private async lockProcedure(tx: Prisma.TransactionClient, procedureId: string) {
+    await tx.$queryRaw`SELECT "id" FROM "KnowledgeProcedure" WHERE "id" = ${procedureId} FOR UPDATE`;
+  }
+
+  private async lockRevision(tx: Prisma.TransactionClient, revisionId: string) {
+    const row = await tx.knowledgeProcedureRevision.findUnique({ where: { id: revisionId }, select: { procedureId: true } });
+    if (!row) throw new Error('PROCEDURE_REVISION_NOT_FOUND');
+    // All publication/review writers lock the topic before reading mutable revision state.
+    await this.lockProcedure(tx, row.procedureId);
+    const revision = await tx.knowledgeProcedureRevision.findUnique({ where: { id: revisionId }, include: { procedure: true } });
+    if (!revision) throw new Error('PROCEDURE_REVISION_NOT_FOUND');
+    return revision;
+  }
+
+  private async submitDraft(tx: Prisma.TransactionClient, revision: KnowledgeProcedureRevision) {
+    const newer = await tx.knowledgeProcedureRevision.findFirst({ where: {
+      procedureId: revision.procedureId, state: 'pending_approval', revisionNumber: { gt: revision.revisionNumber },
+    } });
+    if (!newer) await tx.knowledgeProcedureRevision.updateMany({ where: {
+      procedureId: revision.procedureId, state: 'pending_approval', id: { not: revision.id },
+    }, data: { state: 'superseded' } });
+    await tx.knowledgeProcedureRevision.update({ where: { id: revision.id }, data: { state: newer ? 'superseded' : 'pending_approval' } });
+  }
+
+  async submitForApproval(revisionId: string) {
+    await this.db.$transaction(async tx => {
+      const revision = await this.lockRevision(tx, revisionId);
+      if (reviewTier(revision.procedure) !== 'approval_required') throw new Error('PROCEDURE_APPROVAL_NOT_REQUIRED');
+      if (revision.state !== 'draft') throw new Error('PROCEDURE_REVISION_NOT_DRAFT');
+      await this.submitDraft(tx, revision);
+    });
+  }
+
+  async submitStoppedDraftsForApproval() {
+    const topics = await this.db.knowledgeProcedure.findMany({ where: { reviewTier: 'approval_required' }, select: { id: true } });
+    for (const topic of topics) await this.db.$transaction(async tx => {
+      await this.lockProcedure(tx, topic.id);
+      const procedure = await tx.knowledgeProcedure.findUnique({ where: { id: topic.id } });
+      if (procedure?.reviewTier !== 'approval_required') return;
+      const latest = await tx.knowledgeProcedureRevision.findFirst({ where: { procedureId: topic.id }, orderBy: { revisionNumber: 'desc' } });
+      if (latest?.state === 'draft') await this.submitDraft(tx, latest);
+    });
+  }
+
+  async listPendingApproval() {
+    const rows = await this.db.knowledgeProcedureRevision.findMany({ where: { state: 'pending_approval' },
+      include: { procedure: { include: { publishedRevision: true } } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
+    const reports = await this.db.knowledgeProcedureReview.findMany({
+      where: { revisionId: { in: rows.map(row => row.id) }, action: 'error_reported' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], distinct: ['revisionId'],
+      select: { revisionId: true, comment: true },
+    });
+    const comments = new Map(reports.map(report => [report.revisionId, report.comment]));
+    return rows.map(row => ({
+      procedureId: row.procedureId, revisionId: row.id, revisionNumber: row.revisionNumber,
+      title: row.procedure.title, category: row.procedure.category, identifiers: identifiers(row.procedure), reviewTier: reviewTier(row.procedure),
+      stepCount: procedureContentSchema.parse(row.content).steps.length, createdAt: row.createdAt.toISOString(),
+      publishedRevisionNumber: row.procedure.publishedRevision?.revisionNumber ?? null,
+      reportComment: comments.get(row.id) ?? null,
+    }));
+  }
+
+  async getForReview(revisionId: string) {
+    const revision = await this.db.knowledgeProcedureRevision.findUnique({ where: { id: revisionId }, include: { procedure: true } });
+    return revision?.state === 'pending_approval' ? toDocument(revision.procedure, revision) : null;
+  }
+
+  private async recordReview(tx: Prisma.TransactionClient, revision: KnowledgeProcedureRevision, action: string,
+    employee: KnowledgeReviewEmployee, actorKey: string, comment?: string) {
+    await tx.knowledgeProcedureReview.create({ data: {
+      procedureId: revision.procedureId, revisionId: revision.id, action, employeeId: employee.id,
+      employeeCodeSnapshot: employee.employeeCode, employeeNameSnapshot: employee.displayName, employeeNfcTagUidSnapshot: employee.nfcTagUid,
+      employeePositionSnapshot: employee.positionName, employeeRankSnapshot: employee.rank, actorKey, comment: comment ?? null,
+    } });
+  }
+
+  async approve(revisionId: string, reviewer: KnowledgeReviewEmployee, actorKey: string, comment?: string) {
+    const text = reviewCommentSchema.optional().parse(comment);
+    await this.db.$transaction(async tx => {
+      const revision = await this.lockRevision(tx, revisionId);
+      if (revision.state !== 'pending_approval') throw new Error('PROCEDURE_REVIEW_CONFLICT');
+      const employee = await resolveKnowledgeEmployee(tx, reviewer.nfcTagUid, true);
+      if (employee.id !== reviewer.id) throw new Error('KNOWLEDGE_UNKNOWN_EMPLOYEE');
+      if (revision.procedure.publishedRevisionId) await tx.knowledgeProcedureRevision.update({
+        where: { id: revision.procedure.publishedRevisionId }, data: { state: 'superseded' },
+      });
+      await tx.knowledgeProcedureRevision.update({ where: { id: revisionId }, data: { state: 'published' } });
+      await tx.knowledgeProcedure.update({ where: { id: revision.procedureId }, data: { publishedRevisionId: revisionId } });
+      await this.recordReview(tx, revision, 'approved', employee, actorKey, text);
+    });
+  }
+
+  async returnRevision(revisionId: string, reviewer: KnowledgeReviewEmployee, actorKey: string, comment: string) {
+    const text = reviewCommentSchema.parse(comment);
+    await this.db.$transaction(async tx => {
+      const revision = await this.lockRevision(tx, revisionId);
+      if (revision.state !== 'pending_approval') throw new Error('PROCEDURE_REVIEW_CONFLICT');
+      const employee = await resolveKnowledgeEmployee(tx, reviewer.nfcTagUid, true);
+      if (employee.id !== reviewer.id) throw new Error('KNOWLEDGE_UNKNOWN_EMPLOYEE');
+      await tx.knowledgeProcedureRevision.update({ where: { id: revisionId }, data: { state: 'returned' } });
+      await this.recordReview(tx, revision, 'returned', employee, actorKey, text);
+    });
+  }
+
+  async reportError(procedureId: string, reporter: KnowledgeReviewEmployee, actorKey: string, comment: string) {
+    const text = reviewCommentSchema.parse(comment);
+    await this.db.$transaction(async tx => {
+      await this.lockProcedure(tx, procedureId);
+      const procedure = await tx.knowledgeProcedure.findUnique({ where: { id: procedureId }, include: { publishedRevision: true } });
+      if (!procedure?.publishedRevision || procedure.publishedRevision.state !== 'published') throw new Error('PROCEDURE_NOT_PUBLISHED');
+      const employee = await resolveKnowledgeEmployee(tx, reporter.nfcTagUid);
+      if (employee.id !== reporter.id) throw new Error('KNOWLEDGE_UNKNOWN_EMPLOYEE');
+      await this.recordReview(tx, procedure.publishedRevision, 'error_reported', employee, actorKey, text);
+      await tx.knowledgeProcedure.update({ where: { id: procedureId }, data: { publishedRevisionId: null } });
+      await this.submitDraft(tx, procedure.publishedRevision);
+    });
+  }
+
+  async listTopics() {
+    return (await this.db.knowledgeProcedure.findMany({ orderBy: { createdAt: 'asc' } })).map(topicRecord);
+  }
+
+  async searchTopics(query: string, limit: number, target?: string) {
+    const q = query.trim();
+    const rows = await this.db.knowledgeProcedure.findMany({
+      where: { ...(target !== undefined ? { target } : {}), ...(q ? { OR: [
+        { title: { contains: q, mode: 'insensitive' } }, { partNumber: { contains: q, mode: 'insensitive' } },
+        { drawingNumber: { contains: q, mode: 'insensitive' } },
+      ] } : {}) },
+      orderBy: { updatedAt: 'desc' }, take: limit,
+    });
+    return rows.map(topicRecord);
+  }
+
+  async claimBuild(token: string) {
+    return this.db.$transaction(async tx => {
+      const now = new Date();
+      const row = await tx.knowledgeProcedure.findFirst({
+        where: { buildRequestedAt: { not: null }, OR: [{ buildRetryAt: null }, { buildRetryAt: { lte: now } }],
+          AND: [{ OR: [{ buildLeaseUntil: null }, { buildLeaseUntil: { lt: now } }] }] },
+        orderBy: { buildRequestedAt: 'asc' },
+      });
+      if (!row?.buildRequestedAt) return null;
+      const won = await tx.knowledgeProcedure.updateMany({
+        where: { id: row.id, buildLeaseUntil: row.buildLeaseUntil },
+        data: { buildLeaseToken: token, buildLeaseUntil: new Date(now.getTime() + BUILD_LEASE_MS), buildAttempts: (row.buildAttempts ?? 0) + 1 },
+      });
+      return won.count ? { procedureId: row.id, header: topicRecord(row).header, requestedAt: row.buildRequestedAt } : null;
+    });
+  }
+
+  async completeBuild(procedureId: string, token: string, requestedAt: Date) {
+    await this.db.knowledgeProcedure.updateMany({ where: { id: procedureId, buildLeaseToken: token }, data: { buildLeaseToken: null, buildLeaseUntil: null } });
+    // A decision that arrived during the build moved buildRequestedAt, so the topic is built again.
+    await this.db.knowledgeProcedure.updateMany({ where: { id: procedureId, buildRequestedAt: requestedAt },
+      data: { buildRequestedAt: null, buildAttempts: 0, buildRetryAt: null, buildErrorCode: null } });
+  }
+
+  async failBuild(procedureId: string, token: string, errorCode: string, deferred: boolean) {
+    const row = await this.db.knowledgeProcedure.findUnique({ where: { id: procedureId } });
+    if (!row || row.buildLeaseToken !== token) return;
+    // Exhausted builds stop retrying but keep the request so the next decision or release retries.
+    const attempts = row.buildAttempts ?? 0;
+    const exhausted = !deferred && attempts >= MAX_BUILD_ATTEMPTS;
+    await this.db.knowledgeProcedure.updateMany({ where: { id: procedureId, buildLeaseToken: token }, data: {
+      buildErrorCode: errorCode, buildLeaseToken: null, buildLeaseUntil: null,
+      // Admission refusal is not the topic's fault and must not exhaust its attempts.
+      ...(deferred ? { buildAttempts: Math.max(0, attempts - 1) } : {}),
+      buildRetryAt: new Date(Date.now() + (exhausted ? 24 * 3_600_000 : deferred ? 60_000 : Math.min(300_000, 15_000 * 2 ** attempts))),
+    } });
+  }
+
+  async listPublished(): Promise<KnowledgeProcedureSummary[]> {
+    const rows = await this.db.knowledgeProcedure.findMany({
+      where: { publishedRevisionId: { not: null } }, include: { publishedRevision: true }, orderBy: { title: 'asc' },
+    });
+    return rows.flatMap(row => row.publishedRevision ? [{
+      procedureId: row.id, title: row.title, category: row.category, identifiers: identifiers(row), reviewTier: reviewTier(row),
+      revisionNumber: row.publishedRevision.revisionNumber, publishedAt: row.publishedRevision.updatedAt.toISOString(),
+    }] : []);
+  }
+
+  async getPublished(procedureId: string) {
+    const row = await this.db.knowledgeProcedure.findUnique({ where: { id: procedureId }, include: { publishedRevision: true } });
+    return row?.publishedRevision ? toDocument(row, row.publishedRevision) : null;
+  }
+}

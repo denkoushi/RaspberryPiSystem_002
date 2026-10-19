@@ -1,7 +1,7 @@
 import {
   listScheduleRowsByFseiban,
   listScheduleRowsByProductNo
-} from '../part-measurement/part-measurement-schedule-lookup.service.js';
+} from '../production-schedule/production-schedule-lookup.service.js';
 import { pickPrimaryScheduleRowForOrder } from './mobile-placement-slip-match.js';
 
 /**

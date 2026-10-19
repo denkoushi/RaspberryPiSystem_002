@@ -1,25 +1,34 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import {
   ingestAssemblyProcedureDocumentsFromGmail,
   listAssemblyTemplateSummaries,
+  publishAssemblyProcedureDocument,
   retireAssemblyTemplate
 } from '../../api/client';
 import { KioskFilterCombobox } from '../../components/kiosk/KioskFilterCombobox';
 import { Button, buttonClassName } from '../../components/ui/Button';
+import { Dialog } from '../../components/ui/Dialog';
 import { Input } from '../../components/ui/Input';
 import {
   AssemblyProcedureLibrarySection,
+  AssemblyProcedureGmailImportConfirmDialog,
+  AssemblyProcedurePreviewDialog,
   AssemblyProcedureUploadModal,
   AssemblyTemplateHistoryDialog,
   AssemblyTemplateLibraryTable,
   KIOSK_ASSEMBLY_HOME_PATH,
+  kioskAssemblyTemplateNewPath,
+  kioskAssemblyLibraryPath,
   parseAssemblyLibrarySearch,
   readAssemblyApiErrorMessage,
   useAssemblyLibraryFilterOptions,
   useAssemblyTemplateLibrary
 } from '../../features/assembly';
+import { resolveAssemblyDocumentStatus } from '../../features/assembly/assemblyTemplateDraft';
+import { useAssemblyProcedureLibrary } from '../../features/assembly/useAssemblyProcedureLibrary';
+import { KioskSopLauncher } from '../../features/kiosk-sop';
 
 import type { AssemblyProcedureDocumentDto, AssemblyTemplateSummaryDto } from '../../features/assembly/types';
 
@@ -35,18 +44,33 @@ function pickRepresentative(group: AssemblyTemplateSummaryDto[]): AssemblyTempla
 
 export function KioskAssemblyPage() {
   const location = useLocation();
+  const { focus: requestedFocus, modelCode: requestedModelCode } = parseAssemblyLibrarySearch(location.search);
+  const focus = requestedFocus ?? 'procedures';
+  const appliedModelCode = useRef<string | null>(null);
+  const navigate = useNavigate();
   const [message, setMessage] = useState<string | null>(null);
+  const [procedureMessage, setProcedureMessage] = useState<string | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [gmailImportBusy, setGmailImportBusy] = useState(false);
+  const [gmailConfirmOpen, setGmailConfirmOpen] = useState(false);
   const [gmailImportMessage, setGmailImportMessage] = useState<string | null>(null);
   const [libraryRefreshToken, setLibraryRefreshToken] = useState(0);
+  const [procedurePickerOpen, setProcedurePickerOpen] = useState(false);
+  const procedureLibrary = useAssemblyProcedureLibrary({ refreshToken: libraryRefreshToken });
+  const pickerDocuments = procedureLibrary.documents.filter(document => resolveAssemblyDocumentStatus(document) === 'published'
+    && document.name.toLowerCase().includes(procedureLibrary.searchQuery.trim().toLowerCase()));
+  const [procedureStatusFilter, setProcedureStatusFilter] = useState<'all' | 'published' | 'draft' | 'unused'>('all');
   const [templateRefreshToken, setTemplateRefreshToken] = useState(0);
   const [historyTemplates, setHistoryTemplates] = useState<AssemblyTemplateSummaryDto[]>([]);
   const [historyTitle, setHistoryTitle] = useState('');
   const [historyOpen, setHistoryOpen] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
+  const [procedurePreview, setProcedurePreview] = useState<AssemblyProcedureDocumentDto | null>(null);
+  const [highlightedTemplateId, setHighlightedTemplateId] = useState<string | null>(null);
   const templateLibrary = useAssemblyTemplateLibrary({ refreshToken: templateRefreshToken });
   const { filters, templates, setModelCode } = templateLibrary;
+  const procedurePatternOptions = useMemo(() => [...new Set(templates.map(template => template.procedurePattern))]
+    .filter(Boolean).sort((a, b) => a.localeCompare(b, 'ja')).map(value => ({ value, label: value })), [templates]);
   const modelCodeOptions = useAssemblyLibraryFilterOptions({
     field: 'templateModelCode',
     query: filters.modelCode,
@@ -59,13 +83,24 @@ export function KioskAssemblyPage() {
   });
 
   useEffect(() => {
-    const { focus, modelCode } = parseAssemblyLibrarySearch(location.search);
-    if (modelCode) setModelCode(modelCode);
-    if (!focus) return;
-    const targetId =
-      focus === 'procedures' ? 'assembly-procedure-library-heading' : 'assembly-template-pane-heading';
-    document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [location.search, setModelCode]);
+    if (appliedModelCode.current === requestedModelCode) return;
+    appliedModelCode.current = requestedModelCode;
+    if (requestedModelCode) setModelCode(requestedModelCode);
+  }, [requestedModelCode, setModelCode]);
+
+  useEffect(() => {
+    const saved = (location.state as { assemblyTemplateSaved?: {
+      id: string;
+      modelCode: string;
+      procedurePattern: string;
+      version: number;
+    } } | null)?.assemblyTemplateSaved;
+    if (!saved) return;
+    setModelCode(saved.modelCode);
+    setHighlightedTemplateId(saved.id);
+    setMessage(`テンプレート ${saved.modelCode} / ${saved.procedurePattern} v${saved.version} を保存しました。`);
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location.pathname, location.search, location.state, navigate, setModelCode]);
 
   const groupedTemplates = useMemo(() => {
     const map = new Map<string, AssemblyTemplateSummaryDto[]>();
@@ -100,18 +135,34 @@ export function KioskAssemblyPage() {
     setUploadOpen(false);
     setLibraryRefreshToken((token) => token + 1);
     const pageCount = document.pages?.length ?? (document.imageRelativePath ? 1 : 0);
-    setMessage(
+    setProcedureMessage(
       `手順書「${document.name}」を${pageCount}ページ登録しました（下書き）。公開すると使用開始できます。`
     );
+    setProcedurePreview(document);
   }, []);
 
   const handleLibraryChanged = useCallback((nextMessage: string) => {
-    setMessage(nextMessage);
+    setProcedureMessage(nextMessage);
     setLibraryRefreshToken((token) => token + 1);
     setTemplateRefreshToken((token) => token + 1);
   }, []);
 
+  const handleProcedurePublish = useCallback(async (document: AssemblyProcedureDocumentDto, accessPassword: string) => {
+    const published = await publishAssemblyProcedureDocument({ id: document.id, accessPassword });
+    setProcedureMessage(`手順書「${published.name}」を公開しました。内容確認済みです。`);
+    setLibraryRefreshToken((token) => token + 1);
+    setTemplateRefreshToken((token) => token + 1);
+    return published;
+  }, []);
+
+  const handleCreateTemplateFromProcedure = useCallback((document: AssemblyProcedureDocumentDto) => {
+    setProcedurePreview(null);
+    setProcedurePickerOpen(false);
+    navigate(kioskAssemblyTemplateNewPath({ procedureDocumentId: document.id }));
+  }, [navigate]);
+
   const handleGmailImport = useCallback(async () => {
+    setGmailConfirmOpen(false);
     setGmailImportBusy(true);
     setGmailImportMessage(null);
     try {
@@ -185,138 +236,118 @@ export function KioskAssemblyPage() {
     }
   };
 
+  const toolbarStart = <>
+    <h1 className="shrink-0 text-xl font-bold">組立</h1>
+    <nav className="flex shrink-0 rounded border border-white/20" aria-label="管理一覧の切替">
+      {(['procedures', 'templates'] as const).map(value => <Link key={value}
+        to={kioskAssemblyLibraryPath({ focus: value, modelCode: requestedModelCode })}
+        aria-current={focus === value ? 'page' : undefined}
+        className={`flex h-11 items-center px-3 text-sm font-semibold ${focus === value ? 'bg-emerald-400/20 text-emerald-100' : 'text-white/60'}`}>
+        {value === 'procedures' ? '手順書' : 'テンプレート'}
+      </Link>)}
+    </nav>
+  </>;
+  const toolbarEnd = <>
+    <KioskSopLauncher manualId="assembly-procedure-template" initialSheetId={focus === 'templates' ? 'assembly-revision' : 'assembly-overview'} className="h-11 !px-2 !py-0 !text-white/60" />
+    <Link to={KIOSK_ASSEMBLY_HOME_PATH} className={buttonClassName('ghostOnDark', 'inline-flex h-11 shrink-0 items-center !px-2 !py-0 text-sm !text-white/60')}>組立へ戻る</Link>
+  </>;
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-white/15 bg-slate-900/70 p-2">
-        <div className="min-w-0">
-          <h1 className="text-[1.35rem] font-bold leading-tight">組立 手順書/テンプレート管理</h1>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            to={KIOSK_ASSEMBLY_HOME_PATH}
-            className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1.02rem]')}
-          >
-            組立トップ
-          </Link>
-        </div>
-      </div>
-
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-slate-800 text-white">
       <AssemblyProcedureUploadModal isOpen={uploadOpen} onClose={() => setUploadOpen(false)} onSuccess={handleUploadSuccess} />
+      <AssemblyProcedurePreviewDialog
+        document={procedurePreview}
+        isOpen={procedurePreview != null}
+        onClose={() => setProcedurePreview(null)}
+        onPublish={handleProcedurePublish}
+        onCreateTemplate={handleCreateTemplateFromProcedure}
+      />
+      <AssemblyProcedureGmailImportConfirmDialog
+        isOpen={gmailConfirmOpen}
+        busy={gmailImportBusy}
+        onConfirm={() => void handleGmailImport()}
+        onCancel={() => setGmailConfirmOpen(false)}
+      />
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 items-stretch gap-2 overflow-auto 2xl:grid-cols-[33rem_minmax(0,1fr)] 2xl:overflow-hidden">
+      <Dialog isOpen={procedurePickerOpen} onClose={() => setProcedurePickerOpen(false)} title="手順書から作る" size="md">
+        <Input value={procedureLibrary.searchQuery} onChange={event => procedureLibrary.setSearchQuery(event.target.value)} aria-label="作成元の手順書名で検索" placeholder="名前で検索" className="mt-3 h-11 min-h-11" />
+        <div className="mt-3 max-h-80 overflow-y-auto">
+          {procedureLibrary.error ? <p className="text-sm text-red-600">{procedureLibrary.error}</p> : procedureLibrary.loading ? <p className="text-sm text-slate-600">読込中…</p> : (
+            <ul className="space-y-2">
+              {pickerDocuments.map(document => (
+                <li key={document.id}><Button type="button" variant="ghost" className="min-h-11 max-w-full border border-slate-300 text-left" onClick={() => handleCreateTemplateFromProcedure(document)}>{document.name}</Button></li>
+              ))}
+              {pickerDocuments.length === 0 ? <li className="text-sm text-slate-600">使える手順書はありません。</li> : null}
+            </ul>
+          )}
+        </div>
+        <div className="mt-4 flex justify-start"><Button type="button" variant="ghost" className="min-h-11" onClick={() => setProcedurePickerOpen(false)}>閉じる</Button></div>
+      </Dialog>
+
+      {focus === 'procedures' ? (
         <AssemblyProcedureLibrarySection
+          toolbarStart={toolbarStart}
+          toolbarEnd={toolbarEnd}
+          libraryState={procedureLibrary}
+          initialStatusFilter={procedureStatusFilter}
+          onStatusFilterChange={setProcedureStatusFilter}
           refreshToken={libraryRefreshToken}
           onRegisterClick={() => setUploadOpen(true)}
-          onImportClick={() => void handleGmailImport()}
+          onImportClick={() => setGmailConfirmOpen(true)}
           importing={gmailImportBusy}
           importMessage={gmailImportMessage}
+          statusMessage={procedureMessage}
           onChanged={handleLibraryChanged}
+          onPreviewClick={(document) => setProcedurePreview(document)}
         />
-
-        <section
-          className="flex min-h-0 min-w-0 flex-col gap-1.5 rounded border border-white/15 bg-slate-950/45 p-1.5"
-          aria-labelledby="assembly-template-pane-heading"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-            <h2 id="assembly-template-pane-heading" className="text-[1.08rem] font-bold text-white/90">
-              組立テンプレート
-            </h2>
-            <span className="text-[0.9rem] font-semibold text-white/55">{visibleTemplateRows.length}件</span>
+      ) : (
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-labelledby="assembly-template-pane-heading">
+          <h2 id="assembly-template-pane-heading" className="sr-only">組立テンプレート</h2>
+          <div className="flex min-h-14 shrink-0 flex-wrap items-center gap-1 whitespace-nowrap border-b border-white/15 bg-slate-900 px-3 py-1.5">
+            {toolbarStart}
+            <Button type="button" variant="primary" className="h-11 shrink-0 !bg-[#3ba776] !px-3 !py-0 text-sm" onClick={() => setProcedurePickerOpen(true)}>＋ 手順書から作る</Button>
+            <div className="min-w-[180px] max-w-[320px] flex-1"><Input value={filters.q} onChange={e => templateLibrary.setQ(e.target.value)} aria-label="全体検索" placeholder="全体検索" className="h-11 min-h-11 px-2 text-sm" /></div>
+            <div className="w-[88px] shrink-0"><KioskFilterCombobox value={filters.modelCode} onChange={templateLibrary.setModelCode} placeholder="機種名" ariaLabel="機種名"
+              options={modelCodeOptions.options} loading={modelCodeOptions.loading} optionUpdateMode="live" inputClassName="h-11 min-h-11 px-2 text-sm" /></div>
+            <div className="w-[88px] shrink-0"><KioskFilterCombobox value={filters.procedurePattern} onChange={templateLibrary.setProcedurePattern} placeholder="手順" ariaLabel="手順パターン"
+              options={procedurePatternOptions} optionUpdateMode="live" inputClassName="h-11 min-h-11 px-2 text-sm" /></div>
+            <div className="w-[88px] shrink-0"><KioskFilterCombobox value={filters.procedureDocumentName} onChange={templateLibrary.setProcedureDocumentName} placeholder="手順書名" ariaLabel="テンプレートの手順書名"
+              options={procedureDocumentOptions.options} loading={procedureDocumentOptions.loading} optionUpdateMode="live" inputClassName="h-11 min-h-11 px-2 text-sm" /></div>
+            <div className="flex shrink-0 gap-1" aria-label="テンプレートの状態">
+              {([false, true] as const).map(value => <button key={String(value)} type="button" aria-pressed={filters.includeInactive === value} onClick={() => templateLibrary.setIncludeInactive(value)}
+                className={`h-11 rounded-full border px-2 text-sm font-semibold ${filters.includeInactive === value ? 'border-emerald-400 bg-emerald-400/20 text-emerald-100' : 'border-white/20 text-white/60'}`}>{value ? '無効化済みも表示' : '有効'}</button>)}
+            </div>
+            <Button type="button" variant="ghostOnDark" className="h-11 w-11 shrink-0 !p-0 text-2xl" aria-label={templateLibrary.loading ? '更新中…' : '再読込'} title="再読込" disabled={templateLibrary.loading} onClick={templateLibrary.reload}><span aria-hidden="true">↻</span></Button>
+            <Button type="button" variant="ghostOnDark" className="h-11 w-11 shrink-0 !p-0 text-2xl" aria-label="解除" title="解除" disabled={!templateLibrary.hasActiveFilters} onClick={templateLibrary.resetFilters}><span aria-hidden="true">×</span></Button>
+            <div className="ml-auto flex shrink-0 items-center gap-2">{toolbarEnd}</div>
           </div>
+          <div className="flex min-h-0 flex-1 flex-col px-5 py-3">
+            {templateLibrary.error ?? modelCodeOptions.error ?? procedureDocumentOptions.error ?? message ? (
+              <p className="px-1 text-[1rem] font-semibold text-amber-200">
+                {templateLibrary.error ?? modelCodeOptions.error ?? procedureDocumentOptions.error ?? message}
+              </p>
+            ) : null}
 
-          <div className="flex flex-wrap items-center gap-2 rounded border border-white/10 bg-slate-900/60 p-2">
-            <div className="w-[11rem]">
-              <Input
-                value={filters.q}
-                onChange={(e) => templateLibrary.setQ(e.target.value)}
-                placeholder="全体検索"
-                className="min-h-9 px-2 text-[0.86rem]"
-              />
-            </div>
-            <div className="w-[9rem]">
-              <KioskFilterCombobox
-                value={filters.modelCode}
-                onChange={templateLibrary.setModelCode}
-                placeholder="型番/FHINCD"
-                ariaLabel="型番/FHINCD"
-                options={modelCodeOptions.options}
-                loading={modelCodeOptions.loading}
-                optionUpdateMode="live"
-                inputClassName="min-h-9 px-2 text-[0.86rem]"
-              />
-            </div>
-            <div className="w-[9rem]">
-              <Input
-                value={filters.procedurePattern}
-                onChange={(e) => templateLibrary.setProcedurePattern(e.target.value)}
-                placeholder="手順パターン"
-                className="min-h-9 px-2 text-[0.86rem]"
-              />
-            </div>
-            <div className="w-[11rem]">
-              <KioskFilterCombobox
-                value={filters.procedureDocumentName}
-                onChange={templateLibrary.setProcedureDocumentName}
-                placeholder="手順書名"
-                ariaLabel="テンプレートの手順書名"
-                options={procedureDocumentOptions.options}
-                loading={procedureDocumentOptions.loading}
-                optionUpdateMode="live"
-                inputClassName="min-h-9 px-2 text-[0.86rem]"
-              />
-            </div>
-            <label className="flex min-h-9 items-center gap-1 rounded border border-white/20 px-2 text-[0.78rem] font-semibold text-white/80">
-              <input
-                type="checkbox"
-                checked={filters.includeInactive}
-                onChange={(event) => templateLibrary.setIncludeInactive(event.target.checked)}
-              />
-              旧版含む
-            </label>
-            <Button
-              type="button"
-              variant="ghostOnDark"
-              className="min-h-9 !px-2 !py-0 text-[0.86rem]"
-              disabled={templateLibrary.loading}
-              onClick={templateLibrary.reload}
-            >
-              {templateLibrary.loading ? '更新中…' : '再読込'}
-            </Button>
-            <Button
-              type="button"
-              variant="ghostOnDark"
-              className="min-h-9 !px-2 !py-0 text-[0.86rem]"
-              disabled={!templateLibrary.hasActiveFilters}
-              onClick={templateLibrary.resetFilters}
-            >
-              解除
-            </Button>
-          </div>
-
-          {templateLibrary.error ?? modelCodeOptions.error ?? procedureDocumentOptions.error ?? message ? (
-            <p className="px-1 text-[1rem] font-semibold text-amber-200">
-              {templateLibrary.error ?? modelCodeOptions.error ?? procedureDocumentOptions.error ?? message}
-            </p>
-          ) : null}
-
-          <AssemblyTemplateHistoryDialog
-            isOpen={historyOpen}
-            title={historyTitle}
-            templates={historyTemplates}
-            onClose={() => setHistoryOpen(false)}
-          />
-
-          <div className="min-h-0 flex-1 rounded bg-slate-950/35 p-1">
-            <AssemblyTemplateLibraryTable
-              templates={visibleTemplateRows}
-              busy={templateLibrary.loading || actionBusy}
-              onHistoryClick={(key) => void handleHistoryClick(key)}
-              lineageGroupKey={lineageGroupKey}
-              onRetireClick={(template) => void handleRetireTemplate(template)}
+            <AssemblyTemplateHistoryDialog
+              isOpen={historyOpen}
+              title={historyTitle}
+              templates={historyTemplates}
+              onClose={() => setHistoryOpen(false)}
             />
+
+            <div className="min-h-0 flex-1">
+              <AssemblyTemplateLibraryTable
+                templates={visibleTemplateRows}
+                busy={templateLibrary.loading || actionBusy}
+                onHistoryClick={(key) => void handleHistoryClick(key)}
+                lineageGroupKey={lineageGroupKey}
+                onRetireClick={(template) => void handleRetireTemplate(template)}
+                highlightedTemplateId={highlightedTemplateId}
+              />
+            </div>
           </div>
         </section>
-      </div>
+      )}
     </div>
   );
 }

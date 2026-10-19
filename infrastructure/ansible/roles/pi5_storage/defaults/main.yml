@@ -1,0 +1,3 @@
+---
+pi5_storage_root: "{{ repo_path | default('/opt/RaspberryPiSystem_002') }}/storage"
+pi5_storage_manage_existing: true

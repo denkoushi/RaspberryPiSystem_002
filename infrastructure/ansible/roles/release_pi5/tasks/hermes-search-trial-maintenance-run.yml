@@ -1,0 +1,86 @@
+---
+- name: Preflight the explicitly requested settled Hermes search trial maintenance
+  ansible.builtin.include_tasks: hermes-search-trial-maintenance.yml
+
+- name: Apply the explicitly requested settled Hermes search trial maintenance
+  block:
+    - name: Run trial maintenance mutations
+      ansible.builtin.include_tasks: hermes-search-trial-maintenance-mutate.yml
+  rescue:
+    - name: Remove a trial environment created before the mutation boundary
+      ansible.builtin.file:
+        path: "{{ release_pi5_trial_maintenance_env_file }}"
+        state: absent
+      when:
+        - not (release_pi5_trial_maintenance_env_changed | default(false) | bool)
+        - release_pi5_trial_maintenance_env_created | default(false) | bool
+      no_log: true
+
+    - name: Stop before recovery when no environment mutation occurred
+      ansible.builtin.fail:
+        msg: Hermes search trial maintenance failed before the environment mutation boundary; no active API change was made.
+      when: not (release_pi5_trial_maintenance_env_changed | default(false) | bool)
+
+    - name: Restore the original trial environment and same active API
+      block:
+        - name: Restore the saved original trial environment
+          ansible.builtin.copy:
+            src: "{{ release_pi5_run_dir }}/hermes-search-trial-maintenance.env.before"
+            dest: "{{ release_pi5_trial_maintenance_env_file }}"
+            remote_src: true
+            owner: root
+            group: root
+            mode: '0600'
+          no_log: true
+
+        - name: Restore the original Compose environment selection
+          ansible.builtin.set_fact:
+            release_pi5_compose_environment: >-
+              {{ release_pi5_trial_maintenance_original_compose_environment
+                 if release_pi5_trial_maintenance_original_compose_environment is defined
+                 else release_pi5_compose_environment | combine({'PI5_ENV_FILE': release_pi5_compose_env_source}) }}
+
+        - name: Recreate the same active API with the original environment
+          ansible.builtin.command:
+            argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--force-recreate', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string, 'api-' + release_pi5_active_slot] }}"
+          environment: "{{ release_pi5_compose_environment }}"
+          changed_when: true
+
+        - name: Resolve the restored same active API container
+          ansible.builtin.command:
+            argv: "{{ release_pi5_compose_argv + ['ps', '-q', 'api-' + release_pi5_active_slot] }}"
+          environment: "{{ release_pi5_compose_environment }}"
+          register: release_pi5_trial_maintenance_restored_api_id
+          changed_when: false
+
+        - name: Require the restored active API identity
+          ansible.builtin.assert:
+            that:
+              - release_pi5_trial_maintenance_restored_api_id.stdout | trim is match('^[0-9a-f]{12,64}$')
+
+        - name: Bind existing health checks to the restored active API
+          ansible.builtin.set_fact:
+            release_pi5_active_api_id: "{{ release_pi5_trial_maintenance_restored_api_id.stdout | trim }}"
+            release_pi5_api_id: "{{ release_pi5_trial_maintenance_restored_api_id.stdout | trim }}"
+
+        - name: Confirm the restored same active API health
+          ansible.builtin.include_tasks: health.yml
+
+        - name: Remove a trial environment created by the failed run
+          ansible.builtin.file:
+            path: "{{ release_pi5_trial_maintenance_env_file }}"
+            state: absent
+          when: release_pi5_trial_maintenance_env_created | default(false) | bool
+          no_log: true
+      when: release_pi5_trial_maintenance_env_changed | default(false) | bool
+      rescue:
+        - name: Record that trial maintenance recovery did not complete
+          ansible.builtin.set_fact:
+            release_pi5_trial_maintenance_rollback_failed: true
+        - name: Stop with an explicit unrecovered maintenance result
+          ansible.builtin.fail:
+            msg: Hermes search trial maintenance failed and the original environment/API health could not be restored; preserve the run backup for operator recovery.
+
+    - name: Stop after a failed trial maintenance with successful recovery
+      ansible.builtin.fail:
+        msg: Hermes search trial maintenance failed; the original environment and same active API were restored and health-checked.

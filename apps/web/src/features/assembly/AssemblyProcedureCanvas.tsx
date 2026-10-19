@@ -12,7 +12,8 @@ import {
 import {
   AssemblyProcedureMarkerLayer,
   type AssemblyCanvasBolt,
-  type AssemblyCanvasCheckItem
+  type AssemblyCanvasCheckItem,
+  type AssemblyProcedureBoltMoveHandler
 } from './AssemblyProcedureMarkerLayer';
 import { useAssemblyProcedureContainBox } from './useAssemblyProcedureContainBox';
 
@@ -27,8 +28,13 @@ type Props = {
   bolts: AssemblyCanvasBolt[];
   checkItems?: AssemblyCanvasCheckItem[];
   selectedBoltId?: string | null;
+  inputTargetBoltId?: string | null;
   selectedCheckItemId?: string | null;
   onSelectBolt?: (id: string) => void;
+  onMoveBolt?: AssemblyProcedureBoltMoveHandler;
+  onMoveCheckItem?: AssemblyProcedureBoltMoveHandler;
+  onMoveBoltCallout?: AssemblyProcedureBoltMoveHandler;
+  onMoveCheckItemCallout?: AssemblyProcedureBoltMoveHandler;
   onSelectCheckItem?: (id: string) => void;
   onToggleCheckItem?: (id: string) => void;
   onAddBolt?: (xRatio: number, yRatio: number) => void;
@@ -37,6 +43,8 @@ type Props = {
   onCreateCrop?: (crop: AssemblyProcedureCropRect) => void;
   cropRect?: AssemblyProcedureCropRect | null;
   onCropChange?: (crop: AssemblyProcedureCropRect) => void;
+  /** A domain-owned layer rendered in the same measured source-page frame. */
+  overlay?: ReactNode;
   placementMode?: 'bolt' | 'check';
   placementAction?: 'place' | 'callout' | 'crop';
   zoom?: number;
@@ -53,18 +61,34 @@ function useNaturalSizeFromImg(rootRef: RefObject<HTMLElement | null>, deps: unk
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
-    const img = root.querySelector('img');
-    if (!img) return;
-
+    let img: HTMLImageElement | null = null;
     const sync = () => {
-      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-        setNatural({ width: img.naturalWidth, height: img.naturalHeight });
+      if (img && img.naturalWidth > 0 && img.naturalHeight > 0) {
+        const { naturalWidth: width, naturalHeight: height } = img;
+        setNatural((current) =>
+          current.width === width && current.height === height
+            ? current
+            : { width, height }
+        );
       }
     };
+    const observeImage = () => {
+      const next = root.querySelector('img');
+      if (next !== img) {
+        img?.removeEventListener('load', sync);
+        img = next;
+        img?.addEventListener('load', sync);
+      }
+      sync();
+    };
 
-    sync();
-    img.addEventListener('load', sync);
-    return () => img.removeEventListener('load', sync);
+    observeImage();
+    const observer = new MutationObserver(observeImage);
+    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'srcset'] });
+    return () => {
+      observer.disconnect();
+      img?.removeEventListener('load', sync);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- caller passes explicit dependency list
   }, deps);
 
@@ -76,8 +100,13 @@ export function AssemblyProcedureCanvas({
   bolts,
   checkItems = [],
   selectedBoltId,
+  inputTargetBoltId,
   selectedCheckItemId,
   onSelectBolt,
+  onMoveBolt,
+  onMoveCheckItem,
+  onMoveBoltCallout,
+  onMoveCheckItemCallout,
   onSelectCheckItem,
   onToggleCheckItem,
   onAddBolt,
@@ -86,6 +115,7 @@ export function AssemblyProcedureCanvas({
   onCreateCrop,
   cropRect,
   onCropChange,
+  overlay,
   placementMode = 'bolt',
   placementAction = 'place',
   zoom = 1,
@@ -313,13 +343,19 @@ export function AssemblyProcedureCanvas({
                 className="pointer-events-none block h-full w-full select-none"
                 draggable={false}
               />
+              {overlay}
               <AssemblyProcedureMarkerLayer
                 bolts={bolts}
                 checkItems={checkItems}
                 layoutSize={{ width: layout.image.width, height: layout.image.height }}
                 selectedBoltId={selectedBoltId}
+                inputTargetBoltId={inputTargetBoltId}
                 selectedCheckItemId={selectedCheckItemId}
                 onSelectBolt={onSelectBolt}
+                onMoveBolt={onMoveBolt}
+                onMoveCheckItem={onMoveCheckItem}
+                onMoveBoltCallout={onMoveBoltCallout}
+                onMoveCheckItemCallout={onMoveCheckItemCallout}
                 onSelectCheckItem={onSelectCheckItem}
                 onToggleCheckItem={onToggleCheckItem}
               />
@@ -387,11 +423,14 @@ export function AssemblyProcedureImageWithMarkers({
   bolts,
   checkItems = [],
   selectedBoltId,
+  inputTargetBoltId,
   selectedCheckItemId,
   onSelectBolt,
+  onMoveCheckItem,
   onSelectCheckItem,
   onToggleCheckItem,
   onPlacementClick,
+  overlay,
   fitToParent = false,
   className
 }: {
@@ -399,11 +438,15 @@ export function AssemblyProcedureImageWithMarkers({
   bolts: AssemblyCanvasBolt[];
   checkItems?: AssemblyCanvasCheckItem[];
   selectedBoltId?: string | null;
+  inputTargetBoltId?: string | null;
   selectedCheckItemId?: string | null;
   onSelectBolt?: (id: string) => void;
+  onMoveCheckItem?: AssemblyProcedureBoltMoveHandler;
   onSelectCheckItem?: (id: string) => void;
   onToggleCheckItem?: (id: string) => void;
   onPlacementClick?: (xRatio: number, yRatio: number) => void;
+  /** A readonly/editor-owned layer rendered inside the same image frame as markers. */
+  overlay?: ReactNode;
   /** When true, scale the image to the largest size that fits the parent while preserving aspect ratio. */
   fitToParent?: boolean;
   className?: string;
@@ -427,8 +470,10 @@ export function AssemblyProcedureImageWithMarkers({
           : undefined
       }
       selectedBoltId={selectedBoltId}
+      inputTargetBoltId={inputTargetBoltId}
       selectedCheckItemId={selectedCheckItemId}
       onSelectBolt={onSelectBolt}
+      onMoveCheckItem={onMoveCheckItem}
       onSelectCheckItem={onSelectCheckItem}
       onToggleCheckItem={onToggleCheckItem}
     />
@@ -454,6 +499,7 @@ export function AssemblyProcedureImageWithMarkers({
         onClick={handleClick}
       >
         {imageContent}
+        {overlay}
         {markerLayers}
       </div>
     );
@@ -472,6 +518,7 @@ export function AssemblyProcedureImageWithMarkers({
         onClick={handleClick}
       >
         {imageContent}
+        {overlay}
         {markerLayers}
       </div>
     </div>

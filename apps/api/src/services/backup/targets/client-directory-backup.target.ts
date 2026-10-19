@@ -6,6 +6,12 @@ import os from 'os';
 import type { BackupTarget } from '../backup-target.interface.js';
 import type { BackupTargetInfo } from '../backup-types.js';
 import { ApiError } from '../../../lib/errors.js';
+import {
+  assertBackupSshAuthorityAvailable,
+  assertRemoteBackupPathAllowed,
+  buildBackupSshAnsibleArgs,
+  resolveBackupSshPaths,
+} from '../backup-ssh-policy.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -13,7 +19,7 @@ const execFileAsync = promisify(execFile);
  * クライアント端末のディレクトリをAnsible経由でtar.gz化してバックアップするターゲット
  *
  * source形式: "hostname:/path/to/directory"
- * 例: "raspberrypi4:/home/tools03/.ssh"
+ * 例: "raspberrypi4:/var/lib/tailscale"
  */
 export class ClientDirectoryBackupTarget implements BackupTarget {
   private readonly clientHost: string;
@@ -29,12 +35,12 @@ export class ClientDirectoryBackupTarget implements BackupTarget {
 
     this.clientHost = parts[0];
     this.remoteDirPath = parts.slice(1).join(':');
+    assertRemoteBackupPathAllowed(this.remoteDirPath);
 
-    const projectRoot = process.env.PROJECT_ROOT || '/opt/RaspberryPiSystem_002';
-    const ansibleBasePath = process.env.ANSIBLE_BASE_PATH || path.join(projectRoot, 'infrastructure/ansible');
+    const ansibleBasePath = process.env.ANSIBLE_BASE_PATH || '/app/backup-ansible';
 
     this.ansibleInventoryPath = ansibleInventoryPath || path.join(ansibleBasePath, 'inventory.yml');
-    this.ansiblePlaybookPath = ansiblePlaybookPath || path.join(ansibleBasePath, 'playbooks/backup-client-directory.yml');
+    this.ansiblePlaybookPath = ansiblePlaybookPath || path.join(ansibleBasePath, 'backup-client-directory.yml');
   }
 
   get info(): BackupTargetInfo {
@@ -54,24 +60,18 @@ export class ClientDirectoryBackupTarget implements BackupTarget {
     const outputFileName = `${this.clientHost}_${path.basename(this.remoteDirPath)}.tar.gz`;
     const outputFilePath = path.join(backupDestination, outputFileName);
 
-    const containerAnsiblePath = '/app/host/infrastructure/ansible';
-    let ansibleInventoryPath = this.ansibleInventoryPath;
-    let ansiblePlaybookPath = this.ansiblePlaybookPath;
+    const ansibleInventoryPath = this.ansibleInventoryPath;
+    const ansiblePlaybookPath = this.ansiblePlaybookPath;
 
     try {
-      await fs.access(path.join(containerAnsiblePath, 'inventory.yml'));
-      ansibleInventoryPath = path.join(containerAnsiblePath, 'inventory.yml');
-      ansiblePlaybookPath = path.join(containerAnsiblePath, 'playbooks/backup-client-directory.yml');
-    } catch {
-      // ignore
-    }
-
-    try {
+      const backupSshPaths = resolveBackupSshPaths();
+      await assertBackupSshAuthorityAvailable(backupSshPaths);
       const { stdout, stderr } = await execFileAsync(
         'ansible-playbook',
         [
           '-i', ansibleInventoryPath,
           ansiblePlaybookPath,
+          ...buildBackupSshAnsibleArgs(backupSshPaths),
           '-e', `client_host=${this.clientHost}`,
           '-e', `client_dir_path=${this.remoteDirPath}`,
           '-e', `backup_destination=${backupDestination}`
@@ -109,5 +109,3 @@ export class ClientDirectoryBackupTarget implements BackupTarget {
     }
   }
 }
-
-

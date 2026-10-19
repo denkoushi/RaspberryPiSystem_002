@@ -203,62 +203,28 @@ git clone https://github.com/denkoushi/RaspberryPiSystem_002.git RaspberryPiSyst
 cd RaspberryPiSystem_002
 ```
 
-#### ステップ2: 環境変数ファイルを作成
+#### ステップ2: 暗号化Vaultへ本番資格情報を設定
 
-`.env.example`ファイルをコピーして`.env`ファイルを作成し、本番環境用の値を設定します：
+本番の`.env`を手作業で作成しません。通常工場の暗号化Vaultへ、DB管理者、
+`raspi_app`用URL、`raspi_migrator`用URLを別々に設定します。値はログ、PR、
+チャットへ出さず、URL内のパスワードはpercent-encodeしてください。
 
-```bash
-# APIの環境変数ファイルを作成
-cd /opt/RaspberryPiSystem_002
-cp apps/api/.env.example apps/api/.env
+通常APIには`raspi_app`だけが渡されます。migration用URLは
+`/etc/raspi-database/migration.env`、DB初期化用パスワードは別のroot管理
+ファイルへ配置され、通常APIからは参照できません。
 
-# 本番環境用の値を設定（エディタで編集）
-nano apps/api/.env
-```
+#### ステップ3: DBロールを事前準備
 
-**設定すべき主な環境変数**:
+24時間以内の検証済みDBバックアップを指定し、別承認後に
+`prepare-pi5-database-roles.yml`を実行します。この処理は`raspi_app`と
+`raspi_migrator`を作成して所有権を移しますが、稼働中APIの接続先や
+`postgres`パスワードは変更しません。
 
-```bash
-# PostgreSQLパスワード（強力なパスワードを設定）
-POSTGRES_PASSWORD="your-strong-password-here"
+#### ステップ4: 標準デプロイで設定を反映
 
-# データベースURL（パスワードは環境変数から取得）
-DATABASE_URL="postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/borrow_return"
-
-# JWTシークレット（強力なランダム文字列を設定）
-JWT_ACCESS_SECRET="your-access-secret-here"
-JWT_REFRESH_SECRET="your-refresh-secret-here"
-```
-
-#### ステップ3: Docker Composeの環境変数ファイルを作成
-
-```bash
-# Docker Composeの環境変数ファイルを作成
-# 注意: docker-compose.server.ymlと同じディレクトリ（infrastructure/docker/）に作成
-cd /opt/RaspberryPiSystem_002/infrastructure/docker
-cat > .env <<EOF
-# PostgreSQLパスワード（強力なパスワードを設定）
-POSTGRES_PASSWORD=your-strong-password-here
-EOF
-
-# ファイルのパーミッションを設定（所有者のみ読み書き可能）
-chmod 600 .env
-chmod 600 ../../apps/api/.env
-```
-
-**重要**: `docker-compose.server.yml`は`infrastructure/docker/.env`ファイルを自動的に読み込みます（`env_file: - .env`で指定）。
-
-#### ステップ4: パスワードを生成する方法
-
-```bash
-# 強力なランダムパスワードを生成
-openssl rand -base64 32
-
-# または、複数のパスワードが必要な場合
-for i in {1..3}; do
-  echo "Password $i: $(openssl rand -base64 32)"
-done
-```
+本番反映は`update-all-clients.sh`だけを使用します。Ansibleが
+`apps/api/.env`、`infrastructure/docker/.env`、root管理のDB資格情報ファイルを
+生成します。内部Blue/GreenコマンドやComposeを直接実行しないでください。
 
 #### ステップ5: 証明書ファイルの配置
 
@@ -424,4 +390,3 @@ grep -q "\.env$" .gitignore && echo "OK" || echo "WARNING: .env not in .gitignor
 - [アーキテクチャ概要](../architecture/overview.md) - システム全体のアーキテクチャ
 - [デプロイメントガイド](./deployment.md) - デプロイ手順の詳細
 - [バックアップ・リストア手順](./backup-and-restore.md) - バックアップとリストアの詳細
-

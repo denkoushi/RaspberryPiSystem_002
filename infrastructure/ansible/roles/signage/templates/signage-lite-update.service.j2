@@ -5,10 +5,10 @@ Description=Update signage image
 
 [Service]
 Type=oneshot
-User={{ ansible_user }}
+User=raspisystem-signage-unconfigured
+EnvironmentFile=/etc/raspisystem-signage/runtime.env
 ExecStart=/usr/local/bin/signage-update.sh
 # ネットワーク遮断時でもエラーで終了しない（既存画像を保持）
 SuccessExitStatus=0
 StandardOutput=journal
 StandardError=journal
-

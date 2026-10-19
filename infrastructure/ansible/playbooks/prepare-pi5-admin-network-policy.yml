@@ -1,0 +1,120 @@
+---
+- name: Prepare the explicit Pi5 Caddy administrator allowlist
+  hosts: server
+  gather_facts: false
+  become: true
+  serial: 1
+  vars:
+    repo_path: /opt/RaspberryPiSystem_002
+
+  pre_tasks:
+    - name: Require one-time administrator policy migration approval
+      ansible.builtin.assert:
+        that:
+          - pi5_admin_network_policy_migration_approved | default(false) | bool
+        fail_msg: >-
+          Set pi5_admin_network_policy_migration_approved=true only for the
+          separately approved one-time Docker environment preparation.
+
+    - name: Require a bounded explicit administrator allowlist
+      ansible.builtin.assert:
+        that:
+          - admin_allow_nets is sequence
+          - admin_allow_nets is not string
+          - admin_allow_nets | length > 0
+          - admin_allow_nets | length <= 16
+        fail_msg: ADMIN_ALLOW_NETS must contain between 1 and 16 explicit CIDRs.
+
+    - name: Verify the current management source belongs to the candidate allowlist
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - |
+            import ipaddress
+            import os
+
+            connection = os.environ.get("SSH_CONNECTION", "").split()
+            if len(connection) != 4:
+                raise SystemExit("management source is unavailable")
+            source = ipaddress.ip_address(connection[0])
+            raw_networks = os.environ.get("ADMIN_ALLOW_NETS_CANDIDATE", "").split()
+            if not 1 <= len(raw_networks) <= 16:
+                raise SystemExit("administrator allowlist is empty or oversized")
+            networks = [ipaddress.ip_network(item, strict=True) for item in raw_networks]
+            if any(
+                (network.version == 4 and network.prefixlen < 8)
+                or (network.version == 6 and network.prefixlen < 32)
+                for network in networks
+            ):
+                raise SystemExit("administrator allowlist contains an overbroad CIDR")
+            if not any(source.version == network.version and source in network for network in networks):
+                raise SystemExit("management source is outside the administrator allowlist")
+            print("administrator allowlist preflight passed")
+      environment:
+        ADMIN_ALLOW_NETS_CANDIDATE: "{{ admin_allow_nets | join(' ') }}"
+      become: false
+      changed_when: false
+
+    - name: Inspect the existing Docker environment file
+      ansible.builtin.stat:
+        path: "{{ repo_path }}/infrastructure/docker/.env"
+        follow: false
+      register: pi5_docker_env
+
+    - name: Require a regular existing Docker environment file
+      ansible.builtin.assert:
+        that:
+          - pi5_docker_env.stat.exists | default(false)
+          - pi5_docker_env.stat.isreg | default(false)
+          - not (pi5_docker_env.stat.islnk | default(false))
+        fail_msg: Refusing to prepare ADMIN_ALLOW_NETS without a regular existing Docker .env.
+
+    - name: Capture the Docker environment for rollback
+      ansible.builtin.slurp:
+        src: "{{ repo_path }}/infrastructure/docker/.env"
+      register: pi5_docker_env_before_policy
+      no_log: true
+
+  tasks:
+    - name: Apply and validate the administrator allowlist atomically
+      block:
+        - name: Store the explicit administrator allowlist
+          ansible.builtin.lineinfile:
+            path: "{{ repo_path }}/infrastructure/docker/.env"
+            regexp: '^ADMIN_ALLOW_NETS='
+            line: >-
+              ADMIN_ALLOW_NETS="{{ admin_allow_nets | join(' ') }}"
+            create: false
+            owner: "{{ ansible_user }}"
+            group: "{{ ansible_user }}"
+            mode: '0600'
+          no_log: true
+
+        - name: Validate Compose with the prepared policy
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/docker
+              - compose
+              - --env-file
+              - "{{ repo_path }}/infrastructure/docker/.env"
+              - -f
+              - "{{ repo_path }}/infrastructure/docker/docker-compose.server.yml"
+              - config
+              - --quiet
+          args:
+            chdir: "{{ repo_path }}"
+          changed_when: false
+      rescue:
+        - name: Restore the Docker environment after validation failure
+          ansible.builtin.copy:
+            content: "{{ pi5_docker_env_before_policy.content | b64decode }}"
+            dest: "{{ repo_path }}/infrastructure/docker/.env"
+            owner: "{{ ansible_user }}"
+            group: "{{ ansible_user }}"
+            mode: '0600'
+          no_log: true
+
+        - name: Stop after restoring the previous administrator policy
+          ansible.builtin.fail:
+            msg: ADMIN_ALLOW_NETS preparation failed; the previous Docker .env was restored.

@@ -19,11 +19,10 @@ Caddyのマッチャー機能を使用して、管理画面（`/admin*`）への
 
 **設定方法**:
 ```caddy
-# 管理画面へのIP制限（Tailscale / ローカルLAN をデフォルト許可）
-# 環境変数 ADMIN_ALLOW_NETS で上書き可能（空白区切りのCIDRリスト）
+# 管理画面へのIP制限（空白区切りのCIDRリストを明示設定）
 @admin_protect {
   path /admin*
-  not remote_ip {$ADMIN_ALLOW_NETS:192.168.10.0/24 192.168.128.0/24 100.64.0.0/10 127.0.0.1/32}
+  not remote_ip {$ADMIN_ALLOW_NETS}
 }
 respond @admin_protect "Forbidden" 403
 ```
@@ -32,10 +31,17 @@ respond @admin_protect "Forbidden" 403
 ```yaml
 web:
   environment:
-    ADMIN_ALLOW_NETS: ${ADMIN_ALLOW_NETS:-"192.168.10.0/24 192.168.128.0/24 100.64.0.0/10 127.0.0.1/32"}
+    ADMIN_ALLOW_NETS: ${ADMIN_ALLOW_NETS:?ADMIN_ALLOW_NETS is required}
 ```
 
-**デフォルト許可ネットワーク**:
+**Blue/Green（本番の標準リリース）**:
+- 制限は gateway（`Caddyfile.gateway.template` / `Caddyfile.gateway.http.template`）だけに置く。gateway は外向きの最前段なので、`remote_ip` が実際の接続元になる。
+- 許可リストは gateway 設定に埋め込まず、`release_pi5` ロールが `admin_allow_nets` から `logs/deploy/bluegreen/admin-allow-nets.caddy` を書き、gateway が `import /srv/bluegreen/admin-allow-nets.caddy` で読む。リストを変えても Blue/Green のスロット判定（設定ファイルの完全一致）は変わらない。変更は次の gateway reload（次回リリースの切替）で効く。
+- ファイルが無い場合は Caddy の検証が失敗し、切替前に止まる。
+- web スロット（`Caddyfile.slot.template`）には制限を置かない。接続元が常に gateway になるため判定できず、API が同じ色のスロットを直接開く内部経路（サイネージのページ撮影）も塞いでしまうため。
+- web サービスの `ADMIN_ALLOW_NETS` は Blue/Green では参照されない（旧構成との共通契約として必須のまま残している）。
+
+**通常工場で明示する許可ネットワーク**:
 - `192.168.10.0/24`: ローカルネットワーク（オフィス）
 - `192.168.128.0/24`: 自宅ネットワーク（VNC用）
 - `100.64.0.0/10`: Tailscaleネットワーク（通常運用）
@@ -44,7 +50,8 @@ web:
 **動作仕様**:
 - 許可ネットワークからのアクセス: 200/302（正常）
 - 非許可ネットワークからのアクセス: 403 Forbidden
-- 環境変数`ADMIN_ALLOW_NETS`が設定されていない場合、デフォルト値が使用される
+- 環境変数`ADMIN_ALLOW_NETS`が未設定・空の場合、Composeと標準preflightが起動・更新を拒否する
+- 標準preflightは実行中の管理元IPが許可CIDRに含まれない場合も更新前に停止する
 - Caddyの`remote_ip`マッチャーを使用してクライアントIPを判定
 
 **テスト方法**:

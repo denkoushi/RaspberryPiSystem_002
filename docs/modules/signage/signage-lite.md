@@ -263,7 +263,7 @@ api:
 
 ```bash
 # サイネージコンテンツAPIで確認
-curl -s -H 'x-client-key: client-key-raspberrypi3-signage1' \
+curl -s -H "x-client-key: $PI3_SIGNAGE_CLIENT_KEY" \
   http://localhost:8080/api/signage/content | jq '.tools[] | {name, isInstrument, managementNumber}'
 ```
 
@@ -303,4 +303,3 @@ curl -s -H 'x-client-key: client-key-raspberrypi3-signage1' \
 ---
 
 この文書は `EXEC_PLAN.md` の Phase 8 と連動し、タスクの進捗に応じて更新する。
-

@@ -10,9 +10,10 @@ import {
   useKioskProductionScheduleOrderUsage,
   useKioskProductionScheduleResources
 } from '../../api/hooks';
+import { productionScheduleQueryKeys } from '../../api/queryKeys/productionSchedule';
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
-import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
+import { readProductionBuildConfig } from '../../config/productionBuildConfig';
 import { applyLeaderBoardDisplayRequiredMinutesToGrouped } from '../../features/kiosk/leaderOrderBoard/applyLeaderBoardDisplayRequiredMinutes';
 import { buildLeaderBoardGroupedRows, buildLeaderBoardSortedGrouped } from '../../features/kiosk/leaderOrderBoard/buildLeaderBoardViewModel';
 import {
@@ -67,7 +68,7 @@ import type { LeaderBoardRow } from '../../features/kiosk/leaderOrderBoard/types
 
 const LEADER_ORDER_BOARD_SEARCH_STORAGE_KEY = 'leader-order-board-search-conditions';
 const MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED =
-  import.meta.env.VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED !== 'false';
+  readProductionBuildConfig().manualOrderDeviceScopeV2Enabled;
 
 export function ProductionScheduleLeaderOrderBoardPage() {
   const queryClient = useQueryClient();
@@ -225,13 +226,12 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   const writePause =
     mutationPauseRefetch || orderPending || dueDatePending || completePending || notePending;
 
-  const invalidateScheduleQueries = useCallback(() =>
+  const invalidateRelatedQueries = useCallback(() =>
     Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] }),
       queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-manual-order-overview']
+        queryKey: productionScheduleQueryKeys.dueManagementManualOrderOverviewAll
       }),
-      queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-manual-order-resource-assignments'] })
+      queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.manualOrderResourceAssignmentsAll })
     ]), [queryClient]);
 
   const {
@@ -251,7 +251,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         rowId,
         note,
         onSettled: () => {
-          void invalidateScheduleQueries().finally(onSettled);
+          onSettled();
+          void invalidateRelatedQueries().catch(() => {});
         }
       });
     },
@@ -260,7 +261,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         rowId,
         dueDate,
         onSettled: () => {
-          void invalidateScheduleQueries().finally(onSettled);
+          onSettled();
+          void invalidateRelatedQueries().catch(() => {});
         }
       });
     }
@@ -406,18 +408,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     setLeftStackWidthPx(Math.round(el.getBoundingClientRect().width));
     return () => ro.disconnect();
   }, [dueAssist.isDetailOpen]);
-  const [isSearchKeyboardOpen, setIsSearchKeyboardOpen] = useState(false);
-  const [searchKeyboardValue, setSearchKeyboardValue] = useState('');
-
-  const openSearchKeyboard = () => {
-    setSearchKeyboardValue(dueAssist.searchInput);
-    setIsSearchKeyboardOpen(true);
-  };
-  const confirmSearchKeyboard = () => {
-    dueAssist.setSearchInput(searchKeyboardValue);
-    setIsSearchKeyboardOpen(false);
-  };
-
   const isDueAssistDetailOpen = dueAssist.isDetailOpen;
   const closeDueAssistDetail = dueAssist.closeDetail;
   useEffect(() => {
@@ -536,16 +526,22 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   }, []);
 
   const handleSplitSaved = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-board'] });
-    void invalidateScheduleQueries();
-  }, [invalidateScheduleQueries, queryClient]);
+    void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
+    void invalidateRelatedQueries();
+  }, [invalidateRelatedQueries, queryClient]);
 
   const handleOpenInspectionDigitalInput = useCallback(
-    (row: LeaderBoardRow) => {
+    (row: LeaderBoardRow, selectedResourceCd: string) => {
       const path = row.selfInspectionEntryPath?.trim();
       if (!path) return;
       setInspectionWorkflowRow(null);
-      navigate(path);
+      if (path.includes('/self-inspection/start?')) {
+        const url = new URL(path, window.location.origin);
+        url.searchParams.set('resourceCd', selectedResourceCd);
+        navigate(`${url.pathname}${url.search}`);
+      } else {
+        navigate(path);
+      }
     },
     [navigate]
   );
@@ -556,7 +552,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   );
 
   const handleOpenInspectionPaperPrint = useCallback(
-    async (row: LeaderBoardRow) => {
+    async (row: LeaderBoardRow, selectedResourceCd: string) => {
       const templateId = row.selfInspectionTemplateId?.trim();
       if (!templateId) return;
       setInspectionWorkflowRow(null);
@@ -568,7 +564,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
           fseiban: row.fseiban,
           fhincd: row.fhincd,
           fhinmei: row.fhinmei,
-          resourceCd: row.resourceCd,
+          resourceCd: selectedResourceCd,
           machineName: row.machineName
         });
         navigate(
@@ -628,7 +624,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
           setSelectedResourceCd={setSelectedResourceCd}
           deviceCards={deviceCards}
           dueAssist={dueAssist}
-          openSearchKeyboard={openSearchKeyboard}
           searchConditions={searchConditions}
           toggleGrinding={toggleGrinding}
           toggleCutting={toggleCutting}
@@ -761,7 +756,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         onSaved={handleSplitSaved}
       />
       <KioskNoteModal
-        isOpen={isNoteModalOpen}
+        isOpen={isNoteModalOpen} pending={notePending}
         value={editingNoteValue}
         maxLength={100}
         onCancel={closeNoteModal}
@@ -774,7 +769,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         }}
       />
       <KioskDatePickerModal
-        isOpen={isDueDatePickerOpen}
+        isOpen={isDueDatePickerOpen} pending={dueDatePending}
         value={editingDueDateValue}
         onCancel={closeDueDatePicker}
         onCommit={commitDueDate}
@@ -788,18 +783,11 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         />
       ) : null}
       <KioskDatePickerModal
-        isOpen={dueAssist.isDatePickerOpen}
+        isOpen={dueAssist.isDatePickerOpen} pending={dueAssist.dueUpdatePending}
         value={dueAssist.editingDueDate}
         onCancel={dueAssist.closeDatePicker}
         onCommit={(next) => void dueAssist.commitDueDate(next)}
         overlayZIndex={KIOSK_DATE_PICKER_OVERLAY_Z_ABOVE_LEFT_STACK}
-      />
-      <KioskKeyboardModal
-        isOpen={isSearchKeyboardOpen}
-        value={searchKeyboardValue}
-        onChange={setSearchKeyboardValue}
-        onCancel={() => setIsSearchKeyboardOpen(false)}
-        onConfirm={confirmSearchKeyboard}
       />
     </div>
   );

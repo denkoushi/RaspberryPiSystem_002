@@ -29,9 +29,8 @@ ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86"
 ls -la /etc/systemd/system/signage-lite.service
 
 # デプロイ実行（Pi5から）
-cd /opt/RaspberryPiSystem_002/infrastructure/ansible
-ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles \
-  ansible-playbook -i inventory.yml playbooks/deploy.yml --limit raspberrypi3
+cd /opt/RaspberryPiSystem_002
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi3
 
 # デプロイ中のサービスファイル状態を確認（別ターミナルから）
 ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ls -la /etc/systemd/system/signage-lite.service'"
@@ -60,9 +59,8 @@ ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86"
 free -m
 
 # デプロイ実行（Pi5から）
-cd /opt/RaspberryPiSystem_002/infrastructure/ansible
-ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles \
-  ansible-playbook -i inventory.yml playbooks/deploy.yml --limit raspberrypi3
+cd /opt/RaspberryPiSystem_002
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi3
 
 # デプロイ中のメモリ状態を確認（別ターミナルから、30秒間隔で3回）
 for i in {1..3}; do
@@ -88,9 +86,8 @@ done
 **手順**:
 ```bash
 # Pi5からデプロイ実行
-cd /opt/RaspberryPiSystem_002/infrastructure/ansible
-ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles \
-  ansible-playbook -i inventory.yml playbooks/deploy.yml --limit raspberrypi3 2>&1 | tee /tmp/pi3-deploy.log
+cd /opt/RaspberryPiSystem_002
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi3 2>&1 | tee /tmp/pi3-deploy.log
 
 # ログを確認
 grep -E "TASK|PLAY RECAP|failed|unreachable" /tmp/pi3-deploy.log | tail -20

@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 
+import { kioskDenseTableRowActionStructureClassName } from '../../kiosk/kioskTableDensity';
 import {
   kioskInputClassName,
   kioskPanelClassName,
@@ -190,13 +191,13 @@ export const inspectionDrawingCreateSideAsideClassName = clsx(
 
 /** 自主検査セッション — フラット top-band（作成/改版と同型の密度） */
 export const selfInspectionSessionFlatBandClassName =
-  'flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-white/15 bg-slate-900/60 px-2 py-1';
+  'grid h-[54px] min-h-[54px] max-h-[54px] shrink-0 grid-cols-[minmax(14rem,1fr)_minmax(6rem,1fr)_auto] items-center gap-x-2 overflow-hidden rounded-lg border border-white/15 bg-slate-900/60 px-2';
 
 export const selfInspectionSessionMetaRowClassName =
-  'flex min-w-0 flex-1 flex-nowrap items-center gap-x-2 overflow-x-auto text-xs';
+  'flex min-w-0 items-center gap-x-2 overflow-hidden text-xs';
 
 export const selfInspectionSessionMetaChipClassName =
-  'inline-flex shrink-0 items-baseline gap-1 whitespace-nowrap text-white/80';
+  'inline-flex min-w-0 shrink truncate whitespace-nowrap text-white/80';
 
 /** 自主検査セッション上辺ツールバー（blur 時の relatedTarget 判定用） */
 export const SELF_INSPECTION_SESSION_TOOLBAR_SELECTOR = '[data-self-inspection-session-toolbar]';
@@ -221,7 +222,7 @@ export function isSelfInspectionSessionChromeFocusTarget(target: EventTarget | n
 }
 
 export const selfInspectionSessionToolbarSlotClassName =
-  'flex shrink-0 flex-nowrap items-center gap-1';
+  'flex min-w-0 shrink-0 flex-nowrap items-center gap-1 overflow-hidden';
 
 /** 図面キャンバス列 — サイドバー縮小分を flex で確保 */
 export const inspectionDrawingCanvasColumnClassName =
@@ -293,7 +294,7 @@ export const inspectionDrawingPlaceCalloutModeRowClassName =
 
 /** 検査図面ライブラリ行アクション（高さ ×0.7 ≈ 30.8px） */
 export const inspectionDrawingLibraryRowActionClassName =
-  'inline-flex min-h-[30.8px] min-w-[1.5rem] shrink-0 items-center justify-center rounded !px-1 !py-0 text-[0.68rem] leading-none whitespace-nowrap';
+  clsx(kioskDenseTableRowActionStructureClassName, 'text-[0.68rem]');
 
 /** 検査図面ライブラリ行アクション列幅（無効ボタン含む） */
 export const inspectionDrawingLibraryRowActionsWidthClassName =

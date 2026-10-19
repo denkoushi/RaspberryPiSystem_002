@@ -7,6 +7,10 @@ import type {
   PartMeasurementSheetDto,
   PartMeasurementSheetWithSession,
   SelfInspectionEntryValuePayload,
+  SelfInspectionItemInvalidationDetailDto,
+  SelfInspectionItemInvalidationDto,
+  SelfInspectionItemInvalidationsListDto,
+  SelfInspectionItemInvalidationTargetDto,
   SelfInspectionLotEntryDto,
   SelfInspectionOutOfToleranceReviewsListDto,
   SelfInspectionPaperOcrReviewDto,
@@ -16,6 +20,7 @@ import type {
   SelfInspectionPaperReportPrintDto,
   SelfInspectionRecordApprovalSessionDetailDto,
   SelfInspectionRecordApprovalsListDto,
+  SelfInspectionRecordApprovalScope,
   SelfInspectionRecordApprovalState,
   SelfInspectionRegistrationPolicyDto,
   SelfInspectionSessionDetailDto,
@@ -53,6 +58,7 @@ export async function findOrOpenPartMeasurementSheet(
     productNo: string;
     processGroup: PartMeasurementProcessGroup;
     resourceCd: string;
+    fkojun?: string;
     scheduleRowId?: string | null;
     fseiban?: string | null;
     fhincd?: string | null;
@@ -257,6 +263,7 @@ export async function listPartMeasurementTemplates(
     fhincd?: string;
     processGroup?: PartMeasurementProcessGroup;
     resourceCd?: string;
+    fkojun?: string;
     includeInactive?: boolean;
   },
   clientKey?: string
@@ -274,6 +281,7 @@ export async function existsActivePartMeasurementTemplate(
     fhincd: string;
     processGroup: PartMeasurementProcessGroup;
     resourceCd: string;
+    fkojun?: string;
   },
   clientKey?: string
 ): Promise<boolean> {
@@ -290,6 +298,7 @@ export async function listKioskInspectionDrawingTemplates(
     fhincd?: string;
     processGroup?: PartMeasurementProcessGroup;
     resourceCd?: string;
+    fkojun?: string;
     includeInactive?: boolean;
     visualName?: string;
     digitQuery?: string;
@@ -373,6 +382,39 @@ export async function listSelfInspectionSessions(
   return data;
 }
 
+export async function invalidateSelfInspectionItem(payload: {
+  target: SelfInspectionItemInvalidationTargetDto;
+  accessPassword: string;
+  reason: string;
+  requestId: string;
+}): Promise<SelfInspectionItemInvalidationDto> {
+  const { data } = await api.post<{ invalidation: SelfInspectionItemInvalidationDto }>(
+    '/part-measurement/self-inspection/items/invalidate',
+    payload
+  );
+  return data.invalidation;
+}
+
+export async function listSelfInspectionInvalidations(params?: {
+  productNo?: string;
+  resourceCd?: string;
+}): Promise<SelfInspectionItemInvalidationsListDto> {
+  const { data } = await api.get<SelfInspectionItemInvalidationsListDto>(
+    '/part-measurement/self-inspection/invalidations',
+    { params }
+  );
+  return data;
+}
+
+export async function getSelfInspectionInvalidation(
+  id: string
+): Promise<SelfInspectionItemInvalidationDetailDto> {
+  const { data } = await api.get<{ invalidation: SelfInspectionItemInvalidationDetailDto }>(
+    `/part-measurement/self-inspection/invalidations/${id}`
+  );
+  return data.invalidation;
+}
+
 export async function listSelfInspectionOutOfToleranceReviews(): Promise<SelfInspectionOutOfToleranceReviewsListDto> {
   const { data } = await api.get<SelfInspectionOutOfToleranceReviewsListDto>(
     '/part-measurement/self-inspection/out-of-tolerance-reviews'
@@ -389,6 +431,7 @@ export async function getSelfInspectionRegistrationPolicy(): Promise<SelfInspect
 
 export async function updateSelfInspectionRegistrationPolicy(payload: {
   requireMeasuringInstrumentTag: boolean;
+  accessPassword?: string;
 }): Promise<SelfInspectionRegistrationPolicyDto> {
   const { data } = await api.put<{ policy: SelfInspectionRegistrationPolicyDto }>(
     '/part-measurement/self-inspection/registration-policy',
@@ -399,6 +442,7 @@ export async function updateSelfInspectionRegistrationPolicy(payload: {
 
 export async function listSelfInspectionRecordApprovals(params?: {
   state?: 'active' | SelfInspectionRecordApprovalState;
+  scope?: SelfInspectionRecordApprovalScope;
   productNo?: string;
   resourceCd?: string;
   processGroup?: PartMeasurementProcessGroup;
@@ -507,11 +551,31 @@ export async function resolveSelfInspectionNfcTagUid(
   return data.result;
 }
 
+export type SelfInspectionMeasurementActorAuthenticationDto = {
+  id: string;
+  measurementMode: 'operator' | 'inspector';
+  employee: { id: string; employeeCode: string; displayName: string };
+  authenticatedAt: string;
+};
+
+export async function authenticateSelfInspectionMeasurementActor(
+  sessionId: string,
+  body: { employeeTagUid: string; measurementMode: 'operator' | 'inspector' },
+  clientKey?: string
+): Promise<SelfInspectionMeasurementActorAuthenticationDto> {
+  const { data } = await api.post<{ authentication: SelfInspectionMeasurementActorAuthenticationDto }>(
+    `/part-measurement/self-inspection/sessions/${sessionId}/measurement-actor-authentications`,
+    body,
+    { headers: clientKey ? { 'x-client-key': clientKey } : undefined }
+  );
+  return data.authentication;
+}
+
 export async function createSelfInspectionEntry(
   sessionId: string,
   body: {
     entryIndex: number;
-    employeeTagUid?: string | null;
+    measurementActorAuthenticationId: string;
     measuringInstrumentTagUid?: string | null;
     values: SelfInspectionEntryValuePayload[];
   },
@@ -531,7 +595,7 @@ export async function upsertSelfInspectionDraftEntry(
   sessionId: string,
   body: {
     entryIndex: number;
-    employeeTagUid?: string | null;
+    measurementActorAuthenticationId: string;
     measuringInstrumentTagUid?: string | null;
     ifUnmodifiedSince?: string | null;
     values?: SelfInspectionEntryValuePayload[];
@@ -553,7 +617,7 @@ export async function updateSelfInspectionEntry(
   entryId: string,
   body: {
     ifUnmodifiedSince: string;
-    employeeTagUid?: string | null;
+    measurementActorAuthenticationId: string;
     measuringInstrumentTagUid?: string | null;
     values: SelfInspectionEntryValuePayload[];
   },
@@ -573,7 +637,7 @@ export async function createSelfInspectionInspectorEntry(
   sessionId: string,
   body: {
     entryIndex: number;
-    employeeTagUid?: string | null;
+    measurementActorAuthenticationId: string;
     measuringInstrumentTagUid?: string | null;
     values: SelfInspectionEntryValuePayload[];
   },
@@ -595,7 +659,7 @@ export async function updateSelfInspectionInspectorEntry(
   body: {
     entryIndex: number;
     ifUnmodifiedSince: string;
-    employeeTagUid?: string | null;
+    measurementActorAuthenticationId: string;
     measuringInstrumentTagUid?: string | null;
     values: SelfInspectionEntryValuePayload[];
   },
@@ -637,7 +701,7 @@ export async function recordSelfInspectionInstrumentPreUseInspection(
   entryIndex: number,
   body: {
     instrumentTagUid: string;
-    employeeTagUid: string;
+    measurementActorAuthenticationId: string;
   },
   clientKey?: string
 ): Promise<{
@@ -666,7 +730,7 @@ export async function recordSelfInspectionInspectorInstrumentPreUseInspection(
   entryIndex: number,
   body: {
     instrumentTagUid: string;
-    employeeTagUid: string;
+    measurementActorAuthenticationId: string;
   },
   clientKey?: string
 ): Promise<{
@@ -973,6 +1037,7 @@ export async function createKioskInspectionDrawingTemplateGroup(
     fhincd: string;
     processGroup: PartMeasurementProcessGroup;
     resourceCds: string[];
+    fkojun?: string;
     name: string;
     displayName?: string | null;
     visualTemplateId: string;
@@ -1063,6 +1128,7 @@ export async function listPartMeasurementTemplateCandidates(
     fhincd: string;
     processGroup: PartMeasurementProcessGroup;
     resourceCd: string;
+    fkojun?: string;
     fhinmei?: string;
     q?: string;
   },
@@ -1085,6 +1151,7 @@ export async function clonePartMeasurementTemplateForScheduleKey(
     fhincd: string;
     processGroup: PartMeasurementProcessGroup;
     resourceCd: string;
+    fkojun?: string;
   },
   clientKey?: string
 ): Promise<PartMeasurementTemplateDto> {
@@ -1141,13 +1208,13 @@ export async function getPartMeasurementVisualTemplateOcrStatus(
   visualTemplateId: string,
   clientKey?: string
 ): Promise<PartMeasurementDrawingOcrStatusDto> {
-  const { data } = await api.get<{ ocr: PartMeasurementDrawingOcrStatusDto }>(
-    `/part-measurement/visual-templates/${visualTemplateId}/ocr`,
-    {
-      headers: clientKey ? { 'x-client-key': clientKey } : undefined
-    }
-  );
-  return data.ocr;
+  const { data } = await api.get<{
+    ocr: PartMeasurementDrawingOcrStatusDto;
+    dimensionMap?: PartMeasurementDrawingOcrStatusDto['dimensionMap'];
+  }>(`/part-measurement/visual-templates/${visualTemplateId}/ocr`, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return { ...data.ocr, dimensionMap: data.dimensionMap };
 }
 
 export async function listPartMeasurementDrawingOcrCandidates(
@@ -1159,6 +1226,8 @@ export async function listPartMeasurementDrawingOcrCandidates(
     limit?: number;
     measurementLabel?: string | null;
     depthMode?: 'measured' | 'through' | null;
+    calloutTipXRatio?: number | null;
+    calloutTipYRatio?: number | null;
   },
   clientKey?: string
 ): Promise<PartMeasurementDrawingOcrCandidateResponseDto> {
@@ -1262,6 +1331,7 @@ export async function createPartMeasurementTemplate(
     fhincd: string;
     processGroup: PartMeasurementProcessGroup;
     resourceCd: string;
+    fkojun?: string;
     name: string;
     visualTemplateId?: string | null;
     candidateFhinmei?: string | null;

@@ -17,8 +17,9 @@ import {
 import { formatInspectionDrawingPointDisplayName } from './measurementPointSupplement';
 import {
   applyHundredthsDigitToDimensionValue,
+  applyThousandthsDigitToDimensionValue,
   buildSelfInspectionDimensionTenthsOptions,
-  formatDimensionTenthsProvisionalValue,
+  resolveSelfInspectionDimensionKeypadDigitCount,
   resolveSelfInspectionMeasurementValueInputKind
 } from './selfInspectionDimensionValueInput';
 import { buildSelfInspectionMeasurementValueOptions } from './selfInspectionMeasurementValueOptions';
@@ -46,6 +47,8 @@ type Props = {
    * 同一 template 測定点 ID が複数入力件で再利用される自主検査向け。
    */
   valueCommitScopeKey?: string;
+  hundredthsKeypadLayout?: 'standard' | 'singleRowCompact';
+  showInputStatus?: boolean;
 };
 
 const STATUS_CLASS: Record<string, string> = {
@@ -56,13 +59,22 @@ const STATUS_CLASS: Record<string, string> = {
   invalid: 'text-amber-300'
 };
 
+function dimensionDigitSlotClassName(active: boolean): string {
+  return clsx(
+    'inline-flex h-6 w-5 items-center justify-center rounded border bg-slate-800 p-0 leading-none',
+    active ? 'border-amber-300' : 'border-white/20'
+  );
+}
+
 export function InspectionDrawingValuePanel({
   point,
   readOnly,
   onValueChange,
   valueInputMode = 'free_only',
   onCommitValue,
-  valueCommitScopeKey = ''
+  valueCommitScopeKey = '',
+  hundredthsKeypadLayout = 'standard',
+  showInputStatus = true
 }: Props) {
   const lastBlurCommitRef = useRef<{
     scopeKey: string;
@@ -70,10 +82,13 @@ export function InspectionDrawingValuePanel({
     value: string;
   } | null>(null);
   const [dimensionTenthsBase, setDimensionTenthsBase] = useState<string | null>(null);
+  /** 千分台まで入れる点で、百分台だけ押された未確定の桁 */
+  const [pendingHundredthsDigit, setPendingHundredthsDigit] = useState<number | null>(null);
 
   useEffect(() => {
     lastBlurCommitRef.current = null;
     setDimensionTenthsBase(null);
+    setPendingHundredthsDigit(null);
   }, [point?.id, valueCommitScopeKey]);
 
   const measurementValueInputKind = useMemo(() => {
@@ -119,6 +134,59 @@ export function InspectionDrawingValuePanel({
     );
   }
 
+  if (point.valueKind === 'judgement') {
+    const inputStatus = resolveMeasurementPointInputStatus(point);
+    const pointDisplayName = formatInspectionDrawingPointDisplayName(point);
+    const chooseJudgement = (value: 'PASS' | 'FAIL') => {
+      if (readOnly) return;
+      onValueChange(value);
+      emitCommit(value, 'dropdown');
+    };
+    return (
+      <div className="flex flex-col gap-3 rounded-lg border border-white/15 bg-slate-900/60 p-4 text-white" data-testid="inspection-drawing-value-panel">
+        <div>
+          <p className="text-lg font-bold">
+            {pointDisplayName}（No.{point.markerNo}）
+          </p>
+          <p className="text-2xl text-white/80">管用ネジ形状の判定</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2" role="group" aria-label="管用ネジの判定">
+          <button
+            type="button"
+            disabled={readOnly}
+            className={clsx(
+              'min-h-16 rounded-md border text-xl font-extrabold disabled:cursor-not-allowed disabled:opacity-40',
+              point.testValue === 'PASS'
+                ? 'border-emerald-300 bg-emerald-400 text-emerald-950'
+                : 'border-emerald-300/40 bg-emerald-950/40 text-emerald-100 hover:bg-emerald-900/60'
+            )}
+            onClick={() => chooseJudgement('PASS')}
+          >
+            OK
+          </button>
+          <button
+            type="button"
+            disabled={readOnly}
+            className={clsx(
+              'min-h-16 rounded-md border text-xl font-extrabold disabled:cursor-not-allowed disabled:opacity-40',
+              point.testValue === 'FAIL'
+                ? 'border-red-300 bg-red-400 text-red-950'
+                : 'border-red-300/40 bg-red-950/40 text-red-100 hover:bg-red-900/60'
+            )}
+            onClick={() => chooseJudgement('FAIL')}
+          >
+            NG
+          </button>
+        </div>
+        {showInputStatus ? (
+          <p className={clsx('text-base font-bold', STATUS_CLASS[inputStatus])} data-testid="inspection-drawing-input-status">
+            {MEASUREMENT_POINT_INPUT_STATUS_LABEL[inputStatus]}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
   const bounds = toleranceBoundsFromPoint(point);
   const inputStatus = resolveMeasurementPointInputStatus(point);
 
@@ -127,9 +195,15 @@ export function InspectionDrawingValuePanel({
     optionResult?.mode === 'dropdown_and_free' && optionResult.options.length > 0;
   const showDimensionHundredths =
     isSelfInspectionOptions && measurementValueInputKind === 'dimension_hundredths' && showDropdown;
-  const dimensionProvisionalDisplay = dimensionTenthsBase
-    ? formatDimensionTenthsProvisionalValue(dimensionTenthsBase)
-    : null;
+  const dimensionKeypadDigitCount = showDimensionHundredths
+    ? resolveSelfInspectionDimensionKeypadDigitCount(point)
+    : 1;
+  const dimensionKeypadSource = dimensionTenthsBase ?? point.testValue;
+  const dimensionEntryInProgress = dimensionTenthsBase !== null || pendingHundredthsDigit !== null;
+  const dimensionTenthsPrefix = dimensionEntryInProgress
+    ? (applyHundredthsDigitToDimensionValue(dimensionKeypadSource, 0)?.slice(0, -1) ?? '')
+    : '';
+  const dimensionActiveSlot = pendingHundredthsDigit === null ? 0 : 1;
   const dropdownHint =
     optionResult?.mode === 'free_only' && optionResult.reason && valueInputMode === 'self_inspection_options'
       ? optionResult.reason
@@ -142,6 +216,7 @@ export function InspectionDrawingValuePanel({
       value={point.testValue}
       onChange={(e) => {
         setDimensionTenthsBase(null);
+        setPendingHundredthsDigit(null);
         onValueChange(e.target.value);
       }}
       onKeyDown={(e) => {
@@ -158,7 +233,7 @@ export function InspectionDrawingValuePanel({
       }}
       disabled={readOnly}
       inputMode="decimal"
-      className={kioskInputClassName}
+      className={clsx(kioskInputClassName, 'box-border w-full min-w-0 max-w-full')}
       autoFocus={!showDropdown}
       key={
         onCommitValue
@@ -172,18 +247,24 @@ export function InspectionDrawingValuePanel({
 
   const handleDimensionHundredthsClick = (digit: number) => {
     if (!point || readOnly) return;
-    const value = applyHundredthsDigitToDimensionValue(
-      dimensionTenthsBase ?? point.testValue,
-      digit
-    );
+    if (dimensionKeypadDigitCount === 2 && pendingHundredthsDigit === null) {
+      if (!applyHundredthsDigitToDimensionValue(dimensionKeypadSource, digit)) return;
+      setPendingHundredthsDigit(digit);
+      return;
+    }
+    const value =
+      pendingHundredthsDigit === null
+        ? applyHundredthsDigitToDimensionValue(dimensionKeypadSource, digit)
+        : applyThousandthsDigitToDimensionValue(dimensionKeypadSource, pendingHundredthsDigit, digit);
     if (!value) return;
     setDimensionTenthsBase(null);
+    setPendingHundredthsDigit(null);
     onValueChange(value);
     emitCommit(value, 'hundredths_button');
   };
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-white/15 bg-slate-900/60 p-4 text-white">
+    <div className="flex flex-col gap-3 rounded-lg border border-white/15 bg-slate-900/60 p-4 text-white" data-testid="inspection-drawing-value-panel">
       <div>
         <p className="text-lg font-bold">
           {pointDisplayName}（No.{point.markerNo}）
@@ -208,6 +289,7 @@ export function InspectionDrawingValuePanel({
                   if (!v) return;
                   if (showDimensionHundredths) {
                     setDimensionTenthsBase(v);
+                    setPendingHundredthsDigit(null);
                     return;
                   }
                   setDimensionTenthsBase(null);
@@ -231,18 +313,50 @@ export function InspectionDrawingValuePanel({
           {showDimensionHundredths ? (
             <div className="col-span-2 grid gap-2 rounded border border-white/10 bg-slate-950/40 p-2">
               <div className="flex items-center justify-between gap-2 text-sm">
-                <span className="font-semibold text-white/75">百分台</span>
-                <span className="min-h-6 rounded bg-slate-800 px-2 py-1 font-mono text-base text-amber-200">
-                  {dimensionProvisionalDisplay ?? ''}
+                <span className="font-semibold text-white/75">
+                  {dimensionKeypadDigitCount === 2 ? '百分台・千分台' : '百分台'}
                 </span>
+                <div
+                  className="flex items-center gap-0.5 font-mono text-base text-amber-200"
+                  data-testid="inspection-drawing-dimension-digit-slots"
+                >
+                  <span>{dimensionTenthsPrefix}</span>
+                  {dimensionKeypadDigitCount === 2 ? (
+                    <button
+                      type="button"
+                      aria-label="百分台を入れ直す"
+                      disabled={readOnly}
+                      className={dimensionDigitSlotClassName(dimensionEntryInProgress && dimensionActiveSlot === 0)}
+                      onClick={() => setPendingHundredthsDigit(null)}
+                    >
+                      {pendingHundredthsDigit ?? ''}
+                    </button>
+                  ) : (
+                    <span className={dimensionDigitSlotClassName(dimensionEntryInProgress)} />
+                  )}
+                  {dimensionKeypadDigitCount === 2 ? (
+                    <span className={dimensionDigitSlotClassName(dimensionActiveSlot === 1)} />
+                  ) : null}
+                </div>
               </div>
-              <div className="grid grid-cols-5 gap-1">
+              <div
+                className={clsx(
+                  'grid gap-1',
+                  hundredthsKeypadLayout === 'singleRowCompact' ? 'grid-cols-10' : 'grid-cols-5'
+                )}
+                data-testid="inspection-drawing-hundredths-keypad"
+              >
                 {Array.from({ length: 10 }, (_, digit) => (
                   <button
                     key={digit}
                     type="button"
                     disabled={readOnly || (!dimensionTenthsBase && !point.testValue.trim())}
-                    className="min-h-11 rounded-md border border-white/20 bg-slate-950/60 text-lg font-bold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    className={clsx(
+                      'min-w-0 rounded-md border border-white/20 bg-slate-950/60 font-bold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40',
+                      hundredthsKeypadLayout === 'singleRowCompact'
+                        ? 'h-[22px] min-h-[22px] text-base leading-none'
+                        : 'min-h-11 text-lg'
+                    )}
                     onClick={() => handleDimensionHundredthsClick(digit)}
                   >
                     {digit}
@@ -286,9 +400,11 @@ export function InspectionDrawingValuePanel({
         </>
       )}
       {dropdownHint ? <p className="text-xs text-white/55">{dropdownHint}</p> : null}
-      <p className={clsx('text-base font-bold', STATUS_CLASS[inputStatus])}>
-        {MEASUREMENT_POINT_INPUT_STATUS_LABEL[inputStatus]}
-      </p>
+      {showInputStatus ? (
+        <p className={clsx('text-base font-bold', STATUS_CLASS[inputStatus])} data-testid="inspection-drawing-input-status">
+          {MEASUREMENT_POINT_INPUT_STATUS_LABEL[inputStatus]}
+        </p>
+      ) : null}
     </div>
   );
 }

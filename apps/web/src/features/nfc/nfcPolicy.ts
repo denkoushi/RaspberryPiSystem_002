@@ -1,3 +1,5 @@
+import { readProductionBuildConfig } from '../../config/productionBuildConfig';
+
 export type NfcStreamPolicy = 'disabled' | 'localOnly' | 'legacy';
 
 const KIOSK_CLIENT_KEY_STORAGE_KEY = 'kiosk-client-key';
@@ -37,9 +39,8 @@ export const resolveNfcStreamPolicy = (): NfcStreamPolicy => {
   if (isMacUserAgent(ua)) return 'disabled';
   if (storedClientKey && storedClientKey.startsWith('client-key-mac-')) return 'disabled';
 
-  const mode = String(import.meta.env.VITE_AGENT_WS_MODE ?? '').toLowerCase();
+  const mode = readProductionBuildConfig().agentWsMode;
   if (mode === 'local') return 'localOnly';
 
   return 'legacy';
 };
-

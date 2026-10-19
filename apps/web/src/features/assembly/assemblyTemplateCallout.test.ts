@@ -18,7 +18,10 @@ describe('assembly template marker callout draft', () => {
     const bolt = {
       ...createAssemblyBoltAt(area, 0.2, 0.3, pageRef),
       calloutTipXRatio: 0.8,
-      calloutTipYRatio: 0.7
+      calloutTipYRatio: 0.7,
+      lowerLimit: 9,
+      nominalTorque: 10,
+      upperLimit: 11
     };
     area.bolts = [bolt];
     const check = {

@@ -24,10 +24,13 @@ import type { SelfInspectionPaperReportIssueService } from '../../services/part-
 import type { SelfInspectionPaperReportResolver } from '../../services/part-measurement/self-inspection-paper-report-resolver.service.js';
 import type { SelfInspectionPaperOcrReviewService } from '../../services/part-measurement/self-inspection-paper-ocr-review.service.js';
 import type { SelfInspectionPaperImportService } from '../../services/part-measurement/self-inspection-paper-import.service.js';
+import type { SelfInspectionItemLifecycleService } from '../../services/part-measurement/self-inspection-item-lifecycle.service.js';
 import type {
   getPartMeasurementDrawingOcrService,
   PartMeasurementDrawingOcrQueuePriority
 } from '../../services/part-measurement/part-measurement-drawing-ocr.service.js';
+import type { PartMeasurementDrawingDimensionMapService } from '../../services/part-measurement/part-measurement-drawing-dimension-map.service.js';
+import type { PartMeasurementDrawingDimensionMapCandidate } from '../../services/part-measurement/part-measurement-drawing-dimension-map-candidates.js';
 
 export const processGroupSchema = z.enum(['cutting', 'grinding']);
 export const authOnlyErrorCodes = new Set(['AUTH_TOKEN_REQUIRED', 'AUTH_TOKEN_INVALID', 'AUTH_TOKEN_EXPIRED']);
@@ -60,6 +63,7 @@ export const findOrOpenSheetBodySchema = z.object({
   productNo: z.string().min(1).max(120),
   processGroup: processGroupSchema,
   resourceCd: z.string().min(1).max(120),
+  fkojun: z.string().max(120).optional(),
   scheduleRowId: z.string().uuid().optional().nullable(),
   fseiban: z.string().max(120).optional().nullable(),
   fhincd: z.string().max(120).optional().nullable(),
@@ -99,7 +103,8 @@ export const templateItemSchema = z.object({
   nominalValue: z.number().optional().nullable(),
   lowerLimit: z.number().optional().nullable(),
   upperLimit: z.number().optional().nullable(),
-  depthMode: z.enum(['measured', 'through']).optional().default('measured')
+  depthMode: z.enum(['measured', 'through']).optional().default('measured'),
+  valueKind: z.enum(['numeric', 'judgement']).optional().default('numeric')
 });
 
 export const templateScopeSchema = z.enum(['three_key', 'fhincd_resource', 'fhinmei_only']);
@@ -157,6 +162,7 @@ export const createTemplateBodySchema = z
     fhincd: z.string().max(120),
     processGroup: processGroupSchema,
     resourceCd: z.string().max(120),
+    fkojun: z.string().max(120).optional().default(''),
     name: z.string().min(1).max(200),
     items: z.array(templateItemSchema).min(1).max(200),
     visualTemplateId: z.string().uuid().optional().nullable(),
@@ -201,6 +207,7 @@ export const createInspectionDrawingTemplateGroupBodySchema = z
     fhincd: z.string().min(1).max(120),
     processGroup: processGroupSchema,
     resourceCds: inspectionDrawingTemplateResourceCdsSchema,
+    fkojun: z.string().max(120).optional().default(''),
     name: z.string().min(1).max(200),
     displayName: z.string().max(200).optional().nullable(),
     items: z.array(templateItemSchema).min(1).max(200),
@@ -261,13 +268,15 @@ export const cloneTemplateForScheduleBodySchema = z.object({
   sourceTemplateId: z.string().uuid(),
   fhincd: z.string().min(1).max(120),
   processGroup: processGroupSchema,
-  resourceCd: z.string().min(1).max(120)
+  resourceCd: z.string().min(1).max(120),
+  fkojun: z.string().max(120).optional().default('')
 });
 
 export const listTemplatesQuerySchema = z.object({
   fhincd: z.string().max(120).optional(),
   processGroup: processGroupSchema.optional(),
   resourceCd: z.string().max(120).optional(),
+  fkojun: z.string().max(120).optional(),
   includeInactive: z.coerce.boolean().optional()
 });
 
@@ -318,7 +327,8 @@ export const optionalQueryTrueOnlyBooleanSchema = z
 export const activeTemplateExistsQuerySchema = z.object({
   fhincd: z.string().min(1).max(120),
   processGroup: processGroupSchema,
-  resourceCd: z.string().min(1).max(120)
+  resourceCd: z.string().min(1).max(120),
+  fkojun: z.string().max(120).optional().default('')
 });
 
 export const drawingOcrCandidateBodySchema = z.object({
@@ -327,13 +337,17 @@ export const drawingOcrCandidateBodySchema = z.object({
   markerNo: z.number().int().min(1).max(999).optional().nullable(),
   limit: z.number().int().min(1).max(20).optional(),
   measurementLabel: z.string().max(120).optional().nullable(),
-  depthMode: z.enum(['measured', 'through']).optional().nullable()
+  depthMode: z.enum(['measured', 'through']).optional().nullable(),
+  /** 指差し先端。寸法マップの候補はここからの距離も使う */
+  calloutTipXRatio: z.number().min(0).max(1).optional().nullable(),
+  calloutTipYRatio: z.number().min(0).max(1).optional().nullable()
 });
 
 export const listTemplateCandidatesQuerySchema = z.object({
   fhincd: z.string().min(1).max(120),
   processGroup: processGroupSchema,
   resourceCd: z.string().min(1).max(120),
+  fkojun: z.string().max(120).optional(),
   fhinmei: z.string().max(500).optional(),
   q: z.string().max(200).optional()
 });
@@ -379,27 +393,28 @@ export const selfInspectionEntryIndexParamsSchema = z.object({
 
 export const selfInspectionEntryValueSchema = z.object({
   templateItemId: z.string().uuid(),
-  value: z.union([z.string(), z.number(), z.null()]),
+  value: z.union([z.string(), z.number(), z.null()]).optional(),
+  judgementResult: z.enum(['PASS', 'FAIL']).nullable().optional(),
   outOfToleranceAcknowledged: z.boolean().optional()
 });
 
 export const selfInspectionCreateEntryBodySchema = z.object({
   entryIndex: z.number().int().min(0),
-  employeeTagUid: z.string().min(1).max(200).optional().nullable(),
+  measurementActorAuthenticationId: z.string().uuid(),
   measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
   values: z.array(selfInspectionEntryValueSchema).min(1).max(200)
 });
 
 export const selfInspectionUpdateEntryBodySchema = z.object({
   ifUnmodifiedSince: z.string().min(1).max(100),
-  employeeTagUid: z.string().min(1).max(200).optional().nullable(),
+  measurementActorAuthenticationId: z.string().uuid(),
   measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
   values: z.array(selfInspectionEntryValueSchema).min(1).max(200)
 });
 
 export const selfInspectionUpsertDraftEntryBodySchema = z.object({
   entryIndex: z.number().int().min(0),
-  employeeTagUid: z.string().min(1).max(200).optional().nullable(),
+  measurementActorAuthenticationId: z.string().uuid(),
   measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
   ifUnmodifiedSince: z.string().min(1).max(100).optional().nullable(),
   values: z.array(selfInspectionEntryValueSchema).max(200).optional()
@@ -407,7 +422,7 @@ export const selfInspectionUpsertDraftEntryBodySchema = z.object({
 
 export const selfInspectionCreateInspectorEntryBodySchema = z.object({
   entryIndex: z.number().int().min(0),
-  employeeTagUid: z.string().min(1).max(200).optional().nullable(),
+  measurementActorAuthenticationId: z.string().uuid(),
   measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
   values: z.array(selfInspectionEntryValueSchema).min(1).max(200)
 });
@@ -415,7 +430,7 @@ export const selfInspectionCreateInspectorEntryBodySchema = z.object({
 export const selfInspectionUpdateInspectorEntryBodySchema = z.object({
   entryIndex: z.number().int().min(0),
   ifUnmodifiedSince: z.string().min(1).max(100),
-  employeeTagUid: z.string().min(1).max(200).optional().nullable(),
+  measurementActorAuthenticationId: z.string().uuid(),
   measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
   values: z.array(selfInspectionEntryValueSchema).min(1).max(200)
 });
@@ -431,7 +446,12 @@ export const selfInspectionInspectorJudgementsBodySchema = z.object({
 
 export const selfInspectionInstrumentPreUseInspectionBodySchema = z.object({
   instrumentTagUid: z.string().min(1).max(200),
-  employeeTagUid: z.string().min(1).max(200)
+  measurementActorAuthenticationId: z.string().uuid()
+});
+
+export const selfInspectionMeasurementActorAuthenticationBodySchema = z.object({
+  employeeTagUid: z.string().min(1).max(200),
+  measurementMode: z.enum(['operator', 'inspector'])
 });
 
 export const selfInspectionResetSessionBodySchema = z.object({
@@ -450,15 +470,61 @@ export const selfInspectionRecordApprovalStateSchema = z.enum([
   'input_incomplete',
   'inspector_measurement_pending',
   'registration_incomplete',
+  'final_judgement_pending',
+  'finalization_ready',
   'approvable',
-  'approved'
+  'approved',
+  'completed'
 ]);
 
 export const listSelfInspectionRecordApprovalsQuerySchema = z.object({
   productNo: z.string().max(120).optional(),
   resourceCd: z.string().max(120).optional(),
   processGroup: processGroupSchema.optional(),
-  state: selfInspectionRecordApprovalStateSchema.optional()
+  state: selfInspectionRecordApprovalStateSchema.optional(),
+  scope: z.literal('completed_records').optional()
+}).superRefine((value, ctx) => {
+  if (value.state !== undefined && value.scope !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['scope'],
+      message: 'scope と state は同時に指定できません'
+    });
+  }
+});
+
+const selfInspectionInvalidationScheduleRowTargetSchema = z.object({
+  kind: z.literal('schedule_row'),
+  scheduleRowId: z.string().uuid(),
+  templateId: z.string().uuid(),
+  productNo: z.string().trim().min(1).max(120),
+  processGroup: processGroupSchema,
+  resourceCd: z.string().trim().min(1).max(120),
+  fseiban: z.string().trim().min(1).max(120),
+  fhincd: z.string().trim().min(1).max(120),
+  fhinmei: z.string().trim().min(1).max(500)
+});
+
+export const invalidateSelfInspectionItemBodySchema = z.object({
+  target: z.discriminatedUnion('kind', [
+    z.object({
+      kind: z.literal('session'),
+      sessionId: z.string().uuid()
+    }),
+    selfInspectionInvalidationScheduleRowTargetSchema
+  ]),
+  accessPassword: z.string().min(1).max(128),
+  reason: z.string().trim().min(1).max(500),
+  requestId: z.string().uuid()
+});
+
+export const listSelfInspectionInvalidationsQuerySchema = z.object({
+  productNo: z.string().trim().max(120).optional(),
+  resourceCd: z.string().trim().max(120).optional()
+});
+
+export const selfInspectionInvalidationIdParamsSchema = z.object({
+  id: z.string().uuid()
 });
 
 export const resolveSelfInspectionRecordApprovalApproverBodySchema = z.object({
@@ -471,7 +537,8 @@ export const approveSelfInspectionRecordApprovalBodySchema = z.object({
 });
 
 export const selfInspectionRegistrationPolicyBodySchema = z.object({
-  requireMeasuringInstrumentTag: z.boolean()
+  requireMeasuringInstrumentTag: z.boolean(),
+  accessPassword: z.string().max(128).optional()
 });
 
 export const issueSelfInspectionPaperReportBodySchema = z.object({
@@ -549,6 +616,7 @@ export function serializeTemplateItem(item: {
   lowerLimit?: unknown;
   upperLimit?: unknown;
   depthMode?: 'MEASURED' | 'THROUGH' | string | null;
+  valueKind?: 'NUMERIC' | 'JUDGEMENT' | string | null;
 }) {
   const depthModeRaw = String(item.depthMode ?? 'MEASURED').toUpperCase();
   return {
@@ -568,7 +636,8 @@ export function serializeTemplateItem(item: {
     nominalValue: decimalToString(item.nominalValue),
     lowerLimit: decimalToString(item.lowerLimit),
     upperLimit: decimalToString(item.upperLimit),
-    depthMode: depthModeRaw === 'THROUGH' ? 'through' : 'measured'
+    depthMode: depthModeRaw === 'THROUGH' ? 'through' : 'measured',
+    valueKind: String(item.valueKind ?? 'NUMERIC').toUpperCase() === 'JUDGEMENT' ? 'judgement' : 'numeric'
   };
 }
 
@@ -633,6 +702,29 @@ export function serializeDrawingOcrCandidate(candidate: {
   return candidate;
 }
 
+/** 寸法マップの候補を OCR 候補と同じ形で返す（画面は 1 つの候補行で扱う）。 */
+export function serializeDrawingDimensionMapCandidate(candidate: PartMeasurementDrawingDimensionMapCandidate) {
+  return {
+    valueText: candidate.valueText,
+    rawText: candidate.dimensionText,
+    confidence: null,
+    score: candidate.distanceRatio,
+    distanceRatio: candidate.distanceRatio,
+    xRatio: candidate.xRatio,
+    yRatio: candidate.yRatio,
+    widthRatio: 0,
+    heightRatio: 0,
+    passKind: 'full' as const,
+    preprocessKind: 'raw' as const,
+    rotation: 0,
+    source: 'dimensionMap' as const,
+    dimensionText: candidate.dimensionText,
+    dimensionKind: candidate.kind,
+    suggestedUpperTolerance: candidate.suggestedUpperTolerance,
+    suggestedLowerTolerance: candidate.suggestedLowerTolerance
+  };
+}
+
 export function serializeTemplateScope(scope: string): 'three_key' | 'fhincd_resource' | 'fhinmei_only' {
   if (scope === 'FHINCD_RESOURCE') return 'fhincd_resource';
   if (scope === 'FHINMEI_ONLY') return 'fhinmei_only';
@@ -653,6 +745,7 @@ export function serializeTemplateSiblingGroup(
     displayName: string;
     fhincd: string;
     processGroup: string;
+    fkojun: string | null;
     createdAt?: Date;
     updatedAt?: Date;
   },
@@ -663,6 +756,7 @@ export function serializeTemplateSiblingGroup(
     displayName: group.displayName,
     fhincd: group.fhincd,
     processGroup: serializeTemplateProcessGroup(group.processGroup),
+    fkojun: group.fkojun ?? '',
     activeResourceCds,
     createdAt: group.createdAt?.toISOString?.() ?? null,
     updatedAt: group.updatedAt?.toISOString?.() ?? null
@@ -674,6 +768,7 @@ export function serializeTemplate(
     id: string;
     fhincd: string;
     resourceCd: string;
+    fkojun: string | null;
     processGroup: string;
     templateScope?: string;
     candidateFhinmei?: string | null;
@@ -696,6 +791,7 @@ export function serializeTemplate(
     id: t.id,
     fhincd: t.fhincd,
     resourceCd: t.resourceCd,
+    fkojun: t.fkojun ?? '',
     processGroup: serializeTemplateProcessGroup(t.processGroup),
     templateScope: serializeTemplateScope(t.templateScope ?? 'THREE_KEY'),
     candidateFhinmei: t.candidateFhinmei ?? null,
@@ -987,6 +1083,7 @@ export type PartMeasurementRouteDeps = {
   sheetService: PartMeasurementSheetService;
   templateService: PartMeasurementTemplateService;
   selfInspectionService: SelfInspectionService;
+  selfInspectionItemLifecycleService: SelfInspectionItemLifecycleService;
   paperReportIssueService: SelfInspectionPaperReportIssueService;
   paperReportResolver: SelfInspectionPaperReportResolver;
   paperOcrReviewService: SelfInspectionPaperOcrReviewService;
@@ -995,6 +1092,7 @@ export type PartMeasurementRouteDeps = {
   visualTemplateService: PartMeasurementVisualTemplateService;
   measurementLabelSettingsService: InspectionDrawingMeasurementLabelSettingsService;
   drawingOcrService: ReturnType<typeof getPartMeasurementDrawingOcrService>;
+  drawingDimensionMapService: PartMeasurementDrawingDimensionMapService;
   enqueueDrawingOcrAndWake: (
     visualTemplateId: string | null | undefined,
     context: string,

@@ -7,6 +7,7 @@ import {
   SignageRenderScheduler,
 } from './signage-render-scheduler.js';
 import { SignageRenderer } from './signage.renderer.js';
+import { getSignageWebCaptureService } from './web-capture/signage-web-capture.service.js';
 import { closeSharedChromium } from './loan-grid/playwright/playwright-browser-pool.js';
 
 // NOTE:
@@ -22,7 +23,9 @@ initializeVisualizationModules();
 
 const signageService = new SignageService();
 const signageRenderer = new SignageRenderer(signageService);
-const scheduler = new SignageRenderScheduler(signageRenderer, env.SIGNAGE_RENDER_INTERVAL_SECONDS);
+const scheduler = new SignageRenderScheduler(signageRenderer, env.SIGNAGE_RENDER_INTERVAL_SECONDS, () =>
+  getSignageWebCaptureService().runDueCaptures(),
+);
 
 logger.info(
   { intervalSeconds: env.SIGNAGE_RENDER_INTERVAL_SECONDS, runner: env.SIGNAGE_RENDER_RUNNER, pid: process.pid },

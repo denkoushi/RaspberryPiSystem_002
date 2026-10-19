@@ -1,0 +1,150 @@
+# Hermes measured Skill improvement
+
+
+This living ExecPlan follows `.agent/PLANS.md`. Status: telemetry deployed; paired Skill comparison complete; candidate rejected. Review-adapter integration is in progress. On 2026-09-13 the user approved deployment of telemetry, ten baseline questions, a standard Hermes Skill revision, and matched baseline/candidate evaluation. A candidate may reach production only if that comparison passes.
+
+## Purpose / Big Picture
+
+
+Turn business consultation experience into measurable, reviewable improvements. Operators can export automatically recorded turns, label correctness against source records, ask standard Hermes Skills to propose a revision in an isolated profile, and compare baseline and candidate observations before releasing that revision. Chat users incur no additional LLM calls. This implementation does not claim that a Skill revision already meets the ten-second product goal.
+
+## Progress
+
+
+- [x] (2026-09-13) Read repository rules and inspect consultation persistence and official Hermes Skills/review documentation; start dedicated worktree from origin/main 36b40ac6.
+- [x] Persist per-turn timing, recipe, native session and outcome alongside existing history; export with existing Prisma access.
+- [x] Implement local SQLite observations, source-grounded grading, linked report, isolated standard Hermes review, and comparison gate.
+- [x] (2026-09-13) Validate failure, regression, held-out isolation, staging and successful candidate paths: 56 focused API/export tests, 17 offline tests, targeted ESLint and API TypeScript checks passed. Native staging contract passed in a temporary profile on the installed Hermes image.
+
+- [x] (2026-09-13) Commit/push telemetry and evaluation implementation; create PR #1398. Freeze ten private source-grounded cases.
+- [x] (2026-09-13) PR #1398 merged as c7dcf0e2 after CI success; standard Pi5 run 20260913-061651-7abcc9 completed (active/exited, success/0, failed=0, unreachable=0, rescued=0). Task finish/audit completed; other WIP retained.
+- [x] (2026-09-13) Approved Pi4 OS-package repair passed all six image/platform scans and main release CI.
+- [x] (2026-09-13) Freeze and measure ten cases at a one-second selection delay. Seven completed correct answers; total-time median about 22 seconds. A separate Safari smoke recorded fast choices and a record-display failure; excluded from paired evaluation.
+- [x] (2026-09-13) Execute a clean native review, approve its standard batch of three patches only in the isolated profile, and measure/grade the same ten cases. The source snapshot remained unchanged.
+- [x] (2026-09-13) Comparison rejected the candidate: both variants completed 7/10 correct answers, with one fixed case and one regression. Total p50 22.387s -> 22.740s; p95 33.421s -> 39.217s. Keep production Skill unchanged.
+- [ ] Merge the review-input/batch-adapter fix after its CI; finish/audit the follow-up branch and remove owned experimental profiles after archiving evidence.
+
+## Surprises & Discoveries
+
+The initial native review bundle included full retrieval envelopes from training answers. Although held-out questions were absent, unrelated retrieved source bodies could expose held-out cases. The first review was stopped and discarded before applying a Skill. Review bundles now include answer content and source-reviewed rationale, while raw evidence remains in private observations. A regression test reproduces this indirect exposure and verifies its removal. The clean native review produced one standard batch of three Skill patches; staging validation now checks every batch operation against the same Skill/action/path allowlist, rejecting mixed targets, deletes, traversal, nested and empty batches.
+
+PR #1398 CI run 34740354752 failed all six Pi4 image scans. The inspected NFC arm64 image reported 40 fixed-version OS findings; barcode and torque share gzip, PCRE2, SQLite and Perl-base findings. NFC additionally includes GLib and the full Perl packages. The user authorized this specific repair after the unrelated failure was reported. Main CI had skipped this matrix, so its success did not establish a passing baseline for these scans. No scanner exception is added.
+
+
+Current consultation profile disables memory, background review, session search and Curator. The consultation Skill is compiled into SOUL, so modifying an unrelated on-disk Skill does not update the production prompt. Official Curator maintenance tracks usage and prunes/consolidates Skills; it does not establish business-answer correctness or latency improvements.
+
+## Decision Log
+
+
+Use the existing message JSON diagnostics to avoid a database migration. Keep learning telemetry private to export and out of model inputs/public conversation diagnostics. One final measurement write per persisted user request records failures as well as successes; write failure must not turn a valid answer into an unavailable response. Timing ends before telemetry persistence and is explicitly server timing, not screen timing.
+
+Use an explicitly invoked offline Python command with SQLite (standard library), not a daemon or graph database. Observations link question/purpose, recipe, evidence snapshot, answer and review. Correctness requires a source reference and reviewer explanation. Unreviewed answers never become successes. Training and held-out cases are separated; the review prompt excludes held-out content. Native Hermes skill_manage stages revisions in a separate profile. Existing application authentication and runtime/model configuration remain unchanged. No unattended reviews compete with active production answers.
+
+## Context and Orientation
+
+
+`apps/api/src/services/business-hermes/business-hermes-consultation.service.ts` handles first-question choices and one speculative answer. Messages already contain `searchDiagnostics` JSON. `apps/api/src/scripts/export-business-hermes-learning.ts` exports private observations using existing database credentials. `scripts/hermes-learning/learning.py` consumes the export into SQLite and prepares a native Hermes Skills review. No business examples belong in Git. The deployed Skill template is `infrastructure/ansible/templates/business-hermes-chat/skills/business-consultation/SKILL.md.j2` and must still be released through the normal repository path.
+
+## Plan of Work
+
+
+First add telemetry around the existing request and inference lifecycle, including failed requests and speculative runs without changing inference instructions. Then implement bounded read-only export. Implement import, grading, reporting, review preparation/execution, and comparison using hashes for observations, source snapshots and Skill revisions. Finally exercise a synthetic full workflow and focused service tests. Production remains unchanged during local implementation.
+
+## Concrete Steps
+
+
+From the repository root run `python3 -m unittest discover -s scripts/hermes-learning -p 'test_*.py'`. From `apps/api` run `pnpm exec vitest run src/services/business-hermes/business-hermes-consultation.service.test.ts` and targeted ESLint. The CLI help and the operational instructions below describe the actual file contracts and commands after implementation.
+
+## Validation and Acceptance
+
+
+A completed turn records its recipe, elapsed time, inference timings and evidence link. Failure and cancellation remain counted; a telemetry database failure leaves the response intact. Reimport is idempotent. An unreviewed pending observation can complete once; changed completed/reviewed observations are rejected. Unknown correctness is visible and blocks promotion. Faster but newly wrong answers, missing held-out cases, changed sources and mismatched revisions are rejected. A complete source-reviewed paired run with no correctness regression and improved latency can export the exact tested Skill. The review input never includes held-out examples. Synthetic tests prove the mechanism, not real answer quality.
+
+## Idempotence and Recovery
+
+
+Read-only export does not modify business data. SQLite imports use transactions. Each review uses a new output directory and staged native Skill writes; no live profile files are edited. Promotion exports a file for the existing release process and checks its content hash. Delete no production state. Preserve this worktree for review at the locally implemented stage.
+
+## Artifacts and Notes
+
+
+Validation results and runnable operator commands will be recorded here. All real questions, evidence and answers remain outside Git in private output directories.
+
+## Interfaces and Dependencies
+
+
+Use existing TypeScript, Prisma, Vitest and ESLint for the API. Offline observation/report/comparison commands require only Python's standard library; native review additionally uses PyYAML from the Hermes environment and the installed `hermes` CLI. Review runtime model/provider credentials are supplied from the existing configuration and environment; do not print them or add a cloud fallback.
+
+## Outcomes & Retrospective
+
+
+PR #1398 merged as `c7dcf0e2e310a3417387e1e14aae91d0a62a95c6`. Its CI and main release CI passed after the authorized three-Dockerfile OS-package fix. Standard Pi5 run `20260913-061651-7abcc9` completed with ActiveState=active, SubState=exited, Result=success and ExecMainStatus=0; recap failed=0, unreachable=0, rescued=0. The original task worktree was finished/audited and other WIP was preserved. Telemetry is now live; no extra LLM call was added to chat.
+
+Ten distinct questions were frozen before candidate development: five training and five held-out, covering eight nonconformities and two published work instructions. Both variants ran the same deployed API service with a one-second choice delay, separate native Hermes profiles, the same image/model routing, and unchanged source records. These are server-through-response-assembly measurements; the choice delay is included in total time. A separate Safari smoke showed choices within 451ms and later a record-display failure. It is excluded from the paired benchmark.
+
+The baseline completed 7/10 correct answers. A clean native Hermes review used only training answer content, timing/search diagnostics and source-reviewed rationale. Its standard batch added three instructions about short search terms, cause/dimension consistency and completing answers when evidence is sufficient. Standard `/skills approve` handling applied the inspected batch only in an isolated profile; the resulting bytes were verified before testing. Candidate SHA256: `71a8b56e4ee6ae47473bfdb467e60d5fe06f4fbedce9b10b327b7f7a4d3245f8`.
+
+The candidate also completed 7/10 correct answers: it fixed an unnecessary clarification in one training case but regressed on a held-out case by returning English intermediate explanation instead of a completed Japanese answer. Both variants missed the relevant manual-grinding precaution. Total p50 increased from 22.387s to 22.740s; p95 from 33.421s to 39.217s. No answer completed within ten seconds. The default comparison gate rejected the candidate for correctness regression and latency, without a context/runtime/source mismatch. Production retains baseline Skill SHA256 `9133aeb2d486f0de2bbba239e86961fb482fc94638eb1cf828a6a6dd7c0ded22`.
+
+The live exercise exposed two offline adapter gaps, now covered by 19 tests: full retrieval envelopes could expose unrelated held-out source bodies through training answers, and the validator initially rejected Hermes' standard batch wrapper even when every operation was a scoped patch. The first review was stopped/discarded; a fresh profile and reduced prompt produced the tested candidate. The fix keeps raw observations locally and validates every batch operation, including rejecting mixed targets, destructive actions, path traversal, nested and empty batches.
+
+The result establishes automatic observation collection and a tested, explicitly invoked Skill-review/comparison cycle. It does not establish that adding Skill instructions alone reaches the ten-second product goal. No nightly self-modification or model change is enabled. Real questions, answers, source snapshots, native review artifacts and the private SQLite report stay outside Git.
+
+## Operator Workflow
+
+
+Keep the following files private and outside Git. The Python tool does not connect to production automatically. Export runs with the existing API database environment and writes a new file with owner-only permissions. From `apps/api`, for example:
+
+    pnpm exec tsx src/scripts/export-business-hermes-learning.ts --since=2026-09-13T00:00:00Z --until=2026-09-14T00:00:00Z --out=/private/learning/day-1.jsonl
+
+In a built API environment the equivalent entry is `node dist/scripts/export-business-hermes-learning.js` with the same flags. The destination directory must already exist. Reads are paginated in batches of 100 messages and answer IDs are restricted to the same consultation. Legacy messages without telemetry are omitted; pending and failed requests remain visible. Telemetry is filtered from public history and never sent to the answering LLM.
+
+From the repository root import those observations. `--skill` must be the exact rendered Skill used during that run. `--runtime` is an operator-attested identity of the unchanged app, Hermes image, model and shared runtime configuration, excluding the Skill content being tested. This tool cannot remotely attest that identity; preserve the original deployment/profile evidence alongside the export. The Skill hash is computed from bytes and later edits cannot inherit the earlier result.
+
+    python3 scripts/hermes-learning/learning.py --db /private/learning/results.sqlite import --input /private/learning/day-1.jsonl --skill /private/learning/baseline.SKILL.md --runtime SAME_APP_HERMES_MODEL_CONFIG
+    python3 scripts/hermes-learning/learning.py --db /private/learning/results.sqlite report > /private/learning/report.json
+
+The report contains per-revision/recipe/phase counts, reviewed accuracy and review coverage, p50/p95 server timings, prefetch counts and a JSON graph linking questions, recipes, observations and source IDs. P50 and p95 are nearest-rank percentiles; small samples are not population estimates. Missing measurements remain unknown. Prefetch start/adoption counts describe the selected export window, not a guaranteed hit rate across window boundaries. The main elapsed time stops after response assembly and before the final telemetry DB write. `questionToAnswerMs` also includes the user's selection delay. Neither is screen latency. Inference measurements include runtime readiness and the Responses request; they are not isolated GPU-generation measurements. Search diagnostics count observed search-result records, not all LLM calls or detail tools.
+
+Read each answer against its original record. Assign at least five distinct training cases and five distinct held-out cases for the default gate. Held-out means examples withheld from the Skill-improvement prompt. Assign the split before reviewing candidates and keep it fixed; do not reuse a paraphrase of a training example as independent held-out evidence. `--source-revision` identifies the frozen source-data snapshot. A record ID alone does not identify its revision. Require a factual reason, including a correction for failed answers:
+
+    python3 scripts/hermes-learning/learning.py --db /private/learning/results.sqlite grade --id USER_MESSAGE_ID --split train --verdict fail --reviewer SOURCE_REVIEWER --source-revision CORPUS_SNAPSHOT_HASH --source-ref RECORD_AND_VERSION --reason '原文の対象工程と回答の工程が異なる。正しい工程と条件を確認する。'
+
+Use `--split holdout` for withheld examples and `--verdict pass` only for a complete correct answer. An unreviewed answer remains unknown; failed, missing and clarification-only answers cannot be graded as passing. Repeated observations of the same question/purpose share the split. Follow-ups without a recipe are scoped to their original consultation, so they cannot accidentally be paired across unrelated cases. Context fingerprints further reject comparisons with changed prior facts or available evidence.
+
+Prepare an improvement bundle using only reviewed training examples from that baseline Skill. The latest 20 training observations are included, with a 100,000-character input cap. Only answer content is projected from the answer envelope; retrieved evidence bodies stay local. Provide the relevant source-grounded correction in the grading rationale. Larger source material requires a narrower collection. The command marks those cases as exposed and never includes held-out examples:
+
+    python3 scripts/hermes-learning/learning.py --db /private/learning/results.sqlite review --skill /private/learning/baseline.SKILL.md --out /private/learning/review-1
+
+To actually ask Hermes for a revision, add `--execute --runtime-config /opt/data/config.yaml` to that same command on its FIRST invocation and use a fresh output directory. Execute in the existing Hermes runtime environment during a quiet period, where the configured local model endpoint and required token environment variables are already usable. The CLI uses `hermes chat --query-file ... --toolsets skills --max-turns 6`, non-TTY stdio and a ten-minute process timeout. It uses a separate `HERMES_HOME` under the bundle, copies only model/custom-provider routing into its owner-only config, and enables standard `skills.write_approval`. It does not start a scheduler, change the live profile, acquire a new production deployment, or provision another model. No MCP business credentials/tool configuration are copied to the reviewer. PyYAML and the `hermes` executable come from the native Hermes environment.
+
+A successful review execution must produce native `pending/skills/*.json` entries targeting only patch/edit of `business-consultation/SKILL.md`, while the copied baseline remains unchanged. A zero-exit review with no staged change is not called an improvement. Inspect the private `review.log` for unsuccessful runs. Failed execution leaves the isolated bundle for inspection; rerun with a fresh output directory. Native staging was verified on the installed Hermes image with synthetic text in a temporary profile, without an LLM request or live Skill change.
+
+Use standard Hermes to inspect and apply the candidate ONLY inside that isolated review profile:
+
+    HERMES_HOME=/private/learning/review-1/profile hermes
+
+Inside Hermes run `/skills pending`, `/skills diff ID`, then `/skills approve ID` for the chosen revision. This creates a candidate for testing, not a production update. The candidate file is `/private/learning/review-1/profile/skills/business-consultation/SKILL.md`. Preserve the baseline separately.
+
+Obtain candidate observations through the same isolated business-consultation test environment used for baseline observations, with the same frozen records, question inputs, selection delay and repeat count. The reviewer profile has no business MCP and is NOT the answer-testing profile. The business SOUL template includes the Skill at rendering time: merely approving the Skill in the reviewer profile cannot change the tested or live prompt. Use the existing Ansible template rendering/test environment to embed the candidate in SOUL; retain its resulting profile evidence. This command set deliberately does not deploy profiles or drive Safari; it imports the resulting measured turns and performs the comparison. Import them using `--skill` pointing at the exact candidate and the same shared `--runtime` identity. Grade both training and held-out answers against the same source snapshot.
+
+    python3 scripts/hermes-learning/learning.py --db /private/learning/results.sqlite compare --baseline-skill /private/learning/baseline.SKILL.md --candidate-skill /private/learning/candidate.SKILL.md
+
+Exit 2 means the candidate is ineligible; the JSON gives reasons. The gate requires matching cases and repeat counts, at least five distinct cases in each split, known compatible timing boundaries, matching context/runtime/source revisions, no candidate errors and no loss of previous correctness. Both server response and question-to-answer p50 must improve without p95 regression, and inference p50/p95 may not regress. Intentional extra choice waiting cannot establish an improvement. `--minimum 1` exists for exercising the mechanism with synthetic fixtures and is not adequate production evidence.
+
+Once eligible, adding `--out /private/learning/eligible.SKILL.md` writes the exact tested bytes to a NEW file. It never overwrites production. Reflect the reviewed change in `infrastructure/ansible/templates/business-hermes-chat/skills/business-consultation/SKILL.md.j2`, update recipe version if its meaning changes, and use the repository's existing review/release process for any separately authorized production reflection. Re-run evaluation when Skill bytes, input context, source revision, model or runtime changes. Curator remains disabled in the answering profile; its catalog maintenance is not an answer-quality grader.
+
+## Milestones
+
+
+The first milestone persists and exports ordinary successful, failed, pending and cancelled consultation observations without extra model calls. Service and export tests establish the behavior and preserve the public response shape.
+
+The second milestone turns observations into a private SQLite record, source-reviewed labels, a linked JSON report and a native Hermes Skill-review bundle. The installed native staging contract is verified independently from LLM answer quality.
+
+The third milestone compares measured baseline/candidate cases and writes only an eligible exact Skill artifact. Synthetic complete/failing workflows establish the gate. New production answer quality and latency remain outcomes to measure after deployment and collection, not claims of this implementation.
+
+Revision note (2026-09-13): added executable telemetry/export/evaluation/standard-review integration. Historical trial data is separately marked and cannot be mixed with the new timing boundary for promotion. No production profile or model was changed.
+
+### Follow-up integration: published torque image adoption
+
+PR 1399 initially failed `torque-release-compatibility` because PR 1398 changed the torque runtime OS source while the separate adoption stage still referenced its older build. The source publication itself passed: main CI 34741865715, job 103683501494 published and scanned both platforms from c7dcf0e2e310a3417387e1e14aae91d0a62a95c6. The immutable registry index was read back and matched the published digest. Update only the existing adoption identities and their exact workflow assertions to this successful build; preserve all source-closure, split-stage, security and signing checks. This completes the dependency caused by the authorized OS package fix and does not deploy Pi4 devices.

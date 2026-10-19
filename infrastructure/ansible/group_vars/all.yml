@@ -15,6 +15,8 @@ local_network:
   raspi4_sessaku_01_ip: "192.168.128.187"
   # Assembly-01（Pi4 6台目）— 初期セットアップ時の LAN 到達確認用
   raspi4_assembly_01_ip: "192.168.10.177"
+  # Kensaku-02（Pi4 7台目）— 初期セットアップ時の LAN 到達確認用
+  raspi4_kensaku_02_ip: "192.168.10.180"
   raspberrypi3_ip: "192.168.128.152"
 
 # 通常運用（Tailscale経由）に使用するIPアドレス
@@ -27,6 +29,7 @@ tailscale_network:
   raspi4_kensaku_stonebase01_ip: "100.101.113.95"
   raspi4_sessaku_01_ip: "100.115.109.18"
   raspi4_assembly_01_ip: "100.68.35.46"
+  raspi4_kensaku_02_ip: "100.93.139.16"
   raspberrypi3_ip: "100.105.224.86"
 
 # 現在有効なネットワーク設定（network_modeに応じて切り替え）
@@ -78,6 +81,13 @@ ufw_allowed_tcp_ports:
 ufw_ssh_allowed_networks:
   - "192.168.10.0/24"
   - "100.64.0.0/10"
+# Caddy管理画面は暗黙の既定値を持たない。初回だけ承認付きPlaybookで
+# Docker .envへ反映し、以後は標準preflightが接続元を含むことを検証する。
+admin_allow_nets:
+  - "192.168.10.0/24"
+  - "192.168.128.0/24"
+  - "100.64.0.0/10"
+  - "127.0.0.1/32"
 # VNCポート（信頼ネットワークからのみ許可）
 # 複数のローカルネットワークに対応（会社: 192.168.10.0/24、自宅: 192.168.128.0/24）
 # Tailscale経由でのアクセスも許可（100.64.0.0/10）
@@ -173,8 +183,16 @@ trivy_alert_ignore_patterns:
   - "/certs/"
   - "/backups/"
 
+# Nightly scans run in a systemd scope with this disk bandwidth cap (path resolves to its backing disk)
+security_scan_io_device: "/"
+security_scan_io_bandwidth_max: "30M"
+
 rkhunter_server_enabled: true
 rkhunter_server_cron: "0 4 * * *"
+rkhunter_server_allow_dev_files:
+  - "/dev/shm/lttng-ust-wait-*"
+rkhunter_server_allow_hidden_files:
+  - "/etc/.updated"
 rkhunter_log_dir: "/var/log/rkhunter"
 rkhunter_log_file: "rkhunter-scan.log"
 rkhunter_ignore_patterns:
@@ -220,6 +238,25 @@ rkhunter:
     hour: "4"
     weekday: "0"
 
+# OS security updates: opt in only on Pi5; host variables may override the
+# Python-regex blacklist. Docker, remote access, kernel/firmware and Chromium
+# remain manually maintained. Only Debian's security origin is allowed.
+unattended_upgrades_enabled: false
+unattended_upgrades_package_blacklist:
+  - '^docker-ce$'
+  - '^docker-ce-cli$'
+  - '^containerd[.]io$'
+  - '^docker-buildx-plugin$'
+  - '^docker-compose-plugin$'
+  - '^tailscale$'
+  - '^linux-image'
+  - '^linux-headers'
+  - '^raspi-firmware$'
+  - '^raspberrypi-(kernel|bootloader)'
+  - '^rpi-eeprom'
+  - '^firmware-'
+  - '^chromium'
+
 # 監視・アラート設定（Phase6）
 security_monitor_enabled: true
 security_monitor_state_dir: "/var/lib/security-monitor"
@@ -235,8 +272,9 @@ security_monitor_ignore_addr_prefixes: "127.0.0.1 ::1 100. fd7a: fe80:"
 
 # バックアップ検証（自動化）
 backup_verify_enabled: true
-backup_verify_monthly_oncalendar: "Sun *-*-01 03:30:00"
-backup_verify_quarterly_oncalendar: "Sun *-01,04,07,10-01 04:00:00"
+# 第1日曜。"Sun *-*-01" は「1日が日曜の日だけ」になり、年2〜3回しか動かない
+backup_verify_monthly_oncalendar: "Sun *-*-01..07 03:30:00"
+backup_verify_quarterly_oncalendar: "Sun *-01,04,07,10-01..07 04:00:00"
 backup_verify_monthly_max_age_days: 35
 backup_verify_quarterly_max_age_days: 110
 backup_verify_max_download_mb: 50

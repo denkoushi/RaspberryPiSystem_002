@@ -1,7 +1,7 @@
 import type { PartMeasurementProcessGroup } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
-import { PART_MEASUREMENT_LEGACY_RESOURCE_CD } from './part-measurement-constants.js';
+import { normalizePartMeasurementResourceCd as normalizeResourceCd } from './part-measurement-resource-cd.js';
 import { productionPartMeasurementTemplateWhere } from './part-measurement-template-guards.js';
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
 import {
@@ -18,6 +18,7 @@ export type ListTemplateCandidatesInput = {
   fhincd: string;
   processGroup: PartMeasurementProcessGroup;
   resourceCd: string;
+  fkojun?: string;
   /** 日程の品名（FHINMEI_ONLY 照合） */
   fhinmei?: string | null;
   /** 一覧のテキスト絞り込み */
@@ -34,11 +35,6 @@ export type TemplateCandidateRow = {
   };
 };
 
-function normalizeResourceCd(raw: string): string {
-  const t = raw.trim();
-  return t.length > 0 ? t : PART_MEASUREMENT_LEGACY_RESOURCE_CD;
-}
-
 export class PartMeasurementTemplateCandidateService {
   async listCandidates(input: ListTemplateCandidatesInput): Promise<TemplateCandidateRow[]> {
     const fhincdNorm = normalizeFhincd(input.fhincd);
@@ -46,6 +42,7 @@ export class PartMeasurementTemplateCandidateService {
       return [];
     }
     const scheduleResourceNorm = normalizeResourceCd(input.resourceCd);
+    const scheduleFkojun = input.fkojun?.trim() ?? '';
     const fhincdDb = input.fhincd.trim();
     const scheduleProcessGroup = input.processGroup;
     const scheduleFhinmeiNorm = normalizeFhinmeiForMatch(input.fhinmei);
@@ -55,7 +52,10 @@ export class PartMeasurementTemplateCandidateService {
         where: productionPartMeasurementTemplateWhere({
           isActive: true,
           templateScope: 'THREE_KEY',
-          fhincd: { equals: fhincdDb, mode: 'insensitive' }
+          fhincd: { equals: fhincdDb, mode: 'insensitive' },
+          OR: scheduleFkojun
+            ? [{ fkojun: scheduleFkojun }, { fkojun: '' }, { fkojun: null }]
+            : [{ fkojun: '' }, { fkojun: null }]
         }),
         include: partMeasurementTemplateFullInclude
       }),

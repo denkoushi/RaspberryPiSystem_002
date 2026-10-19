@@ -27,6 +27,7 @@ describe('GmailStorageProvider', () => {
     mockGmailApiClient = {
       searchMessages: vi.fn(),
       searchMessagesLimited: vi.fn(),
+      searchMessagesAll: vi.fn(),
       getMessage: vi.fn(),
       getFirstAttachment: vi.fn(),
       archiveMessage: vi.fn()
@@ -46,6 +47,43 @@ describe('GmailStorageProvider', () => {
   });
 
   describe('download', () => {
+    it('continues beyond reserved work-instruction messages before downloading CSV', async () => {
+      const provider = new GmailStorageProvider({
+        oauth2Client,
+        accessToken: 'test-access-token',
+        subjectPattern: 'CSV Import',
+        oauthService: mockOAuthService,
+        onTokenUpdate,
+      });
+      const ownedIds = Array.from({ length: 10 }, (_, index) => `owned-${index}`);
+      const validId = 'csv-valid';
+      mockGmailApiClient.searchMessages.mockResolvedValueOnce(ownedIds);
+      mockGmailApiClient.searchMessagesAll.mockResolvedValueOnce([...ownedIds, validId]);
+      mockGmailApiClient.getMessage.mockImplementation((messageId: string) => Promise.resolve({
+        id: messageId,
+        threadId: messageId,
+        labelIds: ['UNREAD'],
+        snippet: '',
+        payload: {
+          headers: [{
+            name: 'Subject',
+            value: messageId === validId ? 'CSV Import' : '[Kakou-Dandori-photo] current row',
+          }],
+          parts: [],
+        },
+      }));
+      mockGmailApiClient.getFirstAttachment.mockResolvedValueOnce({
+        buffer: Buffer.from('csv'),
+        filename: 'work.csv',
+      });
+      mockGmailApiClient.archiveMessage.mockResolvedValueOnce(undefined);
+
+      await expect(provider.download('CSV Import')).resolves.toEqual(Buffer.from('csv'));
+      expect(mockGmailApiClient.searchMessagesAll).toHaveBeenCalledTimes(1);
+      expect(mockGmailApiClient.getFirstAttachment).toHaveBeenCalledWith(validId);
+      expect(mockGmailApiClient.archiveMessage).toHaveBeenCalledWith(validId);
+    });
+
     it('rejects a reserved CSV subject before searching Gmail', async () => {
       const provider = new GmailStorageProvider({
         oauth2Client,
@@ -61,6 +99,37 @@ describe('GmailStorageProvider', () => {
       expect(mockGmailApiClient.searchMessages).not.toHaveBeenCalled();
       expect(mockGmailApiClient.getFirstAttachment).not.toHaveBeenCalled();
       expect(mockGmailApiClient.archiveMessage).not.toHaveBeenCalled();
+    });
+
+    it.each(['[ItemlistRaspi-photo] 2', '[Procedure-material] DFD1', 'ProcedureMaterial', 'ProcedureMaterial 1', 'ProcedureMaterial\t1'])('skips dedicated mail %s before other ingestion', async (ownedSubject) => {
+      const provider = new GmailStorageProvider({
+        oauth2Client,
+        accessToken: 'test-access-token',
+        subjectPattern: 'CSV Import',
+        oauthService: mockOAuthService,
+        onTokenUpdate,
+      });
+      mockGmailApiClient.searchMessages.mockResolvedValueOnce(['inventory-message']);
+      mockGmailApiClient.searchMessagesAll.mockResolvedValueOnce(['inventory-message', 'csv-message']);
+      mockGmailApiClient.getMessage.mockImplementation((messageId: string) => Promise.resolve({
+        id: messageId,
+        threadId: messageId,
+        labelIds: ['UNREAD'],
+        snippet: '',
+        payload: {
+          headers: [{
+            name: 'Subject',
+            value: messageId === 'inventory-message' ? ownedSubject : 'CSV Import',
+          }],
+          parts: [],
+        },
+      }));
+      mockGmailApiClient.getFirstAttachment.mockResolvedValueOnce({ buffer: Buffer.from('csv'), filename: 'items.csv' });
+      mockGmailApiClient.archiveMessage.mockResolvedValueOnce(undefined);
+
+      await expect(provider.download('CSV Import')).resolves.toEqual(Buffer.from('csv'));
+      expect(mockGmailApiClient.getFirstAttachment).toHaveBeenCalledWith('csv-message');
+      expect(mockGmailApiClient.getFirstAttachment).not.toHaveBeenCalledWith('inventory-message');
     });
 
     it('should download file from Gmail using subject pattern', async () => {
@@ -682,6 +751,34 @@ describe('GmailStorageProvider', () => {
       // マッチしないメッセージはスキップされる
       expect(result.Pattern1).toHaveLength(1);
       expect(result.Pattern1[0].messageId).toBe('msg1');
+    });
+
+    it('orders unified subject batches by Gmail received time and carries metadata', async () => {
+      const provider = new GmailStorageProvider({
+        oauth2Client,
+        accessToken: 'test-access-token',
+        oauthService: mockOAuthService,
+        onTokenUpdate,
+      });
+      const message = (id: string, internalDateMs: number) => ({
+        id,
+        threadId: `thread-${id}`,
+        labelIds: ['UNREAD'],
+        snippet: '',
+        internalDateMs,
+        payload: { headers: [{ name: 'Subject', value: 'scawSTFUTEKIGO' }], parts: [] },
+      });
+      mockGmailApiClient.searchMessagesLimited.mockResolvedValueOnce(['new', 'old']);
+      mockGmailApiClient.getMessage
+        .mockResolvedValueOnce(message('new', 2_000))
+        .mockResolvedValueOnce(message('old', 1_000));
+      mockGmailApiClient.getFirstAttachment
+        .mockResolvedValueOnce({ buffer: Buffer.from('old'), filename: 'old.csv' })
+        .mockResolvedValueOnce({ buffer: Buffer.from('new'), filename: 'new.csv' });
+
+      const result = await provider.downloadAllBySubjectPatterns(['scawSTFUTEKIGO']);
+      expect(result.scawSTFUTEKIGO.map((item) => item.messageId)).toEqual(['old', 'new']);
+      expect(result.scawSTFUTEKIGO.map((item) => item.receivedAt?.getTime())).toEqual([1_000, 2_000]);
     });
   });
 });

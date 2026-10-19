@@ -24,8 +24,8 @@ function getDraftUpdatedAtFormatter(): Intl.DateTimeFormat {
  * - 時刻は分まで（秒なし）
  * - 現場表示の揃え用に Asia/Tokyo 固定
  */
-export function formatKioskPartMeasurementDraftUpdatedAt(iso: string): string {
-  const trimmed = iso.trim();
+export function formatKioskDateTime(iso: string | null | undefined): string {
+  const trimmed = iso?.trim() ?? '';
   if (!trimmed) {
     return FALLBACK;
   }
@@ -34,4 +34,9 @@ export function formatKioskPartMeasurementDraftUpdatedAt(iso: string): string {
     return FALLBACK;
   }
   return getDraftUpdatedAtFormatter().format(date);
+}
+
+/** Backwards-compatible draft-list name retained for existing callers. */
+export function formatKioskPartMeasurementDraftUpdatedAt(iso: string): string {
+  return formatKioskDateTime(iso);
 }

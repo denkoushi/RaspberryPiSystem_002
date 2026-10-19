@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 
@@ -18,11 +18,23 @@ from .models import WorkBinding
 
 LOGGER = logging.getLogger("torque_agent.lease")
 
+_FENCING_ERRORS = {
+    "TORQUE_WRENCH_LEASE_FENCED",
+    "TORQUE_WRENCH_LEASE_EXPIRED",
+    "TORQUE_WRENCH_LEASE_RELEASED",
+    "TORQUE_WRENCH_LEASE_OWNER_MISMATCH",
+    "TORQUE_WRENCH_LEASE_SESSION_MISMATCH",
+    "TORQUE_WRENCH_LEASE_GENERATION_MISMATCH",
+}
+
 
 def _parse_timestamp(value: object) -> float:
     if not isinstance(value, str):
         return 0.0
-    return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    try:
+        return datetime.fromisoformat(value).timestamp()
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
 
 
 def _atomic_json(path: Path, payload: dict[str, object]) -> None:
@@ -72,6 +84,9 @@ class LocalLease:
     state: str
     expires_at: float
     connect_after: float
+    target_kind: Literal["assembly", "training"] = "assembly"
+    owner_client_device_id: str | None = None
+    owner_session_id: str | None = None
 
 
 class ConnectionLeaseManager:
@@ -95,6 +110,7 @@ class ConnectionLeaseManager:
         self._public_lease: dict[str, Any] = {"state": "available", "owner": None}
         self._last_error: str | None = None
         self._communication_lost = False
+        self._recovering = False
         self._blocked = False
         self._lock = asyncio.Lock()
         self._hid_paths: set[str] = set()
@@ -128,27 +144,49 @@ class ConnectionLeaseManager:
         active = self.active_event.is_set()
         ready = bool(
             self._lease
-            and binding
+            and self._binding_matches_lease(binding, self._lease)
             and active
             and powered
             and hid_exclusive
-            and binding.connection_lease_id == self._lease.lease_id
-            and binding.connection_lease_generation == self._lease.generation
         )
         state = self._public_lease.get("state", "available")
+        if self._recovering and self._lease is not None:
+            state = "recovering"
         if self._communication_lost and self._lease is None:
             state = "communication_lost"
         if self._blocked and self._lease is None:
             state = "fenced"
+        owner = self._public_lease.get("owner")
+        public_owner = None
+        if isinstance(owner, dict):
+            # Owner display is intentionally public; the other terminal's
+            # token and session identity must never cross the localhost API.
+            public_owner = {
+                "clientDeviceName": owner.get("clientDeviceName"),
+                "clientDeviceLocation": owner.get("clientDeviceLocation"),
+            }
+            owner_kind = owner.get("targetKind", owner.get("ownerKind"))
+            if isinstance(owner_kind, str) and owner_kind.lower() in {"assembly", "training"}:
+                public_owner["targetKind"] = owner_kind.lower()
+        self_owned_token = None
+        if self._lease is not None:
+            self_owned_token = {
+                "targetKind": self._lease.target_kind,
+                "sessionId": self._lease.session_id,
+                "torqueWrenchProfileId": self._lease.profile_id,
+                "leaseId": self._lease.lease_id,
+                "generation": self._lease.generation,
+            }
         return {
             "ok": True,
             "ready": ready,
             "state": state,
-            "owner": self._public_lease.get("owner"),
+            "owner": public_owner,
             "expiresAt": self._public_lease.get("expiresAt"),
             "connectAfter": self._public_lease.get("connectAfter"),
             "bound": binding is not None,
             "leaseOwned": self._lease is not None,
+            "selfOwnedToken": self_owned_token,
             "bluetoothPowered": powered,
             "bluetoothController": guard.get("controller"),
             "hidExclusive": hid_exclusive,
@@ -175,6 +213,10 @@ class ConnectionLeaseManager:
 
     def _disarm(self) -> None:
         self.active_event.clear()
+        # Readers are cancelled by the supervisor after the event is cleared;
+        # clear the logical ownership immediately so localhost status cannot
+        # report HID readiness during that cancellation window.
+        self._hid_paths.clear()
         self.intent_path.unlink(missing_ok=True)
 
     def _clear_local(
@@ -190,8 +232,32 @@ class ConnectionLeaseManager:
         self._disarm()
         self._last_error = reason
         self._communication_lost = communication_lost
+        self._recovering = False
         self._blocked = fenced
         return previous
+
+    def _retain_for_recovery(self, reason: str) -> bool:
+        """Disarm locally while retaining one bounded same-token candidate.
+
+        The candidate is useful only while both browser binding and the last
+        server-confirmed expiry are still valid.  No new authority is created
+        here; recovery can only attempt renew for this exact token.
+        """
+        lease = self._lease
+        if (
+            lease is None
+            or lease.expires_at <= 0
+            or self._wall_time() >= lease.expires_at
+            or self._bindings.current() is None
+        ):
+            self._clear_local(reason, fenced=reason in _FENCING_ERRORS)
+            return False
+        self._disarm()
+        self._last_error = reason
+        self._communication_lost = True
+        self._recovering = True
+        self._blocked = False
+        return True
 
     def _binding_matches_lease(self, binding: WorkBinding | None, lease: LocalLease) -> bool:
         return bool(
@@ -200,14 +266,25 @@ class ConnectionLeaseManager:
             and binding.torque_wrench_profile_id == lease.profile_id
             and binding.connection_lease_id == lease.lease_id
             and binding.connection_lease_generation == lease.generation
+            and binding.target_kind == lease.target_kind
         )
 
     def _reconcile_activation(self) -> None:
         lease = self._lease
+        if self._recovering:
+            if lease and (lease.expires_at <= 0 or self._wall_time() >= lease.expires_at):
+                self._clear_local("TORQUE_WRENCH_LEASE_EXPIRED", fenced=True)
+                return
+            self._disarm()
+            return
         if not lease or not self._binding_matches_lease(self._bindings.current(), lease):
             self._disarm()
             return
-        if self._wall_time() < lease.connect_after:
+        now = self._wall_time()
+        if lease.expires_at <= 0 or now >= lease.expires_at:
+            self._clear_local("TORQUE_WRENCH_LEASE_EXPIRED", fenced=True)
+            return
+        if now < lease.connect_after:
             self._disarm()
             return
         self._write_guard_intent(lease)
@@ -220,20 +297,85 @@ class ConnectionLeaseManager:
         session_id: str,
         confirmation_id: str,
         lease: dict[str, Any],
+        target_kind: Literal["assembly", "training"] = "assembly",
     ) -> LocalLease:
         lease_id = lease.get("leaseId")
         generation = lease.get("generation")
         if not isinstance(lease_id, str) or not isinstance(generation, int) or generation <= 0:
             raise ValueError("lease response omitted the owner token")
+        state = str(lease.get("state", "owned_by_self"))
+        if state not in {"owned_by_self", "handoff_wait"}:
+            raise ValueError("lease response is not owned by this client")
+        expires_at = _parse_timestamp(lease.get("expiresAt"))
+        connect_after = _parse_timestamp(lease.get("connectAfter"))
+        if expires_at <= 0 or connect_after <= 0:
+            raise ValueError("lease response omitted a valid lease window")
+        owner = lease.get("owner")
+        owner_client_device_id = None
+        owner_session_id = None
+        if isinstance(owner, dict):
+            candidate_client_id = owner.get("clientDeviceId", owner.get("ownerClientDeviceId"))
+            candidate_session_id = owner.get("sessionId", owner.get("ownerSessionId"))
+            if isinstance(candidate_client_id, str):
+                owner_client_device_id = candidate_client_id
+            if isinstance(candidate_session_id, str):
+                owner_session_id = candidate_session_id
+        # New coordinator responses may expose ownerKind/targetKind at the
+        # top-level.  An explicit mismatch is unsafe; absence remains
+        # compatible with older assembly/training lease responses.
+        response_kind = lease.get("targetKind", lease.get("ownerKind"))
+        if response_kind is not None and str(response_kind).lower() != target_kind:
+            raise ValueError("lease response owner kind does not match request")
+        owner_kind = owner.get("targetKind", owner.get("ownerKind")) if isinstance(owner, dict) else None
+        if owner_kind is not None and str(owner_kind).lower() != target_kind:
+            raise ValueError("lease response owner kind does not match request")
         return LocalLease(
             profile_id=profile_id,
             session_id=session_id,
             confirmation_id=confirmation_id,
             lease_id=lease_id,
             generation=generation,
-            state=str(lease.get("state", "owned_by_self")),
-            expires_at=_parse_timestamp(lease.get("expiresAt")),
-            connect_after=_parse_timestamp(lease.get("connectAfter")),
+            state=state,
+            expires_at=expires_at,
+            connect_after=connect_after,
+            target_kind=target_kind,
+            owner_client_device_id=owner_client_device_id,
+            owner_session_id=owner_session_id,
+        )
+
+    @staticmethod
+    def _response_confirms_same_owner(
+        lease: LocalLease,
+        response: dict[str, Any],
+    ) -> bool:
+        """Require the server's renewal response to describe this owner/token."""
+        if response.get("torqueWrenchProfileId") not in (None, lease.profile_id):
+            return False
+        if response.get("leaseId") != lease.lease_id or response.get("generation") != lease.generation:
+            return False
+        if response.get("state") not in {"owned_by_self", "handoff_wait"}:
+            return False
+        response_kind = response.get("targetKind", response.get("ownerKind"))
+        if response_kind is not None and str(response_kind).lower() != lease.target_kind:
+            return False
+        owner = response.get("owner")
+        if not isinstance(owner, dict):
+            return False
+        owner_kind = owner.get("targetKind", owner.get("ownerKind"))
+        if owner_kind is not None and str(owner_kind).lower() != lease.target_kind:
+            return False
+        owner_session_id = owner.get("sessionId", owner.get("ownerSessionId"))
+        if owner_session_id is not None and owner_session_id != lease.session_id:
+            return False
+        if lease.owner_session_id is not None and owner_session_id != lease.owner_session_id:
+            return False
+        owner_client_device_id = owner.get("clientDeviceId", owner.get("ownerClientDeviceId"))
+        # An old server may omit private client identity from a self response;
+        # state=owned_by_self is still bound to this request's client key.  If
+        # the server does provide it, the exact prior identity must match.
+        return (
+            lease.owner_client_device_id is None
+            or owner_client_device_id == lease.owner_client_device_id
         )
 
     async def acquire(
@@ -241,26 +383,30 @@ class ConnectionLeaseManager:
         *,
         profile_id: str,
         session_id: str,
-        current_template_bolt_id: str,
+        current_template_bolt_id: str | None,
         confirmation_id: str,
         request_id: str,
         takeover: bool = False,
         reason: str | None = None,
+        target_kind: Literal["assembly", "training"] = "assembly",
     ) -> dict[str, object]:
         async with self._lock:
             self._clear_local(None)
             endpoint = "takeover" if takeover else "acquire"
+            lease_prefix = "usage-lease" if target_kind == "training" else "connection-lease"
             payload: dict[str, object] = {
                 "sessionId": session_id,
                 "confirmationId": confirmation_id,
                 "requestId": request_id,
             }
+            if target_kind == "assembly":
+                payload["currentTemplateBoltId"] = current_template_bolt_id or ""
             if takeover:
                 payload.update({"physicalWrenchPresent": True, "reason": reason or "physical wrench present"})
             try:
                 status, body = await self._api.request(
                     "POST",
-                    f"/api/torque-wrenches/{profile_id}/connection-lease/{endpoint}",
+                    f"/api/torque-wrenches/{profile_id}/{lease_prefix}/{endpoint}",
                     payload,
                 )
             except (httpx.TimeoutException, httpx.NetworkError) as error:
@@ -282,7 +428,7 @@ class ConnectionLeaseManager:
                 self._last_error = "INVALID_LEASE_RESPONSE"
                 return self.snapshot()
             try:
-                lease = self._lease_from_response(profile_id, session_id, confirmation_id, lease_body)
+                lease = self._lease_from_response(profile_id, session_id, confirmation_id, lease_body, target_kind)
             except ValueError as error:
                 self._last_error = str(error)
                 return self.snapshot()
@@ -290,15 +436,17 @@ class ConnectionLeaseManager:
             self._public_lease = lease_body
             self._last_error = None
             self._communication_lost = False
+            self._recovering = False
             self._blocked = False
             self._bindings.update(
                 WorkBinding(
                     session_id=session_id,
-                    current_template_bolt_id=current_template_bolt_id,
+                    current_template_bolt_id=current_template_bolt_id or "",
                     confirmation_id=confirmation_id,
                     torque_wrench_profile_id=profile_id,
                     connection_lease_id=lease.lease_id,
                     connection_lease_generation=lease.generation,
+                    target_kind=target_kind,
                 )
             )
             self._reconcile_activation()
@@ -311,60 +459,135 @@ class ConnectionLeaseManager:
         current_template_bolt_id: str | None,
         confirmation_id: str | None,
         profile_id: str | None,
+        target_kind: Literal["assembly", "training"] = "assembly",
     ) -> dict[str, object]:
         async with self._lock:
             lease = self._lease
-            if not current_template_bolt_id or not confirmation_id or not profile_id:
+            if (target_kind == "assembly" and not current_template_bolt_id) or not confirmation_id or not profile_id:
                 released = self._clear_local("BROWSER_DISARMED")
                 if released:
                     await self._release_remote(released, "BROWSER_DISARMED")
                 return self.snapshot()
             if not lease or lease.session_id != session_id or lease.profile_id != profile_id:
                 return self.snapshot()
+            if lease.target_kind != target_kind:
+                return self.snapshot()
             self._bindings.update(
                 WorkBinding(
                     session_id=session_id,
-                    current_template_bolt_id=current_template_bolt_id,
+                    current_template_bolt_id=current_template_bolt_id or "",
                     confirmation_id=confirmation_id,
                     torque_wrench_profile_id=profile_id,
                     connection_lease_id=lease.lease_id,
                     connection_lease_generation=lease.generation,
+                    target_kind=target_kind,
                 )
             )
             self._reconcile_activation()
             return self.snapshot()
 
-    async def _release_remote(self, lease: LocalLease, reason: str) -> None:
+    async def _release_remote(self, lease: LocalLease, reason: str) -> str | None:
         try:
+            lease_prefix = "usage-lease" if lease.target_kind == "training" else "connection-lease"
             status, body = await self._api.request(
                 "POST",
-                f"/api/torque-wrenches/{lease.profile_id}/connection-lease/release",
+                f"/api/torque-wrenches/{lease.profile_id}/{lease_prefix}/release",
                 {
+                    "targetKind": lease.target_kind,
                     "sessionId": lease.session_id,
                     "leaseId": lease.lease_id,
                     "generation": lease.generation,
                     "reason": reason,
                 },
             )
-            if 200 <= status < 300 and isinstance(body.get("lease"), dict):
-                self._public_lease = body["lease"]
-                self._last_error = None
-                self._communication_lost = False
-            else:
+            # Current Pi5 routes return `{ lease: status, result, status }`.
+            # Accept the short-lived nested coordinator envelope as well so
+            # rolling upgrades do not turn a stale no-op into a reported
+            # release.
+            remote_result = body
+            nested_lease = body.get("lease")
+            if isinstance(nested_lease, dict) and isinstance(nested_lease.get("status"), dict):
+                remote_result = nested_lease
+            if not 200 <= status < 300:
                 self._last_error = str(body.get("errorCode") or f"HTTP_{status}")
                 self._communication_lost = False
-        except (httpx.TimeoutException, httpx.NetworkError) as error:
+                return None
+            remote_status = remote_result.get("status")
+            if not isinstance(remote_status, dict) and isinstance(body.get("status"), dict):
+                remote_status = body["status"]
+            if not isinstance(remote_status, dict) and isinstance(nested_lease, dict):
+                remote_status = nested_lease
+            self._public_lease = remote_status if isinstance(remote_status, dict) else {"state": "available", "owner": None}
+            self._last_error = None
+            self._communication_lost = False
+            self._recovering = False
+            result = remote_result.get("result", body.get("result"))
+            return result if result in {"released", "already_absent", "stale_noop"} else None
+        except (TimeoutError, httpx.TimeoutException, httpx.NetworkError, OSError) as error:
             self._last_error = f"LEASE_RELEASE_UNCONFIRMED: {error}"
             self._communication_lost = True
+            return None
 
-    async def release(self, reason: str = "CLIENT_RELEASE") -> dict[str, object]:
+    async def release(
+        self,
+        reason: str = "CLIENT_RELEASE",
+        *,
+        target_kind: Literal["assembly", "training"] | None = None,
+        session_id: str | None = None,
+        profile_id: str | None = None,
+        torque_wrench_profile_id: str | None = None,
+        lease_id: str | None = None,
+        generation: int | None = None,
+    ) -> dict[str, object]:
         async with self._lock:
-            lease = self._clear_local(None)
-            if not lease:
-                self._public_lease = {"state": "available", "owner": None}
-                return self.snapshot()
-            await self._release_remote(lease, reason)
-            return self.snapshot()
+            lease = self._lease
+            if lease is None:
+                return {"result": "already_absent", "status": self.snapshot()}
+            if profile_id is None:
+                profile_id = torque_wrench_profile_id
+            if not self._token_matches_expected(
+                lease,
+                target_kind=target_kind,
+                session_id=session_id,
+                profile_id=profile_id,
+                lease_id=lease_id,
+                generation=generation,
+            ):
+                # A delayed page cleanup must be completely inert.  In
+                # particular, do not clear the successor binding or intent,
+                # and do not issue a server release for an unknown token.
+                return {"result": "stale_noop", "status": self.snapshot()}
+            local_lease = self._clear_local(None)
+            if local_lease is None:
+                return {"result": "already_absent", "status": self.snapshot()}
+            remote_result = await self._release_remote(local_lease, reason)
+            return {
+                "result": remote_result if remote_result in {"released", "already_absent", "stale_noop"} else "released",
+                "status": self.snapshot(),
+            }
+
+    @staticmethod
+    def _token_matches_expected(
+        lease: LocalLease,
+        *,
+        target_kind: Literal["assembly", "training"] | None,
+        session_id: str | None,
+        profile_id: str | None,
+        lease_id: str | None,
+        generation: int | None,
+    ) -> bool:
+        return (
+            target_kind is not None
+            and session_id is not None
+            and profile_id is not None
+            and lease_id is not None
+            and generation is not None
+            and lease.target_kind == target_kind
+            and lease.session_id == session_id
+            and lease.profile_id == profile_id
+            and lease.lease_id == lease_id
+            and lease.generation == generation
+        )
 
     async def _renew_once(self) -> None:
         async with self._lock:
@@ -376,36 +599,65 @@ class ConnectionLeaseManager:
                 if released:
                     await self._release_remote(released, "BROWSER_HEARTBEAT_EXPIRED")
                 return
+            if lease.expires_at <= 0 or self._wall_time() >= lease.expires_at:
+                self._clear_local("TORQUE_WRENCH_LEASE_EXPIRED", fenced=True)
+                return
             try:
                 status, body = await self._api.request(
                     "POST",
-                    f"/api/torque-wrenches/{lease.profile_id}/connection-lease/renew",
+                    f"/api/torque-wrenches/{lease.profile_id}/{('usage-lease' if lease.target_kind == 'training' else 'connection-lease')}/renew",
                     {
                         "sessionId": lease.session_id,
                         "leaseId": lease.lease_id,
                         "generation": lease.generation,
                     },
                 )
-            except (httpx.TimeoutException, httpx.NetworkError) as error:
-                self._clear_local(f"LEASE_RENEW_FAILED: {error}", communication_lost=True)
+            except (TimeoutError, httpx.TimeoutException, httpx.NetworkError, OSError) as error:
+                self._retain_for_recovery(f"LEASE_RENEW_FAILED: {error}")
                 return
             lease_body = body.get("lease")
+            if status >= 500:
+                error_code = str(body.get("errorCode") or f"HTTP_{status}")
+                if error_code in _FENCING_ERRORS:
+                    self._clear_local(error_code, fenced=True)
+                else:
+                    self._retain_for_recovery(error_code)
+                return
             if status < 200 or status >= 300 or not isinstance(lease_body, dict):
                 error_code = str(body.get("errorCode") or f"HTTP_{status}")
                 self._clear_local(
                     error_code,
-                    fenced=error_code in {"TORQUE_WRENCH_LEASE_FENCED", "TORQUE_WRENCH_LEASE_EXPIRED"},
+                    fenced=error_code in _FENCING_ERRORS,
                 )
                 return
-            self._lease = self._lease_from_response(
-                lease.profile_id,
-                lease.session_id,
-                lease.confirmation_id,
-                lease_body,
-            )
+            if not self._response_confirms_same_owner(lease, lease_body):
+                self._clear_local("TORQUE_WRENCH_LEASE_FENCED", fenced=True)
+                return
+            try:
+                renewed = self._lease_from_response(
+                    lease.profile_id,
+                    lease.session_id,
+                    lease.confirmation_id,
+                    lease_body,
+                    lease.target_kind,
+                )
+            except ValueError:
+                self._clear_local("INVALID_LEASE_RESPONSE", fenced=True)
+                return
+            if (
+                renewed.profile_id != lease.profile_id
+                or renewed.lease_id != lease.lease_id
+                or renewed.generation != lease.generation
+                or renewed.session_id != lease.session_id
+                or renewed.target_kind != lease.target_kind
+            ):
+                self._clear_local("TORQUE_WRENCH_LEASE_FENCED", fenced=True)
+                return
+            self._lease = renewed
             self._public_lease = lease_body
             self._last_error = None
             self._communication_lost = False
+            self._recovering = False
             self._reconcile_activation()
 
     async def run(self) -> None:

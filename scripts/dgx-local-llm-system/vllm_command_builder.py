@@ -69,6 +69,11 @@ def build_vllm_argv(model_path: str) -> list[str]:
     _append_value(argv, "--kv-cache-dtype", "VLLM_KV_CACHE_DTYPE")
     _append_value(argv, "--moe-backend", "VLLM_MOE_BACKEND")
     _append_value(argv, "--attention-backend", "VLLM_ATTENTION_BACKEND")
+    _append_value(argv, "--mamba-backend", "VLLM_MAMBA_BACKEND")
+    _append_value(argv, "--mamba-cache-mode", "VLLM_MAMBA_CACHE_MODE")
+    if _env("VLLM_SPECULATIVE_MODEL"):
+        _append_value(argv, "--speculative_config.model", "VLLM_SPECULATIVE_MODEL")
+        _append_value(argv, "--speculative_config.num_speculative_tokens", "VLLM_NUM_SPECULATIVE_TOKENS", "3")
     _append_bool(argv, "--enable-chunked-prefill", "VLLM_ENABLE_CHUNKED_PREFILL", default=True)
     _append_bool(argv, "--enable-prefix-caching", "VLLM_ENABLE_PREFIX_CACHING", default=True)
     _append_value(argv, "--load-format", "VLLM_LOAD_FORMAT", "safetensors")
@@ -89,6 +94,17 @@ def build_vllm_argv(model_path: str) -> list[str]:
 
 def build_command(model_dir: str | None = None) -> str:
     model_path = resolve_model_path(model_dir or _model_dir())
+    local_only = _truthy(_env("VLLM_LOCAL_SNAPSHOTS_ONLY"))
+    if local_only:
+        # Imported only for the new opt-in profile; legacy blue launches keep
+        # their existing deployment dependencies and cache behaviour.
+        from nemotron35_dspark_cache import verify_snapshot
+
+        verify_snapshot(Path(model_path))
+        draft_path = _env("VLLM_SPECULATIVE_MODEL")
+        if not draft_path:
+            raise SystemExit("local speculative launch requires VLLM_SPECULATIVE_MODEL")
+        verify_snapshot(Path(draft_path), require_tokenizer=False)
     exports = {
         "VLLM_ALLOW_LONG_MAX_MODEL_LEN": _env("VLLM_ALLOW_LONG_MAX_MODEL_LEN", "1"),
         "TORCH_MATMUL_PRECISION": _env("TORCH_MATMUL_PRECISION", "high"),
@@ -98,6 +114,8 @@ def build_command(model_dir: str | None = None) -> str:
         "VLLM_MARLIN_USE_ATOMIC_ADD": _env("VLLM_MARLIN_USE_ATOMIC_ADD", "1"),
         "VLLM_NVFP4_GEMM_BACKEND": _env("VLLM_NVFP4_GEMM_BACKEND"),
     }
+    if local_only:
+        exports.update(HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1")
     export_cmd = " && ".join(f"export {key}={shlex.quote(value)}" for key, value in exports.items() if value)
     serve_cmd = "exec " + shlex.join(build_vllm_argv(model_path))
     return f"{export_cmd} && {serve_cmd}" if export_cmd else serve_cmd

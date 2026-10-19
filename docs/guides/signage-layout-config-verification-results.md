@@ -39,7 +39,7 @@ ssh denkon5sd02@100.106.158.2 "curl -k -s https://100.106.158.2/api/signage/cont
 
 **確認コマンド**:
 ```bash
-ssh denkon5sd02@100.106.158.2 "curl -k -s -H 'x-client-key: client-key-raspberrypi3-signage1' https://100.106.158.2/api/signage/current-image -o /tmp/test.jpg && file /tmp/test.jpg"
+curl -k -s -H "x-client-key: ${PI3_SIGNAGE_CLIENT_KEY:?PI3_SIGNAGE_CLIENT_KEY must be set}" https://100.106.158.2/api/signage/current-image -o /tmp/test.jpg && file /tmp/test.jpg
 ```
 
 ### ✅ 検証3: Pi3での画像ファイル確認
@@ -162,4 +162,3 @@ ssh denkon5sd02@100.106.158.2 "docker compose -f /opt/RaspberryPiSystem_002/infr
 - [サイネージレイアウト設定の実機検証手順](./signage-layout-config-verification.md)
 - [KB-150: サイネージレイアウトとコンテンツの疎結合化実装完了](../knowledge-base/infrastructure/signage.md#kb-150-サイネージレイアウトとコンテンツの疎結合化実装完了)
 - [サイネージモジュール仕様](../modules/signage/README.md)
-

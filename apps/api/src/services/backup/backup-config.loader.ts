@@ -15,6 +15,16 @@ export class BackupConfigLoader {
   private static readonly FALLBACK_MARKER = Symbol('BackupConfigLoader.FALLBACK_CONFIG');
 
   /**
+   * load() が実ファイルではなく安全用の既定値を返したかを判定する。
+   * 通常の読取契約は変えず、fallbackを認可入力に使えない内部経路だけが利用する。
+   */
+  static isFallbackConfig(config: BackupConfig): boolean {
+    return Boolean(
+      (config as unknown as Record<string | symbol, unknown>)[this.FALLBACK_MARKER]
+    );
+  }
+
+  /**
    * 旧キー（deprecated）を新構造が有効な場合にのみ削除する。
    *
    * 方針:
@@ -425,8 +435,8 @@ export class BackupConfigLoader {
             details: {
               legacyKey: 'storage.options.accessToken',
               newKey: 'storage.options.dropbox.accessToken',
-              legacyValue: opts.accessToken.substring(0, 20) + '...',
-              newValue: dropbox.accessToken.substring(0, 20) + '...'
+              legacyValue: '[REDACTED]',
+              newValue: '[REDACTED]'
             }
           });
         }
@@ -529,8 +539,8 @@ export class BackupConfigLoader {
                 message: `${key}: 環境変数参照（${resolvedEnvVarName}）と直接値の両方が設定されています`,
                 details: {
                   envVarName: resolvedEnvVarName,
-                  envValue: envValue.substring(0, 20) + '...',
-                  directValue: directValue.substring(0, 20) + '...'
+                  envValue: '[REDACTED]',
+                  directValue: '[REDACTED]'
                 }
               });
             }

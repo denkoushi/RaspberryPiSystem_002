@@ -1,0 +1,11 @@
+# syntax=docker/dockerfile:1
+FROM scratch
+ARG BUILD_COMMIT
+ARG ARTIFACT_SHA256
+ARG MANIFEST_SHA256
+COPY signage-release.tar /signage-release.tar
+COPY signage-release-descriptor.json /signage-release-descriptor.json
+LABEL org.opencontainers.image.revision=${BUILD_COMMIT}
+LABEL org.opencontainers.image.title="RaspberryPiSystem Pi3 Signage release"
+LABEL io.raspisystem.signage.artifact-sha256=${ARTIFACT_SHA256}
+LABEL io.raspisystem.signage.manifest-sha256=${MANIFEST_SHA256}

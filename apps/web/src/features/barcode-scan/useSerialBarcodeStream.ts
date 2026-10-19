@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 
+import { readProductionBuildConfig } from '../../config/productionBuildConfig';
 export type BarcodeAgentStreamPayload = {
   type: string;
   text: string;
@@ -24,7 +25,7 @@ const persistEventId = (eventId: number) => {
 };
 
 const resolveWsUrl = (override?: string) =>
-  override ?? import.meta.env.VITE_BARCODE_AGENT_WS_URL ?? 'ws://localhost:7072/stream';
+  override ?? readProductionBuildConfig().barcodeAgentWsUrl;
 
 /**
  * Pi4 barcode-agent（シリアルリーダー）からの localhost WebSocket を受け、スキャン文字列を返す。

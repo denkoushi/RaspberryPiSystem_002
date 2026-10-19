@@ -25,9 +25,13 @@ describe('CsvErrorDispositionPolicy', () => {
     expect(policy.classify(error)).toBe('NON_RETRIABLE');
   });
 
+  it('scawSTFUTEKIGO の構造/空snapshotエラーは NON_RETRIABLE', () => {
+    const error = Object.assign(new Error('empty full snapshot'), { code: 'SCAW_STFUTEKIGO_INVALID_ROW' });
+    expect(policy.classify(error)).toBe('NON_RETRIABLE');
+  });
+
   it('その他は RETRIABLE', () => {
     const error = new Error('temporary network error');
     expect(policy.classify(error)).toBe('RETRIABLE');
   });
 });
-

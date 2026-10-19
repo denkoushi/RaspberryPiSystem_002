@@ -2,7 +2,11 @@ import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../../lib/prisma.js';
 import { logger } from '../../../lib/logger.js';
-import { PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS } from '../row-resolver/constants.js';
+import {
+  PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS,
+  isUnassignedProductionSeiban,
+} from '../row-resolver/constants.js';
+import { buildMaxProductNoLogicalKeyPartitionExprs } from '../row-resolver/max-product-no-winner-spec.js';
 import {
   computeBasisDateUtc,
   computeOneYearAgoThresholdUtc,
@@ -13,6 +17,7 @@ export type ProductionScheduleLogicalKey = {
   FHINCD: string;
   FSIGENCD: string;
   FKOJUN: string;
+  ProductNo: string;
 };
 
 // NOTE: winner判定SQLの並び順は `buildMaxProductNoWinnerCondition()` に合わせる。
@@ -34,6 +39,7 @@ const extractLogicalKey = (rowData: unknown): ProductionScheduleLogicalKey => {
     FHINCD: coerceKeyPart(record?.FHINCD),
     FSIGENCD: coerceKeyPart(record?.FSIGENCD),
     FKOJUN: coerceKeyPart(record?.FKOJUN),
+    ProductNo: coerceKeyPart(record?.ProductNo),
   };
 };
 
@@ -158,12 +164,12 @@ export class ProductionScheduleCleanupService {
       // deleteManyだとwinner判定が書けないため、raw SQLで削除する
       for (;;) {
         const valuesSql = Prisma.join(
-          keyChunk.map((k) => Prisma.sql`(${k.FSEIBAN}, ${k.FHINCD}, ${k.FSIGENCD}, ${k.FKOJUN})`),
+          keyChunk.map((k) => Prisma.sql`(${k.FSEIBAN}, ${k.FHINCD}, ${k.FSIGENCD}, ${k.FKOJUN}, ${k.ProductNo})`),
           ', '
         );
 
         const affected = await prisma.$executeRaw<number>(Prisma.sql`
-          WITH keys("FSEIBAN","FHINCD","FSIGENCD","FKOJUN") AS (
+          WITH keys("FSEIBAN","FHINCD","FSIGENCD","FKOJUN","ProductNo") AS (
             VALUES ${valuesSql}
           ),
           ranked AS (
@@ -172,10 +178,7 @@ export class ProductionScheduleCleanupService {
               ROW_NUMBER() OVER (
                 PARTITION BY
                   r."csvDashboardId",
-                  COALESCE(r."rowData"->>'FSEIBAN', ''),
-                  COALESCE(r."rowData"->>'FHINCD', ''),
-                  COALESCE(r."rowData"->>'FSIGENCD', ''),
-                  COALESCE(r."rowData"->>'FKOJUN', '')
+                  ${Prisma.raw(buildMaxProductNoLogicalKeyPartitionExprs('r'))}
                 ORDER BY
                   CASE
                     WHEN (r."rowData"->>'ProductNo') ~ '^[0-9]+$' THEN (r."rowData"->>'ProductNo')::bigint
@@ -190,6 +193,7 @@ export class ProductionScheduleCleanupService {
              AND COALESCE(r."rowData"->>'FHINCD', '') = COALESCE(k."FHINCD", '')
              AND COALESCE(r."rowData"->>'FSIGENCD', '') = COALESCE(k."FSIGENCD", '')
              AND COALESCE(r."rowData"->>'FKOJUN', '') = COALESCE(k."FKOJUN", '')
+             AND (k."FSEIBAN" <> '********' OR BTRIM(COALESCE(r."rowData"->>'ProductNo', '')) = k."ProductNo")
             WHERE r."csvDashboardId" = ${params.csvDashboardId}
           ),
           to_delete AS (
@@ -228,10 +232,7 @@ export class ProductionScheduleCleanupService {
             ROW_NUMBER() OVER (
               PARTITION BY
                 r."csvDashboardId",
-                COALESCE(r."rowData"->>'FSEIBAN', ''),
-                COALESCE(r."rowData"->>'FHINCD', ''),
-                COALESCE(r."rowData"->>'FSIGENCD', ''),
-                COALESCE(r."rowData"->>'FKOJUN', '')
+                ${Prisma.raw(buildMaxProductNoLogicalKeyPartitionExprs('r'))}
               ORDER BY
                 CASE
                   WHEN (r."rowData"->>'ProductNo') ~ '^[0-9]+$' THEN (r."rowData"->>'ProductNo')::bigint
@@ -275,7 +276,7 @@ export class ProductionScheduleCleanupService {
       const key = extractLogicalKey(row.data);
       const signature = PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS.map((c) =>
         (key as Record<string, string>)[c] ?? ''
-      ).join('\t');
+      ).concat(isUnassignedProductionSeiban(key.FSEIBAN) ? [key.ProductNo] : []).join('\t');
       if (seen.has(signature)) {
         continue;
       }
@@ -314,4 +315,3 @@ export class ProductionScheduleCleanupService {
     return { deletedExpiredRowsOneYear, deletedDuplicateLosers, thresholdUtc };
   }
 }
-

@@ -17,40 +17,50 @@
     "test:monitor": "bash scripts/test/monitor.test.sh",
     "test:deploy-contracts": "bash scripts/ci/run-deploy-contracts-local.sh",
     "test:e2e": "playwright test",
+    "test:e2e:runtime-recovery": "playwright test --config=playwright.runtime-recovery.config.ts",
     "test:e2e:smoke": "playwright test e2e/smoke --workers=1 --retries=1",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
+    "kiosk-sop:generate": "bash scripts/kiosk-sop/run-in-docker.sh generate",
+    "kiosk-sop:check": "bash scripts/kiosk-sop/run-in-docker.sh check",
+    "kiosk-sop:source-check": "node scripts/kiosk-sop/source-digest.mjs check",
+    "kiosk-sop:source-refresh": "node scripts/kiosk-sop/source-digest.mjs refresh",
+    "kiosk-sop:test": "pnpm --filter @raspi-system/kiosk-sop-core test && playwright test e2e/inspection-drawing-sop-popup.spec.ts",
     "test:postgres:start": "bash scripts/test/start-postgres.sh",
     "test:postgres:stop": "bash scripts/test/stop-postgres.sh",
     "preview:signage-compact24": "python3 -m http.server 8765 --directory apps/api/scripts/html-previews",
     "preview:html-previews": "python3 -m http.server 8765 --directory apps/api/scripts/html-previews"
   },
   "engines": {
-    "node": ">=20.9.0",
-    "pnpm": ">=9.0.0"
+    "node": ">=24.0.0",
+    "pnpm": "10.34.6"
   },
-  "packageManager": "pnpm@9.15.9",
+  "packageManager": "pnpm@10.34.6",
   "devDependencies": {
     "@playwright/test": "^1.56.1",
     "husky": "^9.1.7",
-    "playwright": "^1.56.1"
+    "pixelmatch": "7.1.0",
+    "playwright": "^1.56.1",
+    "pngjs": "7.0.0"
   },
   "pnpm": {
     "overrides": {
       "glob": "10.5.0",
       "minimatch": "10.2.3",
-      "fast-uri": "3.1.4",
+      "fast-uri": "3.1.8",
+      "@fastify/busboy": "3.2.2",
       "test-exclude": "7.0.1",
       "cross-spawn": "7.0.5",
       "flatted@3.3.3": "3.4.2",
       "picomatch@2.3.1": "2.3.2",
       "picomatch@4.0.3": "4.0.4",
-      "brace-expansion@5.0.2": "5.0.8",
-      "qs": ">=6.14.1",
-      "@remix-run/router": "1.23.2",
+      "brace-expansion@5.0.2": "5.0.12",
+      "qs": "^6.16.0",
+      "@remix-run/router": "1.23.4",
       "form-data": "4.0.6",
       "ws": "8.21.0",
-      "find-my-way": "9.7.0"
+      "find-my-way": "9.7.0",
+      "dompurify@3.4.11": "3.4.16"
     }
   },
   "dependencies": {

@@ -12,17 +12,17 @@ export type InferenceRuntimeIntentEnv = BusinessProfileIntentEnv & {
   runtimeStartProfileEnabled: boolean;
 };
 
-const ROUTED_USE_CASES: readonly InferenceUseCase[] = ['photo_label', 'document_summary'];
+const ROUTED_USE_CASES: readonly InferenceUseCase[] = ['photo_label', 'business_hermes', 'document_summary'];
 
 const RUNTIME_INTENT_USE_CASES: readonly LocalLlmRuntimeUseCase[] = [
   'photo_label',
+  'business_hermes',
   'document_summary',
   'admin_console_chat',
-  'stackchan_chat',
 ];
 
 function isRoutedInferenceUseCase(useCase: LocalLlmRuntimeUseCase): useCase is InferenceUseCase {
-  return useCase === 'photo_label' || useCase === 'document_summary';
+  return useCase === 'photo_label' || useCase === 'business_hermes' || useCase === 'document_summary';
 }
 
 /**
@@ -95,7 +95,7 @@ export function assertConsistentRuntimeProfileIntentOnSharedProviders(
 
   for (const useCase of RUNTIME_INTENT_USE_CASES) {
     const provider =
-      useCase === 'admin_console_chat' || useCase === 'stackchan_chat'
+      useCase === 'admin_console_chat'
         ? resolveAdminProvider()
         : isRoutedInferenceUseCase(useCase)
           ? (() => {

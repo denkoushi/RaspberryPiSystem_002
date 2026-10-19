@@ -16,6 +16,7 @@ import {
 } from './self-inspection-config.js';
 import { markSelfInspectionRecordApprovalRequiredAfterMeasurementSave } from './self-inspection-record-approval-saved-gate.js';
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
+import { assertSelfInspectionSessionActive } from './self-inspection-invalidation-errors.js';
 
 export type ConfirmSelfInspectionPaperOcrReviewInput = {
   values: SelfInspectionPaperConfirmedValueInput[];
@@ -73,6 +74,7 @@ export class SelfInspectionPaperImportService {
       if (!session) {
         throw new ApiError(404, '自主検査セッションが見つかりません');
       }
+      assertSelfInspectionSessionActive(session);
       if (session.completedAt) {
         throw new ApiError(409, '完了済みの自主検査は編集できません');
       }

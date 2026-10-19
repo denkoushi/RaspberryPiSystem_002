@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import tempfile
@@ -18,19 +19,357 @@ from ansible_template_contracts import (  # noqa: E402
     discover_templates,
     validate_template_tree,
 )
+from scripts.deploy.release_build_contract import parse_contract_json
+from scripts.deploy.production_config_contract import (
+    ConfigKind,
+    PRODUCTION_WEB_SETTINGS,
+)
 
 
 ANSIBLE_ROOT = ROOT / "infrastructure/ansible"
 TORQUE_HELPER = ANSIBLE_ROOT / "roles/client/templates/torque-bluetooth-adapter.sh.j2"
+WEB_BUILD_VARS = ANSIBLE_ROOT / "group_vars/server/web-build.yml"
+PRIMARY_INVENTORY = ANSIBLE_ROOT / "inventory.yml"
+TALKPLAZA_INVENTORY = ANSIBLE_ROOT / "inventory-talkplaza.yml"
+WEB_ENV_TEMPLATE = ANSIBLE_ROOT / "templates/web.env.j2"
+DOCKER_ENV_TEMPLATE = ANSIBLE_ROOT / "templates/docker.env.j2"
+STATUS_AGENT_CONFIG_TEMPLATE = ANSIBLE_ROOT / "templates/status-agent.conf.j2"
+RELEASE_BUILD_CONTRACT_TEMPLATE = (
+    ANSIBLE_ROOT / "templates/release-build-contract.json.j2"
+)
+RELEASE_BUILD_CONTRACT_PLAYBOOK = (
+    ANSIBLE_ROOT / "playbooks/render-release-build-contract.yml"
+)
+ARTIFACT_PROMOTION_TEMPLATE = (
+    ANSIBLE_ROOT / "templates/artifact-promotion.json.j2"
+)
+ARTIFACT_PROMOTION_DEFAULTS = (
+    ANSIBLE_ROOT / "group_vars/server/release-artifacts.yml"
+)
+PRIMARY_ARTIFACT_PROMOTION = (
+    ANSIBLE_ROOT / "host_vars/raspberrypi5/release-artifacts.yml"
+)
+SERVER_ROLE_TASKS = ANSIBLE_ROOT / "roles/server/tasks/main.yml"
+
+
+def production_web_variables() -> dict[str, str]:
+    return {
+        str(setting.ansible_variable): str(setting.production_default)
+        for setting in PRODUCTION_WEB_SETTINGS
+        if setting.kind is ConfigKind.IMAGE
+    }
 
 
 class AnsibleTemplateContractTests(unittest.TestCase):
+    def test_admin_mfa_is_required_by_default_and_can_be_disabled(self) -> None:
+        environment = Environment(undefined=StrictUndefined)
+        base = {
+            "app_database_url": "postgresql://app:fixture@db:5432/borrow_return",
+            "api_jwt_access_secret": "a" * 32,
+            "api_jwt_refresh_secret": "b" * 32,
+            "admin_allow_nets": ["127.0.0.1/32"],
+        }
+        for filename in ("api.env.j2", "docker.env.j2"):
+            template = environment.from_string(
+                (ANSIBLE_ROOT / "templates" / filename).read_text(encoding="utf-8")
+            )
+            for overrides, expected in (
+                ({}, "true"),
+                ({"api_admin_mfa_required": True}, "true"),
+                ({"api_admin_mfa_required": False}, "false"),
+                ({"api_admin_mfa_required": "false"}, "false"),
+            ):
+                with self.subTest(template=filename, overrides=overrides):
+                    rendered = template.render(**base, **overrides)
+                    self.assertIn(f"ADMIN_MFA_REQUIRED={expected}", rendered.splitlines())
+
+    def test_business_hermes_a2ui_uses_the_standard_gateway_origin(self) -> None:
+        inventory = PRIMARY_INVENTORY.read_text(encoding="utf-8")
+        self.assertIn('business_hermes_web_base_url: "https://gateway"', inventory)
+
+        environment = Environment(undefined=StrictUndefined)
+        rendered_api = environment.from_string(
+            (ANSIBLE_ROOT / "templates/api.env.j2").read_text(encoding="utf-8")
+        ).render(
+            app_database_url="postgresql://postgres:test@db:5432/borrow_return",
+            api_jwt_access_secret="a" * 32,
+            api_jwt_refresh_secret="b" * 32,
+            business_hermes_web_base_url="https://gateway",
+        )
+        rendered_compose = environment.from_string(
+            DOCKER_ENV_TEMPLATE.read_text(encoding="utf-8")
+        ).render(
+            admin_allow_nets=["127.0.0.1/32"],
+            app_database_url="postgresql://postgres:test@db:5432/borrow_return",
+            business_hermes_web_base_url="https://gateway",
+        )
+        self.assertIn("BUSINESS_HERMES_WEB_BASE_URL=https://gateway", rendered_api)
+        self.assertIn("BUSINESS_HERMES_WEB_BASE_URL=https://gateway", rendered_compose)
+
+    def test_pi5_web_build_values_have_one_server_owned_source(self) -> None:
+        expected = production_web_variables()
+        source = WEB_BUILD_VARS.read_text(encoding="utf-8")
+        inventory = PRIMARY_INVENTORY.read_text(encoding="utf-8")
+        for key, value in expected.items():
+            with self.subTest(key=key):
+                self.assertIn(f'{key}: "{value}"', source)
+                self.assertNotIn(f"{key}:", inventory)
+
+        rendered = Environment(undefined=StrictUndefined).from_string(
+            WEB_ENV_TEMPLATE.read_text(encoding="utf-8")
+        ).render(**expected)
+        self.assertIn("VITE_API_BASE_URL=/api", rendered)
+        self.assertIn("VITE_AGENT_WS_MODE=local", rendered)
+        self.assertIn("VITE_KIOSK_SOP_POPUP_ENABLED=true", rendered)
+        self.assertIn(
+            "VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED=false",
+            rendered,
+        )
+
+        talkplaza = TALKPLAZA_INVENTORY.read_text(encoding="utf-8")
+        for key in (
+            "web_kiosk_due_mgmt_layout_v2_enabled",
+            "web_kiosk_sop_popup_enabled",
+            "web_kiosk_production_schedule_order_split_enabled",
+        ):
+            with self.subTest(talkplaza_key=key):
+                self.assertIn(f'{key}: "false"', talkplaza)
+
     def test_every_repository_template_parses(self) -> None:
         templates = discover_templates(ANSIBLE_ROOT)
 
         self.assertGreater(len(templates), 0)
         self.assertIn(TORQUE_HELPER, templates)
         self.assertEqual(validate_template_tree(ANSIBLE_ROOT), ())
+
+    def test_release_build_renderer_contains_only_the_strict_allowlist(self) -> None:
+        sha = "a" * 40
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["to_json"] = json.dumps
+        rendered = environment.from_string(
+            RELEASE_BUILD_CONTRACT_TEMPLATE.read_text(encoding="utf-8")
+        ).render(
+            api_install_playwright_chromium="true",
+            web_agent_ws_mode="local",
+            web_agent_ws_url="ws://100.64.0.1:7071/stream",
+            web_api_base_url="/api",
+            web_kiosk_due_mgmt_layout_v2_enabled="true",
+            web_kiosk_leaderboard_defer_residual_summary_enabled="false",
+            web_kiosk_production_schedule_order_split_enabled="false",
+            web_kiosk_sop_popup_enabled="true",
+            web_kiosk_target_location_selector_enabled="true",
+            release_build_contract_sha=sha,
+        )
+        contract = parse_contract_json(rendered, sha)
+        self.assertEqual(contract.release_sha, sha)
+        self.assertNotIn("vault_", rendered)
+        self.assertNotIn("secret", rendered.lower())
+
+        playbook = RELEASE_BUILD_CONTRACT_PLAYBOOK.read_text(encoding="utf-8")
+        self.assertIn("delegate_to: localhost", playbook)
+        self.assertIn("no_log: true", playbook)
+        self.assertNotIn("ansible.builtin.shell", playbook)
+
+    def test_release_build_renderer_matches_pi5_compose_environment(self) -> None:
+        sha = "a" * 40
+        variables = {
+            "api_install_playwright_chromium": "true",
+            **production_web_variables(),
+        }
+        environment = Environment()
+        environment.filters["to_json"] = json.dumps
+        rendered_contract = environment.from_string(
+            RELEASE_BUILD_CONTRACT_TEMPLATE.read_text(encoding="utf-8")
+        ).render(**variables, release_build_contract_sha=sha)
+        contract = parse_contract_json(rendered_contract, sha)
+
+        rendered_environment = environment.from_string(
+            DOCKER_ENV_TEMPLATE.read_text(encoding="utf-8")
+        ).render(**variables)
+        pi5_environment = {
+            key: value
+            for line in rendered_environment.splitlines()
+            if line and not line.startswith("#") and "=" in line
+            for key, value in (line.split("=", 1),)
+        }
+
+        self.assertEqual(
+            pi5_environment["INSTALL_PLAYWRIGHT_CHROMIUM"],
+            contract.service_arguments("api")["INSTALL_PLAYWRIGHT_CHROMIUM"],
+        )
+        for key, value in contract.service_arguments("web").items():
+            if key == "VITE_RELEASE_SHA":
+                continue
+            with self.subTest(key=key):
+                self.assertEqual(pi5_environment[key], value)
+
+    def test_status_agent_peripheral_collectors_follow_inventory_capabilities(self) -> None:
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = lambda value: str(value).lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        environment.filters["to_json"] = json.dumps
+        template = environment.from_string(
+            STATUS_AGENT_CONFIG_TEMPLATE.read_text(encoding="utf-8")
+        )
+        base = {
+            "status_agent_api_base_url": "https://server.example/api",
+            "status_agent_client_id": "terminal-1",
+            "status_agent_client_key": "not-a-real-key",
+        }
+        kiosk = template.render(
+            **base,
+            nfc_agent_client_id="terminal-1-nfc",
+            barcode_agent_enabled=True,
+            torque_agent_enabled=True,
+            terminal_agent_maintenance_leases={
+                "barcode-agent": {
+                    "reasonCode": "temporary-development-detach",
+                    "expiresAt": "2026-08-02T08:00:00Z",
+                }
+            },
+        )
+        signage = template.render(**base)
+
+        self.assertIn('TERMINAL_AGENT_HEALTH_NFC_ENABLED="1"', kiosk)
+        self.assertIn('TERMINAL_AGENT_HEALTH_BARCODE_ENABLED="1"', kiosk)
+        self.assertIn('TERMINAL_AGENT_HEALTH_TORQUE_ENABLED="1"', kiosk)
+        self.assertIn(
+            "TERMINAL_AGENT_MAINTENANCE_LEASES_JSON='"
+            '{"barcode-agent": {"reasonCode": "temporary-development-detach", '
+            '"expiresAt": "2026-08-02T08:00:00Z"}}'
+            "'",
+            kiosk,
+        )
+        self.assertIn('TERMINAL_AGENT_HEALTH_NFC_ENABLED="0"', signage)
+        self.assertIn('TERMINAL_AGENT_HEALTH_BARCODE_ENABLED="0"', signage)
+        self.assertIn('TERMINAL_AGENT_HEALTH_TORQUE_ENABLED="0"', signage)
+
+    def test_artifact_promotion_policy_is_release_runner_only_and_opt_in(self) -> None:
+        self.assertIn(
+            "pi5_artifact_promotion_enabled: false",
+            ARTIFACT_PROMOTION_DEFAULTS.read_text(encoding="utf-8"),
+        )
+        artifact_defaults = ARTIFACT_PROMOTION_DEFAULTS.read_text(encoding="utf-8")
+        self.assertIn('pi5_artifact_gh_version: "2.96.0"', artifact_defaults)
+        self.assertIn(
+            'pi5_artifact_gh_arm64_sha256: '
+            '"334dd9c6704fc1656a48e475c5a3a9aa32bbadb87fa1777513bc626af4a99e89"',
+            artifact_defaults,
+        )
+        self.assertIn(
+            'pi5_artifact_gh_macos_arm64_sha256: '
+            '"f23a0c37d963aacc3bed703ccbd59b41c5ca22101fab7f00eb2b7cad23aba463"',
+            artifact_defaults,
+        )
+        self.assertIn(
+            "pi5_artifact_promotion_enabled: true",
+            PRIMARY_ARTIFACT_PROMOTION.read_text(encoding="utf-8"),
+        )
+        self.assertNotIn(
+            "pi5_artifact_promotion_enabled:",
+            PRIMARY_INVENTORY.read_text(encoding="utf-8"),
+        )
+        self.assertNotIn(
+            "pi5_artifact_promotion_enabled:",
+            TALKPLAZA_INVENTORY.read_text(encoding="utf-8"),
+        )
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["to_json"] = json.dumps
+        environment.filters["bool"] = bool
+        environment.filters["string"] = str
+        rendered = environment.from_string(
+            ARTIFACT_PROMOTION_TEMPLATE.read_text(encoding="utf-8")
+        ).render(
+            pi5_artifact_promotion_enabled=False,
+            pi5_artifact_ghcr_username="denkoushi",
+            pi5_artifact_ghcr_token="test-token",
+        )
+        policy = json.loads(rendered)
+        self.assertFalse(policy["enabled"])
+        self.assertEqual(
+            set(policy),
+            {
+                "enabled",
+                "repository",
+                "workflow",
+                "releaseSetRepository",
+                "username",
+                "token",
+            },
+        )
+        self.assertEqual(
+            policy["releaseSetRepository"],
+            "ghcr.io/denkoushi/raspisys-release-set",
+        )
+
+        tasks = SERVER_ROLE_TASKS.read_text(encoding="utf-8")
+        self.assertIn("dest: /etc/raspi-release/artifact-promotion.json", tasks)
+        self.assertIn(
+            "- name: Ensure release artifact configuration directory exists\n"
+            "  ansible.builtin.file:\n"
+            "    path: /etc/raspi-release\n"
+            "    state: directory\n"
+            "    owner: root\n"
+            '    group: "{{ ansible_user }}"\n'
+            "    mode: '0750'",
+            tasks,
+        )
+        self.assertIn(
+            "- name: Deploy release-runner-only artifact promotion policy\n"
+            "  ansible.builtin.template:\n"
+            '    src: "{{ playbook_dir }}/../templates/artifact-promotion.json.j2"\n'
+            "    dest: /etc/raspi-release/artifact-promotion.json\n"
+            "    owner: root\n"
+            '    group: "{{ ansible_user }}"\n'
+            "    mode: '0640'",
+            tasks,
+        )
+        self.assertIn("no_log: true", tasks)
+        self.assertIn(
+            "when: pi5_artifact_promotion_enabled | default(false) | bool",
+            tasks,
+        )
+        self.assertNotIn(
+            "ansible.builtin.apt:\n    name: gh",
+            tasks,
+        )
+        self.assertNotIn("ansible_architecture", tasks)
+        self.assertIn(
+            "- /usr/bin/dpkg\n"
+            "      - --print-architecture",
+            tasks,
+        )
+        self.assertIn(
+            "pi5_artifact_debian_architecture.stdout | trim == 'arm64'",
+            tasks,
+        )
+        self.assertIn(
+            "gh_{{ pi5_artifact_gh_version }}_linux_arm64.deb",
+            tasks,
+        )
+        self.assertIn(
+            'checksum: "sha256:{{ pi5_artifact_gh_arm64_sha256 }}"',
+            tasks,
+        )
+        self.assertIn(
+            "- /usr/bin/gh\n"
+            "      - attestation\n"
+            "      - verify\n"
+            "      - --help",
+            tasks,
+        )
+        for required_option in (
+            "--bundle-from-oci",
+            "--deny-self-hosted-runners",
+            "--source-digest",
+            "--source-ref",
+        ):
+            with self.subTest(required_option=required_option):
+                self.assertIn(required_option, tasks)
 
     def test_invalid_template_is_reported_with_source_location(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

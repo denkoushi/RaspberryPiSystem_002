@@ -1,3 +1,5 @@
+import { KIOSK_MACHINE_SIGNAL_PATH } from '../machine-signal/machineSignalRoutes';
+
 import { KIOSK_LEADER_ORDER_BOARD_PATH_PREFIX } from './leaderOrderBoard/kioskLeaderOrderBoardRoutes';
 import { KIOSK_MANUAL_ORDER_PATH_PREFIX } from './manualOrder/kioskManualOrderRoutes';
 
@@ -6,6 +8,9 @@ const KIOSK_PROGRESS_OVERVIEW_PATH_PREFIX = '/kiosk/production-schedule/progress
 
 /** 負荷調整（山崩し支援）専用画面 */
 const KIOSK_LOAD_BALANCING_PATH_PREFIX = '/kiosk/production-schedule/load-balancing';
+
+/** 製番別の資源・納期割当ボード */
+const KIOSK_GRINDING_PLANNING_BOARD_PATH_PREFIX = '/kiosk/production-schedule/planning-board';
 
 /**
  * pathname 末尾のスラッシュを除いたキオスクパス（空は `/`）。
@@ -44,7 +49,8 @@ const KIOSK_BORROW_IMMERSIVE_PATH_EXACT = [
 const IMMERSIVE_PATH_EXACT = new Set<string>([
   ...KIOSK_BORROW_IMMERSIVE_PATH_EXACT,
   '/kiosk/production-schedule',
-  '/kiosk/documents'
+  '/kiosk/documents',
+  '/kiosk/inventory'
 ]);
 
 /**
@@ -57,10 +63,18 @@ const IMMERSIVE_PATH_EXACT = new Set<string>([
  */
 export function usesKioskImmersiveLayout(pathname: string): boolean {
   const p = normalizeKioskPathname(pathname);
+  if (p === '/kiosk/inventory/settings' || p.startsWith('/kiosk/inventory/settings/')) return true;
+  // 集計は在庫の準備と同じく、1画面に収めてパネルの中だけをスクロールさせる。
+  if (p === '/kiosk/inventory/dashboard') return true;
+  // The tag desk keeps its reader dock still and scrolls only the list, so it needs a fixed-height page.
+  if (p === '/kiosk/tag-desk') return true;
+  // 設備稼働は一覧と詳細を画面の高さに収め、それぞれの中だけをスクロールさせる。
+  if (p === KIOSK_MACHINE_SIGNAL_PATH) return true;
   if (p.startsWith(KIOSK_MANUAL_ORDER_PATH_PREFIX)) return true;
   if (p.startsWith(KIOSK_LEADER_ORDER_BOARD_PATH_PREFIX)) return true;
   if (p.startsWith(KIOSK_PROGRESS_OVERVIEW_PATH_PREFIX)) return true;
   if (p.startsWith(KIOSK_LOAD_BALANCING_PATH_PREFIX)) return true;
+  if (p.startsWith(KIOSK_GRINDING_PLANNING_BOARD_PATH_PREFIX)) return true;
   if (p === KIOSK_PART_MEASUREMENT_PREFIX || p.startsWith(`${KIOSK_PART_MEASUREMENT_PREFIX}/`)) return true;
   if (p.startsWith(KIOSK_INSPECTION_DRAWING_DEV_PREVIEW_PREFIX)) return true;
   if (p.startsWith(KIOSK_ASSEMBLY_DEV_PREVIEW_PREFIX)) return true;

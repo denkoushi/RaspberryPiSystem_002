@@ -1,0 +1,34 @@
+---
+- name: Verify normal-factory hosts can authenticate the Pi5 certificate
+  hosts: server:clients
+  gather_facts: false
+  become: false
+  serial: 1
+
+  tasks:
+    - name: Refuse TalkPlaza and require read-only TLS verification approval
+      ansible.builtin.assert:
+        that:
+          - "'talkplaza' not in group_names"
+          - normal_factory_local_tls_verification_approved | default(false) | bool
+
+    - name: Verify Pi5 health with hostname and certificate validation enabled
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - |
+            import ssl
+            import sys
+            import urllib.request
+
+            request = urllib.request.Request(sys.argv[1], method="GET")
+            with urllib.request.urlopen(
+                request,
+                timeout=10,
+                context=ssl.create_default_context(),
+            ) as response:
+                if response.status != 200:
+                    raise SystemExit("Pi5 TLS health verification failed")
+          - "{{ api_healthcheck_url }}"
+      changed_when: false

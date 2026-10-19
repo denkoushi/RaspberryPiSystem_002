@@ -10,9 +10,19 @@ import {
   setAutoRotationVmCache,
 } from './self-inspection-machine-board-auto-rotation.cache.js';
 import { buildSelfInspectionMachineBoardViewModel } from './self-inspection-machine-board.service.js';
-import type { SelfInspectionMachineBoardPage } from './self-inspection-machine-board.types.js';
+import { buildKioskActiveSelfInspectionMachineBoardViewModel } from './self-inspection-machine-board-active.service.js';
+import type {
+  SelfInspectionMachineBoardPage,
+  SelfInspectionMachineBoardPartItem,
+  SelfInspectionMachineBoardSummaryPage,
+} from './self-inspection-machine-board.types.js';
 import { selectSelfInspectionMachineTargets } from './self-inspection-machine-target-selector.service.js';
 import type { SelfInspectionMachineTargetSelectionResult } from './self-inspection-machine-target-selector.types.js';
+import {
+  buildFlatMachineBoardPages,
+  sanitizeSelfInspectionMachineBoardPartsPerPage,
+} from '../signage/self-inspection-machine-board/pagination.js';
+import { flattenSummaryPageParts } from '../signage/self-inspection-machine-board/self-inspection-machine-board-layout.js';
 
 export function clearAutoSelfInspectionMachineBoardRotationViewModelCache(): void {
   clearAutoRotationVmCache();
@@ -39,7 +49,7 @@ function buildAutoRotationVmCacheKey(options: {
 }
 
 export type SelfInspectionMachineBoardRotationViewModel = {
-  targetMode: 'manual_machine_name' | 'auto_from_leaderboard_status';
+  targetMode: 'manual_machine_name' | 'auto_from_leaderboard_status' | 'kiosk_active_sessions';
   machineName: string;
   normalizedMachineName: string;
   updatedAt: Date;
@@ -53,6 +63,9 @@ export type SelfInspectionMachineBoardRotationViewModel = {
   autoTargetHitScanCap: boolean;
   autoTargetScanRowCap: number;
   autoTargetScannedRowCount: number;
+  activeSessionLimit?: number;
+  activeSessionHasMore?: boolean;
+  activeSessionCount?: number;
 };
 
 function reindexMachineBoardPages(pages: SelfInspectionMachineBoardPage[]): SelfInspectionMachineBoardPage[] {
@@ -74,6 +87,86 @@ function applyAutoTargetPageMeta(
     autoTargetHitScanCap: selection.hitScanCap,
     autoTargetScanRowCap: MAX_SELF_INSPECTION_MACHINE_TARGET_SELECTOR_ROWS,
   }));
+}
+
+function mergeAutoMachineBoardPart(
+  current: SelfInspectionMachineBoardPartItem,
+  next: SelfInspectionMachineBoardPartItem
+): SelfInspectionMachineBoardPartItem {
+  const currentResources = current.resources ?? [];
+  const nextResources = next.resources ?? [];
+  if (currentResources.length === 0 || nextResources.length === 0) {
+    return {
+      ...current,
+      resourceCds: [...new Set([...(current.resourceCds ?? []), ...(next.resourceCds ?? [])])],
+      scheduleRowIds: [...new Set([...(current.scheduleRowIds ?? [current.scheduleRowId]), ...(next.scheduleRowIds ?? [next.scheduleRowId])])],
+      continuationIndex: undefined,
+      continuationCount: undefined,
+      isContinuation: undefined,
+    };
+  }
+  const resources = [...currentResources, ...nextResources];
+  const completedEntryCount = resources.reduce(
+    (sum, resource) => sum + resource.confirmedEntryCount,
+    0
+  );
+  const requiredEntryCount = resources.reduce(
+    (sum, resource) => sum + resource.requiredEntryCount,
+    0
+  );
+  return {
+    ...current,
+    resources,
+    resourceCds: resources.map((resource) => resource.resourceCd),
+    scheduleRowIds: [...new Set(resources.flatMap((resource) => resource.scheduleRowIds))],
+    completedEntryCount,
+    confirmedEntryCount: completedEntryCount,
+    requiredEntryCount,
+    progressLabel: `${completedEntryCount}/${requiredEntryCount}`,
+    continuationIndex: undefined,
+    continuationCount: undefined,
+    isContinuation: undefined,
+  };
+}
+
+function collectAutoMachineBoardParts(
+  viewModels: Array<
+    Pick<SelfInspectionMachineBoardRotationViewModel, 'pages' | 'machineName' | 'normalizedMachineName'>
+  >
+): SelfInspectionMachineBoardPartItem[] {
+  const parts: SelfInspectionMachineBoardPartItem[] = [];
+  for (const viewModel of viewModels) {
+    const byCardKey = new Map<string, SelfInspectionMachineBoardPartItem>();
+    for (const page of viewModel.pages) {
+      if (page.kind !== 'summary') {
+        continue;
+      }
+      for (const part of flattenSummaryPageParts(page as SelfInspectionMachineBoardSummaryPage)) {
+        const key =
+          part.cardKey ??
+          [
+            viewModel.normalizedMachineName || viewModel.machineName,
+            part.fseiban,
+            part.productNo,
+            part.fhincd,
+          ].join('::');
+        const existing = byCardKey.get(key);
+        byCardKey.set(
+          key,
+          existing
+            ? mergeAutoMachineBoardPart(existing, part)
+            : {
+                ...part,
+                machineName: part.machineName ?? viewModel.machineName,
+                normalizedMachineName: part.normalizedMachineName ?? viewModel.normalizedMachineName,
+                cardKey: part.cardKey ?? key,
+              }
+        );
+      }
+    }
+    parts.push(...byCardKey.values());
+  }
+  return parts;
 }
 
 async function mapWithConcurrency<T, R>(
@@ -124,6 +217,38 @@ export async function buildManualSelfInspectionMachineBoardRotationViewModel(opt
     autoTargetScannedRowCount: 0,
   };
 }
+
+/** キオスク自主検査画面の active session 集合をそのまま rotation VM へ包む。 */
+export async function buildKioskActiveSelfInspectionMachineBoardRotationViewModel(options: {
+  partsPerPage?: number;
+  detailTopN?: number;
+}): Promise<SelfInspectionMachineBoardRotationViewModel> {
+  // Deliberately no render-crossing cache: this mode reflects the kiosk's
+  // active sessions and must observe the next render's current snapshot.
+  const vm = await buildKioskActiveSelfInspectionMachineBoardViewModel(options);
+  return {
+    targetMode: 'kiosk_active_sessions',
+    machineName: vm.machineName,
+    normalizedMachineName: vm.normalizedMachineName,
+    updatedAt: vm.updatedAt,
+    pages: vm.pages,
+    totalPages: vm.totalPages,
+    scheduleRowCap: vm.scheduleRowCap,
+    scheduleRowHasMore: vm.scheduleRowHasMore,
+    loadedScheduleRowCount: vm.loadedScheduleRowCount,
+    autoTargetCount: 0,
+    autoTargetTruncated: false,
+    autoTargetHitScanCap: false,
+    autoTargetScanRowCap: 0,
+    autoTargetScannedRowCount: 0,
+    activeSessionLimit: vm.activeSessionLimit,
+    activeSessionHasMore: vm.activeSessionHasMore,
+    activeSessionCount: vm.activeSessionCount,
+  };
+}
+
+export const buildActiveSelfInspectionMachineBoardRotationViewModel =
+  buildKioskActiveSelfInspectionMachineBoardRotationViewModel;
 
 function logAutoTargetSelectionWarnings(
   options: {
@@ -191,6 +316,9 @@ async function buildAutoSelfInspectionMachineBoardRotationViewModelUncached(opti
   detailTopN?: number;
 }): Promise<SelfInspectionMachineBoardRotationViewModel> {
   const updatedAt = new Date();
+  const partsPerPage = sanitizeSelfInspectionMachineBoardPartsPerPage(
+    options.partsPerPage ?? Number.NaN
+  );
   const selection = await selectSelfInspectionMachineTargets({
     deviceScopeKey: options.deviceScopeKey,
     resourceCds: options.resourceCds,
@@ -225,22 +353,33 @@ async function buildAutoSelfInspectionMachineBoardRotationViewModelUncached(opti
       buildSelfInspectionMachineBoardViewModel({
         machineName: target.machineName,
         deviceScopeKey: options.deviceScopeKey,
-        partsPerPage: options.partsPerPage,
+        partsPerPage,
         detailTopN: options.detailTopN,
       })
   );
 
+  const orderedParts = collectAutoMachineBoardParts(viewModels);
+  const primaryMachineName =
+    selection.targets.length === 1
+      ? selection.targets[0]!.machineName
+      : `自動選定 ${selection.targets.length}機種`;
   const pages = applyAutoTargetPageMeta(
-    reindexMachineBoardPages(viewModels.flatMap((vm) => vm.pages)),
+    reindexMachineBoardPages(
+      buildFlatMachineBoardPages({
+        machineName: primaryMachineName,
+        updatedAt: viewModels[0]?.updatedAt ?? updatedAt,
+        orderedParts,
+        detailPages: [],
+        partsPerPage,
+        scheduleRowCap: Math.max(...viewModels.map((vm) => vm.scheduleRowCap), 0),
+        scheduleRowHasMore: viewModels.some((vm) => vm.scheduleRowHasMore),
+      })
+    ),
     selection
   );
   const scheduleRowHasMore = viewModels.some((vm) => vm.scheduleRowHasMore);
   const scheduleRowCap = Math.max(...viewModels.map((vm) => vm.scheduleRowCap), 0);
   const loadedScheduleRowCount = viewModels.reduce((sum, vm) => sum + vm.loadedScheduleRowCount, 0);
-  const primaryMachineName =
-    selection.targets.length === 1
-      ? selection.targets[0]!.machineName
-      : `自動選定 ${selection.targets.length}機種`;
 
   return {
     targetMode: 'auto_from_leaderboard_status',

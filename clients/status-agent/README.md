@@ -32,6 +32,8 @@ Pi4 SDカード予防保全用パラメータ:
 | `STORAGE_HEALTH_DISK_WARN_PCT` | `80` | `/` のディスク使用率またはinode使用率がこの値以上なら `WARN` |
 | `STORAGE_HEALTH_DISK_ERROR_PCT` | `90` | `/` のディスク使用率またはinode使用率がこの値以上なら `ERROR` |
 | `STORAGE_HEALTH_STATE_FILE` | `/run/raspi-status-agent/storage-health-last-run` | 最終実行時刻の記録先。`/run` はtmpfsなのでSDカードへ書き込まない |
+| `STORAGE_HEALTH_WEAR_STATE_FILE` | `/run/raspi-status-agent/storage-wear-state.json` | 書込量の標本と「起動後に報告済み」の記録。tmpfsなので再起動で消え、カーネルの書込カウンタや起動後フラグと同じく起動ごとにやり直す |
+| `STORAGE_HEALTH_WRITE_WARN_GB_PER_DAY` | `10` | 直近24時間（最低12時間）の平均書込量がこの値(GB/日)以上なら `WARN`。2026-09-30の実測はPi4 7台で約0.8〜1.5GB/日 |
 | `STATUS_AGENT_LOG_SUCCESS` | `0` | 成功時のローカルログ追記。SDカード書込削減のため既定は無効 |
 
 ### 手動実行テスト
@@ -85,14 +87,34 @@ journalctl -u status-agent.service -n 30 -f
 | 兆候 | レベル |
 | --- | --- |
 | root filesystem が read-only (`ro`) | `ERROR` |
+| ext4のroot partitionの `/sys/fs/ext4/<partition>/errors_count` が0より大きい（`ext4_errors_recorded`）。未取得・非ext4は通知しない | `ERROR` |
 | kernel log の `mmc` error / `I/O error` / `EXT4-fs error` / read-only remount | `ERROR` |
 | `/` のディスク使用率またはinode使用率が閾値以上 | `WARN` / `ERROR` |
 | `vcgencmd get_throttled` の現在低電圧 | `ERROR` |
 | `vcgencmd get_throttled` の現在throttle/温度制限 | `WARN` |
+| `vcgencmd get_throttled` の起動後低電圧フラグ（`0x10000`）。起動ごとに1回だけ送る | `WARN` |
+| `/sys/block/<disk>/stat` の書込量が閾値GB/日以上 | `WARN` |
+| 1日1回の摩耗レポート（書込GB/日、ext4累計書込量、カード容量の何倍か、カード名と製造年月） | `INFO`（Alertにしない） |
 
 kernel logは、既定では実行間隔+5分ぶんを見ます。1時間ごとの運用でも短時間のI/O errorを見逃しにくくするためです。送信ログの `context` は `{ category: "storage_health", signal, rootSource, raw, observedAt }` 形式です。1回のPOSTで追加するSDヘルスログは最大10件です。
 
+起動後低電圧フラグと摩耗レポートは、APIへの送信が成功した時だけ「送信済み」と記録します。送信失敗や `--dry-run` では次回また送ります。摩耗レポートの `context` には `writeGbPerDay`、`lifetimeWriteGb`、`cardSizeGb`、`cardWriteMultiple`、`cardName`、`cardDate` が追加で入ります。`/admin/clients` の端末ログで、交換時期の目安（書込ペースと累計）を端末ごとに比べられます。
+
 `WARN` / `ERROR` のSDヘルスログは、API側でDB `Alert` と `AlertDelivery(SLACK)` に昇格されます。Slack配送先は既存Alerts Dispatcherの `storage-*` ルートに従い、通常は `ops` です。同じ端末・同じsignalの未確認Alertが残っている間は追加Alertを作らず、通知連打を抑えます。
+
+### Pi4周辺機器ヘルス
+
+Ansibleはinventoryで有効なNFC、バーコード、トルクレンチAgentだけを毎分確認します。Pi3 signageでは無効です。最初の異常は`/run/raspi-status-agent/terminal-agent-health.json`へ記録するだけで、2回連続したときに既存の`ClientLog`とAlerts Dispatcherへ通知します。
+
+| Agent | 異常条件 |
+| --- | --- |
+| NFC | status到達不能、`readerConnected`がtrueでない、または`queueSize`が0でない |
+| Barcode | status到達不能、または`readerConnected`がtrueでない |
+| Torque | health到達不能、または`ok`がtrueでない |
+
+同一episodeでは通知を1件に抑え、復旧をINFOで記録した後の再発は新しいepisodeとして通知します。NFC UID、`lastEvent`、token、URL、Agentの生レスポンスは状態ファイル・ClientLog・Slackへ送りません。APIが受理できなかったログは通知済みにせず、次のtimer実行で再送します。Slack配送自体の一時失敗は、既存AlertDeliveryが再試行します。
+
+`TERMINAL_AGENT_HEALTH_*_ENABLED`は端末で手動変更せずinventoryを正本とします。NFCキュー滞留は自動削除しません。業務イベントの可能性があるため、原因を確認してから明示的に扱います。
 
 運用確認:
 
@@ -118,6 +140,7 @@ findmnt -no OPTIONS /
 clients/status-agent/
 ├── README.md
 ├── storage_health.py            # SDカード予防保全ログの判定
+├── terminal_agent_health.py     # 周辺機器の連続異常・episode判定
 ├── status-agent.py              # メトリクス収集 & 送信スクリプト
 ├── status-agent.conf.example    # 設定テンプレート
 ├── status-agent.service         # systemd service (oneshot)

@@ -8,6 +8,14 @@ const viewports = [
 const procedureImage =
   'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800"%3E%3Crect width="1200" height="800" fill="%23f8fafc"/%3E%3Cpath d="M100 400h1000M600 100v600" stroke="%2364758b" stroke-width="8"/%3E%3C/svg%3E';
 
+const paneFitLongMachineName = 'Ｌ３００ＫＰ　長い機種名全角英数字ＡＢＣ１２３'.repeat(4);
+
+function formatAssemblyEditorDisplayName(value: string): string {
+  return value.replace(/[Ａ-Ｚａ-ｚ０-９\u3000]/g, (character) =>
+    character === '　' ? ' ' : String.fromCharCode(character.charCodeAt(0) - 0xfee0)
+  );
+}
+
 const unifiedEditorDocuments = [
   {
     id: 'procedure-primary',
@@ -37,6 +45,51 @@ const unifiedEditorDocuments = [
   }
 ] as const;
 
+const guidedCreateCapabilityGroup = {
+  id: 'capability-m6-30',
+  name: 'M6 30mm 標準',
+  nominalDiameter: 'M6',
+  boltLengthMm: '30',
+  material: 'SCM435',
+  strengthClass: '10.9',
+  isActive: true,
+  models: []
+} as const;
+
+const registeredWrenchModel = {
+  id: 'registered-model',
+  manufacturer: 'Test',
+  modelNumber: 'TW-100',
+  torqueMinNm: '1',
+  torqueMaxNm: '100',
+  resolutionNm: '0.01',
+  communicationType: 'manual',
+  outputProfile: null,
+  settingVerificationMode: 'REGISTERED_SETTING',
+  isActive: true
+};
+
+const registeredWrench = {
+  id: 'wrench-1',
+  modelId: registeredWrenchModel.id,
+  serialNumber: 'SERIAL-ＡＢＣ１２３',
+  model: registeredWrenchModel,
+  measuringInstrument: {
+    id: 'instrument-1', name: '登録レンチ', managementNumber: 'TW-1',
+    storageLocation: null, calibrationExpiryDate: null, status: 'AVAILABLE'
+  },
+  settingHistories: [{
+    id: 'setting-1', lowerLimit: '81.25', nominalTorque: '90.25', upperLimit: '99.25',
+    unit: 'N·m', lowerLimitNm: '81.25', nominalTorqueNm: '90.25', upperLimitNm: '99.25',
+    effectiveAt: '2026-09-01T00:00:00.000Z', reason: null
+  }]
+};
+
+const registeredSettingGroup = {
+  ...guidedCreateCapabilityGroup,
+  models: [{ modelId: registeredWrenchModel.id, model: registeredWrenchModel }]
+};
+
 type AssemblyEditorEvidence = {
   templateBodies: Array<Record<string, unknown>>;
 };
@@ -45,7 +98,9 @@ async function mockKioskApis(
   page: Page,
   deployNotice = false,
   editorEvidence?: AssemblyEditorEvidence,
-  procedureDocuments: ReadonlyArray<Record<string, unknown>> = unifiedEditorDocuments
+  procedureDocuments: ReadonlyArray<Record<string, unknown>> = unifiedEditorDocuments,
+  capabilityGroups: ReadonlyArray<Record<string, unknown>> = [guidedCreateCapabilityGroup],
+  torqueWrenches: ReadonlyArray<Record<string, unknown>> = []
 ): Promise<void> {
   await page.route('**/api/**', async (route) => {
     const request = route.request();
@@ -87,6 +142,22 @@ async function mockKioskApis(
       await route.fulfill({ json: { documents: procedureDocuments } });
       return;
     }
+    if (path === '/api/assembly/machine-name-candidates') {
+      const query = new URL(request.url()).searchParams;
+      const digitQuery = query.get('digitQuery') ?? '';
+      const textQuery = (query.get('q') ?? '').toUpperCase();
+      const candidates = ['L300KP', 'L300KP-2', 'SH500ZX', paneFitLongMachineName].filter(
+        (candidate) => {
+          const displayCandidate = formatAssemblyEditorDisplayName(candidate);
+          return (
+            (!digitQuery || displayCandidate.replace(/\D/g, '').includes(digitQuery)) &&
+            (!textQuery || displayCandidate.toUpperCase().includes(textQuery))
+          );
+        }
+      );
+      await route.fulfill({ json: { candidates, hasMore: false } });
+      return;
+    }
     if (path.includes('/kiosk/assembly/templates/verify-access-password')) {
       await route.fulfill({ json: { success: true } });
       return;
@@ -107,7 +178,126 @@ async function mockKioskApis(
       return;
     }
     if (path.includes('/torque-wrench-capability-groups/compatible')) {
-      await route.fulfill({ json: { capabilityGroups: [] } });
+      await route.fulfill({ json: { capabilityGroups } });
+      return;
+    }
+    if (path === '/api/torque-wrench-capability-groups') {
+      await route.fulfill({
+        json: { capabilityGroups }
+      });
+      return;
+    }
+    if (path === '/api/torque-wrenches') {
+      await route.fulfill({ json: { torqueWrenches } });
+      return;
+    }
+    await route.fulfill({ json: {} });
+  });
+}
+
+async function mockGuidedWorkflowApis(page: Page): Promise<void> {
+  const image = '<svg xmlns="http://www.w3.org/2000/svg" width="900" height="540"><rect width="900" height="540" fill="#e2e8f0"/><rect x="40" y="40" width="820" height="460" fill="#fff" stroke="#0f172a" stroke-width="6"/><text x="80" y="130" font-size="34" font-family="sans-serif" font-weight="700">組立手順書</text><path d="M100 340h260l100-120 150 180 170-160" fill="none" stroke="#0891b2" stroke-width="16"/></svg>';
+  const imageUrl = `data:image/svg+xml,${encodeURIComponent(image)}`;
+  const now = '2026-08-01T00:00:00.000Z';
+  let procedureDocument: Record<string, unknown> = {
+    id: 'guided-procedure-document',
+    name: 'guided-procedure-document',
+    imageRelativePath: imageUrl,
+    status: 'draft',
+    publishedAt: null,
+    isActive: true,
+    pages: [{ pageIndex: 0, imageRelativePath: imageUrl }],
+    activeTemplateCount: 0,
+    totalTemplateCount: 0,
+    createdAt: now,
+    updatedAt: now
+  };
+  let template: Record<string, unknown> | null = null;
+
+  await page.route('**/api/**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith('/src/api/')) {
+      await route.continue();
+      return;
+    }
+    if (path === '/api/system/deploy-status') {
+      await route.fulfill({ json: { isMaintenance: false } });
+      return;
+    }
+    if (path === '/api/kiosk/config') {
+      await route.fulfill({ json: { defaultMode: 'tag', clientStatus: null } });
+      return;
+    }
+    if (path === '/api/kiosk/call/targets') {
+      await route.fulfill({ json: { selfClientId: 'assembly-guided-e2e', targets: [] } });
+      return;
+    }
+    if (path === '/api/kiosk/employees') {
+      await route.fulfill({ json: { employees: [] } });
+      return;
+    }
+    if (path === '/api/assembly/procedure-documents/preview') {
+      await route.fulfill({ contentType: 'image/svg+xml', body: image });
+      return;
+    }
+    if (path === '/api/assembly/procedure-documents' && request.method() === 'POST') {
+      procedureDocument = { ...procedureDocument, name: 'guided-procedure-document', updatedAt: now };
+      await route.fulfill({ json: { document: procedureDocument } });
+      return;
+    }
+    if (path === '/api/assembly/procedure-documents/summary') {
+      await route.fulfill({ json: { documents: [{ ...procedureDocument, activeTemplateCount: template ? 1 : 0, totalTemplateCount: template ? 1 : 0 }] } });
+      return;
+    }
+    if (path.endsWith('/publish') && path.includes('/assembly/procedure-documents/')) {
+      procedureDocument = { ...procedureDocument, status: 'published', publishedAt: now, updatedAt: now };
+      await route.fulfill({ json: { document: procedureDocument } });
+      return;
+    }
+    if (path === '/api/assembly/templates/summary') {
+      await route.fulfill({ json: { templates: template ? [template] : [] } });
+      return;
+    }
+    if (path === '/api/assembly/templates' && request.method() === 'POST') {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      template = {
+        id: 'guided-saved-template',
+        modelCode: body.modelCode,
+        procedurePattern: body.procedurePattern,
+        name: body.name,
+        version: 1,
+        isActive: true,
+        procedureDocumentId: procedureDocument.id,
+        procedureDocumentName: procedureDocument.name,
+        procedureItemCount: 1,
+        usesLegacyProcedureSequence: false,
+        areaCount: 1,
+        boltCount: 1,
+        createdAt: now,
+        updatedAt: now
+      };
+      await route.fulfill({ json: { template } });
+      return;
+    }
+    if (path === '/api/assembly/library/filter-options') {
+      await route.fulfill({ json: { options: [] } });
+      return;
+    }
+    if (path === '/api/assembly/machine-name-candidates') {
+      await route.fulfill({ json: { candidates: ['L300KP'], hasMore: false } });
+      return;
+    }
+    if (path === '/api/kiosk/assembly/templates/verify-access-password') {
+      await route.fulfill({ json: { success: true } });
+      return;
+    }
+    if (path === '/api/torque-wrench-capability-groups/compatible' || path === '/api/torque-wrench-capability-groups') {
+      await route.fulfill({ json: { capabilityGroups: [guidedCreateCapabilityGroup] } });
+      return;
+    }
+    if (path === '/api/torque-wrenches') {
+      await route.fulfill({ json: { torqueWrenches: [] } });
       return;
     }
     await route.fulfill({ json: {} });
@@ -121,6 +311,260 @@ async function calloutLineGeometry(line: Locator) {
     x2: Number(element.getAttribute('x2')),
     y2: Number(element.getAttribute('y2'))
   }));
+}
+
+/** 選択中のマーカーに出る取っ手をドラッグして、矢視の先端を置く（矢視モードのボタンは廃止）。 */
+async function dragCalloutHandleTo(page: Page, scope: Locator, x: number, y: number): Promise<void> {
+  await closeAssemblySettings(page);
+  const handle = scope.getByRole('button', { name: '矢視をドラッグで置く' });
+  await expect(handle).toBeVisible();
+  const box = (await handle.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(x, y, { steps: 6 });
+  await page.mouse.up();
+}
+
+async function selectAssemblyMachineName(page: Page, machineName = 'L300KP'): Promise<void> {
+  await openAssemblyDocuments(page);
+  await page.getByRole('button', { name: '機種名を選ぶ' }).click();
+  const dialog = page.getByRole('dialog', { name: '機種名を選択' });
+  await expect(dialog).toBeVisible();
+  await dialog
+    .getByRole('group', { name: '機種名数字テンキー' })
+    .getByRole('button', { name: '3', exact: true })
+    .click();
+  await dialog.getByRole('textbox', { name: '機種名文字検索' }).fill('KP');
+  await dialog.getByRole('button', { name: machineName, exact: true }).click();
+  await dialog.getByRole('button', { name: 'この機種名を使用' }).click();
+}
+
+async function fillAssemblyTemplateStructure(
+  page: Page,
+  expectedTemplateName = 'L300KP 標準 組立'
+): Promise<void> {
+  await openAssemblyDocuments(page);
+  const pane = page.locator('#assembly-procedure-pane');
+  await pane.locator('#assembly-template-procedure-pattern').fill('標準');
+  await closeAssemblyDetails(page);
+  await expect(page.getByTestId('assembly-template-editor-left-pane').locator('#assembly-template-name')).toHaveValue(expectedTemplateName);
+  await openAssemblyDocuments(page);
+  await pane.getByRole('button', { name: '詳細（任意）' }).click();
+  await pane.locator('input[id$="-processNo"]').fill('10');
+  await pane.locator('input[id$="-areaCode"]').fill('A1');
+  await pane.locator('input[id$="-unitCode"]').fill('U1');
+  await pane.locator('input[id$="-areaName"]').fill('本体組立');
+  await closeAssemblyDetails(page);
+}
+
+async function unlockAssemblyEditor(page: Page) {
+  await page.getByPlaceholder('パスワード').fill('2520');
+  await page.getByRole('button', { name: '認証', exact: true }).click();
+  await expect(page.getByTestId('assembly-unified-editor-workspace')).toBeVisible();
+}
+
+function assemblyDetailsPane(page: Page) {
+  return page.getByTestId('assembly-template-editor-left-pane').getByRole('tabpanel');
+}
+
+async function openAssemblyDocuments(page: Page) {
+  await expect(page.getByTestId('assembly-unified-editor-workspace')).toBeVisible();
+  const tab = page.getByTestId('assembly-template-editor-left-pane')
+    .getByRole('tab', { name: '文書', exact: true });
+  await tab.click();
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#assembly-procedure-pane')).toBeVisible();
+}
+
+async function closeAssemblyDetails(page: Page) {
+  const tab = page.getByTestId('assembly-template-editor-left-pane')
+    .getByRole('tab', { name: '工程', exact: true });
+  await tab.click();
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+}
+
+async function closeAssemblySettings(page: Page) {
+  const close = page.getByTestId('assembly-editor-settings-pane')
+    .getByRole('button', { name: '設定を閉じる', exact: true });
+  if (await close.count() > 0) await close.click();
+  const closeConditions = page.getByRole('button', { name: '締付条件を閉じる', exact: true });
+  if (await closeConditions.count() > 0) await closeConditions.click();
+}
+
+async function clickAssemblySteps(page: Page) {
+  await expect(page.getByTestId('assembly-unified-editor-workspace')).toBeVisible();
+  const tab = page.getByTestId('assembly-template-editor-left-pane')
+    .getByRole('tab', { name: '手順', exact: true });
+  await tab.click();
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('assembly-step-storyboard')).toBeVisible();
+}
+
+async function expectSelectedAssemblyPage(page: Page, documentName: string) {
+  const selected = page.getByTestId('assembly-template-editor-left-pane')
+    .getByRole('region', { name: 'ページ', exact: true }).locator('button[aria-current="true"]');
+  await expect(selected).toHaveCount(1);
+  expect(await selected.getAttribute('aria-label')).toContain(`${documentName} / 1ページ`);
+  await expect(page.getByTestId('assembly-template-page-heading')).toContainText(documentName);
+}
+
+for (const viewport of [...viewports, { width: 900, height: 900 }]) {
+  test(`assembly input guidance saves optional fields and distinguishes document additions at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    const evidence: AssemblyEditorEvidence = { templateBodies: [] };
+    await page.setViewportSize(viewport);
+    await mockKioskApis(page, false, evidence, unifiedEditorDocuments, [registeredSettingGroup], [registeredWrench]);
+    await page.goto('/kiosk/assembly/templates/new', { waitUntil: 'networkidle' });
+    await unlockAssemblyEditor(page);
+    await openAssemblyDocuments(page);
+    const header = page.getByTestId('assembly-template-editor-header');
+    await expect(header.getByText('未保存', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '詳細（任意）' }).click();
+    await page.getByRole('button', { name: '詳細（任意）' }).click();
+    await expect(header.getByText('未保存', { exact: true })).toBeVisible();
+    await selectAssemblyMachineName(page);
+    const left = page.locator('#assembly-procedure-pane');
+    await left.locator('#assembly-template-procedure-pattern').fill('標準');
+    await expect(left.getByRole('button', { name: '詳細（任意）' })).toHaveAttribute('aria-expanded', 'false');
+    await expect(left.locator('input[id$="-processNo"]')).toHaveCount(0);
+    await expect(left).not.toContainText('すべての文書に共通');
+
+    await left.getByRole('button', { name: '文書追加', exact: true }).click();
+    let library = page.getByRole('dialog', { name: '文書ライブラリ', exact: true });
+    await expect(library).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(1);
+    await library.locator('li').filter({ hasText: unifiedEditorDocuments[0].name })
+      .getByRole('button', { name: '文書だけ追加', exact: true }).click();
+    await expect(left).toBeVisible();
+    await expect(left).toContainText('未使用');
+    await closeAssemblyDetails(page);
+    await expectSelectedAssemblyPage(page, unifiedEditorDocuments[0].name);
+    await clickAssemblySteps(page);
+    await expect(page.getByTestId('assembly-step-storyboard').locator('article')).toHaveCount(0);
+
+    // Adding all pages must reveal only the newly added document, not auto-use the first one.
+    await openAssemblyDocuments(page);
+    await page.getByRole('button', { name: '文書追加', exact: true }).first().click();
+    library = page.getByRole('dialog', { name: '文書ライブラリ', exact: true });
+    await library.locator('li').filter({ hasText: unifiedEditorDocuments[1].name })
+      .getByRole('button', { name: /^(追加|全ページを手順へ追加)$/ }).click();
+    await closeAssemblyDetails(page);
+    await expectSelectedAssemblyPage(page, unifiedEditorDocuments[1].name);
+
+    await openAssemblyDocuments(page);
+    await left.locator('[id^="assembly-document-"]').filter({ hasText: unifiedEditorDocuments[0].name })
+      .locator('button').first().click();
+    await closeAssemblyDetails(page);
+    await page.getByRole('button', { name: '全体追加', exact: true }).click();
+    const image = page.getByTestId('assembly-procedure-canvas').locator('img').last();
+    await image.scrollIntoViewIfNeeded();
+    const box = (await image.boundingBox())!;
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
+    const right = page.getByTestId('assembly-editor-settings-pane');
+    await selectTorqueWrenchGroup(right, page, 'M6 30mm', /M6 30mm 標準/);
+    await expect(right.locator('input[id$="-lowerLimit"]')).toHaveValue('81.25');
+    await expect(right.locator('input[id$="-nominalTorque"]')).toHaveValue('90.25');
+    await expect(right.locator('input[id$="-upperLimit"]')).toHaveValue('99.25');
+    await expect(right.locator('select[id$="-unit"]')).toHaveValue('N·m');
+    await expectEditorControlsFitHorizontally(right);
+
+    await openAssemblyDocuments(page);
+    await left.getByRole('button', { name: '詳細（任意）' }).click();
+    await left.locator('input[id$="-areaName"]').fill('一時入力');
+    await left.getByRole('button', { name: '詳細（任意）' }).click();
+    await left.getByRole('button', { name: '詳細（任意）' }).click();
+    await expect(left.locator('input[id$="-areaName"]')).toHaveValue('一時入力');
+    await left.locator('input[id$="-areaName"]').fill('');
+    await expectEditorControlsFitHorizontally(left);
+    await left.getByRole('button', { name: '詳細（任意）' }).click();
+    await closeAssemblyDetails(page);
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect.poll(() => evidence.templateBodies.length).toBe(1);
+    const payload = evidence.templateBodies[0] as {
+      areas: Array<Record<string, unknown> & { bolts: Array<Record<string, unknown>> }>;
+      procedureItems: Array<{ assemblyProcedureDocumentId: string }>;
+      procedureSteps: unknown[];
+    };
+    expect(payload.areas[0]).toMatchObject({ processNo: '', areaCode: '', unitCode: '', areaName: '' });
+    expect(payload.areas[0].bolts[0]).toMatchObject({
+      lowerLimit: 81.25, nominalTorque: 90.25, upperLimit: 99.25, unit: 'N·m'
+    });
+    expect(payload.procedureSteps).toHaveLength(2);
+    expect(payload.procedureItems.map((item) => item.assemblyProcedureDocumentId))
+      .toEqual(['procedure-secondary', 'procedure-primary']);
+  });
+}
+
+async function selectTorqueWrenchGroup(
+  settings: Locator,
+  page: Page,
+  query: string,
+  groupName: string | RegExp
+): Promise<void> {
+  await settings.getByRole('button', { name: /適合グループを選択|別のグループを選択/ }).click();
+  const dialog = page.getByRole('dialog', { name: '適合トルクレンチグループを選択' });
+  await dialog.getByRole('textbox', { name: '適合トルクレンチグループを検索' }).fill(query);
+  const candidate = dialog.getByRole('button', { name: groupName }).first();
+  await expect(candidate).toBeVisible();
+  await expectEditorControlReachable(candidate);
+  await candidate.click();
+}
+
+async function fillSelectedAssemblyBolt(page: Page): Promise<void> {
+  const settings = page.getByTestId('assembly-editor-settings-pane');
+  await selectTorqueWrenchGroup(settings, page, 'M6 30mm', /M6 30mm 標準/);
+  await settings.locator('input[id$="-lowerLimit"]').fill('9');
+  await settings.locator('input[id$="-nominalTorque"]').fill('10');
+  await settings.locator('input[id$="-upperLimit"]').fill('11');
+  await settings.locator('select[id$="-unit"]').selectOption('N·m');
+  await expect(settings).toContainText('M6 / 30mm / SCM435 / 10.9');
+}
+
+for (const viewport of [...viewports, { width: 900, height: 900 }]) {
+  test(`assembly registered setting confirmation preserves partial inputs at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const profiles = [registeredWrench, {
+      ...registeredWrench, id: 'unregistered-wrench', serialNumber: '未登録レンチ', settingHistories: []
+    }];
+    await mockKioskApis(page, false, undefined, unifiedEditorDocuments, [registeredSettingGroup], profiles);
+    await page.goto('/kiosk/assembly/templates/new?procedureDocumentId=procedure-primary', { waitUntil: 'networkidle' });
+    await unlockAssemblyEditor(page);
+    const image = page.getByTestId('assembly-procedure-canvas').locator('img').last();
+    await image.scrollIntoViewIfNeeded();
+    const box = (await image.boundingBox())!;
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
+    const right = page.getByTestId('assembly-editor-settings-pane');
+    await selectTorqueWrenchGroup(right, page, 'M6 30mm', /M6 30mm 標準/);
+    await expect(right.locator('input[id$="-lowerLimit"]')).toHaveValue('');
+    await expect(right.locator('input[id$="-nominalTorque"]')).toHaveValue('');
+    await expect(right.locator('input[id$="-upperLimit"]')).toHaveValue('');
+    const review = right.getByRole('button', { name: '登録設定を確認', exact: true });
+    if (await review.count()) await review.click();
+    await expect(right).toContainText('未登録');
+    await expectEditorControlsFitHorizontally(right);
+    const candidate = right.getByRole('button').filter({ hasText: '81.25' }).first();
+    await expect(candidate).toContainText('TW-100');
+    for (const value of ['81.25', '90.25', '99.25']) {
+      const number = candidate.getByText(value, { exact: true });
+      await expect(number).toBeVisible();
+      expect(await number.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    }
+    await expect(candidate).toContainText('N·m');
+    await candidate.click();
+    await expect(right.locator('input[id$="-nominalTorque"]')).toHaveValue('90.25');
+    await right.locator('input[id$="-lowerLimit"]').fill('8');
+    await candidate.click();
+    let confirm = page.getByRole('dialog', { name: '登録設定で締付値を置き換えますか？' });
+    await expect(confirm).toBeVisible();
+    await confirm.getByRole('button', { name: 'キャンセル', exact: true }).click();
+    await expect(right.locator('input[id$="-lowerLimit"]')).toHaveValue('8');
+    await expect(right.locator('input[id$="-nominalTorque"]')).toHaveValue('90.25');
+    await candidate.click();
+    confirm = page.getByRole('dialog', { name: '登録設定で締付値を置き換えますか？' });
+    await confirm.getByRole('button', { name: '登録設定を取り込む', exact: true }).click();
+    await expect(right.locator('input[id$="-lowerLimit"]')).toHaveValue('81.25');
+    await expect(right.locator('input[id$="-upperLimit"]')).toHaveValue('99.25');
+    await expect(right.locator('select[id$="-unit"]')).toHaveValue('N·m');
+  });
 }
 
 async function expectCssPixelCalloutLayout(page: Page) {
@@ -144,47 +588,374 @@ async function expectCssPixelCalloutLayout(page: Page) {
   await expect(svg.locator('marker').first()).toHaveAttribute('markerHeight', '6');
 }
 
-async function expectNoSettingsPaneOverflow(locator: Locator) {
-  const metrics = await locator.evaluate((element) => ({
-    clientHeight: element.clientHeight,
-    clientWidth: element.clientWidth,
-    scrollHeight: element.scrollHeight,
-    scrollWidth: element.scrollWidth
-  }));
-  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
-  expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight + 1);
+async function expectAssemblyEditorLayout(page: Page) {
+  const workspace = page.getByTestId('assembly-unified-editor-workspace');
+  const left = page.getByTestId('assembly-template-editor-left-pane');
+  const canvas = page.getByTestId('assembly-unified-editor-canvas-pane');
+  const rail = page.getByTestId('assembly-editor-toolbar');
+  const [frame, leftBox, canvasBox, railBox] = await Promise.all([
+    workspace.boundingBox(), left.boundingBox(), canvas.boundingBox(), rail.boundingBox()
+  ]);
+  expect(leftBox!.width).toBe(280);
+  expect(railBox!.width).toBe(64);
+  expect(canvasBox!.width).toBeCloseTo(frame!.width - 344, 0);
+  expect(canvasBox!.y).toBeCloseTo(frame!.y, 0);
+  expect(canvasBox!.height).toBeCloseTo(frame!.height, 0);
+  expect(railBox!.y).toBeCloseTo(frame!.y, 0);
+  expect(railBox!.height).toBeCloseTo(frame!.height, 0);
+  expect(leftBox!.x + leftBox!.width).toBeCloseTo(canvasBox!.x, 0);
+  expect(canvasBox!.x + canvasBox!.width).toBeCloseTo(railBox!.x, 0);
+  await expectEditorControlsFitHorizontally(left);
+  for (const control of await rail.getByRole('button').all()) {
+    await expectEditorControlReachable(control);
+    const box = (await control.boundingBox())!;
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    expect(await control.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return element.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+    })).toBe(true);
+  }
+  const back = rail.getByRole('link', { name: '一覧へ戻る', exact: true });
+  await expectEditorControlReachable(back);
+  expect(await back.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return element.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+  })).toBe(true);
 }
 
-async function expectAllControlsInsidePane(locator: Locator) {
-  const clippedControls = await locator.evaluate((element) => {
+async function expectEditorControlsFitHorizontally(pane: Locator) {
+  const clipped = await pane.evaluate((element) => {
+    const problems: string[] = [];
+    const tolerance = 1;
     const paneRect = element.getBoundingClientRect();
-    return Array.from(element.querySelectorAll('button, input, select'))
-      .filter((control) => {
-        const rect = control.getBoundingClientRect();
-        return rect.left < paneRect.left - 1
-          || rect.right > paneRect.right + 1
-          || rect.top < paneRect.top - 1
-          || rect.bottom > paneRect.bottom + 1;
-      })
-      .map((control) => control.getAttribute('aria-label') || control.closest('label')?.textContent?.trim() || control.textContent?.trim() || control.tagName);
+    const workspace = element.closest<HTMLElement>('[data-testid="assembly-unified-editor-workspace"]');
+    const workspaceRect = workspace?.getBoundingClientRect();
+    if (paneRect.left < -tolerance || paneRect.right > window.innerWidth + tolerance) {
+      problems.push('pane viewport bounds');
+    }
+    if (workspaceRect && (paneRect.left < workspaceRect.left - tolerance
+      || paneRect.right > workspaceRect.right + tolerance)) {
+      problems.push('pane workspace bounds');
+    }
+    if (element.scrollWidth > element.clientWidth + tolerance) problems.push('pane scroll width');
+    if (workspace && workspace.scrollWidth > workspace.clientWidth + tolerance) {
+      problems.push('workspace scroll width');
+    }
+
+    const selector = 'button, input, select, textarea, label, p, span, [role="button"], [role="option"]';
+    for (const control of element.querySelectorAll<HTMLElement>(selector)) {
+      const style = getComputedStyle(control);
+      const rect = control.getBoundingClientRect();
+      if (style.display === 'none' || style.visibility === 'hidden' || !control.getClientRects().length
+        || !rect.width || !rect.height) continue;
+      const name = control.getAttribute('aria-label') || control.id || control.getAttribute('title')
+        || control.textContent?.trim() || control.tagName;
+      if (rect.left < -tolerance || rect.right > window.innerWidth + tolerance) {
+        problems.push(name + ' (viewport)');
+      }
+      // Check intermediate clipping ancestors too, not just the outer pane.
+      for (let parent = control.parentElement; parent; parent = parent.parentElement) {
+        const style = getComputedStyle(parent);
+        if (['hidden', 'auto', 'scroll', 'clip'].includes(style.overflowX)) {
+          const parentRect = parent.getBoundingClientRect();
+          const left = parentRect.left + parent.clientLeft;
+          if (rect.left < left - tolerance || rect.right > left + parent.clientWidth + tolerance) {
+            problems.push(name + ' (ancestor)');
+          }
+        }
+      }
+    }
+    return problems;
   });
-  expect(clippedControls).toEqual([]);
+  expect(clipped).toEqual([]);
 }
 
-async function expectDirectChildrenOnOneRow(locator: Locator) {
-  const metrics = await locator.evaluate((element) => {
-    const centers = Array.from(element.children).map((child) => {
-      const rect = child.getBoundingClientRect();
-      return rect.top + rect.height / 2;
-    });
-    return {
-      centers,
-      clientWidth: element.clientWidth,
-      scrollWidth: element.scrollWidth
-    };
+async function expectEditorControlReachable(control: Locator) {
+  await control.evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'nearest' }));
+  await expect(control).toBeInViewport();
+  const fits = await control.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+      if (!['hidden', 'auto', 'scroll', 'clip'].includes(getComputedStyle(parent).overflowY)) continue;
+      const parentRect = parent.getBoundingClientRect();
+      const top = parentRect.top + parent.clientTop;
+      if (rect.top < top - 1 || rect.bottom > top + parent.clientHeight + 1) {
+        return false;
+      }
+    }
+    return true;
   });
-  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
-  expect(Math.max(...metrics.centers) - Math.min(...metrics.centers)).toBeLessThanOrEqual(1);
+  expect(fits).toBe(true);
+}
+
+const paneFitViewports = [
+  ...viewports,
+  { width: 900, height: 900 },
+  { width: 1279, height: 768 },
+  { width: 1280, height: 768 }
+] as const;
+
+for (const viewport of paneFitViewports) {
+  test(`assembly editor pane fit preserves controls and stored names at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    test.setTimeout(90_000);
+    page.setDefaultTimeout(10_000);
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+    const names = [
+      'M6 standard',
+      '組立手順書の長い文書名と適合トルクレンチグループ名を確認する'.repeat(3),
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.repeat(3),
+      'Ｍ６　ＡＢＣ１２３　組立用トルクレンチ'.repeat(4)
+    ];
+    const groups = names.map((name, index) => ({
+      ...guidedCreateCapabilityGroup, id: `pane-fit-${index}`, name
+    }));
+    const evidence: AssemblyEditorEvidence = { templateBodies: [] };
+    await page.setViewportSize(viewport);
+    await mockKioskApis(page, false, evidence, [
+      { ...unifiedEditorDocuments[0], name: names[1] }
+    ], groups);
+    await page.goto('/kiosk/assembly/templates/new?procedureDocumentId=procedure-primary', { waitUntil: 'networkidle' });
+    expect(pageErrors).toEqual([]);
+    await expect(page.getByPlaceholder('パスワード')).toBeVisible();
+    await page.getByPlaceholder('パスワード').fill('2520');
+    await page.getByRole('button', { name: '認証' }).click();
+    await expect(page.getByTestId('assembly-unified-editor-workspace')).toBeVisible();
+    await openAssemblyDocuments(page);
+    await expect(page.getByRole('button', { name: '機種名を選ぶ', exact: true })).toBeVisible();
+    await selectAssemblyMachineName(page, paneFitLongMachineName);
+    const expectedLongMachineTemplateName = `${formatAssemblyEditorDisplayName(
+      paneFitLongMachineName
+    ).trim().replace(/\s+/g, ' ')} 標準 組立`;
+    await fillAssemblyTemplateStructure(page, expectedLongMachineTemplateName);
+    await openAssemblyDocuments(page);
+
+    const left = page.locator('#assembly-procedure-pane');
+    const selectedMachineName = left.locator('#assembly-template-basic-settings div[title]').first();
+    await expect(selectedMachineName).toHaveAttribute('title', paneFitLongMachineName);
+    expect(await selectedMachineName.textContent()).toBe(
+      formatAssemblyEditorDisplayName(paneFitLongMachineName)
+    );
+    const machineDisplayMetrics = await selectedMachineName.evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const elementRect = element.getBoundingClientRect();
+      const lineTops = Array.from(range.getClientRects())
+        .filter((rect) => rect.top >= elementRect.top - 1 && rect.bottom <= elementRect.bottom + 1)
+        .map((rect) => Math.round(rect.top));
+      return {
+        lineCount: new Set(lineTops).size,
+        clientHeight: element.clientHeight
+      };
+    });
+    expect(machineDisplayMetrics.lineCount).toBeLessThanOrEqual(2);
+    await expect(left.getByRole('button', { name: '変更', exact: true })).toBeVisible();
+    await expectEditorControlsFitHorizontally(left);
+    const longProcessNo = '1234567890'.repeat(8);
+    const longAreaCode = 'AREA-CODE-'.repeat(8);
+    const longUnitCode = 'UNIT-CODE-'.repeat(8);
+    const longAreaName = '本体組立エリア名称'.repeat(20);
+    const longProcedurePattern = 'STANDARD-PATTERN-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.repeat(4).slice(0, 120);
+    const longTemplateName = 'TemplateName-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.repeat(4).slice(0, 200);
+    const basicSettings = [
+      ['#assembly-template-procedure-pattern', longProcedurePattern],
+      ['#assembly-template-name', longTemplateName]
+    ] as const;
+    for (const [selector, value] of basicSettings) {
+      const isName = selector === '#assembly-template-name';
+      if (isName) await closeAssemblyDetails(page);
+      const input = isName ? page.getByTestId('assembly-template-editor-left-pane').locator(selector) : left.locator(selector);
+      await input.fill(value);
+      await expect(input).toHaveValue(value);
+      await expect(input).toHaveAttribute('title', value);
+      const expectedRows = selector === '#assembly-template-name' ? '2' : null;
+      if (expectedRows) {
+        await expect(input).toHaveAttribute('rows', expectedRows);
+        await expect(input).toHaveClass(/break-all/);
+      }
+      const textareaMetrics = await input.evaluate((element) => ({
+        clientWidth: element.clientWidth,
+        clientHeight: element.clientHeight,
+        scrollWidth: element.scrollWidth,
+        scrollHeight: element.scrollHeight,
+        lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight),
+        verticalPadding:
+          Number.parseFloat(getComputedStyle(element).paddingTop) +
+          Number.parseFloat(getComputedStyle(element).paddingBottom),
+        wordBreak: getComputedStyle(element).wordBreak
+      }));
+      if (expectedRows) {
+        expect(textareaMetrics.wordBreak).toBe('break-all');
+      }
+      if (expectedRows) {
+        expect(textareaMetrics.scrollWidth).toBeLessThanOrEqual(textareaMetrics.clientWidth + 1);
+      }
+      if (expectedRows) {
+        expect(
+          (textareaMetrics.clientHeight - textareaMetrics.verticalPadding) /
+            textareaMetrics.lineHeight
+        ).toBeGreaterThanOrEqual(2);
+      }
+      if (isName) expect(textareaMetrics.scrollHeight).toBeLessThanOrEqual(textareaMetrics.clientHeight + 1);
+      await expectEditorControlReachable(input);
+      if (isName) await openAssemblyDocuments(page);
+    }
+    const areaFields = [
+      ['processNo', longProcessNo],
+      ['areaCode', longAreaCode],
+      ['unitCode', longUnitCode],
+      ['areaName', longAreaName]
+    ] as const;
+    await expect(left.getByRole('button', { name: '詳細（任意）', exact: true })).toHaveAttribute('aria-expanded', 'true');
+    for (const [field, value] of areaFields) {
+      const input = left.locator(`input[id$="-${field}"]`);
+      await input.fill(value);
+      await expect(input).toHaveValue(value);
+      await expectEditorControlReachable(input);
+    }
+    const areaSummary = left.getByRole('button').filter({ hasText: `${longProcessNo}-${longAreaCode}` }).first();
+    await expect(areaSummary.locator('span[title]').first()).toHaveAttribute('title', `${longProcessNo}-${longAreaCode}`);
+    await expectEditorControlsFitHorizontally(left);
+
+    for (const [field, value] of [
+      ['processNo', '10'],
+      ['areaCode', 'A1'],
+      ['unitCode', 'U1'],
+      ['areaName', '本体組立']
+    ] as const) {
+      await left.locator(`input[id$="-${field}"]`).fill(value);
+    }
+
+    const documentCard = left.locator('[id^="assembly-document-"]').first();
+    const areaDetailsButton = left.getByRole('button', { name: '詳細（任意）', exact: true });
+    await expect(areaDetailsButton).toHaveAttribute('aria-expanded', 'true');
+    await expect(documentCard.locator('button[aria-expanded]')).toHaveCount(0);
+    await expect(documentCard.getByLabel('表示ラベル')).toHaveCount(0);
+    const labelInput = left.getByLabel('表示ラベル');
+    await expect(labelInput).toBeVisible();
+    await expect(documentCard.getByRole('button', { name: /を削除$/ })).toBeVisible();
+    let shortCardHeight = 0;
+    for (const [index, name] of names.entries()) {
+      await labelInput.fill(name);
+      await expect(labelInput).toHaveValue(name);
+      await expect(documentCard.locator('span[title]').first()).toHaveAttribute('title', name);
+      await expectEditorControlsFitHorizontally(left);
+      const height = (await documentCard.boundingBox())!.height;
+      if (index === 0) shortCardHeight = height;
+      else expect(height).toBeCloseTo(shortCardHeight, 0);
+    }
+    await expect(documentCard.locator('span[title]').first()).toContainText('M6 ABC123');
+    await areaDetailsButton.click();
+    await expect(areaDetailsButton).toHaveAttribute('aria-expanded', 'false');
+    await expect(left.getByLabel('表示ラベル')).toHaveCount(0);
+    await expectEditorControlsFitHorizontally(left);
+    await areaDetailsButton.click();
+    await expect(areaDetailsButton).toHaveAttribute('aria-expanded', 'true');
+    await expect(left.getByLabel('表示ラベル')).toHaveValue(names[3]);
+    await left.locator('input[id$="-processNo"]').fill('12345678901234567890');
+    const areaButton = left.getByRole('button').filter({ hasText: '12345678901234567890-A1' });
+    await expect(areaButton.getByText('未完了', { exact: true })).toBeVisible();
+    await expectEditorControlsFitHorizontally(left);
+    await left.locator('input[id$="-processNo"]').fill('10');
+
+    await closeAssemblyDetails(page);
+    const canvas = page.getByTestId('assembly-procedure-canvas');
+    const image = canvas.locator('img').last();
+    await image.scrollIntoViewIfNeeded();
+    let box = (await image.boundingBox())!;
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
+    const right = page.getByTestId('assembly-editor-settings-pane');
+    await expect(right).toBeVisible();
+    expect((await page.getByTestId('assembly-template-editor-left-pane').boundingBox())!.width).toBe(280);
+    expect((await page.getByTestId('assembly-editor-side-column').boundingBox())!.width).toBe(320);
+    const centralWidth = (await page.getByTestId('assembly-unified-editor-canvas-pane').boundingBox())!.width;
+    let shortGroupHeight = 0;
+    for (const [index, group] of groups.entries()) {
+      await selectTorqueWrenchGroup(right, page, '', group.name);
+      const selectedName = right.locator('div[title]').filter({ hasText: index === 3 ? 'M6 ABC123' : group.name });
+      await expectEditorControlsFitHorizontally(right);
+      await expectEditorControlReachable(selectedName);
+      await expect(selectedName).toHaveAttribute('title', group.name);
+      const height = (await selectedName.locator('..').boundingBox())!.height;
+      if (index === 0) shortGroupHeight = height;
+      else expect(height).toBeCloseTo(shortGroupHeight, 0);
+      await expectEditorControlsFitHorizontally(right);
+    }
+    for (const [field, value] of [['lowerLimit', '81.25'], ['nominalTorque', '90.25'], ['upperLimit', '99.25']]) {
+      const input = right.locator(`input[id$="-${field}"]`);
+      await input.fill(value);
+      await expect(input).toHaveValue(value);
+      const fits = await input.evaluate((element) => element.scrollWidth <= element.clientWidth);
+      expect(fits).toBe(true);
+    }
+    await right.locator('select[id$="-unit"]').selectOption('kgf·cm');
+    await expectEditorControlReachable(right.locator('select[id$="-unit"]'));
+    await right.locator('select[id$="-unit"]').selectOption('N·m');
+    await right.getByRole('button', { name: '条件を一括反映', exact: true }).click();
+    await expectEditorControlsFitHorizontally(right);
+    await expectEditorControlReachable(right.getByRole('button', { name: '条件反映', exact: true }));
+    await right.getByRole('button', { name: '条件を一括反映', exact: true }).click();
+    await right.getByRole('button', { name: '表示名を個別指定', exact: true }).click();
+    await right.locator('input[id$="-boltSpecCustom"]').fill(names[2]);
+    await expectEditorControlsFitHorizontally(right);
+    const restoreSpec = right.getByRole('button', { name: '自動生成へ戻す' });
+    await expectEditorControlReachable(restoreSpec);
+    await restoreSpec.click();
+
+    await clickAssemblySteps(page);
+    const storyboard = page.getByTestId('assembly-step-storyboard');
+    await expectEditorControlsFitHorizontally(storyboard);
+    await closeAssemblyDetails(page);
+    await page
+      .getByTestId('assembly-editor-toolbar')
+      .getByRole('button', { name: '注意・補足', exact: true })
+      .click();
+    await expect(right.getByText('P1 · 全体', { exact: true })).toBeVisible();
+    await expectEditorControlsFitHorizontally(right);
+    await right.getByLabel('タイトル', { exact: true }).fill(names[3]);
+    await right.getByLabel(/^指示文/).fill('ＡＢＣ１２３は保存時に変換しない。');
+    await right.getByRole('button', { name: '⚠ 注意' }).click();
+
+    await page.getByRole('button', { name: '矩形', exact: true }).click();
+    await closeAssemblySettings(page);
+    await image.scrollIntoViewIfNeeded();
+    box = (await image.boundingBox())!;
+    await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.8);
+    await page.mouse.up();
+    await expect(right.getByText('P1 · 矩形', { exact: true })).toBeVisible();
+    await expectEditorControlsFitHorizontally(right);
+    const cropRight = right.getByRole('group', { name: '矩形位置の微調整' }).getByRole('button', { name: '→', exact: true });
+    await expectEditorControlReachable(cropRight);
+    await cropRight.click();
+    await right.getByRole('button', { name: '全体を一時表示' }).click();
+    await right.getByRole('button', { name: '矩形へ戻る' }).click();
+    await page.getByRole('button', { name: 'チェック', exact: true }).click();
+    await closeAssemblySettings(page);
+    const crop = page.getByTestId('assembly-unified-editor-canvas-pane').getByTestId('assembly-procedure-crop-view');
+    await crop.scrollIntoViewIfNeeded();
+    box = (await crop.boundingBox())!;
+    await page.mouse.click(box.x + box.width * 0.3, box.y + box.height * 0.3);
+    await right.getByLabel('ラベル', { exact: true }).fill('目視確認');
+    await expectEditorControlsFitHorizontally(right);
+    await expectEditorControlReachable(right.getByRole('checkbox'));
+    expect((await page.getByTestId('assembly-unified-editor-canvas-pane').boundingBox())!.width).toBeCloseTo(centralWidth, 0);
+
+    await closeAssemblyDetails(page);
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect.poll(() => evidence.templateBodies.length).toBe(1);
+    expect(evidence.templateBodies[0]).toMatchObject({
+      modelCode: paneFitLongMachineName,
+      procedurePattern: longProcedurePattern,
+      name: longTemplateName,
+      procedureItems: [{ label: names[3] }],
+      areas: [{ bolts: [{ lowerLimit: 81.25, nominalTorque: 90.25, upperLimit: 99.25, unit: 'N·m', capabilityGroupId: groups[3].id }] }],
+      procedureSteps: [{ title: names[3], instructionText: 'ＡＢＣ１２３は保存時に変換しない。', emphasis: 'caution' }, {}],
+      checkItems: [{ label: '目視確認' }]
+    });
+  });
 }
 
 for (const viewport of viewports) {
@@ -210,16 +981,37 @@ for (const viewport of viewports) {
     await expect(workspace).toBeVisible();
     await expect(canvasPane).toBeVisible();
     await expect(page.locator('#assembly-procedure-pane')).toHaveCount(0);
-    await expectDirectChildrenOnOneRow(toolbar);
+    await expect(page.getByTestId('assembly-editor-settings-pane')).toHaveCount(0);
+    await expectAssemblyEditorLayout(page);
 
-    const oneDocumentRatio = await workspace.evaluate((element) => {
-      const canvas = element.querySelector<HTMLElement>('[data-testid="assembly-unified-editor-canvas-pane"]');
-      return canvas ? canvas.getBoundingClientRect().width / element.getBoundingClientRect().width : 0;
-    });
-    expect(oneDocumentRatio).toBeGreaterThanOrEqual(0.75);
+    const header = page.getByTestId('assembly-template-editor-header');
+    const stages = header.getByTestId('assembly-template-header-guide').locator('button[aria-current="step"]');
+    await expect(stages).toHaveCount(1);
+    await expect(stages).toContainText('基本設定');
+    await expect(page.getByTestId('assembly-template-creation-guide')).toHaveCount(0);
 
-    await page.getByRole('button', { name: '文書/工程 (1)' }).click();
-    await page.getByRole('button', { name: '文書・工程', exact: true }).click();
+    const image = canvasPane.locator('img').last();
+    await expect(image).toBeVisible();
+    const beforeOverlay = await Promise.all([
+      workspace.boundingBox(),
+      canvasPane.boundingBox(),
+      image.boundingBox()
+    ]);
+    await page.getByRole('button', { name: /未完了 \d+件/ }).click();
+    await expect(page.getByRole('dialog', { name: 'テンプレートの未完了項目' })).toBeVisible();
+    const afterOverlay = await Promise.all([
+      workspace.boundingBox(),
+      canvasPane.boundingBox(),
+      image.boundingBox()
+    ]);
+    expect(afterOverlay).toEqual(beforeOverlay);
+    await page.keyboard.press('Escape');
+
+    await openAssemblyDocuments(page);
+    expect(await canvasPane.boundingBox()).toEqual(beforeOverlay[1]);
+    await closeAssemblyDetails(page);
+    expect(await canvasPane.boundingBox()).toEqual(beforeOverlay[1]);
+    await openAssemblyDocuments(page);
     await page.getByRole('button', { name: '文書追加' }).click();
     const dialog = page.getByRole('dialog', { name: '文書ライブラリ' });
     await expect(dialog).toBeVisible();
@@ -228,7 +1020,10 @@ for (const viewport of viewports) {
       .filter({ hasText: '統合エディター 補助手順書' })
       .getByLabel('追加', { exact: true })
       .click();
+    await expect(page.getByTestId('assembly-step-storyboard').locator('article')).toHaveCount(2);
+    await openAssemblyDocuments(page);
     await expect(page.locator('#assembly-procedure-pane')).toContainText('統合エディター 補助手順書');
+    await closeAssemblyDetails(page);
 
     const canvas = page.getByTestId('assembly-procedure-canvas');
     await expect(canvas.locator('img')).toBeVisible();
@@ -244,25 +1039,21 @@ for (const viewport of viewports) {
       toolbar,
       [...pageErrors, `navigations: ${navigationUrls.join(' -> ')}`].join('\n')
     ).toBeAttached();
-    await expectDirectChildrenOnOneRow(toolbar);
-
-    const allPanesRatio = await workspace.evaluate((element) => {
-      const canvas = element.querySelector<HTMLElement>('[data-testid="assembly-unified-editor-canvas-pane"]');
-      return canvas ? canvas.getBoundingClientRect().width / element.getBoundingClientRect().width : 0;
-    });
-    expect(allPanesRatio).toBeGreaterThanOrEqual(0.55);
+    await expectAssemblyEditorLayout(page);
+    expect(await canvasPane.boundingBox()).toEqual(beforeOverlay[1]);
     expect(pageErrors).toEqual([]);
   });
 
-  test(`assembly library is two-row and deploy notice stays movable/non-blocking at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+  test(`assembly library is dense and deploy notice stays movable/non-blocking at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await mockKioskApis(page, true);
     await page.goto('/dev/kiosk-assembly-library', { waitUntil: 'networkidle' });
 
     const procedureTable = page.getByRole('table', { name: '手順書ライブラリ' });
     await expect(procedureTable).toBeVisible();
-    await expect(procedureTable.locator('tbody tr')).toHaveCount(4);
-    await expect(page.locator('th', { hasText: '型番' }).first()).toBeVisible();
+    // Dense layout: one 56px row per document; column headers are visually hidden.
+    await expect(procedureTable.locator('tbody tr')).toHaveCount(2);
+    await expect(procedureTable.locator('th', { hasText: '品名' })).toHaveCount(1);
 
     const combo = page.getByRole('combobox', { name: '手順書名で検索' });
     await combo.click();
@@ -340,19 +1131,21 @@ for (const viewport of viewports) {
     expect(box).not.toBeNull();
     await page.getByRole('button', { name: '締結マーカー' }).click();
     await page.mouse.click(box!.x + box!.width * 0.88, box!.y + box!.height * 0.86);
-    await expect(canvas.locator('button[title^="P7-A13"]')).toHaveCount(3);
+    await expect(canvas.locator('button[title^="P7-A13"]')).toHaveCount(2);
+    await expect(canvas.getByRole('button', { name: '丸数字3' })).toBeVisible();
 
     await page.getByRole('button', { name: '作業画面表示' }).click();
     const workImage = page.getByTestId('assembly-procedure-image-with-markers');
     await expect(workImage).toBeVisible();
     await expect(workImage.locator('svg line')).toHaveCount(2);
-    await expect(workImage.locator('button[title^="P7-A13"]')).toHaveCount(3);
+    await expect(workImage.locator('button[title^="P7-A13"]')).toHaveCount(2);
+    await expect(workImage.getByRole('button', { name: '丸数字3' })).toBeVisible();
     await expectCssPixelCalloutLayout(page);
     await expect(page.getByRole('group', { name: '締結マーカーの位置調整' })).toHaveCount(0);
     await expect(page.getByRole('group', { name: 'チェックマーカーの位置調整' })).toHaveCount(0);
   });
 
-  test(`assembly editor keeps its toolbar on one row and all settings visible without scrolling at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+  test(`assembly editor preview keeps toolbar and settings controls reachable at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await mockKioskApis(page);
     await page.goto('/dev/kiosk-assembly-template-editor', { waitUntil: 'networkidle' });
@@ -361,9 +1154,10 @@ for (const viewport of viewports) {
     const settingsPane = page.getByTestId('assembly-editor-settings-pane');
     await expect(toolbar).toBeVisible();
     await expect(settingsPane).toBeVisible();
-    await expectDirectChildrenOnOneRow(toolbar);
-    await expectNoSettingsPaneOverflow(settingsPane);
-    await expectAllControlsInsidePane(settingsPane);
+    await expectEditorControlsFitHorizontally(toolbar);
+    for (const button of await toolbar.getByRole('button').all()) await expectEditorControlReachable(button);
+    await expectEditorControlsFitHorizontally(settingsPane);
+    for (const control of await settingsPane.locator('button, input, select').all()) await expectEditorControlReachable(control);
     await expect(settingsPane.getByTestId('assembly-editor-bolt-fields')).toBeVisible();
 
     const canvas = page.getByTestId('assembly-procedure-canvas');
@@ -374,59 +1168,213 @@ for (const viewport of viewports) {
 
     await canvas.getByRole('button', { name: '目視確認' }).click();
     await expect(settingsPane.getByText('チェック 1')).toBeVisible();
-    await expectNoSettingsPaneOverflow(settingsPane);
-    await expectAllControlsInsidePane(settingsPane);
+    await expectEditorControlsFitHorizontally(settingsPane);
+    for (const control of await settingsPane.locator('button, input, select').all()) await expectEditorControlReachable(control);
   });
 }
 
-test('unified assembly editor stacks panels and keeps touch targets usable on a narrow viewport', async ({ page }) => {
-  await page.setViewportSize({ width: 900, height: 900 });
-  await mockKioskApis(page);
-  await page.goto('/kiosk/assembly/templates/new?procedureDocumentId=procedure-primary', {
-    waitUntil: 'networkidle'
-  });
+for (const viewport of [
+  { width: 1366, height: 768 },
+  { width: 1920, height: 1080 },
+  { width: 900, height: 900 }
+]) {
+  test(`guided assembly template creates a complete draft without hidden defaults at ${viewport.width}x${viewport.height}`, async ({
+    page
+  }) => {
+    const evidence: AssemblyEditorEvidence = { templateBodies: [] };
+    await page.setViewportSize(viewport);
+    await mockKioskApis(page, false, evidence);
+    await page.goto('/kiosk/assembly/templates/new?procedureDocumentId=procedure-primary', {
+      waitUntil: 'networkidle'
+    });
+    await page.getByPlaceholder('パスワード').fill('2520');
+    await page.getByRole('button', { name: '認証' }).click();
 
+    const saveButton = page.getByRole('button', { name: '保存', exact: true });
+    await expect(saveButton).toBeDisabled();
+    await expect(page.getByText('旧形式を取込')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /文書を上へ/ })).toHaveCount(0);
+    const currentStage = page.getByTestId('assembly-template-header-guide').locator('button[aria-current="step"]');
+    await expect(currentStage).toContainText('基本設定');
+    await selectAssemblyMachineName(page);
+    await fillAssemblyTemplateStructure(page);
+    await expect(currentStage).toContainText('工程・締付');
+    await openAssemblyDocuments(page);
+  await expect(page.locator('#assembly-procedure-pane').getByText('L300KP', { exact: true })).toBeVisible();
+  await closeAssemblyDetails(page);
+
+    const canvas = page.getByTestId('assembly-procedure-canvas');
+    const image = canvas.locator('img').last();
+    await expect(image).toBeVisible();
+    await image.scrollIntoViewIfNeeded();
+    const imageBox = await image.boundingBox();
+    expect(imageBox).not.toBeNull();
+    await page.mouse.click(
+      imageBox!.x + imageBox!.width * 0.5,
+      imageBox!.y + imageBox!.height * 0.5
+    );
+    await expect(canvas.getByRole('button', { name: '丸数字1' })).toBeVisible();
+    await fillSelectedAssemblyBolt(page);
+    await expect(page.getByTestId('assembly-editor-settings-pane')).toContainText(
+      'M6×30 / SCM435 / 10.9'
+    );
+
+    await expect(currentStage).toContainText('確認・保存');
+    const nameInput = page.getByTestId('assembly-template-editor-left-pane').getByRole('textbox', { name: 'テンプレート名', exact: true });
+    await nameInput.fill('');
+    await expect(currentStage).toContainText('基本設定');
+    await expect(saveButton).toBeDisabled();
+    await nameInput.fill('L300KP 標準 組立');
+    await expect(currentStage).toContainText('確認・保存');
+    const leaveDialog = page.waitForEvent('dialog');
+    const leaveClick = page.getByTestId('assembly-editor-toolbar').getByRole('link', { name: '一覧へ戻る', exact: true }).click();
+    const confirmation = await leaveDialog;
+    expect(confirmation.message()).toContain('保存されていない変更');
+    await confirmation.dismiss();
+    await leaveClick;
+    await expect(page).toHaveURL(/\/kiosk\/assembly\/templates\/new/);
+    await expect(saveButton).toBeEnabled();
+    await saveButton.click();
+    await expect.poll(() => evidence.templateBodies.length).toBe(1);
+    const payload = evidence.templateBodies[0] as {
+      modelCode: string;
+      procedurePattern: string;
+      name: string;
+      areas: Array<{
+        processNo: string;
+        bolts: Array<{
+          boltSpec: string;
+          boltLengthMm: number | null;
+          nominalTorque: number | null;
+          capabilityGroupId: string | null;
+        }>;
+      }>;
+    };
+    expect(payload).toMatchObject({
+      modelCode: 'L300KP',
+      procedurePattern: '標準',
+      name: 'L300KP 標準 組立'
+    });
+    expect(payload.areas[0]).toMatchObject({ processNo: '10' });
+    expect(payload.areas[0]!.bolts[0]).toMatchObject({
+      boltSpec: 'M6×30 / SCM435 / 10.9',
+      boltLengthMm: 30,
+      nominalTorque: 10,
+      capabilityGroupId: guidedCreateCapabilityGroup.id
+    });
+
+    const pageOverflow = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth
+    }));
+    expect(pageOverflow.scrollWidth).toBeLessThanOrEqual(pageOverflow.clientWidth + 1);
+  });
+}
+
+test('direct new assembly-template URL does not select a document implicitly', async ({
+  page
+}) => {
+  await mockKioskApis(page);
+  await page.goto('/kiosk/assembly/templates/new', { waitUntil: 'networkidle' });
   await page.getByPlaceholder('パスワード').fill('2520');
   await page.getByRole('button', { name: '認証' }).click();
-  await page.getByRole('button', { name: '文書/工程 (1)' }).click();
 
-  const workspace = page.getByTestId('assembly-unified-editor-workspace');
-  const procedurePane = page.locator('#assembly-procedure-pane');
-  const canvasPane = page.getByTestId('assembly-unified-editor-canvas-pane');
-  await expect(procedurePane).toBeVisible();
-  await expect(canvasPane).toBeVisible();
+  await expect(page.getByRole('heading', { name: '使用文書' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '基本設定', exact: true })).toHaveCount(0);
+  await expect(page.getByText('統合エディター 主手順書')).toHaveCount(0);
+  await expect(page.getByTestId('assembly-procedure-canvas')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
+});
 
-  const layout = await workspace.evaluate((element) => {
-    const procedure = element
-      .querySelector<HTMLElement>('#assembly-procedure-pane')
-      ?.closest<HTMLElement>('aside');
-    const canvas = element.querySelector<HTMLElement>(
-      '[data-testid="assembly-unified-editor-canvas-pane"]'
-    );
-    if (!procedure || !canvas) return null;
-    const workspaceRect = element.getBoundingClientRect();
-    const procedureRect = procedure.getBoundingClientRect();
-    const canvasRect = canvas.getBoundingClientRect();
-    return {
-      procedureTop: procedureRect.top,
-      procedureBottom: procedureRect.bottom,
-      canvasTop: canvasRect.top,
-      procedureWidthRatio: procedureRect.width / workspaceRect.width,
-      canvasWidthRatio: canvasRect.width / workspaceRect.width
-    };
+test('guided assembly workflow moves from preview to publish, create, save, and highlighted library row', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await mockGuidedWorkflowApis(page);
+  await page.goto('/kiosk/assembly/library', { waitUntil: 'networkidle' });
+
+  await page.getByRole('button', { name: 'ファイルから登録' }).click();
+  const uploadDialog = page.getByRole('dialog', { name: '手順書を登録' });
+  await expect(uploadDialog).toBeVisible();
+  await uploadDialog.locator('input[type="file"]').setInputFiles({
+    name: 'guided-procedure.svg',
+    mimeType: 'image/svg+xml',
+    buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="900" height="540"><rect width="900" height="540" fill="#fff"/></svg>')
   });
-  expect(layout).not.toBeNull();
-  expect(layout!.canvasTop).toBeGreaterThanOrEqual(layout!.procedureBottom - 1);
-  expect(layout!.procedureWidthRatio).toBeGreaterThanOrEqual(0.95);
-  expect(layout!.canvasWidthRatio).toBeGreaterThanOrEqual(0.95);
+  await uploadDialog.getByRole('button', { name: '先頭ページを確認' }).click();
+  await expect(uploadDialog.getByAltText('手順書の先頭ページプレビュー')).toBeVisible();
+  await uploadDialog.getByRole('button', { name: '下書きとして登録' }).click();
 
-  for (const buttonName of ['文書追加', '前頁', '次頁', '保存']) {
-    const button = page.getByRole('button', { name: buttonName, exact: true });
-    await expect(button).toBeVisible();
-    const box = await button.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.height).toBeGreaterThanOrEqual(40);
-  }
+  const previewDialog = page.getByRole('dialog', { name: /手順書の内容確認/ });
+  await expect(previewDialog).toBeVisible();
+  await expect(previewDialog.getByText('1ページ目')).toBeVisible();
+  await previewDialog.getByLabel('手順書公開の管理パスワード').fill('2520');
+  await previewDialog.getByRole('button', { name: '確認して公開' }).click();
+  await expect(previewDialog.getByRole('button', { name: 'この手順書でテンプレートを新規作成' })).toBeVisible();
+  await previewDialog.getByRole('button', { name: 'この手順書でテンプレートを新規作成' }).click();
+
+  await expect(page).toHaveURL(/\/kiosk\/assembly\/templates\/new\?procedureDocumentId=guided-procedure-document/);
+  await page.getByPlaceholder('パスワード').fill('2520');
+  await page.getByRole('button', { name: '認証' }).click();
+  await selectAssemblyMachineName(page);
+  await fillAssemblyTemplateStructure(page);
+  const canvas = page.getByTestId('assembly-procedure-canvas');
+  const image = canvas.locator('img').last();
+  await expect(image).toBeVisible();
+  const imageBox = await image.boundingBox();
+  expect(imageBox).not.toBeNull();
+  await page.mouse.click(imageBox!.x + imageBox!.width * 0.5, imageBox!.y + imageBox!.height * 0.5);
+  await fillSelectedAssemblyBolt(page);
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+
+  await expect(page).toHaveURL(/\/kiosk\/assembly\/library\?focus=templates&modelCode=L300KP/);
+  await expect(page.getByText('テンプレート L300KP \/ 標準 v1 を保存しました。')).toBeVisible();
+  const highlighted = page.locator('[data-template-id="guided-saved-template"]');
+  await expect(highlighted).toBeVisible();
+  await expect(highlighted).toHaveClass(/bg-emerald-500/);
+});
+
+test('assembly editor restores and discards debounced browser recovery', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await mockKioskApis(page);
+  const editorUrl = '/kiosk/assembly/templates/new?procedureDocumentId=procedure-primary';
+  await page.goto(editorUrl, { waitUntil: 'networkidle' });
+  await page.getByPlaceholder('パスワード').fill('2520');
+  await page.getByRole('button', { name: '認証' }).click();
+  await selectAssemblyMachineName(page);
+  const pattern = page.locator('#assembly-template-procedure-pattern');
+  await pattern.fill('復元対象');
+  await page.waitForTimeout(1_000);
+  const recoveryKey = await page.evaluate(() => Object.keys(localStorage).find((key) => key.includes('assembly-template-editor-recovery:v1')));
+  expect(recoveryKey).toBeTruthy();
+
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.getByPlaceholder('パスワード').fill('2520');
+  await page.getByRole('button', { name: '認証' }).click();
+  const recoveryDialog = page.getByRole('dialog', { name: '途中内容を復元しますか？' });
+  await expect(recoveryDialog).toBeVisible();
+  await recoveryDialog.getByRole('button', { name: '途中内容を復元' }).click();
+  await openAssemblyDocuments(page);
+  await expect(page.locator('#assembly-template-procedure-pattern')).toHaveValue('復元対象');
+
+  await page.locator('#assembly-template-procedure-pattern').fill('破棄対象');
+  await page.waitForTimeout(1_000);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.getByPlaceholder('パスワード').fill('2520');
+  await page.getByRole('button', { name: '認証' }).click();
+  await page.getByRole('dialog', { name: '途中内容を復元しますか？' }).getByRole('button', { name: '破棄' }).click();
+  await expect.poll(() => page.evaluate(() => Object.keys(localStorage).some((key) => key.includes('assembly-template-editor-recovery:v1')))).toBe(false);
+});
+
+test('unified assembly editor keeps full-height canvas and reachable rail on a narrow viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 900 });
+  await mockKioskApis(page);
+  await page.goto('/kiosk/assembly/templates/new?procedureDocumentId=procedure-primary', { waitUntil: 'networkidle' });
+  await unlockAssemblyEditor(page);
+  await expectAssemblyEditorLayout(page);
+  await openAssemblyDocuments(page);
+  const addDocument = assemblyDetailsPane(page).getByRole('button', { name: '文書追加', exact: true });
+  await expectEditorControlReachable(addDocument);
+  await closeAssemblyDetails(page);
+  await expectAssemblyEditorLayout(page);
 });
 
 test('assembly storyboard creates, edits, reuses, reorders and saves crop steps', async ({
@@ -440,48 +1388,62 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
   });
   await page.getByPlaceholder('パスワード').fill('2520');
   await page.getByRole('button', { name: '認証' }).click();
-  await page.getByRole('button', { name: '文書/工程 (1)' }).click();
+  await openAssemblyDocuments(page);
+  await expect(page.getByRole('heading', { name: '基本設定', exact: true })).toHaveCount(0);
+  await selectAssemblyMachineName(page);
+  await fillAssemblyTemplateStructure(page);
+  await clickAssemblySteps(page);
 
   const storyboard = page.getByTestId('assembly-step-storyboard');
   await expect(storyboard.locator('article')).toHaveCount(1);
-  await page.getByRole('button', { name: '文書・工程', exact: true }).click();
-  await page.getByRole('button', { name: '文書追加' }).click();
+  await expect(storyboard.getByTestId('assembly-step-thumbnail')).toHaveCount(1);
+  await openAssemblyDocuments(page);
+  await expect(storyboard).toHaveCount(0);
+  await page.getByRole('button', { name: '文書追加', exact: true }).click();
   await page
     .getByRole('dialog', { name: '文書ライブラリ' })
     .getByRole('listitem')
     .filter({ hasText: '統合エディター 補助手順書' })
     .getByLabel('追加', { exact: true })
     .click();
-  await page.getByRole('button', { name: '手順', exact: true }).click();
+  await clickAssemblySteps(page);
   await expect(storyboard.locator('article')).toHaveCount(2);
+  await expect(storyboard.getByTestId('assembly-step-thumbnail')).toHaveCount(2);
 
+  // 全ページ追加は新文書へ移動する。元文書の矩形・共有マーカーを検証するため戻す。
+  await storyboard.locator('article').first().getByRole('button').first().press('Enter');
   const canvas = page.getByTestId('assembly-procedure-canvas');
   const sourceImage = canvas.locator('img').last();
   await expect(sourceImage).toBeVisible();
+  await closeAssemblyDetails(page);
   const imageBox = await sourceImage.boundingBox();
   expect(imageBox).not.toBeNull();
   await page.mouse.click(
     imageBox!.x + imageBox!.width * 0.4,
     imageBox!.y + imageBox!.height * 0.5
   );
-  const sharedBolt = canvas.locator('button[title^="P7-A13"]').first();
+  const sharedBolt = canvas.getByRole('button', { name: '丸数字1' });
   await expect(sharedBolt).toBeVisible();
-  await page.getByRole('button', { name: '矢視', exact: true }).click();
-  await page.mouse.click(
-    imageBox!.x + imageBox!.width * 0.7,
-    imageBox!.y + imageBox!.height * 0.5
+  const resizedImageBox = await sourceImage.boundingBox();
+  expect(resizedImageBox).not.toBeNull();
+  await dragCalloutHandleTo(
+    page,
+    canvas,
+    resizedImageBox!.x + resizedImageBox!.width * 0.7,
+    resizedImageBox!.y + resizedImageBox!.height * 0.5
   );
   await expect(canvas.locator('svg line')).toHaveCount(1);
 
-  await page.getByRole('button', { name: '矩形追加', exact: true }).click();
+  await page.getByRole('button', { name: '矩形', exact: true }).click();
+  await closeAssemblySettings(page);
   await page.mouse.move(
-    imageBox!.x + imageBox!.width * 0.2,
-    imageBox!.y + imageBox!.height * 0.25
+    resizedImageBox!.x + resizedImageBox!.width * 0.2,
+    resizedImageBox!.y + resizedImageBox!.height * 0.25
   );
   await page.mouse.down();
   await page.mouse.move(
-    imageBox!.x + imageBox!.width * 0.8,
-    imageBox!.y + imageBox!.height * 0.75
+    resizedImageBox!.x + resizedImageBox!.width * 0.8,
+    resizedImageBox!.y + resizedImageBox!.height * 0.75
   );
   await page.mouse.up();
 
@@ -499,76 +1461,86 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
   await page.getByLabel('タイトル').fill('重点締付');
   await page.getByLabel('指示文').fill('赤線の内側を先に締める');
   await page.getByRole('button', { name: '⚠ 注意' }).click();
+  await clickAssemblySteps(page);
   await expect(storyboard.locator('article')).toHaveCount(3);
 
-  const selectedCropCard = storyboard
-    .locator('article')
-    .filter({ hasText: '重点締付' });
+  const selectedCropCard = storyboard.locator('article').filter({
+    has: page.getByRole('button', { name: /重点締付/ })
+  });
   await expect(selectedCropCard.locator('[data-marker-id]')).toHaveCount(1);
   await expect(selectedCropCard.locator('svg line')).toHaveCount(1);
 
+  await closeAssemblyDetails(page);
   const cropBox = await cropView.boundingBox();
   expect(cropBox).not.toBeNull();
-  await page.getByRole('button', { name: 'チェックマーカー' }).click();
-  await page.getByRole('button', { name: '丸数字', exact: true }).click();
+  await page.getByRole('button', { name: 'チェック' }).click();
+  await closeAssemblySettings(page);
   await page.mouse.click(
     cropBox!.x + cropBox!.width * 0.25,
     cropBox!.y + cropBox!.height * 0.25
   );
   await expect(cropView.getByRole('button', { name: 'チェック1' })).toBeVisible();
-  await page.getByRole('button', { name: '矢視', exact: true }).click();
-  await page.mouse.click(
-    cropBox!.x + cropBox!.width * 0.45,
-    cropBox!.y + cropBox!.height * 0.25
+  const checkCalloutCropBox = await cropView.boundingBox();
+  expect(checkCalloutCropBox).not.toBeNull();
+  await dragCalloutHandleTo(
+    page,
+    cropView,
+    checkCalloutCropBox!.x + checkCalloutCropBox!.width * 0.45,
+    checkCalloutCropBox!.y + checkCalloutCropBox!.height * 0.25
   );
 
-  await page.getByRole('button', { name: '締結マーカー' }).click();
-  await page.getByRole('button', { name: '丸数字', exact: true }).click();
+  await page.getByRole('button', { name: '締結' }).click();
+  await closeAssemblySettings(page);
+  const boltMarkerCropBox = await cropView.boundingBox();
+  expect(boltMarkerCropBox).not.toBeNull();
   await page.mouse.click(
-    cropBox!.x + cropBox!.width * 0.6,
-    cropBox!.y + cropBox!.height * 0.6
+    boltMarkerCropBox!.x + boltMarkerCropBox!.width * 0.6,
+    boltMarkerCropBox!.y + boltMarkerCropBox!.height * 0.6
   );
-  await expect(cropView.locator('button[title^="P7-A13"]')).toHaveCount(2);
-  await page.getByRole('button', { name: '矢視', exact: true }).click();
-  await page.mouse.click(
-    cropBox!.x + cropBox!.width * 0.75,
-    cropBox!.y + cropBox!.height * 0.6
+  await expect(cropView.getByRole('button', { name: /^丸数字/ })).toHaveCount(2);
+  const boltCalloutCropBox = await cropView.boundingBox();
+  expect(boltCalloutCropBox).not.toBeNull();
+  await dragCalloutHandleTo(
+    page,
+    cropView,
+    boltCalloutCropBox!.x + boltCalloutCropBox!.width * 0.75,
+    boltCalloutCropBox!.y + boltCalloutCropBox!.height * 0.6
   );
   await expect(cropView.locator('svg line')).toHaveCount(3);
 
-  await page.getByRole('button', { name: '丸数字', exact: true }).click();
+  const removableMarkerCropBox = await cropView.boundingBox();
+  expect(removableMarkerCropBox).not.toBeNull();
   await page.mouse.click(
-    cropBox!.x + cropBox!.width * 0.5,
-    cropBox!.y + cropBox!.height * 0.8
+    removableMarkerCropBox!.x + removableMarkerCropBox!.width * 0.5,
+    removableMarkerCropBox!.y + removableMarkerCropBox!.height * 0.8
   );
-  await expect(cropView.locator('button[title^="P7-A13"]')).toHaveCount(3);
+  await expect(cropView.getByRole('button', { name: /^丸数字/ })).toHaveCount(3);
   const settingsPane = page.getByTestId('assembly-editor-settings-pane');
   await settingsPane.getByRole('button', { name: '削除', exact: true }).click();
   const deleteDialog = page.getByRole('dialog', { name: /丸数字.*を削除/ });
   await expect(deleteDialog).toContainText('全体・矩形2件から削除');
   await deleteDialog.getByRole('button', { name: 'キャンセル' }).click();
-  await expect(cropView.locator('button[title^="P7-A13"]')).toHaveCount(3);
+  await expect(cropView.getByRole('button', { name: /^丸数字/ })).toHaveCount(3);
   await settingsPane.getByRole('button', { name: '削除', exact: true }).click();
   await deleteDialog.getByRole('button', { name: 'すべてから削除' }).click();
-  await expect(cropView.locator('button[title^="P7-A13"]')).toHaveCount(2);
+  await expect(cropView.getByRole('button', { name: /^丸数字/ })).toHaveCount(2);
 
-  await page.getByRole('button', { name: '手順指示' }).click();
+  await expect(settingsPane).toBeVisible();
+  await page.getByTestId('assembly-editor-toolbar').getByRole('button', { name: '注意・補足', exact: true }).click();
   await page.getByRole('button', { name: '全体を一時表示' }).click();
   const fullPageView = page.getByTestId('assembly-procedure-canvas');
-  await expect(fullPageView.locator('button[title^="P7-A13"]')).toHaveCount(2);
+  await expect(fullPageView.getByRole('button', { name: /^丸数字/ })).toHaveCount(2);
   await expect(fullPageView.getByRole('button', { name: 'チェック1' })).toBeVisible();
   await expect(fullPageView.locator('svg line')).toHaveCount(3);
   await page.getByRole('button', { name: '矩形へ戻る' }).click();
 
-  await selectedCropCard.getByRole('button', { name: '複製' }).click();
+  await clickAssemblySteps(page);
+  await selectedCropCard.getByRole('button', { name: '複製', exact: true }).click();
   await expect(storyboard.locator('article')).toHaveCount(4);
   const moveTarget = page.getByLabel('手順4の移動先');
   await moveTarget.fill('2');
   await moveTarget.press('Tab');
-
-  await page.getByLabel('手順検索').fill('重点締付');
-  await expect(storyboard.locator('article')).toHaveCount(2);
-  await page.getByLabel('手順検索').fill('');
+  await closeAssemblyDetails(page);
 
   const workspace = page.getByTestId('assembly-unified-editor-workspace');
   const centralRatio = await workspace.evaluate((element) => {
@@ -581,6 +1553,11 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
   });
   expect(centralRatio).toBeGreaterThanOrEqual(0.55);
 
+  for (const markerName of ['丸数字1', '丸数字2']) {
+    await closeAssemblySettings(page);
+    await cropView.getByRole('button', { name: markerName }).click();
+    await fillSelectedAssemblyBolt(page);
+  }
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect.poll(() => evidence.templateBodies.length).toBe(1);
   const payload = evidence.templateBodies[0] as {
@@ -645,6 +1622,49 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
   expect(payload.checkItems[0]!.calloutTipYRatio).toBeCloseTo(0.375, 2);
 });
 
+for (const [orientation, width, height] of [['portrait', 800, 1200], ['landscape', 1200, 800]] as const) {
+  test(`assembly editor fits ${orientation} paper at full height and keeps zoom controls reachable in crop view`, async ({ page }) => {
+    const imageUrl = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="white"/></svg>`)}`;
+    const document = { ...unifiedEditorDocuments[0], imageRelativePath: imageUrl, pages: [{ pageIndex: 0, imageRelativePath: imageUrl }] };
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await mockKioskApis(page, false, undefined, [document]);
+    await page.goto('/kiosk/assembly/templates/new?procedureDocumentId=procedure-primary', { waitUntil: 'networkidle' });
+    await unlockAssemblyEditor(page);
+    const rail = page.getByTestId('assembly-editor-toolbar');
+    const image = page.getByTestId('assembly-procedure-canvas').locator('img').last();
+    await expect(image).toBeVisible();
+    await expect.poll(() => image.evaluate((element) => (element as HTMLImageElement).naturalWidth)).toBe(width);
+    await rail.getByRole('button', { name: '全体', exact: true }).click();
+    const paper = (await image.boundingBox())!;
+    const canvas = (await page.getByTestId('assembly-unified-editor-canvas-pane').boundingBox())!;
+    expect(paper.width / paper.height).toBeCloseTo(width / height, 2);
+    expect(paper.height).toBeLessThanOrEqual(canvas.height - 32 + 1);
+    expect(paper.width).toBeLessThanOrEqual(canvas.width - 32 + 1);
+    // The fitted page fills the available height or width, according to its aspect ratio.
+    expect(Math.min(Math.abs(paper.height - (canvas.height - 32)), Math.abs(paper.width - (canvas.width - 32)))).toBeLessThanOrEqual(2);
+    await rail.getByRole('button', { name: '拡大', exact: true }).click();
+    await expect.poll(async () => (await image.boundingBox())!.width).toBeGreaterThan(paper.width);
+    await rail.getByRole('button', { name: '縮小', exact: true }).click();
+    await rail.getByRole('button', { name: '全体', exact: true }).click();
+    await expect.poll(async () => (await image.boundingBox())!.width).toBeCloseTo(paper.width, 0);
+    await rail.getByRole('button', { name: '矩形', exact: true }).click();
+    await page.mouse.move(paper.x + paper.width * 0.2, paper.y + paper.height * 0.2);
+    await page.mouse.down();
+    await page.mouse.move(paper.x + paper.width * 0.8, paper.y + paper.height * 0.8);
+    await page.mouse.up();
+    const crop = page.getByTestId('assembly-unified-editor-canvas-pane').getByTestId('assembly-procedure-crop-view');
+    await expect(crop).toBeVisible();
+    for (const name of ['縮小', '拡大', '全体']) {
+      const button = rail.getByRole('button', { name, exact: true });
+      await expectEditorControlReachable(button);
+      await expect(button).toBeEnabled();
+      await button.click();
+      await expect(crop).toBeVisible();
+    }
+    await expectAssemblyEditorLayout(page);
+  });
+}
+
 test('assembly storyboard keeps at most 30 DOM cards for 300 steps', async ({ page }) => {
   const largeDocument = {
     ...unifiedEditorDocuments[0],
@@ -662,18 +1682,203 @@ test('assembly storyboard keeps at most 30 DOM cards for 300 steps', async ({ pa
   });
   await page.getByPlaceholder('パスワード').fill('2520');
   await page.getByRole('button', { name: '認証' }).click();
-  await page.getByRole('button', { name: '文書/工程 (1)' }).click();
-  await expect(page.getByText('手順 300/300')).toBeVisible();
+  await clickAssemblySteps(page);
+  const storyboardViewport = await page.getByTestId('assembly-step-storyboard').evaluate((element) => ({
+    height: element.clientHeight,
+    scrollHeight: element.scrollHeight
+  }));
+  expect(storyboardViewport.height).toBeGreaterThan(0);
+  expect(storyboardViewport.height).toBeLessThan(768);
+  expect(storyboardViewport.scrollHeight).toBeGreaterThan(storyboardViewport.height);
   const domCardCount = await page
     .getByTestId('assembly-step-storyboard')
     .locator('article')
     .count();
   expect(domCardCount).toBeGreaterThan(0);
   expect(domCardCount).toBeLessThanOrEqual(30);
+  await closeAssemblyDetails(page);
+  const left = page.getByTestId('assembly-template-editor-left-pane');
+  const pages = left.getByRole('region', { name: 'ページ', exact: true });
+  const thumbnails = pages.getByRole('button');
+  for (let index = 0; index < 300; index += 8) {
+    await thumbnails.nth(index).scrollIntoViewIfNeeded();
+    await expect(thumbnails.nth(index).locator('img')).toHaveCount(1);
+  }
+  await thumbnails.last().scrollIntoViewIfNeeded();
+  await expect(thumbnails.last().locator('img')).toHaveCount(1);
+  await expect(thumbnails.first().locator('img')).toHaveCount(0);
+  await expect.poll(() => pages.locator('img').count()).toBeLessThanOrEqual(16);
+
 });
 
 test('legacy procedure-order URL redirects to the filtered template library', async ({ page }) => {
   await mockKioskApis(page);
   await page.goto('/kiosk/assembly/procedure-order-settings?machineName=MH-AX');
   await expect(page).toHaveURL(/\/kiosk\/assembly\/library\?focus=templates&modelCode=MH-AX$/);
+});
+
+test('assembly editor drags a crop bolt marker and saves its source-page position once', async ({
+  page
+}) => {
+  const evidence: AssemblyEditorEvidence = { templateBodies: [] };
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await mockKioskApis(page, false, evidence);
+  await page.goto('/kiosk/assembly/templates/new?procedureDocumentId=procedure-primary', {
+    waitUntil: 'networkidle'
+  });
+  await unlockAssemblyEditor(page);
+  await selectAssemblyMachineName(page);
+  await fillAssemblyTemplateStructure(page);
+
+  const canvas = page.getByTestId('assembly-procedure-canvas');
+  const image = canvas.locator('img').last();
+  await expect(image).toBeVisible();
+  const imageBox = await image.boundingBox();
+  expect(imageBox).not.toBeNull();
+
+  await page.getByRole('button', { name: '矩形', exact: true }).click();
+  await closeAssemblySettings(page);
+  await page.mouse.move(
+    imageBox!.x + imageBox!.width * 0.2,
+    imageBox!.y + imageBox!.height * 0.25
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    imageBox!.x + imageBox!.width * 0.8,
+    imageBox!.y + imageBox!.height * 0.75
+  );
+  await page.mouse.up();
+
+  const cropView = page
+    .getByTestId('assembly-unified-editor-canvas-pane')
+    .getByTestId('assembly-procedure-crop-view');
+  await expect(cropView).toBeVisible();
+  await page.getByLabel('タイトル', { exact: true }).fill('ドラッグ確認');
+  await page.getByRole('textbox', { name: /^指示文/ }).fill('丸数字位置を確認');
+  await page.getByRole('button', { name: '締結', exact: true }).click();
+  await closeAssemblySettings(page);
+  await closeAssemblyDetails(page);
+  const cropBox = await cropView.boundingBox();
+  expect(cropBox).not.toBeNull();
+  const initialLocalPoint = { x: 0.25, y: 0.25 };
+  await page.mouse.click(
+    cropBox!.x + cropBox!.width * initialLocalPoint.x,
+    cropBox!.y + cropBox!.height * initialLocalPoint.y
+  );
+  const marker = cropView.getByRole('button', { name: '丸数字1' });
+  await expect(marker).toBeVisible();
+  // 選択中のマーカーには矢視の取っ手が出る。取っ手はマーカー名を名乗らない（名前検索が二重に当たらない）。
+  await expect(cropView.getByRole('button', { name: '矢視をドラッグで置く' })).toBeVisible();
+  await fillSelectedAssemblyBolt(page);
+
+  const targetLocalPoint = { x: 0.75, y: 0.5 };
+  await closeAssemblySettings(page);
+  await marker.hover();
+  await page.mouse.move(
+    cropBox!.x + cropBox!.width * initialLocalPoint.x,
+    cropBox!.y + cropBox!.height * initialLocalPoint.y
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    cropBox!.x + cropBox!.width * targetLocalPoint.x,
+    cropBox!.y + cropBox!.height * targetLocalPoint.y
+  );
+  await page.mouse.up();
+
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect.poll(() => evidence.templateBodies.length).toBe(1);
+  const payload = evidence.templateBodies[0] as {
+    areas: Array<{ bolts: Array<{ xRatio: number; yRatio: number }> }>;
+    procedureSteps: Array<{
+      viewMode: string;
+      cropXRatio: number | null;
+      cropYRatio: number | null;
+      cropWidthRatio: number | null;
+      cropHeightRatio: number | null;
+    }>;
+  };
+  const cropStep = payload.procedureSteps.find((step) => step.viewMode === 'crop');
+  expect(cropStep).toMatchObject({
+    cropXRatio: expect.any(Number),
+    cropYRatio: expect.any(Number),
+    cropWidthRatio: expect.any(Number),
+    cropHeightRatio: expect.any(Number)
+  });
+  const savedBolt = payload.areas[0]!.bolts[0]!;
+  expect(savedBolt.xRatio).toBeCloseTo(
+    cropStep!.cropXRatio! + targetLocalPoint.x * cropStep!.cropWidthRatio!,
+    2
+  );
+  expect(savedBolt.yRatio).toBeCloseTo(
+    cropStep!.cropYRatio! + targetLocalPoint.y * cropStep!.cropHeightRatio!,
+    2
+  );
+});
+
+test('assembly editor drags check markers in full and crop views and saves one final source position', async ({
+  page
+}) => {
+  const evidence: AssemblyEditorEvidence = { templateBodies: [] };
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await mockKioskApis(page, false, evidence);
+  await page.goto('/kiosk/assembly/templates/new?procedureDocumentId=procedure-primary', {
+    waitUntil: 'networkidle'
+  });
+  await unlockAssemblyEditor(page);
+  await selectAssemblyMachineName(page);
+  await fillAssemblyTemplateStructure(page);
+  await page.getByRole('button', { name: '全体追加', exact: true }).click();
+
+  const canvas = page.getByTestId('assembly-procedure-canvas');
+  const image = canvas.locator('img').last();
+  await expect(image).toBeVisible();
+  const imageBox = (await image.boundingBox())!;
+  await page.mouse.click(imageBox.x + imageBox.width * 0.2, imageBox.y + imageBox.height * 0.2);
+  await fillSelectedAssemblyBolt(page);
+
+  await page.getByRole('button', { name: 'チェック', exact: true }).click();
+  await closeAssemblySettings(page);
+  await page.mouse.click(imageBox.x + imageBox.width * 0.35, imageBox.y + imageBox.height * 0.35);
+  const fullMarker = canvas.getByRole('button', { name: 'チェック1' });
+  await expect(fullMarker).toBeVisible();
+  const fullBox = (await fullMarker.boundingBox())!;
+  await page.mouse.move(fullBox.x + fullBox.width / 2, fullBox.y + fullBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(imageBox.x + imageBox.width * 0.4, imageBox.y + imageBox.height * 0.45);
+  await page.mouse.up();
+
+  await page.getByRole('button', { name: '矩形', exact: true }).click();
+  await closeAssemblySettings(page);
+  await page.mouse.move(imageBox.x + imageBox.width * 0.1, imageBox.y + imageBox.height * 0.1);
+  await page.mouse.down();
+  await page.mouse.move(imageBox.x + imageBox.width * 0.8, imageBox.y + imageBox.height * 0.8);
+  await page.mouse.up();
+  const cropView = page.getByTestId('assembly-unified-editor-canvas-pane').getByTestId('assembly-procedure-crop-view');
+  await expect(cropView.getByRole('button', { name: 'チェック1' })).toBeVisible();
+  const cropBox = (await cropView.boundingBox())!;
+  const cropMarker = cropView.getByRole('button', { name: 'チェック1' });
+  await closeAssemblySettings(page);
+  const cropMarkerBox = (await cropMarker.boundingBox())!;
+  await page.mouse.move(cropMarkerBox.x + cropMarkerBox.width / 2, cropMarkerBox.y + cropMarkerBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(cropBox.x + cropBox.width * 0.75, cropBox.y + cropBox.height * 0.5);
+  await page.mouse.up();
+
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect.poll(() => evidence.templateBodies.length).toBe(1);
+  const payload = evidence.templateBodies[0] as {
+    checkItems: Array<{ xRatio: number; yRatio: number }>;
+    procedureSteps: Array<{ viewMode: string; cropXRatio: number | null; cropYRatio: number | null; cropWidthRatio: number | null; cropHeightRatio: number | null }>;
+  };
+  expect(payload.checkItems).toHaveLength(1);
+  const cropStep = payload.procedureSteps.find((step) => step.viewMode === 'crop');
+  expect(cropStep).toBeDefined();
+  expect(payload.checkItems[0]!.xRatio).toBeCloseTo(
+    cropStep!.cropXRatio! + 0.75 * cropStep!.cropWidthRatio!,
+    2
+  );
+  expect(payload.checkItems[0]!.yRatio).toBeCloseTo(
+    cropStep!.cropYRatio! + 0.5 * cropStep!.cropHeightRatio!,
+    2
+  );
 });

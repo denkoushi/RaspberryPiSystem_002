@@ -1,0 +1,21 @@
+---
+- name: Quiesce this kiosk without crossing the shared boundary alone
+  block:
+    - name: Reuse the bounded torque quiesce tasks
+      ansible.builtin.include_tasks: quiesce.yml
+
+    - name: Record this kiosk's completed quiesce boundary
+      ansible.builtin.set_fact:
+        release_torque_host_result: >-
+          {{
+            release_torque_host_result | default({})
+            | combine({'quiesced': true})
+          }}
+  rescue:
+    - name: Record this kiosk's failed quiesce boundary
+      ansible.builtin.set_fact:
+        release_torque_host_result: >-
+          {{
+            release_torque_host_result | default({})
+            | combine({'quiesced': false})
+          }}

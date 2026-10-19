@@ -1,5 +1,7 @@
 import {
   buildDefaultInspectionDrawingMeasurementLabelSettings,
+  isInspectionDrawingDepthLabel,
+  resolveInspectionDrawingGeneralToleranceForNominal,
   type InspectionDrawingMeasurementLabelSetting
 } from '@raspi-system/shared-types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -27,6 +29,11 @@ import { useKioskProductionScheduleResources } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { formatResourceCdWithJapaneseNames } from '../../features/kiosk/leaderOrderBoard/formatResourceCdWithJapaneseNames';
 import {
+  KioskSopLauncher,
+  KIOSK_SOP_POPUP_ENABLED
+} from '../../features/kiosk-sop';
+import {
+  INSPECTION_DRAWING_SOP_BY_SCREEN,
   buildGeometricTolerancePointPatch,
   buildInspectionDrawingCreateDirtySnapshot,
   drawingPointToTemplateItemInput,
@@ -52,11 +59,13 @@ import {
   inspectionDrawingCanvasImageUrl,
   inspectionDrawingHasImageSource,
   inspectionDrawingCreateDirtySnapshotsEqual,
+  inspectionDrawingSopTargetProps,
   parseInspectionDrawingSourceTemplateIdFromSearch,
   parseInspectionDrawingVisualTemplateIdFromSearch,
   normalizeUniqueInspectionDrawingResourceCds,
   pointUsesGeometricTolerance,
   resolveInspectionDrawingCreateKeyCollisionForResources,
+  resolveInspectionDrawingCreateSaveBlockLabel,
   resolveInspectionDrawingCreateSaveBlockReason,
   resolveInspectionDrawingCreateSaveStatus,
   suggestInspectionDrawingTemplateName,
@@ -69,7 +78,9 @@ import { resolveVisualTemplateById } from '../../features/part-measurement/inspe
 import {
   createInspectionDrawingPoint,
   nextAvailableMarkerNo,
-  toleranceBoundsFromPoint
+  resolveInspectionDrawingPointSaveError,
+  sortInspectionDrawingPointsByMarkerNo,
+  swapInspectionDrawingMarkerNo
 } from '../../features/part-measurement/inspection-drawing/markerNumbering';
 import { partMeasurementDrawingPreviewConvertingLabel } from '../../features/part-measurement/partMeasurementDrawingLocalPreview';
 import {
@@ -98,6 +109,14 @@ import type {
   SelfInspectionMode
 } from '../../features/part-measurement/types';
 
+const MARKER_SWAP_UNDO_MS = 6000;
+
+type MarkerSwapUndo = {
+  pointId: string;
+  fromMarkerNo: number;
+  toMarkerNo: number;
+};
+
 function confirmVisualChange(message: string): boolean {
   if (typeof window === 'undefined') return true;
   return window.confirm(message);
@@ -125,6 +144,7 @@ export function KioskInspectionDrawingCreatePage() {
 
   const [processGroup, setProcessGroup] = useState<PartMeasurementProcessGroup>('cutting');
   const [fhincd, setFhincd] = useState('');
+  const [fkojun, setFkojun] = useState('');
   const [resourceCd, setResourceCd] = useState('');
   const [resourceCds, setResourceCds] = useState<string[]>([]);
   const [templateName, setTemplateName] = useState('');
@@ -132,6 +152,7 @@ export function KioskInspectionDrawingCreatePage() {
   const [serverDrawingPath, setServerDrawingPath] = useState<string | null>(null);
   const [points, setPoints] = useState<InspectionDrawingPoint[]>([]);
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
+  const [markerSwapUndo, setMarkerSwapUndo] = useState<MarkerSwapUndo | null>(null);
   const [ocrCandidatesByPointId, setOcrCandidatesByPointId] = useState<Record<string, DrawingOcrCandidateState>>({});
   const [visualOcrStatus, setVisualOcrStatus] = useState<PartMeasurementDrawingOcrStatusDto | null>(null);
   const [visualOcrLoading, setVisualOcrLoading] = useState(false);
@@ -220,6 +241,7 @@ export function KioskInspectionDrawingCreatePage() {
     return resolveInspectionDrawingCreateKeyCollisionForResources({
       fhincd: f,
       processGroup,
+      fkojun,
       resourceCds: selectedResourceCds,
       sourceDraft: sourceTemplateDraft,
       activeExistsByResourceCd: activeKeyExistsByResourceCd
@@ -227,6 +249,7 @@ export function KioskInspectionDrawingCreatePage() {
   }, [
     activeKeyExistsByResourceCd,
     fhincd,
+    fkojun,
     isEditing,
     processGroup,
     selectedResourceCds,
@@ -253,14 +276,18 @@ export function KioskInspectionDrawingCreatePage() {
       : null;
   const visualOcrPending =
     visualOcrLoading || visualOcrStatus?.status === 'pending' || visualOcrStatus?.status === 'processing';
+  // 寸法マップがあれば候補はそこから出るので、OCR の準備状況は案内しない。
+  const visualDimensionMapReady = visualOcrStatus?.dimensionMap?.status === 'completed';
   const visualOcrNotice =
-    visualTemplateIdForOcr && visualOcrPending
-      ? 'OCR準備中'
-      : visualTemplateIdForOcr && visualOcrStatus?.status === 'failed'
-        ? 'OCR準備失敗（手入力は可能です）'
-        : visualTemplateIdForOcr && visualOcrError
-          ? visualOcrError
-          : null;
+    !visualTemplateIdForOcr || visualDimensionMapReady
+      ? null
+      : visualOcrPending
+        ? 'OCR準備中'
+        : visualOcrStatus?.status === 'failed'
+          ? 'OCR準備失敗（手入力は可能です）'
+          : visualOcrError
+            ? visualOcrError
+            : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -351,16 +378,15 @@ export function KioskInspectionDrawingCreatePage() {
         ? Boolean(saveFile && hasLocalRenderablePreview && !previewError && !previewResolving)
         : Boolean(isEditing && template?.visualTemplateId?.trim());
 
-  const pointsValid = useMemo(
-    () =>
-      points.length > 0 &&
-      points.every(
-        (pt) =>
-          pt.name.trim().length > 0 &&
-          !('error' in toleranceBoundsFromPoint(pt, { measurementLabelSettings }))
-      ),
-    [measurementLabelSettings, points]
-  );
+  const invalidPointMessage = useMemo(() => {
+    for (const pt of sortInspectionDrawingPointsByMarkerNo(points)) {
+      if (!pt.name.trim()) return `${pt.markerNo}番: 名称未入力`;
+      const pointError = resolveInspectionDrawingPointSaveError(pt, { measurementLabelSettings });
+      if (pointError) return `${pt.markerNo}番: ${pointError}`;
+    }
+    return null;
+  }, [measurementLabelSettings, points]);
+  const pointsValid = points.length > 0 && invalidPointMessage === null;
 
   const selfInspectionPayloadPreview = useMemo(
     () => buildSelfInspectionTemplateApiBody(selfInspectionMode, selfInspectionFixedCount),
@@ -380,6 +406,17 @@ export function KioskInspectionDrawingCreatePage() {
     saveBlockedByPreview
   });
 
+  const saveBlockLabel = saveBlockReason
+    ? resolveInspectionDrawingCreateSaveBlockLabel(
+        saveBlockReason,
+        saveBlockReason === 'invalid_points'
+          ? invalidPointMessage
+          : 'error' in selfInspectionPayloadPreview
+            ? selfInspectionPayloadPreview.error
+            : null
+      )
+    : null;
+
   const snapshotVisualTemplateId =
     visualSource === 'pickExisting'
       ? selectedVisualTemplateId
@@ -392,6 +429,7 @@ export function KioskInspectionDrawingCreatePage() {
         templateName: effectiveTemplateName,
         fhincd,
         resourceCds: selectedResourceCds,
+        fkojun,
         processGroup,
         visualSource,
         visualTemplateId: snapshotVisualTemplateId,
@@ -404,6 +442,7 @@ export function KioskInspectionDrawingCreatePage() {
     [
       effectiveTemplateName,
       fhincd,
+      fkojun,
       groupSaveMode,
       hasPendingLocalSelection,
       points,
@@ -419,6 +458,7 @@ export function KioskInspectionDrawingCreatePage() {
   const hasNewDraftContent =
     effectiveTemplateName.trim().length > 0 ||
     fhincd.trim().length > 0 ||
+    fkojun.trim().length > 0 ||
     selectedResourceCds.length > 0 ||
     points.length > 0 ||
     Boolean(snapshotVisualTemplateId) ||
@@ -477,6 +517,7 @@ export function KioskInspectionDrawingCreatePage() {
       setTemplateName(loaded.name);
       setTemplateNameAutoMode(false);
       setFhincd(loaded.fhincd);
+      setFkojun(loaded.fkojun ?? '');
       setResourceCd(loaded.resourceCd);
       setResourceCds([loaded.resourceCd]);
       setGroupSaveMode(loaded.siblingGroupId ? 'group' : 'single');
@@ -502,6 +543,7 @@ export function KioskInspectionDrawingCreatePage() {
           templateName: loaded.name,
           fhincd: loaded.fhincd,
           resourceCds: [loaded.resourceCd],
+          fkojun: loaded.fkojun,
           processGroup: loadedProcessGroup,
           visualSource: loaded.visualTemplateId?.trim() ? 'pickExisting' : 'unselected',
           visualTemplateId: loaded.visualTemplateId?.trim() ? loaded.visualTemplateId : null,
@@ -522,6 +564,7 @@ export function KioskInspectionDrawingCreatePage() {
     setTemplateName('');
     setTemplateNameAutoMode(true);
     setFhincd('');
+    setFkojun('');
     setResourceCd('');
     setResourceCds([]);
     setGroupSaveMode('single');
@@ -546,6 +589,7 @@ export function KioskInspectionDrawingCreatePage() {
       setTemplateNameAutoMode(true);
       setTemplateName('');
       setFhincd(draft.fhincd);
+      setFkojun(draft.fkojun ?? '');
       setResourceCd(draft.resourceCd);
       setResourceCds([draft.resourceCd]);
       setProcessGroup(draft.processGroup);
@@ -798,7 +842,7 @@ export function KioskInspectionDrawingCreatePage() {
           const entries = await Promise.all(
             selectedResourceCds.map(async (selectedResourceCd) => {
               const exists = await existsActivePartMeasurementTemplate(
-                { fhincd: f, processGroup, resourceCd: selectedResourceCd },
+                { fhincd: f, processGroup, resourceCd: selectedResourceCd, fkojun },
                 clientKey
               );
               return [selectedResourceCd, exists] as const;
@@ -817,7 +861,7 @@ export function KioskInspectionDrawingCreatePage() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [clientKey, fhincd, isEditing, processGroup, selectedResourceCds]);
+  }, [clientKey, fhincd, fkojun, isEditing, processGroup, selectedResourceCds]);
 
   useEffect(() => {
     resetZoom();
@@ -868,11 +912,15 @@ export function KioskInspectionDrawingCreatePage() {
     });
   }, []);
 
+  // 候補は、夜間に作った寸法マップがあればそこから、無ければ OCR から出す（判断は API 側）。
+  const candidateSourceReady =
+    visualOcrStatus?.status === 'completed' || visualOcrStatus?.dimensionMap?.status === 'completed';
+
   const requestOcrCandidatesForPoint = useCallback(
     (point: InspectionDrawingPoint) => {
       const visualId = visualTemplateIdForOcr;
       if (!visualId) return;
-      if (visualOcrStatus?.status !== 'completed') return;
+      if (!candidateSourceReady) return;
       const requestId = ++ocrCandidateRequestSeqRef.current;
       setOcrCandidatesByPointId((prev) => ({
         ...prev,
@@ -894,7 +942,9 @@ export function KioskInspectionDrawingCreatePage() {
               markerNo: point.markerNo,
               limit: 5,
               measurementLabel: point.name.trim() || null,
-              depthMode: point.depthMode ?? 'measured'
+              depthMode: point.depthMode ?? 'measured',
+              calloutTipXRatio: point.calloutTipXRatio ?? null,
+              calloutTipYRatio: point.calloutTipYRatio ?? null
             },
             clientKey
           );
@@ -930,16 +980,57 @@ export function KioskInspectionDrawingCreatePage() {
         }
       })();
     },
-    [clientKey, visualOcrStatus?.status, visualTemplateIdForOcr]
+    [candidateSourceReady, clientKey, visualTemplateIdForOcr]
   );
 
+  const handlePointChange = (
+    pointId: string,
+    patch: Pick<InspectionDrawingPoint, 'xRatio' | 'yRatio'> | Partial<InspectionDrawingPoint>
+  ) => {
+    if (contentReadOnly) return;
+    const currentPoint = points.find((point) => point.id === pointId);
+    if (!currentPoint) return;
+    const nextPoint = mergeInspectionDrawingPointPatch(currentPoint, patch);
+    updatePoint(pointId, patch);
+    const labelChanged =
+      Object.prototype.hasOwnProperty.call(patch, 'name') ||
+      Object.prototype.hasOwnProperty.call(patch, 'depthMode');
+    const positionChanged =
+      (typeof patch.xRatio === 'number' && Math.abs(patch.xRatio - currentPoint.xRatio) >= 0.002) ||
+      (typeof patch.yRatio === 'number' && Math.abs(patch.yRatio - currentPoint.yRatio) >= 0.002);
+    if (labelChanged || positionChanged) {
+      invalidateOcrCandidatesForPoint(pointId);
+      requestOcrCandidatesForPoint(nextPoint);
+    }
+  };
+
   useEffect(() => {
-    if (visualOcrStatus?.status !== 'completed') return;
+    if (!candidateSourceReady) return;
     if (!selectedPoint) return;
     const current = ocrCandidatesByPointId[selectedPoint.id];
     if (current?.loading || current?.candidates.length || current?.status === 'completed') return;
     requestOcrCandidatesForPoint(selectedPoint);
-  }, [ocrCandidatesByPointId, requestOcrCandidatesForPoint, selectedPoint, visualOcrStatus?.status]);
+  }, [candidateSourceReady, ocrCandidatesByPointId, requestOcrCandidatesForPoint, selectedPoint]);
+
+  useEffect(() => {
+    if (!markerSwapUndo) return;
+    const timer = setTimeout(() => setMarkerSwapUndo(null), MARKER_SWAP_UNDO_MS);
+    return () => clearTimeout(timer);
+  }, [markerSwapUndo]);
+
+  const swapSelectedMarkerNo = (targetMarkerNo: number) => {
+    if (contentReadOnly || !selectedPoint || selectedPoint.markerNo === targetMarkerNo) return;
+    const fromMarkerNo = selectedPoint.markerNo;
+    setPoints((prev) => swapInspectionDrawingMarkerNo(prev, selectedPoint.id, targetMarkerNo));
+    setMarkerSwapUndo({ pointId: selectedPoint.id, fromMarkerNo, toMarkerNo: targetMarkerNo });
+  };
+
+  const undoMarkerSwap = () => {
+    if (!markerSwapUndo || contentReadOnly) return;
+    const { pointId, fromMarkerNo } = markerSwapUndo;
+    setPoints((prev) => swapInspectionDrawingMarkerNo(prev, pointId, fromMarkerNo));
+    setMarkerSwapUndo(null);
+  };
 
   const removeSelected = () => {
     if (contentReadOnly || !selectedPointId) return;
@@ -1053,9 +1144,9 @@ export function KioskInspectionDrawingCreatePage() {
         setMessage('すべての測定点に名称を入れてください。');
         return;
       }
-      const bounds = toleranceBoundsFromPoint(pt, { measurementLabelSettings });
-      if ('error' in bounds) {
-        setMessage(`「${pt.name}」: ${bounds.error}`);
+      const pointError = resolveInspectionDrawingPointSaveError(pt, { measurementLabelSettings });
+      if (pointError) {
+        setMessage(`「${pt.name}」: ${pointError}`);
         return;
       }
     }
@@ -1121,7 +1212,7 @@ export function KioskInspectionDrawingCreatePage() {
         return;
       }
 
-      const items = points.map((pt, idx) =>
+      const items = sortInspectionDrawingPointsByMarkerNo(points).map((pt, idx) =>
         drawingPointToTemplateItemInput(pt, idx, { measurementLabelSettings })
       );
       if (isEditing && templateId) {
@@ -1176,6 +1267,7 @@ export function KioskInspectionDrawingCreatePage() {
             fhincd: f,
             resourceCds: targetResourceCds,
             processGroup,
+            fkojun: fkojun.trim(),
             name,
             displayName: name,
             visualTemplateId,
@@ -1203,6 +1295,7 @@ export function KioskInspectionDrawingCreatePage() {
             fhincd: f,
             resourceCd: targetResourceCds[0]!,
             processGroup,
+            fkojun: fkojun.trim(),
             name,
             visualTemplateId,
             selfInspectionMode: selfInspectionPayload.selfInspectionMode,
@@ -1291,6 +1384,8 @@ export function KioskInspectionDrawingCreatePage() {
           lineageLocked,
           fhincd,
           onFhincdChange: setFhincd,
+          fkojun,
+          onFkojunChange: setFkojun,
           resourceCd,
           onResourceCdChange: setResourceCd,
           resourceCds: lineageLocked ? undefined : resourceCds,
@@ -1340,10 +1435,16 @@ export function KioskInspectionDrawingCreatePage() {
             saveDisabled={saveDisabled}
             saveBusy={busy}
             saveStatus={saveStatus}
+            saveStatusText={saveStatus === 'blocked' ? saveBlockLabel : null}
             savedPrintPath={
               INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED && isEditing && templateId
                 ? kioskInspectionDrawingTemplatePrintPath(templateId)
                 : undefined
+            }
+            supplementalAction={
+              KIOSK_SOP_POPUP_ENABLED && isEditing ? (
+                <KioskSopLauncher {...INSPECTION_DRAWING_SOP_BY_SCREEN.templateEdit} />
+              ) : undefined
             }
             returnTo={inspectionReturn.inspectionDrawingReturnTo}
             returnLabel={inspectionReturn.inspectionDrawingReturnLabel}
@@ -1365,8 +1466,16 @@ export function KioskInspectionDrawingCreatePage() {
       ) : null}
       {isEditing && template?.siblingGroup ? (
         <div className="flex flex-wrap items-center gap-2 rounded border border-white/15 bg-slate-900/70 px-2 py-1 text-sm text-white">
-          <span className="font-semibold text-slate-300">保存範囲</span>
-          <label className="inline-flex min-h-10 items-center gap-1 rounded border border-white/15 px-2">
+          <span
+            className="font-semibold text-slate-300"
+            {...inspectionDrawingSopTargetProps('save-scope-warning')}
+          >
+            保存範囲
+          </span>
+          <label
+            className="inline-flex min-h-10 items-center gap-1 rounded border border-white/15 px-2"
+            {...inspectionDrawingSopTargetProps('group-save')}
+          >
             <input
               type="radio"
               checked={groupSaveMode === 'group'}
@@ -1375,7 +1484,10 @@ export function KioskInspectionDrawingCreatePage() {
             />
             <span>兄弟テンプレをまとめて改版</span>
           </label>
-          <label className="inline-flex min-h-10 items-center gap-1 rounded border border-white/15 px-2">
+          <label
+            className="inline-flex min-h-10 items-center gap-1 rounded border border-white/15 px-2"
+            {...inspectionDrawingSopTargetProps('single-save')}
+          >
             <input
               type="radio"
               checked={groupSaveMode === 'single'}
@@ -1415,6 +1527,7 @@ export function KioskInspectionDrawingCreatePage() {
             disabled={contentReadOnly || resourceAddBusy || resourceAddCds.length === 0}
             className="min-h-10 px-3 py-1.5"
             onClick={() => void handleAddResourcesToGroup()}
+            {...inspectionDrawingSopTargetProps('add-group-resource')}
           >
             {resourceAddBusy ? '追加中...' : '資源追加'}
           </Button>
@@ -1434,7 +1547,13 @@ export function KioskInspectionDrawingCreatePage() {
       {visualOcrNotice ? <p className="px-1 text-sm font-semibold text-cyan-100/75">{visualOcrNotice}</p> : null}
       {template && readOnly ? (
         <div className="px-1">
-          <Button type="button" variant="primary" disabled={busy} onClick={() => void handleActivate()}>
+          <Button
+            type="button"
+            variant="primary"
+            disabled={busy}
+            onClick={() => void handleActivate()}
+            {...inspectionDrawingSopTargetProps('activate-history')}
+          >
             {busy ? '処理中…' : 'この版を有効化して編集'}
           </Button>
         </div>
@@ -1463,6 +1582,7 @@ export function KioskInspectionDrawingCreatePage() {
                       requestOcrCandidatesForPoint(pt);
                     }
               }
+              onPointChange={contentReadOnly ? undefined : handlePointChange}
               onSetCalloutTip={
                 contentReadOnly || mode !== 'callout' || !selectedPointId
                   ? undefined
@@ -1499,23 +1619,11 @@ export function KioskInspectionDrawingCreatePage() {
             onSelectPoint={handleSelectPointFromList}
             onPointChange={(patch) => {
               if (!selectedPoint) return;
-              const nextPoint = mergeInspectionDrawingPointPatch(selectedPoint, patch);
-              updatePoint(selectedPoint.id, patch);
-              const labelChanged =
-                Object.prototype.hasOwnProperty.call(patch, 'name') ||
-                Object.prototype.hasOwnProperty.call(patch, 'depthMode');
-              const positionChanged =
-                (typeof patch.xRatio === 'number' &&
-                  Math.abs(patch.xRatio - selectedPoint.xRatio) >= 0.002) ||
-                (typeof patch.yRatio === 'number' &&
-                  Math.abs(patch.yRatio - selectedPoint.yRatio) >= 0.002);
-              if (labelChanged || positionChanged) {
-                invalidateOcrCandidatesForPoint(selectedPoint.id);
-                requestOcrCandidatesForPoint(nextPoint);
-              }
+              handlePointChange(selectedPoint.id, patch);
             }}
             onRemovePoint={contentReadOnly ? undefined : removeSelected}
             onRemoveAllPoints={contentReadOnly ? undefined : removeAllPoints}
+            onSwapMarkerNo={contentReadOnly ? undefined : swapSelectedMarkerNo}
             onTestValueChange={(v) => {
               if (!selectedPoint) return;
               updatePoint(selectedPoint.id, { testValue: v });
@@ -1532,18 +1640,59 @@ export function KioskInspectionDrawingCreatePage() {
             ocrCandidateLoading={selectedPointOcrState?.loading ?? false}
             ocrCandidateError={selectedPointOcrState?.error ?? null}
             measurementLabelSettings={measurementLabelSettings}
-            onApplyOcrCandidate={(valueText) => {
+            onApplyOcrCandidate={(valueText, candidate) => {
               if (!selectedPoint) return;
-              updatePoint(
-                selectedPoint.id,
-                pointUsesGeometricTolerance(selectedPoint, { measurementLabelSettings })
-                  ? buildGeometricTolerancePointPatch(valueText)
-                  : { nominalRaw: valueText }
-              );
+              if (pointUsesGeometricTolerance(selectedPoint, { measurementLabelSettings })) {
+                updatePoint(selectedPoint.id, buildGeometricTolerancePointPatch(valueText));
+                return;
+              }
+              const patch: Partial<InspectionDrawingPoint> = { nominalRaw: valueText };
+              // 公差欄が両方空のときだけ案を入れる。図面の明記公差 → 普通公差表 の順（深さは下限 0 だけ）。
+              const toleranceEmpty =
+                selectedPoint.upperToleranceRaw.trim() === '' && selectedPoint.lowerToleranceRaw.trim() === '';
+              if (toleranceEmpty) {
+                const upper = candidate?.suggestedUpperTolerance ?? null;
+                const lower = candidate?.suggestedLowerTolerance ?? null;
+                if (candidate?.source === 'dimensionMap' && (upper !== null || lower !== null)) {
+                  if (upper !== null) patch.upperToleranceRaw = upper;
+                  if (lower !== null) patch.lowerToleranceRaw = lower;
+                } else if (isInspectionDrawingDepthLabel(selectedPoint.name)) {
+                  // 深さは下限 0 だけ。上限（+0・+3・+5）はねじの太さで決まるので空けておく
+                  patch.lowerToleranceRaw = '0';
+                } else {
+                  const general = resolveInspectionDrawingGeneralToleranceForNominal(Number(valueText));
+                  if (general !== null) {
+                    patch.upperToleranceRaw = `+${general}`;
+                    patch.lowerToleranceRaw = `-${general}`;
+                  }
+                }
+              }
+              updatePoint(selectedPoint.id, patch);
             }}
           />
         </aside>
       </div>
+      {markerSwapUndo ? (
+        <div
+          role="status"
+          className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-slate-500 bg-slate-800 py-2 pl-4 pr-2 text-[1.1rem] font-bold text-white shadow-lg"
+        >
+          <span className="tabular-nums">
+            {markerSwapUndo.fromMarkerNo} と {markerSwapUndo.toMarkerNo} を入れ替えました
+          </span>
+          <button
+            type="button"
+            className="inline-flex h-11 items-center gap-1.5 rounded-lg bg-amber-300 px-4 text-[1.05rem] font-extrabold text-amber-950"
+            onClick={undoMarkerSwap}
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={3}>
+              <path d="M9 14 4 9l5-5" />
+              <path d="M4 9h11a5 5 0 0 1 0 10h-3" />
+            </svg>
+            元に戻す
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

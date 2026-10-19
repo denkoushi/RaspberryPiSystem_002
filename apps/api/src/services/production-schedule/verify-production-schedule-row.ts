@@ -21,7 +21,7 @@ export async function verifyProductionScheduleRowOrThrow(
     fhincd?: string;
     resourceCd?: string;
   }
-): Promise<void> {
+): Promise<Record<string, unknown>> {
   const row = await prisma.csvDashboardRow.findFirst({
     where: { id: scheduleRowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID }
   });
@@ -51,4 +51,5 @@ export async function verifyProductionScheduleRowOrThrow(
       throw new ApiError(400, '日程行の資源CDが一致しません');
     }
   }
+  return data;
 }

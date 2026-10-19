@@ -1,0 +1,17 @@
+{
+  "schema": "hermes-trial-relevance/v1",
+  "family": "bge-reranker-v2-m3",
+  "input": "all-reviewed-original-classes/v1",
+  "minBestAnswerScore": -4.7978515625,
+  "maxAnswers": 1,
+  "calibration": {
+    "developmentQuestions": 9,
+    "recordPairs": 144,
+    "answerableQuestions": 8,
+    "unanswerableQuestions": 1,
+    "lowestPositiveBestScore": -1.353515625,
+    "highestNegativeBestScore": -8.2421875,
+    "reviewedManifestDigest": "79f3b71a62c491ba730eb439cab28d8cb37d07adff5ccc90cbab788a3d472360",
+    "note": "Small-sample rejection gate on the best answer-bearing record, not an entailment or truth probability. Remaining ranks are not independently accepted."
+  }
+}

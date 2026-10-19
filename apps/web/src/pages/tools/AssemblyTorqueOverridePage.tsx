@@ -103,7 +103,17 @@ export function AssemblyTorqueOverridePage() {
         </label>
         {selected ? (
           <div className="rounded border border-emerald-300/25 bg-emerald-950/20 p-3 text-sm">
-            丸数字 {selected.markerNo}：{selected.setting.lowerLimit} / {selected.setting.nominalTorque} / {selected.setting.upperLimit} {selected.setting.unit}
+            <p>丸数字 {selected.markerNo}</p>
+            {selected.settingVerificationMode === 'BOLT_CONDITION_ONLY' ? (
+              <div className="mt-1 space-y-1">
+                <p className="font-semibold text-amber-200">設定照合対象外</p>
+                <p className="text-white/80">ボルト基準値 {selected.target.lowerLimit} / {selected.target.nominalTorque} / {selected.target.upperLimit} {selected.target.unit}</p>
+              </div>
+            ) : selected.setting ? (
+              <p className="mt-1">{selected.setting.lowerLimit} / {selected.setting.nominalTorque} / {selected.setting.upperLimit} {selected.setting.unit}</p>
+            ) : (
+              <p className="mt-1 text-white/60">設定値未登録</p>
+            )}
           </div>
         ) : null}
         <div className="grid gap-3 sm:grid-cols-[12rem_9rem]">

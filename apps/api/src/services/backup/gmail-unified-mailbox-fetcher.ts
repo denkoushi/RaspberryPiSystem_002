@@ -2,6 +2,7 @@ export type UnifiedMailboxMessage = {
   buffer: Buffer;
   messageId: string;
   messageSubject: string;
+  receivedAt?: Date | null;
 };
 
 export type UnifiedMailboxResult = Record<string, UnifiedMailboxMessage[]>;
@@ -20,4 +21,3 @@ export class GmailUnifiedMailboxFetcher {
     return provider.downloadAllBySubjectPatterns(subjectPatterns);
   }
 }
-

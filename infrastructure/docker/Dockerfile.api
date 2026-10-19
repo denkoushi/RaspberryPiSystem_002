@@ -1,17 +1,29 @@
 # syntax=docker/dockerfile:1
 
-FROM node:20-bookworm-slim AS base
+# Isolated search worker runtime with the same pinned Node 24 base as the API.
+FROM node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS hermes-search-runtime
+WORKDIR /opt/hermes-runtime
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ git ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+COPY scripts/hermes-search/package.json scripts/hermes-search/package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+# Materialize the worker binary as a regular staged artifact.  The release
+# image must never publish an empty cross-stage copy.
+RUN install -D -m 0755 /usr/local/bin/node /opt/hermes-node/bin/node \
+  && test -s /opt/hermes-node/bin/node \
+  && /opt/hermes-node/bin/node --version | grep -Eq '^v24\.'
+
+FROM node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS workspace
 WORKDIR /app
 ENV NODE_OPTIONS=--max-old-space-size=4096
 
 RUN apt-get update \
-  && apt-get install -y openssl poppler-utils fontconfig fonts-noto-cjk postgresql-client ansible \
+  && apt-get install -y --no-install-recommends openssl \
   && rm -rf /var/lib/apt/lists/*
 
 # Workspace manifests only: source copies after install so ordinary app changes reuse install cache.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
 COPY apps/api/package.json ./apps/api/package.json
-COPY apps/web/package.json ./apps/web/package.json
 COPY packages/shared-types/package.json ./packages/shared-types/package.json
 COPY packages/part-search-core/package.json ./packages/part-search-core/package.json
 COPY packages/shelf-layout-core/package.json ./packages/shelf-layout-core/package.json
@@ -23,38 +35,65 @@ RUN --mount=type=cache,id=raspi-pnpm-store,target=/pnpm/store,sharing=locked \
     npm_config_fetch_retry_mintimeout=2000 \
     npm_config_fetch_retry_maxtimeout=5000 \
     npm_config_fetch_timeout=30000 \
-    pnpm install --frozen-lockfile --store-dir=/pnpm/store --network-concurrency=4
+    pnpm install --filter @raspi-system/api... --frozen-lockfile \
+      --store-dir=/pnpm/store --network-concurrency=4
+
+FROM workspace AS build
 
 COPY apps/api ./apps/api
 COPY packages ./packages
-COPY scripts ./scripts
+# Keep the runtime script boundary explicit so deploy tests and fixtures do not
+# invalidate or enter the API image.
+COPY scripts/deploy/deploy-status-state.py ./scripts/deploy/deploy-status-state.py
+COPY scripts/part-measurement/drawing-local-rapidocr-worker.py ./scripts/part-measurement/drawing-local-rapidocr-worker.py
+COPY scripts/server/add-cert-backup-target.mjs ./scripts/server/add-cert-backup-target.mjs
+COPY scripts/hermes-search ./scripts/hermes-search
+# Kiosk operation guide: read-only business Hermes source (KIOSK_OPERATION_GUIDE_DIR).
+COPY docs/kiosk-operation-guide ./docs/kiosk-operation-guide
 
 WORKDIR /app/packages/shared-types
-RUN pnpm build
+RUN nice -n 10 pnpm build
 
 WORKDIR /app/packages/part-search-core
-RUN pnpm build
+RUN nice -n 10 pnpm build
 
 WORKDIR /app/packages/shelf-layout-core
-RUN pnpm build
+RUN nice -n 10 pnpm build
 
 WORKDIR /app/apps/api
-RUN pnpm prisma generate
-RUN pnpm run build
+RUN nice -n 10 pnpm prisma generate
+RUN nice -n 10 pnpm run build
 
-FROM node:20-bookworm-slim AS api
+FROM node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS api-runtime
 WORKDIR /app
+COPY --from=hermes-search-runtime /opt/hermes-node /opt/hermes-node
+COPY --from=hermes-search-runtime /opt/hermes-runtime /opt/hermes-runtime
+ENV HERMES_QMD_ROOT=/opt/hermes-runtime/node_modules/@tobilu/qmd
 ARG NDLOCR_LITE_COMMIT=89f815899f0e85d236a1a90e75da012ca932dc7b
 # Bump the date to invalidate the cached apt layer; otherwise the CI build
 # cache keeps stale OS packages and Trivy fails on already-fixed Debian CVEs.
-ARG APT_CACHE_BUST=2026-07-19
+ARG APT_CACHE_BUST=2026-10-09
 
 RUN echo "apt refresh ${APT_CACHE_BUST}" \
   && apt-get update \
-  && apt-get upgrade -y \
-  && apt-get install -y openssl poppler-utils fontconfig fonts-noto-cjk postgresql-client ansible python3 python3-pip git \
+  && apt-get install -y --no-install-recommends openssl ffmpeg poppler-utils fontconfig fonts-noto-cjk postgresql-client ansible-core python3 python3-pip git \
     libgomp1 libgl1 libglib2.0-0 libsm6 libxext6 \
     libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 libpango-1.0-0 \
+  && apt-get install -y --only-upgrade --no-install-recommends libgnutls30 libpq5 postgresql-client-15 python3-httplib2 libexpat1 libpcre2-8-0 \
+  && for package in libpq5 postgresql-client-15; do \
+    installed_version="$(dpkg-query -W -f='${Version}' "${package}")"; \
+    dpkg --compare-versions "${installed_version}" ge '15.19-0+deb12u1' \
+      || { echo "${package} is below the required fixed version: ${installed_version}" >&2; exit 1; }; \
+  done \
+  && gnutls_version="$(dpkg-query -W -f='${Version}' libgnutls30)" \
+  && dpkg --compare-versions "${gnutls_version}" ge '3.7.9-2+deb12u7' \
+    || { echo "libgnutls30 is below the required fixed version: ${gnutls_version}" >&2; exit 1; } \
+  && httplib2_version="$(dpkg-query -W -f='${Version}' python3-httplib2)" \
+  && dpkg --compare-versions "${httplib2_version}" ge '0.20.4-3+deb12u1' \
+    || { echo "python3-httplib2 is below the required fixed version: ${httplib2_version}" >&2; exit 1; } \
+  && expat_version="$(dpkg-query -W -f='${Version}' libexpat1)" \
+  && dpkg --compare-versions "${expat_version}" ge '2.5.0-1+deb12u4' \
+    || { echo "libexpat1 is below the required fixed version: ${expat_version}" >&2; exit 1; } \
   && python3 -m pip install --no-cache-dir --break-system-packages \
   "git+https://github.com/ndl-lab/ndlocr-lite.git@${NDLOCR_LITE_COMMIT}" \
   && python3 -m pip install --no-cache-dir --break-system-packages "protobuf>=6.33.5,<7" "pillow>=12.2.0,<13" "lxml>=6.1.0,<7" \
@@ -62,17 +101,21 @@ RUN echo "apt refresh ${APT_CACHE_BUST}" \
   && command -v ndlocr-lite \
   && ndlocr-lite --help >/dev/null \
   && python3 -c "from rapidocr import RapidOCR; print('rapidocr-ok')" \
+  && apt-get purge -y python3-pip \
+  && apt-get autoremove -y \
   && rm -rf /var/lib/apt/lists/*
 
+RUN test -s /opt/hermes-node/bin/node \
+  && /opt/hermes-node/bin/node --version | grep -Eq '^v24\.'
+
 # Manifests + prod install + Chromium before build artifacts: avoids invalidating heavy layers on API source changes.
-COPY --from=base /app/package.json ./package.json
-COPY --from=base /app/pnpm-lock.yaml ./pnpm-lock.yaml
-COPY --from=base /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
-COPY --from=base /app/apps/api/package.json ./apps/api/package.json
-COPY --from=base /app/apps/web/package.json ./apps/web/package.json
-COPY --from=base /app/packages/shared-types/package.json ./packages/shared-types/package.json
-COPY --from=base /app/packages/part-search-core/package.json ./packages/part-search-core/package.json
-COPY --from=base /app/packages/shelf-layout-core/package.json ./packages/shelf-layout-core/package.json
+COPY --from=workspace /app/package.json ./package.json
+COPY --from=workspace /app/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY --from=workspace /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=workspace /app/apps/api/package.json ./apps/api/package.json
+COPY --from=workspace /app/packages/shared-types/package.json ./packages/shared-types/package.json
+COPY --from=workspace /app/packages/part-search-core/package.json ./packages/part-search-core/package.json
+COPY --from=workspace /app/packages/shelf-layout-core/package.json ./packages/shelf-layout-core/package.json
 WORKDIR /app
 RUN --mount=type=cache,id=raspi-pnpm-store,target=/pnpm/store,sharing=locked \
   corepack enable \
@@ -81,7 +124,7 @@ RUN --mount=type=cache,id=raspi-pnpm-store,target=/pnpm/store,sharing=locked \
     npm_config_fetch_retry_mintimeout=2000 \
     npm_config_fetch_retry_maxtimeout=5000 \
     npm_config_fetch_timeout=30000 \
-    pnpm install --prod --recursive --frozen-lockfile \
+    pnpm install --prod --filter @raspi-system/api... --frozen-lockfile \
       --store-dir=/pnpm/store --network-concurrency=4
 
 # Chromium for Playwright (signage playwright_html, kiosk document HTML→PDF; bundled browser).
@@ -90,30 +133,45 @@ RUN --mount=type=cache,id=raspi-pnpm-store,target=/pnpm/store,sharing=locked \
 ARG INSTALL_PLAYWRIGHT_CHROMIUM=true
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN case "${INSTALL_PLAYWRIGHT_CHROMIUM}" in \
-    true|1|yes) pnpm --filter @raspi-system/api exec playwright install chromium ;; \
+    true|1|yes) pnpm --filter @raspi-system/api exec playwright install --only-shell chromium ;; \
     *) echo "Skipping Playwright Chromium install (INSTALL_PLAYWRIGHT_CHROMIUM=${INSTALL_PLAYWRIGHT_CHROMIUM})" ;; \
   esac
 
-# base の dev node_modules は持ち込まない（--exclude=node_modules）。
-COPY --from=base --exclude=node_modules /app/apps/api ./apps/api
-COPY --from=base --exclude=node_modules /app/packages/shared-types ./packages/shared-types
-COPY --from=base --exclude=node_modules /app/packages/part-search-core ./packages/part-search-core
-COPY --from=base --exclude=node_modules /app/packages/shelf-layout-core ./packages/shelf-layout-core
-COPY --from=base /app/scripts ./scripts
-
-WORKDIR /app/apps/api
-RUN pnpm prisma generate
-
-# ボリュームマウント先が存在しないと起動時に失敗するため事前に作成
-# npm/corepackキャッシュを削除（セキュリティスキャン対策: pnpmのみ使用するため）
+# Stable runtime boundary. Normal API source changes must not invalidate the
+# OCR, production dependency, or Chromium layers above this point.
 RUN mkdir -p /app/storage/photos \
   /app/storage/thumbnails \
   /app/storage/pdfs \
   /app/storage/pdf-pages \
   /app/storage/signage-rendered \
   /app/storage/assembly-procedure-images \
-  && rm -rf /usr/local/lib/node_modules/npm \
-  && rm -rf /root/.cache/node/corepack
+  /app/storage/assembly-procedure-assets \
+  /app/storage/work-instruction-assets \
+  /app/storage/knowledge-assets \
+  /app/storage/procedure-materials \
+  /app/storage/procedure-videos \
+  /app/storage/knowledge-git \
+  /app/storage/measuring-instrument-genres \
+  /app/storage/part-measurement-drawings \
+  /app/storage/pallet-machine-illustrations \
+  /app/storage/csv-dashboards \
+  /app/storage/.integrity \
+  && chown -R node:node /app/storage \
+  && rm -rf /usr/local/lib/node_modules/npm
+
+FROM api-runtime AS api
+
+# build の dev node_modules は持ち込まない（--exclude=node_modules）。
+COPY --from=build --exclude=node_modules /app/apps/api ./apps/api
+COPY --from=build --exclude=node_modules /app/packages/shared-types ./packages/shared-types
+COPY --from=build --exclude=node_modules /app/packages/part-search-core ./packages/part-search-core
+COPY --from=build --exclude=node_modules /app/packages/shelf-layout-core ./packages/shelf-layout-core
+COPY --from=build /app/scripts ./scripts
+COPY --from=build /app/docs/kiosk-operation-guide ./docs/kiosk-operation-guide
+
+WORKDIR /app/apps/api
+RUN nice -n 10 pnpm prisma generate
+RUN rm -rf /root/.cache/node/corepack
 
 # Release provenance is image metadata only. Keep it after every filesystem
 # mutation so a new release SHA/config hash can reuse unchanged runtime layers.
@@ -123,6 +181,9 @@ LABEL org.opencontainers.image.revision=${BUILD_COMMIT}
 LABEL org.opencontainers.image.config-hash=${BUILD_CONFIG_HASH}
 
 ENV NODE_ENV=production
+ENV HOME=/tmp/api-home
+ENV XDG_CACHE_HOME=/tmp/api-cache
 ENV DATABASE_URL="postgresql://postgres:postgres@db:5432/borrow_return"
 
+USER node
 CMD ["node", "dist/main.js"]

@@ -1,0 +1,492 @@
+---
+- name: Validate the Pi4 release contract
+  ansible.builtin.assert:
+    that:
+      - release_sha is match('^[0-9a-f]{40}$')
+      - release_run_id is match('^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$')
+      - release_kiosk_agent_services | difference(['nfc-agent', 'barcode-agent', 'torque-agent']) | length == 0
+      - "'nfc-agent' not in release_kiosk_agent_services or release_sha in release_kiosk_nfc_image"
+      - "'barcode-agent' not in release_kiosk_agent_services or release_sha in release_kiosk_barcode_image"
+      - >-
+        ('torque-agent' not in release_kiosk_agent_services)
+        or (release_torque_cutover | default(false) | bool
+          and release_kiosk_torque_image is match('^ghcr\\.io/denkoushi/raspisys-torque-agent@sha256:[0-9a-f]{64}$'))
+        or (not (release_torque_cutover | default(false) | bool)
+          and release_sha in release_kiosk_torque_image)
+      - >-
+        not (release_torque_cutover | default(false) | bool)
+        or release_torque_protocol_version | default(0) | int == 1
+      - "'kiosk' in group_names"
+    fail_msg: >-
+      Pi4 release requires an exact SHA, safe run ID, immutable OCI images,
+      the supported torque protocol when selected, and an inventory host in the kiosk group.
+
+- name: Select agents enabled for this Pi4
+  ansible.builtin.set_fact:
+    release_kiosk_enabled_services: >-
+      {{
+        (['nfc-agent'] if (nfc_agent_client_id | default('') | string | length > 0) else [])
+        + (['barcode-agent'] if (barcode_agent_enabled | default(false) | bool) else [])
+        + (['torque-agent'] if (torque_agent_enabled | default(false) | bool) else [])
+      }}
+    release_kiosk_requested_services: "{{ release_kiosk_agent_services | list }}"
+    release_kiosk_switch_attempted: false
+    release_kiosk_healthy: false
+    release_kiosk_rolled_back: false
+    release_kiosk_stage_succeeded: false
+
+- name: Validate an optional bounded Pi4 service allowlist
+  ansible.builtin.assert:
+    that:
+      - release_kiosk_service_allowlist | default([]) | difference(['nfc-agent', 'barcode-agent', 'torque-agent']) | length == 0
+      - release_kiosk_service_allowlist | default([]) | difference(release_kiosk_enabled_services) | length == 0
+    fail_msg: The Pi4 service allowlist must contain only agents enabled on the selected kiosk.
+
+- name: Select only enabled agents requested by this release
+  ansible.builtin.set_fact:
+    release_kiosk_services: >-
+      {{
+        release_kiosk_enabled_services | intersect(release_kiosk_requested_services)
+        if (release_kiosk_service_allowlist | default([]) | length == 0)
+        else release_kiosk_enabled_services | intersect(release_kiosk_requested_services) | intersect(release_kiosk_service_allowlist)
+      }}
+
+- name: Reuse kiosk role browser executable resolution for release staging
+  ansible.builtin.include_role:
+    name: kiosk
+    tasks_from: resolve-browser
+  when: manage_kiosk_browser | default(false) | bool
+
+# The launcher template reads the kiosk role's browser flag defaults, but role
+# defaults are only in scope inside that role. Without this the release rendered
+# a Chromium launcher with no flags at all (2026-10-02, StoneBase01).
+- name: Read the kiosk role browser flag defaults for the launcher
+  ansible.builtin.set_fact:
+    release_kiosk_browser_defaults: >-
+      {{ lookup('ansible.builtin.file', role_path ~ '/../kiosk/defaults/main.yml') | from_yaml }}
+  when: manage_kiosk_browser | default(false) | bool
+
+# Chromium only: the Firefox kiosks have been released without the common
+# flags, and this fix must not change what they start with.
+- name: Apply the kiosk role common browser flags unless the host overrides them
+  ansible.builtin.set_fact:
+    kiosk_browser_flags_common: "{{ release_kiosk_browser_defaults.kiosk_browser_flags_common }}"
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved | default('') == 'chromium'
+    - kiosk_browser_flags_common is not defined
+
+- name: Apply the kiosk role Chromium flags unless the host overrides them
+  ansible.builtin.set_fact:
+    kiosk_browser_flags_chromium: "{{ release_kiosk_browser_defaults.kiosk_browser_flags_chromium }}"
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_flags_chromium is not defined
+
+- name: Refuse to stage a Chromium launcher without its required flags
+  ansible.builtin.assert:
+    that:
+      - "'--ozone-platform=x11' in kiosk_browser_flags_chromium"
+      - "'--gtk-version=3' in kiosk_browser_flags_chromium"
+      - "'--password-store=basic' in kiosk_browser_flags_chromium"
+    fail_msg: >-
+      The Chromium kiosk launcher would be rendered without the flags Japanese
+      input and the keyring-free start depend on. Fix kiosk_browser_flags_chromium
+      before releasing.
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved | default('') == 'chromium'
+
+# A wrong pin leaves the kiosk on a certificate error page while the browser
+# unit stays active, so compare it with the key the server presents first.
+- name: Read the server key the kiosk sees for the Chromium certificate pin
+  ansible.builtin.shell: |
+    set -o pipefail
+    openssl s_client -connect {{ (kiosk_url | urlsplit('hostname')) | quote }}:{{ kiosk_url | urlsplit('port') | default(443, true) }} </dev/null 2>/dev/null \
+      | openssl x509 -pubkey -noout \
+      | openssl pkey -pubin -outform der \
+      | openssl dgst -sha256 -binary \
+      | base64
+  args:
+    executable: /bin/bash
+  register: release_kiosk_server_spki
+  changed_when: false
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved | default('') == 'chromium'
+    - kiosk_server_cert_spki_sha256 | default('') | length > 0
+
+- name: Refuse to stage a Chromium launcher whose certificate pin does not match the server
+  ansible.builtin.assert:
+    that:
+      - release_kiosk_server_spki.stdout | trim == kiosk_server_cert_spki_sha256
+    fail_msg: >-
+      kiosk_server_cert_spki_sha256 does not match the key {{ kiosk_url | urlsplit('hostname') }}
+      presents ({{ release_kiosk_server_spki.stdout | default('') | trim }}). The kiosk would
+      show a certificate error. Update the pin before releasing.
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved | default('') == 'chromium'
+    - kiosk_server_cert_spki_sha256 | default('') | length > 0
+
+- name: Define files required by rollback runtime
+  ansible.builtin.set_fact:
+    release_kiosk_rollback_prerequisites: >-
+      {{
+        (['/etc/raspi-status-agent.conf'] if release_kiosk_services | length > 0 else [])
+        + ([release_kiosk_project_dir ~ '/clients/nfc-agent/.env'] if 'nfc-agent' in release_kiosk_services else [])
+        + ([release_kiosk_project_dir ~ '/clients/barcode-agent/.env'] if 'barcode-agent' in release_kiosk_services else [])
+        + ([release_kiosk_project_dir ~ '/clients/torque-agent/.env'] if 'torque-agent' in release_kiosk_services else [])
+      }}
+
+- name: Define Pi4 run-scoped paths
+  ansible.builtin.set_fact:
+    release_kiosk_run_dir: "{{ release_kiosk_run_root }}/{{ release_run_id }}/{{ inventory_hostname }}"
+    release_kiosk_stage_dir: "{{ release_kiosk_run_root }}/{{ release_run_id }}/{{ inventory_hostname }}/stage"
+    release_kiosk_candidate_compose: "{{ release_kiosk_run_root }}/{{ release_run_id }}/{{ inventory_hostname }}/candidate-compose.yml"
+    release_kiosk_rollback_compose: "{{ release_kiosk_run_root }}/{{ release_run_id }}/{{ inventory_hostname }}/rollback-compose.yml"
+
+- name: Create private Pi4 staging directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+  loop:
+    - "{{ release_kiosk_run_dir }}"
+    - "{{ release_kiosk_stage_dir }}"
+
+- name: Build the enabled Pi4 image map
+  ansible.builtin.set_fact:
+    release_kiosk_candidate_images:
+      nfc-agent: "{{ release_kiosk_nfc_image }}"
+      barcode-agent: "{{ release_kiosk_barcode_image }}"
+      torque-agent: "{{ release_kiosk_torque_image }}"
+    release_kiosk_rollback_images:
+      nfc-agent: "raspi-standard-rollback:{{ release_run_id | lower }}-nfc-agent"
+      barcode-agent: "raspi-standard-rollback:{{ release_run_id | lower }}-barcode-agent"
+      torque-agent: "raspi-standard-rollback:{{ release_run_id | lower }}-torque-agent"
+
+- name: Capture current Pi4 agent images as temporary rollback tags
+  ansible.builtin.shell: |
+    set -euo pipefail
+    container_ids="$(docker ps --all \
+      --filter "label=com.docker.compose.project={{ release_kiosk_compose_project }}" \
+      --filter "label=com.docker.compose.service={{ item }}" \
+      --quiet)"
+    container_count="$(printf '%s\n' "${container_ids}" | sed '/^$/d' | wc -l | tr -d ' ')"
+    [[ "${container_count}" -eq 1 ]]
+    container_id="${container_ids}"
+    image_format=$'\173\173.Image\175\175'
+    image_id="$(docker inspect --format "${image_format}" "${container_id}")"
+    [[ "${image_id}" =~ ^sha256:[0-9a-f]{64}$ ]]
+    docker image tag "${image_id}" {{ release_kiosk_rollback_images[item] | quote }}
+  args:
+    executable: /bin/bash
+  loop: "{{ release_kiosk_services }}"
+  register: release_kiosk_rollback_capture
+  failed_when: false
+  changed_when: true
+
+- name: Record Pi4 rollback tags created by this run
+  ansible.builtin.set_fact:
+    release_kiosk_captured_services: >-
+      {{
+        release_kiosk_rollback_capture.results
+        | selectattr('rc', 'defined')
+        | selectattr('rc', 'equalto', 0)
+        | map(attribute='item')
+        | list
+      }}
+
+- name: Require every enabled Pi4 agent image capture to succeed
+  ansible.builtin.assert:
+    that:
+      - >-
+        (release_kiosk_captured_services | length)
+        == (release_kiosk_services | length)
+    fail_msg: >-
+      Pi4 rollback image capture did not produce exactly one valid image for
+      every enabled service; refusing to continue before the switch boundary.
+
+- name: Verify captured rollback image identities are locally recoverable
+  ansible.builtin.command:
+    argv: [docker, image, inspect, --format, "{{ '{{.Id}}|{{.Os}}|{{.Architecture}}' }}", "{{ release_kiosk_rollback_images[item] }}"]
+  loop: "{{ release_kiosk_services }}"
+  register: release_kiosk_rollback_identity
+  changed_when: false
+
+- name: Require immutable Linux rollback image IDs
+  ansible.builtin.assert:
+    that:
+      - item.stdout is match('^sha256:[0-9a-f]{64}\\|linux\\|(arm64|arm)$')
+  loop: "{{ release_kiosk_rollback_identity.results }}"
+
+- name: Read Pi4 disk headroom before pulling candidates
+  ansible.builtin.shell: |
+    set -euo pipefail
+    df -Pk {{ release_kiosk_project_dir | quote }} | awk 'NR == 2 {print int($4 / 1024 / 1024)}'
+  args:
+    executable: /bin/bash
+  register: release_kiosk_prefetch_disk
+  changed_when: false
+
+- name: Require Pi4 pre-pull disk headroom
+  ansible.builtin.assert:
+    that:
+      - release_kiosk_prefetch_disk.stdout | int >= release_kiosk_min_disk_gb | int
+
+- name: Pull enabled Pi4 images while the normal kiosk remains active
+  ansible.builtin.command:
+    argv:
+      - docker
+      - image
+      - pull
+      - "{{ release_kiosk_candidate_images[item] }}"
+  loop: "{{ release_kiosk_services }}"
+  register: release_kiosk_pull
+  # A reset connection to the registry is transient; without a retry it fails
+  # the kiosk and, with serial rollout, skips every kiosk after it.
+  retries: 3
+  delay: 15
+  until: release_kiosk_pull.rc == 0
+  changed_when: >-
+    'Downloaded newer image' in release_kiosk_pull.stdout
+    or 'Pull complete' in release_kiosk_pull.stdout
+
+- name: Inspect exact local Pi4 candidate identities
+  ansible.builtin.command:
+    argv: [docker, image, inspect, --format, "{{ '{{.Id}}|{{.Os}}|{{.Architecture}}|{{json .RepoDigests}}' }}", "{{ release_kiosk_candidate_images[item] }}"]
+  loop: "{{ release_kiosk_services }}"
+  register: release_kiosk_candidate_identity
+  changed_when: false
+
+- name: Read the selected Pi4 kernel architecture
+  ansible.builtin.command: uname -m
+  register: release_kiosk_kernel_architecture
+  changed_when: false
+
+- name: Require the manifest-bound torque candidate and host architecture
+  ansible.builtin.assert:
+    that:
+      - item.stdout is match('^sha256:[0-9a-f]{64}\\|linux\\|(arm64|arm)\\|\\[.+@sha256:[0-9a-f]{64}.*\\]$')
+      - release_kiosk_candidate_images[item.item].split('@')[1] in item.stdout
+      - >-
+        (release_kiosk_kernel_architecture.stdout | trim == 'aarch64'
+          and '|linux|arm64|' in item.stdout)
+        or (release_kiosk_kernel_architecture.stdout | trim is match('^armv7')
+          and '|linux|arm|' in item.stdout)
+  loop: "{{ release_kiosk_candidate_identity.results }}"
+  when: release_torque_cutover | default(false) | bool
+
+- name: Render the candidate Pi4 Compose file without build directives
+  ansible.builtin.template:
+    src: client-compose.yml.j2
+    dest: "{{ release_kiosk_candidate_compose }}"
+    owner: root
+    group: root
+    mode: '0600'
+  vars:
+    release_kiosk_compose_images: "{{ release_kiosk_candidate_images }}"
+  when: release_kiosk_services | length > 0
+
+- name: Render the rollback Pi4 Compose file
+  ansible.builtin.template:
+    src: client-compose.yml.j2
+    dest: "{{ release_kiosk_rollback_compose }}"
+    owner: root
+    group: root
+    mode: '0600'
+  vars:
+    release_kiosk_compose_images: "{{ release_kiosk_rollback_images }}"
+  when: release_kiosk_services | length > 0
+
+- name: Render staged status-agent configuration
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/status-agent.conf.j2"
+    dest: "{{ release_kiosk_stage_dir }}/status-agent.conf"
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+  when: release_kiosk_services | length > 0
+
+- name: Stage the exact status-agent program
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../clients/status-agent/status-agent.py"
+    dest: "{{ release_kiosk_stage_dir }}/status-agent.py"
+    owner: root
+    group: root
+    mode: '0755'
+  when: release_kiosk_services | length > 0
+
+- name: Stage the status-agent storage health module
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../clients/status-agent/storage_health.py"
+    dest: "{{ release_kiosk_stage_dir }}/storage_health.py"
+    owner: root
+    group: root
+    mode: '0644'
+  when: release_kiosk_services | length > 0
+
+- name: Stage the status-agent network health module
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../clients/status-agent/network_health.py"
+    dest: "{{ release_kiosk_stage_dir }}/network_health.py"
+    owner: root
+    group: root
+    mode: '0644'
+  when: release_kiosk_services | length > 0
+
+- name: Stage the status-agent terminal health module
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../clients/status-agent/terminal_agent_health.py"
+    dest: "{{ release_kiosk_stage_dir }}/terminal_agent_health.py"
+    owner: root
+    group: root
+    mode: '0644'
+  when: release_kiosk_services | length > 0
+
+- name: Stage the status-agent terminal maintenance module
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../scripts/deploy/rolling_release/terminal_device_maintenance.py"
+    dest: "{{ release_kiosk_stage_dir }}/terminal_device_maintenance.py"
+    owner: root
+    group: root
+    mode: '0644'
+  when: release_kiosk_services | length > 0
+
+- name: Stage the standard status-agent service
+  ansible.builtin.template:
+    src: status-agent.service.j2
+    dest: "{{ release_kiosk_stage_dir }}/status-agent.service"
+    owner: root
+    group: root
+    mode: '0644'
+  when: release_kiosk_services | length > 0
+
+- name: Stage the status-agent timer
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../clients/status-agent/status-agent.timer"
+    dest: "{{ release_kiosk_stage_dir }}/status-agent.timer"
+    owner: root
+    group: root
+    mode: '0644'
+  when: release_kiosk_services | length > 0
+
+- name: Stage the Pi4 storage maintenance script
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../scripts/client/pi4-storage-maintenance.sh"
+    dest: "{{ release_kiosk_stage_dir }}/pi4-storage-maintenance.sh"
+    owner: root
+    group: root
+    mode: '0755'
+  when: release_kiosk_services | length > 0
+
+- name: Stage the Pi4 storage maintenance units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ release_kiosk_stage_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - pi4-storage-maintenance.service
+    - pi4-storage-maintenance.timer
+  when: release_kiosk_services | length > 0
+
+- name: Stage the SHA-bound kiosk launcher
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/kiosk-launch.sh.j2"
+    dest: "{{ release_kiosk_stage_dir }}/kiosk-launch.sh"
+    owner: root
+    group: root
+    mode: '0755'
+  vars:
+    kiosk_release_sha: "{{ release_sha }}"
+  when: release_kiosk_services | length > 0
+
+- name: Stage the kiosk browser unit
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/kiosk-browser.service.j2"
+    dest: "{{ release_kiosk_stage_dir }}/kiosk-browser.service"
+    owner: root
+    group: root
+    mode: '0644'
+  when: release_kiosk_services | length > 0
+
+- name: Stage NFC agent environment
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/nfc-agent.env.j2"
+    dest: "{{ release_kiosk_stage_dir }}/nfc-agent.env"
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+  when: "'nfc-agent' in release_kiosk_services"
+
+- name: Stage barcode agent environment
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/barcode-agent.env.j2"
+    dest: "{{ release_kiosk_stage_dir }}/barcode-agent.env"
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+  when: "'barcode-agent' in release_kiosk_services"
+
+- name: Stage torque agent environment
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/torque-agent.env.j2"
+    dest: "{{ release_kiosk_stage_dir }}/torque-agent.env"
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+  when: "'torque-agent' in release_kiosk_services"
+
+- name: Prepare the kiosk hotcorner transaction
+  ansible.builtin.import_tasks: prepare_hotcorner.yml
+  when: manage_kiosk_browser | default(false) | bool
+
+- name: Define the Pi4 staged file transaction
+  ansible.builtin.set_fact:
+    release_kiosk_files: >-
+      {{
+        (
+          [
+            {'src': release_kiosk_stage_dir ~ '/status-agent.conf', 'dest': '/etc/raspi-status-agent.conf', 'mode': '0600'},
+            {'src': release_kiosk_stage_dir ~ '/status-agent.py', 'dest': '/usr/local/lib/raspi-status-agent/status-agent.py', 'mode': '0755'},
+            {'src': release_kiosk_stage_dir ~ '/storage_health.py', 'dest': '/usr/local/lib/raspi-status-agent/storage_health.py', 'mode': '0644'},
+            {'src': release_kiosk_stage_dir ~ '/network_health.py', 'dest': '/usr/local/lib/raspi-status-agent/network_health.py', 'mode': '0644'},
+            {'src': release_kiosk_stage_dir ~ '/terminal_agent_health.py', 'dest': '/usr/local/lib/raspi-status-agent/terminal_agent_health.py', 'mode': '0644'},
+            {'src': release_kiosk_stage_dir ~ '/terminal_device_maintenance.py', 'dest': '/usr/local/lib/raspi-status-agent/terminal_device_maintenance.py', 'mode': '0644'},
+            {'src': release_kiosk_stage_dir ~ '/status-agent.service', 'dest': '/etc/systemd/system/status-agent.service', 'mode': '0644'},
+            {'src': release_kiosk_stage_dir ~ '/status-agent.timer', 'dest': '/etc/systemd/system/status-agent.timer', 'mode': '0644'},
+            {'src': release_kiosk_stage_dir ~ '/pi4-storage-maintenance.sh', 'dest': '/usr/local/sbin/pi4-storage-maintenance.sh', 'mode': '0755'},
+            {'src': release_kiosk_stage_dir ~ '/pi4-storage-maintenance.service', 'dest': '/etc/systemd/system/pi4-storage-maintenance.service', 'mode': '0644'},
+            {'src': release_kiosk_stage_dir ~ '/pi4-storage-maintenance.timer', 'dest': '/etc/systemd/system/pi4-storage-maintenance.timer', 'mode': '0644'},
+          ] if release_kiosk_services | length > 0 else []
+        )
+        + ([
+          {'src': release_kiosk_stage_dir ~ '/kiosk-launch.sh', 'dest': '/usr/local/bin/kiosk-launch.sh', 'mode': '0755'},
+          {'src': release_kiosk_stage_dir ~ '/kiosk-browser.service', 'dest': '/etc/systemd/system/kiosk-browser.service', 'mode': '0644'},
+        ] if release_kiosk_services | length > 0 else [])
+        + ([
+          {'src': release_kiosk_stage_dir ~ '/kiosk-hotcorner.py', 'dest': '/usr/local/bin/kiosk-hotcorner.py', 'mode': '0755'},
+          {'src': release_kiosk_stage_dir ~ '/kiosk-labwc-config.py', 'dest': '/usr/local/bin/kiosk-labwc-config.py', 'mode': '0755'},
+          {'src': release_kiosk_stage_dir ~ '/kiosk-hotcorner.service', 'dest': '/etc/systemd/system/kiosk-hotcorner.service', 'mode': '0644'},
+          {'src': release_kiosk_stage_dir ~ '/show-kiosk-panel.sh', 'dest': '/usr/local/bin/show-kiosk-panel.sh', 'mode': '0755'},
+        ] if manage_kiosk_browser | default(false) | bool else [])
+        + ([{'src': release_kiosk_candidate_compose, 'dest': '/etc/raspi-release/client-compose.yml', 'mode': '0600'}] if release_kiosk_services | length > 0 and not (release_torque_cutover | default(false) | bool) else [])
+        + ([{'src': release_kiosk_stage_dir ~ '/nfc-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/nfc-agent/.env', 'mode': '0600'}] if 'nfc-agent' in release_kiosk_services else [])
+        + ([{'src': release_kiosk_stage_dir ~ '/barcode-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/barcode-agent/.env', 'mode': '0600'}] if 'barcode-agent' in release_kiosk_services else [])
+        + ([{'src': release_kiosk_stage_dir ~ '/torque-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/torque-agent/.env', 'mode': '0600'}] if 'torque-agent' in release_kiosk_services else [])
+      }}
+
+- name: Seal this run's prepared kiosk identity
+  ansible.builtin.set_fact:
+    release_kiosk_prepared: true
+    release_kiosk_prepared_run_id: "{{ release_run_id }}"
+    release_kiosk_prepared_torque_image: "{{ release_kiosk_torque_image }}"

@@ -33,6 +33,21 @@ describe('resolveKioskInitialRedirectDecision', () => {
     });
   });
 
+  it('redirects /kiosk to the self-inspection initial route', () => {
+    expect(
+      resolveKioskInitialRedirectDecision({
+        pathname: '/kiosk',
+        isLoading: false,
+        hasError: false,
+        config: { defaultMode: 'TAG', initialKioskRoute: 'self_inspection' }
+      })
+    ).toMatchObject({
+      targetPath: '/kiosk/part-measurement/self-inspection',
+      nextRouteSignature: 'route:self_inspection',
+      reason: 'initial-route'
+    });
+  });
+
   it('keeps user-operated kiosk subpaths untouched', () => {
     expect(
       resolveKioskInitialRedirectDecision({

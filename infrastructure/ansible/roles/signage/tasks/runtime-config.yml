@@ -1,0 +1,96 @@
+---
+# Host identity and timing remain outside the immutable Signage release tree.
+# These tasks run before the release-only service stop in tasks/main.yml.
+
+- name: Create the external Signage runtime configuration directory
+  ansible.builtin.file:
+    path: /etc/raspisystem-signage
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Install external Signage runtime settings
+  ansible.builtin.template:
+    src: signage-runtime.env.j2
+    dest: /etc/raspisystem-signage/runtime.env
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+
+- name: Install host-specific tmpfiles configuration for /run/signage
+  ansible.builtin.template:
+    src: signage-runtime.tmpfiles.j2
+    dest: /etc/tmpfiles.d/signage-lite.conf
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Create signage-lite service drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/signage-lite.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Create signage-lite-update service drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/signage-lite-update.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Create signage-lite-update timer drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/signage-lite-update.timer.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Create signage-lite-watchdog service drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/signage-lite-watchdog.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Install signage-lite service identity drop-in
+  ansible.builtin.template:
+    src: signage-service-runtime.conf.j2
+    dest: /etc/systemd/system/signage-lite.service.d/10-runtime.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: systemd-reload
+
+- name: Install signage-lite-update service identity drop-in
+  ansible.builtin.template:
+    src: signage-service-runtime.conf.j2
+    dest: /etc/systemd/system/signage-lite-update.service.d/10-runtime.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: systemd-reload
+
+- name: Install signage-lite-watchdog service identity drop-in
+  ansible.builtin.template:
+    src: signage-service-runtime.conf.j2
+    dest: /etc/systemd/system/signage-lite-watchdog.service.d/10-runtime.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: systemd-reload
+
+- name: Install Signage update interval drop-in
+  ansible.builtin.template:
+    src: signage-update-timer-runtime.conf.j2
+    dest: /etc/systemd/system/signage-lite-update.timer.d/10-runtime.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: systemd-reload

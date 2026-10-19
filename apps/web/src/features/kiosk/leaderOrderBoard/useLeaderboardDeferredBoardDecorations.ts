@@ -155,16 +155,21 @@ export function useLeaderboardDeferredBoardDecorations(options: {
   const displayBoardRef = useRef(displayBoard);
   const paramsKeyRef = useRef<string | null>(null);
   const fetchRunIdRef = useRef(0);
+  const workerRunningRef = useRef(false);
+  const cancelWorkerRef = useRef<() => void>(() => {});
+  const attemptedProgressByRowIdRef = useRef<Map<string, string>>(new Map());
 
   displayBoardRef.current = displayBoard;
 
   const resetDecorations = useCallback(() => {
-    fetchRunIdRef.current += 1;
+    cancelWorkerRef.current();
+    attemptedProgressByRowIdRef.current.clear();
     fetchedProgressByRowIdRef.current = new Map();
     footerFetchedBoardSyncTokenByPartKeyRef.current = new Map();
     setAccumulated(createEmptyAccumulatedLeaderboardDecorations());
     setDecorationsError(null);
     setIsDecorationsFetching(false);
+    setDecorationFetchEpoch((n) => n + 1);
   }, []);
 
   const markDecorationRowsStale = useCallback((rowIds: readonly string[]) => {
@@ -172,6 +177,7 @@ export function useLeaderboardDeferredBoardDecorations(options: {
     if (!hasTarget) return;
     const rows = displayBoardRef.current?.rows ?? [];
     removeLeaderboardFetchedDecorationProgressTokens(fetchedProgressByRowIdRef.current, rowIds);
+    removeLeaderboardFetchedDecorationProgressTokens(attemptedProgressByRowIdRef.current, rowIds);
     removeLeaderboardFetchedFooterSyncTokensForRows(
       footerFetchedBoardSyncTokenByPartKeyRef.current,
       rows,
@@ -198,12 +204,22 @@ export function useLeaderboardDeferredBoardDecorations(options: {
     setIsDecorationsFetching(false);
   }, [paramsKey]);
 
+  // Only a scope/sync/pause transition cancels a worker. Appends merely wake it.
   useEffect(() => {
-    if (!scheduleEnabled || pauseRefetch || !displayBoard || displayBoard.rows.length === 0) {
+    attemptedProgressByRowIdRef.current.clear();
+    return () => {
+      cancelWorkerRef.current();
+    };
+  }, [activeDeviceScopeKey, boardNetworkSyncToken, macManualOrderV2, paramsKey, pauseRefetch, scheduleEnabled]);
+
+  useEffect(() => {
+    const board = displayBoardRef.current;
+    if (workerRunningRef.current || !scheduleEnabled || pauseRefetch || !board || board.rows.length === 0) {
       return;
     }
 
-    const rows = displayBoard.rows;
+    const rows = board.rows;
+    const rowsById = new Map(rows.map((r) => [getLeaderboardRowId(r), r] as const));
     const pending = listLeaderboardRowIdsNeedingDecorationFetch(
       rows,
       fetchedProgressByRowIdRef.current,
@@ -211,14 +227,15 @@ export function useLeaderboardDeferredBoardDecorations(options: {
         boardNetworkSyncToken,
         footerFetchedBoardSyncTokenByPartKey: footerFetchedBoardSyncTokenByPartKeyRef.current
       }
-    );
+    ).filter((id) => attemptedProgressByRowIdRef.current.get(id) !==
+      buildLeaderboardRowDecorationProgressToken(rowsById.get(id)!));
     if (pending.length === 0) {
       return;
     }
 
     const { priorityRowIds, backgroundRowIdBatches } = buildLeaderboardDecorationFetchBatches({
       rows,
-      resources: displayBoard.resources,
+      resources: board.resources,
       pendingRowIds: pending
     });
     if (priorityRowIds.length === 0) {
@@ -228,7 +245,14 @@ export function useLeaderboardDeferredBoardDecorations(options: {
     const runId = ++fetchRunIdRef.current;
     let cancelled = false;
     const pendingBackgroundWaits = new Set<() => void>();
-    const rowsById = new Map(rows.map((r) => [getLeaderboardRowId(r), r] as const));
+    workerRunningRef.current = true;
+    cancelWorkerRef.current = () => {
+      cancelled = true;
+      workerRunningRef.current = false;
+      pendingBackgroundWaits.forEach((finish) => finish());
+      pendingBackgroundWaits.clear();
+      setIsDecorationsFetching(false);
+    };
     const syncTokenAtFetch = boardNetworkSyncToken;
 
     const rememberFetchedRows = (rowIds: readonly string[]) => {
@@ -250,6 +274,9 @@ export function useLeaderboardDeferredBoardDecorations(options: {
     };
 
     const fetchDecorationBatch = async (rowIds: readonly string[]) => {
+      for (const rowId of rowIds) {
+        attemptedProgressByRowIdRef.current.set(rowId, buildLeaderboardRowDecorationProgressToken(rowsById.get(rowId)!));
+      }
       const response = await postKioskProductionScheduleLeaderboardDecorations({
         rowIds: [...rowIds],
         ...(macManualOrderV2 && activeDeviceScopeKey.trim().length > 0
@@ -303,19 +330,20 @@ export function useLeaderboardDeferredBoardDecorations(options: {
           return;
         }
       }
-    })();
-
-    return () => {
-      cancelled = true;
-      pendingBackgroundWaits.forEach((finish) => finish());
-      pendingBackgroundWaits.clear();
-    };
+    })().finally(() => {
+      if (!cancelled && runId === fetchRunIdRef.current) {
+        workerRunningRef.current = false;
+        // Re-read the latest board on the next run, including rows appended in flight.
+        setDecorationFetchEpoch((n) => n + 1);
+      }
+    });
   }, [
     activeDeviceScopeKey,
     boardNetworkSyncToken,
     decorationFetchEpoch,
     displayBoard,
     macManualOrderV2,
+    paramsKey,
     pauseRefetch,
     rowProgressKey,
     scheduleEnabled

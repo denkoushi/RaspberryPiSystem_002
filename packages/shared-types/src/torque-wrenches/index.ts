@@ -14,6 +14,16 @@ export type TorqueWrenchStorageLocation = (typeof TORQUE_WRENCH_STORAGE_LOCATION
 
 export type AssemblyTorqueTraceabilityMode = 'LEGACY' | 'REQUIRED';
 
+/** 登録設定の照合方式。本体との通信・同期能力を表すものではない。 */
+export type TorqueWrenchSettingVerificationMode = 'REGISTERED_SETTING' | 'BOLT_CONDITION_ONLY';
+
+/**
+ * 締結条件の照合に使う文字列をAPI/Webで同じ規則へ正規化する。
+ */
+export function normalizeFastenerText(value: string): string {
+  return value.normalize('NFKC').trim().replace(/\s+/g, '').toUpperCase();
+}
+
 export const TORQUE_WRENCH_REJECTION_REASONS = [
   'UNKNOWN_SERIAL_NUMBER',
   'WRONG_PHYSICAL_WRENCH',
@@ -47,6 +57,7 @@ export interface TorqueWrenchModelDto {
   resolutionNm: string | null;
   communicationType: string;
   outputProfile: string | null;
+  settingVerificationMode: TorqueWrenchSettingVerificationMode;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -125,7 +136,9 @@ export interface AssemblyTorqueWrenchConfirmationDto {
   sessionId: string;
   templateBoltId: string;
   torqueWrenchProfileId: string;
-  settingHistoryId: string;
+  settingHistoryId: string | null;
+  settingVerificationMode: TorqueWrenchSettingVerificationMode;
+  target: Pick<AssemblyTorqueConditionDto, 'lowerLimit' | 'nominalTorque' | 'upperLimit' | 'unit'>;
   conditionFingerprint: string;
   operatorEmployeeId: string | null;
   operatorNameSnapshot: string;
@@ -156,10 +169,14 @@ export type TorqueWrenchConnectionLeaseState =
   | 'handoff_wait'
   | 'expired';
 
+/** The two business workflows that may own one physical wrench. */
+export type TorqueWrenchLeaseOwnerKind = 'ASSEMBLY' | 'TRAINING';
+
 export interface TorqueWrenchConnectionLeaseStatusDto {
   torqueWrenchProfileId: string;
   state: TorqueWrenchConnectionLeaseState;
   owner: {
+    ownerKind: TorqueWrenchLeaseOwnerKind;
     clientDeviceName: string;
     clientDeviceLocation: string | null;
     clientDeviceId?: string;

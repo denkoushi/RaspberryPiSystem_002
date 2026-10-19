@@ -40,6 +40,8 @@ export type PartMeasurementTemplateItemDto = {
   upperLimit: string | null;
   /** measured | through（未指定は measured） */
   depthMode?: 'measured' | 'through';
+  /** numeric=数値公差、judgement=管用ネジ形状のOK/NG */
+  valueKind?: 'numeric' | 'judgement';
 };
 
 /** 図面1枚。FIHNCD に紐づけない再利用単位。 */
@@ -74,7 +76,17 @@ export type PartMeasurementDrawingOcrStatusDto = {
   lastQueuedAt: string | null;
   nextAttemptAt: string | null;
   updatedAt: string;
+  /** 夜間に DGX で作った寸法マップ（GET /ocr が一緒に返す） */
+  dimensionMap?: PartMeasurementDrawingDimensionMapSummaryDto;
 };
+
+export type PartMeasurementDrawingDimensionMapSummaryDto = {
+  status: 'completed' | 'none';
+  dimensionCount: number;
+  finishedAt: string | null;
+};
+
+export type PartMeasurementDrawingCandidateSource = 'dimensionMap' | 'ocr';
 
 export type PartMeasurementDrawingOcrCandidateDto = {
   valueText: string;
@@ -89,10 +101,18 @@ export type PartMeasurementDrawingOcrCandidateDto = {
   passKind: 'full' | 'tile' | 'frame';
   preprocessKind: 'raw' | 'lineSuppressed' | 'boxedFrame';
   rotation: number;
+  /** 寸法マップ由来の候補だけが持つ */
+  source?: PartMeasurementDrawingCandidateSource;
+  dimensionText?: string;
+  dimensionKind?: string;
+  /** 上下限の案（± の相対値）。導けないものは null */
+  suggestedUpperTolerance?: string | null;
+  suggestedLowerTolerance?: string | null;
 };
 
 export type PartMeasurementDrawingOcrCandidateResponseDto = {
   status: PartMeasurementDrawingOcrStatus;
+  source?: PartMeasurementDrawingCandidateSource;
   candidates: PartMeasurementDrawingOcrCandidateDto[];
   cache: PartMeasurementDrawingOcrStatusDto;
 };
@@ -108,6 +128,7 @@ export type PartMeasurementTemplateSiblingGroupDto = {
   displayName: string;
   fhincd: string;
   processGroup: PartMeasurementProcessGroup | null;
+  fkojun?: string;
   activeResourceCds: string[];
   createdAt?: string | null;
   updatedAt?: string | null;
@@ -118,6 +139,7 @@ export type KioskInspectionDrawingTemplateSummaryDto = {
   id: string;
   fhincd: string;
   resourceCd: string;
+  fkojun?: string;
   processGroup: PartMeasurementProcessGroup | null;
   name: string;
   version: number;
@@ -139,6 +161,7 @@ export type PartMeasurementTemplateDto = {
   id: string;
   fhincd: string;
   resourceCd: string;
+  fkojun?: string;
   /** 正本（切削/研削）のみ。候補テンプレでは null */
   processGroup: PartMeasurementProcessGroup | null;
   templateScope: PartMeasurementTemplateScope;
@@ -184,8 +207,13 @@ export type SelfInspectionRecordApprovalState =
   | 'input_incomplete'
   | 'inspector_measurement_pending'
   | 'registration_incomplete'
+  | 'final_judgement_pending'
+  | 'finalization_ready'
   | 'approvable'
-  | 'approved';
+  | 'approved'
+  | 'completed';
+
+export type SelfInspectionRecordApprovalScope = 'completed_records';
 
 export type SelfInspectionRecordApprovalDto = {
   id: string;
@@ -214,6 +242,104 @@ export type SelfInspectionPaperReportStatus =
   | 'CANCELLED';
 
 export type SelfInspectionPaperOcrReviewStatus = 'OCR_REVIEW' | 'CONFIRMED' | 'CANCELLED';
+
+export type SelfInspectionItemInvalidationState =
+  | 'NOT_STARTED'
+  | 'IN_PROGRESS'
+  | 'REVIEW_PENDING'
+  | 'COMPLETED'
+  | 'APPROVED';
+
+export type SelfInspectionItemInvalidationTargetDto =
+  | {
+      kind: 'session';
+      sessionId: string;
+    }
+  | {
+      kind: 'schedule_row';
+      scheduleRowId: string;
+      templateId: string;
+      productNo: string;
+      processGroup: PartMeasurementProcessGroup;
+      resourceCd: string;
+      fseiban: string;
+      fhincd: string;
+      fhinmei: string;
+    };
+
+export type SelfInspectionItemInvalidationDto = {
+  id: string;
+  itemBusinessKey: string;
+  requestId: string;
+  sessionId: string | null;
+  scheduleRowId: string;
+  sourceState: SelfInspectionItemInvalidationState;
+  templateIdSnapshot: string | null;
+  productNoSnapshot: string;
+  processGroupSnapshot: 'CUTTING' | 'GRINDING';
+  resourceCdSnapshot: string;
+  fseibanSnapshot: string | null;
+  fhincdSnapshot: string;
+  fhinmeiSnapshot: string;
+  machineNameSnapshot: string | null;
+  plannedQuantitySnapshot: number | null;
+  expectedEntryCountSnapshot: number | null;
+  reason: string;
+  invalidatedByUsernameSnapshot: string | null;
+  invalidatedByClientDeviceId: string | null;
+  invalidatedByClientDeviceNameSnapshot: string | null;
+  invalidatedAt: string;
+  createdAt: string;
+};
+
+export type SelfInspectionItemInvalidationsListDto = {
+  invalidations: SelfInspectionItemInvalidationDto[];
+  listLimit: number;
+  truncated: boolean;
+};
+
+export type SelfInspectionInvalidationHistoryValueDto = {
+  id: string;
+  templateItemId: string;
+  value: string | null;
+  judgementResult?: 'PASS' | 'FAIL' | null;
+  inspectorValue?: string | null;
+  inspectorJudgementResult?: 'PASS' | 'FAIL' | null;
+  reviewStatus?: SelfInspectionMeasurementReviewStatus;
+  templateItem: {
+    displayMarker: string | null;
+    measurementLabel: string;
+    unit: string | null;
+  };
+};
+
+export type SelfInspectionInvalidationHistoryEntryDto = {
+  id: string;
+  entryIndex: number;
+  createdByEmployeeNameSnapshot?: string | null;
+  inspectorEmployeeNameSnapshot?: string | null;
+  values: SelfInspectionInvalidationHistoryValueDto[];
+};
+
+export type SelfInspectionItemInvalidationDetailDto = SelfInspectionItemInvalidationDto & {
+  session: null | {
+    id: string;
+    startedAt: string | null;
+    completedAt: string | null;
+    recordApproval: SelfInspectionRecordApprovalDto | null;
+    entries: SelfInspectionInvalidationHistoryEntryDto[];
+    inspectorEntries: SelfInspectionInvalidationHistoryEntryDto[];
+    paperReports: Array<
+      SelfInspectionPaperReportDto & {
+        pages: Array<
+          SelfInspectionPaperReportPageDto & {
+            ocrReviews: SelfInspectionPaperOcrReviewDto[];
+          }
+        >;
+      }
+    >;
+  };
+};
 
 export type SelfInspectionPaperReportPageDto = {
   id: string;
@@ -333,6 +459,7 @@ export type SelfInspectionMeasurementValueDto = {
   id: string;
   templateItemId: string;
   value: string | null;
+  judgementResult?: 'PASS' | 'FAIL' | null;
   reviewStatus: SelfInspectionMeasurementReviewStatus;
   outOfToleranceAcknowledgedAt: string | null;
   approvedAt: string | null;
@@ -341,6 +468,7 @@ export type SelfInspectionMeasurementValueDto = {
   approvalComment: string | null;
   operatorMeasurementValueId?: string | null;
   operatorValueSnapshot?: string | null;
+  operatorJudgementResultSnapshot?: 'PASS' | 'FAIL' | null;
   differenceValue?: string | null;
   operatorReviewStatus?: SelfInspectionMeasurementReviewStatus | null;
   judgementStatus?: SelfInspectionInspectorMeasurementJudgementStatus;
@@ -351,7 +479,8 @@ export type SelfInspectionMeasurementValueDto = {
 
 export type SelfInspectionEntryValuePayload = {
   templateItemId: string;
-  value: string | number | null;
+  value?: string | number | null;
+  judgementResult?: 'PASS' | 'FAIL' | null;
   outOfToleranceAcknowledged?: boolean;
 };
 
@@ -367,7 +496,9 @@ export type SelfInspectionOutOfToleranceReviewValueDto = {
   measurementPoint: string;
   measurementLabel: string;
   unit: string | null;
+  valueKind?: 'numeric' | 'judgement';
   value: string | null;
+  judgementResult?: 'PASS' | 'FAIL' | null;
   lowerLimit: string | null;
   upperLimit: string | null;
   outOfToleranceAcknowledgedAt: string | null;
@@ -443,7 +574,9 @@ export type SelfInspectionRecordApprovalEntryValueDto = {
   measurementPoint: string;
   measurementLabel: string;
   unit: string | null;
+  valueKind?: 'numeric' | 'judgement';
   value: string | null;
+  judgementResult?: 'PASS' | 'FAIL' | null;
   lowerLimit: string | null;
   upperLimit: string | null;
   isWithinTolerance: boolean | null;
@@ -453,7 +586,9 @@ export type SelfInspectionRecordApprovalEntryValueDto = {
   updatedAt: string | null;
   inspectorValueId: string | null;
   inspectorValue: string | null;
+  inspectorJudgementResult?: 'PASS' | 'FAIL' | null;
   operatorValueSnapshot: string | null;
+  operatorJudgementResultSnapshot?: 'PASS' | 'FAIL' | null;
   differenceValue: string | null;
   inspectorJudgementStatus: SelfInspectionInspectorMeasurementJudgementStatus | null;
   inspectorJudgedAt: string | null;
@@ -491,8 +626,16 @@ export type SelfInspectionSessionDetailDto = SelfInspectionSessionSummaryDto & {
   /** 測定値は含まない（大量件数対策）。値は focusedEntry を参照 */
   entries: SelfInspectionLotEntryDto[];
   operatorEntries?: SelfInspectionLotEntryDto[];
+  /** 検査員画面で表示する、作業者確定・検査員測定の個体別状態 */
+  inspectorSlotStates?: SelfInspectionInspectorSlotStateDto[];
   /** `entryIndex` クエリ指定時のみ、当該入力件の測定値 */
   focusedEntry?: SelfInspectionLotEntryDto | null;
+};
+
+export type SelfInspectionInspectorSlotStateDto = {
+  entryIndex: number;
+  operatorState: 'missing' | 'draft' | 'confirmed';
+  inspectorState: 'not_started' | 'in_progress' | 'complete';
 };
 
 export type PartMeasurementTemplateCandidateDto = {
@@ -509,6 +652,7 @@ export type KioskPartMeasurementTemplatePickLocationState = {
   fhincd: string;
   fhinmei: string;
   resourceCd: string;
+  fkojun?: number | null;
   processGroup: PartMeasurementProcessGroup;
   machineName: string | null;
   scheduleRowId?: string | null;

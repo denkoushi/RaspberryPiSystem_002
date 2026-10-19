@@ -1,0 +1,348 @@
+# Kiosk inventory screens: one daily NFC screen and a separate setup screen
+
+This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds. It is maintained in accordance with `.agent/PLANS.md` at the repository root.
+
+## Purpose / Big Picture
+
+The Raspberry Pi item inventory (the `ItemlistRaspi` workflow described in `docs/plans/raspi-item-inventory-execplan.md`) is still in development and has not been put into use. Its kiosk screens are hard to use on a touch panel without a physical keyboard. Everyday work and rare setup work share one long page, NFC reads need a button press before each read, and several fields need a keyboard. The only way in is a browser `window.prompt` password dialog.
+
+After this change, a worker at a kiosk can do everything daily without a keyboard or a password. They hold an item's NFC tag to the reader and see its photo, stock, and place. They hold a quantity tag to take items out, or the restock tag first to put items back. If the stock count is wrong, they can correct it with a large on-screen keypad. They can undo the last action. A worker whose item tag is missing can pick the item by touching area, shelf, and drawer buttons. Setup work lives on a separate screen behind the existing 4-digit password, which is typed on an on-screen keypad. That work is registering candidates received by mail, adding shelves and drawers, registering quantity and restock tags, swapping item tags, and editing items. On that screen, tags are read just by holding them to the reader.
+
+The approved visual mockup is the Design canvas "キオスク在庫画面モック" (https://claude.ai/artifact/YRtMfKkfaNQHFybdkbWrte, boards 1 to 8). The mockup shows layout intent only. Where this plan and the mockup differ, this plan wins.
+
+## Progress
+
+- [x] (2026-09-26) Read the current kiosk inventory code, API authorization, service methods, tests, NFC routing, and the kiosk keyboard component; recorded findings below.
+- [x] (2026-09-26) User approved the flow: stock checking and correction are merged into the daily 在庫操作 screen without a password; setup stays separate with the password.
+- [x] (2026-09-26) Milestone 1: API allows kiosk stock correction without the password, guarded by an expected-before check, and history can be filtered by compartment. Web client and `useInventoryCompartmentHistory` hook added. Focused API tests 27/27 pass; api and web type checks pass.
+- [x] (2026-09-26) Milestone 1 merged as PR #1506 (merge SHA 60ba5c25); main CI green.
+- [x] (2026-09-26) Milestone 2: Daily 在庫操作 screen shows item detail, recent history, touch correction with undo, and a tag-less picker; header tab renamed 在庫 and pointed at `/kiosk/inventory`. Related web tests 28/28 and `tsc -b` pass. Real-kiosk screen check is left to Milestone 6.
+- [x] (2026-09-26) Milestone 1 deployed to Pi5 (run 20260926-101836-a72d4c, recap failed=0 unreachable=0; `/api/system/health` ok; unauthenticated correction returns 401).
+- [x] (2026-09-26) Milestone 2 merged as PR #1507 (merge SHA 13617380).
+- [x] (2026-09-26) Milestone 3: Kiosk setup screen gets an on-screen PIN keypad and a tabbed shell, with the NFCタグ and 棚・引き出し tabs. Related web tests pass (141 files, 731 tests).
+- [x] (2026-09-26) Milestone 3 merged as PR #1508 (merge SHA c9905040).
+- [x] (2026-09-26) Milestone 4: Kiosk setup 登録待ち tab becomes a step-by-step registration flow with automatic NFC reads (`InventoryRegistrationTab`). Photo delete asks inline instead of `window.confirm`. Related web tests 142 files / 734 tests pass.
+- [x] (2026-09-26) Milestone 2 deployed to Pi5 (run 20260926-105538-221a46, recap failed=0 unreachable=0; health ok).
+- [x] (2026-09-26) Milestone 4 merged as PR #1509 (merge SHA 1992470e).
+- [x] (2026-09-26) Milestone 5: Kiosk setup アイテム編集 tab (move to a free drawer, add another drawer with a held tag and count, photo order and delete, item delete with confirm). Item tag swap lives in the NFCタグ tab. The kiosk no longer imports `RaspiInventoryPage`, whose NFC listener is now limited to the admin route. Related web tests 143 files / 737 tests pass.
+- [x] (2026-09-26) Milestone 5 merged as PR #1510 (merge SHA ec299635).
+- [x] (2026-09-26) Deploy of Milestones 3–5: first run 20260926-112811-48762d failed safely (PR #1510 merged right after start); redeploy run 20260926-113848-d3ec92 succeeded (recap failed=0 unreachable=0, health ok, new setup text present in the served bundle).
+- [x] (2026-09-28) Milestone 6 real-kiosk check done by the user; findings listed on the task board.
+- [x] (2026-09-28) Feedback round 2026-09-28: fixes deployed (PR #1523, a6762c71); compact 1920×1080 registration deployed (PR #1527, 134e1b74); area normalization and touch shelf creation deployed (PR #1528, 426eca64, run 20260928-060636-3a0fae).
+- [x] (2026-09-28 15:33 JST) Existing areas normalized on Pi5 after user approval: dry run listed 4 rows (2 shelves, 1 candidate, 1 item: `30041R_2ＭＦ-Ｐ` → `30041R_2MF-P`, no shelf conflicts); `--apply` with backup `/opt/backups/inventory-area-normalize-20260928.json` (763 bytes); a second dry run reported nothing to change.
+- [ ] Units (個, ケース, …): implemented on `feat/kiosk-inventory-units`; remaining: PR, deploy, kiosk check.
+- [x] (2026-09-30) Brush-up of every inventory screen from the approved canvas boards ㉑〜㉘ (shared `inv` palette and components), pop-up fixes (wider 型式, second tap clears, edit mode with rename-with-items) on `feat/kiosk-inventory-brushup`. Checked at 1920×1080 with a local mock harness; kiosk check pending.
+- [x] (2026-10-13) Region reading, card layout and multi-area default on `feat/kiosk-inventory-region-ocr` from the approved mock `docs/design-previews/kiosk-inventory-region-ocr-mock.html`: the enlarged photo (登録待ち and アイテム編集) takes a dragged frame, `POST /item-inventory/photos/read-region` crops it and asks the vision model for the text, and a tap puts a candidate into one of the seven fields; frames can be remembered per field on the terminal (`kiosk-inventory-ocr-frames`). Cards carry stock, 型式, the label number, the place and the ＜＞ buttons inside the photo. Area chips are multi-select and the home button remembers the selection (`kiosk-inventory-default-areas`, read from the old single-area key when absent). Deployed to Pi5 2026-10-13 10:17 JST (PR #1961, 8ffcd873, run 20261013-011111-9b1d8f, recap ok=272 changed=31 failed=0, `/`, `/admin`, `/kiosk`, `/api/system/health` = 200; rollback floor 86dd89ef). Kiosk check by the user 2026-10-13: cards and area memory OK, region reading works but needs the UI round below.
+- [x] (2026-10-13) UI round after the kiosk check, on `feat/kiosk-inventory-read-ui-round2` from the approved mock `docs/design-previews/kiosk-inventory-read-ui-round2-mock.html`: the reading dialog fills the screen (photo on the left with no bars above or below, a 480px pane on the right that carries the ＜＞, count and close) and wraps field values instead of cutting them; candidates stay after a tap so one reading can fill several fields, and filled fields get a ✓ until the dialog closes. The list view narrows 名前 and shows 型式, メーカー, 工具名, 寸法, 被削材 and 用途 as separate columns. The medium card drops the reserved second name line and shows two info lines (メーカー・工具名・寸法 / 被削材・用途) at the same card height. Web only. Deployed to Pi5 2026-10-13 11:56 JST (PR #1967, 20de58fc, run 20261013-025030-77aef7, failed=0 unreachable=0, `/`, `/admin`, `/kiosk`, `/api/system/health` = 200; rollback floor 2fdb68e4). Kiosk check by the user: all four points OK (2026-10-13).
+- [x] (2026-10-13) Follow-up to the reading dialog, on `feat/kiosk-inventory-read-edit-keep` from the same mock (updated in place): each destination row is now an editable text field plus an 入れる button, so a value read by OCR can be corrected from a hardware keyboard (typing marks the field like applying does; Enter does not add a line break, Escape inside a field does not close the dialog); candidates accumulate across frames and photos (newest first, duplicates removed) and are cleared only when the dialog closes; candidates are drawn in cyan and input rows in gray (green once filled) so the two no longer look alike. Web only, no API change. Verified locally: web tsc, lint, full web test (524 files / 3953 tests), `kiosk-sop:source-check` current. Deployed to Pi5 2026-10-13 14:10 JST (PR #1974, 182f0e12, run 20261013-050443-89221d, failed=0, 4 URLs = 200; rollback floor e80462fa). Kiosk check by the user: OK (2026-10-13, at production 182f0e12; covers the #1967 round and this follow-up).
+- [x] (2026-10-13) UI round on `feat/kiosk-inventory-ui-round` from the approved mock `docs/design-previews/kiosk-inventory-hover-tray-mock.html`: small and medium cards on the top screen show every field in a pop-up on mouse hover or keyboard focus (not on large cards, the list view, or a touch tap); the size and view toggles and 番号で開く moved to the first row left of 払い出し, so the second row holds only the area chips. After a scan, the quantity buttons are 1 to 20 (one tap confirms, as before; numbers above the stock are disabled when issuing; ほかの数 stays) and 最近の動き is a 250px column showing time, change and `→` the resulting stock. In 登録待ち, photos are shown two at a time, stacked and uncropped, with ＜＞ paging for the rest (the user chose this over the mock's one large photo), and the bottom strip became a 登録待ち N button that opens a grid of candidates above it and closes on a choice, Escape or an outside press. Web only. Merge, deploy and the kiosk check are pending.
+- [x] (2026-10-13) The same round, final layout and release (#1983, main `787a6a0f`, Pi5 run `20261013-100931-9355b1`, success): the count line (登録済み N 件・最近持ち出した順 / 未登録 N 件) is gone from the top screen. The screen after a scan is split into a reading side and a pressing side: on the left, 型式・メーカー・工具名・寸法・被削材・用途 one per row (21px bold, wrapped, never cut) with 最近の動き (250px wide) below; on the right, one card with 現在庫 (48px), the 1 to 20 buttons (70px high), ほかの数 and 数が合わないときは直す. The user checked it on the kiosk the same day: OK.
+
+## Surprises & Discoveries
+
+- Observation: Merging to `main` while a standard release run is starting makes the run fail, because the Pi5 unit fetches `origin/main` a few seconds after it starts and refuses a SHA that differs from the planned `releaseSha`.
+  Evidence: run `20260926-112811-48762d` journal: `13617380d..ec2996352 main -> origin/main`, then `status=1/FAILURE` three seconds after start; Pi5 health ok with an unchanged uptime.
+
+- Observation: The kiosk has a touch panel and no physical keyboard. The shared on-screen keyboard only types A to Z and 0 to 9, so it cannot enter Japanese item names.
+  Evidence: `apps/web/src/components/kiosk/KioskKeyboardModal.tsx` defines `NUMBER_KEYS` and `LETTER_ROWS` only. `docs/knowledge-base/frontend.md` records that touch-panel kiosks lack a keyboard. Some Pi4 kiosks do run IBus and mozc for Japanese input (`docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md`), but that needs a keyboard.
+- Observation (correction, 2026-09-28): The user confirmed that the Pi4 kiosks and the Mac both have a physical keyboard (21.5-inch 1920×1080 monitors). The earlier "no keyboard" reading came from a knowledge-base note about touch panels. Touch-only flows stay, but typing on the kiosk (unit names, area names) is acceptable.
+  Evidence: user statement on 2026-09-28.
+- Observation: Every setup and correction endpoint currently requires the 4-digit password header `x-kiosk-access-password`. Only transactions and the terminal's own last cancel work without it.
+  Evidence: `apps/api/src/routes/item-inventory/index.ts`. `POST /item-inventory/corrections` uses `authorizeManageOrKiosk`. `POST /item-inventory/transactions` uses `writeOrKiosk`. `cancelWrite` falls back to `writeOrKiosk` when no password header is present.
+- Observation: The history API cannot filter by item or compartment. It only returns the newest N rows overall.
+  Evidence: `GET /item-inventory/history` parses only `limit`, and `ItemInventoryService.listHistory(limit)` in `apps/api/src/services/item-inventory/item-inventory.service.ts` has no `where`.
+- Observation: Stock correction writes an absolute value with no check that the stock is still what the worker saw.
+  Evidence: `correctStock` locks the row, then sets `stockQuantity = desiredQuantity` unconditionally.
+- Observation: The global inventory NFC router ignores tags only on `/kiosk/inventory/settings`. Everywhere else, an inventory tag navigates to `/kiosk/inventory`.
+  Evidence: `apps/web/src/features/kiosk/InventoryNfcRouter.tsx`, `useNfcStream(location.pathname !== '/kiosk/inventory/settings', …)`.
+- Observation: The kiosk settings route renders the admin page component `RaspiInventoryPage`, which is also mounted at `/admin/tools/raspi-inventory`. It needs an explicit button press ("読み取り") before each NFC read.
+  Evidence: `apps/web/src/pages/kiosk/KioskItemInventorySettingsPage.tsx` returns `<RaspiInventoryPage accessPassword=… />`. In `apps/web/src/pages/admin/RaspiInventoryPage.tsx`, `armNfcTarget` sets `scanTarget`.
+- Observation: The daily page has no header tab. Workers reach it only by holding an inventory tag. The header tab `inventory_settings` (label 在庫設定) points to the settings route.
+  Evidence: `apps/web/src/features/kiosk/kioskHeaderTabs/kioskHeaderTabLabels.ts` and `kioskHeaderReorderableTabRenderer.tsx`, case `'inventory_settings'`.
+- Observation: `item-inventory.service.test.ts` uses in-memory mocks, not a real database, so it runs locally without PostgreSQL. A fresh worktree needs `pnpm install` and a build of every `packages/*` workspace before `tsc` works.
+  Evidence: the `inventoryState` helper in that test file; `tsc` reported missing `@raspi-system/shelf-layout-core` until the packages were built.
+
+## Decision Log
+
+- Decision: Stock checking and correction live on the daily 在庫操作 page (`/kiosk/inventory`), not on a separate page.
+  Rationale: Workers already hold tags there. Merging avoids a third screen. User decision on 2026-09-26.
+  Date/Author: 2026-09-26 / user, recorded by Claude.
+- Decision: Kiosk stock correction needs only a registered kiosk client key, like transactions. The password stays for setup work.
+  Rationale: The same field workers do both daily and setup work. The user wants daily correction without a password. The client key still limits corrections to registered terminals, and every correction is recorded with the terminal's `clientId`.
+  Date/Author: 2026-09-26 / user, recorded by Claude.
+- Decision: The correction request gains an optional `expectedBeforeQuantity`. When present and different from the locked current stock, the API returns 409 `INVENTORY_CONFLICT` and changes nothing.
+  Rationale: The screen shows "いまの記録 12 → 数えた数 9". Without the check, a transaction made by another terminal between opening and confirming the screen would be silently overwritten. The field is optional, so the admin page keeps working unchanged. It also makes an accidental double submit fail instead of writing a second zero-delta row.
+  Date/Author: 2026-09-26 / Claude.
+- Decision: Keep the setup route at `/kiosk/inventory/settings` and keep the header tab id `inventory_settings`. Change the tab's label to 在庫 and point it at `/kiosk/inventory`, active for any path that starts with `/kiosk/inventory`. The daily page links to setup with a 在庫の準備 button.
+  Rationale: The tab id is part of the shared type `KioskReorderableHeaderTabId` and of saved per-terminal tab orders, so renaming it would break saved orders. The settings path is what disables global NFC routing during setup, so moving it would need router changes for no benefit.
+  Date/Author: 2026-09-26 / Claude.
+- Decision: The admin page `/admin/tools/raspi-inventory` (`RaspiInventoryPage`) stays as it is for PC use with a keyboard. The kiosk setup gets its own components under `apps/web/src/features/kiosk/inventory/`. Shared pure helpers may be extracted when both need them.
+  Rationale: This keeps the admin path working and testable while the kiosk UI is rebuilt. Milestone 5 removes the kiosk's dependency on the admin component.
+  Date/Author: 2026-09-26 / Claude.
+- Decision: The password unlock lasts while the worker stays on the setup page. Leaving the page (unmounting it) forgets the password. No timer.
+  Rationale: This is today's behaviour: `accessPassword` lives in React state of `KioskItemInventorySettingsPage`. The mockup text says 在庫操作に戻るとロック, which matches. A timer would add state without a stated need.
+  Date/Author: 2026-09-26 / Claude.
+- Decision: The daily correction keypad reuses the existing `apps/web/src/features/kiosk/KioskDigitTenkey.tsx` with larger key classes, instead of moving `NumericKeypad` out of `RaspiInventoryPage.tsx`.
+  Rationale: A kiosk tenkey already exists and is used by other kiosk screens, and the admin page and its tests stay untouched.
+  Date/Author: 2026-09-26 / Claude.
+- Decision: The success panel reuses the existing message area and the existing 直前の取引を取消 button, instead of a separate large いまの取引を取り消す button.
+  Rationale: The existing button already undoes the last issue, restock or correction, and the existing tests pin its name.
+  Date/Author: 2026-09-26 / Claude.
+- Decision: Setup NFC reads listen as an ordinary (legacy) NFC subscriber, not with the `inventory` role.
+  Rationale: `useNfcStream` delivers `inventory`-role events only for UIDs that already resolve to an inventory tag. New tags being registered are unknown, so they arrive only to legacy subscribers. The global inventory router is already off on the setup path.
+  Date/Author: 2026-09-26 / Claude.
+- Decision: 棚・引き出し adds the next consecutive number with one touch, and gap numbers are left to the admin PC page.
+  Rationale: This avoids a keypad step for the common case. A new area name is the only text on the kiosk and sits behind a "keyboard terminals" fold.
+  Date/Author: 2026-09-26 / Claude.
+- Decision: The history table and cancelling another terminal's transaction stay on the admin PC page only.
+  Rationale: On the kiosk, the daily screen already undoes the terminal's own last action. Cross-terminal cancellation is an administrative correction that needs the full history table, which does not fit a touch screen.
+  Date/Author: 2026-09-26 / Claude.
+- Decision: After the 2026-09-28 kiosk check, registration becomes one scrolling screen with a sticky done/remaining checklist and the 登録する button, replacing the page-by-page wizard. Tag reading starts automatically once a drawer is chosen.
+  Rationale: The user asked to minimise screen transitions and always see what is done and what is left; the user chose this option over a setup-wide to-do overview.
+  Date/Author: 2026-09-28 / user, recorded by Claude.
+- Decision: The daily screen's photo enlarges inside its own left pane instead of a full-screen dialog, and the information pane stays visible.
+  Rationale: User request from the kiosk check; workers keep seeing stock and place while looking at the photo.
+  Date/Author: 2026-09-28 / user, recorded by Claude.
+- Decision: The registration screen is laid out for the kiosk's 21.5-inch 1920×1080 monitor with no page scroll: photos (692px) | compact rows | checklist (340px). Controls have fixed, content-sized dimensions (44px high buttons, 64×44 shelf/drawer buttons, 360/240px text inputs, a 6-digit quantity field) instead of widths derived from the screen.
+  Rationale: The 2026-09-28 follow-up found oversized buttons, wasted space and screen-divided input widths; the user approved mockup board ⑨ before implementation.
+  Date/Author: 2026-09-28 / user, recorded by Claude.
+- Decision: Inventory areas are normalized with NFKC, trimmed, and inner whitespace collapsed (`apps/api/src/services/item-inventory/inventory-area.ts`) when mail is ingested, when a shelf is created, and when registration compares the shelf's area with the candidate's. The mail content hash stays on the raw manifest, so a re-sent mail is still recognised as a duplicate. Existing rows are normalized once by `apps/api/scripts/inventory-area-normalize.mjs` (dry run first, then `--apply` with a backup; `--restore` undoes).
+  Rationale: On 2026-09-28 production had a shelf area `30041R_2ＭＦ-Ｐ` typed in full-width; the user asked that full-width and other variants be treated as the same area from the moment they arrive.
+  Date/Author: 2026-09-28 / user, recorded by Claude.
+- Decision: When a candidate's area has no shelf, registration offers "＋ 棚N を作る" and "＋ 引出しN を作る" in place, and 棚・引き出し lists candidate areas, so no area name has to be typed on a keyboard-less kiosk.
+  Rationale: Candidate #4 (`50013_540AP`) could not be registered from the kiosk because its area had no shelf and a new area name needed a keyboard.
+  Date/Author: 2026-09-28 / user, recorded by Claude.
+- Decision: Each item has one unit (`InventoryItem.unit`, null means 個) and there is no conversion between units. The offered units live in `InventoryUnit` (seeded with 個 and ケース). Units are chosen and added in 在庫の準備 (registration 名前・単位 row and アイテム編集). Quantity tags carry only a number, meaning "that many of the item's unit". Adding a unit requires the setup password; unit names are normalized like areas.
+  Rationale: User request on 2026-09-28 (個 and ケース today, more later; no conversion; the kiosks have keyboards).
+  Date/Author: 2026-09-28 / user, recorded by Claude.
+- Decision: The mail location names the machine (management number + model), not the shelf. Shelf areas are named "<machine> <direction>" (東/西/南/北, e.g. `50013_540AP 北`). Registration offers the candidate machine with four direction buttons (the area used last time for the same machine is preselected, otherwise 北) and the other machines' areas, and any shelf may be chosen; the server no longer requires the shelf area to equal the mail location. The item keeps the machine in `InventoryItem.area`. 棚・引き出し can rename an area (all its shelves; refused if the new area already has a shelf with the same number) and create a new area from a machine and direction.
+  Rationale: Shelves stand near machines but their number differs from the number of machines (user, 2026-09-28; mockups ⑩ and ⑪ approved). Existing shelves `30041R_2MF-P` are renamed by the user with the new feature (北 for now).
+  Date/Author: 2026-09-28 / user, recorded by Claude.
+- Decision: 在庫操作 puts 置き場所から選ぶ / 選択をリセット / 直前の取引を取消 in the top row next to 在庫の準備, removes the explanatory lines (including the 30-second note; the reset itself stays), fills the waiting screen with a card per registered drawer (tap = open it like scanning its item tag), enlarges the photo thumbnails to 200×150, and shows the latest three movements in a 300px column with ▼ for the rest (20 fetched). Every "hold the tag" prompt is an NFC mark + a short word in its own colour (sky: item tag, amber: quantity or setup tag, green: restock) instead of a sentence.
+  Rationale: User request on 2026-09-29 (mockups ⑫–⑭ approved); long explanations and look-alike text prompts were rejected.
+  Date/Author: 2026-09-29 / user, recorded by Claude.
+- Decision: Following the 2026-09-29 13:21 requests (mockups ⑮ ⑯ approved), the 在庫操作 waiting screen keeps the tag prompt, the 持出/補充 hints and the registered count in the title row; cards are two lines (name, count and unit / area・棚・引出し) with 160px photos, ordered by the most recent issue (`lastIssuedAt` per drawer from `GET /item-inventory/items`; never-issued drawers follow by name). Registration moves 写真を確認した to the photo pane's top-right corner, lets two photo rows fill the pane, and lays the quantity keypad out in six 52×40 keys. The tool-information fields (メーカー, 工具名, 被削材, 工具寸法) with the "登録済みから選ぶ" pop-up follow in a separate pull request because they need a migration.
+  Date/Author: 2026-09-29 / user, recorded by Claude.
+- Decision: The kiosk check on 2026-09-30 found the tool-information inputs and the pop-up clipped by the centre column (about 630px wide for fields). Inputs are now fixed at 220px in two columns, and the pop-up is fixed to the screen (1000px, six columns: メーカー, 工具名, 被削材, 工具寸法, 型式, 用途). Pick lists combine values in use with pre-registered choices (`InventoryToolFieldPreset`, migration `20260930090000_add_inventory_tool_field_presets`). The supplier list `工具在庫一覧.csv` is loaded once with `apps/api/scripts/inventory-tool-presets-import.mjs` (CSV on stdin; dry run, then `--apply`; `--remove` undoes): 径 → 工具寸法, 材質 → 被削材, 削り方向 → 用途, 型番 → 型式, メーカー → メーカー, with "・"-joined values split (型番 kept whole).
+  Date/Author: 2026-09-30 / user, recorded by Claude.
+- Decision (was open; user approved 2026-09-26): In the kiosk registration flow, the 名前など step is optional. It is prefilled with the current default (`ItemlistRaspi <sourceItemId>`), and model and usage are left blank. The step offers the ordinary text input, which works on terminals with a keyboard and IBus. Japanese renaming on keyboard-less terminals is done later on the admin PC page.
+  Rationale: The on-screen keyboard cannot type Japanese, and building a kana keyboard is outside this scope. Ask the user before Milestone 4 whether this default is acceptable.
+  Date/Author: 2026-09-26 / Claude.
+- Decision: Region reading sends the cropped image to the same vision model as 写真から読む instead of Tesseract, because the labels are engraved or printed on tools at odd angles. The crop is taken from the original before downscaling. In アイテム編集 the text read from a frame is placed in the field as unconfirmed text and is saved by the existing ✓ / Enter, never by itself. The shelf filter works only while exactly one area is selected. On small cards the photo holds only the stock count, ＜＞ and the photo count; the name, label number and 型式 go below.
+  Date/Author: 2026-10-13 / user approved the mock; small-card layout and the unconfirmed-text rule chosen by Claude.
+
+
+## Outcomes & Retrospective
+
+Not started.
+
+## Context and Orientation
+
+The repository is a pnpm monorepo. `apps/api` is a Fastify server written in TypeScript with Prisma for PostgreSQL. `apps/web` is a React single-page app built with Vite, using TanStack Query for server state and Tailwind CSS classes for styling. Both use Vitest for tests.
+
+A "kiosk" is a Raspberry Pi terminal with a touch panel and an NFC reader, running the web app full-screen under `/kiosk/...`. Each kiosk sends a secret client key header `x-client-key` that identifies it as a registered "client device". An "NFC event" is one tag read. `apps/web/src/hooks/useNfcStream.ts` delivers the reads to React components as `{ uid, eventId?, timestamp }`, and subscribers declare a `role`.
+
+Inventory concepts, all in Prisma models used by `apps/api/src/services/item-inventory/item-inventory.service.ts`:
+
+- An "item" (`InventoryItem`) has name, code, model, usage, category, area, note, and photos.
+- A "compartment" (`InventoryCompartment`) is one drawer holding one item type with its own `stockQuantity`. It has an "item tag", an NFC tag stuck on that drawer.
+- A drawer belongs to a shelf, and a shelf belongs to an area. The area is a text such as `30007_KSJP-55`.
+- A "quantity tag" is an NFC tag meaning "N pieces".
+- The "restock tag" switches the next operation from taking out to putting back.
+- Each stock change writes an `InventoryTransaction` row with `action` (ISSUE, RESTOCK, CORRECTION, CANCEL…), `delta`, `beforeQuantity`, `afterQuantity`, and `clientId`.
+- Cancelling is allowed only for the newest transaction of a compartment, and only while stock still equals that row's `afterQuantity`. Without the password, only the same terminal's own transaction can be cancelled.
+
+Files that matter:
+
+- `apps/api/src/routes/item-inventory/index.ts` holds all HTTP routes and their authorization.
+  - `writeOrKiosk` accepts an admin or manager JWT, or a registered client key.
+  - `authorizeManageOrKiosk` additionally requires the 4-digit password header when used from a kiosk.
+  - `cancelWrite` picks between the two depending on whether the password header is present.
+- `apps/api/src/routes/item-inventory/cancel-authorization.test.ts` holds the route-level authorization tests. Copy its setup pattern for new route tests.
+- `apps/api/src/services/item-inventory/item-inventory.service.ts` holds `correctStock`, `cancelTransaction`, and `listHistory`. Tests are in `apps/api/src/services/item-inventory/__tests__/item-inventory.service.test.ts`.
+- `apps/web/src/api/domains/item-inventory.ts` holds the HTTP client functions and types. `apps/web/src/api/hooks/item-inventory.ts` holds the TanStack Query hooks, and `useInventoryMutations(accessPassword?)` returns every mutation.
+- `apps/web/src/pages/kiosk/KioskItemInventoryPage.tsx` is the daily 在庫操作 page. It queues NFC events that arrive through router state from `InventoryNfcRouter`, resolves each tag, and runs item → quantity or restock → item → quantity. It resets after 30 seconds without activity, and offers 選択をリセット and 直前の取引を取消. Tests are in `KioskItemInventoryPage.test.tsx`.
+- `apps/web/src/pages/kiosk/KioskItemInventorySettingsPage.tsx` asks for the password with `window.prompt`, verifies it through `POST /kiosk/item-inventory/settings/verify-access-password`, then renders the admin component. Tests are in `KioskItemInventorySettingsPage.test.tsx`.
+- `apps/web/src/features/kiosk/InventoryNfcRouter.tsx` sends inventory tags from any kiosk page to `/kiosk/inventory`, except on the settings path.
+- `apps/web/src/features/kiosk/kioskTheme.ts` holds the shared kiosk Tailwind class names. Use them instead of new ad-hoc colours.
+- `apps/web/src/components/kiosk/InventoryPhotoDialog.tsx` is the enlarged photo view, already used by both pages.
+- `apps/web/src/App.tsx` holds the routes `/kiosk/inventory` and `/kiosk/inventory/settings`.
+
+## Plan of Work
+
+### Milestone 1: API for password-free correction and per-compartment history
+
+At the end of this milestone, a kiosk with only its client key can correct stock, a stale correction is refused, and history can be read for one compartment. Nothing in the web app changes yet, and the admin page keeps working.
+
+In `apps/api/src/routes/item-inventory/index.ts`, add a pre-handler `correctionWrite` shaped like `cancelWrite`. If the password header is present, it calls `authorizeManageOrKiosk`, so an existing admin-page caller that sends the password keeps the same behaviour and the same failed-attempt limit. Otherwise it calls `writeOrKiosk`. Use it for `POST /item-inventory/corrections`. Extend that route's body schema with `expectedBeforeQuantity: z.number().int().min(0).optional()` and pass it to the service.
+
+In `ItemInventoryService.correctStock`, add an optional last parameter `options: { expectedBeforeQuantity?: number } = {}`. After the `FOR UPDATE` lock and the lookup, throw `new InventoryConflictError('在庫が変わりました。もう一度数えてください')` when `options.expectedBeforeQuantity !== undefined` and it differs from `compartment.stockQuantity`. The existing `mapMutationError` turns this into HTTP 409.
+
+For history, extend the `GET /item-inventory/history` query schema with `compartmentId: z.string().uuid().optional()`. Change `listHistory(limit, filter: { compartmentId?: string } = {})` to add `where: filter.compartmentId ? { compartmentId: filter.compartmentId } : undefined`.
+
+Tests:
+
+- In `item-inventory.service.test.ts`, add a correction test. It succeeds with a matching `expectedBeforeQuantity`, and with a different one it throws and leaves stock and history unchanged. Follow the existing test "refuses cancellation when a newer transaction changed the balance".
+- In `cancel-authorization.test.ts` (it already holds the shared route mocks), add three route tests plus a history filter test:
+  - A kiosk client key without a password can post a correction.
+  - A request with a wrong password header is still rejected with 403.
+  - A request with neither a JWT nor a client key is rejected.
+
+### Milestone 2: the daily 在庫操作 screen
+
+At the end of this milestone, the daily page matches mockup boards 1 to 5. Holding tags behaves exactly as today, so existing tests keep passing.
+
+Split `KioskItemInventoryPage.tsx`, which is already long, into a page that owns the NFC queue and flow state, plus small presentational components in a new folder `apps/web/src/features/kiosk/inventory/`:
+
+- `InventoryWaitingPanel`: the large "アイテムのタグをかざしてください" prompt with the two scan-order hints.
+- `InventoryItemPanel`: photos, name, code, stock, and place. It shows "数量タグをかざすと持ち出します", or the restock wording in restock mode.
+- `InventoryRecentHistory`: the three newest rows for the compartment, from a new hook `useInventoryCompartmentHistory(compartmentId)` that calls `getInventoryHistory(3, compartmentId)`.
+- `InventoryResultPanel`: success or error after a transaction, with 在庫 before → after and a large いまの取引を取り消す button bound to the existing `cancelLast`.
+- `InventoryCorrectionPanel`: the before → after display, a numeric keypad, and a confirm button. Reuse the keypad logic of `NumericKeypad` in `RaspiInventoryPage.tsx` by moving it to `apps/web/src/features/kiosk/inventory/NumericKeypad.tsx` with larger kiosk sizes. Import it from both places.
+- `InventoryLocationPicker`: area → shelf → drawer buttons built from `useInventoryItems()`, with no typing.
+
+Behaviour to add in the page:
+
+- While an item is selected, a 数が合わないときは直す button opens the correction panel. Opening it pauses the 30-second reset, and closing it resumes the reset.
+- Confirming calls `mutations.correction.mutateAsync({ compartmentId, desiredQuantity, expectedBeforeQuantity: shownStock })` without a password. On success, show the result panel ("記録を N 個 減らしました／増やしました", 12 → 9) and set `lastTransaction`, so the same undo button works. On 409, show the server message and reload the tag.
+- The picker is opened by タグが無いとき：置き場所から選ぶ on the waiting panel. Choosing a drawer selects that compartment exactly like scanning its item tag. Build a synthetic `InventoryTag` from the compartment. A compartment whose `itemTagUid` is null can be viewed and corrected, but the quantity-tag step shows "この引き出しにはアイテムタグがありません" and does not call the transaction API, because that API needs `itemTagUid`.
+- An NFC event arriving while the picker or correction panel is open is handled as today. It closes the panel and advances the flow.
+- The header gets a 在庫の準備 link to `/kiosk/inventory/settings`.
+
+In `kioskHeaderTabLabels.ts`, change `inventory_settings` to 在庫. In `kioskHeaderReorderableTabRenderer.tsx`, point the tab at `/kiosk/inventory` with `isActive: pathname.startsWith('/kiosk/inventory')`. Update `kioskHeaderReorderableTabRenderer.test.tsx`.
+
+Tests in `KioskItemInventoryPage.test.tsx`:
+
+- Correction sends `expectedBeforeQuantity` and no password header, then shows the result.
+- A correction 409 shows the message and changes nothing.
+- The picker selects a compartment and a following quantity scan posts a transaction with that compartment's `itemTagUid`.
+- The picker with a null `itemTagUid` blocks the quantity step.
+- The reset timer does not fire while the correction panel is open.
+- Keep the two existing tests passing unchanged.
+
+### Milestone 3: kiosk setup shell, PIN keypad, NFCタグ and 棚・引き出し tabs
+
+At the end of this milestone, `/kiosk/inventory/settings` no longer uses `window.prompt`. It shows an on-screen 4-digit keypad (mockup board 6), and after unlocking it shows a tab bar: 登録待ち, 棚・引き出し, NFCタグ, アイテム編集. 登録待ち and アイテム編集 still render the old admin component inside their tab until Milestones 4 and 5, so no function is lost at any point.
+
+Create `apps/web/src/features/kiosk/inventory/setup/`:
+
+- `InventoryPinPad`: dots, a 3×4 keypad, やめる returning to `/kiosk/inventory`, and auto-submit on the fourth digit. It uses the existing `useVerifyKioskDueManagementAccessPassword` and the same messages as today.
+- `useArmedNfcRead`: a small hook wrapping `useNfcStream(true, undefined, { role: 'inventory' })`. It returns the next NFC event that arrives after it was armed, ignoring an event already present when armed. Copy the `nfcBaselineKeyRef` idea from `RaspiInventoryPage`. The tag screens arm it automatically when a "かざしてください" panel opens, so no read button is needed. A hidden `<details>` keeps manual UID entry as a fallback.
+- `InventoryTagsTab` (mockup board 8):
+  - A quantity-tag list built from `useInventoryTags()`, filtered to kind QUANTITY and grouped by quantity.
+  - 追加 opens a panel: choose a number on the keypad, then hold the new tag, then call `mutations.quantityTag`.
+  - The restock tag works the same way with `mutations.restockTag`.
+  - Item tag swap: choose a compartment with `InventoryLocationPicker`, hold the new tag, then call `mutations.replaceTag`.
+- `InventoryShelvesTab`: area buttons, shelf buttons with ＋棚を追加, and drawer buttons with ＋引き出しを追加. The next free number is proposed and adjustable with the keypad, then `mutations.createShelf` or `mutations.createDrawer` is called. A new area name is the only text here. Use the normal input, and note that it needs a keyboard terminal (see the Decision Log).
+
+Rewrite `KioskItemInventorySettingsPage.tsx` to render the PIN pad, then the tab shell, keeping `accessPassword` in state as today. Update `KioskItemInventorySettingsPage.test.tsx`: replace the `window.prompt` mock with keypad clicks, and keep the three behaviours (verify before open, reject non-four-digit, clear the error message after a few seconds). Add tests that a tag registered in the NFCタグ tab uses the armed read without a button press, and that an event present before arming is ignored.
+
+### Milestone 4: step-by-step registration in 登録待ち
+
+Before starting, ask the user whether the default in the open Decision Log entry about the 名前など step is acceptable, and record the answer.
+
+`InventoryRegistrationWizard` replaces the admin component in the 登録待ち tab (mockup board 7). The left side lists pending candidates from `useInventoryImports(accessPassword)`, with the retry banner for failed mails from `useInventoryImportMessages`. The steps are:
+
+1. 写真の確認: large photos, reorder by ↑↓ buttons, delete with confirmation. Reuse the same mutations as the admin page.
+2. 新規か既存か: two big buttons. 既存 shows item cards to touch.
+3. 名前など: optional, see the Decision Log.
+4. 置き場所: shelf and drawer buttons for the candidate's area. Used drawers are disabled.
+5. タグをかざす: an armed read with automatic advance. Skipped for 既存.
+6. 最初の数: keypad, then 登録する calls `mutations.registerImport` with the same input shape the admin page sends today.
+
+After success, show a result and move to the next candidate. Tests cover a full new-item registration with the exact request body, and the 既存 path sending `mode: 'EXISTING_ITEM'` with no location or tag.
+
+### Milestone 5: アイテム編集 and removing the admin component from the kiosk
+
+`InventoryItemEditTab` lists items with `InventoryLocationPicker` or a simple list. For the chosen item it offers:
+
+- 移す: drawer buttons in the same area, calling `mutations.move`.
+- 写真: reorder and delete, calling the item-photo mutations.
+- アイテムを削除: with a confirm dialog, calling `mutations.deleteItem`.
+
+Stock correction is not here, because it is on the daily page. After this, `KioskItemInventorySettingsPage` no longer imports `RaspiInventoryPage`. In `RaspiInventoryPage.tsx`, change `isActiveRoute` to check only `/admin/tools/raspi-inventory`. Run the admin page tests unchanged to prove the admin path still works.
+
+### Milestone 6: record and verify
+
+Add a short KB entry for the new kiosk inventory flow in the existing frontend knowledge base, following `.cursor/rules/01-core-docs-and-knowledge.mdc`. Link it to this plan. Update `docs/plans/raspi-item-inventory-execplan.md` only with a one-line pointer here.
+
+Run the web app locally and check each board at the kiosk's size in the browser. Record anything that does not fit.
+
+## Concrete Steps
+
+Work in the task worktree `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--kiosk-inventory-ux` on branch `feat/kiosk-inventory-ux`, created by `python3 -m scripts.git_lifecycle.cli start`.
+
+Focused test commands, run from the worktree root:
+
+    pnpm --filter @raspi-system/api exec vitest run src/services/item-inventory/__tests__/item-inventory.service.test.ts src/routes/item-inventory
+    pnpm --filter @raspi-system/web exec vitest run src/pages/kiosk/KioskItemInventoryPage.test.tsx src/pages/kiosk/KioskItemInventorySettingsPage.test.tsx src/pages/admin/RaspiInventoryPage.test.tsx src/features/kiosk
+
+The listed service and route tests are mock-based and need no database. In a fresh worktree, run `pnpm install --frozen-lockfile`, then `pnpm run build` inside each `packages/*` directory before running `tsc`. Type-check the API with `pnpm exec tsc --noEmit -p tsconfig.build.json` in `apps/api`, and the web app with `pnpm exec tsc -b` in `apps/web`.
+
+Expected: all listed files pass, the new tests fail before their code change and pass after, and there are no type errors.
+
+## Validation and Acceptance
+
+On a local web build at 1280×800 with a kiosk client key:
+
+1. Open `/kiosk/inventory`. The waiting panel shows. Holding (or simulating) an item tag shows photo, stock 12, and place 棚2 / 引出し3, plus the last three history rows for that compartment.
+2. Touch 数が合わないときは直す, then enter 9. The screen shows "記録を 3個 減らします". Confirming shows 12 → 9, and the request carries no `x-kiosk-access-password` header. いまの取引を取り消す restores 12.
+3. Change stock from another tab after opening the correction panel, then confirm. The screen shows "在庫が変わりました。もう一度数えてください", and stock keeps the other tab's value.
+4. From the waiting panel, touch タグが無いとき and pick area, shelf, and drawer, then hold a quantity tag. Stock decreases as with a scanned item tag.
+5. Open 在庫の準備. The on-screen keypad appears, and no browser dialog opens. A wrong PIN shows the error, and the correct PIN opens the tabs.
+6. In NFCタグ, add a quantity tag of 3 by touching 追加, entering 3, and holding a new tag. No 読み取り button press is needed.
+7. Complete one candidate in 登録待ち using only touch and tags, apart from the optional 名前など step.
+8. `/admin/tools/raspi-inventory` behaves exactly as before, and its tests pass.
+
+## Area normalization of existing data
+
+Run on Pi5 inside the running API container. Pi5 uses blue/green slots, so find the container name first (for example `bluegreen-api-green-1`) with `docker ps --format '{{.Names}}' | grep api`; `docker compose ... exec api` does not work there. The dry run only reads:
+
+    docker exec -w /app/apps/api <running API container> node scripts/inventory-area-normalize.mjs
+
+After the user approves the printed `changes` (and `shelfConflicts` is empty), apply with a backup that does not exist yet:
+
+    docker exec -w /app/apps/api <running API container> node scripts/inventory-area-normalize.mjs --apply --backup=/opt/backups/inventory-area-normalize-YYYYMMDD.json
+
+To undo:
+
+    docker exec -w /app/apps/api <running API container> node scripts/inventory-area-normalize.mjs --restore=/opt/backups/inventory-area-normalize-YYYYMMDD.json
+
+## Idempotence and Recovery
+
+All API changes are additive and optional. `expectedBeforeQuantity` and `compartmentId` may be omitted, which gives today's behaviour. There is no database migration. Each milestone leaves the kiosk fully usable, because setup tabs not yet rebuilt keep rendering the old admin component. To roll back, revert the milestone's commit. No data changes are involved.
+
+## Artifacts and Notes
+
+The mockup is https://claude.ai/artifact/YRtMfKkfaNQHFybdkbWrte. Board titles:
+
+1. 待機：タグをかざす
+2. アイテムを読んだあと
+3. 数を直す（パスワードなし）
+4. 完了と取消
+5. タグが無いとき：置き場所から選ぶ
+6. 準備を開く：パスワード
+7. 準備：登録待ち
+8. 準備：NFCタグ
+
+Board 2 shows a 選びなおす button, which maps to the existing reset. Board 4 says the result returns to waiting after a few seconds, which matches the existing 4-second message timer.
+
+## Interfaces and Dependencies
+
+No new libraries. At the end of Milestone 1, these signatures must exist:
+
+In `apps/api/src/services/item-inventory/item-inventory.service.ts`:
+
+    async correctStock(compartmentId: string, desiredQuantity: number, actor: InventoryActor, note?: string, options?: { expectedBeforeQuantity?: number })
+    async listHistory(limit?: number, filter?: { compartmentId?: string })
+
+In `apps/web/src/api/domains/item-inventory.ts`:
+
+    export async function correctInventoryStock(input: { compartmentId: string; desiredQuantity: number; expectedBeforeQuantity?: number; note?: string }, accessPassword?: string)
+    export async function getInventoryHistory(limit?: number, compartmentId?: string)
+
+In `apps/web/src/api/hooks/item-inventory.ts`:
+
+    export function useInventoryCompartmentHistory(compartmentId: string | null)
+
+It uses the query key `['inventory-history', compartmentId]`, so the existing `invalidateInventory` prefix invalidation of `['inventory-history']` also refreshes it.

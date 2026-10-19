@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { loadActualHoursReadContext } from './actual-hours/actual-hours-read-context.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { normalizeFseibanList } from './fseiban-list.js';
 import { TuningParamsRepository } from './repositories/tuning-params.repository.js';
 import { analyzeCompletionHistorySignals } from './completion-history-analyzer.service.js';
 import { listDueManagementGlobalRank } from './due-management-global-rank.service.js';
@@ -23,18 +24,6 @@ import { estimateResourceLoadSignals } from './resource-load-estimator.service.j
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
-
-const normalizeFseibans = (items: string[]): string[] => {
-  const seen = new Set<string>();
-  const next: string[] = [];
-  for (const item of items) {
-    const normalized = item.trim();
-    if (!normalized || seen.has(normalized)) continue;
-    seen.add(normalized);
-    next.push(normalized);
-  }
-  return next.slice(0, 2000);
-};
 
 const buildDueConfiguredSeibanSet = (
   summaries: Array<{
@@ -60,7 +49,7 @@ const buildDueScopedCandidates = (params: {
   const baseCandidates = params.selectedFseibans.length > 0
     ? [...params.selectedFseibans, ...params.existingRank]
     : [...params.summaries.map((row) => row.fseiban), ...params.existingRank];
-  return normalizeFseibans(baseCandidates.filter((fseiban) => dueConfiguredSet.has(fseiban)));
+  return normalizeFseibanList(baseCandidates.filter((fseiban) => dueConfiguredSet.has(fseiban)));
 };
 
 const toJstDayStart = (value: Date): number => {

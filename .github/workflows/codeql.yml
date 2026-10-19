@@ -27,13 +27,39 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        if: ${{ github.event_name != 'push' }}
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Classify changes
+        if: ${{ github.event_name != 'push' }}
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/classify_event_changes.py \
+            --event-name "$EVENT_NAME" \
+            --base-sha "$BASE_SHA" \
+            --head-sha "$HEAD_SHA" \
+            --format none \
+            --github-output-file "$GITHUB_OUTPUT" \
+            --markdown-file "$GITHUB_STEP_SUMMARY"
 
       - name: Initialize CodeQL
+        if: ${{ github.event_name != 'push' && steps.classify.outputs.codeql == 'true' }}
         uses: github/codeql-action/init@v4
         with:
-          languages: javascript-typescript
+          languages: javascript-typescript,python
           build-mode: none
 
       - name: Perform CodeQL Analysis
+        if: ${{ github.event_name != 'push' && steps.classify.outputs.codeql == 'true' }}
         uses: github/codeql-action/analyze@v4
+
+      - name: Record intentional analysis skip
+        if: ${{ github.event_name == 'push' || steps.classify.outputs.codeql != 'true' }}
+        run: echo "Analysis was either completed for the reviewed change or intentionally skipped for exact main publication." >> "$GITHUB_STEP_SUMMARY"

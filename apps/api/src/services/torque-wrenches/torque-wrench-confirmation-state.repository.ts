@@ -7,7 +7,7 @@ import type {
 
 type ConfirmationStateDb = Pick<
   Prisma.TransactionClient,
-  'assemblyTorqueWrenchConfirmation' | 'torqueWrenchConnectionLease'
+  'assemblyTorqueWrenchConfirmation' | 'torqueTrainingWrenchConfirmation' | 'torqueWrenchUsageLease'
 >;
 
 const confirmationEvidenceSelect = {
@@ -15,21 +15,64 @@ const confirmationEvidenceSelect = {
   sessionId: true,
   torqueWrenchProfileId: true,
   settingHistoryId: true,
+  settingVerificationMode: true,
+  observedLeaseGeneration: true,
+  observedAdoptedConfirmationId: true,
   conditionFingerprint: true,
   clientDeviceId: true,
   confirmedAt: true
 } satisfies Prisma.AssemblyTorqueWrenchConfirmationSelect;
 
+const trainingConfirmationEvidenceSelect = {
+  id: true,
+  sessionId: true,
+  torqueWrenchProfileId: true,
+  settingHistoryId: true,
+  settingVerificationMode: true,
+  observedLeaseGeneration: true,
+  observedAdoptedConfirmationId: true,
+  conditionFingerprint: true,
+  clientDeviceId: true,
+  confirmedAt: true
+} satisfies Prisma.TorqueTrainingWrenchConfirmationSelect;
+
 const leaseEvidenceSelect = {
   leaseId: true,
   generation: true,
   adoptedConfirmationId: true,
+  ownerKind: true,
   ownerClientDeviceId: true,
-  ownerSessionId: true,
+  ownerAssemblySessionId: true,
+  ownerTrainingSessionId: true,
   acquiredAt: true,
   expiresAt: true,
   releasedAt: true
-} satisfies Prisma.TorqueWrenchConnectionLeaseSelect;
+} satisfies Prisma.TorqueWrenchUsageLeaseSelect;
+
+function leaseEvidence(row: {
+  leaseId: string;
+  generation: number;
+  adoptedConfirmationId: string | null;
+  ownerKind: 'ASSEMBLY' | 'TRAINING';
+  ownerClientDeviceId: string;
+  ownerAssemblySessionId: string | null;
+  ownerTrainingSessionId: string | null;
+  acquiredAt: Date;
+  expiresAt: Date;
+  releasedAt: Date | null;
+}): TorqueWrenchLeaseEvidence {
+  return {
+    leaseId: row.leaseId,
+    generation: row.generation,
+    adoptedConfirmationId: row.adoptedConfirmationId,
+    ownerKind: row.ownerKind,
+    ownerClientDeviceId: row.ownerClientDeviceId,
+    ownerSessionId: row.ownerAssemblySessionId ?? row.ownerTrainingSessionId ?? '',
+    acquiredAt: row.acquiredAt,
+    expiresAt: row.expiresAt,
+    releasedAt: row.releasedAt
+  };
+}
 
 export class TorqueWrenchConfirmationStateRepository {
   async findConfirmation(
@@ -42,14 +85,25 @@ export class TorqueWrenchConfirmationStateRepository {
     });
   }
 
+  async findTrainingConfirmation(
+    db: ConfirmationStateDb,
+    confirmationId: string
+  ): Promise<TorqueWrenchConfirmationEvidence | null> {
+    return db.torqueTrainingWrenchConfirmation.findUnique({
+      where: { id: confirmationId },
+      select: trainingConfirmationEvidenceSelect
+    });
+  }
+
   async findLease(
     db: ConfirmationStateDb,
     torqueWrenchProfileId: string
   ): Promise<TorqueWrenchLeaseEvidence | null> {
-    return db.torqueWrenchConnectionLease.findUnique({
+    const row = await db.torqueWrenchUsageLease.findUnique({
       where: { torqueWrenchProfileId },
       select: leaseEvidenceSelect
     });
+    return row ? leaseEvidence(row) : null;
   }
 
   async listLeases(
@@ -60,7 +114,7 @@ export class TorqueWrenchConfirmationStateRepository {
     lease: TorqueWrenchLeaseEvidence;
   }>> {
     if (torqueWrenchProfileIds.length === 0) return [];
-    const rows = await db.torqueWrenchConnectionLease.findMany({
+    const rows = await db.torqueWrenchUsageLease.findMany({
       where: { torqueWrenchProfileId: { in: torqueWrenchProfileIds } },
       select: {
         torqueWrenchProfileId: true,
@@ -69,7 +123,7 @@ export class TorqueWrenchConfirmationStateRepository {
     });
     return rows.map(({ torqueWrenchProfileId, ...lease }) => ({
       torqueWrenchProfileId,
-      lease
+      lease: leaseEvidence(lease)
     }));
   }
 
@@ -103,7 +157,7 @@ export class TorqueWrenchConfirmationStateRepository {
     lease: TorqueWrenchLeaseEvidence;
   }>> {
     if (input.torqueWrenchProfileIds.length === 0) return [];
-    const leases = await db.torqueWrenchConnectionLease.findMany({
+    const leases = await db.torqueWrenchUsageLease.findMany({
       where: {
         torqueWrenchProfileId: { in: input.torqueWrenchProfileIds },
         ownerClientDeviceId: input.clientDeviceId,
@@ -127,7 +181,7 @@ export class TorqueWrenchConfirmationStateRepository {
       const confirmation = lease.adoptedConfirmationId
         ? byId.get(lease.adoptedConfirmationId)
         : undefined;
-      return confirmation ? [{ confirmation, lease }] : [];
+      return confirmation ? [{ confirmation, lease: leaseEvidence(lease) }] : [];
     });
   }
 }

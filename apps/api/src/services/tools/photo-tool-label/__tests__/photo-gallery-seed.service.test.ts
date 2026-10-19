@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../../../../lib/errors.js';
+import { FileStorageCapacityExhaustedError } from '../../../file-storage/file-storage-errors.js';
 import { PhotoGallerySeedService } from '../photo-gallery-seed.service.js';
 
 vi.mock('../../../../lib/prisma.js', () => ({
@@ -71,6 +72,25 @@ describe('PhotoGallerySeedService', () => {
         reviewerUserId: 'u1',
       })
     ).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it('preserves the typed 507 storage-capacity error', async () => {
+    vi.mocked(PhotoStorage.savePhoto).mockRejectedValue(
+      new FileStorageCapacityExhaustedError()
+    );
+    const galleryIndex = { notifyAfterReview: vi.fn() };
+    const svc = new PhotoGallerySeedService({ galleryIndex: galleryIndex as never });
+
+    await expect(
+      svc.createFromUpload({
+        jpegBuffer: jpegHeader,
+        canonicalLabelRaw: 'ペンチ',
+        reviewerUserId: 'admin-1',
+      })
+    ).rejects.toMatchObject({
+      statusCode: 507,
+      code: 'FILE_STORAGE_CAPACITY_EXHAUSTED',
+    });
   });
 
   it('creates seed loan and notifies gallery index', async () => {

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { getApiErrorMessage } from '../api/errors';
@@ -17,26 +17,34 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as { from?: Location })?.from?.pathname ?? '/admin';
+  const fromState = (location.state as { from?: { pathname?: string; search?: string; hash?: string } })?.from;
+  const from = fromState ? `${fromState.pathname ?? '/admin'}${fromState.search ?? ''}${fromState.hash ?? ''}` : '/admin';
   const forceLogin = useMemo(() => {
     const params = new URLSearchParams(location.search);
     const byState = (location.state as { forceLogin?: boolean })?.forceLogin;
     return params.get('force') === '1' || byState === true;
   }, [location.search, location.state]);
+  const forceLoginHandledRef = useRef(false);
+  const [forceReady, setForceReady] = useState(!forceLogin);
 
   // 強制ログイン指定時は事前にログアウトしてセッションをクリア
   useEffect(() => {
-    if (forceLogin && user) {
-      void logout();
+    if (!forceLogin || forceLoginHandledRef.current) return;
+    forceLoginHandledRef.current = true;
+    if (user) {
+      logout();
+      setForceReady(true);
+    } else {
+      setForceReady(true);
     }
   }, [forceLogin, user, logout]);
 
   // ログイン成功後、認証済みユーザーが利用可能になったら遷移
   useEffect(() => {
-    if (!loading && user) {
+    if (!loading && user && (!forceLogin || forceReady)) {
       navigate(from, { replace: true });
     }
-  }, [loading, user, navigate, from]);
+  }, [loading, user, navigate, from, forceLogin, forceReady]);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();

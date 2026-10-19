@@ -1,0 +1,139 @@
+---
+- name: Prepare normal-factory hosts to trust the Pi5 local CA
+  hosts: server:clients
+  gather_facts: false
+  become: true
+  serial: 1
+  vars:
+    local_ca_install_path: /usr/local/share/ca-certificates/raspi-system-local-ca.crt
+
+  pre_tasks:
+    - name: Refuse TalkPlaza and require explicit CA trust approval
+      ansible.builtin.assert:
+        that:
+          - "'talkplaza' not in group_names"
+          - normal_factory_local_ca_trust_approved | default(false) | bool
+          - local_ca_certificate_source | default('') | length > 0
+          - local_ca_certificate_sha256 | default('') is match('^[0-9a-f]{64}$')
+        fail_msg: >-
+          This playbook is normal-factory only and requires an approved CA
+          certificate source plus its lowercase SHA-256 digest.
+
+    - name: Inspect the controller CA certificate
+      ansible.builtin.stat:
+        path: "{{ local_ca_certificate_source }}"
+        checksum_algorithm: sha256
+      delegate_to: localhost
+      become: false
+      register: local_ca_controller_file
+
+    - name: Require the exact approved controller CA certificate
+      ansible.builtin.assert:
+        that:
+          - local_ca_controller_file.stat.exists | default(false)
+          - local_ca_controller_file.stat.isreg | default(false)
+          - not (local_ca_controller_file.stat.islnk | default(false))
+          - local_ca_controller_file.stat.checksum == local_ca_certificate_sha256
+        fail_msg: The controller CA certificate is missing, linked, or has the wrong digest.
+
+    - name: Require a valid long-lived CA certificate on the controller
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - x509
+          - -in
+          - "{{ local_ca_certificate_source }}"
+          - -noout
+          - -checkend
+          - '2592000'
+          - -purpose
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      register: local_ca_controller_validation
+
+    - name: Require CA signing capability
+      ansible.builtin.assert:
+        that:
+          - "'SSL client CA : Yes' in local_ca_controller_validation.stdout"
+          - "'SSL server CA : Yes' in local_ca_controller_validation.stdout"
+        fail_msg: The approved certificate is not a CA certificate.
+
+    - name: Inspect any existing installed CA certificate
+      ansible.builtin.stat:
+        path: "{{ local_ca_install_path }}"
+        follow: false
+      register: local_ca_before
+
+    - name: Capture the existing installed CA certificate for rollback
+      ansible.builtin.slurp:
+        src: "{{ local_ca_install_path }}"
+      register: local_ca_before_content
+      when: local_ca_before.stat.exists | default(false)
+
+  tasks:
+    - name: Install and validate the approved local CA
+      block:
+        - name: Copy the approved CA certificate to the system trust directory
+          ansible.builtin.copy:
+            src: "{{ local_ca_certificate_source }}"
+            dest: "{{ local_ca_install_path }}"
+            owner: root
+            group: root
+            mode: '0644'
+          register: local_ca_install
+
+        - name: Validate the installed CA certificate
+          ansible.builtin.command:
+            argv:
+              - openssl
+              - x509
+              - -in
+              - "{{ local_ca_install_path }}"
+              - -noout
+              - -checkend
+              - '2592000'
+          changed_when: false
+
+        - name: Refresh the operating-system CA trust store
+          ansible.builtin.command:
+            argv:
+              - /usr/sbin/update-ca-certificates
+          register: local_ca_trust_refresh
+          changed_when: local_ca_install.changed
+
+        - name: Verify the installed certificate digest
+          ansible.builtin.stat:
+            path: "{{ local_ca_install_path }}"
+            checksum_algorithm: sha256
+          register: local_ca_after
+
+        - name: Require the installed CA to match the approved digest
+          ansible.builtin.assert:
+            that:
+              - local_ca_after.stat.checksum == local_ca_certificate_sha256
+      rescue:
+        - name: Restore the previous CA certificate
+          ansible.builtin.copy:
+            content: "{{ local_ca_before_content.content | b64decode }}"
+            dest: "{{ local_ca_install_path }}"
+            owner: root
+            group: root
+            mode: '0644'
+          when: local_ca_before.stat.exists | default(false)
+
+        - name: Remove a newly introduced CA certificate
+          ansible.builtin.file:
+            path: "{{ local_ca_install_path }}"
+            state: absent
+          when: not (local_ca_before.stat.exists | default(false))
+
+        - name: Refresh trust after restoring the previous state
+          ansible.builtin.command:
+            argv:
+              - /usr/sbin/update-ca-certificates
+          changed_when: true
+
+        - name: Stop after restoring the previous CA trust state
+          ansible.builtin.fail:
+            msg: Local CA preparation failed; the previous trust state was restored.

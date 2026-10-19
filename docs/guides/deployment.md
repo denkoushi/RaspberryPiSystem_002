@@ -2,206 +2,167 @@
 id: deployment-guide
 title: 標準デプロイ手順
 status: active
-last_verified: 2026-07-25
+last_verified: 2026-08-18
 ---
 
 # デプロイメントガイド
 
-通常の本番更新は、リポジトリ直下の `scripts/update-all-clients.sh` だけを入口にする。Pi5、Kiosk、Signageを個別に直接更新しない。オーケストレーターが差分、実機証跡、依存関係から対象と順序を決める。
+通常の更新は、リポジトリ直下の `scripts/update-all-clients.sh` だけを入口にする。Pi5、Kiosk、Signageを個別に直接更新しない。operatorが対象を明示し、wrapperは標準Ansible playbookへその対象を渡す。
 
-### 標準更新入口（ローリング・端末別メンテナンス）
+> **2026-08-08更新:** canonical wrapperは標準Ansible routeを起動する。旧Pi5実行入口は削除済みであり、本書は標準Ansibleの操作契約だけを示す。実機canary・時間計測・production実行は別の明示承認を必要とする。
+
+> **2026-08-13更新:** Pi5の安定確認は10秒間隔の5サンプル（観測幅40秒）に限定する。Pi4/Pi3はPi5 executorからSSH portを各1回、3秒上限で確認し、応答しない任意端末を明示記録して対象外にする。Pi5は必須であり除外しない。
+
+このfoundationで固定した境界は次のとおりである。
+
+- Pi5: 稼働中にCI image、資源、migrationをAnsibleが直接確認し、`release_pi5` roleのslot lifecycleと5回の連続health sampleを利用する。
+- Pi4: exact `--limit`と`serial: 1`で一台ずつ、image pull完了後に`--no-build`で変更serviceだけを切り替える。他hostは停止しない。
+- Pi3: controllerから完成tarを転送し、端末で代表SHA-256を一度確認する。固定allowlistを検証してrun-scoped tempへ展開・read-only化後、digest名へatomic renameする。端末固有値はimmutable release外のenv/drop-inに置き、Pi3からGit、GHCR、外部HTTPへ接続しない。
+
+### 標準更新入口
 
 公開CLIは次のとおり。
 
 ```text
-scripts/update-all-clients.sh <branch> <inventory> [--limit PATTERN] [--reverify-selected] [--full-fleet] [--detach]
-scripts/update-all-clients.sh <branch> <inventory> --print-plan
-scripts/update-all-clients.sh <branch> <inventory> --preflight-only [--limit PATTERN] [--reverify-selected]
-scripts/update-all-clients.sh --status RUN_ID
-scripts/update-all-clients.sh --approve RUN_ID
-scripts/update-all-clients.sh --cancel RUN_ID --reason TEXT
+scripts/update-all-clients.sh <branch> <inventory> --limit PATTERN [--detach]
+scripts/update-all-clients.sh <branch> <inventory> --full-fleet [--detach]
+scripts/update-all-clients.sh <branch> <inventory> --print-plan [--limit PATTERN]
+scripts/update-all-clients.sh --status RUN_ID [--inventory INVENTORY]
 ```
 
-- 引数なしの通常実行は完了まで待つ。
-- `--detach` は開始後に `runId` を返す。状態は `--status` で確認する。
-- `--dry-run` は `--print-plan` の互換aliasとして使える。
-- `--preflight-only` はmigration、Pi5実行経路、実作業計画に含まれる端末だけの全前提条件を一括検査する診断コマンドである。release run、systemd unit、fleet state、maintenance、checkout、service変更は作成・実行しない。`--full-fleet` と `--limit PATTERN --reverify-selected` もread-only計画のまま検査できる。通常実行は同じ検査をrelease unit作成の直前に必ず実施するため、通常手順で事前に実行する必要はない。
-- `human` profileのカナリア待機は `--approve RUN_ID` で現在のgateを明示承認する。複数profileでは順番に承認する。
-- 安定化時間を省略できるのは、緊急時に `--emergency-override --reason TEXT` を併用した場合だけである。
+トルクレンチ所有権契約をAPI/Webと既設agentへ同時に切り替える場合だけ、次の限定モードを使う。現在の本番対象は、torque設定が完成しているStoneBaseとAssembly-01の2台に限る。
 
-## 対象の決まり方
+```text
+scripts/update-all-clients.sh <branch> <inventory> --torque-cutover --limit raspberrypi5:raspi4-kensaku-stonebase01:raspi4-assembly-01 [--detach]
+```
 
-標準実行は対象を自動で最小化する。ただし、安全を優先して次の規則を適用する。
+`--torque-cutover`はPi5と1台以上のPi4を含む明示的な`--limit`を要求し、`--full-fleet`を許可しない。選択されたPi4はすべて、lease、client key、API/TLS、外付けBluetooth adapter、HID by-id identity、parser profileが完全な`torque_agent_enabled=true` inventoryでなければ、端末停止前に拒否される。したがって今回の実行limitは上記2台を厳守し、未設定の4台は推測・自動生成・有効化しない。将来は外部アンテナとinventoryを正式に整備した端末だけを明示limitへ追加でき、wrapper変更は不要である。
 
-- 目標SHAと実行中SHAが一致し、最新の実機検証が `verified` のhostだけを除外する。
-- 未到達、timeout、検証不足、rollback失敗は `unknown` として必ず対象に含める。
-- Pi5が必要な変更で `--limit` によりPi5を除外することはできない。
-- `--limit` で根拠不明hostを除外することはできない。
-- 全台を明示的に再検証するときだけ `--full-fleet` を使う。
-- 影響分類がno-opでも、承認済みの限定端末で同一SHAを再検証するときだけ `--limit PATTERN --reverify-selected` を使う。選択されたverified hostだけを対象へ戻し、選択外のunknown host、Pi5必須変更、通常の通知・安定化・ACK・rollback契約は迂回しない。`--print-plan`で正確な対象を確認してから実行する。
-- 端末はregistryのprofile順、profile内canary、残りのinventory順で、一台ずつ更新する。
+`--torque-cutover`は既存release-set repository・schema・署名経路が公開する`-torque-v2` compositionを要求する。署名済みv2はAPI/Webのexact digestに加え、別のmain commitでbuild済みのtorque-agent multi-arch digest、その元source/run/job、両architectureのTrivy採用証跡、protocol contract version、exact 3-component tupleの組合せrehearsalを一つに束ねる。torque-agentを現在のorchestration SHAから推測したtagへ置換したり、手動retagしたりしない。通常Deployの既存v1 tag/jobはtorque adoptionに依存せず、そのまま維持する。
 
-判断の正本は `logs/deploy/fleet-release-state.json` である。手で編集しない。
+wrapperはこのv2と参照証跡を一度だけ検証し、exact image、protocol、明示limitのhostをrun-scoped planへ正規化して既存Ansible roleへ渡す。各Pi4は段階結果を一つの構造化resultとして返し、全台判定は各phaseで一度だけ集約する。設定済みPi4の追加にhost名分岐やwrapper改修は不要で、正式なinventory追加と明示limitだけを使う。
+
+停止前に`PREPARED`を完了する。Pi5と全選択Pi4へ候補imageを起動せず事前pullし、期待digest、architecture、空き容量、現在imageの復旧可能性を各hostで確認する。これはservice無停止の非破壊stagingであり、diskは変更するためread-onlyとは呼ばない。一台でも失敗すれば候補とrun-scoped stateだけを清掃し、serviceを止めずに終了する。
+
+`PREPARED`成功後に、選択された全Pi4のbrowser、旧torque-agent、guard intentを停止して外付けBluetooth OFFを確認し、8秒leaseに対して9秒待ってからPi5を更新する。Pi5がexact image IDsに一致する場合は既存settled経路でno-opになる。Pi4では明示allowlistの`torque-agent`だけを停止状態で配置し、NFC/barcodeの稼働imageと環境を変更しない。全選択端末の配置が成功した後だけagentを起動し、全台のhealthとBluetooth OFFを集約確認してからbrowserを再開する。Pi5またはPi4の途中失敗では再開せずOFFを維持し、切替を試みたPi4は`PREPARED`で捕捉した既存rollback imageへ停止状態で戻す。
+
+- mutationにはexact `--limit`または明示的な`--full-fleet`が必須である。暗黙の全fleet更新は行わない。
+- 引数なしの通常実行はsystemd unitの終了まで待つ。`--detach`は`runId`を返し、`--status`はsystemd statusとjournalだけを読む。
+- `--print-plan`は`ansible-inventory`と`ansible-playbook --list-hosts/--list-tasks`を実行し、必要な場合は公開署名済みrelease-setをローカルで検証して、選択host、profile、release SHA、GHCR tag、順序を表示する。remote host、runtime、database、inventoryは変更しない。
+- CLIの未文書化されたmutation/control引数はfail-closedで拒否される。
+- Pi5で公開release-setからAPI/Web digestを解決する。torque cutoverでは署名済みschema v2からtorque-agent digestとprotocol versionも解決し、署名済みadoption predicateと組合せtupleを検証する。Pi3は公開image labelから完成tarのSHA-256を一つだけ得る。Ansibleがprepare、switch、health、rescue rollbackを所有する。
+- mutation開始時にPi5 executorが選択済みPi4/Pi3のSSH portを各1回だけ確認する。3秒以内に接続できない任意端末は再試行せず `optional-host-preflight` に記録して除外する。Pi5を含む選択ではPi5を必ず実行し、任意端末だけの選択が全台offlineならmutation前に失敗する。
+
+運用者はSSHのユーザー名・ホスト名・ポートを手入力しない。wrapperがinventoryのPi5 executor (`deploy_executor_host`、`ansible_user`、`ansible_port`) を解決し、Pi5上の標準Ansible/Vault設定を使用する。clean worktreeを開始する時点で、標準運用が指定するcredential pathの存在だけを内容非参照で確認する。解決できない、pathが存在しない、credentialが利用できない、またはinventoryが想定外なら実行せず停止し、CI再実行・依存導入・symlink発明へ進まない。credentialのコピー、権限変更、今回限りの一時symlinkは標準手順にしない。
+
+wrapperの出力は次の契約で扱う。
+
+- `--print-plan`のJSONで `releaseSha`、`inventory`、`limit`/`fullFleet`、`executionOrder[].profile`、`executionOrder[].hosts`、`executionOrder[].images` を希望scopeとして記録する。torque cutoverでは`artifactResolution=signed-release-set-v2-before-service-quiesce`と、`PREPARED`から`BROWSERS_RESUMED`までの`cutoverPhases`も確認する。plan時点のtorque image表示は署名済みv2から実行時に解決するlocatorであり、digestの最終証拠はmutation開始後・Ansible開始前の`release-set-v2-prepared` journal eventである。
+- mutationのJSONで返された `runId` と `statusCommand` だけを後続操作へ渡す。別のrun IDを作らず、別のDeployを起動しない。
+- `--status RUN_ID`のJSONに含まれるsystemdのraw fields（`ActiveState`、`SubState`、`Result`、`ExecMainStatus`）とjournalを、preflight除外、実行状態、Ansible recap、health、rollbackの一次証拠として読む。systemd oneshotの正常完了は実績上 `ActiveState=active`、`SubState=exited`、`Result=success`、`ExecMainStatus=0` である。`active`/`inactive`だけでDeploy中・完了を判定しない。`SubState=running`等の非終端なら「実行中」、`SubState=exited`かつ上記Result/ExecMainStatusとrecapが合格なら「完了」、runを開始していなければ「未実行」と報告し、raw fieldsを併記する。手書きの監視shellや独自の終了判定を追加しない。
+
+## 事故を防ぐ標準順序
+
+1. **exact SHAと成果物を確定する**: 対象SHA、required CI/CodeQL/gitleaksの成功、対象profileに必要なAPI/Webまたは端末artifactのdigest/manifestを確認する。成功済みCIをMacで全再実行したり、`pnpm install`でlockfileを変更したりしない。
+2. **read-only planを作る**: 次の`--print-plan`を実行し、JSONの対象host、profile、release SHA、image tag、実行順を保存する。executorはinventoryとwrapperの解決結果を正本とし、手入力値で補わない。
+
+   ```bash
+   scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --print-plan --limit PATTERN
+   ```
+
+   全fleetが明示的に承認された場合だけ、`--limit`の代わりに`--full-fleet`を使う。
+3. **照合して承認する**: planの`releaseSha`、希望host/profile、image tagとCI artifact manifestのSHA/digestを照合する。実行時に許容するscope縮小は、1回のpreflightでofflineと判定されたPi4/Pi3の除外だけである。Ansible roleが保持するrollback経路と、既存runがないことを確認できない場合はDeployしない。
+4. **canonical `--detach`を一度だけ起動する**: planと同じbranch・inventory・limitを使い、返却されたJSONの`runId`を記録する。
+
+   ```bash
+   scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit PATTERN --detach
+   ```
+
+5. **返却されたrunだけを監視する**: 出力の`runId`をそのまま使い、必要な時に同じcanonical `--status`を実行する。アドホックなmonitor loop、別shellの`ssh`/`systemctl`、新しいrunの二重起動は行わない。
+
+   ```bash
+   scripts/update-all-clients.sh --status RUN_ID --inventory infrastructure/ansible/inventory.yml
+   ```
+
+6. **影響相応の非破壊post-checkを行う**: roleのhealth/rollback結果をまず確認する。`scripts/deploy/verify-phase12-real.sh`全体はglobal-rank auto-generate等のPOST/PUTを含むため、非破壊post-checkとして無条件実行しない。非破壊の承認がある場合だけ、既存スクリプト内で明示されたGET/service-only部分を使う。標準経路で分離できない項目は未確認として停止し、Pi4確認が必要なら既存のPi5→Pi4 inventory/executor経路に限定する。Mac→Pi4直SSH、物理screen captureの追加、DB/Vault操作、Pi4 agent image再配布は行わない。
+7. **cleanupとfinal auditを行う**: 一時credential、symlink、検証process、Docker資源を残さず、対象worktreeがcleanであること、元repoの保護WIPが不変であること、runのsystemdが終端状態であることを報告する。
+
+## 標準経路の責務
+
+標準経路は次の一方向だけを使う。
+
+```text
+scripts/update-all-clients.sh
+  -> scripts/deploy/standard-ansible-release.py
+  -> infrastructure/ansible/playbooks/deploy-release-standard.yml
+  -> release_pi5 | release_kiosk | release_signage
+```
+
+- `standard-ansible-release.py` は対象SHA、inventory、対象host、systemd実行単位を解決する。
+- `deploy-release-standard.yml` は server、kiosk、signage の順序と `serial: 1` を宣言する。
+- `release_pi5` はPi5のimage、migration、health、slot切替、失敗時rollbackをAnsible role内で確認する。
+- `release_kiosk` はPi4のimage/configと有効agentのhealthを一台ずつ確認する。
+- `release_signage` はPi3の検証済み配布artifactをatomicにstageし、端末側のGitや外部HTTP取得を行わない。
+
+旧control planeや削除済みentrypointを標準手順の入力や操作として使用しない。
+
+## Pi4 キオスクの更新予告
+
+通常更新では、prepare 成功後に各キオスクへ60秒の保存予告を出し、メンテナンス中画面へ移ってからブラウザを再起動する。
+成功・ロールバック後は表示を解除し、リリース終了時にもrun単位で一括解除する。torque cutoverは対象外。
+予告とメンテナンスのackをそれぞれ最大30秒確認する。ackがない端末は警告を出して次へ進み、予告の60秒待機は省略する。
+1台あたり追加時間は最大約2分（scheduledAtの待機上限の余裕を含め約125秒）。client ID未設定の端末も警告して従来どおり進む。
+緊急時は `--skip-kiosk-notice` を付けると、その実行だけ予告とメンテナンス表示を出さずに再起動する（入力中の内容は消える。既定は予告あり）。
+予告の表示に失敗した場合は警告を出して予告なしで更新を続け、表示の解除は必ず試みる。
+表示が残っても、開始時刻から30分を超えるとAPIが期限切れと判定し、次のポーリングで通常画面へ戻る。
+それより早い解除と確認は[デプロイ停止・復旧Runbook](../runbooks/deploy-status-recovery.md#キオスクがメンテナンス中のまま)に従う。
 
 ## 実行前確認
 
-1. 対象branchまたは不変SHAを確定する。
-2. deployment/profile/agentへ変更がある場合、下記のローカル正本コマンドを完走する。
-3. 対象SHAの `ci-required`、`codeql`、`gitleaks` が成功していることを確認する。
-4. ローカルworktreeがcleanであることを確認する。
-5. 正しいinventoryを選ぶ。
-6. まず `--print-plan` を実行し、対象hostと理由、`unknown` の有無を確認する。
-7. inventoryごとに実機実行の明示承認を得る。
-8. 通常実行を開始する。release unit作成の直前に、同じ対象・同じ不変SHAに対する全量preflightが自動実行される。`--preflight-only` は、変更を起こさず問題を診断したい場合だけ使う。
-
-ローカルとGitHub Actionsの`deploy-contract`は、同じ実行入口を使う。
-
-```bash
-scripts/ci/run-deploy-contracts-local.sh
-```
-
-`community.general`が未導入の環境だけ、初回に次を使う。
-
-```bash
-scripts/ci/run-deploy-contracts-local.sh --install-collections
-```
-
-このコマンドは管理対象hostへ接続しない。全Ansible `.j2`ソースのJinja構文・shell/Jinja区切り衝突、deployment Python/shell契約、隔離Postgresによるdeploy-status統合、安全契約、両inventory、registryから導出したprofile playbook、Ansible syntax/checkを検証し、一時ファイルと隔離DB資源を終了時に削除する。実行可能なリリース重要テンプレートは、代表的な秘密を含まない変数でレンダーした結果にもネイティブ構文検査を持たせる。CIへ個別コマンドを追加せず、このスクリプトを更新してローカルとCIの検査内容を同時に変える。
-
-第2工場の標準inventory:
+1. 対象branchが指す40文字SHAをCIの成功結果と照合し、inventoryを確定する。公開CLIはbranchを受け取り、plan出力の`releaseSha`で実値を確認する。
+2. 対象SHAのrequired CI、CodeQL、gitleaksと、対象profileのrelease artifact manifest/digestが成功・存在することを確認する。
+3. Deploy専用のclean worktreeを使い、保護対象の未コミットWIPを含めない。開始時に標準credential pathの存在だけを内容非参照で確認し、無ければ即停止する。credentialがprimary worktreeの既存標準pathにだけ存在する場合は、Ansible標準の`ANSIBLE_VAULT_PASSWORD_FILE`でその既存ファイルを読み取り参照する。秘密のコピー、symlink、新規保存は行わない。元repoのWIPをcheckout、stash、reset、clean、編集で動かさない。
+4. read-onlyの対象確認を実行する。
 
 ```bash
 scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan
 ```
 
-TalkPlazaはstatic contractのみを検証する:
+`--print-plan` はinventoryとAnsibleのlist-hosts/list-tasksを確認し、必要な場合は公開署名済みrelease-setをローカル検証するだけで、remote host、service、database、inventory、stateを変更しない。planに出たイメージ（API/Web、Pi4 agent、Pi3 Signage）がレジストリに存在するかも確認し、無ければ実行前にエラーで止まる。対象にPi4が含まれる場合は `pi4ReleaseFiles` を出力する。`skipped:` のときは、そのrelease setがPi4 agentを1つも含まないため、ランチャー、ブラウザunit、status-agentのファイルはPi4へ配られない（`release_kiosk` はagentと一緒の時だけこれらをstageする）。対象を限定する場合は `--limit PATTERN`、全fleetを明示する場合だけ `--full-fleet` を使う。
+
+## 標準実行
 
 ```bash
-cd infrastructure/ansible
-export ANSIBLE_CONFIG="$(pwd)/ansible-readonly.cfg"
-ansible-inventory -i inventory-talkplaza.yml --list > /tmp/inventory-talkplaza.json
-python3 ../../scripts/deploy/terminal_profile_contracts.py \
-  --inventory-json /tmp/inventory-talkplaza.json
-for playbook in playbooks/deploy-terminal-profile.yml \
-  $(python3 ../../scripts/deploy/terminal_profile_contracts.py --list-playbooks); do
-  ansible-playbook --syntax-check "$playbook" -i inventory-talkplaza.yml
-done
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit PATTERN
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --full-fleet
 ```
 
-TalkPlaza Pi5は構想段階で実機が存在しない。現状はローカルのinventory解析、profile contract、playbook syntax-checkだけに限定する。remote identityを必要とする公開 `--print-plan`、SSH、実機デプロイは行わない。
+非同期実行は `--detach` でrun IDを受け取り、`--status RUN_ID` でsystemd unitとjournalのraw fieldsを読み取る。正常完了は `ActiveState=active`、`SubState=exited`、`Result=success`、`ExecMainStatus=0`、Ansible recap合格が揃った状態であり、`active`/`inactive`単独では判定しない。Pi5、Pi4、Pi3を個別のSSH、container、Ansible playbook、旧deploy scriptで操作しない。
 
-`--print-plan` はfleet stateを作成・更新せず、checkout、service、database、maintenance表示も変更しない。
+実行結果では、preflightで除外された任意端末と実行対象を区別し、実行対象に対するAnsible recapのfailed/unreachableが0であること、各roleのhealth確認が成功したこと、対象SHAが一致したことを確認する。Pi5のmigrationとrollback判定は `release_pi5` の結果を正本とし、DBを手で巻き戻さない。
 
-第2工場でPi5とStoneBaseだけを事前検査する例:
+目安は、`--print-plan`が数分、detach開始が1分未満、実行本体が対象host数とartifact pull/health待ちに応じて数分から数十分である。固定時間で打ち切らず、返却されたrunの`--status`が終端状態になるまで確認する。
 
-```bash
-scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
-  --limit 'raspberrypi5:raspi4-kensaku-stonebase01' \
-  --preflight-only
-```
+### 停止条件と完了条件
 
-`--preflight-only` はmigration、Pi5、plannerの`terminalWork`に入った端末の問題を途中で打ち切らず、一つのversion 2 JSONとして表示する。inventory全端末を代替対象にはしない。ローカルGit取得や計画情報の検査自体が失敗した場合も、内部詳細を漏らさず`status: incomplete`のJSONを一つ返す。JSONには不変SHA、実作業host、25段階のroute coverage、data-only readiness policyのdigest、適用gate、probe capability、proof、host付きstable issue code、復旧方法、対応test、合格scopeを封印した`readinessAdmission`が含まれ、`releaseSubmitted`は常に`false`である。完全合格またはobserve警告だけなら終了コード0、enforce判定失敗は78、未登録issue・証拠欠落・契約不整合は70とする。70を前提不足として扱ったり、probeを省略して続行してはならない。
+次のいずれかに該当したら、Deployを開始・再起動せずに停止する。
 
-Pi5 probeは既存fleet lockを全検査中保持し、実機identity、clean checkout、候補commit・protocol・実行成果物、通常Ansible設定とVault、inventory展開、Docker/Compose、空きディスク・メモリ、fleet/Blue-Green/deploy-statusの可読性、active run不在を同時に確認する。影響分類が`server-app`または`unknown`なら、Docker Hub、npm、Prisma、GitHub、PyPI、Playwright、Go module proxyへの証明書検証付きTLS接続を3回ずつPi5から並列確認する。一つでも失敗すれば全取得先の結果をまとめて表示し、release unitを作成しない。image buildを行わない既知の変更にはこの外部接続判定を適用しない。
+- exact SHA、required CI、artifact manifest/digest、planの対象host/profile/imageが一致しない。
+- inventoryからexecutorまたは標準credentialを解決できない、別runが非終端、またはrollbackの一次証拠がない。
+- `--status`のjournalで失敗原因が未確定、記録済みのoffline Pi4/Pi3除外以外で対象scopeがplanから変化、または成功済みCIの反復でしか説明できない。
 
-端末probeは候補SHAが所有する正確なagent health helperを端末へstdinで送り、現在有効なNFC・バーコード・トルクagentへ本番と同じ安定性判定を行う。各agentは、最大3回の範囲で2回連続してcontainer identity、必要なPC/SC、loopback JSON endpointの全証明に成功しなければならない。出力された問題は、正規のAnsible設定または別途承認された保守変更でまとめて解消し、同じコマンドを再実行する。エラーを一件ずつ見ながら個別service起動や手動checkoutで迂回してはならない。
+完了は、返却されたrunのsystemdが `SubState=exited`、`Result=success`、`ExecMainStatus=0` で、実行対象に対するAnsibleのfailed/unreachableが0、対象SHA/artifact digest/rollback結果が一致し、必要な非破壊post-checkとcleanup/final auditが完了した時だけとする。報告にはrun ID、判定（「実行中」/「完了」/「未実行」）、`ActiveState`/`SubState`/`Result`/`ExecMainStatus`のraw fields、対象SHA、実行したprofile、preflightで除外した任意端末、未確認項目を含める。
 
-候補SHAが所有するソースツリー、playbook、agent Dockerfile、Compose定義、設定テンプレートは、Pi5上の候補Git objectから検査する。端末の現在のcheckoutに次リリースで初めて追加されるディレクトリを要求してはならない。端末側の事前検査は、候補checkoutでは作れないOS package、systemd socket、Docker、NetworkManager、既存repository、メモリ、ディスクなどのhost資源だけを対象とする。NFCのPC/SC判定は全段階で`pcscd.socket=loaded/active/enabled`と`/run/pcscd/pcscd.comm`のUnix socketを正とし、`pcscd.service`の常時activeは要求しない。
+## 共有application smoke
 
-mainへmerge済みでも本番へ一度も適用されていないmigrationを修正する場合だけ、
-`scripts/deploy/migration-repairs.json`へmigration名、旧・新SQLの正確な
-SHA-256、理由を宣言する。候補検査はGit object上の両checksumを照合し、修正後
-SQLを未適用migrationとしてExpand-only検査する。この例外はrepository候補検査
-専用であり、本番DB台帳を読むpreflightとrelease内再検査では有効にならない。
-したがって、本番台帳に旧checksumが存在する場合は通常どおりchecksum不一致で
-停止する。`prisma migrate resolve`、台帳編集、適用済みmigrationの修正で迂回
-してはならない。
+`scripts/deploy/verify-phase12-real.sh` はGETだけでなくglobal-rank auto-generate等のPOST/PUTを含む混在スクリプトである。全体を非破壊post-checkとして無条件実行せず、非破壊承認時に既存の明示GET/service-only部分だけを使う。標準経路で安全に分離できない場合は未確認として停止する。Pi5のmigration、container discovery、runtime log判定を追加せず、Deployの成功判定を重複実装しない。
 
-## Linux/Pi端末Typeを追加する
+## 失敗時
 
-端末Typeは端末名、hostname、Raspberry Piの型、hardware `device_type` から推測しない。`scripts/deploy/terminal-profile-registry.json` の安全なprofile IDと、inventoryでそのhostが所属する一つのprofile groupがidentityである。中身の構造はprofileが選ぶadapterとplaybookで決まる。
+同じSHAとinventoryの標準実行結果を確認し、Ansible roleの失敗箇所とCI成果物を調査する。手動container操作、SSH先のcheckout、database down migration、stateファイルの編集で成功状態を作らない。再実行が必要な場合は原因修正後に同じcanonical entrypointから新しいplanを確認する。
 
-1. SSH、Ansible、Git、systemd、status-agent、manifest rollbackで足りるなら `generic-systemd` と `playbooks/deploy-terminal-profile.yml` を選ぶ。固有のmaintenance、health、ready、rollbackが必要なら `terminal_adapters.py` と `adapter_registry.py` にadapterを一つ追加し、必要なrepository-owned playbookを用意する。planner、policy、fleet state、coordinatorへType名を追加しない。
-2. registryへrollout順、impact component、adapter/playbook、notice秒、canary group、`human` または `health-only`、systemd unit、rollback path、health probe、`control-plane` または `terminal` ready authorityを明記する。path mappingとcomponent-to-profileも同じ変更で追加する。
-3. 対象inventoryの `clients.children` にprofile groupを追加し、各hostを登録済みgroupの一つだけに所属させる。非空groupにはcanaryをちょうど一台置き、全hostの `status_agent_client_id` を一意にする。
-4. systemd/Docker runtimeのcapture、preflight、restore用リストを別ファイルへ複写しない。adapterの`runtime_manifest_contract`を正本とし、optional agentは「無効でcontainerなし」と「有効でcontainerあり」の双方を`probe-capture`で検証する。
-5. ローカル正本コマンドとCIの `deploy-contract` を通す。registryからadapter、group、canary、playbookを動的に読み、`serial: 1`、orchestration guard、rollback ownership、coreのType非依存を検証する。profileごとのworkflow job追加は不要である。
-6. production登録に架空Typeを置かない。実製品変更の `--print-plan` を確認し、通常のhuman canary承認またはhealth-only証跡を使って最初の実機証明を行う。
+既成功CIのローカル全再実行、手入力SSH user/host、Mac→Pi4直SSH、アドホック監視loop、新規Deployの二重起動、`pnpm install`・lockfile変更、credentialのコピー・権限変更、scope外のDB/Vault/Pi4 agent操作は、原因調査や復旧であっても禁止する。物理画面のscreenshot/remote-debugging機構はこの標準経路へ追加しない。
 
-## 通常実行
+## 履歴
 
-承認されたinventoryに対して実行する。
-
-```bash
-scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
-```
-
-通常実行は、release unitの作成前にdata-only policyが選んだmigration・Pi5経路・実作業端末の検査を一度だけ実行する。通常手順で別途`--preflight-only`を実行する必要はない。合格時のSHA、policy digest、component、host、action、claim、capabilityは`ReadinessAdmission`としてrelease unitへ渡される。coordinatorがlock下で再計画したscopeが減る場合は続行できるが、host追加、action昇格、claim追加、capability追加は新releaseの変更前に停止する。過去runのsealed authorityによる復旧はこの比較より先に完了できる。
-
-readiness判定の正本は`scripts/deploy/readiness-gates.json`である。新しい判定は原則`observe`で登録し、3件以上の本番run証跡と人によるレビューを別変更で行うまで`enforce`へ昇格しない。安全上の即時blockだけは、具体的な実害と即時理由を台帳へ登録する。コマンド、Python import、任意コードは台帳に登録できない。
-
-前回runの中断復旧では、maintenance開始の有無にかかわらず、保存済みの全sealed runtime manifestを先にpreflightする。manifestはmaintenance前でもDocker rollback tagと当時のoptional-agent health authorityを所有し得るためである。復旧後の観測も同じsealed health contractと安定性判定を使う。active/failed run、manifest、rollback tag、fleet stateを手で削除・編集してこの連鎖を迂回してはならない。
-
-非同期で開始する場合:
-
-```bash
-scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach
-scripts/update-all-clients.sh --status RUN_ID
-```
-
-Pi5が対象の場合は、host設定、Expand-only migration、candidate image、Blue/Green切替、load確認、5分間の安定化を完了してから端末へ進む。端末はprofile指定の通知（現在のKioskは60秒）後に一台ずつ更新する。
-
-端末のforward Ansible playbookだけはSSH pipeliningを使う。各対象端末をdurable stateで`unknown`へ遷移した直後、repository baseline、manifest、通知、maintenance、checkout、service変更より前に、同じpipeliningと`become`で互換性を検査する。検査失敗は端末変更前にfail-closedで停止する。
-
-端末manifest取得は、SSH account identity、file manifest、runtime manifestを候補SHA所有の一つのbundleで検査・取得する。file/runtimeは別々のroot、digest、復元権限のままであり、一方だけ成功した場合や応答を失った場合は成功扱いにしない。Generic Kioskの最終証跡も、Git HEAD、systemd、status identity、各agentの安定性判定を候補SHA所有の一つのbundleで確認する。これらのbundleはpipeliningを使わず、検査内容と必須条件を減らさない。cleanupとrollbackは従来のAnsible transportとsealed manifestだけを使う。
-
-## 成功の確認
-
-`--status RUN_ID` で次を確認する。
-
-- run全体が `success` である。
-- 対象hostの desired/current SHA が一致し、evidenceが `verified` である。
-- Pi5はactive slot、API/Web image、config digest、migration digestが一致する。
-- Kioskは新Web bundle SHA、Signageは更新済みrepo SHAを返す。
-- 必須serviceとtimerがactiveで、認証済みendpointが成功する。
-- maintenance表示が全端末で解除されている。
-
-同じSHAでもう一度 `--print-plan` し、標準planがno-opになることを確認する。
-
-## 中止と復旧
-
-停止が必要な場合は協調cancelを使う。
-
-```bash
-scripts/update-all-clients.sh --cancel RUN_ID --reason "中止理由"
-scripts/update-all-clients.sh --status RUN_ID
-```
-
-processのkill、lockファイルの削除、fleet stateの手編集、直接checkout、個別Ansible実行はしない。詳細は [deploy status recovery](../runbooks/deploy-status-recovery.md) を参照する。
-
-Pi5 DBはdown migrationしない。rollbackはコード、image、設定、端末ファイルをrun専用manifestに従って戻し、databaseは旧API互換を保てるExpand-only migrationだけを許可する。
-
-## 禁止する迂回経路
-
-通常更新では次を直接実行しない。
-
-- `ansible-playbook`
-- SSH先での `git fetch` / `git checkout`
-- `scripts/server/deploy*.sh`
-- `scripts/deploy/pi5-image-deploy.sh`
-- `scripts/deploy/pi5-blue-green.sh`
-- legacy Composeや個別container操作
-
-これらはオーケストレーター配下の内部実装または隔離テスト用であり、公開入口ではない。
-
-## 過去記録
-
-現行手順ではないデプロイ実績は月別archiveへ移した。
-
-- [2026年4月](../archive/deployments/2026-04.md)
-- [2026年5月](../archive/deployments/2026-05.md)
-- [2026年6月](../archive/deployments/2026-06.md)
-- [2026年7月](../archive/deployments/2026-07.md)
-- [旧オペレーターガイド](../archive/deployments/legacy-operator-guide-through-2026-07.md)
-
-設計の経緯と受入証跡は [deployment foundation refactor ExecPlan](../plans/deployment-foundation-refactor-execplan.md) と [rolling terminal Blue/Green plan](../plans/rolling-terminal-bluegreen-deploy.md) に残す。
+旧設計、過去の実績、ADR、ExecPlanは履歴として保持する。現行手順の判断にはこのガイドと、[デプロイ停止・復旧Runbook](../runbooks/deploy-status-recovery.md)だけを使用する。

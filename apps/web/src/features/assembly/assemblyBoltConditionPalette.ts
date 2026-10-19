@@ -1,0 +1,170 @@
+import type { AssemblyDraftArea, AssemblyDraftBolt } from './assemblyTemplateDraft';
+import type { TorqueTrainingProgramApi } from '../../api/domains/torque-training';
+
+/** 丸数字へ一括で当てる締付条件（位置や番号を含まない）。 */
+export type AssemblyBoltCondition = Pick<
+  AssemblyDraftBolt,
+  | 'nominalDiameter'
+  | 'boltLengthMm'
+  | 'material'
+  | 'strengthClass'
+  | 'capabilityGroupId'
+  | 'nominalTorque'
+  | 'lowerLimit'
+  | 'upperLimit'
+  | 'unit'
+>;
+
+export type AssemblyBoltConditionPaletteEntry = {
+  key: string;
+  condition: AssemblyBoltCondition;
+  /** この条件を使っている丸数字（昇順）。 */
+  markerNos: number[];
+};
+
+function normalizeUnit(unit: string): string {
+  const trimmed = unit.trim();
+  return trimmed === 'N-m' || trimmed === 'Nm' ? 'N·m' : trimmed;
+}
+
+function finiteOrNull(value: string | number | null | undefined): number | null {
+  if (value == null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function assemblyBoltConditionKey(condition: AssemblyBoltCondition): string {
+  return [
+    condition.nominalDiameter?.trim() ?? '',
+    condition.boltLengthMm ?? '',
+    condition.material?.trim() ?? '',
+    condition.strengthClass?.trim() ?? '',
+    condition.capabilityGroupId ?? '',
+    condition.lowerLimit ?? '',
+    condition.nominalTorque ?? '',
+    condition.upperLimit ?? '',
+    normalizeUnit(condition.unit)
+  ].join('|');
+}
+
+/** 何も入力されていない丸数字は条件として数えない。 */
+export function assemblyBoltConditionFromBolt(bolt: AssemblyDraftBolt): AssemblyBoltCondition | null {
+  if (!bolt.nominalDiameter?.trim() && bolt.nominalTorque == null) return null;
+  return {
+    nominalDiameter: bolt.nominalDiameter,
+    boltLengthMm: bolt.boltLengthMm,
+    material: bolt.material,
+    strengthClass: bolt.strengthClass,
+    capabilityGroupId: bolt.capabilityGroupId,
+    nominalTorque: bolt.nominalTorque,
+    lowerLimit: bolt.lowerLimit,
+    upperLimit: bolt.upperLimit,
+    unit: normalizeUnit(bolt.unit)
+  };
+}
+
+/** 有効な訓練メニューの現行版を、重複のない締付条件へ変換する。 */
+export function assemblyBoltConditionsFromTrainingPrograms(
+  programs: readonly TorqueTrainingProgramApi[]
+): AssemblyBoltCondition[] {
+  const byKey = new Map<string, AssemblyBoltCondition>();
+  for (const program of programs) {
+    if (!program.isActive) continue;
+    const version = program.versions.find((candidate) => candidate.version === program.currentVersion);
+    if (!version) continue;
+    const condition: AssemblyBoltCondition = {
+      nominalDiameter: version.nominalDiameter,
+      boltLengthMm: finiteOrNull(version.boltLengthMm),
+      material: version.material,
+      strengthClass: version.strengthClass,
+      capabilityGroupId: version.capabilityGroupId,
+      nominalTorque: finiteOrNull(version.nominalTorque),
+      lowerLimit: finiteOrNull(version.lowerLimit),
+      upperLimit: finiteOrNull(version.upperLimit),
+      unit: normalizeUnit(version.unit)
+    };
+    const key = assemblyBoltConditionKey(condition);
+    if (!byKey.has(key)) byKey.set(key, condition);
+  }
+  return [...byKey.values()];
+}
+
+/**
+ * テンプレート内で使われている条件を丸数字の若い順に並べ、
+ * まだ使われていない追加済み条件を後ろへ足す。
+ */
+export function buildAssemblyBoltConditionPalette(
+  areas: readonly AssemblyDraftArea[],
+  pendingConditions: readonly AssemblyBoltCondition[] = []
+): AssemblyBoltConditionPaletteEntry[] {
+  const entries = new Map<string, AssemblyBoltConditionPaletteEntry>();
+  const bolts = areas.flatMap((area) => area.bolts).sort((a, b) => a.markerNo - b.markerNo);
+  for (const bolt of bolts) {
+    const condition = assemblyBoltConditionFromBolt(bolt);
+    if (!condition) continue;
+    const key = assemblyBoltConditionKey(condition);
+    const entry = entries.get(key) ?? { key, condition, markerNos: [] };
+    entry.markerNos.push(bolt.markerNo);
+    entries.set(key, entry);
+  }
+  for (const condition of pendingConditions) {
+    const key = assemblyBoltConditionKey(condition);
+    if (!entries.has(key)) entries.set(key, { key, condition, markerNos: [] });
+  }
+  return [...entries.values()];
+}
+
+/** 条件を当てると、個別指定していたボルト仕様名は自動生成へ戻る。 */
+export function assemblyBoltConditionPatch(condition: AssemblyBoltCondition): Partial<AssemblyDraftBolt> {
+  return { ...condition, boltSpecMode: 'auto', boltSpecCustom: '' };
+}
+
+export function formatAssemblyBoltConditionSpec(condition: AssemblyBoltCondition): string {
+  const size = [condition.nominalDiameter?.trim(), condition.boltLengthMm != null ? String(condition.boltLengthMm) : '']
+    .filter(Boolean)
+    .join('×');
+  return [size || '径未設定', condition.material?.trim(), condition.strengthClass?.trim()].filter(Boolean).join(' ');
+}
+
+export function formatAssemblyBoltConditionTorque(condition: AssemblyBoltCondition): string {
+  const value = (raw: number | null) => (raw == null ? '-' : String(raw));
+  return `${value(condition.lowerLimit)} – ${value(condition.nominalTorque)} – ${value(condition.upperLimit)} ${condition.unit}`.trim();
+}
+
+/**
+ * 編集画面で条件ごとに丸数字を塗り分ける色。条件が6種を超えたら先頭へ戻る。
+ * 作業画面の丸数字は合否を色で示すため、この色は使わない。
+ */
+const ASSEMBLY_BOLT_CONDITION_TONES = [
+  { marker: 'bg-rose-400 text-slate-950 ring-2 ring-rose-200', dot: 'bg-rose-400' },
+  { marker: 'bg-sky-400 text-slate-950 ring-2 ring-sky-200', dot: 'bg-sky-400' },
+  { marker: 'bg-amber-400 text-slate-950 ring-2 ring-amber-200', dot: 'bg-amber-400' },
+  { marker: 'bg-violet-400 text-slate-950 ring-2 ring-violet-200', dot: 'bg-violet-400' },
+  { marker: 'bg-teal-400 text-slate-950 ring-2 ring-teal-200', dot: 'bg-teal-400' },
+  { marker: 'bg-fuchsia-400 text-slate-950 ring-2 ring-fuchsia-200', dot: 'bg-fuchsia-400' }
+] as const;
+
+export function assemblyBoltConditionTone(index: number): { marker: string; dot: string } {
+  return ASSEMBLY_BOLT_CONDITION_TONES[index % ASSEMBLY_BOLT_CONDITION_TONES.length]!;
+}
+
+/** 一覧の並び順で決まる色を、条件の入っている丸数字へ付ける（図面上の丸数字は id で対応づける）。 */
+export function tintAssemblyBoltsByCondition<T extends { id: string }>(
+  bolts: readonly T[],
+  areas: readonly AssemblyDraftArea[],
+  palette: readonly AssemblyBoltConditionPaletteEntry[]
+): Array<T & { accentClass?: string }> {
+  const markerClassByKey = new Map(
+    palette.map((entry, index) => [entry.key, assemblyBoltConditionTone(index).marker])
+  );
+  const accentClassById = new Map<string, string>();
+  for (const bolt of areas.flatMap((area) => area.bolts)) {
+    const condition = assemblyBoltConditionFromBolt(bolt);
+    const accentClass = condition ? markerClassByKey.get(assemblyBoltConditionKey(condition)) : undefined;
+    if (accentClass) accentClassById.set(bolt.id, accentClass);
+  }
+  return bolts.map((bolt) => {
+    const accentClass = accentClassById.get(bolt.id);
+    return accentClass ? { ...bolt, accentClass } : bolt;
+  });
+}

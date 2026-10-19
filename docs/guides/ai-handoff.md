@@ -14,13 +14,11 @@ update-frequency: low
 
 ## 現行の読み順
 
-1. [AGENTS.md](../../AGENTS.md)
-2. [docs/AI_START_HERE.md](../AI_START_HERE.md)
-3. `.cursor/rules/00-core-safety.mdc`
-4. `.cursor/rules/01-core-docs-and-knowledge.mdc`
-5. 今回の作業に該当する `.cursor/rules/*.mdc`
-6. Codex/Cursor agmsg連携を使う場合は [agmsg連携ガイド](./agmsg-codex-cursor-collaboration.md)
-7. 関連する KB / Runbook / ADR / Plan
+1. [AGENTS.md](../../AGENTS.md)（作業別のルール振り分けはここ）
+2. `.cursor/rules/00-core-safety.mdc`
+3. 今回の作業に該当するルールだけ（ドキュメント作業なら `.cursor/rules/01-core-docs-and-knowledge.mdc` と `.cursor/rules/30-docs-maintenance.mdc`）。正本の場所が不明なときだけ [docs/AI_START_HERE.md](../AI_START_HERE.md)
+4. Codex/Cursor agmsg連携を使う場合は [agmsg連携ガイド](./agmsg-codex-cursor-collaboration.md)
+5. 関連する KB / Runbook / ADR / Plan
 
 最初から巨大文書を全文読みしない。必要な正本文書へ絞って読む。
 

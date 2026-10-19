@@ -6,6 +6,12 @@ import os from 'os';
 import type { BackupTarget } from '../backup-target.interface.js';
 import type { BackupTargetInfo } from '../backup-types.js';
 import { ApiError } from '../../../lib/errors.js';
+import {
+  assertBackupSshAuthorityAvailable,
+  assertRemoteBackupPathAllowed,
+  buildBackupSshAnsibleArgs,
+  resolveBackupSshPaths,
+} from '../backup-ssh-policy.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -30,15 +36,14 @@ export class ClientFileBackupTarget implements BackupTarget {
 
     this.clientHost = parts[0];
     this.remotePath = parts.slice(1).join(':'); // パスに:が含まれる可能性があるため、最初の:以降を結合
+    assertRemoteBackupPathAllowed(this.remotePath);
 
-    // Ansibleのパスを設定
-    // Dockerコンテナ内では /app/host/infrastructure/ansible にマウントされている
-    const projectRoot = process.env.PROJECT_ROOT || '/opt/RaspberryPiSystem_002';
-    const ansibleBasePath = process.env.ANSIBLE_BASE_PATH || path.join(projectRoot, 'infrastructure/ansible');
+    // APIには資格情報を含まないバックアップ専用Ansible境界だけをマウントする。
+    const ansibleBasePath = process.env.ANSIBLE_BASE_PATH || '/app/backup-ansible';
     
     // デフォルトパスを設定（後でcreateBackup時に存在確認してから使用）
     this.ansibleInventoryPath = ansibleInventoryPath || path.join(ansibleBasePath, 'inventory.yml');
-    this.ansiblePlaybookPath = ansiblePlaybookPath || path.join(ansibleBasePath, 'playbooks/backup-clients.yml');
+    this.ansiblePlaybookPath = ansiblePlaybookPath || path.join(ansibleBasePath, 'backup-clients.yml');
   }
 
   get info(): BackupTargetInfo {
@@ -61,29 +66,18 @@ export class ClientFileBackupTarget implements BackupTarget {
     const outputFileName = `${this.clientHost}_${path.basename(this.remotePath)}`;
     const outputFilePath = path.join(backupDestination, outputFileName);
 
-    // Ansibleのパスを解決（Dockerコンテナ内のマウントパスを優先）
-    const containerAnsiblePath = '/app/host/infrastructure/ansible';
-    let ansibleInventoryPath = this.ansibleInventoryPath;
-    let ansiblePlaybookPath = this.ansiblePlaybookPath;
-    
-    try {
-      // Dockerコンテナ内のマウントパスが存在するか確認
-      await fs.access(path.join(containerAnsiblePath, 'inventory.yml'));
-      ansibleInventoryPath = path.join(containerAnsiblePath, 'inventory.yml');
-      ansiblePlaybookPath = path.join(containerAnsiblePath, 'playbooks/backup-clients.yml');
-    } catch {
-      // マウントパスが存在しない場合はデフォルトパスを使用
-    }
+    const ansibleInventoryPath = this.ansibleInventoryPath;
+    const ansiblePlaybookPath = this.ansiblePlaybookPath;
 
     try {
-      // Dockerコンテナ内からSSH接続する際にSSH鍵がマウントされていない問題を回避するため、
-      // 直接ansible-playbookを実行する（SSH鍵の問題で失敗する可能性が高いが、実際には成功している）
-      // 注意: 実際のテストでは、Ansible Playbookが成功しているため、この方法で動作している
+      const backupSshPaths = resolveBackupSshPaths();
+      await assertBackupSshAuthorityAvailable(backupSshPaths);
       const { stdout, stderr } = await execFileAsync(
         'ansible-playbook',
         [
           '-i', ansibleInventoryPath,
           ansiblePlaybookPath,
+          ...buildBackupSshAnsibleArgs(backupSshPaths),
           '-e', `client_host=${this.clientHost}`,
           '-e', `client_file_path=${this.remotePath}`,
           '-e', `backup_destination=${backupDestination}`

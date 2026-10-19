@@ -22,9 +22,16 @@ export * from './domains/clients';
 export * from './domains/system';
 export * from './domains/signage';
 export * from './domains/kiosk-documents';
+export * from './domains/work-instructions';
+export * from './domains/self-inspection-nonconformities';
+export * from './domains/self-inspection-reduction';
+export * from './domains/machine-signal';
+export * from './domains/work-instruction-overlays';
 export * from './domains/csv-visualization';
 export * from './domains/assembly';
 export * from './domains/torque-wrenches';
+export * from './domains/torque-training';
+export * from './domains/item-inventory';
 
 // Compatibility re-exports: feature types (do not add new ones)
 export type {

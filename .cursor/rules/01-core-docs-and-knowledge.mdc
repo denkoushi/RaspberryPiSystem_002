@@ -1,43 +1,28 @@
 ---
 description: ドキュメント・ナレッジを構造化し、検索容易で経時に強くなる運用へ揃える。
-alwaysApply: true
+globs:
+  - "docs/**/*.md"
+  - "**/README*.md"
+alwaysApply: false
 ---
 
-# コア: ドキュメント/ナレッジ（Always）
+# コア: ドキュメント/ナレッジ
 
 ## 原則
 
-- 変更・調査・障害対応は**後から再現できる形**で残す（「書いた本人しか分からない」を禁止）
-- ドキュメントは**構造化**し、索引から辿れるようにする（孤立ドキュメントを作らない）
+- 変更・調査・障害対応は後から再現できる形で残す（書いた本人しか分からない状態にしない）
+- ドキュメントは構造化し、索引から辿れるようにする（孤立ドキュメントを作らない）
 
-## 最低限の運用（毎回）
+## 正本
 
-- 重要な変更には、情報の性質に応じて以下のいずれか**1つを詳細正本**として更新する:
-  - **KB**: 事象と対処（再発防止まで）
-  - **ADR**: 意思決定（トレードオフ含む）
-  - **Runbook**: 手順（運用/復旧）
-  - **Plan**: 未完了作業、実装計画、検証計画
-- **Index** は詳細正本ではない。追加/更新した正本への短いリンクだけを書く
-- 同じ事実を複数文書へ全文コピーしない。必要な場合はリンクで参照する
+重要な変更は、次のいずれか1つを詳細正本として更新する。小変更では新しい Plan を作らない。
 
-## 推奨のドキュメント体系（汎用）
+- KB（`docs/knowledge-base/`）: 事象と対処（再発防止まで）。テンプレは [docs/knowledge-base/_template.md](../../docs/knowledge-base/_template.md)
+- ADR（`docs/decisions/`）: 意思決定（トレードオフ含む）。テンプレは [docs/decisions/_template.md](../../docs/decisions/_template.md)
+- Runbook（`docs/runbooks/`）: 手順（運用/復旧）
+- Plan（`docs/plans/`）: 未完了作業、実装計画、検証計画
 
-- `docs/INDEX.md`: 入口（目的別リンク）
-- `docs/knowledge-base/**`: トラブルシュート（KB-xxx）
-- `docs/decisions/**`: ADR（意思決定ログ）
-- `docs/runbooks/**`: 運用手順（復旧含む）
-- `docs/plans/**`: 計画（実装/移行/検証）
-- `docs/AI_START_HERE.md`: AI向けの最小入口
-
-## 知識の置き場所
-
-- 設計上の判断・トレードオフは **ADR** に残す
-- 障害・調査結果・再発防止は **KB** に残す
-- 実行手順・確認手順・復旧手順は **Runbook** に残す
-- 未完了作業・実装計画・検証計画は **Plan** に残す
-- 会話中に得た重要知見は、その場限りにせず適切なドキュメントへ昇格させる
-- `EXEC_PLAN.md` は legacy historical log として扱う。詳細正本として使わず、新規詳細追記は原則禁止する
-- `docs/INDEX.md` と `docs/knowledge-base/index.md` は薄い索引に限定し、本文級の説明を追加しない
+同じ事実を複数文書へ全文コピーしない。必要な場合はリンクで参照する。
 
 ## 新規ドキュメントの言語方針
 
@@ -46,35 +31,8 @@ alwaysApply: true
 - 日本語でないと意味が落ちる補足は `Local Notes JA` または `notes_ja` に置く
 - 既存日本語文書へ追記する場合は、既存文書の言語に合わせる
 
-## KBテンプレ（コピーして使う）
+## 検索性
 
-- Title: `KB-xxx: <short summary>`
-- Status: `active | superseded | archived`
-- Scope: affected feature/system
-- Context: what happened, when, where
-- Symptoms Or Trigger: logs, behavior, reproduction
-- Investigation: hypothesis -> evidence -> result
-- Root Cause: confirmed cause, or `unknown`
-- Fix: smallest effective change
-- Prevention: test, monitor, guard, runbook update
-- Validation: commands and observed results
-- Open Items: remaining work
-- References: PR, issue, docs, logs, code
-
-## ADRテンプレ（コピーして使う）
-
-- Title: `ADR-YYYYMMDD: <decision>`
-- Status: proposed/accepted/superseded
-- Context: problem, constraints
-- Decision: chosen approach
-- Alternatives: options considered
-- Consequences: benefits, costs, risks
-- Validation: how the decision is checked
-- Supersedes / Superseded By
-- References: 関連リンク
-
-## 検索性のルール
-
-- ドキュメントタイトル/見出しは、**検索語になりやすい固有名詞**を含める
-- 新規追加したら、必ず `AGENTS.md`、`docs/AI_START_HERE.md`、または薄い索引から辿れるようにする
+- ドキュメントタイトル/見出しは、検索語になりやすい固有名詞を含める
+- 新規追加したら、`AGENTS.md`、`docs/AI_START_HERE.md`、または薄い索引から辿れるようにする
 - 索引の説明は1件1行を目安にし、長文の検証ログや経緯は正本文書へ置く

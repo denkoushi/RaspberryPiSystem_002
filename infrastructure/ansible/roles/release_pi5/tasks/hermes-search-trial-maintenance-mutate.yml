@@ -1,0 +1,341 @@
+---
+- name: Record the maintenance environment path
+  ansible.builtin.set_fact:
+    release_pi5_trial_maintenance_env_file: "{{ release_pi5_chat_env_file }}"
+    release_pi5_trial_maintenance_env_created: false
+    release_pi5_trial_maintenance_env_changed: false
+
+- name: Seed the dedicated trial environment from the active API environment when absent
+  ansible.builtin.copy:
+    src: "{{ release_pi5_compose_env_source }}"
+    dest: "{{ release_pi5_trial_maintenance_env_file }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+  when: not (release_pi5_chat_env_source.stat.exists | default(false) | bool)
+  register: release_pi5_trial_maintenance_seed
+  no_log: true
+
+- name: Record whether the dedicated trial environment was created by this run
+  ansible.builtin.set_fact:
+    release_pi5_trial_maintenance_env_created: "{{ release_pi5_trial_maintenance_seed is changed }}"
+
+- name: Save the original trial environment before editing it
+  ansible.builtin.copy:
+    src: "{{ release_pi5_trial_maintenance_env_file }}"
+    dest: "{{ release_pi5_run_dir }}/hermes-search-trial-maintenance.env.before"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+
+- name: Mark the environment restoration boundary
+  ansible.builtin.set_fact:
+    release_pi5_trial_maintenance_env_changed: true
+
+- name: Apply the requested trial flags and fixed ON settings
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_trial_maintenance_env_file }}"
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+    create: false
+    mode: '0600'
+  loop: >-
+    {{ [
+      {'key': 'HERMES_SEARCH_TRIAL_ENABLED', 'value': ('true' if release_pi5_trial_maintenance == 'on' else 'false')},
+      {'key': 'HERMES_SEARCH_TRIAL_JEV_ENABLED', 'value': ('true' if release_pi5_trial_maintenance == 'on' else 'false')}
+    ] + ([
+      {'key': 'HERMES_SEARCH_RECORD_SOURCE', 'value': '/app/storage/hermes-search/' ~ release_pi5_trial_maintenance_manifest.files['qmd-index.sqlite'] ~ '/snapshot.json'},
+      {'key': 'HERMES_SEARCH_RECORD_CLASSIFICATION_STORE', 'value': '/app/storage/hermes-search/runtime/jev-record-classifications.json'},
+      {'key': 'HERMES_JEV_PROVIDER', 'value': 'typesafe-direct'},
+      {'key': 'TYPESAFE_API_KEY', 'value': hermes_search_typesafe_api_key},
+      {'key': 'HERMES_INFERENCE_ORIGIN', 'value': business_hermes_chat_dgx_base_url | default('http://100.118.82.72:38081')},
+      {'key': 'HERMES_INFERENCE_TOKEN', 'value': business_hermes_chat_dgx_token},
+      {'key': 'HERMES_INFERENCE_EGRESS', 'value': 'http://business-hermes-chat-egress:3128'},
+      {'key': 'HERMES_SEARCH_ARTIFACT_ROOT', 'value': '/app/storage/hermes-search/' ~ release_pi5_trial_maintenance_manifest.files['qmd-index.sqlite']},
+      {'key': 'HERMES_TRIAL_SNAPSHOT_PATH', 'value': '/app/storage/hermes-search/' ~ release_pi5_trial_maintenance_manifest.files['qmd-index.sqlite'] ~ '/snapshot.json'},
+      {'key': 'HERMES_ORGANIZED_MANIFEST', 'value': '/app/storage/hermes-search/' ~ release_pi5_trial_maintenance_manifest.files['qmd-index.sqlite'] ~ '/reviewed.json'}
+    ] if release_pi5_trial_maintenance == 'on' else []) }}
+  no_log: true
+
+- name: Apply the explicitly requested record classification gate for maintenance
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_trial_maintenance_env_file }}"
+    regexp: '^HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED='
+    line: "HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED={{ release_pi5_trial_classification_requested }}"
+    create: false
+    mode: '0600'
+  when: release_pi5_trial_classification_requested in ['true', 'false']
+
+- name: Apply the explicitly requested retrieval v2 gate for maintenance
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_trial_maintenance_env_file }}"
+    regexp: '^HERMES_RETRIEVAL_V2_ENABLED='
+    line: "HERMES_RETRIEVAL_V2_ENABLED={{ release_pi5_trial_retrieval_v2_requested }}"
+    create: false
+    mode: '0600'
+  when: release_pi5_trial_retrieval_v2_requested in ['true', 'false']
+
+- name: Apply retrieval cause classification gate when explicitly configured for maintenance
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_trial_maintenance_env_file }}"
+    regexp: '^HERMES_RETRIEVAL_CAUSE_ENABLED='
+    line: "HERMES_RETRIEVAL_CAUSE_ENABLED={{ release_pi5_trial_cause_requested }}"
+    create: false
+    mode: '0600'
+  when: release_pi5_trial_cause_requested in ['true', 'false']
+
+- name: Apply retrieval cause classification limit for maintenance
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_trial_maintenance_env_file }}"
+    regexp: '^HERMES_RETRIEVAL_CAUSE_MAX_TEXTS='
+    line: "HERMES_RETRIEVAL_CAUSE_MAX_TEXTS={{ release_pi5_trial_cause_max_texts }}"
+    create: false
+    mode: '0600'
+  when: release_pi5_trial_cause_max_texts | length > 0
+
+- name: Apply the explicitly requested retrieval enrichment gate for maintenance
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_trial_maintenance_env_file }}"
+    regexp: '^HERMES_RETRIEVAL_ENRICHMENT_ENABLED='
+    line: "HERMES_RETRIEVAL_ENRICHMENT_ENABLED={{ release_pi5_trial_enrichment_requested }}"
+    create: false
+    mode: '0600'
+  when: release_pi5_trial_enrichment_requested in ['true', 'false']
+
+- name: Apply retrieval enrichment pilot limits for maintenance
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_trial_maintenance_env_file }}"
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+    create: false
+    mode: '0600'
+  loop:
+    - { key: HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS, value: "{{ release_pi5_trial_enrichment_max_records }}" }
+    - { key: HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY, value: "{{ release_pi5_trial_enrichment_concurrency }}" }
+    - { key: HERMES_RETRIEVAL_ENRICHMENT_WINDOW, value: "{{ release_pi5_trial_enrichment_window }}" }
+    - { key: HERMES_RETRIEVAL_ENRICHMENT_IDS, value: "{{ release_pi5_trial_enrichment_ids }}" }
+  when: item.value | length > 0
+
+- name: Apply synthetic question flywheel settings for maintenance
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_trial_maintenance_env_file }}"
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+    create: false
+    mode: '0600'
+  loop:
+    - { key: HERMES_FLYWHEEL_ENABLED, value: "{{ release_pi5_trial_flywheel_enabled | default('') }}" }
+    - { key: HERMES_FLYWHEEL_MAX_QUESTIONS, value: "{{ release_pi5_trial_flywheel_max_questions | default('') }}" }
+    - { key: HERMES_RETRIEVAL_SOURCES, value: "{{ release_pi5_trial_retrieval_sources | default('') }}" }
+  when: item.value | length > 0
+
+- name: Apply the explicitly requested dense retrieval provider for maintenance
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_trial_maintenance_env_file }}"
+    regexp: '^HERMES_RETRIEVAL_DENSE_PROVIDER='
+    line: "HERMES_RETRIEVAL_DENSE_PROVIDER={{ release_pi5_trial_dense_provider_requested }}"
+    create: false
+    mode: '0600'
+  when: release_pi5_trial_dense_provider_requested in ['off', 'dgx']
+
+- name: Apply the explicitly requested dense index gate for maintenance
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_trial_maintenance_env_file }}"
+    regexp: '^HERMES_RETRIEVAL_DENSE_INDEX_ENABLED='
+    line: "HERMES_RETRIEVAL_DENSE_INDEX_ENABLED={{ release_pi5_trial_dense_index_requested }}"
+    create: false
+    mode: '0600'
+  when: release_pi5_trial_dense_index_requested in ['true', 'false']
+
+- name: Read the finalized maintenance environment before API recreation
+  ansible.builtin.slurp:
+    src: "{{ release_pi5_trial_maintenance_env_file }}"
+  register: release_pi5_trial_maintenance_env_final
+  no_log: true
+
+- name: Verify the final classification gate before API recreation
+  ansible.builtin.assert:
+    that:
+      - release_pi5_trial_maintenance_env_final is not skipped
+      - release_pi5_trial_maintenance_env_final is succeeded
+      - release_pi5_trial_maintenance_env_final.content is defined
+      - >-
+        ((release_pi5_trial_maintenance_env_final.content | b64decode).splitlines()
+         | select('match', '^HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED=') | list)
+        == ['HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED=' ~ release_pi5_trial_classification_effective]
+    fail_msg: The finalized classification gate does not match the explicit or preserved setting; API startup stopped.
+  when: release_pi5_trial_maintenance == 'on' or release_pi5_trial_classification_requested != ''
+
+- name: Verify the final retrieval v2 gate before API recreation
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((release_pi5_trial_maintenance_env_final.content | b64decode).splitlines()
+         | select('match', '^HERMES_RETRIEVAL_V2_ENABLED=') | list)
+        == ['HERMES_RETRIEVAL_V2_ENABLED=' ~ release_pi5_trial_retrieval_v2_effective]
+    fail_msg: The finalized retrieval v2 gate does not match the explicit or preserved setting; API startup stopped.
+  when: release_pi5_trial_retrieval_v2_effective in ['true', 'false']
+
+- name: Verify the final retrieval enrichment gate before API recreation
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((release_pi5_trial_maintenance_env_final.content | b64decode).splitlines()
+         | select('match', '^HERMES_RETRIEVAL_ENRICHMENT_ENABLED=') | list)
+        == ['HERMES_RETRIEVAL_ENRICHMENT_ENABLED=' ~ release_pi5_trial_enrichment_effective]
+    fail_msg: The finalized retrieval enrichment gate does not match the explicit or preserved setting; API startup stopped.
+  when: release_pi5_trial_enrichment_effective in ['true', 'false']
+
+- name: Verify the final retrieval cause classification gate before API recreation
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((release_pi5_trial_maintenance_env_final.content | b64decode).splitlines()
+         | select('match', '^HERMES_RETRIEVAL_CAUSE_ENABLED=') | list)
+        == ['HERMES_RETRIEVAL_CAUSE_ENABLED=' ~ release_pi5_trial_cause_effective]
+    fail_msg: The finalized retrieval cause classification gate does not match the explicit or preserved setting; API startup stopped.
+  when: release_pi5_trial_cause_effective in ['true', 'false']
+
+- name: Verify the final dense retrieval provider before API recreation
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((release_pi5_trial_maintenance_env_final.content | b64decode).splitlines()
+         | select('match', '^HERMES_RETRIEVAL_DENSE_PROVIDER=') | list)
+        == ['HERMES_RETRIEVAL_DENSE_PROVIDER=' ~ release_pi5_trial_dense_provider_effective]
+    fail_msg: The finalized dense retrieval provider does not match the explicit or preserved setting; API startup stopped.
+  when: release_pi5_trial_dense_provider_effective in ['off', 'dgx']
+
+- name: Verify the final dense index gate before API recreation
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((release_pi5_trial_maintenance_env_final.content | b64decode).splitlines()
+         | select('match', '^HERMES_RETRIEVAL_DENSE_INDEX_ENABLED=') | list)
+        == ['HERMES_RETRIEVAL_DENSE_INDEX_ENABLED=' ~ release_pi5_trial_dense_index_effective]
+    fail_msg: The finalized dense index gate does not match the explicit or preserved setting; API startup stopped.
+  when: release_pi5_trial_dense_index_effective in ['true', 'false']
+
+- name: Remove pilot-only settings when returning the trial path to OFF
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_trial_maintenance_env_file }}"
+    regexp: "^{{ item }}="
+    state: absent
+    create: false
+    mode: '0600'
+  loop:
+    - HERMES_SEARCH_RECORD_SOURCE
+    - HERMES_SEARCH_RECORD_CLASSIFICATION_STORE
+    - HERMES_JEV_PROVIDER
+    - TYPESAFE_API_KEY
+    - HERMES_SEARCH_TRIAL_RECORD_PILOT_FIXTURE
+    - HERMES_SEARCH_TRIAL_RECORD_PILOT_STORE
+  no_log: true
+  when: release_pi5_trial_maintenance == 'off'
+
+- name: Bind the active API recreation to the dedicated trial environment
+  ansible.builtin.set_fact:
+    release_pi5_trial_maintenance_original_compose_environment: "{{ release_pi5_compose_environment }}"
+    release_pi5_compose_environment: "{{ release_pi5_compose_environment | combine({'PI5_ENV_FILE': release_pi5_trial_maintenance_env_file}) }}"
+
+- name: Recreate only the same active API service with the requested trial setting
+  ansible.builtin.command:
+    argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--force-recreate', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string, 'api-' + release_pi5_active_slot] }}"
+  environment: "{{ release_pi5_compose_environment }}"
+  register: release_pi5_trial_maintenance_api
+  changed_when: true
+
+- name: Resolve the recreated same active API container
+  ansible.builtin.command:
+    argv: "{{ release_pi5_compose_argv + ['ps', '-q', 'api-' + release_pi5_active_slot] }}"
+  environment: "{{ release_pi5_compose_environment }}"
+  register: release_pi5_trial_maintenance_api_id
+  changed_when: false
+
+- name: Require the recreated active API identity
+  ansible.builtin.assert:
+    that:
+      - release_pi5_trial_maintenance_api_id.stdout | trim is match('^[0-9a-f]{12,64}$')
+
+- name: Bind existing health checks to the recreated active API
+  ansible.builtin.set_fact:
+    release_pi5_active_api_id: "{{ release_pi5_trial_maintenance_api_id.stdout | trim }}"
+    release_pi5_api_id: "{{ release_pi5_trial_maintenance_api_id.stdout | trim }}"
+
+- name: Inspect the recreated API classification gate before any worker request
+  ansible.builtin.command:
+    argv: [docker, inspect, --format, "{{ '{{json .Config.Env}}' }}", "{{ release_pi5_active_api_id }}"]
+  register: release_pi5_trial_maintenance_api_env
+  changed_when: false
+  no_log: true
+  when: release_pi5_trial_maintenance == 'on' or release_pi5_trial_classification_requested != '' or release_pi5_trial_retrieval_v2_effective in ['true', 'false'] or release_pi5_trial_enrichment_effective in ['true', 'false'] or release_pi5_trial_cause_effective in ['true', 'false'] or release_pi5_trial_dense_provider_effective in ['off', 'dgx'] or release_pi5_trial_dense_index_effective in ['true', 'false']
+
+- name: Require the recreated API to inherit the verified classification gate
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((release_pi5_trial_maintenance_api_env.stdout | from_json)
+         | select('match', '^HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED=') | list)
+        == ['HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED=' ~ release_pi5_trial_classification_effective]
+    fail_msg: The recreated API did not inherit the verified classification gate; trial maintenance cannot succeed.
+  when: release_pi5_trial_maintenance == 'on' or release_pi5_trial_classification_requested != ''
+
+- name: Require the recreated API to inherit the verified retrieval v2 gate
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((release_pi5_trial_maintenance_api_env.stdout | from_json)
+         | select('match', '^HERMES_RETRIEVAL_V2_ENABLED=') | list)
+        == ['HERMES_RETRIEVAL_V2_ENABLED=' ~ release_pi5_trial_retrieval_v2_effective]
+    fail_msg: The recreated API did not inherit the verified retrieval v2 gate; trial maintenance cannot succeed.
+  when: release_pi5_trial_retrieval_v2_effective in ['true', 'false']
+
+- name: Require the recreated API to inherit the verified retrieval enrichment gate
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((release_pi5_trial_maintenance_api_env.stdout | from_json)
+         | select('match', '^HERMES_RETRIEVAL_ENRICHMENT_ENABLED=') | list)
+        == ['HERMES_RETRIEVAL_ENRICHMENT_ENABLED=' ~ release_pi5_trial_enrichment_effective]
+    fail_msg: The recreated API did not inherit the verified retrieval enrichment gate; trial maintenance cannot succeed.
+  when: release_pi5_trial_enrichment_effective in ['true', 'false']
+
+- name: Require the recreated API to inherit the verified retrieval cause classification gate
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((release_pi5_trial_maintenance_api_env.stdout | from_json)
+         | select('match', '^HERMES_RETRIEVAL_CAUSE_ENABLED=') | list)
+        == ['HERMES_RETRIEVAL_CAUSE_ENABLED=' ~ release_pi5_trial_cause_effective]
+    fail_msg: The recreated API did not inherit the verified retrieval cause classification gate; trial maintenance cannot succeed.
+  when: release_pi5_trial_cause_effective in ['true', 'false']
+
+- name: Require the recreated API to inherit the verified dense retrieval provider
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((release_pi5_trial_maintenance_api_env.stdout | from_json)
+         | select('match', '^HERMES_RETRIEVAL_DENSE_PROVIDER=') | list)
+        == ['HERMES_RETRIEVAL_DENSE_PROVIDER=' ~ release_pi5_trial_dense_provider_effective]
+    fail_msg: The recreated API did not inherit the verified dense retrieval provider; trial maintenance cannot succeed.
+  when: release_pi5_trial_dense_provider_effective in ['off', 'dgx']
+
+- name: Require the recreated API to inherit the verified dense index gate
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((release_pi5_trial_maintenance_api_env.stdout | from_json)
+         | select('match', '^HERMES_RETRIEVAL_DENSE_INDEX_ENABLED=') | list)
+        == ['HERMES_RETRIEVAL_DENSE_INDEX_ENABLED=' ~ release_pi5_trial_dense_index_effective]
+    fail_msg: The recreated API did not inherit the verified dense index gate; trial maintenance cannot succeed.
+  when: release_pi5_trial_dense_index_effective in ['true', 'false']
+
+- name: Confirm the same active API remains healthy after trial maintenance
+  ansible.builtin.include_tasks: health.yml
+
+- name: Mark trial maintenance as successfully applied
+  ansible.builtin.set_fact:
+    release_pi5_trial_maintenance_applied: true

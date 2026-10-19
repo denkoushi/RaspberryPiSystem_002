@@ -1,7 +1,7 @@
 import { env } from '../../../config/env.js';
 import { ApiError } from '../../../lib/errors.js';
 import { assertRegisteredDeviceScopeKey } from '../../../lib/manual-order-device-scope.js';
-import { resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
+import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
 import { canProxyTargetLocation } from '../shared.js';
 
 /**
@@ -12,6 +12,8 @@ import { canProxyTargetLocation } from '../shared.js';
  */
 export async function resolveProductionScheduleAssignmentLocationKey(params: {
   actorDeviceScopeKey: string;
+  /** 呼び出し端末の `ClientDevice.canProxyOtherDevices`（旧: deviceScopeKey が 'Mac'） */
+  actorCanProxyOtherDevices: boolean;
   targetDeviceScopeKey?: string;
 }): Promise<string> {
   const actor = params.actorDeviceScopeKey.trim();
@@ -19,7 +21,7 @@ export async function resolveProductionScheduleAssignmentLocationKey(params: {
     return actor;
   }
   const requested = params.targetDeviceScopeKey?.trim();
-  if (canProxyTargetLocation(actor)) {
+  if (canProxyTargetLocation({ canProxyOtherDevices: params.actorCanProxyOtherDevices })) {
     if (!requested) {
       throw new ApiError(
         400,
@@ -29,7 +31,7 @@ export async function resolveProductionScheduleAssignmentLocationKey(params: {
       );
     }
     await assertRegisteredDeviceScopeKey(requested);
-    return resolveSiteKeyFromScopeKey(requested);
+    return resolveSiteKeyForScopeKey(requested);
   }
   if (requested) {
     throw new ApiError(
@@ -39,5 +41,5 @@ export async function resolveProductionScheduleAssignmentLocationKey(params: {
       'TARGET_DEVICE_SCOPE_KEY_FORBIDDEN'
     );
   }
-  return resolveSiteKeyFromScopeKey(actor);
+  return resolveSiteKeyForScopeKey(actor);
 }

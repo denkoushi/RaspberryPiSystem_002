@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 
 import { env } from '../../../config/env.js';
 import { ApiError } from '../../../lib/errors.js';
-import { resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
+import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
 import { MANUAL_ORDER_LEGACY_SITE_BUCKET_KEY } from '../../../lib/manual-order-device-scope.js';
 import {
   listDueManagementManualOrderOverview,
@@ -42,7 +42,7 @@ export async function registerProductionScheduleDueManagementManualOrderOverview
           );
         }
 
-        if (!canProxyTargetLocation(actorLocation) && siteKey !== locationScopeContext.siteKey) {
+        if (!canProxyTargetLocation(locationScopeContext) && siteKey !== locationScopeContext.siteKey) {
           throw new ApiError(
             403,
             'この端末では他工場の手動順番全体像を参照できません',
@@ -55,7 +55,7 @@ export async function registerProductionScheduleDueManagementManualOrderOverview
         if (
           deviceScopeKey &&
           deviceScopeKey !== MANUAL_ORDER_LEGACY_SITE_BUCKET_KEY &&
-          resolveSiteKeyFromScopeKey(deviceScopeKey) !== siteKey
+          resolveSiteKeyForScopeKey(deviceScopeKey) !== siteKey
         ) {
           throw new ApiError(
             400,
@@ -84,7 +84,7 @@ export async function registerProductionScheduleDueManagementManualOrderOverview
       if (
         requestedTargetLocation &&
         requestedTargetLocation !== actorLocation &&
-        !canProxyTargetLocation(actorLocation)
+        !canProxyTargetLocation(locationScopeContext)
       ) {
         throw new ApiError(
           403,

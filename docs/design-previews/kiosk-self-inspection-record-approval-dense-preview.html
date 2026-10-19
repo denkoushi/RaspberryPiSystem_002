@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>検査記録確認 — 高密度レイアウト案</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
+      background: #07101f;
+      color: #f8fafc;
+      --panel: rgba(15, 23, 42, .92);
+      --line: rgba(255, 255, 255, .14);
+      --muted: rgba(255, 255, 255, .62);
+      --quiet: rgba(255, 255, 255, .46);
+      --cyan: #67e8f9;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 1180px; min-height: 100vh; background: radial-gradient(circle at 80% 0, #12213d 0, #07101f 42%); }
+    button { font: inherit; }
+    .screen { display: grid; grid-template-rows: auto 1fr; gap: 10px; height: 100vh; padding: 10px; overflow: hidden; }
+    .toolbar, .pane { border: 1px solid var(--line); border-radius: 7px; background: var(--panel); }
+    .toolbar { display: flex; align-items: end; gap: 14px; min-height: 82px; padding: 10px 12px; }
+    .title { margin-right: auto; align-self: center; }
+    .title h1 { margin: 0; font-size: 25px; line-height: 1; }
+    .preview-tag { display: inline-block; margin-top: 8px; border-radius: 999px; background: rgba(14, 165, 233, .15); padding: 3px 8px; color: #bae6fd; font-size: 11px; font-weight: 700; }
+    .control { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+    .control-row { display: flex; gap: 4px; padding: 4px; border: 1px solid rgba(255,255,255,.1); border-radius: 5px; background: rgba(2, 6, 23, .55); }
+    .btn, .field { min-height: 38px; border: 1px solid rgba(255,255,255,.18); border-radius: 5px; background: rgba(2,6,23,.68); color: #fff; padding: 8px 11px; font-weight: 700; white-space: nowrap; }
+    .btn.active { border-color: rgba(125,211,252,.7); background: rgba(14,165,233,.22); color: #e0f2fe; }
+    .btn.action { border-color: rgba(34,211,238,.45); background: rgba(8,145,178,.3); color: #cffafe; }
+    .btn.record-action { display: inline-flex; min-width: 116px; align-items: center; justify-content: center; }
+    .btn.operator-action { border-color: rgba(167,139,250,.5); background: rgba(109,40,217,.24); color: #ede9fe; }
+    .field { width: 142px; color: var(--muted); font-weight: 500; }
+    .field.small { width: 88px; }
+    .layout { display: grid; grid-template-columns: minmax(292px, 23%) minmax(0, 1fr); gap: 10px; min-height: 0; }
+    .list { min-height: 0; overflow: auto; padding: 7px; background: rgba(2,6,23,.5); }
+    .card { display: grid; gap: 5px; width: 100%; margin: 0 0 7px; border: 1px solid var(--line); border-radius: 6px; background: rgba(15,23,42,.94); padding: 10px; color: inherit; text-align: left; }
+    .card.selected { border-color: #7dd3fc; background: rgba(14,165,233,.14); box-shadow: inset 3px 0 #38bdf8; }
+    .card-head { display: flex; align-items: start; justify-content: space-between; gap: 8px; }
+    .identity { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 18px; font-weight: 800; letter-spacing: .01em; }
+    .machine { margin-left: .45em; color: #cbd5e1; font-size: 15px; font-weight: 750; }
+    .chip { flex: none; border-radius: 999px; background: rgba(251,191,36,.2); padding: 4px 8px; color: #fef3c7; font-size: 11px; font-weight: 800; }
+    .meta, .progress { overflow: hidden; color: var(--muted); font-size: 12px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+    .intent { color: #fde68a; font-size: 12px; font-weight: 750; }
+    .detail { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 8px; min-width: 0; min-height: 0; padding: 9px; }
+    .record-bar { border: 1px solid rgba(255,255,255,.1); border-radius: 6px; background: rgba(2,6,23,.38); padding: 8px 10px; }
+    .record-row { display: flex; min-width: 0; align-items: center; gap: 10px; min-height: 36px; }
+    .record-row + .record-row { border-top: 1px solid rgba(255,255,255,.08); }
+    .record-row.primary { font-size: 18px; font-weight: 800; }
+    .record-row.secondary { color: var(--muted); font-size: 12px; }
+    .record-row .chip { font-size: 12px; }
+    .label { color: var(--quiet); font-size: .72em; font-weight: 650; }
+    .field-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .record-key { color: #f8fafc; font-size: 18px; font-weight: 800; }
+    .intent-inline { min-width: 0; overflow: hidden; color: #fde68a; font-size: 12px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+    .spacer { flex: 1; }
+    .machine-end { color: #e2e8f0; font-size: 16px; font-weight: 800; white-space: nowrap; }
+    .table-wrap { min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; border: 1px solid rgba(255,255,255,.11); border-radius: 6px; }
+    table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12px; }
+    thead { position: sticky; top: 0; z-index: 2; background: #020617; color: rgba(255,255,255,.62); }
+    th { height: 31px; padding: 5px 6px; text-align: left; font-size: 11px; white-space: nowrap; }
+    td { height: 62px; padding: 5px 6px; border-top: 1px solid rgba(255,255,255,.1); vertical-align: middle; overflow: hidden; }
+    tr.alert { background: rgba(220, 38, 38, .34); box-shadow: inset 4px 0 #fb7185; }
+    .slot { font-weight: 800; white-space: nowrap; }
+    .sub { margin-top: 2px; overflow: hidden; color: var(--quiet); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+    .check { line-height: 1.2; }
+    .check strong { display: block; overflow: hidden; color: #d1fae5; text-overflow: ellipsis; white-space: nowrap; }
+    .check.inspector strong { color: #bae6fd; }
+    .check span { display: block; overflow: hidden; margin-top: 3px; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+    .marker { text-align: center; font-size: 17px; font-weight: 800; }
+    .measure { font-size: 13px; font-weight: 750; }
+    .reading { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 850; line-height: 1; white-space: nowrap; }
+    .reading.inspector { color: #bae6fd; }
+    .reading.bad { color: #fff1f2; }
+    .compact { overflow: hidden; color: rgba(255,255,255,.78); text-overflow: ellipsis; white-space: nowrap; }
+    .legend { position: fixed; right: 18px; bottom: 16px; z-index: 4; border: 1px solid rgba(103,232,249,.35); border-radius: 5px; background: rgba(8,47,73,.94); padding: 6px 9px; color: #cffafe; font-size: 11px; box-shadow: 0 8px 25px rgba(0,0,0,.35); }
+    .w-slot { width: 6.5%; } .w-check { width: 10.2%; } .w-marker { width: 4.3%; }
+    .w-measure { width: 13.3%; } .w-reading { width: 13%; } .w-diff { width: 7%; }
+    .w-judge { width: 8%; } .w-range { width: 14.3%; }
+    @media (max-width: 1340px) {
+      .toolbar { gap: 8px; }
+      .btn, .field { padding-inline: 8px; }
+      .field { width: 122px; }
+      .layout { grid-template-columns: 292px minmax(0, 1fr); }
+      .reading { font-size: 21px; }
+      .record-row { gap: 7px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="screen">
+    <header class="toolbar">
+      <div class="title">
+        <h1>検査記録確認</h1>
+        <span class="preview-tag">DESIGN PREVIEW · 本番未反映</span>
+      </div>
+      <button class="btn">自主検査画面へ戻る</button>
+      <label class="control">表示
+        <span class="control-row"><button class="btn active">未完了</button><button class="btn">完了記録</button><button class="btn">削除履歴</button></span>
+      </label>
+      <label class="control">製造order<span class="field">ORDER-001</span></label>
+      <label class="control">資源CD<span class="field small">581</span></label>
+      <button class="btn">クリア</button>
+    </header>
+
+    <div class="layout">
+      <aside class="pane list" aria-label="検査記録一覧">
+        <button class="card selected">
+          <span class="card-head">
+            <span class="identity">BE1N9321 <span class="machine">L300KP-10</span></span>
+            <span class="chip">検査員待ち</span>
+          </span>
+          <span class="meta">ORDER-LAYOUT-001 / 581 / FH-LAYOUT-001</span>
+          <span class="meta">レイアウト確認用カバー</span>
+          <span class="intent">検査員の再測定を待っています</span>
+          <span class="progress">入力 3/3件 / 検査員 1/3件 · 更新 8/26 10:42</span>
+        </button>
+        <button class="card">
+          <span class="card-head">
+            <span class="identity">BD7A1052 <span class="machine">ROBODRILL-αD21</span></span>
+            <span class="chip">承認可能</span>
+          </span>
+          <span class="meta">ORDER-LAYOUT-002 / 581 / FH-302011</span>
+          <span class="meta">スピンドルハウジング</span>
+          <span class="intent">承認者を確認して完了できます</span>
+          <span class="progress">入力 2/2件 · 更新 8/26 10:31</span>
+        </button>
+        <button class="card">
+          <span class="card-head">
+            <span class="identity">ZA9K7740 <span class="machine">MILLAC-468V</span></span>
+            <span class="chip">点検不足</span>
+          </span>
+          <span class="meta">ORDER-LAYOUT-003 / 581 / FH-771205</span>
+          <span class="meta">ベースプレート</span>
+          <span class="intent">使用前点検をそろえてください</span>
+          <span class="progress">入力 1/3件 / 点検不足 1件 · 更新 8/26 09:58</span>
+        </button>
+      </aside>
+
+      <section class="pane detail">
+        <div class="record-bar">
+          <div class="record-row primary">
+            <span class="chip">検査員待ち</span>
+            <span class="intent-inline">検査員の再測定を待っています</span>
+            <span class="field-value record-key">BE1N9321</span>
+            <span class="field-value record-key">581</span>
+            <span class="field-value record-key">レイアウト確認用カバー</span>
+            <span class="spacer"></span>
+            <button class="btn record-action operator-action">作業者入力へ</button>
+            <button class="btn record-action action">検査員測定へ</button>
+          </div>
+          <div class="record-row secondary">
+            <span class="record-key">ORDER-LAYOUT-001</span>
+            <span>FH-LAYOUT-001</span>
+            <span>入力 3/3件 · 最終判定待ち 2点</span>
+            <span>更新 8/26 10:42 · 入力者 作業者A</span>
+            <span class="spacer"></span>
+            <span class="machine-end">L300KP-10</span>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <colgroup>
+              <col class="w-slot"><col class="w-check"><col class="w-check"><col class="w-marker">
+              <col class="w-measure"><col class="w-reading"><col class="w-reading"><col class="w-diff">
+              <col class="w-judge"><col class="w-range">
+            </colgroup>
+            <thead><tr>
+              <th>入力件</th><th>作業点検</th><th>検査点検</th><th>丸数字</th><th>測定</th>
+              <th>オペレータ値</th><th>検査員値</th><th>差分</th><th>差異判定</th><th>合格範囲</th>
+            </tr></thead>
+            <tbody>
+              <tr>
+                <td class="slot">先頭<div class="sub">#1</div></td>
+                <td class="check"><strong>山田 太郎</strong><span>点検済 · M-102</span></td>
+                <td class="check inspector"><strong>佐藤 花子</strong><span>点検済 · M-106</span></td>
+                <td class="marker">①</td><td class="measure">外径<div class="sub">基準面A</div></td>
+                <td class="reading">24.98</td><td class="reading inspector">24.99</td><td class="compact">+0.01</td><td class="compact">一致</td><td class="compact">24.95 – 25.05</td>
+              </tr>
+              <tr class="alert">
+                <td class="slot">中間<div class="sub">#2</div></td>
+                <td class="check"><strong>山田 太郎</strong><span>点検済 · M-102</span></td>
+                <td class="check inspector"><strong>佐藤 花子</strong><span>点検済 · M-106</span></td>
+                <td class="marker">②</td><td class="measure">溝幅<div class="sub">中央部</div></td>
+                <td class="reading bad">10.14</td><td class="reading inspector">10.12</td><td class="compact">-0.02</td><td class="compact">規格外</td><td class="compact">9.95 – 10.05</td>
+              </tr>
+              <tr>
+                <td class="slot">中間<div class="sub">#2</div></td>
+                <td class="check"><strong>山田 太郎</strong><span>点検済 · M-102</span></td>
+                <td class="check inspector"><strong>佐藤 花子</strong><span>点検済 · M-106</span></td>
+                <td class="marker">③</td><td class="measure">キズ確認<div class="sub">全面</div></td>
+                <td class="reading">OK</td><td class="reading inspector">OK</td><td class="compact">—</td><td class="compact">一致</td><td class="compact">OK/NG判定</td>
+              </tr>
+              <tr>
+                <td class="slot">末尾<div class="sub">#3</div></td>
+                <td class="check"><strong>山田 太郎</strong><span>点検済 · M-102</span></td>
+                <td class="check inspector"><strong>未登録</strong><span>未点検</span></td>
+                <td class="marker">④</td><td class="measure">全長<div class="sub">端面間</div></td>
+                <td class="reading">80.01</td><td class="reading inspector">未入力</td><td class="compact">—</td><td class="compact">未判定</td><td class="compact">79.90 – 80.10</td>
+              </tr>
+              <tr>
+                <td class="slot">末尾<div class="sub">#3</div></td>
+                <td class="check"><strong>山田 太郎</strong><span>点検済 · M-102</span></td>
+                <td class="check inspector"><strong>未登録</strong><span>未点検</span></td>
+                <td class="marker">⑤</td><td class="measure">穴径<div class="sub">貫通穴</div></td>
+                <td class="reading">8.02</td><td class="reading inspector">未入力</td><td class="compact">—</td><td class="compact">未判定</td><td class="compact">7.98 – 8.03</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+  <div class="legend">2行ヘッダー · 点検2列化 · 測定値2倍 · 横スクロールなし</div>
+</body>
+</html>

@@ -2,7 +2,8 @@ import { Prisma } from '@prisma/client';
 
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
-import { listScheduleRowsByProductNo } from '../part-measurement/part-measurement-schedule-lookup.service.js';
+import { listScheduleRowsByProductNo } from '../production-schedule/production-schedule-lookup.service.js';
+import { findProductionSchedulePlacementSnapshot } from '../production-schedule/production-schedule-snapshot.service.js';
 import { pickPrimaryScheduleRowForOrder, normalizeSlipToken } from './mobile-placement-slip-match.js';
 import { parseStructuredShelfCode } from './mobile-placement-registered-shelves.service.js';
 import { isHaizenEdgeDevice } from './haizen-edge-device.policy.js';
@@ -213,18 +214,14 @@ export async function applyHaizenScan(input: ApplyHaizenScanInput): Promise<{
   let resolutionStatus: typeof HAIZEN_RESOLVED | typeof HAIZEN_UNRESOLVED = HAIZEN_UNRESOLVED;
 
   if (primary) {
-    const row = await prisma.csvDashboardRow.findFirst({
-      where: { id: primary.rowId },
-      select: { id: true, rowData: true }
-    });
-    if (row) {
-      csvDashboardRowId = row.id;
-      const rd = (row.rowData ?? {}) as Record<string, unknown>;
+    const snapshot = await findProductionSchedulePlacementSnapshot(primary.rowId);
+    if (snapshot) {
+      csvDashboardRowId = snapshot.rowId;
       scheduleSnapshot = {
-        ProductNo: rd.ProductNo ?? null,
-        FSEIBAN: rd.FSEIBAN ?? null,
-        FHINCD: rd.FHINCD ?? null,
-        FHINMEI: rd.FHINMEI ?? null
+        ProductNo: snapshot.manufacturingOrderNo,
+        FSEIBAN: snapshot.seiban,
+        FHINCD: snapshot.partCode,
+        FHINMEI: snapshot.partName
       };
       resolutionStatus = HAIZEN_RESOLVED;
     }

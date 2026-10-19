@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { deriveDisplayRows, normalizeScheduleRows } from '../displayRowDerivation';
+
 import {
   findProcessingOrderForRow,
   patchOrderUsageForProcessingOrderChange,
@@ -43,6 +45,37 @@ describe('patchScheduleListProcessingOrder', () => {
     const base = sampleList();
     const next = patchScheduleListProcessingOrder(base, 'a', null);
     expect(next.rows[0].processingOrder).toBeNull();
+  });
+
+  it('optimistic patch 後に手動順の行表示も即時に並び替わる', () => {
+    const base: KioskProductionScheduleListCache = {
+      page: 1,
+      pageSize: 100,
+      total: 2,
+      rows: [
+        {
+          id: 'row-1',
+          occurredAt: '',
+          rowData: { FSIGENCD: 'R1', FSEIBAN: 'A' },
+          processingOrder: 2
+        },
+        {
+          id: 'row-2',
+          occurredAt: '',
+          rowData: { FSIGENCD: 'R1', FSEIBAN: 'B' },
+          processingOrder: null
+        }
+      ]
+    };
+
+    const patched = patchScheduleListProcessingOrder(base, 'row-2', 1);
+    const displayRows = deriveDisplayRows(normalizeScheduleRows(patched.rows), {
+      isDisplayRankContext: false,
+      sortMode: 'manual',
+      manualSortEnabled: true
+    });
+
+    expect(displayRows.map((row) => row.id)).toEqual(['row-2', 'row-1']);
   });
 });
 

@@ -36,4 +36,11 @@ storage
 alerts
 certs
 backups
-docs
+# Private trial inputs, local models and captured business answers.
+work
+scratch
+# Keep documentation out of ordinary image contexts. The kiosk SOP generator
+# bind-mounts the canonical preview only for its independent stale check.
+docs/**
+# The API image ships the kiosk operation guide for the business Hermes source.
+!docs/kiosk-operation-guide/**

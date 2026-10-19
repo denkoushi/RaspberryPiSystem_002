@@ -1,5 +1,5 @@
 import { buildResourceLocalRankMap } from './displayRank';
-import { toHalfWidthAscii } from './machineName';
+import { isMachinePartCode, normalizeComparisonText } from './machineName';
 import {
   compareDisplayDueDateForSort,
   formatPlannedDateLabel,
@@ -48,17 +48,11 @@ export type RawScheduleRow = {
   plannedQuantity?: number | null;
   plannedStartDate?: string | null;
   plannedEndDate?: string | null;
+  /** API が MH/SH 行 → 補完テーブルの順で解決した製番の機種名（未解決は「機種名未登録」） */
+  resolvedMachineName?: string | null;
 };
 
 export type ProductionScheduleSortMode = 'auto' | 'manual';
-
-const normalizeComparisonText = (value: string | null | undefined): string =>
-  toHalfWidthAscii((value ?? '').trim()).toUpperCase();
-
-const isMachinePartCode = (fhincd: string | null | undefined): boolean => {
-  const normalized = normalizeComparisonText(fhincd);
-  return normalized.startsWith('MH') || normalized.startsWith('SH');
-};
 
 export const normalizeScheduleRows = (sourceRows: RawScheduleRow[]): NormalizedScheduleRow[] => {
   const mapped = sourceRows.map((row) => {
@@ -123,13 +117,29 @@ export const normalizeScheduleRows = (sourceRows: RawScheduleRow[]): NormalizedS
   return mapped.filter((row) => !isMachinePartCode(String(row.data.FHINCD ?? '')));
 };
 
+const SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL = '機種名未登録';
+
+/**
+ * 行の製番の機種名。MH/SH 行は自身の FHINMEI、それ以外は API が補完テーブルまで見て解決した
+ * resolvedMachineName を使う（読み込み済みの行に MH/SH 行が無い製番も機種名で拾えるようにする）。
+ */
+const readRowMachineName = (row: RawScheduleRow): string => {
+  const rowData = (row.rowData ?? {}) as ScheduleRowData;
+  if (isMachinePartCode(String(rowData.FHINCD ?? ''))) {
+    const fhinmei = String(rowData.FHINMEI ?? '').trim();
+    if (fhinmei.length > 0) return fhinmei;
+  }
+  const resolved = typeof row.resolvedMachineName === 'string' ? row.resolvedMachineName.trim() : '';
+  return resolved === SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL ? '' : resolved;
+};
+
 export const buildMachineToSeibanIndex = (sourceRows: RawScheduleRow[]): Map<string, Set<string>> => {
   const index = new Map<string, Set<string>>();
   sourceRows.forEach((row) => {
     const rowData = (row.rowData ?? {}) as ScheduleRowData;
-    const machineName = String(rowData.FHINMEI ?? '').trim();
+    const machineName = readRowMachineName(row);
     const fseiban = String(rowData.FSEIBAN ?? '').trim();
-    if (!isMachinePartCode(String(rowData.FHINCD ?? '')) || machineName.length === 0 || fseiban.length === 0) {
+    if (machineName.length === 0 || fseiban.length === 0) {
       return;
     }
 
@@ -144,9 +154,8 @@ export const buildMachineToSeibanIndex = (sourceRows: RawScheduleRow[]): Map<str
 export const extractMachineNameOptions = (sourceRows: RawScheduleRow[]): string[] => {
   const machineNameMap = new Map<string, string>();
   sourceRows.forEach((row) => {
-    const rowData = (row.rowData ?? {}) as ScheduleRowData;
-    const machineName = String(rowData.FHINMEI ?? '').trim();
-    if (!isMachinePartCode(String(rowData.FHINCD ?? '')) || machineName.length === 0) {
+    const machineName = readRowMachineName(row);
+    if (machineName.length === 0) {
       return;
     }
     const key = normalizeComparisonText(machineName);

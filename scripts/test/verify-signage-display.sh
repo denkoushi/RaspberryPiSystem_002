@@ -6,7 +6,7 @@ set -euo pipefail
 PI5_HOST="denkon5sd02@100.106.158.2"
 PI3_HOST="signageras3@100.105.224.86"
 BASE_URL="https://100.106.158.2"
-CLIENT_KEY="client-key-raspberrypi3-signage1"
+CLIENT_KEY="${PI3_SIGNAGE_CLIENT_KEY:?PI3_SIGNAGE_CLIENT_KEY must be set}"
 
 echo "=========================================="
 echo "サイネージ表示の実機検証"
@@ -72,4 +72,3 @@ else
   echo "- HTTPステータス: $HTTP_STATUS"
   echo "- サービス状態: $SERVICE_STATUS"
 fi
-

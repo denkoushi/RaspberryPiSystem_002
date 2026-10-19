@@ -1,0 +1,218 @@
+import { useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+import { listKioskInquiries } from '../../../api/client';
+import { useKioskInquiries, useKioskInquiryActions } from '../../../api/hooks/kiosk';
+import { kioskQueryKeys } from '../../../api/queryKeys/kiosk';
+import { Button } from '../../../components/ui/Button';
+import { useArmedNfcRead } from '../inventory/setup/useArmedNfcRead';
+import { startWatch } from '../screen-watch/startWatch';
+
+import { inquiryErrorMessage, isInquiryAccessError } from './inquiryErrors';
+import { KioskInquiryCompose } from './KioskInquiryCompose';
+
+import type { KioskInquiryDetail, KioskInquiryThread } from '../../../api/domains/kiosk';
+import type { KioskInquiryAccess } from '../../../api/hooks/kiosk';
+
+import './kiosk-inquiry.css';
+
+function formatTime(value: string): string {
+  return new Intl.DateTimeFormat('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    .format(new Date(value));
+}
+
+function NoticeTag({ thread }: { thread: KioskInquiryThread }) {
+  return thread.kind === 'SYSTEM_NOTICE'
+    ? <span className="kiosk-inquiry__notice-tag">{thread.noticeResolvedAt ? '復旧' : 'システム'}</span> : null;
+}
+
+export function KioskInquiryInbox({ clientKey, isReceiver, loginUnlock = false, startComposing = false }: { clientKey: string; isReceiver: boolean; loginUnlock?: boolean; startComposing?: boolean }) {
+  const queryClient = useQueryClient();
+  const [sessionId] = useState(() => crypto.randomUUID());
+  const access = useRef<KioskInquiryAccess>({ active: false });
+  const [unlocked, setUnlocked] = useState(!isReceiver || loginUnlock);
+  const [verifying, setVerifying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [detail, setDetail] = useState<KioskInquiryDetail | null>(null);
+  const [draft, setDraft] = useState('');
+  const [composing, setComposing] = useState(startComposing);
+  const [sent, setSent] = useState(false);
+  const list = useKioskInquiries(clientKey, sessionId, access.current, unlocked);
+  const actions = useKioskInquiryActions(clientKey, sessionId, access.current);
+  const read = useArmedNfcRead(isReceiver && !unlocked && !verifying && !composing);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const busy = actions.open.isPending || actions.reply.isPending;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const session = access.current;
+    session.active = true;
+    session.signal = controller.signal;
+    return () => {
+      session.active = false;
+      session.employeeTagUid = undefined;
+      controller.abort();
+      const queryKey = kioskQueryKeys.inquiries(clientKey, sessionId);
+      void queryClient.cancelQueries({ queryKey });
+      queryClient.removeQueries({ queryKey });
+    };
+  }, [clientKey, queryClient, sessionId]);
+
+  useEffect(() => {
+    if (!read?.uid) return;
+    const controllerSignal = access.current.signal;
+    setVerifying(true);
+    setError(null);
+    void listKioskInquiries(read.uid, controllerSignal).then(result => {
+      if (controllerSignal?.aborted) return;
+      access.current.employeeTagUid = read.uid;
+      queryClient.setQueryData(kioskQueryKeys.inquiries(clientKey, sessionId), result);
+      setUnlocked(true);
+    }).catch(failure => {
+      if (!controllerSignal?.aborted) setError(inquiryErrorMessage(failure, '社員証を確認できません'));
+    }).finally(() => {
+      if (!controllerSignal?.aborted) setVerifying(false);
+    });
+  }, [read, clientKey, queryClient, sessionId]);
+
+  useEffect(() => {
+    if (messagesRef.current) messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+  }, [detail]);
+
+  const handleFailure = useCallback((failure: unknown, fallback: string) => {
+    if (!access.current.active) return;
+    const loginExpired = isReceiver && loginUnlock && !access.current.employeeTagUid && isInquiryAccessError(failure);
+    if (isReceiver && isInquiryAccessError(failure)) {
+      access.current.employeeTagUid = undefined;
+      setUnlocked(false);
+      setDetail(null);
+      setDraft('');
+      queryClient.removeQueries({ queryKey: kioskQueryKeys.inquiries(clientKey, sessionId) });
+    }
+    setError(loginExpired ? 'ログインし直してください' : inquiryErrorMessage(failure, fallback));
+  }, [clientKey, isReceiver, loginUnlock, queryClient, sessionId]);
+
+  useEffect(() => {
+    if (list.error) handleFailure(list.error, '一覧を取得できません');
+  }, [list.error, handleFailure]);
+
+  const openThread = async (threadId: string) => {
+    if (busy) return;
+    setError(null);
+    try {
+      const result = await actions.open.mutateAsync(threadId);
+      if (access.current.active) { setDetail(result); setDraft(''); }
+    } catch (failure) { handleFailure(failure, 'お問い合わせを開けません'); }
+  };
+
+  const send = async (body: string) => {
+    const text = body.trim();
+    if (!detail || !text || text.length > 500 || busy) return;
+    setError(null);
+    try {
+      const result = await actions.reply.mutateAsync({ threadId: detail.thread.id, body: text });
+      if (access.current.active) { setDetail({ ...result, canViewScreen: detail.canViewScreen }); setDraft(''); }
+    } catch (failure) { handleFailure(failure, '返信を送信できません'); }
+  };
+
+  const afterSent = (threadId: string) => {
+    if (!access.current.active) return;
+    setComposing(false);
+    setSent(true);
+    setError(null);
+    void queryClient.invalidateQueries({ queryKey: kioskQueryKeys.inquirySummary(clientKey) });
+    if (unlocked) {
+      void queryClient.invalidateQueries({ queryKey: kioskQueryKeys.inquiries(clientKey, sessionId) });
+      if (!isReceiver && threadId) void openThread(threadId);
+    }
+  };
+
+  if (composing) return <KioskInquiryCompose clientKey={clientKey} onBack={() => setComposing(false)} onSent={afterSent} />;
+
+  const toolbar = (
+    <div className="kiosk-inquiry__bar">
+      <strong>お問い合わせ</strong>
+      <button type="button" className="kiosk-inquiry__new" disabled={busy || verifying}
+        onClick={() => { setComposing(true); setSent(false); setError(null); }}>＋ 新規</button>
+    </div>
+  );
+
+  if (!unlocked) return (
+    <div className="kiosk-inquiry">
+      {toolbar}
+      {sent ? <p className="kiosk-inquiry__status" role="status">送信しました</p> : null}
+      <div className="kiosk-inquiry__lock" aria-busy={verifying}>
+        <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" aria-hidden="true">
+          <rect x="8" y="16" width="34" height="32" rx="5" />
+          <path d="M16 26h12M16 34h18M48 22c5 6 5 14 0 20M54 16c8 10 8 22 0 32" />
+        </svg>
+        <p>社員証をタッチ</p>
+        {error ? <p className="kiosk-inquiry__error" role="alert">{error}</p> : null}
+      </div>
+    </div>
+  );
+
+  const detailReceiver = detail?.thread.isReceiver ?? isReceiver;
+  if (detail) return (
+    <div className="kiosk-inquiry" aria-busy={busy}>
+      <div className="kiosk-inquiry__thread-header">
+        <Button type="button" variant="ghostOnDark" aria-label="一覧へ戻る" disabled={busy}
+          onClick={() => { setDetail(null); setDraft(''); setError(null); }}>‹</Button>
+        {detailReceiver ? <div className="kiosk-inquiry__who">{detail.thread.kind === 'SYSTEM_NOTICE' ? detail.thread.noticeTitle : detail.thread.senderClientDeviceName}
+          <NoticeTag thread={detail.thread} />
+          <small>{detail.thread.senderLocation}</small></div> : null}
+        {detail.canViewScreen && detailReceiver && detail.thread.kind === 'INQUIRY' && detail.thread.senderClientDeviceName ? (
+          <Button type="button" variant="ghostOnDark" onClick={() => {
+            const uid = access.current.employeeTagUid;
+            if (uid) void startWatch(detail.thread.id, uid, detail.thread.senderClientDeviceName!);
+          }}>画面を見る</Button>
+        ) : null}
+      </div>
+      <div className="kiosk-inquiry__messages" ref={messagesRef}>
+        {detail.messages.map(message => (
+          <div key={message.id} className={`kiosk-inquiry__message${message.side === (detailReceiver ? 'RECEIVER' : 'SENDER') ? ' kiosk-inquiry__message--mine' : ''}`}>
+            {message.body}<time dateTime={message.createdAt}>{formatTime(message.createdAt)}</time>
+          </div>
+        ))}
+      </div>
+      <div className="kiosk-inquiry__compose">
+        <div className="kiosk-inquiry__quick">
+          {(detailReceiver ? ['行きます', '了解しました', 'あとで連絡します'] : ['了解です', 'お願いします']).map(text => (
+            <Button key={text} type="button" variant="ghostOnDark" disabled={busy} onClick={() => void send(text)}>{text}</Button>
+          ))}
+        </div>
+        <form className="kiosk-inquiry__send" onSubmit={event => { event.preventDefault(); void send(draft); }}>
+          <input type="text" aria-label="返信" placeholder="返信" maxLength={500} value={draft} disabled={busy}
+            onChange={event => setDraft(event.target.value)}
+            onKeyDown={event => { if (event.key === 'Enter' && event.nativeEvent.isComposing) event.preventDefault(); }} />
+          <Button type="submit" aria-label="送信" disabled={busy || !draft.trim()}>➤</Button>
+        </form>
+        {error ? <p className="kiosk-inquiry__error" role="alert">{error}</p> : null}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="kiosk-inquiry" aria-busy={list.isFetching || busy}>
+      {toolbar}
+      {sent ? <p className="kiosk-inquiry__status" role="status">送信しました</p> : null}
+      {error ? <p className="kiosk-inquiry__error" role="alert">{error}</p> : null}
+      {list.isPending ? <p className="kiosk-inquiry__empty" role="status">読込中…</p> : null}
+      {list.data?.threads.length === 0 ? <p className="kiosk-inquiry__empty">お問い合わせはありません</p> : null}
+      <ul className="kiosk-inquiry__list">
+        {list.data?.threads.map(thread => (
+          <li key={thread.id}>
+            <button type="button" className={`kiosk-inquiry__row${thread.unread ? ' kiosk-inquiry__row--unread' : ''}`}
+              disabled={busy} onClick={() => void openThread(thread.id)}>
+              <span className="kiosk-inquiry__mark" aria-label={thread.unread ? '未読' : undefined} />
+              <span className="kiosk-inquiry__who">{thread.kind === 'SYSTEM_NOTICE' ? thread.noticeTitle : (thread.isReceiver ?? isReceiver) ? thread.senderClientDeviceName : thread.lastMessage?.body}<NoticeTag thread={thread} /></span>
+              <time dateTime={thread.lastMessageAt}>{formatTime(thread.lastMessageAt)}</time>
+              {(thread.isReceiver ?? isReceiver) ? <><span className="kiosk-inquiry__location">{thread.senderLocation}</span>
+                <span className="kiosk-inquiry__preview">{thread.lastMessage?.body}</span></> : null}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}

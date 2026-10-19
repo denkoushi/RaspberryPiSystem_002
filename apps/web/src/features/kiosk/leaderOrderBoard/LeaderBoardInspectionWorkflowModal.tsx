@@ -10,8 +10,8 @@ import type { LeaderBoardRow } from './types';
 type Props = {
   row: LeaderBoardRow | null;
   onClose: () => void;
-  onOpenDigitalInput: (row: LeaderBoardRow) => void;
-  onOpenPaperPrint: (row: LeaderBoardRow) => void;
+  onOpenDigitalInput: (row: LeaderBoardRow, resourceCd: string) => void;
+  onOpenPaperPrint: (row: LeaderBoardRow, resourceCd: string) => void;
 };
 
 function toWorkflowTarget(row: LeaderBoardRow): SelfInspectionWorkflowTarget {
@@ -24,7 +24,9 @@ function toWorkflowTarget(row: LeaderBoardRow): SelfInspectionWorkflowTarget {
     fhinmei: row.fhinmei,
     machineName: row.machineName,
     selfInspectionTemplateId: row.selfInspectionTemplateId,
-    selfInspectionEntryPath: row.selfInspectionEntryPath
+    selfInspectionEntryPath: row.selfInspectionEntryPath,
+    selfInspectionResourceCds: row.selfInspectionResourceCds ?? [],
+    selfInspectionResourceCd: row.selfInspectionResourceCd ?? null
   };
 }
 
@@ -38,11 +40,11 @@ export function LeaderBoardInspectionWorkflowModal({
     <SelfInspectionWorkflowModal
       target={row ? toWorkflowTarget(row) : null}
       onClose={onClose}
-      onOpenDigitalInput={() => {
-        if (row) onOpenDigitalInput(row);
+      onOpenDigitalInput={(_target, resourceCd) => {
+        if (row) onOpenDigitalInput(row, resourceCd);
       }}
-      onOpenPaperPrint={() => {
-        if (row) onOpenPaperPrint(row);
+      onOpenPaperPrint={(_target, resourceCd) => {
+        if (row) onOpenPaperPrint(row, resourceCd);
       }}
     />
   );

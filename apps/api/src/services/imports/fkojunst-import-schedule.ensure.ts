@@ -6,6 +6,10 @@ import { ensureFkojunstCsvImportSchedule } from './fkojunst-import-schedule.poli
 import { ensureFkojunstStatusMailCsvImportSchedule } from './fkojunst-status-mail-import-schedule.policy.js';
 import { ensureSeibanMachineNameSupplementCsvImportSchedule } from './seiban-machine-name-supplement-import-schedule.policy.js';
 import { ensureRiggingSlingsInspectionCsvImportSchedule } from './slings-inspection-import-schedule.policy.js';
+import { ensureScawStfutekigoCsvImportSchedule } from './scaw-stfutekigo-import-schedule.policy.js';
+import { ensureItemInventoryGmailCsvImportSchedule } from './item-inventory-import-schedule.policy.js';
+import { ensureProcedureMaterialGmailCsvImportSchedule } from './procedure-material-import-schedule.policy.js';
+import { ensureMachineSignalGmailCsvImportSchedule } from './machine-signal-import-schedule.policy.js';
 
 export function ensureProductionScheduleCsvImportSchedules(config: BackupConfig): {
   config: BackupConfig;
@@ -17,15 +21,23 @@ export function ensureProductionScheduleCsvImportSchedules(config: BackupConfig)
   const customerScawEnsured = ensureCustomerScawCsvImportSchedule(seibanEnsured.config);
   const fkobainoEnsured = ensureFkobainoCsvImportSchedule(customerScawEnsured.config);
   const riggingSlingsEnsured = ensureRiggingSlingsInspectionCsvImportSchedule(fkobainoEnsured.config);
+  const scawStfutekigoEnsured = ensureScawStfutekigoCsvImportSchedule(riggingSlingsEnsured.config);
+  const itemInventoryEnsured = ensureItemInventoryGmailCsvImportSchedule(scawStfutekigoEnsured.config);
+  const machineSignalEnsured = ensureMachineSignalGmailCsvImportSchedule(itemInventoryEnsured.config);
+  const procedureMaterialEnsured = ensureProcedureMaterialGmailCsvImportSchedule(machineSignalEnsured.config);
   return {
-    config: riggingSlingsEnsured.config,
+    config: procedureMaterialEnsured.config,
     repaired:
       fkojunstEnsured.repaired ||
       fkojunstStatusMailEnsured.repaired ||
       seibanEnsured.repaired ||
       customerScawEnsured.repaired ||
       fkobainoEnsured.repaired ||
-      riggingSlingsEnsured.repaired,
+      riggingSlingsEnsured.repaired ||
+      scawStfutekigoEnsured.repaired ||
+      itemInventoryEnsured.repaired ||
+      machineSignalEnsured.repaired ||
+      procedureMaterialEnsured.repaired,
   };
 }
 

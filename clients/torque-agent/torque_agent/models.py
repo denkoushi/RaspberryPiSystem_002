@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, Literal
 
 
 @dataclass(frozen=True)
@@ -26,3 +26,6 @@ class WorkBinding:
     torque_wrench_profile_id: str
     connection_lease_id: str
     connection_lease_generation: int
+    # Existing rows and callers default to assembly. Training only needs the
+    # session/confirmation/lease identity and deliberately omits bolt fields.
+    target_kind: Literal["assembly", "training"] = "assembly"

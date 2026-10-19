@@ -205,10 +205,58 @@ describe('signageLayoutConfigModel', () => {
           },
         ],
       };
-      expect(roundTripLayoutConfig(original)).toEqual(original);
+      expect(roundTripLayoutConfig(original)).toEqual({
+        layout: 'FULL',
+        slots: [
+          {
+            position: 'FULL',
+            kind: 'self_inspection_machine_board',
+            config: {
+              targetMode: 'manual_machine_name',
+              machineName: 'L300KP',
+              deviceScopeKey: 'scope-si',
+              slideIntervalSeconds: 30,
+              partsPerPage: 6,
+            },
+          },
+        ],
+      });
     });
 
-    it('self_inspection_machine_board auto mode', () => {
+    it('reads legacy detailTopN without writing it to a new configuration', () => {
+      const original: SignageLayoutConfig = {
+        layout: 'FULL',
+        slots: [
+          {
+            position: 'FULL',
+            kind: 'self_inspection_machine_board',
+            config: {
+              machineName: 'L300KP',
+              detailTopN: 7,
+            },
+          },
+        ],
+      };
+      const state = editorStateFromSchedule(baseSchedule({ layoutConfig: original }));
+
+      expect(state.fullSelfInspectionDetailTopNStr).toBe('7');
+      expect(roundTripLayoutConfig(original)).toEqual({
+        layout: 'FULL',
+        slots: [
+          {
+            position: 'FULL',
+            kind: 'self_inspection_machine_board',
+            config: {
+              targetMode: 'manual_machine_name',
+              machineName: 'L300KP',
+              partsPerPage: 6,
+            },
+          },
+        ],
+      });
+    });
+
+    it('migrates legacy auto mode to kiosk mode and omits legacy scope fields on save', () => {
       const original: SignageLayoutConfig = {
         layout: 'FULL',
         slots: [
@@ -227,8 +275,50 @@ describe('signageLayoutConfigModel', () => {
           },
         ],
       };
-      expect(roundTripLayoutConfig(original)).toEqual(original);
+      const state = editorStateFromSchedule(baseSchedule({ layoutConfig: original }));
+      expect(state.fullSelfInspectionTargetMode).toBe('kiosk_active_sessions');
+      expect(state.fullSelfInspectionLegacyAutoMigrationNotice).toBe(true);
+      expect(roundTripLayoutConfig(original)).toEqual({
+        layout: 'FULL',
+        slots: [
+          {
+            position: 'FULL',
+            kind: 'self_inspection_machine_board',
+            config: {
+              targetMode: 'kiosk_active_sessions',
+              slideIntervalSeconds: 20,
+              partsPerPage: 6,
+            },
+          },
+        ],
+      });
     });
+  });
+
+  it('preserves live A2UI bindings when editing schedule metadata', () => {
+    const original: SignageLayoutConfig = {
+      layout: 'FULL', slots: [], a2ui: {
+        layoutMessage: { version: 'v0.9', updateComponents: { surfaceId: 'signage', components: [{ id: 'root', component: 'Text', text: { path: '/value' } }] } },
+        dataMessage: { version: 'v0.9', updateDataModel: { surfaceId: 'signage', path: '/', value: {} } },
+        bindings: [{ path: '/value', source: { kind: 'self_inspection', id: 'row' }, select: '/entries/0/value', format: 'text' }],
+      },
+    };
+    expect(roundTripLayoutConfig(original)).toEqual(original);
+  });
+
+  it('preserves a freeform canvas while the legacy editor only changes schedule metadata', () => {
+    const original: SignageLayoutConfig = {
+      layout: 'CANVAS',
+      width: 1920,
+      height: 1080,
+      backgroundColor: '#020617',
+      elements: [{
+        id: 'title', kind: 'text', x: 40, y: 30, width: 900, height: 100, text: '進捗',
+        style: { fontSize: 48, fontWeight: '700', color: '#f8fafc' },
+      }],
+    };
+
+    expect(roundTripLayoutConfig(original)).toEqual(original);
   });
 
   describe('round-trip parse → build for SPLIT layouts', () => {
@@ -349,30 +439,27 @@ describe('signageLayoutConfigModel', () => {
       expect(buildLayoutConfigFromEditorState(state, SAMPLE_PDFS)).toBeNull();
     });
 
-    it('self_inspection auto without deviceScopeKey returns null', () => {
+    it('self_inspection kiosk mode does not require legacy scope fields', () => {
       const state: SignageScheduleEditorState = {
         ...createDefaultEditorState(),
         useNewLayout: true,
         layoutType: 'FULL',
         fullSlotKind: 'self_inspection_machine_board',
-        fullSelfInspectionTargetMode: 'auto_from_leaderboard_status',
-        fullSelfInspectionDeviceScopeKey: '',
-        fullSelfInspectionResourceCdsText: 'RD01',
+        fullSelfInspectionTargetMode: 'kiosk_active_sessions',
       };
-      expect(buildLayoutConfigFromEditorState(state, SAMPLE_PDFS)).toBeNull();
-    });
-
-    it('self_inspection auto without resourceCds returns null', () => {
-      const state: SignageScheduleEditorState = {
-        ...createDefaultEditorState(),
-        useNewLayout: true,
-        layoutType: 'FULL',
-        fullSlotKind: 'self_inspection_machine_board',
-        fullSelfInspectionTargetMode: 'auto_from_leaderboard_status',
-        fullSelfInspectionDeviceScopeKey: 'scope-auto',
-        fullSelfInspectionResourceCdsText: '',
-      };
-      expect(buildLayoutConfigFromEditorState(state, SAMPLE_PDFS)).toBeNull();
+      expect(buildLayoutConfigFromEditorState(state, SAMPLE_PDFS)).toEqual({
+        layout: 'FULL',
+        slots: [
+          {
+            position: 'FULL',
+            kind: 'self_inspection_machine_board',
+            config: {
+              targetMode: 'kiosk_active_sessions',
+              partsPerPage: 6,
+            },
+          },
+        ],
+      });
     });
 
     it('kiosk_progress_overview without deviceScopeKey falls back to loans', () => {
@@ -403,5 +490,16 @@ describe('signageLayoutConfigModel', () => {
         slots: [{ position: 'FULL', kind: 'loans', config: {} }],
       });
     });
+  });
+
+  it('round-trips a FULL web_page slot', () => {
+    const layoutConfig: SignageLayoutConfig = {
+      layout: 'FULL',
+      slots: [{ position: 'FULL', kind: 'web_page', config: { webCaptureId: 'capture-1' } }],
+    };
+    const state = editorStateFromSchedule(baseSchedule({ layoutConfig }));
+    expect(state.fullSlotKind).toBe('web_page');
+    expect(state.fullWebCaptureId).toBe('capture-1');
+    expect(buildLayoutConfigFromEditorState(state, SAMPLE_PDFS)).toEqual(layoutConfig);
   });
 });

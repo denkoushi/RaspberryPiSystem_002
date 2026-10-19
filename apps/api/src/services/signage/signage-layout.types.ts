@@ -1,3 +1,5 @@
+import type { SignageA2uiProposal } from './signage-a2ui.js';
+
 /**
  * サイネージレイアウト設定の型定義
  */
@@ -15,8 +17,10 @@ export type SignageSlotKind =
   | 'kiosk_leader_order_cards'
   /** 配膳 Android 部品棚 9枠（JPEG・OrderPlacementBranchState 集約） */
   | 'mobile_placement_parts_shelf_grid'
-  /** 自主検査 機種別進捗ボード（JPEG・machineName 集約） */
-  | 'self_inspection_machine_board';
+  /** 自主検査 部品別進捗（JPEG・machineName 集約） */
+  | 'self_inspection_machine_board'
+  /** 管理Webのページを撮影した画像（SignageWebCapture・FULL のみ） */
+  | 'web_page';
 
 /**
  * PDFスロットの設定
@@ -80,27 +84,37 @@ export interface MobilePlacementPartsShelfGridSlotConfig {
 
 export type SelfInspectionMachineBoardTargetMode =
   | 'manual_machine_name'
-  | 'auto_from_leaderboard_status';
+  | 'auto_from_leaderboard_status'
+  | 'kiosk_active_sessions';
 
 /**
- * 自主検査 機種別進捗ボード（サイネージ JPEG）
+ * 自主検査 部品別進捗（サイネージ JPEG）
  * manual: machineName は生産日程の機種名（正規化比較）と一致させる。
  * auto: deviceScopeKey + resourceCds で順位ボード相当の母集団から黄（in_progress）機種を選定。
+ * kiosk_active_sessions: 自主検査画面の検査中・判定待ちセッションを表示する。
  */
 export interface SelfInspectionMachineBoardSlotConfig {
   /** 未指定時は manual_machine_name（既存互換） */
   targetMode?: SelfInspectionMachineBoardTargetMode;
-  /** manual 時必須。auto 時は保存不可 */
+  /** manual 時必須。auto/kiosk_active_sessions 時は新規保存しない */
   machineName?: string;
-  /** manual 推奨 / auto 必須。キオスク端末と同じ deviceScopeKey */
+  /** manual 推奨 / auto 必須。kiosk_active_sessions では無視する */
   deviceScopeKey?: string;
-  /** auto 時必須。manual 時は保存不可 */
+  /** auto 時必須。manual/kiosk_active_sessions 時は新規保存しない */
   resourceCds?: string[];
   slideIntervalSeconds?: number;
   partsPerPage?: number;
+  /** 旧設定互換の読込項目。管理UIの新規保存では使用しない。 */
   detailTopN?: number;
   /** auto 時のみ。連結する機種数上限 */
   maxAutoMachines?: number;
+}
+
+/**
+ * ページ撮影スロットの設定（撮影の中身は SignageWebCapture が持つ）
+ */
+export interface WebPageSlotConfig {
+  webCaptureId: string;
 }
 
 /**
@@ -117,7 +131,8 @@ export interface SignageSlot {
     | KioskProgressOverviewSlotConfig
     | KioskLeaderOrderCardsSlotConfig
     | MobilePlacementPartsShelfGridSlotConfig
-    | SelfInspectionMachineBoardSlotConfig;
+    | SelfInspectionMachineBoardSlotConfig
+    | WebPageSlotConfig;
 }
 
 /**
@@ -126,10 +141,62 @@ export interface SignageSlot {
 export interface SignageLayoutConfig {
   layout: SignageLayoutType;
   slots: SignageSlot[];
+  a2ui?: SignageA2uiProposal;
+}
+
+export type SignageCanvasTextAlign = 'start' | 'middle' | 'end';
+export type SignageCanvasVerticalAlign = 'top' | 'middle' | 'bottom';
+
+export interface SignageCanvasTextStyle {
+  fontSize?: number;
+  fontWeight?: 'normal' | '600' | '700';
+  color?: string;
+  align?: SignageCanvasTextAlign;
+  verticalAlign?: SignageCanvasVerticalAlign;
+}
+
+export interface SignageCanvasElementGeometry {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface SignageCanvasTextElement extends SignageCanvasElementGeometry {
+  kind: 'text';
+  text: string;
+  style?: SignageCanvasTextStyle;
+}
+
+export interface SignageCanvasVisualizationElement extends SignageCanvasElementGeometry {
+  kind: 'visualization';
+  title?: string;
+  dataSourceType: 'production_schedule' | 'measuring_instruments' | 'pallet_visualization_board';
+  dataSourceConfig: Record<string, unknown>;
+  rendererType: 'kpi_cards' | 'table' | 'bar_chart' | 'progress_list' | 'pallet_visualization_board';
+  rendererConfig: Record<string, unknown>;
+}
+
+export type SignageCanvasElement = SignageCanvasTextElement | SignageCanvasVisualizationElement;
+
+export interface SignageCanvasLayoutConfig {
+  layout: 'CANVAS';
+  width: number;
+  height: number;
+  backgroundColor: string;
+  elements: SignageCanvasElement[];
+}
+
+export type AnySignageLayoutConfig = SignageLayoutConfig | SignageCanvasLayoutConfig;
+
+export function isSignageCanvasLayout(
+  layoutConfig: AnySignageLayoutConfig | null | undefined,
+): layoutConfig is SignageCanvasLayoutConfig {
+  return layoutConfig?.layout === 'CANVAS';
 }
 
 /**
  * layoutConfigのJSON型（PrismaのJson型として使用）
  */
-export type SignageLayoutConfigJson = SignageLayoutConfig | null;
-
+export type SignageLayoutConfigJson = AnySignageLayoutConfig | null;

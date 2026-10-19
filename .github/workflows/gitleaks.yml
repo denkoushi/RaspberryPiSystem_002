@@ -20,16 +20,20 @@ concurrency:
 
 jobs:
   gitleaks:
-    name: gitleaks
+    name: >-
+      ${{ (github.event_name == 'schedule' ||
+          github.event_name == 'workflow_dispatch') &&
+          'gitleaks-audit' || 'gitleaks' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        if: ${{ github.event_name != 'push' }}
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Run Gitleaks (event-native range)
-        if: github.event_name != 'workflow_dispatch'
+        if: github.event_name != 'workflow_dispatch' && github.event_name != 'push'
         uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -50,8 +54,12 @@ jobs:
 
       - name: Upload manual Gitleaks report on failure
         if: failure() && github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: gitleaks-results
           path: results.sarif
           if-no-files-found: error
+
+      - name: Record exact-main publication skip
+        if: github.event_name == 'push'
+        run: echo "The reviewed commit range already passed gitleaks; exact main publication does not repeat it." >> "$GITHUB_STEP_SUMMARY"

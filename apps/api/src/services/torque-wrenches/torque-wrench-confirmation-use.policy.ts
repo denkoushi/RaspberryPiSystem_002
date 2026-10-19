@@ -1,10 +1,22 @@
 import type { TorqueWrenchRejectionReason } from '@raspi-system/shared-types';
+import {
+  isTorqueWrenchConfirmationActiveOwnerRetry,
+  isTorqueWrenchConfirmationFreshForAcquire
+} from './torque-wrench-confirmation-freshness.policy.js';
+import {
+  normalizeTorqueWrenchSettingVerificationMode,
+  type TorqueWrenchSettingVerificationMode
+} from './torque-wrench-setting-mode.policy.js';
 
 export type TorqueWrenchConfirmationEvidence = {
   id: string;
   sessionId: string;
   torqueWrenchProfileId: string;
-  settingHistoryId: string;
+  settingHistoryId: string | null;
+  /** Nullable for historical rows; null normalizes to REGISTERED_SETTING. */
+  settingVerificationMode?: string | null;
+  observedLeaseGeneration?: number | null;
+  observedAdoptedConfirmationId?: string | null;
   conditionFingerprint: string;
   clientDeviceId: string | null;
   confirmedAt: Date;
@@ -14,6 +26,7 @@ export type TorqueWrenchLeaseEvidence = {
   leaseId: string;
   generation: number;
   adoptedConfirmationId: string | null;
+  ownerKind?: 'ASSEMBLY' | 'TRAINING';
   ownerClientDeviceId: string;
   ownerSessionId: string;
   acquiredAt: Date;
@@ -25,7 +38,9 @@ export type TorqueWrenchConfirmationExpectation = {
   sessionId: string;
   clientDeviceId: string;
   torqueWrenchProfileId: string;
-  settingHistoryId: string;
+  settingHistoryId: string | null;
+  settingVerificationMode?: TorqueWrenchSettingVerificationMode | null;
+  ownerKind?: 'ASSEMBLY' | 'TRAINING';
   conditionFingerprint: string;
 };
 
@@ -60,9 +75,18 @@ export class TorqueWrenchConfirmationUsePolicy {
     if (confirmation.clientDeviceId !== expected.clientDeviceId) {
       return rejected('CONFIRMATION_REQUIRED');
     }
+    const confirmationMode = normalizeTorqueWrenchSettingVerificationMode(
+      confirmation.settingVerificationMode
+    );
+    const expectedMode = normalizeTorqueWrenchSettingVerificationMode(
+      expected.settingVerificationMode
+    );
+    if (confirmationMode !== expectedMode) {
+      return rejected('CONFIRMATION_STALE');
+    }
     if (
-      confirmation.settingHistoryId !== expected.settingHistoryId ||
-      confirmation.conditionFingerprint !== expected.conditionFingerprint
+      confirmation.conditionFingerprint !== expected.conditionFingerprint ||
+      (expectedMode === 'REGISTERED_SETTING' && confirmation.settingHistoryId !== expected.settingHistoryId)
     ) {
       return rejected('CONFIRMATION_STALE');
     }
@@ -103,23 +127,74 @@ export class TorqueWrenchConfirmationUsePolicy {
     expected: TorqueWrenchConfirmationExpectation;
     now: Date;
   }): ConfirmationUseDecision {
-    const adopted = this.evaluateAdoptedReuse(
-      input.confirmation,
-      input.lease,
-      input.expected
+    const expectedMode = normalizeTorqueWrenchSettingVerificationMode(
+      input.expected.settingVerificationMode
     );
-    if (adopted.allowed) return adopted;
+    if (expectedMode === 'REGISTERED_SETTING') {
+      // Registered-setting confirmations retain the accepted legacy reuse
+      // boundary.  The snapshot epoch is an optional-setting safety fence and
+      // must not invalidate existing registered confirmations.
+      const adopted = this.evaluateAdoptedReuse(
+        input.confirmation,
+        input.lease,
+        input.expected
+      );
+      if (adopted.allowed) return adopted;
+
+      const currentSession = this.evaluateCurrentSession(
+        input.confirmation,
+        input.expected
+      );
+      if (!currentSession.allowed) return currentSession;
+
+      const lease = input.lease;
+      if (!lease || lease.ownerClientDeviceId === input.expected.clientDeviceId) {
+        return currentSession;
+      }
+
+      const ownershipBoundary = lease.releasedAt
+        ?? (lease.expiresAt.getTime() <= input.now.getTime()
+          ? lease.expiresAt
+          : lease.acquiredAt);
+      return input.confirmation.confirmedAt.getTime() > ownershipBoundary.getTime()
+        ? currentSession
+        : rejected('CONFIRMATION_REQUIRED');
+    }
+
+    const lease = input.lease;
+    const activeOwnerRetry = isTorqueWrenchConfirmationActiveOwnerRetry(
+      input.confirmation,
+      lease,
+      {
+        ownerClientDeviceId: input.expected.clientDeviceId,
+        ownerSessionId: input.expected.sessionId,
+        ownerKind: input.expected.ownerKind
+      },
+      input.now
+    );
+    if (lease?.adoptedConfirmationId === input.confirmation.id) {
+      // Once a confirmation is adopted, only the exact active owner may
+      // retry it. Snapshot freshness is for a pending confirmation and must
+      // never turn an adopted row into a cross-owner reuse path.
+      const adopted = this.evaluateAdoptedReuse(
+        input.confirmation,
+        lease,
+        input.expected
+      );
+      if (!activeOwnerRetry) return rejected('CONFIRMATION_REQUIRED');
+      return adopted;
+    }
 
     const currentSession = this.evaluateCurrentSession(
       input.confirmation,
       input.expected
     );
     if (!currentSession.allowed) return currentSession;
-
-    const lease = input.lease;
-    if (!lease || lease.ownerClientDeviceId === input.expected.clientDeviceId) {
-      return currentSession;
+    if (!isTorqueWrenchConfirmationFreshForAcquire(input.confirmation, lease, input.now)) {
+      return rejected('CONFIRMATION_REQUIRED');
     }
+
+    if (!lease || lease.ownerClientDeviceId === input.expected.clientDeviceId) return currentSession;
 
     const ownershipBoundary = lease.releasedAt
       ?? (lease.expiresAt.getTime() <= input.now.getTime()

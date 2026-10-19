@@ -1,25 +1,31 @@
+name: ${PI5_BASE_COMPOSE_PROJECT:-docker}
+
 services:
   db:
     image: pgvector/pgvector:pg15
+    # Candidate builds run on this host. Keep the live database ahead of
+    # best-effort build work whenever CPU is contended.
+    cpu_shares: 4096
     shm_size: "512mb"
     restart: unless-stopped
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres -d borrow_return']
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d ${POSTGRES_DB:-borrow_return}']
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 10s
-    env_file:
-      - .env
     environment:
-      POSTGRES_DB: borrow_return
+      POSTGRES_DB: ${POSTGRES_DB:-borrow_return}
       POSTGRES_USER: postgres
-      # セキュリティ強化: 環境変数からパスワードを取得（デフォルト値は開発環境用）
-      # 本番環境では強力なパスワードを環境変数で設定すること
-      # infrastructure/docker/.envファイルにPOSTGRES_PASSWORDを設定
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres-superuser-password
     volumes:
       - db-data:/var/lib/postgresql/data
+      - type: bind
+        source: ${POSTGRES_SUPERUSER_PASSWORD_FILE:?POSTGRES_SUPERUSER_PASSWORD_FILE is required}
+        target: /run/secrets/postgres-superuser-password
+        read_only: true
+        bind:
+          create_host_path: false
     # セキュリティ強化: ポートマッピングを削除（Docker内部ネットワークでのみアクセス可能）
     # APIコンテナからは `db:5432` でアクセス可能
     # ローカル開発時のみポートを公開
@@ -35,6 +41,16 @@ services:
       args:
         INSTALL_PLAYWRIGHT_CHROMIUM: ${INSTALL_PLAYWRIGHT_CHROMIUM:-true}
     restart: always
+    user: "${API_RUNTIME_UID:-1000}:${API_RUNTIME_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,mode=1777,size=1g
+    init: true
+    # Pi4 screens depend on this API while Pi5 builds the next release.
+    cpu_shares: 4096
     depends_on:
       db:
         condition: service_healthy
@@ -54,12 +70,14 @@ services:
       - ../../apps/api/.env.example
       - .env
     environment:
-      # セキュリティ強化: 環境変数からデータベースURLを構築（パスワードは環境変数から取得）
-      # 本番環境では強力なパスワードを環境変数で設定すること
-      # infrastructure/docker/.envファイルにPOSTGRES_PASSWORDを設定
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/borrow_return
+      # Ordinary API containers receive only the least-privilege application
+      # URL. Migration and superuser authority live in host-only files and are
+      # added only to an ephemeral migration container.
+      DATABASE_URL: ${APP_DATABASE_URL:?APP_DATABASE_URL is required}
+      FILE_STORAGE_ROOT: /app/storage
       PHOTO_STORAGE_DIR: /app/storage
       PDF_STORAGE_DIR: /app/storage
+      CSV_DASHBOARD_STORAGE_DIR: /app/storage
       SIGNAGE_RENDER_DIR: /app/storage/signage-rendered
       SIGNAGE_PDF_DPI: "240"
       CAMERA_TYPE: mock
@@ -67,10 +85,13 @@ services:
       POWER_ACTIONS_DIR: /app/power-actions
       # API経由のローカルバックアップ保存先（ホストの/opt/backupsをコンテナへマウント）
       BACKUP_STORAGE_DIR: /opt/backups
+      # 大容量バックアップはRAM上の/tmp tmpfsを避け、ディスクへ保存する
+      BACKUP_TEMP_DIR: ${BACKUP_TEMP_DIR:-/opt/backups/.tmp}
       DROPBOX_ACCESS_TOKEN: ${DROPBOX_ACCESS_TOKEN:-}
       DROPBOX_APP_KEY: ${DROPBOX_APP_KEY:-}
       DROPBOX_APP_SECRET: ${DROPBOX_APP_SECRET:-}
       DROPBOX_REFRESH_TOKEN: ${DROPBOX_REFRESH_TOKEN:-}
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
       SLACK_KIOSK_SUPPORT_WEBHOOK_URL: ${SLACK_KIOSK_SUPPORT_WEBHOOK_URL:-}
       # WebRTC機能の有効/無効（trueで有効化）
       WEBRTC_ENABLED: ${WEBRTC_ENABLED:-true}
@@ -78,6 +99,8 @@ services:
       PI5_SCHEDULER_LEADER_ENABLED: ${PI5_SCHEDULER_LEADER_ENABLED:-false}
       PI5_SCHEDULER_LEASE_FILE: ${PI5_SCHEDULER_LEASE_FILE:-/app/alerts/.pi5-scheduler-leader}
       PI5_SCHEDULER_LEASE_INTERVAL_MS: ${PI5_SCHEDULER_LEASE_INTERVAL_MS:-2000}
+      # DGXリソースの「PI5 業務意図」を再起動・スロット切替後も残す（ホストの config/ に保存）
+      INFERENCE_BUSINESS_PROFILE_INTENT_FILE_PATH: /app/config/business-profile-intent.json
     volumes:
       - photo-storage:/app/storage/photos
       - thumbnail-storage:/app/storage/thumbnails
@@ -86,28 +109,57 @@ services:
       - signage-rendered-storage:/app/storage/signage-rendered
       # 部品測定 visual template 図面（未マウントだとコンテナ再作成でファイル消失）
       - part-measurement-drawings-storage:/app/storage/part-measurement-drawings
+      # 表示用WebP派生画像cache（read-only rootfs外へ限定して書き込む）
+      - part-measurement-drawings-derivatives-storage:/app/storage/part-measurement-drawings-derivatives
       # 組立手順書画像（未マウントだとコンテナ再作成でファイル消失）
       - assembly-procedure-images-storage:/app/storage/assembly-procedure-images
+      # 組立手順書の原本・overlay asset（不変blob。未マウントだと再作成で消失）
+      - assembly-procedure-assets-storage:/app/storage/assembly-procedure-assets
+      - work-instruction-assets-storage:/app/storage/work-instruction-assets
+      - knowledge-assets-storage:/app/storage/knowledge-assets
+      # 要領書の Gmail 素材（不変blob。未マウントだと再作成で消失）
+      - procedure-materials-storage:/app/storage/procedure-materials
+      # 要領書の動画（SD 変換済み。未マウントだと再作成で消失）
+      - procedure-videos-storage:/app/storage/procedure-videos
+      - knowledge-git-storage:/app/storage/knowledge-git
       # 計測機器ジャンル点検画像（未マウントだとコンテナ再作成でファイル消失）
       - measuring-instrument-genres-storage:/app/storage/measuring-instrument-genres
       # パレット可視化・加工機イラスト（未マウントだとデプロイでコンテナ再作成時にファイル消失）
       - pallet-machine-illustrations-storage:/app/storage/pallet-machine-illustrations
-      - /opt/RaspberryPiSystem_002/alerts:/app/alerts
-      - /opt/RaspberryPiSystem_002/power-actions:/app/power-actions
-      - /opt/RaspberryPiSystem_002/config:/app/config
+      - csv-dashboard-storage:/app/storage/csv-dashboards
+      - file-integrity-storage:/app/storage/.integrity
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/alerts:/app/alerts
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/power-actions:/app/power-actions
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/config:/app/config
       # バックアップ保存先（ローカルストレージプロバイダー用）
-      - /opt/backups:/opt/backups
+      - ${PI5_BACKUP_DIR:-/opt/backups}:/opt/backups
       # 環境変数ファイルのバックアップ用にマウント（読み取り専用）
-      - /opt/RaspberryPiSystem_002/apps/api:/app/host/apps/api:ro
-      - /opt/RaspberryPiSystem_002/apps/web:/app/host/apps/web:ro
-      - /opt/RaspberryPiSystem_002/infrastructure/docker:/app/host/infrastructure/docker:ro
-      - /opt/RaspberryPiSystem_002/clients/nfc-agent:/app/host/clients/nfc-agent:ro
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/apps/api:/app/host/apps/api:ro
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/apps/web:/app/host/apps/web:ro
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/infrastructure/docker:/app/host/infrastructure/docker:ro
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/clients/nfc-agent:/app/host/clients/nfc-agent:ro
       # 証明書ファイルのバックアップ用にマウント（読み取り専用）
-      - /opt/RaspberryPiSystem_002/certs:/app/host/certs:ro
-      # Ansibleによるクライアント端末バックアップ用にマウント（読み取り専用）
-      - /opt/RaspberryPiSystem_002/infrastructure/ansible:/app/host/infrastructure/ansible:ro
-      # AnsibleによるSSH接続用にSSH鍵をマウント（読み取り専用）
-      - /home/denkon5sd02/.ssh:/root/.ssh:ro
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/certs:/app/host/certs:ro
+      # 資格情報を含まない端末バックアップ専用Ansible境界
+      - type: bind
+        source: /etc/raspi-backup-ansible
+        target: /app/backup-ansible
+        read_only: true
+        bind:
+          create_host_path: false
+      # 端末バックアップ専用SSH権限。ホストの運用ユーザー ~/.ssh 全体は渡さない。
+      - type: bind
+        source: ${BACKUP_SSH_PRIVATE_KEY_HOST_PATH:-/opt/RaspberryPiSystem_002/secrets/backup-ssh/id_ed25519}
+        target: /run/secrets/backup-ssh/id_ed25519
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${BACKUP_SSH_KNOWN_HOSTS_HOST_PATH:-/opt/RaspberryPiSystem_002/secrets/backup-ssh/known_hosts}
+        target: /run/secrets/backup-ssh/known_hosts
+        read_only: true
+        bind:
+          create_host_path: false
       # CPU温度を取得するために/sys/class/thermalを読み取り専用でマウント
       - /sys/class/thermal:/sys/class/thermal:ro
     # セキュリティ強化: ポートマッピングを削除（Docker内部ネットワークでのみアクセス可能）
@@ -129,21 +181,46 @@ services:
       network: host
       args:
         VITE_AGENT_WS_URL: ${VITE_AGENT_WS_URL:-ws://localhost:7071/stream}
+        VITE_AGENT_WS_MODE: ${VITE_AGENT_WS_MODE:-local}
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+        VITE_API_TIMEOUT_MS: ${VITE_API_TIMEOUT_MS:-120000}
+        VITE_WS_BASE_URL: ${VITE_WS_BASE_URL:-/ws}
+        VITE_BARCODE_AGENT_WS_URL: ${VITE_BARCODE_AGENT_WS_URL:-ws://localhost:7072/stream}
+        VITE_ENABLE_DEBUG_LOGS: ${VITE_ENABLE_DEBUG_LOGS:-false}
         VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED: ${VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED:-true}
-        VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED: ${VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED:-false}
+        VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED: ${VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED:-true}
+        VITE_KIOSK_SOP_POPUP_ENABLED: ${VITE_KIOSK_SOP_POPUP_ENABLED:-true}
+        VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED: ${VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED:-true}
         VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED: ${VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED:-false}
         VITE_KIOSK_LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED: ${VITE_KIOSK_LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED:-false}
+        VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED: ${VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED:-true}
+        VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_PHASE2_SWR: ${VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_PHASE2_SWR:-true}
+        VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION: ${VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION:-true}
+        VITE_KIOSK_LEADERBOARD_SEIBAN_OR_CLIENT_FILTER: ${VITE_KIOSK_LEADERBOARD_SEIBAN_OR_CLIENT_FILTER:-true}
+        VITE_KIOSK_LEADERBOARD_BOARD_CLIENT_PERF_LOG: ${VITE_KIOSK_LEADERBOARD_BOARD_CLIENT_PERF_LOG:-false}
         VITE_RELEASE_SHA: ${VITE_RELEASE_SHA:-}
     restart: always
+    user: "${WEB_RUNTIME_UID:-1000}:${WEB_RUNTIME_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "80"
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,mode=1777,size=64m
+      - /config:rw,nosuid,nodev,mode=0700,uid=${WEB_RUNTIME_UID:-1000},gid=${WEB_RUNTIME_GID:-1000},size=16m
+      - /data:rw,nosuid,nodev,mode=0700,uid=${WEB_RUNTIME_UID:-1000},gid=${WEB_RUNTIME_GID:-1000},size=64m
+    init: true
+    cpu_shares: 2048
     depends_on:
       api:
         condition: service_healthy
     volumes:
       - thumbnail-storage:/srv/storage/thumbnails:ro # サムネイルを読み取り専用でマウント
       # 自己署名証明書を使用する場合（工場現場での運用に推奨）
-      - /opt/RaspberryPiSystem_002/certs:/srv/certs:ro
-      - /var/log/caddy:/var/log/caddy
+      - ${PI5_CERTS_DIR:-/opt/RaspberryPiSystem_002/certs}:/srv/certs:ro
+      - ${PI5_CADDY_LOG_DIR:-/var/log/caddy}:/var/log/caddy
     # HTTPS設定オプション:
     # 1. 自己署名証明書を使用（工場現場での運用に推奨）
     environment:
@@ -152,7 +229,7 @@ services:
       # ラズパイ4のIPアドレスを設定（例: 192.168.128.102）
       NFC_AGENT_HOST: ${NFC_AGENT_HOST:-192.168.10.224}
       # 管理画面へのアクセスを許可するネットワーク（CIDRの空白区切りリスト）
-      ADMIN_ALLOW_NETS: ${ADMIN_ALLOW_NETS:-"192.168.10.0/24 192.168.128.0/24 100.64.0.0/10 127.0.0.1/32"}
+      ADMIN_ALLOW_NETS: ${ADMIN_ALLOW_NETS:?ADMIN_ALLOW_NETS is required}
     ports:
       - "80:80"
       - "443:443"
@@ -175,57 +252,130 @@ services:
 
 volumes:
   db-data:
+    name: ${PI5_VOLUME_PREFIX:-docker}_db-data
   photo-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_photo-storage
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/RaspberryPiSystem_002/storage/photos
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/photos
   thumbnail-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_thumbnail-storage
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/RaspberryPiSystem_002/storage/thumbnails
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/thumbnails
   pdf-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_pdf-storage
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/RaspberryPiSystem_002/storage/pdfs
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/pdfs
   pdf-pages-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_pdf-pages-storage
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/RaspberryPiSystem_002/storage/pdf-pages
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/pdf-pages
   signage-rendered-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_signage-rendered-storage
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/RaspberryPiSystem_002/storage/signage-rendered
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/signage-rendered
   part-measurement-drawings-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_part-measurement-drawings-storage
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/RaspberryPiSystem_002/storage/part-measurement-drawings
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/part-measurement-drawings
+  part-measurement-drawings-derivatives-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_part-measurement-drawings-derivatives-storage
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/part-measurement-drawings-derivatives
   assembly-procedure-images-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_assembly-procedure-images-storage
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/RaspberryPiSystem_002/storage/assembly-procedure-images
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/assembly-procedure-images
+  assembly-procedure-assets-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_assembly-procedure-assets-storage
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/assembly-procedure-assets
+  work-instruction-assets-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_work-instruction-assets-storage
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/work-instruction-assets
   measuring-instrument-genres-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_measuring-instrument-genres-storage
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/RaspberryPiSystem_002/storage/measuring-instrument-genres
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/measuring-instrument-genres
   pallet-machine-illustrations-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_pallet-machine-illustrations-storage
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /opt/RaspberryPiSystem_002/storage/pallet-machine-illustrations
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/pallet-machine-illustrations
+  csv-dashboard-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_csv-dashboard-storage
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/csv-dashboards
+  file-integrity-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_file-integrity-storage
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/.integrity
+  knowledge-assets-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_knowledge-assets-storage
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/knowledge-assets
+  procedure-materials-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_procedure-materials-storage
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/procedure-materials
+  procedure-videos-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_procedure-videos-storage
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/procedure-videos
+  knowledge-git-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_knowledge-git-storage
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/knowledge-git

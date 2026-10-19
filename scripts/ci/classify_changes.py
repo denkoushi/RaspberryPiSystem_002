@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -26,9 +27,23 @@ CATEGORIES = (
     "deploy_contract",
     "client",
     "e2e",
+    "kiosk_sop",
     "docker_security",
+    "signage_artifact",
 )
 FULL_SUITE = frozenset(CATEGORIES)
+DOCKER_MATRIX_ITEMS = {
+    "api": {
+        "image": "api",
+        "dockerfile": "./infrastructure/docker/Dockerfile.api",
+        "tag": "raspisys-api:ci",
+    },
+    "web": {
+        "image": "web",
+        "dockerfile": "./infrastructure/docker/Dockerfile.web",
+        "tag": "raspisys-web:ci",
+    },
+}
 
 GLOBAL_PATHS = frozenset(
     {
@@ -55,27 +70,273 @@ class Change:
 class ClassifiedChange:
     change: Change
     categories: frozenset[str]
+    codeql: bool
+    docker_images: frozenset[str]
+    pi4_agent_services: frozenset[str]
+    release_pair: bool
+    runtime_rehearsal: bool
+    torque_composition: bool
     fail_closed_reason: str | None = None
+
+
+@dataclass(frozen=True)
+class Pi4AgentArtifact:
+    service: str
+    dockerfile: str
+    owned_prefixes: tuple[str, ...]
+
+
+PI4_AGENT_ARTIFACTS = (
+    Pi4AgentArtifact(
+        service="nfc-agent",
+        dockerfile="infrastructure/docker/Dockerfile.nfc-agent",
+        owned_prefixes=("clients/nfc-agent",),
+    ),
+    Pi4AgentArtifact(
+        service="barcode-agent",
+        dockerfile="infrastructure/docker/Dockerfile.barcode-agent",
+        owned_prefixes=("clients/barcode-agent",),
+    ),
+    Pi4AgentArtifact(
+        service="torque-agent",
+        dockerfile="infrastructure/docker/Dockerfile.torque-agent",
+        owned_prefixes=("clients/torque-agent",),
+    ),
+)
+PI4_AGENT_PLATFORMS = (
+    ("linux/arm64", "linux-arm64"),
+    ("linux/arm/v7", "linux-arm-v7"),
+)
+PI4_AGENT_SERVICE_NAMES = frozenset(
+    artifact.service for artifact in PI4_AGENT_ARTIFACTS
+)
+PI4_AGENT_DOCKERFILES = frozenset(
+    artifact.dockerfile for artifact in PI4_AGENT_ARTIFACTS
+)
+PI4_AGENT_SHARED_INPUTS = frozenset({".dockerignore", ".trivyignore"})
+# Files the release_kiosk role copies onto every Pi4 kiosk. The role stages
+# them only when the release set names at least one agent, and a Pi4 release
+# needs the signed release set of its exact SHA. A change to any of them must
+# therefore publish every agent image and the API/Web pair for that SHA.
+# Otherwise it is never delivered: on 2026-10-01 a launcher fix (#1608) reached
+# no kiosk because the deployed commit named no agent.
+PI4_KIOSK_RELEASE_FILES = frozenset(
+    {
+        "infrastructure/ansible/templates/kiosk-launch.sh.j2",
+        "infrastructure/ansible/templates/kiosk-browser.service.j2",
+        # Inputs the launcher is rendered from: release_kiosk includes the
+        # resolver, and the role defaults carry the browser flags.
+        "infrastructure/ansible/roles/kiosk/tasks/resolve-browser.yml",
+        "infrastructure/ansible/roles/kiosk/templates/show-kiosk-panel.sh.j2",
+        "infrastructure/ansible/roles/kiosk/defaults/main.yml",
+        # Host and group variables decide the browser engine, its flags and
+        # the agent env files. An inventory-only commit named no agent, so
+        # the release staged nothing on the kiosks (2026-10-02, #1650).
+        "infrastructure/ansible/inventory.yml",
+        "infrastructure/ansible/templates/status-agent.conf.j2",
+        "infrastructure/ansible/templates/nfc-agent.env.j2",
+        "infrastructure/ansible/templates/barcode-agent.env.j2",
+        "infrastructure/ansible/templates/torque-agent.env.j2",
+        "scripts/deploy/rolling_release/terminal_device_maintenance.py",
+        "clients/status-agent/status-agent.py",
+        "clients/status-agent/storage_health.py",
+        "clients/status-agent/network_health.py",
+        "clients/status-agent/terminal_agent_health.py",
+        "clients/status-agent/status-agent.timer",
+        "scripts/client/pi4-storage-maintenance.sh",
+    }
+)
+PI4_KIOSK_RELEASE_PREFIXES = ("infrastructure/ansible/roles/release_kiosk",)
+
+
+def is_pi4_kiosk_release_file(path: str) -> bool:
+    normalized = _normalize_path(path)
+    return normalized in PI4_KIOSK_RELEASE_FILES or any(
+        _has_prefix(normalized, prefix) for prefix in PI4_KIOSK_RELEASE_PREFIXES
+    )
+POLICY_PATHS = frozenset({".gitleaksignore"})
+WEB_UNIT_TEST_FILE = re.compile(r"\.test\.[cm]?[jt]sx?$")
+HERMES_SEARCH_PREFIX = "scripts/hermes-search"
+PI4_AGENT_NON_BUILD_GLOBAL_PATHS = frozenset(
+    {
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "scripts/ci/pnpm-exact.sh",
+        "scripts/ci/run-deploy-contracts-local.sh",
+        "scripts/ci/run-pnpm-bulk-audit.mjs",
+        "scripts/ci/wait_for_release_checks.py",
+        "scripts/ci/tests/test_release_image_workflow.py",
+        "scripts/ci/tests/test_staged_ci_workflow.py",
+    }
+)
+CI_CLASSIFIER_CONTRACT_PATHS = frozenset(
+    {
+        "scripts/ci/classify_changes.py",
+        "scripts/ci/classify_event_changes.py",
+        "scripts/ci/deploy_impact_contract.py",
+        "scripts/ci/tests/test_classify_changes.py",
+        "scripts/ci/tests/test_classify_event_changes.py",
+        "scripts/ci/tests/test_deploy_impact_contract.py",
+    }
+)
+GOOGLE_DR_OWNED_PATHS = frozenset(
+    {
+        "infrastructure/ansible/playbooks/deploy-google-drive-disaster-recovery.yml",
+        "infrastructure/ansible/templates/raspi-google-drive-dr.env.j2",
+        "infrastructure/ansible/templates/raspi-google-drive-dr.service.j2",
+        "infrastructure/ansible/templates/raspi-google-drive-dr.timer.j2",
+        "infrastructure/ansible/playbooks/deploy-pi4-sd-backup.yml",
+        "infrastructure/ansible/templates/raspi-pi4-sd-backup.env.j2",
+        "infrastructure/ansible/templates/raspi-pi4-sd-backup.service.j2",
+        "infrastructure/ansible/templates/raspi-pi4-sd-backup.timer.j2",
+    }
+)
+COMPLETE_FLEET_ARTIFACT_PATHS = CI_CLASSIFIER_CONTRACT_PATHS | frozenset(
+    {
+        "scripts/deploy/standard-ansible-release.py",
+        "scripts/update-all-clients.sh",
+    }
+)
+SIGNAGE_RELEASE_CONTROL_PREFIX = "infrastructure/ansible/roles/release_signage"
+SIGNAGE_ARTIFACT_TEMPLATE_PREFIX = "infrastructure/ansible/roles/signage/templates"
+SIGNAGE_RELEASE_ONLY_PATHS = frozenset(
+    {
+        "scripts/deploy/signage-runtime-proof.py",
+        "scripts/deploy/tests/test_signage_runtime_proof.py",
+        "scripts/deploy/tests/test-signage-deploy-maintenance.sh",
+    }
+)
+DEPLOY_CONTRACT_ONLY_PATHS = frozenset(
+    {"scripts/deploy/tests/test_ansible_standard_release.py"}
+)
+TORQUE_COMPOSITION_PATHS = frozenset(
+    {
+        ".github/workflows/torque-release.yml",
+        "scripts/deploy/release_artifact_contract.py",
+        "scripts/deploy/torque_component_adoption.py",
+        "scripts/deploy/standard-ansible-release.py",
+        "scripts/update-all-clients.sh",
+        "infrastructure/ansible/playbooks/deploy-release-standard.yml",
+        "infrastructure/ansible/inventory.yml",
+        "infrastructure/docker/Dockerfile.torque-agent",
+    }
+)
+TORQUE_COMPOSITION_PREFIXES = (
+    "packages/shared-types/src/torque-wrenches",
+    "apps/api/src/routes/torque-wrenches",
+    "apps/api/src/routes/torque-training",
+    "apps/api/src/services/torque-wrenches",
+    "apps/api/src/services/torque-training",
+    "apps/web/src/features/torque-wrench-connection",
+    "clients/torque-agent",
+    "infrastructure/ansible/roles/release_pi5",
+    "infrastructure/ansible/roles/release_kiosk",
+    "infrastructure/ansible/roles/release_torque_cutover",
+)
 
 
 def _has_prefix(path: str, prefix: str) -> bool:
     return path == prefix or path.startswith(f"{prefix}/")
 
 
-def categories_for_path(path: str) -> frozenset[str] | None:
-    """Return categories for a known path, or ``None`` for an unknown path."""
-    normalized = PurePosixPath(path).as_posix().removeprefix("./")
+def _normalize_path(path: str) -> str:
+    return PurePosixPath(path).as_posix().removeprefix("./")
 
+
+def requires_complete_fleet_artifacts(path: str) -> bool:
+    """Return whether main must publish one exact-SHA artifact set for every profile."""
+    normalized = _normalize_path(path)
+    # A kiosk-file change is rolled out with --full-fleet like any other
+    # release, so the Pi3 artifact of that SHA has to exist as well.
+    return normalized in COMPLETE_FLEET_ARTIFACT_PATHS or is_pi4_kiosk_release_file(
+        normalized
+    )
+
+
+def pi4_agent_services_for_path(path: str) -> frozenset[str]:
+    """Return Pi4 image contracts owning a repository path."""
+    normalized = _normalize_path(path)
+    if normalized == ".github/workflows/torque-release.yml":
+        return frozenset({"torque-agent"})
+    if normalized in PI4_AGENT_SHARED_INPUTS or is_pi4_kiosk_release_file(normalized):
+        return PI4_AGENT_SERVICE_NAMES
+
+    return frozenset(
+        artifact.service
+        for artifact in PI4_AGENT_ARTIFACTS
+        if normalized == artifact.dockerfile
+        or any(_has_prefix(normalized, prefix) for prefix in artifact.owned_prefixes)
+    )
+
+
+def pi4_agent_matrix_for_services(
+    services: Iterable[str],
+) -> list[dict[str, str]]:
+    selected = set(services)
+    matrix: list[dict[str, str]] = []
+    for artifact in PI4_AGENT_ARTIFACTS:
+        if artifact.service not in selected:
+            continue
+        for platform, platform_tag in PI4_AGENT_PLATFORMS:
+            matrix.append(
+                {
+                    "service": artifact.service,
+                    "image": f"raspisys-{artifact.service}-contract",
+                    "dockerfile": artifact.dockerfile,
+                    "platform": platform,
+                    "platform_tag": platform_tag,
+                }
+            )
+    return matrix
+
+
+def _base_categories_for_path(path: str) -> frozenset[str] | None:
+    """Return categories for a known path, or ``None`` for an unknown path."""
+    normalized = _normalize_path(path)
+
+    if normalized == ".github/workflows/torque-release.yml":
+        return frozenset({"repo_policy", "deploy_contract"})
+    if normalized == ".husky/pre-commit":
+        return frozenset({"repo_policy", "workspace_quality"})
     if normalized.startswith(".github/workflows/") or normalized.startswith(
         ".github/actions/"
     ):
         return FULL_SUITE
+    if normalized in CI_CLASSIFIER_CONTRACT_PATHS:
+        return frozenset({"repo_policy"})
+    if normalized == "scripts/deploy/production_config_contract.py":
+        return frozenset(
+            {"repo_policy", "web", "deploy_contract", "docker_security"}
+        )
     if _has_prefix(normalized, "scripts/ci"):
         return FULL_SUITE
+    if _has_prefix(normalized, "scripts/git_lifecycle"):
+        return frozenset({"repo_policy"})
     if normalized in GLOBAL_PATHS:
         return FULL_SUITE
 
-    if _has_prefix(normalized, "docs") or (
+    if normalized in POLICY_PATHS:
+        return frozenset({"repo_policy"})
+
+    if (
+        _has_prefix(normalized, "scripts/google_drive_dr")
+        or _has_prefix(normalized, "scripts/pi4_sd_backup")
+        or normalized in GOOGLE_DR_OWNED_PATHS
+    ):
+        return frozenset({"repo_policy", "db_infra", "deploy_contract"})
+
+    if _has_prefix(normalized, ".cursor/rules") or _has_prefix(normalized, ".agent"):
+        return frozenset({"repo_policy"})
+
+    if normalized.startswith("scripts/test/verify-signage"):
+        return frozenset({"repo_policy"})
+
+    if normalized == "docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html":
+        return frozenset({"repo_policy", "kiosk_sop"})
+    if normalized == ".github/BRANCH_PROTECTION_SETUP.md" or _has_prefix(
+        normalized, "docs"
+    ) or (
         "/" not in normalized and normalized.lower().endswith(".md")
     ):
         return frozenset({"repo_policy"})
@@ -85,15 +346,47 @@ def categories_for_path(path: str) -> frozenset[str] | None:
     if _has_prefix(normalized, "apps/api"):
         return frozenset({"repo_policy", "workspace_quality", "api"})
     if _has_prefix(normalized, "apps/web"):
-        return frozenset({"repo_policy", "workspace_quality", "web"})
+        web = frozenset({"repo_policy", "workspace_quality", "web", "kiosk_sop"})
+        # Web-only PRs used to skip E2E, so a broken spec surfaced only on the
+        # next full-suite PR: #1632 and #1620 both broke main this way on 2026-10-02.
+        # Unit test files and generated SOP artifacts cannot change what E2E sees.
+        if WEB_UNIT_TEST_FILE.search(normalized) or _has_prefix(
+            normalized, "apps/web/src/generated/kiosk-sop"
+        ):
+            return web
+        return web | {"e2e"}
     if _has_prefix(normalized, "packages"):
-        return frozenset({"repo_policy", "workspace_quality", "api", "web"})
+        return frozenset({"repo_policy", "workspace_quality", "api", "web", "kiosk_sop"})
+
+    if _has_prefix(normalized, "scripts/kiosk-sop"):
+        return frozenset({"repo_policy", "kiosk_sop"})
+
+    # Dockerfile.api is the only image that copies this tree, and the API tests
+    # and the runtime rehearsal exercise it. The hermes-retrieval job runs its
+    # own tests on every event.
+    if _has_prefix(normalized, HERMES_SEARCH_PREFIX):
+        return frozenset({"repo_policy", "api", "docker_security"})
 
     if _has_prefix(normalized, "clients") or _has_prefix(normalized, "scripts/client"):
         return frozenset({"repo_policy", "client"})
     if _has_prefix(normalized, "scripts/kiosk"):
         return frozenset({"repo_policy", "client"})
 
+    if normalized in {
+        "scripts/deploy/production_config_contract.py",
+        "infrastructure/ansible/group_vars/server/web-build.yml",
+        "infrastructure/ansible/templates/docker.env.j2",
+        "infrastructure/ansible/templates/web.env.j2",
+    }:
+        return frozenset(
+            {"repo_policy", "web", "deploy_contract", "docker_security"}
+        )
+    if (
+        normalized in SIGNAGE_RELEASE_ONLY_PATHS
+        or _has_prefix(normalized, SIGNAGE_ARTIFACT_TEMPLATE_PREFIX)
+        or _has_prefix(normalized, SIGNAGE_RELEASE_CONTROL_PREFIX)
+    ):
+        return frozenset({"repo_policy", "deploy_contract"})
     if _has_prefix(normalized, "infrastructure/ansible"):
         return frozenset({"repo_policy", "db_infra", "deploy_contract"})
     if _has_prefix(normalized, "scripts/deploy") or normalized == "scripts/update-all-clients.sh":
@@ -101,12 +394,196 @@ def categories_for_path(path: str) -> frozenset[str] | None:
     if _has_prefix(normalized, "scripts/server"):
         return frozenset({"repo_policy", "db_infra", "deploy_contract"})
 
+    if normalized == "infrastructure/docker/Dockerfile.kiosk-sop-generator":
+        return frozenset({"repo_policy", "kiosk_sop", "docker_security"})
+    if normalized in PI4_AGENT_DOCKERFILES:
+        return frozenset({"repo_policy", "client", "docker_security"})
+    if normalized == "infrastructure/docker/Dockerfile.web" or (
+        _has_prefix(normalized, "infrastructure/docker")
+        and PurePosixPath(normalized).name.startswith("Caddyfile")
+    ):
+        return frozenset(
+            {"repo_policy", "web", "deploy_contract", "docker_security"}
+        )
+    if normalized == "infrastructure/docker/maintenance.html":
+        return frozenset(
+            {"repo_policy", "web", "deploy_contract", "docker_security"}
+        )
     if _has_prefix(normalized, "infrastructure/docker"):
         return frozenset({"repo_policy", "db_infra", "docker_security"})
+    if normalized in {
+        "e2e/inspection-drawing-sop-popup.spec.ts",
+        "playwright.kiosk-sop.config.ts",
+    }:
+        return frozenset({"repo_policy", "e2e", "kiosk_sop"})
     if _has_prefix(normalized, "e2e") or normalized == "playwright.config.ts":
         return frozenset({"repo_policy", "e2e"})
 
     return None
+
+
+def signage_artifact_for_path(path: str) -> bool:
+    """Return whether a path changes the complete Pi3 Signage artifact."""
+    normalized = _normalize_path(path)
+    return (
+        normalized.startswith("scripts/test/verify-signage")
+        or normalized
+        in {
+            "clients/status-agent/status-agent.py",
+            "clients/status-agent/storage_health.py",
+            "clients/status-agent/network_health.py",
+            "clients/status-agent/terminal_agent_health.py",
+            "clients/status-agent/status-agent.service",
+            "clients/status-agent/status-agent.timer",
+            "scripts/deploy/rolling_release/terminal_device_maintenance.py",
+            "scripts/deploy/terminal-profile-registry.json",
+            "scripts/deploy/signage-release-artifact.py",
+            "scripts/deploy/signage-distribution-artifact.py",
+            "scripts/deploy/tests/test_signage_distribution_artifact.py",
+            "scripts/deploy/rolling_release/signage_artifact_stage.py",
+            "scripts/deploy/tests/test_signage_artifact_stage.py",
+            "infrastructure/docker/Dockerfile.signage-release",
+        }
+        or normalized in SIGNAGE_RELEASE_ONLY_PATHS
+        or _has_prefix(normalized, SIGNAGE_ARTIFACT_TEMPLATE_PREFIX)
+        or _has_prefix(normalized, SIGNAGE_RELEASE_CONTROL_PREFIX)
+    )
+
+
+def _signage_artifact_exclusive_path(path: str) -> bool:
+    normalized = _normalize_path(path)
+    return signage_artifact_for_path(normalized) and normalized not in {
+        "scripts/deploy/rolling_release/terminal_device_maintenance.py",
+        "scripts/deploy/terminal-profile-registry.json",
+    }
+
+
+def categories_for_path(path: str) -> frozenset[str] | None:
+    categories = _base_categories_for_path(path)
+    if categories is None or categories == FULL_SUITE:
+        return categories
+    if signage_artifact_for_path(path):
+        return categories | {"signage_artifact"}
+    return categories
+
+
+def codeql_for_path(path: str) -> bool:
+    """Return whether a known path can change JavaScript/TypeScript or Python analysis."""
+    normalized = _normalize_path(path)
+    if normalized == ".github/workflows/torque-release.yml":
+        return False
+    return (
+        normalized.endswith(".py")
+        or _has_prefix(normalized, "apps/api")
+        or _has_prefix(normalized, "apps/web")
+        or _has_prefix(normalized, "packages")
+        or _has_prefix(normalized, "e2e")
+        or _has_prefix(normalized, HERMES_SEARCH_PREFIX)
+        or normalized in {"playwright.config.ts", "playwright.kiosk-sop.config.ts"}
+        or normalized in {
+            "package.json",
+            "pnpm-lock.yaml",
+            "pnpm-workspace.yaml",
+            "tsconfig.base.json",
+            "turbo.json",
+        }
+        or normalized.startswith(".github/workflows/")
+        or normalized.startswith(".github/actions/")
+        or _has_prefix(normalized, "scripts/ci")
+    )
+
+
+def docker_images_for_path(path: str) -> frozenset[str]:
+    """Return Docker images whose filesystem may change for a known path."""
+    normalized = _normalize_path(path)
+    if normalized == ".github/workflows/torque-release.yml":
+        return frozenset()
+    if normalized in PI4_AGENT_DOCKERFILES:
+        return frozenset()
+    if _signage_artifact_exclusive_path(normalized):
+        return frozenset()
+    if normalized in {
+        "scripts/deploy/production_config_contract.py",
+        "infrastructure/ansible/group_vars/server/web-build.yml",
+        "infrastructure/ansible/templates/docker.env.j2",
+        "infrastructure/ansible/templates/web.env.j2",
+        "infrastructure/docker/Dockerfile.web",
+        "infrastructure/docker/maintenance.html",
+    } or (
+        _has_prefix(normalized, "infrastructure/docker")
+        and PurePosixPath(normalized).name.startswith("Caddyfile")
+    ):
+        return frozenset({"web"})
+    if normalized == "infrastructure/docker/Dockerfile.api" or _has_prefix(
+        normalized, HERMES_SEARCH_PREFIX
+    ):
+        return frozenset({"api"})
+    if _has_prefix(normalized, "infrastructure/docker") or normalized in GLOBAL_PATHS:
+        return frozenset({"api", "web"})
+    if normalized.startswith(".github/workflows/") or normalized.startswith(
+        ".github/actions/"
+    ):
+        return frozenset({"api", "web"})
+    if _has_prefix(normalized, "scripts/ci"):
+        return frozenset({"api", "web"})
+    return frozenset()
+
+
+def release_pair_for_path(path: str) -> bool:
+    """Return whether the exact main SHA needs a production ARM64 image pair.
+
+    This follows Docker build-context ownership, not test-job ownership. The
+    API image copies the repository ``scripts`` tree, while the Web image
+    embeds generated SOP artifacts under ``apps/web``.
+    """
+
+    normalized = _normalize_path(path)
+    if normalized == ".github/workflows/torque-release.yml":
+        return False
+    if normalized in DEPLOY_CONTRACT_ONLY_PATHS:
+        return False
+    if normalized == "infrastructure/docker/Dockerfile.torque-agent" or _has_prefix(
+        normalized, "clients/torque-agent"
+    ):
+        # A new torque composition still needs an API/Web pair for its exact,
+        # rehearsal-bound three-component tuple. Unrelated Pi4 agents remain
+        # independent of the normal v1 release pair.
+        return True
+    if is_pi4_kiosk_release_file(normalized):
+        return True
+    if normalized in PI4_AGENT_DOCKERFILES:
+        return False
+    if _signage_artifact_exclusive_path(normalized):
+        return False
+    if _has_prefix(normalized, "scripts/git_lifecycle"):
+        return False
+    if normalized in GLOBAL_PATHS:
+        return True
+    if any(
+        _has_prefix(normalized, prefix)
+        for prefix in (
+            "apps/api",
+            "apps/web",
+            "packages",
+            "scripts",
+            "infrastructure/ansible",
+            "infrastructure/docker",
+        )
+    ):
+        return True
+    if normalized.startswith(".github/workflows/") or normalized.startswith(
+        ".github/actions/"
+    ):
+        return True
+    return False
+
+
+def torque_composition_for_path(path: str) -> bool:
+    """Return whether a change requires a newly verified torque v2 composition."""
+    normalized = _normalize_path(path)
+    return normalized in TORQUE_COMPOSITION_PATHS or any(
+        _has_prefix(normalized, prefix) for prefix in TORQUE_COMPOSITION_PREFIXES
+    )
 
 
 def classify_change(change: Change) -> ClassifiedChange:
@@ -115,12 +592,24 @@ def classify_change(change: Change) -> ClassifiedChange:
         return ClassifiedChange(
             change=change,
             categories=FULL_SUITE,
+            codeql=True,
+            docker_images=frozenset({"api", "web"}),
+            pi4_agent_services=PI4_AGENT_SERVICE_NAMES,
+            release_pair=True,
+            runtime_rehearsal=True,
+            torque_composition=True,
             fail_closed_reason=f"{status_kind.lower()} change requires the full suite",
         )
     if status_kind not in {"A", "M"}:
         return ClassifiedChange(
             change=change,
             categories=FULL_SUITE,
+            codeql=True,
+            docker_images=frozenset({"api", "web"}),
+            pi4_agent_services=PI4_AGENT_SERVICE_NAMES,
+            release_pair=True,
+            runtime_rehearsal=True,
+            torque_composition=True,
             fail_closed_reason=f"unsupported git status {change.status!r}",
         )
 
@@ -129,15 +618,45 @@ def classify_change(change: Change) -> ClassifiedChange:
         return ClassifiedChange(
             change=change,
             categories=FULL_SUITE,
+            codeql=True,
+            docker_images=frozenset({"api", "web"}),
+            pi4_agent_services=PI4_AGENT_SERVICE_NAMES,
+            release_pair=True,
+            runtime_rehearsal=True,
+            torque_composition=True,
             fail_closed_reason=f"unknown path {change.path!r}",
         )
     if categories == FULL_SUITE:
+        pi4_services = (
+            pi4_agent_services_for_path(change.path)
+            if _normalize_path(change.path) in PI4_AGENT_NON_BUILD_GLOBAL_PATHS
+            else PI4_AGENT_SERVICE_NAMES
+        )
         return ClassifiedChange(
             change=change,
             categories=categories,
+            codeql=True,
+            docker_images=frozenset({"api", "web"}),
+            pi4_agent_services=pi4_services,
+            release_pair=True,
+            runtime_rehearsal=True,
+            torque_composition=torque_composition_for_path(change.path),
             fail_closed_reason=f"global CI configuration path {change.path!r}",
         )
-    return ClassifiedChange(change=change, categories=categories)
+    release_pair = release_pair_for_path(change.path)
+    return ClassifiedChange(
+        change=change,
+        categories=categories,
+        codeql=codeql_for_path(change.path),
+        docker_images=docker_images_for_path(change.path),
+        pi4_agent_services=pi4_agent_services_for_path(change.path),
+        release_pair=release_pair,
+        runtime_rehearsal=(
+            release_pair
+            and _normalize_path(change.path) not in CI_CLASSIFIER_CONTRACT_PATHS
+        ),
+        torque_composition=torque_composition_for_path(change.path),
+    )
 
 
 def classify_changes(
@@ -145,21 +664,49 @@ def classify_changes(
 ) -> dict[str, object]:
     classified = [classify_change(change) for change in changes]
     selected: set[str] = set()
+    codeql = False
+    docker_images: set[str] = set()
+    pi4_agent_services: set[str] = set()
+    release_pair = False
+    runtime_rehearsal = False
+    torque_composition = False
     reasons: list[str] = []
     for item in classified:
         selected.update(item.categories)
+        codeql = codeql or item.codeql
+        docker_images.update(item.docker_images)
+        pi4_agent_services.update(item.pi4_agent_services)
+        release_pair = release_pair or item.release_pair
+        runtime_rehearsal = runtime_rehearsal or item.runtime_rehearsal
+        torque_composition = torque_composition or item.torque_composition
         if item.fail_closed_reason:
             reasons.append(item.fail_closed_reason)
 
     if force_full_reason:
         selected.update(FULL_SUITE)
+        codeql = True
+        docker_images.update({"api", "web"})
+        pi4_agent_services.update(PI4_AGENT_SERVICE_NAMES)
+        release_pair = True
+        runtime_rehearsal = True
+        torque_composition = True
         reasons.append(force_full_reason)
 
+    matrix_images = sorted(docker_images) or ["api", "web"]
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 6,
         "mode": "enforced",
         "fileCount": len(classified),
         "fullSuite": selected == set(FULL_SUITE),
+        "codeql": codeql,
+        "dockerApi": "api" in docker_images,
+        "dockerWeb": "web" in docker_images,
+        "releasePair": release_pair,
+        "runtimeRehearsal": runtime_rehearsal,
+        "torqueComposition": torque_composition,
+        "pi4AgentServices": sorted(pi4_agent_services),
+        "pi4AgentMatrix": pi4_agent_matrix_for_services(pi4_agent_services),
+        "dockerMatrix": [DOCKER_MATRIX_ITEMS[image] for image in matrix_images],
         "categories": {category: category in selected for category in CATEGORIES},
         "failClosedReasons": reasons,
         "changes": [
@@ -172,6 +719,12 @@ def classify_changes(
                     else {}
                 ),
                 "categories": sorted(item.categories),
+                "codeql": item.codeql,
+                "dockerImages": sorted(item.docker_images),
+                "pi4AgentServices": sorted(item.pi4_agent_services),
+                "releasePair": item.release_pair,
+                "runtimeRehearsal": item.runtime_rehearsal,
+                "torqueComposition": item.torque_composition,
                 **(
                     {"failClosedReason": item.fail_closed_reason}
                     if item.fail_closed_reason
@@ -222,6 +775,13 @@ def render_markdown(result: dict[str, object]) -> str:
         "",
         f"Changed files: **{result['fileCount']}**  ",
         f"Full suite classification: **{'yes' if result['fullSuite'] else 'no'}**",
+        f"CodeQL analysis: **{'yes' if result['codeql'] else 'no'}**  ",
+        f"Docker API image: **{'yes' if result['dockerApi'] else 'no'}**  ",
+        f"Docker Web image: **{'yes' if result['dockerWeb'] else 'no'}**",
+        f"Pi4 agent image contracts: **{len(result['pi4AgentMatrix'])}**",
+        f"ARM64 release pair: **{'yes' if result['releasePair'] else 'no'}**",
+        f"Isolated runtime rehearsal: **{'yes' if result['runtimeRehearsal'] else 'no'}**",
+        f"Torque v2 composition: **{'yes' if result['torqueComposition'] else 'no'}**",
         "",
         "| Category | Selected |",
         "| --- | --- |",
@@ -245,6 +805,30 @@ def render_github_output(result: dict[str, object]) -> str:
         for category in CATEGORIES
     ]
     lines.append(f"full_suite={'true' if result['fullSuite'] else 'false'}")
+    lines.append(f"codeql={'true' if result['codeql'] else 'false'}")
+    lines.append(f"docker_api={'true' if result['dockerApi'] else 'false'}")
+    lines.append(f"docker_web={'true' if result['dockerWeb'] else 'false'}")
+    lines.append(f"release_pair={'true' if result['releasePair'] else 'false'}")
+    lines.append(
+        f"runtime_rehearsal={'true' if result['runtimeRehearsal'] else 'false'}"
+    )
+    lines.append(
+        f"torque_composition={'true' if result['torqueComposition'] else 'false'}"
+    )
+    lines.append(
+        "docker_matrix="
+        + json.dumps(result["dockerMatrix"], separators=(",", ":"), sort_keys=True)
+    )
+    lines.append(
+        "pi4_agent_matrix="
+        + json.dumps(
+            result["pi4AgentMatrix"], separators=(",", ":"), sort_keys=True
+        )
+    )
+    lines.append(
+        "pi4_agent_services="
+        + json.dumps(result["pi4AgentServices"], separators=(",", ":"))
+    )
     return "\n".join(lines) + "\n"
 
 

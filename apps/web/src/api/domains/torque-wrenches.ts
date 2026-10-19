@@ -1,6 +1,9 @@
 import { api } from '../http';
 
-import type { TorqueWrenchStorageLocation } from '@raspi-system/shared-types';
+import type {
+  TorqueWrenchSettingVerificationMode,
+  TorqueWrenchStorageLocation
+} from '@raspi-system/shared-types';
 
 export type TorqueWrenchModelApi = {
   id: string;
@@ -11,6 +14,7 @@ export type TorqueWrenchModelApi = {
   resolutionNm: string | null;
   communicationType: string;
   outputProfile: string | null;
+  settingVerificationMode: TorqueWrenchSettingVerificationMode;
   isActive: boolean;
 };
 
@@ -69,6 +73,7 @@ export async function createTorqueWrenchModel(payload: {
   resolutionNm?: number | null;
   communicationType?: string;
   outputProfile?: string | null;
+  settingVerificationMode?: TorqueWrenchSettingVerificationMode;
 }) {
   const { data } = await api.post<{ model: TorqueWrenchModelApi }>('/torque-wrench-models', payload);
   return data.model;
@@ -81,6 +86,7 @@ export async function updateTorqueWrenchModel(id: string, payload: Partial<{
   torqueMaxNm: number;
   resolutionNm: number | null;
   isActive: boolean;
+  settingVerificationMode: TorqueWrenchSettingVerificationMode;
 }>) {
   const { data } = await api.put<{ model: TorqueWrenchModelApi }>(`/torque-wrench-models/${id}`, payload);
   return data.model;
@@ -189,7 +195,12 @@ export async function confirmAssemblyTorqueWrench(
   sessionId: string,
   payload: { expectedTemplateBoltId: string; torqueWrenchProfileId: string; physicalDisplayConfirmed: true }
 ) {
-  const { data } = await api.post<{ confirmation: { id: string; torqueWrenchProfileId: string; settingHistoryId: string } }>(
+  const { data } = await api.post<{ confirmation: {
+    id: string;
+    torqueWrenchProfileId: string;
+    settingHistoryId: string | null;
+    settingVerificationMode: TorqueWrenchSettingVerificationMode;
+  } }>(
     `/assembly/work-sessions/${sessionId}/torque-wrench-confirmations`,
     payload
   );
@@ -202,11 +213,19 @@ export type CurrentTorqueWrenchConfirmationApi = {
   templateBoltId: string;
   markerNo: number;
   torqueWrenchProfileId: string;
-  settingHistoryId: string;
+  settingHistoryId: string | null;
+  settingVerificationMode: TorqueWrenchSettingVerificationMode;
   serialNumber: string;
   manufacturer: string;
   modelNumber: string;
   setting: {
+    lowerLimit: string;
+    nominalTorque: string;
+    upperLimit: string;
+    unit: string;
+  } | null;
+  /** Bolt-condition target; for BOLT mode this is the only torque reference. */
+  target: {
     lowerLimit: string;
     nominalTorque: string;
     upperLimit: string;

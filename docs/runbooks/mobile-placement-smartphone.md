@@ -167,7 +167,7 @@ curl -sk "https://<Pi5>/api/mobile-placement/haizen-current?shelfCode=%E8%A5%BF-
 - **デプロイが `未commit変更` で止まる**: Mac 側に **未追跡ファイル**もブロック対象。`git stash push -u` またはコミットしてから [deployment.md](../guides/deployment.md) の `update-all-clients.sh` を再実行
 - **Pi5 で `Please move or remove them before you merge. Aborting`（`git pull`/`merge` 中止）**: Pi5 `/opt/RaspberryPiSystem_002` の作業ツリーに **未追跡・ローカル変更**があり、取り込みと衝突している典型。[deployment.md](../guides/deployment.md) の **ワークツリー**、[KB-339](../knowledge-base/KB-339-mobile-placement-barcode-survey.md) **V10**、必要に応じ [kiosk-documents.md](./kiosk-documents.md)（Pi5 `git` 復旧パターン）を参照してから **再デプロイ**
 - **Pi5 で `git stash push -u` しても `failed to remove ... 許可がありません`**: 変更ファイルが **`root:root` 所有**の典型。`apps/api/src/services/mobile-placement`、`apps/web/src/features/mobile-placement`、migration などの対象パスを **`sudo chown -R denkon5sd02:denkon5sd02 ...`** してから再度 `git stash push -u`
-- **別のreleaseが実行中と表示される**: run IDを確認して `scripts/update-all-clients.sh --status RUN_ID` を使う。停止が必要なら `--cancel RUN_ID --reason TEXT` を使い、process kill、lock削除、fleet/run state編集は行わない（[deploy-status-recovery.md](./deploy-status-recovery.md)）。
+- **別のreleaseが実行中と表示される**: run IDを確認して `scripts/update-all-clients.sh --status RUN_ID` を使う。停止や復旧が必要な場合は [deploy-status-recovery.md](./deploy-status-recovery.md) の標準手順に従い、process kill、lock削除、運用情報の手編集は行わない。
 - **画像OCRが遅い／初回だけ長い**: Pi5 API コンテナで **tesseract.js ワーカ初回起動**で数十秒かかることがある。連続利用ではキャッシュされやすい。現品票 OCR は **用途別に複数パス**（`jpn+eng` + `eng`×2）を **直列**で回すため、初回以外も **単一パス時より時間がかかる**場合がある。極端に大きい画像はサーバ側で縮小されるが、**ピント・コントラスト**を確保すると精度が上がる
 - **画像OCR後に欄が空のまま／無反応に見える**: 撮影後、現品票列の下に **成功（抽出値の表示）／候補なし／エラー**のいずれかが出ること。候補なしのときは再撮影または手入力。API 側は `parse-actual-slip-image` 完了時に構造化ログ（入力サイズ・OCR 文字数・候補有無・所要時間・**V8 以降**: `mo10ParseSource` / `mo10Candidate10Count` 等）が出るので、Pi5 の API ログで後追い可能。**製造ラベルが分断**されて製造orderが取れないケースは V8 パーサで緩和（[KB-339](../knowledge-base/KB-339-mobile-placement-barcode-survey.md)）
 - **`mo10ParseSource` が `global-filter` だが製造orderが空／誤り**: **V11** 以降、同一行に **注文番号＋枝番**があるとその行の 10 桁は除外され、残り候補から文脈スコアで選ぶ。ログの `mo10Candidate10Count` / `mo10AfterOrderBlockFilterCount` と [KB-339](../knowledge-base/KB-339-mobile-placement-barcode-survey.md) **V11** を参照
@@ -179,3 +179,13 @@ curl -sk "https://<Pi5>/api/mobile-placement/haizen-current?shelfCode=%E8%A5%BF-
 ## 6. API 契約
 
 [api/mobile-placement.md](../api/mobile-placement.md)
+
+## 7. 読取速度テスト（scan-bench）
+
+Android Chrome で配膳ページと同じ Tailscale の HTTPS URL ベースに `/kiosk/mobile-placement/scan-bench` を付けて開く。ログイン・`clientKey` は不要。API通信や配膳登録は行わない。
+
+「カメラ開始」後、同じラベル・距離・照明で「今の読み方」（ZXing）と「高速読取」（BarcodeDetector）を切り替え、「読む」「次を読む」で複数回測る。切替時もカメラは継続する。非対応端末は高速読取が無効になり、対応形式を表示する。
+
+上部の中央値・成功回数をスクリーンショットに残す。各方式の全試行回数、成功分の最速・最遅、15秒での「読めず」回数、直近10回の値・形式も比較する。カメラ開始時間（ms）と実解像度は別表示。画質は「今と同じ画質」（現行配膳ページと同じ640×480上限、既定）と「高画質」（希望1280×720）を切り替えられ、集計は選んだ画質の分だけ表示する（画質を変えるとカメラが止まるので「カメラ開始」を押し直す）。両方式は同じ映像を使い、ZXingの形式・再試行間隔は現行設定に合わせる。
+
+画面を隠すとカメラ停止。戻ったら「カメラ開始」を押す。記録はページ内だけに保持し、再読み込み・移動または「記録を消す」で消える。

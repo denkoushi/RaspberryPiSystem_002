@@ -98,7 +98,13 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
     selfInspectionEntryPath:
       (row as ProductionScheduleRow & {
         selfInspectionEntryPath?: string | null;
-      }).selfInspectionEntryPath ?? null
+      }).selfInspectionEntryPath ?? null,
+    selfInspectionResourceCds:
+      (row as ProductionScheduleRow & { selfInspectionResourceCds?: string[] }).selfInspectionResourceCds ?? [],
+    selfInspectionResourceCd:
+      (row as ProductionScheduleRow & { selfInspectionResourceCd?: string | null }).selfInspectionResourceCd ?? null,
+    materialArrivalStatus: row.materialArrivalStatus ?? null,
+    materialArrivalBasis: row.materialArrivalBasis ?? null
   };
 }
 

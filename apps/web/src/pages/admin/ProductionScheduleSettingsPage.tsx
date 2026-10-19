@@ -17,13 +17,14 @@ import {
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { readProductionBuildConfig } from '../../config/productionBuildConfig';
 
 import { ProductionScheduleLoadBalancingSettingsSection } from './ProductionScheduleLoadBalancingSettingsSection';
 
 const DEFAULT_LOCATION = 'shared';
 const LOCATION_SEGMENT_DELIMITER = ' - ';
 const WEB_ORDER_SPLIT_DEPLOYMENT_ENABLED =
-  import.meta.env.VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED === 'true';
+  readProductionBuildConfig().productionScheduleOrderSplitEnabled;
 
 const parseResourceCds = (value: string): string[] => {
   const unique = new Set<string>();
@@ -549,12 +550,12 @@ export function ProductionScheduleSettingsPage() {
       <Card title="納期管理アクセス設定">
         <div className="space-y-4">
           <p className="text-xs font-semibold text-slate-700">
-            キオスクの「納期管理」ボタン押下時に要求するパスワードを設定します（shared共通）。未設定時は初期パスワード「2520」が有効です。
+            キオスクの「納期管理」ボタン押下時に要求するパスワードを設定します（shared共通）。未設定時は保護対象の操作を利用できません。
           </p>
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs font-semibold text-slate-700">
               現在状態:{' '}
-              {dueManagementAccessPasswordSettingsQuery.data?.configured ? '設定済み（カスタム）' : '未設定（初期パスワード2520）'}
+              {dueManagementAccessPasswordSettingsQuery.data?.configured ? '設定済み' : '未設定（利用不可）'}
             </p>
           </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

@@ -6,6 +6,7 @@ set -euo pipefail
 # cannot silently drift apart.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+PNPM="${ROOT_DIR}/scripts/ci/pnpm-exact.sh"
 INSTALL_COLLECTIONS=0
 
 usage() {
@@ -47,6 +48,9 @@ for command in bash python3 ansible-inventory ansible-playbook ansible-galaxy; d
   fi
 done
 
+echo "[deploy-contract] resolve repository pnpm toolchain before side effects"
+"$PNPM" --version
+
 if ((INSTALL_COLLECTIONS)); then
   ansible-galaxy collection install community.general
 elif ! ansible-galaxy collection list community.general 2>/dev/null \
@@ -63,6 +67,7 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 cd "$ROOT_DIR"
+export ADMIN_ALLOW_NETS="${ADMIN_ALLOW_NETS:-127.0.0.1/32}"
 
 echo "[deploy-contract] parse all Ansible Jinja templates"
 python3 scripts/ci/ansible_template_contracts.py
@@ -72,71 +77,62 @@ bash -n scripts/update-all-clients.sh
 bash -n scripts/server/deploy.sh
 bash -n scripts/server/deploy-detached.sh
 bash scripts/deploy/tests/test-single-deploy-entrypoint.sh
-bash -n scripts/deploy/pi5-blue-green.sh
-bash -n scripts/deploy/pi5-candidate-build.sh
-bash scripts/deploy/tests/test-verify-phase12-real.sh
-bash scripts/deploy/tests/test-pi5-image-deploy.sh
-bash scripts/deploy/tests/test-pi5-blue-green.sh
-bash scripts/deploy/tests/test-pi5-blue-green-maintenance-container.sh
+bash scripts/deploy/tests/test-terminal-runtime-manifest-docker.sh
+bash scripts/deploy/tests/test-web-static-routing.sh
 python3 -m unittest discover -s scripts/deploy/tests -p 'test_*.py'
+bash scripts/server/tests/test_storage_maintenance_retention.sh
+bash scripts/client/tests/test_pi4_storage_maintenance.sh
 python3 scripts/deploy/tests/test-client-agent-lifecycle-selection.py
 bash scripts/deploy/tests/test-signage-deploy-maintenance.sh
 bash scripts/deploy/tests/test-deploy-status-postgres-observability.sh
 bash scripts/deploy/tests/test-deploy-status-postgres.sh
+bash scripts/deploy/tests/test-postgres-role-boundaries.sh
+bash scripts/deploy/tests/test-production-database-wiring.sh
 
 echo "[deploy-contract] rollback and release safety contracts"
 bash scripts/deploy/tests/test-deploy-safety-contracts.sh
+bash scripts/deploy/tests/test-verify-phase12-real.sh
 
 echo "[deploy-contract] inventories and Ansible playbooks"
-ANSIBLE_DIRECTORY="$ROOT_DIR/infrastructure/ansible"
-sed \
-  's/^vault_password_file = .vault-pass/# vault_password_file = .vault-pass (disabled for contract checks)/' \
-  "$ANSIBLE_DIRECTORY/ansible.cfg" > "$TEMP_DIR/ansible-contract.cfg"
-export ANSIBLE_CONFIG="$TEMP_DIR/ansible-contract.cfg"
+ANSIBLE_SOURCE_DIRECTORY="$ROOT_DIR/infrastructure/ansible"
+ANSIBLE_DIRECTORY="$TEMP_DIR/ansible"
+VAULT_PLACEHOLDERS="$ROOT_DIR/infrastructure/ansible/normal-factory-vault-placeholders.yml"
+python3 "$ROOT_DIR/scripts/ci/prepare_redacted_ansible_context.py" \
+  --source "$ANSIBLE_SOURCE_DIRECTORY" \
+  --output "$ANSIBLE_DIRECTORY"
+export ANSIBLE_CONFIG="$ANSIBLE_DIRECTORY/ansible.cfg"
 export ANSIBLE_ROLES_PATH="$ANSIBLE_DIRECTORY/roles"
 READ_ONLY_ANSIBLE_CONFIG="$ANSIBLE_DIRECTORY/ansible-readonly.cfg"
 
 STATIC_PLAYBOOKS=(
-  playbooks/deploy.yml
-  playbooks/deploy-terminal-profile.yml
+  playbooks/deploy-release-standard.yml
   playbooks/server-config-release.yml
-  playbooks/update-clients.yml
+  playbooks/prepare-pi5-runtime-permissions.yml
+  playbooks/prepare-pi5-database-roles.yml
+  playbooks/prepare-pi5-admin-network-policy.yml
+  playbooks/prepare-pi5-power-dispatcher.yml
+  playbooks/prepare-pi5-security-scans.yml
+  playbooks/prepare-client-local-ca-trust.yml
+  playbooks/activate-pi5-local-ca-certificate.yml
+  playbooks/verify-client-local-tls.yml
   playbooks/health-check.yml
   playbooks/manage-system-configs.yml
   playbooks/manage-app-configs.yml
-  playbooks/rollback.yml
   playbooks/restart-services.yml
   playbooks/ping.yml
-  playbooks/recover-pi4.yml
-  playbooks/recover-pi4-verify.yml
-)
-TERMINAL_PROFILE_PLAYBOOKS=()
-while IFS= read -r playbook; do
-  [[ -n "$playbook" ]] && TERMINAL_PROFILE_PLAYBOOKS+=("$playbook")
-done < <(
-  python3 "$ROOT_DIR/scripts/deploy/terminal_profile_contracts.py" --list-playbooks
 )
 
 cd "$ANSIBLE_DIRECTORY"
-python3 "$ROOT_DIR/scripts/deploy/tests/test_recover_pi4.py"
 for inventory in inventory.yml inventory-talkplaza.yml; do
   output="$TEMP_DIR/${inventory%.yml}.json"
   ANSIBLE_CONFIG="$READ_ONLY_ANSIBLE_CONFIG" \
-    ansible-inventory -i "$inventory" --list > "$output"
+    ansible-inventory -i "$inventory" \
+      --extra-vars "@$VAULT_PLACEHOLDERS" \
+      --list > "$output"
   python3 -m json.tool "$output" >/dev/null
 done
-python3 "$ROOT_DIR/scripts/deploy/terminal_profile_contracts.py" \
-  --inventory-json "$TEMP_DIR/inventory.json" \
-  --inventory-json "$TEMP_DIR/inventory-talkplaza.json"
-for playbook in "${STATIC_PLAYBOOKS[@]}" "${TERMINAL_PROFILE_PLAYBOOKS[@]}"; do
-  ansible-playbook --syntax-check "$playbook" -i inventory.yml
+for playbook in "${STATIC_PLAYBOOKS[@]}"; do
+  ansible-playbook --syntax-check "$playbook" -i inventory.yml \
+    --extra-vars "@$VAULT_PLACEHOLDERS"
 done
-for playbook in playbooks/deploy-terminal-profile.yml "${TERMINAL_PROFILE_PLAYBOOKS[@]}"; do
-  ansible-playbook --syntax-check "$playbook" -i inventory-talkplaza.yml
-done
-ansible-playbook --check \
-  -i "$ROOT_DIR/scripts/deploy/tests/fixtures/recovery-check-inventory.yml" \
-  playbooks/recover-pi4-verify.yml \
-  -e recovery_authorized=true
-
 echo "[deploy-contract] all checks passed"

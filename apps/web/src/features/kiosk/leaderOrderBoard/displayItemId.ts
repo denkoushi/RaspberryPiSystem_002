@@ -19,4 +19,5 @@ export function resolveSourceRowIdFromLeaderBoardRow(row: {
 }
 
 export const KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED =
-  import.meta.env.VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED === 'true';
+  readProductionBuildConfig().productionScheduleOrderSplitEnabled;
+import { readProductionBuildConfig } from '../../../config/productionBuildConfig';

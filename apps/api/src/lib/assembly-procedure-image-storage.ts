@@ -1,10 +1,10 @@
 import { randomUUID } from 'crypto';
-import { promises as fs, type Stats } from 'fs';
+import type { Stats } from 'fs';
 import path from 'path';
+import { getFileStorageRoot } from '../services/file-storage/file-storage-config.js';
+import { getFileStorageRuntime } from '../services/file-storage/file-storage-runtime.js';
 
-const getStorageBaseDir = () =>
-  process.env.PHOTO_STORAGE_DIR ||
-  (process.env.NODE_ENV === 'test' ? '/tmp/test-photo-storage' : '/opt/RaspberryPiSystem_002/storage');
+const getStorageBaseDir = () => getFileStorageRoot();
 
 const getProcedureImagesDir = () => path.join(getStorageBaseDir(), 'assembly-procedure-images');
 
@@ -40,7 +40,7 @@ function resolveProcedureImageFile(relativeUrl: string): { fullPath: string; con
 
 export class AssemblyProcedureImageStorage {
   static async initialize(): Promise<void> {
-    await fs.mkdir(getProcedureImagesDir(), { recursive: true });
+    await getFileStorageRuntime().store.initialize(['assembly-procedure-images']);
   }
 
   static assertMime(mimetype: string): string {
@@ -61,9 +61,12 @@ export class AssemblyProcedureImageStorage {
     }
     const ext = this.assertMime(mimetype);
     const filename = `${randomUUID()}${ext}`;
-    const fullPath = path.join(getProcedureImagesDir(), filename);
-    await fs.mkdir(getProcedureImagesDir(), { recursive: true });
-    await fs.writeFile(fullPath, buffer);
+    await getFileStorageRuntime().store.write({
+      key: `assembly-procedure-images/${filename}`,
+      data: buffer,
+      mode: 'create',
+      integrity: true,
+    });
     return {
       relativeUrl: `${PROCEDURE_IMAGE_URL_PREFIX}${filename}`,
       contentType: mimetype.toLowerCase().startsWith('image/') ? mimetype : 'application/octet-stream'
@@ -72,18 +75,25 @@ export class AssemblyProcedureImageStorage {
 
   static async statImage(relativeUrl: string): Promise<Stats> {
     const { fullPath } = resolveProcedureImageFile(relativeUrl);
-    return fs.stat(fullPath);
+    return getFileStorageRuntime().store.stat(
+      path.relative(getStorageBaseDir(), fullPath).split(path.sep).join('/')
+    );
   }
 
   static async readImage(relativeUrl: string): Promise<{ buffer: Buffer; contentType: string }> {
     const { fullPath, contentType } = resolveProcedureImageFile(relativeUrl);
-    return { buffer: await fs.readFile(fullPath), contentType };
+    const key = path.relative(getStorageBaseDir(), fullPath).split(path.sep).join('/');
+    return {
+      buffer: await getFileStorageRuntime().store.read(key, { verifyIntegrity: true }),
+      contentType,
+    };
   }
 
   static async deleteImage(relativeUrl: string): Promise<void> {
     try {
       const { fullPath } = resolveProcedureImageFile(relativeUrl);
-      await fs.unlink(fullPath).catch(() => undefined);
+      const key = path.relative(getStorageBaseDir(), fullPath).split(path.sep).join('/');
+      await getFileStorageRuntime().store.delete(key, { integrity: true });
     } catch {
       return;
     }

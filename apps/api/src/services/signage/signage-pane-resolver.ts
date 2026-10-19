@@ -177,6 +177,9 @@ function buildPane(
     case 'self_inspection_machine_board':
       // FULL のみ対応。SPLIT で選ばれた場合は空ペイン（運用で避ける想定）。
       return { kind: 'loans', tools: [] };
+    case 'web_page':
+      // FULL のみ対応（スキーマで SPLIT は拒否）。
+      return { kind: 'loans', tools: [] };
     default:
       return { kind: 'loans', tools: [] };
   }

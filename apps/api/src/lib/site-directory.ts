@@ -1,0 +1,140 @@
+import { ApiError } from './errors.js';
+import { resolveDeviceScopeKey, resolveSiteKeyFromScopeKey, siteNotAssignedError } from './location-scope-resolver.js';
+
+/**
+ * 端末スコープキー（deviceScopeKey）→ 明示拠点（ClientDevice.siteKey）の対応表。
+ *
+ * 拠点を scope 文字列だけから求める経路（手動順番・分割・負荷調整・設定など）で、
+ * 端末に明示拠点があればそれを使い、なければ従来の文字列推測に戻す。
+ * ClientDevice は十数行なので全件をメモリに保持し、TTL 付きで読み直す。
+ * DB に依存しない純粋な参照関数にするため、prisma は呼び出し側から渡す。
+ */
+
+export type SiteDirectoryDeviceRow = {
+  name: string;
+  location: string | null;
+  siteKey: string | null;
+};
+
+export type SiteDirectoryClient = {
+  clientDevice: {
+    findMany(args: {
+      select: { name: true; location: true; siteKey: true };
+    }): Promise<SiteDirectoryDeviceRow[]>;
+  };
+  site: {
+    findMany(args: { select: { key: true } }): Promise<Array<{ key: string }>>;
+  };
+};
+
+export const SITE_DIRECTORY_TTL_MS = 30_000;
+
+let explicitSiteByDeviceScopeKey: ReadonlyMap<string, string> = new Map();
+let registeredSiteKeys: ReadonlySet<string> = new Set();
+let registeredDeviceScopeKeys: ReadonlySet<string> = new Set();
+let lastAttemptAt = 0;
+let inflight: Promise<void> | null = null;
+/** 一度でも読み込みに成功したか */
+let loaded = false;
+/** API サーバーでは、未読込のまま文字列から推測しない（unit test やスクリプトは従来どおり） */
+let failClosedUntilLoaded = false;
+
+/** API サーバー起動時に呼ぶ。対応表を読み込むまで、拠点の解決を 503 で止める。 */
+export function enableSiteDirectoryFailClosed(): void {
+  failClosedUntilLoaded = true;
+}
+
+export function isSiteDirectoryLoaded(): boolean {
+  return loaded;
+}
+
+/**
+ * 同じ deviceScopeKey に異なる明示拠点が付いた端末がある場合は曖昧なので登録しない
+ * （従来の文字列推測に戻る）。
+ */
+export function buildExplicitSiteMap(rows: readonly SiteDirectoryDeviceRow[]): Map<string, string> {
+  const map = new Map<string, string>();
+  const conflicting = new Set<string>();
+  for (const row of rows) {
+    const siteKey = row.siteKey?.trim();
+    if (!siteKey) continue;
+    const deviceScopeKey = resolveDeviceScopeKey(row);
+    const existing = map.get(deviceScopeKey);
+    if (existing !== undefined && existing !== siteKey) {
+      conflicting.add(deviceScopeKey);
+      continue;
+    }
+    map.set(deviceScopeKey, siteKey);
+  }
+  for (const key of conflicting) {
+    map.delete(key);
+  }
+  return map;
+}
+
+export async function refreshSiteDirectory(client: SiteDirectoryClient, now: number = Date.now()): Promise<void> {
+  lastAttemptAt = now;
+  const [rows, sites] = await Promise.all([
+    client.clientDevice.findMany({ select: { name: true, location: true, siteKey: true } }),
+    client.site.findMany({ select: { key: true } })
+  ]);
+  explicitSiteByDeviceScopeKey = buildExplicitSiteMap(rows);
+  registeredSiteKeys = new Set(sites.map((site) => site.key));
+  registeredDeviceScopeKeys = new Set(rows.map((row) => resolveDeviceScopeKey(row)));
+  loaded = true;
+}
+
+/**
+ * TTL 切れなら読み直す。失敗しても前回の対応表を維持し、TTL 経過まで再試行しない。
+ * まだ一度も読み込めていない間は、TTL を待たずに毎回読み直す。
+ */
+export async function ensureSiteDirectoryFresh(client: SiteDirectoryClient, now: number = Date.now()): Promise<void> {
+  if (loaded && now - lastAttemptAt < SITE_DIRECTORY_TTL_MS) return;
+  if (!inflight) {
+    inflight = refreshSiteDirectory(client, now).finally(() => {
+      inflight = null;
+    });
+  }
+  await inflight;
+}
+
+/** 管理画面で端末の拠点を変えた直後などに、次の参照で読み直させる。 */
+export function invalidateSiteDirectory(): void {
+  lastAttemptAt = 0;
+}
+
+/**
+ * scope 文字列（deviceScopeKey または既に siteKey の値）から拠点を求める。
+ * 登録済みの拠点キー（Site.key）はそのまま返す。これにより一度求めた拠点を再度渡しても
+ * 別の拠点へ変わらない（冪等）。それ以外は、登録端末の deviceScopeKey に明示拠点があれば
+ * それを、なければ従来の推測を返す。
+ */
+export function resolveSiteKeyForScopeKey(scopeKey: string): string {
+  if (failClosedUntilLoaded && !loaded) {
+    // 未読込の空の対応表で推測すると、拠点未設定の端末を別拠点として扱ってしまう。
+    throw new ApiError(
+      503,
+      '拠点情報を読み込めていません。しばらくしてから再度お試しください',
+      undefined,
+      'SITE_DIRECTORY_UNAVAILABLE'
+    );
+  }
+  const trimmed = scopeKey.trim();
+  if (registeredSiteKeys.has(trimmed)) return trimmed;
+  const explicit = explicitSiteByDeviceScopeKey.get(trimmed);
+  if (explicit !== undefined) return explicit;
+  // 登録端末のキーなのに明示拠点がない（または端末間で食い違う）場合は推測しない（Milestone 5）。
+  if (registeredDeviceScopeKeys.has(trimmed)) throw siteNotAssignedError(trimmed);
+  // 端末以外の値（shared 系の共有キーや過去データ）だけ、従来どおり文字列から求める。
+  return resolveSiteKeyFromScopeKey(trimmed);
+}
+
+export function resetSiteDirectoryForTest(): void {
+  explicitSiteByDeviceScopeKey = new Map();
+  registeredSiteKeys = new Set();
+  registeredDeviceScopeKeys = new Set();
+  lastAttemptAt = 0;
+  inflight = null;
+  loaded = false;
+  failClosedUntilLoaded = false;
+}

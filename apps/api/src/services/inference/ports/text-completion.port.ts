@@ -11,7 +11,14 @@ export type TextCompletionRequest = {
   maxTokens: number;
   temperature: number;
   enableThinking: boolean;
+  signal?: AbortSignal;
+  jsonOutput?: boolean;
+  background?: boolean;
 };
+
+export class InferenceDeferredError extends Error {
+  constructor() { super('DGX background admission deferred'); this.name = 'InferenceDeferredError'; }
+}
 
 export type TextCompletionResult = {
   rawText: string;

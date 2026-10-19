@@ -1,0 +1,376 @@
+import { createHash, randomUUID } from 'node:crypto';
+import { createReadStream, createWriteStream, promises as fs, type Stats } from 'node:fs';
+import path from 'node:path';
+import { Transform, type Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { logger } from '../../lib/logger.js';
+import type {
+  DurableFileStorePort,
+  FileWriteRequest,
+  StoredFileResult,
+} from './durable-file-store.port.js';
+import { FileStorageIntegrityCatalog } from './file-storage-integrity-catalog.js';
+import {
+  FileStorageAlreadyExistsError,
+  FileStorageCapacityExhaustedError,
+  FileStorageIntegrityMismatchError,
+  FileStorageInvalidPathError,
+  FileStorageUnavailableError,
+} from './file-storage-errors.js';
+import {
+  ensureSecureRoot,
+  normalizeStorageKey,
+  prepareAtomicWrite,
+  resolveSecureFile,
+  syncDirectory,
+} from './secure-atomic-file.js';
+
+export type FileSystemCapacity = {
+  availableBytes: number;
+  totalBytes: number;
+};
+
+export type LocalDurableFileStoreOptions = {
+  minimumFreeBytes: number;
+  capacityReader?: (root: string) => Promise<FileSystemCapacity>;
+};
+
+async function defaultCapacityReader(root: string): Promise<FileSystemCapacity> {
+  // Production Compose bind-mounts durable namespaces separately. The
+  // integrity directory is always on the same host SSD and therefore provides
+  // the durable filesystem's capacity rather than the container overlay's.
+  // Isolated callers may save before the catalog directory has been created,
+  // so use the configured root only for that initial ENOENT case.
+  const stats = await fs
+    .statfs(path.join(root, '.integrity'))
+    .catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return fs.statfs(root);
+      throw error;
+    });
+  return {
+    availableBytes: Number(stats.bavail) * Number(stats.bsize),
+    totalBytes: Number(stats.blocks) * Number(stats.bsize),
+  };
+}
+
+export class LocalDurableFileStore implements DurableFileStorePort {
+  private readonly capacityReader: (root: string) => Promise<FileSystemCapacity>;
+
+  constructor(
+    private readonly root: string,
+    private readonly catalog: FileStorageIntegrityCatalog,
+    private readonly options: LocalDurableFileStoreOptions
+  ) {
+    this.capacityReader = options.capacityReader ?? defaultCapacityReader;
+  }
+
+  async initialize(namespaces: readonly string[]): Promise<void> {
+    await ensureSecureRoot(this.root);
+    for (const namespace of namespaces) {
+      const key = `${normalizeStorageKey(namespace)}/.storage-init`;
+      const marker = await resolveSecureFile(this.root, key, { allowMissing: true });
+      await fs.mkdir(path.dirname(marker), { recursive: true });
+    }
+  }
+
+  async capacity(): Promise<FileSystemCapacity & { reserveBytes: number }> {
+    const capacity = await this.capacityReader(this.root);
+    const reserveBytes = Math.max(
+      this.options.minimumFreeBytes,
+      Math.ceil(capacity.totalBytes * 0.05)
+    );
+    return { ...capacity, reserveBytes };
+  }
+
+  private async assertCapacity(bytesToWrite: number): Promise<void> {
+    // Storage helpers are also used directly by isolated jobs and tests, where
+    // the API startup hook has not initialized the configured root yet.
+    await ensureSecureRoot(this.root);
+    const capacity = await this.capacity();
+    if (capacity.availableBytes - bytesToWrite < capacity.reserveBytes) {
+      throw new FileStorageCapacityExhaustedError();
+    }
+  }
+
+  async write(request: FileWriteRequest): Promise<StoredFileResult> {
+    const [result] = await this.writeBatch([request]);
+    return result!;
+  }
+
+  async writeStream(request: { key: string; source: Readable; integrity: boolean; sizeHint?: number }): Promise<StoredFileResult> {
+    let temporary: string | undefined;
+    let destination: string | undefined;
+    let committed = false;
+    try {
+      const key = normalizeStorageKey(request.key);
+      await this.assertCapacity(request.sizeHint ?? 0);
+      destination = await resolveSecureFile(this.root, key, { allowMissing: true });
+      const parent = path.dirname(destination);
+      temporary = path.join(parent, `.${path.basename(destination)}.${randomUUID()}.tmp`);
+      const handle = await fs.open(temporary, 'wx', 0o600);
+      const digest = createHash('sha256');
+      let size = 0;
+      const hash = new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          digest.update(chunk);
+          size += chunk.length;
+          callback(null, chunk);
+        },
+      });
+      const sink = handle.createWriteStream({ autoClose: false });
+      try {
+        await pipeline(request.source, hash, sink);
+        await handle.sync();
+      } finally {
+        sink.destroy();
+        await handle.close();
+      }
+      try {
+        await fs.link(temporary, destination);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new FileStorageAlreadyExistsError();
+        throw error;
+      }
+      committed = true;
+      await fs.unlink(temporary);
+      await syncDirectory(parent);
+      const sha256 = digest.digest('hex');
+      if (request.integrity) await this.catalog.put({ storageKey: key, sha256, size });
+      return { key, sha256, size };
+    } catch (error) {
+      request.source.destroy();
+      if (committed && destination) {
+        try {
+          await fs.unlink(destination);
+          await syncDirectory(path.dirname(destination));
+        } catch (rollbackError) {
+          throw new FileStorageUnavailableError(rollbackError);
+        }
+      }
+      if ((error as NodeJS.ErrnoException).code === 'ENOSPC') throw new FileStorageCapacityExhaustedError();
+      if (
+        error instanceof FileStorageCapacityExhaustedError ||
+        error instanceof FileStorageIntegrityMismatchError ||
+        (typeof error === 'object' && error !== null && 'statusCode' in error)
+      ) {
+        throw error;
+      }
+      throw new FileStorageUnavailableError(error);
+    } finally {
+      if (temporary) await fs.unlink(temporary).catch(() => undefined);
+    }
+  }
+
+  async writeBatch(requests: readonly FileWriteRequest[]): Promise<StoredFileResult[]> {
+    if (requests.length === 0) return [];
+    const normalized = requests.map((request) => ({
+      ...request,
+      key: normalizeStorageKey(request.key),
+    }));
+    if (new Set(normalized.map((request) => request.key)).size !== normalized.length) {
+      throw new Error('Duplicate storage keys in one batch');
+    }
+    await this.assertCapacity(normalized.reduce((sum, request) => sum + request.data.length, 0));
+
+    const previous = new Map<string, Buffer | null>();
+    const previousRecords = new Map<
+      string,
+      Awaited<ReturnType<FileStorageIntegrityCatalog['get']>>
+    >();
+    const prepared = [];
+    try {
+      for (const request of normalized) {
+        if (request.integrity) {
+          previousRecords.set(request.key, await this.catalog.get(request.key));
+        }
+        if (request.mode === 'replace') {
+          const existingPath = await resolveSecureFile(this.root, request.key, {
+            allowMissing: true,
+          });
+          previous.set(
+            request.key,
+            await fs.readFile(existingPath).catch((error: NodeJS.ErrnoException) => {
+              if (error.code === 'ENOENT') return null;
+              throw error;
+            })
+          );
+        } else {
+          previous.set(request.key, null);
+        }
+        prepared.push(
+          await prepareAtomicWrite(this.root, request.key, request.data, request.mode)
+        );
+      }
+
+      for (const item of prepared) {
+        await item.commit();
+      }
+      for (let index = 0; index < normalized.length; index += 1) {
+        const request = normalized[index]!;
+        const item = prepared[index]!;
+        if (request.integrity) {
+          await this.catalog.put({
+            storageKey: request.key,
+            sha256: item.sha256,
+            size: item.size,
+          });
+        }
+      }
+      return prepared.map((item) => ({
+        key: item.key,
+        sha256: item.sha256,
+        size: item.size,
+      }));
+    } catch (error) {
+      for (const item of [...prepared].reverse()) {
+        if (!item.isCommitted()) continue;
+        const oldData = previous.get(item.key);
+        if (oldData !== null && oldData !== undefined) {
+          const restore = await prepareAtomicWrite(this.root, item.key, oldData, 'replace');
+          await restore.commit().catch(() => undefined);
+          await restore.discard();
+        } else {
+          await fs.unlink(item.destination).catch(() => undefined);
+          await syncDirectory(path.dirname(item.destination)).catch(() => undefined);
+        }
+        const oldRecord = previousRecords.get(item.key);
+        if (oldRecord) {
+          await this.catalog
+            .put({
+              storageKey: item.key,
+              sha256: oldRecord.sha256,
+              size: oldRecord.size,
+              createdAt: oldRecord.createdAt,
+              updatedAt: oldRecord.updatedAt,
+            })
+            .catch(() => undefined);
+        } else if (previousRecords.has(item.key)) {
+          await this.catalog.delete(item.key).catch(() => undefined);
+        }
+      }
+      if (
+        error instanceof FileStorageCapacityExhaustedError ||
+        error instanceof FileStorageIntegrityMismatchError ||
+        (typeof error === 'object' && error !== null && 'statusCode' in error)
+      ) {
+        throw error;
+      }
+      throw new FileStorageUnavailableError(error);
+    } finally {
+      await Promise.all(prepared.map((item) => item.discard()));
+    }
+  }
+
+  async read(key: string, options: { verifyIntegrity: boolean }): Promise<Buffer> {
+    const normalized = normalizeStorageKey(key);
+    const file = await resolveSecureFile(this.root, normalized, { allowMissing: false });
+    const data = await fs.readFile(file);
+    if (options.verifyIntegrity) {
+      const result = await this.catalog.verify(normalized, data);
+      if (result === 'missing') {
+        await this.handleMissingIntegrityRecord(normalized);
+      }
+    }
+    return data;
+  }
+
+  async openReadStream(key: string, options: { start?: number; end?: number } = {}) {
+    const { start, end } = options;
+    if (
+      (start !== undefined && (!Number.isSafeInteger(start) || start < 0)) ||
+      (end !== undefined && (!Number.isSafeInteger(end) || end < 0)) ||
+      (start !== undefined && end !== undefined && start > end)
+    ) {
+      throw new RangeError('Invalid file byte range');
+    }
+    const normalized = normalizeStorageKey(key);
+    const file = await resolveSecureFile(this.root, normalized, { allowMissing: false });
+    const { size } = await fs.stat(file);
+    const record = await this.catalog.get(normalized);
+    if (!record) await this.handleMissingIntegrityRecord(normalized);
+    else if (record.size !== size) throw new FileStorageIntegrityMismatchError();
+    return { stream: createReadStream(file, { start, end }), size };
+  }
+
+  async list(namespace: string): Promise<string[]> {
+    const normalized = normalizeStorageKey(namespace);
+    if (!path.isAbsolute(this.root)) throw new FileStorageInvalidPathError();
+    let directory = this.root;
+    try {
+      for (const segment of ['', ...normalized.split('/')]) {
+        directory = path.join(directory, segment);
+        const stat = await fs.lstat(directory);
+        if (stat.isSymbolicLink() || !stat.isDirectory()) throw new FileStorageInvalidPathError();
+      }
+      return await fs.readdir(directory);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    }
+  }
+
+  async copyToFile(key: string, destination: string, options: { verifyIntegrity: boolean }): Promise<void> {
+    const normalized = normalizeStorageKey(key);
+    const file = await resolveSecureFile(this.root, normalized, { allowMissing: false });
+    const digest = createHash('sha256');
+    let size = 0;
+    const hash = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        digest.update(chunk);
+        size += chunk.length;
+        callback(null, chunk);
+      },
+    });
+    await pipeline(createReadStream(file), hash, createWriteStream(destination));
+    if (options.verifyIntegrity) {
+      const result = await this.catalog.verifyMetadata(normalized, digest.digest('hex'), size);
+      if (result === 'missing') await this.handleMissingIntegrityRecord(normalized);
+    }
+  }
+
+  private async handleMissingIntegrityRecord(key: string): Promise<void> {
+    if (await this.catalog.requiresCatalog()) throw new FileStorageIntegrityMismatchError();
+    logger.warn(
+      { storageKeyHash: await this.storageKeyHash(key) },
+      'Durable file has no integrity catalog record yet'
+    );
+  }
+
+  async stat(key: string): Promise<Stats> {
+    const file = await resolveSecureFile(this.root, key, { allowMissing: false });
+    return fs.stat(file);
+  }
+
+  async hash(key: string): Promise<StoredFileResult> {
+    const normalized = normalizeStorageKey(key);
+    const file = await resolveSecureFile(this.root, normalized, { allowMissing: false });
+    const digest = createHash('sha256');
+    let size = 0;
+    for await (const chunk of createReadStream(file)) {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      digest.update(bytes);
+      size += bytes.length;
+    }
+    return {
+      key: normalized,
+      sha256: digest.digest('hex'),
+      size,
+    };
+  }
+
+  async delete(key: string, options: { integrity: boolean }): Promise<void> {
+    const normalized = normalizeStorageKey(key);
+    const file = await resolveSecureFile(this.root, normalized, { allowMissing: true });
+    await fs.unlink(file).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') throw error;
+    });
+    await syncDirectory(path.dirname(file));
+    if (options.integrity) {
+      await this.catalog.delete(normalized);
+    }
+  }
+
+  private async storageKeyHash(key: string): Promise<string> {
+    return createHash('sha256').update(key).digest('hex');
+  }
+}

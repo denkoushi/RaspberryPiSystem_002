@@ -1,12 +1,6 @@
 import { randomUUID } from 'crypto';
-import { promises as fs } from 'fs';
 import path from 'path';
-
-const getStorageBaseDir = () =>
-  process.env.PHOTO_STORAGE_DIR ||
-  (process.env.NODE_ENV === 'test' ? '/tmp/test-photo-storage' : '/opt/RaspberryPiSystem_002/storage');
-
-const getIllustrationsDir = () => path.join(getStorageBaseDir(), 'pallet-machine-illustrations');
+import { getFileStorageRuntime } from '../services/file-storage/file-storage-runtime.js';
 
 const MIME_TO_EXT: Record<string, string> = {
   'image/png': '.png',
@@ -23,7 +17,7 @@ const PUBLIC_PREFIX = '/api/storage/pallet-machine-illustrations/';
  */
 export class PalletMachineIllustrationStorage {
   static async initialize(): Promise<void> {
-    await fs.mkdir(getIllustrationsDir(), { recursive: true });
+    await getFileStorageRuntime().store.initialize(['pallet-machine-illustrations']);
   }
 
   static assertMime(mimetype: string): string {
@@ -45,9 +39,12 @@ export class PalletMachineIllustrationStorage {
     const ext = this.assertMime(mimetype);
     const id = randomUUID();
     const filename = `${id}${ext}`;
-    const fullPath = path.join(getIllustrationsDir(), filename);
-    await fs.mkdir(getIllustrationsDir(), { recursive: true });
-    await fs.writeFile(fullPath, buffer);
+    await getFileStorageRuntime().store.write({
+      key: `pallet-machine-illustrations/${filename}`,
+      data: buffer,
+      mode: 'create',
+      integrity: true,
+    });
     return {
       relativeUrl: `${PUBLIC_PREFIX}${filename}`,
       contentType: mimetype.toLowerCase().startsWith('image/') ? mimetype : 'application/octet-stream',
@@ -65,8 +62,10 @@ export class PalletMachineIllustrationStorage {
     const ext = path.extname(filename).toLowerCase();
     const contentType =
       ext === '.png' ? 'image/png' : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 'application/octet-stream';
-    const fullPath = path.join(getIllustrationsDir(), filename);
-    const buffer = await fs.readFile(fullPath);
+    const buffer = await getFileStorageRuntime().store.read(
+      `pallet-machine-illustrations/${filename}`,
+      { verifyIntegrity: true }
+    );
     return { buffer, contentType };
   }
 
@@ -78,12 +77,9 @@ export class PalletMachineIllustrationStorage {
     if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
       return;
     }
-    const fullPath = path.join(getIllustrationsDir(), filename);
-    try {
-      await fs.unlink(fullPath);
-    } catch (err: unknown) {
-      const code = (err as NodeJS.ErrnoException)?.code;
-      if (code !== 'ENOENT') throw err;
-    }
+    await getFileStorageRuntime().store.delete(
+      `pallet-machine-illustrations/${filename}`,
+      { integrity: true }
+    );
   }
 }

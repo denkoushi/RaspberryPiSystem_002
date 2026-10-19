@@ -1,5 +1,11 @@
-export const DEFAULT_CLIENT_KEY =
-  import.meta.env.VITE_DEFAULT_CLIENT_KEY ?? 'client-key-raspberrypi4-kiosk1';
+import {
+  readProductionBuildConfig,
+  resolveProductionDefaultClientKey,
+} from '../../config/productionBuildConfig';
+
+const productionBuildConfig = readProductionBuildConfig();
+
+export const DEFAULT_CLIENT_KEY = resolveProductionDefaultClientKey(productionBuildConfig);
 
 export const CLIENT_KEY_CONFIG = {
   storageKey: 'kiosk-client-key',
@@ -9,5 +15,6 @@ export const CLIENT_KEY_CONFIG = {
     linuxArm: DEFAULT_CLIENT_KEY,
     demo: 'client-demo-key'
   },
+  implicitDevelopmentDefaults: productionBuildConfig.isDevelopment,
   pi4Key: 'client-key-raspberrypi4-kiosk1'
 } as const;

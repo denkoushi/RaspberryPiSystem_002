@@ -26,9 +26,9 @@ describe('InferenceRouter', () => {
       providers,
       routes: {
         photo_label: { providerId: 'sub' },
+        business_hermes: { providerId: 'sub' },
         document_summary: { providerId: 'default' },
         admin_console_chat: { providerId: 'default' },
-        stackchan_chat: { providerId: 'default' },
       },
     });
     const r = router.resolve('photo_label');
@@ -41,9 +41,9 @@ describe('InferenceRouter', () => {
       providers,
       routes: {
         photo_label: { providerId: 'default', modelOverride: 'override-x' },
+        business_hermes: { providerId: 'default' },
         document_summary: { providerId: 'default' },
         admin_console_chat: { providerId: 'default' },
-        stackchan_chat: { providerId: 'default' },
       },
     });
     expect(router.resolve('photo_label').model).toBe('override-x');
@@ -54,9 +54,9 @@ describe('InferenceRouter', () => {
       providers,
       routes: {
         photo_label: { providerId: 'nope' },
+        business_hermes: { providerId: 'default' },
         document_summary: { providerId: 'default' },
         admin_console_chat: { providerId: 'default' },
-        stackchan_chat: { providerId: 'default' },
       },
     });
     expect(router.isResolvable('photo_label')).toBe(false);
@@ -68,17 +68,14 @@ describe('InferenceRouter', () => {
       providers,
       routes: {
         photo_label: { providerId: 'default' },
+        business_hermes: { providerId: 'default' },
         document_summary: { providerId: 'default' },
         admin_console_chat: { providerId: 'sub', modelOverride: 'chat-model' },
-        stackchan_chat: { providerId: 'sub', modelOverride: 'chat-model' },
       },
     });
     const adminResolved = router.resolve('admin_console_chat');
-    const stackchanResolved = router.resolve('stackchan_chat');
     expect(adminResolved.provider.id).toBe('sub');
     expect(adminResolved.model).toBe('chat-model');
-    expect(stackchanResolved).toEqual(adminResolved);
     expect(router.isResolvable('admin_console_chat')).toBe(true);
-    expect(router.isResolvable('stackchan_chat')).toBe(true);
   });
 });

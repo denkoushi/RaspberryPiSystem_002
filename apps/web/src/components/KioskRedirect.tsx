@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { useKioskConfig } from '../api/hooks';
+import { readProductionBuildConfig } from '../config/productionBuildConfig';
 import { resolveKioskInitialRedirectDecision } from '../features/kiosk/kioskInitialRedirect';
 
 /**
@@ -25,7 +26,7 @@ export function KioskRedirect() {
 
   useEffect(() => {
     // デバッグログの出力制御（環境変数で制御可能、デフォルトは開発中は常に出力）
-    const enableDebugLogs = import.meta.env.VITE_ENABLE_DEBUG_LOGS !== 'false';
+    const enableDebugLogs = readProductionBuildConfig().debugLogsEnabled;
     
     const lastKioskPath = sessionStorage.getItem('kiosk-last-path') || '';
 

@@ -1,0 +1,401 @@
+---
+- name: Restore the previous Business Hermes runtime environment
+  ansible.builtin.copy:
+    src: "{{ business_hermes_runtime_env_backup_file }}"
+    dest: "{{ business_hermes_runtime_env_file }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "{{ business_hermes_runtime_env_original_mode }}"
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - business_hermes_runtime_env_backup_ready | default(false) | bool
+
+- name: Remove a newly created Business Hermes runtime environment after rollback
+  ansible.builtin.file:
+    path: "{{ business_hermes_runtime_env_file }}"
+    state: absent
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - not (business_hermes_runtime_env_preexisting | default(false) | bool)
+    - business_hermes_runtime_env_materialized | default(false) | bool
+
+- name: Restore the previous Business Hermes candidate environment
+  ansible.builtin.copy:
+    src: "{{ business_hermes_candidate_env_backup_file }}"
+    dest: "{{ business_hermes_candidate_env_file }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "{{ business_hermes_candidate_env_original_mode }}"
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - business_hermes_candidate_env_backup_ready | default(false) | bool
+
+- name: Remove a newly created Business Hermes candidate environment after rollback
+  ansible.builtin.file:
+    path: "{{ business_hermes_candidate_env_file }}"
+    state: absent
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - business_hermes_candidate_env_file is defined
+    - not (business_hermes_candidate_env_preexisting | default(false) | bool)
+    - business_hermes_candidate_env_materialized | default(false) | bool
+
+- name: Restore the previous Business Hermes configuration
+  ansible.builtin.copy:
+    src: "{{ business_hermes_config_backup_file }}"
+    dest: "{{ business_hermes_config_target_file }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "{{ business_hermes_config_original_mode }}"
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - business_hermes_config_backup_ready | default(false) | bool
+
+- name: Remove a newly created Business Hermes configuration after rollback
+  ansible.builtin.file:
+    path: "{{ business_hermes_config_target_file }}"
+    state: absent
+  no_log: true
+  when:
+    - business_hermes_backup_env_files | default(false) | bool
+    - not (business_hermes_config_preexisting | default(false) | bool)
+    - business_hermes_config_materialized | default(false) | bool
+
+- name: Restore the original Pi5 Compose environment before rollback
+  ansible.builtin.set_fact:
+    release_pi5_compose_environment: "{{ release_pi5_rollback_compose_environment | default(release_pi5_compose_environment) }}"
+
+- name: Restore the previous Business Hermes egress runtime after a timeout transition
+  block:
+    - name: Bind captured Business Hermes egress rollback settings
+      ansible.builtin.set_fact:
+        release_pi5_compose_environment: >-
+          {{
+            release_pi5_compose_environment | combine({
+              'BUSINESS_HERMES_EGRESS_IMAGE': release_pi5_business_hermes_egress_existing_image,
+              'BUSINESS_HERMES_PROVIDER': release_pi5_business_hermes_egress_existing_provider,
+              'BUSINESS_HERMES_EGRESS_TIMEOUT_MS': release_pi5_business_hermes_egress_existing_timeout_ms
+            })
+          }}
+      no_log: true
+      when: release_pi5_business_hermes_egress_existing_id | default('') | trim | length > 0
+
+    - name: Recreate the previous Business Hermes egress runtime
+      ansible.builtin.command:
+        argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string, 'business-hermes-egress'] }}"
+      environment: "{{ release_pi5_compose_environment }}"
+      changed_when: true
+      when: release_pi5_business_hermes_egress_existing_id | default('') | trim | length > 0
+
+    - name: Resolve the restored Business Hermes egress runtime
+      ansible.builtin.command:
+        argv:
+          - docker
+          - ps
+          - --all
+          - --filter
+          - "label=com.docker.compose.project={{ release_pi5_compose_project }}"
+          - --filter
+          - label=com.docker.compose.service=business-hermes-egress
+          - --format
+          - "{{ '{{.ID}}' }}"
+      register: release_pi5_business_hermes_egress_restored
+      changed_when: false
+      when: release_pi5_business_hermes_egress_existing_id | default('') | trim | length > 0
+
+    - name: Inspect the restored Business Hermes egress runtime
+      ansible.builtin.command:
+        argv:
+          - docker
+          - inspect
+          - --format
+          - "{{ '{{.Config.Image}}|{{.State.Running}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' }}"
+          - "{{ release_pi5_business_hermes_egress_restored.stdout | trim }}"
+      register: release_pi5_business_hermes_egress_restored_identity
+      changed_when: false
+      no_log: true
+      when:
+        - release_pi5_business_hermes_egress_existing_id | default('') | trim | length > 0
+        - release_pi5_business_hermes_egress_restored.stdout | trim | length > 0
+
+    - name: Inspect the restored Business Hermes egress environment
+      ansible.builtin.command:
+        argv:
+          - docker
+          - inspect
+          - --format
+          - "{{ '{{json .Config.Env}}' }}"
+          - "{{ release_pi5_business_hermes_egress_restored.stdout | trim }}"
+      register: release_pi5_business_hermes_egress_restored_env
+      changed_when: false
+      no_log: true
+      when:
+        - release_pi5_business_hermes_egress_existing_id | default('') | trim | length > 0
+        - release_pi5_business_hermes_egress_restored.stdout | trim | length > 0
+
+    - name: Require the previous Business Hermes egress image and timeout
+      ansible.builtin.assert:
+        that:
+          - release_pi5_business_hermes_egress_restored.stdout | trim is match('^[0-9a-f]{12,64}$')
+          - release_pi5_business_hermes_egress_restored_identity.stdout.split('|')[0] == release_pi5_business_hermes_egress_existing_image
+          - release_pi5_business_hermes_egress_restored_identity.stdout.split('|')[1] == 'true'
+          - release_pi5_business_hermes_egress_restored_identity.stdout.split('|')[2] == 'healthy'
+          - >-
+            "BUSINESS_HERMES_PROVIDER={{ release_pi5_business_hermes_egress_existing_provider }}"
+            in (release_pi5_business_hermes_egress_restored_env.stdout | from_json)
+          - >-
+            "BUSINESS_HERMES_EGRESS_TIMEOUT_MS={{ release_pi5_business_hermes_egress_existing_timeout_ms }}"
+            in (release_pi5_business_hermes_egress_restored_env.stdout | from_json)
+        fail_msg: Previous Business Hermes egress image, timeout, and healthy state were not restored.
+      no_log: true
+      when: release_pi5_business_hermes_egress_existing_id | default('') | trim | length > 0
+
+    - name: Stop the restored Business Hermes egress that was inactive before rollout
+      ansible.builtin.command:
+        argv: [docker, stop, --time, '10', "{{ release_pi5_business_hermes_egress_restored.stdout | trim }}"]
+      changed_when: true
+      when:
+        - release_pi5_business_hermes_egress_existing_id | default('') | trim | length > 0
+        - not (release_pi5_business_hermes_egress_existing_running | default(false) | bool)
+
+    - name: Resolve Business Hermes egress after restoring its absent state
+      ansible.builtin.command:
+        argv:
+          - docker
+          - ps
+          - --all
+          - --filter
+          - "label=com.docker.compose.project={{ release_pi5_compose_project }}"
+          - --filter
+          - label=com.docker.compose.service=business-hermes-egress
+          - --format
+          - "{{ '{{.ID}}' }}"
+      register: release_pi5_business_hermes_egress_after_restore_candidates
+      changed_when: false
+      when: release_pi5_business_hermes_egress_existing_id | default('') | trim | length == 0
+
+    - name: Remove a Business Hermes egress created by a failed timeout transition
+      ansible.builtin.command:
+        argv: [docker, rm, --force, "{{ release_pi5_business_hermes_egress_after_restore_candidates.stdout | trim }}"]
+      changed_when: true
+      when:
+        - release_pi5_business_hermes_egress_existing_id | default('') | trim | length == 0
+        - release_pi5_business_hermes_egress_after_restore_candidates.stdout | trim | length > 0
+
+    - name: Confirm no Business Hermes egress remains when none existed before rollout
+      ansible.builtin.command:
+        argv:
+          - docker
+          - ps
+          - --all
+          - --filter
+          - "label=com.docker.compose.project={{ release_pi5_compose_project }}"
+          - --filter
+          - label=com.docker.compose.service=business-hermes-egress
+          - --format
+          - "{{ '{{.ID}}' }}"
+      register: release_pi5_business_hermes_egress_after_restore
+      changed_when: false
+      when: release_pi5_business_hermes_egress_existing_id | default('') | trim | length == 0
+
+    - name: Require no Business Hermes egress after restoring its absent state
+      ansible.builtin.assert:
+        that:
+          - release_pi5_business_hermes_egress_after_restore.stdout | trim | length == 0
+        fail_msg: Business Hermes egress was created during the failed transition and could not be removed.
+      when: release_pi5_business_hermes_egress_existing_id | default('') | trim | length == 0
+
+    - name: Verify the previous inactive Business Hermes egress state
+      ansible.builtin.command:
+        argv:
+          - docker
+          - inspect
+          - --format
+          - "{{ '{{.State.Running}}' }}"
+          - "{{ release_pi5_business_hermes_egress_restored.stdout | trim }}"
+      register: release_pi5_business_hermes_egress_restored_state
+      changed_when: false
+      when:
+        - release_pi5_business_hermes_egress_existing_id | default('') | trim | length > 0
+        - not (release_pi5_business_hermes_egress_existing_running | default(false) | bool)
+
+    - name: Require the previous inactive Business Hermes egress state
+      ansible.builtin.assert:
+        that:
+          - release_pi5_business_hermes_egress_restored_state.stdout | trim == 'false'
+        fail_msg: The previously inactive Business Hermes egress did not remain stopped after rollback.
+      when:
+        - release_pi5_business_hermes_egress_existing_id | default('') | trim | length > 0
+        - not (release_pi5_business_hermes_egress_existing_running | default(false) | bool)
+
+    - name: Record verified Business Hermes egress rollback
+      ansible.builtin.set_fact:
+        release_pi5_business_hermes_egress_transition_rolled_back: true
+  rescue:
+    - name: Resolve the Business Hermes egress after an incomplete rollback
+      ansible.builtin.command:
+        argv:
+          - docker
+          - ps
+          - --all
+          - --filter
+          - "label=com.docker.compose.project={{ release_pi5_compose_project }}"
+          - --filter
+          - label=com.docker.compose.service=business-hermes-egress
+          - --format
+          - "{{ '{{.ID}}' }}"
+      register: release_pi5_business_hermes_egress_failed_restore_candidates
+      changed_when: false
+      failed_when: false
+      when:
+        - release_pi5_business_hermes_egress_existing_id | default('') | trim | length > 0
+        - not (release_pi5_business_hermes_egress_existing_running | default(false) | bool)
+
+    - name: Inspect the Business Hermes egress after an incomplete rollback
+      ansible.builtin.command:
+        argv:
+          - docker
+          - inspect
+          - --format
+          - "{{ '{{.State.Running}}' }}"
+          - "{{ release_pi5_business_hermes_egress_failed_restore_candidates.stdout | trim }}"
+      register: release_pi5_business_hermes_egress_failed_restore_state
+      changed_when: false
+      failed_when: false
+      when:
+        - release_pi5_business_hermes_egress_existing_id | default('') | trim | length > 0
+        - not (release_pi5_business_hermes_egress_existing_running | default(false) | bool)
+        - release_pi5_business_hermes_egress_failed_restore_candidates.rc | default(1) == 0
+        - release_pi5_business_hermes_egress_failed_restore_candidates.stdout | trim | length > 0
+
+    - name: Stop a Business Hermes egress left running after an incomplete rollback
+      ansible.builtin.command:
+        argv: [docker, stop, --time, '10', "{{ release_pi5_business_hermes_egress_failed_restore_candidates.stdout | trim }}"]
+      register: release_pi5_business_hermes_egress_failed_restore_stop
+      changed_when: release_pi5_business_hermes_egress_failed_restore_stop.rc == 0
+      failed_when: false
+      when:
+        - release_pi5_business_hermes_egress_existing_id | default('') | trim | length > 0
+        - not (release_pi5_business_hermes_egress_existing_running | default(false) | bool)
+        - release_pi5_business_hermes_egress_failed_restore_state.rc | default(1) == 0
+        - release_pi5_business_hermes_egress_failed_restore_state.stdout | trim == 'true'
+
+    - name: Record incomplete Business Hermes egress rollback
+      ansible.builtin.set_fact:
+        release_pi5_business_hermes_egress_restore_failed: true
+        release_pi5_business_hermes_egress_restore_error: >-
+          Business Hermes egress rollback failed at
+          {{ ansible_failed_task.name | default('an unknown step') }}.
+      no_log: true
+  when:
+    - release_pi5_business_hermes_egress_transition_attempted | default(false) | bool
+
+- name: Restore the original Pi5 Compose environment after Business Hermes egress rollback
+  ansible.builtin.set_fact:
+    release_pi5_compose_environment: "{{ release_pi5_rollback_compose_environment | default(release_pi5_compose_environment) }}"
+
+- name: Restore the previous Pi5 scheduler and route
+  block:
+    - name: Restart previous Pi5 API with its captured image
+      ansible.builtin.command:
+        argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string, 'api-' + release_pi5_previous_slot] }}"
+      environment: "{{ release_pi5_compose_environment }}"
+      changed_when: true
+      when: >-
+        release_pi5_switch_attempted | default(false) | bool
+        or release_pi5_handoff_attempted | default(false) | bool
+
+    - name: Resolve restored previous Pi5 API container
+      ansible.builtin.command:
+        argv: "{{ release_pi5_compose_argv + ['ps', '-q', 'api-' + release_pi5_previous_slot] }}"
+      environment: "{{ release_pi5_compose_environment }}"
+      register: release_pi5_restored_api
+      changed_when: false
+      when: >-
+        release_pi5_switch_attempted | default(false) | bool
+        or release_pi5_handoff_attempted | default(false) | bool
+
+    - name: Wait for restored previous Pi5 scheduler leader
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ release_pi5_restored_api.stdout }}", node, -e, "{{ release_pi5_leader_script }}"]
+      vars:
+        release_pi5_leader_script: >-
+          fetch('http://127.0.0.1:8080/api/system/deploy-readiness/internal').then(async r=>{const b=await
+          r.json();const s=b.scheduler||{};process.exit(r.ok&&b.ready===true&&b.database==='ready'&&s.enabled===true&&
+          s.role==='leader'&&s.databaseConnection==='connected'?0:1)}).catch(()=>process.exit(1))
+      register: release_pi5_restored_leader
+      retries: 30
+      delay: 2
+      until: release_pi5_restored_leader is succeeded
+      changed_when: false
+      when: >-
+        release_pi5_switch_attempted | default(false) | bool
+        or release_pi5_handoff_attempted | default(false) | bool
+
+    - name: Atomically restore previous known Pi5 routing
+      ansible.builtin.shell: |
+        set -euo pipefail
+        destination={{ (release_pi5_gateway_config_dir + '/Caddyfile') | quote }}
+        temporary="${destination}.rollback.{{ release_run_id }}"
+        cp {{ release_pi5_previous_config | quote }} "${temporary}"
+        chmod 0644 "${temporary}"
+        mv -Tf "${temporary}" "${destination}"
+      args:
+        executable: /bin/bash
+      changed_when: true
+      when: >-
+        release_pi5_switch_attempted | default(false) | bool
+        or release_pi5_handoff_attempted | default(false) | bool
+
+    - name: Reload restored canonical Pi5 routing
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ release_pi5_gateway_id }}", caddy, reload, --config, /srv/bluegreen/Caddyfile]
+      changed_when: true
+      when: >-
+        release_pi5_switch_attempted | default(false) | bool
+        or release_pi5_handoff_attempted | default(false) | bool
+
+    - name: Verify restored Pi5 public API
+      ansible.builtin.uri:
+        url: "{{ release_pi5_api_health_url }}"
+        validate_certs: "{{ release_pi5_validate_certs }}"
+        status_code: 200
+      when: >-
+        release_pi5_switch_attempted | default(false) | bool
+        or release_pi5_handoff_attempted | default(false) | bool
+
+    - name: Verify restored Pi5 public Web
+      ansible.builtin.uri:
+        url: "{{ release_pi5_web_health_url }}"
+        validate_certs: "{{ release_pi5_validate_certs }}"
+        status_code: 200
+      when: >-
+        release_pi5_switch_attempted | default(false) | bool
+        or release_pi5_handoff_attempted | default(false) | bool
+
+    - name: Record verified Pi5 candidate rollback
+      ansible.builtin.set_fact:
+        release_pi5_rolled_back: true
+      when: >-
+        release_pi5_switch_attempted | default(false) | bool
+        or release_pi5_handoff_attempted | default(false) | bool
+  rescue:
+    - name: Fail when Pi5 candidate rollback is incomplete
+      ansible.builtin.fail:
+        msg: Standard Pi5 candidate failed and automatic rollback did not restore route, leader, API, and Web.
+
+- name: Preserve the original Pi5 candidate failure after rollback
+  ansible.builtin.fail:
+    msg: >-
+      Standard Pi5 candidate failed; automatic rollback restored the previous route and scheduler when required.
+      {% if release_pi5_business_hermes_egress_restore_failed | default(false) | bool %}
+      Business Hermes egress rollback was incomplete and requires remediation.
+      {% endif %}

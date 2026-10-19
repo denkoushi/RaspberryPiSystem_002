@@ -4,7 +4,7 @@
 
 キオスク専用の **負荷調整** 画面（`/kiosk/production-schedule/load-balancing`）では、資源CDごとの **月次必要工数**（`FSIGENSHOYORYO` 合計）と **設定した能力** を比較し、超過状況を可視化します。**社内移管サジェスト**は工程行単位で別資源CDへの移管候補を提示するのみです。**外注候補シミュ**は選択した工程行を社内負荷から除外する試算のみです。いずれも自動で順番や割当を変更しません。
 
-画面内タブ:
+画面内タブ（〜2026-09-29 の旧画面。現行は下の「現行画面」）:
 
 | タブ | 用途 | 月の定義 |
 |------|------|----------|
@@ -12,7 +12,47 @@
 | **機種別月次負荷** | 機種（MH/SH 行 `FHINMEI`）→ 部品 → 月×資源CDの積み上げ | **有効納期**（行備考 `dueDate` → なければ `plannedEndDate`）の暦月 |
 | **着手日・平準化** | 着手日〜有効納期の日割り負荷・月/日次・平準化シミュ | **日割り後**を月合算／日別表示（着手日は `plannedStartDate`） |
 
-## UI レイアウト（2026-05-28 · 資源CD俯瞰）
+## 現行画面（2026-09-30〜 · 1画面・タブなし）
+
+旧3タブ（資源CD俯瞰・機種別月次負荷・着手日・平準化）を 1 画面に統合した。以下の旧 UI 節は履歴として残す。
+
+**画面構成**
+
+| 場所 | 内容 |
+|------|------|
+| ヘッダー | 期間（当月から 6 か月・◀▶ で最大 6 か月先まで）· 機種絞り込み · KPI（超過資源・超過計H・遅れ残H・能力未設定・未配分）· ⓘ（集計の説明）· V（Mac 代理） |
+| 左：ヒートマップ | 資源 × 月（先頭に「遅れ」列）。負荷率で色分け（〜85% / 85〜100% / 100%超）。能力未設定は斜線で H のみ。超過の大きい資源から並ぶ。矢印キーでセル移動 |
+| 右：明細 | 選んだセルの 必要・能力・超過、日別負荷（能力線つき）、工程行ごとの **外注 / 移管 / 後ろへ**、⚡超過分を自動で崩す |
+| 下：試算バー | 操作の件数と H、超過計の 前→後、1つ戻す・クリア。**DB は更新しない** |
+
+**集計（`GET /kiosk/production-schedule/load-balancing/workspace`）**
+
+- 軸は ADR-20260527 のとおり **着手日〜有効納期の稼働日に日割り**（3 タブで違っていた「月」の定義をこれに統一）。
+- 未完了行の残りは **max(着手日, 今日) 〜 有効納期** に置く。過去日に配って表示から消えることはない。今日は JST 暦日。
+- 有効納期が今日より前の行は日割りせず **遅れ** 列に全量を置く（クエリの `includeOverdueBefore`）。
+- 能力未設定（基準・月次とも無し）は **0 扱いしない**。超過・自動崩し・KPI の超過計に数えない。
+- 着手日・納期欠損、工数 0、稼働日なしの行は **未配分** として件数と一覧を出す。
+- 機種名は製番の MH/SH 行 `FHINMEI`（`resolveSeibanMachineDisplayNamesBatched`）。
+- 実装: `load-balancing-workspace.{types,assembler,service}.ts`。日別は `GET .../workspace/day?month=&resourceCd=`。
+- **速度（2026-09-30）**: 重い元データ（winner 行・工程行クエリ・機種名）を、順位ボード・製番ボードと同じ世代トークン（`readGrindingPlanningBoardSnapshotGenerationToken`）が変わるまで API プロセス内に保存して使い回す（`load-balancing-workspace-source-cache.ts`、5 分・16 件まで）。能力・分類・移管ルールは毎回読むので、能力編集はすぐ反映される。日別（`workspace/day`）は `fromMonth`/`toMonth` を渡すと同じ保存済みデータから作る。段階別の時間は `GRINDING_PLANNING_BOARD_PERF_LOG` 有効時に `route: load-balancing-workspace` / `load-balancing-workspace-day` で記録。
+- **機種名の解決（2026-09-30）**: 本番の段階ログで初回 14.7 秒のうち機種名が 12.2 秒（`resolveSeibanMachineDisplayNamesBatched` が 100 製番ずつ直列に進捗集計ごと引いていた）。負荷調整は既に持っている winner 行 id で機種名だけを 1 クエリで引く `resolveSeibanMachineDisplayNamesForWinnerRows` に替えた（解決順は同じ: MH/SH 行 FHINMEI → 補完テーブル → 機種名未登録）。本番 DB で 1550 製番を約 0.5 秒（読み取りのみで計測）。セルを押したときの日別は 1.4〜2.4 秒 → 0.29〜0.37 秒（保存済み元データの使い回し）。
+- 機種名は他のキオスク画面と同じ `normalizeMachineName`（全角英数→半角・大文字）で表示・絞り込みする。
+
+**試算の操作（Web のみ・`loadBalancingScenario.ts`）**
+
+- **外注**: その行を社内負荷から外す。
+- **移管**: 移管ルール（分類→分類・優先度・効率係数）で行ける資源へ。移管先に載る分 = 行の分 / 効率係数。メニューに各移管先の余力を出す。
+- **後ろへ**: 選んだ月にある分を次の月へ（遅れ列からは表示範囲の先頭月へ）。
+- **自動で崩す**: 超過量に一番近い（それ以上の）行から選び、全月で余力に収まる移管先があれば移管、なければ外注。
+
+**能力のその場編集**
+
+- ヒートマップの資源名横（未設定は「能力？」）または明細の「能力 ✎」から、月あたり H を入力して保存。
+- `PUT /kiosk/production-schedule/load-balancing/capacity-base`（`{ resourceCd, baseAvailableMinutes }`）→ 端末の siteKey に **基準能力 1 件だけ upsert**（他資源・shared は触らない）。月次上書きは管理画面のまま。
+
+**旧 API**: `overview` / `suggestions` / `outsourcing-*` / `machine-monthly-load` / `start-date-leveling`（`/simulate` 含む）は、新画面の本番反映後（2026-09-30）にサーバ・Web クライアント・専用サービスごと**削除済み**。キオスクが使う負荷調整 API は上記 `workspace` / `workspace/day` / `capacity-base` の 3 本だけ。
+
+## UI レイアウト（2026-05-28 · 資源CD俯瞰・旧画面）
 
 - **正本**: 静的プレビュー [kiosk-load-balancing-layout-preview.html](../previews/kiosk-load-balancing-layout-preview.html)（**2026-05-28**: ワークスペース配置・表 14px・**X軸=上段CD+下段表示名縦書き** を反映）
 - **契約モジュール**: `loadBalancingUiClasses.ts`（ページ/カード/表/ボタン/チップの Tailwind クラス）
@@ -56,7 +96,9 @@ API（管理者）: `/production-schedule-settings/load-balancing/*`（`work-cal
 - キオスク向け読み取り（`*Resolved`）は **`siteKey` 行を優先**し、不足分だけ **`shared` を補完**する（資源カテゴリ設定と同趣旨）。**DB 移行は不要**。
 - **移管ルール**のマージキーは DB と同じ **`fromClassCode` + `toClassCode` + `priority`**。site で priority だけ変えても、shared の別 priority 行は残る（from/to 単位の全面置換ではない）。
 
-## キオスク API
+## キオスク API（旧画面・削除済み）
+
+以下は旧画面の API の記録。**2026-09-30 に削除済み**で、現在は呼べない（現行は上記「旧 API」注記を参照）。
 
 - `GET /kiosk/production-schedule/load-balancing/overview?month=YYYY-MM&targetDeviceScopeKey=...`
 - `POST /kiosk/production-schedule/load-balancing/suggestions`
@@ -88,7 +130,7 @@ API（管理者）: `/production-schedule-settings/load-balancing/*`（`work-cal
 
 Mac の device-scope v2 有効時は、他画面と同様 **`targetDeviceScopeKey` 必須**（未指定時は 400）。
 
-## 機種別月次負荷（UI）
+## 機種別月次負荷（UI・旧画面）
 
 - **開始月・終了月**: 初期値は当月から **6 か月**（最大 **12 か月**）。
 - **機種選択**: 一覧は期間内の未完了負荷から集計した `FHINMEI`（機種名未登録ラベル含む）。
@@ -100,7 +142,7 @@ Mac の device-scope v2 有効時は、他画面と同様 **`targetDeviceScopeKe
 - API: `machine-monthly-load-*.ts`, `year-month-range.ts`
 - Web: `LoadBalancingMachineMonthlyTab.tsx`, `LoadBalancingOverviewTab.tsx`, `LoadBalancingMacProxyPanel.tsx`, `mapMachineMonthlyLoadChartRows.ts`
 
-## 資源CD俯瞰・外注候補シミュ（UI）
+## 資源CD俯瞰・外注候補シミュ（UI・旧画面）
 
 - **超過資源選択**: `overMinutes > 0` の資源CDを複数選択（初期は全超過資源を選択）。
 - **推奨セット（部品）**: 「推奨セットを自動選定」→ 部品一覧・残超過・**外す** / **入れ替え** / **クリア**（**DB 更新なし**）。
@@ -150,7 +192,7 @@ Mac の device-scope v2 有効時は、他画面と同様 **`targetDeviceScopeKe
 
 **体感速度の注意**: タブ初回の `machine-monthly-load`・`start-date-leveling` は **十数秒〜30秒**かかることがある（2026-05-27 Pi5 実測）。自動選定単体は **plan 約 1s 台**（simulate 省略後）。React Query **`staleTime`**: overview **60s**、機種別月次・着手日 **120s**。
 
-## 着手日・平準化（UI）
+## 着手日・平準化（UI・旧画面）
 
 - **開始月・終了月**: 初期値は当月から **6 か月**（最大 **12 か月**）。
 - **表示**: **月次**（月×資源の積み上げ）／ **日次**（対象月の日別・資源CD任意で能力比較）。

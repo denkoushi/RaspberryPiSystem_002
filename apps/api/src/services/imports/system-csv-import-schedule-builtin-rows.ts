@@ -1,3 +1,5 @@
+import { PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS } from '../gmail/gmail-subject-reservation.policy.js';
+import { PROCEDURE_MATERIAL_GMAIL_CSV_IMPORT_SCHEDULE_ID, PROCEDURE_MATERIAL_GMAIL_CSV_IMPORT_SCHEDULE_CRON } from './procedure-material-import-schedule.policy.js';
 import type { BackupConfig } from '../backup/backup-config.js';
 import {
   PRODUCTION_SCHEDULE_CUSTOMER_SCAW_DASHBOARD_ID,
@@ -11,6 +13,11 @@ import {
   RIGGING_SLINGS_INSPECTION_CSV_IMPORT_SCHEDULE_ID,
   RIGGING_SLINGS_INSPECTION_POWERAPPS_DASHBOARD_ID,
 } from '../rigging/constants.js';
+import {
+  SCAW_STFUTEKIGO_CSV_IMPORT_SCHEDULE_CRON,
+  SCAW_STFUTEKIGO_CSV_IMPORT_SCHEDULE_ID,
+  SCAW_STFUTEKIGO_DASHBOARD_ID,
+} from '../scaw-stfutekigo/constants.js';
 
 export {
   RIGGING_SLINGS_INSPECTION_CSV_IMPORT_SCHEDULE_CRON,
@@ -50,6 +57,9 @@ export const CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_ID = 'csv-import-productionschedu
 
 /** 日曜 5:31 JST（仕様固定） */
 export const CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_CRON = '31 5 * * 0';
+
+/** Gmail 経由で scawSTFUTEKIGO CsvDashboard を定期取り込みする固定スケジュールID */
+export { SCAW_STFUTEKIGO_CSV_IMPORT_SCHEDULE_CRON, SCAW_STFUTEKIGO_CSV_IMPORT_SCHEDULE_ID };
 
 export function buildDefaultFkojunstCsvImportSchedule(): CsvImportScheduleRow {
   return {
@@ -116,6 +126,19 @@ export function buildDefaultCustomerScawCsvImportSchedule(): CsvImportScheduleRo
   };
 }
 
+export function buildDefaultScawStfutekigoCsvImportSchedule(): CsvImportScheduleRow {
+  return {
+    id: SCAW_STFUTEKIGO_CSV_IMPORT_SCHEDULE_ID,
+    name: 'ScawStFutekigo (Gmail, full snapshot)',
+    provider: 'gmail',
+    targets: [{ type: 'csvDashboards', source: SCAW_STFUTEKIGO_DASHBOARD_ID }],
+    schedule: SCAW_STFUTEKIGO_CSV_IMPORT_SCHEDULE_CRON,
+    enabled: true,
+    replaceExisting: false,
+    autoBackupAfterImport: { enabled: false, targets: ['csv'] },
+  };
+}
+
 export function buildDefaultRiggingSlingsInspectionCsvImportSchedule(): CsvImportScheduleRow {
   return {
     id: RIGGING_SLINGS_INSPECTION_CSV_IMPORT_SCHEDULE_ID,
@@ -129,13 +152,26 @@ export function buildDefaultRiggingSlingsInspectionCsvImportSchedule(): CsvImpor
   };
 }
 
+export function buildDefaultProcedureMaterialCsvImportSchedule(): CsvImportScheduleRow {
+  return {
+    id: PROCEDURE_MATERIAL_GMAIL_CSV_IMPORT_SCHEDULE_ID,
+    name: '要領書の素材(Gmail)', provider: 'gmail',
+    targets: [{ type: 'procedureMaterialGmail', source: PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS[0] }],
+    schedule: PROCEDURE_MATERIAL_GMAIL_CSV_IMPORT_SCHEDULE_CRON,
+    enabled: false, replaceExisting: false,
+    autoBackupAfterImport: { enabled: false, targets: ['csv'] },
+  };
+}
+
 /** システム予約スケジュールID → デフォルト行ビルダー（拡張時はここに追加） */
 export const SYSTEM_CSV_IMPORT_SCHEDULE_DEFAULT_BUILDERS: Record<string, () => CsvImportScheduleRow> = {
+  [PROCEDURE_MATERIAL_GMAIL_CSV_IMPORT_SCHEDULE_ID]: buildDefaultProcedureMaterialCsvImportSchedule,
   [FKOJUNST_CSV_IMPORT_SCHEDULE_ID]: buildDefaultFkojunstCsvImportSchedule,
   [FKOJUNST_STATUS_MAIL_CSV_IMPORT_SCHEDULE_ID]: buildDefaultFkojunstStatusMailCsvImportSchedule,
   [FKOBAINO_CSV_IMPORT_SCHEDULE_ID]: buildDefaultFkobainoCsvImportSchedule,
   [SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID]: buildDefaultSeibanMachineNameSupplementCsvImportSchedule,
   [CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_ID]: buildDefaultCustomerScawCsvImportSchedule,
+  [SCAW_STFUTEKIGO_CSV_IMPORT_SCHEDULE_ID]: buildDefaultScawStfutekigoCsvImportSchedule,
   [RIGGING_SLINGS_INSPECTION_CSV_IMPORT_SCHEDULE_ID]: buildDefaultRiggingSlingsInspectionCsvImportSchedule,
 };
 

@@ -1,0 +1,354 @@
+import { projectAssemblyProcedureOverlayBBoxToCrop } from '@raspi-system/shared-types';
+import { useCallback, useRef } from 'react';
+
+import {
+  placeProcedureMaterial,
+  createAssemblyProcedureImageRegion,
+  findAssemblyProcedureTextCandidates,
+  uploadAssemblyProcedureOverlayImage
+} from '../../../api/client';
+import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
+
+import { createOverlayForRange, type OverlayCreationKind, type OverlayDraftAction } from './assemblyDocumentEditorDraft';
+
+import type { ProcedureMaterialDto } from '../procedure-manuals/procedure-material-types';
+import type {
+  AssemblyProcedureDocumentDto,
+  AssemblyProcedureTextCandidateDto
+} from '../types';
+import type {
+  OverlayRegionImage,
+  AssemblyProcedureOverlayBBox,
+  AssemblyProcedureOverlayElement
+} from '@raspi-system/shared-types';
+import type { Dispatch, SetStateAction } from 'react';
+
+type StateSetter<T> = Dispatch<SetStateAction<T>>;
+
+type TextCandidateRange = {
+  pageIndex: number;
+  bbox: AssemblyProcedureOverlayBBox;
+  overlayId?: string;
+};
+
+export type AssemblyProcedureDocumentOverlayCommandSession = {
+  document: AssemblyProcedureDocumentDto | null;
+  elements: AssemblyProcedureOverlayElement[];
+  passwordInput: string;
+  busy: boolean;
+  pendingRange: AssemblyProcedureOverlayBBox | null;
+  readOnly: boolean;
+  selectedElement: AssemblyProcedureOverlayElement | null;
+  selectedPage: { pageIndex: number } | null;
+  setDocument: StateSetter<AssemblyProcedureDocumentDto | null>;
+  setBusy: StateSetter<boolean>;
+  setMessage: StateSetter<string | null>;
+  setErrorMessage?: StateSetter<string | null>;
+  setPendingRange: StateSetter<AssemblyProcedureOverlayBBox | null>;
+  setSelectionMode: StateSetter<boolean>;
+  setSelectedOverlayId: StateSetter<string | null>;
+  setTextCandidates: StateSetter<AssemblyProcedureTextCandidateDto[]>;
+  setTextCandidateRange: StateSetter<TextCandidateRange | null>;
+  dispatch: Dispatch<OverlayDraftAction>;
+  textCandidateRange: TextCandidateRange | null;
+  holderToken?: string | null;
+  onEditLeaseError?: (error: unknown) => boolean;
+};
+
+function regionOverlays(
+  elements: AssemblyProcedureOverlayElement[],
+  pageIndex: number,
+  bbox: AssemblyProcedureOverlayBBox
+): { overlays?: OverlayRegionImage[] } {
+  const overlays = elements
+    .filter((element): element is Extract<AssemblyProcedureOverlayElement, { kind: 'IMAGE' }> =>
+      element.kind === 'IMAGE' && element.pageIndex === pageIndex &&
+      Boolean(element.assetId) && projectAssemblyProcedureOverlayBBoxToCrop(element.bbox, bbox) !== null)
+    .sort((left, right) => left.zIndex - right.zIndex)
+    .map(({ assetId, bbox, zIndex, objectFit, opacity }) => ({ assetId, bbox, zIndex, objectFit, opacity }));
+  return overlays.length ? { overlays } : {};
+}
+
+export function useAssemblyProcedureDocumentOverlayCommands(
+  session: AssemblyProcedureDocumentOverlayCommandSession
+) {
+  // A shelf batch reuses one callback across sequential placement requests.
+  const materialElementsRef = useRef(session.elements);
+  materialElementsRef.current = session.elements;
+  const addCreatedOverlay = useCallback((
+    kind: OverlayCreationKind,
+    bbox: AssemblyProcedureOverlayBBox,
+    options?: { text?: string; assetId?: string; element?: AssemblyProcedureOverlayElement },
+    pageIndex = session.selectedPage?.pageIndex
+  ) => {
+    if (pageIndex == null || session.readOnly) return null;
+    const created = createOverlayForRange(kind, pageIndex, bbox);
+    const element = options?.element ?? (options?.text != null && created.kind === 'TEXT'
+      ? { ...created, text: options.text }
+      : options?.assetId != null && created.kind === 'IMAGE'
+        ? { ...created, assetId: options.assetId }
+        : created);
+    session.dispatch({ type: 'add', element });
+    session.setSelectedOverlayId(element.id);
+    return element;
+  }, [session]);
+
+  const createOverlay = useCallback(async (kind: OverlayCreationKind) => {
+    const {
+      busy,
+      document,
+      passwordInput,
+      pendingRange,
+      readOnly,
+      selectedPage,
+      setBusy,
+      setDocument,
+      setMessage,
+      setPendingRange,
+      setSelectionMode,
+      setTextCandidateRange,
+      setTextCandidates
+    } = session;
+    if (!pendingRange || selectedPage == null || readOnly || !document) return;
+    const range = pendingRange;
+    setPendingRange(null);
+    setSelectionMode(false);
+    if (kind === 'SHAPE') {
+      addCreatedOverlay(kind, range);
+      setMessage('図形・記号オーバーレイを追加しました。内容を編集して保存してください。');
+      return;
+    }
+    if (busy) return;
+    setBusy(true);
+    setMessage(kind === 'TEXT' ? '選択範囲から文章候補を抽出しています…' : '選択範囲を画像assetに切り出しています…');
+    try {
+      if (kind === 'TEXT') {
+        const candidates = await findAssemblyProcedureTextCandidates({
+          id: document.id,
+          accessPassword: passwordInput,
+          pageIndex: selectedPage.pageIndex,
+          bbox: range,
+          ...regionOverlays(session.elements, selectedPage.pageIndex, range)
+        });
+        if (candidates.length > 0) {
+          setTextCandidates(candidates);
+          setTextCandidateRange({ pageIndex: selectedPage.pageIndex, bbox: range });
+          setMessage('文章候補を選択してください。');
+        } else {
+          addCreatedOverlay(kind, range);
+          setMessage('文章候補が見つからないため、手入力の文章オーバーレイを追加しました。');
+        }
+      } else {
+        const asset = await createAssemblyProcedureImageRegion({
+          ...(session.holderToken ? { holderToken: session.holderToken } : {}),
+          id: document.id,
+          accessPassword: passwordInput,
+          pageIndex: selectedPage.pageIndex,
+          bbox: range,
+          ...regionOverlays(session.elements, selectedPage.pageIndex, range)
+        });
+        setDocument((current) => current ? {
+          ...current,
+          assets: { ...(current.assets ?? {}), [asset.assetId]: asset }
+        } : current);
+        addCreatedOverlay(kind, range, { assetId: asset.assetId });
+        setMessage('選択範囲を画像assetとして追加しました。保存してください。');
+      }
+    } catch (error: unknown) {
+      if (session.onEditLeaseError?.(error)) return;
+      if (kind === 'TEXT') {
+        addCreatedOverlay(kind, range);
+        (session.setErrorMessage ?? setMessage)(`文章抽出に失敗したため、手入力の文章オーバーレイを追加しました。${readAssemblyApiErrorMessage(error, '')}`);
+      } else {
+        addCreatedOverlay(kind, range);
+        (session.setErrorMessage ?? setMessage)(`画像切り出しに失敗しました。画像assetを指定して保存してください。${readAssemblyApiErrorMessage(error, '')}`);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }, [addCreatedOverlay, session]);
+
+  const chooseTextCandidate = useCallback((candidate: AssemblyProcedureTextCandidateDto | null) => {
+    const {
+      readOnly,
+      selectedElement,
+      textCandidateRange,
+      setMessage,
+      setTextCandidateRange,
+      setTextCandidates
+    } = session;
+    if (!textCandidateRange || readOnly) return;
+
+    if (textCandidateRange.overlayId) {
+      if (selectedElement?.id === textCandidateRange.overlayId && selectedElement.kind === 'TEXT') {
+        if (candidate) {
+          session.dispatch({
+            type: 'update',
+            element: { ...selectedElement, text: candidate.text }
+          });
+          setMessage('文章オーバーレイを更新しました。内容を編集して保存してください。');
+        } else {
+          setMessage('文章候補の選択をキャンセルしました。');
+        }
+      } else {
+        setMessage('対象の文章オーバーレイが見つからないため、候補を適用しませんでした。');
+      }
+      setTextCandidates([]);
+      setTextCandidateRange(null);
+      return;
+    }
+
+    const bbox = candidate?.bounds ?? textCandidateRange.bbox;
+    addCreatedOverlay('TEXT', bbox, { text: candidate?.text ?? 'ここに文章を入力' }, textCandidateRange.pageIndex);
+    setTextCandidates([]);
+    setTextCandidateRange(null);
+    setMessage('文章オーバーレイを追加しました。内容を編集して保存してください。');
+  }, [addCreatedOverlay, session]);
+
+  const cancelTextCandidates = useCallback(() => {
+    session.setTextCandidates([]);
+    session.setTextCandidateRange(null);
+    session.setMessage('文章候補の選択をキャンセルしました。');
+  }, [session]);
+
+  const refetchTextCandidates = useCallback(async () => {
+    const {
+      busy,
+      document,
+      passwordInput,
+      readOnly,
+      selectedElement,
+      selectedPage,
+      setBusy,
+      setMessage,
+      setTextCandidateRange,
+      setTextCandidates
+    } = session;
+    if (
+      busy ||
+      !document ||
+      readOnly ||
+      !selectedPage ||
+      !selectedElement ||
+      selectedElement.kind !== 'TEXT'
+    ) return;
+
+    const { bbox, id: overlayId, pageIndex } = selectedElement;
+    setTextCandidates([]);
+    setTextCandidateRange(null);
+    setBusy(true);
+    setMessage('選択範囲から文章候補を再取得しています…');
+    try {
+      const candidates = await findAssemblyProcedureTextCandidates({
+        id: document.id,
+        accessPassword: passwordInput,
+        pageIndex,
+        bbox,
+        ...regionOverlays(session.elements, pageIndex, bbox)
+      });
+      if (candidates.length > 0) {
+        setTextCandidates(candidates);
+        setTextCandidateRange({ pageIndex, bbox, overlayId });
+        setMessage('文章候補を選択してください。');
+      } else {
+        setMessage('文章候補が見つかりません。既存文章を保持しています。');
+      }
+    } catch (error: unknown) {
+      if (session.onEditLeaseError?.(error)) return;
+      (session.setErrorMessage ?? setMessage)(readAssemblyApiErrorMessage(error, '文章候補の再取得に失敗しました。'));
+    } finally {
+      setBusy(false);
+    }
+  }, [session]);
+
+  const uploadImage = useCallback(async (file: File) => {
+    const {
+      busy,
+      document,
+      passwordInput,
+      readOnly,
+      selectedElement,
+      setBusy,
+      setDocument,
+      setMessage,
+      dispatch
+    } = session;
+    if (!document || !selectedElement || selectedElement.kind !== 'IMAGE' || readOnly || busy) return;
+    setBusy(true);
+    setMessage('画像assetを登録しています…');
+    try {
+      const asset = await uploadAssemblyProcedureOverlayImage({
+          ...(session.holderToken ? { holderToken: session.holderToken } : {}),
+        id: document.id,
+        accessPassword: passwordInput,
+        file
+      });
+      setDocument((current) => current ? {
+        ...current,
+        assets: { ...(current.assets ?? {}), [asset.assetId]: asset }
+      } : current);
+      dispatch({ type: 'update', element: { ...selectedElement, assetId: asset.assetId } });
+      setMessage('画像assetを登録しました。保存してください。');
+    } catch (error: unknown) {
+      if (session.onEditLeaseError?.(error)) return;
+      (session.setErrorMessage ?? setMessage)(readAssemblyApiErrorMessage(error, '画像assetの登録に失敗しました。'));
+    } finally {
+      setBusy(false);
+    }
+  }, [session]);
+
+  const placeMaterial = useCallback(async (material: { id: string }) => {
+    if (session.busy || session.readOnly || !session.document || !session.selectedPage) throw new Error('現在は素材を配置できません');
+    session.setBusy(true);
+    try {
+      const { element, asset } = await placeProcedureMaterial({ ...(session.holderToken ? { holderToken: session.holderToken } : {}), id: session.document.id, materialId: material.id, pageIndex: session.selectedPage.pageIndex, accessPassword: session.passwordInput });
+      if (asset) session.setDocument((current) => current ? { ...current, assets: { ...current.assets, [asset.assetId]: asset } } : current);
+      const zIndex = Math.max(element.zIndex, ...materialElementsRef.current.filter((item) => item.pageIndex === element.pageIndex).map((item) => item.zIndex + 1));
+      const placed = { ...element, zIndex };
+      materialElementsRef.current = [...materialElementsRef.current, placed];
+      addCreatedOverlay(element.kind, element.bbox, { element: placed }, element.pageIndex);
+      session.setMessage('素材を配置しました。内容を編集して保存してください。');
+    } catch (error: unknown) {
+      session.onEditLeaseError?.(error);
+      throw error;
+    } finally { session.setBusy(false); }
+  }, [addCreatedOverlay, session]);
+
+  const replaceSelectedImageMaterial = useCallback(async (material: Pick<ProcedureMaterialDto, 'id' | 'kind'>) => {
+    const { document, selectedElement, busy, readOnly } = session;
+    if (!document || !selectedElement || selectedElement.kind !== 'IMAGE' || readOnly || busy) throw new Error('現在は画像を差し替えできません');
+    if (material.kind !== 'PHOTO') throw new Error('画像の素材を選んでください。');
+    session.setBusy(true);
+    try {
+      const { asset } = await placeProcedureMaterial({
+        ...(session.holderToken ? { holderToken: session.holderToken } : {}),
+        id: document.id,
+        materialId: material.id,
+        pageIndex: selectedElement.pageIndex,
+        accessPassword: session.passwordInput
+      });
+      if (!asset) throw new Error('画像素材を選択してください。');
+      session.setDocument((current) => current ? {
+        ...current,
+        assets: { ...current.assets, [asset.assetId]: asset }
+      } : current);
+      session.dispatch({ type: 'update', element: { ...selectedElement, assetId: asset.assetId } });
+      session.setMessage('画像を差し替えました。保存してください。');
+    } catch (error: unknown) {
+      session.onEditLeaseError?.(error);
+      throw error;
+    } finally {
+      session.setBusy(false);
+    }
+  }, [session]);
+
+  return {
+    placeMaterial,
+    replaceSelectedImageMaterial,
+    createOverlay,
+    chooseTextCandidate,
+    cancelTextCandidates,
+    refetchTextCandidates,
+    uploadImage
+  };
+}

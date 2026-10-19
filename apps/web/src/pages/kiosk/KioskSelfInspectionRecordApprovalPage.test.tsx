@@ -1,6 +1,11 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import {
+  KIOSK_SELF_INSPECTION_LIST_PATH,
+  KIOSK_SELF_INSPECTION_REDUCTION_PATH
+} from '../../features/part-measurement/selfInspectionRoutes';
 
 import { KioskSelfInspectionRecordApprovalPage } from './KioskSelfInspectionRecordApprovalPage';
 
@@ -10,7 +15,18 @@ const mockUseSelfInspectionRecordApprovals = vi.fn();
 const mockUseSelfInspectionRecordApprovalSession = vi.fn();
 const mockUseResolveApprover = vi.fn();
 const mockUseApproveRecordApproval = vi.fn();
-const mockVerifyAccessPassword = vi.fn();
+const mockUseSelfInspectionInvalidations = vi.fn();
+const mockUseSelfInspectionInvalidation = vi.fn();
+const mockGetResolvedClientKey = vi.fn();
+
+const nfcState: {
+  event: { uid: string; timestamp: string } | null;
+  enabledCalls: boolean[];
+} = { event: null, enabledCalls: [] };
+
+vi.mock('../../api/client', () => ({
+  getResolvedClientKey: () => mockGetResolvedClientKey()
+}));
 
 vi.mock('../../api/hooks', () => ({
   useSelfInspectionRegistrationPolicy: (...args: unknown[]) =>
@@ -23,25 +39,89 @@ vi.mock('../../api/hooks', () => ({
     mockUseSelfInspectionRecordApprovals(...args),
   useSelfInspectionRecordApprovalSession: (...args: unknown[]) =>
     mockUseSelfInspectionRecordApprovalSession(...args),
+  useSelfInspectionInvalidations: (...args: unknown[]) =>
+    mockUseSelfInspectionInvalidations(...args),
+  useSelfInspectionInvalidation: (...args: unknown[]) =>
+    mockUseSelfInspectionInvalidation(...args),
   useResolveSelfInspectionRecordApprovalApprover: () => mockUseResolveApprover(),
-  useApproveSelfInspectionRecordApproval: () => mockUseApproveRecordApproval(),
-  useVerifyKioskSelfInspectionRecordApprovalAccessPassword: () => ({
-    isPending: false,
-    mutateAsync: mockVerifyAccessPassword
-  })
+  useApproveSelfInspectionRecordApproval: () => mockUseApproveRecordApproval()
 }));
 
 vi.mock('../../hooks/useNfcStream', () => ({
-  useNfcStream: () => null
+  useNfcStream: (enabled: boolean) => {
+    nfcState.enabledCalls.push(enabled);
+    return enabled ? nfcState.event : null;
+  }
 }));
 
-function renderPage() {
+function makeSession(
+  id: string,
+  overrides: Partial<Record<string, unknown>> = {}
+) {
+  return {
+    id,
+    sessionBusinessKey: `business-${id}`,
+    templateId: 'template-1',
+    templateName: '自主検査テンプレート',
+    productNo: `ORDER-${id}`,
+    fseiban: 'SEIBAN-1',
+    fhincd: 'FH-1',
+    fhinmei: '確認品',
+    processGroup: 'cutting',
+    resourceCd: '581',
+    scheduleRowId: 'schedule-1',
+    machineName: 'Ｌ３００ＫＰ－１０',
+    plannedQuantity: 1,
+    expectedEntryCount: 1,
+    requiredEntryCount: 1,
+    completedEntryCount: 1,
+    pendingReviewCount: 0,
+    participantEmployeeNames: ['作業者A'],
+    participantEmployees: [],
+    selfInspectionMode: 'all',
+    selfInspectionFixedCount: null,
+    selfInspectionSampleSize: null,
+    status: 'review_pending',
+    startedAt: '2026-08-21T00:00:00.000Z',
+    completedAt: null,
+    recordApprovalRequiredAt: '2026-08-21T00:00:00.000Z',
+    recordApprovalWorkflowStartedAt: '2026-08-21T00:00:00.000Z',
+    decisionWorkflow: 'LEGACY_RECORD_APPROVAL',
+    inspectorRemeasurementRequiredAt: null,
+    inspectorMeasurementState: 'not_required',
+    inspectorRequiredEntryCount: 0,
+    inspectorCompletedRequiredEntryCount: 0,
+    inspectorMissingRequiredEntryCount: 0,
+    inspectorIncompleteValueEntryCount: 0,
+    updatedAt: '2026-08-21T01:02:03.000Z',
+    recordApprovalState: 'input_incomplete',
+    recordApproval: null,
+    completedRequiredEntryCount: 1,
+    missingRequiredEntryCount: 0,
+    incompleteValueEntryCount: 0,
+    incompleteRegistrationEntryCount: 0,
+    inspectorIncompleteRegistrationEntryCount: 0,
+    ...overrides
+  };
+}
+
+function makeDetail(session: ReturnType<typeof makeSession>) {
+  return { ...session, requiredEntries: [] };
+}
+
+function renderPage(
+  initialEntry = '/kiosk/part-measurement/self-inspection/record-approvals'
+) {
   return render(
-    <MemoryRouter initialEntries={['/kiosk/part-measurement/self-inspection/record-approvals']}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
         <Route
           path="/kiosk/part-measurement/self-inspection/record-approvals"
           element={<KioskSelfInspectionRecordApprovalPage />}
+        />
+        <Route
+          path={KIOSK_SELF_INSPECTION_LIST_PATH}
+          element={<div>自主検査一覧</div>}
         />
       </Routes>
     </MemoryRouter>
@@ -56,10 +136,14 @@ describe('KioskSelfInspectionRecordApprovalPage', () => {
     mockUseSelfInspectionRecordApprovalSession.mockReset();
     mockUseResolveApprover.mockReset();
     mockUseApproveRecordApproval.mockReset();
-    mockVerifyAccessPassword.mockReset();
-    vi.spyOn(window, 'prompt').mockReturnValue('2520');
-    vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+    mockUseSelfInspectionInvalidations.mockReset();
+    mockUseSelfInspectionInvalidation.mockReset();
+    mockGetResolvedClientKey.mockReset();
+    nfcState.event = null;
+    nfcState.enabledCalls = [];
+    vi.spyOn(window, 'prompt').mockReturnValue(null);
 
+    mockGetResolvedClientKey.mockReturnValue('client-key-test');
     mockUseSelfInspectionRegistrationPolicy.mockReturnValue({
       data: {
         key: 'shared',
@@ -69,21 +153,35 @@ describe('KioskSelfInspectionRecordApprovalPage', () => {
       },
       isLoading: false
     });
-    mockUseSelfInspectionRecordApprovals.mockReturnValue({
-      data: { sessions: [], listLimit: 200, truncated: false },
+    mockUseSelfInspectionRecordApprovals.mockImplementation((params: { scope?: string }) => ({
+      data: {
+        sessions: params.scope === 'completed_records' ? [] : [],
+        listLimit: 200,
+        truncated: false
+      },
       isLoading: false
-    });
+    }));
     mockUseSelfInspectionRecordApprovalSession.mockReturnValue({
       data: null,
       isLoading: false
     });
-    mockUseResolveApprover.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
-    mockUseApproveRecordApproval.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
-    mockVerifyAccessPassword.mockResolvedValue({ success: true });
+    mockUseSelfInspectionInvalidations.mockReturnValue({
+      data: { invalidations: [], listLimit: 200, truncated: false },
+      isLoading: false
+    });
+    mockUseSelfInspectionInvalidation.mockReturnValue({ data: null, isLoading: false });
+    mockUseResolveApprover.mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false
+    });
+    mockUseApproveRecordApproval.mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false
+    });
     mockUpdateRegistrationPolicy.mockResolvedValue({
       key: 'shared',
       requireMeasuringInstrumentTag: true,
-      updatedAt: '2026-06-30T00:00:00.000Z',
+      updatedAt: '2026-08-21T00:00:00.000Z',
       updatedBy: 'kiosk'
     });
   });
@@ -92,126 +190,251 @@ describe('KioskSelfInspectionRecordApprovalPage', () => {
     vi.restoreAllMocks();
   });
 
-  it('toggles measuring instrument tag requirement from the top menu', async () => {
+  it('loads readable queries immediately with the resolved client key and never calls the old gate', async () => {
     renderPage();
 
-    fireEvent.click(await screen.findByRole('button', { name: '計測機器の使用前点検必須 OFF' }));
-
     await waitFor(() => {
+      expect(mockUseSelfInspectionRegistrationPolicy).toHaveBeenCalledWith(
+        expect.objectContaining({ enabled: true, clientKey: 'client-key-test' })
+      );
+      expect(mockUseSelfInspectionRecordApprovals).toHaveBeenCalledWith(
+        expect.objectContaining({ state: 'active' }),
+        expect.objectContaining({ enabled: true, clientKey: 'client-key-test' })
+      );
+      expect(mockUseSelfInspectionInvalidations).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({ enabled: true, clientKey: 'client-key-test' })
+      );
+    });
+    expect(mockUseSelfInspectionRecordApprovalSession).toHaveBeenCalledWith(
+      null,
+      expect.objectContaining({ enabled: false, clientKey: 'client-key-test' })
+    );
+    expect(
+      screen.queryByText('作業者・検査員の入力値と、承認・最終判定の進捗を確認します。')
+    ).not.toBeInTheDocument();
+    expect(window.prompt).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '未完了' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '完了記録' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: '削除履歴' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('provides a canonical return link to the self-inspection list in the header', async () => {
+    renderPage();
+
+    const returnLink = screen.getByRole('link', { name: '自主検査画面へ戻る' });
+    expect(returnLink).toHaveAttribute('href', KIOSK_SELF_INSPECTION_LIST_PATH);
+
+    fireEvent.click(returnLink);
+    expect(await screen.findByText('自主検査一覧')).toBeInTheDocument();
+  });
+
+  it('keeps the header on one row and links 詳細 to the reduction insights page', () => {
+    renderPage();
+
+    const heading = screen.getByRole('heading', { name: '検査記録確認' });
+    expect(heading.parentElement?.className).toContain('flex-wrap');
+    expect(screen.queryByText('表示')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('製造order')).toHaveAttribute('placeholder', '製造order');
+    expect(screen.getByLabelText('資源CD')).toHaveAttribute('placeholder', '資源CD');
+    expect(screen.getByRole('link', { name: '詳細' })).toHaveAttribute('href', KIOSK_SELF_INSPECTION_REDUCTION_PATH);
+  });
+
+  it('maps completed_records to scope and resets selection/operation state on category changes', async () => {
+    const session = makeSession('active-1', { recordApprovalState: 'approvable' });
+    mockUseSelfInspectionRecordApprovals.mockImplementation((params: { scope?: string }) => ({
+      data: {
+        sessions: params.scope === 'completed_records' ? [] : [session],
+        listLimit: 200,
+        truncated: false
+      },
+      isLoading: false
+    }));
+    mockUseSelfInspectionRecordApprovalSession.mockReturnValue({
+      data: makeDetail(session),
+      isLoading: false
+    });
+
+    renderPage();
+    await screen.findAllByText('ORDER-active-1');
+    fireEvent.click(screen.getByRole('button', { name: '承認を開始' }));
+    expect(nfcState.enabledCalls.at(-1)).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: '完了記録' }));
+    await waitFor(() => {
+      expect(mockUseSelfInspectionRecordApprovals).toHaveBeenLastCalledWith(
+        expect.objectContaining({ scope: 'completed_records' }),
+        expect.objectContaining({ enabled: true })
+      );
+    });
+    expect(screen.getByRole('button', { name: '完了記録' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: 'キャンセル' })).not.toBeInTheDocument();
+    expect(nfcState.enabledCalls.at(-1)).toBe(false);
+  });
+
+  it('shows truncation only when the API reports more than 200 records', async () => {
+    const session = makeSession('truncated');
+    mockUseSelfInspectionRecordApprovals.mockReturnValue({
+      data: { sessions: [session], listLimit: 200, truncated: true },
+      isLoading: false
+    });
+    mockUseSelfInspectionRecordApprovalSession.mockReturnValue({
+      data: makeDetail(session),
+      isLoading: false
+    });
+
+    renderPage();
+    expect(await screen.findByText(/200件超のため/)).toBeInTheDocument();
+  });
+
+  it('uses an operation-time password dialog for one policy PUT and never mutates on cancel or blank input', async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: '計測機器の使用前点検必須 OFF' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+    expect(mockUpdateRegistrationPolicy).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '計測機器の使用前点検必須 OFF' }));
+    fireEvent.click(screen.getByRole('button', { name: '変更する' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('操作時パスワードを入力してください');
+    expect(mockUpdateRegistrationPolicy).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('操作時パスワード'), {
+      target: { value: 'operation-secret' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '変更する' }));
+    await waitFor(() => {
+      expect(mockUpdateRegistrationPolicy).toHaveBeenCalledTimes(1);
       expect(mockUpdateRegistrationPolicy).toHaveBeenCalledWith({
-        requireMeasuringInstrumentTag: true
+        requireMeasuringInstrumentTag: true,
+        accessPassword: 'operation-secret'
       });
     });
-    expect(await screen.findByText('計測機器の使用前点検必須をONにしました。')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByText('計測機器の使用前点検必須をONにしました。')).toBeInTheDocument();
   });
 
-  it('requires the access password when opened directly', async () => {
-    renderPage();
-
-    await waitFor(() => {
-      expect(window.prompt).toHaveBeenCalledWith('検査記録確認パスワードを入力してください');
-      expect(mockVerifyAccessPassword).toHaveBeenCalledWith({ password: '2520' });
-    });
-    expect(await screen.findByText('入力途中、点検不足、承認可能な自主検査を確認します。')).toBeInTheDocument();
-  });
-
-  it('asks for the access password again after the page is unmounted', async () => {
-    const first = renderPage();
-    await screen.findByText('入力途中、点検不足、承認可能な自主検査を確認します。');
-    first.unmount();
-
-    renderPage();
-    await screen.findByText('入力途中、点検不足、承認可能な自主検査を確認します。');
-
-    expect(window.prompt).toHaveBeenCalledTimes(2);
-  });
-
-  it('shows updated date, inputter, and saved date for selected records', async () => {
-    const session = {
-      id: 'session-1',
-      productNo: '0003886408',
-      fhincd: 'FH-1',
-      fhinmei: '確認品',
-      resourceCd: '589',
-      fseiban: 'FS-1',
-      updatedAt: '2026-06-30T01:02:03.000Z',
-      participantEmployeeNames: ['山田 太郎'],
-      recordApprovalState: 'input_incomplete',
-      recordApproval: null,
-      completedRequiredEntryCount: 1,
-      requiredEntryCount: 2,
-      incompleteRegistrationEntryCount: 0,
-      inspectorCompletedRequiredEntryCount: 0,
-      inspectorMissingRequiredEntryCount: 2,
-      inspectorIncompleteValueEntryCount: 0,
-      inspectorIncompleteRegistrationEntryCount: 0,
-      pendingReviewCount: 0
-    };
+  it('keeps NFC off until approval is explicitly started and disables it while resolving a tag', async () => {
+    const session = makeSession('approvable-1', { recordApprovalState: 'approvable' });
+    const detail = makeDetail(session);
     mockUseSelfInspectionRecordApprovals.mockReturnValue({
       data: { sessions: [session], listLimit: 200, truncated: false },
       isLoading: false
     });
+    mockUseSelfInspectionRecordApprovalSession.mockReturnValue({ data: detail, isLoading: false });
+    let resolveApprover: ((value: unknown) => void) | undefined;
+    const resolvePromise = new Promise((resolve) => {
+      resolveApprover = resolve;
+    });
+    const mutateApprover = vi.fn(() => resolvePromise);
+    mockUseResolveApprover.mockReturnValue({ mutateAsync: mutateApprover, isPending: true });
+
+    const view = renderPage();
+    await screen.findAllByText('ORDER-approvable-1');
+    expect(nfcState.enabledCalls.at(-1)).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: '承認を開始' }));
+    expect(nfcState.enabledCalls.at(-1)).toBe(true);
+
+    nfcState.event = { uid: 'employee-tag', timestamp: '2026-08-21T01:00:00.000Z' };
+    await act(async () => {
+      view.rerender(
+        <MemoryRouter initialEntries={['/kiosk/part-measurement/self-inspection/record-approvals']}>
+          <Routes>
+            <Route
+              path="/kiosk/part-measurement/self-inspection/record-approvals"
+              element={<KioskSelfInspectionRecordApprovalPage />}
+            />
+          </Routes>
+        </MemoryRouter>
+      );
+    });
+    await waitFor(() => expect(mutateApprover).toHaveBeenCalledWith({ uid: 'employee-tag' }));
+    expect(nfcState.enabledCalls.at(-1)).toBe(false);
+
+    await act(async () => {
+      resolveApprover?.({
+        kind: 'employee',
+        employee: {
+          id: 'employee-1',
+          employeeCode: 'E001',
+          displayName: '承認者A',
+          nfcTagUid: 'employee-tag'
+        }
+      });
+      await Promise.resolve();
+    });
+    expect(await screen.findByText('承認者A を承認者として読み取りました。')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+    expect(screen.queryByText('承認者A')).not.toBeInTheDocument();
+    expect(nfcState.enabledCalls.at(-1)).toBe(false);
+  });
+
+  it('keeps inspector-final records read-only and renders deletion history without approval controls', async () => {
+    const inspectorSession = makeSession('inspector-final', {
+      decisionWorkflow: 'INSPECTOR_FINAL_JUDGEMENT',
+      recordApprovalState: 'inspector_measurement_pending'
+    });
+    mockUseSelfInspectionRecordApprovals.mockReturnValue({
+      data: { sessions: [inspectorSession], listLimit: 200, truncated: false },
+      isLoading: false
+    });
     mockUseSelfInspectionRecordApprovalSession.mockReturnValue({
-      data: {
-        ...session,
-        missingRequiredEntryCount: 1,
-        incompleteValueEntryCount: 0,
-        requiredEntries: [
-          {
-            entryIndex: 0,
-            entrySlotKind: 'first',
-            entrySlotLabel: '初品',
-            state: 'ready',
-            entry: {
-              id: 'entry-1',
-              createdByEmployeeId: 'employee-1',
-              createdByEmployeeNameSnapshot: '山田 太郎',
-              measuringInstrumentId: null,
-              measuringInstrumentManagementNumberSnapshot: null,
-              measuringInstrumentNameSnapshot: null,
-              measuringInstrumentTagUidSnapshot: null,
-              instrumentUsages: [],
-              createdAt: '2026-06-30T01:00:00.000Z',
-              updatedAt: '2026-06-30T01:02:03.000Z'
-            },
-            inspectorEntry: null,
-            values: [
-              {
-                id: 'value-1',
-                templateItemId: 'item-1',
-                displayMarker: '1',
-                datumSurface: 'A',
-                measurementPoint: '外径',
-                measurementLabel: '寸法',
-                unit: 'mm',
-                value: '10.01',
-                lowerLimit: '9.8',
-                upperLimit: '10.2',
-                isWithinTolerance: true,
-                reviewStatus: 'NOT_REQUIRED',
-                outOfToleranceAcknowledgedAt: null,
-                approvedAt: null,
-                updatedAt: '2026-06-30T01:02:03.000Z',
-                inspectorValueId: null,
-                inspectorValue: null,
-                operatorValueSnapshot: null,
-                differenceValue: null,
-                inspectorJudgementStatus: null,
-                inspectorJudgedAt: null,
-                inspectorJudgementComment: null,
-                inspectorUpdatedAt: null
-              }
-            ]
-          }
-        ]
-      },
+      data: makeDetail(inspectorSession),
+      isLoading: false
+    });
+
+    const invalidation = {
+      id: 'invalidation-1',
+      itemBusinessKey: 'item-1',
+      requestId: 'request-1',
+      sessionId: null,
+      scheduleRowId: 'schedule-1',
+      sourceState: 'NOT_STARTED',
+      templateIdSnapshot: 'template-1',
+      productNoSnapshot: 'ORDER-DELETED',
+      processGroupSnapshot: 'CUTTING',
+      resourceCdSnapshot: '581',
+      fseibanSnapshot: null,
+      fhincdSnapshot: 'FH-1',
+      fhinmeiSnapshot: '削除品',
+      machineNameSnapshot: null,
+      plannedQuantitySnapshot: 1,
+      expectedEntryCountSnapshot: 1,
+      reason: '日程から除外されたため',
+      invalidatedByUsernameSnapshot: 'leader',
+      invalidatedByClientDeviceId: 'device-1',
+      invalidatedByClientDeviceNameSnapshot: 'Kiosk A',
+      invalidatedAt: '2026-08-21T01:02:03.000Z',
+      createdAt: '2026-08-21T01:02:03.000Z'
+    };
+    mockUseSelfInspectionInvalidations.mockReturnValue({
+      data: { invalidations: [invalidation], listLimit: 200, truncated: false },
+      isLoading: false
+    });
+    mockUseSelfInspectionInvalidation.mockReturnValue({
+      data: { ...invalidation, session: null },
       isLoading: false
     });
 
     renderPage();
-
-    expect(await screen.findAllByText(/入力者 山田 太郎/)).not.toHaveLength(0);
-    expect(screen.getAllByText(/更新 2026\/6\/30/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/保存 2026\/6\/30/)).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '作業者入力へ' })).toHaveAttribute(
+      'href',
+      '/kiosk/part-measurement/self-inspection/sessions/inspector-final'
+    );
+    expect(screen.getByRole('link', { name: '検査員測定へ' })).toHaveAttribute(
+      'href',
+      '/kiosk/part-measurement/self-inspection/sessions/inspector-final/inspector'
+    );
+    expect(screen.queryByRole('link', { name: '検査員画面' })).not.toBeInTheDocument();
+    expect(screen.queryByText('検査員最終判定フロー（閲覧専用）')).not.toBeInTheDocument();
+    expect(screen.getAllByText('L300KP-10')).toHaveLength(2);
+    expect(screen.getByRole('region', { name: '選択中の検査記録' })).not.toHaveTextContent('機種名');
+    expect(screen.queryByRole('button', { name: '承認を開始' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '削除履歴' }));
+    expect(await screen.findByText('削除済み・閲覧専用')).toBeInTheDocument();
+    expect(screen.getByText('未開始で削除されたため、測定履歴はありません。')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /計測機器の使用前点検必須/ })).not.toBeInTheDocument();
   });
 });

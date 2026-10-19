@@ -1,26 +1,59 @@
+import { AssemblyProcedureDocumentEditLeaseService, type AssemblyProcedureEditActor } from './assembly-procedure-document-edit-lease.service.js';
+import { procedureVideoLinksInclude } from './procedure-video.service.js';
+import { PrismaKnowledgeReviewerRepository } from '../knowledge/prisma-knowledge-reviewer.repository.js';
+import type { KnowledgeReviewEmployee } from '../knowledge/knowledge-position-rank.js';
+import { procedureManualApprovalInclude } from './assembly-procedure-document-revision.serializer.js';
 import type { AssemblyProcedureDocumentStatus, Prisma } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
 import { AssemblyProcedureImageStorage } from '../../lib/assembly-procedure-image-storage.js';
+import {
+  getAssemblyProcedureAssetGcService,
+  type AssemblyProcedureAssetGcService
+} from '../assembly-procedure-assets/index.js';
+import { collectAssemblyProcedureAssetIds } from './assembly-procedure-document-asset-lifecycle.js';
 import { runAssemblyTransaction } from './assembly-transaction.js';
+import { AssemblyTemplateAccessService } from './assembly-template-access.service.js';
 
 const procedureDocumentInclude = {
   pages: {
     orderBy: { pageIndex: 'asc' as const }
-  }
+  },
+  overlayElements: {
+    orderBy: [
+      { pageIndex: 'asc' as const },
+      { zIndex: 'asc' as const },
+      { createdAt: 'asc' as const }
+    ],
+    include: { asset: true }
+  },
+  ownedAssets: true,
+  procedureVideoLinks: procedureVideoLinksInclude,
+  procedureManualApprovals: procedureManualApprovalInclude,
+  revisionMetadata: true
+} satisfies Prisma.AssemblyProcedureDocumentInclude;
+
+const procedureDocumentListInclude = {
+  pages: {
+    orderBy: { pageIndex: 'asc' as const }
+  },
+  procedureManualApprovals: procedureManualApprovalInclude,
+  revisionMetadata: true
 } satisfies Prisma.AssemblyProcedureDocumentInclude;
 
 export type AssemblyProcedureDocumentRecord = Prisma.AssemblyProcedureDocumentGetPayload<{
   include: typeof procedureDocumentInclude;
 }>;
 
-export type AssemblyProcedureDocumentSummary = AssemblyProcedureDocumentRecord & {
+export type AssemblyProcedureDocumentSummary = Omit<AssemblyProcedureDocumentRecord, 'overlayElements' | 'ownedAssets' | 'procedureVideoLinks'> & {
   activeTemplateCount: number;
   totalTemplateCount: number;
+  manualAssignments: { modelCode: string; modelCodeKey: string; processId: string; processName: string }[];
 };
 
 export type AssemblyProcedureDocumentReferenceUsage = {
+  inProcedureManualAssignment: boolean;
   inProcedureOrder: boolean;
   inTemplatePrimary: boolean;
   inActiveTemplatePrimary: boolean;
@@ -30,15 +63,38 @@ export type AssemblyProcedureDocumentReferenceUsage = {
   inActiveTemplateProcedureStep: boolean;
   inBoltPageRef: boolean;
   inCheckPageRef: boolean;
+  inRevisionHistory: boolean;
+};
+
+export type AssemblyProcedureAssetMetadata = {
+  kind?: 'SOURCE' | 'OVERLAY_IMAGE';
+  storageKey: string;
+  sha256: string;
+  byteSize?: number;
+  /** Compatibility with the physical storage port's `size` field. */
+  size?: number;
+  contentType: string;
+  originalFileName?: string | null;
+  width?: number | null;
+  height?: number | null;
 };
 
 export class AssemblyProcedureDocumentService {
   private includePages = procedureDocumentInclude;
+  private readonly accessService = new AssemblyTemplateAccessService();
+
+  constructor(
+    private readonly assetGc: AssemblyProcedureAssetGcService = getAssemblyProcedureAssetGcService()
+  ) {}
 
   async list(params: { includeInactive?: boolean; q?: string; limit?: number }): Promise<AssemblyProcedureDocumentRecord[]> {
     const q = params.q?.trim();
     return prisma.assemblyProcedureDocument.findMany({
       where: {
+        OR: [
+          { revisionMetadata: { is: null } },
+          { revisionMetadata: { is: { isRevisionHead: true } } }
+        ],
         ...(params.includeInactive ? {} : { isActive: true }),
         ...(q
           ? {
@@ -60,9 +116,55 @@ export class AssemblyProcedureDocumentService {
     q?: string;
     limit?: number;
   }): Promise<AssemblyProcedureDocumentSummary[]> {
-    const documents = await this.list(params);
+    const q = params.q?.trim();
+    const documents = await prisma.assemblyProcedureDocument.findMany({
+      where: {
+        OR: [
+          { revisionMetadata: { is: null } },
+          { revisionMetadata: { is: { isRevisionHead: true } } }
+        ],
+        ...(params.includeInactive ? {} : { isActive: true }),
+        ...(q
+          ? { name: { contains: q, mode: 'insensitive' } }
+          : {})
+      },
+      include: procedureDocumentListInclude,
+      orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
+      take: Math.min(Math.max(params.limit ?? 100, 1), 200)
+    });
     const documentIds = documents.map((document) => document.id);
     if (documentIds.length === 0) return [];
+
+    // Match getReferenceUsage: direct references always count, root references
+    // also belong to the latest active published revision (not a revision draft).
+    const rootIds = [...new Set(documents.flatMap(document => document.revisionMetadata ? [document.revisionMetadata.revisionRootId] : []))];
+    const [manualAssignments, publishedRevisions] = await Promise.all([
+      prisma.procedureManualAssignment.findMany({
+        where: { assemblyProcedureDocumentId: { in: [...new Set([...documentIds, ...rootIds])] } },
+        include: { process: { select: { name: true } } },
+        orderBy: [{ modelCodeKey: 'asc' }, { processId: 'asc' }, { sortOrder: 'asc' }]
+      }),
+      rootIds.length ? prisma.assemblyProcedureDocumentRevision.findMany({
+        where: { revisionRootId: { in: rootIds }, document: { status: 'PUBLISHED', isActive: true } },
+        orderBy: { revisionNumber: 'desc' },
+        select: { revisionRootId: true, documentId: true }
+      }) : Promise.resolve([])
+    ]);
+    const latestPublishedByRoot = new Map<string, string>();
+    for (const revision of publishedRevisions) {
+      if (!latestPublishedByRoot.has(revision.revisionRootId)) latestPublishedByRoot.set(revision.revisionRootId, revision.documentId);
+    }
+    const assignmentsByDocument = new Map<string, typeof manualAssignments>();
+    for (const assignment of manualAssignments) {
+      const directId = assignment.assemblyProcedureDocumentId!;
+      const ids = new Set([directId, latestPublishedByRoot.get(directId)]);
+      for (const id of ids) {
+        if (!id) continue;
+        const assignments = assignmentsByDocument.get(id) ?? [];
+        assignments.push(assignment);
+        assignmentsByDocument.set(id, assignments);
+      }
+    }
 
     const templateReferences = await prisma.assemblyTemplate.findMany({
       where: {
@@ -121,6 +223,10 @@ export class AssemblyProcedureDocumentService {
 
     return documents.map((document) => ({
       ...document,
+      manualAssignments: (assignmentsByDocument.get(document.id) ?? []).map(assignment => ({
+        modelCode: assignment.modelCode, modelCodeKey: assignment.modelCodeKey,
+        processId: assignment.processId, processName: assignment.process.name
+      })),
       activeTemplateCount: activeTemplateIdsByDocument.get(document.id)?.size ?? 0,
       totalTemplateCount: totalTemplateIdsByDocument.get(document.id)?.size ?? 0
     }));
@@ -138,15 +244,17 @@ export class AssemblyProcedureDocumentService {
 
   async create(params: {
     name: string;
-    pages: Array<{ imageRelativePath: string }>;
+    avoidDuplicateName?: boolean;
+    pages: Array<{ imageRelativePath: string; asset?: Omit<AssemblyProcedureAssetMetadata, 'kind'> & { kind?: 'SOURCE' } }>;
+    sourceAsset?: AssemblyProcedureAssetMetadata;
     source?: {
       sourceType: 'GMAIL';
       gmailMessageId: string;
       sourceAttachmentName: string;
       gmailInternalDateMs: number;
       gmailDedupeKey: string;
-    };
-  }): Promise<AssemblyProcedureDocumentRecord> {
+    } | { sourceType: 'MANUAL'; sourceAttachmentName: string };
+  }, transaction?: Prisma.TransactionClient): Promise<AssemblyProcedureDocumentRecord> {
     const name = params.name.trim();
     if (!name) {
       throw new ApiError(400, '手順書名が必要です');
@@ -159,34 +267,85 @@ export class AssemblyProcedureDocumentService {
         throw new ApiError(400, '組立手順書画像の保存パスが不正です');
       }
     }
+    const sourceAssetByteSize = params.sourceAsset
+      ? params.sourceAsset.byteSize ?? params.sourceAsset.size
+      : undefined;
+    if (params.sourceAsset && (!sourceAssetByteSize || sourceAssetByteSize <= 0)) {
+      throw new ApiError(400, '元assetサイズが不正です');
+    }
 
-    return prisma.assemblyProcedureDocument.create({
-      data: {
-        name: name.slice(0, 200),
-        imageRelativePath: params.pages[0]!.imageRelativePath,
-        status: 'DRAFT',
-        ...(params.source
-          ? {
-              source: {
-                create: {
-                  sourceType: params.source.sourceType,
-                  gmailMessageId: params.source.gmailMessageId,
-                  sourceAttachmentName: params.source.sourceAttachmentName,
-                  gmailInternalDateMs: BigInt(params.source.gmailInternalDateMs),
-                  gmailDedupeKey: params.source.gmailDedupeKey
+    const create = async (tx: Prisma.TransactionClient) => {
+      let savedName = name.slice(0, 200);
+      if (params.avoidDuplicateName) {
+        // Serialize blank naming across API instances, including the first creation.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('assembly-procedure-blank-name'))`;
+        let suffix = 1;
+        while (await tx.assemblyProcedureDocument.findFirst({ where: { name: savedName }, select: { id: true } })) {
+          suffix += 1;
+          const tail = `-${suffix}`;
+          savedName = `${name.slice(0, 200 - tail.length)}${tail}`;
+        }
+      }
+      const sourceAsset = params.sourceAsset
+        ? await tx.assemblyProcedureAsset.create({
+            data: {
+              kind: params.sourceAsset.kind ?? 'SOURCE',
+              storageKey: params.sourceAsset.storageKey,
+              sha256: params.sourceAsset.sha256,
+              byteSize: sourceAssetByteSize!,
+              contentType: params.sourceAsset.contentType,
+              originalFileName: params.sourceAsset.originalFileName ?? null,
+              width: params.sourceAsset.width ?? null,
+              height: params.sourceAsset.height ?? null
+            }
+          })
+        : null;
+      const document = await tx.assemblyProcedureDocument.create({
+        data: {
+          name: savedName,
+          imageRelativePath: params.pages[0]!.imageRelativePath,
+          status: 'DRAFT',
+          ...(params.source
+            ? {
+                source: {
+                  create: {
+                    sourceType: params.source.sourceType,
+                    sourceAttachmentName: params.source.sourceAttachmentName,
+                    ...(params.source.sourceType === 'GMAIL' ? {
+                      gmailMessageId: params.source.gmailMessageId,
+                      gmailInternalDateMs: BigInt(params.source.gmailInternalDateMs),
+                      gmailDedupeKey: params.source.gmailDedupeKey
+                    } : {})
+                  }
                 }
               }
-            }
-          : {}),
-        pages: {
-          create: params.pages.map((page, pageIndex) => ({
-            pageIndex,
-            imageRelativePath: page.imageRelativePath
-          }))
+            : {}),
+          pages: {
+            create: params.pages.map((page, pageIndex) => ({
+              pageIndex,
+              imageRelativePath: page.imageRelativePath
+            }))
+          }
         }
-      },
-      include: this.includePages
-    });
+      });
+      await tx.assemblyProcedureDocumentRevision.create({
+        data: {
+          documentId: document.id,
+          revisionRootId: document.id,
+          revisionNumber: 1,
+          isRevisionHead: true,
+          editVersion: 0,
+          sourceAssetId: sourceAsset?.id ?? null
+        }
+      });
+      const result = await tx.assemblyProcedureDocument.findUnique({
+        where: { id: document.id },
+        include: this.includePages
+      });
+      if (!result) throw new ApiError(500, '手順書を取得できませんでした');
+      return result;
+    };
+    return transaction ? create(transaction) : runAssemblyTransaction(create);
   }
 
   async findByGmailDedupeKey(gmailDedupeKey: string): Promise<AssemblyProcedureDocumentRecord | null> {
@@ -201,53 +360,106 @@ export class AssemblyProcedureDocumentService {
     return source?.document ?? null;
   }
 
-  async rename(id: string, name: string): Promise<AssemblyProcedureDocumentRecord> {
+  async rename(id: string, name: string, actor: AssemblyProcedureEditActor = {}, transaction?: Prisma.TransactionClient): Promise<AssemblyProcedureDocumentRecord> {
     const trimmed = name.trim();
     if (!trimmed) {
       throw new ApiError(400, '手順書名が必要です');
     }
-    try {
-      return await prisma.assemblyProcedureDocument.update({
-        where: { id },
-        data: { name: trimmed.slice(0, 200) },
-        include: this.includePages
+    const rename = async (tx: Prisma.TransactionClient) => {
+      const documents = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${id} FOR UPDATE`;
+      if (!documents.length) throw new ApiError(404, '手順書が見つかりません');
+      await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(id, actor.holderKey ?? null, tx, actor.holderToken ?? null);
+      return tx.assemblyProcedureDocument.update({
+        where: { id }, data: { name: trimmed.slice(0, 200) }, include: this.includePages
       });
-    } catch {
-      throw new ApiError(404, '手順書が見つかりません');
+    };
+    return transaction ? rename(transaction) : runAssemblyTransaction(rename);
+  }
+
+  async resolveApprover(tagUid: string): Promise<KnowledgeReviewEmployee> {
+    try {
+      return await new PrismaKnowledgeReviewerRepository(prisma).resolve(tagUid, true);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : '';
+      if (code === 'KNOWLEDGE_UNKNOWN_EMPLOYEE') throw new ApiError(404, '社員タグが見つかりません', undefined, code);
+      if (code === 'KNOWLEDGE_DUPLICATE_TAG') throw new ApiError(409, '社員と計測機器のタグが重複しています', undefined, code);
+      if (code === 'KNOWLEDGE_INACTIVE_EMPLOYEE') throw new ApiError(403, '在籍中の社員のみ承認できます', undefined, code);
+      if (code === 'KNOWLEDGE_APPROVAL_FORBIDDEN') throw new ApiError(403, 'このタグは承認できません(職位の対応表を確認)', undefined, code);
+      throw error;
     }
   }
 
-  async publish(id: string): Promise<AssemblyProcedureDocumentRecord> {
-    const doc = await this.getById(id, { includeInactive: true });
-    if (!doc) throw new ApiError(404, '手順書が見つかりません');
-    if (doc.status === 'PUBLISHED') return doc;
-    return prisma.assemblyProcedureDocument.update({
-      where: { id },
-      data: {
-        status: 'PUBLISHED',
-        publishedAt: new Date()
-      },
-      include: this.includePages
+  async publish(
+    id: string,
+    options: AssemblyProcedureEditActor & { accessPassword?: string; expectedEditVersion?: number } = {}
+  ): Promise<AssemblyProcedureDocumentRecord> {
+    await this.accessService.requireAccessPassword(options.accessPassword);
+    return runAssemblyTransaction(async (tx) => (await this.publishInTransaction(tx, id, options.expectedEditVersion, options)).document);
+  }
+
+  async approvePublish(
+    id: string,
+    options: AssemblyProcedureEditActor & { reviewerTagUid: string; expectedEditVersion: number; comment?: string; actorKey: string }
+  ): Promise<AssemblyProcedureDocumentRecord> {
+    const reviewer = await this.resolveApprover(options.reviewerTagUid);
+    return runAssemblyTransaction(async (tx) => {
+      const result = await this.publishInTransaction(tx, id, options.expectedEditVersion, options);
+      // Retrying a completed publish is idempotent, just like password publication.
+      if (!result.changed) return result.document;
+      await tx.procedureManualApproval.create({ data: {
+        documentId: id, employeeId: reviewer.id,
+        employeeCodeSnapshot: reviewer.employeeCode, employeeNameSnapshot: reviewer.displayName,
+        employeeNfcTagUidSnapshot: reviewer.nfcTagUid, employeePositionSnapshot: reviewer.positionName,
+        employeeRankSnapshot: reviewer.rank, comment: options.comment ?? null, actorKey: options.actorKey
+      } });
+      return (await tx.assemblyProcedureDocument.findUnique({ where: { id }, include: this.includePages }))!;
     });
   }
 
-  async unpublish(id: string): Promise<AssemblyProcedureDocumentRecord> {
-    const doc = await this.getById(id, { includeInactive: true });
+  private async publishInTransaction(tx: Prisma.TransactionClient, id: string, expectedEditVersion?: number, actor: AssemblyProcedureEditActor = {}) {
+    // A document that was already published before this request is an idempotent
+    // re-run (the pre-lock read mirrors the former pre-transaction check).
+    const before = await tx.assemblyProcedureDocument.findUnique({ where: { id }, include: this.includePages });
+    if (!before) throw new ApiError(404, '手順書が見つかりません');
+    if (before.status === 'PUBLISHED') return { document: before, changed: false };
+    // All document mutations and assignment checks serialize on the document row.
+    await tx.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${id} FOR UPDATE`;
+    await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(id, actor.holderKey ?? null, tx, actor.holderToken ?? null);
+    const doc = await tx.assemblyProcedureDocument.findUnique({ where: { id }, include: this.includePages });
     if (!doc) throw new ApiError(404, '手順書が見つかりません');
-    if (doc.status === 'DRAFT') return doc;
-
-    const usage = await this.getReferenceUsage(id);
-    if (this.isReferenced(usage)) {
-      throw new ApiError(409, this.buildInUseMessage(usage));
+    if (doc.revisionMetadata) {
+      if (expectedEditVersion != null && expectedEditVersion !== doc.revisionMetadata.editVersion) {
+        throw new ApiError(409, '手順書overlayが他の編集で更新されています', { currentEditVersion: doc.revisionMetadata.editVersion }, 'ASSEMBLY_PROCEDURE_EDIT_CONFLICT');
+      }
+      // A document published by another request while we waited for the lock is a
+      // conflict, exactly as before the approval flow was added.
+      if (!doc.revisionMetadata.isRevisionHead || !doc.isActive || doc.status !== 'DRAFT') {
+        throw new ApiError(409, '最新版の改版下書きだけ公開できます');
+      }
+    } else if (doc.status === 'PUBLISHED') {
+      return { document: doc, changed: false };
     }
+    const document = await tx.assemblyProcedureDocument.update({
+      where: { id }, data: { status: 'PUBLISHED', publishedAt: new Date() }, include: this.includePages
+    });
+    return { document, changed: true };
+  }
 
-    return prisma.assemblyProcedureDocument.update({
-      where: { id },
-      data: {
-        status: 'DRAFT',
-        publishedAt: null
-      },
-      include: this.includePages
+  async unpublish(id: string): Promise<AssemblyProcedureDocumentRecord> {
+    return runAssemblyTransaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${id} FOR UPDATE`;
+      const doc = await tx.assemblyProcedureDocument.findUnique({ where: { id }, include: this.includePages });
+      if (!doc) throw new ApiError(404, '手順書が見つかりません');
+      if (doc.status === 'DRAFT') return doc;
+      const usage = await this.getReferenceUsage(id, tx);
+      if (usage.inProcedureManualAssignment) throw new ApiError(409, this.buildInUseMessage(usage));
+      if (doc.revisionMetadata) {
+        throw new ApiError(409, '版管理対象の公開済み手順書は公開取消できません。改版を作成してください');
+      }
+      if (this.isReferenced(usage)) throw new ApiError(409, this.buildInUseMessage(usage));
+      return tx.assemblyProcedureDocument.update({
+        where: { id }, data: { status: 'DRAFT', publishedAt: null }, include: this.includePages
+      });
     });
   }
 
@@ -265,7 +477,9 @@ export class AssemblyProcedureDocumentService {
       templateStepCount,
       activeTemplateStepCount,
       boltRefCount,
-      checkRefCount
+      checkRefCount,
+      revisionChildCount,
+      manualAssignmentCount
     ] = await Promise.all([
       db.assemblyProcedureOrderItem.count({ where: { assemblyProcedureDocumentId: id } }),
       db.assemblyTemplate.count({ where: { procedureDocumentId: id } }),
@@ -279,9 +493,31 @@ export class AssemblyProcedureDocumentService {
         where: { assemblyProcedureDocumentId: id, template: { isActive: true } }
       }),
       db.assemblyTemplateBolt.count({ where: { assemblyProcedureDocumentId: id } }),
-      db.assemblyTemplateCheckItem.count({ where: { assemblyProcedureDocumentId: id } })
+      db.assemblyTemplateCheckItem.count({ where: { assemblyProcedureDocumentId: id } }),
+      db.assemblyProcedureDocumentRevision.count({ where: { supersedesDocumentId: id } }),
+      db.procedureManualAssignment.count({ where: { assemblyProcedureDocumentId: id } })
     ]);
+    // Protect the published revision currently shown by an assigned root, while
+    // allowing older revisions to retain the existing cleanup policy.
+    let inProcedureManualAssignment = manualAssignmentCount > 0;
+    if (!inProcedureManualAssignment) {
+      const revision = await db.assemblyProcedureDocumentRevision.findUnique({
+        where: { documentId: id }, select: { revisionRootId: true }
+      });
+      if (revision && revision.revisionRootId !== id) {
+        const latest = await db.assemblyProcedureDocumentRevision.findFirst({
+          where: { revisionRootId: revision.revisionRootId, document: { status: 'PUBLISHED', isActive: true } },
+          orderBy: { revisionNumber: 'desc' }, select: { documentId: true }
+        });
+        if (latest?.documentId === id) {
+          inProcedureManualAssignment = await db.procedureManualAssignment.count({
+            where: { assemblyProcedureDocumentId: revision.revisionRootId }
+          }) > 0;
+        }
+      }
+    }
     return {
+      inProcedureManualAssignment,
       inProcedureOrder: orderCount > 0,
       inTemplatePrimary: templateCount > 0,
       inActiveTemplatePrimary: activeTemplateCount > 0,
@@ -290,12 +526,14 @@ export class AssemblyProcedureDocumentService {
       inTemplateProcedureStep: templateStepCount > 0,
       inActiveTemplateProcedureStep: activeTemplateStepCount > 0,
       inBoltPageRef: boltRefCount > 0,
-      inCheckPageRef: checkRefCount > 0
+      inCheckPageRef: checkRefCount > 0,
+      inRevisionHistory: revisionChildCount > 0
     };
   }
 
   isReferenced(usage: AssemblyProcedureDocumentReferenceUsage): boolean {
     return (
+      usage.inProcedureManualAssignment ||
       usage.inProcedureOrder ||
       usage.inTemplatePrimary ||
       usage.inActiveTemplatePrimary ||
@@ -304,11 +542,15 @@ export class AssemblyProcedureDocumentService {
       usage.inTemplateProcedureStep ||
       usage.inActiveTemplateProcedureStep ||
       usage.inBoltPageRef ||
-      usage.inCheckPageRef
+      usage.inCheckPageRef ||
+      usage.inRevisionHistory
     );
   }
 
   buildInUseMessage(usage: AssemblyProcedureDocumentReferenceUsage): string {
+    if (usage.inProcedureManualAssignment) {
+      return '要領書の機種×工程割り当てで使用中の手順書は削除・公開取消できません';
+    }
     if (usage.inProcedureOrder) {
       return '旧形式テンプレートの互換手順書列で使用中の手順書は公開取り消しできません';
     }
@@ -327,11 +569,13 @@ export class AssemblyProcedureDocumentService {
     if (usage.inActiveTemplatePrimary) return '有効なテンプレートで使用中の手順書は公開取り消しできません';
     if (usage.inTemplatePrimary) return 'テンプレートで使用中の手順書は公開取り消しできません';
     if (usage.inBoltPageRef || usage.inCheckPageRef) return 'マーカー参照で使用中の手順書は公開取り消しできません';
+    if (usage.inRevisionHistory) return '版履歴で使用中の手順書は削除できません';
     return '使用中の手順書は公開取り消しできません';
   }
 
-  async deleteIfUnused(id: string): Promise<'deleted' | 'not_found' | 'in_use'> {
+  async deleteIfUnused(id: string, actor: AssemblyProcedureEditActor = {}): Promise<'deleted' | 'not_found' | 'in_use'> {
     const imagePaths: string[] = [];
+    const assetIds: string[] = [];
     const outcome = await runAssemblyTransaction(async (tx) => {
       const locked = await tx.$queryRaw<Array<{ id: string }>>`
         SELECT id FROM "AssemblyProcedureDocument"
@@ -339,28 +583,84 @@ export class AssemblyProcedureDocumentService {
         FOR UPDATE
       `;
       if (locked.length === 0) return 'not_found' as const;
+      await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(id, actor.holderKey ?? null, tx, actor.holderToken ?? null);
 
       const doc = await tx.assemblyProcedureDocument.findUnique({
         where: { id },
         select: {
           imageRelativePath: true,
-          pages: { select: { imageRelativePath: true } }
+          pages: { select: { imageRelativePath: true } },
+          status: true,
+          revisionMetadata: {
+            select: {
+              isRevisionHead: true,
+              supersedesDocumentId: true,
+              sourceAssetId: true
+            }
+          },
+          overlayElements: {
+            where: { kind: 'IMAGE' },
+            select: { assetId: true }
+          },
+          ownedAssets: { select: { id: true } }
         }
       });
       if (!doc) return 'not_found' as const;
 
+      if (await tx.procedureVideoLink.count({ where: { assemblyProcedureDocumentId: id } })) {
+        throw new ApiError(409, '動画が紐づいている手順書は削除できません');
+      }
       const usage = await this.getReferenceUsage(id, tx);
       if (this.isReferenced(usage)) return 'in_use' as const;
 
+      // A revision head is the stable editing/publishing target. The generic
+      // delete endpoint must not remove it and leave a series without a head;
+      // revision DRAFTs use the authenticated discard operation instead. A
+      // root DRAFT is the one intentional exception and remains deletable
+      // when it has no external references.
+      if (
+        doc.revisionMetadata?.isRevisionHead &&
+        (doc.revisionMetadata.supersedesDocumentId || doc.status === 'PUBLISHED')
+      ) {
+        return 'in_use' as const;
+      }
+
+      assetIds.push(...collectAssemblyProcedureAssetIds({
+        sourceAssetId: doc.revisionMetadata?.sourceAssetId,
+        overlayAssetIds: doc.overlayElements.map((element) => element.assetId),
+        ownedAssetIds: doc.ownedAssets.map((asset) => asset.id)
+      }));
+
+      // A self-referencing root revision row uses ON DELETE RESTRICT for the
+      // root pointer. Remove that sidecar first; the root document is allowed
+      // to be deleted only for the draft exception above.
+      if (doc.revisionMetadata && !doc.revisionMetadata.supersedesDocumentId) {
+        await tx.assemblyProcedureDocumentRevision.delete({ where: { documentId: id } });
+      }
+
       await tx.assemblyProcedureDocument.delete({ where: { id } });
-      imagePaths.push(...doc.pages.map((page) => page.imageRelativePath));
-      if (!imagePaths.includes(doc.imageRelativePath)) {
-        imagePaths.push(doc.imageRelativePath);
+      const candidates = [...doc.pages.map((page) => page.imageRelativePath), doc.imageRelativePath];
+      for (const path of candidates) {
+        if (imagePaths.includes(path)) continue;
+        const [pageRefs, documentRefs] = await Promise.all([
+          tx.assemblyProcedureDocumentPage.count({ where: { imageRelativePath: path } }),
+          tx.assemblyProcedureDocument.count({ where: { imageRelativePath: path } })
+        ]);
+        if (pageRefs === 0 && documentRefs === 0) imagePaths.push(path);
       }
       return 'deleted' as const;
     });
 
     if (outcome === 'deleted') {
+      try {
+        // These IDs were detached by the just-committed document deletion.
+        // The GC rechecks all DB references and active-DRAFT ownership, so
+        // exact candidates may be collected immediately; broad maintenance
+        // GC retains its normal age safeguard.
+        await this.assetGc.collect({ candidateAssetIds: assetIds, minAgeMs: 0 });
+      } catch (err) {
+        logger.warn({ err, id, assetIds }, 'assembly_procedure_asset_gc_after_document_delete_failed');
+      }
       for (const imageRelativePath of imagePaths) {
         try {
           await AssemblyProcedureImageStorage.deleteImage(imageRelativePath);

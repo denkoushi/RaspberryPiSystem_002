@@ -1,0 +1,223 @@
+---
+- name: Record this kiosk's stopped-candidate result
+  ansible.builtin.set_fact:
+    release_torque_host_result: >-
+      {{
+        release_torque_host_result | default({})
+        | combine({
+          'agentStaged': release_kiosk_stage_succeeded | default(false) | bool
+        })
+      }}
+
+- name: Initialize the shared stopped-candidate result
+  ansible.builtin.set_fact:
+    release_torque_all_staged: true
+  run_once: true
+  delegate_to: "{{ groups['server'] | first }}"
+  delegate_facts: true
+
+- name: Fold every kiosk into the stopped-candidate result
+  ansible.builtin.set_fact:
+    release_torque_all_staged: >-
+      {{
+        hostvars[groups['server'] | first].release_torque_all_staged | bool
+        and (hostvars[item].release_torque_host_result.agentStaged | default(false) | bool)
+      }}
+  loop: "{{ release_torque_cutover_hosts }}"
+  run_once: true
+  delegate_to: "{{ groups['server'] | first }}"
+  delegate_facts: true
+
+- name: Restore both old images when either candidate did not stage
+  ansible.builtin.include_tasks: fail-closed.yml
+  when: >-
+    not (
+      hostvars[groups['server'] | first].release_torque_all_staged
+      | default(false)
+      | bool
+    )
+
+- name: Stop after both hosts completed failed-stage cleanup
+  ansible.builtin.fail:
+    msg: All selected torque kiosks remain OFF because the shared stage boundary failed.
+  when: >-
+    not (
+      hostvars[groups['server'] | first].release_torque_all_staged
+      | default(false)
+      | bool
+    )
+  run_once: true
+
+- name: Start the staged torque agent on both kiosks
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --project-name
+      - "{{ release_kiosk_compose_project | default('docker') }}"
+      - -f
+      - "{{ release_kiosk_candidate_compose }}"
+      - up
+      - -d
+      - --no-build
+      - torque-agent
+  register: release_torque_agent_start
+  changed_when: release_torque_agent_start.rc == 0
+  failed_when: false
+
+- name: Probe the staged torque agent without opening browser ownership
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ torque_agent_local_port | default(7073) }}/health"
+    method: GET
+    status_code: 200
+    timeout: 10
+  register: release_torque_agent_health
+  retries: 5
+  delay: 3
+  until: release_torque_agent_health.status | default(0) == 200
+  failed_when: false
+
+- name: Read Bluetooth before the browser boundary
+  ansible.builtin.command: /usr/local/libexec/torque-bluetooth-adapter --status
+  register: release_torque_agent_bluetooth
+  changed_when: false
+  failed_when: false
+
+- name: Verify the fail-closed guard remains active before browser ownership
+  ansible.builtin.command:
+    argv: [systemctl, is-active, torque-bluetooth-guard.service]
+  register: release_torque_guard_health
+  changed_when: false
+  failed_when: false
+
+- name: Record this kiosk's agent-ready and Bluetooth-OFF result
+  ansible.builtin.set_fact:
+    release_torque_host_result: >-
+      {{
+        release_torque_host_result | default({})
+        | combine({
+          'agentHealthyOff':
+            release_torque_agent_start.rc | default(1) == 0
+            and release_torque_agent_health.status | default(0) == 200
+            and release_torque_agent_health.json.ok | default(false) | bool
+            and not (release_torque_agent_health.json.ready | default(true) | bool)
+            and not (release_torque_agent_health.json.leaseOwned | default(true) | bool)
+            and release_torque_agent_health.json.selfOwnedToken | default(none) is none
+            and not (release_torque_agent_health.json.bluetoothPowered | default(true) | bool)
+            and release_torque_agent_bluetooth.rc | default(1) == 0
+            and '"powered":false' in (release_torque_agent_bluetooth.stdout | default('') | regex_replace('\\s', ''))
+            and release_torque_guard_health.rc | default(1) == 0
+            and release_torque_guard_health.stdout | trim == 'active'
+        })
+      }}
+
+- name: Initialize the shared agent-ready and OFF result
+  ansible.builtin.set_fact:
+    release_torque_all_agents_ready: true
+  run_once: true
+  delegate_to: "{{ groups['server'] | first }}"
+  delegate_facts: true
+
+- name: Fold every kiosk into the agent-ready and OFF result
+  ansible.builtin.set_fact:
+    release_torque_all_agents_ready: >-
+      {{
+        hostvars[groups['server'] | first].release_torque_all_agents_ready | bool
+        and (hostvars[item].release_torque_host_result.agentHealthyOff | default(false) | bool)
+      }}
+  loop: "{{ release_torque_cutover_hosts }}"
+  run_once: true
+  delegate_to: "{{ groups['server'] | first }}"
+  delegate_facts: true
+
+- name: Restore both old images when either agent is not ready and OFF
+  ansible.builtin.include_tasks: fail-closed.yml
+  when: >-
+    not (
+      hostvars[groups['server'] | first].release_torque_all_agents_ready
+      | default(false)
+      | bool
+    )
+
+- name: Stop after both hosts completed failed-agent cleanup
+  ansible.builtin.fail:
+    msg: All selected torque kiosks remain OFF because the shared agent-ready boundary failed.
+  when: >-
+    not (
+      hostvars[groups['server'] | first].release_torque_all_agents_ready
+      | default(false)
+      | bool
+    )
+  run_once: true
+
+- name: Start both kiosk browsers only after the shared agent-ready boundary
+  ansible.builtin.systemd:
+    name: kiosk-browser.service
+    state: started
+    enabled: true
+  register: release_torque_browser_start
+  failed_when: false
+
+- name: Read each resumed kiosk browser state
+  ansible.builtin.command:
+    argv: [systemctl, is-active, kiosk-browser.service]
+  register: release_torque_browser_health
+  changed_when: false
+  failed_when: false
+
+- name: Record this kiosk's browser result
+  ansible.builtin.set_fact:
+    release_torque_host_result: >-
+      {{
+        release_torque_host_result | default({})
+        | combine({
+          'browserResumed':
+            not (release_torque_browser_start.failed | default(true) | bool)
+            and release_torque_browser_health.rc | default(1) == 0
+            and release_torque_browser_health.stdout | trim == 'active'
+        })
+      }}
+
+- name: Initialize the shared browser-resume result
+  ansible.builtin.set_fact:
+    release_torque_all_browsers_ready: true
+  run_once: true
+  delegate_to: "{{ groups['server'] | first }}"
+  delegate_facts: true
+
+- name: Fold every kiosk into the browser-resume result
+  ansible.builtin.set_fact:
+    release_torque_all_browsers_ready: >-
+      {{
+        hostvars[groups['server'] | first].release_torque_all_browsers_ready | bool
+        and (hostvars[item].release_torque_host_result.browserResumed | default(false) | bool)
+      }}
+  loop: "{{ release_torque_cutover_hosts }}"
+  run_once: true
+  delegate_to: "{{ groups['server'] | first }}"
+  delegate_facts: true
+
+- name: Restore both old images when either browser failed to resume
+  ansible.builtin.include_tasks: fail-closed.yml
+  when: >-
+    not (
+      hostvars[groups['server'] | first].release_torque_all_browsers_ready
+      | default(false)
+      | bool
+    )
+
+- name: Stop after both hosts completed failed-browser cleanup
+  ansible.builtin.fail:
+    msg: All selected torque kiosks remain OFF because the shared browser boundary failed.
+  when: >-
+    not (
+      hostvars[groups['server'] | first].release_torque_all_browsers_ready
+      | default(false)
+      | bool
+    )
+  run_once: true
+
+- name: Remove successful aggregate torque cutover preparation data
+  ansible.builtin.include_role:
+    name: release_kiosk
+    tasks_from: cleanup

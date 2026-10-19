@@ -1,8 +1,14 @@
+import type { ProcedureVideoSummary } from './procedure-video.service.js';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
 import { PdfStorageRenderAdapter } from '../kiosk-documents/adapters/pdf-storage-render.adapter.js';
 import { normalizeMachineNameForCompare } from '../production-schedule/machine-name-compare.js';
 import { AssemblyLegacyProcedureOrderService } from './assembly-legacy-procedure-order.service.js';
+import {
+  assemblyProcedureAssetUrl,
+  serializeAssemblyProcedureOverlayElement,
+  type AssemblyProcedureDocumentRevisionDto
+} from './assembly-procedure-document-revision.serializer.js';
 import {
   type AssemblyProcedureSequenceDocumentType,
   type AssemblyProcedureSequenceItemSummary
@@ -22,13 +28,18 @@ import {
 export type AssemblyProcedureSequenceFallbackReason = 'not_configured' | 'no_enabled_documents' | 'no_page_images';
 
 export type AssemblyProcedureSequencePage = {
+  videos?: ProcedureVideoSummary[];
   source: 'kiosk_document' | 'assembly_procedure_document';
   documentId: string;
   pageIndex: number;
   pageUrl: string;
+  overlays: AssemblyProcedureDocumentRevisionDto['pages'][number]['overlays'];
 };
 
+export type AssemblyProcedureSequenceAsset = AssemblyProcedureDocumentRevisionDto['assets'][string];
+
 export type AssemblyProcedureSequenceDocument = {
+  lastApproval?: AssemblyProcedureDocumentRevisionDto['lastApproval'];
   orderItemId: string;
   sortOrder: number;
   label: string | null;
@@ -44,6 +55,8 @@ export type AssemblyProcedureSequenceDocument = {
   updatedAt: Date;
   pageUrls: string[];
   pages: AssemblyProcedureSequencePage[];
+  overlays: AssemblyProcedureDocumentRevisionDto['pages'][number]['overlays'];
+  assets: Record<string, AssemblyProcedureSequenceAsset>;
 };
 
 export type AssemblyProcedureSequenceStep = AssemblyTemplateProcedureStepSummary & {
@@ -85,13 +98,18 @@ export type AssemblyProcedureSequence =
 
 function buildAssemblyProcedurePages(
   documentId: string,
-  pages: Array<{ pageIndex: number; imageRelativePath: string }>
+  pages: Array<{ pageIndex: number; imageRelativePath: string }>,
+  overlaysByPage: ReadonlyMap<
+    number,
+    AssemblyProcedureDocumentRevisionDto['pages'][number]['overlays']
+  > = new Map()
 ): AssemblyProcedureSequencePage[] {
   return pages.map((page) => ({
     source: 'assembly_procedure_document' as const,
     documentId,
     pageIndex: page.pageIndex,
-    pageUrl: page.imageRelativePath
+    pageUrl: page.imageRelativePath,
+    overlays: overlaysByPage.get(page.pageIndex) ?? []
   }));
 }
 
@@ -100,27 +118,70 @@ function buildKioskProcedurePages(documentId: string, pageUrls: string[]): Assem
     source: 'kiosk_document' as const,
     documentId,
     pageIndex: index,
-    pageUrl
+    pageUrl,
+    overlays: []
   }));
 }
 
-async function toSequenceDocument(
+type AssemblyProcedureOverlayRow = Parameters<typeof serializeAssemblyProcedureOverlayElement>[0];
+
+function buildOverlayProjection(rows: AssemblyProcedureOverlayRow[]): {
+  overlays: AssemblyProcedureDocumentRevisionDto['pages'][number]['overlays'];
+  overlaysByPage: Map<number, AssemblyProcedureDocumentRevisionDto['pages'][number]['overlays']>;
+  assets: Record<string, AssemblyProcedureSequenceAsset>;
+} {
+  const overlays = rows.map((row) => serializeAssemblyProcedureOverlayElement(row));
+  const overlaysByPage = new Map<
+    number,
+    AssemblyProcedureDocumentRevisionDto['pages'][number]['overlays']
+  >();
+  const assets: Record<string, AssemblyProcedureSequenceAsset> = {};
+
+  for (const row of rows) {
+    if (!row.asset) continue;
+    assets[row.asset.id] = {
+      assetId: row.asset.id,
+      storageKey: row.asset.storageKey,
+      contentType: row.asset.contentType,
+      byteSize: row.asset.byteSize,
+      url: assemblyProcedureAssetUrl(row.asset.id, row.asset.storageKey)
+    };
+  }
+
+  for (const overlay of overlays) {
+    const values = overlaysByPage.get(overlay.pageIndex) ?? [];
+    values.push(overlay);
+    overlaysByPage.set(overlay.pageIndex, values);
+  }
+
+  return { overlays, overlaysByPage, assets };
+}
+
+export async function toSequenceDocument(
   item: AssemblyProcedureSequenceItemSummary,
   render: PdfStorageRenderAdapter,
-  assemblyPagesByDocumentId: Map<string, Array<{ pageIndex: number; imageRelativePath: string }>>
+  assemblyPagesByDocumentId: Map<string, Array<{ pageIndex: number; imageRelativePath: string }>>,
+  assemblyOverlaysByDocumentId: Map<string, AssemblyProcedureOverlayRow[]>
 ): Promise<AssemblyProcedureSequenceDocument | null> {
   if (item.documentType === 'assembly_procedure_document') {
     if (item.document.status === 'draft') return null;
     const assemblyProcedureDocumentId = item.assemblyProcedureDocumentId;
     if (!assemblyProcedureDocumentId) return null;
     const storedPages = assemblyPagesByDocumentId.get(assemblyProcedureDocumentId) ?? [];
+    const overlayProjection = buildOverlayProjection(
+      assemblyOverlaysByDocumentId.get(assemblyProcedureDocumentId) ?? []
+    );
     const pages =
       storedPages.length > 0
-        ? buildAssemblyProcedurePages(assemblyProcedureDocumentId, storedPages)
+        ? buildAssemblyProcedurePages(
+            assemblyProcedureDocumentId,
+            storedPages,
+            overlayProjection.overlaysByPage
+          )
         : item.document.imageRelativePath
           ? buildAssemblyProcedurePages(assemblyProcedureDocumentId, [
               { pageIndex: 0, imageRelativePath: item.document.imageRelativePath }
-            ])
+            ], overlayProjection.overlaysByPage)
           : [];
     const pageUrls = pages.map((page) => page.pageUrl);
     return {
@@ -138,7 +199,9 @@ async function toSequenceDocument(
       pageCount: item.document.pageCount,
       updatedAt: item.document.updatedAt,
       pageUrls,
-      pages
+      pages,
+      overlays: overlayProjection.overlays,
+      assets: overlayProjection.assets
     };
   }
 
@@ -161,7 +224,9 @@ async function toSequenceDocument(
       pageCount: item.document.pageCount,
       updatedAt: item.document.updatedAt,
       pageUrls: [],
-      pages: []
+      pages: [],
+      overlays: [],
+      assets: {}
     };
   }
 
@@ -182,7 +247,9 @@ async function toSequenceDocument(
     pageCount: item.document.pageCount,
     updatedAt: item.document.updatedAt,
     pageUrls,
-    pages
+    pages,
+    overlays: [],
+    assets: {}
   };
 }
 
@@ -202,15 +269,28 @@ async function buildFallbackSequenceDocuments(
       pages: {
         orderBy: { pageIndex: 'asc' },
         select: { pageIndex: true, imageRelativePath: true }
+      },
+      overlayElements: {
+        orderBy: [
+          { pageIndex: 'asc' },
+          { zIndex: 'asc' },
+          { createdAt: 'asc' }
+        ],
+        include: { asset: true }
       }
     }
   });
   if (!doc || !doc.isActive || doc.status !== 'PUBLISHED') return [];
 
+  const overlayProjection = buildOverlayProjection(doc.overlayElements);
   const pages =
     doc.pages.length > 0
-      ? buildAssemblyProcedurePages(doc.id, doc.pages)
-      : buildAssemblyProcedurePages(doc.id, [{ pageIndex: 0, imageRelativePath: doc.imageRelativePath }]);
+      ? buildAssemblyProcedurePages(doc.id, doc.pages, overlayProjection.overlaysByPage)
+      : buildAssemblyProcedurePages(
+          doc.id,
+          [{ pageIndex: 0, imageRelativePath: doc.imageRelativePath }],
+          overlayProjection.overlaysByPage
+        );
   if (pages.length === 0) return [];
 
   return [
@@ -229,12 +309,14 @@ async function buildFallbackSequenceDocuments(
       pageCount: pages.length,
       updatedAt: doc.updatedAt,
       pageUrls: pages.map((page) => page.pageUrl),
-      pages
+      pages,
+      overlays: overlayProjection.overlays,
+      assets: overlayProjection.assets
     }
   ];
 }
 
-function buildProcedureSteps(
+export function buildProcedureSteps(
   documents: AssemblyProcedureSequenceDocument[],
   storedSteps: AssemblyTemplateProcedureStepSummary[]
 ): {
@@ -406,8 +488,34 @@ export class AssemblyProcedureSequenceService {
       assemblyPagesByDocumentId.set(page.documentId, current);
     }
 
+    const assemblyOverlays = await prisma.assemblyProcedureOverlayElement.findMany({
+      where: { documentId: { in: assemblyDocumentIds } },
+      orderBy: [
+        { documentId: 'asc' },
+        { pageIndex: 'asc' },
+        { zIndex: 'asc' },
+        { createdAt: 'asc' }
+      ],
+      include: { asset: true }
+    });
+    const assemblyOverlaysByDocumentId = new Map<string, AssemblyProcedureOverlayRow[]>();
+    for (const overlay of assemblyOverlays) {
+      const current = assemblyOverlaysByDocumentId.get(overlay.documentId) ?? [];
+      current.push(overlay);
+      assemblyOverlaysByDocumentId.set(overlay.documentId, current);
+    }
+
     const documents = (
-      await Promise.all(enabledItems.map((item) => toSequenceDocument(item, this.render, assemblyPagesByDocumentId)))
+      await Promise.all(
+        enabledItems.map((item) =>
+          toSequenceDocument(
+            item,
+            this.render,
+            assemblyPagesByDocumentId,
+            assemblyOverlaysByDocumentId
+          )
+        )
+      )
     ).filter((document): document is AssemblyProcedureSequenceDocument => document != null && document.pages.length > 0);
     if (documents.length === 0) {
       const fallbackDocuments = await buildFallbackSequenceDocuments(fallbackProcedureDocument?.id);

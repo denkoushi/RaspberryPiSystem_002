@@ -2,7 +2,7 @@
 Description=Watch power action queue
 
 [Path]
-PathChanged=/opt/RaspberryPiSystem_002/power-actions
+PathChanged={{ pi5_power_actions_dir | default((repo_path | default('/opt/RaspberryPiSystem_002')) ~ '/power-actions') }}
 Unit=pi5-power-dispatcher.service
 
 [Install]

@@ -5,19 +5,28 @@ import { z } from 'zod';
 import { parseInferenceProvidersJsonQuiet } from '../services/inference/config/inference-providers-json.schema.js';
 import { collectLocalLlmProviderAlignmentIssues } from '../services/inference/config/local-llm-env-alignment.js';
 import { alertsEnvShape } from './env/alerts.js';
-import { coreEnvShape, isWeakSecret, SECRET_MIN_LENGTH } from './env/core.js';
+import { businessHermesEnvShape } from './env/business-hermes.js';
+import {
+  coreEnvShape,
+  isUnsafeProductionDatabaseUrl,
+  isWeakSecret,
+  SECRET_MIN_LENGTH,
+} from './env/core.js';
 import { dgxResourceEnvShape } from './env/dgx-resource.js';
 import { inferenceEnvShape } from './env/inference.js';
 import { ingestTuningEnvShape } from './env/ingest-tuning.js';
 import { kioskFlagsEnvShape } from './env/kiosk-flags.js';
 import { localLlmEnvShape } from './env/local-llm.js';
 import { networkEnvShape } from './env/network.js';
+import { procedureVideoEnvShape } from './env/procedure-video.js';
+import { procedureMaterialEnvShape } from './env/procedure-material.js';
 import { photoToolEnvShape } from './env/photo-tool.js';
 import { signageEnvShape } from './env/signage.js';
 
 const envSchema = z
   .object({
     ...coreEnvShape,
+    ...businessHermesEnvShape,
     ...signageEnvShape,
     ...networkEnvShape,
     ...alertsEnvShape,
@@ -27,8 +36,23 @@ const envSchema = z
     ...dgxResourceEnvShape,
     ...inferenceEnvShape,
     ...photoToolEnvShape,
+    ...procedureMaterialEnvShape,
+    ...procedureVideoEnvShape,
   })
   .superRefine((value, ctx) => {
+    const businessHermesFields = [
+      value.BUSINESS_HERMES_BASE_URL,
+      value.BUSINESS_HERMES_API_KEY,
+      value.BUSINESS_HERMES_MODEL
+    ];
+    const configuredBusinessHermesFields = businessHermesFields.filter(Boolean).length;
+    if (configuredBusinessHermesFields > 0 && configuredBusinessHermesFields < businessHermesFields.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['BUSINESS_HERMES_BASE_URL'],
+        message: 'BUSINESS_HERMES_BASE_URL/API_KEY/MODEL must be configured together'
+      });
+    }
     if (value.LOCAL_LLM_RUNTIME_WARM_WINDOW_ENABLED) {
       if (value.LOCAL_LLM_RUNTIME_WARM_WINDOW_START_HOUR >= value.LOCAL_LLM_RUNTIME_WARM_WINDOW_END_HOUR) {
         ctx.addIssue({
@@ -97,6 +121,14 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['JWT_REFRESH_SECRET'],
         message: `JWT_REFRESH_SECRET must be a strong secret (min ${SECRET_MIN_LENGTH} chars, no weak patterns) in production`,
+      });
+    }
+
+    if (isUnsafeProductionDatabaseUrl(value.DATABASE_URL)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['DATABASE_URL'],
+        message: 'DATABASE_URL must use a dedicated non-postgres role and a non-default password in production',
       });
     }
   });

@@ -18,7 +18,7 @@ export type SelfInspectionPaperReportResolveResult =
     }
   | {
       valid: false;
-      reason: 'invalid_qr' | 'not_found' | 'superseded' | 'imported' | 'cancelled';
+      reason: 'invalid_qr' | 'not_found' | 'superseded' | 'imported' | 'cancelled' | 'invalidated';
       message: string;
     };
 
@@ -41,6 +41,13 @@ export class SelfInspectionPaperReportResolver {
         valid: false,
         reason: 'not_found',
         message: '紙帳票QRに対応する発行レコードが見つかりません'
+      };
+    }
+    if (page.report.session.invalidatedAt) {
+      return {
+        valid: false,
+        reason: 'invalidated',
+        message: '削除済みの自主検査アイテムの紙帳票は使用できません'
       };
     }
 

@@ -2,6 +2,9 @@
 # Full provisioning quiesces only the unit files that already exist in
 # prestage-signage-runtime.yml. This role can therefore create a fresh unit set.
 
+- name: Prepare host-specific Signage runtime configuration outside the release tree
+  ansible.builtin.import_tasks: runtime-config.yml
+
 - name: Stop signage runtime temporarily for release
   ansible.builtin.systemd:
     name: "{{ item }}"
@@ -14,6 +17,15 @@
     - signage-lite-watchdog.service
     - signage-lite.service
   when: terminal_release_mode | default('full') == 'release-only'
+
+- name: Stop lightdm temporarily for constrained signage release
+  ansible.builtin.systemd:
+    name: lightdm
+    state: stopped
+  register: lightdm_stopped
+  when:
+    - terminal_release_mode | default('full') == 'release-only'
+    - stop_lightdm | default(false) | bool
 
 # NOTE:
 # - Pi3/Pi4のsignage-liteは feh + shell scripts で動作するため、pnpm依存のインストールは不要。
@@ -36,14 +48,6 @@
   when:
     - terminal_release_mode | default('full') == 'full'
     - signage_lite_client_deps_enabled | default(false) | bool
-
-- name: Install tmpfiles configuration for /run/signage
-  ansible.builtin.template:
-    src: signage-lite.tmpfiles.conf.j2
-    dest: /etc/tmpfiles.d/signage-lite.conf
-    owner: root
-    group: root
-    mode: '0644'
 
 - name: Install renderer for the signage maintenance screen
   ansible.builtin.apt:
@@ -124,6 +128,26 @@
     mode: '0755'
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
+
+- name: Deploy signage artifact status-agent service
+  ansible.builtin.template:
+    src: status-agent-artifact.service.j2
+    dest: /etc/systemd/system/status-agent.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: systemd-reload
+  when: terminal_release_mode | default('full') == 'release-only'
+
+- name: Deploy signage artifact status-agent timer
+  ansible.builtin.template:
+    src: status-agent-artifact.timer.j2
+    dest: /etc/systemd/system/status-agent.timer
+    owner: root
+    group: root
+    mode: '0644'
+  notify: systemd-reload
+  when: terminal_release_mode | default('full') == 'release-only'
 
 - name: Deploy signage-lite.service
   ansible.builtin.template:

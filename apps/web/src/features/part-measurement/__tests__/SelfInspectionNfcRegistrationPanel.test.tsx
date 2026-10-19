@@ -65,6 +65,17 @@ describe('SelfInspectionNfcRegistrationPanel', () => {
     expect(screen.getByText('未登録のNFCタグです。')).toBeInTheDocument();
   });
 
+  it('suppresses the inline message when the session header owns message placement', () => {
+    render(
+      <SelfInspectionNfcRegistrationPanel
+        registration={makeRegistration({ message: '未登録のNFCタグです。' })}
+        requireMeasuringInstrumentTag={true}
+        messagePlacement="external"
+      />
+    );
+    expect(screen.queryByText('未登録のNFCタグです。')).not.toBeInTheDocument();
+  });
+
   it('shows optional instrument state when instrument tag is not required', () => {
     render(
       <SelfInspectionNfcRegistrationPanel

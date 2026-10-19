@@ -26,6 +26,22 @@ class QueueStore:
             )
             connection.execute(
                 """
+                CREATE TABLE IF NOT EXISTS torque_outbox_rejected (
+                    event_id TEXT PRIMARY KEY,
+                    payload TEXT NOT NULL,
+                    http_status INTEGER NOT NULL,
+                    error_code TEXT NOT NULL,
+                    response_body TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS torque_outbox_rejected_created_idx "
+                "ON torque_outbox_rejected (created_at, event_id)"
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS torque_local_audit (
                     event_id TEXT PRIMARY KEY,
                     reason TEXT NOT NULL,
@@ -72,6 +88,29 @@ class QueueStore:
     def acknowledge(self, event_id: str) -> None:
         with self._connect() as connection:
             connection.execute("DELETE FROM torque_outbox WHERE event_id = ?", (event_id,))
+
+    def reject(self, event_id: str, http_status: int, error_code: str, response_body: str) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO torque_outbox_rejected
+                    (event_id, payload, http_status, error_code, response_body)
+                SELECT event_id, payload, ?, ?, ? FROM torque_outbox WHERE event_id = ?
+                """,
+                (http_status, error_code, response_body[:1000], event_id),
+            )
+            connection.execute("DELETE FROM torque_outbox WHERE event_id = ?", (event_id,))
+            connection.execute(
+                """
+                DELETE FROM torque_outbox_rejected
+                WHERE event_id IN (
+                    SELECT event_id FROM torque_outbox_rejected
+                    ORDER BY created_at DESC, event_id DESC
+                    LIMIT -1 OFFSET ?
+                )
+                """,
+                (self.LOCAL_AUDIT_LIMIT,),
+            )
 
     def count(self) -> int:
         with self._connect() as connection:

@@ -33,6 +33,11 @@ class UnavailableModelProfileError(ModelProfileError):
     code = "UNAVAILABLE_MODEL_PROFILE"
 
 
+class BusinessRestoreUnavailableError(ModelProfileError):
+    status_code = 503
+    code = "BUSINESS_RESTORE_UNAVAILABLE"
+
+
 @dataclass(frozen=True)
 class ModelProfile:
     id: str

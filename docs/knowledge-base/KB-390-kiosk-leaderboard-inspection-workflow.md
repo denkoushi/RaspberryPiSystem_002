@@ -359,6 +359,20 @@ DB verification after deploy:
 | Print disclaimer placement | **Done** — toolbar-only on screen (`3b83b577`); not on printed sheets |
 | Pi5 print dialog / PDF / physical printer A4 landscape | **Verified by operator** on 2026-06-25 after HL-L2460DW setup; QR/文字 were field-accepted after QR enlargement |
 
+## 自主検査の削除と順位ボード（2026-07-31）
+
+- 自主検査一覧で削除された日程行は、開始済み・未開始を問わず順位ボードの自主検査装飾
+  （`検`、開始・再開パス、進捗色）を表示しない。
+- 削除成功時、Webは対象日程行のIndexedDB順位ボードキャッシュを削除し、生産日程と
+  順位ボード装飾を再取得する。API側も日程行ID単位の無効化監査を確認するため、別端末や
+  古いキャッシュから同じ自主検査を開始しようとしても409になる。
+- 加工機自主検査ボードと通常セッション集計は `invalidatedAt IS NULL` のセッションだけを
+  使用する。削除履歴を表示したい場合は通常ボードを流用せず、記録確認画面の
+  **状態「削除済み」** を使用する。
+- 削除直後に一時的な旧カードが見える場合は画面を再取得する。開始操作が
+  `SELF_INSPECTION_ITEM_INVALIDATION_CONFLICT` ならサーバー上では削除済みであり、
+  再発行やDB直接復元を行わない。
+
 ## References
 
 - [KB-320](./KB-320-kiosk-part-measurement.md) (self-inspection · inspection drawing)

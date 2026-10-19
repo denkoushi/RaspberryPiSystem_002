@@ -22,7 +22,8 @@ export const INSPECTION_DRAWING_THREAD_NOMINAL_OPTIONS = [
   'M22',
   'M24',
   'M27',
-  'M30'
+  'M30',
+  '管用'
 ] as const;
 
 const SURFACE_SIDE_SET = new Set<string>(INSPECTION_DRAWING_SURFACE_SIDE_OPTIONS);

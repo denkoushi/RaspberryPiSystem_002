@@ -1,0 +1,4 @@
+---
+# The primary production Pi5 explicitly promotes the exact signed ARM64 pair.
+# Other server inventories keep the group default disabled.
+pi5_artifact_promotion_enabled: true

@@ -10,9 +10,9 @@ import { ApiError } from '../../lib/errors.js';
 import {
   PART_MEASUREMENT_FHINMEI_CANDIDATE_MIN_LEN,
   PART_MEASUREMENT_FHINMEI_ONLY_BUCKET_FHINCD,
-  PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD,
-  PART_MEASUREMENT_LEGACY_RESOURCE_CD
+  PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD
 } from './part-measurement-constants.js';
+import { normalizePartMeasurementResourceCd as normalizeResourceCd } from './part-measurement-resource-cd.js';
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
 import { templateSupportsInspectionDrawing } from './part-measurement-inspection-drawing-policy.js';
 import {
@@ -49,7 +49,28 @@ export type TemplateItemInput = {
   lowerLimit?: number | null;
   upperLimit?: number | null;
   depthMode?: 'measured' | 'through';
+  valueKind?: 'numeric' | 'judgement';
 };
+
+function isPipeThreadJudgementItem(item: TemplateItemInput): boolean {
+  return item.measurementLabel.trim() === 'ネジ穴深さ' && item.measurementPoint.split(/\s+/).includes('管用');
+}
+
+function normalizeTemplateItemValueKind(item: TemplateItemInput): 'NUMERIC' | 'JUDGEMENT' {
+  const valueKind = item.valueKind === 'judgement' ? 'JUDGEMENT' : 'NUMERIC';
+  const isPipeThread = isPipeThreadJudgementItem(item);
+  if (valueKind === 'JUDGEMENT') {
+    if (!isPipeThread || item.depthMode === 'through') {
+      throw new ApiError(400, 'OK/NG判定は「ネジ穴深さ / 管用」の測定点だけに設定できます');
+    }
+    if (item.nominalValue != null || item.lowerLimit != null || item.upperLimit != null) {
+      throw new ApiError(400, '管用ネジのOK/NG判定には基準値・公差を設定できません');
+    }
+  } else if (isPipeThread) {
+    throw new ApiError(400, '管用ネジはOK/NG判定として設定してください');
+  }
+  return valueKind;
+}
 
 function optionalDecimal(value: number | null | undefined): Prisma.Decimal | null {
   if (value === null || value === undefined) return null;
@@ -62,9 +83,27 @@ function clampRatio(value: number | null | undefined): number | null {
   return Math.min(1, Math.max(0, value));
 }
 
-function normalizeResourceCd(raw: string): string {
-  const t = raw.trim();
-  return t.length > 0 ? t : PART_MEASUREMENT_LEGACY_RESOURCE_CD;
+function normalizeFkojun(raw: string | null | undefined): string {
+  return String(raw ?? '').trim();
+}
+
+function fkojunWhere(fkojun: string): Prisma.PartMeasurementTemplateWhereInput {
+  const normalized = normalizeFkojun(fkojun);
+  return normalized
+    ? { fkojun: normalized }
+    : { OR: [{ fkojun: '' }, { fkojun: null }] };
+}
+
+function appendFkojunFilter(
+  where: Prisma.PartMeasurementTemplateWhereInput,
+  fkojun: string
+): void {
+  const existingAnd = where.AND == null
+    ? []
+    : Array.isArray(where.AND)
+      ? where.AND
+      : [where.AND];
+  where.AND = [...existingAnd, fkojunWhere(fkojun)];
 }
 
 function threeKeyFhincdEqualsFilter(fhincd: string): Prisma.StringFilter {
@@ -106,6 +145,7 @@ type ResolvedLineage = {
   fhincd: string;
   processGroup: PartMeasurementProcessGroup;
   resourceCd: string;
+  fkojun?: string;
   candidateFhinmei: string | null;
 };
 
@@ -123,13 +163,15 @@ async function assertNoActiveProductionThreeKeyTemplateInTransaction(
   tx: Prisma.TransactionClient,
   fhincd: string,
   processGroup: PartMeasurementProcessGroup,
-  resourceCd: string
+  resourceCd: string,
+  fkojun = ''
 ): Promise<void> {
   const existingActive = await tx.partMeasurementTemplate.findFirst({
     where: {
       fhincd: threeKeyFhincdEqualsFilter(fhincd),
       processGroup,
       resourceCd,
+      AND: [fkojunWhere(fkojun)],
       isActive: true,
       templateScope: 'THREE_KEY'
     },
@@ -170,6 +212,7 @@ function copyTemplateItemsFromDb(
     lowerLimit?: unknown;
     upperLimit?: unknown;
     depthMode?: 'MEASURED' | 'THROUGH' | string | null;
+    valueKind?: 'NUMERIC' | 'JUDGEMENT' | string | null;
   }>
 ): TemplateItemInput[] {
   return items.map((item) => ({
@@ -188,7 +231,8 @@ function copyTemplateItemsFromDb(
     nominalValue: item.nominalValue != null ? Number(item.nominalValue) : null,
     lowerLimit: item.lowerLimit != null ? Number(item.lowerLimit) : null,
     upperLimit: item.upperLimit != null ? Number(item.upperLimit) : null,
-    depthMode: String(item.depthMode ?? 'MEASURED').toUpperCase() === 'THROUGH' ? 'through' : 'measured'
+    depthMode: String(item.depthMode ?? 'MEASURED').toUpperCase() === 'THROUGH' ? 'through' : 'measured',
+    valueKind: String(item.valueKind ?? 'NUMERIC').toUpperCase() === 'JUDGEMENT' ? 'judgement' : 'numeric'
   }));
 }
 
@@ -206,6 +250,7 @@ async function insertNextTemplateVersionInTransaction(
   options?: InsertNextTemplateVersionOptions
 ) {
   const { fhincd, processGroup, resourceCd, templateScope, candidateFhinmei } = lineage;
+  const fkojun = normalizeFkojun(lineage.fkojun);
 
   if (isProductionThreeKeyLineage(templateScope, processGroup) && !options?.lineageLockHeld) {
     await acquireThreeKeyLineageTransactionLock(tx, fhincd, processGroup, resourceCd);
@@ -219,6 +264,8 @@ async function insertNextTemplateVersionInTransaction(
   const fhincdWhere = lineageFhincdWhere(templateScope, processGroup, fhincd);
   const persistedFhincd = storageFhincdForLineage(templateScope, processGroup, fhincd);
 
+  // Keep versions unique under the retained pre-FKOJUN DB index while the
+  // active-version switch remains scoped to this FKOJUN lineage.
   const agg = await tx.partMeasurementTemplate.aggregate({
     where: { fhincd: fhincdWhere, processGroup, resourceCd },
     _max: { version: true }
@@ -226,7 +273,12 @@ async function insertNextTemplateVersionInTransaction(
   const nextVersion = (agg._max.version ?? 0) + 1;
 
   await tx.partMeasurementTemplate.updateMany({
-    where: { fhincd: fhincdWhere, processGroup, resourceCd },
+    where: {
+      fhincd: fhincdWhere,
+      processGroup,
+      resourceCd,
+      AND: [fkojunWhere(fkojun)]
+    },
     data: { isActive: false }
   });
 
@@ -236,6 +288,7 @@ async function insertNextTemplateVersionInTransaction(
       fhincd: persistedFhincd,
       processGroup,
       resourceCd,
+      fkojun,
       candidateFhinmei,
       name: content.name.trim(),
       version: nextVersion,
@@ -254,6 +307,7 @@ async function insertNextTemplateVersionInTransaction(
           const yRatio = clampRatio(item.markerYRatio);
           const tipXRatio = clampRatio(item.calloutTipXRatio);
           const tipYRatio = clampRatio(item.calloutTipYRatio);
+          const valueKind = normalizeTemplateItemValueKind(item);
           return {
             sortOrder: item.sortOrder,
             datumSurface: item.datumSurface.trim(),
@@ -270,7 +324,8 @@ async function insertNextTemplateVersionInTransaction(
             nominalValue: optionalDecimal(item.nominalValue),
             lowerLimit: optionalDecimal(item.lowerLimit),
             upperLimit: optionalDecimal(item.upperLimit),
-            depthMode: item.depthMode === 'through' ? 'THROUGH' : 'MEASURED'
+            depthMode: item.depthMode === 'through' ? 'THROUGH' : 'MEASURED',
+            valueKind
           };
         })
       }
@@ -359,6 +414,7 @@ export class PartMeasurementTemplateService {
     fhincd?: string;
     processGroup?: PartMeasurementProcessGroup;
     resourceCd?: string;
+    fkojun?: string;
     includeInactive?: boolean;
     /** 図面名の部分一致（大文字小文字無視） */
     visualName?: string;
@@ -380,6 +436,9 @@ export class PartMeasurementTemplateService {
     if (query.resourceCd !== undefined) {
       where.resourceCd = normalizeResourceCd(query.resourceCd);
     }
+    if (query.fkojun !== undefined) {
+      appendFkojunFilter(where, query.fkojun);
+    }
     if (!query.includeInactive) {
       where.isActive = true;
     }
@@ -398,7 +457,7 @@ export class PartMeasurementTemplateService {
 
     const rows = await prisma.partMeasurementTemplate.findMany({
       where: productionPartMeasurementTemplateWhere(where),
-      orderBy: [{ fhincd: 'asc' }, { processGroup: 'asc' }, { resourceCd: 'asc' }, { version: 'desc' }],
+      orderBy: [{ fhincd: 'asc' }, { processGroup: 'asc' }, { fkojun: 'asc' }, { resourceCd: 'asc' }, { version: 'desc' }],
       include: {
         siblingGroup: true,
         visualTemplate: true,
@@ -453,7 +512,8 @@ export class PartMeasurementTemplateService {
   async findActiveByFhincdGroupAndResource(
     fhincd: string,
     processGroup: PartMeasurementProcessGroup,
-    resourceCd: string
+    resourceCd: string,
+    fkojun = ''
   ) {
     const f = normalizeFhincd(fhincd);
     const r = normalizeResourceCd(resourceCd);
@@ -463,6 +523,7 @@ export class PartMeasurementTemplateService {
         fhincd: threeKeyFhincdEqualsFilter(f),
         processGroup,
         resourceCd: r,
+        AND: [fkojunWhere(fkojun)],
         isActive: true,
         templateScope: 'THREE_KEY'
       },
@@ -475,7 +536,8 @@ export class PartMeasurementTemplateService {
   async existsActiveProductionThreeKeyTemplate(
     fhincd: string,
     processGroup: PartMeasurementProcessGroup,
-    resourceCd: string
+    resourceCd: string,
+    fkojun = ''
   ): Promise<boolean> {
     const f = normalizeFhincd(fhincd);
     const r = normalizeResourceCd(resourceCd);
@@ -487,6 +549,7 @@ export class PartMeasurementTemplateService {
         fhincd: threeKeyFhincdEqualsFilter(f),
         processGroup,
         resourceCd: r,
+        AND: [fkojunWhere(fkojun)],
         isActive: true,
         templateScope: 'THREE_KEY'
       }),
@@ -499,6 +562,7 @@ export class PartMeasurementTemplateService {
     fhincd?: string;
     processGroup?: PartMeasurementProcessGroup;
     resourceCd?: string;
+    fkojun?: string;
     includeInactive?: boolean;
   }) {
     const where: Prisma.PartMeasurementTemplateWhereInput = {};
@@ -511,12 +575,15 @@ export class PartMeasurementTemplateService {
     if (query.resourceCd !== undefined) {
       where.resourceCd = normalizeResourceCd(query.resourceCd);
     }
+    if (query.fkojun !== undefined) {
+      appendFkojunFilter(where, query.fkojun);
+    }
     if (!query.includeInactive) {
       where.isActive = true;
     }
     return prisma.partMeasurementTemplate.findMany({
       where: productionPartMeasurementTemplateWhere(where),
-      orderBy: [{ fhincd: 'asc' }, { processGroup: 'asc' }, { resourceCd: 'asc' }, { version: 'desc' }],
+      orderBy: [{ fhincd: 'asc' }, { processGroup: 'asc' }, { fkojun: 'asc' }, { resourceCd: 'asc' }, { version: 'desc' }],
       include: partMeasurementTemplateFullInclude
     });
   }
@@ -528,6 +595,7 @@ export class PartMeasurementTemplateService {
     fhincd: string;
     processGroup: PartMeasurementProcessGroup;
     resourceCd: string;
+    fkojun?: string;
     name: string;
     items: TemplateItemInput[];
     visualTemplateId?: string | null;
@@ -545,6 +613,7 @@ export class PartMeasurementTemplateService {
     let fhincd = params.fhincd.trim();
     let processGroup: PartMeasurementProcessGroup = params.processGroup;
     let resourceCd = normalizeResourceCd(params.resourceCd);
+    let fkojun = normalizeFkojun(params.fkojun);
     let candidateFhinmei: string | null =
       params.candidateFhinmei != null && String(params.candidateFhinmei).trim().length > 0
         ? String(params.candidateFhinmei).trim()
@@ -552,6 +621,7 @@ export class PartMeasurementTemplateService {
 
     if (templateScope === 'FHINCD_RESOURCE') {
       processGroup = 'CANDIDATE_FHINCD_RESOURCE';
+      fkojun = '';
       candidateFhinmei = null;
       if (fhincd.length === 0) {
         throw new ApiError(400, 'FIHNCD が空です');
@@ -559,6 +629,7 @@ export class PartMeasurementTemplateService {
       fhincd = normalizeFhincd(fhincd);
     } else if (templateScope === 'FHINMEI_ONLY') {
       processGroup = 'CANDIDATE_FHINMEI_ONLY';
+      fkojun = '';
       fhincd = PART_MEASUREMENT_FHINMEI_ONLY_BUCKET_FHINCD;
       resourceCd = randomUUID().replace(/-/g, '').slice(0, 32);
       if (!candidateFhinmei || candidateFhinmei.length === 0) {
@@ -596,14 +667,15 @@ export class PartMeasurementTemplateService {
             tx,
             fhincd,
             processGroup,
-            resourceCd
+            resourceCd,
+            fkojun
           );
         }
       }
 
       return insertNextTemplateVersionInTransaction(
         tx,
-        { templateScope, fhincd, processGroup, resourceCd, candidateFhinmei },
+        { templateScope, fhincd, processGroup, resourceCd, fkojun, candidateFhinmei },
         {
           name: params.name,
           items: params.items,
@@ -620,6 +692,7 @@ export class PartMeasurementTemplateService {
     fhincd: string;
     processGroup: PartMeasurementProcessGroup;
     resourceCds: string[];
+    fkojun?: string;
     name: string;
     displayName?: string | null;
     items: TemplateItemInput[];
@@ -640,6 +713,7 @@ export class PartMeasurementTemplateService {
       throw new ApiError(400, 'FIHNCD が空です');
     }
     const resourceCds = normalizeUniqueResourceCds(params.resourceCds);
+    const fkojun = normalizeFkojun(params.fkojun);
     if (resourceCds.length === 0) {
       throw new ApiError(400, '資源CDを1件以上選択してください');
     }
@@ -664,7 +738,8 @@ export class PartMeasurementTemplateService {
           tx,
           fhincd,
           params.processGroup,
-          resourceCd
+          resourceCd,
+          fkojun
         );
       }
 
@@ -672,7 +747,8 @@ export class PartMeasurementTemplateService {
         data: {
           displayName,
           fhincd,
-          processGroup: params.processGroup
+          processGroup: params.processGroup,
+          fkojun
         }
       });
       const templates = [];
@@ -684,6 +760,7 @@ export class PartMeasurementTemplateService {
             fhincd,
             processGroup: params.processGroup,
             resourceCd,
+            fkojun,
             candidateFhinmei: null
           },
           {
@@ -773,6 +850,7 @@ export class PartMeasurementTemplateService {
             fhincd: member.fhincd,
             processGroup: member.processGroup,
             resourceCd: member.resourceCd,
+            fkojun: normalizeFkojun(member.fkojun),
             candidateFhinmei: member.candidateFhinmei
           },
           {
@@ -857,6 +935,7 @@ export class PartMeasurementTemplateService {
             fhincd: threeKeyFhincdEqualsFilter(group.fhincd),
             processGroup: group.processGroup,
             resourceCd,
+            AND: [fkojunWhere(normalizeFkojun(group.fkojun))],
             isActive: true,
             templateScope: 'THREE_KEY'
           }),
@@ -878,6 +957,7 @@ export class PartMeasurementTemplateService {
             fhincd: group.fhincd,
             processGroup: group.processGroup,
             resourceCd,
+            fkojun: normalizeFkojun(group.fkojun),
             candidateFhinmei: null
           },
           {
@@ -925,7 +1005,7 @@ export class PartMeasurementTemplateService {
     items: TemplateItemInput[];
     visualTemplateId?: string | null;
     /** 取込済み図面 URL と表示名（multipart 経路では importDrawingAndSave 済み） */
-    drawingUpload?: { relativeUrl: string; displayName: string };
+    drawingUpload?: { relativeUrl: string; sourceStorageKey?: string | null; displayName: string };
   }) {
     const referenceFhincd = params.referenceFhincd.trim();
     const referenceResourceCd = normalizeResourceCd(params.referenceResourceCd);
@@ -967,6 +1047,7 @@ export class PartMeasurementTemplateService {
             name: params.drawingUpload.displayName.slice(0, 200),
             searchDigits: extractInspectionDrawingAsciiDigits(params.drawingUpload.displayName.slice(0, 200)),
             drawingImageRelativePath: relativeUrl,
+            drawingSourceStorageKey: params.drawingUpload.sourceStorageKey ?? null,
             isActive: true
           }
         });
@@ -1026,6 +1107,9 @@ export class PartMeasurementTemplateService {
     const drawingPath = mayDeleteVisual
       ? (template.visualTemplate?.drawingImageRelativePath ?? null)
       : null;
+    const drawingSourceKey = mayDeleteVisual
+      ? (template.visualTemplate?.drawingSourceStorageKey ?? null)
+      : null;
 
     await prisma.$transaction(async (tx) => {
       await tx.partMeasurementSheet.deleteMany({ where: { templateId } });
@@ -1042,6 +1126,9 @@ export class PartMeasurementTemplateService {
 
     if (drawingPath) {
       await PartMeasurementDrawingStorage.deleteDrawing(drawingPath).catch(() => undefined);
+    }
+    if (drawingSourceKey) {
+      await PartMeasurementDrawingStorage.deleteDrawingSource(drawingSourceKey);
     }
   }
 
@@ -1098,6 +1185,7 @@ export class PartMeasurementTemplateService {
       fhincd: source.fhincd,
       processGroup: source.processGroup,
       resourceCd: source.resourceCd,
+      fkojun: normalizeFkojun(source.fkojun),
       candidateFhinmei: nextCandidate
     };
 
@@ -1134,6 +1222,33 @@ export class PartMeasurementTemplateService {
   }
 
   /**
+   * 図面・測定点の内容を変えず、自主検査頻度だけを標準の版上げで変更する。
+   * 運用補正CLI等から既存の改版契約を再利用するための内部サービス境界。
+   */
+  async reviseSelfInspectionPolicyOnly(
+    sourceTemplateId: string,
+    input: {
+      selfInspectionMode: SelfInspectionMode;
+      selfInspectionFixedCount: number | null;
+    }
+  ) {
+    const source = await prisma.partMeasurementTemplate.findUnique({
+      where: { id: sourceTemplateId },
+      include: { items: { orderBy: { sortOrder: 'asc' } } }
+    });
+    if (!source) {
+      throw new ApiError(404, 'テンプレートが見つかりません');
+    }
+    return this.reviseActiveTemplate(sourceTemplateId, {
+      name: source.name,
+      items: copyTemplateItemsFromDb(source.items),
+      visualTemplateId: source.visualTemplateId,
+      selfInspectionMode: input.selfInspectionMode,
+      selfInspectionFixedCount: input.selfInspectionFixedCount
+    });
+  }
+
+  /**
    * 最新の有効版を論理削除する（行の isActive のみ false。旧版は自動で有効化しない）。
    */
   async retireActiveTemplate(templateId: string) {
@@ -1163,9 +1278,11 @@ export class PartMeasurementTemplateService {
     targetFhincd: string;
     targetProcessGroup: PartMeasurementProcessGroup;
     targetResourceCd: string;
+    targetFkojun?: string;
   }) {
     const fhincd = normalizeFhincd(params.targetFhincd);
     const resourceCd = normalizeResourceCd(params.targetResourceCd);
+    const fkojun = normalizeFkojun(params.targetFkojun);
     if (fhincd.length === 0) {
       throw new ApiError(400, 'FIHNCD が空です');
     }
@@ -1186,7 +1303,8 @@ export class PartMeasurementTemplateService {
       source.templateScope === 'THREE_KEY' &&
       sourceFhincdNorm === targetFhincdNorm &&
       sourceResNorm === resourceCd &&
-      source.processGroup === params.targetProcessGroup;
+      source.processGroup === params.targetProcessGroup &&
+      normalizeFkojun(source.fkojun) === fkojun;
 
     if (sameThreeKey) {
       return {
@@ -1220,6 +1338,7 @@ export class PartMeasurementTemplateService {
           fhincd: threeKeyFhincdEqualsFilter(fhincd),
           processGroup: params.targetProcessGroup,
           resourceCd,
+          AND: [fkojunWhere(fkojun)],
           isActive: true,
           templateScope: 'THREE_KEY'
         }),
@@ -1237,6 +1356,7 @@ export class PartMeasurementTemplateService {
           fhincd,
           processGroup: params.targetProcessGroup,
           resourceCd,
+          fkojun,
           candidateFhinmei: null
         },
         {

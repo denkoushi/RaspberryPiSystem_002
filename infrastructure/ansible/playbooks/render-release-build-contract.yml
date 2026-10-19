@@ -1,0 +1,28 @@
+---
+- name: Render the non-secret Pi5 release build contract
+  hosts: server
+  gather_facts: false
+  serial: 1
+  order: inventory
+  become: false
+  vars:
+    release_build_contract_sha: "{{ lookup('env', 'RELEASE_BUILD_CONTRACT_SHA') }}"
+    release_build_contract_output: "{{ lookup('env', 'RELEASE_BUILD_CONTRACT_OUTPUT') }}"
+
+  tasks:
+    - name: Validate immutable renderer inputs
+      ansible.builtin.assert:
+        that:
+          - release_build_contract_sha is match('^[0-9a-f]{40}$')
+          - release_build_contract_output is match('^/[^\\x00\\r\\n]{1,4095}$')
+        fail_msg: >-
+          Release build contract rendering requires a full lowercase Git SHA
+          and one absolute local output path.
+
+    - name: Render only the allowlisted non-secret build inputs
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/release-build-contract.json.j2"
+        dest: "{{ release_build_contract_output }}"
+        mode: '0600'
+      delegate_to: localhost
+      no_log: true

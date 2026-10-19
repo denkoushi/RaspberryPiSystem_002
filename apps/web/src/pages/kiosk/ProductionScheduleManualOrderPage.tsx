@@ -26,6 +26,7 @@ import { ProductionScheduleResourceFilters } from '../../components/kiosk/Produc
 import { ProductionScheduleSeibanFilterDropdown } from '../../components/kiosk/ProductionScheduleSeibanFilterDropdown';
 import { ProductionScheduleTable } from '../../components/kiosk/ProductionScheduleTable';
 import { ProductionScheduleToolbar } from '../../components/kiosk/ProductionScheduleToolbar';
+import { readProductionBuildConfig } from '../../config/productionBuildConfig';
 import { type TableColumnDefinition } from '../../features/kiosk/columnWidth';
 import { joinManualOrderResourceDisplayNames } from '../../features/kiosk/manualOrder/manualOrderOverviewCardPresentation';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
@@ -60,7 +61,7 @@ import type { ProductionScheduleSortMode } from '../../features/kiosk/production
 const NOTE_MAX_LENGTH = 100;
 
 const MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED =
-  import.meta.env.VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED !== 'false';
+  readProductionBuildConfig().manualOrderDeviceScopeV2Enabled;
 const MANUAL_ORDER_PAGE_SEARCH_STORAGE_KEY = 'manual-order-page-search-conditions';
 const MANUAL_ORDER_PAGE_SORT_MODE_STORAGE_KEY = 'manual-order-page-sort-mode';
 const DUE_DATE_COLUMN_WIDTH = 110;
@@ -235,7 +236,7 @@ export function ProductionScheduleManualOrderPage() {
     notePending,
     dueDatePending,
     pauseRefetch,
-    updateOrder,
+    updateOrderAsync,
     updateProcessing,
     saveNote,
     commitDueDate: commitDueDateMutation,
@@ -245,6 +246,7 @@ export function ProductionScheduleManualOrderPage() {
   } = useProductionScheduleMutations({
     isSearchStateWriting: searchStateMutation.isPending,
     noteMaxLength: NOTE_MAX_LENGTH,
+    productionScheduleOrderCachePolicy: 'manualOrderOptimistic',
     productionScheduleTargetDeviceScopeKey:
       macManualOrderV2 && activeDeviceScopeKey.trim().length > 0
         ? activeDeviceScopeKey.trim()
@@ -630,17 +632,30 @@ export function ProductionScheduleManualOrderPage() {
     }
   }, [partNameOptions, selectedMachineName, selectedPartName, setSearchConditions]);
 
-  const getAvailableOrders = (resourceCd: string, current: number | null) => {
-    const usage = orderUsageQuery.data?.[resourceCd] ?? [];
-    return ORDER_NUMBERS.filter((num) => num === current || !usage.includes(num));
-  };
+  const getAvailableOrders = useCallback(
+    (resourceCd: string, current: number | null) => {
+      const usage = orderUsageQuery.data?.[resourceCd] ?? [];
+      return ORDER_NUMBERS.filter((num) => num === current || !usage.includes(num));
+    },
+    [orderUsageQuery.data]
+  );
 
-  const handleOrderChange = (rowId: string, resourceCd: string, nextValue: string) => {
-    if (!activeDeviceScopeKey) return;
-    setDeviceStatus(activeDeviceScopeKey, 'saving');
-    resetOrderError();
-    updateOrder({ rowId, resourceCd, nextValue });
-  };
+  const activeDeviceScopeKeyRef = useRef(activeDeviceScopeKey);
+  const setDeviceStatusRef = useRef(setDeviceStatus);
+  const resetOrderErrorRef = useRef(resetOrderError);
+  const updateOrderAsyncRef = useRef(updateOrderAsync);
+  activeDeviceScopeKeyRef.current = activeDeviceScopeKey;
+  setDeviceStatusRef.current = setDeviceStatus;
+  resetOrderErrorRef.current = resetOrderError;
+  updateOrderAsyncRef.current = updateOrderAsync;
+
+  const handleOrderChange = useCallback(async (rowId: string, resourceCd: string, nextValue: string) => {
+    const activeDevice = activeDeviceScopeKeyRef.current;
+    if (!activeDevice) return;
+    setDeviceStatusRef.current(activeDevice, 'saving');
+    resetOrderErrorRef.current();
+    await updateOrderAsyncRef.current({ rowId, resourceCd, orderNumber: nextValue.length > 0 ? Number(nextValue) : null });
+  }, []);
 
   const handleProcessingChange = (rowId: string, nextValue: string) => {
     updateProcessing(rowId, nextValue);
@@ -878,6 +893,7 @@ export function ProductionScheduleManualOrderPage() {
                 PencilIcon={PencilIcon}
                 CalendarIcon={CalendarIcon}
                 RulerIcon={RulerIcon}
+                orderSelectVariant="leaderBoard"
               />
             </div>
           )}
