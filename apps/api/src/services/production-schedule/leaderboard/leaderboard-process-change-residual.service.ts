@@ -15,7 +15,7 @@ import {
   type ProcessChangeResidualStrongEvidenceMaterialization,
 } from './leaderboard-process-change-residual.materialization.js';
 import type { ProcessChangeResidualStrongEvidenceKey } from './leaderboard-process-change-residual.keys.js';
-import { buildLeaderboardProcessChangeResidualKeyPresentSql } from './leaderboard-process-change-residual.sql.js';
+import { buildLeaderboardProcessChangeResidualFilterWhereSql } from './leaderboard-process-change-residual.sql.js';
 import {
   LEADERBOARD_PROCESS_CHANGE_RESIDUAL_REPRESENTATIVE_LIMIT,
   type ProcessChangeResidualEvidence,
@@ -69,41 +69,20 @@ function buildResidualKeyRows(
   return keyRows;
 }
 
-function buildResidualKeyValuesSql(keyRows: readonly ProcessChangeResidualStrongEvidenceKey[]): Prisma.Sql {
-  return Prisma.join(
-    keyRows.map((keyRow) =>
-      Prisma.sql`(${keyRow.productNo}::text, ${keyRow.fkojun}::text, ${keyRow.resourceCd.toUpperCase()}::text)`
-    )
-  );
-}
-
-function buildResidualKeyJoinSql(): Prisma.Sql {
-  return Prisma.sql`
-    INNER JOIN "residual_keys" AS "rk"
-      ON NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'ProductNo'), '') = "rk"."productNo"
-      AND NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FKOJUN'), '') = "rk"."fkojun"
-      AND UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD')) = "rk"."resourceCd"
-  `;
-}
-
 async function countResidualRowsByKeys(params: {
   baseWhere: Prisma.Sql;
   queryWhere: Prisma.Sql;
-  keyRows: readonly ProcessChangeResidualStrongEvidenceKey[];
+  strongEvidenceKeys: ReadonlySet<string>;
 }): Promise<bigint> {
-  if (params.keyRows.length === 0) {
+  if (params.strongEvidenceKeys.size === 0) {
     return 0n;
   }
 
   const visibilitySql = buildFkojunstProductionScheduleListVisibilityWhereSql();
-  const keyPresentSql = buildLeaderboardProcessChangeResidualKeyPresentSql();
+  const keyMatchSql = buildLeaderboardProcessChangeResidualFilterWhereSql('only', params.strongEvidenceKeys);
   const rows = await prisma.$queryRaw<Array<{ total: bigint }>>`
-    WITH "residual_keys"("productNo", "fkojun", "resourceCd") AS (
-      VALUES ${buildResidualKeyValuesSql(params.keyRows)}
-    )
     SELECT COUNT(*)::bigint AS total
     FROM "CsvDashboardRow"
-    ${buildResidualKeyJoinSql()}
     LEFT JOIN "ProductionScheduleFkojunstStatus" AS "fkst"
       ON "fkst"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "fkst"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
@@ -112,7 +91,7 @@ async function countResidualRowsByKeys(params: {
       AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     WHERE ${params.baseWhere} ${params.queryWhere} ${visibilitySql}
       AND "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND ${keyPresentSql}
+      ${keyMatchSql}
   `;
 
   return rows[0]?.total ?? 0n;
@@ -124,9 +103,9 @@ async function queryResidualRepresentativeRows(params: {
   locationKey: string;
   siteScopedGlobalRankLocation: string;
   limit: number;
-  keyRows: readonly ProcessChangeResidualStrongEvidenceKey[];
+  strongEvidenceKeys: ReadonlySet<string>;
 }): Promise<LeaderboardScheduleRowSql[]> {
-  if (params.keyRows.length === 0) {
+  if (params.strongEvidenceKeys.size === 0) {
     return [];
   }
 
@@ -135,21 +114,17 @@ async function queryResidualRepresentativeRows(params: {
     siteScopedGlobalRankLocation: params.siteScopedGlobalRankLocation,
   });
   const visibilitySql = buildFkojunstProductionScheduleListVisibilityWhereSql();
-  const keyPresentSql = buildLeaderboardProcessChangeResidualKeyPresentSql();
+  const keyMatchSql = buildLeaderboardProcessChangeResidualFilterWhereSql('only', params.strongEvidenceKeys);
   const whereSql = Prisma.sql`
     ${params.baseWhere} ${params.queryWhere} ${visibilitySql}
     AND "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    AND ${keyPresentSql}
+    ${keyMatchSql}
   `;
   const limitSql = Prisma.sql`LIMIT ${Math.max(1, Math.floor(params.limit))}`;
 
   return prisma.$queryRaw<LeaderboardScheduleRowSql[]>`
-    WITH "residual_keys"("productNo", "fkojun", "resourceCd") AS (
-      VALUES ${buildResidualKeyValuesSql(params.keyRows)}
-    )
     SELECT ${buildLeaderboardShellRowSelectList(rankJoins)}
     FROM "CsvDashboardRow"
-    ${buildResidualKeyJoinSql()}
     ${buildLeaderboardShellRowAuxiliaryJoins(rankJoins)}
     WHERE ${whereSql}
     ORDER BY ${buildLeaderboardShellFillerOrderBy()}
@@ -211,7 +186,7 @@ export async function fetchLeaderboardProcessChangeResidualSummary(
   const totalBig = await countResidualRowsByKeys({
     baseWhere: leaderboardMaterializedBaseWhere,
     queryWhere,
-    keyRows: residualKeyRows,
+    strongEvidenceKeys,
   });
   const processChangeResidualTotal = Number(totalBig);
 
@@ -229,7 +204,7 @@ export async function fetchLeaderboardProcessChangeResidualSummary(
     locationKey: params.locationKey,
     siteScopedGlobalRankLocation,
     limit: representativeLimit,
-    keyRows: residualKeyRows,
+    strongEvidenceKeys,
   });
 
   const processChangeResidualRows = representativeSqlRows.flatMap((sqlRow) => {
