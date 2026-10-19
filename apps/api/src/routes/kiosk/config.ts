@@ -28,7 +28,7 @@ export async function registerKioskConfigRoute(
       'Kiosk config request'
     );
 
-    const { client, defaultMode, initialKioskRoute, initialKioskPath, clientStatus } =
+    const { client, defaultMode, initialKioskRoute, initialKioskPath, portalHiddenTabIds, clientStatus } =
       await resolveKioskConfigClientState(clientKey);
 
     // 機密情報保護: clientKeyとclient.apiKeyをログから除外
@@ -65,7 +65,8 @@ export async function registerKioskConfigRoute(
       initialKioskRoute,
       initialKioskPath,
       clientStatus,
-      navTabOrder
+      navTabOrder,
+      portalHiddenTabIds
     };
   });
 }

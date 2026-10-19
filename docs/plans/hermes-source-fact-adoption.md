@@ -26,7 +26,7 @@ Existing negative feedback may keep a disputed answer out of service as a conser
 
 ## Context and Orientation
 
-`apps/api/src/services/assembly/business-hermes-nightly.service.ts` reads detail records, prepares model candidates and starts the Python worker. `services/hermes-answer-cache/maintenance.py` evaluates caches and writes an activation manifest. `runtime.py` verifies immutable identities and atomically switches the active pointer. `server.py` serves question suggestions and source-backed answers. The new fact metadata must survive catalogue loading and must exclude certified records from unrestricted semantic matching. The API still rereads sources before delivering cached answers.
+`apps/api/src/services/business-hermes/business-hermes-nightly.service.ts` reads detail records, prepares model candidates and starts the Python worker. `services/hermes-answer-cache/maintenance.py` evaluates caches and writes an activation manifest. `runtime.py` verifies immutable identities and atomically switches the active pointer. `server.py` serves question suggestions and source-backed answers. The new fact metadata must survive catalogue loading and must exclude certified records from unrestricted semantic matching. The API still rereads sources before delivering cached answers.
 
 ## Plan of Work
 
@@ -34,7 +34,7 @@ Add bounded TypeScript preparation for nonconformity whole records and published
 
 ## Concrete Steps
 
-Work in `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--hermes-source-fact-adoption`. Run the lifecycle audit/start already recorded. Run `pnpm --filter @raspi-system/api exec vitest run src/services/assembly/business-hermes-source-facts.test.ts src/services/assembly/business-hermes-nightly-preparation.test.ts src/services/assembly/business-hermes-nightly-candidates.test.ts src/services/assembly/business-hermes-nightly.service.test.ts`. From the root run `python3 -m unittest discover -s services/hermes-answer-cache -p 'test_*.py' -v` with cache requirements installed, and `pnpm --filter @raspi-system/api exec tsc --noEmit -p tsconfig.build.json`. Run ESLint on the four modified/new API files. The task used the existing external Python cache-test environment for dependencies. Keep local validation within the repository 20-minute validation budget; hosted CI is a later integration boundary.
+Work in `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--hermes-source-fact-adoption`. Run the lifecycle audit/start already recorded. Run `pnpm --filter @raspi-system/api exec vitest run src/services/business-hermes/business-hermes-source-facts.test.ts src/services/business-hermes/business-hermes-nightly-preparation.test.ts src/services/business-hermes/business-hermes-nightly-candidates.test.ts src/services/business-hermes/business-hermes-nightly.service.test.ts`. From the root run `python3 -m unittest discover -s services/hermes-answer-cache -p 'test_*.py' -v` with cache requirements installed, and `pnpm --filter @raspi-system/api exec tsc --noEmit -p tsconfig.build.json`. Run ESLint on the four modified/new API files. The task used the existing external Python cache-test environment for dependencies. Keep local validation within the repository 20-minute validation budget; hosted CI is a later integration boundary.
 
 ## Validation and Acceptance
 

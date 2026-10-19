@@ -10,9 +10,9 @@ import { ApiError } from '../../lib/errors.js';
 import {
   PART_MEASUREMENT_FHINMEI_CANDIDATE_MIN_LEN,
   PART_MEASUREMENT_FHINMEI_ONLY_BUCKET_FHINCD,
-  PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD,
-  PART_MEASUREMENT_LEGACY_RESOURCE_CD
+  PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD
 } from './part-measurement-constants.js';
+import { normalizePartMeasurementResourceCd as normalizeResourceCd } from './part-measurement-resource-cd.js';
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
 import { templateSupportsInspectionDrawing } from './part-measurement-inspection-drawing-policy.js';
 import {
@@ -81,11 +81,6 @@ function optionalDecimal(value: number | null | undefined): Prisma.Decimal | nul
 function clampRatio(value: number | null | undefined): number | null {
   if (value === null || value === undefined || !Number.isFinite(value)) return null;
   return Math.min(1, Math.max(0, value));
-}
-
-function normalizeResourceCd(raw: string): string {
-  const t = raw.trim();
-  return t.length > 0 ? t : PART_MEASUREMENT_LEGACY_RESOURCE_CD;
 }
 
 function normalizeFkojun(raw: string | null | undefined): string {

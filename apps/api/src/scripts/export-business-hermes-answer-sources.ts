@@ -2,7 +2,7 @@
 import { mkdir, writeFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { exportBusinessHermesSources } from '../services/assembly/business-hermes-source-export.js';
+import { exportBusinessHermesSources } from '../services/business-hermes/business-hermes-source-export.js';
 import { prisma } from '../lib/prisma.js';
 
 const args = process.argv.slice(2);

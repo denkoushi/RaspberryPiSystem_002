@@ -46,6 +46,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-14) 素材棚の「✦ 意味で探す」ボタンと実機確認: ボタンを追加(#1868、merge 0c21555d、Pi5 run 20261008-102027-673f06 成功、戻す先の main は 4693d2c7)。検索欄の横に置き、未配置・配置済みのタブで検索語が 2 文字以上のときに押せる。押すと `POST /assembly/procedure-materials/semantic-search` の結果で一覧を近い順に置き換え、件数行に「✦ 近い順」、カードに「✦ 意味」を出す。言葉の一致が 0 件のときは一覧の中にも同じボタンを出す。使えないときは一覧を残したまま「意味で探すは今使えません」、回数制限(429)のときは「少し待ってからもう一度押してください」と出す。検索語かタブを変えると元の一覧に戻る。実機で「2 文字以上入れても押せない」と分かり修正(#1997、merge 01efa7be、Pi5 run 20261013-233733-45020a 成功、戻す先の main は 1dfd5c00)。押せる条件が IME の変換中フラグと言葉の一致の一覧の読み込み中フラグに依存していたため、確定した検索語(入力が落ち着いた後の値)が 2 文字以上かどうかだけで決めるように変え、送る言葉も確定した検索語にした。どちらのフラグが実機で残っていたかは特定していない(稼働中のキオスクでは試験用ブラウザを動かさない)。2026-10-14 に実機で、ボタンが出る、2 文字以上で押せる、押すと「意味で探すは今使えません」と出て一覧が残る、を確認した(有効化前の想定どおり)。DB の変更は無い。どちらも Pi5 だけの反映。有効化までの残り(当時): 意味検索そのものの有効化(Pi5 の `HERMES_RETRIEVAL_SOURCES` に `procedure_material` を足す。足すと Chat の検索対象にも素材が入る作りなので、入れるかどうかを決めてから進める)。
 - [x] (2026-10-14) 「✦ 意味で探す」の有効化: 利用者が「素材棚だけで使い、Chat の答えには素材を出さない」を選んだ。検索対象の定義に `retrieval.conversational`(省略時 true)を足し、`procedure_material` を false にして Chat の回答経路、追加学習、夜間測定から外した(#2001、merge b8ff3f21)。Pi5 の `HERMES_RETRIEVAL_SOURCES` に `procedure_material` を足して有効化したところ、検索用データの更新が毎回失敗し、手順書とトルクの検索も 0 件になった。原因は素材の本文を DB 側で切る `LEFT("text", $n)` に Prisma が bigint を渡し、`function left(text, bigint) does not exist`(42883)になったこと。設定を 5 つに戻し、`::int` を付けて直した(#2005、merge 6fe37a54、実 DB の結合テストを追加)。Pi5 イメージ 7e0d52a9 で再有効化し(run 20261014-033732-468096、更新の失敗 0、4 URL 200、戻す先の main は 275dd960)、素材 35 件が検索に入った。実機で手順 1〜5 どおり動くことを確認した。ただし「テーブル」で探すと、近い順に並ぶ素材の多くが無関係だった。今の作りは、言葉の一致が無い素材も含めて全件を近い順に並べ、「近いものが無い」と判断する下限を持たない。また意味検索が見る文字は件名のヒント、文字だけのメールの本文、ファイル名だけで、写真の中身、品名、メモ、PDF の文字は入っていない。残り: (1) 実機で、件名にあると分かっている言葉が先頭に来るかを確かめる。(2) 近さの下限を決めて、近いものが無いときは「近い素材は見つかりませんでした」と出し、元の一覧を残す(下限は測ってから決める)。(3) PDF の文字(`text` 列に保存済み)を意味検索の文字に足す。(4) 品名とメモを足すのは別の課題。
 - [x] (2026-10-08) 素材棚の誤破棄と再発防止: 10/08 14:25 JST の 12 秒間に、未配置の素材 30 件が画面の「捨てる」1 回で捨てられた(削除は 0 件、総数 73 のまま)。利用者の指示で、その時刻に捨てられ文書にも置かれていない 30 件だけを `discardedAt = NULL` に戻した(件数が 30 でなければ中止する条件付き。結果は未配置 30 / 配置済み 42 / 捨てた 1、利用者が画面で確認)。原因は特定できていない。#1837 で選択が検索や絞り込みをまたいで残るようになり、見えていない選択まで捨てる対象だったことが有力。再発防止(#1856、merge 49127dc1、Pi5 run 20261008-071756-6afbb6 成功): 「捨てる」の対象を一覧に出ている選択だけにし、確認の件数もその数にした。表示外の選択は帯に「(表示外 N)」と出す。「捨てる」を主操作の隣から「選択を外す」の横へ移し標準の大きさにした。捨てた直後に「N 件を捨てました」と「元に戻す」を出す(次の選択、タブ切替、検索や絞り込みの変更、閉じるで消える)。検索語の反映待ちと読込中は捨てられない。閉じた束の中の選択は「束を全部選ぶ」の通常操作なので対象のまま。戻す先の main は 26e890c7。実機確認は未実施。
+- [x] (2026-10-19) 素材棚の一括破棄の再発と復元: 10/19 14:23:59〜14:24:03 JST の 4 秒間に、未配置に残っていた素材 26 件(GMAIL のみ。「DFL7161XY高精度2」の 5 ページと「Sample要領書PDF」の 21 ページ)が「捨てる」1 回で捨てられ、未配置が 0 になった(削除は 0 件)。#1856 の守り(一覧に出ている選択だけを捨てる、確認に件数を出す)は効いており、2 つの束を「束を全部選ぶ」で選んで確認した操作と見られる。操作した人は、API コンテナが 14:38 の反映で作り直されてログが残っておらず特定できない。利用者の指示で、その 4 秒間に捨てられ文書にも置かれていない行だけを `discardedAt = NULL` に戻した(件数が 26 でなければ中止する条件付き)。結果は未配置 26 / 配置済み 65 / 捨てた 6。
 - [x] (2026-10-08) 左ペインのテンキーを縦 1 列に、「見る」ダイアログの枠をページの形に: #1844 の実機確認の指摘 2 点を直した。(1) 左ペインのテンキーを 3 列(幅 200px)から縦 1 列(1〜9、0、⌫、幅 64px、キー高さ 48px)にし、機種候補の幅を約 215px から約 350px に広げた(`KioskDigitTenkey` に並び順を渡す `digits` を追加。「白紙から作る」ダイアログは 3 列のまま)。(2) `AssemblyProcedurePreviewDialog` の画像の枠が「列の幅いっぱい・高さ 62vh まで」の箱で、重ねた要素が箱全体を基準に置かれてページとずれていたため、枠を画像の大きさに合わせた(組立の手順書一覧から開く同じダイアログにも効く)。検証: web vitest 244 files / 1796 件、tsc、lint、kiosk-sop source-check 成功(取説は digest の更新のみ)。PR #1850(merge `06acd313`)。Pi5 配布 run `20261008-060423-19b573`(15:04→15:08 成功、api / web とも `06acd313`、health 200)。戻し先はイメージ `4bfe6945`。ブラウザでの見た目は配布前に確認していない。**実機確認済み**(2026-10-08、所有者が 1920×1080 のキオスクで OK: 機種名が 1 行に収まる、「見る」の表示がつぶれず欠けない)。
 - [x] (2026-10-08) 工程だけでの絞り込みと行の「見る」: 共通の左ペイン `ProcedureManualFilterPane` を「作る・直す」「見る」の両方で使い、機種未選択でも一覧を出す(工程ボタンは「全て・組立・検査・切削・研削」)。「作る・直す」の行の先頭に、編集操作のないダイアログで開く「見る」を足した(PIN の再確認なし)。「見る」画面は片方だけ選んだとき公開済みの一覧を出し(`GET /assembly/procedure-manuals/overview?published=true`。下書きの情報は返さない)、行を押すとその文書から開く(`AssemblyProcedureSequenceViewer` の `initialDocumentId`)。検証: web vitest 940 件、api 対象 39 件、両方の tsc と lint、kiosk-sop source-check 成功。Codex の読み取り専用レビューの指摘 3 件のうち 2 件(PIN なしの画面へ下書き情報が返る、押した文書と違う文書が開く)を修正し、1 件(機種をまたぐ一覧が全件取得で、件数が大きく増えると重くなる)は見送った。PR #1844(merge `95f884ff`)。Pi5 配布 run `20261008-052753-e352cd`(14:27→14:32 成功、api / web とも `95f884ff`、health 200)。戻し先はイメージ `d163baf6`。配布後の検証は新しい画面と overview の経路そのものを叩いていない。**実機確認**(2026-10-08、所有者が 1920×1080 のキオスクで確認): 工程での絞り込みと行の「見る」は動いたが、指摘 2 点(テンキーが幅を取り機種名が折り返す、「見る」の表示がつぶれて一部欠ける)があり、#1850 で修正した。「見る」画面で押した文書から開く点も、#1850 の配布後に所有者が OK と確認した。
 
@@ -464,7 +465,7 @@ NODE_OPTIONS='--require=/private/tmp/procedure-material-no-env.cjs' DATABASE_URL
 # The schema at prisma/schema.prisma is valid 🚀
 NODE_OPTIONS='--require=/private/tmp/procedure-material-no-env.cjs' DATABASE_URL='postgresql://test:test@localhost:5432/test' pnpm --filter api exec prisma generate
 # ✔ Generated Prisma Client (v5.22.0) ... in 979ms
-NODE_OPTIONS='--require=/private/tmp/procedure-material-no-env.cjs' pnpm --filter api exec vitest run src/services/assembly/__tests__/procedure-material-image-description.service.test.ts src/services/assembly/__tests__/procedure-material-hermes-source.service.test.ts src/services/assembly/__tests__/hermes-search-trial.service.test.ts src/routes/assembly/__tests__/procedure-material-knowledge.routes.test.ts src/routes/assembly/__tests__/procedure-material-semantic-search.routes.test.ts src/config/__tests__/procedure-material.env.test.ts src/bootstrap/__tests__/start-post-listen-schedulers.test.ts
+NODE_OPTIONS='--require=/private/tmp/procedure-material-no-env.cjs' pnpm --filter api exec vitest run src/services/assembly/__tests__/procedure-material-image-description.service.test.ts src/services/business-hermes/__tests__/procedure-material-hermes-source.service.test.ts src/services/business-hermes/__tests__/hermes-search-trial.service.test.ts src/routes/assembly/__tests__/procedure-material-knowledge.routes.test.ts src/routes/assembly/__tests__/procedure-material-semantic-search.routes.test.ts src/config/__tests__/procedure-material.env.test.ts src/bootstrap/__tests__/start-post-listen-schedulers.test.ts
 # Test Files  7 passed (7)
 # Tests  124 passed (124)
 # Duration  15.37s
@@ -489,11 +490,11 @@ src/config/env.ts
 src/routes/assembly/__tests__/procedure-material-knowledge.routes.test.ts
 src/routes/assembly/__tests__/procedure-material-semantic-search.routes.test.ts
 src/routes/assembly/procedure-materials.ts
-src/services/assembly/__tests__/hermes-search-trial.service.test.ts
-src/services/assembly/__tests__/procedure-material-hermes-source.service.test.ts
+src/services/business-hermes/__tests__/hermes-search-trial.service.test.ts
+src/services/business-hermes/__tests__/procedure-material-hermes-source.service.test.ts
 src/services/assembly/__tests__/procedure-material-search.integration.test.ts
-src/services/assembly/hermes-search-trial.service.ts
-src/services/assembly/procedure-material-hermes-source.service.ts
+src/services/business-hermes/hermes-search-trial.service.ts
+src/services/business-hermes/procedure-material-hermes-source.service.ts
 src/services/assembly/procedure-material-knowledge.service.ts
 src/services/assembly/procedure-material.service.ts
 src/config/__tests__/procedure-material.env.test.ts
@@ -799,3 +800,10 @@ UX 改善(2 回目)の変更・追加ファイル一覧(34ファイル。各migr
 場面サムネイル追記の検証(2026-10-08): Prisma generate、API/Web lint、Web `pnpm exec tsc --noEmit`が成功。APIの`pnpm exec vitest run procedure-video ffmpeg-procedure-video backup-recommended`は7ファイル189件成功。Webの`pnpm exec vitest run procedure-manuals document-editor`は23ファイル469件成功、追加のposter URLテスト2件も成功。作成/範囲変更後の生成、失敗時の成功応答、競合時の公開抑止と掃除、配信200/404、DTOの存在フラグ、動画ポスターへのフォールバック、範囲更新後の画像再取得を確認した。実Postgresへのmigration適用・実機目視は未実施。既存WIPを保持し、gitの変更操作・生成ソース変更・本番反映は行っていない。
 
 追加のブラウザ目視確認は未完了: ローカルChromiumはsandboxのMachPort権限で起動できず、Browser Useのローカルfile URLもURLポリシーで拒否された。回避操作は行わず、1920×1080の目視/タッチ確認は上のオーナー実機確認に残す。
+
+### アプリからの素材 (2026-10-19)
+
+- 件名 `ProcedureMaterial`（完全一致または直後が空白・タブ）を予約し、受信箱の未読を既存の5分スケジュール／「今すぐ取り込む」で取得する。旧トークンのみの設定でも検索対象に含む。
+- JSON manifestは1つ必須。`schema_version: 1`、`source.system: sharepoint`、`source.list: ProcedureMaterialList` と写真の添付名を検証し、欠落・不正時は保存せず未読で残す。写真は既存の縮小・サイズ制限とmessage単位dedupeでPHOTO／origin APP／appRefへ保存し、本文は素材化しない。動画は既存ProcedureVideoへ渡す。
+- 許可ドメインは両件名に適用し、`fromEmail` 一致は旧 `[Procedure-material]` のみ。成功時は既存のラベル付きごみ箱処理を使う。
+- 「未配置」の右隣に「アプリから」を置き、APPの未配置をメール単位で表示する。見出しはcategory・note、補足はlocationと社員名（未登録ならname_id）。配置・破棄は既存操作と共通。「未配置」のAPP除外は通常一覧のstate=unplacedかつorigin未指定だけで、配置済み・捨てた素材・semantic-searchは従来の状態条件を保つ。

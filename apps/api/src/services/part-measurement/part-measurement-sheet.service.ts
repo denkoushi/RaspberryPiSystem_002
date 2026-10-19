@@ -6,9 +6,9 @@ import { EmployeeService } from '../tools/employee.service.js';
 import { apiProcessGroupToPrisma, parseApiProcessGroup } from './part-measurement-process-group.adapter.js';
 import {
   PART_MEASUREMENT_EDIT_LOCK_TTL_MS,
-  PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD,
-  PART_MEASUREMENT_LEGACY_RESOURCE_CD
+  PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD
 } from './part-measurement-constants.js';
+import { normalizePartMeasurementResourceCd as normalizeResourceCd } from './part-measurement-resource-cd.js';
 import {
   isInspectionDrawingEvaluationTemplate,
   productionPartMeasurementSheetWhere
@@ -102,12 +102,6 @@ export type FindOrOpenInput = {
   scannedBarcodeRaw?: string | null;
   clientDeviceId?: string | null;
 };
-
-function normalizeResourceCd(raw: string): string {
-  const t = raw.trim();
-  if (t.length === 0) return PART_MEASUREMENT_LEGACY_RESOURCE_CD;
-  return t;
-}
 
 function lockExpiryFromNow(): Date {
   return new Date(Date.now() + PART_MEASUREMENT_EDIT_LOCK_TTL_MS);

@@ -1,3 +1,4 @@
+import { CAUSE_CATEGORY_IDS, causeLabel } from './cause-categories.mjs';
 import { performance } from 'node:perf_hooks';
 import { catalogEntries, fieldsWithRole } from './catalog.mjs';
 import { RELEVANCE_CANDIDATE_LIMIT, relevanceFailureReason } from './relevance-jev.mjs';
@@ -432,6 +433,38 @@ export function buildCoverage({ known, matchCount, shown, order }) {
   return { known: false, total: null, floor, shown, order };
 }
 
+function buildGroups(filtered, catalog, causeById) {
+  if (!catalog) return [];
+  return [
+    { axis: 'organization', role: 'organization', label: '部署', limit: 8 },
+    { axis: 'month', role: 'date', label: '月', limit: 12 },
+    { axis: 'cause', field: 'causeCategory', label: '要因', limit: 10 },
+  ].flatMap(({ axis, role, field: axisField, label, limit }) => {
+    if (axis === 'cause' && !filtered.some(record => CAUSE_CATEGORY_IDS.includes(causeById?.get(record.id)))) return [];
+    const field = axisField ?? fieldsWithRole(catalog, role)[0];
+    if (!field) return [];
+    const counts = new Map();
+    let otherCount = 0;
+    for (const record of filtered) {
+      const raw = axis === 'cause' ? causeById?.get(record.id) ?? ''
+        : typeof record[field] === 'string' ? record[field].trim() : '';
+      const value = axis === 'month' ? raw.slice(0, 7) : raw;
+      if (!value || value.length > 80 || (axis === 'cause' && !CAUSE_CATEGORY_IDS.includes(value)) || (axis === 'month' && !/^\d{4}-(0[1-9]|1[0-2])$/u.test(value))) {
+        otherCount += 1;
+        continue;
+      }
+      counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+    const ordered = [...counts.entries()].sort(([left, a], [right, b]) => axis === 'month'
+      ? compareRaw(right, left) : b - a || (axis === 'cause'
+        ? CAUSE_CATEGORY_IDS.indexOf(left) - CAUSE_CATEGORY_IDS.indexOf(right) : compareRaw(left, right)));
+    otherCount += ordered.slice(limit).reduce((sum, [, count]) => sum + count, 0);
+    return [{ axis, field, label, otherCount, ...(axis === 'cause' ? { otherLabel: '未分類' } : {}), buckets: ordered.slice(0, limit).map(([value, count]) => ({
+      value, count, label: axis === 'cause' ? causeLabel(value) : axis === 'month' ? `${value.slice(0, 4)}年${Number(value.slice(5))}月` : value,
+    })) }];
+  });
+}
+
 export function isRecentContentPlan(plan, catalog) {
   if (plan?.diagnostics?.contentDecision?.final !== true) return false;
   const query = typeof plan?.semanticQuery === 'string' ? plan.semanticQuery.trim() : '';
@@ -537,7 +570,10 @@ function unavailableResult(reason, timings, plan) {
 async function prepareCandidateRanking(plan, options, records) {
   const filterStarted = performance.now();
   const filters = Array.isArray(plan?.filters) ? plan.filters : [];
-  const filtered = records.filter((record) => filters.every((filter) => matchesFilter(record, filter)));
+  const filtered = records.filter((record) => filters.every((filter) => matchesFilter(record, filter))
+    // Sources without a cause store (causeById null) are not narrowed by the cause: the condition
+    // belongs to the classified source only.
+    && (!plan.causeCategory || !(options.causeById instanceof Map) || options.causeById.get(record.id) === plan.causeCategory));
   const filterMs = Math.round(performance.now() - filterStarted);
   const semanticQuery = typeof plan?.semanticQuery === 'string' ? plan.semanticQuery.trim() : '';
   const bodyFields = bodyFieldsFor(plan, options);
@@ -864,6 +900,7 @@ export async function execute(plan, options = {}) {
     requested: limit,
     returned: results.length,
     ...(coverage ? { coverage } : {}),
+    ...(coverage?.known === true && coverage.total > coverage.shown ? { groups: buildGroups(filtered, options.catalog, options.causeById) } : {}),
     results,
     ...(options.stageDump ? { candidateIds } : {}),
     timings: {

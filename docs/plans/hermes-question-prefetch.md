@@ -59,7 +59,7 @@ The next acceptance work is to refine question recipes so that distinct operatio
 ## Context and Orientation
 
 
-`apps/api/src/services/assembly/business-hermes-consultation.service.ts` persists consultation messages and canonical case state. Its `chat` coordinates foreground requests, `performChat` handles choices and validates responses, and the extracted `infer` owns the existing runtime lease and Responses call. The prefetch map stores a provisional response promise, selection, snapshot and native conversation key. It does not write answer data to the business DB.
+`apps/api/src/services/business-hermes/business-hermes-consultation.service.ts` persists consultation messages and canonical case state. Its `chat` coordinates foreground requests, `performChat` handles choices and validates responses, and the extracted `infer` owns the existing runtime lease and Responses call. The prefetch map stores a provisional response promise, selection, snapshot and native conversation key. It does not write answer data to the business DB.
 
 `apps/web/src/components/hermes/HermesFloatingChat.tsx` renders existing confirmation buttons and uses the authenticated cancel route when closing or leaving a consultation. `infrastructure/ansible/templates/business-hermes-chat/skills/business-consultation/SKILL.md.j2` describes recipe execution and reviewed improvement. SOUL already includes that template through Ansible. No additional packages, migrations, credentials or model settings are required.
 
@@ -82,7 +82,7 @@ Work in `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--hermes-questi
 
 Run the narrow checks first:
 
-    pnpm --filter @raspi-system/api test src/services/assembly/business-hermes-consultation.service.test.ts
+    pnpm --filter @raspi-system/api test src/services/business-hermes/business-hermes-consultation.service.test.ts
     pnpm --filter @raspi-system/web test src/components/hermes/HermesFloatingChat.test.tsx
     git diff --check
 

@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { registerErrorHandler } from '../error-handler.js';
 import { prisma } from '../../lib/prisma.js';
-import { ApiError } from '../../lib/errors.js';
+import { ApiError, DomainHttpError } from '../../lib/errors.js';
 vi.mock('../../lib/prisma.js', () => ({ prisma: { clientDevice: { findUnique: vi.fn() } } }));
 
 afterEach(() => vi.restoreAllMocks());
@@ -53,5 +53,38 @@ describe('error handler device enrichment', () => {
     const calls = vi.mocked(prisma.clientDevice.findUnique).mock.calls.length;
     expect(await resolveErrorLogDevice({ clientDevice: { id: 'resolved', name: '端末', statusClientId: 'pi4' }, headers: { 'x-client-key': 'unused' } } as never)).toEqual({ clientDeviceId: 'resolved', clientDeviceName: '端末', statusClientId: 'pi4' });
     expect(prisma.clientDevice.findUnique).toHaveBeenCalledTimes(calls);
+  });
+});
+
+describe('domain HTTP errors', () => {
+  it.each([
+    { code: 'DOMAIN_CONFLICT', details: { expectedVersion: 1 } },
+    { code: undefined, details: undefined }
+  ])('matches the equivalent ApiError response: $code', async ({ code, details }) => {
+    const instance = Fastify({ genReqId: () => 'same-request' });
+    registerErrorHandler(instance);
+    const domainError = new DomainHttpError(409, 'same conflict', code, details);
+    expect(domainError).not.toBeInstanceOf(ApiError);
+    instance.get('/domain', async () => { throw domainError; });
+    instance.get('/api', async () => { throw new ApiError(409, 'same conflict', details, code); });
+    await instance.ready();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const domain = await instance.inject('/domain');
+      const api = await instance.inject('/api');
+      expect(domain.statusCode).toBe(409);
+      expect(domain.statusCode).toBe(api.statusCode);
+      expect(domain.json()).toEqual(api.json());
+      expect(domain.json()).toEqual({
+        message: 'same conflict',
+        requestId: 'same-request',
+        timestamp: new Date().toISOString(),
+        ...(code ? { errorCode: code } : {}),
+        ...(details !== undefined ? { details } : {})
+      });
+    } finally {
+      vi.useRealTimers();
+      await instance.close();
+    }
   });
 });

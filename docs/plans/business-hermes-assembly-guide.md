@@ -50,7 +50,7 @@ APIは `apps/api/src/routes/assembly/index.ts` が組立ルートを登録し、
 
 ## Plan of Work
 
-`apps/api/src/config/env/business-hermes.ts` に専用endpoint URL、APIキー、モデル、timeoutの設定を追加し、既存LocalLLM設定へのフォールバックを作らない。`apps/api/src/services/assembly/business-hermes.service.ts` に、DBから現在セッション・現在ボルト・手順本文を取得して安全なpromptを作り、JSON応答をallowlist検証し、unknown/unavailableを返す処理を追加する。本文やAPIキーはログに出さない。
+`apps/api/src/config/env/business-hermes.ts` に専用endpoint URL、APIキー、モデル、timeoutの設定を追加し、既存LocalLLM設定へのフォールバックを作らない。`apps/api/src/services/business-hermes/business-hermes.service.ts` に、DBから現在セッション・現在ボルト・手順本文を取得して安全なpromptを作り、JSON応答をallowlist検証し、unknown/unavailableを返す処理を追加する。本文やAPIキーはログに出さない。
 
 `apps/api/src/routes/assembly/index.ts` から業務Hermesルートを登録する。キオスクguideはclient key必須でセッションの端末・作業者状態をサーバー照合し、ADMIN限定の提案一覧はBearer認証を要求する。既存の締付NG成功後に自発提案生成を非同期で起動し、結果を専用提案テーブルへ保存する。APIは外部停止やtimeoutを締付レスポンスへ伝播させない。
 
@@ -60,7 +60,7 @@ APIは `apps/api/src/routes/assembly/index.ts` が組立ルートを登録し、
 
 ## Concrete Steps
 
-作業場所は `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--business-hermes-assembly-guide` とする。API focused testsは `pnpm --filter @raspi-system/api test -- src/config/business-hermes.env.test.ts src/services/assembly/business-hermes.service.test.ts src/routes/assembly/__tests__/business-hermes.routes.test.ts`、Web focused testsは `pnpm --filter @raspi-system/web test -- src/pages/kiosk/KioskAssemblyWorkSessionPage.test.tsx` を実行した。続いてAPI/Webのbuild、変更範囲のESLint、Prisma validateを実行した。追加構築検証では固定digestのCompose profileを新規volumeで起動し、health、未認証401、正常停止、cleanupを確認した。実OpenAI推論、Pi5、Pi4、実認証、実機配備は実行していない。
+作業場所は `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--business-hermes-assembly-guide` とする。API focused testsは `pnpm --filter @raspi-system/api test -- src/config/business-hermes.env.test.ts src/services/business-hermes/business-hermes.service.test.ts src/routes/assembly/__tests__/business-hermes.routes.test.ts`、Web focused testsは `pnpm --filter @raspi-system/web test -- src/pages/kiosk/KioskAssemblyWorkSessionPage.test.tsx` を実行した。続いてAPI/Webのbuild、変更範囲のESLint、Prisma validateを実行した。追加構築検証では固定digestのCompose profileを新規volumeで起動し、health、未認証401、正常停止、cleanupを確認した。実OpenAI推論、Pi5、Pi4、実認証、実機配備は実行していない。
 
 ## Validation and Acceptance
 

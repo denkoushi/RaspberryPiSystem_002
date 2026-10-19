@@ -1,4 +1,5 @@
 import { catalogEntries } from './catalog.mjs';
+import { CAUSE_CATEGORY_IDS } from './cause-categories.mjs';
 import { bareId } from './flywheel-pairs.mjs';
 
 const normalize = (value) => String(value).normalize('NFKC').trim();
@@ -6,7 +7,7 @@ const recentSort = (sort) => sort === 'recent' || sort?.direction === 'desc';
 
 export function isFilterOnlyPlan(plan) {
   return Boolean(plan && (plan.semanticQuery == null || plan.semanticQuery === '')
-    && (plan.filters?.length > 0 || recentSort(plan.sort)));
+    && (plan.filters?.length > 0 || CAUSE_CATEGORY_IDS.includes(plan.causeCategory) || recentSort(plan.sort)));
 }
 
 function matchesFilters(record, filters) {
@@ -23,7 +24,11 @@ function matchesFilters(record, filters) {
   });
 }
 
-export function expectedFilterResults({ plan, records, catalog }) {
+function matchesCause(record, plan, causeById) {
+  return !plan.causeCategory || causeById?.get(record.id) === plan.causeCategory;
+}
+
+export function expectedFilterResults({ plan, records, catalog, causeById = null }) {
   const filters = plan?.filters ?? [];
   const dateFields = catalogEntries(catalog).flatMap((entry) => entry.fields).filter((field) => field.role === 'date').map((field) => field.key);
   for (const filter of filters) {
@@ -38,7 +43,7 @@ export function expectedFilterResults({ plan, records, catalog }) {
   const defaultRecent = isFilterOnlyPlan(plan) && (plan.sort === 'relevance' || !plan.sort);
   if (!recentSort(plan?.sort) && !defaultRecent) return { supported: false, reason: 'sort' };
   const dateField = dateFields[0];
-  const matched = records.filter((record) => matchesFilters(record, filters));
+  const matched = records.filter((record) => matchesFilters(record, filters) && matchesCause(record, plan, causeById));
   matched.sort((left, right) => String(right[dateField] ?? '').localeCompare(String(left[dateField] ?? ''))
     || bareId(left.id).localeCompare(bareId(right.id)));
   const limit = Number.isInteger(plan.limit) && plan.limit > 0 ? plan.limit : 5;
@@ -53,14 +58,14 @@ export function filterOutcome({ live, filterCheck }) {
   return ['answer', 'no_result', 'no_other'].includes(live.outcome) && filterCheck.ok === true ? 'ok' : 'mismatch';
 }
 
-export function checkFilterAnswer({ plan, shown = [], records, catalog }) {
-  const expected = expectedFilterResults({ plan, records, catalog });
+export function checkFilterAnswer({ plan, shown = [], records, catalog, causeById = null }) {
+  const expected = expectedFilterResults({ plan, records, catalog, causeById });
   const ids = shown.map(bareId);
   if (!expected.supported) {
     return { ...expected, filtersOk: null, orderOk: null, countOk: null, ok: null, expectedIds: [], shown: ids, matchedCount: null };
   }
   const byId = new Map(records.map((record) => [bareId(record.id), record]));
-  const filtersOk = ids.every((id) => byId.has(id) && matchesFilters(byId.get(id), plan.filters ?? []));
+  const filtersOk = ids.every((id) => byId.has(id) && matchesFilters(byId.get(id), plan.filters ?? []) && matchesCause(byId.get(id), plan, causeById));
   const orderOk = ids.every((id, index) => id === expected.expectedIds[index]);
   const countOk = ids.length === Math.min(expected.limit, expected.matchedCount);
   return { supported: true, filtersOk, orderOk, countOk, ok: filtersOk && orderOk && countOk,

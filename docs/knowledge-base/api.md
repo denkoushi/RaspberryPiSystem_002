@@ -103,7 +103,7 @@
 - **`ssh -N` が無音で進まないのは仕様**。**`<>` 字面による zsh の `parse error`**、**LAN 実 IP の `Connection refused`** と tailnet の **`timeout`** は別評価。管理コンソール **`private_ok`** と **Mac アクセス経路要件は無関係**。
 - **確認**: **`Ctrl+C` でトンネル切断後、ブラウザが開かなくなること**が決定証拠になる。
 
-**参照**: [KB-378](./KB-378-dgx-private-comfyui-mac-ssh-access.md)·[dgx-private-comfyui.md](../runbooks/dgx-private-comfyui.md)
+**参照**: KB-378（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md`）·DGXSparkControlPlane `docs/private-history/runbooks/dgx-private-comfyui.md`
 
 ---
 
@@ -118,7 +118,7 @@
 - **速度**: 1248×1824 で NVFP4 **2回目約3分台**（FP8 は約5分台）。`system-prod-trtllm` **約57GB** 占有時は Comfy 優先で一時 `docker stop`。
 - Compose 実用フラグ: `--disable-dynamic-vram`・`--reserve-vram 8`・`--disable-pinned-memory`・`--disable-mmap`（`force-recreate` で反映）。
 
-**参照**: [KB-379](./KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md)·[dgx-private-comfyui.md](../runbooks/dgx-private-comfyui.md)
+**参照**: KB-379（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md`）·DGXSparkControlPlane `docs/private-history/runbooks/dgx-private-comfyui.md`
 
 ---
 

@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { normalizeFseibanList } from './fseiban-list.js';
 import { regenerateProductionScheduleGlobalRowRank } from './row-global-rank-generator.service.js';
 import {
   GLOBAL_SHARED_LOCATION_KEY,
@@ -8,7 +9,6 @@ import {
   type RankingScope
 } from './due-management-ranking-scope-policy.service.js';
 
-const MAX_ITEMS = 2000;
 const fallbackTemporaryOverrides = new Map<
   string,
   { orderedFseibans: string[]; expiresAt: Date }
@@ -17,25 +17,12 @@ const fallbackTemporaryOverrides = new Map<
 const isMissingTemporaryOverrideTableError = (error: unknown): boolean =>
   error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2021';
 
-const normalizeFseibans = (items: string[]): string[] => {
-  const seen = new Set<string>();
-  const normalized: string[] = [];
-  for (const raw of items) {
-    const value = raw.trim();
-    if (!value || seen.has(value)) continue;
-    seen.add(value);
-    normalized.push(value);
-    if (normalized.length >= MAX_ITEMS) break;
-  }
-  return normalized;
-};
-
 async function replaceGlobalRankInternal(params: {
   locationKey: string;
   orderedFseibans: string[];
   sourceType?: 'auto' | 'manual';
 }): Promise<string[]> {
-  const orderedFseibans = normalizeFseibans(params.orderedFseibans);
+  const orderedFseibans = normalizeFseibanList(params.orderedFseibans);
   const sourceType = params.sourceType ?? 'manual';
   await prisma.$transaction(async (tx) => {
     await tx.productionScheduleGlobalRank.deleteMany({
@@ -74,7 +61,7 @@ export async function listDueManagementGlobalRank(params: {
     const now = new Date();
     const fallback = fallbackTemporaryOverrides.get(key);
     if (fallback && fallback.expiresAt > now) {
-      return normalizeFseibans(fallback.orderedFseibans);
+      return normalizeFseibanList(fallback.orderedFseibans);
     }
     fallbackTemporaryOverrides.delete(key);
     try {
@@ -94,7 +81,7 @@ export async function listDueManagementGlobalRank(params: {
         select: { orderedFseibans: true }
       });
       if (override) {
-        return normalizeFseibans(override.orderedFseibans);
+        return normalizeFseibanList(override.orderedFseibans);
       }
     } catch (error) {
       if (!isMissingTemporaryOverrideTableError(error)) {
@@ -140,7 +127,7 @@ export async function replaceDueManagementGlobalRank(params: {
 }): Promise<string[]> {
   const scope = params.scope ?? 'globalShared';
   if (scope === 'localTemporary') {
-    const orderedFseibans = normalizeFseibans(params.orderedFseibans);
+    const orderedFseibans = normalizeFseibanList(params.orderedFseibans);
     const ttlMinutes = params.temporaryTtlMinutes ?? LOCAL_TEMPORARY_OVERRIDE_TTL_MINUTES;
     const expiresAt = new Date(Date.now() + ttlMinutes * 60_000);
     const targetLocation = params.targetLocation ?? params.locationKey;
@@ -193,7 +180,7 @@ export async function mergeDueManagementGlobalRank(params: {
   scope?: RankingScope;
   prioritizedFseibans: string[];
 }): Promise<string[]> {
-  const prioritized = normalizeFseibans(params.prioritizedFseibans);
+  const prioritized = normalizeFseibanList(params.prioritizedFseibans);
   const existing = await listDueManagementGlobalRank({
     locationKey: params.locationKey,
     targetLocation: params.targetLocation,

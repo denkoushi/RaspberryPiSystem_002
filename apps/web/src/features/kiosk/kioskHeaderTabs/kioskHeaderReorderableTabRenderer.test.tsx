@@ -128,6 +128,7 @@ describe('startup page tab markers and route parity', () => {
     expect(KIOSK_INITIAL_ROUTE_PATHS.machine_signal).toBe(KIOSK_MACHINE_SIGNAL_PATH);
     expect(KIOSK_INITIAL_ROUTE_PATHS.inspection_drawing).toBe(KIOSK_INSPECTION_DRAWING_LIBRARY_PATH);
     for (const route of KIOSK_INITIAL_ROUTE_IDS) {
+      if (route === 'portal') continue; // Fixed portal tab is rendered by KioskHeader.
       const borrow = route === 'borrow_tag' || route === 'borrow_photo';
       const tabId = borrow ? 'borrow' : route;
       const view = render(<MemoryRouter>{renderKioskReorderableHeaderTab(tabId, { ...baseContext, defaultMode: route === 'borrow_photo' ? 'PHOTO' : 'TAG', initialKioskRoute: route })}</MemoryRouter>);

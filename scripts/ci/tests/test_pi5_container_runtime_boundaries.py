@@ -90,6 +90,14 @@ class Pi5ContainerRuntimeBoundaryTest(unittest.TestCase):
         for path in ("/tmp:rw,nosuid,nodev", "/config:rw,nosuid,nodev", "/data:rw,nosuid,nodev", "/var/log/caddy"):
             self.assertIn(path, web)
 
+    def test_business_profile_intent_survives_restart_in_host_config(self):
+        expected = "INFERENCE_BUSINESS_PROFILE_INTENT_FILE_PATH: /app/config/business-profile-intent.json"
+        for compose, name in ((SERVER, "api"), (PHASE3, "api-blue")):
+            api = service(compose, name)
+            self.assertIn(expected, api)
+            self.assertIn("/config:/app/config", api)
+        self.assertIn("<<: *api-environment", service(PHASE3, "api-green"))
+
     def test_images_have_non_root_defaults_and_no_file_capability(self):
         self.assertRegex(API_DOCKERFILE, r"(?m)^USER node$")
         self.assertRegex(WEB_DOCKERFILE, r"(?m)^USER caddy$")

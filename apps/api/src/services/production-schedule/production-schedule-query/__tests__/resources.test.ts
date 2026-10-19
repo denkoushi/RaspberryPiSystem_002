@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { logger } from '../../../../lib/logger.js';
 import { prisma } from '../../../../lib/prisma.js';
 import { getResourceCategoryPolicy } from '../../policies/resource-category-policy.service.js';
 import { getResourceNameMapByResourceCds } from '../../resource-master.service.js';
-import { listProductionScheduleResources, resetProductionScheduleResourceCdsCache } from '../resources.js';
+import {
+  listProductionScheduleResources,
+  markProductionScheduleResourceCdsCacheStale,
+  resetProductionScheduleResourceCdsCache,
+} from '../resources.js';
 
+vi.mock('../../../../lib/logger.js', () => ({ logger: { warn: vi.fn() } }));
 vi.mock('../../../../lib/prisma.js', () => ({ prisma: { $queryRaw: vi.fn() } }));
 vi.mock('../../policies/resource-category-policy.service.js', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../policies/resource-category-policy.service.js')>(),
@@ -54,14 +60,64 @@ describe('production schedule resource codes cache', () => {
     });
   });
 
-  it('reloads at the five minute TTL boundary', async () => {
+  it('returns fresh codes without a query within the TTL', async () => {
     await listProductionScheduleResources({});
     vi.advanceTimersByTime(ttl - 1);
     await listProductionScheduleResources({});
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
-    vi.advanceTimersByTime(1);
+  });
+
+  it('serves stale codes and starts a refresh at the five minute TTL boundary', async () => {
     await listProductionScheduleResources({});
+    const deferred = deferQuery();
+    vi.mocked(prisma.$queryRaw).mockReturnValueOnce(deferred.promise as never);
+    vi.advanceTimersByTime(ttl - 1);
+    vi.advanceTimersByTime(1);
+    expect((await listProductionScheduleResources({})).resources).toEqual(['R01', 'R02']);
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(ttl);
+    deferred.resolve([{ resourceCd: 'NEW' }]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect((await listProductionScheduleResources({})).resources).toEqual(['NEW']);
+    vi.advanceTimersByTime(ttl - 1);
+    expect((await listProductionScheduleResources({})).resources).toEqual(['NEW']);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it('shares one background refresh across expired callers', async () => {
+    await listProductionScheduleResources({});
+    const deferred = deferQuery();
+    vi.mocked(prisma.$queryRaw).mockReturnValueOnce(deferred.promise as never);
+    vi.advanceTimersByTime(ttl);
+    const results = await Promise.all([
+      listProductionScheduleResources({}),
+      listProductionScheduleResources({}),
+      listProductionScheduleResources({}),
+    ]);
+    expect(results.map((result) => result.resources)).toEqual(Array(3).fill(['R01', 'R02']));
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+    deferred.resolve([{ resourceCd: 'NEW' }]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect((await listProductionScheduleResources({})).resources).toEqual(['NEW']);
+  });
+
+  it('keeps stale codes and logs a failed refresh, then retries on a later call', async () => {
+    await listProductionScheduleResources({});
+    const deferred = deferQuery();
+    const error = new Error('refresh failed');
+    vi.mocked(prisma.$queryRaw).mockReturnValueOnce(deferred.promise as never);
+    vi.advanceTimersByTime(ttl);
+    expect((await listProductionScheduleResources({})).resources).toEqual(['R01', 'R02']);
+    deferred.reject(error);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(logger.warn).toHaveBeenCalledExactlyOnceWith(
+      { err: error }, 'Failed to refresh production schedule resource codes cache'
+    );
+    vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([{ resourceCd: 'NEW' }]);
+    expect((await listProductionScheduleResources({})).resources).toEqual(['R01', 'R02']);
+    await vi.advanceTimersByTimeAsync(0);
+    expect((await listProductionScheduleResources({})).resources).toEqual(['NEW']);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(3);
   });
 
   it('shares an in-flight query even when it takes longer than the TTL', async () => {
@@ -78,8 +134,13 @@ describe('production schedule resource codes cache', () => {
   });
 
   it('does not cache a failed query', async () => {
-    vi.mocked(prisma.$queryRaw).mockRejectedValueOnce(new Error('query failed'));
-    await expect(listProductionScheduleResources({})).rejects.toThrow('query failed');
+    const deferred = deferQuery();
+    vi.mocked(prisma.$queryRaw).mockReturnValueOnce(deferred.promise as never);
+    const first = expect(listProductionScheduleResources({})).rejects.toThrow('query failed');
+    const second = expect(listProductionScheduleResources({})).rejects.toThrow('query failed');
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    deferred.reject(new Error('query failed'));
+    await Promise.all([first, second]);
     await expect(listProductionScheduleResources({})).resolves.toHaveProperty('resources', ['R01', 'R02']);
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
   });
@@ -89,6 +150,69 @@ describe('production schedule resource codes cache', () => {
     resetProductionScheduleResourceCdsCache();
     await listProductionScheduleResources({});
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it('serves the last good codes and refreshes after marking stale', async () => {
+    await listProductionScheduleResources({});
+    markProductionScheduleResourceCdsCacheStale();
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    const deferred = deferQuery();
+    vi.mocked(prisma.$queryRaw).mockReturnValueOnce(deferred.promise as never);
+    expect((await listProductionScheduleResources({})).resources).toEqual(['R01', 'R02']);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+    deferred.resolve([{ resourceCd: 'NEW' }]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect((await listProductionScheduleResources({})).resources).toEqual(['NEW']);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps a refresh result expired when marked stale during the query', async () => {
+    await listProductionScheduleResources({});
+    vi.advanceTimersByTime(ttl);
+    const deferred = deferQuery();
+    vi.mocked(prisma.$queryRaw).mockReturnValueOnce(deferred.promise as never);
+    await listProductionScheduleResources({});
+    markProductionScheduleResourceCdsCacheStale();
+    expect((await listProductionScheduleResources({})).resources).toEqual(['R01', 'R02']);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+    deferred.resolve([{ resourceCd: 'PRE_IMPORT' }]);
+    await vi.advanceTimersByTimeAsync(0);
+    vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([{ resourceCd: 'POST_IMPORT' }]);
+    await listProductionScheduleResources({});
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(0);
+    expect((await listProductionScheduleResources({})).resources).toEqual(['POST_IMPORT']);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(['resolve', 'reject'] as const)('fully clears an initial query when marked stale before it %ss', async (outcome) => {
+    const deferred = deferQuery();
+    vi.mocked(prisma.$queryRaw).mockReturnValueOnce(deferred.promise as never);
+    const old = listProductionScheduleResources({});
+    const oldResult = outcome === 'reject' ? expect(old).rejects.toThrow('old query failed') : old;
+    markProductionScheduleResourceCdsCacheStale();
+    await listProductionScheduleResources({});
+    if (outcome === 'resolve') deferred.resolve([{ resourceCd: 'OLD' }]);
+    else deferred.reject(new Error('old query failed'));
+    await oldResult;
+    expect((await listProductionScheduleResources({})).resources).toEqual(['R01', 'R02']);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['resolve', 'reject'] as const)('keeps new codes when a refresh from before reset later %ss', async (outcome) => {
+    await listProductionScheduleResources({});
+    vi.advanceTimersByTime(ttl);
+    const deferred = deferQuery();
+    vi.mocked(prisma.$queryRaw).mockReturnValueOnce(deferred.promise as never);
+    await listProductionScheduleResources({});
+    resetProductionScheduleResourceCdsCache();
+    vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([{ resourceCd: 'NEW' }]);
+    expect((await listProductionScheduleResources({})).resources).toEqual(['NEW']);
+    if (outcome === 'resolve') deferred.resolve([{ resourceCd: 'OLD' }]);
+    else deferred.reject(new Error('old query failed'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect((await listProductionScheduleResources({})).resources).toEqual(['NEW']);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(3);
   });
 
   it.each(['resolve', 'reject'] as const)('keeps the new cache when an invalidated query later %ss', async (outcome) => {

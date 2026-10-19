@@ -1,7 +1,7 @@
 import { resolveClientKey } from '../../lib/client-key';
 import { api } from '../http';
 
-import type { KioskInitialRouteId } from '@raspi-system/shared-types';
+import type { KioskInitialRouteId, KioskReorderableHeaderTabId } from '@raspi-system/shared-types';
 
 // キオスク専用の従業員リスト取得（x-client-key認証）
 export async function getKioskEmployees(clientKey?: string) {
@@ -46,6 +46,7 @@ export interface KioskConfig {
   initialKioskRoute?: string | null;
   initialKioskPath?: string;
   navTabOrder?: string[];
+  portalHiddenTabIds?: string[];
   clientStatus?: {
     temperature: number | null;
     cpuUsage: number;
@@ -63,6 +64,15 @@ export async function putKioskInitialRoute(initialRoute: KioskInitialRouteId | n
   const { data } = await api.put<KioskInitialRouteResponse>(
     '/kiosk/initial-route',
     { initialRoute },
+    { headers: { 'x-client-key': clientKey } }
+  );
+  return data;
+}
+
+export async function putKioskPortalCards(hiddenTabIds: KioskReorderableHeaderTabId[], clientKey: string) {
+  const { data } = await api.put<{ ok: true; portalHiddenTabIds: KioskReorderableHeaderTabId[] }>(
+    '/kiosk/portal-cards',
+    { hiddenTabIds },
     { headers: { 'x-client-key': clientKey } }
   );
   return data;
@@ -296,6 +306,7 @@ export type KioskInquiryThread = {
   lastMessage: { side: KioskInquirySide; body: string; createdAt: string } | null;
 };
 export type KioskInquiryDetail = {
+  canViewScreen?: boolean;
   thread: KioskInquiryThread;
   messages: Array<{
     id: string;
@@ -305,7 +316,7 @@ export type KioskInquiryDetail = {
     authorDisplayName?: string | null;
   }>;
 };
-export type KioskInquiryEmployee = { employeeId: string; employeeCode: string; displayName: string };
+export type KioskInquiryEmployee = { employeeId: string; employeeCode: string; displayName: string; canViewScreen: boolean };
 export type KioskInquiryReceiverSettings = {
   devices: Array<{ id: string; name: string; location: string | null; inquiryReceiverEnabled: boolean; systemNoticeReceiverEnabled: boolean }>;
   employees: KioskInquiryEmployee[];
@@ -317,7 +328,7 @@ export async function getKioskInquirySummary(signal?: AbortSignal) {
 }
 
 export async function listKioskInquiries(employeeTagUid?: string, signal?: AbortSignal) {
-  const { data } = await api.post<{ threads: KioskInquiryThread[] }>(
+  const { data } = await api.post<{ threads: KioskInquiryThread[]; canViewScreen?: boolean }>(
     '/kiosk/inquiries/list', employeeTagUid ? { employeeTagUid } : {}, { signal }
   );
   return data;
@@ -342,7 +353,7 @@ export async function getKioskInquiryReceiverSettings() {
   return data;
 }
 
-export async function updateKioskInquiryReceiverSettings(payload: { receiverClientDeviceIds: string[]; systemNoticeReceiverClientDeviceIds: string[]; employeeCodes: string[] }) {
+export async function updateKioskInquiryReceiverSettings(payload: { receiverClientDeviceIds: string[]; systemNoticeReceiverClientDeviceIds: string[]; employees: { employeeCode: string; canViewScreen: boolean }[] }) {
   const { data } = await api.put<{ settings: KioskInquiryReceiverSettings }>('/kiosk-settings/inquiry-receivers', payload);
   return data;
 }

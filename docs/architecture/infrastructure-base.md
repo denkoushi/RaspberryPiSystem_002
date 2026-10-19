@@ -154,6 +154,8 @@ update-frequency: low
 
 #### シナリオ1: ユーザー数の増加（50-200名）
 
+API は 1 台構成を前提に、一部の状態をプロセスのメモリに持っている。複数インスタンスにする前に [API の 1 台構成の前提](./single-instance-state.md) の項目を直す。
+
 **対応策**:
 - APIサーバーの水平スケール（複数インスタンス）
 - データベースの読み取り専用レプリカ追加
@@ -260,6 +262,7 @@ update-frequency: low
 ## 関連ドキュメント
 
 - [システムアーキテクチャ概要](./overview.md)
+- [API の 1 台構成の前提](./single-instance-state.md)
 - [デプロイメントガイド](../guides/deployment.md)
 - [監視・アラートガイド](../guides/monitoring.md)
 - [バックアップ・リストア手順](../guides/backup-and-restore.md)

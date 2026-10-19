@@ -626,7 +626,12 @@ test('absent or empty learned queries preserve answers and lexical candidate ord
     assert.deepEqual(result.candidateIds, baseline.candidateIds);
     assert.deepEqual(result.recordIds, baseline.recordIds);
     assert.equal(result.answer, baseline.answer);
-    assert.deepEqual(result.session, baseline.session);
+    const { plans, ...session } = result.session;
+    const { plans: baselinePlans, ...baselineSession } = baseline.session;
+    assert.deepEqual(session, baselineSession);
+    assert.deepEqual(plans.map(entry => entry.plan), baselinePlans.map(entry => entry.plan));
+    assert.equal(plans[0].id, result.planId);
+    assert.notEqual(result.planId, baseline.planId);
     assert.equal(result.receipt.outcome, baseline.receipt.outcome);
   }
 });
@@ -744,6 +749,110 @@ test('answer takes a vector budget for night scoring; the day budget still appli
 });
 
 
+function listPlan(overrides = {}) {
+  return {
+    schema: 'hermes-query-plan/v1', sources: ['nonconformity'],
+    filters: [{ source: 'nonconformity', field: 'discoveredOn', op: 'after', values: ['2020-01-01'] }],
+    semanticQuery: '', sort: { field: 'discoveredOn', direction: 'desc' }, limit: 20,
+    display: catalog.fields.map(field => field.key), unresolved: [],
+    diagnostics: { contentDecision: { jev: false, final: false }, limitExplicit: false }, ...overrides,
+  };
+}
+
+test('display groups appear only for known totals exceeding shown, with unchanged notices', async () => {
+  for (const count of [5, 20, 43]) {
+    const rows = Array.from({ length: count }, (_, index) => ({ ...records[index % records.length], id: `list-${index}` }));
+    const answering = createRetrievalAnswering({ records: rows, catalog, planner: { plan: async () => ({ plan: listPlan() }) } });
+    const result = await answering.answer('一覧');
+    assert.equal(Boolean(result.display.groups), count > 20);
+    assert.deepEqual(result.display.coverage, { total: count, shown: Math.min(20, count) });
+    if (count > 20) {
+      assert.equal(result.display.groups[0].buckets.reduce((sum, item) => sum + item.count, 0), 43);
+      const notice = '該当43件のうち、新しい順に20件を表示しています。';
+      assert.deepEqual(result.display.notices, [notice]);
+      assert.ok(result.answer.includes(notice));
+    }
+  }
+  const rows = Array.from({ length: 40 }, (_, index) => ({ ...records[0], id: `semantic-${index}`, condition: 'qxrare' }));
+  const answering = createRetrievalAnswering({ records: rows, catalog,
+    planner: { plan: async () => ({ plan: listPlan({ semanticQuery: 'qxrare', sort: 'relevance', diagnostics: {} }) }) },
+    evaluate: mixedEvaluate,
+  });
+  const result = await answering.answer('qxrare');
+  assert.equal(result.coverage.known, false);
+  assert.equal(result.display.groups, undefined);
+  assert.equal(result.display.coverage, undefined);
+  assert.deepEqual(result.display.notices, [formatCoverageNotice(result.coverage)]);
+});
+
+test('refine bypasses the planner, replaces filters and resets shown IDs and pending state', async () => {
+  let calls = 0;
+  const answering = createRetrievalAnswering({ records, catalog, planner: { plan: async () => {
+    calls += 1;
+    return { plan: listPlan() };
+  } } });
+  const first = await answering.answer('一覧');
+  const session = { ...first.session, pending: { question: '古い確認' }, previousPlan: { ...first.session.previousPlan,
+    diagnostics: { excludeShown: true },
+  } };
+  const refine = { axis: 'organization', field: 'originDepartmentName', value: 'North Shop' };
+  const response = await completeRequest(answering, { type: 'request', requestId: 'refine', question: 'North Shopで絞り込む', session, refine });
+  const result = response.result;
+  assert.equal(calls, 1);
+  assert.deepEqual(result.recordIds, ['nonconformity:rec-beta', 'nonconformity:rec-delta', 'nonconformity:rec-alpha']);
+  assert.equal(result.session.previousPlan.filters.length, 2);
+  assert.deepEqual(result.session.previousPlan.filters[1], { source: 'nonconformity', field: refine.field, op: 'eq', values: [refine.value] });
+  assert.deepEqual(result.session.shownIds, result.recordIds);
+  assert.equal(result.session.pending, null);
+  assert.deepEqual(result.receipt.refine, refine);
+  assert.equal(result.receipt.planMs, 0);
+  assert.equal(session.previousPlan.diagnostics.excludeShown, true);
+  const replaced = await answering.answer('South Shopで絞り込む', result.session, { refine: { ...refine, value: 'South Shop' } });
+  assert.equal(calls, 1);
+  assert.equal(replaced.session.previousPlan.filters.length, 2);
+  assert.deepEqual(replaced.recordIds, ['nonconformity:rec-gamma']);
+  assert.deepEqual(replaced.session.shownIds, replaced.recordIds);
+});
+
+test('month refine uses inclusive calendar bounds including leap days and year rollover', async () => {
+  const rows = ['2024-01-31', '2024-02-01', '2024-02-29', '2024-03-01', '2025-02-28', '2025-03-01', '2026-12-31', '2027-01-01']
+    .map(date => ({ ...records[0], id: date, discoveredOn: date }));
+  const answering = createRetrievalAnswering({ records: rows, catalog, planner: { plan: () => { throw new Error('must bypass planner'); } } });
+  for (const [value, last, expected] of [
+    ['2024-02', '29', ['2024-02-29', '2024-02-01']],
+    ['2025-02', '28', ['2025-02-28']],
+    ['2026-12', '31', ['2026-12-31']],
+  ]) {
+    const result = await answering.answer(`${value}で絞り込む`, { previousPlan: listPlan(), shownIds: rows.map(row => `nonconformity:${row.id}`) }, {
+      refine: { axis: 'month', field: 'discoveredOn', value },
+    });
+    assert.deepEqual(result.recordIds, expected.map(id => `nonconformity:${id}`));
+    assert.deepEqual(result.session.previousPlan.filters, [{ source: 'nonconformity', field: 'discoveredOn', op: 'between', values: [`${value}-01`, `${value}-${last}`] }]);
+  }
+});
+
+test('invalid refine or an expired session falls back to normal planning', async () => {
+  const inputs = [];
+  const answering = createRetrievalAnswering({ records, catalog, planner: { plan: async input => {
+    inputs.push(input);
+    return { plan: listPlan() };
+  } } });
+  const valid = { axis: 'organization', field: 'originDepartmentName', value: 'North Shop' };
+  for (const [refine, previousPlan] of [
+    [valid, null], [{ ...valid, value: 'unknown department' }, listPlan()],
+    [{ ...valid, axis: 'invalid' }, listPlan()], [{ ...valid, value: 7 }, listPlan()],
+    [{ ...valid, field: 'condition' }, listPlan()],
+    [{ ...valid, planId: 7 }, listPlan()], [{ ...valid, planId: 'x'.repeat(65) }, listPlan()],
+    [{ axis: 'month', field: 'discoveredOn', value: '2026-13' }, listPlan()],
+  ]) {
+    const response = await completeRequest(answering, { type: 'request', requestId: 'fallback', question: '表示用の質問', refine, session: { previousPlan } });
+    assert.equal(response.result.status, 'completed');
+    assert.equal(response.result.receipt.refine, undefined);
+    assert.equal(inputs.at(-1).question, '表示用の質問');
+  }
+  assert.equal(inputs.length, 8);
+});
+
 test('record display uses exactly the answer fields and order for multiple and single sources', async () => {
   for (const selectedCatalog of [mixedCatalog, [mixedCatalog[1]]]) {
     const selectedRecords = mixedRecords.filter(record => selectedCatalog.some(entry => entry.id === record.sourceId));
@@ -764,6 +873,7 @@ test('record display uses exactly the answer fields and order for multiple and s
         .map(field => ({ label: field.label, value: row[field.key], role: field.role })) };
     });
     assert.deepEqual(result.display.records, expectedRecords);
+    if (selectedCatalog.length > 1) assert.equal(result.display.groups, undefined);
     const body = expectedRecords.map(record => [
       ...(selectedCatalog.length > 1 ? [`【${record.sourceLabel}】`] : []),
       ...record.fields.map(field => `${field.label}: ${field.value}`),
@@ -775,13 +885,14 @@ test('record display uses exactly the answer fields and order for multiple and s
   }
 });
 
-test('record display includes insufficient notice and a null stamp without changing answer', async () => {
+test('record display omits the requested-count shortfall sentence and keeps a null stamp', async () => {
   const answering = createRetrievalAnswering({ records: mixedRecords, catalog: mixedCatalog,
     planner: fixedPlanner(mixedCatalog.map(entry => entry.id), { limit: 5, diagnostics: { limitExplicit: true } }), evaluate: mixedEvaluate });
   const result = await answering.answer('ブラケット溶接');
   assert.equal(result.display.records.length, 2);
   assert.equal(result.display.dataAsOf, null);
-  assert.ok(result.display.notices.includes('見つかった件数は、指定された件数より少ないです。'));
+  assert.ok(!result.display.notices.includes('見つかった件数は、指定された件数より少ないです。'));
+  assert.doesNotMatch(result.answer, /指定された件数より少ない/u);
   for (const notice of result.display.notices) assert.ok(result.answer.includes(notice));
   assert.ok(result.display.notices.every(notice => !notice.includes('データ時点')));
 });
@@ -864,7 +975,221 @@ test('enabling rank-only materials leaves conversational answers unchanged', asy
     const rows = [...mixedRecords, { id: 'private', sourceId: 'procedure_material', bodyText: 'ブラケット溶接' }]
       .filter(row => sourceIds.includes(row.sourceId));
     const service = createRetrievalAnswering({ catalog, records: rows, planner: fixedPlanner(['knowledge_procedure']), evaluate: mixedEvaluate });
-    return service.answer('ブラケット溶接', null, { stageDump: true });
+    const result = await service.answer('ブラケット溶接', null, { stageDump: true });
+    assert.equal(result.session.plans[0].id, result.planId);
+    return { ...result, planId: 'generated', session: { ...result.session,
+      plans: result.session.plans.map(entry => ({ ...entry, id: 'generated' })),
+    } };
   };
   assert.deepEqual(await run([...ids, 'procedure_material']), await run(ids));
 });
+
+test('cause refinement preserves catalog filters and stacks with organization and month chips', async () => {
+  const { compactPlan } = await import('./worker.mjs');
+  let calls = 0;
+  const causeById = new Map([['rec-alpha', 'check'], ['rec-beta', 'check'], ['rec-gamma', 'drawing']]);
+  const answering = createRetrievalAnswering({ records, catalog, causeById, planner: { plan: async () => {
+    calls += 1;
+    return { plan: listPlan() };
+  } } });
+  const first = await answering.answer('一覧');
+  const refined = await answering.answer('確認・検査の漏れで絞り込む', first.session, {
+    refine: { axis: 'cause', field: 'causeCategory', value: 'check' },
+  });
+  assert.equal(calls, 1);
+  assert.equal(refined.session.previousPlan.causeCategory, 'check');
+  assert.deepEqual(refined.session.previousPlan.filters, first.session.previousPlan.filters);
+  assert.deepEqual(refined.recordIds, ['nonconformity:rec-beta', 'nonconformity:rec-alpha']);
+  const stacked = await answering.answer('部署で絞り込む', refined.session, {
+    refine: { axis: 'organization', field: 'originDepartmentName', value: 'North Shop' },
+  });
+  assert.equal(calls, 1);
+  assert.equal(stacked.session.previousPlan.causeCategory, 'check');
+  assert.equal(stacked.session.previousPlan.filters.length, 2);
+  const month = await answering.answer('月で絞り込む', stacked.session, {
+    refine: { axis: 'month', field: 'discoveredOn', value: '2026-10' },
+  });
+  assert.equal(calls, 1);
+  assert.equal(month.session.previousPlan.causeCategory, 'check');
+  for (const refine of [
+    { axis: 'cause', field: 'causeCategory', value: 'invalid' },
+    { axis: 'cause', field: 'condition', value: 'check' },
+  ]) {
+    const result = await answering.answer('表示用の質問', refined.session, { refine });
+    assert.equal(Object.hasOwn(result.session.previousPlan, 'causeCategory'), false);
+  }
+  assert.equal(calls, 3);
+  const natural = await answering.answer('新しい順で', refined.session);
+  assert.equal(Object.hasOwn(natural.session.previousPlan, 'causeCategory'), false);
+  assert.equal(compactPlan(listPlan({ causeCategory: 'check' })).causeCategory, 'check');
+  assert.equal(Object.hasOwn(compactPlan(listPlan()), 'causeCategory'), false);
+});
+
+test('cause cache maps condition hashes to original executor ids and refreshes on corpus messages', async t => {
+  const { mkdtemp, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const path = await import('node:path');
+  const { loadCauseById } = await import('./worker.mjs');
+  const { buildCauseQuestions, conditionSha256 } = await import('./cause-categories.mjs');
+  const { CAUSE_STORE_SCHEMA, writeCauseStore } = await import('./cause-store.mjs');
+  const dir = await mkdtemp(path.join(tmpdir(), 'cause-worker-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'store.jsonl');
+  const previous = process.env.HERMES_RETRIEVAL_CAUSE_STORE;
+  process.env.HERMES_RETRIEVAL_CAUSE_STORE = file;
+  t.after(() => { if (previous === undefined) delete process.env.HERMES_RETRIEVAL_CAUSE_STORE; else process.env.HERMES_RETRIEVAL_CAUSE_STORE = previous; });
+  const textSha256 = conditionSha256(' Ａ\n B ');
+  const row = { schema: CAUSE_STORE_SCHEMA, textSha256, categoryId: 'check', promptSha256: buildCauseQuestions([]).promptSha256, classifiedAt: '2026-10-17T00:00:00Z' };
+  const rows = [{ ...records[0], id: 'bare', condition: 'A B' }, { ...records[0], id: 'nonconformity:prefixed', condition: ' Ａ\n B ' },
+    { ...records[0], id: 'empty', condition: '' }, { ...records[0], id: 'other', sourceId: 'knowledge_procedure', condition: 'A B' }];
+  assert.equal((await loadCauseById({ HERMES_RETRIEVAL_CAUSE_STORE: file }, rows)).size, 0);
+  await writeCauseStore(file, new Map([[textSha256, row]]));
+  const causeById = await loadCauseById({ HERMES_RETRIEVAL_CAUSE_STORE: file, HERMES_RETRIEVAL_CAUSE_ENABLED: 'false' }, rows);
+  assert.deepEqual([...causeById], [['bare', 'check'], ['nonconformity:prefixed', 'check']]);
+  const answering = createRetrievalAnswering({ records: rows.slice(0, 3), catalog, causeById,
+    planner: { plan: async () => ({ plan: listPlan() }) } });
+  const refine = { axis: 'cause', field: 'causeCategory', value: 'check' };
+  const first = await answering.answer('分類', { previousPlan: listPlan() }, { refine });
+  assert.deepEqual(new Set(first.recordIds), new Set(['nonconformity:bare', 'nonconformity:prefixed']));
+  row.categoryId = 'drawing';
+  await writeCauseStore(file, new Map([[textSha256, row]]));
+  assert.equal((await answering.replaceCorpus({ mode: 'full', records: rows.slice(0, 3) })).ok, true);
+  const next = await answering.answer('分類', first.session, { refine: { ...refine, value: 'drawing' } });
+  assert.equal(next.recordIds.length, 2);
+  assert.equal(rows.some(record => Object.hasOwn(record, 'causeCategory')), false);
+});
+
+test('cause support leaves catalog prompt text, ordinary compact plans and coverage wording unchanged', async () => {
+  const { createHash } = await import('node:crypto');
+  const { catalogFieldLines } = await import('./enrichment-contract.mjs');
+  const { compactPlan } = await import('./worker.mjs');
+  assert.equal(createHash('sha256').update(JSON.stringify(catalogFieldLines(catalog))).digest('hex'),
+    'fb5fc625af7d8bc17bc67a09af3b26a73e1f55e91583cebaa6ef11eac4e38632');
+  assert.equal(catalog.fields.some(field => field.key === 'causeCategory'), false);
+  const ordinary = listPlan();
+  assert.deepEqual(compactPlan(ordinary), { sources: ordinary.sources, filters: ordinary.filters,
+    semanticQuery: '', sort: ordinary.sort, limit: 20 });
+  assert.equal(formatCoverageNotice({ known: true, total: 43, shown: 20, order: 'date_desc' }),
+    '該当43件のうち、新しい順に20件を表示しています。');
+});
+
+
+test('a chip on an older answer refines that answer plan instead of the latest month and cause', async () => {
+  let calls = 0;
+  const base = listPlan({ filters: [
+    { source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['North Shop'] },
+    { source: 'nonconformity', field: 'discoveredOn', op: 'between', values: ['2024-01-01', '2024-12-31'] },
+  ] });
+  const answering = createRetrievalAnswering({ records, catalog,
+    causeById: new Map([['rec-alpha', 'check'], ['rec-beta', 'check'], ['rec-delta', 'drawing']]),
+    planner: { plan: async () => { calls += 1; return { plan: base }; } },
+  });
+  const first = await answering.answer('部署と年');
+  const check = await answering.answer('確認', first.session, {
+    refine: { axis: 'cause', field: 'causeCategory', value: 'check', planId: first.planId },
+  });
+  const month = await answering.answer('11月', check.session, {
+    refine: { axis: 'month', field: 'discoveredOn', value: '2024-11', planId: check.planId },
+  });
+  assert.deepEqual(month.recordIds, ['nonconformity:rec-beta']);
+  const snapshot = structuredClone(month.session);
+  const refine = { axis: 'cause', field: 'causeCategory', value: 'drawing', planId: first.planId };
+  const { result } = await completeRequest(answering, { type: 'request', requestId: 'older-chip', question: '図面', session: month.session, refine });
+  assert.equal(calls, 1);
+  assert.deepEqual(result.recordIds, ['nonconformity:rec-delta']);
+  assert.deepEqual(result.session.previousPlan.filters, base.filters);
+  assert.equal(result.session.previousPlan.causeCategory, 'drawing');
+  assert.deepEqual(result.receipt.refine, refine);
+  assert.deepEqual(month.session, snapshot);
+  assert.notEqual(result.planId, first.planId);
+  assert.deepEqual(result.session.plans.at(-1), { id: result.planId, plan: result.session.previousPlan });
+});
+
+test('recent plan ring keeps the newest eight and unknown or expired ids use previousPlan', async () => {
+  const inputs = [];
+  const answering = createRetrievalAnswering({ records, catalog, planner: { plan: async input => {
+    inputs.push(input);
+    return { plan: listPlan({ filters: [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq',
+      values: [inputs.length === 1 ? 'South Shop' : 'North Shop'] }] }) };
+  } } });
+  const ids = [];
+  let result;
+  for (let index = 0; index < 10; index += 1) {
+    const previousPlan = result?.session.previousPlan ?? null;
+    result = await answering.answer('一覧', result?.session);
+    assert.deepEqual(inputs.at(-1).previousPlan, previousPlan);
+    assert.equal(typeof result.planId, 'string');
+    assert.ok(result.planId.length > 0 && result.planId.length <= 64);
+    ids.push(result.planId);
+    assert.deepEqual(result.session.plans.map(entry => entry.id), ids.slice(-8));
+  }
+  assert.equal(new Set(ids).size, 10);
+  for (const planId of ['unknown', ids[0]]) {
+    const refined = await answering.answer('11月', result.session, {
+      refine: { axis: 'month', field: 'discoveredOn', value: '2024-11', planId },
+    });
+    assert.deepEqual(refined.recordIds, ['nonconformity:rec-beta']);
+    assert.deepEqual(refined.session.previousPlan.filters[0], result.session.previousPlan.filters[0]);
+    assert.equal(refined.session.plans.length, 8);
+  }
+  assert.equal(inputs.length, 10);
+});
+
+test('no_result receipts retain refine with and without a plan id', async () => {
+  const answering = createRetrievalAnswering({ records, catalog,
+    planner: { plan: async () => ({ plan: listPlan() }) },
+  });
+  const first = await answering.answer('一覧');
+  for (const planId of [undefined, first.planId]) {
+    const refine = { axis: 'month', field: 'discoveredOn', value: '2026-07', ...(planId ? { planId } : {}) };
+    const { result } = await completeRequest(answering, { type: 'request', requestId: 'empty-refine', question: '7月', session: first.session, refine });
+    assert.equal(result.receipt.outcome, 'no_result');
+    assert.deepEqual(result.receipt.refine, refine);
+    assert.deepEqual(result.recordIds, []);
+    assert.equal(result.session.plans.at(-1).id, result.planId);
+  }
+});
+
+test('restricted principals cannot refine stored plans with hidden sources or filters', async () => {
+  const inputs = [];
+  const answering = createRetrievalAnswering({ records: restrictedRecords, catalog: restrictedCatalog,
+    planner: { plan: async input => { inputs.push(input); return { plan: listPlan() }; } },
+  });
+  for (const plan of [
+    listPlan({ sources: ['synthetic_admin'] }),
+    listPlan({ filters: [{ source: 'synthetic_admin', field: 'partNumber', op: 'eq', values: ['SECRET-FACET'] }] }),
+  ]) {
+    const session = { previousPlan: listPlan(), plans: [{ id: 'hidden', plan }] };
+    const result = await answering.answer('部署', session, { principal: { kind: 'viewer' },
+      refine: { axis: 'organization', field: 'originDepartmentName', value: 'North Shop', planId: 'hidden' },
+    });
+    assert.equal(result.receipt.refine, undefined);
+    assert.deepEqual(inputs.at(-1).previousPlan, session.previousPlan);
+    assert.doesNotMatch(JSON.stringify(result), /synthetic_admin|SECRET-FACET|hidden/u);
+  }
+  assert.equal(inputs.length, 2);
+});
+
+for (const causeById of [null, new Map(), new Map([['rec-alpha', 'drawing'], ['rec-beta', 'check']])]) {
+  test(`planner cause guard with store size=${causeById?.size ?? 'null'}`, async () => {
+    const inputs = [];
+    const plan = listPlan({ causeCategory: 'drawing', diagnostics: {
+      ...listPlan().diagnostics, causeDecision: { chosen: 'drawing' },
+    } });
+    const answering = createRetrievalAnswering({ records, catalog, causeById,
+      evaluate: async () => assert.fail('filter-only plans must skip relevance'),
+      planner: { plan: async input => { inputs.push(input); return { plan }; } },
+    });
+    const result = await answering.answer('図面・設計の誤り');
+    const available = Boolean(causeById?.size);
+    assert.equal(result.session.previousPlan.causeCategory, available ? 'drawing' : undefined);
+    assert.equal(result.receipt.plan.causeCategory, available ? 'drawing' : undefined);
+    assert.equal(result.receipt.causeFilterDropped, available ? undefined : 'store_empty');
+    assert.deepEqual(result.receipt.causeDecision, { chosen: 'drawing' });
+    if (available) assert.deepEqual(result.recordIds, ['nonconformity:rec-alpha']);
+    else assert.equal(result.recordIds.length, records.length);
+    assert.equal(plan.causeCategory, 'drawing');
+    await answering.answer('今年', result.session);
+    assert.equal(inputs[1].previousPlan.causeCategory, available ? 'drawing' : undefined);
+  });
+}

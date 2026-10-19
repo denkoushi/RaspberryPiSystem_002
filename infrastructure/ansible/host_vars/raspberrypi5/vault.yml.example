@@ -15,13 +15,9 @@ vault_api_local_llm_runtime_control_token: ""
 
 # DGXリソース管理（空なら read-only / 設定不足としてUI表示）
 vault_api_dgx_resource_metrics_url: ""
-vault_api_dgx_resource_comfyui_health_url: ""
 vault_api_dgx_resource_embedding_health_url: ""
 vault_api_dgx_resource_spark_host_status_url: ""
 vault_api_dgx_resource_probe_timeout_ms: "10000"
-vault_api_dgx_resource_private_comfyui_runtime_start_url: ""
-vault_api_dgx_resource_private_comfyui_runtime_stop_url: ""
-vault_api_dgx_resource_private_comfyui_runtime_control_token: ""
 vault_api_dgx_resource_experiment_lab_runtime_start_url: ""
 vault_api_dgx_resource_experiment_lab_runtime_stop_url: ""
 vault_api_dgx_resource_experiment_lab_runtime_control_token: ""

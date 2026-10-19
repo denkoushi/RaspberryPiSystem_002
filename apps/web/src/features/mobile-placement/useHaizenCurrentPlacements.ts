@@ -2,13 +2,15 @@ import { useQuery } from '@tanstack/react-query';
 
 import { getMobilePlacementHaizenCurrent } from '../../api/client';
 
+import { mobilePlacementQueryKeys } from './mobilePlacementQueryKeys';
+
 /**
  * Zero2W 配膳の現在値（棚絞り込み）。ポーリングで現場追従。
  */
 export function useHaizenCurrentPlacements(shelfCode: string | undefined) {
   const shelf = shelfCode?.trim() ?? '';
   return useQuery({
-    queryKey: ['mobile-placement', 'haizen-current', shelf || '__all__'] as const,
+    queryKey: mobilePlacementQueryKeys.haizenCurrent(shelf),
     queryFn: () =>
       getMobilePlacementHaizenCurrent({
         shelfCodeRaw: shelf.length > 0 ? shelf : undefined,

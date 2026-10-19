@@ -111,6 +111,7 @@ STATIC_PLAYBOOKS=(
   playbooks/prepare-pi5-database-roles.yml
   playbooks/prepare-pi5-admin-network-policy.yml
   playbooks/prepare-pi5-power-dispatcher.yml
+  playbooks/prepare-pi5-security-scans.yml
   playbooks/prepare-client-local-ca-trust.yml
   playbooks/activate-pi5-local-ca-certificate.yml
   playbooks/verify-client-local-tls.yml

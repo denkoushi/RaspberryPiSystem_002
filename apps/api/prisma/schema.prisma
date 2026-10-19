@@ -179,6 +179,7 @@ model Employee {
   status                                        EmployeeStatus                                 @default(ACTIVE)
   createdAt                                     DateTime                                       @default(now())
   updatedAt                                     DateTime                                       @updatedAt
+  screenWatchSessions                           KioskScreenWatchSession[]
   kioskInquiryReceiver                          KioskInquiryReceiverEmployee?
   kioskInquiryMessages                          KioskInquiryMessage[]
   loans                                         Loan[]
@@ -491,6 +492,7 @@ model ClientDevice {
   statusClientId                                String? // ClientStatus.clientId への紐づけ（x-client-key → statusClientId）
   defaultMode                                   String?                                        @default("TAG") // 'PHOTO' | 'TAG'（デフォルト: 'TAG'）
   kioskInitialRoute                             String? // 端末ごとのキオスク開始ページ（shared-types の KIOSK_INITIAL_ROUTE_IDS。未設定は defaultMode、PIN画面は対象外）
+  kioskPortalHiddenTabIds                        String[] @default([])
   /// キオスクのサイネージプレビューで参照する `ClientDevice.apiKey`（サイネージ用途端末のみ許可。未設定時は自端末キーでプレビュー）
   signagePreviewTargetApiKey                    String?
   /// Zero2W 棚番エッジ等: 端末に固定する棚番（`西-北-01` 形式・trim 保存）
@@ -506,6 +508,8 @@ model ClientDevice {
   canProxyOtherDevices                          Boolean                                        @default(false)
   inquiryReceiverEnabled                        Boolean                                        @default(false)
   systemNoticeReceiverEnabled                   Boolean                                        @default(false)
+  screenWatchViewerSessions                     KioskScreenWatchSession[] @relation("ScreenWatchViewer")
+  screenWatchTargetSessions                     KioskScreenWatchSession[] @relation("ScreenWatchTarget")
   kioskInquiryThreads                           KioskInquiryThread[]
   kioskInquiryMessages                          KioskInquiryMessage[]
   lastSeenAt                                    DateTime?
@@ -5405,6 +5409,7 @@ enum ProcedureMaterialKind {
 }
 
 enum ProcedureMaterialOrigin {
+  APP
   GMAIL
   KNOWLEDGE
   WORK_INSTRUCTION
@@ -5415,6 +5420,7 @@ model ProcedureMaterial {
   origin           ProcedureMaterialOrigin @default(GMAIL)
   knowledgeRef     Json?
   workInstructionRef Json?
+  appRef           Json?
   kind             ProcedureMaterialKind
   text             String?
   imageDescription String?
@@ -5593,10 +5599,11 @@ model ProcedureVideoComment {
 }
 
 model KioskInquiryReceiverEmployee {
-  id         String   @id @default(uuid())
-  employeeId String   @unique
-  createdAt  DateTime @default(now())
-  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  id            String   @id @default(uuid())
+  employeeId    String   @unique
+  canViewScreen Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }
 
 model KioskInquiryThread {
@@ -5614,6 +5621,7 @@ model KioskInquiryThread {
   updatedAt            DateTime              @updatedAt
   senderClientDevice   ClientDevice?         @relation(fields: [senderClientDeviceId], references: [id], onDelete: Cascade)
   messages             KioskInquiryMessage[]
+  screenWatchSessions  KioskScreenWatchSession[]
 
   @@index([kind, noticeKey])
   @@index([receiverUnread])
@@ -5648,4 +5656,33 @@ model ProcedureManualCommonSubject {
   key     String @id
   name    String
   kanaRow String?
+}
+
+enum KioskScreenWatchStatus {
+  REQUESTED
+  ACTIVE
+  DENIED
+  ENDED
+  EXPIRED
+  FAILED
+}
+
+model KioskScreenWatchSession {
+  id                   String                 @id @default(uuid())
+  threadId             String
+  viewerEmployeeId     String?
+  viewerClientDeviceId String
+  targetClientDeviceId String
+  status               KioskScreenWatchStatus @default(REQUESTED)
+  requestedAt          DateTime               @default(now())
+  acceptedAt           DateTime?
+  endedAt              DateTime?
+  endReason            String?
+  thread               KioskInquiryThread     @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  viewerEmployee       Employee?              @relation(fields: [viewerEmployeeId], references: [id], onDelete: SetNull)
+  viewerClientDevice   ClientDevice           @relation("ScreenWatchViewer", fields: [viewerClientDeviceId], references: [id])
+  targetClientDevice   ClientDevice           @relation("ScreenWatchTarget", fields: [targetClientDeviceId], references: [id])
+
+  @@index([threadId])
+  @@index([targetClientDeviceId, status])
 }

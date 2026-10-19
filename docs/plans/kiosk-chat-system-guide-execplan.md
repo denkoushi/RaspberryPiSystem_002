@@ -64,11 +64,11 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Context and Orientation
 
-用語を先に定める。「フローティング Chat」は `apps/web/src/components/hermes/HermesFloatingChat.tsx` が全画面に常駐させるパネルで、`/kiosk` 配下の画面では「お問い合わせ」も同じパネルに出る。「業務 Hermes」は業務 Pi5 上の `business-hermes-chat` コンテナ(公式 hermes-agent イメージ)で、`docs/runbooks/business-hermes.md` にあるとおり私用 Pi5 と何も共有しない。推論は DGX か OpenAI のどちらかを設定で選ぶ。業務 Hermes の人格と振る舞いは、このリポジトリの `infrastructure/ansible/templates/business-hermes-chat/`(設定と `skills/business-consultation/SKILL.md.j2`)から Ansible で配布する。「MCP の道具」は、業務 Hermes が API を呼ぶための関数群で、`apps/api/src/services/assembly/business-hermes-mcp.service.ts` に `business_hermes_describe_sources`、`business_hermes_search`、`business_hermes_get_detail` などとして定義されている。「情報源」は業務 Hermes が検索できる業務記録の種類で、`apps/api/src/services/assembly/business-hermes-source-adapters.ts` の `businessHermesSourceDefinitionList()` が項目の意味と制約を Hermes に説明する。
+用語を先に定める。「フローティング Chat」は `apps/web/src/components/hermes/HermesFloatingChat.tsx` が全画面に常駐させるパネルで、`/kiosk` 配下の画面では「お問い合わせ」も同じパネルに出る。「業務 Hermes」は業務 Pi5 上の `business-hermes-chat` コンテナ(公式 hermes-agent イメージ)で、`docs/runbooks/business-hermes.md` にあるとおり私用 Pi5 と何も共有しない。推論は DGX か OpenAI のどちらかを設定で選ぶ。業務 Hermes の人格と振る舞いは、このリポジトリの `infrastructure/ansible/templates/business-hermes-chat/`(設定と `skills/business-consultation/SKILL.md.j2`)から Ansible で配布する。「MCP の道具」は、業務 Hermes が API を呼ぶための関数群で、`apps/api/src/services/business-hermes/business-hermes-mcp.service.ts` に `business_hermes_describe_sources`、`business_hermes_search`、`business_hermes_get_detail` などとして定義されている。「情報源」は業務 Hermes が検索できる業務記録の種類で、`apps/api/src/services/business-hermes/business-hermes-source-adapters.ts` の `businessHermesSourceDefinitionList()` が項目の意味と制約を Hermes に説明する。
 
-Chat の裏側は現在 4 つの経路に分かれている。パネル上部のボタン「検索」は業務 Hermes との相談(`POST /assembly/business-hermes/chat`、`apps/api/src/services/assembly/business-hermes-consultation.service.ts`)で、情報源を道具として検索して答える。「ナレッジ」は手順書の知識機能。「JEV記録」は AI を使わない決まった手順の検索(`POST /assembly/hermes-search-trial/answer`、実体は `scripts/hermes-search/retrieval/worker.mjs`)で、結果が無いときの文言は `noResultAnswer` にある。「お問い合わせ」は `apps/api/src/services/kiosk-inquiry/kiosk-inquiry.service.ts` の `createKioskInquiryThread` でスレッドを作り、受け取る端末と Slack に届く。端末の不調は `apps/api/src/services/kiosk-inquiry/system-notice.service.ts` の `deliverSystemNotice` が同じ受信箱に「システム」の印を付けて出す。
+Chat の裏側は現在 4 つの経路に分かれている。パネル上部のボタン「検索」は業務 Hermes との相談(`POST /assembly/business-hermes/chat`、`apps/api/src/services/business-hermes/business-hermes-consultation.service.ts`)で、情報源を道具として検索して答える。「ナレッジ」は手順書の知識機能。「JEV記録」は AI を使わない決まった手順の検索(`POST /assembly/hermes-search-trial/answer`、実体は `scripts/hermes-search/retrieval/worker.mjs`)で、結果が無いときの文言は `noResultAnswer` にある。「お問い合わせ」は `apps/api/src/services/kiosk-inquiry/kiosk-inquiry.service.ts` の `createKioskInquiryThread` でスレッドを作り、受け取る端末と Slack に届く。端末の不調は `apps/api/src/services/kiosk-inquiry/system-notice.service.ts` の `deliverSystemNotice` が同じ受信箱に「システム」の印を付けて出す。
 
-実利用の記録は `apps/api/src/services/assembly/hermes-search-receipt-log.ts` が業務 Pi5 の永続ボリューム(`/app/storage/hermes-search/runtime/receipts/receipts-YYYY-MM-DD.jsonl`)に 1 日 1 ファイルで追記する。質問の文面と結果の種別、表示した記録 id は書くが、記録の本文は書かない。夜間ランナー(`scripts/hermes-search/retrieval/flywheel-runner.mjs`)がこれを `flywheel-real.mjs` で読み、`real-YYYY-MM-DD.jsonl` と朝の集計に反映する。
+実利用の記録は `apps/api/src/services/business-hermes/hermes-search-receipt-log.ts` が業務 Pi5 の永続ボリューム(`/app/storage/hermes-search/runtime/receipts/receipts-YYYY-MM-DD.jsonl`)に 1 日 1 ファイルで追記する。質問の文面と結果の種別、表示した記録 id は書くが、記録の本文は書かない。夜間ランナー(`scripts/hermes-search/retrieval/flywheel-runner.mjs`)がこれを `flywheel-real.mjs` で読み、`real-YYYY-MM-DD.jsonl` と朝の集計に反映する。
 
 キオスクの画面は `apps/web/src/pages/kiosk/` にあり、持出返却、組立(ホーム、作業、記録確認、要領書、訓練、トレーサビリティ)、自主検査、検査図面、計測器、写真、治具、品目在庫、タグ机、生産日程、可動棚、発注照会などがある。ルート一覧は `apps/web/src/App.tsx` のルーター定義から取る。
 
@@ -113,7 +113,7 @@ Milestone 1 では `docs/kiosk-operation-guide/` を書き、次を実行して�
 
 Milestone 2 と 3 と 4 では API と Web の対象テストを指定して実行する。
 
-    pnpm --filter @raspi-system/api exec vitest run src/services/assembly/business-hermes-mcp.service
+    pnpm --filter @raspi-system/api exec vitest run src/services/business-hermes/business-hermes-mcp.service
     pnpm --filter @raspi-system/api exec vitest run src/services/kiosk-inquiry
     pnpm --filter @raspi-system/web exec vitest run src/components/hermes
     pnpm --filter @raspi-system/api typecheck && pnpm --filter @raspi-system/web typecheck
@@ -130,7 +130,7 @@ Milestone ごとに、上記のテストと型検査が成功し、CI(deploy imp
 
 ## Interfaces and Dependencies
 
-`apps/api/src/services/assembly/business-hermes-source-adapters.ts` に `kind: 'system_operation_guide'` の定義を追加し、`businessHermesSourceDefinitionList()` が返す。`apps/api/src/services/assembly/business-hermes-mcp.service.ts` に `business_hermes_report_trouble` と `business_hermes_record_search` の 2 つの道具を追加し、`TOOLS` 配列と `BUSINESS_HERMES_MCP_TOOL_NAMES` に加える。`apps/api/src/services/kiosk-inquiry/kiosk-inquiry.service.ts` の `createKioskInquiryThread` を送信者なしで呼べることを確認し、必要なら自動受付用の呼び口を追加する。`apps/api/src/services/assembly/hermes-search-receipt-log.ts` の追記項目に `route` と `guideMiss` を加える。`infrastructure/ansible/templates/business-hermes-chat/skills/business-consultation/SKILL.md.j2` に「システム操作の問い合わせ」「不具合の報告」「記録の検索は道具へ」の 3 節を加える。Web は `apps/web/src/components/hermes/HermesChatPanel.tsx` と `HermesFloatingChat.tsx` のモード切替を変更する。
+`apps/api/src/services/business-hermes/business-hermes-source-adapters.ts` に `kind: 'system_operation_guide'` の定義を追加し、`businessHermesSourceDefinitionList()` が返す。`apps/api/src/services/business-hermes/business-hermes-mcp.service.ts` に `business_hermes_report_trouble` と `business_hermes_record_search` の 2 つの道具を追加し、`TOOLS` 配列と `BUSINESS_HERMES_MCP_TOOL_NAMES` に加える。`apps/api/src/services/kiosk-inquiry/kiosk-inquiry.service.ts` の `createKioskInquiryThread` を送信者なしで呼べることを確認し、必要なら自動受付用の呼び口を追加する。`apps/api/src/services/business-hermes/hermes-search-receipt-log.ts` の追記項目に `route` と `guideMiss` を加える。`infrastructure/ansible/templates/business-hermes-chat/skills/business-consultation/SKILL.md.j2` に「システム操作の問い合わせ」「不具合の報告」「記録の検索は道具へ」の 3 節を加える。Web は `apps/web/src/components/hermes/HermesChatPanel.tsx` と `HermesFloatingChat.tsx` のモード切替を変更する。
 
 依存する正本は、`docs/runbooks/kiosk-inquiry-inbox.md`(受信箱)、`docs/runbooks/business-hermes.md`(業務 Hermes の配布と境界)、`docs/plans/hermes-operation-guide-execplan.md`(既存の操作ガイド)、`docs/plans/hermes-synthetic-question-flywheel-execplan.md`(夜間ランナーと集計)。
 

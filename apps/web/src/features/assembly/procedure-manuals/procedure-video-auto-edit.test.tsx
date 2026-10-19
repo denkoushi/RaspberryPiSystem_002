@@ -140,16 +140,16 @@ describe('procedure video AI desk', () => {
     fireEvent.change(screen.getByRole('slider', { name: '再生位置' }), { target: { value: '2.3' } }); expect(player.currentTime).toBe(2.3);
     fireEvent.keyDown(stage, { key: 's' }); expect(screen.getByLabelText('場面3の名前')).toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole('slider', { name: '場面1と2の境目' }), { key: 'ArrowRight' });
-    expect(screen.getByRole('slider', { name: '場面1と2の境目' })).toHaveAttribute('aria-valuenow', '2.4');
+    expect(screen.getByRole('slider', { name: '場面1と2の境目' })).toHaveAttribute('aria-valuenow', '2.4'); expect(player.currentTime).toBe(2.4);
   });
   it('drags a boundary in tenths and clamps both neighbouring scenes', async () => {
-    await open();
+    await open(); const player = screen.getByLabelText('組立動画', { selector: 'video' }) as HTMLVideoElement;
     const knob = screen.getByRole('slider', { name: '場面1と2の境目' });
     vi.spyOn(knob.parentElement!, 'getBoundingClientRect').mockReturnValue({ left: 0, width: 120 } as DOMRect);
     vi.stubGlobal('PointerEvent', MouseEvent); knob.setPointerCapture = vi.fn();
     fireEvent.pointerDown(knob, { clientX: 50 });
     fireEvent.pointerMove(knob, { clientX: 43.6 });
-    expect(knob).toHaveAttribute('aria-valuenow', '4.4');
+    expect(knob).toHaveAttribute('aria-valuenow', '4.4'); expect(player.currentTime).toBe(4.4);
     fireEvent.pointerMove(knob, { clientX: 0 }); expect(knob).toHaveAttribute('aria-valuenow', '0.5');
     fireEvent.pointerMove(knob, { clientX: 120 }); expect(knob).toHaveAttribute('aria-valuenow', '11.5');
     fireEvent.pointerUp(knob);

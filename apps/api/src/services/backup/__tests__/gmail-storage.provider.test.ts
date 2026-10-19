@@ -101,7 +101,7 @@ describe('GmailStorageProvider', () => {
       expect(mockGmailApiClient.archiveMessage).not.toHaveBeenCalled();
     });
 
-    it.each(['[ItemlistRaspi-photo] 2', '[Procedure-material] DFD1'])('skips dedicated mail %s before other ingestion', async (ownedSubject) => {
+    it.each(['[ItemlistRaspi-photo] 2', '[Procedure-material] DFD1', 'ProcedureMaterial', 'ProcedureMaterial 1', 'ProcedureMaterial\t1'])('skips dedicated mail %s before other ingestion', async (ownedSubject) => {
       const provider = new GmailStorageProvider({
         oauth2Client,
         accessToken: 'test-access-token',

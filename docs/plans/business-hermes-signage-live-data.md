@@ -25,7 +25,7 @@ The inherited A2UI implementation registered a static PDF and discarded its defi
 
 ## Context and Orientation
 
-Work in `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--business-hermes-signage-authorization`. `apps/api/src/services/assembly/business-hermes-mcp.service.ts` prepares proposals; the consultation service owns authenticated approval. `services/signage/signage-a2ui.ts` validates messages. `signage.renderer.ts` is called by the existing render scheduler and saves the client JPEG. `apps/web/src/components/hermes/HermesA2uiPreview.tsx` renders the same official A2UI messages for preview and the print page. The management editor must preserve this definition when changing schedule fields.
+Work in `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--business-hermes-signage-authorization`. `apps/api/src/services/business-hermes/business-hermes-mcp.service.ts` prepares proposals; the consultation service owns authenticated approval. `services/signage/signage-a2ui.ts` validates messages. `signage.renderer.ts` is called by the existing render scheduler and saves the client JPEG. `apps/web/src/components/hermes/HermesA2uiPreview.tsx` renders the same official A2UI messages for preview and the print page. The management editor must preserve this definition when changing schedule fields.
 
 ## Plan of Work
 

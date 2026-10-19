@@ -20,7 +20,7 @@ import type { FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { env } from '../config/env.js';
-import { ApiError } from '../lib/errors.js';
+import { ApiError, DomainHttpError } from '../lib/errors.js';
 import { resolveErrorLogDevice } from '../services/clients/error-log-device.service.js';
 
 type ErrorResponse = {
@@ -227,7 +227,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
       return;
     }
 
-    if (error instanceof ApiError) {
+    if (error instanceof ApiError || error instanceof DomainHttpError) {
       emit('warn',
         buildStructuredErrorLog(
           requestId,

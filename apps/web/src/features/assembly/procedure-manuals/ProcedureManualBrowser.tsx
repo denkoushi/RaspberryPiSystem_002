@@ -22,7 +22,8 @@ const shortName = (process?: ProcedureManualProcessDto) => process?.name.replace
 export function ProcedureManualBrowser() {
   const [params, setParams] = useSearchParams();
   const [listOpen, setListOpen] = useState(() => {
-    if (params.has('common')) return true;
+    // 対象と工程が決まっていないと右側に何も出ないので、一覧を開いて始める
+    if (params.has('common') || !(params.get('model') || params.get('part')) || !params.get('process')) return true;
     try { return localStorage.getItem('procedure-manuals-list-open') === 'true'; } catch { return false; }
   });
   const [twoPages, setTwoPages] = useState(false);
@@ -90,13 +91,14 @@ export function ProcedureManualBrowser() {
     if (processId) next.set('process', processId);
     setParams(next, { replace: true });
   }, [subjectKind, modelCodeKey, processId, setParams]);
-  const toolClass = 'inline-flex h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-[#344252] px-3.5 text-[19px] font-bold disabled:opacity-40';
+  const railLinkClass = 'grid h-12 w-12 shrink-0 place-items-center rounded-[10px] border border-[#344252] text-[#eef3f6]';
+  const railNav = <>
+    <Link to="/kiosk/assembly" aria-label="組立へ戻る" title="組立へ戻る" className={railLinkClass}><svg aria-hidden="true" className="h-[26px] w-[26px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2}><path d="M3 11l9-7 9 7M5 10v10h14V10" /></svg></Link>
+    <Link to={subjectKind === 'COMMON' ? commonReturnTo : kioskAssemblyManualsWorkshopPath({ [subjectKind === 'PART' ? 'part' : 'model']: modelCodeKey, process: processId })} aria-label="作る・直す" title="作る・直す" className={railLinkClass}><svg aria-hidden="true" className="h-[26px] w-[26px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2}><path d="M4 20h4L19 9l-4-4L4 16z" /><path d="M13 7l4 4" /></svg></Link>
+  </>;
   return (
-    <div className="grid min-h-0 flex-1 grid-rows-[64px_minmax(0,1fr)] bg-[#0b0f13] text-[#eef3f6]">
-      <header className="flex h-16 shrink-0 items-center gap-4 border-b border-[#27313b] px-6">
-        <h1 className="text-[26px] font-bold">要領書</h1><span className="rounded-full border border-[#f6b93b] px-3.5 py-0.5 text-[17px] text-[#f6b93b]">見る</span>
-        <Link to={subjectKind === 'COMMON' ? commonReturnTo : kioskAssemblyManualsWorkshopPath({ [subjectKind === 'PART' ? 'part' : 'model']: modelCodeKey, process: processId })} className={`${toolClass} ml-auto`}>作る・直す</Link><Link to="/kiosk/assembly" className={toolClass}>組立へ戻る</Link>
-      </header>
+    <div className="flex min-h-0 flex-1 flex-col bg-[#0b0f13] text-[#eef3f6]">
+      <h1 className="sr-only">要領書 見る</h1>
     <div className={`grid min-h-0 flex-1 ${listOpen ? 'grid-cols-[460px_minmax(0,1fr)]' : 'grid-cols-[minmax(0,1fr)]'} bg-[#0f1317] text-[#eef3f6]`} data-open={listOpen} data-pages={twoPages ? 2 : 1} data-testid="procedure-manuals-split">
       <div hidden={!listOpen} className={`${listOpen ? 'flex' : 'hidden'} min-h-0 flex-col border-r border-[#27313b] bg-[#161c22]`} data-testid="procedure-manuals-left">
         <ProcedureManualFilterPane subjectKind={subjectKind} partCandidates={partCandidates} onKindChange={kind => { setAllKind(kind); setModelCodeKey(''); setSearch(''); setPartDigits(''); setUserSelectedModel(false); setKanaRow(''); if (kind === 'COMMON' || subjectKind === 'COMMON') setProcessId(''); }} processes={processes} items={items} models={visibleModels}
@@ -120,9 +122,9 @@ export function ProcedureManualBrowser() {
       </div>
       <section aria-label="要領書" className="relative flex min-h-0 min-w-0 flex-col overflow-hidden bg-[#0a0d10]">
         {error && !listOpen ? <p role="alert" className="p-2 text-red-400">{error}</p> : null}
-        {showOverview && subjectKind === 'COMMON' ? <ProcedureManualCommonList items={visibleItems} processes={processes} categoryId={processId} kanaRow={kanaRow} onView={item => {
+        {showOverview && subjectKind === 'COMMON' ? <div className="flex min-h-0 min-w-0 flex-1 flex-col pr-16"><ProcedureManualCommonList items={visibleItems} processes={processes} categoryId={processId} kanaRow={kanaRow} onView={item => {
           setInitialDocumentId(item.documentId); setModelCodeKey(item.modelCodeKey); setProcessId(item.processId); setListOpen(false);
-        }} /> : showOverview ? <section aria-label="要領書一覧" className="min-h-0 flex-1 overflow-auto pr-16">
+        }} /></div> : showOverview ? <section aria-label="要領書一覧" className="min-h-0 flex-1 overflow-auto pr-16">
           <div className="grid grid-cols-[64px_minmax(0,1.5fr)_minmax(0,1.5fr)_minmax(0,1.1fr)_minmax(0,1.3fr)_minmax(0,1fr)_70px] items-center gap-3 border-b border-[#27313b] px-5 py-3 text-[17px] font-bold text-[#9fadb9]">
             <span aria-hidden="true" /><span>品名</span><span>品番</span><span>工程</span><span>作業</span><span>補足</span><span>ページ数</span>
           </div>
@@ -146,8 +148,8 @@ export function ProcedureManualBrowser() {
           {loading ? <p role="status" className="p-5 text-[17px] text-[#9fadb9]">読込中…</p> : visibleItems.length === 0 ? <p className="p-5 text-[17px] text-[#9fadb9]">該当する要領書がありません</p> : null}
         </section> : !processId ? <p className="p-2 text-sm text-[#9fadb9]">工程を選択</p> : !detail && !error ? <p role="status">読込中…</p> : null}
 
-        {!showOverview && detail && detail.sequence.documents.length > 0 ? <AssemblyProcedureSequenceViewer key={`${modelCodeKey}:${processId}`} sequence={detail.sequence} initialDocumentId={initialDocumentId} layout="manuals" showCurrentMarkerButton={false} onCurrentPageChange={onPageChange} listOpen={listOpen} onToggleList={toggleList} twoPages={twoPages} onToggleTwoPages={() => setTwoPages(!twoPages)} className="min-h-0 flex-1" /> : !showOverview && detail ? <p className="p-2 text-sm text-[#9fadb9]">表示できる文書がありません</p> : null}
-        {!(subjectKind === 'COMMON' && showOverview) && (showOverview || !detail || detail.sequence.documents.length === 0) ? <ProcedureManualPageRail listOpen={listOpen} onToggleList={toggleList} /> : null}
+        {!showOverview && detail && detail.sequence.documents.length > 0 ? <AssemblyProcedureSequenceViewer key={`${modelCodeKey}:${processId}`} sequence={detail.sequence} initialDocumentId={initialDocumentId} layout="manuals" showCurrentMarkerButton={false} onCurrentPageChange={onPageChange} listOpen={listOpen} onToggleList={toggleList} twoPages={twoPages} onToggleTwoPages={() => setTwoPages(!twoPages)} railNav={railNav} className="min-h-0 flex-1" /> : !showOverview && detail ? <p className="p-2 text-sm text-[#9fadb9]">表示できる文書がありません</p> : null}
+        {subjectKind === 'COMMON' && showOverview ? <ProcedureManualPageRail nav={railNav} /> : showOverview || !detail || detail.sequence.documents.length === 0 ? <ProcedureManualPageRail listOpen={listOpen} onToggleList={toggleList} nav={railNav} /> : null}
       </section>
     </div>
     </div>

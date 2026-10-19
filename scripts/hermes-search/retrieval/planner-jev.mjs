@@ -1,7 +1,9 @@
 // One JEV call per turn. Choice options come only from code-found candidates.
 // evaluate is injectable; the default transport follows hermes-jev-record-pilot.
+import { defaultEvaluate } from './jev-evaluate.mjs';
 import { performance } from 'node:perf_hooks';
 import { catalogEntries, definitionForCatalog } from './catalog.mjs';
+import { CAUSE_CATEGORIES, CAUSE_CATEGORY_IDS } from './cause-categories.mjs';
 import { QUERY_PLAN_SCHEMA, hasAppliedHardFilter, shouldSkipRelevance } from './query-plan.mjs';
 import { contentSpans, contentTokens, relevanceQuery, stripListedTerms } from './structural-text.mjs';
 import { enumeratedChoiceGroups } from './value-index.mjs';
@@ -40,6 +42,7 @@ function previousPlanSummary(previousPlan) {
   const summary = {
     sources: previousPlan.sources ?? [],
     filters: previousPlan.filters ?? [],
+    ...(previousPlan.causeCategory !== undefined ? { causeCategory: previousPlan.causeCategory } : {}),
     semanticQuery: typeof previousPlan.semanticQuery === 'string' ? previousPlan.semanticQuery : '',
     sort: previousPlan.sort ?? null,
     limit: previousPlan.limit ?? null,
@@ -87,7 +90,10 @@ function answersOf(result) {
 // Decision receipt: which option each question chose, with its confidence and the top
 // alternatives. Choice ids are mapped to their option text so a field answer reads as the
 // chosen value. The receipt holds no record text.
-export const PLANNER_QUESTION_VERSION = 'planner-questions-2026-09-30';
+// The only source with a saved cause classification (see worker.mjs loadCauseById).
+const CAUSE_SOURCE = 'nonconformity';
+
+export const PLANNER_QUESTION_VERSION = 'planner-questions-2026-10-19';
 
 // Choice ids that read on their own in a receipt; other choices map to their option text.
 const PLAIN_CHOICE = /^(?:sort|scope|limit|period|contentCarry)$/u;
@@ -200,20 +206,6 @@ function conditionText(entries, filter) {
   return `${label}が${values.join('、')}`;
 }
 
-async function defaultEvaluate(input) {
-  const provider = process.env.HERMES_JEV_PROVIDER;
-  const payload = { ...input, model: 'typesafe-ai/jev', maxRetries: 0 };
-  if (provider === 'typesafe-direct' || (provider == null && process.env.TYPESAFE_API_KEY)) {
-    const { createTypesafeDirectEvaluate } = await import('../hermes-jev-record-pilot.mjs');
-    return createTypesafeDirectEvaluate()(payload);
-  }
-  if (provider && provider !== 'vercel-ai-gateway') {
-    throw new Error(`unsupported HERMES_JEV_PROVIDER: ${provider}`);
-  }
-  const { experimental_evaluate: evaluate } = await import('ai');
-  return evaluate(payload);
-}
-
 export function createPlanner({ evaluate = defaultEvaluate } = {}) {
   if (typeof evaluate !== 'function') throw new TypeError('evaluate must be a function');
   return {
@@ -240,6 +232,17 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
           && group.values.every((value) => typeof value === 'string'));
       const asked = fromIndex ? usable : usable.slice(0, Math.max(enumeratedFields, 1));
       const questions = {};
+      questions.cause = choiceQuestion(
+        `${said('質問', '`request`')}が不適合の要因・原因の区分を指定しているときだけ、その区分を一つ選ぶ。現象や部品の説明だけで要因の区分を言っていなければ none。`,
+        [...CAUSE_CATEGORIES.map(({ id, label, description }) => ({ id, description: `${label}: ${description}` })),
+          { id: NONE, description: '要因では絞らない' }],
+      );
+      const previousCause = CAUSE_CATEGORIES.find(({ id }) => id === previousPlan?.causeCategory);
+      if (previousCause) questions.drop_cause = {
+        type: 'noul',
+        instructions: `\`request\` は前の条件「要因が${previousCause.label}」を外す、または要因を問わないことを求めているか。`,
+        criteria: { true: '要因の条件を外す、または要因を問わない。', false: 'この条件に触れていない、または別の要因を指定している。' },
+      };
       const optionMap = new Map();
       if (fromIndex) {
         const sourceOptions = entries.map((entry) => ({
@@ -371,6 +374,9 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       const scopeIds = entries.map((entry) => entry.id);
       const scopeChoice = fromIndex ? scopeChoiceOf(answers.scope, scopeIds) : scopeIds[0];
       const outOfScope = fromIndex && scopeChoice === OUT_OF_SCOPE;
+      const causeChoice = chosen(answers.cause, [...CAUSE_CATEGORY_IDS, NONE]);
+      const causeDropped = Boolean(previousCause && chosen(answers.drop_cause, ['true', 'false']) === 'true');
+      const chosenCause = outOfScope ? null : (causeChoice && causeChoice !== NONE ? causeChoice : (!causeDropped ? previousCause?.id : null));
       const selected = [];
       const resolvedTerms = [];
       const ambiguous = [];
@@ -505,9 +511,16 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       // would survive as content tokens; any token inside a selected value is part of the filter.
       const selectedValues = selected.flatMap((filter) => filter.values)
         .map((value) => String(value).normalize('NFKC').replace(/\s+/gu, '').toLowerCase());
-      const residualTokens = contentTokens(relevanceQuery(stripListedTerms(question, resolvedTerms)))
+      // The cause store classifies only the source that owns it; a cause heard in a question about
+      // another source is not a filter there (it would match nothing).
+      const causeCategory = chosenCause && plannedSources.includes(CAUSE_SOURCE) ? chosenCause : null;
+      // Strip only the selected label's tokens, not a hand-maintained list of cause synonyms.
+      const causeTerms = causeCategory ? contentTokens(relevanceQuery(CAUSE_CATEGORIES.find(({ id }) => id === causeCategory).label)) : [];
+      // The causal predicate is request structure once JEV has selected a category.
+      const residualQuestion = causeCategory ? question.replace(/が原因(?:のやつ)?/gu, ' ') : question;
+      const residualTokens = contentTokens(relevanceQuery(stripListedTerms(residualQuestion, [...resolvedTerms, ...causeTerms])))
         .filter((token) => !selectedValues.some((value) => value.includes(token)));
-      const hardFilter = hasAppliedHardFilter({ filters }, catalog);
+      const hardFilter = hasAppliedHardFilter({ filters, causeCategory }, catalog);
       const residualOverride = judged === true && contentCarry !== 'same' && hardFilter && residualTokens.length === 0;
       const jev = residualOverride ? false : judged;
       const finalContent = jev === true && unresolved.length === 0;
@@ -519,8 +532,10 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         schema: QUERY_PLAN_SCHEMA,
         sources: plannedSources,
         filters: outOfScope ? [] : filters,
+        ...(causeCategory ? { causeCategory } : {}),
         semanticQuery: outOfScope || unresolved.length || shouldSkipRelevance({
           filters,
+          causeCategory,
           diagnostics: { contentDecision: { jev } },
         }, catalog) ? '' : (carriedQuery || question.trim()),
         sort,
@@ -528,6 +543,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         display: entries.flatMap((entry) => entry.fields.map((field) => field.key)),
         unresolved: outOfScope ? [] : unresolved,
         diagnostics: {
+          causeDecision: { chosen: causeCategory ?? null, ...(causeDropped ? { dropped: true } : {}) },
           contentDecision: { jev, residualTokens, ...(residualOverride ? { residualOverride: true } : {}), final: finalContent },
           ...(ambiguousDropped.length ? { ambiguousDropped } : {}),
           scope: outOfScope ? 'out_of_scope' : 'records',

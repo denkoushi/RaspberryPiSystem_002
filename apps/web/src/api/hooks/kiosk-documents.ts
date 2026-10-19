@@ -17,6 +17,7 @@ import {
   KIOSK_DOCUMENT_DETAIL_GC_TIME_MS,
   KIOSK_DOCUMENT_DETAIL_STALE_TIME_MS
 } from '../kioskDocumentDetailQueryOptions';
+import { kioskDocumentsQueryKeys } from '../queryKeys/kioskDocuments';
 
 export function useKioskDocuments(params?: {
   q?: string;
@@ -29,7 +30,7 @@ export function useKioskDocuments(params?: {
   offset?: number;
 }) {
   return useQuery({
-    queryKey: ['kiosk-documents', params],
+    queryKey: kioskDocumentsQueryKeys.documents(params),
     queryFn: () => getKioskDocuments(params),
   });
 }
@@ -49,20 +50,20 @@ export function useKioskDocumentMutations() {
   const upload = useMutation({
     mutationFn: uploadKioskDocument,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-documents'] });
+      void queryClient.invalidateQueries({ queryKey: kioskDocumentsQueryKeys.documentsAll });
     },
   });
   const remove = useMutation({
     mutationFn: (id: string) => deleteKioskDocument(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-documents'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-document'] });
+      void queryClient.invalidateQueries({ queryKey: kioskDocumentsQueryKeys.documentsAll });
+      void queryClient.invalidateQueries({ queryKey: kioskDocumentsQueryKeys.documentAll });
     },
   });
   const setEnabled = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => patchKioskDocumentEnabled(id, enabled),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-documents'] });
+      void queryClient.invalidateQueries({ queryKey: kioskDocumentsQueryKeys.documentsAll });
     },
   });
   const patchMetadata = useMutation({
@@ -83,21 +84,21 @@ export function useKioskDocumentMutations() {
       };
     }) => patchKioskDocumentMetadata(id, payload),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-documents'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-document'] });
+      void queryClient.invalidateQueries({ queryKey: kioskDocumentsQueryKeys.documentsAll });
+      void queryClient.invalidateQueries({ queryKey: kioskDocumentsQueryKeys.documentAll });
     },
   });
   const reprocess = useMutation({
     mutationFn: (id: string) => reprocessKioskDocument(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-documents'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-document'] });
+      void queryClient.invalidateQueries({ queryKey: kioskDocumentsQueryKeys.documentsAll });
+      void queryClient.invalidateQueries({ queryKey: kioskDocumentsQueryKeys.documentAll });
     },
   });
   const ingestGmail = useMutation({
     mutationFn: (params?: { scheduleId?: string }) => triggerKioskDocumentGmailIngest(params),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-documents'] });
+      void queryClient.invalidateQueries({ queryKey: kioskDocumentsQueryKeys.documentsAll });
     },
   });
   return { upload, remove, setEnabled, patchMetadata, reprocess, ingestGmail };

@@ -1,5 +1,5 @@
 import { buildResourceLocalRankMap } from './displayRank';
-import { toHalfWidthAscii } from './machineName';
+import { isMachinePartCode, normalizeComparisonText } from './machineName';
 import {
   compareDisplayDueDateForSort,
   formatPlannedDateLabel,
@@ -53,14 +53,6 @@ export type RawScheduleRow = {
 };
 
 export type ProductionScheduleSortMode = 'auto' | 'manual';
-
-const normalizeComparisonText = (value: string | null | undefined): string =>
-  toHalfWidthAscii((value ?? '').trim()).toUpperCase();
-
-const isMachinePartCode = (fhincd: string | null | undefined): boolean => {
-  const normalized = normalizeComparisonText(fhincd);
-  return normalized.startsWith('MH') || normalized.startsWith('SH');
-};
 
 export const normalizeScheduleRows = (sourceRows: RawScheduleRow[]): NormalizedScheduleRow[] => {
   const mapped = sourceRows.map((row) => {

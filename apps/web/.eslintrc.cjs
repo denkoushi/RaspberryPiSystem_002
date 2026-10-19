@@ -1,3 +1,20 @@
+// Size ratchet: new source files stay within 600 lines; files listed in the baseline were
+// already larger and are capped at their recorded size. Regenerate with
+// `node scripts/ci/max-lines-baseline.mjs update web` (it only lowers caps).
+const maxLinesBaseline = require('./eslint-max-lines-baseline.json');
+const maxLinesOptions = { skipBlankLines: true, skipComments: true };
+const maxLinesOverrides = [
+  {
+    files: ['src/**/*.ts', 'src/**/*.tsx'],
+    excludedFiles: ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx', '**/__tests__/**', 'src/test/**', 'src/generated/**'],
+    rules: { 'max-lines': ['error', { max: 600, ...maxLinesOptions }] }
+  },
+  ...Object.entries(maxLinesBaseline).map(([file, max]) => ({
+    files: [file],
+    rules: { 'max-lines': ['error', { max, ...maxLinesOptions }] }
+  }))
+];
+
 module.exports = {
   root: true,
   env: {
@@ -86,6 +103,7 @@ module.exports = {
     ]
   },
   overrides: [
+    ...maxLinesOverrides,
     {
       files: [
         'src/pages/kiosk/KioskAssemblyTemplateEditorPage.tsx',

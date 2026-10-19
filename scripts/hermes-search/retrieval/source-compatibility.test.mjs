@@ -8,7 +8,8 @@ import { createRetrievalAnswering } from './worker.mjs';
 const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 // Captured before the source registration refactor, including JSON property order.
 const expectedCatalog = '67863d23315a76f9a91e0dc12bf556f71e0fb5f2252759fde7ad1067a8b59411';
-const expectedInputs = '07ba360fcc9a7280dae45949c46ebe13cf4cea1adbe0873815a54351b424b040';
+// Inputs re-captured on 2026-10-19 when the planner gained the cause-category question (plans and answers unchanged).
+const expectedInputs = 'f724e33b927d3bc430f52f5500e99fc8c1f2421fc18e25f89c8e04e70f02cde3';
 const expectedResults = '2007349aec49c0f5a3d3bd05787278d7ac530d38e514cd798790c75b8fd0b090';
 
 test('existing two sources preserve catalog bytes, JEV inputs, plans, candidates and answers', async () => {

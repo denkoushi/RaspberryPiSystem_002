@@ -86,6 +86,7 @@ describe('KioskItemInventorySettingsPage', () => {
       registerImport: { mutateAsync: vi.fn(), isPending: false },
       retryImport: { mutateAsync: vi.fn(), isPending: false },
       deleteImportPhoto: { mutateAsync: vi.fn(), isPending: false },
+      rotateImportPhoto: { mutateAsync: vi.fn(), isPending: false },
       reorderImportPhotos: { mutateAsync: vi.fn(), isPending: false },
     } as never);
   });

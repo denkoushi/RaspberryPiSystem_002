@@ -3,8 +3,10 @@
  * WebSocket接続、メッセージ送受信、再接続ロジックをテスト
  */
 
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { sendSignalingMessage, subscribeSignaling } from '../signalingBus';
 
 import { useWebRTCSignaling } from './useWebRTCSignaling';
 
@@ -12,6 +14,7 @@ import type { SignalingMessage } from '../types';
 
 // WebSocketのモック
 class MockWebSocket {
+  static latest: MockWebSocket;
   static CONNECTING = 0;
   static OPEN = 1;
   static CLOSING = 2;
@@ -26,6 +29,7 @@ class MockWebSocket {
 
   constructor(url: string) {
     this.url = url;
+    MockWebSocket.latest = this;
     // 非同期で接続をシミュレート
     setTimeout(() => {
       this.readyState = MockWebSocket.OPEN;
@@ -77,6 +81,26 @@ describe('useWebRTCSignaling', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('delivers watch messages through the single socket without invoking call handlers', async () => {
+    const onIncomingCall = vi.fn();
+    const onCallAccepted = vi.fn();
+    const onError = vi.fn();
+    const subscriber = vi.fn();
+    const unsubscribe = subscribeSignaling('watch.', subscriber);
+    const { result, unmount } = renderHook(() => useWebRTCSignaling({ onIncomingCall, onCallAccepted, onError }));
+    await waitFor(() => expect(result.current.isConnected).toBe(true));
+    const message = { type: 'watch.request', payload: { watchId: 'watch', viewerName: 'StoneBase01' } };
+    const socket = MockWebSocket.latest;
+    act(() => socket.onmessage?.(new MessageEvent('message', { data: JSON.stringify(message) })));
+    expect(subscriber).toHaveBeenCalledWith(message);
+    expect(onIncomingCall).not.toHaveBeenCalled(); expect(onCallAccepted).not.toHaveBeenCalled(); expect(onError).not.toHaveBeenCalled();
+    const send = vi.spyOn(socket, 'send');
+    expect(sendSignalingMessage({ type: 'watch.accept', payload: { watchId: 'watch' } })).toBe(true);
+    expect(send).toHaveBeenCalledWith(JSON.stringify({ type: 'watch.accept', payload: { watchId: 'watch' } }));
+    unsubscribe(); unmount();
+    expect(sendSignalingMessage({ type: 'watch.stop', payload: { watchId: 'watch' } })).toBe(false);
   });
 
   it('初期状態では接続されていない', () => {

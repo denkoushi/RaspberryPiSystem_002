@@ -9,6 +9,7 @@ import {
   type ProductionScheduleListResponse
 } from '../../../api/client';
 import { useKioskProductionScheduleLeaderboardBoard } from '../../../api/hooks';
+import { productionScheduleQueryKeys } from '../../../api/queryKeys/productionSchedule';
 import { readProductionBuildConfig } from '../../../config/productionBuildConfig';
 
 import { buildLeaderboardBoardContinuePayload } from './buildLeaderboardBoardContinuePayload';
@@ -113,7 +114,7 @@ function invalidateLeaderboardDecorationsQueries(queryClient: ReturnType<typeof 
   return queryClient.invalidateQueries({
     predicate: (q) =>
       Array.isArray(q.queryKey) &&
-      q.queryKey[0] === 'kiosk-production-schedule' &&
+      q.queryKey[0] === productionScheduleQueryKeys.scheduleAll[0] &&
       q.queryKey[1] === 'leaderboard-decorations'
   });
 }
@@ -626,7 +627,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
             resetDecorations();
             purgeCache();
             await Promise.all([
-              queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] }),
+              queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll }),
               invalidateLeaderboardDecorationsQueries(queryClient)
             ]);
             break;

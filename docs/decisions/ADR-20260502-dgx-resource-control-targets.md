@@ -1,7 +1,9 @@
 ---
 Title: ADR-20260502: DGX リソース管理に Control Target レジストリを導入する
-Status: accepted
+Status: superseded
 ---
+
+> Superseded By: [ADR-20261017: 管理画面「DGXリソース」を業務 LLM 専用にする](ADR-20261017-dgx-resource-business-llm-only.md)
 
 # ADR-20260502: DGX リソース管理に Control Target レジストリを導入する
 
