@@ -809,3 +809,16 @@ for (const [choice, drop, expected] of [['none', false, 'drawing'], [undefined, 
     assert.deepEqual(plan.diagnostics.causeDecision, { chosen: expected, ...(drop ? { dropped: true } : {}) });
   });
 }
+
+test('a cause heard in a question scoped to another source does not become a filter', async () => {
+  const allCatalog = loadCatalog(['nonconformity', 'knowledge_procedure']);
+  const planner = createPlanner({ evaluate: async () => ({ answers: {
+    scope: { type: 'choice', choice: 'knowledge_procedure' }, cause: { type: 'choice', choice: 'drawing' },
+    content: { type: 'noul', noul: true }, limit: { type: 'choice', choice: 'unspecified' }, sort: { type: 'choice', choice: 'relevance' },
+  } }) });
+  const { plan } = await planner.plan({ question: '図面の誤りがあったときの手順', catalog: allCatalog, valueIndex: buildValueIndex([], allCatalog) });
+  assert.deepEqual(plan.sources, ['knowledge_procedure']);
+  assert.equal(Object.hasOwn(plan, 'causeCategory'), false);
+  assert.equal(plan.diagnostics.causeDecision.chosen, null);
+  assert.equal(plan.diagnostics.contentDecision.jev, true);
+});
