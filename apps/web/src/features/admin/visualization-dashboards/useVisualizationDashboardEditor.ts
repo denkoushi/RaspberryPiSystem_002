@@ -8,6 +8,7 @@ import {
   useVisualizationDashboardMutations,
   useVisualizationDashboards,
 } from '../../../api/hooks';
+import { palletVisualizationQueryKeys } from '../../../api/queryKeys/palletVisualization';
 
 import {
   buildSavePayload,
@@ -59,7 +60,7 @@ export function useVisualizationDashboardEditor() {
   const isPalletVizPreset = dataSourceType.trim() === PALLET_VIZ_DATA_SOURCE_TYPE;
 
   const palletVizBoardQuery = useQuery({
-    queryKey: ['tools-pallet-viz-board'],
+    queryKey: palletVisualizationQueryKeys.boardAll,
     queryFn: () => getToolsPalletVisualizationBoard(),
     enabled: isPalletVizPreset,
   });
