@@ -2,7 +2,6 @@
   "src/api/domains/part-measurement.ts": 1420,
   "src/components/hermes/HermesChatPanel.tsx": 701,
   "src/components/hermes/HermesFloatingChat.tsx": 1083,
-  "src/features/assembly/types.ts": 728,
   "src/features/kiosk/inventory/setup/InventoryRegistrationTab.tsx": 714,
   "src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx": 895,
   "src/features/part-measurement/types.ts": 685,
