@@ -1,63 +1,72 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 
-import { useVerifyKioskDueManagementAccessPassword } from '../../api/hooks';
-import { RaspiInventoryPage } from '../admin/RaspiInventoryPage';
+import { invButtonSmGhost, invSurface, invSetupTargets } from '../../features/kiosk/inventory/inventoryUi';
+import { InventoryItemEditTab } from '../../features/kiosk/inventory/setup/InventoryItemEditTab';
+import { InventoryPinPad } from '../../features/kiosk/inventory/setup/InventoryPinPad';
+import { InventoryRegistrationTab, type RegistrationState } from '../../features/kiosk/inventory/setup/InventoryRegistrationTab';
+import { InventoryShelvesTab } from '../../features/kiosk/inventory/setup/InventoryShelvesTab';
+import { InventoryTagsTab } from '../../features/kiosk/inventory/setup/InventoryTagsTab';
+import { clearSetupPin, readSetupPin, rememberSetupPin, subscribeSetupLock, touchSetupPin } from '../../features/kiosk/inventory/setup/setupPinSession';
+
+type SetupTab = 'review' | 'shelves' | 'tags' | 'items';
+
+const TABS: Array<{ id: SetupTab; label: string }> = [
+  { id: 'review', label: '登録待ち' },
+  { id: 'shelves', label: '棚・引き出し' },
+  { id: 'tags', label: 'NFCタグ' },
+  { id: 'items', label: 'アイテム編集' },
+];
 
 export function KioskItemInventorySettingsPage() {
-  const verifyMutation = useVerifyKioskDueManagementAccessPassword();
-  const [accessPassword, setAccessPassword] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const promptShownRef = useRef(false);
-
-  const requestAccessPassword = useCallback(async () => {
-    const password = typeof window !== 'undefined' ? window.prompt('在庫設定の操作パスワードを入力してください') : null;
-    if (!password) {
-      setMessage('在庫設定の操作には4桁の操作パスワードが必要です。');
-      return;
-    }
-    if (!/^\d{4}$/.test(password.trim())) {
-      setMessage('操作パスワードは4桁の数字で入力してください。');
-      return;
-    }
-    setMessage(null);
-    try {
-      const result = await verifyMutation.mutateAsync({ password: password.trim() });
-      if (!result.success) {
-        setMessage('パスワードが違います。');
-        return;
-      }
-      setAccessPassword(password.trim());
-    } catch {
-      setMessage('認証に失敗しました。ネットワーク接続を確認してください。');
-    }
-  }, [verifyMutation]);
-
+  // A candidate card on the daily list opens its registration right after the PIN.
+  const location = useLocation();
+  const initialImportId = (location.state as { importId?: string } | null)?.importId ?? null;
+  const [accessPassword, setAccessPassword] = useState(readSetupPin);
+  useEffect(() => subscribeSetupLock(() => setAccessPassword(null)), []);
   useEffect(() => {
-    if (accessPassword || promptShownRef.current) return;
-    promptShownRef.current = true;
-    void requestAccessPassword();
-  }, [accessPassword, requestAccessPassword]);
+    if (!accessPassword) return;
+    touchSetupPin();
+  }, [accessPassword]);
+  const [registration, setRegistration] = useState<RegistrationState>({ selectedId: initialImportId, draft: null });
+  const [tab, setTab] = useState<SetupTab>(() => {
+    const requested = (location.state as { tab?: unknown } | null)?.tab;
+    return TABS.find((entry) => entry.id === requested)?.id ?? 'review';
+  });
 
-  useEffect(() => {
-    if (!message) return;
-    const timer = window.setTimeout(() => setMessage(null), 4000);
-    return () => window.clearTimeout(timer);
-  }, [message]);
-
-  if (accessPassword) {
-    return <RaspiInventoryPage accessPassword={accessPassword} />;
-  }
+  if (!accessPassword) return <InventoryPinPad onUnlocked={(pin) => { rememberSetupPin(pin); setAccessPassword(pin); }} />;
 
   return (
-    <section className="mx-auto flex w-full max-w-md flex-col gap-4 rounded-lg border border-white/15 bg-slate-900/60 p-6">
-      <div>
-        <h1 className="text-2xl font-bold">在庫設定</h1>
-        <p className="mt-2 text-sm text-white/70">在庫の登録・保管場所・NFC設定を開くには、操作パスワードを入力してください。</p>
+    <section className={`${invSurface} ${invSetupTargets}`} onClickCapture={touchSetupPin} onPointerDownCapture={touchSetupPin} onKeyDownCapture={touchSetupPin}>
+      {/* Title, tabs and the way back share one row so the tab content gets the height. */}
+      <div className="flex shrink-0 flex-wrap items-center gap-4 border-b border-inv-line">
+        <h1 className="text-[22px] font-black tracking-[0.02em]">在庫の準備</h1>
+        <span className="rounded-md bg-inv-amber/[0.12] px-2 py-0.5 text-[11px] font-bold tracking-[0.08em] text-inv-amber">解除中</span>
+        <div role="tablist" aria-label="在庫の準備" className="ml-3 flex gap-0.5">
+          {TABS.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              role="tab"
+              aria-selected={entry.id === tab}
+              className={entry.id === tab
+                ? 'h-12 border-b-[3px] border-inv-cyan px-[18px] text-base font-black text-inv-text'
+                : 'h-12 border-b-[3px] border-transparent px-[18px] text-base text-inv-muted hover:text-inv-text'}
+              onClick={() => setTab(entry.id)}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
+        <button type="button" className={`${invButtonSmGhost} ml-auto`} onClick={clearSetupPin}>ロック</button>
+        <Link to="/kiosk/inventory" className={invButtonSmGhost}>在庫操作に戻る</Link>
       </div>
-      {message ? <p className="rounded border border-red-400/50 bg-red-950/60 p-3 text-sm text-red-100" role="alert">{message}</p> : null}
-      <button type="button" className="min-h-10 rounded-md bg-sky-600 px-4 font-semibold text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-40" onClick={() => void requestAccessPassword()} disabled={verifyMutation.isPending}>
-        {verifyMutation.isPending ? '認証中…' : '認証する'}
-      </button>
+      <div role="tabpanel" aria-label={TABS.find((entry) => entry.id === tab)?.label} className="flex min-h-0 flex-1 flex-col">
+        {tab === 'review' ? <InventoryRegistrationTab accessPassword={accessPassword} registration={registration} setRegistration={setRegistration} /> : null}
+        {tab === 'shelves' ? <InventoryShelvesTab accessPassword={accessPassword} /> : null}
+        {tab === 'tags' ? <InventoryTagsTab accessPassword={accessPassword} /> : null}
+        {tab === 'items' ? <InventoryItemEditTab accessPassword={accessPassword} /> : null}
+      </div>
     </section>
   );
 }

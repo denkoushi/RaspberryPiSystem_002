@@ -76,7 +76,17 @@ export type PartMeasurementDrawingOcrStatusDto = {
   lastQueuedAt: string | null;
   nextAttemptAt: string | null;
   updatedAt: string;
+  /** 夜間に DGX で作った寸法マップ（GET /ocr が一緒に返す） */
+  dimensionMap?: PartMeasurementDrawingDimensionMapSummaryDto;
 };
+
+export type PartMeasurementDrawingDimensionMapSummaryDto = {
+  status: 'completed' | 'none';
+  dimensionCount: number;
+  finishedAt: string | null;
+};
+
+export type PartMeasurementDrawingCandidateSource = 'dimensionMap' | 'ocr';
 
 export type PartMeasurementDrawingOcrCandidateDto = {
   valueText: string;
@@ -91,10 +101,18 @@ export type PartMeasurementDrawingOcrCandidateDto = {
   passKind: 'full' | 'tile' | 'frame';
   preprocessKind: 'raw' | 'lineSuppressed' | 'boxedFrame';
   rotation: number;
+  /** 寸法マップ由来の候補だけが持つ */
+  source?: PartMeasurementDrawingCandidateSource;
+  dimensionText?: string;
+  dimensionKind?: string;
+  /** 上下限の案（± の相対値）。導けないものは null */
+  suggestedUpperTolerance?: string | null;
+  suggestedLowerTolerance?: string | null;
 };
 
 export type PartMeasurementDrawingOcrCandidateResponseDto = {
   status: PartMeasurementDrawingOcrStatus;
+  source?: PartMeasurementDrawingCandidateSource;
   candidates: PartMeasurementDrawingOcrCandidateDto[];
   cache: PartMeasurementDrawingOcrStatusDto;
 };

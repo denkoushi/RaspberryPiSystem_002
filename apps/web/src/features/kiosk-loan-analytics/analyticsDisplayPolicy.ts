@@ -1,15 +1,16 @@
-import type { AssetRow, EmployeeRow, PeriodEventRow } from './view-model';
+import { shiftPeriod } from './period';
+
+import type { AssetRow, EmployeeRow, PeriodEventRow, ViewModel } from './view-model';
 
 /**
  * キオスク集計画面の「一覧を畳む」上限。変更時は UI とこの定数を同期し、ユニットテストで固定する。
  */
 export const ANALYTICS_KIOSK_DISPLAY_LIMITS = {
-  topRankedEmployees: 8,
-  topRankedAssets: 8,
-  todayEventsMax: 5
+  topRankedEmployees: 10,
+  topRankedAssets: 10,
+  todayEventsMax: 11,
+  openLoansMax: 11
 } as const;
-
-export type AnalyticsKioskDisplayLimits = typeof ANALYTICS_KIOSK_DISPLAY_LIMITS;
 
 /** 一覧表示モード: Top N サマリー / 全件（カード内スクロール。DOM 肥大化防止で上限あり） */
 export type AnalyticsListMode = 'top' | 'all';
@@ -60,11 +61,6 @@ export function selectAssetsForDisplay(rows: AssetRow[], topLimit: number, mode:
   return sorted.slice(0, Math.min(sorted.length, ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS));
 }
 
-/** 全件モードで切り詰めたか（UI でバッジ文言に利用） */
-export function isFullListTruncated(totalRows: number, mode: AnalyticsListMode): boolean {
-  return mode === 'all' && totalRows > ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS;
-}
-
 export function sortPeriodEventsNewestFirst(rows: PeriodEventRow[]): PeriodEventRow[] {
   return [...rows].sort((a, b) => new Date(b.eventAt).getTime() - new Date(a.eventAt).getTime());
 }
@@ -106,7 +102,7 @@ export type AssetInventorySummary = {
   overdueCount: number;
 };
 
-/** マスタ行の状態ラベル集計（チップ表示用）。超過は inUse と重複し得る。 */
+/** マスタ行の状態ラベル集計。超過は inUse と重複し得る。 */
 export function summarizeAssetInventory(rows: AssetRow[]): AssetInventorySummary {
   let availableCount = 0;
   let inUseCount = 0;
@@ -117,4 +113,54 @@ export function summarizeAssetInventory(rows: AssetRow[]): AssetInventorySummary
     else if (r.status === 'AVAILABLE') availableCount += 1;
   }
   return { availableCount, inUseCount, overdueCount };
+}
+
+/** 未返却: 超過 → 期限（不明は末尾） → 名称。入力配列を変更しない。 */
+export function selectOpenLoansForDisplay(rows: AssetRow[], mode: AnalyticsListMode): AssetRow[] {
+  const dueTime = (dueAt: string | null) => {
+    const time = dueAt ? new Date(dueAt).getTime() : NaN;
+    return Number.isFinite(time) ? time : Infinity;
+  };
+  return rows.filter((row) => row.isOutNow).sort((a, b) => {
+    const overdueOrder = Number(b.openIsOverdue) - Number(a.openIsOverdue);
+    if (overdueOrder) return overdueOrder;
+    const aDue = dueTime(a.dueAt);
+    const bDue = dueTime(b.dueAt);
+    if (aDue !== bDue) return aDue < bDue ? -1 : 1;
+    return a.name.localeCompare(b.name, 'ja');
+  }).slice(0, mode === 'top' ? ANALYTICS_KIOSK_DISPLAY_LIMITS.openLoansMax : ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS);
+}
+
+/** 超過は日単位で切り上げる。期限内は0、期限不明はnull。 */
+export function overdueDays(dueAt: string | null, now: Date): number | null {
+  if (!dueAt) return null;
+  const elapsed = now.getTime() - new Date(dueAt).getTime();
+  if (!Number.isFinite(elapsed)) return null;
+  return Math.max(0, Math.ceil(elapsed / 86_400_000));
+}
+
+export function longestOverdueDays(rows: AssetRow[], now: Date): number | null {
+  const days = rows.filter((row) => row.isOutNow && row.openIsOverdue)
+    .map((row) => overdueDays(row.dueAt, now))
+    .filter((value): value is number => value !== null && value > 0);
+  return days.length ? Math.max(...days) : null;
+}
+
+/** 月指定かつ前月に持出がある場合だけ前月比を返す。 */
+export function previousMonthBorrowChangePercent(
+  period: string,
+  borrowCount: number,
+  trend: ViewModel['monthlyTrend']
+): number | null {
+  if (!/^\d{4}-\d{2}$/.test(period)) return null;
+  const previous = trend.find((row) => row.yearMonth === shiftPeriod(period, -1));
+  if (!previous || previous.borrowCount < 1) return null;
+  return Math.round((borrowCount - previous.borrowCount) / previous.borrowCount * 100);
+}
+
+export function formatAssetRowLabel(row: AssetRow): string {
+  const code = row.code.trim();
+  const name = row.name.trim();
+  if (code && name && code !== name) return `${code} ${name}`;
+  return name || code || row.id;
 }

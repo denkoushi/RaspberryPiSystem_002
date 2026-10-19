@@ -25,6 +25,8 @@ scripts/update-all-clients.sh --status RUN_ID --inventory infrastructure/ansible
 
 torque cutoverではjournalの最終到達境界を確認する。`PREPARED`失敗は全serviceが変更前のままなので、候補清掃結果を確認してから新しいcanonical runで再試行できる。`QUIESCED`以降の失敗は、選択Pi4すべてでbrowser、agent、BluetoothがOFFであり、切替を試みたimageが捕捉済みprevious imageへ戻ったことを確認する。片側だけを手動再開しない。Pi5がhealthyなら対称性だけを理由に戻さず、exact main release-setを用いる次のcanonical runで復旧する。
 
+Pi5の`release_pi5`がCompose環境の捕捉前（例: `prepare.yml`のpost-pull load待ち）に失敗した場合、rollbackはCompose環境の復元と切替系stepをskipし、`Preserve the original Pi5 candidate failure after rollback`で元の失敗を報告する。traffic切替は未実施で本番は変更前のままなので、原因（負荷など）を解消してから新しいcanonical runで再試行する（run `20260929-021529-37439f` で観測した`release_pi5_compose_environment is undefined`は修正済み）。
+
 実行中のrunへ別のmutationを重ねない。既存runの終了結果を確認してから次を判断する。
 
 ## 2. 失敗後の再実行
@@ -45,10 +47,26 @@ planの対象hostとroleを確認し、明示承認後にcanonical entrypointか
 - Pi3は `release_signage` のartifact SHA、atomic activation、service healthが成功している。
 - 共有application smokeが必要な場合だけ `scripts/deploy/verify-phase12-real.sh` を実行する。
 
+## キオスクがメンテナンス中のまま
+
+まず `--status RUN_ID` のjournal・recapでrun終了を確認する。実行中の表示は解除しない。
+端末の有効な `x-client-key` で `GET /api/system/deploy-status` を読み、`isMaintenance`、`preNotice`、`runId`を確認する（キーをログへ出さない）。
+Pi5の `<project>/config/deploy-status.json` の `kioskByClient[status_agent_client_id]` を読み取り、同じrun IDか照合する。
+noticeは `noticeStartedAt`、preparing/deploying/failedは `startedAt` から30分を超えるとAPIが表示を解除する。時刻欠落・不正やverifyingには期限を適用しない。
+早期解除が必要な場合、運用承認済みのPi5実行環境で、状態ファイル所有者（本番uid 1000）のユーザーとして次を実行する。
+
+```bash
+python3 <project>/scripts/deploy/deploy-status-state.py --file <project>/config/deploy-status.json remove-run --run-id <RUN>
+```
+
+このヘルパ経由の表示解除は可。状態ファイルやlock・run情報の手編集・直接削除は不可。
+解除後、同じAPIで `isMaintenance: false` と `preNotice` 不在を確認し、次のポーリングで画面が戻ることを確認する。
+これは表示の復旧だけであり、リリース成功を示さない。health/rollbackとrecapの結果は別に確認する。
+
 ## 禁止事項
 
 - 個別container、gateway、serviceを操作して成功状態を作る
 - SSH先でfetch/checkoutする
 - databaseをdown migrationする
-- internal deploy scriptや個別Ansible playbookを直接実行する
+- 上記の表示解除ヘルパを除き、internal deploy scriptや個別Ansible playbookを直接実行する
 - lock、run情報、migration台帳を手で編集または削除する

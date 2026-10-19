@@ -201,6 +201,10 @@ category: knowledge-base
 - **挙動（本システム）**: 最小コンテンツでは **必須列が解決できず** **`CSV_HEADER_MISMATCH`**（`ApiError`）→ エラー分類 **`NON_RETRIABLE`**。ポリシーどおり **Gmail 側でゴミ箱へ移動**し、**再試行の対象にしない**。
 - **Fix（2026-05-06）**: `CsvDashboardImportService.ingestTargets` で **NON_RETRIABLE を廃棄（`trashMessage`）できたメッセージ**は、ループ終了時の **`failedMessageIdSuffixes` 集計から除外**する。これにより **同一ダッシュボード・同一バッチ内に正常なメールが続く場合**、全体が **最後の `lastError` で例外終了しない**。**実装**: [`csv-dashboard-import.service.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-import.service.ts)。**単体**: [`csv-dashboard-import.service.ingest-behavior.test.ts`](../../apps/api/src/services/csv-dashboard/__tests__/csv-dashboard-import.service.ingest-behavior.test.ts)。
 - **PR / マージ（済）**: [PR #259](https://github.com/denkoushi/RaspberryPiSystem_002/pull/259)（**`main` squash**・**`e47ad84c`**）。**本番反映**: **Pi5 API のみ** [deployment.md](../guides/deployment.md) 標準（`./scripts/update-all-clients.sh main … --limit raspberrypi5`・**デプロイ実績は別記**）。
+- **2026-10-06 追記（空の CSV はエラーにしない）**: 計測機器持出（週末 129 通すべて）と吊具点検（平日 51 通中 17 通）でも BOM のみの添付が続き、level 50 のログが本当の異常を埋もれさせていた。`ingestTargets` は保存と取込の前に空を判定し（[`csv-empty-content.ts`](../../apps/api/src/services/csv-dashboard/csv-empty-content.ts)）、空なら列の照合へ進まない。
+  - **空の定義**: BOM と空白・改行を除くと何も残らないもの（0 バイトを含む）。ヘッダー行だけの CSV は空ではなく、列を照合して 0 件の取込になる。ヘッダーが合わない CSV は今までどおり `CSV_HEADER_MISMATCH`。
+  - **記録**: info ログ 1 行（`Empty CSV skipped`）、`CsvDashboardIngestRun` 1 件（`COMPLETED`・0 件・`csvFilePath` なし・`errorMessage` に `[ingest-audit] postProcessState=skipped_empty`）、実行結果の `debug.skippedEmptyMessageIdSuffixes`。raw フォルダには保存しない（中身が無く、履歴で事実を追えるため）。メールは既読にしてゴミ箱へ移す。
+  - **対象外**: 手動アップロードの空ファイルは今までどおり 400 を返す。
 - **トラブルシュート**: **「添付はあるのに取れない」**→ 管理実行の **`debug`**（`downloadedMessageIdSuffixes` / `disposedMessageIdSuffixes` 等）と **保存された raw CSV サイズ**を確認。**開発用 localhost への計測 POST** は **本番に含めない**（調査後はコードから除去する）。
 
 ## FKOBAINO purchase order lookup from Gmail CSV (2026-04-20) {#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20}
@@ -231,6 +235,32 @@ category: knowledge-base
   - **手動 Gmail 実行と履歴**: **`CsvImportScheduler`** は **手動**かつ **Gmail + `csvDashboards` ターゲット**のとき、サマリの **`csvDashboards` が空オブジェクト**なら **`No matching Gmail message found for CSV dashboard import`** で **失敗**とする（未読ゼロ・対象メール無しで **COMPLETED + 空サマリ**と誤記録されないようにする）。
   - **部分失敗の表示**: 管理コンソールの手動実行後、**一部メッセージで取込／Gmail 後処理に失敗**した場合は、応答サマリの **`debug.failedMessageIdSuffixes`** と **`debug.postProcessErrorByMessageIdSuffix`** を参照（一次エラー文言の表示に利用可能）。
   - **開発用計測の除去**: 調査用の **localhost ingest / `debug-sink`** は **本番に不要**のため削除済み（`DEBUG_SINK_ENABLED` による外部シンクも廃止）。
+
+## 材料入荷バッジ（FKOBAIST・順位ボード／製番ボード）（2026-10-01） {#material-arrival-badge-fkobaist-2026-10-01}
+
+- **Context**: ボードの各アイテムは外部調達した材料（鋳物・鋼材）が入らないと加工開始できない。購買CSV（Gmail 件名 `FKOBAINO`）に後から追加された列 **`FKOBAIST`** を使い、材料の入荷状況をバッジで出す。
+- **FKOBAIST の値**: `C` 全数入荷済 / `S` 一部入荷済（分納） / `R` 注文済・納入なし / `O` 生産管理課確定済・資材課未発注 / `P` 生産管理課未確定 / `X` 工程削除（その工程が削除、または別工程へ変更）。
+- **材料用の品番ルール（2026-10-01 に本番 22.5 万行と CSV 4,418 行で確認）**: 材料は「加工品の品番 + 付加」で発注される。`-001` はほぼ「材料」、`-002` はほぼ「鋳物」、`(A)` は【素材】【鋳物】。`-003`/`-006`/`-016` は型費、`-048`〜`-050`/`-004` などは再処理・追加工費で材料ではない。付加なしは部品そのものの購買。新列 `FSEZONO` は付加なしの行にだけ入り、材料行は空なので材料の突合には使えない。
+- **判定**: `(FSEIBAN, 照合キーFHINCD)` で `PurchaseOrderLookupRow` を引き、品番が `(A)` / `-001` / `-002` の行だけを材料として扱う（`isMaterialPurchasePartCode`）。`X`・未取込（`purchaseStatus` null）は無視し、複数行は最も遅れているものを表示する（未発注 > 未入荷 > 一部入荷 > 入荷済）。材料行が無い部品はバッジを出さない。正本は [`material-arrival-status.service.ts`](../../apps/api/src/services/purchase-order-lookup/material-arrival-status.service.ts)。 材料行から状態が決まらず `X` が1件以上ある場合に限り、品番の前後空白を除いた値が照合キーと完全一致する付加なしの行で代用し、その行でも状態が決まらなければバッジなしとする（材料行なし・null のみ・`-003` などは代用対象外）。
+- **表示**: 「材料入荷済 / 材料一部入荷済 / 材料未入荷 / 材料未発注」。順位ボードは工程チップの行の右端（全工程の行に出る）、製番ボードは納期・個数・時間の下（資源CD表示では製番・機種名と同じ行の右。行を増やさない）。 部品で代用した場合は、同じ色・形・位置で「部品入荷済 / 部品一部入荷済 / 部品未入荷 / 部品未発注」と表示する。
+- **配信**: 順位ボードは工程チップと同じ部品キー単位の `leaderboardMaterialArrivalByPartKey`（装飾 API）。製番ボードは `items[].materialArrivalStatus` を応答のたびに付け、スナップショットと `itemRevision` には含めない。 既存 status の値は変えず、代用時だけ製番ボードの `items[].materialArrivalBasis` と順位ボードの `leaderboardMaterialArrivalBasisByPartKey` に `part` を追加する（装飾 API・list・composite board で配信）。
+- **制約**: `FKOBAIST` は列追加（migration `20261001120000_purchase_order_lookup_purchase_status`）以降に取り込んだ行だけに入る。それ以前の行は次に同じ注番が CSV に載るまでバッジが出ない。突合対象は MD 品番のみ（MH/SD/SH などは購買行が無い）。`(A)` 行の多くは生産日程に無い製番で発注されており当たらない。MD 部品の約 15% は同じ製番の購買行が無く、バッジは出ない。
+
+### FKOBAINO 取込が大きい CSV で失敗する（2026-10-01） {#fkobaino-sync-large-csv-timeout-2026-10-01}
+
+- **Symptoms**: 定期 CSV の抽出範囲を「更新日が直近 6 日」から「直近 60 日」に広げたところ（42,319 行）、手動実行が毎回失敗し、メールが未読のまま残った。管理コンソールで連続して実行すると `インポートは既に実行中です`（409）になる。
+- **Evidence**: Pi5 API ログ `Invalid prisma.purchaseOrderLookupRow.upsert() invocation: Transaction already closed ... The timeout for this transaction was 60000 ms`。`CsvDashboardIngestRun.errorMessage` は `[ingest-audit] postProcessState=failed`。`CsvDashboardRow` への取込自体は 42,319 行で完了していた。
+- **Root cause**: `PurchaseOrderLookupSyncService` が全行の upsert を 1 行ずつ、1 つの 60 秒トランザクションで実行していた。6 千行程度なら収まるが、数万行で時間切れになり、全体がロールバックされた。
+- **Fix**: トランザクションをやめ、500 行ごとに 1 文の `INSERT ... ON CONFLICT DO UPDATE` で書く。upsert は冪等で、CSV に無い過去行は消さないので、途中で失敗しても同じ CSV の再取込で揃う。CSV 内の同一キーは最後の行を採用する。`FKOBAIST` 列が無い CSV では既存の `purchaseStatus` を残す。
+- **Prevention**: DB 統合テスト `purchase-order-lookup-sync.integration.test.ts`（チャンクをまたぐ 1,200 行と同一キーの再登場）。
+
+### FKOBAINO の新旧を更新日時で決める（2026-10-01） {#fkobaino-source-updated-guard-2026-10-01}
+
+- **Context**: 60 日より前の行も取り込んでバッジの対象を広げる。それまでの upsert は無条件上書きで、新旧は取込順だけで決まっていた。古い時点の CSV を後から取り込むと（過去メールの再取込、範囲が重なる CSV の順序違い）、入荷済が注文済へ戻る。
+- **Evidence**: 本番の `FUPDTEDT` は `2026-08-03T07:38:10` 形式（時差表記なし・JST）。2026-10-01 の取込 42,319 行すべてに値があり、それ以前の 183,822 行は空欄。`FUPDTEDT` は `FKOBAIST` が変わると更新される（ユーザー確認）。
+- **Fix**: `PurchaseOrderLookupRow.sourceUpdatedAt`（migration `20261001150000_purchase_order_lookup_source_updated_at`）に `FUPDTEDT` を保持する。上書きは「既存行の更新日時が空」または「取込行の更新日時が既存以上」のときだけ。更新日時の無い行は、更新日時のある既存行を上書きしない。CSV 内の同一キーは更新日時が最新の行（同時刻・不明なら最後の行）を採用する。書き込まなかった行数は同期結果の `skippedStale` としてログに出る。
+- **制約**: 既存行の `sourceUpdatedAt` は埋め戻さない。更新日時付きの CSV に次に載った時点で入り、それまでは従来どおり取込順で上書きされる。`FUPDTEDT` が空の CSV だけを流し続けると、更新日時のある行は更新されなくなる。
+- **取消行の扱い（本番 2026-10-01 で確認）**: 取消・発注し直しの行は CSV から消えず `X` で残る（`X` 955 件）。材料行が複数あって状態が食い違う 37 組のうち 30 組は `X` との組合せで、`X` は判定から外れるためバッジは止まらない。材料行の 6,209 組中 6,159 組は 1 行だけ。
 
 ## 表示用納期 effectiveDueDate・計画列 UI（2026-04-01）
 

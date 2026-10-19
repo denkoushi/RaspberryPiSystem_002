@@ -20,11 +20,29 @@ const baseProps = {
   onZoomOut: vi.fn(),
   onFitToView: vi.fn(),
   onResumeGuide: vi.fn(),
-  onNextPoint: vi.fn(),
   onBackToList: vi.fn()
 };
 
 describe('SelfInspectionSessionHeader', () => {
+  it('separates reset at the left edge and keeps navigation at the right without per-point actions', () => {
+    const onReset = vi.fn();
+    const onBackToList = vi.fn();
+    const { rerender } = render(<SelfInspectionSessionHeader {...baseProps} onReset={onReset} onBackToList={onBackToList} />);
+    const buttons = screen.getAllByRole('button');
+    const reset = screen.getByRole('button', { name: '初期化' });
+    expect(buttons[0]).toBe(reset);
+    expect(buttons.at(-1)).toBe(screen.getByRole('button', { name: '一覧へ' }));
+    expect(reset).toHaveClass('min-h-11', 'border-red-300/70');
+    expect(reset.parentElement).toHaveClass('border-r', 'pr-3', 'mr-2');
+    expect(screen.queryByRole('button', { name: '次の測定点' })).not.toBeInTheDocument();
+    fireEvent.click(reset);
+    expect(onReset).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: '一覧へ' }));
+    expect(onBackToList).toHaveBeenCalledOnce();
+    rerender(<SelfInspectionSessionHeader {...baseProps} onReset={onReset} resetDisabled />);
+    expect(screen.getByRole('button', { name: '初期化' })).toBeDisabled();
+  });
+
   it('keeps a fixed 54px three-region header with two-line identity and notice', () => {
     render(
       <SelfInspectionSessionHeader

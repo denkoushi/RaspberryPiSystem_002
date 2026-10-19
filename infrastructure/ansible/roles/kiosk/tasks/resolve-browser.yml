@@ -38,6 +38,24 @@
     - chromium_binary_stat is defined
     - not chromium_binary_stat.stat.exists
 
+- name: Check configured chromium executable path for kiosk browser
+  ansible.builtin.stat:
+    path: "{{ kiosk_browser_exec_path }}"
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved == 'chromium'
+  register: chromium_configured_binary_stat
+
+# Debian trixie は /usr/bin/chromium だけを持つ。互換 symlink は full provisioning でしか作られないため、
+# 標準 release でも存在しないパスを launcher へ焼き込まないよう実体へフォールバックする。
+- name: Fall back to the chromium binary when the compatibility path is missing
+  ansible.builtin.set_fact:
+    kiosk_browser_exec_path: /usr/bin/chromium
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved == 'chromium'
+    - not (chromium_configured_binary_stat.stat.exists | default(false))
+
 - name: Check firefox-esr binary path for kiosk browser
   ansible.builtin.stat:
     path: "{{ kiosk_browser_firefox_binary | default('/usr/bin/firefox-esr') }}"

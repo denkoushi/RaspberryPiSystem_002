@@ -1,8 +1,12 @@
+import { videosForPage, type ProcedureVideoPageLink } from '../../services/assembly/procedure-video.service.js';
+import { serializeLastProcedureManualApproval, type ProcedureManualApprovalSnapshot } from '../../services/assembly/assembly-procedure-document-revision.serializer.js';
 import type { MultipartFile } from '@fastify/multipart';
+import type { AssemblyProcedureAsset } from '@prisma/client';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { z } from 'zod';
+import { enforceAssemblyProcedureEditLease, resolveAssemblyProcedureEditWriter } from './procedure-document-edit-leases.js';
 
-import { ApiError } from '../../lib/errors.js';
+import { ApiError, DomainHttpError } from '../../lib/errors.js';
 import {
   resolveAssemblyProcedureMultipartReadLimit
 } from '../../lib/assembly-procedure-document-import.js';
@@ -23,6 +27,7 @@ const optionalTrueOnlyBooleanSchema = z
   .transform((value) => value === true || value === 'true');
 
 type ProcedureDocumentLike = {
+  procedureManualApprovals?: ProcedureManualApprovalSnapshot[];
   id: string;
   name: string;
   imageRelativePath: string;
@@ -44,6 +49,8 @@ type ProcedureDocumentLike = {
     imageRelativePath: string;
   }>;
   overlayElements?: Parameters<typeof serializeAssemblyProcedureOverlayElement>[0][];
+  procedureVideoLinks?: ProcedureVideoPageLink[];
+  ownedAssets?: Array<Pick<AssemblyProcedureAsset, 'id' | 'storageKey' | 'contentType' | 'byteSize'>>;
 };
 
 export type AssemblyProcedureDocumentRouteOptions = {
@@ -62,6 +69,15 @@ export function serializeProcedureDocument(doc: ProcedureDocumentLike) {
     byteSize: number;
     url: string;
   }> = {};
+  for (const asset of doc.ownedAssets ?? []) {
+    assets[asset.id] = {
+      assetId: asset.id,
+      storageKey: asset.storageKey,
+      contentType: asset.contentType,
+      byteSize: asset.byteSize,
+      url: assemblyProcedureAssetUrl(asset.id, asset.storageKey)
+    };
+  }
   const overlaysByPage = new Map<number, ReturnType<typeof serializeAssemblyProcedureOverlayElement>[]>();
   for (const overlay of doc.overlayElements ?? []) {
     if (overlay.asset) {
@@ -78,6 +94,7 @@ export function serializeProcedureDocument(doc: ProcedureDocumentLike) {
     overlaysByPage.set(overlay.pageIndex, values);
   }
   return {
+    lastApproval: serializeLastProcedureManualApproval(doc.procedureManualApprovals),
     id: doc.id,
     name: doc.name,
     imageRelativePath: doc.imageRelativePath,
@@ -92,6 +109,7 @@ export function serializeProcedureDocument(doc: ProcedureDocumentLike) {
     sourceAssetId: doc.revisionMetadata?.sourceAssetId ?? null,
     pages: (doc.pages ?? []).map((page) => ({
       pageIndex: page.pageIndex,
+      videos: videosForPage(doc.procedureVideoLinks, page.pageIndex),
       imageRelativePath: page.imageRelativePath,
       assetId: null,
       overlays: overlaysByPage.get(page.pageIndex) ?? []
@@ -105,6 +123,7 @@ export function serializeProcedureDocument(doc: ProcedureDocumentLike) {
 export function serializeProcedureDocumentSummary(doc: AssemblyProcedureDocumentSummary) {
   return {
     ...serializeProcedureDocument(doc),
+    manualAssignments: doc.manualAssignments,
     activeTemplateCount: doc.activeTemplateCount,
     totalTemplateCount: doc.totalTemplateCount
   };
@@ -184,10 +203,10 @@ export function registerAssemblyProcedureDocumentRoutes(
     return { documents: documents.map(serializeProcedureDocumentSummary) };
   });
 
-  app.get('/assembly/procedure-documents/:id', { preHandler: allowView }, async (request, reply) => {
+  app.get('/assembly/procedure-documents/:id', { preHandler: allowView }, async (request) => {
     const params = idParamSchema.parse(request.params);
     const doc = await procedureService.getById(params.id, { includeInactive: true });
-    if (!doc) return reply.status(404).send({ message: '手順書が見つかりません' });
+    if (!doc) throw new DomainHttpError(404, '手順書が見つかりません');
     return { document: serializeProcedureDocument(doc) };
   });
 
@@ -234,7 +253,7 @@ export function registerAssemblyProcedureDocumentRoutes(
     };
   });
 
-  app.post('/assembly/procedure-documents/:id/publish', { preHandler: allowWriteKiosk }, async (request) => {
+  app.post('/assembly/procedure-documents/:id/publish', { preHandler: [allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request) => {
     const params = idParamSchema.parse(request.params);
     const body = z
       .object({
@@ -242,7 +261,27 @@ export function registerAssemblyProcedureDocumentRoutes(
         expectedEditVersion: z.coerce.number().int().min(0).optional()
       })
       .parse(request.body ?? {});
-    const doc = await procedureService.publish(params.id, body);
+    const doc = await procedureService.publish(params.id, { ...body, ...await resolveAssemblyProcedureEditWriter(request) });
+    return { document: serializeProcedureDocument(doc) };
+  });
+
+  app.post('/assembly/procedure-documents/approval-reviewer', { preHandler: allowWriteKiosk, config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request) => {
+    const body = z.object({ reviewerTagUid: z.string().trim().min(1).max(128) }).strict().parse(request.body);
+    const reviewer = await procedureService.resolveApprover(body.reviewerTagUid);
+    return { reviewer: { displayName: reviewer.displayName, positionName: reviewer.positionName, rank: reviewer.rank } };
+  });
+
+  app.post('/assembly/procedure-documents/:id/approve-publish', { preHandler: [allowWriteKiosk, enforceAssemblyProcedureEditLease], config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request) => {
+    const params = idParamSchema.parse(request.params);
+    const body = z.object({
+      reviewerTagUid: z.string().trim().min(1).max(128),
+      expectedEditVersion: z.number().int().min(0),
+      comment: z.string().trim().min(1).max(500).optional()
+    }).strict().parse(request.body);
+    const writer = await resolveAssemblyProcedureEditWriter(request);
+    const actorKey = writer.holderKey;
+    if (!actorKey) throw new ApiError(401, '認証が必要です');
+    const doc = await procedureService.approvePublish(params.id, { ...body, actorKey, ...writer });
     return { document: serializeProcedureDocument(doc) };
   });
 
@@ -252,22 +291,25 @@ export function registerAssemblyProcedureDocumentRoutes(
     return { document: serializeProcedureDocument(doc) };
   });
 
-  app.patch('/assembly/procedure-documents/:id', { preHandler: allowWriteKiosk }, async (request) => {
+  app.patch('/assembly/procedure-documents/:id', { preHandler: [allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request) => {
     const params = idParamSchema.parse(request.params);
     const body = z.object({ name: z.string().trim().min(1).max(200) }).parse(request.body);
-    const doc = await procedureService.rename(params.id, body.name);
+    const doc = await procedureService.rename(params.id, body.name, await resolveAssemblyProcedureEditWriter(request));
     return { document: serializeProcedureDocument(doc) };
   });
 
-  app.delete('/assembly/procedure-documents/:id', { preHandler: allowWriteKiosk }, async (request, reply) => {
+  app.delete('/assembly/procedure-documents/:id', { preHandler: [allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request, reply) => {
     const params = idParamSchema.parse(request.params);
     const usage = await procedureService.getReferenceUsage(params.id);
-    if (usage.inBoltPageRef || usage.inCheckPageRef) {
-      return reply.status(409).send({ message: 'マーカー参照で使用中の手順書は削除できません' });
+    if (usage.inProcedureManualAssignment) {
+      throw new DomainHttpError(409, procedureService.buildInUseMessage(usage));
     }
-    const result = await procedureService.deleteIfUnused(params.id);
-    if (result === 'not_found') return reply.status(404).send({ message: '手順書が見つかりません' });
-    if (result === 'in_use') return reply.status(409).send({ message: 'テンプレートで使用中の手順書は削除できません' });
+    if (usage.inBoltPageRef || usage.inCheckPageRef) {
+      throw new DomainHttpError(409, 'マーカー参照で使用中の手順書は削除できません');
+    }
+    const result = await procedureService.deleteIfUnused(params.id, await resolveAssemblyProcedureEditWriter(request));
+    if (result === 'not_found') throw new DomainHttpError(404, '手順書が見つかりません');
+    if (result === 'in_use') throw new DomainHttpError(409, 'テンプレートで使用中の手順書は削除できません');
     return reply.status(204).send();
   });
 }

@@ -1,6 +1,8 @@
 import { resolveKioskLoanCardSurfaceTokens } from '@raspi-system/shared-types';
+import { useState } from 'react';
 
 import { kioskButtonPrimaryClassName, kioskButtonSecondaryClassName } from '../../features/kiosk/kioskTheme';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 import {
   kioskActiveLoanCardActionsRowClassName,
@@ -44,6 +46,7 @@ export function KioskActiveLoanCard({
   onCancel,
   onThumbnailClick,
 }: KioskActiveLoanCardProps) {
+  const [isCancelConfirmOpen, setIsCancelConfirmOpen] = useState(false);
   const surface = resolveKioskLoanCardSurfaceTokens(presentation.kind, isOverdue);
 
   return (
@@ -57,6 +60,11 @@ export function KioskActiveLoanCard({
         style={{ background: surface.sheen.background }}
         aria-hidden
       />
+      <div className="relative z-10 flex shrink-0 justify-end">
+        <button type="button" onClick={() => setIsCancelConfirmOpen(true)} disabled={actionsDisabled} className={`${kioskButtonSecondaryClassName} text-sm`}>
+          {cancelButtonLabel}
+        </button>
+      </div>
       <div className={kioskActiveLoanCardMainRowClassName}>
         {thumbnailUrl ? (
           <div className={kioskActiveLoanCardThumbWrapClassName}>
@@ -113,13 +121,21 @@ export function KioskActiveLoanCard({
         </div>
       </div>
       <div className={kioskActiveLoanCardActionsRowClassName}>
-        <button type="button" onClick={onReturn} disabled={actionsDisabled} className={kioskButtonPrimaryClassName}>
+        <button type="button" onClick={onReturn} disabled={actionsDisabled} className={`${kioskButtonPrimaryClassName} w-full`}>
           {returnButtonLabel}
         </button>
-        <button type="button" onClick={onCancel} disabled={actionsDisabled} className={kioskButtonSecondaryClassName}>
-          {cancelButtonLabel}
-        </button>
       </div>
+      <ConfirmDialog
+        isOpen={isCancelConfirmOpen}
+        title="この持出を取り消しますか？"
+        description={presentation.nameLine ?? presentation.primaryLine}
+        cancelLabel="キャンセル"
+        confirmLabel="取り消す"
+        tone="danger"
+        buttonClassName="min-h-11"
+        onCancel={() => setIsCancelConfirmOpen(false)}
+        onConfirm={() => { setIsCancelConfirmOpen(false); if (!actionsDisabled) onCancel(); }}
+      />
     </li>
   );
 }

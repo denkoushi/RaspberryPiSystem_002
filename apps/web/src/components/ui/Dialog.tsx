@@ -22,6 +22,7 @@ type DialogProps = PropsWithChildren<{
   initialFocusRef?: RefObject<HTMLElement>;
   size?: DialogSize;
   className?: string;
+  overlayClassName?: string;
   /** タイトル見出しの追加クラス（未指定時は `text-lg font-semibold`） */
   titleClassName?: string;
   /** 未指定時は Tailwind `z-50`。キオスク左シートより手前に出す場合に数値指定（例: 80） */
@@ -59,6 +60,7 @@ export function Dialog({
   size = 'md',
   className,
   titleClassName,
+  overlayClassName,
   overlayZIndex,
   children
 }: DialogProps) {
@@ -160,7 +162,8 @@ export function Dialog({
       ref={overlayRef}
       className={clsx(
         'fixed inset-0 flex items-start justify-center overflow-y-auto bg-black/60 p-4',
-        overlayZIndex == null ? 'z-50' : null
+        overlayZIndex == null ? 'z-50' : null,
+        overlayClassName
       )}
       style={overlayZIndex != null ? { zIndex: overlayZIndex } : undefined}
       onMouseDown={handleBackdropMouseDown}

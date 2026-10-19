@@ -34,10 +34,47 @@ describe('InspectionDrawingPointSettingsPanel', () => {
     render(<InspectionDrawingPointSettingsPanel point={point} onChange={vi.fn()} />);
 
     expect(screen.queryByRole('group', { name: '測定点の位置調整' })).not.toBeInTheDocument();
-    expect(screen.getByText('測定点の設定（No.1）')).toBeInTheDocument();
+    expect(screen.getByText('測定点')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '番号 1 を入れ替える' })).not.toBeInTheDocument();
     expect(
       screen.queryByText(/合格範囲は「基準値＋下限公差」/)
     ).not.toBeInTheDocument();
+  });
+
+  it('swaps the marker number from the number picker', () => {
+    const onSwapMarkerNo = vi.fn();
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={point}
+        onChange={vi.fn()}
+        markerNos={[1, 2, 5]}
+        onSwapMarkerNo={onSwapMarkerNo}
+      />
+    );
+
+    expect(screen.queryByRole('group', { name: '入れ替える番号' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '番号 1 を入れ替える' }));
+    fireEvent.click(screen.getByRole('button', { name: '番号 1' }));
+    expect(onSwapMarkerNo).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '番号 1 を入れ替える' }));
+    fireEvent.click(screen.getByRole('button', { name: '番号 5' }));
+    expect(onSwapMarkerNo).toHaveBeenCalledWith(5);
+    expect(screen.queryByRole('group', { name: '入れ替える番号' })).not.toBeInTheDocument();
+  });
+
+  it('hides the number picker when disabled', () => {
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={point}
+        disabled
+        onChange={vi.fn()}
+        markerNos={[1, 2]}
+        onSwapMarkerNo={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: '番号 1 を入れ替える' })).not.toBeInTheDocument();
   });
 
   it('renders selected-point delete and all delete actions', () => {
@@ -165,7 +202,50 @@ describe('InspectionDrawingPointSettingsPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '25' }));
 
-    expect(onApplyOcrCandidate).toHaveBeenCalledWith('25');
+    expect(onApplyOcrCandidate).toHaveBeenCalledWith('25', expect.objectContaining({ valueText: '25' }));
+    expect(screen.queryByRole('button', { name: '2つの和' })).not.toBeInTheDocument();
+  });
+
+  it('adds two candidates when the sum chip is active', () => {
+    const onApplyOcrCandidate = vi.fn();
+    const base = {
+      rawText: '',
+      confidence: null,
+      score: 0.01,
+      distanceRatio: 0.01,
+      xRatio: 0.6,
+      yRatio: 0.5,
+      widthRatio: 0,
+      heightRatio: 0,
+      passKind: 'full' as const,
+      preprocessKind: 'raw' as const,
+      rotation: 0,
+      source: 'dimensionMap' as const
+    };
+
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={point}
+        onChange={vi.fn()}
+        ocrCandidates={[
+          { ...base, valueText: '12.5', rawText: '12.5' },
+          { ...base, valueText: '30', rawText: '30', xRatio: 0.7 }
+        ]}
+        ocrCandidateStatus="completed"
+        onApplyOcrCandidate={onApplyOcrCandidate}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '2つの和' }));
+    fireEvent.click(screen.getByRole('button', { name: '12.5' }));
+    expect(onApplyOcrCandidate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '30' }));
+
+    expect(onApplyOcrCandidate).toHaveBeenCalledTimes(1);
+    expect(onApplyOcrCandidate).toHaveBeenCalledWith('42.5');
+    // 和を入れたら通常の 1 回押しに戻る
+    fireEvent.click(screen.getByRole('button', { name: '30' }));
+    expect(onApplyOcrCandidate).toHaveBeenLastCalledWith('30', expect.objectContaining({ valueText: '30' }));
   });
 
   it('does not render OCR waiting states in the nominal value candidate row', () => {

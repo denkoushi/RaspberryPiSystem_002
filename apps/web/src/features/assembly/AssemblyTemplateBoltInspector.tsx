@@ -99,7 +99,7 @@ export function AssemblyTemplateBoltInspector({
         <Button
           type="button"
           variant="danger"
-          className="min-h-10 shrink-0 !px-2 !py-1 text-xs"
+          className="min-h-8 shrink-0 !px-2 !py-1 text-xs"
           disabled={busy || readOnly}
           onClick={onDelete}
         >
@@ -108,14 +108,14 @@ export function AssemblyTemplateBoltInspector({
       </div>
 
       <div className="mt-2 grid min-w-0 grid-cols-1 gap-2">
-        <div className="flex min-h-10 min-w-0 items-center gap-1 rounded border border-white/10 bg-slate-950/60 px-1.5 py-1">
+        <div className="flex min-h-8 min-w-0 items-center gap-1 rounded border border-white/10 bg-slate-950/60 px-1.5 py-1">
           <span className="shrink-0 text-[0.68rem] font-semibold text-white/70">
             {imageMarkerHasCalloutTip(bolt) ? '矢視 あり' : '矢視 なし'}
           </span>
           <Button
             type="button"
             variant="ghostOnDark"
-            className="min-h-10 shrink-0 !px-1.5 !py-0.5 text-[0.68rem]"
+            className="min-h-8 shrink-0 !px-1.5 !py-0.5 text-[0.68rem]"
             disabled={busy || readOnly || !imageMarkerHasCalloutTip(bolt)}
             onClick={() => onPatch(bolt.id, clearImageMarkerCalloutTip())}
           >
@@ -123,7 +123,7 @@ export function AssemblyTemplateBoltInspector({
           </Button>
         </div>
 
-        <label className="flex min-h-10 min-w-0 items-center gap-2 rounded border border-white/10 bg-slate-950/60 px-2 py-1 text-[0.7rem] font-semibold text-white/80">
+        <label className="flex min-h-8 min-w-0 items-center gap-2 rounded border border-white/10 bg-slate-950/60 px-2 py-1 text-[0.7rem] font-semibold text-white/80">
           <input
             type="checkbox"
             checked={inheritCondition}
@@ -136,7 +136,7 @@ export function AssemblyTemplateBoltInspector({
         <Button
           type="button"
           variant="ghostOnDark"
-          className="min-h-10 w-full !px-2 !py-1 text-xs"
+          className="min-h-8 w-full !px-2 !py-1 text-xs"
           aria-expanded={rangeExpanded}
           onClick={() => setRangeExpanded((current) => !current)}
         >
@@ -147,7 +147,7 @@ export function AssemblyTemplateBoltInspector({
           <label className="grid min-w-0 gap-0.5 text-[0.65rem] font-semibold text-white/70">
             反映開始
             <Input
-              className="h-10 min-w-0 !px-2 !py-1 text-sm"
+              className="h-8 min-w-0 !px-2 !py-1 text-sm"
               type="number"
               min={1}
               value={rangeStart}
@@ -157,7 +157,7 @@ export function AssemblyTemplateBoltInspector({
           <label className="grid min-w-0 gap-0.5 text-[0.65rem] font-semibold text-white/70">
             反映終了
             <Input
-              className="h-10 min-w-0 !px-2 !py-1 text-sm"
+              className="h-8 min-w-0 !px-2 !py-1 text-sm"
               type="number"
               min={1}
               value={rangeEnd}
@@ -167,7 +167,7 @@ export function AssemblyTemplateBoltInspector({
           <Button
             type="button"
             variant="ghostOnDark"
-            className="min-h-10 whitespace-nowrap !px-2 !py-1 text-[0.68rem]"
+            className="min-h-8 whitespace-nowrap !px-2 !py-1 text-[0.68rem]"
             disabled={busy || readOnly}
             onClick={onApplyRange}
           >
@@ -205,7 +205,7 @@ export function AssemblyTemplateBoltInspector({
                 {label}
                 <Input
                   id={`assembly-bolt-${bolt.id}-${key}`}
-                  className="h-10 min-w-0 !px-2 !py-1 text-sm"
+                  className="h-8 min-w-0 !px-2 !py-1 text-sm"
                   type="number"
                   value={bolt[key] ?? ''}
                   disabled={busy || readOnly}
@@ -220,7 +220,7 @@ export function AssemblyTemplateBoltInspector({
             単位
             <select
               id={`assembly-bolt-${bolt.id}-unit`}
-              className="h-10 min-w-0 w-28 rounded border border-white/10 bg-slate-950 px-1.5 text-xs text-white"
+              className="h-8 min-w-0 w-28 rounded border border-white/10 bg-slate-950 px-1.5 text-xs text-white"
               value={bolt.unit}
               disabled={busy || readOnly}
               onChange={(event) => onPatch(bolt.id, { unit: event.target.value })}
@@ -245,7 +245,7 @@ export function AssemblyTemplateBoltInspector({
               <div className="mt-2 grid min-w-0 grid-cols-1 gap-1">
                 <Input
                   id={`assembly-bolt-${bolt.id}-boltSpecCustom`}
-                  className="h-10 min-w-0 !px-2 !py-1 text-sm"
+                  className="h-8 min-w-0 !px-2 !py-1 text-sm"
                   value={bolt.boltSpecCustom}
                   maxLength={200}
                   disabled={busy || readOnly}
@@ -264,7 +264,7 @@ export function AssemblyTemplateBoltInspector({
                 <Button
                   type="button"
                   variant="ghostOnDark"
-                  className="min-h-10"
+                  className="min-h-8"
                   disabled={busy || readOnly}
                   onClick={() =>
                     onPatch(bolt.id, {
@@ -280,7 +280,7 @@ export function AssemblyTemplateBoltInspector({
               <Button
                 type="button"
                 variant="ghostOnDark"
-                className="mt-2 min-h-10"
+                className="mt-2 min-h-8"
                 disabled={busy || readOnly || !automaticSpec}
                 onClick={() =>
                   onPatch(bolt.id, {

@@ -1,8 +1,9 @@
 import bcrypt from 'bcryptjs';
 import { parse } from 'csv-parse/sync';
 
-import { resolveSiteKeyFromScopeKey } from '../../lib/location-scope-resolver.js';
+import { resolveSiteKeyForScopeKey } from '../../lib/site-directory.js';
 import { prisma } from '../../lib/prisma.js';
+import { toUpperTrimmedCode as normalizeResourceCd } from '../../lib/string-normalize.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import {
   DEFAULT_CUTTING_EXCLUDED_RESOURCE_CDS,
@@ -11,7 +12,7 @@ import {
 } from './policies/resource-category-policy.service.js';
 
 const normalizeLocation = (location: string): string => location.trim();
-const normalizeSiteLocation = (location: string): string => resolveSiteKeyFromScopeKey(normalizeLocation(location));
+const normalizeSiteLocation = (location: string): string => resolveSiteKeyForScopeKey(normalizeLocation(location));
 export const SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION = 'shared';
 const DEFAULT_PROCESSING_TYPE_OPTIONS = [
   { code: '塗装', label: '塗装', priority: 1, enabled: true },
@@ -21,7 +22,6 @@ const DEFAULT_PROCESSING_TYPE_OPTIONS = [
   { code: 'その他02', label: 'その他02', priority: 5, enabled: true }
 ] as const;
 
-const normalizeResourceCd = (value: string): string => value.trim().toUpperCase();
 const normalizeGroupCd = (value: string): string => value.trim().toUpperCase();
 const normalizeCsvHeader = (value: string): string => value.replace(/^\uFEFF/, '').trim().toUpperCase();
 

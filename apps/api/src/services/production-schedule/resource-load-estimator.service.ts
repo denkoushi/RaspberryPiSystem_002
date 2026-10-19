@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { normalizeFseibanList } from './fseiban-list.js';
 import {
   getResourceCategoryPolicy,
   isProductionScheduleExcludedCuttingResourceCd,
@@ -24,18 +25,6 @@ export type ResourceLoadSignal = {
   crowdedLoadRatio: number;
 };
 
-const normalizeFseibans = (items: string[]): string[] => {
-  const seen = new Set<string>();
-  const next: string[] = [];
-  for (const item of items) {
-    const normalized = item.trim();
-    if (!normalized || seen.has(normalized)) continue;
-    seen.add(normalized);
-    next.push(normalized);
-  }
-  return next.slice(0, 2000);
-};
-
 const emptySignal = (): ResourceLoadSignal => ({
   unfinishedProcessCount: 0,
   resourceTypeCount: 0,
@@ -48,7 +37,7 @@ export async function estimateResourceLoadSignals(params: {
   locationKey: string;
   candidateFseibans: string[];
 }): Promise<Map<string, ResourceLoadSignal>> {
-  const candidates = normalizeFseibans(params.candidateFseibans);
+  const candidates = normalizeFseibanList(params.candidateFseibans);
   const result = new Map<string, ResourceLoadSignal>();
   if (candidates.length === 0) return result;
 

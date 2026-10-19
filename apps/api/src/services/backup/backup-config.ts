@@ -17,7 +17,7 @@ export const CsvImportTypeSchema = z.enum([
  * CSVインポートターゲット（スケジュール内の1つの対象）
  */
 export const CsvImportTargetSchema = z.object({
-  type: z.union([CsvImportTypeSchema, z.literal('itemInventoryGmail')]),
+  type: z.union([CsvImportTypeSchema, z.literal('itemInventoryGmail'), z.literal('machineSignalGmail'), z.literal('procedureMaterialGmail')]),
   source: z.string() // Dropbox用: パス、Gmail用: 件名パターン
 });
 
@@ -208,6 +208,27 @@ export const BackupConfigSchema = z.object({
       enabled: false,
       subjectTokens: ['[ItemlistRaspi-photo]'],
     }),
+  /** 要領書の本文・写真素材の専用 Gmail 取込。 */
+  procedureMaterialGmailIngest: z
+    .object({
+      enabled: z.boolean().default(false),
+      subjectTokens: z
+        .array(z.literal('[Procedure-material]'))
+        .default(['[Procedure-material]']),
+      fromEmail: z.string().optional(),
+      allowedSenderDomains: z
+        .array(z.string().trim().toLowerCase().transform((domain) => domain.replace(/^@/, '')).pipe(
+          z.string().regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/, 'ドメインの形式が不正です'),
+        ))
+        .transform((domains) => [...new Set(domains)])
+        .default(['thkintechs.co.jp']),
+    })
+    .optional()
+    .default({
+      enabled: false,
+      subjectTokens: ['[Procedure-material]'],
+      allowedSenderDomains: ['thkintechs.co.jp'],
+    }),
 });
 
 export type BackupConfig = z.infer<typeof BackupConfigSchema>;
@@ -390,6 +411,11 @@ export const defaultBackupConfig: BackupConfig = {
   workInstructionGmailIngest: {
     enabled: false,
     subjectTokens: ['[Kakou-Dandori-photo]'],
+  },
+  procedureMaterialGmailIngest: {
+    enabled: false,
+    subjectTokens: ['[Procedure-material]'],
+    allowedSenderDomains: ['thkintechs.co.jp'],
   },
   itemInventoryGmailIngest: {
     enabled: false,

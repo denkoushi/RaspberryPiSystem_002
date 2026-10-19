@@ -1,3 +1,4 @@
+import { videosForPage, type ProcedureVideoSummary, type ProcedureVideoPageLink } from './procedure-video.service.js';
 import {
   type AssemblyProcedureImageObjectFit,
   type AssemblyProcedureOverlayElement,
@@ -5,8 +6,22 @@ import {
 } from '@raspi-system/shared-types';
 
 import type { AssemblyProcedureOverlayElementRow } from './assembly-procedure-overlay.persistence.js';
+import type { ProcedureManualApproval, AssemblyProcedureAsset } from '@prisma/client';
+
+export const procedureManualApprovalInclude = {
+  orderBy: [{ createdAt: 'desc' as const }, { id: 'desc' as const }],
+  take: 1,
+  select: { employeeNameSnapshot: true, employeePositionSnapshot: true, createdAt: true }
+};
+export type ProcedureManualApprovalSnapshot = Pick<ProcedureManualApproval, 'employeeNameSnapshot' | 'employeePositionSnapshot' | 'createdAt'>;
+export function serializeLastProcedureManualApproval(approvals?: ProcedureManualApprovalSnapshot[]) {
+  const approval = approvals?.[0];
+  return approval ? { employeeName: approval.employeeNameSnapshot, positionName: approval.employeePositionSnapshot, approvedAt: approval.createdAt.toISOString() } : null;
+}
 
 type AssemblyProcedureDocumentRevisionSerializationInput = {
+  procedureManualApprovals?: ProcedureManualApprovalSnapshot[];
+  procedureVideoLinks?: ProcedureVideoPageLink[];
   id: string;
   name: string;
   imageRelativePath: string;
@@ -20,6 +35,7 @@ type AssemblyProcedureDocumentRevisionSerializationInput = {
     imageRelativePath: string;
   }>;
   overlayElements: AssemblyProcedureOverlayElementRow[];
+  ownedAssets?: Array<Pick<AssemblyProcedureAsset, 'id' | 'storageKey' | 'contentType' | 'byteSize'>>;
   revisionMetadata: {
     revisionRootId: string;
     revisionNumber: number;
@@ -39,6 +55,7 @@ export type AssemblyProcedureDocumentRevisionDto = {
   imageRelativePath: string;
   status: 'draft' | 'published';
   publishedAt: string | null;
+  lastApproval: ReturnType<typeof serializeLastProcedureManualApproval>;
   isActive: boolean;
   revisionRootId: string | null;
   revisionNumber: number;
@@ -52,6 +69,7 @@ export type AssemblyProcedureDocumentRevisionDto = {
     imageRelativePath: string;
     assetId: string | null;
     overlays: AssemblyProcedureOverlayElement[];
+    videos: ProcedureVideoSummary[];
   }>;
   assets: Record<string, {
     assetId: string;
@@ -125,6 +143,15 @@ export function serializeAssemblyProcedureDocumentRevision(
   doc: AssemblyProcedureDocumentRevisionSerializationInput
 ): AssemblyProcedureDocumentRevisionDto {
   const assets: AssemblyProcedureDocumentRevisionDto['assets'] = {};
+  for (const asset of doc.ownedAssets ?? []) {
+    assets[asset.id] = {
+      assetId: asset.id,
+      storageKey: asset.storageKey,
+      contentType: asset.contentType,
+      byteSize: asset.byteSize,
+      url: assemblyProcedureAssetUrl(asset.id, asset.storageKey)
+    };
+  }
   const overlaysByPage = new Map<number, AssemblyProcedureOverlayElement[]>();
   for (const overlay of doc.overlayElements) {
     if (overlay.asset) {
@@ -141,6 +168,7 @@ export function serializeAssemblyProcedureDocumentRevision(
     overlaysByPage.set(overlay.pageIndex, values);
   }
   return {
+    lastApproval: serializeLastProcedureManualApproval(doc.procedureManualApprovals),
     id: doc.id,
     name: doc.name,
     imageRelativePath: doc.imageRelativePath,
@@ -159,6 +187,7 @@ export function serializeAssemblyProcedureDocumentRevision(
       pageIndex: page.pageIndex,
       imageRelativePath: page.imageRelativePath,
       assetId: null,
+      videos: videosForPage(doc.procedureVideoLinks, page.pageIndex),
       overlays: overlaysByPage.get(page.pageIndex) ?? []
     }))
   };

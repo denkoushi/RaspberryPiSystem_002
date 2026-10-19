@@ -1,3 +1,5 @@
+import { PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS } from '../gmail/gmail-subject-reservation.policy.js';
+import { PROCEDURE_MATERIAL_GMAIL_CSV_IMPORT_SCHEDULE_ID, PROCEDURE_MATERIAL_GMAIL_CSV_IMPORT_SCHEDULE_CRON } from './procedure-material-import-schedule.policy.js';
 import type { BackupConfig } from '../backup/backup-config.js';
 import {
   PRODUCTION_SCHEDULE_CUSTOMER_SCAW_DASHBOARD_ID,
@@ -150,8 +152,20 @@ export function buildDefaultRiggingSlingsInspectionCsvImportSchedule(): CsvImpor
   };
 }
 
+export function buildDefaultProcedureMaterialCsvImportSchedule(): CsvImportScheduleRow {
+  return {
+    id: PROCEDURE_MATERIAL_GMAIL_CSV_IMPORT_SCHEDULE_ID,
+    name: '要領書の素材(Gmail)', provider: 'gmail',
+    targets: [{ type: 'procedureMaterialGmail', source: PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS[0] }],
+    schedule: PROCEDURE_MATERIAL_GMAIL_CSV_IMPORT_SCHEDULE_CRON,
+    enabled: false, replaceExisting: false,
+    autoBackupAfterImport: { enabled: false, targets: ['csv'] },
+  };
+}
+
 /** システム予約スケジュールID → デフォルト行ビルダー（拡張時はここに追加） */
 export const SYSTEM_CSV_IMPORT_SCHEDULE_DEFAULT_BUILDERS: Record<string, () => CsvImportScheduleRow> = {
+  [PROCEDURE_MATERIAL_GMAIL_CSV_IMPORT_SCHEDULE_ID]: buildDefaultProcedureMaterialCsvImportSchedule,
   [FKOJUNST_CSV_IMPORT_SCHEDULE_ID]: buildDefaultFkojunstCsvImportSchedule,
   [FKOJUNST_STATUS_MAIL_CSV_IMPORT_SCHEDULE_ID]: buildDefaultFkojunstStatusMailCsvImportSchedule,
   [FKOBAINO_CSV_IMPORT_SCHEDULE_ID]: buildDefaultFkobainoCsvImportSchedule,

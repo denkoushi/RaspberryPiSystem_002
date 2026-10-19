@@ -1,10 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadNonconformityCatalog } from './catalog.mjs';
+import { loadCatalog, loadNonconformityCatalog } from './catalog.mjs';
 import { records } from './fixtures/synthetic-records.mjs';
 import { buildValueIndex, choiceValuesForField, findCandidateValues, normalizeForMatch } from './value-index.mjs';
 
 const catalog = loadNonconformityCatalog();
+
+test('same-named values are kept in their source, including legacy source-less nonconformities', () => {
+  const index = buildValueIndex([
+    { id: 'legacy', partNumber: 'N0' },
+    { id: 'n1', sourceId: 'nonconformity', partNumber: 'N1' },
+    { id: 'p1', sourceId: 'knowledge_procedure', partNumber: 'P1' },
+  ], loadCatalog(['nonconformity', 'knowledge_procedure']));
+  assert.deepEqual(index.values.nonconformity.partNumber, ['N0', 'N1']);
+  assert.deepEqual(index.values.knowledge_procedure.partNumber, ['P1']);
+});
 
 test('value index keeps distinct enumerated values and finds normalized substrings', () => {
   const withWidth = [...records, {

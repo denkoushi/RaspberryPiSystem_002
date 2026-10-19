@@ -6,13 +6,18 @@ import { renderSignageCanvasPreview } from '../../api/domains/signage';
 import { ProtectedImage } from '../ProtectedImage';
 
 import { HermesA2uiPreview } from './HermesA2uiPreview';
+import { HermesOperationGuideAnswer } from './HermesOperationGuideAnswer';
+import { HermesRecordAnswer } from './HermesRecordAnswer';
 
 import type {
   BusinessHermesChatEvidence,
+  BusinessHermesOperationGuideDisplay,
   BusinessHermesConsultationDetail,
   BusinessHermesConsultationItem,
   BusinessHermesSignageCanvasElement,
-  BusinessHermesSignageProposal
+  BusinessHermesSignageProposal,
+  HermesRecordAnswerDisplay,
+  HermesRecordRefine
 } from '../../api/domains/assembly';
 
 export type HermesPanelMessage = {
@@ -20,6 +25,9 @@ export type HermesPanelMessage = {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  display?: HermesRecordAnswerDisplay;
+  planId?: string;
+  guide?: BusinessHermesOperationGuideDisplay;
   evidence?: readonly BusinessHermesChatEvidence[];
   evidenceVisible?: boolean;
   evidenceVisibleIds?: readonly string[];
@@ -40,8 +48,11 @@ export type HermesConsultationSuggestion = {
 export type HermesKnowledgeMode = 'search' | 'knowledge' | 'record-pilot';
 
 export type HermesChatPanelProps = {
+  inquiryMode?: { active: boolean; unreadCount: number; onSelect: () => void };
   conversationExtension?: ReactNode;
+  conversationContent?: ReactNode;
   attachmentControl?: ReactNode;
+  composerVisible?: boolean;
   knowledgeMode?: HermesKnowledgeMode;
   recordPilotAvailable?: boolean;
   onKnowledgeModeChange?: (mode: HermesKnowledgeMode) => void;
@@ -62,6 +73,7 @@ export type HermesChatPanelProps = {
   feedbackBusy?: boolean;
   onDraftChange: (value: string) => void;
   onSend: () => void;
+  onRefine?: (refine: HermesRecordRefine, label?: string, planId?: string) => void;
   onReset: () => void;
   onClose: () => void;
   onStop?: () => void;
@@ -433,8 +445,11 @@ function SignageProposalPreview({
 }
 
 export default function HermesChatPanel({
+  inquiryMode,
   conversationExtension,
+  conversationContent,
   attachmentControl,
+  composerVisible = true,
   knowledgeMode = 'search',
   recordPilotAvailable = false,
   onKnowledgeModeChange,
@@ -455,6 +470,7 @@ export default function HermesChatPanel({
   feedbackBusy = false,
   onDraftChange,
   onSend,
+  onRefine,
   onReset,
   onClose,
   onStop,
@@ -482,7 +498,7 @@ export default function HermesChatPanel({
     editor?.setAttribute('aria-label', 'Hermesへの質問');
   });
 
-  const messageInput = (
+  const messageInput = composerVisible ? (
     <MessageInput
       value={escapeInputHtml(draft)}
       disabled={isBusy || isConsultationDetailLoading || isMessageHistoryLoading || (mode === 'consultations' && isConsultationsLoading)}
@@ -493,7 +509,7 @@ export default function HermesChatPanel({
       onChange={(_innerHtml, textContent) => onDraftChange(textContent)}
       onSend={() => onSend()}
     />
-  );
+  ) : null;
 
   return (
     <section ref={panelRef} className="hermes-chat-panel" style={style} aria-label="Hermesチャット" role="region">
@@ -501,13 +517,18 @@ export default function HermesChatPanel({
         <div className="hermes-chat-panel__header-main">
           {onKnowledgeModeChange ? (
             <div className="hermes-chat-panel__mode-selector">
-              <button type="button" className={`hermes-chat-panel__mode${knowledgeMode === 'search' ? ' hermes-chat-panel__mode--selected' : ''}`} aria-pressed={knowledgeMode === 'search'} onClick={() => onKnowledgeModeChange('search')}>検索</button>
-              <button type="button" className={`hermes-chat-panel__mode${knowledgeMode === 'knowledge' ? ' hermes-chat-panel__mode--selected' : ''}`} aria-pressed={knowledgeMode === 'knowledge'} onClick={() => onKnowledgeModeChange('knowledge')}>ナレッジ</button>
-              {recordPilotAvailable ? <button type="button" className={`hermes-chat-panel__mode${knowledgeMode === 'record-pilot' ? ' hermes-chat-panel__mode--selected' : ''}`} aria-pressed={knowledgeMode === 'record-pilot'} onClick={() => onKnowledgeModeChange('record-pilot')}>JEV記録</button> : null}
+              <button type="button" className={`hermes-chat-panel__mode${!inquiryMode?.active && knowledgeMode === 'search' ? ' hermes-chat-panel__mode--selected' : ''}`} aria-pressed={!inquiryMode?.active && knowledgeMode === 'search'} onClick={() => onKnowledgeModeChange('search')}>検索</button>
+              <button type="button" className={`hermes-chat-panel__mode${!inquiryMode?.active && knowledgeMode === 'knowledge' ? ' hermes-chat-panel__mode--selected' : ''}`} aria-pressed={!inquiryMode?.active && knowledgeMode === 'knowledge'} onClick={() => onKnowledgeModeChange('knowledge')}>ナレッジ</button>
+              {recordPilotAvailable ? <button type="button" className={`hermes-chat-panel__mode${!inquiryMode?.active && knowledgeMode === 'record-pilot' ? ' hermes-chat-panel__mode--selected' : ''}`} aria-pressed={!inquiryMode?.active && knowledgeMode === 'record-pilot'} onClick={() => onKnowledgeModeChange('record-pilot')}>JEV記録</button> : null}
+              {inquiryMode ? <button type="button"
+                className={`hermes-chat-panel__mode${inquiryMode.active ? ' hermes-chat-panel__mode--selected' : ''}${inquiryMode.unreadCount > 0 ? ' hermes-chat-panel__mode--inquiry-unread' : ''}`}
+                aria-pressed={inquiryMode.active} onClick={inquiryMode.onSelect}>
+                お問い合わせ{inquiryMode.unreadCount > 0 ? <span className="hermes-inquiry-count">{inquiryMode.unreadCount}</span> : null}
+              </button> : null}
             </div>
           ) : null}
           <div className="hermes-chat-panel__header-title">
-            {mode === 'consultations' && activeConsultation ? (
+            {!inquiryMode?.active && mode === 'consultations' && activeConsultation ? (
               <>
                 <h2 id="hermes-chat-title" className="hermes-chat-panel__title">{consultationLabel(activeConsultation)}</h2>
                 <p className="hermes-chat-panel__hint">相談を続ける</p>
@@ -516,12 +537,12 @@ export default function HermesChatPanel({
           </div>
         </div>
         <div className="hermes-chat-panel__actions">
-          {mode === 'consultations' && onNewConsultation ? (
+          {!inquiryMode?.active && mode === 'consultations' && onNewConsultation ? (
             <button type="button" className="hermes-chat-panel__action" onClick={onNewConsultation} aria-label="新しい相談を始める">
               新規
             </button>
           ) : null}
-          {mode === 'consultations' && onScan ? (
+          {!inquiryMode?.active && mode === 'consultations' && onScan ? (
             <button
               type="button"
               className="hermes-chat-panel__action"
@@ -532,7 +553,7 @@ export default function HermesChatPanel({
               Scan
             </button>
           ) : null}
-          {mode === 'consultations' && activeConsultation ? (
+          {!inquiryMode?.active && (mode === 'consultations' && activeConsultation ? (
             <button type="button" className="hermes-chat-panel__action" onClick={onReset} aria-label="相談一覧に戻る">
               一覧
             </button>
@@ -540,8 +561,8 @@ export default function HermesChatPanel({
             <button type="button" className="hermes-chat-panel__action" onClick={onReset} aria-label="会話をリセット">
               <ResetIcon />
             </button>
-          )}
-          {isBusy && onStop ? (
+          ))}
+          {!inquiryMode?.active && isBusy && onStop ? (
             <button type="button" className="hermes-chat-panel__action hermes-chat-panel__action--stop" onClick={onStop} aria-label="回答を停止">
               停止
             </button>
@@ -562,7 +583,8 @@ export default function HermesChatPanel({
         </div>
       </header>
 
-      {authRequired ? <p className="hermes-chat-panel__status" role="status">{authRequired}</p> : null}
+      {!inquiryMode?.active && authRequired ? <p className="hermes-chat-panel__status" role="status">{authRequired}</p> : null}
+      {conversationContent ?? <>
       {conversationExtension}
       {error ? <p className="hermes-chat-panel__status hermes-chat-panel__status--error" role="alert">{error}</p> : null}
       {consultationError ? <p className="hermes-chat-panel__status hermes-chat-panel__status--error" role="alert">{consultationError}</p> : null}
@@ -595,7 +617,7 @@ export default function HermesChatPanel({
               </button>
             ))}
           </div>
-          <div className="hermes-chat-panel__consultation-composer">{messageInput}</div>
+          {composerVisible ? <div className="hermes-chat-panel__consultation-composer">{messageInput}</div> : null}
         </>
       ) : (
         <>
@@ -634,7 +656,9 @@ export default function HermesChatPanel({
                         {message.selection ? (
                           <p className="hermes-chat-panel__message-selection" role="status">「{message.selection.option}」が選択されました。</p>
                         ) : (
-                          <div className="hermes-chat-panel__message">{message.role === 'assistant' ? renderMessageContent(message.content) : message.content}</div>
+                          <div className="hermes-chat-panel__message">{message.role === 'assistant'
+                            ? message.guide ? <HermesOperationGuideAnswer guide={message.guide} /> : message.display?.records.length ? <HermesRecordAnswer display={message.display} onRefine={onRefine && message.planId !== undefined ? (refine, label) => onRefine(refine, label, message.planId) : onRefine} disabled={isBusy} /> : renderMessageContent(message.content)
+                            : message.content}</div>
                         )}
                         {message.recordIds?.length && message.evidence?.length ? message.recordIds.flatMap((recordId) => {
                           const evidence = message.evidence?.find((candidate) => `${candidate.kind}:${candidate.id}` === recordId);
@@ -682,6 +706,7 @@ export default function HermesChatPanel({
         </>
       )}
       {attachmentControl}
+      </>}
     </section>
   );
 }

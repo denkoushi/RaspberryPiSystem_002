@@ -173,7 +173,9 @@ export async function verifyMobilePlacementSlipMatch(payload: {
   actualFseibanRaw: string;
   actualPartBarcodeRaw: string;
 }) {
-  const { data } = await api.post<{ ok: true } | { ok: false; reason: string }>(
+  const { data } = await api.post<({ ok: true } | { ok: false; reason: string }) & {
+    actualResolvedBy?: 'productNo' | 'purchaseOrder' | 'fseiban';
+  }>(
     '/mobile-placement/verify-slip-match',
     payload
   );
@@ -191,6 +193,9 @@ export async function parseActualSlipImage(imageFile: File) {
     ocrPreviewSafe: string | null;
     manufacturingOrder10: string | null;
     fseiban: string | null;
+    fseibanRaw: string | null;
+    fseibanMatch: 'exact' | 'corrected' | 'ambiguous' | 'none';
+    fseibanCandidates: string[];
   }>('/mobile-placement/parse-actual-slip-image', form);
   return data;
 }

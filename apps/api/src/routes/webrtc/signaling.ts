@@ -6,6 +6,7 @@
 import { randomUUID } from 'node:crypto';
 
 import type { FastifyInstance } from 'fastify';
+import { redactHeadersForLog } from '../../lib/log-headers.js';
 
 import {
   findClientDeviceIdRecordByApiKey,
@@ -15,6 +16,9 @@ import { ApiError } from '../../lib/errors.js';
 import { normalizeClientKey } from '../../lib/client-key.js';
 import { callStore } from './call-store.js';
 import type { SignalingMessage, WebSocketLike } from './types.js';
+
+import { signalingRegistry } from '../../services/kiosk-screen-watch/signaling-registry.js';
+import { kioskScreenWatchService } from '../../services/kiosk-screen-watch/kiosk-screen-watch.service.js';
 
 const WS_OPEN = 1;
 
@@ -46,19 +50,16 @@ async function getClientByClientId(
 
 export function registerWebRTCSignaling(app: FastifyInstance): void {
   // クライアント接続管理（clientId -> WebSocket）
-  const clientConnections = new Map<string, WebSocketLike>();
+  const clientConnections = signalingRegistry.connections;
 
   // NOTE:
   // - `registerWebRTCRoutes()` が prefix `/webrtc` でサブアプリを登録しているため、
   //   ここでは `/signaling` のみを定義する（`/webrtc/...` を重ねると二重になる）。
   app.log.info('Registering WebRTC signaling WebSocket route: /signaling');
   app.get('/signaling', { websocket: true }, async (connection, req) => {
-    // 機密情報保護: x-client-keyをログから除外
-  const sanitizedHeaders = { ...req.headers };
-  if ('x-client-key' in sanitizedHeaders) {
-    sanitizedHeaders['x-client-key'] = '[REDACTED]';
-  }
-  app.log.info({ url: req.url, headers: sanitizedHeaders }, 'WebRTC signaling WebSocket connection attempt');
+    // 機密情報保護: 認証ヘッダーをログから除外
+    const sanitizedHeaders = redactHeadersForLog(req.headers);
+  app.log.info({ url: req.url.split('?')[0], headers: sanitizedHeaders }, 'WebRTC signaling WebSocket connection attempt');
     // @fastify/websocket の connection 形状が環境差分で異なる可能性があるため、
     // `connection.socket` が無い場合は `connection` 自体をソケットとして扱う（実測でconnection.socketがundefinedのケースあり）。
     const maybeSocket = (connection as unknown as { socket?: unknown }).socket ?? connection;
@@ -105,13 +106,7 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
 
     const clientId = clientInfo.clientId;
 
-    // 既存の接続があれば閉じる（重複接続防止）
-    const existingConnection = clientConnections.get(clientId);
-    if (existingConnection && existingConnection.readyState === WS_OPEN) {
-      existingConnection.close(1000, 'Replaced by new connection');
-    }
-
-    clientConnections.set(clientId, socket);
+    await signalingRegistry.register(clientId, clientInfo.id, socket);
     const connectionStartTime = Date.now();
     app.log.info({ clientId, connectionStartTime }, 'WebRTC signaling client connected');
 
@@ -119,6 +114,20 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
     socket.on('message', async (message: Buffer) => {
       try {
         const data: SignalingMessage = JSON.parse(message.toString());
+
+        if (typeof data.type === 'string' && data.type.startsWith('watch.')) {
+          try {
+            if (clientConnections.get(clientId) !== socket) throw new Error('Replaced watch connection');
+            await kioskScreenWatchService.handle(clientInfo.id, data);
+          } catch (error) {
+            const watchId = (data.payload as { watchId?: unknown } | undefined)?.watchId;
+            socket.send(JSON.stringify({ type: 'error', payload: {
+              watchId: typeof watchId === 'string' ? watchId : undefined,
+              message: error instanceof Error ? error.message : 'Invalid watch message'
+            } }));
+          }
+          return;
+        }
 
         // Keepalive pingメッセージの処理（pongを返す）
         if (data.type === 'ping') {
@@ -414,7 +423,9 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
     socket.on('close', async () => {
       const disconnectTime = Date.now();
       const connectionDuration = disconnectTime - connectionStartTime;
-      clientConnections.delete(clientId);
+      void signalingRegistry.disconnect(clientId, socket).catch(error => {
+        app.log.error({ err: error }, 'Failed to end screen watch on disconnect');
+      });
       app.log.info({ clientId, connectionStartTime, disconnectTime, connectionDuration }, 'WebRTC signaling client disconnected');
 
       // このクライアントが参加しているコールを終了

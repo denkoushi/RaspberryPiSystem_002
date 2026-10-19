@@ -78,9 +78,9 @@ describe('visualizationDashboardFormModel', () => {
 
     it('creates default template on parse failure', () => {
       const updated = setCsvDashboardId('{bad', 'fallback-id');
+      // 空文字の date は API の入力チェック（YYYY-MM-DD か未指定）に通らないため入れない
       expect(JSON.parse(updated)).toEqual({
         csvDashboardId: 'fallback-id',
-        date: '',
         maxRows: 30,
       });
     });

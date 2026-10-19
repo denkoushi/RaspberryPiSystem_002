@@ -18,7 +18,13 @@ import {
   createDgxEmbedder,
   refreshDenseIndex,
   createDenseQueryRanker,
+  createDenseRuntime,
   readDenseStore,
+  denseRefreshLimits,
+  DENSE_BULK_WINDOW,
+  DAY_MAX_EMBED,
+  DAY_EMBED_BATCH,
+  DAY_PAUSE_MS,
 } from './dense-dgx.mjs';
 
 const catalog = loadNonconformityCatalog();
@@ -230,4 +236,90 @@ test('document text is capped below the DGX per-slot token limit', () => {
   const text = denseDocumentText({ id: 'long', condition: '寸'.repeat(DGX_MAX_INPUT_CHARS + 500) }, bodyFields);
   assert.equal(text.length <= DGX_MAX_INPUT_CHARS, true);
   assert.equal(DGX_MAX_INPUT_CHARS < 800, true);
+});
+
+test('bulk embedding runs only in the 4-6 hours and is limited while enrichment runs', () => {
+  const day = new Date('2026-01-15T03:30:00Z');
+  const enrichmentHours = new Date('2026-01-15T15:30:00Z');
+  const bulkHours = new Date('2026-01-15T19:30:00Z');
+  const limited = { maxEmbed: DAY_MAX_EMBED, batchSize: DAY_EMBED_BATCH, pauseMs: DAY_PAUSE_MS };
+  assert.equal(DENSE_BULK_WINDOW, '4-6');
+  assert.deepEqual(denseRefreshLimits('', day), {});
+  assert.deepEqual(denseRefreshLimits('22-6', bulkHours), {});
+  assert.deepEqual(denseRefreshLimits('22-6', enrichmentHours), limited);
+  assert.deepEqual(denseRefreshLimits('22-6', day), limited);
+});
+
+test('a deferred or failed record keeps its previous vector and the day pauses between requests', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'dense-day-'));
+  const storePath = path.join(directory, 'retrieval-dense-dgx.bin');
+  const records = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, condition: `${id} note` }));
+  await refreshDenseIndex({ records, bodyFields, storePath, embed: async (texts) => texts.map(() => vector(1)) });
+  const changed = records.map((record) => ({ ...record, condition: `${record.id} note enriched` }));
+  const batches = [];
+  const pauses = [];
+  const result = await refreshDenseIndex({
+    records: changed,
+    bodyFields,
+    storePath,
+    maxEmbed: 3,
+    batchSize: 2,
+    pauseMs: 5,
+    sleep: async (ms) => { pauses.push(ms); },
+    embed: async (texts) => {
+      batches.push(texts.length);
+      if (texts.some((text) => text.startsWith('c '))) throw new Error('rejected');
+      return texts.map(() => vector(2));
+    },
+  });
+  assert.deepEqual(batches, [2, 1]);
+  assert.deepEqual(pauses, [5]);
+  assert.equal(result.embedded, 2);
+  assert.equal(result.failed, 1);
+  assert.equal(result.deferred, 2);
+  const stored = await readDenseStore(storePath);
+  assert.deepEqual(stored.map((entry) => entry.id).sort(), ['a', 'b', 'c', 'd', 'e']);
+  const fresh = new Set(stored.filter((entry) => entry.vector[0] === 2).map((entry) => entry.id));
+  assert.deepEqual([...fresh].sort(), ['a', 'b']);
+});
+
+test('the dense runtime applies day limits from the enrichment window', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'dense-runtime-'));
+  const records = Array.from({ length: DAY_MAX_EMBED + 4 }, (_, index) => ({ id: `r${index}`, condition: `note ${index}` }));
+  const sizes = [];
+  const pauses = [];
+  const runtime = createDenseRuntime({
+    settings: { indexEnabled: true, origin: 'http://127.0.0.1:9', storePath: path.join(directory, 'store.bin'), window: '22-6' },
+    embed: async (texts) => { sizes.push(texts.length); return texts.map(() => vector(1)); },
+    now: () => new Date('2026-01-15T03:30:00Z'),
+    sleep: async (ms) => { pauses.push(ms); },
+  });
+  await runtime.schedule(records, bodyFields);
+  assert.equal(sizes.reduce((sum, size) => sum + size, 0), DAY_MAX_EMBED);
+  assert.ok(sizes.every((size) => size <= DAY_EMBED_BATCH));
+  assert.equal(pauses.length, sizes.length - 1);
+  assert.ok(pauses.every((ms) => ms === DAY_PAUSE_MS));
+  assert.equal(runtime.entries().length, records.length - 4);
+});
+
+
+test('obsolete mail vectors cannot rank or consume the material re-embedding budget', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'hermes-material-migration-'));
+  const storePath = path.join(directory, 'dense.procedure_material');
+  const oldRecords = [{ id: 'mail:old', bodyText: 'old mail' }];
+  const embed = async texts => texts.map(() => vector(1));
+  await refreshDenseIndex({ records: oldRecords, bodyFields: ['bodyText'], storePath, embed });
+  const previous = await readDenseStore(storePath);
+  const current = [{ id: 'material:1', bodyText: 'first.pdf first content' }, { id: 'material:2', bodyText: 'second.png second content' }];
+  const ranked = await createDenseQueryRanker(() => previous, embed)('query', current);
+  assert.equal(ranked.ok, false);
+  const result = await refreshDenseIndex({ records: current, bodyFields: ['bodyText'], storePath, embed, maxEmbed: 1 });
+  assert.equal(result.embedded, 1);
+  assert.equal(result.deferred, 1);
+  assert.deepEqual((await readDenseStore(storePath)).map(entry => entry.id), ['material:1']);
+  const next = await refreshDenseIndex({ records: current, bodyFields: ['bodyText'], storePath, embed, maxEmbed: 1 });
+  assert.equal(next.embedded, 1);
+  assert.equal(next.skipped, 1);
+  assert.equal(next.deferred, 0);
+  assert.deepEqual((await readDenseStore(storePath)).map(entry => entry.id), ['material:1', 'material:2']);
 });

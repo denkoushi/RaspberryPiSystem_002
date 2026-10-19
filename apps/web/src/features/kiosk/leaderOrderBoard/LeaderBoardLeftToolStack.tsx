@@ -262,6 +262,7 @@ export function LeaderBoardLeftToolStack({
             </button>
           </div>
           <SeibanSearchRegister
+            showVoiceButton
             value={dueAssist.searchInput}
             onChange={dueAssist.setSearchInput}
             onRegister={() => dueAssist.applySearch().then(() => undefined)}
@@ -269,8 +270,8 @@ export function LeaderBoardLeftToolStack({
             inputDisabled={seibanControlsLocked}
             registerDisabled={seibanControlsLocked || dueAssist.historyWriting}
             inputClassName={clsx(kioskInputClassName, 'min-w-0 flex-1 text-xs')}
-            keyboardButtonClassName={clsx(kioskButtonSecondaryClassName, 'px-2 text-xs')}
-            registerButtonClassName={clsx(kioskButtonPrimaryClassName, 'px-2 text-xs')}
+            keyboardButtonClassName={clsx(kioskButtonSecondaryClassName, 'shrink-0 px-2 text-xs')}
+            registerButtonClassName={clsx(kioskButtonPrimaryClassName, 'shrink-0 px-2 text-xs')}
           />
           <div
             className={clsx(

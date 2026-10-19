@@ -19,6 +19,7 @@ export type KioskConfigClientState = {
   defaultMode: 'PHOTO' | 'TAG';
   initialKioskRoute: KioskInitialRouteId | null;
   initialKioskPath: string;
+  portalHiddenTabIds: string[];
   clientStatus: KioskConfigClientStatus | null;
 };
 
@@ -34,6 +35,7 @@ export async function resolveKioskConfigClientState(
       defaultMode,
       initialKioskRoute: null,
       initialKioskPath: resolveKioskInitialPath({ defaultMode }),
+      portalHiddenTabIds: [],
       clientStatus
     };
   }
@@ -70,5 +72,5 @@ export async function resolveKioskConfigClientState(
     }
   }
 
-  return { client, defaultMode, initialKioskRoute, initialKioskPath, clientStatus };
+  return { client, defaultMode, initialKioskRoute, initialKioskPath, portalHiddenTabIds: client?.kioskPortalHiddenTabIds ?? [], clientStatus };
 }

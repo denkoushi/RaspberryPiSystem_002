@@ -37,7 +37,7 @@ scripts/update-all-clients.sh --status RUN_ID --inventory infrastructure/ansible
 
 ## Pi5 Docker旧リリースイメージ整理
 
-`storage-maintenance.timer` は毎日03:00に起動する。`storage-maintenance.sh` は、当月の完了マーカーが未完了の場合だけ、次の2つの非ブロッキングロックを取得して整理を実行する。
+`storage-maintenance.timer` は毎日03:00に起動する。`storage-maintenance.sh` は、当日（JST）の完了マーカーが未完了の場合だけ、次の2つの非ブロッキングロックを取得して整理を実行する。2026-09まで整理は月1回だったが、1リリース約3.4GB・1日約21GBの増加で月末前にSSDが84%まで埋まったため、2026-10から毎日に変えた。旧形式 `YYYY-MM` のマーカーも有効で、切り替え直後に1回整理が走る。
 
 - fleetデプロイ共通ロック: `/opt/RaspberryPiSystem_002/logs/deploy/fleet-release-state.lock`
 - イメージ整理ロック: `/var/lib/raspi-release/image-retention-maintenance.lock`
@@ -89,9 +89,9 @@ run_retention_locked apply_and_mark
 
 planはDocker一覧と保持状態のsealed snapshotを含む。planとapplyの間にデプロイ、状態ファイル変更、Dockerイメージ変更などがあればapplyは `snapshot_changed` として拒否し、削除せず完了マーカーも更新しない。ロック競合またはsealed snapshot拒否後は、古いplanを再利用せず、ロック取得後にplanから取り直す。
 
-applyと9月完了マーカーの作成は同じ `run_retention_locked` サブシェル内で連続して実行する。applyが終了コード0で成功した場合だけ、完了マーカーをシェルのリダイレクトで直接上書きせず、同じディレクトリのroot所有一時ファイルから原子的に作成する。通常の自動経路では `docker-release-image-monthly.sh` がこの処理を行う。マーカーは `YYYY-MM` と改行1つだけ（9月は正確に `2026-09\n`）でなければならず、余分な行や改行欠落を作らない。apply失敗時はこの作成手順を実行せず、古いマーカーを残して翌日の自動再試行に任せる。
+applyと9月完了マーカーの作成は同じ `run_retention_locked` サブシェル内で連続して実行する。applyが終了コード0で成功した場合だけ、完了マーカーをシェルのリダイレクトで直接上書きせず、同じディレクトリのroot所有一時ファイルから原子的に作成する。通常の自動経路では `docker-release-image-monthly.sh` がこの処理を行う。マーカーは `YYYY-MM-DD`（旧形式 `YYYY-MM` も可）と改行1つだけでなければならず、余分な行や改行欠落を作らない。apply失敗時はこの作成手順を実行せず、古いマーカーを残して翌日の自動再試行に任せる。
 
-`docker system prune`、`docker image prune -a`、volume prune、BuildKit以外の一括prune、または業務保存ディレクトリの削除は禁止する。通常の月次処理は固定allowlistの完全なイメージIDだけを個別に扱う。
+`docker system prune`、`docker image prune -a`、volume prune、BuildKit以外の一括prune、または業務保存ディレクトリの削除は禁止する。通常の日次処理は固定allowlistの完全なイメージIDだけを個別に扱う。
 
 ## 失敗時の切り分け
 

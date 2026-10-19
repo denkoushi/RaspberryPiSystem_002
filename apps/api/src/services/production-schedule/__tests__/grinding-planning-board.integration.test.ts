@@ -719,6 +719,34 @@ describeIntegration('grinding planning board service real Postgres integration',
     expect(ranked.itemRevision).not.toBe(plain.itemRevision);
   });
 
+  it('bulk resource order persists ranks atomically and returns current revisions', async () => {
+    const fixture = await createFixture();
+    await addRows(fixture, [{ fseiban: `${fixture.prefix}-A` }, { fseiban: `${fixture.prefix}-B` }]);
+    const board = await boardFor(fixture, { view: 'resource' });
+    const items = [...board.items].reverse();
+    const result = await service().updateGrindingPlanningBoardResourceOrderBulk({ siteKey: fixture.siteKey,
+      sourceRevision: board.sourceRevision, resourceCd: '305',
+      items: items.map((item) => ({ itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version })) });
+    expect(result.items.map((item) => item.itemId)).toEqual(items.map((item) => item.itemId));
+    expect(result.items.map((item) => item.alternateRank)).toEqual([1, 2]);
+    expect(result.items.every((item, index) => item.itemRevision !== items[index]!.itemRevision)).toBe(true);
+    const refreshed = await boardFor(fixture, { view: 'resource' });
+    expect(refreshed.items.map((item) => item.itemId)).toEqual(result.items.map((item) => item.itemId));
+  });
+
+  it.each(['resource', 'revision', 'board', 'version', 'completed'] as const)('bulk order rejects %s mismatch without partial writes', async (failure) => {
+    const fixture = await createFixture();
+    await addRows(fixture, [{ fseiban: `${fixture.prefix}-A` }, { fseiban: `${fixture.prefix}-B`, completed: failure === 'completed' }]);
+    const board = await boardFor(fixture, { view: 'resource', completionFilter: 'all' });
+    await expect(service().updateGrindingPlanningBoardResourceOrderBulk({ siteKey: fixture.siteKey,
+      sourceRevision: failure === 'board' ? 'stale' : board.sourceRevision, resourceCd: failure === 'resource' ? '581' : '305',
+      items: board.items.map((item, index) => ({ itemId: item.itemId,
+        itemRevision: failure === 'revision' && index === 1 ? 'stale' : item.itemRevision,
+        overrideVersion: failure === 'version' && index === 1 ? item.version + 1 : item.version }))
+    })).rejects.toMatchObject({ statusCode: 409 });
+    expect(await db().productionScheduleGrindingPlanningBoardOverride.count({ where: { siteKey: fixture.siteKey } })).toBe(0);
+  });
+
   it('reorders a resource pane across seibans and reindexes hidden completed siblings atomically', async () => {
     const fixture = await createFixture();
     await addRows(fixture, [
@@ -940,6 +968,17 @@ describeIntegration('grinding planning board service real Postgres integration',
       await expect(updateItem(fixture, item, { resourceCd: '581' }, response.sourceRevision)).rejects.toMatchObject({ code: 'COMPLETED_ITEM' });
     }
     expect(await db().productionScheduleGrindingPlanningBoardOverride.count({ where: { siteKey: fixture.siteKey } })).toBe(0);
+  });
+
+  it('rejects a row item id with non-string logical-key parts as invalid input', async () => {
+    const fixture = await createFixture();
+    const response = await boardFor(fixture);
+    const itemId = `row:${Buffer.from(JSON.stringify([{ toString: null }, '', '', '']), 'utf8').toString('base64url')}`;
+    await expect(service().updateGrindingPlanningBoardOverrides({
+      siteKey: fixture.siteKey,
+      sourceRevision: response.sourceRevision,
+      items: [{ itemId, itemRevision: 0, resourceCd: '581' }]
+    })).rejects.toMatchObject({ code: 'INVALID_ITEM_ID' });
   });
 
   it('rolls back the entire bulk mutation when one item revision is stale', async () => {

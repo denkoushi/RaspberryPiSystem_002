@@ -80,6 +80,8 @@ bash scripts/deploy/tests/test-single-deploy-entrypoint.sh
 bash scripts/deploy/tests/test-terminal-runtime-manifest-docker.sh
 bash scripts/deploy/tests/test-web-static-routing.sh
 python3 -m unittest discover -s scripts/deploy/tests -p 'test_*.py'
+bash scripts/server/tests/test_storage_maintenance_retention.sh
+bash scripts/client/tests/test_pi4_storage_maintenance.sh
 python3 scripts/deploy/tests/test-client-agent-lifecycle-selection.py
 bash scripts/deploy/tests/test-signage-deploy-maintenance.sh
 bash scripts/deploy/tests/test-deploy-status-postgres-observability.sh
@@ -108,6 +110,8 @@ STATIC_PLAYBOOKS=(
   playbooks/prepare-pi5-runtime-permissions.yml
   playbooks/prepare-pi5-database-roles.yml
   playbooks/prepare-pi5-admin-network-policy.yml
+  playbooks/prepare-pi5-power-dispatcher.yml
+  playbooks/prepare-pi5-security-scans.yml
   playbooks/prepare-client-local-ca-trust.yml
   playbooks/activate-pi5-local-ca-certificate.yml
   playbooks/verify-client-local-tls.yml

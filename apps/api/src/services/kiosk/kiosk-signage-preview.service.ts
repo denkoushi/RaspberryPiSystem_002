@@ -1,5 +1,4 @@
 import { prisma } from '../../lib/prisma.js';
-import { findClientDeviceIdRecordByApiKey } from '../clients/client-device-auth.service.js';
 
 export type SignagePreviewCandidateDevice = {
   id: string;
@@ -39,16 +38,20 @@ export async function clearSignagePreviewTarget(clientDeviceId: string): Promise
 
 export async function setSignagePreviewTarget(
   clientDeviceId: string,
-  targetApiKey: string
+  targetClientDeviceId: string
 ): Promise<void> {
   await prisma.clientDevice.update({
     where: { id: clientDeviceId },
-    data: { signagePreviewTargetApiKey: targetApiKey }
+    // Keep the existing column/schema; new selections persist a non-secret ID.
+    data: { signagePreviewTargetApiKey: targetClientDeviceId }
   });
 }
 
-export async function findSignagePreviewTargetDeviceByApiKey(
-  targetApiKey: string
-): Promise<{ id: string } | null> {
-  return findClientDeviceIdRecordByApiKey(targetApiKey);
+/** Legacy key-valued rows are converted at this persistence boundary without a write. */
+export function resolveSignagePreviewTargetClientDeviceId(
+  storedTarget: string | null,
+  candidates: SignagePreviewCandidateDevice[]
+): string | null {
+  if (!storedTarget) return null;
+  return candidates.find((candidate) => candidate.id === storedTarget || candidate.apiKey === storedTarget)?.id ?? null;
 }

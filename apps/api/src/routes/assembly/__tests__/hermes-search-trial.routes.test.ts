@@ -5,6 +5,7 @@ import {describe,it,expect,vi} from 'vitest';
 import {env} from '../../../config/env.js';
 import {ApiError} from '../../../lib/errors.js';
 import {registerHermesSearchTrialRoutes} from '../hermes-search-trial.js';
+import {prisma} from '../../../lib/prisma.js';
 
 describe('Hermes search trial authorization',()=>{
   it('uses the existing reader boundary, preserves original text and keeps failure separate from no match',async()=>{
@@ -28,7 +29,25 @@ describe('Hermes search trial authorization',()=>{
     const sessionId='00000000-0000-4000-8000-000000000001';
     const sessionResponse=await app.inject({...request,payload:{question:'処置は？',sessionId}});
     expect(sessionResponse.statusCode).toBe(200);
-    expect(answer).toHaveBeenLastCalledWith('処置は？',sessionId);
+    expect(answer).toHaveBeenLastCalledWith('処置は？',sessionId,undefined,{principal:{kind:'viewer'}});
+    const refine = { axis: 'organization', field: 'originDepartmentName', value: '組立' };
+    expect((await app.inject({...request,payload:{question:'組立で絞り込む',sessionId,refine}})).statusCode).toBe(200);
+    expect(answer).toHaveBeenLastCalledWith('組立で絞り込む',sessionId,undefined,{principal:{kind:'viewer'},refine});
+    const identifiedRefine = { ...refine, planId: 'answer-plan' };
+    expect((await app.inject({...request,payload:{question:'組立で絞り込む',sessionId,refine:identifiedRefine}})).statusCode).toBe(200);
+    expect(answer).toHaveBeenLastCalledWith('組立で絞り込む',sessionId,undefined,{principal:{kind:'viewer'},refine:identifiedRefine});
+    for (const planId of ['x'.repeat(64), '']) {
+      expect((await app.inject({...request,payload:{question:'q',refine:{...refine,planId}}})).statusCode).toBe(200);
+    }
+    for (const planId of ['x'.repeat(65), 1, {}]) {
+      expect((await app.inject({...request,payload:{question:'q',refine:{...refine,planId}}})).statusCode).toBe(400);
+    }
+    expect((await app.inject({...request,payload:{question:'q',refine:{...refine,plan:{sources:['nonconformity']}}}})).statusCode).toBe(400);
+    const causeRefine = { axis: 'cause', field: 'causeCategory', value: 'check' };
+    expect((await app.inject({...request,payload:{question:'確認・検査の漏れで絞り込む',sessionId,refine:causeRefine}})).statusCode).toBe(200);
+    expect(answer).toHaveBeenLastCalledWith('確認・検査の漏れで絞り込む',sessionId,undefined,{principal:{kind:'viewer'},refine:causeRefine});
+    expect((await app.inject({...request,payload:{question:'q',refine:{...refine,axis:'unknown'}}})).statusCode).toBe(400);
+    expect((await app.inject({...request,payload:{refine}})).statusCode).toBe(400);
     expect((await app.inject({...request,payload:{question:'q',override:'unsafe'}})).statusCode).toBe(400);
     answer.mockRejectedValueOnce(new Error('検索に失敗しました。'));
     const failed=await app.inject(request);
@@ -55,7 +74,7 @@ describe('Hermes search trial authorization',()=>{
     const response=await app.inject({method:'POST',url:'/assembly/hermes-search-trial/answer',headers:{authorization:`Bearer ${token}`},payload:{question:'架空対象の記録を確認したい',sessionId}});
     expect(response.statusCode).toBe(200);
     expect(response.json().confirmationPending).toEqual(confirmationPending);
-    expect(answer).toHaveBeenCalledWith('架空対象の記録を確認したい',sessionId);
+    expect(answer).toHaveBeenCalledWith('架空対象の記録を確認したい',sessionId,undefined,{principal:{kind:'viewer'}});
     await app.close();
   });
 
@@ -79,4 +98,83 @@ describe('Hermes search trial authorization',()=>{
     expect(JSON.stringify(diagnostic)).not.toContain('質問の原文');
     await app.close();
   });
+
+  it('logs one receipt with the question and keeps it out of the kiosk response',async()=>{
+    const output:Array<Record<string, unknown>>=[];
+    const logger=pino({level:'info'},{write:line=>output.push(JSON.parse(line) as Record<string, unknown>)});
+    const app=Fastify({loggerInstance:logger});
+    const receipt={pageContext:{used:true,kind:'partNumber',value:'P'},schema:'hermes-search-receipt/v1',outcome:'answer',plan:{filters:[],semanticQuery:'q',sort:'relevance',limit:5},jev:{model:'jev-1.13.0',turn:'first',answers:{content:{noul:0.9}}},resultCount:1};
+    const answer=vi.fn().mockResolvedValue({status:'completed',answer:'処置:\n再製作。',recordIds:['synthetic'],elapsedMs:2,receipt});
+    const append=vi.fn().mockResolvedValue(undefined);
+    await registerHermesSearchTrialRoutes(app,{isEnabled:()=>true,scope:async()=>({enabled:true}),answer,close:vi.fn()} as never,{append});
+    const token=jwt.sign({sub:'reader',username:'reader',role:'VIEWER'},env.JWT_ACCESS_SECRET);
+    const response=await app.inject({method:'POST',url:'/assembly/hermes-search-trial/answer',headers:{authorization:`Bearer ${token}`},payload:{question:'溶接の不適合'}});
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).not.toHaveProperty('receipt');
+    const line=output.find((entry)=>entry.msg==='Hermes search receipt');
+    expect(line?.hermesReceipt).toMatchObject({...receipt,question:'溶接の不適合'});
+    expect(JSON.stringify(line)).not.toContain('再製作');
+    expect(append).toHaveBeenCalledTimes(1);
+    expect(append.mock.calls[0]?.[0]).toMatchObject({sessionId:null,recordIds:['synthetic'],hermesReceipt:{...receipt,question:'溶接の不適合'}});
+    expect(JSON.stringify(append.mock.calls[0]?.[0])).not.toContain('再製作');
+    await app.close();
+  });
+  it('strictly validates optional pageContext and forwards only valid values', async () => {
+    const app = Fastify();
+    app.setErrorHandler((_error, _request, reply) => reply.code(400).send({ code: 'REJECTED' }));
+    const answer = vi.fn().mockResolvedValue({ status: 'completed', answer: 'A', recordIds: [], elapsedMs: 1 });
+    await registerHermesSearchTrialRoutes(app, { isEnabled: () => true, scope: async () => ({ enabled: true }), answer, close: vi.fn() } as never);
+    const token = jwt.sign({ sub: 'reader', username: 'reader', role: 'VIEWER' }, env.JWT_ACCESS_SECRET);
+    const request = { method: 'POST' as const, url: '/assembly/hermes-search-trial/answer', headers: { authorization: `Bearer ${token}` } };
+    for (const kind of ['partNumber', 'drawingNumber', 'nonconformityNo', 'procedureId']) {
+      const pageContext = { path: '/'.repeat(200), entity: { kind, value: 'P'.repeat(200) } };
+      expect((await app.inject({ ...request, payload: { question: 'この記録', pageContext } })).statusCode).toBe(200);
+      expect(answer).toHaveBeenLastCalledWith('この記録', undefined, pageContext, { principal: { kind: 'viewer' } });
+    }
+    const valid = { path: '/page', entity: { kind: 'partNumber', value: 'P' } };
+    for (const pageContext of [
+      null, { ...valid, path: '/'.repeat(201) }, { ...valid, path: 123 },
+      { ...valid, entity: { ...valid.entity, kind: 'invalid' } },
+      { ...valid, entity: { ...valid.entity, value: '' } },
+      { ...valid, entity: { ...valid.entity, value: 'P'.repeat(201) } },
+      { ...valid, entity: { ...valid.entity, value: 123 } },
+      { ...valid, entity: { ...valid.entity, extra: true } }, { ...valid, extra: true },
+      { entity: valid.entity }, { path: '/page' }
+    ]) {
+      expect((await app.inject({ ...request, payload: { question: 'この記録', pageContext } })).statusCode).toBe(400);
+    }
+    expect(answer).toHaveBeenCalledTimes(4);
+    await app.close();
+  });
+
+  it('derives principal from authorized JWT roles or a registered kiosk key, ignoring body overrides', async () => {
+    const app = Fastify();
+    app.setErrorHandler((error, _request, reply) => reply.code(error instanceof ApiError ? error.statusCode : 400).send({ code: 'REJECTED' }));
+    const answer = vi.fn().mockResolvedValue({ status: 'completed', answer: 'A', recordIds: [], elapsedMs: 1 });
+    const memory = { heapUsedMb: 1.1, rssMb: 2.2, externalMb: 3.3, arrayBuffersMb: 4.4, records: 1, bySource: { nonconformity: 1 } };
+    await registerHermesSearchTrialRoutes(app, { isEnabled: () => true, scope: async () => ({ enabled: true, memory }), answer, close: vi.fn() } as never);
+    const findClient = vi.spyOn(prisma.clientDevice, 'findUnique').mockImplementation(async (args) =>
+      args.where.apiKey === 'synthetic-kiosk' ? { id: 'synthetic-device' } as never : null);
+    const url = '/assembly/hermes-search-trial/answer';
+    try {
+      for (const role of ['VIEWER', 'MANAGER', 'ADMIN']) {
+        const token = jwt.sign({ sub: 'reader', username: 'reader', role }, env.JWT_ACCESS_SECRET);
+        const headers = { authorization: `Bearer ${token}` };
+        expect((await app.inject({ method: 'POST', url, headers, payload: { question: 'q' } })).statusCode).toBe(200);
+        expect(answer).toHaveBeenLastCalledWith('q', undefined, undefined, { principal: { kind: role.toLowerCase() } });
+        expect((await app.inject({ method: 'POST', url, headers, payload: { question: 'q', principal: { kind: 'admin' } } })).statusCode).toBe(400);
+      }
+      const headers = { 'x-client-key': 'synthetic-kiosk' };
+      expect((await app.inject({ method: 'POST', url, headers, payload: { question: 'q' } })).statusCode).toBe(200);
+      expect(answer).toHaveBeenLastCalledWith('q', undefined, undefined, { principal: { kind: 'kiosk' } });
+      const token = jwt.sign({ sub: 'reader', username: 'reader', role: 'ADMIN' }, env.JWT_ACCESS_SECRET);
+      expect((await app.inject({ method: 'POST', url, headers: { ...headers, authorization: `Bearer ${token}` }, payload: { question: 'q' } })).statusCode).toBe(200);
+      expect(answer).toHaveBeenLastCalledWith('q', undefined, undefined, { principal: { kind: 'kiosk' } });
+      expect((await app.inject({ method: 'GET', url: '/assembly/hermes-search-trial/scope', headers })).json()).toEqual({ enabled: true, memory });
+      answer.mockClear();
+      expect((await app.inject({ method: 'POST', url, headers: { 'x-client-key': 'invalid', authorization: `Bearer ${token}` }, payload: { question: 'q' } })).statusCode).toBe(401);
+      expect(answer).not.toHaveBeenCalled();
+    } finally { findClient.mockRestore(); await app.close(); }
+  });
+
 });

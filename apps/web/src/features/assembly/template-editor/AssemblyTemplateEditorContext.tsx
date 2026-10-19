@@ -3,7 +3,7 @@ import { createContext, useContext } from 'react';
 import type { AssemblyTemplateEditorController } from './useAssemblyTemplateEditorController';
 import type { PropsWithChildren, ReactNode } from 'react';
 
-type EditorLink = { children: ReactNode; className: string; to: string };
+type EditorLink = { 'aria-label'?: string; children: ReactNode; className: string; to: string };
 
 type AssemblyTemplateEditorContextValue = {
   controller: AssemblyTemplateEditorController;

@@ -54,6 +54,7 @@ export type GrindingPlanningBoardProjectionOverride = {
   overrideResourceCd: string | null;
   overrideDueDate: Date | null;
   dueDateCleared?: boolean | null;
+  orderPinned?: boolean;
   alternateRank: number | null;
   specialDueKind?: string | null;
   specialDueExpiresAt?: Date | null;
@@ -435,6 +436,8 @@ function buildItems(
     const sourceMinutes = parseRequiredMinutes(data);
     const sourceQuantity = detail.orderSupplements[0]?.plannedQuantity ?? null;
     const rowCompleted = isCompleted(detail);
+    const completionSource = detail.productionScheduleExternalCompletion?.isExternallyCompleted
+      ? 'import' : detail.productionScheduleProgress?.isCompleted ? 'manual' : null;
     const rowItemId = buildGrindingPlanningBoardRowItemId(data);
     const parentOverride = params.overrides.get(rowItemId);
     const splits = params.splitEnabled === false
@@ -496,6 +499,7 @@ function buildItems(
         originalDueDate,
         sourceMinutes,
         rowCompleted,
+        completionSource,
         sourceQuantity,
         overrideVersion: override?.version ?? 0,
         overrideResourceCd: override?.overrideResourceCd ?? null,
@@ -506,6 +510,7 @@ function buildItems(
         inheritedParentOverrideDueDateCleared: parentOverride?.dueDateCleared ?? null,
         effectiveDueDate,
         alternateRank: override?.alternateRank ?? null,
+        orderPinned: override?.orderPinned ?? false,
         specialDueKind: override?.specialDueKind ?? null,
         specialDueExpiresAt: override?.specialDueExpiresAt?.toISOString() ?? null,
         originalRank
@@ -528,11 +533,13 @@ function buildItems(
         effectiveDueDate,
         originalRank,
         alternateRank: override?.alternateRank ?? null,
+        orderPinned: override?.orderPinned ?? false,
         specialDue: specialDueForOverride(override),
         plannedQuantity: displayFields.plannedQuantity ?? null,
         requiredMinutes,
         requiredMinutesKnown,
         isCompleted: rowCompleted,
+        completionSource,
         progress: {
           completed: itemProgress.completed,
           total: itemProgress.total,

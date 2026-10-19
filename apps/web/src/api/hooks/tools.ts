@@ -34,6 +34,7 @@ import {
   getUnifiedItems,
   type UnifiedListParams
 } from '../client';
+import { toolsQueryKeys } from '../queryKeys/tools';
 
 import type {
   BorrowPayload,
@@ -44,28 +45,28 @@ import type {
 
 export function useDepartments() {
   return useQuery({
-    queryKey: ['departments'],
+    queryKey: toolsQueryKeys.departmentsAll,
     queryFn: getDepartments
   });
 }
 
 export function useEmployees() {
   return useQuery({
-    queryKey: ['employees'],
+    queryKey: toolsQueryKeys.employeesAll,
     queryFn: getEmployees
   });
 }
 
 export function useMachines(params?: { search?: string; operatingStatus?: string }) {
   return useQuery({
-    queryKey: ['machines', params],
+    queryKey: toolsQueryKeys.machines(params),
     queryFn: () => getMachines(params),
   });
 }
 
 export function useUninspectedMachines(params?: { csvDashboardId?: string; date?: string }, options?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: ['machines-uninspected', params],
+    queryKey: toolsQueryKeys.uninspectedMachines(params),
     queryFn: () =>
       getUninspectedMachines({
         csvDashboardId: params?.csvDashboardId ?? '',
@@ -79,15 +80,15 @@ export function useMachineMutations() {
   const queryClient = useQueryClient();
   const create = useMutation({
     mutationFn: (payload: CreateMachineInput) => createMachine(payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['machines'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.machinesAll })
   });
   const update = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: UpdateMachineInput }) => updateMachine(id, payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['machines'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.machinesAll })
   });
   const remove = useMutation({
     mutationFn: (id: string) => deleteMachine(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['machines'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.machinesAll })
   });
   return { create, update, remove };
 }
@@ -96,22 +97,22 @@ export function useEmployeeMutations() {
   const queryClient = useQueryClient();
   const create = useMutation({
     mutationFn: (payload: Partial<Employee>) => createEmployee(payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.employeesAll })
   });
   const update = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Partial<Employee> }) => updateEmployee(id, payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.employeesAll })
   });
   const remove = useMutation({
     mutationFn: (id: string) => deleteEmployee(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.employeesAll })
   });
   return { create, update, remove };
 }
 
 export function useItems() {
   return useQuery({
-    queryKey: ['items'],
+    queryKey: toolsQueryKeys.itemsAll,
     queryFn: getItems
   });
 }
@@ -120,22 +121,22 @@ export function useItemMutations() {
   const queryClient = useQueryClient();
   const create = useMutation({
     mutationFn: (payload: Partial<Item>) => createItem(payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['items'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.itemsAll })
   });
   const update = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Partial<Item> }) => updateItem(id, payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['items'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.itemsAll })
   });
   const remove = useMutation({
     mutationFn: (id: string) => deleteItem(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['items'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.itemsAll })
   });
   return { create, update, remove };
 }
 
 export function useActiveLoans(clientId?: string, clientKey?: string, options?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: ['loans', clientId, clientKey],
+    queryKey: toolsQueryKeys.loans(clientId, clientKey),
     queryFn: () => getActiveLoans(clientId, clientKey),
     refetchInterval: 30000, // 30秒ごとに自動更新（12時間経過の状態をリアルタイムで反映）
     placeholderData: (previousData) => previousData,
@@ -145,7 +146,7 @@ export function useActiveLoans(clientId?: string, clientKey?: string, options?: 
 
 export function usePhotoLabelReviews(limit = 50) {
   return useQuery({
-    queryKey: ['photo-label-reviews', limit],
+    queryKey: toolsQueryKeys.photoLabelReviews(limit),
     queryFn: () => listPhotoLabelReviews(limit),
   });
 }
@@ -159,9 +160,9 @@ export function usePatchPhotoLabelReview() {
       humanDisplayName?: string | null;
     }) => patchPhotoLabelReview(args.loanId, { quality: args.quality, humanDisplayName: args.humanDisplayName }),
     onSuccess: (_data, args) => {
-      queryClient.invalidateQueries({ queryKey: ['photo-label-reviews'] });
-      queryClient.invalidateQueries({ queryKey: ['loans'] });
-      queryClient.invalidateQueries({ queryKey: ['photo-similar-candidates', args.loanId] });
+      queryClient.invalidateQueries({ queryKey: toolsQueryKeys.photoLabelReviewsAll });
+      queryClient.invalidateQueries({ queryKey: toolsQueryKeys.loansAll });
+      queryClient.invalidateQueries({ queryKey: toolsQueryKeys.photoSimilarCandidates(args.loanId) });
     },
   });
 }
@@ -171,16 +172,16 @@ export function usePostPhotoGallerySeed() {
   return useMutation({
     mutationFn: (args: { image: File; canonicalLabel: string }) => postPhotoGallerySeed(args),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['photo-label-reviews'] });
-      queryClient.invalidateQueries({ queryKey: ['loans'] });
-      queryClient.invalidateQueries({ queryKey: ['photo-similar-candidates', data.loanId] });
+      queryClient.invalidateQueries({ queryKey: toolsQueryKeys.photoLabelReviewsAll });
+      queryClient.invalidateQueries({ queryKey: toolsQueryKeys.loansAll });
+      queryClient.invalidateQueries({ queryKey: toolsQueryKeys.photoSimilarCandidates(data.loanId) });
     },
   });
 }
 
 export function usePhotoSimilarCandidates(loanId: string, options?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: ['photo-similar-candidates', loanId],
+    queryKey: toolsQueryKeys.photoSimilarCandidates(loanId),
     queryFn: () => getPhotoSimilarCandidates(loanId),
     enabled: options?.enabled !== false && Boolean(loanId),
   });
@@ -192,7 +193,7 @@ export function useBorrowMutation(clientKey?: string) {
     mutationFn: (payload: BorrowPayload) => borrowItem(payload, clientKey),
     onSuccess: () => {
       // 貸出成功後、すべてのloansクエリを無効化して最新データを取得
-      queryClient.invalidateQueries({ queryKey: ['loans'] });
+      queryClient.invalidateQueries({ queryKey: toolsQueryKeys.loansAll });
     }
   });
 }
@@ -203,7 +204,7 @@ export function useReturnMutation(clientKey?: string) {
     mutationFn: (payload: ReturnPayload) => returnLoan(payload, clientKey),
     onSuccess: () => {
       // 返却成功後、すべてのloansクエリを無効化して最新データを取得
-      queryClient.invalidateQueries({ queryKey: ['loans'] });
+      queryClient.invalidateQueries({ queryKey: toolsQueryKeys.loansAll });
     }
   });
 }
@@ -214,7 +215,7 @@ export function useDeleteLoanMutation(clientKey?: string) {
     mutationFn: (loanId: string) => deleteLoan(loanId, clientKey),
     onSuccess: () => {
       // 削除成功後、すべてのloansクエリを無効化して最新データを取得
-      queryClient.invalidateQueries({ queryKey: ['loans'] });
+      queryClient.invalidateQueries({ queryKey: toolsQueryKeys.loansAll });
     }
   });
 }
@@ -225,7 +226,7 @@ export function useCancelLoanMutation(clientKey?: string) {
     mutationFn: (payload: CancelPayload) => cancelLoan(payload, clientKey),
     onSuccess: () => {
       // 取消成功後、すべてのloansクエリを無効化して最新データを取得
-      queryClient.invalidateQueries({ queryKey: ['loans'] });
+      queryClient.invalidateQueries({ queryKey: toolsQueryKeys.loansAll });
     }
   });
 }
@@ -236,7 +237,7 @@ export function usePhotoBorrowMutation(clientKey?: string) {
     mutationFn: (payload: PhotoBorrowPayload) => photoBorrow(payload, clientKey),
     onSuccess: () => {
       // 写真撮影持出成功後、すべてのloansクエリを無効化して最新データを取得
-      queryClient.invalidateQueries({ queryKey: ['loans'] });
+      queryClient.invalidateQueries({ queryKey: toolsQueryKeys.loansAll });
     }
   });
 }
@@ -246,7 +247,7 @@ export function useTransactions(
   filters?: { startDate?: string; endDate?: string; employeeId?: string; itemId?: string; clientId?: string }
 ) {
   return useQuery({
-    queryKey: ['transactions', page, filters],
+    queryKey: toolsQueryKeys.transactions(page, filters),
     queryFn: () => getTransactions(page, filters),
     placeholderData: (previousData) => previousData
   });
@@ -256,7 +257,7 @@ export function useTransactions(
 
 export function useUnifiedItems(params?: UnifiedListParams) {
   return useQuery({
-    queryKey: ['unified-items', params],
+    queryKey: toolsQueryKeys.unifiedItems(params),
     queryFn: () => getUnifiedItems(params),
     placeholderData: (previous) => previous
   });

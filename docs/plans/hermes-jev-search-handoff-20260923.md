@@ -48,7 +48,7 @@ semantic plans -> original-text response. The main modules are
 [`hermes-jev-record-classifier.mjs`](../../scripts/hermes-search/hermes-jev-record-classifier.mjs),
 [`hermes-resolution-policy.mjs`](../../scripts/hermes-search/hermes-resolution-policy.mjs),
 [`hermes-search-state.mjs`](../../scripts/hermes-search/hermes-search-state.mjs),
-and [`hermes-search-trial.service.ts`](../../apps/api/src/services/assembly/hermes-search-trial.service.ts).
+and [`hermes-search-trial.service.ts`](../../apps/api/src/services/business-hermes/hermes-search-trial.service.ts).
 
 Relevant merged milestones, in order:
 

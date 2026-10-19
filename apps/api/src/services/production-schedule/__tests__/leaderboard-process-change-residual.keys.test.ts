@@ -34,6 +34,12 @@ describe('leaderboard-process-change-residual.keys', () => {
     expect(parseProcessChangeResidualStrongEvidenceKey('missing-parts')).toBeNull();
   });
 
+  it('buildProcessChangeResidualSqlTextKey counts code points like PostgreSQL length()', () => {
+    expect(
+      buildProcessChangeResidualSqlTextKey({ productNo: '\u{20BB7}1', fkojun: '10', resourceCd: 'a' })
+    ).toBe('2:\u{20BB7}1|2:10|1:A');
+  });
+
   it('buildProcessChangeResidualSqlTextKey avoids NUL bytes and length-prefixes parts', () => {
     const key = buildProcessChangeResidualSqlTextKey({
       productNo: 'P|1',

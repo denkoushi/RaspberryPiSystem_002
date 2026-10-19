@@ -1,5 +1,3 @@
-import crypto from 'crypto';
-
 import type { FastifyInstance } from 'fastify';
 
 import { authorizeRoles } from '../../lib/auth.js';
@@ -8,6 +6,7 @@ import { logger } from '../../lib/logger.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../../services/backup/backup-config.js';
 import { DropboxOAuthService } from '../../services/backup/dropbox-oauth.service.js';
+import { consumeOAuthState, issueOAuthState } from '../../services/oauth-state.store.js';
 import { oauthCallbackQuerySchema } from './schemas.js';
 
 type LegacyStorageOptions = NonNullable<BackupConfig['storage']['options']> & {
@@ -17,11 +16,14 @@ type LegacyStorageOptions = NonNullable<BackupConfig['storage']['options']> & {
   appSecret?: string;
 };
 
+const OAUTH_RATE_LIMIT = { max: 20, timeWindow: '1 minute' };
+
 export async function registerBackupOAuthRoutes(app: FastifyInstance): Promise<void> {
   const mustBeAdmin = authorizeRoles('ADMIN');
 
   // OAuth 2.0認証URL生成
   app.get('/backup/oauth/authorize', {
+    config: { rateLimit: OAUTH_RATE_LIMIT },
     preHandler: [mustBeAdmin],
   }, async (request, reply) => {
     const config = await BackupConfigLoader.load();
@@ -44,10 +46,7 @@ export async function registerBackupOAuthRoutes(app: FastifyInstance): Promise<v
     });
 
     // CSRF保護用のstateパラメータを生成
-    const state = crypto.randomBytes(32).toString('hex');
-
-    // セッションにstateを保存（簡易実装、本番環境では適切なセッション管理を使用）
-    // ここではクエリパラメータとして返す（実際の実装ではセッションストアを使用）
+    const state = issueOAuthState(request.user!.id, 'dropbox');
     const authUrl = oauthService.getAuthorizationUrl(state);
 
     return reply.status(200).send({
@@ -58,8 +57,10 @@ export async function registerBackupOAuthRoutes(app: FastifyInstance): Promise<v
 
   // OAuth 2.0コールバック（認証コードを受け取る）
   // 注意: コールバックエンドポイントはDropboxからリダイレクトされるため、認証をスキップする
-  // CSRF保護は`state`パラメータで行う（簡易実装）
-  app.get('/backup/oauth/callback', async (request, reply) => {
+  // CSRF保護はサーバーに保存したstateの照合で行う
+  app.get('/backup/oauth/callback', { config: { rateLimit: OAUTH_RATE_LIMIT } }, async (request, reply) => {
+    const { state } = request.query as { state?: unknown };
+    consumeOAuthState(state, 'dropbox');
     const query = oauthCallbackQuerySchema.parse(request.query);
 
     if (query.error) {

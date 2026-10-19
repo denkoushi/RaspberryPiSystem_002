@@ -1,6 +1,6 @@
 /** キオスク研削順位ボードのページ専用API契約。既存順位ボードの順位・割当とは別管理。 */
 export type GrindingPlanningBoardView = 'seiban' | 'resource';
-export type GrindingPlanningBoardCategory = 'grinding' | 'cutting';
+export type GrindingPlanningBoardCategory = 'grinding' | 'cutting' | 'all';
 
 export type GrindingPlanningBoardDueScope =
   | { kind: 'seiban' }
@@ -74,6 +74,13 @@ export interface GrindingPlanningBoardSpecialDue {
 
 export type GrindingPlanningBoardItemKind = 'row' | 'split';
 
+/**
+ * 材料（鋳物・鋼材など）の入荷状況。購買CSV `FKOBAIST` 由来。
+ * received=全数入荷済 / partial=一部入荷済 / ordered=注文済・未入荷 / unordered=未発注。
+ */
+export type MaterialArrivalStatus = 'received' | 'partial' | 'ordered' | 'unordered';
+export type MaterialArrivalBasis = 'material' | 'part';
+
 export interface GrindingPlanningBoardItem {
   itemId: string;
   kind: GrindingPlanningBoardItemKind;
@@ -93,11 +100,16 @@ export interface GrindingPlanningBoardItem {
   originalRank: number | null;
   alternateRank: number | null;
   specialDue?: GrindingPlanningBoardSpecialDue | null;
+  orderPinned?: boolean;
   plannedQuantity: number | null;
   requiredMinutes: number | null;
   requiredMinutesKnown: boolean;
   isCompleted: boolean;
+  completionSource?: 'manual' | 'import' | null;
   progress: { completed: number; total: number; quantityKnown: boolean };
+  /** 材料の購買行が無い部品は null / 省略 */
+  materialArrivalStatus?: MaterialArrivalStatus | null;
+  materialArrivalBasis?: MaterialArrivalBasis;
 }
 
 export interface GrindingPlanningBoardLoad {
@@ -113,6 +125,11 @@ export interface GrindingPlanningBoardLoad {
   alternateUnknownItemCount: number;
 }
 
+export interface GrindingPlanningBoardLoadResponse {
+  load: GrindingPlanningBoardLoad[];
+  unknownRequiredMinutesCount: number;
+}
+
 export interface GrindingPlanningBoardResponse {
   siteKey: string;
   category: GrindingPlanningBoardCategory;
@@ -122,10 +139,14 @@ export interface GrindingPlanningBoardResponse {
   registeredFseibans: string[];
   seibanOrder: string[];
   resources: string[];
+  resourceCategories?: Record<string, 'grinding' | 'cutting'>;
   items: GrindingPlanningBoardItem[];
   load: GrindingPlanningBoardLoad[];
   unknownRequiredMinutesCount: number;
+  loadDeferred?: boolean;
   seibanProgress: Record<string, { completed: number; total: number }>;
+  /** 登録済み製番すべての機種表示名（その区分に工程が無い製番も含む） */
+  machineNames?: Record<string, string | null>;
   snapshotId: string;
   nextCursor: string | null;
 }
@@ -147,6 +168,12 @@ export interface GrindingPlanningBoardOverrideItemRequest {
 export interface GrindingPlanningBoardOverridesRequest {
   sourceRevision: string;
   items: GrindingPlanningBoardOverrideItemRequest[];
+}
+
+export interface GrindingPlanningBoardPinsRequest {
+  sourceRevision: string;
+  items: { itemId: string; itemRevision: string; overrideVersion?: number }[];
+  pinned: boolean;
 }
 
 export interface GrindingPlanningBoardRankRequest {
@@ -178,6 +205,12 @@ export interface GrindingPlanningBoardResourceOrderRequest {
   placement: GrindingPlanningBoardResourceOrderPlacement;
 }
 
+export interface GrindingPlanningBoardResourceOrderBulkRequest {
+  sourceRevision: string;
+  resourceCd: string;
+  items: { itemId: string; itemRevision: string; overrideVersion?: number }[];
+}
+
 export interface GrindingPlanningBoardResourceOrderResponse {
   sourceRevision: string;
   items: GrindingPlanningBoardItem[];
@@ -204,4 +237,21 @@ export interface GrindingPlanningBoardSeibanCandidatesResponse {
   rangeEnd: string;
   completionFilter: 'all' | 'incomplete';
   candidates: GrindingPlanningBoardSeibanCandidate[];
+}
+
+/** ガント表示で棒の長さを決める、資源CDごとの1日あたり稼働時間。サイト共有。 */
+export const GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS = [8, 10, 24] as const;
+export type GrindingPlanningBoardResourceDailyHours = (typeof GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS)[number];
+export const GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS: GrindingPlanningBoardResourceDailyHours = 8;
+
+/** 既定値(8時間)以外が保存された資源CDだけを返す。 */
+export interface GrindingPlanningBoardResourceCapacityResponse {
+  dailyHoursByResource: Record<string, GrindingPlanningBoardResourceDailyHours>;
+  runsThroughBreaksResources: string[];
+}
+
+export interface GrindingPlanningBoardResourceCapacityRequest {
+  resourceCd: string;
+  dailyHours?: GrindingPlanningBoardResourceDailyHours;
+  runsThroughBreaks?: boolean;
 }

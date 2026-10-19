@@ -1,16 +1,16 @@
 import type { FastifyInstance } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
 import { z } from 'zod';
-import { ApiError } from '../../lib/errors.js';
+import { ApiError, DomainHttpError } from '../../lib/errors.js';
 import {
+  deleteImportedDrawing,
   importDrawingAndSave,
   resolveDrawingMultipartReadLimit
 } from '../../lib/part-measurement-drawing-import.js';
 import { convertDrawingUploadToPreviewBuffer } from '../../lib/part-measurement-drawing-preview.js';
-import { PartMeasurementDrawingStorage } from '../../lib/part-measurement-drawing-storage.js';
-
 
 import { getPartMeasurementDrawingOcrScheduler } from '../../services/part-measurement/part-measurement-drawing-ocr.scheduler.js';
+import { rankPartMeasurementDrawingDimensionMapCandidates } from '../../services/part-measurement/part-measurement-drawing-dimension-map-candidates.js';
 import {
   assertVisualCleanupToken,
   signVisualCleanupToken
@@ -30,6 +30,7 @@ import {
   serializeVisualTemplate,
   serializeDrawingOcrStatus,
   serializeDrawingOcrCandidate,
+  serializeDrawingDimensionMapCandidate,
   readMultipartFile,
   type PartMeasurementRouteDeps
 } from './shared.js';
@@ -40,6 +41,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
     allowWriteKiosk,
     visualTemplateService,
     drawingOcrService,
+    drawingDimensionMapService,
     enqueueDrawingOcrAndWake
   } = deps;
 
@@ -70,7 +72,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
     app.get(
       '/part-measurement/visual-templates/:id',
       { preHandler: allowView, config: { rateLimit: false } },
-      async (request, reply) => {
+      async (request) => {
         const params = z.object({ id: z.string().uuid() }).parse(request.params);
         const q = z
           .object({
@@ -81,7 +83,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
           includeInactive: q.includeInactive === true
         });
         if (!visual) {
-          return reply.status(404).send({ message: '図面テンプレートが見つかりません。' });
+          throw new DomainHttpError(404, '図面テンプレートが見つかりません。');
         }
         return { visualTemplate: serializeVisualTemplate(visual) };
       }
@@ -96,7 +98,11 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
         if (status.status === 'PENDING') {
           getPartMeasurementDrawingOcrScheduler().wake();
         }
-        return { ocr: serializeDrawingOcrStatus(status) };
+        const dimensionMap = await drawingDimensionMapService.getCompletedSummary(
+          params.id,
+          status.drawingImageFingerprint
+        );
+        return { ocr: serializeDrawingOcrStatus(status), dimensionMap };
       }
     );
 
@@ -106,16 +112,41 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
       async (request) => {
         const params = z.object({ id: z.string().uuid() }).parse(request.params);
         const body = drawingOcrCandidateBodySchema.parse(request.body);
+        const limit = body.limit ?? 5;
+        // 夜間に作った寸法マップがあればそれを使う（画像 AI も OCR も呼ばない）。無い図面は従来の OCR 候補。
+        const ocrStatus = await drawingOcrService.getCurrentStatus(params.id);
+        const dimensionMap = await drawingDimensionMapService.getCompletedPayload(
+          params.id,
+          ocrStatus.drawingImageFingerprint
+        );
+        if (dimensionMap) {
+          const candidates = rankPartMeasurementDrawingDimensionMapCandidates(dimensionMap, {
+            xRatio: body.xRatio,
+            yRatio: body.yRatio,
+            calloutTipXRatio: body.calloutTipXRatio,
+            calloutTipYRatio: body.calloutTipYRatio,
+            measurementLabel: body.measurementLabel,
+            depthMode: body.depthMode,
+            limit
+          });
+          return {
+            status: 'completed',
+            source: 'dimensionMap',
+            candidates: candidates.map(serializeDrawingDimensionMapCandidate),
+            cache: serializeDrawingOcrStatus(ocrStatus)
+          };
+        }
         const result = await drawingOcrService.getCandidates(params.id, {
           xRatio: body.xRatio,
           yRatio: body.yRatio,
           markerNo: body.markerNo,
-          limit: body.limit ?? 5,
+          limit,
           measurementLabel: body.measurementLabel,
           depthMode: body.depthMode
         });
         return {
           status: result.status.toLowerCase(),
+          source: 'ocr',
           candidates: result.candidates.map(serializeDrawingOcrCandidate),
           cache: serializeDrawingOcrStatus(result.cache)
         };
@@ -172,7 +203,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
           name = filename.replace(/\.[^.]+$/, '') || '図面テンプレート';
         }
 
-        const { relativeUrl } = await importDrawingAndSave({
+        const imported = await importDrawingAndSave({
           buffer: fileBuffer,
           mimetype,
           filename
@@ -182,10 +213,11 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
         try {
           created = await visualTemplateService.create({
             name: name.slice(0, 200),
-            drawingImageRelativePath: relativeUrl
+            drawingImageRelativePath: imported.relativeUrl,
+            drawingSourceStorageKey: imported.sourceStorageKey
           });
         } catch (error) {
-          await PartMeasurementDrawingStorage.deleteDrawing(relativeUrl).catch(() => undefined);
+          await deleteImportedDrawing(imported);
           throw error;
         }
         await enqueueDrawingOcrAndWake(created.id, 'visual_template_create');
@@ -199,7 +231,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
     app.patch(
       '/part-measurement/visual-templates/:id',
       { preHandler: allowWriteKiosk, config: { rateLimit: false } },
-      async (request, reply) => {
+      async (request) => {
         const params = z.object({ id: z.string().uuid() }).parse(request.params);
         const body = z
           .object({
@@ -211,7 +243,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
           return { visualTemplate: serializeVisualTemplate(updated) };
         } catch (error) {
           if (error instanceof ApiError && error.statusCode === 404) {
-            return reply.status(404).send({ message: error.message });
+            throw new DomainHttpError(404, error.message);
           }
           throw error;
         }
@@ -230,12 +262,10 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
         assertVisualCleanupToken(cleanupToken.trim(), params.id);
         const outcome = await visualTemplateService.deleteIfUnused(params.id);
         if (outcome === 'not_found') {
-          return reply.status(404).send({ message: '図面テンプレートが見つかりません。' });
+          throw new DomainHttpError(404, '図面テンプレートが見つかりません。');
         }
         if (outcome === 'in_use') {
-          return reply.status(409).send({
-            message: '図面テンプレートは使用中のため削除できません。'
-          });
+          throw new DomainHttpError(409, '図面テンプレートは使用中のため削除できません。');
         }
         return reply.status(204).send();
       }

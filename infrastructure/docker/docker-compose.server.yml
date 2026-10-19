@@ -85,10 +85,13 @@ services:
       POWER_ACTIONS_DIR: /app/power-actions
       # API経由のローカルバックアップ保存先（ホストの/opt/backupsをコンテナへマウント）
       BACKUP_STORAGE_DIR: /opt/backups
+      # 大容量バックアップはRAM上の/tmp tmpfsを避け、ディスクへ保存する
+      BACKUP_TEMP_DIR: ${BACKUP_TEMP_DIR:-/opt/backups/.tmp}
       DROPBOX_ACCESS_TOKEN: ${DROPBOX_ACCESS_TOKEN:-}
       DROPBOX_APP_KEY: ${DROPBOX_APP_KEY:-}
       DROPBOX_APP_SECRET: ${DROPBOX_APP_SECRET:-}
       DROPBOX_REFRESH_TOKEN: ${DROPBOX_REFRESH_TOKEN:-}
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
       SLACK_KIOSK_SUPPORT_WEBHOOK_URL: ${SLACK_KIOSK_SUPPORT_WEBHOOK_URL:-}
       # WebRTC機能の有効/無効（trueで有効化）
       WEBRTC_ENABLED: ${WEBRTC_ENABLED:-true}
@@ -96,6 +99,8 @@ services:
       PI5_SCHEDULER_LEADER_ENABLED: ${PI5_SCHEDULER_LEADER_ENABLED:-false}
       PI5_SCHEDULER_LEASE_FILE: ${PI5_SCHEDULER_LEASE_FILE:-/app/alerts/.pi5-scheduler-leader}
       PI5_SCHEDULER_LEASE_INTERVAL_MS: ${PI5_SCHEDULER_LEASE_INTERVAL_MS:-2000}
+      # DGXリソースの「PI5 業務意図」を再起動・スロット切替後も残す（ホストの config/ に保存）
+      INFERENCE_BUSINESS_PROFILE_INTENT_FILE_PATH: /app/config/business-profile-intent.json
     volumes:
       - photo-storage:/app/storage/photos
       - thumbnail-storage:/app/storage/thumbnails
@@ -112,6 +117,10 @@ services:
       - assembly-procedure-assets-storage:/app/storage/assembly-procedure-assets
       - work-instruction-assets-storage:/app/storage/work-instruction-assets
       - knowledge-assets-storage:/app/storage/knowledge-assets
+      # 要領書の Gmail 素材（不変blob。未マウントだと再作成で消失）
+      - procedure-materials-storage:/app/storage/procedure-materials
+      # 要領書の動画（SD 変換済み。未マウントだと再作成で消失）
+      - procedure-videos-storage:/app/storage/procedure-videos
       - knowledge-git-storage:/app/storage/knowledge-git
       # 計測機器ジャンル点検画像（未マウントだとコンテナ再作成でファイル消失）
       - measuring-instrument-genres-storage:/app/storage/measuring-instrument-genres
@@ -349,6 +358,20 @@ volumes:
       type: none
       o: bind
       device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/knowledge-assets
+  procedure-materials-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_procedure-materials-storage
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/procedure-materials
+  procedure-videos-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_procedure-videos-storage
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/procedure-videos
   knowledge-git-storage:
     name: ${PI5_VOLUME_PREFIX:-docker}_knowledge-git-storage
     driver: local

@@ -1,3 +1,4 @@
+import { toLoanResponse } from '../../../lib/loan-response.js';
 import type { FastifyInstance } from 'fastify';
 import { LoanService } from '../../../services/tools/loan.service.js';
 import { borrowSchema } from './schemas.js';
@@ -9,7 +10,7 @@ export function registerBorrowRoute(app: FastifyInstance, loanService: LoanServi
     const resolvedClientId = await loanService.resolveClientId(body.clientId, headerKey);
 
     const loan = await loanService.borrow(body, resolvedClientId);
-    return { loan };
+    return { loan: toLoanResponse(loan) };
   });
 }
 

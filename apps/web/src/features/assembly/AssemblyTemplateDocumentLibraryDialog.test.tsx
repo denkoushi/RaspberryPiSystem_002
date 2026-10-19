@@ -15,7 +15,7 @@ const documentFixture: AssemblyProcedureDocumentSummaryDto = {
   pages: [{ pageIndex: 0, imageRelativePath: '/api/document-1-1.png' }],
   createdAt: '2026-09-03T00:00:00.000Z',
   updatedAt: '2026-09-03T00:00:00.000Z',
-  activeTemplateCount: 0,
+  manualAssignments: [], activeTemplateCount: 0,
   totalTemplateCount: 0
 };
 

@@ -61,6 +61,28 @@ def production_web_variables() -> dict[str, str]:
 
 
 class AnsibleTemplateContractTests(unittest.TestCase):
+    def test_admin_mfa_is_required_by_default_and_can_be_disabled(self) -> None:
+        environment = Environment(undefined=StrictUndefined)
+        base = {
+            "app_database_url": "postgresql://app:fixture@db:5432/borrow_return",
+            "api_jwt_access_secret": "a" * 32,
+            "api_jwt_refresh_secret": "b" * 32,
+            "admin_allow_nets": ["127.0.0.1/32"],
+        }
+        for filename in ("api.env.j2", "docker.env.j2"):
+            template = environment.from_string(
+                (ANSIBLE_ROOT / "templates" / filename).read_text(encoding="utf-8")
+            )
+            for overrides, expected in (
+                ({}, "true"),
+                ({"api_admin_mfa_required": True}, "true"),
+                ({"api_admin_mfa_required": False}, "false"),
+                ({"api_admin_mfa_required": "false"}, "false"),
+            ):
+                with self.subTest(template=filename, overrides=overrides):
+                    rendered = template.render(**base, **overrides)
+                    self.assertIn(f"ADMIN_MFA_REQUIRED={expected}", rendered.splitlines())
+
     def test_business_hermes_a2ui_uses_the_standard_gateway_origin(self) -> None:
         inventory = PRIMARY_INVENTORY.read_text(encoding="utf-8")
         self.assertIn('business_hermes_web_base_url: "https://gateway"', inventory)

@@ -9,6 +9,7 @@
     {{
       ['lightdm.service']
       + ([] if (release_torque_cutover | default(false) | bool) else ['kiosk-browser.service'])
+      + (['kiosk-hotcorner.service'] if (release_kiosk_check_hotcorner | default(manage_kiosk_browser | default(false)) | bool) and not (release_torque_cutover | default(false) | bool) else [])
       + (['status-agent.timer'] if release_kiosk_services | length > 0 else [])
     }}
   register: release_kiosk_display_health

@@ -7,7 +7,8 @@ type FkojunstStatusMailGenerationRevisionRow = {
 };
 
 /**
- * Board generation専用のraw公開revision。count/MAXで全rawを集約する既存signal契約とは分離する。
+ * FKOJUNST_Status mail raw の公開revision（行・取り込み run の変更ごとにトリガーで増える）。
+ * 世代トークン・residual evidence・メール同期の世代確認で共通に使い、raw 全件の集計を避ける。
  * migrationが作るrevision行が無い場合は、初期値に丸めず運用不整合として失敗させる。
  */
 export async function fetchFkojunstStatusMailGenerationRevision(

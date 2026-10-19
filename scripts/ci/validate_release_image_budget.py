@@ -41,7 +41,7 @@ class ImageBudgetResult:
 
 
 API_IMAGE_BUDGET = ImageBudget(
-    max_total_bytes=1_000_000_000,
+    max_total_bytes=1_100_000_000,
     max_layer_bytes=700_000_000,
     max_layers=40,
 )

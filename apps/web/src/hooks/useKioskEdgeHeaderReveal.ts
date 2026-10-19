@@ -5,25 +5,27 @@ import {
   type KioskHeaderRevealHotZoneConfig
 } from '../features/kiosk/kioskHeaderRevealHotZone';
 
-import { useTimedHoverReveal } from './useTimedHoverReveal';
+import { useTimedHoverReveal, type TimedHoverRevealCloseReason } from './useTimedHoverReveal';
 
 export type KioskEdgeHeaderRevealHandlers = {
   isVisible: boolean;
+  close: () => void;
   onHotZoneEnter: () => void;
   onHeaderMouseEnter: () => void;
   onHeaderMouseLeave: () => void;
 };
 
 /**
- * 沉浸式キオスクヘッダー: エッジホットゾーン + window mousemove で開き、leave 後に遅延で閉じる。
+ * キオスク下辺ドック: エッジホットゾーン + window mousemove で開き、leave 後に遅延で閉じる。
  * マウス操作前提（タッチは未対応）。
  */
 export function useKioskEdgeHeaderReveal(
   enabled: boolean,
-  hotZone: KioskHeaderRevealHotZoneConfig
+  hotZone: KioskHeaderRevealHotZoneConfig,
+  canClose?: (reason: TimedHoverRevealCloseReason) => boolean
 ): KioskEdgeHeaderRevealHandlers {
   const { open, isVisible, onHeaderMouseEnter: keepHeaderHoverOpen, ...handlers } =
-    useTimedHoverReveal(enabled);
+    useTimedHoverReveal(enabled, canClose);
   const hotZoneRef = useRef(hotZone);
   hotZoneRef.current = hotZone;
 

@@ -54,16 +54,26 @@ type Props = {
   ocrCandidateStatus?: PartMeasurementDrawingOcrStatus | null;
   ocrCandidateLoading?: boolean;
   ocrCandidateError?: string | null;
-  onApplyOcrCandidate?: (valueText: string) => void;
+  /** 候補を押したとき。2 つの和のときは candidate を渡さない */
+  onApplyOcrCandidate?: (valueText: string, candidate?: PartMeasurementDrawingOcrCandidateDto) => void;
   measurementLabelSettings?: readonly InspectionDrawingMeasurementLabelSetting[];
   /** 丸数字/矢視モード行（Sidebar が組み立てる） */
   modeChrome?: ReactNode;
+  /** 使用中の丸数字（入替先の候補） */
+  markerNos?: readonly number[];
+  /** 選択点の丸数字を指定番号と入れ替える */
+  onSwapMarkerNo?: (targetMarkerNo: number) => void;
 };
 
 const DEFAULT_MEASUREMENT_LABEL_SETTINGS = buildDefaultInspectionDrawingMeasurementLabelSettings();
 
 const toleranceCandidateChipClassName =
   'min-h-7 rounded border border-cyan-300/40 bg-cyan-950/70 px-2 text-cyan-50 disabled:opacity-50';
+
+/** 候補 2 つの和。浮動小数の誤差（0.1+0.2）を落とす */
+export function formatCandidateSum(sum: number): string {
+  return String(Number(sum.toFixed(4)));
+}
 
 type ToleranceCandidateInputProps = {
   value: string;
@@ -145,8 +155,22 @@ export function InspectionDrawingPointSettingsPanel({
   ocrCandidateError = null,
   onApplyOcrCandidate,
   measurementLabelSettings,
-  modeChrome
+  modeChrome,
+  markerNos = [],
+  onSwapMarkerNo
 }: Props) {
+  const [markerPickerPointId, setMarkerPickerPointId] = useState<string | null>(null);
+  /** 「＋」: 候補を 2 つ押して和を基準値にする（ピッチなど図面に無い寸法用）。先に押した値を持つ */
+  const [sumMode, setSumMode] = useState(false);
+  const [sumFirstValue, setSumFirstValue] = useState<string | null>(null);
+  const candidateSignature = ocrCandidates.map((candidate) => candidate.valueText).join('|');
+  useEffect(() => {
+    setSumMode(false);
+    setSumFirstValue(null);
+  }, [point.id, candidateSignature]);
+  const markerPickerOpen = markerPickerPointId === point.id;
+  const setMarkerPickerOpen = (open: boolean) => setMarkerPickerPointId(open ? point.id : null);
+  const canSwapMarkerNo = Boolean(onSwapMarkerNo) && !disabled && markerNos.length > 1;
   const effectiveMeasurementLabelSettings =
     measurementLabelSettings && measurementLabelSettings.length > 0
       ? measurementLabelSettings
@@ -256,7 +280,59 @@ export function InspectionDrawingPointSettingsPanel({
 
   return (
     <div className={inspectionDrawingPointSettingPanelClassName}>
-      <p className="text-[1.02rem] font-bold">測定点の設定（No.{point.markerNo}）</p>
+      <div className="flex items-center gap-2">
+        <p className="text-[1.02rem] font-bold">測定点</p>
+        {canSwapMarkerNo ? (
+          <button
+            type="button"
+            aria-expanded={markerPickerOpen}
+            aria-label={`番号 ${point.markerNo} を入れ替える`}
+            className="inline-flex h-10 items-center gap-1 rounded-lg border-2 border-cyan-300 bg-cyan-950 px-2.5 text-[1.15rem] font-extrabold tabular-nums text-cyan-200"
+            onClick={() => setMarkerPickerOpen(!markerPickerOpen)}
+          >
+            {point.markerNo}
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={3}>
+              <path d="M4 20h4L19 9l-4-4L4 16z" />
+            </svg>
+          </button>
+        ) : (
+          <span className="text-[1.15rem] font-extrabold tabular-nums text-cyan-200">{point.markerNo}</span>
+        )}
+      </div>
+      {canSwapMarkerNo && markerPickerOpen ? (
+        <div
+          className="rounded-lg border border-cyan-300/70 bg-cyan-950/60 p-1.5"
+          role="group"
+          aria-label="入れ替える番号"
+        >
+          <p className="mb-1 text-xs font-bold text-cyan-200">入れ替える番号</p>
+          <div className="flex flex-wrap gap-1.5">
+            {markerNos.map((no) => {
+              const current = no === point.markerNo;
+              return (
+                <button
+                  key={no}
+                  type="button"
+                  aria-pressed={current}
+                  aria-label={`番号 ${no}`}
+                  className={clsx(
+                    'flex h-11 w-11 items-center justify-center rounded-full text-[1.05rem] font-extrabold tabular-nums',
+                    current
+                      ? 'bg-cyan-300 text-cyan-950'
+                      : 'bg-white text-slate-900 ring-2 ring-slate-400'
+                  )}
+                  onClick={() => {
+                    setMarkerPickerOpen(false);
+                    if (!current) onSwapMarkerNo?.(no);
+                  }}
+                >
+                  {no}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
       {modeChrome}
       <label className={inspectionDrawingPointNameInlineClassName} title={point.name || '名称'}>
         <span className={inspectionDrawingPointNameInlineLabelClassName}>名称</span>
@@ -423,13 +499,55 @@ export function InspectionDrawingPointSettingsPanel({
                   key={`${candidate.valueText}-${candidate.xRatio}-${candidate.yRatio}`}
                   type="button"
                   disabled={disabled || !onApplyOcrCandidate}
-                  className={toleranceCandidateChipClassName}
-                  onClick={() => onApplyOcrCandidate?.(candidate.valueText)}
+                  className={clsx(
+                    toleranceCandidateChipClassName,
+                    sumMode && sumFirstValue === candidate.valueText && 'ring-2 ring-amber-300'
+                  )}
+                  aria-pressed={sumMode && sumFirstValue === candidate.valueText ? true : undefined}
+                  onClick={() => {
+                    if (!onApplyOcrCandidate) return;
+                    if (!sumMode) {
+                      onApplyOcrCandidate(candidate.valueText, candidate);
+                      return;
+                    }
+                    if (sumFirstValue === null) {
+                      setSumFirstValue(candidate.valueText);
+                      return;
+                    }
+                    const sum = Number(sumFirstValue) + Number(candidate.valueText);
+                    setSumMode(false);
+                    setSumFirstValue(null);
+                    if (!Number.isFinite(sum)) return;
+                    onApplyOcrCandidate(formatCandidateSum(sum));
+                  }}
                   title={`raw: ${candidate.rawText}`}
                 >
                   {candidate.valueText}
                 </button>
               ))}
+              {ocrCandidates.length >= 2 ? (
+                <button
+                  type="button"
+                  disabled={disabled || !onApplyOcrCandidate}
+                  aria-label="2つの和"
+                  aria-pressed={sumMode}
+                  className={clsx(
+                    toleranceCandidateChipClassName,
+                    'min-w-8 px-2',
+                    sumMode && 'bg-amber-400/25 ring-2 ring-amber-300'
+                  )}
+                  onClick={() => {
+                    setSumMode((prev) => !prev);
+                    setSumFirstValue(null);
+                  }}
+                  title="候補を2つ押して、その和を基準値にする"
+                >
+                  ＋
+                </button>
+              ) : null}
+              {sumMode ? (
+                <span className="text-amber-200">{sumFirstValue === null ? '1つ目' : `${sumFirstValue}＋`}</span>
+              ) : null}
             </div>
           ) : null}
         </div>

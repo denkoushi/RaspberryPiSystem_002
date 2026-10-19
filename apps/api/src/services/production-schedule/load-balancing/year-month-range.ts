@@ -1,6 +1,21 @@
-import { parseYearMonthRangeUtc } from './monthly-load-query.service.js';
-
 const YEAR_MONTH_RE = /^(\d{4})-(\d{2})$/;
+
+export function parseYearMonthRangeUtc(yearMonth: string): { monthStart: Date; monthEndExclusive: Date } {
+  const trimmed = yearMonth.trim();
+  const match = YEAR_MONTH_RE.exec(trimmed);
+  if (!match) {
+    throw new Error('month は YYYY-MM 形式で指定してください');
+  }
+  const y = Number(match[1]);
+  const m = Number(match[2]);
+  if (m < 1 || m > 12) {
+    throw new Error('month は YYYY-MM 形式で指定してください');
+  }
+  return {
+    monthStart: new Date(Date.UTC(y, m - 1, 1)),
+    monthEndExclusive: new Date(Date.UTC(y, m, 1))
+  };
+}
 
 export function assertYearMonthFormat(yearMonth: string): void {
   parseYearMonthRangeUtc(yearMonth);

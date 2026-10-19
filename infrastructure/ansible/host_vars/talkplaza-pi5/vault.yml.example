@@ -1,0 +1,17 @@
+# トークプラザ Pi5 `vault.yml` のサンプル。
+# 値を実環境のシークレットで置き換え、`ansible-vault encrypt` で暗号化してから `vault.yml` として保存する。
+# 2026-10-12 以前に公開リポジトリへ平文で入っていた値は履歴に残っているため、再利用しない。
+vault_talkplaza_api_jwt_access_secret: "REPLACE_WITH_STRONG_ACCESS_SECRET"
+vault_talkplaza_api_jwt_refresh_secret: "REPLACE_WITH_STRONG_REFRESH_SECRET"
+# `scripts/security/rotate-client-key.sh` が受け付ける形式: client-key-<label>-<32 hex>
+vault_talkplaza_pi5_status_agent_client_key: "client-key-talkplaza-pi5-server-REPLACE_WITH_32_HEX"
+vault_talkplaza_slack_kiosk_support_webhook_url: ""
+vault_talkplaza_alerts_dispatcher_enabled: "true"
+vault_talkplaza_alerts_slack_webhook_deploy: ""
+vault_talkplaza_alerts_slack_webhook_ops: ""
+vault_talkplaza_alerts_slack_webhook_security: ""
+vault_talkplaza_alerts_slack_webhook_support: ""
+vault_talkplaza_dropbox_app_key: ""
+vault_talkplaza_dropbox_app_secret: ""
+vault_talkplaza_dropbox_refresh_token: ""
+vault_talkplaza_dropbox_access_token: ""

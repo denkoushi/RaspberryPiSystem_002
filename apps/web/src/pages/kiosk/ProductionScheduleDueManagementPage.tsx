@@ -63,6 +63,7 @@ import { normalizeMachineName } from '../../features/kiosk/productionSchedule/ma
 import { formatPlannedDateLabel, formatPlannedQuantityLabel } from '../../features/kiosk/productionSchedule/plannedDueDisplay';
 import { getGrindingAndCuttingResourceCds } from '../../features/kiosk/productionSchedule/resourceCategory';
 import { useDueManagementSelectionActions } from '../../features/kiosk/productionSchedule/useDueManagementSelectionActions';
+import { KIOSK_DEFAULT_SITE_KEY, useKioskSiteKeys } from '../../features/kiosk/sites/useKioskSiteKeys';
 import { useCollapsibleSectionPersistence } from '../../hooks/useCollapsibleSectionPersistence';
 import { isMacEnvironment } from '../../lib/client-key/resolver';
 
@@ -71,7 +72,6 @@ import type { ProductionScheduleDueManagementManualOrderOverviewResultV2 } from 
 const NOTE_MAX_LENGTH = 100;
 const DUE_MANAGEMENT_TARGET_LOCATION_STORAGE_KEY = 'due-management-target-location';
 const DUE_MANAGEMENT_SECTION_OPEN_STORAGE_KEY = 'due-management-section-open';
-const DEFAULT_TARGET_LOCATIONS = ['第2工場', 'トークプラザ', '第1工場'] as const;
 const PRODUCTION_CONFIG = readProductionBuildConfig();
 const TARGET_LOCATION_SELECTOR_ENABLED = PRODUCTION_CONFIG.targetLocationSelectorEnabled;
 const DUE_MANAGEMENT_LAYOUT_V2_ENABLED = PRODUCTION_CONFIG.dueManagementLayoutV2Enabled;
@@ -83,10 +83,11 @@ export function ProductionScheduleDueManagementPage() {
   const isMac =
     typeof window !== 'undefined' ? isMacEnvironment(window.navigator.userAgent) : false;
   const canSelectTargetLocation = isMac && TARGET_LOCATION_SELECTOR_ENABLED;
+  const targetLocations = useKioskSiteKeys({ enabled: canSelectTargetLocation });
   const [targetLocation, setTargetLocation] = useState<string>(() => {
-    if (typeof window === 'undefined') return DEFAULT_TARGET_LOCATIONS[0];
+    if (typeof window === 'undefined') return KIOSK_DEFAULT_SITE_KEY;
     const stored = window.localStorage.getItem(DUE_MANAGEMENT_TARGET_LOCATION_STORAGE_KEY)?.trim();
-    return stored && stored.length > 0 ? stored : DEFAULT_TARGET_LOCATIONS[0];
+    return stored && stored.length > 0 ? stored : KIOSK_DEFAULT_SITE_KEY;
   });
   const [overviewDeviceScopeKey, setOverviewDeviceScopeKey] = useState<string>(() => {
     if (typeof window === 'undefined') return '';
@@ -641,7 +642,7 @@ export function ProductionScheduleDueManagementPage() {
               triagePending={selectionActions.isPending}
               canSelectTargetLocation={canSelectTargetLocation}
               targetLocation={targetLocation}
-              targetLocations={DEFAULT_TARGET_LOCATIONS}
+              targetLocations={targetLocations}
               onTargetLocationChange={setTargetLocation}
               autoGeneratePending={autoGenerateGlobalRankMutation.isPending}
               autoGenerateError={autoGenerateGlobalRankMutation.isError}
@@ -828,7 +829,7 @@ export function ProductionScheduleDueManagementPage() {
                   onChange={(event) => setTargetLocation(event.target.value)}
                   className="h-7 rounded border border-white/30 bg-slate-800 px-2 text-[11px] text-white"
                 >
-                  {DEFAULT_TARGET_LOCATIONS.map((location) => (
+                  {targetLocations.map((location) => (
                     <option key={location} value={location}>
                       対象: {location}
                     </option>

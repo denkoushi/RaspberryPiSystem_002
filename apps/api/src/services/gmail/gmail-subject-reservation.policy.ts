@@ -1,6 +1,8 @@
 import { ApiError } from '../../lib/errors.js';
 
 export const ASSEMBLY_PROCEDURE_GMAIL_SUBJECT = 'DocumentASM';
+/** 設備稼働ログ（信号灯センサーの日報CSV）のメール件名。専用の取り込みが全添付を読む。 */
+export const MACHINE_SIGNAL_GMAIL_SUBJECT = 'AirGridFlexSignal';
 export const GMAIL_SUBJECT_PATTERN_RESERVED_CODE = 'GMAIL_SUBJECT_PATTERN_RESERVED';
 
 /**
@@ -16,8 +18,15 @@ export const ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS = [
   '[ItemlistRaspi-photo]',
 ] as const;
 
-const RESERVED_PATTERN_MESSAGE =
-  '「DocumentASM」は組立手順書専用の件名です。このメールに一致するCSV件名パターンは登録できません。';
+export const PROCEDURE_MATERIAL_APP_GMAIL_SUBJECT = 'ProcedureMaterial';
+export const PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS = ['[Procedure-material]'] as const;
+
+const RESERVED_GMAIL_SUBJECTS = [
+  { subject: PROCEDURE_MATERIAL_APP_GMAIL_SUBJECT, owner: '要領書の素材（アプリ）' },
+  { subject: PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS[0], owner: '要領書の素材' },
+  { subject: ASSEMBLY_PROCEDURE_GMAIL_SUBJECT, owner: '組立手順書' },
+  { subject: MACHINE_SIGNAL_GMAIL_SUBJECT, owner: '設備稼働ログ' },
+] as const;
 
 export function normalizeGmailSubjectPattern(value: string): string {
   const trimmed = value.normalize('NFC').trim();
@@ -32,21 +41,27 @@ export function normalizeGmailSubjectPattern(value: string): string {
  * CSV側は件名の部分一致で照合するため、候補が予約件名に含まれる場合は競合する。
  * 例: DocumentASM / documentasm / ASM はすべて予約件名へ一致する。
  */
-export function canCsvSubjectPatternMatchReservedSubject(pattern: string): boolean {
+function findReservedSubjectMatching(pattern: string): (typeof RESERVED_GMAIL_SUBJECTS)[number] | undefined {
   const normalizedPattern = normalizeGmailSubjectPattern(pattern);
-  if (!normalizedPattern) return false;
-  const normalizedReserved = normalizeGmailSubjectPattern(ASSEMBLY_PROCEDURE_GMAIL_SUBJECT);
-  return normalizedReserved.includes(normalizedPattern);
+  if (!normalizedPattern) return undefined;
+  return RESERVED_GMAIL_SUBJECTS.find((reserved) =>
+    normalizeGmailSubjectPattern(reserved.subject).includes(normalizedPattern)
+  );
+}
+
+export function canCsvSubjectPatternMatchReservedSubject(pattern: string): boolean {
+  return findReservedSubjectMatching(pattern) !== undefined;
 }
 
 export function assertCsvGmailSubjectPatternAllowed(pattern: string): void {
-  if (!canCsvSubjectPatternMatchReservedSubject(pattern)) return;
+  const reserved = findReservedSubjectMatching(pattern);
+  if (!reserved) return;
   throw new ApiError(
     400,
-    RESERVED_PATTERN_MESSAGE,
+    `「${reserved.subject}」は${reserved.owner}専用の件名です。このメールに一致するCSV件名パターンは登録できません。`,
     {
       pattern,
-      reservedSubject: ASSEMBLY_PROCEDURE_GMAIL_SUBJECT,
+      reservedSubject: reserved.subject,
     },
     GMAIL_SUBJECT_PATTERN_RESERVED_CODE
   );
@@ -70,4 +85,20 @@ export function isItemInventoryGmailSubject(subject: string): boolean {
   return ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS.some((token) =>
     normalized === token || normalized.startsWith(`${token} `) || normalized.startsWith(`${token}\t`)
   );
+}
+
+export function isProcedureMaterialAppGmailSubject(subject: string): boolean {
+  const normalized = subject.normalize('NFC').trim();
+  return normalized === PROCEDURE_MATERIAL_APP_GMAIL_SUBJECT || normalized.startsWith(`${PROCEDURE_MATERIAL_APP_GMAIL_SUBJECT} `)
+    || normalized.startsWith(`${PROCEDURE_MATERIAL_APP_GMAIL_SUBJECT}\t`);
+}
+
+/** The leading token owns the message; any following text is a material hint. */
+export function isProcedureMaterialGmailSubject(subject: string): boolean {
+  return isProcedureMaterialAppGmailSubject(subject) || subject.normalize('NFC').trim().startsWith(PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS[0]);
+}
+
+export function getProcedureMaterialSubjectHint(subject: string): string | null {
+  if (!subject.normalize('NFC').trim().startsWith(PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS[0])) return null;
+  return subject.normalize('NFC').trim().slice(PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS[0].length).trim() || null;
 }

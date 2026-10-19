@@ -19,89 +19,26 @@ const DROPBOX: NonNullable<BackupConfig['targets'][number]['storage']> = {
 };
 
 /**
- * Ansible inventory のキオスク（Pi4）で、第2工場の増設端末。
- * raspberrypi4 は既存環境で多くが個別登録済みのため、推奨カタログには含めない。
- * （未登録なら同パターンのテンプレ / 手動追加で補完可能）
+ * キオスク（Pi4）の nfc-agent .env / Tailscale 状態 / status-agent 設定は推奨しない。
+ * どれも秘密情報（client key・ノード鍵）で、外部ストレージに平文で置くと端末のなりすましに使える。
+ * キオスクは Ansible で再構築し、新しい端末IDを発行して復旧する（ADR-20260820）。
  */
-const PI4_KIOSK_CLIENTS: Array<{ inventoryHost: string }> = [
-  { inventoryHost: 'raspi4-robodrill01' },
-  { inventoryHost: 'raspi4-fjv60-80' },
-  { inventoryHost: 'raspi4-kensaku-stonebase01' },
-  { inventoryHost: 'raspi4-sessaku-01' },
-  { inventoryHost: 'raspi4-assembly-01' },
-  { inventoryHost: 'raspi4-kensaku-02' },
-];
-
-function kioskClientSpecs(host: string): RecommendedBackupTargetSpec[] {
-  const base = host.replace(/[^a-z0-9-]/gi, '-');
-  return [
-    {
-      id: `kiosk-${base}-nfc-agent-env`,
-      message: `キオスク (${host}) の NFC エージェント .env`,
-      target: {
-        kind: 'client-file',
-        source: `${host}:/opt/RaspberryPiSystem_002/clients/nfc-agent/.env`,
-        schedule: DEFAULT_SCHEDULE,
-        enabled: true,
-        storage: DROPBOX,
-        retention: DEFAULT_RETENTION,
-      },
-    },
-    {
-      id: `kiosk-${base}-tailscale-state`,
-      message: `キオスク (${host}) の Tailscale 状態ディレクトリ`,
-      target: {
-        kind: 'client-directory',
-        source: `${host}:/var/lib/tailscale`,
-        schedule: DEFAULT_SCHEDULE,
-        enabled: true,
-        storage: DROPBOX,
-        retention: DEFAULT_RETENTION,
-      },
-    },
-    {
-      id: `kiosk-${base}-status-agent-conf`,
-      message: `キオスク (${host}) の status-agent 設定`,
-      target: {
-        kind: 'client-file',
-        source: `${host}:/etc/raspi-status-agent.conf`,
-        schedule: DEFAULT_SCHEDULE,
-        enabled: true,
-        storage: DROPBOX,
-        retention: DEFAULT_RETENTION,
-      },
-    },
-  ];
-}
-
 /**
  * 永続・一次資産のみ（派生キャッシュは含めない）。
+ * Dropbox は容量が小さいため、大きくなり得る領域（knowledge-assets / knowledge-git /
+ * assembly-procedure-assets / procedure-materials / procedure-videos）は推奨に含めず、
+ * Google Drive DR（scripts/google_drive_dr/source_policy.py）だけで保護する。
+ * work-instruction-assets は登録を保つために残す（本番では無効化し、Google Drive DR で保護）。
  * 変更時は KB / 運用ドキュメントも更新すること。
  */
 export function getRecommendedBackupTargetCatalog(): RecommendedBackupTargetSpec[] {
   const server: RecommendedBackupTargetSpec[] = [
-    ...['knowledge-assets', 'knowledge-git'].map(source => ({
-      id: `server-directory-${source}`, message: `Hermesナレッジの永続領域（${source}）`,
-      target: { kind: 'directory' as const, source: `/app/storage/${source}`, schedule: DEFAULT_SCHEDULE, enabled: true, storage: DROPBOX, retention: DEFAULT_RETENTION },
-    })),
     {
       id: 'server-directory-part-measurement-drawings',
       message: '部品測定図面ストレージ（ホスト永続ボリューム）',
       target: {
         kind: 'directory',
         source: '/app/storage/part-measurement-drawings',
-        schedule: DEFAULT_SCHEDULE,
-        enabled: true,
-        storage: DROPBOX,
-        retention: DEFAULT_RETENTION,
-      },
-    },
-    {
-      id: 'server-directory-assembly-procedure-assets',
-      message: '組立手順書の原本・overlay assetストレージ（ホスト永続ボリューム）',
-      target: {
-        kind: 'directory',
-        source: '/app/storage/assembly-procedure-assets',
         schedule: DEFAULT_SCHEDULE,
         enabled: true,
         storage: DROPBOX,
@@ -146,9 +83,7 @@ export function getRecommendedBackupTargetCatalog(): RecommendedBackupTargetSpec
     },
   ];
 
-  const kiosks = PI4_KIOSK_CLIENTS.flatMap((k) => kioskClientSpecs(k.inventoryHost));
-
-  return [...server, ...kiosks];
+  return server;
 }
 
 function targetIdentity(t: Pick<BackupConfig['targets'][number], 'kind' | 'source'>): string {

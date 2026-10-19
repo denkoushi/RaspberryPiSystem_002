@@ -25,7 +25,15 @@ export class SignageRenderScheduler {
   private lastRenderTrigger: 'initial' | 'scheduled' | null = null;
   private lastRenderCompletedAtMs: number | null = null;
 
-  constructor(renderer: SignageRenderer, intervalSeconds: number = 30) {
+  /**
+   * @param preRenderTask 描画の直前に同じ排他区間で実行する処理（ページ撮影の定期更新など）。
+   *   失敗しても描画は続ける。
+   */
+  constructor(
+    renderer: SignageRenderer,
+    intervalSeconds: number = 30,
+    private readonly preRenderTask?: () => Promise<unknown>,
+  ) {
     this.renderer = renderer;
     this.defaultIntervalSeconds = intervalSeconds;
   }
@@ -334,6 +342,13 @@ export class SignageRenderScheduler {
     const startedAt = Date.now();
     try {
       logger.info({ trigger }, 'Running scheduled signage render');
+      if (this.preRenderTask) {
+        try {
+          await this.preRenderTask();
+        } catch (error) {
+          logger.warn({ err: error, trigger }, 'Signage pre-render task failed; continuing with render');
+        }
+      }
       await this.renderer.renderCurrentContent();
       const durationMs = Date.now() - startedAt;
       this.lastRenderDurationMs = durationMs;

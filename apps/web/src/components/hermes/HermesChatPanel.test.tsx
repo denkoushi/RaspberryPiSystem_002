@@ -12,7 +12,11 @@ vi.mock('../ProtectedImage', () => ({
   )
 }));
 
+import { OperationGuidePrompt } from '../../features/operation-guide/OperationGuideChoices';
+
 import HermesChatPanel from './HermesChatPanel';
+
+import type { HermesRecordAnswerDisplay } from '../../api/domains/assembly';
 
 describe('HermesChatPanel evidence cards', () => {
   beforeEach(() => {
@@ -28,6 +32,219 @@ describe('HermesChatPanel evidence cards', () => {
   });
 
   afterEach(() => vi.restoreAllMocks());
+
+  it('selects inquiries with a count and hides AI controls and composer', () => {
+    const onSelect = vi.fn();
+    const onKnowledgeModeChange = vi.fn();
+    render(<HermesChatPanel messages={[]} draft="" isBusy={false} error={null} authRequired="AI auth"
+      mode="consultations" onDraftChange={vi.fn()} onSend={vi.fn()} onReset={vi.fn()} onClose={vi.fn()}
+      onNewConsultation={vi.fn()} onScan={vi.fn()} onKnowledgeModeChange={onKnowledgeModeChange}
+      inquiryMode={{ active: true, unreadCount: 2, onSelect }} composerVisible={false}
+      conversationContent={<p>社員証をタッチ</p>} />);
+    expect(screen.getByRole('button', { name: 'お問い合わせ 2' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '検索' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByRole('button', { name: '新しい相談を始める' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'バーコードをスキャン' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '会話をリセット' })).not.toBeInTheDocument();
+    expect(screen.queryByText('AI auth')).not.toBeInTheDocument();
+    expect(document.querySelector('[contenteditable="true"]')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'お問い合わせ 2' }));
+    expect(onSelect).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: '検索' }));
+    expect(onKnowledgeModeChange).toHaveBeenCalledWith('search');
+  });
+
+  it('renders guide steps as an ordered list with section headings and literal text', () => {
+    render(<HermesChatPanel messages={[{ id: 'guide-answer', role: 'assistant', content: '従来の回答文字列',
+      guide: { screen: '自主検査', sections: [{ heading: '基本の手順',
+        body: '説明の一行目。\n説明の二行目。\n\n別の段落。\n1. 「開始」を押す。\n2. 結果を入力する。\n\n- 「中止」は保存しません。\n- <script>も文字として表示。' }] } }]}
+      draft="" isBusy={false} error={null} authRequired={null} onDraftChange={vi.fn()} onSend={vi.fn()} onReset={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByRole('heading', { name: '自主検査', level: 2 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '基本の手順', level: 3 })).toBeInTheDocument();
+    const lists = screen.getAllByRole('list');
+    expect(lists[0].tagName).toBe('OL');
+    expect(within(lists[0]).getAllByRole('listitem').map(item => item.textContent)).toEqual(['「開始」を押す。', '結果を入力する。']);
+    expect(lists[1].tagName).toBe('UL');
+    expect(screen.getByText('<script>も文字として表示。')).toBeInTheDocument();
+    expect(screen.getByText('説明の一行目。 説明の二行目。').tagName).toBe('P');
+    expect(screen.getByText('別の段落。').tagName).toBe('P');
+    expect(screen.queryByText('従来の回答文字列')).not.toBeInTheDocument();
+  });
+
+  it.each([{ sections: [] }, { sections: [{ heading: '基本の手順', body: '1. 状態を確認する。' }] }])('renders the guide note after any sections ($sections)', ({ sections }) => {
+    const note = '担当者に伝えました。受け取る端末の「お問い合わせ」に届いています。';
+    render(<HermesChatPanel messages={[{ id: 'trouble-answer', role: 'assistant', content: '従来の回答文字列',
+      guide: { screen: '困ったとき', sections, note } }]}
+      draft="" isBusy={false} error={null} authRequired={null} onDraftChange={vi.fn()} onSend={vi.fn()} onReset={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByText(note)).toHaveClass('hermes-chat-panel__guide-answer-note');
+    expect(screen.getByText(note).parentElement?.lastElementChild).toBe(screen.getByText(note));
+  });
+
+  it('renders record display as cards with metadata, body lists and footer without duplicate answer', () => {
+    const heading = 'M8締付訓練 / 長さ30 mm / 治具JIG-01';
+    const record = { sourceLabel: '従業員の訓練集計', fields: [
+      { label: '社員コード', value: '0123', role: 'identifier' as const },
+      { label: '最終訓練日', value: '2026-10-04', role: 'date' as const },
+      { label: '部署', value: '製造部', role: 'organization' as const },
+      { label: '条件ごとの内訳', value: `${heading}: 訓練12セッション。締付60回。`, role: 'body' as const },
+      { label: '空の本文', value: ' \n　', role: 'body' as const },
+      { label: '空の番号', value: ' ', role: 'identifier' as const },
+      { label: '空の日付', value: ' ', role: 'date' as const },
+    ] };
+    render(<HermesChatPanel messages={[{ id: 'record-answer', role: 'assistant', content: '従来の回答文字列',
+      display: { records: [record, { sourceLabel: '不適合情報', fields: [{ label: '内容', value: '補修済み。', role: 'body' }] }],
+        notices: ['該当14件のうち、新しい順に2件を表示しています。'], dataAsOf: '2026-10-08 06:30' } }]}
+      draft="" isBusy={false} error={null} authRequired={null} onDraftChange={vi.fn()} onSend={vi.fn()} onReset={vi.fn()} onClose={vi.fn()} />);
+    const cards = screen.getAllByRole('article');
+    expect(cards).toHaveLength(2);
+    expect(within(cards[0]).getByText('従業員の訓練集計')).toHaveClass('hermes-chat-panel__answer-source');
+    expect(within(cards[0]).getByText('社員コード 0123')).toHaveClass('hermes-chat-panel__answer-id');
+    expect(within(cards[0]).getByText('最終訓練日 2026-10-04')).toHaveClass('hermes-chat-panel__answer-meta');
+    expect(within(cards[0]).getByText('部署 製造部')).toBeInTheDocument();
+    expect(within(cards[0]).getByRole('heading', { name: '条件ごとの内訳' })).toBeInTheDocument();
+    expect(within(cards[0]).getByRole('heading', { name: heading })).toHaveClass('hermes-chat-panel__answer-sub');
+    expect(within(cards[0]).getAllByRole('listitem').map(item => item.textContent)).toEqual(['訓練12セッション', '締付60回']);
+    expect(screen.queryByText('空の本文')).not.toBeInTheDocument();
+    expect(screen.queryByText('空の番号')).not.toBeInTheDocument();
+    expect(screen.queryByText('空の日付')).not.toBeInTheDocument();
+    expect(screen.getByText('該当14件のうち、新しい順に2件を表示しています。').closest('footer')).toHaveClass('hermes-chat-panel__answer-foot');
+    expect(screen.getByText('データ時点 2026-10-08 06:30')).toBeInTheDocument();
+    expect(screen.queryByText('従来の回答文字列')).not.toBeInTheDocument();
+  });
+
+  it('renders six records as compact expandable rows without groups', () => {
+    const firstLine = 'あ'.repeat(41);
+    const display: HermesRecordAnswerDisplay = {
+      records: Array.from({ length: 6 }, (_, index) => ({ sourceLabel: '不適合', fields: [
+        { role: 'identifier', label: '番号', value: `N${index}` },
+        { role: 'date', label: '発見日', value: '2026-09-01' },
+        { role: 'organization', label: '部署', value: '組立' },
+        { role: 'body', label: '不適合内容', value: `${firstLine}\n2行目の内容。` },
+        { role: 'body', label: '処置内容', value: '補修済み。' },
+      ] })), notices: [], dataAsOf: null,
+    };
+    render(<HermesChatPanel messages={[{ id: 'compact', role: 'assistant', content: '元の本文', display }]}
+      draft="" isBusy={false} error={null} authRequired={null} onDraftChange={vi.fn()} onSend={vi.fn()} onReset={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByText('6 件')).toBeInTheDocument();
+    const rows = screen.getAllByRole('button', { expanded: false });
+    expect(rows).toHaveLength(6);
+    for (const value of ['N0', '2026-09-01', '組立', 'あ'.repeat(40)]) expect(within(rows[0]).getByText(value)).toBeInTheDocument();
+    expect(rows[0].textContent).not.toContain(firstLine);
+    expect(screen.queryByRole('heading', { name: '不適合内容' })).not.toBeInTheDocument();
+    fireEvent.click(rows[0]);
+    expect(rows[0]).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('heading', { name: '不適合内容' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '処置内容' })).toBeInTheDocument();
+    expect(screen.getByText('補修済み')).toBeInTheDocument();
+    expect(rows[1]).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(rows[0]);
+    expect(screen.queryByRole('heading', { name: '不適合内容' })).not.toBeInTheDocument();
+    expect(screen.queryByText('20 件ずつ表示しています')).not.toBeInTheDocument();
+  });
+
+  it('keeps each answer planId attached to chips on earlier and latest messages', () => {
+    const onRefine = vi.fn();
+    const display: HermesRecordAnswerDisplay = {
+      records: [{ sourceLabel: '不適合', fields: [{ role: 'identifier', label: '番号', value: 'N1' }] }],
+      groups: [{ axis: 'cause', field: 'causeCategory', label: '要因',
+        buckets: [{ value: 'drawing', label: '図面・設計の誤り', count: 1 }], otherCount: 0 }],
+      notices: [], dataAsOf: null,
+    };
+    render(<HermesChatPanel messages={[
+      { id: 'first', role: 'assistant', content: '', display, planId: 'first-plan' },
+      { id: 'second', role: 'assistant', content: '', display, planId: 'second-plan' },
+    ]} draft="" isBusy={false} error={null} onRefine={onRefine}
+      onDraftChange={vi.fn()} onSend={vi.fn()} onReset={vi.fn()} onClose={vi.fn()} />);
+    const chips = screen.getAllByRole('button', { name: '図面・設計の誤り 1' });
+    fireEvent.click(chips[0]);
+    expect(onRefine).toHaveBeenLastCalledWith({ axis: 'cause', field: 'causeCategory', value: 'drawing' }, '図面・設計の誤り', 'first-plan');
+    fireEvent.click(chips[chips.length - 1]);
+    expect(onRefine).toHaveBeenLastCalledWith({ axis: 'cause', field: 'causeCategory', value: 'drawing' }, '図面・設計の誤り', 'second-plan');
+  });
+
+  it('switches breakdown axes, refines from both chip locations and disables chips while busy', () => {
+    const onRefine = vi.fn();
+    const display: HermesRecordAnswerDisplay = {
+      records: Array.from({ length: 20 }, (_, index) => ({ sourceLabel: '不適合', fields: [{ role: 'identifier', label: '番号', value: `N${index}` }] })),
+      groups: [
+        { axis: 'organization', field: 'originDepartmentName', label: '部署', buckets: [{ value: '組立', label: '組立', count: 12 }], otherCount: 31 },
+        { axis: 'month', field: 'discoveredOn', label: '月', buckets: [{ value: '2026-09', label: '2026年9月', count: 43 }], otherCount: 0 },
+      ], coverage: { total: 43, shown: 20 }, notices: ['既存の通知'], dataAsOf: '2026-10-08 06:30',
+    };
+    const props = { messages: [{ id: 'grouped', role: 'assistant' as const, content: '元の本文', display }],
+      draft: '', isBusy: false, error: null, authRequired: null, onRefine,
+      onDraftChange: vi.fn(), onSend: vi.fn(), onReset: vi.fn(), onClose: vi.fn() };
+    const { rerender } = render(<HermesChatPanel {...props} />);
+    expect(screen.getByText('43 件')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '部署で分ける' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('他にも 23 件あります。月で絞ってください。')).toBeInTheDocument();
+    expect(screen.getByText('20 件ずつ表示しています')).toBeInTheDocument();
+    expect(screen.getByText('その他 31 件').tagName).toBe('SPAN');
+    const organizationChip = screen.getByRole('button', { name: '組立 12' });
+    expect(organizationChip).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(organizationChip);
+    expect(onRefine).toHaveBeenLastCalledWith({ axis: 'organization', field: 'originDepartmentName', value: '組立' });
+    fireEvent.click(screen.getByRole('button', { name: '2026年9月 43' }));
+    expect(onRefine).toHaveBeenLastCalledWith({ axis: 'month', field: 'discoveredOn', value: '2026-09' });
+    fireEvent.click(screen.getByRole('button', { name: '月で分ける' }));
+    expect(screen.getByRole('button', { name: '月で分ける' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('他にも 23 件あります。部署で絞ってください。')).toBeInTheDocument();
+    expect(screen.getByText('既存の通知')).toBeInTheDocument();
+    expect(screen.getByText('データ時点 2026-10-08 06:30')).toBeInTheDocument();
+    rerender(<HermesChatPanel {...props} isBusy />);
+    expect(screen.getByRole('button', { name: '組立 12' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '2026年9月 43' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '組立 12' }));
+    expect(onRefine).toHaveBeenCalledTimes(2);
+    rerender(<HermesChatPanel {...props} messages={[{ ...props.messages[0], display: {
+      ...display, records: display.records.slice(0, 2), coverage: { total: 43, shown: 2 }, groups: display.groups!.slice(0, 1),
+    } }]} />);
+    expect(screen.getByText('他にも 41 件あります。部署で絞ってください。')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: '組立 12' })).toHaveLength(2);
+  });
+
+  it('renders cause tabs and sends category ids with labels from either chip location', () => {
+    const onRefine = vi.fn();
+    const display: HermesRecordAnswerDisplay = {
+      records: [{ sourceLabel: '不適合', fields: [{ role: 'identifier', label: '番号', value: 'N1' }] }],
+      groups: [
+        { axis: 'organization', field: 'originDepartmentName', label: '部署', buckets: [], otherCount: 0 },
+        { axis: 'month', field: 'discoveredOn', label: '月', buckets: [], otherCount: 0 },
+        { axis: 'cause', field: 'causeCategory', label: '要因', buckets: [{ value: 'check', label: '確認・検査の漏れ', count: 40 }], otherCount: 3, otherLabel: '未分類' },
+      ], coverage: { total: 43, shown: 1 }, notices: [], dataAsOf: null,
+    };
+    render(<HermesChatPanel messages={[{ id: 'cause', role: 'assistant', content: '', display }]}
+      draft="" isBusy={false} error={null} authRequired={null} onRefine={onRefine}
+      onDraftChange={vi.fn()} onSend={vi.fn()} onReset={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '月で分ける' }));
+    expect(screen.getByText('他にも 42 件あります。要因で絞ってください。')).toBeInTheDocument();
+    expect(screen.getByText('未分類 3 件').closest('.hermes-chat-panel__answer-more')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '確認・検査の漏れ 40' }));
+    expect(onRefine).toHaveBeenLastCalledWith({ axis: 'cause', field: 'causeCategory', value: 'check' }, '確認・検査の漏れ');
+    fireEvent.click(screen.getByRole('button', { name: '要因で分ける' }));
+    expect(screen.getByRole('button', { name: '要因で分ける' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '確認・検査の漏れ 40' }));
+    expect(onRefine).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([undefined, { records: [], notices: [], dataAsOf: null }])('falls back to text for missing or empty display', display => {
+    render(<HermesChatPanel messages={[{ id: 'old-answer', role: 'assistant', content: '**見出し**\n従来の本文', display }]}
+      draft="" isBusy={false} error={null} authRequired={null} onDraftChange={vi.fn()} onSend={vi.fn()} onReset={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByText('見出し')).toHaveClass('hermes-chat-panel__message-heading');
+    expect(screen.getByText('従来の本文')).toBeInTheDocument();
+    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+  });
+
+  it('renders local guide choices inside the search panel with the normal question composer', () => {
+    const onChoose = vi.fn();
+    render(<HermesChatPanel messages={[]} draft="" isBusy={false} error={null} authRequired={null}
+      onDraftChange={vi.fn()} onSend={vi.fn()} onReset={vi.fn()} onClose={vi.fn()}
+      conversationExtension={<OperationGuidePrompt question="手順書の作り方" onChoose={onChoose} />} />);
+    expect(screen.getByText('どの手順書ですか?')).toBeInTheDocument();
+    expect(document.querySelector('[contenteditable="true"][aria-label="Hermesへの質問"]')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '組立の手順書を編集' }));
+    expect(onChoose).toHaveBeenCalledWith('assembly-edit');
+  });
 
   it('shows the selected knowledge mode and keeps header control handlers', () => {
     const onKnowledgeModeChange = vi.fn();
@@ -65,6 +282,19 @@ describe('HermesChatPanel evidence cards', () => {
     rerender(<HermesChatPanel {...props} knowledgeMode="knowledge" isExpanded />);
     expect(screen.getByRole('button', { name: 'ナレッジ' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'チャットを標準サイズに戻す' })).toBeInTheDocument();
+  });
+
+  it('replaces the chat body and composer with the knowledge workspace while keeping modes', () => {
+    render(<HermesChatPanel knowledgeMode="knowledge" conversationContent={<p>承認待ち画面</p>}
+      conversationExtension={<p>投稿者バー</p>} attachmentControl={<p>添付操作</p>}
+      messages={[{ id: 'old', role: 'assistant', content: '通常の会話' }]} draft="" isBusy={false} error={null} authRequired={null}
+      onDraftChange={vi.fn()} onSend={vi.fn()} onReset={vi.fn()} onClose={vi.fn()} onKnowledgeModeChange={vi.fn()} />);
+    expect(screen.getByText('承認待ち画面')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'ナレッジ' })).toBeInTheDocument();
+    expect(screen.queryByText('投稿者バー')).not.toBeInTheDocument();
+    expect(screen.queryByText('添付操作')).not.toBeInTheDocument();
+    expect(screen.queryByText('通常の会話')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send' })).not.toBeInTheDocument();
   });
 
   it('records feedback on the corresponding answer and shows persisted selection', () => {

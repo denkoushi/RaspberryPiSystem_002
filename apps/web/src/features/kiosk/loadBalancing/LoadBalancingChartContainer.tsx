@@ -1,7 +1,5 @@
 import { ResponsiveContainer } from 'recharts';
 
-import { lbChart } from './loadBalancingUiClasses';
-
 import type { ReactElement } from 'react';
 
 type Props = {
@@ -10,7 +8,7 @@ type Props = {
 };
 
 export function LoadBalancingChartContainer({
-  heightClassName = lbChart.container,
+  heightClassName = 'h-[min(260px,34dvh)] w-full min-w-0',
   children
 }: Props) {
   return (

@@ -43,11 +43,21 @@ export interface BackupHistoryFilters {
 
 // CSVインポートターゲットの型定義
 export interface CsvImportTarget {
-  type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines' | 'csvDashboards' | 'productionActualHours' | 'itemInventoryGmail';
+  type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines' | 'csvDashboards' | 'productionActualHours' | 'itemInventoryGmail' | 'machineSignalGmail' | 'procedureMaterialGmail';
   source: string; // Dropbox用: パス、Gmail用: 件名パターン、CSVダッシュボード用: ダッシュボードID
 }
 
+export const PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKEN = '[Procedure-material]';
 export const ITEM_INVENTORY_GMAIL_SUBJECT_TOKEN = '[ItemlistRaspi-photo]';
+/** 設備稼働ログ（信号灯センサーの日報）のメール件名。専用の取り込みが使う固定値 */
+export const MACHINE_SIGNAL_GMAIL_SUBJECT = 'AirGridFlexSignal';
+
+/** 件名が固定の取込種別と、その件名。 */
+export const FIXED_GMAIL_SUBJECT_BY_TARGET_TYPE: Partial<Record<CsvImportTarget['type'], string>> = {
+  procedureMaterialGmail: PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKEN,
+  itemInventoryGmail: ITEM_INVENTORY_GMAIL_SUBJECT_TOKEN,
+  machineSignalGmail: MACHINE_SIGNAL_GMAIL_SUBJECT
+};
 
 export type CsvImportSubjectPatternType =
   | 'employees'
@@ -198,6 +208,20 @@ export async function restoreDryRun(request: {
 // CSVインポートスケジュールAPI
 export async function getCsvImportSchedules(): Promise<CsvImportScheduleListResponse> {
   const { data } = await api.get<CsvImportScheduleListResponse>('/imports/schedule');
+  return data;
+}
+
+export interface CsvImportHistoryRun {
+  id: string;
+  scheduleId: string;
+  status: string;
+  startedAt: string;
+  completedAt?: string | null;
+}
+
+/** 直近の取込履歴（所要時間の実績を出すために使う） */
+export async function getRecentCsvImportHistory(limit = 500): Promise<{ histories: CsvImportHistoryRun[] }> {
+  const { data } = await api.get<{ histories: CsvImportHistoryRun[] }>(`/imports/history?limit=${limit}`);
   return data;
 }
 
@@ -399,6 +423,7 @@ export interface BackupConfig {
   kioskDocumentGmailIngest?: KioskDocumentGmailIngestSchedule[];
   /** Raspberry Pi 在庫: Gmail から写真付きマニフェストを取り込む設定 */
   itemInventoryGmailIngest?: ItemInventoryGmailIngestConfig;
+  procedureMaterialGmailIngest?: { enabled: boolean; subjectTokens: string[]; fromEmail?: string; allowedSenderDomains: string[] };
 }
 
 // バックアップ設定API

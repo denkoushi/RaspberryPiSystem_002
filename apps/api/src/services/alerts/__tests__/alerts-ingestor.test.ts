@@ -4,6 +4,11 @@ import path from 'path';
 import os from 'os';
 import { AlertSeverity, AlertChannel, AlertDeliveryStatus } from '@prisma/client';
 
+const notices = vi.hoisted(() => ({ expire: vi.fn(), deliver: vi.fn() }));
+vi.mock('../../kiosk-inquiry/system-notice-sources.js', () => ({
+  expireFileAlertNotice: notices.expire, deliverFileAlertNotice: notices.deliver
+}));
+
 // Prismaのモック（AlertsIngestorのインポート前にモックを設定）
 const mockAlertUpsert = vi.hoisted(() => vi.fn());
 const mockAlertDeliveryUpsert = vi.hoisted(() => vi.fn());
@@ -153,6 +158,16 @@ describe('AlertsIngestor (Phase2)', () => {
     expect(deliveryCall.where.alertId_channel_routeKey.channel).toBe(AlertChannel.SLACK);
     expect(deliveryCall.where.alertId_channel_routeKey.routeKey).toBe('deploy');
     expect(deliveryCall.create.status).toBe(AlertDeliveryStatus.PENDING);
+  });
+
+  it('expires the previous episode before persisting a new occurrence, then delivers it', async () => {
+    const timestamp = new Date().toISOString();
+    await writeAlert(tmpDir, 'alert-notice.json', { id: 'notice-test', type: 'rkhunter-warning', timestamp });
+    await new AlertsIngestor().ingestOnceNow();
+    expect(notices.expire).toHaveBeenCalledWith('rkhunter-warning', new Date(timestamp));
+    expect(notices.deliver).toHaveBeenCalledWith('rkhunter-warning', new Date(timestamp));
+    expect(notices.expire.mock.invocationCallOrder[0]).toBeLessThan(mockAlertUpsert.mock.invocationCallOrder[0]);
+    expect(mockAlertUpsert.mock.invocationCallOrder[0]).toBeLessThan(notices.deliver.mock.invocationCallOrder[0]);
   });
 
   it('does not create duplicate alerts (upsert)', async () => {

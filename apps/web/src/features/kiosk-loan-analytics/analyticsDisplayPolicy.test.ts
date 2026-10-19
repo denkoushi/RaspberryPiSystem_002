@@ -5,7 +5,11 @@ import {
   ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS,
   compareEmployeesByPeriodActivity,
   countPeriodEventKinds,
-  isFullListTruncated,
+  formatAssetRowLabel,
+  longestOverdueDays,
+  overdueDays,
+  previousMonthBorrowChangePercent,
+  selectOpenLoansForDisplay,
   periodReturnCompletionRatePercent,
   selectAssetsForDisplay,
   selectEmployeesForDisplay,
@@ -51,10 +55,9 @@ function a(id: string, name: string, borrow: number, ret: number, status = 'AVAI
 }
 
 describe('analyticsDisplayPolicy', () => {
-  it('limits are positive integers', () => {
-    expect(ANALYTICS_KIOSK_DISPLAY_LIMITS.topRankedEmployees).toBeGreaterThan(0);
-    expect(ANALYTICS_KIOSK_DISPLAY_LIMITS.topRankedAssets).toBeGreaterThan(0);
-    expect(ANALYTICS_KIOSK_DISPLAY_LIMITS.todayEventsMax).toBeGreaterThan(0);
+  it('承認済みの表示上限を維持する', () => {
+    expect(ANALYTICS_KIOSK_DISPLAY_LIMITS).toEqual({ topRankedEmployees: 10, topRankedAssets: 10, todayEventsMax: 11, openLoansMax: 11 });
+    expect(ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS).toBe(500);
   });
 
   it('topRankedEmployees picks highest activity first', () => {
@@ -134,9 +137,8 @@ describe('analyticsDisplayPolicy', () => {
     const rows = Array.from({ length: ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS + 10 }, (_, i) =>
       e(String(i), `U${String(i).padStart(4, '0')}`, 1, 0)
     );
-    const out = selectEmployeesForDisplay(rows, 8, 'all');
+    const out = selectEmployeesForDisplay(rows, 10, 'all');
     expect(out).toHaveLength(ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS);
-    expect(isFullListTruncated(rows.length, 'all')).toBe(true);
   });
 
   it('selectAssetsForDisplay matches top mode slice', () => {
@@ -152,5 +154,81 @@ describe('analyticsDisplayPolicy', () => {
     ];
     expect(takeTodayEventsForDisplay(rows, 2, 'top').map((r) => r.assetLabel)).toEqual(['B', 'C']);
     expect(takeTodayEventsForDisplay(rows, 2, 'all').map((r) => r.assetLabel)).toEqual(['B', 'C', 'A']);
+  });
+});
+
+describe('未返却の表示', () => {
+  const now = new Date('2026-10-05T12:00:00+09:00');
+  const open = (id: string, name: string, dueAt: string | null, overdue = false): AssetRow => ({
+    ...a(id, name, 1, 0, 'IN_USE', true, overdue), dueAt
+  });
+
+  it('貸出中のみを超過・期限・名称順に取り出し、入力を変更しない', () => {
+    const rows = [
+      open('unknown', '不明', null),
+      open('future', '期限内', '2026-10-06T00:00:00Z'),
+      open('over-b', 'B', '2026-10-04T00:00:00Z', true),
+      a('returned', '返却済', 1, 1),
+      open('over-old', '最古', '2026-10-01T00:00:00Z', true),
+      open('over-a', 'A', '2026-10-04T00:00:00Z', true),
+      open('invalid', '異常', 'invalid')
+    ];
+    const original = [...rows];
+    expect(selectOpenLoansForDisplay(rows, 'top').map((row) => row.id)).toEqual(['over-old', 'over-a', 'over-b', 'future', 'invalid', 'unknown']);
+    expect(rows).toEqual(original);
+  });
+
+  it('上位モードは11件、全件は500件まで', () => {
+    const rows = Array.from({ length: 510 }, (_, i) => open(String(i), String(i), null));
+    expect(selectOpenLoansForDisplay(rows, 'top')).toHaveLength(11);
+    expect(selectOpenLoansForDisplay(rows, 'all')).toHaveLength(500);
+    expect(selectOpenLoansForDisplay([], 'top')).toEqual([]);
+  });
+
+  it.each([
+    ['2026-10-05T11:59:59+09:00', 1],
+    ['2026-10-04T12:00:00+09:00', 1],
+    ['2026-10-04T11:59:59+09:00', 2],
+    ['2026-10-01T12:00:00+09:00', 4],
+    ['2026-10-05T12:00:00+09:00', 0],
+    ['2026-10-06T12:00:00+09:00', 0],
+    [null, null],
+    ['invalid', null]
+  ])('overdueDays(%s) = %s', (dueAt, expected) => {
+    expect(overdueDays(dueAt, now)).toBe(expected);
+  });
+
+  it('最長超過は貸出中かつ超過扱いの有効な期限だけから算出する', () => {
+    const rows = [
+      open('1', 'A', '2026-10-04T12:00:00+09:00', true),
+      open('2', 'B', '2026-10-01T12:00:00+09:00', true),
+      open('3', '不明', null, true),
+      open('4', '異常', 'invalid', true),
+      open('5', '期限内', '2026-09-01T00:00:00Z'),
+      { ...open('6', '返却済', '2026-09-01T00:00:00Z', true), isOutNow: false }
+    ];
+    expect(longestOverdueDays(rows, now)).toBe(4);
+    expect(longestOverdueDays([open('1', '不明', null, true)], now)).toBeNull();
+    expect(longestOverdueDays([], now)).toBeNull();
+  });
+
+  it('コード・名称の重複と空文字を既存規則で表示する', () => {
+    const row = { ...a('id', ' 名称 ', 0, 0), code: ' C-001 ' };
+    expect(formatAssetRowLabel(row)).toBe('C-001 名称');
+    expect(formatAssetRowLabel({ ...row, code: '名称' })).toBe('名称');
+    expect(formatAssetRowLabel({ ...row, name: '' })).toBe('C-001');
+    expect(formatAssetRowLabel({ ...row, code: '', name: '' })).toBe('id');
+  });
+});
+
+describe('前月比', () => {
+  const trend = [{ yearMonth: '2025-12', borrowCount: 40, returnCount: 38 }];
+  it.each([[50, 25], [30, -25], [40, 0], [0, -100], [41, 3]])('年またぎで持出 %s の前月比は %s%%', (borrow, expected) => {
+    expect(previousMonthBorrowChangePercent('2026-01', borrow, trend)).toBe(expected);
+  });
+  it('日指定・前月なし・前月持出0では表示しない', () => {
+    expect(previousMonthBorrowChangePercent('2026-01-05', 50, trend)).toBeNull();
+    expect(previousMonthBorrowChangePercent('2026-02', 50, trend)).toBeNull();
+    expect(previousMonthBorrowChangePercent('2026-01', 50, [{ ...trend[0], borrowCount: 0 }])).toBeNull();
   });
 });

@@ -43,7 +43,7 @@ function overlap(a: PlanningBoardWrite, b: PlanningBoardWrite): boolean {
 function savedFields(base: GrindingPlanningBoardItem, saved: GrindingPlanningBoardItem): GrindingPlanningBoardItem {
   return { ...base, itemRevision: saved.itemRevision, version: saved.version,
     alternateRank: saved.alternateRank, effectiveResourceCd: saved.effectiveResourceCd,
-    effectiveDueDate: saved.effectiveDueDate, specialDue: saved.specialDue };
+    effectiveDueDate: saved.effectiveDueDate, specialDue: saved.specialDue, orderPinned: saved.orderPinned };
 }
 
 /** A single board writer keeps accepted display intents above acknowledged server state. */

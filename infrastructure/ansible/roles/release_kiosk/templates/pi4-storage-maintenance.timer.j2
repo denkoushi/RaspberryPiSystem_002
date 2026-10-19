@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Pi4 storage maintenance daily
+
+[Timer]
+# 毎日午前3時30分に実行（電源が切れていた場合は次回起動後に実行）
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=600
+Persistent=true
+
+[Install]
+WantedBy=timers.target

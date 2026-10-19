@@ -95,6 +95,58 @@ describe('InspectionDrawingValuePanel', () => {
     expect(screen.queryByText('未入力')).not.toBeInTheDocument();
   });
 
+  it('commits a hundredths-tolerance dimension on the first digit as before', () => {
+    const onValueChange = vi.fn();
+    const onCommitValue = vi.fn();
+    render(
+      <InspectionDrawingValuePanel
+        point={makePoint({ name: '外径', nominalRaw: '100', lowerToleranceRaw: '-0.05', upperToleranceRaw: '0.05' })}
+        valueInputMode="self_inspection_options"
+        onValueChange={onValueChange}
+        onCommitValue={onCommitValue}
+      />
+    );
+
+    expect(screen.getByText('百分台')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('測定値選択'), { target: { value: '100.0' } });
+    fireEvent.click(screen.getByRole('button', { name: '3' }));
+
+    expect(onValueChange).toHaveBeenCalledWith('100.03');
+    expect(onCommitValue).toHaveBeenCalledWith(
+      expect.objectContaining({ value: '100.03', source: 'hundredths_button' })
+    );
+  });
+
+  it('takes hundredths then thousandths on the same keypad for a thousandths tolerance', () => {
+    const onValueChange = vi.fn();
+    const onCommitValue = vi.fn();
+    render(
+      <InspectionDrawingValuePanel
+        point={makePoint({ name: '外径', nominalRaw: '100', lowerToleranceRaw: '-0.005', upperToleranceRaw: '0.005' })}
+        valueInputMode="self_inspection_options"
+        onValueChange={onValueChange}
+        onCommitValue={onCommitValue}
+      />
+    );
+
+    expect(screen.getByText('百分台・千分台')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('測定値選択'), { target: { value: '100.0' } });
+    fireEvent.click(screen.getByRole('button', { name: '9' }));
+
+    expect(onCommitValue).not.toHaveBeenCalled();
+    expect(screen.getByTestId('inspection-drawing-dimension-digit-slots')).toHaveTextContent('100.09');
+
+    fireEvent.click(screen.getByRole('button', { name: '百分台を入れ直す' }));
+    fireEvent.click(screen.getByRole('button', { name: '0' }));
+    fireEvent.click(screen.getByRole('button', { name: '4' }));
+
+    expect(onValueChange).toHaveBeenCalledTimes(1);
+    expect(onValueChange).toHaveBeenCalledWith('100.004');
+    expect(onCommitValue).toHaveBeenCalledWith(
+      expect.objectContaining({ value: '100.004', source: 'hundredths_button' })
+    );
+  });
+
   it('shows invalid status via shared measurement point input status helper', () => {
     render(
       <InspectionDrawingValuePanel

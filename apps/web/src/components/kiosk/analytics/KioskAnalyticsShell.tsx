@@ -1,127 +1,36 @@
-import type { KioskAnalyticsTheme } from './kioskAnalyticsTheme';
+import type { AnalyticsListMode } from '../../../features/kiosk-loan-analytics/analyticsDisplayPolicy';
 import type { DatasetTab } from '../../../features/kiosk-loan-analytics/view-model';
 import type { ReactNode } from 'react';
 
+const datasets: { value: DatasetTab; label: string; icon: ReactNode }[] = [
+  { value: 'rigging', label: '吊具', icon: <><path d="M12 3v6" /><circle cx="12" cy="11" r="2" /><path d="M12 13v2a4 4 0 1 1-4 4" /></> },
+  { value: 'items', label: 'アイテム', icon: <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-2.4z" /> },
+  { value: 'instruments', label: '計測機器', icon: <><rect x="2" y="8" width="20" height="8" rx="1" /><path d="M6 8v3M10 8v4M14 8v3M18 8v4" /></> }
+];
 
-export type KioskAnalyticsShellProps = {
-  theme: KioskAnalyticsTheme;
-  /** 期間テキスト（例: 2026/4/1 — 2026/4/30） */
-  periodRangeLabel: string;
+export function KioskAnalyticsShell({ periodFilterControls, datasetTab, onDatasetTabChange, listMode, onListModeChange }: {
   periodFilterControls: ReactNode;
   datasetTab: DatasetTab;
   onDatasetTabChange: (tab: DatasetTab) => void;
-  listModeToggle: {
-    classNameForButton: (active: boolean) => string;
-    onTop: () => void;
-    onAll: () => void;
-    isTop: boolean;
-    isAll: boolean;
-  };
-};
-
-/**
- * 集計コントロール帯（1 行・横スクロール可）。DADS プレビューと同じ役割分解。
- */
-export function KioskAnalyticsShell({
-  theme,
-  periodRangeLabel,
-  periodFilterControls,
-  datasetTab,
-  onDatasetTabChange,
-  listModeToggle
-}: KioskAnalyticsShellProps) {
+  listMode: AnalyticsListMode;
+  onListModeChange: (mode: AnalyticsListMode) => void;
+}) {
   return (
-    <div
-      className="shell flex min-w-0 shrink-0 flex-nowrap items-center gap-2 overflow-x-auto px-3 py-2"
-      style={{ borderRadius: theme.radius8, border: `1px solid ${theme.border}`, backgroundColor: theme.surface }}
-      aria-label="集計 コントロール"
-    >
-      <div className="flex min-w-0 shrink-0 flex-nowrap items-center gap-x-3">
-        <h2 className="shrink-0 text-sm font-bold">集計</h2>
-        <span className="shrink-0 text-[11px]" style={{ color: theme.textSub }}>
-          {periodRangeLabel}
-        </span>
-        {periodFilterControls}
+    <div className="kanalytics__bar">
+      <div className="kanalytics__seg" role="group" aria-label="対象">
+        {datasets.map(({ value, label, icon }) => (
+          <button key={value} type="button" aria-pressed={datasetTab === value} onClick={() => onDatasetTabChange(value)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              {icon}
+            </svg>
+            {label}
+          </button>
+        ))}
       </div>
-
-      <div className="flex min-w-0 flex-1 flex-nowrap items-center justify-between gap-2">
-        <div className="flex shrink-0 flex-nowrap items-center gap-1.5">
-          <button
-            type="button"
-            className="px-2.5 py-0.5 text-xs font-bold transition-opacity hover:opacity-90"
-            style={{
-              borderRadius: theme.radius6,
-              backgroundColor: datasetTab === 'rigging' ? theme.primaryUi : theme.tabInactive,
-              color: datasetTab === 'rigging' ? theme.text : theme.textMuted
-            }}
-            onClick={() => onDatasetTabChange('rigging')}
-          >
-            吊具
-          </button>
-          <button
-            type="button"
-            className="px-2.5 py-0.5 text-xs font-bold transition-opacity hover:opacity-90"
-            style={{
-              borderRadius: theme.radius6,
-              backgroundColor: datasetTab === 'items' ? theme.primaryUi : theme.tabInactive,
-              color: datasetTab === 'items' ? theme.text : theme.textMuted
-            }}
-            onClick={() => onDatasetTabChange('items')}
-          >
-            持出返却アイテム
-          </button>
-          <button
-            type="button"
-            className="px-2.5 py-0.5 text-xs font-bold transition-opacity hover:opacity-90"
-            style={{
-              borderRadius: theme.radius6,
-              backgroundColor: datasetTab === 'instruments' ? theme.primaryUi : theme.tabInactive,
-              color: datasetTab === 'instruments' ? theme.text : theme.textMuted
-            }}
-            onClick={() => onDatasetTabChange('instruments')}
-          >
-            計測機器
-          </button>
-        </div>
-
-        <div className="flex shrink-0 flex-nowrap items-center gap-2">
-          <span className="whitespace-nowrap text-[10px] font-semibold" style={{ color: theme.textSub }}>
-            一覧表示
-          </span>
-          <div
-            className="inline-flex rounded-md p-0.5"
-            role="group"
-            aria-label="一覧表示モード"
-            style={{ border: `1px solid ${theme.borderSubtle}`, backgroundColor: 'var(--color-neutral-solid-gray-900)' }}
-          >
-            <button
-              type="button"
-              className={listModeToggle.classNameForButton(listModeToggle.isTop)}
-              style={{
-                borderRadius: theme.radius6,
-                backgroundColor: listModeToggle.isTop ? theme.primaryUi : 'transparent',
-                color: listModeToggle.isTop ? theme.text : theme.textMuted
-              }}
-              aria-pressed={listModeToggle.isTop}
-              onClick={listModeToggle.onTop}
-            >
-              Top
-            </button>
-            <button
-              type="button"
-              className={listModeToggle.classNameForButton(listModeToggle.isAll)}
-              style={{
-                borderRadius: theme.radius6,
-                backgroundColor: listModeToggle.isAll ? theme.primaryUi : 'transparent',
-                color: listModeToggle.isAll ? theme.text : theme.textMuted
-              }}
-              aria-pressed={listModeToggle.isAll}
-              onClick={listModeToggle.onAll}
-            >
-              全件
-            </button>
-          </div>
-        </div>
+      {periodFilterControls}
+      <div className="kanalytics__seg" role="group" aria-label="一覧表示モード">
+        <button type="button" aria-pressed={listMode === 'top'} onClick={() => onListModeChange('top')}>上位10</button>
+        <button type="button" aria-pressed={listMode === 'all'} onClick={() => onListModeChange('all')}>全件</button>
       </div>
     </div>
   );

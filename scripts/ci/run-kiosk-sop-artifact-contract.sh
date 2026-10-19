@@ -32,13 +32,17 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-docker build --platform "$generator_platform" --file "$dockerfile" --tag "$image_tag" "$repo_root"
+# Run by image ID so a parallel build of the shared tag cannot swap the image.
+image_id_file="$(mktemp "${TMPDIR:-/tmp}/kiosk-sop-image-id.XXXXXX")"
+docker build --platform "$generator_platform" --file "$dockerfile" --tag "$image_tag" --iidfile "$image_id_file" "$repo_root"
+image_id="$(cat "$image_id_file")"
+rm -f "$image_id_file"
 
 docker run --rm --init --ipc=host --network=none --platform "$generator_platform" \
   --volume "$diagnostics_dir:/diagnostics" \
   --volume "$inspection_preview_path:/workspace/docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html:ro" \
   --volume "$assembly_preview_path:/workspace/docs/design-previews/kiosk-assembly-procedure-template-sop.html:ro" \
-  "$image_tag" \
+  "$image_id" \
   bash -lc '
     set -euo pipefail
 
@@ -65,5 +69,6 @@ docker run --rm --init --ipc=host --network=none --platform "$generator_platform
       --actual-root /diagnostics/candidate/assembly-procedure-template \
       --preview /workspace/docs/design-previews/kiosk-assembly-procedure-template-sop.html \
       --diagnostics-root /diagnostics/assembly
-    pnpm exec playwright test --config=playwright.kiosk-sop.config.ts
+    # One worker per browser project: the same 18 tests, Chromium and Firefox side by side.
+    pnpm exec playwright test --config=playwright.kiosk-sop.config.ts --workers=2
   '

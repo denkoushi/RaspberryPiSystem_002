@@ -28,11 +28,15 @@ export type PurchaseOrderLookupResponse = {
   rows: PurchaseOrderLookupRowDto[];
 };
 
-export async function queryPurchaseOrderLookup(purchaseOrderNo: string): Promise<PurchaseOrderLookupResponse> {
-  const rows = await prisma.purchaseOrderLookupRow.findMany({
+export function findPurchaseOrderLookupRows(purchaseOrderNo: string) {
+  return prisma.purchaseOrderLookupRow.findMany({
     where: { purchaseOrderNo },
     orderBy: [{ lineIndex: 'asc' }, { id: 'asc' }],
   });
+}
+
+export async function queryPurchaseOrderLookup(purchaseOrderNo: string): Promise<PurchaseOrderLookupResponse> {
+  const rows = await findPurchaseOrderLookupRows(purchaseOrderNo);
 
   const [
     masterPartNamesByMatchKey,

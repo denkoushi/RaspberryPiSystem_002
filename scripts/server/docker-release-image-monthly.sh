@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
-# Run the guarded monthly Docker release-image retention cycle.
+# Run the guarded Docker release-image retention cycle once per period.
+#
+# The period is one JST day by default. It used to be one month, but on
+# 2026-09-30 about 190 releases of ~3.4 GB each had filled the Pi5 SSD to 84%
+# before the monthly run, leaving about a week of headroom. The file keeps its
+# historical name because storage-maintenance.sh and the Ansible role call it.
 #
 # This coordinator intentionally contains no image-selection policy.  The
 # Python helper owns state validation, allowlisting, candidate calculation, and
 # Docker deletion; this script owns only the daily schedule boundary, locks,
-# and the atomic month-completion marker.
+# and the atomic period-completion marker.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,7 +23,9 @@ HELPER="${IMAGE_RETENTION_SCRIPT:-${SCRIPT_DIR}/docker-release-image-maintenance
 PYTHON_BIN="${IMAGE_RETENTION_PYTHON:-${PYTHON_COMMAND:-python3}}"
 FLOCK_BIN="${IMAGE_RETENTION_FLOCK:-${FLOCK_COMMAND:-flock}}"
 MINIMUM_AGE_HOURS="${IMAGE_RETENTION_MINIMUM_AGE_HOURS:-24}"
-CURRENT_MONTH="${STORAGE_MAINTENANCE_MONTH:-$(TZ=Asia/Tokyo date +%Y-%m)}"
+# STORAGE_MAINTENANCE_MONTH (YYYY-MM) is still honoured for a monthly override.
+CURRENT_PERIOD="${STORAGE_MAINTENANCE_PERIOD:-${STORAGE_MAINTENANCE_MONTH:-$(TZ=Asia/Tokyo date +%Y-%m-%d)}}"
+PERIOD_RE='^[0-9]{4}-(0[1-9]|1[0-2])(-(0[1-9]|[12][0-9]|3[01]))?$'
 MARKER_STATE='missing'
 MARKER_VALUE=''
 
@@ -45,7 +52,7 @@ validate_marker() {
   fi
 
   # Treat anything other than one regular, readable file containing exactly
-  # YYYY-MM plus one LF as corruption.  In particular, do not accept a valid
+  # YYYY-MM or YYYY-MM-DD plus one LF as corruption.  In particular, do not accept a valid
   # first line followed by stale or attacker-controlled extra content.
   if [[ ! -f "${MARKER_FILE}" || -L "${MARKER_FILE}" || ! -r "${MARKER_FILE}" ]]; then
     MARKER_STATE='invalid'
@@ -56,7 +63,7 @@ validate_marker() {
     MARKER_STATE='invalid'
     return 1
   fi
-  if [[ "${marker_size}" != '8' ]]; then
+  if [[ "${marker_size}" != '8' && "${marker_size}" != '11' ]]; then
     MARKER_STATE='invalid'
     return 1
   fi
@@ -65,7 +72,7 @@ validate_marker() {
     MARKER_VALUE=''
     return 1
   fi
-  if [[ ! "${MARKER_VALUE}" =~ ^[0-9]{4}-(0[1-9]|1[0-2])$ ]]; then
+  if [[ ! "${MARKER_VALUE}" =~ ${PERIOD_RE} ]]; then
     MARKER_STATE='invalid'
     MARKER_VALUE=''
     return 1
@@ -86,8 +93,8 @@ validate_marker() {
 }
 
 validate_inputs() {
-  [[ "${CURRENT_MONTH}" =~ ^[0-9]{4}-(0[1-9]|1[0-2])$ ]] || \
-    error_exit "現在月の形式が不正です: ${CURRENT_MONTH}"
+  [[ "${CURRENT_PERIOD}" =~ ${PERIOD_RE} ]] || \
+    error_exit "現在の整理期間の形式が不正です: ${CURRENT_PERIOD}"
   [[ "${MINIMUM_AGE_HOURS}" =~ ^[0-9]+$ ]] || \
     error_exit "イメージ最小経過時間が不正です: ${MINIMUM_AGE_HOURS}"
   command -v "${FLOCK_BIN}" >/dev/null 2>&1 || \
@@ -171,30 +178,30 @@ write_marker() {
   marker_dir="$(dirname "${MARKER_FILE}")"
   marker_name="$(basename "${MARKER_FILE}")"
   if ! mkdir -p "${marker_dir}"; then
-    error_exit "月次完了マーカーのディレクトリを作成できません: ${marker_dir}"
+    error_exit "整理完了マーカーのディレクトリを作成できません: ${marker_dir}"
   fi
   temporary="$(mktemp "${marker_dir}/.${marker_name}.tmp.XXXXXX")" || \
-    error_exit "月次完了マーカーの一時ファイルを作成できません: ${MARKER_FILE}"
-  if ! printf '%s\n' "${CURRENT_MONTH}" > "${temporary}"; then
+    error_exit "整理完了マーカーの一時ファイルを作成できません: ${MARKER_FILE}"
+  if ! printf '%s\n' "${CURRENT_PERIOD}" > "${temporary}"; then
     rm -f -- "${temporary}"
-    error_exit "月次完了マーカーを書き込めません: ${MARKER_FILE}"
+    error_exit "整理完了マーカーを書き込めません: ${MARKER_FILE}"
   fi
   chmod 0644 "${temporary}" || {
     rm -f -- "${temporary}"
-    error_exit "月次完了マーカーの権限を設定できません: ${MARKER_FILE}"
+    error_exit "整理完了マーカーの権限を設定できません: ${MARKER_FILE}"
   }
   if ! mv -f -- "${temporary}" "${MARKER_FILE}"; then
     rm -f -- "${temporary}"
-    error_exit "月次完了マーカーを原子的に更新できません: ${MARKER_FILE}"
+    error_exit "整理完了マーカーを原子的に更新できません: ${MARKER_FILE}"
   fi
 }
 
 validate_inputs
 if ! validate_marker; then
-  error_exit "月次完了マーカーが不正です（YYYY-MMと改行1行だけが必要です）: ${MARKER_FILE}"
+  error_exit "整理完了マーカーが不正です（YYYY-MMかYYYY-MM-DDと改行1行だけが必要です）: ${MARKER_FILE}"
 fi
-if [[ "${MARKER_STATE}" == 'valid' && "${MARKER_VALUE}" == "${CURRENT_MONTH}" ]]; then
-  log "INFO: Docker旧リリース整理は今月分を実施済みのためスキップします（月: ${CURRENT_MONTH}）"
+if [[ "${MARKER_STATE}" == 'valid' && "${MARKER_VALUE}" == "${CURRENT_PERIOD}" ]]; then
+  log "INFO: Docker旧リリース整理は今期分を実施済みのためスキップします（期間: ${CURRENT_PERIOD}）"
   exit 0
 fi
 
@@ -255,4 +262,4 @@ fi
 # The core helper returns non-zero for any failed or unresolved deletion.  The
 # marker is therefore advanced only after the complete apply command succeeds.
 write_marker
-log "INFO: Docker旧リリース整理が完了しました（月: ${CURRENT_MONTH}、完了マーカー: ${MARKER_FILE}）"
+log "INFO: Docker旧リリース整理が完了しました（期間: ${CURRENT_PERIOD}、完了マーカー: ${MARKER_FILE}）"

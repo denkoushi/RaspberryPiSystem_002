@@ -1,3 +1,5 @@
+import { getKnownFseibans } from '../../services/mobile-placement/known-fseiban-cache.js';
+import { snapFseiban, type FseibanSnapResult } from '../../services/mobile-placement/genpyo-slip/fseiban-snap.js';
 import type { MultipartFile } from '@fastify/multipart';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -388,10 +390,11 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
       actualFseibanRaw: body.actualFseibanRaw,
       actualPartBarcodeRaw: body.actualPartBarcodeRaw?.trim() || body.actualFhinmeiBarcodeRaw?.trim() || ''
     });
+    const resolvedBy = result.actualResolvedBy ? { actualResolvedBy: result.actualResolvedBy } : {};
     if (result.ok) {
-      return { ok: true as const };
+      return { ok: true as const, ...resolvedBy };
     }
-    return { ok: false as const, reason: result.reason };
+    return { ok: false as const, reason: result.reason, ...resolvedBy };
   });
 
   /**
@@ -430,9 +433,18 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
         mimeType: imageMime,
         requestId: request.id
       });
+      let snap: FseibanSnapResult = { match: 'none', fseiban: null, candidates: [] };
+      try {
+        const known = await getKnownFseibans();
+        snap = snapFseiban(result.fseibanOcrTokens, known);
+      } catch {
+        request.log.warn({ route: 'parse-actual-slip-image' }, 'FSEIBAN lookup unavailable; using OCR result');
+      }
       request.log.info(
         {
           route: 'parse-actual-slip-image',
+          fseibanMatch: snap.match,
+          fseibanCandidateCount: snap.candidates.length,
           ocrTextChars: result.ocrText.length,
           hasManufacturingOrder10: result.manufacturingOrder10 != null,
           hasFseiban: result.fseiban != null,
@@ -445,7 +457,10 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
         ocrText: result.ocrText,
         ocrPreviewSafe: result.ocrPreviewSafe,
         manufacturingOrder10: result.manufacturingOrder10,
-        fseiban: result.fseiban
+        fseibanRaw: result.fseiban,
+        fseibanMatch: snap.match,
+        fseibanCandidates: snap.candidates,
+        fseiban: snap.fseiban ?? result.fseiban
       };
     }
   );

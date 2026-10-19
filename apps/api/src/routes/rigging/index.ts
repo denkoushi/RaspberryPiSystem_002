@@ -1,3 +1,4 @@
+import { toLoanResponse } from '../../lib/loan-response.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { authorizeRoles } from '../../lib/auth.js';
@@ -44,7 +45,8 @@ export async function registerRiggingRoutes(app: FastifyInstance): Promise<void>
       try {
         await canView(request, reply);
         return;
-      } catch {
+      } catch (error) {
+        if (error instanceof ApiError && error.code === 'MFA_SETUP_REQUIRED') throw error;
         // fall back
       }
     }
@@ -59,7 +61,8 @@ export async function registerRiggingRoutes(app: FastifyInstance): Promise<void>
       try {
         await canWrite(request, reply);
         return;
-      } catch {
+      } catch (error) {
+        if (error instanceof ApiError && error.code === 'MFA_SETUP_REQUIRED') throw error;
         // fall back
       }
     }
@@ -167,13 +170,13 @@ export async function registerRiggingRoutes(app: FastifyInstance): Promise<void>
     const headerKey = request.headers['x-client-key'];
     const resolvedClientId = await resolveClientDeviceId(body.clientId, headerKey);
     const loan = await loanService.borrow({ ...body, clientId: resolvedClientId });
-    return { loan };
+    return { loan: toLoanResponse(loan) };
   });
 
   // 返却
   app.post('/rigging-gears/return', { preHandler: allowWrite }, async (request) => {
     const body = riggingReturnSchema.parse(request.body);
     const loan = await loanService.return(body);
-    return { loan };
+    return { loan: toLoanResponse(loan) };
   });
 }

@@ -81,7 +81,7 @@
     release_pi5_search_trial_preserved_lines: >-
       {{
         (release_pi5_chat_env_search_trial_backup.content | b64decode).splitlines()
-        | select('match', '^(HERMES_SEARCH_TRIAL_ENABLED|HERMES_SEARCH_TRIAL_JEV_ENABLED|HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED|HERMES_JEV_PROVIDER|HERMES_SEARCH_RECORD_SOURCE|HERMES_SEARCH_RECORD_CLASSIFICATION_STORE|TYPESAFE_API_KEY|HERMES_INFERENCE_ORIGIN|HERMES_INFERENCE_TOKEN|HERMES_INFERENCE_EGRESS|HERMES_SEARCH_ARTIFACT_ROOT|HERMES_TRIAL_SNAPSHOT_PATH|HERMES_ORGANIZED_MANIFEST|HERMES_RETRIEVAL_V2_ENABLED|HERMES_RETRIEVAL_ENRICHMENT_ENABLED|HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS|HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY|HERMES_RETRIEVAL_ENRICHMENT_WINDOW|HERMES_RETRIEVAL_ENRICHMENT_IDS|HERMES_RETRIEVAL_DENSE_PROVIDER|HERMES_RETRIEVAL_DENSE_INDEX_ENABLED)=')
+        | select('match', '^(HERMES_SEARCH_TRIAL_ENABLED|HERMES_SEARCH_TRIAL_JEV_ENABLED|HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED|HERMES_JEV_PROVIDER|HERMES_SEARCH_RECORD_SOURCE|HERMES_SEARCH_RECORD_CLASSIFICATION_STORE|TYPESAFE_API_KEY|HERMES_INFERENCE_ORIGIN|HERMES_INFERENCE_TOKEN|HERMES_INFERENCE_EGRESS|HERMES_SEARCH_ARTIFACT_ROOT|HERMES_TRIAL_SNAPSHOT_PATH|HERMES_ORGANIZED_MANIFEST|HERMES_RETRIEVAL_V2_ENABLED|HERMES_RETRIEVAL_SOURCES|HERMES_RETRIEVAL_ENRICHMENT_ENABLED|HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS|HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY|HERMES_RETRIEVAL_ENRICHMENT_WINDOW|HERMES_RETRIEVAL_ENRICHMENT_IDS|HERMES_RETRIEVAL_CAUSE_ENABLED|HERMES_RETRIEVAL_CAUSE_MAX_TEXTS|HERMES_FLYWHEEL_ENABLED|HERMES_FLYWHEEL_MAX_QUESTIONS|HERMES_RETRIEVAL_DENSE_PROVIDER|HERMES_RETRIEVAL_DENSE_INDEX_ENABLED)=')
         | list
       }}
   when:
@@ -112,6 +112,7 @@
     - { key: LOCAL_LLM_SHARED_TOKEN, value: "{{ api_local_llm_shared_token | default('') }}" }
     - { key: INFERENCE_PROVIDERS_JSON, value: "{{ inference_providers_json | default('') }}" }
     - { key: HERMES_KNOWLEDGE_ENABLED, value: "{{ hermes_knowledge_enabled | default(false) | bool | ternary('true', 'false') }}" }
+    - { key: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_ENABLED, value: "{{ part_measurement_drawing_dimension_map_enabled | default(false) | bool | ternary('true', 'false') }}" }
     - { key: BUSINESS_HERMES_EGRESS_PROXY_FILE, value: "{{ release_pi5_egress_artifacts.candidate }}" }
     - { key: BUSINESS_HERMES_CHAT_EGRESS_PROXY_FILE, value: "{{ release_pi5_egress_artifacts.candidate }}" }
     - { key: BUSINESS_HERMES_CHAT_BASE_URL, value: "{{ api_business_hermes_chat_base_url }}" }
@@ -119,6 +120,17 @@
     - { key: BUSINESS_HERMES_CHAT_MODEL, value: "{{ business_hermes_chat_model }}" }
     - { key: BUSINESS_HERMES_MCP_API_KEY, value: "{{ business_hermes_chat_mcp_api_key }}" }
     - { key: BUSINESS_HERMES_CHAT_TIMEOUT_MS, value: "{{ api_business_hermes_chat_timeout_ms }}" }
+    # compose.env は前回の自分をコピーして作るため、Vault の新しい値はここで渡さないと API に届かない
+    - { key: BACKUP_ENCRYPTION_KEY, value: "{{ backup_encryption_key | default('') }}" }
+    # 写真持出ギャラリーの埋め込みモデルとしきい値。DGX の埋め込みサーバーと組で変える（ADR-20261007）
+    - { key: PHOTO_TOOL_EMBEDDING_MODEL_ID, value: "{{ photo_tool_embedding_model_id | default('') }}" }
+    - { key: PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE, value: "{{ photo_tool_similarity_max_cosine_distance | default('0.22') }}" }
+    - { key: PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE, value: "{{ photo_tool_label_assist_max_cosine_distance | default('0.14') }}" }
+    # 要領書音声認識の中継フラグ（既定 OFF）。inventory の値はここで渡さないと API に届かない
+    - { key: PROCEDURE_SPEECH_TO_TEXT_ENABLED, value: "{{ procedure_speech_to_text_enabled | default(false) | bool | ternary('true', 'false') }}" }
+    # 要領書の区切り提案。承認済みメール素材の画像判定だけに使う
+    - { key: PROCEDURE_MATERIAL_SPLIT_SUGGESTION_ENABLED, value: "{{ procedure_material_split_suggestion_enabled | default(false) | bool | ternary('true', 'false') }}" }
+    - { key: TYPESAFE_API_KEY, value: "{{ hermes_search_typesafe_api_key | default('') }}" }
   no_log: true
 
 - name: Bind consultation Compose paths and persistent candidate environment

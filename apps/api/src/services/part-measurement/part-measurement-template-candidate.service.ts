@@ -1,7 +1,7 @@
 import type { PartMeasurementProcessGroup } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
-import { PART_MEASUREMENT_LEGACY_RESOURCE_CD } from './part-measurement-constants.js';
+import { normalizePartMeasurementResourceCd as normalizeResourceCd } from './part-measurement-resource-cd.js';
 import { productionPartMeasurementTemplateWhere } from './part-measurement-template-guards.js';
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
 import {
@@ -34,11 +34,6 @@ export type TemplateCandidateRow = {
     visualTemplate: import('@prisma/client').PartMeasurementVisualTemplate | null;
   };
 };
-
-function normalizeResourceCd(raw: string): string {
-  const t = raw.trim();
-  return t.length > 0 ? t : PART_MEASUREMENT_LEGACY_RESOURCE_CD;
-}
 
 export class PartMeasurementTemplateCandidateService {
   async listCandidates(input: ListTemplateCandidatesInput): Promise<TemplateCandidateRow[]> {

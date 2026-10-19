@@ -25,6 +25,7 @@ type Props = {
   onPointChange: (patch: Partial<InspectionDrawingPoint>) => void;
   onRemovePoint?: () => void;
   onRemoveAllPoints?: () => void;
+  onSwapMarkerNo?: (targetMarkerNo: number) => void;
   onTestValueChange: (value: string) => void;
   onCommitTestValue?: (payload: {
     pointId: string;
@@ -37,7 +38,7 @@ type Props = {
   ocrCandidateStatus?: PartMeasurementDrawingOcrStatus | null;
   ocrCandidateLoading?: boolean;
   ocrCandidateError?: string | null;
-  onApplyOcrCandidate?: (valueText: string) => void;
+  onApplyOcrCandidate?: (valueText: string, candidate?: PartMeasurementDrawingOcrCandidateDto) => void;
   measurementLabelSettings?: readonly InspectionDrawingMeasurementLabelSetting[];
 };
 
@@ -54,6 +55,7 @@ export function InspectionDrawingPointSidebar({
   onPointChange,
   onRemovePoint,
   onRemoveAllPoints,
+  onSwapMarkerNo,
   onTestValueChange,
   onCommitTestValue,
   guidedTrialHint,
@@ -97,6 +99,8 @@ export function InspectionDrawingPointSidebar({
             onChange={onPointChange}
             onRemove={onRemovePoint}
             onRemoveAll={onRemoveAllPoints}
+            markerNos={points.map((p) => p.markerNo).sort((a, b) => a - b)}
+            onSwapMarkerNo={onSwapMarkerNo}
             ocrCandidates={ocrCandidates}
             ocrCandidateStatus={ocrCandidateStatus}
             ocrCandidateLoading={ocrCandidateLoading}

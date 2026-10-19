@@ -2,7 +2,7 @@ import { performance } from 'node:perf_hooks';
 
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
-import { resolveSiteKeyFromScopeKey } from '../../lib/location-scope-resolver.js';
+import { resolveSiteKeyForScopeKey } from '../../lib/site-directory.js';
 import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { resetSelfInspectionMachineBoardScheduleRowCaches } from '../part-measurement/self-inspection-machine-board-cache-invalidation.js';
 import { dueManagementLearningEventRepository } from './due-management-learning-event.repository.js';
@@ -414,7 +414,7 @@ export async function upsertProductionScheduleOrder(params: {
   actorLocationKey?: string;
 }): Promise<{ success: true; orderNumber: number | null }> {
   const { rowId, resourceCd, orderNumber, locationKey, actorLocationKey } = params;
-  const siteKey = resolveSiteKeyFromScopeKey(locationKey.trim());
+  const siteKey = resolveSiteKeyForScopeKey(locationKey.trim());
   const isSiteCanonicalLocation = locationKey === siteKey;
   const row = await prisma.csvDashboardRow.findFirst({
     where: { id: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },

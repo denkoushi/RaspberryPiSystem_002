@@ -242,6 +242,12 @@ Operator ran manual imports from admin **CSV取込** UI (Pi5 production).
 
 **Resume context for next AI**: Ingest completion fix (**`e111dda3`**) and end-to-end admin manual run are **verified on Pi5**. Monitor the **scheduled** job at the new cron **`43 6 * * *`** for parity with manual success.
 
+## FKOJUNST historical-mail backlog follow-up (2026-09-25)
+
+- A 14,899-row split CSV completed the locked row-update transaction within the existing 180-second limit, but generic JSON-key duplicate-loser cleanup then took about 25 minutes and deleted zero rows. The subsequent mail-status projection took about four minutes.
+- `FKOJUNST_Status` already matches incoming rows by its key-derived `dataHash`; the mail-status projection independently selects the latest row per business key. The generic loser cleanup is skipped for this dashboard only. Other DEDUP dashboards retain that cleanup.
+- This change does not alter the completion transaction timeout or the status winner rule. Confirm a pending split-mail import completes with no duplicate-cleanup step before processing the remaining backlog.
+
 ## Post-Deploy Operator Actions (if symptoms persist)
 
 Per [csv-import-export.md §Gmail csvDashboards スケジュール衝突](../guides/csv-import-export.md):

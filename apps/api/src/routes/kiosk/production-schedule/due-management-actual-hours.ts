@@ -1,6 +1,8 @@
 import { createHash } from 'crypto';
 import type { FastifyInstance } from 'fastify';
 
+import { requireDueManagementToken } from '../../../lib/auth.js';
+
 import { ActualHoursImportOrchestratorService } from '../../../services/production-schedule/actual-hours/actual-hours-import-orchestrator.service.js';
 import {
   resolveDueManagementStorageLocationKey,
@@ -25,6 +27,7 @@ export async function registerProductionScheduleDueManagementActualHoursRoute(
     { config: { rateLimit: false } },
     async (request) => {
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+      requireDueManagementToken(request.headers['x-due-management-token'], clientDevice.id);
       const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
       const dueManagementScope = toDueManagementScopeFromContext(locationScopeContext);
       const locationKey = resolveDueManagementStorageLocationKey(dueManagementScope);

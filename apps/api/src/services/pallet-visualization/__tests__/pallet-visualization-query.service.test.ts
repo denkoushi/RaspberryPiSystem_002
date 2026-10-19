@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma } from '../../../lib/prisma.js';
+import { PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID } from '../../production-schedule/constants.js';
 import {
   queryPalletVisualizationBoard,
   queryPalletVisualizationMachine,
@@ -130,6 +131,26 @@ describe('pallet list schedule fallback contract (PostgreSQL)', () => {
     const saved = await item({ csvDashboardRowId: rowId });
     const result = await queryPalletVisualizationMachine(machineA);
     expect(result.machine.pallets[0]?.items).toEqual([expectedItem(saved.id, rowId)]);
+  });
+
+  it('fills a machine name saved as null from the supplement table without overriding saved names', async () => {
+    const supplementSeiban = `${prefix}-SUP`;
+    await prisma.productionScheduleSeibanMachineNameSupplement.create({ data: {
+      sourceCsvDashboardId: PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
+      fseiban: supplementSeiban, machineName: 'abc-extra',
+    } });
+    try {
+      const filled = await item({ fseiban: supplementSeiban, machineName: null });
+      const saved = await item({ displayOrder: 2, fseiban: supplementSeiban, machineName: 'xyz-saved' });
+      const result = await queryPalletVisualizationMachine(machineA);
+      const items = result.machine.pallets[0]?.items ?? [];
+      expect(items[0]).toEqual(expectedItem(filled.id, null, { fseiban: supplementSeiban }));
+      expect(items[1]?.machineName).toBe('xyz-saved');
+      const stored = await prisma.machinePalletItem.findUnique({ where: { id: filled.id } });
+      expect(stored?.machineName).toBeNull();
+    } finally {
+      await prisma.productionScheduleSeibanMachineNameSupplement.deleteMany({ where: { fseiban: supplementSeiban } });
+    }
   });
 
   it('skips the schedule query when there are no referenced IDs, including null and empty IDs', async () => {

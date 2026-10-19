@@ -40,6 +40,30 @@ export function nextAvailableMarkerNo(points: Array<{ markerNo: number }>): numb
   return candidate;
 }
 
+/** 選択点の丸数字を targetMarkerNo に変え、その番号を使っていた点と入れ替える（位置・設定は動かさない） */
+export function swapInspectionDrawingMarkerNo<T extends { id: string; markerNo: number }>(
+  points: readonly T[],
+  pointId: string,
+  targetMarkerNo: number
+): T[] {
+  const source = points.find((p) => p.id === pointId);
+  if (!source || source.markerNo === targetMarkerNo) return [...points];
+  const sourceMarkerNo = source.markerNo;
+  return points.map((p) => {
+    if (p.id === pointId) return { ...p, markerNo: targetMarkerNo };
+    if (p.markerNo === targetMarkerNo) return { ...p, markerNo: sourceMarkerNo };
+    return p;
+  });
+}
+
+/** 保存順（sortOrder）を丸数字順に揃える。同番号は元の並びを保つ */
+export function sortInspectionDrawingPointsByMarkerNo<T extends { markerNo: number }>(points: readonly T[]): T[] {
+  return points
+    .map((point, index) => ({ point, index }))
+    .sort((a, b) => a.point.markerNo - b.point.markerNo || a.index - b.index)
+    .map(({ point }) => point);
+}
+
 export function createInspectionDrawingPoint(
   xRatio: number,
   yRatio: number,
@@ -429,6 +453,16 @@ export function toleranceBoundsFromPoint(
     lowerToleranceRaw: pt.lowerToleranceRaw,
     upperToleranceRaw: pt.upperToleranceRaw
   });
+}
+
+/** テンプレ保存前の測定点チェック: OK/NG判定点は公差を持たないため対象外 */
+export function resolveInspectionDrawingPointSaveError(
+  pt: InspectionDrawingPoint,
+  options: InspectionDrawingPointToleranceOptions = {}
+): string | null {
+  if (isInspectionDrawingJudgementPoint(pt)) return null;
+  const bounds = toleranceBoundsFromPoint(pt, options);
+  return 'error' in bounds ? bounds.error : null;
 }
 
 /** 公差欄の明示編集時に legacy スナップショットを外し、必要なら legacy から offset を seed */

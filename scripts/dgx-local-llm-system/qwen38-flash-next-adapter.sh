@@ -7,7 +7,7 @@ set -euo pipefail
 # the system-prod blue endpoint and cache paths.
 
 readonly UPSTREAM_REPO_URL="https://github.com/MiaAI-Lab/Qwen3.8-Flash-Next-Single-DGX-Spark"
-readonly DEFAULT_UPSTREAM_REVISION="d03809008834124e80223c3482f2ddb59577a48f"
+readonly DEFAULT_UPSTREAM_REVISION="b8439110eec0230facbe4ddf0dffe01b8f769be0"
 readonly DEFAULT_MODEL_REVISION="925d7be6c14c6c9442ef83e8f05b5a3c39304f69"
 readonly DEFAULT_IMAGE="vllm/vllm-openai:qwen38-flash-next@sha256:3b0e188ffceb3d07e09c3cb5215433a0020eacf02d7f882ed3a8bfd15454477e"
 readonly MODEL_ID="Mia-AiLab/Qwen3.8-Flash-Next-NVFP4"
@@ -108,11 +108,33 @@ if [[ "${SCHEDULING_POLICY}" != "priority" ]]; then
   exit 1
 fi
 PLE_CACHE_DIR="${HOME}/.cache/vllm/ple_cache/Mia-AiLab--Qwen3.8-Flash-Next-NVFP4"
+# Fast weight loading (upstream #82): instanttensor staged on the host by
+# prepare-qwen38-flash-next-cache.sh prepare-fast-load.  Without the staged
+# package the recipe's lazy safetensors loader is kept, only slower.
+FAST_LOAD="${BLUE_QWEN38_FAST_LOAD:-1}"
+INSTANTTENSOR_DIR_NAME="instanttensor-0.2.0"
+INSTANTTENSOR_HOST_DIR="${HOME}/.cache/vllm/pylib/${INSTANTTENSOR_DIR_NAME}"
+if [[ "${FAST_LOAD}" != "0" && "${FAST_LOAD}" != "1" ]]; then
+  echo "BLUE_QWEN38_FAST_LOAD must be 0 or 1" >&2
+  exit 1
+fi
+if [[ "${FAST_LOAD}" == "1" && ! -s "${INSTANTTENSOR_HOST_DIR}/.qwen38-instanttensor-ready" ]]; then
+  echo "Qwen3.8 Flash adapter: instanttensor is not staged at ${INSTANTTENSOR_HOST_DIR}; keeping the safetensors loader" >&2
+  FAST_LOAD="0"
+fi
+# Reduced-vocabulary MTP drafting.  "full" drafts over the whole 248k head.
+# Default: the upstream 47k English/code floor plus frequent Japanese ids
+# (see README).  "files/draft_vocab_en_code_47k.txt" restores the upstream file.
+DRAFT_VOCAB="${BLUE_QWEN38_DRAFT_VOCAB:-${SCRIPT_DIR}/qwen38-draft-vocab-ja-en-code-56k.txt}"
+if [[ "${DRAFT_VOCAB}" == "full" ]]; then
+  DRAFT_VOCAB=""
+fi
 echo "Qwen3.8 Flash adapter: local model cache=${MODEL_DIR} persistent PLE cache=${PLE_CACHE_DIR}" >&2
 
-# The pinned upstream launcher uses host networking and binds 0.0.0.0. Keep
-# its model/PLE/container/watchdog behavior while adapting only that fixed bind
-# line to the existing localhost-only blue endpoint; readiness returns through
+# The pinned upstream launcher uses host networking and binds $BIND (default
+# 0.0.0.0). Keep its model/PLE/container/watchdog behavior while fixing only
+# that bind line to the existing localhost-only blue endpoint, independent of
+# BIND in the remote .env; readiness returns through
 # the existing control path. The source is copied into the recipe directory so
 # its SCRIPT_DIR-relative paths still resolve correctly.
 BOUNDARY_START=""
@@ -124,15 +146,18 @@ cleanup_boundary_start() {
 trap cleanup_boundary_start EXIT
 
 BOUNDARY_START="$(mktemp "${RECIPE_DIR}/.business-qwen38-boundary-start.XXXXXX")"
-python3 - "${UPSTREAM_START}" "${BOUNDARY_START}" <<'PY'
+python3 - "${UPSTREAM_START}" "${BOUNDARY_START}" "${FAST_LOAD}" "${SCRIPT_DIR}/qwen38_ple_loader_guard.py" <<'PY'
 from pathlib import Path
+import shlex
 import sys
 
 source_path = Path(sys.argv[1])
 generated_path = Path(sys.argv[2])
+fast_load = sys.argv[3] == '1'
+guard_path = sys.argv[4]
 source = source_path.read_text(encoding='utf-8')
 backslash = chr(92)
-old_host = f'    --host 0.0.0.0 {backslash}{backslash}\n'
+old_host = f'    --host $BIND {backslash}{backslash}\n'
 new_host = f'    --host 127.0.0.1 {backslash}{backslash}\n'
 readiness_marker = 'info "Loading weights (~3-4 min). Following logs until ready..."\n'
 if source.count(old_host) != 1:
@@ -141,6 +166,12 @@ if source.count(readiness_marker) != 1:
     raise SystemExit(f'expected exactly one pinned readiness marker, found {source.count(readiness_marker)}')
 source = source.replace(old_host, new_host, 1)
 source = source.replace(readiness_marker, f'exit 0\n{readiness_marker}', 1)
+launch_line = 'bash "$LAUNCH_SCRIPT"\n'
+if fast_load:
+    if source.count(launch_line) != 1:
+        raise SystemExit(f'expected exactly one pinned launch line, found {source.count(launch_line)}')
+    guard = f'python3 {shlex.quote(guard_path)} "$OFFLOAD_DIR/worker.py" || exit 1\n'
+    source = source.replace(launch_line, guard + launch_line, 1)
 generated_path.write_text(source, encoding='utf-8')
 PY
 chmod 0750 "${BOUNDARY_START}"
@@ -155,9 +186,20 @@ META_PATCH_PATH="${HOME}/.cache/vllm/business-patches/qwen38-gdn-meta.py"
 python3 "${SCRIPT_DIR}/qwen38_meta_patch.py" "${IMAGE}" "${META_PATCH_PATH}"
 EXTRA_DOCKER_ARGS+="-v ${META_PATCH_PATH}:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py:ro "
 EXTRA_DOCKER_ARGS+="-e VLLM_USE_V2_MODEL_RUNNER=1"
+# The recipe runs with compilation mode 0, so vLLM never points Triton at a
+# persistent cache; keep its kernels on the host between container restarts.
+install -d "${HOME}/.cache/vllm/triton"
+EXTRA_DOCKER_ARGS+=" -e TRITON_CACHE_DIR=/root/.cache/vllm/triton"
+EXTRA_VLLM_ARGS="--scheduling-policy ${SCHEDULING_POLICY}"
+if [[ "${FAST_LOAD}" == "1" ]]; then
+  EXTRA_DOCKER_ARGS+=" -e PYTHONPATH=/root/.cache/vllm/pylib/${INSTANTTENSOR_DIR_NAME}"
+  EXTRA_VLLM_ARGS+=" --load-format instanttensor"
+fi
+echo "Qwen3.8 Flash adapter: fast_load=${FAST_LOAD} draft_vocab=${DRAFT_VOCAB}" >&2
 cd "${RECIPE_DIR}"
 if env \
   ABLIT="0" \
+  BIND="127.0.0.1" \
   TP1_MODEL_ID="${MODEL_ID}" \
   TP1_CONTAINER_NAME="${CONTAINER_NAME}" \
   IMAGE="${IMAGE}" \
@@ -171,14 +213,16 @@ if env \
   YARN="0" \
   MTP_NUM_SPECULATIVE_TOKENS="3" \
   MAMBA_SSM_CACHE_DTYPE="bfloat16" \
-  MTP_DRAFT_VOCAB="files/draft_vocab_en_code_47k.txt" \
+  MTP_DRAFT_VOCAB="${DRAFT_VOCAB}" \
+  MTP_DISABLE_BLOCK_DROP="1" \
+  CHAT_TEMPLATE="" \
   PLE_OFFLOAD="true" \
   HOST_RESERVE_GIB="26" \
   KV_TARGET_GIB="16" \
   HOST_SLACK_GIB="5" \
   COMPILATION_MODE="0" \
   GPU_MEMORY_UTILIZATION="${VLLM_GPU_MEMORY_UTILIZATION:-0.71}" \
-  EXTRA_VLLM_ARGS="--scheduling-policy ${SCHEDULING_POLICY}" \
+  EXTRA_VLLM_ARGS="${EXTRA_VLLM_ARGS}" \
   CUDAGRAPH_CAPTURE_SIZES="auto" \
   CUDAGRAPH_MODE="FULL_DECODE_ONLY" \
   REQUIRE_IDLE_GPU="true" \

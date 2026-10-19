@@ -15,13 +15,9 @@ vault_api_local_llm_runtime_control_token: ""
 
 # DGXリソース管理（空なら read-only / 設定不足としてUI表示）
 vault_api_dgx_resource_metrics_url: ""
-vault_api_dgx_resource_comfyui_health_url: ""
 vault_api_dgx_resource_embedding_health_url: ""
 vault_api_dgx_resource_spark_host_status_url: ""
 vault_api_dgx_resource_probe_timeout_ms: "10000"
-vault_api_dgx_resource_private_comfyui_runtime_start_url: ""
-vault_api_dgx_resource_private_comfyui_runtime_stop_url: ""
-vault_api_dgx_resource_private_comfyui_runtime_control_token: ""
 vault_api_dgx_resource_experiment_lab_runtime_start_url: ""
 vault_api_dgx_resource_experiment_lab_runtime_stop_url: ""
 vault_api_dgx_resource_experiment_lab_runtime_control_token: ""
@@ -54,7 +50,7 @@ vault_dropbox_access_token: ""
 # vault_photo_tool_embedding_enabled: "false"
 # vault_photo_tool_embedding_url: ""
 # vault_photo_tool_embedding_api_key: ""
-# vault_photo_tool_embedding_model_id: ""
+# (2026-10) モデル ID は inventory.yml に移した。vault の値は使われない
 # vault_photo_tool_embedding_dimension: "512"
 # シャドー: 2回目VLMはログのみ（本番列は1回目のまま）
 # vault_photo_tool_label_assist_shadow_enabled: "false"

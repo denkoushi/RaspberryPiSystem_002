@@ -12,7 +12,7 @@ vi.mock('../item-inventory-gmail-packet-resolver.js', () => ({
 }));
 vi.mock('../../../lib/photo-storage.js', () => ({ PhotoStorage: { savePhoto: savePhotoMock } }));
 
-import { ItemInventoryGmailIngestionService } from '../item-inventory-gmail-ingestion.service.js';
+import { ITEM_INVENTORY_INGEST_RUNNING, ItemInventoryGmailIngestionService } from '../item-inventory-gmail-ingestion.service.js';
 
 const validPacket = {
   manifest: {
@@ -109,6 +109,51 @@ describe('ItemInventoryGmailIngestionService', () => {
     expect(gmail.trashMessage).toHaveBeenCalledWith('processing-message');
   });
 
+  it('stores a full-width location as the half-width area but keeps the raw manifest', async () => {
+    const records = new Map([['full-width-message', { gmailMessageId: 'full-width-message', outcome: 'PROCESSING', nextRetryAt: null, updatedAt: new Date() }]]);
+    const { db, payloadCreate } = createFakeDb(records);
+    const jpeg = await sharp({ create: { width: 1, height: 1, channels: 3, background: 'white' } }).jpeg().toBuffer();
+    const manifest = { ...validPacket.manifest, location: ' 30041R_2ＭＦ-Ｐ ' };
+    resolvePacketMock.mockResolvedValue({ ...validPacket, manifest, photos: [{ ...validPacket.photos[0], buffer: jpeg }] });
+    savePhotoMock.mockResolvedValue({ relativePath: '/api/storage/photos/2026/09/photo.jpg' });
+    const gmail = {
+      searchMessagesAll: vi.fn(),
+      getMessage: vi.fn().mockResolvedValue({ payload: { headers: [{ name: 'Subject', value: '[ItemlistRaspi-photo] 2' }] } }),
+      getAttachment: vi.fn(),
+      markAsRead: vi.fn().mockResolvedValue(undefined),
+      trashMessage: vi.fn().mockResolvedValue(undefined),
+    };
+    const service = new ItemInventoryGmailIngestionService(vi.fn().mockResolvedValue(gmail), db as never);
+
+    await service.retryRecord('full-width-message', { config: config(), allowWait: true });
+
+    expect(payloadCreate.mock.calls[0][0].data.area).toBe('30041R_2MF-P');
+    expect(payloadCreate.mock.calls[0][0].data.manifest.location).toBe(' 30041R_2ＭＦ-Ｐ ');
+  });
+
+  it('keeps a dismissed payload dismissed on same-message and same-content resends', async () => {
+    const payload = { id: 'dismissed-payload', status: 'DISMISSED' };
+    const { db, payloadCreate } = createFakeDb(new Map([['original', {
+      gmailMessageId: 'original', outcome: 'PENDING', payloadId: payload.id, nextRetryAt: null, updatedAt: new Date(), mailCleanupCompleted: true,
+    }]]));
+    db.inventoryImportPayload.findUnique.mockResolvedValue(payload as never);
+    resolvePacketMock.mockResolvedValue(validPacket);
+    const gmail = {
+      searchMessagesAll: vi.fn().mockResolvedValue(['original', 'resent']),
+      getMessage: vi.fn().mockResolvedValue({ payload: { headers: [{ name: 'Subject', value: '[ItemlistRaspi-photo] 2' }] } }),
+      getAttachment: vi.fn(),
+      markAsRead: vi.fn().mockResolvedValue(undefined),
+      trashMessage: vi.fn().mockResolvedValue(undefined),
+    };
+    const service = new ItemInventoryGmailIngestionService(vi.fn().mockResolvedValue(gmail), db as never);
+    await expect(service.runOnce({ config: config(), allowWait: true })).resolves.toMatchObject({ duplicate: 1, pending: 0 });
+    expect(gmail.getMessage).toHaveBeenCalledExactlyOnceWith('resent');
+    expect(db.inventoryImportPayload.findUnique).toHaveBeenCalledWith({ where: { contentHash: validPacket.contentHash } });
+    expect(payloadCreate).not.toHaveBeenCalled();
+    expect(payload.status).toBe('DISMISSED');
+    expect(gmail.trashMessage).toHaveBeenCalledWith('resent');
+  });
+
   it('does not trash a message whose manifest cannot be ingested', async () => {
     const { db } = createFakeDb(new Map());
     resolvePacketMock.mockRejectedValueOnce(new Error('manifest is invalid'));
@@ -147,5 +192,35 @@ describe('ItemInventoryGmailIngestionService', () => {
     expect(gmail.getMessage).not.toHaveBeenCalled();
     expect(gmail.trashMessage).toHaveBeenCalledTimes(1);
     expect(messageStore.get('old-success')).toMatchObject({ mailCleanupCompleted: true, mailCleanupPending: false });
+  });
+  it('answers a retry pressed during the scheduled run with a 409 business error and leaves the record untouched', async () => {
+    const record = { id: 'record-1', gmailMessageId: 'retry-message', outcome: 'RETRYABLE', errorMessage: 'Referenced image is missing', nextRetryAt: new Date('2026-10-19T03:00:00Z'), updatedAt: new Date() };
+    const { db, messageStore } = createFakeDb(new Map([['record-1', record]]));
+    let releaseScheduled!: () => void;
+    const gmail = {
+      searchMessagesAll: vi.fn().mockImplementationOnce(() => new Promise<string[]>((resolve) => { releaseScheduled = () => resolve([]); })).mockResolvedValue([]),
+      getMessage: vi.fn(),
+      getAttachment: vi.fn(),
+      trashMessage: vi.fn(),
+    };
+    const service = new ItemInventoryGmailIngestionService(vi.fn().mockResolvedValue(gmail), db as never);
+
+    const scheduled = service.runOnce({ config: config(), allowWait: false });
+    await vi.waitFor(() => expect(gmail.searchMessagesAll).toHaveBeenCalled());
+    const busy = { statusCode: 409, code: ITEM_INVENTORY_INGEST_RUNNING, message: 'いま取込中です。少し待ってからもう一度押してください' };
+    await expect(service.retryRecord('record-1', { config: config(), allowWait: true })).rejects.toMatchObject(busy);
+    await expect(service.runOnce({ config: config(), allowWait: true, manual: true })).rejects.toMatchObject(busy);
+    expect(db.inventoryImportMessage.update).not.toHaveBeenCalled();
+    expect(messageStore.get('record-1')?.nextRetryAt).toEqual(record.nextRetryAt);
+
+    releaseScheduled();
+    await expect(scheduled).resolves.toMatchObject({ scanned: 0 });
+    await expect(service.runOnce({ config: config(), allowWait: false })).resolves.toBeDefined();
+  });
+
+  it('answers a retry for a missing record with 404', async () => {
+    const { db } = createFakeDb(new Map());
+    const service = new ItemInventoryGmailIngestionService(vi.fn(), db as never);
+    await expect(service.retryRecord('missing', { config: config(), allowWait: true })).rejects.toMatchObject({ statusCode: 404 });
   });
 });

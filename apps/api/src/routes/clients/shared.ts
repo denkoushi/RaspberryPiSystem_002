@@ -53,6 +53,7 @@ export const logsPayloadSchema = z.object({
 });
 
 export const logListQuerySchema = z.object({
+  category: z.string().min(1).optional(),
   clientId: z.string().min(1).optional(),
   level: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
@@ -70,7 +71,10 @@ export const updateClientSchema = z.object({
   defaultMode: z.enum(['PHOTO', 'TAG']).optional().nullable(),
   kioskInitialRoute: z.enum(KIOSK_INITIAL_ROUTE_IDS).optional().nullable(),
   haizenEdgeEnabled: z.boolean().optional(),
-  shelfLayoutEditEnabled: z.boolean().optional()
+  shelfLayoutEditEnabled: z.boolean().optional(),
+  /** 明示拠点（Site.key）。null で未設定（location 文字列からの推測）に戻す */
+  siteKey: z.string().trim().min(1).max(50).optional().nullable(),
+  canProxyOtherDevices: z.boolean().optional()
 });
 
 export const requireClientKey = (headerValue: unknown): string => {

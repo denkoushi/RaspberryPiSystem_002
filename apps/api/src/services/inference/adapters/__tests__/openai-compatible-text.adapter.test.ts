@@ -39,7 +39,6 @@ describe('OpenAiCompatibleTextAdapter', () => {
         business_hermes: { providerId: 'default' },
         document_summary: { providerId: 'default' },
         admin_console_chat: { providerId: 'default' },
-        stackchan_chat: { providerId: 'default' },
       },
     });
 
@@ -78,7 +77,6 @@ describe('OpenAiCompatibleTextAdapter', () => {
         business_hermes: { providerId: 'default' },
         document_summary: { providerId: 'default' },
         admin_console_chat: { providerId: 'default' },
-        stackchan_chat: { providerId: 'default' },
       },
     });
 
@@ -108,7 +106,6 @@ describe('OpenAiCompatibleTextAdapter', () => {
         business_hermes: { providerId: 'default' },
         document_summary: { providerId: 'default' },
         admin_console_chat: { providerId: 'default' },
-        stackchan_chat: { providerId: 'default' },
       },
     });
 

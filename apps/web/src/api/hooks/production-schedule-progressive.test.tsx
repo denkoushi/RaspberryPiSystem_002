@@ -1,22 +1,24 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   useKioskGrindingPlanningBoardProgressive,
+  useKioskGrindingPlanningBoardLoad,
   useUpdateKioskGrindingPlanningBoardSeibanOrder
 } from './production-schedule';
 
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResponse } from '@raspi-system/shared-types';
 import type { ReactNode } from 'react';
 
-const mocks = vi.hoisted(() => ({ getBoard: vi.fn(), updateOrder: vi.fn() }));
+const mocks = vi.hoisted(() => ({ getBoard: vi.fn(), getLoad: vi.fn(), updateOrder: vi.fn() }));
 
 vi.mock('../../api/client', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/client')>();
   return {
     ...original,
     getKioskGrindingPlanningBoard: mocks.getBoard,
+    getKioskGrindingPlanningBoardLoad: mocks.getLoad,
     updateKioskGrindingPlanningBoardSeibanOrder: mocks.updateOrder
   };
 });
@@ -79,10 +81,46 @@ function wrapper(client = new QueryClient({ defaultOptions: { queries: { retry: 
 describe('useKioskGrindingPlanningBoardProgressive', () => {
   beforeEach(() => {
     mocks.getBoard.mockReset();
+    mocks.getLoad.mockReset();
     mocks.updateOrder.mockReset();
   });
 
-  it('初回ページを先にreadyにし、続き400件を順次追加する', async () => {
+  it('負荷未着でも一覧を表示し、revision変更と書き込み後だけ負荷を取り直す', async () => {
+    let releaseLoad: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => { releaseLoad = resolve; });
+    mocks.getBoard.mockResolvedValue(response([item('1')], null, { loadDeferred: true }));
+    mocks.getLoad.mockImplementationOnce(async () => {
+      await gate;
+      return { load: [], unknownRequiredMinutesCount: 1 };
+    }).mockResolvedValue({ load: [], unknownRequiredMinutesCount: 2 });
+    mocks.updateOrder.mockResolvedValue({ sourceRevision: 'revision-2', seibanOrder: ['26-1041'] });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const hook = renderHook(() => ({
+      board: useKioskGrindingPlanningBoardProgressive({ category: 'grinding', view: 'seiban' }),
+      load: useKioskGrindingPlanningBoardLoad('grinding'),
+      mutation: useUpdateKioskGrindingPlanningBoardSeibanOrder()
+    }), { wrapper: wrapper(client) });
+    await waitFor(() => expect(hook.result.current.board.scopeReady).toBe(true));
+    expect(hook.result.current.board.data?.items).toHaveLength(1);
+    expect(hook.result.current.load.data).toBeUndefined();
+    await act(async () => { releaseLoad?.(); });
+    await waitFor(() => expect(hook.result.current.load.data?.unknownRequiredMinutesCount).toBe(1));
+    expect(mocks.getLoad).toHaveBeenCalledTimes(1);
+    mocks.getBoard.mockResolvedValue(response([item('1')], null, { snapshotId: 'snapshot-2', loadDeferred: true }));
+    await act(async () => { await hook.result.current.board.refetch(); });
+    await waitFor(() => expect(hook.result.current.board.data?.snapshotId).toBe('snapshot-2'));
+    expect(mocks.getLoad).toHaveBeenCalledTimes(1);
+    mocks.getBoard.mockResolvedValue(response([item('1')], null, { snapshotId: 'snapshot-3', sourceRevision: 'revision-2', loadDeferred: true }));
+    await act(async () => { await hook.result.current.board.refetch(); });
+    await waitFor(() => expect(hook.result.current.load.data?.unknownRequiredMinutesCount).toBe(2));
+    expect(mocks.getLoad).toHaveBeenCalledTimes(2);
+    const beforeMutation = mocks.getLoad.mock.calls.length;
+    await act(async () => { await hook.result.current.mutation.mutateAsync({ sourceRevision: 'revision-1', fseibans: ['26-1041'] }); });
+    await waitFor(() => expect(mocks.getLoad.mock.calls.length).toBeGreaterThan(beforeMutation));
+    expect(mocks.getLoad).toHaveBeenCalledWith('grinding');
+  });
+
+  it('初回ページを先にreadyにし、続きは640件ずつ順次要求する', async () => {
     const first = response([item('1')], '160');
     const second = response([item('2')], '320');
     const third = response([item('3')], null);
@@ -100,10 +138,13 @@ describe('useKioskGrindingPlanningBoardProgressive', () => {
     await waitFor(() => expect(result.result.current.scopeReady).toBe(true));
     expect(result.result.current.data?.items).toHaveLength(1);
     expect(result.result.current.isComplete).toBe(false);
+    expect(mocks.getBoard).toHaveBeenCalledTimes(2);
     releaseContinue?.();
     await waitFor(() => expect(result.result.current.isComplete).toBe(true));
     expect(result.result.current.data?.items.map((entry) => entry.itemId)).toEqual(['1', '2', '3']);
     expect(mocks.getBoard).toHaveBeenCalledTimes(3);
+    expect(mocks.getBoard.mock.calls[0][0].pageSize ?? 160).toBe(160);
+    expect(mocks.getBoard.mock.calls.slice(1).map(([params]) => params.pageSize)).toEqual([640, 640]);
   });
 
   it('追補の重複cursor/itemとscope不一致を表示データへ混ぜない', async () => {
@@ -124,6 +165,111 @@ describe('useKioskGrindingPlanningBoardProgressive', () => {
     );
     await waitFor(() => expect(other.result.current.appendError).toBeTruthy());
     expect(other.result.current.data?.items).toHaveLength(1);
+  });
+
+  it('STALEの409は初回ページを再取得し、エラー表示なしで追補を完了する', async () => {
+    const staleError = { isAxiosError: true, response: { status: 409, data: { errorCode: 'STALE_PLANNING_BOARD_SNAPSHOT' } } };
+    const refreshed = { snapshotId: 'snapshot-2', sourceRevision: 'revision-2' };
+    let releaseRefetch: (() => void) | undefined;
+    const refetchGate = new Promise<void>((resolve) => { releaseRefetch = resolve; });
+    mocks.getBoard
+      .mockResolvedValueOnce(response([item('1')], '160'))
+      .mockRejectedValueOnce(staleError)
+      .mockImplementationOnce(async () => {
+        await refetchGate;
+        return response([item('2')], '160', refreshed);
+      })
+      .mockResolvedValueOnce(response([item('3')], null, refreshed));
+    const errors: unknown[] = [];
+    const hook = renderHook(() => {
+      const result = useKioskGrindingPlanningBoardProgressive({ category: 'grinding', view: 'seiban' });
+      errors.push(result.appendError);
+      return result;
+    }, { wrapper: wrapper() });
+
+    await waitFor(() => expect(mocks.getBoard).toHaveBeenCalledTimes(3));
+    expect(mocks.getBoard).toHaveBeenNthCalledWith(3, { category: 'grinding', view: 'seiban' });
+    expect(hook.result.current.appendError).toBeNull();
+    await act(async () => { releaseRefetch?.(); });
+    await waitFor(() => expect(hook.result.current.isComplete).toBe(true));
+    expect(hook.result.current.data?.items.map((entry) => entry.itemId)).toEqual(['2', '3']);
+    expect(hook.result.current.isAppending).toBe(false);
+    expect(errors.every((error) => error === null)).toBe(true);
+    expect(mocks.getBoard).toHaveBeenNthCalledWith(4, {
+      category: 'grinding', view: 'seiban', cursor: 160, pageSize: 640, snapshotId: 'snapshot-2'
+    });
+    expect(mocks.getBoard).toHaveBeenCalledTimes(4);
+  });
+
+  it('STALEが続く場合は自動再取得を2回までに制限する', async () => {
+    const staleError = { isAxiosError: true, response: { status: 409, data: { errorCode: 'STALE_PLANNING_BOARD_SNAPSHOT' } } };
+    let firstPageCount = 0;
+    mocks.getBoard.mockImplementation(async (params: { cursor?: number }) => {
+      if (params.cursor != null) throw staleError;
+      firstPageCount += 1;
+      return response([item('1')], '160', { snapshotId: `snapshot-${firstPageCount}` });
+    });
+    const hook = renderHook(
+      () => useKioskGrindingPlanningBoardProgressive({ category: 'grinding', view: 'seiban' }),
+      { wrapper: wrapper() }
+    );
+
+    await waitFor(() => expect(hook.result.current.appendError).toBeTruthy());
+    expect(firstPageCount).toBe(3);
+    expect(mocks.getBoard).toHaveBeenCalledTimes(6);
+    expect(hook.result.current.isAppending).toBe(false);
+    expect(hook.result.current.isComplete).toBe(false);
+  });
+
+  it.each(['append complete', 'first page complete', 'params change'])('%s resets the automatic refetch limit', async (reset) => {
+    const staleError = { isAxiosError: true, response: { status: 409, data: { errorCode: 'STALE_PLANNING_BOARD_SNAPSHOT' } } };
+    let firstPageCount = 0;
+    mocks.getBoard.mockImplementation(async (params: { cursor?: number; snapshotId?: string }) => {
+      if (params.cursor != null) {
+        if (reset !== 'params change' && firstPageCount % 3 === 0) {
+          return response([item('2')], null, { snapshotId: params.snapshotId });
+        }
+        throw staleError;
+      }
+      firstPageCount += 1;
+      return response([item('1')], reset === 'first page complete' && firstPageCount % 3 === 0 ? null : '160', {
+        snapshotId: `snapshot-${firstPageCount}`
+      });
+    });
+    const hook = renderHook(
+      ({ completionFilter }: { completionFilter: 'all' | 'incomplete' }) =>
+        useKioskGrindingPlanningBoardProgressive({ category: 'grinding', view: 'seiban', completionFilter }),
+      { initialProps: { completionFilter: 'incomplete' }, wrapper: wrapper() }
+    );
+    if (reset === 'params change') {
+      await waitFor(() => expect(hook.result.current.appendError).toBeTruthy());
+      hook.rerender({ completionFilter: 'all' });
+      await waitFor(() => expect(firstPageCount).toBe(6));
+      await waitFor(() => expect(hook.result.current.appendError).toBeTruthy());
+    } else {
+      await waitFor(() => expect(hook.result.current.isComplete).toBe(true));
+      await act(async () => { await hook.result.current.refetch(); });
+      await waitFor(() => expect(firstPageCount).toBe(6));
+      await waitFor(() => expect(hook.result.current.isComplete).toBe(true));
+      expect(hook.result.current.appendError).toBeNull();
+    }
+    expect(firstPageCount).toBe(6);
+    expect(hook.result.current.isAppending).toBe(false);
+  });
+
+  it('STALE以外の409は再取得せず追補エラーを表示する', async () => {
+    mocks.getBoard
+      .mockResolvedValueOnce(response([item('1')], '160'))
+      .mockRejectedValueOnce({ isAxiosError: true, response: { status: 409, data: { errorCode: 'OTHER_CONFLICT' } } });
+    const hook = renderHook(
+      () => useKioskGrindingPlanningBoardProgressive({ category: 'grinding', view: 'seiban' }),
+      { wrapper: wrapper() }
+    );
+
+    await waitFor(() => expect(hook.result.current.appendError).toBeTruthy());
+    expect(mocks.getBoard).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.isAppending).toBe(false);
+    expect(hook.result.current.isComplete).toBe(false);
   });
 
   it('同一scopeの再取得中は現在のsnapshotをreadyのまま保持する', async () => {

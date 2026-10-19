@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useKioskProductionScheduleManualOrderSiteDevices } from '../../../api/hooks';
 import { readProductionBuildConfig } from '../../../config/productionBuildConfig';
 import { isMacEnvironment } from '../../../lib/client-key/resolver';
+import { KIOSK_DEFAULT_SITE_KEY } from '../sites/useKioskSiteKeys';
 
 const MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED =
   readProductionBuildConfig().manualOrderDeviceScopeV2Enabled;
@@ -10,17 +11,15 @@ const MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED =
 export const PRODUCTION_SCHEDULE_MAC_TARGET_SITE_KEY = 'production-schedule-mac-target-site';
 export const PRODUCTION_SCHEDULE_MAC_TARGET_DEVICE_KEY = 'production-schedule-mac-target-device';
 
-export const DEFAULT_MAC_TARGET_SITES = ['第2工場', 'トークプラザ', '第1工場'] as const;
-
 export function useProductionScheduleMacDeviceScope() {
   const isMac =
     typeof window !== 'undefined' ? isMacEnvironment(window.navigator.userAgent) : false;
   const macManualOrderV2 = isMac && MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED;
 
   const [macTargetSite, setMacTargetSite] = useState<string>(() => {
-    if (typeof window === 'undefined') return DEFAULT_MAC_TARGET_SITES[0];
+    if (typeof window === 'undefined') return KIOSK_DEFAULT_SITE_KEY;
     const stored = window.localStorage.getItem(PRODUCTION_SCHEDULE_MAC_TARGET_SITE_KEY)?.trim();
-    return stored && stored.length > 0 ? stored : DEFAULT_MAC_TARGET_SITES[0];
+    return stored && stored.length > 0 ? stored : KIOSK_DEFAULT_SITE_KEY;
   });
   const [macTargetDevice, setMacTargetDevice] = useState<string>(() => {
     if (typeof window === 'undefined') return '';

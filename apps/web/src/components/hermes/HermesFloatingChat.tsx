@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import {
@@ -20,6 +20,7 @@ import {
   type HermesSearchTrialScope
 } from '../../api/client';
 import { getApiErrorMessage } from '../../api/errors';
+import { useLocalLlmAvailability } from '../../api/hooks/local-llm';
 import { Dialog } from '../../components/ui/Dialog';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -27,15 +28,30 @@ import {
   releaseKeyboardWedgeScanOwner,
   useKeyboardWedgeScan
 } from '../../features/barcode-scan/useKeyboardWedgeScan';
+import { KnowledgeDestinationChip, KnowledgeDestinationPicker } from '../../features/hermes-knowledge/KnowledgeDestinationPicker';
 import { KnowledgeAttachments, KnowledgeIntakePanel } from '../../features/hermes-knowledge/KnowledgeIntakePanel';
+import { KnowledgePosterBar } from '../../features/hermes-knowledge/KnowledgePosterBar';
+import { KnowledgeWorkspace, KnowledgeWorkspaceChips } from '../../features/hermes-knowledge/KnowledgeWorkspace';
+import { useKnowledgeDestination } from '../../features/hermes-knowledge/useKnowledgeDestination';
 import { useKnowledgeIntake } from '../../features/hermes-knowledge/useKnowledgeIntake';
+import { useKnowledgePoster } from '../../features/hermes-knowledge/useKnowledgePoster';
+import { useKnowledgeWorkspace } from '../../features/hermes-knowledge/useKnowledgeWorkspace';
+import { useKioskInquiryEntry } from '../../features/kiosk/inquiry/useKioskInquiryEntry';
+import { kioskLazy } from '../../features/kiosk/kioskLazyPreload';
+import { OperationGuidePrompt } from '../../features/operation-guide/OperationGuideChoices';
+import { OperationGuideOverlay } from '../../features/operation-guide/OperationGuideOverlay';
+import { useOperationGuide } from '../../features/operation-guide/useOperationGuide';
+import { AiUnavailableBadge } from '../ui/AiUnavailableBadge';
+
+import { useHermesPageContext } from './HermesPageContext';
+import { HermesPageContextShortcuts } from './HermesPageContextShortcuts';
 
 import type { HermesChatPanelProps, HermesPanelMessage, HermesConsultationSuggestion, HermesKnowledgeMode } from './HermesChatPanel';
-import type { BusinessHermesChatEvidence } from '../../api/domains/assembly';
+import type { BusinessHermesChatEvidence, HermesRecordRefine } from '../../api/domains/assembly';
 
 import './hermes-floating-chat.css';
 
-const HermesChatPanel = lazy(() => import('./HermesChatPanel'));
+const HermesChatPanel = kioskLazy(() => import('./HermesChatPanel'));
 
 const INTRO_MESSAGE: HermesPanelMessage = {
   id: 'hermes-intro',
@@ -48,7 +64,19 @@ type ConsultationMode = 'loading' | 'available' | 'legacy';
 const ICON_SIZE = 58;
 const VIEWPORT_GUTTER = 12;
 const PANEL_STANDARD_WIDTH = 380;
+const PANEL_INQUIRY_WIDTH = 560;
 const PANEL_STANDARD_HEIGHT = 560;
+const PANEL_EXPANDED_KEY = 'hermes-chat-expanded';
+const ICON_POSITION_KEY = 'hermes-chat-icon-position';
+
+function readStoredIconPosition() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(ICON_POSITION_KEY) ?? 'null') as { left?: unknown; top?: unknown } | null;
+    return stored && Number.isFinite(stored.left) && Number.isFinite(stored.top) ? { left: stored.left as number, top: stored.top as number } : null;
+  } catch {
+    return null;
+  }
+}
 const HERMES_BARCODE_SCAN_OWNER = 'hermes-floating-chat';
 
 function clampPosition(left: number, top: number, viewport: { width: number; height: number }) {
@@ -72,6 +100,7 @@ function messagesFromConsultation(detail: BusinessHermesConsultationDetail): Her
     id: message.id,
     role: message.role,
     content: message.content,
+    guide: message.guide,
     evidence: message.evidence,
     evidenceVisible: message.evidenceVisible,
     evidenceVisibleIds: message.evidenceVisibleIds,
@@ -120,16 +149,26 @@ function responseText(response: BusinessHermesChatResponse | BusinessHermesConsu
 export function HermesFloatingChat() {
   const { user, token } = useAuth();
   const location = useLocation();
-  const isPlanningBoardRoute = location.pathname.replace(/\/$/, '') === '/kiosk/production-schedule/planning-board';
+  const operationGuide = useOperationGuide();
+  const { pageContext } = useHermesPageContext();
   const [viewport, setViewport] = useState(getViewport);
   const [position, setPosition] = useState(() => {
     const initialViewport = getViewport();
+    const stored = readStoredIconPosition();
+    if (stored) return clampPosition(stored.left, stored.top, initialViewport);
     return clampPosition(initialViewport.width - ICON_SIZE - 22, initialViewport.height - ICON_SIZE - 22, initialViewport);
   });
+  const movedByUserRef = useRef(false);
+  useEffect(() => {
+    if (!movedByUserRef.current) return;
+    movedByUserRef.current = false;
+    try { localStorage.setItem(ICON_POSITION_KEY, JSON.stringify(position)); } catch { /* position stays for this session */ }
+  }, [position]);
   const [open, setOpen] = useState(false);
   const [knowledgeMode, setKnowledgeMode] = useState<HermesKnowledgeMode>('search');
   const [recordPilotScope, setRecordPilotScope] = useState<HermesSearchTrialScope & { loaded: boolean }>({ enabled: false, loaded: false });
-  const [isPanelExpanded, setIsPanelExpanded] = useState(false);
+  // The chosen size is a per-terminal convenience; storage may be unavailable.
+  const [isPanelExpanded, setIsPanelExpanded] = useState(() => { try { return localStorage.getItem(PANEL_EXPANDED_KEY) === '1'; } catch { return false; } });
   const [isScanOpen, setIsScanOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const [feedbackBusy, setFeedbackBusy] = useState(false);
@@ -157,6 +196,7 @@ export function HermesFloatingChat() {
   knowledgeModeRef.current = knowledgeMode;
   const [clientKey, setClientKey] = useState(() => getResolvedClientKey());
   const clientKeyRef = useRef(clientKey);
+  const inquiry = useKioskInquiryEntry(clientKey, location.pathname, open);
   const iconRef = useRef<HTMLButtonElement | null>(null);
   const scanFocusRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -186,7 +226,10 @@ export function HermesFloatingChat() {
     () => `${token ?? 'anonymous'}:${user?.id ?? 'anonymous'}:${clientKey}:${location.pathname}:${location.search}`,
     [clientKey, location.pathname, location.search, token, user?.id]
   );
-  const knowledge = useKnowledgeIntake(identity, activeConsultation?.id ?? null, open && knowledgeMode === 'knowledge');
+  const knowledge = useKnowledgeIntake(identity, activeConsultation?.id ?? null, open && !inquiry.active && knowledgeMode === 'knowledge');
+  const knowledgePoster = useKnowledgePoster(open && !inquiry.active && knowledgeMode === 'knowledge' && knowledge.enabled);
+  const knowledgeDestination = useKnowledgeDestination(knowledgePoster.poster, knowledgePoster.partNumber, pageContext);
+  const knowledgeWorkspace = useKnowledgeWorkspace(open && !inquiry.active && knowledgeMode === 'knowledge' && knowledge.enabled, knowledgePoster.poster?.tagUid ?? null, identity);
 
   const invalidateChatRequest = useCallback(() => {
     abortRef.current?.abort();
@@ -246,7 +289,7 @@ export function HermesFloatingChat() {
 
   useEffect(() => {
     const icon = iconRef.current;
-    if (!isPlanningBoardRoute || !isDocumentVisible || !icon) return;
+    if (!isDocumentVisible || !icon) return;
     const idleDelayMs = 1200;
     const pointers = new Set<number>();
     let lastActivity = 0;
@@ -297,7 +340,7 @@ export function HermesFloatingChat() {
       window.clearTimeout(timeoutId);
       delete icon.dataset.interacting;
     };
-  }, [isDocumentVisible, isPlanningBoardRoute]);
+  }, [isDocumentVisible]);
 
   useEffect(() => {
     const updateViewport = () => {
@@ -349,17 +392,20 @@ export function HermesFloatingChat() {
 
   const toggleOpen = useCallback(() => {
     ensureCurrentClientKey();
+    inquiry.onTrigger();
+    if (!open && inquiry.enabled) operationGuide.clear();
     setOpen((current) => {
       if (current) closeScanner();
       return !current;
     });
-  }, [closeScanner, ensureCurrentClientKey]);
+  }, [closeScanner, ensureCurrentClientKey, inquiry, open, operationGuide]);
 
   const handleKnowledgeModeChange = useCallback((mode: HermesKnowledgeMode) => {
     knowledgeModeRevisionRef.current += 1;
     if ((mode === 'record-pilot') !== (knowledgeMode === 'record-pilot')) resetConversation();
+    operationGuide.clear();
     setKnowledgeMode(mode);
-  }, [knowledgeMode, resetConversation]);
+  }, [knowledgeMode, operationGuide, resetConversation]);
 
   const handleDraftChange = useCallback((value: string) => {
     draftRevisionRef.current += 1;
@@ -390,6 +436,7 @@ export function HermesFloatingChat() {
     const deltaY = event.clientY - drag.startY;
     if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) drag.moved = true;
     if (!drag.moved) return;
+    movedByUserRef.current = true;
     setPosition(clampPosition(drag.startLeft + deltaX, drag.startTop + deltaY, viewport));
   }, [viewport]);
 
@@ -428,6 +475,7 @@ export function HermesFloatingChat() {
         ArrowUp: { left: 0, top: -distance },
         ArrowDown: { left: 0, top: distance }
       }[event.key];
+      if (delta) movedByUserRef.current = true;
       if (delta) setPosition((current) => clampPosition(current.left + delta.left, current.top + delta.top, viewport));
       return;
     }
@@ -640,19 +688,28 @@ export function HermesFloatingChat() {
     }
   }, [activeConsultation, invalidateChatRequest, isBusy]);
 
-  const sendMessage = useCallback(async (messageOverride?: string, options?: { selection?: { prompt: string; option: string }; displayContent?: string; scanValue?: string; skipKnowledge?: boolean }) => {
+  const sendMessage = useCallback(async (messageOverride?: string, options?: { selection?: { prompt: string; option: string }; displayContent?: string; scanValue?: string; skipKnowledge?: boolean; knowledgeMode?: 'record-pilot'; refine?: HermesRecordRefine }) => {
+    // A shortcut sends before the mode state has rendered.
+    const sendMode = options?.knowledgeMode ?? knowledgeMode;
     const content = (typeof messageOverride === 'string' ? messageOverride : draft).trim();
-    const hasKnowledgeFiles = knowledgeMode === 'knowledge' && knowledge.files.length > 0;
-    if ((!content && !hasKnowledgeFiles) || isBusy || (knowledgeMode === 'knowledge' && knowledge.busy)) return;
+    const hasKnowledgeFiles = sendMode === 'knowledge' && knowledge.files.length > 0;
+    if ((!content && !hasKnowledgeFiles) || isBusy || (sendMode === 'knowledge' && knowledge.busy)) return;
+    if (sendMode === 'search' && !options?.selection && !options?.scanValue && operationGuide.receive(content)) {
+      setDraft('');
+      return;
+    }
+    operationGuide.clear();
     if (!ensureCurrentClientKey()) return;
-    if (knowledgeMode === 'knowledge' && !options?.selection && !options?.scanValue && !options?.skipKnowledge) {
+    if (sendMode === 'knowledge' && !options?.selection && !options?.scanValue && !options?.skipKnowledge) {
       const draftRevision = draftRevisionRef.current;
       const knowledgeModeRevision = knowledgeModeRevisionRef.current;
       try {
-        const handled = await knowledge.receive(content);
+        const author = knowledgePoster.poster && knowledgeDestination.ready ? { tagUid: knowledgePoster.poster.tagUid, partNumber: knowledgePoster.partNumber, destination: knowledgeDestination.destination } : null;
+        // Each post needs its own tag scan; the sent post keeps its tag for triage in memory.
+        const handled = await knowledge.receive(content, author, knowledgePoster.consume);
         const canClearDraft = draftRevisionRef.current === draftRevision
           && knowledgeModeRevisionRef.current === knowledgeModeRevision
-          && knowledgeModeRef.current === knowledgeMode;
+          && knowledgeModeRef.current === sendMode;
         if (handled === true) { if (canClearDraft) setDraft(''); return; }
         if (handled === null) return;
         if (knowledge.enabled) { if (canClearDraft) setDraft(''); return; }
@@ -661,7 +718,7 @@ export function HermesFloatingChat() {
       } catch { return; }
     }
     if (!content) return;
-    if (knowledgeMode !== 'record-pilot' && consultationMode === 'loading') {
+    if (sendMode !== 'record-pilot' && consultationMode === 'loading') {
       setConsultationError('相談を準備しています。少し待ってから送信してください。');
       return;
     }
@@ -682,7 +739,7 @@ export function HermesFloatingChat() {
       .map(({ role, content: messageContent }) => ({ role, content: messageContent }));
 
     if (!options?.selection) setMessages((current) => [...current, userMessage]);
-    if (activeConsultation && !options?.selection && knowledgeMode !== 'record-pilot') {
+    if (activeConsultation && !options?.selection && sendMode !== 'record-pilot') {
       setActiveConsultation((current) => current ? {
         ...current,
         messages: [...current.messages, {
@@ -706,16 +763,20 @@ export function HermesFloatingChat() {
     const requestIdentity = identity;
 
     try {
-      if (knowledgeMode === 'record-pilot') {
+      if (sendMode === 'record-pilot') {
         const response = await sendHermesSearchTrialAnswer({
           question: content,
-          sessionId: recordPilotSessionIdRef.current
+          sessionId: recordPilotSessionIdRef.current,
+          ...(options?.refine ? { refine: options.refine } : {}),
+          ...(pageContext ? { pageContext } : {})
         }, controller.signal);
         if (controller.signal.aborted || requestId !== requestIdRef.current || identityRef.current !== requestIdentity) return;
         setMessages((current) => [...current, {
           id: `hermes-assistant-${requestId}`,
           role: 'assistant',
           content: response.answer,
+          display: response.display,
+          planId: response.planId,
           recordIds: response.recordIds,
           createdAt: new Date().toISOString()
         }]);
@@ -776,6 +837,7 @@ export function HermesFloatingChat() {
             id: `hermes-assistant-${requestId}`,
             role: 'assistant',
             content: assistantContent,
+            guide: consultationResponse?.guide,
             evidence: evidenceForMessage(response.evidence),
             evidenceVisible: 'evidenceVisible' in response ? response.evidenceVisible : undefined,
             evidenceVisibleIds: 'evidenceVisibleIds' in response ? response.evidenceVisibleIds : undefined,
@@ -791,6 +853,7 @@ export function HermesFloatingChat() {
                 id: assistantMessage.id,
                 role: assistantMessage.role,
                 content: assistantMessage.content,
+                guide: assistantMessage.guide,
                 evidence: assistantMessage.evidence ? [...assistantMessage.evidence] : [],
                 evidenceVisible: assistantMessage.evidenceVisible,
                 evidenceVisibleIds: assistantMessage.evidenceVisibleIds ? [...assistantMessage.evidenceVisibleIds] : undefined,
@@ -826,15 +889,17 @@ export function HermesFloatingChat() {
         setActivityStatus(null);
       }
     }
-  }, [activeConsultation, clientKey, consultationMode, draft, ensureCurrentClientKey, identity, isBusy, knowledge, knowledgeMode, messages, replaceConsultationInList, resetConversation]);
+  }, [activeConsultation, clientKey, consultationMode, draft, ensureCurrentClientKey, identity, isBusy, knowledge, knowledgeMode, knowledgePoster, knowledgeDestination, messages, operationGuide, pageContext, replaceConsultationInList, resetConversation]);
 
   const handleScanSuccess = useCallback((value: string) => {
     closeScanner();
+    // In knowledge mode a routing-slip barcode only tags the next post with its part number.
+    if (knowledgeModeRef.current === 'knowledge') { knowledgePoster.setPartNumber(value.trim().slice(0, 64) || null); return; }
     void sendMessage('バーコードの照合結果を確認してください。', {
       scanValue: value,
       displayContent: 'バーコードを読み取りました。'
     });
-  }, [closeScanner, sendMessage]);
+  }, [closeScanner, knowledgePoster, sendMessage]);
 
   const respondToSuggestion = useCallback((answer: string) => {
     if (!activeConsultation || !consultationSuggestion || isBusy) return;
@@ -863,17 +928,21 @@ export function HermesFloatingChat() {
   });
 
   const togglePanelSize = useCallback(() => {
-    setIsPanelExpanded((current) => !current);
+    setIsPanelExpanded((current) => {
+      try { localStorage.setItem(PANEL_EXPANDED_KEY, current ? '0' : '1'); } catch { /* size stays for this session */ }
+      return !current;
+    });
   }, []);
 
-  const panelScale = isPanelExpanded ? 2 : 1;
-  const panelWidth = isPanelExpanded
+  const panelExpanded = isPanelExpanded || knowledgeWorkspace.expanded;
+  const panelScale = panelExpanded ? 2 : 1;
+  const panelWidth = panelExpanded
     ? Math.min(PANEL_STANDARD_WIDTH * panelScale, Math.max(1, viewport.width - VIEWPORT_GUTTER * 2))
-    : Math.min(PANEL_STANDARD_WIDTH, Math.max(280, viewport.width - VIEWPORT_GUTTER * 2));
+    : Math.min(inquiry.active ? PANEL_INQUIRY_WIDTH : PANEL_STANDARD_WIDTH, Math.max(280, viewport.width - VIEWPORT_GUTTER * 2));
   const spaceAboveIcon = Math.max(180, position.top - VIEWPORT_GUTTER * 2);
   const spaceBelowIcon = Math.max(180, viewport.height - position.top - ICON_SIZE - VIEWPORT_GUTTER * 2);
   const opensAbove = position.top > viewport.height / 2 || spaceAboveIcon >= spaceBelowIcon;
-  const panelHeight = isPanelExpanded
+  const panelHeight = panelExpanded
     ? Math.min(PANEL_STANDARD_HEIGHT * panelScale, Math.max(1, viewport.height - VIEWPORT_GUTTER * 2))
     : Math.min(
       PANEL_STANDARD_HEIGHT,
@@ -884,7 +953,7 @@ export function HermesFloatingChat() {
     Math.max(VIEWPORT_GUTTER, position.left + ICON_SIZE / 2 - panelWidth / 2),
     Math.max(VIEWPORT_GUTTER, viewport.width - panelWidth - VIEWPORT_GUTTER)
   );
-  const panelTop = isPanelExpanded
+  const panelTop = panelExpanded
     ? (() => {
       const preferredPanelTop = opensAbove
         ? position.top - panelHeight - 12
@@ -904,6 +973,7 @@ export function HermesFloatingChat() {
     height: panelHeight,
     maxHeight: panelHeight
   };
+  const { unavailable } = useLocalLlmAvailability();
   const iconStyle = { left: position.left, top: position.top };
   const recordFeedback = async (messageId: string, verdict: 'helpful' | 'unhelpful') => {
     if (!activeConsultation || feedbackBusy) return;
@@ -919,15 +989,35 @@ export function HermesFloatingChat() {
       if (identityRef.current === requestIdentity) setError(getApiErrorMessage(error, '評価を保存できませんでした。もう一度お試しください。'));
     } finally { setFeedbackBusy(false); }
   };
+  const showPageContextShortcuts = open && pageContext?.entity.kind === 'partNumber'
+    && recordPilotScope.enabled && knowledgeMode !== 'knowledge';
+  const showPageContextIndicator = pageContext?.entity.kind === 'partNumber'
+    && (!recordPilotScope.loaded || recordPilotScope.enabled);
+  const handlePageContextShortcut = (question: string) => {
+    if (isBusy) return;
+    handleKnowledgeModeChange('record-pilot');
+    void sendMessage(question, { knowledgeMode: 'record-pilot' });
+  };
   const panelProps: HermesChatPanelProps = {
     knowledgeMode,
     recordPilotAvailable: recordPilotScope.enabled,
-    onKnowledgeModeChange: handleKnowledgeModeChange,
-    conversationExtension: knowledgeMode === 'record-pilot' ? <p className="hermes-chat-panel__status" role="note">
-      JEV記録検索：取り込み済みの実際の不適合記録が対象です。工程・現象・処置・原因など、知りたい条件を自然文で入力してください。記録の原文をそのまま表示します。条件を特定できない質問には確認を返します。
-    </p> : knowledgeMode === 'knowledge' && knowledge.enabled ? <KnowledgeIntakePanel key={identity} items={knowledge.items} error={knowledge.error} busy={knowledge.busy}
-      onChoose={(item, action) => void knowledge.choose(item, action)} onDelegate={text => void sendMessage(text, { skipKnowledge: true })} /> : null,
-    attachmentControl: knowledgeMode === 'knowledge' && knowledge.enabled ? <KnowledgeAttachments files={knowledge.files} onChange={knowledge.setFiles} disabled={isBusy || knowledge.busy} onSend={() => void sendMessage()} /> : null,
+    inquiryMode: inquiry.enabled ? { active: inquiry.active, unreadCount: inquiry.unreadCount, onSelect: () => { closeScanner(); operationGuide.clear(); inquiry.select(); } } : undefined,
+    onKnowledgeModeChange: mode => { inquiry.leave(); handleKnowledgeModeChange(mode); },
+    conversationContent: inquiry.content ?? (knowledgeWorkspace.isOpen ? <KnowledgeWorkspace workspace={knowledgeWorkspace} posterName={knowledgePoster.poster?.name ?? null} /> : undefined),
+    conversationExtension: <>
+      {showPageContextShortcuts && pageContext ? <HermesPageContextShortcuts partNumber={pageContext.entity.value} disabled={isBusy} onChoose={handlePageContextShortcut} /> : null}
+      {knowledgeMode === 'search' && operationGuide.question ? <OperationGuidePrompt question={operationGuide.question} onChoose={operationGuide.choose} /> : knowledgeMode === 'knowledge' && knowledge.enabled ? <>
+        <KnowledgePosterBar destinationChip={<KnowledgeDestinationChip destination={knowledgeDestination} />} actions={<KnowledgeWorkspaceChips workspace={knowledgeWorkspace} />} poster={knowledgePoster.poster} verifying={knowledgePoster.verifying} error={knowledgePoster.error}
+          partNumber={knowledgePoster.partNumber} pending={knowledgePoster.pending} onClearPartNumber={() => knowledgePoster.setPartNumber(null)}
+          onPendingDecided={(intakeId, title) => { knowledgePoster.removePending(intakeId); knowledge.markDecided(intakeId, title); }} />
+        {knowledgePoster.poster ? <KnowledgeDestinationPicker key={knowledgePoster.poster.tagUid} destination={knowledgeDestination} partNumber={knowledgePoster.partNumber} onScan={openScanner} /> : null}
+        <KnowledgeIntakePanel key={identity} items={knowledge.items} error={knowledge.error} busy={knowledge.busy}
+          onChoose={(item, action) => void knowledge.choose(item, action)} onDelegate={text => void sendMessage(text, { skipKnowledge: true })}
+          triage={{ tagFor: knowledge.tagFor, decided: knowledge.decided, later: knowledge.later, onDecided: knowledge.markDecided, onLater: knowledge.markLater }} />
+      </> : null}
+    </>,
+    composerVisible: !inquiry.active && (knowledgeMode !== 'knowledge' || !knowledge.enabled || knowledgeDestination.ready),
+    attachmentControl: knowledgeMode === 'knowledge' && knowledge.enabled && knowledgeDestination.ready ? <KnowledgeAttachments files={knowledge.files} onChange={knowledge.setFiles} disabled={isBusy || knowledge.busy} onSend={() => void sendMessage()} /> : null,
     mode: knowledgeMode === 'record-pilot' || consultationMode === 'legacy' ? 'legacy' : 'consultations',
     messages,
     draft,
@@ -945,14 +1035,15 @@ export function HermesFloatingChat() {
     onFeedback: (id, verdict) => void recordFeedback(id, verdict),
     onDraftChange: handleDraftChange,
     onSend: sendMessage,
-    onReset: () => { knowledge.reset(); resetActiveConversation(); },
+    onRefine: knowledgeMode === 'record-pilot' ? (refine, label, planId) => void sendMessage(`${refine.axis === 'cause' ? label ?? refine.value : refine.value}で絞り込む`, { refine: { ...refine, planId } }) : undefined,
+    onReset: () => { operationGuide.clear(); knowledge.reset(); resetActiveConversation(); },
     onClose: closePanel,
     onStop: knowledgeMode === 'knowledge' && knowledge.busy ? undefined : stopRequest,
-    isExpanded: isPanelExpanded,
+    isExpanded: panelExpanded,
     onToggleSize: togglePanelSize,
-    onNewConsultation: () => { knowledge.reset(); void createConsultation(); },
+    onNewConsultation: () => { operationGuide.clear(); knowledge.reset(); void createConsultation(); },
     onScan: () => void openScanner(),
-    onSelectConsultation: (consultationId) => void selectConsultation(consultationId),
+    onSelectConsultation: (consultationId) => { operationGuide.clear(); void selectConsultation(consultationId); },
     onLoadOlderMessages: () => void loadOlderMessages(),
     suggestion: consultationSuggestion,
     onAnswerSuggestion: respondToSuggestion,
@@ -962,14 +1053,14 @@ export function HermesFloatingChat() {
 
   return (
     <div className="hermes-floating-root">
-      <button
+      <AiUnavailableBadge unavailable={unavailable} positioned ringColor="#0b1a12"><button
         ref={iconRef}
         type="button"
-        className={`hermes-floating-trigger${isDocumentVisible ? '' : ' hermes-floating-trigger--paused'}`}
+        className={`hermes-floating-trigger${inquiry.unreadCount > 0 ? ' hermes-floating-trigger--inquiry-unread' : ''}${isDocumentVisible ? '' : ' hermes-floating-trigger--paused'}`}
         style={iconStyle}
-        aria-label="業務Hermesチャットを開く。ドラッグで移動できます"
+        aria-label={inquiry.unreadCount > 0 ? `お問い合わせ 未読 ${inquiry.unreadCount} 件` : "業務Hermesチャットを開く。ドラッグで移動できます"}
         aria-expanded={open}
-        title="業務Hermesチャット（ドラッグで移動）"
+        title={showPageContextIndicator ? 'この品番で検索できます' : '業務Hermesチャット（ドラッグで移動）'}
         onClick={handleButtonClick}
         onKeyDown={handleButtonKeyDown}
         onPointerDown={handlePointerDown}
@@ -990,10 +1081,18 @@ export function HermesFloatingChat() {
             ))}
           </span>
         </span>
-        <span className="hermes-floating-trigger__glyph" aria-hidden="true">H</span>
-      </button>
+        <span className="hermes-floating-trigger__glyph" aria-hidden="true">{inquiry.unreadCount > 0 ? '✉' : 'H'}</span>
+        {inquiry.unreadCount > 0 ? <span className="hermes-floating-trigger__inquiry-count" aria-hidden="true">{inquiry.unreadCount}</span> : null}
+        {showPageContextIndicator && inquiry.unreadCount === 0 ? <span className="hermes-floating-trigger__context-dot" aria-hidden="true" /> : null}
+      </button></AiUnavailableBadge>
 
-      {open ? (
+      {open && operationGuide.guide ? <OperationGuideOverlay
+        guide={operationGuide.guide} index={operationGuide.index} iconRef={iconRef}
+        onBack={operationGuide.back} onNext={operationGuide.next} onChoose={operationGuide.choose}
+        onEnd={() => { operationGuide.clear(); setOpen(false); iconRef.current?.focus(); }}
+        onQuestion={() => { operationGuide.clear(); setOpen(true); iconRef.current?.focus(); }}
+      /> : null}
+      {open && !operationGuide.guide ? (
         <Suspense fallback={<div className="hermes-chat-panel" style={panelStyle} role="status">チャットを準備中…</div>}>
           <HermesChatPanel {...panelProps} style={panelStyle} />
         </Suspense>

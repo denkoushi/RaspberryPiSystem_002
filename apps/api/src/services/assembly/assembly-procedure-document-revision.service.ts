@@ -1,3 +1,6 @@
+import { AssemblyProcedureDocumentEditLeaseService, type AssemblyProcedureEditActor } from './assembly-procedure-document-edit-lease.service.js';
+import { procedureVideoLinksInclude } from './procedure-video.service.js';
+import { procedureManualApprovalInclude } from './assembly-procedure-document-revision.serializer.js';
 import { randomUUID } from 'node:crypto';
 
 import type { Prisma } from '@prisma/client';
@@ -28,7 +31,9 @@ import {
   type AssemblyProcedureOverlayElementInput
 } from './assembly-procedure-overlay.persistence.js';
 import { AssemblyTemplateAccessService } from './assembly-template-access.service.js';
+import { resolveProcedureCaptionFeedback } from './procedure-caption-feedback.js';
 import { runAssemblyTransaction } from './assembly-transaction.js';
+import { saveBlankProcedurePage } from './assembly-procedure-document-blank.service.js';
 
 const revisionDocumentInclude = {
   pages: {
@@ -44,6 +49,9 @@ const revisionDocumentInclude = {
       asset: true
     }
   },
+  ownedAssets: true,
+  procedureVideoLinks: procedureVideoLinksInclude,
+  procedureManualApprovals: procedureManualApprovalInclude,
   revisionMetadata: true
 } satisfies Prisma.AssemblyProcedureDocumentInclude;
 
@@ -224,6 +232,9 @@ export class AssemblyProcedureDocumentRevisionService {
           imageRelativePath: page.imageRelativePath
         }))
       });
+      if (sourceRecord.procedureVideoLinks?.length) {
+        await tx.procedureVideoLink.createMany({ data: sourceRecord.procedureVideoLinks.map((link) => ({ videoId: link.videoId, sceneId: link.sceneId, pageIndex: link.pageIndex, sortOrder: link.sortOrder, assemblyProcedureDocumentId: created.id })) });
+      }
       if (sourceRecord.overlayElements.length > 0) {
         await tx.assemblyProcedureOverlayElement.createMany({
           data: sourceRecord.overlayElements.map((overlay) => ({
@@ -241,10 +252,51 @@ export class AssemblyProcedureDocumentRevisionService {
     });
   }
 
-  async saveOverlays(params: {
+  async addBlankPage(params: AssemblyProcedureEditActor & { documentId: string; expectedEditVersion: number; accessPassword?: string }) {
+    await this.accessService.requireAccessPassword(params.accessPassword);
+    if (!Number.isInteger(params.expectedEditVersion) || params.expectedEditVersion < 0) {
+      throw new ApiError(400, 'expectedEditVersionが不正です');
+    }
+    let imageRelativePath: string | undefined;
+    try {
+      return await runAssemblyTransaction(async (tx) => {
+        const locked = await tx.$queryRaw<Array<RevisionDocumentLockRow>>`
+          SELECT d."id", d."status", d."isActive", r."revisionRootId", r."isRevisionHead", r."editVersion"
+          FROM "AssemblyProcedureDocument" d
+          LEFT JOIN "AssemblyProcedureDocumentRevision" r ON r."documentId" = d."id"
+          WHERE d."id" = ${params.documentId}
+          FOR UPDATE OF d
+        `;
+        const doc = locked[0];
+        if (!doc) throw new ApiError(404, '手順書が見つかりません');
+        await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, tx, params.holderToken ?? null);
+        if (!doc.revisionRootId || !doc.isRevisionHead || !doc.isActive || doc.status !== 'DRAFT') {
+          throw new ApiError(409, '公開済みまたは旧版の手順書はoverlay編集できません');
+        }
+        if (doc.editVersion !== params.expectedEditVersion) {
+          throw new ApiError(409, '手順書overlayが他の編集で更新されています。最新内容を再読込してください',
+            { currentEditVersion: doc.editVersion }, 'ASSEMBLY_PROCEDURE_EDIT_CONFLICT');
+        }
+        const last = await tx.assemblyProcedureDocumentPage.aggregate({ where: { documentId: doc.id }, _max: { pageIndex: true } });
+        const page = await saveBlankProcedurePage();
+        imageRelativePath = page.relativeUrl;
+        await tx.assemblyProcedureDocumentPage.create({ data: { documentId: doc.id, pageIndex: (last._max.pageIndex ?? -1) + 1, imageRelativePath } });
+        await tx.assemblyProcedureDocumentRevision.update({ where: { documentId: doc.id }, data: { editVersion: { increment: 1 } } });
+        const result = await tx.assemblyProcedureDocument.findUnique({ where: { id: doc.id }, include: revisionDocumentInclude });
+        if (!result) throw new ApiError(500, 'ページ追加後の手順書を取得できませんでした');
+        return result;
+      });
+    } catch (error) {
+      if (imageRelativePath) await AssemblyProcedureImageStorage.deleteImage(imageRelativePath);
+      throw error;
+    }
+  }
+
+  async saveOverlays(params: AssemblyProcedureEditActor & {
     documentId: string;
     expectedEditVersion: number;
     elements: AssemblyProcedureOverlayElementInput[];
+    appliedCaptionElementIds?: string[];
     accessPassword?: string;
   }): Promise<AssemblyProcedureDocumentRevisionRecord> {
     await this.accessService.requireAccessPassword(params.accessPassword);
@@ -269,6 +321,7 @@ export class AssemblyProcedureDocumentRevisionService {
       `;
       const doc = locked[0];
       if (!doc) throw new ApiError(404, '手順書が見つかりません');
+      await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, tx, params.holderToken ?? null);
       if (!doc.revisionRootId || !doc.isRevisionHead || !doc.isActive || doc.status !== 'DRAFT') {
         throw new ApiError(409, '公開済みまたは旧版の手順書はoverlay編集できません');
       }
@@ -352,11 +405,23 @@ export class AssemblyProcedureDocumentRevisionService {
       if (!result) throw new ApiError(500, 'overlay保存後の手順書を取得できませんでした');
       return result;
     });
+    // Outside the overlay transaction: feedback failure must never roll back a save.
+    try {
+      const feedback = await prisma.assemblyProcedureCaptionFeedback.findMany({ where: { documentId: params.documentId } });
+      const byId = new Map(normalized.map(element => [element.id, element]));
+      const applied = new Set(params.appliedCaptionElementIds ?? []);
+      for (const row of feedback) {
+        const change = resolveProcedureCaptionFeedback(row, byId.get(row.elementId), applied.has(row.elementId));
+        if (change) await prisma.assemblyProcedureCaptionFeedback.update({ where: { id: row.id }, data: { ...change, resolvedAt: new Date() } });
+      }
+    } catch (error) {
+      logger.warn({ err: error, documentId: params.documentId }, 'assembly_procedure_caption_feedback_save_failed');
+    }
     await this.collectAssets(replacedAssetIds);
     return result;
   }
 
-  async discardRevision(params: {
+  async discardRevision(params: AssemblyProcedureEditActor & {
     documentId: string;
     accessPassword?: string;
     expectedEditVersion?: number;
@@ -375,6 +440,7 @@ export class AssemblyProcedureDocumentRevisionService {
       `;
       const doc = locked[0];
       if (!doc) throw new ApiError(404, '手順書が見つかりません');
+      await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, tx, params.holderToken ?? null);
       if (!doc.revisionRootId || !doc.isRevisionHead || doc.status !== 'DRAFT') {
         throw new ApiError(409, '最新版の改版下書きだけ破棄できます');
       }
@@ -407,6 +473,8 @@ export class AssemblyProcedureDocumentRevisionService {
         where: { documentId: previousDocumentId },
         data: { isRevisionHead: true }
       });
+      // Explicitly discard the draft attachments; published-version links remain.
+      await tx.procedureVideoLink.deleteMany({ where: { assemblyProcedureDocumentId: doc.id } });
       try {
         // A discarded DRAFT is not a published history node. Removing it
         // clears its overlay/page references and makes abandoned assets

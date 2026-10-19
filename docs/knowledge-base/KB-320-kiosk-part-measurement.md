@@ -286,6 +286,7 @@ Runbook: [§流用導線](../runbooks/kiosk-part-measurement.md#検査図面-流
 1. **図面ライブラリ名称変更** — `PATCH /api/part-measurement/visual-templates/:id`（`name` のみ）· UI **新規作成 / 名称変更** · 共有 visual 名は参照テンプレ表示にも反映。
 2. **テンプレ一覧図面名検索** — `GET …/inspection-drawing/templates?visualName=`（部分一致）· FilterBar **図面名** + **更新** ボタン。名称変更成功時は **現在フィルタで再取得**（ローカル patch のみは不可）。
 3. **自主検査遷移** — 保存後 **次未保存 required slot へ自動切替 + guided 再開** · entry 切替 **黒画面回避**（`placeholderData` は **同一 `sessionId` のみ**）· `draftBoundKey` / dirty 再訪時は **boundKey のみ同期**（上書きしない）· 保存直後の次 slot は **`applySelfInspectionEntrySaveToSessionCache` 後の snapshot** で判定。
+4. **未保存 slot への即時切替（2026-09-25）** — 作業者モードで未保存 entryIndex へ切り替えるとき、同一セッションの最新キャッシュを `focusedEntry: null` にして `initialData` とする（API は未保存 entry に `focusedEntry: null` を返し、他フィールドは entryIndex 非依存）。`isPlaceholderData=false` のため入力ロックせず、取得は裏で継続。保存済み entry・検査員モードは従来の placeholder 経路。**共有仕様の保護**: 仮表示中（`isSeedPending`）は自動保存・保存・完了を止め（理由 `syncing_latest`）、保存後キャッシュ patch も仮表示 query を触らない。最新取得で同 slot が他端末により保存済みと分かれば、入力途中でもサーバー値へ置き換えて通知する。正本: `resolveSelfInspectionUnsavedEntryInitialData` / `isSelfInspectionSessionSeedPending`。
 
 #### 本番デプロイ（実績·2026-06-09）
 
@@ -545,10 +546,11 @@ Runbook: [§NFC・手元カメラ](../runbooks/kiosk-part-measurement.md#自主�
 | 区分 | 内容 |
 |------|------|
 | **寸法入力対象** | 測定点名称が `外径` / `内径` / `全長` / `全幅` / `幅` / `高さ` / `穴径` / `ピッチ` / `深さ` のもの |
-| **寸法 dropdown** | 公差範囲と交差する **0.1 刻み**候補だけを出す。選択直後は `100.1※` のように百分未確定表示にし、ドラフト値にはまだ確定しない |
+| **寸法 dropdown** | 公差範囲と交差する **0.1 刻み**候補だけを出す。選択直後は `100.1` の右に空の桁枠を出す未確定表示にし、ドラフト値にはまだ確定しない（2026-10-02 に `※` 表示から桁枠へ変更） |
 | **百分台ボタン** | `0`-`9`。押下で **小数第2位だけを置換**し、`100.12` のように確定する。押し直しも第2位の置換 |
+| **千分台（2026-10-02）** | 基準値・下限公差・上限公差のいずれかが **小数3桁以上で書かれた寸法点だけ**、同じ `0`-`9` を **百分台 → 千分台** の順に2回押して `100.034` のように確定する（判定は `resolveSelfInspectionDimensionKeypadDigitCount`、`decimalPlaces` 列は既定値 3 のため使わない）。1回目は桁枠に入るだけで確定もガイド進行もしない。百分台の桁枠を押すと入れ直せる。この点の 0.1 刻み候補は千分台の公差範囲で作る（例: `100±0.005` は `99.9` / `100.0`）。それ以外の寸法点は従来どおり1回で確定 |
 | **幾何公差系** | 寸法ラベル以外は既存の `selfInspectionMeasurementValueOptions.ts` による候補生成を維持する。`0.005` などの細かい候補は従来どおり |
-| **手入力** | 従来どおり直接入力可。寸法 dropdown の未確定 `※` 表示とは独立し、入力値がドラフトになる |
+| **手入力** | 従来どおり直接入力可。寸法 dropdown の未確定表示とは独立し、入力値がドラフトになる |
 | **ガイド進行** | 公差内 OK は従来どおり次丸数字へ。公差外は確認ダイアログで **公差外のまま進む** を選んだ場合だけドラフトに入り、次丸数字へ進む |
 
 公差外値は「NG を OK に変える」ものではなく、現場リーダーが後で確認・承認する対象として保存する。2026-06-26 追補以降、新規の自主検査セッションは **値単位の公差外承認ではなく、session 単位の検査記録承認**で完了させる。

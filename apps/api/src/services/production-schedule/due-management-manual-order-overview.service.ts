@@ -431,7 +431,12 @@ export async function listDueManagementManualOrderOverviewV2(params: {
       where: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
         eventType: 'manual_order_update',
-        OR: [{ location: siteKey }, { location: { startsWith: `${siteKey} - ` } }]
+        OR: [
+          { location: siteKey },
+          { location: { startsWith: `${siteKey} - ` } },
+          // 明示拠点で当該拠点に属する端末（location 文字列が拠点名で始まらない端末を含む）
+          { location: { in: registeredDeviceScopeKeys } }
+        ]
       },
       select: {
         occurredAt: true,

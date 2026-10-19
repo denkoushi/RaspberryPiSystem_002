@@ -101,7 +101,7 @@ export async function listScheduleRowsByFseiban(fseiban: string): Promise<Produc
 }
 
 /**
- * 製番単位の機種名（MH/SH 行の FHINMEI 等、seiban-progress と同系の集約）。
+ * 製番単位の機種名（MH/SH 行の FHINMEI → 補完テーブル。seiban-progress と同じ解決）。
  */
 export async function resolveMachineNameForSeiban(fseiban: string): Promise<string | null> {
   const trimmed = fseiban.trim();
@@ -110,4 +110,17 @@ export async function resolveMachineNameForSeiban(fseiban: string): Promise<stri
   const row = progress[0];
   const mn = row?.machineName?.trim();
   return mn && mn.length > 0 ? mn : null;
+}
+
+/** Distinct non-empty 製番 from the same dashboard and winning rows as lookups. */
+export async function listKnownScheduleFseibans(): Promise<string[]> {
+  const rows = await prisma.$queryRaw<{ fseiban: string }[]>`
+    SELECT DISTINCT TRIM("CsvDashboardRow"."rowData"->>'FSEIBAN') AS "fseiban"
+    FROM "CsvDashboardRow"
+    WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
+      AND TRIM(COALESCE("CsvDashboardRow"."rowData"->>'FSEIBAN', '')) <> ''
+    ORDER BY "fseiban"
+  `;
+  return rows.map((row) => row.fseiban);
 }

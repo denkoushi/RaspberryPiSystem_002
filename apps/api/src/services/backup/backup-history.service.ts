@@ -186,9 +186,15 @@ export class BackupHistoryService {
    * バックアップパスに基づいてファイルステータスをDELETEDに更新
    */
   async markHistoryAsDeletedByPath(backupPath: string): Promise<number> {
+    const candidates = [backupPath];
+    const segments = backupPath.split('/').filter(Boolean);
+    if (segments.length > 3) {
+      const relativePath = segments.slice(-3).join('/');
+      if (!candidates.includes(relativePath)) candidates.push(relativePath);
+    }
     const result = await prisma.backupHistory.updateMany({
       where: {
-        backupPath: backupPath,
+        backupPath: { in: candidates },
         fileStatus: 'EXISTS'
       },
       data: {

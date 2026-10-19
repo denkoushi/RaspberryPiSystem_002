@@ -26,7 +26,7 @@ function procedureDocument(id: string, name: string): AssemblyProcedureDocumentS
     ],
     createdAt: '2026-07-26T00:00:00.000Z',
     updatedAt: '2026-07-26T00:00:00.000Z',
-    activeTemplateCount: 0,
+    manualAssignments: [], activeTemplateCount: 0,
     totalTemplateCount: 0
   };
 }

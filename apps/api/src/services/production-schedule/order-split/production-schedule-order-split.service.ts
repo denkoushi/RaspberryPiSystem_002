@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 
 import { prisma } from '../../../lib/prisma.js';
 import { ApiError } from '../../../lib/errors.js';
-import { resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
+import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import {
   buildRowDisplayItemId,
@@ -223,7 +223,7 @@ export async function replaceProductionScheduleOrderSplits(params: {
   audit?: OrderSplitAuditContext;
 }): Promise<{ success: true; splits: OrderSplitItemDto[] }> {
   const { parentCsvDashboardRowId, locationKey, resourceCd, items, audit } = params;
-  const siteKey = resolveSiteKeyFromScopeKey(locationKey.trim());
+  const siteKey = resolveSiteKeyForScopeKey(locationKey.trim());
   const isSiteCanonicalLocation = locationKey.trim() === siteKey;
 
   if (items.length === 0) {
@@ -544,7 +544,7 @@ export async function upsertProductionScheduleSplitOrder(params: {
   audit?: OrderSplitAuditContext;
 }): Promise<{ success: true; orderNumber: number | null }> {
   const { splitId, resourceCd, orderNumber, locationKey, audit } = params;
-  const siteKey = resolveSiteKeyFromScopeKey(locationKey.trim());
+  const siteKey = resolveSiteKeyForScopeKey(locationKey.trim());
   const isSiteCanonicalLocation = locationKey.trim() === siteKey;
 
   const split = await prisma.productionScheduleOrderSplit.findFirst({

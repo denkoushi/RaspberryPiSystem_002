@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { getMeasuringInstrumentLoanAnalytics } from '../../api/client';
+import { measuringInstrumentsQueryKeys } from '../../api/queryKeys/measuringInstruments';
 
 type LoanAnalyticsQueryParams = {
   periodFrom?: string;
@@ -12,7 +13,7 @@ type LoanAnalyticsQueryParams = {
 
 export function useMeasuringInstrumentLoanAnalytics(params?: LoanAnalyticsQueryParams) {
   return useQuery({
-    queryKey: ['measuring-instrument-loan-analytics', params ?? {}],
+    queryKey: measuringInstrumentsQueryKeys.loanAnalytics(params),
     queryFn: () => getMeasuringInstrumentLoanAnalytics(params),
     staleTime: 60_000,
   });

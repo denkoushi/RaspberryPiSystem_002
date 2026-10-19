@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# Isolated search worker runtime; the existing API keeps Node 20.
+# Isolated search worker runtime with the same pinned Node 24 base as the API.
 FROM node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS hermes-search-runtime
 WORKDIR /opt/hermes-runtime
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ git ca-certificates \
@@ -13,7 +13,7 @@ RUN install -D -m 0755 /usr/local/bin/node /opt/hermes-node/bin/node \
   && test -s /opt/hermes-node/bin/node \
   && /opt/hermes-node/bin/node --version | grep -Eq '^v24\.'
 
-FROM node:20-bookworm-slim AS workspace
+FROM node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS workspace
 WORKDIR /app
 ENV NODE_OPTIONS=--max-old-space-size=4096
 
@@ -48,6 +48,8 @@ COPY scripts/deploy/deploy-status-state.py ./scripts/deploy/deploy-status-state.
 COPY scripts/part-measurement/drawing-local-rapidocr-worker.py ./scripts/part-measurement/drawing-local-rapidocr-worker.py
 COPY scripts/server/add-cert-backup-target.mjs ./scripts/server/add-cert-backup-target.mjs
 COPY scripts/hermes-search ./scripts/hermes-search
+# Kiosk operation guide: read-only business Hermes source (KIOSK_OPERATION_GUIDE_DIR).
+COPY docs/kiosk-operation-guide ./docs/kiosk-operation-guide
 
 WORKDIR /app/packages/shared-types
 RUN nice -n 10 pnpm build
@@ -62,7 +64,7 @@ WORKDIR /app/apps/api
 RUN nice -n 10 pnpm prisma generate
 RUN nice -n 10 pnpm run build
 
-FROM node:20-bookworm-slim AS api-runtime
+FROM node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS api-runtime
 WORKDIR /app
 COPY --from=hermes-search-runtime /opt/hermes-node /opt/hermes-node
 COPY --from=hermes-search-runtime /opt/hermes-runtime /opt/hermes-runtime
@@ -70,11 +72,11 @@ ENV HERMES_QMD_ROOT=/opt/hermes-runtime/node_modules/@tobilu/qmd
 ARG NDLOCR_LITE_COMMIT=89f815899f0e85d236a1a90e75da012ca932dc7b
 # Bump the date to invalidate the cached apt layer; otherwise the CI build
 # cache keeps stale OS packages and Trivy fails on already-fixed Debian CVEs.
-ARG APT_CACHE_BUST=2026-09-13
+ARG APT_CACHE_BUST=2026-10-09
 
 RUN echo "apt refresh ${APT_CACHE_BUST}" \
   && apt-get update \
-  && apt-get install -y --no-install-recommends openssl poppler-utils fontconfig fonts-noto-cjk postgresql-client ansible-core python3 python3-pip git \
+  && apt-get install -y --no-install-recommends openssl ffmpeg poppler-utils fontconfig fonts-noto-cjk postgresql-client ansible-core python3 python3-pip git \
     libgomp1 libgl1 libglib2.0-0 libsm6 libxext6 \
     libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 libpango-1.0-0 \
   && apt-get install -y --only-upgrade --no-install-recommends libgnutls30 libpq5 postgresql-client-15 python3-httplib2 libexpat1 libpcre2-8-0 \
@@ -90,7 +92,7 @@ RUN echo "apt refresh ${APT_CACHE_BUST}" \
   && dpkg --compare-versions "${httplib2_version}" ge '0.20.4-3+deb12u1' \
     || { echo "python3-httplib2 is below the required fixed version: ${httplib2_version}" >&2; exit 1; } \
   && expat_version="$(dpkg-query -W -f='${Version}' libexpat1)" \
-  && dpkg --compare-versions "${expat_version}" ge '2.5.0-1+deb12u3' \
+  && dpkg --compare-versions "${expat_version}" ge '2.5.0-1+deb12u4' \
     || { echo "libexpat1 is below the required fixed version: ${expat_version}" >&2; exit 1; } \
   && python3 -m pip install --no-cache-dir --break-system-packages \
   "git+https://github.com/ndl-lab/ndlocr-lite.git@${NDLOCR_LITE_COMMIT}" \
@@ -146,6 +148,8 @@ RUN mkdir -p /app/storage/photos \
   /app/storage/assembly-procedure-assets \
   /app/storage/work-instruction-assets \
   /app/storage/knowledge-assets \
+  /app/storage/procedure-materials \
+  /app/storage/procedure-videos \
   /app/storage/knowledge-git \
   /app/storage/measuring-instrument-genres \
   /app/storage/part-measurement-drawings \
@@ -163,6 +167,7 @@ COPY --from=build --exclude=node_modules /app/packages/shared-types ./packages/s
 COPY --from=build --exclude=node_modules /app/packages/part-search-core ./packages/part-search-core
 COPY --from=build --exclude=node_modules /app/packages/shelf-layout-core ./packages/shelf-layout-core
 COPY --from=build /app/scripts ./scripts
+COPY --from=build /app/docs/kiosk-operation-guide ./docs/kiosk-operation-guide
 
 WORKDIR /app/apps/api
 RUN nice -n 10 pnpm prisma generate

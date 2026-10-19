@@ -148,3 +148,7 @@ test('expanded pilot reuses unchanged persisted classifications', async () => {
   assert.equal(secondCalls, 6);
   await rm(directory, { recursive: true, force: true });
 });
+
+test('the direct TypeSafe model is pinned to a version, not a moving alias', () => {
+  assert.match(DIRECT_MODEL, /^jev-\d+\.\d+\.\d+$/u);
+});

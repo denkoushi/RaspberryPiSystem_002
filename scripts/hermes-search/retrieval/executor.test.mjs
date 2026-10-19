@@ -14,9 +14,45 @@ import {
 } from './executor.mjs';
 import { records } from './fixtures/synthetic-records.mjs';
 import { QUERY_PLAN_SCHEMA } from './query-plan.mjs';
+import { createRelevanceJudge } from './relevance-jev.mjs';
 
 const catalog = loadNonconformityCatalog();
 const display = ['nonconformityNo', 'originDepartmentName', 'discoveredOn', 'condition', 'remarks', 'correctiveContent', 'disposition'];
+
+test('both relevance paths preserve diagnostic, attempts and relevanceMs on failure', async () => {
+  for (const sort of ['relevance', { field: 'discoveredOn', direction: 'desc' }]) {
+    const executed = await execute(plan({ semanticQuery: 'surface scratch', sort }), {
+      records, catalog,
+      relevance: async () => {
+        throw Object.assign(new Error('private key and bodies'), {
+          hermesDiagnostic: { provider: 'typesafe-direct', failureCode: 'upstream_http', httpStatus: 429 },
+          attempts: 2, relevanceMs: 123,
+        });
+      },
+    });
+    assert.equal(executed.status, 'unavailable');
+    assert.equal(executed.reason, 'relevance judgment failed: upstream_http 429');
+    assert.equal(executed.attempts, 2);
+    assert.equal(executed.timings.retried, true);
+    assert.equal(executed.timings.relevanceMs, 123);
+    assert.deepEqual(executed.results, []);
+  }
+});
+
+test('executor records a successful judge retry in timings', async () => {
+  let calls = 0;
+  const judge = createRelevanceJudge({
+    sleep: async () => {},
+    evaluate: async ({ questions }) => {
+      if (++calls === 1) throw Object.assign(new Error('timeout'), { hermesDiagnostic: { failureCode: 'timeout' } });
+      return { answers: Object.fromEntries(Object.keys(questions).map((key) => [key, { type: 'noul', noul: 0.9 }])) };
+    },
+  });
+  const result = await execute(plan({ semanticQuery: 'surface scratch' }), { records, catalog, relevance: (input) => judge.judge(input) });
+  assert.equal(result.status, 'answer');
+  assert.equal(result.timings.retried, true);
+  assert.equal(calls, 2);
+});
 
 function plan(overrides = {}) {
   return {
@@ -518,10 +554,11 @@ test('coverage is omitted when every match is shown', async () => {
   }), { records: syntheticDated(3), catalog });
   assert.equal(executed.returned, 3);
   assert.equal(executed.coverage, undefined);
+  assert.equal(executed.groups, undefined);
 });
 
-test('coverage stays inexact when relevance only judged the top candidate batch', async () => {
-  const dated = Array.from({ length: 20 }, (_, index) => bodyRecord(
+test('coverage stays inexact when relevance only judged the top candidate pool', async () => {
+  const dated = Array.from({ length: 40 }, (_, index) => bodyRecord(
     `cand-${String(index).padStart(2, '0')}`,
     `2026-03-${String((index % 28) + 1).padStart(2, '0')}`,
     'qxrare once',
@@ -540,9 +577,44 @@ test('coverage stays inexact when relevance only judged the top candidate batch'
       return { ok: true, ranked: candidates.map((item) => ({ id: item.id, probability: 0.9 })) };
     },
   });
-  assert.equal(judged, 15);
+  assert.equal(judged, 30);
   assert.equal(executed.returned, 5);
-  assert.deepEqual(executed.coverage, { known: false, total: null, floor: 15, shown: 5, order: 'relevance' });
+  assert.deepEqual(executed.coverage, { known: false, total: null, floor: 30, shown: 5, order: 'relevance' });
+  assert.equal(executed.groups, undefined);
+});
+
+test('groups use all filtered records, role-derived keys, and caps of 8 organizations / 12 months', async () => {
+  const renamedCatalog = { ...catalog, fields: catalog.fields.map(field => ({ ...field,
+    key: field.role === 'organization' ? 'department' : field.role === 'date' ? 'foundDate' : field.key,
+  })) };
+  const rows = Array.from({ length: 35 }, (_, index) => ({
+    id: `group-${index}`, partNumber: 'included', department: `部署${String(index).padStart(2, '0')}`,
+    foundDate: `${2024 + Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, '0')}-15`,
+  }));
+  rows.push(...Array.from({ length: 5 }, (_, index) => ({ ...rows[0], id: `repeat-${index}` })),
+    { id: 'empty', partNumber: 'included', department: '', foundDate: '' },
+    { id: 'excluded', partNumber: 'excluded', department: '対象外', foundDate: '2027-01-01' });
+  const executed = await execute(plan({
+    filters: [{ source: 'nonconformity', field: 'partNumber', op: 'eq', values: ['included'] }],
+    sort: { field: 'foundDate', direction: 'desc' }, limit: 20, display: ['department', 'foundDate'],
+  }), { records: rows, catalog: renamedCatalog });
+  assert.equal(executed.results.length, 20);
+  assert.equal(executed.coverage.total, 41);
+  const [organization, month] = executed.groups;
+  assert.equal(organization.field, 'department');
+  assert.equal(organization.axis, 'organization');
+  assert.equal(organization.buckets.length, 8);
+  assert.deepEqual(organization.buckets[0], { value: '部署00', label: '部署00', count: 6 });
+  assert.equal(organization.otherCount, 28);
+  assert.equal(month.field, 'foundDate');
+  assert.equal(month.axis, 'month');
+  assert.equal(month.buckets.length, 12);
+  assert.deepEqual(month.buckets[0], { value: '2026-11', label: '2026年11月', count: 1 });
+  assert.equal(month.buckets.at(-1).value, '2025-12');
+  assert.equal(month.otherCount, 29);
+  for (const group of executed.groups) {
+    assert.equal(group.buckets.reduce((sum, bucket) => sum + bucket.count, group.otherCount), 41);
+  }
 });
 
 test('coverage stays inexact when a deadline stops before the pool is judged', async () => {
@@ -564,4 +636,74 @@ test('coverage stays inexact when a deadline stops before the pool is judged', a
   });
   assert.equal(executed.returned, 1);
   assert.deepEqual(executed.coverage, { known: false, total: null, floor: null, shown: 1, order: 'date_desc' });
+});
+
+test('the relevance judge receives the content condition without counts or the source name', async () => {
+  const seen = [];
+  await execute(plan({ semanticQuery: 'surface scratchの不適合３件', limit: 3 }), {
+    records,
+    catalog,
+    relevance: async ({ semanticQuery, candidates }) => {
+      seen.push(semanticQuery);
+      return { ok: true, ranked: candidates.map((candidate) => ({ id: candidate.id, probability: 0.9 })) };
+    },
+  });
+  assert.deepEqual(seen, ['surface scratch']);
+});
+
+test('records already shown are hidden after ranking and counted', async () => {
+  const shown = await execute(plan({ semanticQuery: 'surface scratch', limit: 5 }), { records, catalog });
+  const ids = shown.results.map((result) => result.recordId);
+  assert.ok(ids.length >= 1);
+  const hidden = await execute(plan({ semanticQuery: 'surface scratch', limit: 5 }), { records, catalog, excludeIds: new Set(ids) });
+  assert.equal(hidden.excludedMatches, ids.length);
+  assert.equal(hidden.results.some((result) => ids.includes(result.recordId)), false);
+});
+
+test('the relevance judge reads the planner content span instead of the whole question', async () => {
+  const seen = [];
+  const relevance = async ({ semanticQuery, candidates }) => {
+    seen.push(semanticQuery);
+    return { ok: true, ranked: candidates.map((candidate) => ({ id: candidate.id, probability: 0.9 })) };
+  };
+  await execute(plan({ semanticQuery: 'surface scratchはほかにある', limit: 3, diagnostics: { contentSpan: 'surface scratch' } }), { records, catalog, relevance });
+  await execute(plan({ semanticQuery: 'surface scratch', limit: 3 }), { records, catalog, relevance });
+  assert.deepEqual(seen, ['surface scratch', 'surface scratch']);
+});
+
+test('cause grouping uses executor ids, taxonomy tie order and unclassified counts after catalog filters', async () => {
+  const rows = Array.from({ length: 43 }, (_, index) => ({ id: `cause-${index}`, partNumber: 'included', discoveredOn: '2026-01-01' }));
+  const causeById = new Map(rows.slice(0, 30).map((row, index) => [row.id, index < 10 ? 'drawing' : index < 20 ? 'assume' : 'check']));
+  rows.push({ id: 'excluded', partNumber: 'excluded' });
+  causeById.set('excluded', 'check');
+  const list = plan({ filters: [{ source: 'nonconformity', field: 'partNumber', op: 'eq', values: ['included'] }], limit: 20 });
+  const result = await execute(list, { records: rows, catalog, causeById });
+  assert.deepEqual(result.groups.find(group => group.axis === 'cause'), {
+    axis: 'cause', field: 'causeCategory', label: '要因', otherCount: 13, otherLabel: '未分類', buckets: [
+      { value: 'check', label: '確認・検査の漏れ', count: 10 },
+      { value: 'assume', label: '思い込み・勘違い', count: 10 },
+      { value: 'drawing', label: '図面・設計の誤り', count: 10 },
+    ],
+  });
+  const refined = await execute({ ...list, limit: 5, causeCategory: 'check' }, { records: rows, catalog, causeById });
+  assert.equal(refined.timings.filteredCount, 10);
+  assert.equal(refined.coverage.total, 10);
+  assert.equal(refined.results.length, 5);
+  assert.ok(refined.results.every(row => causeById.get(row.recordId) === 'check'));
+  for (const map of [undefined, new Map(), new Map([['excluded', 'check']])]) {
+    const result = await execute(list, { records: rows, catalog, causeById: map });
+    assert.equal(result.groups.some(group => group.axis === 'cause'), false);
+  }
+  // An empty store keeps the cause condition closed; a source without a store (null) is not narrowed.
+  const missing = await execute({ ...list, causeCategory: 'check' }, { records: rows, catalog, causeById: new Map() });
+  assert.equal(missing.timings.filteredCount, 0);
+});
+
+test('a cause condition does not narrow a source that has no cause store', async () => {
+  const rows = Array.from({ length: 4 }, (_, index) => ({ id: `plain-${index}`, partNumber: 'included', discoveredOn: '2026-01-01' }));
+  const list = plan({ filters: [{ source: 'nonconformity', field: 'partNumber', op: 'eq', values: ['included'] }], limit: 20, causeCategory: 'drawing' });
+  const withoutStore = await execute(list, { records: rows, catalog, causeById: null });
+  assert.equal(withoutStore.results.length, 4);
+  const withStore = await execute(list, { records: rows, catalog, causeById: new Map([['plain-0', 'drawing']]) });
+  assert.deepEqual(withStore.results.map(row => row.recordId), ['plain-0']);
 });

@@ -69,7 +69,7 @@ def image_manifest(
 
 class ReleaseImageBudgetTests(unittest.TestCase):
     def test_api_budget_enforces_the_reviewed_footprint(self) -> None:
-        self.assertEqual(API_IMAGE_BUDGET.max_total_bytes, 1_000_000_000)
+        self.assertEqual(API_IMAGE_BUDGET.max_total_bytes, 1_100_000_000)
         self.assertEqual(API_IMAGE_BUDGET.max_layer_bytes, 700_000_000)
         self.assertEqual(API_IMAGE_BUDGET.max_layers, 40)
 

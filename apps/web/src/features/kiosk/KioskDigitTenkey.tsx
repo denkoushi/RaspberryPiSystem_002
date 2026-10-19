@@ -10,6 +10,10 @@ type Props = {
   keyClassName?: string;
   resetClassName?: string;
   showReset?: boolean;
+  resetLabel?: string;
+  showBackspace?: boolean;
+  /** Key order override, e.g. ascending digits for a single-column layout. */
+  digits?: readonly string[];
 };
 
 const defaultKeyClassName =
@@ -26,7 +30,10 @@ export function KioskDigitTenkey({
   className,
   keyClassName = defaultKeyClassName,
   resetClassName = defaultResetClassName,
-  showReset = true
+  showReset = true,
+  resetLabel = 'リセット',
+  showBackspace = false,
+  digits
 }: Props) {
   return (
     <div
@@ -34,17 +41,20 @@ export function KioskDigitTenkey({
       aria-label={ariaLabel}
       className={className ?? 'grid grid-cols-3 gap-2'}
     >
-      {DIGIT_KEYS.map((digit) => (
+      {(digits ?? DIGIT_KEYS).map((digit) => (
         <button
           key={digit}
           type="button"
-          className={keyClassName}
+          className={`${keyClassName}${showBackspace && !digits && digit === '0' ? ' col-span-2' : ''}`}
           disabled={disabled || value.length >= maxLength}
           onClick={() => onChange(`${value}${digit}`)}
         >
           {digit}
         </button>
       ))}
+      {showBackspace ? (
+        <button type="button" aria-label="1文字消す" className={resetClassName} disabled={disabled || value.length === 0} onClick={() => onChange(value.slice(0, -1))}>⌫</button>
+      ) : null}
       {showReset ? (
         <button
           type="button"
@@ -52,7 +62,7 @@ export function KioskDigitTenkey({
           disabled={disabled || value.length === 0}
           onClick={() => onChange('')}
         >
-          リセット
+          {resetLabel}
         </button>
       ) : null}
     </div>

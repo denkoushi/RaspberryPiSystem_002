@@ -3,3 +3,8 @@ c2821a3bd0734ac9cbdd9e87cb121aba9a148426:scripts/private-pi5-hermes/README.md:di
 9986b0d1ebeae13c0124357f2916427867e2784a:apps/api/src/services/imports/csv-import-scheduler.ts:dropbox-api-token:564
 82be30211c42788e496f4e197d2944e30896789f:EXEC_PLAN.md:curl-auth-header:322
 e17e470cbfafbecc0ec02d732a8cb91936b6d3dc:scripts/deploy/tests/test_standard_ansible_release.py:generic-api-key:174
+# Historical only: the Pi3 signage x-client-key literal was removed from the working tree in 8b40dca4
+# (Externalize Pi3 signage verification credential, 2026-08-09). The scheduled full-history audit
+# kept failing on this commit; the credential itself still needs the Phase B rotation described in
+# docs/plans/security-client-key-rotation-phase-a.md.
+8107c99c0d759f94bff247976809063a5272612d:scripts/deploy/verify-phase12-real.sh:curl-auth-header:219

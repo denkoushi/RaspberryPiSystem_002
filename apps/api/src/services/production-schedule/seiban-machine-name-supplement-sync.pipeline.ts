@@ -5,6 +5,7 @@
  */
 import { type Prisma, type PrismaClient } from '@prisma/client';
 
+import { toTrimmedString as normalizeToken } from '../../lib/string-normalize.js';
 import { PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID } from './constants.js';
 
 const CREATE_MANY_CHUNK_SIZE = 200;
@@ -23,8 +24,6 @@ type IngestRunWindow = {
   completedAt: Date;
   rowsAdded: number;
 };
-
-const normalizeToken = (value: unknown): string => String(value ?? '').trim();
 
 export type SeibanMachineNamePair = {
   fseiban: string;

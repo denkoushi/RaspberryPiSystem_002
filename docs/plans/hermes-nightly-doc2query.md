@@ -39,7 +39,7 @@ Local implementation and focused validation are complete. Eleven API tests (thre
 ## Context and Orientation
 
 
-`apps/api/src/services/assembly/business-hermes-nightly.service.ts` runs the 03:00 job using authorized MCP readers and the existing business inference runtime. `business-hermes-source-adapters.ts` projects documents and identifies their business numbers. `services/hermes-answer-cache/maintenance.py` compares immutable candidate and current catalogues. `runtime.py` verifies file hashes before switching `active.json`. `server.py` implements the existing GPTCache search and source-bound answers.
+`apps/api/src/services/business-hermes/business-hermes-nightly.service.ts` runs the 03:00 job using authorized MCP readers and the existing business inference runtime. `business-hermes-source-adapters.ts` projects documents and identifies their business numbers. `services/hermes-answer-cache/maintenance.py` compares immutable candidate and current catalogues. `runtime.py` verifies file hashes before switching `active.json`. `server.py` implements the existing GPTCache search and source-bound answers.
 
 ## Plan of Work
 
@@ -55,10 +55,10 @@ Milestone 3 runs synthetic preparation and worker/activation tests including emp
 
 From the task worktree, run the API's installed Vitest and ESLint against the nightly files and TypeScript build configuration with `--noEmit`. From `services/hermes-answer-cache`, run `python3 -m unittest test_maintenance test_catalogue test_experience`. The Python unit tests must not require a model download or production service. Final commands (worktree root unless specified):
 
-    pnpm --filter @raspi-system/api exec vitest run src/services/assembly/business-hermes-nightly.service.test.ts
-    pnpm --filter @raspi-system/api exec vitest run src/services/assembly/business-hermes-nightly-candidates.test.ts src/services/assembly/business-hermes-nightly-preparation.test.ts
+    pnpm --filter @raspi-system/api exec vitest run src/services/business-hermes/business-hermes-nightly.service.test.ts
+    pnpm --filter @raspi-system/api exec vitest run src/services/business-hermes/business-hermes-nightly-candidates.test.ts src/services/business-hermes/business-hermes-nightly-preparation.test.ts
     pnpm --filter @raspi-system/api exec tsc -p tsconfig.build.json --noEmit
-    pnpm --filter @raspi-system/api exec eslint src/services/assembly/business-hermes-nightly.service.ts src/services/assembly/business-hermes-nightly-candidates.ts src/services/assembly/business-hermes-nightly-candidates.test.ts src/services/assembly/business-hermes-nightly-preparation.test.ts
+    pnpm --filter @raspi-system/api exec eslint src/services/business-hermes/business-hermes-nightly.service.ts src/services/business-hermes/business-hermes-nightly-candidates.ts src/services/business-hermes/business-hermes-nightly-candidates.test.ts src/services/business-hermes/business-hermes-nightly-preparation.test.ts
 
 The first API command passed 3 tests; the second passed 8, including a final recheck after strengthening copied-question detection to recognize source-prefixed copies. Type checking and lint passed. From `services/hermes-answer-cache`, use the existing private Python environment at `/Users/tsudatakashi/Documents/Codex/2026-09-12/new-chat/work/gptcache-venv/bin/python` with `-m unittest test_maintenance test_catalogue test_experience`: 20 passed. After the copied-question guard changed, `-m unittest test_maintenance` passed all 13 affected tests. 
 

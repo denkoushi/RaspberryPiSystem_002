@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { flushSync } from 'react-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as machineName from '../productionSchedule/machineName';
@@ -101,6 +102,10 @@ describe('PlanningBoardResourceView resource chip drag', () => {
   it('閾値超過後はpaneへ一度だけdropし、直後のclickを抑止して次操作を許可する', () => {
     const { onClick, onDrop, sourceItem } = renderView();
     const source = screen.getByRole('button', { name: '資源CD 305を変更' });
+    const sourceRow = source.closest('tr')!;
+    sourceRow.style.outline = '1px solid blue';
+    sourceRow.style.outlineOffset = '-1px';
+    sourceRow.style.backgroundColor = 'red';
     const sourcePane = source.closest('[data-planning-board-resource-pane]')!;
     const targetPane = screen.getByTestId('planning-board-resource-view').querySelector('[data-resource-code="584"]');
     expect(targetPane).not.toBeNull();
@@ -112,7 +117,19 @@ describe('PlanningBoardResourceView resource chip drag', () => {
     fireEvent.pointerDown(source, { pointerId: 2, button: 0, clientX: 10, clientY: 10 });
     fireEvent.pointerMove(sourcePane, { pointerId: 2, clientX: 21, clientY: 10 });
     fireEvent.pointerMove(sourcePane, { pointerId: 2, clientX: 40, clientY: 10 });
+    expect(sourceRow).toHaveAttribute('data-planning-board-drag-source', 'true');
+    expect(sourceRow).toHaveStyle({ outline: '3px solid rgb(251 191 36)', outlineOffset: '-3px', backgroundColor: 'rgba(251,191,36,0.12)' });
+    expect(source).toHaveStyle({ opacity: '0.35' });
+    const ghost = document.body.querySelector(':scope > div[aria-hidden="true"]');
+    expect(ghost).toHaveTextContent('305部品a');
+    expect(ghost).toHaveClass('border-2', 'border-amber-400');
     fireEvent.pointerUp(sourcePane, { pointerId: 2, clientX: 40, clientY: 10 });
+    expect(sourceRow).not.toHaveAttribute('data-planning-board-drag-source');
+    expect(sourceRow.style.outline).toBe('1px solid blue');
+    expect(sourceRow.style.outlineOffset).toBe('-1px');
+    expect(sourceRow.style.backgroundColor).toBe('red');
+    expect(source.style.opacity).toBe('');
+    expect(ghost).not.toBeInTheDocument();
     fireEvent.click(source);
 
     expect(onDrop).toHaveBeenCalledTimes(1);
@@ -150,6 +167,8 @@ describe('PlanningBoardResourceView resource chip drag', () => {
 
     expect(cancelAnimationFrame).toHaveBeenCalledTimes(1);
     expect(document.body.querySelector(':scope > div[aria-hidden="true"]')).not.toBeInTheDocument();
+    expect(source.closest('tr')).not.toHaveAttribute('data-planning-board-drag-source');
+    expect(source.closest('tr')!.style.outline).toBe('');
     expect(onDrop).not.toHaveBeenCalled();
   });
 
@@ -353,5 +372,41 @@ describe('PlanningBoardResourceView pane layout', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
     fireEvent.keyDown(handle(), { key: 'ArrowRight', altKey: true });
     expect(order()).toEqual(['584', '305', '999']);
+  });
+});
+
+describe('PlanningBoardResourceView height measurement', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('監視からの再計測が未反映のまま同期の再描画が来ても更新ループにならない', () => {
+    const observerCallbacks: Array<() => void> = [];
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: () => void) { observerCallbacks.push(callback); }
+      observe() {}
+      disconnect() {}
+    });
+    const innerHeight = vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(800);
+    const viewProps = {
+      seibanOrder: ['26-1041'],
+      resources: ['305', '584'],
+      resourceNameMap: {},
+      allocation: 'alternate' as const,
+      selectedItemIds: new Set<string>(),
+      onToggleItem: vi.fn(),
+      onResourceClick: vi.fn()
+    };
+    const view = render(<PlanningBoardResourceView {...viewProps} items={[item('a', '305')]} />);
+
+    // A low-priority remeasure stays queued behind the synchronous render below.
+    innerHeight.mockReturnValue(900);
+    observerCallbacks.at(-1)!();
+    innerHeight.mockReturnValue(1000);
+    expect(() => flushSync(() => {
+      view.rerender(<PlanningBoardResourceView {...viewProps} items={[item('a', '305'), item('b', '584')]} />);
+    })).not.toThrow();
+    expect(screen.getByTestId('planning-board-item-b')).toBeInTheDocument();
   });
 });

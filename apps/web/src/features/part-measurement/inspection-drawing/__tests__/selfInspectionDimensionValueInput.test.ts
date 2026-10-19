@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   applyHundredthsDigitToDimensionValue,
+  applyThousandthsDigitToDimensionValue,
   buildSelfInspectionDimensionTenthsOptions,
   formatDimensionTenthsProvisionalValue,
+  resolveSelfInspectionDimensionKeypadDigitCount,
   resolveSelfInspectionMeasurementValueInputKind
 } from '../selfInspectionDimensionValueInput';
 
@@ -52,5 +54,29 @@ describe('selfInspectionDimensionValueInput', () => {
     expect(applyHundredthsDigitToDimensionValue('100.1', 2)).toBe('100.12');
     expect(applyHundredthsDigitToDimensionValue('100.19', 3)).toBe('100.13');
     expect(applyHundredthsDigitToDimensionValue('100.1※', 9)).toBe('100.19');
+  });
+
+  it('asks for thousandths only when the nominal or tolerance is written to three decimals', () => {
+    expect(resolveSelfInspectionDimensionKeypadDigitCount(pointFixture({}))).toBe(1);
+    expect(
+      resolveSelfInspectionDimensionKeypadDigitCount(
+        pointFixture({ lowerToleranceRaw: '-0.005', upperToleranceRaw: '+0.005' })
+      )
+    ).toBe(2);
+    expect(resolveSelfInspectionDimensionKeypadDigitCount(pointFixture({ decimalPlaces: 3 }))).toBe(1);
+  });
+
+  it('builds 0.1 base options that cover a thousandths tolerance below the nominal', () => {
+    const result = buildSelfInspectionDimensionTenthsOptions(
+      pointFixture({ lowerToleranceRaw: '-0.005', upperToleranceRaw: '0.005' })
+    );
+    expect(result).toEqual({ mode: 'dropdown_and_free', options: ['99.9', '100.0'], stepLabel: '0.1' });
+  });
+
+  it('appends the thousandths digit after the hundredths digit', () => {
+    expect(applyThousandthsDigitToDimensionValue('100.0', 3, 4)).toBe('100.034');
+    expect(applyThousandthsDigitToDimensionValue('99.987', 9, 5)).toBe('99.995');
+    expect(applyThousandthsDigitToDimensionValue('abc', 1, 2)).toBeNull();
+    expect(applyThousandthsDigitToDimensionValue('100.0', 1, 10)).toBeNull();
   });
 });

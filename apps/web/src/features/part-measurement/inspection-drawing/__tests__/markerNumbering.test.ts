@@ -7,6 +7,9 @@ import {
   mergeInspectionDrawingPointPatch,
   nextAvailableMarkerNo,
   parseDisplayMarkerAsMarkerNo,
+  resolveInspectionDrawingPointSaveError,
+  sortInspectionDrawingPointsByMarkerNo,
+  swapInspectionDrawingMarkerNo,
   templateItemToDrawingPoint
 } from '../markerNumbering';
 
@@ -14,6 +17,30 @@ describe('markerNumbering', () => {
   it('reuses smallest missing markerNo after delete', () => {
     expect(nextAvailableMarkerNo([{ markerNo: 1 }, { markerNo: 3 }])).toBe(2);
     expect(nextAvailableMarkerNo([{ markerNo: 2 }, { markerNo: 3 }])).toBe(1);
+  });
+
+  it('swaps marker numbers between the selected point and the target owner', () => {
+    const points = [
+      { id: 'a', markerNo: 1 },
+      { id: 'b', markerNo: 2 },
+      { id: 'e', markerNo: 5 }
+    ];
+    expect(swapInspectionDrawingMarkerNo(points, 'a', 5)).toEqual([
+      { id: 'a', markerNo: 5 },
+      { id: 'b', markerNo: 2 },
+      { id: 'e', markerNo: 1 }
+    ]);
+    expect(swapInspectionDrawingMarkerNo(points, 'a', 1)).toEqual(points);
+    expect(swapInspectionDrawingMarkerNo(points, 'missing', 2)).toEqual(points);
+  });
+
+  it('orders points for save by marker number, not placement order', () => {
+    const points = [
+      { id: 'a', markerNo: 1 },
+      { id: 'c', markerNo: 3 },
+      { id: 'b', markerNo: 2 }
+    ];
+    expect(sortInspectionDrawingPointsByMarkerNo(points).map((p) => p.id)).toEqual(['a', 'b', 'c']);
   });
 
   it('parses numeric displayMarker', () => {
@@ -291,5 +318,28 @@ describe('markerNumbering', () => {
     expect(loaded.nominalRaw).toBe('');
     expect(loaded.lowerToleranceRaw).toBe('');
     expect(loaded.upperToleranceRaw).toBe('');
+  });
+
+  it('treats a pipe-thread judgement point as savable without tolerances', () => {
+    const pt = {
+      ...createInspectionDrawingPoint(0.2, 0.4, 1),
+      name: 'ネジ穴深さ',
+      threadNominal: '管用',
+      valueKind: 'judgement' as const
+    };
+    expect(resolveInspectionDrawingPointSaveError(pt)).toBeNull();
+    expect(drawingPointToTemplateItemInput(pt, 0)).toMatchObject({
+      measurementLabel: 'ネジ穴深さ',
+      measurementPoint: 'ネジ穴深さ 管用',
+      valueKind: 'judgement',
+      nominalValue: null,
+      lowerLimit: null,
+      upperLimit: null
+    });
+  });
+
+  it('still reports missing tolerances for numeric points before saving', () => {
+    const pt = { ...createInspectionDrawingPoint(0.2, 0.4, 1), name: '穴径' };
+    expect(resolveInspectionDrawingPointSaveError(pt)).toBe('基準値を入力してください');
   });
 });

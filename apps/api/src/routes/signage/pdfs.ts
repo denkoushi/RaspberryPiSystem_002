@@ -5,6 +5,11 @@ import { SignageService } from '../../services/signage/index.js';
 import { pdfUpdateSchema, pdfParamsSchema } from './schemas.js';
 import { PdfStorage } from '../../lib/pdf-storage.js';
 import { ApiError } from '../../lib/errors.js';
+import {
+  defaultSignageUploadName,
+  detectSignageUploadFileType,
+  normalizeSignageUploadFilename,
+} from '../../lib/signage-upload-file-type.js';
 // SignageDisplayModeは型として使用するため、Prisma Clientが生成されるまで型エラーが発生する可能性がある
 // 実機環境でマイグレーション実行後にPrisma Clientを生成する必要がある
 type SignageDisplayMode = 'SLIDESHOW' | 'SINGLE';
@@ -62,12 +67,18 @@ export function registerPdfRoutes(app: FastifyInstance, signageService: SignageS
       }
 
       if (!pdfBuffer) {
-        throw new ApiError(400, 'PDFファイルがアップロードされていません');
+        throw new ApiError(400, 'ファイルがアップロードされていません');
       }
 
-      if (!name) {
-        name = filename.replace(/\.pdf$/i, '');
+      // PDF・JPEG・PNG だけを受け付ける。拡張子ではなく中身で判定する。
+      const fileType = detectSignageUploadFileType(pdfBuffer);
+      if (!fileType) {
+        throw new ApiError(400, 'PDF・JPEG・PNG のファイルを選んでください', undefined, 'SIGNAGE_UPLOAD_UNSUPPORTED_TYPE');
       }
+      if (!name) {
+        name = defaultSignageUploadName(filename);
+      }
+      filename = normalizeSignageUploadFilename(filename, fileType);
 
       // PDFファイルを保存
       const pathInfo = await PdfStorage.savePdf(filename, pdfBuffer);

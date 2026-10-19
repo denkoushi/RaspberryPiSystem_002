@@ -2,7 +2,7 @@
 title: KB-369 キオスク順位ボード API の内部レイテンシ（COUNT + 行取得）
 tags: [kiosk, production-schedule, leader-order-board, api, performance]
 audience: [開発者]
-last-verified: 2026-06-24
+last-verified: 2026-09-29
 category: knowledge-base
 ---
 
@@ -69,6 +69,15 @@ category: knowledge-base
 - **検証**: `max-product-no-winner-materialization.test.ts`（5000 件 synthetic で array bind 1 個）·本番 `leaderboard-board` が **200** かつ P2035 消失（**2026-06-18 Pi5 デプロイ後に確認済**）。
 - **残リスク**: 5 万件規模の `text[]` を各 SQL に渡す構造は残る。将来 planner / メモリが問題化したら CTE・一時表・永続 snapshot は別課題。
 
+## Raw mail generation token の常時高負荷（2026-09-29）
+
+- **Symptoms**: Pi5 の標準デプロイ（run `20260929-021529-37439f`）が `release_pi5` の「post-pull load settle」待ちで失敗（load 4.79 > 3.00）。`docker-db-1` が約 196% CPU。
+- **Investigation（読み取り専用）**: `pg_stat_activity` を 1 秒間隔で 180 回採取すると、世代トークンの raw mail `COUNT(*)/MAX(createdAt)/MAX(updatedAt)` が延べ 202 回写った（常時 1〜2 本が実行中）。同 SQL の `EXPLAIN ANALYZE` は **17.7 秒**（mail 行 約 89 万件を index scan、`CsvDashboardIngestRun` 約 9 万件を seq scan、shared read 約 1GB）。API ログでは `leaderboard-decorations` だけで 5 分 16 回。Hermes コンテナは CPU 1% 未満で無関係。`pg_stat_statements` は未導入。
+- **Root cause**: `readLeaderboardShellSnapshotGenerationTokenDetails()` が明示 revision なしの呼び出しごとに raw mail 全件を集計する。mail 行は 2026-04 以降削除されず増え続けるため、コード変更なしで負荷が上がり続けた。
+- **Fix（段階1・PR #1545）**: raw mail 集計をプロセス内 TTL キャッシュ。本番計測で raw mail 集計の実行は 180 秒あたり 202 回 → 9 回、`docker-db-1` CPU は常時 100% 超 → 0〜7%。
+- **Fix（段階2）**: 世代トークン・residual evidence materialization・メール同期のトランザクション内世代確認を、すべて永続 revision（`CsvDashboardRawRevision`、`CsvDashboardRow`/`CsvDashboardIngestRun` のトリガーで変更ごとに加算）へ統一し、raw mail の COUNT/MAX 集計と段階1のキャッシュを削除。revision は raw rows より先に読むため、rows が revision より古くなることはなく、途中の変更は次回の不一致で再計算になる。切替直後は保存済み evidence snapshot が旧形式 revision のため、各プロセスで 1 回だけ raw 全件の再 materialization が走り、次のメール同期で新形式の snapshot に置き換わる。
+- **段階3（上書き済み旧行の削除）**: 同じキー（FKOJUN・FKOTEICD・FSEZONO）の最新行に上書き済みの mail raw 行を削除する。dedupe は取り込み順に「現在の勝者」と次の行を比べる畳み込みなので、敗者を消しても現在・将来の勝者は変わらない（削除前に勝者だけで dedupe し直して一致を確認）。キー欠落で正規化できない行は削除しない。削除は 2,000 件ずつ別トランザクションで確定し、塊の間は 1 秒待つ。各塊はメール同期と同じ advisory lock 内で raw revision が期待値（計画時、以降は直前の自分の削除後の値）であることと、`CsvDashboardRow` を参照する外部キーの参照が 0 件であることを確認してから消し、途中で他の変更を検知したら止める（消した行は計画時点の敗者だけなので結果は変わらない）。1 件でも消したらメール同期を 1 回走らせる。 2026-09-29 17:48 に 2,000 件ずつの方式で 195,123 件を削除完了（mail 行 894,686 → 699,563、1 塊 2〜3 秒、負荷 3〜4）。ただし最後のメール同期で削除スクリプトが約 3.3GB を使い Pi5 のメモリとスワップが枯渇（空き 140MB、I/O 待ち 87%、`mainRowStats` が 1 分超）したため、同期中にスクリプトを停止し回復（同期は次のメール取り込みで実行される）。全 raw 行を Node に読む作りのため、夜間 scheduler は既定 OFF（`FKOJUNST_MAIL_PRUNE_ENABLED=false`）とし、DB 側で勝者を選ぶ省メモリ版にしてから有効化する。2026-09-29 の初回実行は全件を 1 トランザクション（上限 10 分）で消そうとしてタイムアウトし、ロールバックで何も消えなかった（5,000 件の DELETE が 1 回 20 秒前後）。初回（約 20 万件）は `pnpm prune:fkojunst-mail-superseded:prod`（既定 dry-run、`--execute` で削除）で手動実施し、以降は夜間 scheduler（`FKOJUNST_MAIL_PRUNE_CRON` 既定 03:40、1 回 `FKOJUNST_MAIL_PRUNE_MAX_DELETE` 既定 2 万件を超える場合は何もしない）。キー自体は新規注文の工程で月 4〜19 万件増えるため、件数の頭打ちには保持期間ルール（未決）が必要。
+
 ## Production deploy & verification（2026-06-18 · winner bind limit fix）
 
 - **Status**: deployed · verified on Pi5
@@ -118,9 +127,42 @@ category: knowledge-base
 **Prevention**:
 
 - 表示リクエストで 10万行級以上の raw dashboard を読まない。raw source scan は sync/backfill 境界に寄せる。
-- 少数 evidence key で十分な処理は `VALUES` / CTE + expression index へ寄せる。partial index は predicate をクエリ側にも明示する。
+- 少数 evidence key で十分な処理は `VALUES` / CTE + expression index へ寄せる。partial index は predicate をクエリ側にも明示する。（2026-10-19 追記: 多資源では VALUES 結合が総当たりになったため、`= ANY(text[])` 照合に置き換えた。下の節を参照）
 - `LEADERBOARD_BOARD_PERF_LOG` は一時測定のみ。測定後は `.env` から削除し API を再起動する。
 - 詳細な時系列・デプロイ・計測ログは [leaderboard-defer-totals-performance-recovery](../plans/leaderboard-defer-totals-performance-recovery.md#pi5-residual-evidence-persistence--residual-key-index-deploy-2026-06-23) を参照。
+
+## Residual summary の VALUES 結合が総当たりになる（2026-10-19）
+
+**症状**: kensakuMain（8 資源）の順位ボードの初回表示が 11〜18 秒かかる。1 資源だけなら速い。
+
+**調べ方**: 本番 Pi5 の DB に読み取り専用（`PGOPTIONS='-c default_transaction_read_only=on'`）で接続し、board shell が出す SQL をそのまま 1 本ずつ実行して計測した。あわせて `EXPLAIN (ANALYZE, BUFFERS)` も取った。
+
+**根因**:
+
+- `fetchLeaderboardProcessChangeResidualSummary()` の件数 SQL と代表行 SQL は、証拠キー 647 件を `WITH residual_keys AS (VALUES ...)` に入れて `INNER JOIN` していた。
+- planner が `fkmail` の件数を誤って見積もった（推定 724 行、実際は 20,371 行）。そのため、相関 winner の副問い合わせを通った約 1 万行と 647 件の VALUES を Nested Loop と Join Filter で総当たりした（`Rows Removed by Join Filter: 6,892,482`）。
+- 結合条件の式は JSON の `BTRIM` / `UPPER` なので、比較 1 回ごとのコストも高い。資源数が増えるほど候補行が増え、遅さが目立つ。
+
+**Fix（結果不変）**: 両 SQL の CTE と JOIN をやめた。代わりに、既存の `buildLeaderboardProcessChangeResidualFilterWhereSql('only', keys)` を使う。これは長さを前置したテキストキーを `= ANY(text[])` で照合する方式で、キーは bind 1 個で渡す。あわせて、キーの長さを UTF-16 の `.length` ではなくコードポイント数で数えるように揃えた（PostgreSQL の `length()` と一致させるため）。
+
+**Pi5 実測（読み取り専用、kensakuMain の 8 資源）**:
+
+| SQL | 修正前 | 修正後 |
+| --- | --- | --- |
+| residual 件数 | 5,232 ms | 388〜413 ms |
+| residual 代表行 | 6,728 ms | 385〜387 ms |
+| board shell の全 SQL を直列に実行した合計 | 16.8 s | 5.1 s |
+
+- 出力は修正前と完全に一致した（psql の結果を diff で確認）。
+- 本番では資源ごとの shell が並列に動くので、画面の応答時間は反映後に改めて確認する。
+- 補足: `csv_dashboard_row_prod_schedule_residual_key_idx` は、この 2 本の SQL からは使われなくなった。削除するかどうかは `pg_stat_user_indexes.idx_scan` を見てから別に判断する。
+
+**同じ型の遅さ（未修正）**: 研削計画ボードの `GET .../grinding-planning-board/load` にも同じ型の遅さがある。
+
+- `grinding-planning-board-load-summary.ts` の集計 SQL が 9.4 s かかる。
+- 上書き 354 行を渡す `jsonb_to_recordset` と 60,517 行を Nested Loop Left Join しており（推定 1 行）、`Rows Removed by Join Filter: 21,422,927` になっている。
+
+**Prevention**: 少数キーの照合は、`VALUES` や JSON の行集合との JOIN にしない。`= ANY(text[])` か、ハッシュ結合が効く形にする。候補行の見積もりが外れると、Nested Loop の総当たりになる。
 
 ## Production deploy & verification（2026-05-06 · leaderboard-shell winner materialization）
 

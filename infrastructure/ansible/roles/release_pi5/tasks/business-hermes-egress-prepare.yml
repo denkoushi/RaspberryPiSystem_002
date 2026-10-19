@@ -28,4 +28,3 @@
   ansible.builtin.set_fact:
     release_pi5_compose_environment: "{{ release_pi5_compose_environment | combine({'BUSINESS_HERMES_EGRESS_PROXY_FILE': release_pi5_egress_artifacts.candidate, 'BUSINESS_HERMES_CHAT_EGRESS_PROXY_FILE': release_pi5_egress_artifacts.candidate}) }}"
     release_pi5_rollback_compose_environment: "{{ release_pi5_rollback_compose_environment | combine({'BUSINESS_HERMES_EGRESS_PROXY_FILE': release_pi5_egress_artifacts.get('business-hermes-egress', release_pi5_egress_artifacts.candidate), 'BUSINESS_HERMES_CHAT_EGRESS_PROXY_FILE': release_pi5_egress_artifacts.get('business-hermes-chat-egress', release_pi5_egress_artifacts.candidate)}) }}"
-    release_pi5_business_hermes_egress_transition_required: true

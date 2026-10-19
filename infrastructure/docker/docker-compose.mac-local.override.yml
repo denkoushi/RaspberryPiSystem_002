@@ -37,6 +37,8 @@ services:
       ALERTS_DIR: /app/alerts
       POWER_ACTIONS_DIR: /app/power-actions
       BACKUP_STORAGE_DIR: /opt/backups
+      # 大容量バックアップはRAM上の/tmp tmpfsを避け、ディスクへ保存する
+      BACKUP_TEMP_DIR: ${BACKUP_TEMP_DIR:-/opt/backups/.tmp}
       DROPBOX_ACCESS_TOKEN: ${DROPBOX_ACCESS_TOKEN:-}
       DROPBOX_APP_KEY: ${DROPBOX_APP_KEY:-}
       DROPBOX_APP_SECRET: ${DROPBOX_APP_SECRET:-}
@@ -55,6 +57,8 @@ services:
       - ../../.docker/local/storage/assembly-procedure-assets:/app/storage/assembly-procedure-assets
       - ../../.docker/local/storage/work-instruction-assets:/app/storage/work-instruction-assets
       - ../../.docker/local/storage/knowledge-assets:/app/storage/knowledge-assets
+      - ../../.docker/local/storage/procedure-materials:/app/storage/procedure-materials
+      - ../../.docker/local/storage/procedure-videos:/app/storage/procedure-videos
       - ../../.docker/local/storage/knowledge-git:/app/storage/knowledge-git
       - ../../.docker/local/storage/measuring-instrument-genres:/app/storage/measuring-instrument-genres
       - ../../.docker/local/storage/pallet-machine-illustrations:/app/storage/pallet-machine-illustrations

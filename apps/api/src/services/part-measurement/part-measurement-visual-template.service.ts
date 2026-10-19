@@ -103,7 +103,11 @@ export class PartMeasurementVisualTemplateService {
     return trimmed;
   }
 
-  async create(params: { name: string; drawingImageRelativePath: string }) {
+  async create(params: {
+    name: string;
+    drawingImageRelativePath: string;
+    drawingSourceStorageKey?: string | null;
+  }) {
     const name = this.normalizeName(params.name);
     const path = params.drawingImageRelativePath.trim();
     if (!path.startsWith('/api/storage/part-measurement-drawings/')) {
@@ -114,6 +118,7 @@ export class PartMeasurementVisualTemplateService {
         name,
         searchDigits: extractInspectionDrawingAsciiDigits(name),
         drawingImageRelativePath: path,
+        drawingSourceStorageKey: params.drawingSourceStorageKey ?? null,
         isActive: true
       }
     });
@@ -143,6 +148,7 @@ export class PartMeasurementVisualTemplateService {
    */
   async deleteIfUnused(visualTemplateId: string): Promise<'deleted' | 'not_found' | 'in_use'> {
     let drawingPath: string | null = null;
+    let drawingSourceKey: string | null = null;
     const outcome = await prisma.$transaction(async (tx) => {
       const locked = await tx.$queryRaw<Array<{ id: string }>>`
         SELECT id FROM "PartMeasurementVisualTemplate"
@@ -155,7 +161,7 @@ export class PartMeasurementVisualTemplateService {
 
       const visual = await tx.partMeasurementVisualTemplate.findUnique({
         where: { id: visualTemplateId },
-        select: { drawingImageRelativePath: true }
+        select: { drawingImageRelativePath: true, drawingSourceStorageKey: true }
       });
       if (!visual) {
         return 'not_found' as const;
@@ -170,8 +176,13 @@ export class PartMeasurementVisualTemplateService {
 
       await tx.partMeasurementVisualTemplate.delete({ where: { id: visualTemplateId } });
       drawingPath = visual.drawingImageRelativePath;
+      drawingSourceKey = visual.drawingSourceStorageKey;
       return 'deleted' as const;
     });
+
+    if (outcome === 'deleted' && drawingSourceKey) {
+      await PartMeasurementDrawingStorage.deleteDrawingSource(drawingSourceKey);
+    }
 
     if (outcome === 'deleted' && drawingPath) {
       try {

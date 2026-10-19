@@ -9,6 +9,7 @@ import type { AssemblyDraftArea } from './assemblyTemplateDraft';
 import type { AssemblyTemplateProcedureDraftItem } from './assemblyTemplateProcedureDraft';
 
 type Props = {
+  hideTemplateName?: boolean;
   items: Array<{ item: AssemblyTemplateProcedureDraftItem; used: boolean }>;
   selectedPageKey: string;
   selectedDocumentId: string;
@@ -44,6 +45,7 @@ type Props = {
 
 export function AssemblyTemplateProcedurePane({
   items,
+  hideTemplateName = false,
   selectedPageKey,
   selectedDocumentId,
   areas,
@@ -93,7 +95,7 @@ export function AssemblyTemplateProcedurePane({
         <Button
           type="button"
           variant="ghostOnDark"
-          className="min-h-11 shrink-0 !px-2 !py-1 text-xs"
+          className="min-h-8 shrink-0 !px-2 !py-1 text-xs"
           data-kiosk-sop-target="assembly-editor-document-add"
           disabled={busy || readOnly || items.length >= 50}
           onClick={onOpenDocumentLibrary}
@@ -118,7 +120,7 @@ export function AssemblyTemplateProcedurePane({
           >
             <button
               type="button"
-              className="flex min-h-11 min-w-0 items-center gap-2 text-left"
+              className="flex min-h-8 min-w-0 items-center gap-2 text-left"
               onClick={() => onFocusItem(item)}
             >
               <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded bg-white/10 text-xs font-bold">
@@ -135,7 +137,7 @@ export function AssemblyTemplateProcedurePane({
               type="button"
               variant="danger"
               aria-label={`${item.label.trim() || item.document.title}を削除`}
-              className="min-h-10 shrink-0 !px-2 !py-1 text-xs"
+              className="min-h-8 shrink-0 !px-2 !py-1 text-xs"
               disabled={busy || readOnly}
               onClick={() => onRemoveItem(item.localId)}
             >
@@ -166,7 +168,7 @@ export function AssemblyTemplateProcedurePane({
                   data-kiosk-sop-target="assembly-editor-model-code"
                   type="button"
                   variant={modelCode ? 'secondary' : 'primary'}
-                  className="min-h-11 shrink-0 !px-2 !py-1 text-xs"
+                  className="min-h-8 shrink-0 !px-2 !py-1 text-xs"
                   disabled={busy || readOnly}
                   onClick={onOpenMachineNamePicker}
                 >
@@ -192,7 +194,7 @@ export function AssemblyTemplateProcedurePane({
               <Input
                 id="assembly-template-model-code"
                 data-kiosk-sop-target="assembly-editor-model-code"
-                className="min-h-11 min-w-0"
+                className="min-h-8 min-w-0"
                 value={modelCode}
                 maxLength={120}
                 disabled={busy || readOnly || identityLocked}
@@ -205,7 +207,7 @@ export function AssemblyTemplateProcedurePane({
             <Input
               id="assembly-template-procedure-pattern"
               data-kiosk-sop-target="assembly-editor-procedure-pattern"
-              className="min-h-11 min-w-0"
+              className="min-h-8 min-w-0"
               value={procedurePattern}
               title={procedurePattern}
               maxLength={120}
@@ -213,6 +215,7 @@ export function AssemblyTemplateProcedurePane({
               onChange={(event) => onProcedurePatternChange(event.target.value)}
             />
           </label>
+          {!hideTemplateName ? (
           <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
             テンプレート名
             <textarea
@@ -243,6 +246,7 @@ export function AssemblyTemplateProcedurePane({
               ) : null}
             </span>
           </label>
+          ) : null}
         </div>
       </section>
       <h2 className="mt-3 text-[1rem] font-bold">工程</h2>
@@ -259,7 +263,7 @@ export function AssemblyTemplateProcedurePane({
           >
             <button
               type="button"
-              className="flex min-h-10 min-w-0 items-center gap-2 px-2 text-left text-xs font-bold"
+              className="flex min-h-8 min-w-0 items-center gap-2 px-2 text-left text-xs font-bold"
               onClick={() => onSelectArea(area.id)}
             >
               <span
@@ -285,7 +289,7 @@ export function AssemblyTemplateProcedurePane({
               type="button"
               variant="ghostOnDark"
               aria-label={`工程${index + 1}を上へ`}
-              className="min-h-10 shrink-0 whitespace-nowrap !px-2 !py-1 text-xs"
+              className="min-h-8 shrink-0 whitespace-nowrap !px-2 !py-1 text-xs"
               disabled={busy || readOnly || index === 0}
               onClick={() => onMoveArea(area.id, -1)}
             >
@@ -295,7 +299,7 @@ export function AssemblyTemplateProcedurePane({
               type="button"
               variant="ghostOnDark"
               aria-label={`工程${index + 1}を下へ`}
-              className="min-h-10 shrink-0 whitespace-nowrap !px-2 !py-1 text-xs"
+              className="min-h-8 shrink-0 whitespace-nowrap !px-2 !py-1 text-xs"
               disabled={busy || readOnly || index === areas.length - 1}
               onClick={() => onMoveArea(area.id, 1)}
             >
@@ -305,7 +309,7 @@ export function AssemblyTemplateProcedurePane({
               type="button"
               variant="danger"
               aria-label={`工程${index + 1}を削除`}
-              className="min-h-10 shrink-0 whitespace-nowrap !px-2 !py-1 text-xs"
+              className="min-h-8 shrink-0 whitespace-nowrap !px-2 !py-1 text-xs"
               disabled={busy || readOnly || areas.length <= 1}
               onClick={() => onDeleteArea(area.id)}
             >
@@ -316,8 +320,8 @@ export function AssemblyTemplateProcedurePane({
         <Button
           type="button"
           variant="ghostOnDark"
-          className="min-h-11 !px-2 !py-1 text-xs"
-          data-kiosk-sop-target="assembly-editor-area-add"
+          className="min-h-8 !px-2 !py-1 text-xs"
+          data-kiosk-sop-target={hideTemplateName ? undefined : "assembly-editor-area-add"}
           disabled={busy || readOnly}
           onClick={onAddArea}
         >
@@ -333,7 +337,7 @@ export function AssemblyTemplateProcedurePane({
           <Button
             type="button"
             variant="ghostOnDark"
-            className="min-h-11 min-w-0 w-full !px-2 text-xs"
+            className="min-h-8 min-w-0 w-full !px-2 text-xs"
             aria-expanded={expandedAreaDetails.has(selectedArea.id)}
             aria-controls={`assembly-area-details-${selectedArea.id}`}
             onClick={() => onToggleAreaDetails(selectedArea.id)}
@@ -350,7 +354,7 @@ export function AssemblyTemplateProcedurePane({
               表示ラベル
               <Input
                 id={`assembly-document-label-${selectedDocumentItem.localId}`}
-                className="min-h-11 min-w-0"
+                className="min-h-8 min-w-0"
                 value={selectedDocumentItem.label}
                 title={selectedDocumentItem.label}
                 maxLength={120}
@@ -374,7 +378,7 @@ export function AssemblyTemplateProcedurePane({
               {label}
               <Input
                 id={`assembly-area-${selectedArea.id}-${key}`}
-                className="min-h-11 min-w-0"
+                className="min-h-8 min-w-0"
                 value={selectedArea[key]}
                 maxLength={key === 'areaName' ? 200 : 80}
                 disabled={busy || readOnly}

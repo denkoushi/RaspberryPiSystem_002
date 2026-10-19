@@ -2,15 +2,23 @@ import crypto from 'crypto';
 import { AlertChannel, AlertDeliveryStatus, Prisma } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 
+import { deliverTelemetryNotice } from '../kiosk-inquiry/system-notice-sources.js';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
+import { invalidateSiteDirectory } from '../../lib/site-directory.js';
 import { loadAlertsDispatcherConfig, resolveRouteKey } from '../alerts/alerts-config.js';
 import {
   resolveTelemetryAlertDecision,
+  kioskErrorCount,
+  kioskErrorCountSince,
+  KIOSK_ALERT_COOLDOWN_MS,
   sanitizeClientTelemetryLogEntry,
   type ClientTelemetryLogEntry
 } from './client-telemetry-alert-policy.js';
+
+const isKioskLog = (entry: ClientTelemetryLogEntry) =>
+  entry.context?.category === 'kiosk_ui_error' || entry.context?.category === 'kiosk_net_stats';
 
 const staleThresholdMs = 1000 * 60 * 60 * 12; // 12 hours
 
@@ -23,19 +31,47 @@ async function createTelemetrySlackAlerts(params: {
     const config = await loadAlertsDispatcherConfig();
 
     for (const entry of params.logs) {
-      const decision = resolveTelemetryAlertDecision(params.clientId, entry);
+      const kiosk = entry.context?.category === 'kiosk_ui_error';
+      const now = new Date();
+      let recentCount = 0;
+      const deviceId = entry.context?.clientDeviceId;
+      const countSince = kioskErrorCountSince(now, new Date(now.getTime() - process.uptime() * 1000));
+      if (kiosk && entry.level === 'ERROR' && countSince) {
+        const recentLogs = await prisma.clientLog.findMany({
+          where: {
+            ...(typeof deviceId === 'string' ? {} : { clientId: params.clientId }),
+            level: 'ERROR', createdAt: { gte: countSince },
+            AND: [
+              { context: { path: ['category'], equals: 'kiosk_ui_error' } },
+              ...(typeof deviceId === 'string' ? [{ context: { path: ['clientDeviceId'], equals: deviceId } }] : [])
+            ]
+          }, select: { context: true }
+        });
+        recentCount = recentLogs.reduce((sum, row) => sum + kioskErrorCount(row.context as Record<string, unknown> | undefined), 0);
+      }
+      const decision = resolveTelemetryAlertDecision(params.clientId, entry, recentCount, now);
+      if (entry.context?.category === 'terminal_agent_health' && entry.context.action === 'recovery') {
+        await deliverTelemetryNotice(params.clientId, entry);
+      }
       if (!decision) continue;
 
       const existingOpenAlert = await prisma.alert.findFirst({
         where: {
-          fingerprint: decision.fingerprint,
+          ...(kiosk ? {
+            type: decision.type,
+            timestamp: { gt: new Date(now.getTime() - KIOSK_ALERT_COOLDOWN_MS) },
+            source: { path: [typeof deviceId === 'string' ? 'clientDeviceId' : 'clientId'], equals: deviceId ?? params.clientId }
+          } : { fingerprint: decision.fingerprint }),
           ...(decision.dedupeAcrossAcknowledgedAlerts ? {} : { acknowledged: false })
         },
         select: { id: true }
       });
-      if (existingOpenAlert) continue;
+      if (existingOpenAlert) {
+        await deliverTelemetryNotice(params.clientId, entry);
+        continue;
+      }
 
-      const routeKey = resolveRouteKey(decision.type, config.routing);
+      const routeKey = resolveRouteKey(kiosk ? 'terminal-agent-health-kiosk-ui' : decision.type, config.routing);
       await prisma.$transaction(async (tx) => {
         const alert = await tx.alert.create({
           data: {
@@ -64,6 +100,7 @@ async function createTelemetrySlackAlerts(params: {
           }
         });
       });
+      await deliverTelemetryNotice(params.clientId, entry);
     }
   } catch (error) {
     logger.warn({ err: error, clientId: params.clientId }, '[ClientTelemetry] failed to create telemetry alert');
@@ -74,25 +111,51 @@ async function createTelemetrySlackAlerts(params: {
  * 管理者のみ: 端末を inventory 等から登録・再同期する（create + update の upsert）。
  * update では表示名を上書きしない（管理画面の手動編集と競合させない）。
  */
+/** 空文字・空白だけの location は「指定なし」とし、既存値を消さない。 */
+function normalizeOptionalLocation(location: string | null | undefined): string | undefined {
+  const trimmed = location?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+/**
+ * 新規登録時だけ、location の「拠点 - 端末」の拠点部分が登録済み拠点なら明示拠点として保存する。
+ * 実行時には推測しないため、ここで一度だけ明示値にして管理画面で見える・直せる形にする。
+ */
+async function resolveRegisteredSiteKeyForNewDevice(location: string | undefined): Promise<string | undefined> {
+  if (!location) return undefined;
+  const delimiterIndex = location.indexOf(' - ');
+  if (delimiterIndex <= 0) return undefined;
+  const candidate = location.slice(0, delimiterIndex).trim();
+  if (!candidate) return undefined;
+  const site = await prisma.site.findUnique({ where: { key: candidate }, select: { key: true } });
+  return site?.key;
+}
+
 export async function registerClientDeviceAdmin(params: {
   apiKey: string;
   name: string;
   location?: string | null;
 }) {
   const now = new Date();
-  return prisma.clientDevice.upsert({
+  const location = normalizeOptionalLocation(params.location);
+  const siteKeyForNewDevice = await resolveRegisteredSiteKeyForNewDevice(location);
+  const device = await prisma.clientDevice.upsert({
     where: { apiKey: params.apiKey },
     update: {
-      location: params.location ?? undefined,
+      location,
       lastSeenAt: now,
     },
     create: {
       name: params.name,
-      location: params.location ?? undefined,
+      location,
+      siteKey: siteKeyForNewDevice,
       apiKey: params.apiKey,
       lastSeenAt: now,
     },
   });
+  // location が変わると端末スコープキーが変わるため、拠点の対応表を読み直させる。
+  invalidateSiteDirectory();
+  return device;
 }
 
 /**
@@ -101,14 +164,19 @@ export async function registerClientDeviceAdmin(params: {
  */
 export async function touchClientHeartbeat(params: { clientKey: string; location?: string | null }) {
   const now = new Date();
+  const location = normalizeOptionalLocation(params.location);
   try {
-    return await prisma.clientDevice.update({
+    const device = await prisma.clientDevice.update({
       where: { apiKey: params.clientKey },
       data: {
-        location: params.location ?? undefined,
+        location,
         lastSeenAt: now,
       },
     });
+    if (location !== undefined) {
+      invalidateSiteDirectory();
+    }
+    return device;
   } catch (error) {
     if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') {
       throw new ApiError(404, 'クライアントデバイスが見つかりません', undefined, 'CLIENT_DEVICE_NOT_FOUND');
@@ -145,9 +213,11 @@ export async function updateClientDevice(params: {
   kioskInitialRoute?: string | null;
   haizenEdgeEnabled?: boolean;
   shelfLayoutEditEnabled?: boolean;
+  siteKey?: string | null;
+  canProxyOtherDevices?: boolean;
 }) {
   try {
-    return await prisma.clientDevice.update({
+    const updated = await prisma.clientDevice.update({
       where: { id: params.id },
       data: {
         name: params.name ?? undefined,
@@ -156,12 +226,24 @@ export async function updateClientDevice(params: {
         ...(params.haizenEdgeEnabled !== undefined ? { haizenEdgeEnabled: params.haizenEdgeEnabled } : {}),
         ...(params.shelfLayoutEditEnabled !== undefined
           ? { shelfLayoutEditEnabled: params.shelfLayoutEditEnabled }
+          : {}),
+        ...(params.siteKey !== undefined ? { siteKey: params.siteKey } : {}),
+        ...(params.canProxyOtherDevices !== undefined
+          ? { canProxyOtherDevices: params.canProxyOtherDevices }
           : {})
       }
     });
+    // 拠点・端末名（location 未設定時の端末スコープキー）の変更を、次のリクエストから反映する。
+    if (params.siteKey !== undefined || params.name !== undefined) {
+      invalidateSiteDirectory();
+    }
+    return updated;
   } catch (error) {
     if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') {
       throw new ApiError(404, 'クライアントデバイスが見つかりません');
+    }
+    if (error instanceof PrismaClientKnownRequestError && error.code === 'P2003') {
+      throw new ApiError(400, '指定された拠点は登録されていません', undefined, 'UNKNOWN_SITE');
     }
     throw error;
   }
@@ -255,17 +337,24 @@ export async function storeClientLogs(params: {
   const logs = params.logs
     .map(sanitizeClientTelemetryLogEntry)
     .filter((entry): entry is ClientTelemetryLogEntry => entry !== null);
-  await requireRegisteredClientDevice(clientKey, { lastSeenAt: new Date() });
+  const clientDevice = await requireRegisteredClientDevice(clientKey, { lastSeenAt: new Date() });
+  const kioskClientId = clientDevice.statusClientId ?? clientId;
+  for (const entry of logs) {
+    if (isKioskLog(entry)) {
+      entry.context = { ...entry.context, clientDeviceId: clientDevice.id, clientDeviceName: clientDevice.name };
+    }
+  }
 
   await prisma.clientLog.createMany({
     data: logs.map((entry) => ({
-      clientId,
+      clientId: isKioskLog(entry) ? kioskClientId : clientId,
       level: entry.level,
       message: entry.message.slice(0, 1000),
       context: entry.context ? (entry.context as Prisma.InputJsonValue) : undefined
     }))
   });
-  await createTelemetrySlackAlerts({ clientId, logs, requestId });
+  await createTelemetrySlackAlerts({ clientId, logs: logs.filter((entry) => entry.context?.category !== 'kiosk_ui_error'), requestId });
+  await createTelemetrySlackAlerts({ clientId: kioskClientId, logs: logs.filter((entry) => entry.context?.category === 'kiosk_ui_error'), requestId });
 
   return { requestId, logsStored: logs.length };
 }
@@ -324,6 +413,7 @@ export async function listClientLogs(params: {
   requestId: string;
   clientId?: string;
   level?: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+  category?: string;
   limit: number;
   since?: Date;
 }) {
@@ -331,6 +421,7 @@ export async function listClientLogs(params: {
     where: {
       clientId: params.clientId ?? undefined,
       level: params.level ?? undefined,
+      context: params.category ? { path: ['category'], equals: params.category } : undefined,
       createdAt: params.since ? { gte: params.since } : undefined
     },
     orderBy: { createdAt: 'desc' },

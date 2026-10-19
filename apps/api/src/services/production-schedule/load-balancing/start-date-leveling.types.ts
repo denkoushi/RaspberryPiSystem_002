@@ -11,6 +11,7 @@ export type StartDateLevelingQueryRow = {
   fseiban: string;
   productNo: string;
   fhincd: string;
+  fhinmei?: string;
   fkojun: string | null;
   resourceCd: string;
   requiredMinutes: number;

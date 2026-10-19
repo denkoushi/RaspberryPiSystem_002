@@ -1,3 +1,4 @@
+import { createDeviceReadRateLimit } from '../../lib/device-read-rate-limit.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authorizeRoles } from '../../lib/auth.js';
 import { findClientDeviceByApiKey } from '../../services/clients/client-device-auth.service.js';
@@ -6,6 +7,7 @@ import { SignageService } from '../../services/signage/index.js';
 import { SignageRenderStorage } from '../../lib/signage-render-storage.js';
 import { ApiError } from '../../lib/errors.js';
 import { env } from '../../config/env.js';
+import { recordSignageImageFetch } from '../../services/signage/signage-delivery-tracker.js';
 
 export function registerRenderRoutes(app: FastifyInstance, signageService: SignageService): void {
   const canManage = authorizeRoles('ADMIN', 'MANAGER');
@@ -26,7 +28,7 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
     }
   });
 
-  app.get('/render/status', async (request: FastifyRequest, reply: FastifyReply) => {
+  app.get('/render/status', { config: { rateLimit: createDeviceReadRateLimit() } }, async (request: FastifyRequest, reply: FastifyReply) => {
     // クライアントキー認証をサポート
     const headerKey = request.headers['x-client-key'];
     if (!headerKey) {
@@ -47,7 +49,7 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
     });
   });
 
-  app.get('/current-image', async (request: FastifyRequest, reply: FastifyReply) => {
+  app.get('/current-image', { config: { rateLimit: createDeviceReadRateLimit({ queryKey: true }) } }, async (request: FastifyRequest, reply: FastifyReply) => {
     // クライアントキーをヘッダーまたはクエリパラメータから取得（ブラウザ直接アクセス対応）
     const headerKey = request.headers['x-client-key'];
     const headerKeyStr =
@@ -64,6 +66,10 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
       if (!client) {
         throw new ApiError(401, 'クライアント API キーが不正です');
       }
+    }
+    // 端末自身の取得だけを「受信」として記録する。管理画面のプレビューは JWT 付きで来るので除外する。
+    if (keyValue && !request.headers.authorization) {
+      recordSignageImageFetch(keyValue);
     }
     let imageBuffer: Buffer | null = keyValue
       ? await SignageRenderStorage.readCurrentImage(keyValue)

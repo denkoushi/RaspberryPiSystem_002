@@ -102,8 +102,12 @@ describe('leaderboardBoardCacheRecord', () => {
       selfInspectionResourceCds: ['R2', 'R3'],
       selfInspectionResourceCd: 'R2'
     });
+    acc.leaderboardMaterialArrivalByPartKey['part-1'] = 'ordered';
+    acc.leaderboardMaterialArrivalBasisByPartKey['part-1'] = 'part';
     const ser = serializeAccumulatedDecorations(acc);
     const back = deserializeAccumulatedDecorations(ser);
+    expect(back.leaderboardMaterialArrivalByPartKey).toEqual({ 'part-1': 'ordered' });
+    expect(back.leaderboardMaterialArrivalBasisByPartKey).toEqual({ 'part-1': 'part' });
     expect(back.rowDecorationsById.get('r1')).toEqual({
       resolvedMachineName: 'M',
       customerName: 'C',
@@ -194,5 +198,10 @@ describe('leaderboardBoardCacheRecord', () => {
       rows: [{ id: '1' }, { id: '2' }] as ProductionScheduleLeaderboardBoardResponse['rows']
     });
     expect(fingerprintLeaderboardBoardRowIds(b)).toBe('1\u00012');
+  });
+
+  it('restores an empty basis map from older cache records', () => {
+    const back = deserializeAccumulatedDecorations({ rowDecorationsById: {}, leaderboardFooterChipsByPartKey: {} });
+    expect(back.leaderboardMaterialArrivalBasisByPartKey).toEqual({});
   });
 });

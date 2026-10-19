@@ -1,11 +1,7 @@
 import type { ProductionScheduleResourceCategory } from '@raspi-system/shared-types';
 
-import {
-  DEFAULT_LOCATION_SCOPE_KEY,
-  resolveSiteKeyFromScopeKey,
-  type DeviceScopeKey,
-  type SiteKey
-} from '../../../lib/location-scope-resolver.js';
+import { DEFAULT_LOCATION_SCOPE_KEY, type DeviceScopeKey, type SiteKey } from '../../../lib/location-scope-resolver.js';
+import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
 import { logger } from '../../../lib/logger.js';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
@@ -64,7 +60,7 @@ export const resolveResourceCategorySiteResolution = (
   const deviceScopeKey = normalizeScopeToken(scope.deviceScopeKey);
   if (deviceScopeKey) {
     return {
-      siteKey: resolveSiteKeyFromScopeKey(deviceScopeKey),
+      siteKey: resolveSiteKeyForScopeKey(deviceScopeKey),
       source: 'deviceScopeKey'
     };
   }

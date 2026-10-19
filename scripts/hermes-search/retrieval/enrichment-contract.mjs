@@ -187,7 +187,9 @@ function parseAliases(raw) {
   });
 }
 
-export function verifyEvidence(parsed, sourceText, recordId = '') {
+// aliasFallback keeps the rest of the record when the alias rule fails, so one
+// weak alias answer does not discard the summary, facets, and queries.
+export function verifyEvidence(parsed, sourceText, recordId = '', { aliasFallback = false } = {}) {
   const source = normalizeText(sourceText);
   const id = String(recordId ?? '');
   let evidenceDropped = 0;
@@ -208,8 +210,13 @@ export function verifyEvidence(parsed, sourceText, recordId = '') {
   if (queries.length < 3) throw new TypeError('queries lost the record identifier constraint');
   const aliasResult = verifyAliases(parsed.aliases ?? [], source);
   const expanded = queries.filter((query) => queryUsesAlt(query, aliasResult.aliases)).length;
+  let aliasesRejected = false;
   if ((parsed.aliases ?? []).length > 0 && expanded < 2) {
-    throw new TypeError('at least 2 queries must use alias alternatives');
+    if (!aliasFallback) throw new TypeError('at least 2 queries must use alias alternatives');
+    aliasesRejected = true;
+    aliasResult.aliasesDropped += aliasResult.aliasesKept;
+    aliasResult.aliasesKept = 0;
+    aliasResult.aliases = [];
   }
   return {
     facets,
@@ -220,6 +227,7 @@ export function verifyEvidence(parsed, sourceText, recordId = '') {
     evidenceKept,
     aliasesDropped: aliasResult.aliasesDropped,
     aliasesKept: aliasResult.aliasesKept,
+    aliasesRejected,
     enrichmentSchemaVersion: aliasResult.aliases.length ? ENRICHMENT_ALIAS_SCHEMA_VERSION : ENRICHMENT_SCHEMA_VERSION,
   };
 }

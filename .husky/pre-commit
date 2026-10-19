@@ -1,6 +1,10 @@
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+# Kiosk SOP source digest (about one second, no Docker). CI fails on a stale digest.
+node "${REPO_ROOT}/scripts/kiosk-sop/source-digest.mjs" check || exit 1
+
 # Lint check before commit
 echo "Running lint check..."
-REPO_ROOT="$(git rev-parse --show-toplevel)"
 "${REPO_ROOT}/scripts/ci/pnpm-exact.sh" lint --max-warnings=0
 
 if [ $? -ne 0 ]; then

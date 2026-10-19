@@ -17,11 +17,15 @@ import { initializeFileStorageRuntime } from './services/file-storage/file-stora
 import { SignageRenderScheduler } from './services/signage/signage-render-scheduler.js';
 import { SignageRenderer } from './services/signage/signage.renderer.js';
 import { SignageService } from './services/signage/index.js';
+import { getSignageWebCaptureService } from './services/signage/web-capture/signage-web-capture.service.js';
 import { probePlaywrightChromiumAvailability } from './services/signage/loan-grid/playwright/playwright-chromium-availability.js';
 import { refreshProductionScheduleOrderSplitPilotGateCache } from './services/production-schedule/order-split/production-schedule-order-split-feature.js';
 import { isCandidateValidationMode } from './bootstrap/candidate-validation.js';
 import { createSchedulerRuntimeState } from './bootstrap/scheduler-runtime-state.js';
 import { createDeployReadinessObservability } from './services/system/deploy-readiness-observability.js';
+import { prisma } from './lib/prisma.js';
+import { ensureProcedureManualProcesses } from './services/assembly/procedure-manual-reference-data.js';
+import { enableSiteDirectoryFailClosed, ensureSiteDirectoryFresh, refreshSiteDirectory } from './lib/site-directory.js';
 
 export async function buildServer(): Promise<FastifyInstance> {
   const app = Fastify({ logger: { level: env.LOG_LEVEL } });
@@ -43,7 +47,7 @@ export async function buildServer(): Promise<FastifyInstance> {
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       // Web側はapi clientで x-client-key をデフォルト付与するため、preflightで許可が必要
-      allowedHeaders: ['Authorization', 'Content-Type', 'x-client-key', 'Idempotency-Key']
+      allowedHeaders: ['Authorization', 'Content-Type', 'x-client-key', 'Idempotency-Key', 'x-due-management-token']
     });
   }
 
@@ -97,7 +101,9 @@ export async function buildServer(): Promise<FastifyInstance> {
   // サイネージレンダリングスケジューラーを作成（ルートからアクセス可能にするため）
   const signageService = new SignageService();
   const signageRenderer = new SignageRenderer(signageService);
-  const scheduler = new SignageRenderScheduler(signageRenderer, env.SIGNAGE_RENDER_INTERVAL_SECONDS);
+  const scheduler = new SignageRenderScheduler(signageRenderer, env.SIGNAGE_RENDER_INTERVAL_SECONDS, () =>
+    getSignageWebCaptureService().runDueCaptures(),
+  );
   
   // アプリケーションコンテキストにスケジューラーを保存
   app.decorate('signageRenderScheduler', scheduler);
@@ -120,6 +126,28 @@ export async function buildServer(): Promise<FastifyInstance> {
     }
   }
   
+  // 端末の明示拠点の対応表（docs/plans/explicit-site-scope-execplan.md）。
+  // 読み込むまでは拠点の解決だけを 503 で止める（拠点を使わない処理・ヘルスチェックは止めない）。
+  enableSiteDirectoryFailClosed();
+  try {
+    await refreshSiteDirectory(prisma);
+  } catch (err) {
+    app.log.warn({ err }, 'Site directory could not be loaded yet; site resolution returns 503 until a request-time reload succeeds');
+  }
+  app.addHook('onRequest', async (request) => {
+    try {
+      await ensureSiteDirectoryFresh(prisma);
+    } catch (err) {
+      request.log.warn({ err }, 'Site directory refresh failed; keeping the previous directory');
+    }
+  });
+
+  try {
+    await ensureProcedureManualProcesses(prisma);
+  } catch (err) {
+    app.log.warn({ err }, 'Procedure manual processes could not be initialized');
+  }
+
   // ルートを登録
   await registerRoutes(app);
   return app;

@@ -67,6 +67,7 @@ function defaultRouting(): AlertsDispatcherConfig['routing'] {
       'ansible-health-check-': 'deploy',
       'storage-': 'ops',
       'terminal-agent-health-': 'ops',
+      'client-heartbeat-': 'ops',
       'csv-import-': 'ops',
       'gmail-oauth-': 'ops',
       // API側の既存アラート例

@@ -1,7 +1,7 @@
 ---
 name: business-consultation
 description: Read-only business consultation plus explicitly confirmed signage configuration over authorized business sources.
-version: 0.4.0
+version: 0.5.0
 platforms: [linux]
 ---
 
@@ -30,6 +30,15 @@ platforms: [linux]
 - この接続はAPIサーバーなので、利用者への確認にはアプリ契約の `confirmation` を使う。対話CLI用の `clarify` を呼んで待機しない。利用者はボタンのほか、自由文でも目的を確定・訂正できる。
 - 「自分の言葉で補足する」が選ばれたら補足を一文で促して止め、まだ検索しない。補足を受けたら必要な場合だけ候補を更新する。目的が明確になった補足や通常の候補選択には、同じ目的確認を繰り返さない。
 - 目的が選ばれたら、元の質問と選択・補足を合わせて以下の検索へ進む。選択文だけから症状・品番・番号を推測し直さない。同じ目的の続き、表示の依頼、検索条件の追加は選び直しを求めず引き継ぐ。記録済みの原因・対策と現在の対象への適用判断を区別する。
+
+## システム操作の問い合わせ
+
+「ログインの仕方」「自主検査の始め方」「印刷の方法」など、このシステム(キオスク端末)の画面の操作を尋ねる文、または `questionRecipe.id` が `operation-guide` の入力は、`business_hermes_search` を `kind=system_operation_guide` と `query` だけで呼び、不適合記録や公開要領書は検索しない。`system_operation_guide` は画面ごとの操作説明の節(画面名、見出し、本文)であり、製品の作業要領書ではない。
+
+- 該当する節があれば、画面名を添えて手順を 3 行程度に要約して答える。節の全文が必要なときだけ `business_hermes_get_detail` を `kind=system_operation_guide` と `id` で呼ぶ。本文にない操作やボタン名を補わない。
+- 該当する節が無いときは推測で手順を作らず、「この操作の説明はまだありません。『お問い合わせ』から聞いてください」と答える。
+- この回答では `needsClarification=false` とし、応答 JSON に `routeDecision: "operation_guide"` を入れる。該当が無かったときは併せて `guideMiss: true` を入れる(該当があれば `guideMiss: false`)。
+- 製品の品番・不適合番号・工程の記録を尋ねる文はこの節の対象ではなく、従来どおり記録の情報源で扱う。
 
 ## 選択後の検索と回答
 

@@ -38,6 +38,8 @@ release_pi5_gateway_config_dir: "{{ release_pi5_project_dir }}/logs/deploy/blueg
 # Reuse the established explicit TLS source. Tests may pass the existing HTTP
 # template explicitly; the role never infers a mode from Caddyfile contents.
 release_pi5_gateway_template: "{{ release_pi5_project_dir }}/infrastructure/docker/Caddyfile.gateway.template"
+# The gateway imports this file as /srv/bluegreen/admin-allow-nets.caddy.
+release_pi5_admin_allow_file: "{{ release_pi5_gateway_config_dir }}/admin-allow-nets.caddy"
 release_pi5_api_health_url: https://127.0.0.1/api/system/health
 release_pi5_web_health_url: https://127.0.0.1/
 release_pi5_validate_certs: false

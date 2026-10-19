@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
+import { signDueManagementToken } from '../../../lib/auth.js';
+
 import {
   SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
   verifyDueManagementAccessPassword
@@ -19,11 +21,12 @@ export async function registerProductionScheduleDueManagementAuthRoute(
   deps: KioskRouteDeps
 ): Promise<void> {
   app.post('/kiosk/production-schedule/due-management/verify-access-password', { config: { rateLimit: dueManagementAccessPasswordRateLimit } }, async (request) => {
-    await deps.requireClientDevice(request.headers['x-client-key']);
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const body = dueManagementAccessPasswordVerifyBodySchema.parse(request.body);
-    return verifyDueManagementAccessPassword({
+    const result = await verifyDueManagementAccessPassword({
       location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
       password: body.password
     });
+    return result.success ? { ...result, token: signDueManagementToken(clientDevice.id) } : result;
   });
 }

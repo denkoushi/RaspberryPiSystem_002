@@ -19,32 +19,42 @@ export class LocalStorageProvider implements StorageProvider, LargeFileUploadPro
     this.baseDir = options?.baseDir || getDefaultBaseDir();
   }
 
+  // 保存先ディレクトリの外を指すパスは拒否する
+  private resolveWithinBase(targetPath: string): string {
+    const base = path.resolve(this.baseDir);
+    const fullPath = path.resolve(base, `.${path.sep}${targetPath}`);
+    if (targetPath.includes('\0') || (fullPath !== base && !fullPath.startsWith(base + path.sep))) {
+      throw new Error('Invalid backup path');
+    }
+    return fullPath;
+  }
+
   async upload(file: Buffer, targetPath: string): Promise<void> {
-    const fullPath = path.join(this.baseDir, targetPath);
+    const fullPath = this.resolveWithinBase(targetPath);
     const dir = path.dirname(fullPath);
     await ensureDir(dir);
     await fs.writeFile(fullPath, file);
   }
 
   async uploadFromFile(filePath: string, targetPath: string): Promise<void> {
-    const fullPath = path.join(this.baseDir, targetPath);
+    const fullPath = this.resolveWithinBase(targetPath);
     const dir = path.dirname(fullPath);
     await ensureDir(dir);
     await fs.copyFile(filePath, fullPath);
   }
 
   async download(targetPath: string): Promise<Buffer> {
-    const fullPath = path.join(this.baseDir, targetPath);
+    const fullPath = this.resolveWithinBase(targetPath);
     return fs.readFile(fullPath);
   }
 
   async delete(targetPath: string): Promise<void> {
-    const fullPath = path.join(this.baseDir, targetPath);
+    const fullPath = this.resolveWithinBase(targetPath);
     await fs.rm(fullPath, { force: true });
     
     // ファイル削除後、親ディレクトリが空なら削除を試みる
     const parentDir = path.dirname(fullPath);
-    if (parentDir !== this.baseDir && parentDir.startsWith(this.baseDir)) {
+    if (parentDir !== path.resolve(this.baseDir) && parentDir.startsWith(path.resolve(this.baseDir) + path.sep)) {
       try {
         const entries = await fs.readdir(parentDir);
         if (entries.length === 0) {
@@ -57,7 +67,7 @@ export class LocalStorageProvider implements StorageProvider, LargeFileUploadPro
   }
 
   async list(targetPath: string): Promise<FileInfo[]> {
-    const fullPath = path.join(this.baseDir, targetPath);
+    const fullPath = this.resolveWithinBase(targetPath);
     const results: FileInfo[] = [];
 
     const walk = async (base: string, rel: string) => {

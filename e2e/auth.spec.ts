@@ -49,7 +49,12 @@ test.describe('認証フロー', () => {
     expect((await loginResponsePromise).ok()).toBe(true);
 
     await expect(page).toHaveURL(/\/admin/, { timeout: 10000 });
-    await expect(page.getByText(credentials.username, { exact: true })).toBeVisible({ timeout: 10000 });
+    // ユーザー名はヘッダー右端のアカウントボタン（押すと名前とログアウトが出る）に載る
+    const accountButton = page.getByRole('button', { name: `アカウント ${credentials.username}`, exact: true });
+    await expect(accountButton).toBeVisible({ timeout: 10000 });
+    await accountButton.click();
+    await expect(page.getByText(credentials.username, { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'ログアウト', exact: true })).toBeVisible();
   });
 
   test('未認証ユーザーが管理画面にアクセスするとログイン画面にリダイレクトされる', async ({ page }) => {

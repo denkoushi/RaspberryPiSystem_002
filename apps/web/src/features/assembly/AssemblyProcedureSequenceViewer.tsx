@@ -7,6 +7,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+
 import { Button } from '../../components/ui/Button';
 
 import { AssemblyProcedureImageWithMarkers } from './AssemblyProcedureCanvas';
@@ -19,6 +20,7 @@ import { projectAssemblyProcedureMarkerToCrop } from './assemblyProcedureMarkerP
 import { AssemblyProcedureOverlayLayer } from './AssemblyProcedureOverlayLayer';
 import { getSequenceDocumentPages } from './assemblyTemplateDraft';
 import { KioskDocumentPageImage } from './KioskDocumentPageImage';
+import { ProcedureManualPageRail } from './procedure-manuals/ProcedureManualPageRail';
 
 import type { AssemblyCanvasBolt, AssemblyCanvasCheckItem } from './AssemblyProcedureCanvas';
 import type {
@@ -27,10 +29,22 @@ import type {
   AssemblyProcedureSequencePageDto,
   AssemblyProcedureSequenceStepDto
 } from './types';
+import type { ReactNode } from 'react';
 
 type Props = {
   sequence: AssemblyProcedureSequenceDto;
+  initialDocumentId?: string;
   className?: string;
+  showCurrentMarkerButton?: boolean;
+  layout?: 'session' | 'manuals';
+  listOpen?: boolean;
+  onToggleList?: () => void;
+  onClose?: () => void;
+  twoPages?: boolean;
+  onToggleTwoPages?: () => void;
+  railExtra?: ReactNode;
+  railNav?: ReactNode;
+  onCurrentStepChange?: (step: AssemblyProcedureSequenceStepDto | null, index: number, total: number) => void;
   boltMarkers?: AssemblyCanvasBolt[];
   checkMarkers?: AssemblyCanvasCheckItem[];
   selectedBoltId?: string | null;
@@ -211,6 +225,7 @@ function AssemblyWorkStepStoryboard({
 
 export function AssemblyProcedureSequenceViewer({
   sequence,
+  initialDocumentId,
   className,
   boltMarkers = [],
   checkMarkers = [],
@@ -218,19 +233,40 @@ export function AssemblyProcedureSequenceViewer({
   inputTargetBoltId,
   currentMarker,
   onToggleCheckItem,
-  onCurrentPageChange
+  onCurrentPageChange,
+  showCurrentMarkerButton = true,
+  layout = 'session',
+  onCurrentStepChange,
+  listOpen = false,
+  onToggleList,
+  twoPages = false,
+  onToggleTwoPages,
+  railExtra,
+  railNav,
+  onClose
 }: Props) {
   const steps = useMemo(
     () => (sequence.steps && sequence.steps.length > 0 ? sequence.steps : fallbackSteps(sequence)),
     [sequence]
   );
-  const [stepIndex, setStepIndex] = useState(0);
+  const initialStepIndex = initialDocumentId
+    ? Math.max(0, steps.findIndex(step => (step.kioskDocumentId ?? step.assemblyProcedureDocumentId) === initialDocumentId))
+    : 0;
+  const [stepIndex, setStepIndex] = useState(initialStepIndex);
   const [storyboardOpen, setStoryboardOpen] = useState(
-    () => typeof window !== 'undefined' && window.innerWidth >= 1366
+    () => layout !== 'manuals' && typeof window !== 'undefined' && window.innerWidth >= 1366
   );
   const [showFullPage, setShowFullPage] = useState(false);
+  const [pageShape, setPageShape] = useState<{ url: string; landscape: boolean } | null>(null);
+  const [fitChoice, setFitChoice] = useState<{ url: string; mode: 'contain' | 'width' } | null>(null);
   const currentStep = steps[Math.max(0, Math.min(steps.length - 1, stepIndex))] ?? null;
   const crop = currentStep ? stepCrop(currentStep) : null;
+  const manuals = layout === 'manuals';
+  const spread = manuals && !listOpen && twoPages;
+  const nextStep = spread ? steps[stepIndex + 1] : null;
+  const fitMode = fitChoice?.url === currentStep?.pageUrl ? fitChoice?.mode
+    : pageShape?.url === currentStep?.pageUrl && pageShape?.landscape ? 'width' : 'contain';
+  const fitWidth = manuals && fitMode === 'width';
   const findSequenceDocument = useCallback((step: AssemblyProcedureSequenceStepDto) =>
     sequence.documents.find((document) =>
       step.kioskDocumentId
@@ -305,8 +341,8 @@ export function AssemblyProcedureSequenceViewer({
   }, [steps]);
 
   useEffect(() => {
-    setStepIndex(0);
-  }, [sequence.machineNameKey]);
+    setStepIndex(initialStepIndex);
+  }, [sequence.machineNameKey, initialDocumentId, initialStepIndex]);
   useEffect(() => {
     setStepIndex((current) => Math.max(0, Math.min(steps.length - 1, current)));
   }, [steps.length]);
@@ -314,6 +350,10 @@ export function AssemblyProcedureSequenceViewer({
     setShowFullPage(false);
     onCurrentPageChange?.(currentPage);
   }, [currentPage, onCurrentPageChange]);
+
+  useEffect(() => {
+    onCurrentStepChange?.(currentStep, stepIndex, steps.length);
+  }, [currentStep, stepIndex, steps.length, onCurrentStepChange]);
 
   const jumpToCurrentMarker = () => {
     if (!currentMarker) return;
@@ -323,10 +363,11 @@ export function AssemblyProcedureSequenceViewer({
 
   if (!currentStep || !currentPage) {
     return (
-      <div className={className}>
+      <div className={clsx(className, manuals && "relative pr-16")}>
         <div className="flex h-full min-h-[18rem] items-center justify-center bg-slate-950 text-sm font-semibold text-white/60">
           表示できる要領書ページがありません
         </div>
+        {manuals ? <ProcedureManualPageRail onClose={onClose} listOpen={listOpen} onToggleList={onToggleList} extra={railExtra} nav={railNav} /> : null}
       </div>
     );
   }
@@ -338,9 +379,48 @@ export function AssemblyProcedureSequenceViewer({
         ? 'border-rose-300/45 bg-rose-950/45 text-rose-50'
         : 'border-cyan-300/25 bg-cyan-950/35 text-cyan-50';
 
+  const renderManualPage = (step: AssemblyProcedureSequenceStepDto, current: boolean, align?: 'start' | 'end') => {
+    // 2 ページ表示ではページ同士を中央で突き合わせ、あいだに余白を作らない
+    const alignClass = align === 'end' ? '!justify-end' : align === 'start' ? '!justify-start' : undefined;
+    const pageCrop = current && showFullPage ? null : stepCrop(step);
+    const elements = getStepOverlays(step);
+    const assets = getStepAssets(step);
+    if (pageCrop) return (
+      <AssemblyProcedureCropView pageUrl={step.pageUrl} crop={pageCrop} className={clsx('h-full w-full', alignClass)} overlay={
+        <>
+          <AssemblyProcedureOverlayLayer elements={elements} crop={pageCrop} assets={assets} />
+          {current ? <AssemblyProcedureMarkerLayer bolts={visibleBolts} checkItems={visibleChecks} selectedBoltId={selectedBoltId} inputTargetBoltId={inputTargetBoltId} onToggleCheckItem={onToggleCheckItem} /> : null}
+        </>
+      } />
+    );
+    return (
+      <div key={step.pageUrl} className={clsx('h-full w-full', fitWidth ? 'overflow-y-auto' : 'overflow-hidden')} data-testid={current ? 'procedure-page-viewport' : undefined} data-fit-mode={fitMode}>
+        <AssemblyProcedureImageWithMarkers
+          fitToParent={!fitWidth}
+          className={fitWidth ? '!block w-full' : clsx('h-full w-full', alignClass)}
+          imageContent={<KioskDocumentPageImage
+            pageUrl={step.pageUrl}
+            alt={current ? '' : '次ページ'}
+            className={fitWidth ? 'block h-auto w-full' : 'h-full w-full object-contain'}
+            onLoad={current ? event => {
+              const image = event.currentTarget;
+              if (image.naturalWidth && image.naturalHeight) setPageShape({ url: step.pageUrl, landscape: image.naturalWidth > image.naturalHeight });
+            } : undefined}
+          />}
+          bolts={current ? boltMarkers : []}
+          checkItems={current ? checkMarkers : []}
+          selectedBoltId={selectedBoltId}
+          inputTargetBoltId={inputTargetBoltId}
+          onToggleCheckItem={onToggleCheckItem}
+          overlay={<AssemblyProcedureOverlayLayer elements={elements} assets={assets} />}
+        />
+      </div>
+    );
+  };
+
   return (
-    <div className={clsx('flex min-h-0 flex-col bg-slate-950', className)}>
-      <header className="shrink-0 border-b border-white/10 bg-slate-900/90 px-2 py-1">
+    <div className={clsx('relative flex min-h-0 flex-col', manuals ? 'bg-[#0a0d10] pr-16' : 'bg-slate-950', className)}>
+      {!manuals ? <header className="shrink-0 border-b border-white/10 bg-slate-900/90 px-2 py-1">
         <div
           className="grid min-h-12 grid-cols-[minmax(10rem,1fr)_minmax(4rem,0.45fr)_auto] items-center gap-2"
           data-testid="assembly-procedure-sequence-toolbar"
@@ -382,7 +462,7 @@ export function AssemblyProcedureSequenceViewer({
             >
               全手順
             </Button>
-            <Button
+            {showCurrentMarkerButton ? <Button
               type="button"
               variant="ghostOnDark"
               className="min-h-10 !px-2 text-xs"
@@ -390,7 +470,7 @@ export function AssemblyProcedureSequenceViewer({
               onClick={jumpToCurrentMarker}
             >
               現在の丸数字へ
-            </Button>
+            </Button> : null}
             <Button
               type="button"
               variant="ghostOnDark"
@@ -426,7 +506,7 @@ export function AssemblyProcedureSequenceViewer({
             ) : null}
           </div>
         ) : null}
-      </header>
+      </header> : null}
       <div className="flex min-h-0 flex-1">
         {storyboardOpen ? (
           <aside className="flex w-48 shrink-0 flex-col border-r border-white/10 bg-slate-900/75">
@@ -444,10 +524,15 @@ export function AssemblyProcedureSequenceViewer({
           </aside>
         ) : null}
         <div
-          className="relative min-h-0 flex-1 overflow-hidden p-2"
+          className={clsx("relative min-h-0 min-w-0 flex-1 overflow-hidden", "p-2")}
           data-testid="assembly-work-step-canvas"
         >
-          {crop && !showFullPage ? (
+          {manuals ? (
+            <div className="flex h-full min-w-0 gap-1.5" data-testid="procedure-page-spread" data-pages={spread ? 2 : 1}>
+              <div className="relative h-full min-w-0 flex-1">{renderManualPage(currentStep, true, spread ? 'end' : undefined)}</div>
+              {spread ? <div className="h-full min-w-0 flex-1" data-testid="procedure-second-page">{nextStep ? renderManualPage(nextStep, false, 'start') : null}</div> : null}
+            </div>
+          ) : crop && !showFullPage ? (
             <AssemblyProcedureCropView
               pageUrl={currentStep.pageUrl}
               crop={crop}
@@ -470,14 +555,16 @@ export function AssemblyProcedureSequenceViewer({
               }
             />
           ) : (
+            <div className={clsx("h-full w-full", fitWidth ? "overflow-y-auto" : "overflow-hidden")} data-testid="procedure-page-viewport" >
             <AssemblyProcedureImageWithMarkers
-              fitToParent
-              className="h-full w-full"
+              fitToParent={!fitWidth}
+              className={fitWidth ? "!block w-full" : "h-full w-full"}
               imageContent={
                 <KioskDocumentPageImage
                   pageUrl={currentStep.pageUrl}
                   alt=""
-                  className="h-full w-full object-contain"
+                  className={fitWidth ? "block h-auto w-full" : "h-full w-full object-contain"}
+
                 />
               }
               bolts={boltMarkers}
@@ -492,9 +579,10 @@ export function AssemblyProcedureSequenceViewer({
                 />
               }
             />
+            </div>
           )}
           {crop ? (
-            <div className="absolute bottom-3 right-3 grid w-32 gap-1">
+            <div className={clsx("absolute right-3 grid w-32 gap-1", manuals ? "bottom-3" : "bottom-3")}>
               <AssemblyProcedureCropMinimap
                 pageUrl={currentStep.pageUrl}
                 crop={crop}
@@ -517,6 +605,7 @@ export function AssemblyProcedureSequenceViewer({
           ) : null}
         </div>
       </div>
+      {manuals ? <ProcedureManualPageRail onClose={onClose} listOpen={listOpen} onToggleList={onToggleList} extra={railExtra} nav={railNav} twoPages={spread} onToggleTwoPages={onToggleTwoPages} storyboardOpen={storyboardOpen} onToggleStoryboard={() => setStoryboardOpen(open => !open)} fitMode={fitMode} fitDisabled={Boolean(crop && !showFullPage)} onFit={mode => setFitChoice({ url: currentStep.pageUrl, mode })} index={stepIndex} total={steps.length} onPrevious={() => setStepIndex(index => Math.max(0, index - (spread ? 2 : 1)))} onNext={() => setStepIndex(index => Math.min(steps.length - 1, index + (spread ? 2 : 1)))} /> : null}
     </div>
   );
 }

@@ -77,10 +77,21 @@ function SelfInspectionActions({
 }: Props) {
   return (
     <div
-      className={kioskDenseTableRowActionsClassName}
+      className={clsx(kioskDenseTableRowActionsClassName, 'gap-x-6 gap-y-6')}
       data-testid="self-inspection-row-actions"
       aria-label="操作"
     >
+      <button
+        type="button"
+        className={clsx(
+          kioskDenseTableRowActionStructureClassName,
+          'mr-auto border border-rose-300/50 bg-rose-500/15 text-sm font-semibold text-rose-100 hover:bg-rose-500/25'
+        )}
+        onClick={() => onInvalidate(row)}
+        title="削除"
+      >
+        削除
+      </button>
       {row.kind === 'session'
         ? row.actions.map((action, index) => {
             const hasPrimary = row.actions.some((candidate) => candidate.tone === 'primary');
@@ -113,17 +124,6 @@ function SelfInspectionActions({
               {row.action.label}
             </button>
           )}
-      <button
-        type="button"
-        className={clsx(
-          kioskDenseTableRowActionStructureClassName,
-          'border border-rose-300/50 bg-rose-500/15 text-sm font-semibold text-rose-100 hover:bg-rose-500/25'
-        )}
-        onClick={() => onInvalidate(row)}
-        title="削除"
-      >
-        削除
-      </button>
     </div>
   );
 }

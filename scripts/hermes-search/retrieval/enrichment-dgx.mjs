@@ -2,6 +2,9 @@
 import { throughEgress } from '../hermes-remote-inference.mjs';
 import { ENRICHMENT_JSON_SCHEMA, parseEnrichmentPayload } from './enrichment-contract.mjs';
 
+// The 2026-09-26 overnight pilot stopped 78 of 1,000 answers at 800 tokens; successes averaged about 520.
+export const ENRICHMENT_MAX_TOKENS = 1200;
+
 const USAGE_KEYS = [
   ['prompt_tokens', 'promptTokens'],
   ['completion_tokens', 'completionTokens'],
@@ -56,7 +59,8 @@ export async function requestEnrichment({
   ];
   const guided = await postChat(fetchFn, settings, messages, true);
   if (guided.ok) return guided;
-  if (guided.unsupported || guided.errorClass === 'invalid_json') {
+  // A truncated answer would be cut again without the schema, so only malformed answers retry.
+  if (guided.unsupported || guided.errorClass === 'invalid_json' || guided.errorClass === 'schema_mismatch') {
     if (!withinWindow(settings.window, now())) {
       return { ok: false, stopped: true, errorClass: 'outside_window', latencyMs: guided.latencyMs ?? 0 };
     }
@@ -71,7 +75,7 @@ async function postChat(fetchFn, settings, messages, guided) {
     model: settings.model,
     messages,
     temperature: 0,
-    max_tokens: 800,
+    max_tokens: ENRICHMENT_MAX_TOKENS,
     chat_template_kwargs: { enable_thinking: false },
   };
   if (guided) {
@@ -116,17 +120,28 @@ async function postChat(fetchFn, settings, messages, guided) {
   } catch {
     return { ok: false, errorClass: 'invalid_json', latencyMs: Date.now() - started };
   }
-  const content = payload?.choices?.[0]?.message?.content;
+  const choice = payload?.choices?.[0];
+  if (choice?.finish_reason === 'length') {
+    return { ok: false, errorClass: 'truncated', latencyMs: Date.now() - started };
+  }
   try {
     return {
       ok: true,
-      parsed: parseEnrichmentPayload(content),
+      parsed: parseEnrichmentPayload(choice?.message?.content),
       usage: usageOf(payload?.usage),
       latencyMs: Date.now() - started,
     };
-  } catch {
-    return { ok: false, errorClass: 'invalid_json', latencyMs: Date.now() - started };
+  } catch (error) {
+    return contentFailure(error, Date.now() - started);
   }
+}
+
+// Schema messages are fixed strings. JSON syntax messages can quote the answer, so they are not kept.
+function contentFailure(error, latencyMs) {
+  if (error instanceof TypeError) {
+    return { ok: false, errorClass: 'schema_mismatch', detail: error.message, latencyMs };
+  }
+  return { ok: false, errorClass: 'invalid_json', latencyMs };
 }
 
 function usageOf(usage) {

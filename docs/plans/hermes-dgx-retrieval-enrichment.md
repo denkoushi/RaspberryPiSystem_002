@@ -1,6 +1,6 @@
 # Hermes DGX retrieval enrichment
 
-- Status: implemented locally, not merged, not released
+- Status: released 2026-09-25, full corpus enriched by 2026-10-01, turned off 2026-10-02 (a small gain, about 8% more relevant records shown, judged not worth 0.3 s and the overnight work; see `hermes-retrieval-accuracy-log.md`). The store stays on the Pi 5. Since 2026-10-02 the retrieval worker attaches it only while `HERMES_RETRIEVAL_ENRICHMENT_ENABLED=true`.
 - Scope: offline per-record enrichment for Hermes retrieval on the business Pi 5
 
 ## Context
@@ -17,6 +17,18 @@ Reuse the consultation principal already bound as `HERMES_INFERENCE_TOKEN` (`bus
 
 The API process that already reloads the live corpus starts `scripts/hermes-search/retrieval/enrichment-runner.mjs` at low priority, separate from the answering worker. Failures back off and do not change chat answers. The store is `/app/storage/hermes-search/runtime/retrieval-enrichment.jsonl`. Counts and timings are in `retrieval-enrichment-status.json` and one count-only log line.
 
+Failures are split into content failures (`invalid_json`, `schema_mismatch`, `truncated` when the answer stops at the token cap, and `rule_violation`) and DGX failures (`timeout`, `transport`, `http`). Only DGX failures count toward backoff. Content failures go to `retrieval-enrichment-failures.json` beside the store with an attempt count, untried records run first, and a record is set aside after three content failures until its text or the prompt changes. The status file carries `failureCounts`, `failureDetails` (fixed schema messages only, never answer text), `gaveUp`, and `aliasesRejected`.
+
+When the aliases fail the two-expanded-queries rule, the runner keeps the summary, facets, and queries as a schema v1 row without aliases instead of discarding the record. The offline ingest keeps the strict rule. The first overnight pilot (2026-09-25) stored only 14 of 1,000 records because three content failures ended each pass and the next pass retried the same records first.
+
+The second overnight pilot (2026-09-26) stored 930 of 1,000 records. All 78 content failures were `truncated` at the 800-token cap, so the cap is now 1,200 tokens. Of the stored rows, 134 kept aliases (schema v2) and 796 had none (schema v1). Rows now record `metrics.aliasesRejected`, so later runs can tell a rejected alias set from a model that returned no aliases.
+
+The runner starts only after the retrieval worker is ready. When `HERMES_RETRIEVAL_ENRICHMENT_ENABLED=true`, the API now starts that worker when it starts, so a release no longer needs a Chat question before the overnight window. Before this, a release by another task on 2026-09-27 left the runner idle until a Chat request.
+
+The third night (2026-09-27) stored 997 of 1,000 records; 3 were still `truncated` at 1,200 tokens and were set aside. It also showed that rows with aliases (schema v2) were treated as stale and enriched again on every pass, which dropped v2 rows from 134 to 4. Both schema versions are now current. The full corpus (8,242 records) runs next with concurrency 2, through an allowlist file of every record id.
+
+Since 2026-09-29 the id list (`HERMES_RETRIEVAL_ENRICHMENT_IDS`) sets the order, not the scope: listed records are enriched first and every other record follows. Before, only listed records were enriched, so records registered after the 8,242-id list of 2026-09-28 would never have been prepared.
+
 The retrieval worker, when that file exists, sets `record.enrichment = { summary, queries, tags }`. `tags` are the flattened facet values plus any kept alias alternatives.
 
 ## Validation
@@ -29,10 +41,38 @@ Do not release this feature branch. The order is: pull request, merge to `main`,
 
 The offline Grok experiment kept the `aliases` field. Terms that are not in the record are dropped, and alternatives that already appear in the record are dropped. At least two of the three to five queries must use a kept alternative.
 
-The next validation is to run the same 1,000-record subset through the business LLM on the Pi 5 and compare that output with the Grok stores offline. That run waits until the merged revision is on the Pi 5 through the normal release.
+The business LLM output was compared with the Grok stores on 2026-09-27. The comparison used the private 50-case stage set, hybrid retrieval with DGX Qwen3-Embedding-0.6B through the owner's tunnel, `--now 2026-09-24`, and `stage-score.mjs`. Grok was also cut to the same 930 records (c930), so the DGX-to-Grok difference is the enrichment quality alone. Re-running the 2026-09-25 Grok arm gave the same scores.
+
+| Arm | Enrichment | Paraphrase status | Paraphrase r15 | Paraphrase r50 | Paraphrase hit | All status | All r15 | p95 ms |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| a lexical | none | 0.38 | 0.06 | 0.19 | 0.00 | 0.80 | 0.62 | 700 |
+| b hybrid | none | 0.63 | 0.25 | 0.44 | 0.19 | 0.88 | 0.69 | 1330 |
+| c930 hybrid | Grok, 930 records | 0.69 | 0.44 | 0.69 | 0.31 | 0.90 | 0.76 | 942 |
+| d hybrid | DGX business LLM, 930 records | 0.69 | 0.50 | 0.56 | 0.38 | 0.90 | 0.78 | 885 |
+
+The paraphrase set has 16 cases, so a 0.06 difference is one case. DGX enrichment matches Grok within that noise, although only 134 of its 930 rows kept aliases against 957 of 1,000 for Grok. The summary and queries carry most of the gain. The business LLM is therefore good enough to produce enrichment on the Pi 5. Extending it past the 1,000-record pilot is a separate decision. At about 20 s per record, the rest of the corpus takes about a week of overnight windows.
 
 ## Open Items
 
 The chat egress inactivity cap is 60 seconds. The client timeout stays at most 55 seconds. A silent DGX response longer than the cap fails and is retried on a later pass.
 
 Copying the store to a Mac uses the same on-host export style as `export-business-hermes-answer-sources.ts`. This repository has no authorized pull path for that private file.
+
+## Cause classification runtime
+
+The release runner forwards both `HERMES_RETRIEVAL_CAUSE_ENABLED` and `HERMES_RETRIEVAL_CAUSE_MAX_TEXTS` like the enrichment keys.
+
+Shipping a new version and changing a Hermes flag in the same release fails: the `--hermes-search-trial-maintenance on` path requires the same version to be running already, and the runner rolls back. Run a plain release first, then a second release with the maintenance option and the flag (observed 2026-10-17, runs 20261017-043810-86b783, -044447-39a851, -045105-4ed2f4).
+
+The separate JEV cause runner and its cadence are described in [the accuracy log](hermes-retrieval-accuracy-log.md#2026-10-17-要因で分ける-axis-from-jev-classification-of-不適合内容-change-not-a-measurement). It uses the existing `HERMES_JEV_PROVIDER` transport, independent of the enrichment gate.
+
+| Environment variable | Default / purpose |
+| --- | --- |
+| `HERMES_RETRIEVAL_CAUSE_ENABLED` | Off; only `true` starts the runner. Explicit `true`/`false` is forwarded by release and maintenance. |
+| `HERMES_RETRIEVAL_CAUSE_MAX_TEXTS` | `600` distinct texts per refresh; forwarded when explicitly set. |
+| `HERMES_RETRIEVAL_CAUSE_CONCURRENCY` | `1`; accepts `1` or `2` calls in flight. |
+| `HERMES_RETRIEVAL_CAUSE_ENTRY` | `/app/scripts/hermes-search/retrieval/cause-runner.mjs` |
+| `HERMES_RETRIEVAL_CAUSE_STORE` | `/app/storage/hermes-search/runtime/retrieval-cause.jsonl` |
+| `HERMES_RETRIEVAL_CAUSE_STATUS` | `/app/storage/hermes-search/runtime/retrieval-cause-status.json` |
+
+Failures are stored beside the JSONL as `retrieval-cause-failures.json`. Store, status, failures and runner logs contain hashes/counts and category metadata only, never record text. Reading the classification store is independent of the enable flag.

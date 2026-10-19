@@ -1,5 +1,6 @@
+import { useKioskSiteKeys } from '../sites/useKioskSiteKeys';
+
 import {
-  DEFAULT_MAC_TARGET_SITES,
   PRODUCTION_SCHEDULE_MAC_TARGET_DEVICE_KEY,
   PRODUCTION_SCHEDULE_MAC_TARGET_SITE_KEY
 } from './useProductionScheduleMacDeviceScope';
@@ -14,6 +15,7 @@ export function LoadBalancingMacProxyPanel(props: {
   contextNote?: string;
   layout?: 'inline' | 'dropdown';
 }) {
+  const siteKeys = useKioskSiteKeys({ enabled: props.macManualOrderV2 });
   if (!props.macManualOrderV2) return null;
 
   const layout = props.layout ?? 'inline';
@@ -35,7 +37,7 @@ export function LoadBalancingMacProxyPanel(props: {
             }}
             className="min-h-7 rounded-md border border-white/30 bg-slate-950 px-2 py-1 text-[11px] text-white"
           >
-            {DEFAULT_MAC_TARGET_SITES.map((site) => (
+            {siteKeys.map((site) => (
               <option key={site} value={site}>
                 {site}
               </option>
@@ -88,7 +90,7 @@ export function LoadBalancingMacProxyPanel(props: {
           }}
           className="rounded-md border border-white/30 bg-slate-950 px-2 py-1 text-white"
         >
-          {DEFAULT_MAC_TARGET_SITES.map((site) => (
+          {siteKeys.map((site) => (
             <option key={site} value={site}>
               {site}
             </option>

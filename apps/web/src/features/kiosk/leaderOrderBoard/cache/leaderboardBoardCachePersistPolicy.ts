@@ -85,7 +85,17 @@ export function fingerprintLeaderboardBoardDecorations(
     })
     .join('\u0003');
 
-  return `${rowPart}\u0004${chipPart}`;
+  const materialPart = Object.entries(decorations.leaderboardMaterialArrivalByPartKey ?? {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([partKey, status]) => `${partKey}=${status}`)
+    .join('\u0003');
+
+  const basisPart = Object.entries(decorations.leaderboardMaterialArrivalBasisByPartKey ?? {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([partKey, basis]) => `${partKey}=${basis}`)
+    .join('\u0003');
+
+  return `${rowPart}\u0004${chipPart}\u0004${materialPart}\u0004${basisPart}`;
 }
 
 /** @deprecated board のみ。新規は shouldSkipLeaderboardBoardCachePut を使用 */

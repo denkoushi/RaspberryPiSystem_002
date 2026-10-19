@@ -18,6 +18,7 @@ import {
   initialActualSlipOcrFeedback,
   type ActualSlipOcrFeedback
 } from './actual-slip-ocr-feedback';
+import { mobilePlacementQueryKeys } from './mobilePlacementQueryKeys';
 
 import type { MobilePlacementShelfRegisterRouteState, OrderPlacementPageIntent } from './shelfSelection';
 import type { MobilePlacementScanField, MobilePlacementSlipResult } from './types';
@@ -107,8 +108,14 @@ export function useMobilePlacementPageState() {
       if (fs) {
         setActualFseiban(fs);
       }
-      if (mo || fs) {
+      const snapFeedback = {
+        fseibanRaw: res.fseibanRaw,
+        fseibanMatch: res.fseibanMatch,
+        fseibanCandidates: res.fseibanCandidates
+      };
+      if (mo || fs || res.fseibanCandidates.length > 0) {
         setActualSlipOcrFeedback({
+          ...snapFeedback,
           status: 'success',
           manufacturingOrder10: mo,
           fseiban: fs,
@@ -118,6 +125,7 @@ export function useMobilePlacementPageState() {
         });
       } else {
         setActualSlipOcrFeedback({
+          ...snapFeedback,
           status: 'no_candidate',
           manufacturingOrder10: null,
           fseiban: null,
@@ -135,6 +143,7 @@ export function useMobilePlacementPageState() {
           ? e.message
           : '読取に失敗しました';
       setActualSlipOcrFeedback({
+        ...initialActualSlipOcrFeedback,
         status: 'error',
         manufacturingOrder10: null,
         fseiban: null,
@@ -195,8 +204,8 @@ export function useMobilePlacementPageState() {
         );
         setOrderBarcode('');
       }
-      void queryClient.invalidateQueries({ queryKey: ['mobile-placement', 'registered-shelves'] });
-      void queryClient.invalidateQueries({ queryKey: ['mobile-placement', 'order-placement-branches'] });
+      void queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.registeredShelves });
+      void queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.orderPlacementBranchesAll });
     } catch (e: unknown) {
       const msg = isAxiosError(e)
         ? typeof e.response?.data?.message === 'string'

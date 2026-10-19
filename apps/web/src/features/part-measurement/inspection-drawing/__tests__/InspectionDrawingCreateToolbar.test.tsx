@@ -76,4 +76,29 @@ describe('InspectionDrawingCreateToolbar', () => {
 
     expect(screen.queryByRole('button', { name: '取説' })).not.toBeInTheDocument();
   });
+
+  it('shows why save is blocked in place of the generic status', () => {
+    render(
+      <MemoryRouter>
+        <InspectionDrawingCreateToolbar
+          processGroup="cutting"
+          onProcessGroupChange={vi.fn()}
+          mode="place"
+          onModeChange={vi.fn()}
+          hasDrawingImage
+          hasMeasurementPoints
+          onSave={vi.fn()}
+          saveDisabled
+          saveStatus="blocked"
+          saveStatusText="3番: 基準値を入力してください"
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('inspection-drawing-create-save-status')).toHaveTextContent(
+      '3番: 基準値を入力してください'
+    );
+    expect(screen.queryByText('入力不足')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled();
+  });
 });

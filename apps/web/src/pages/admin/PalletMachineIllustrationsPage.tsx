@@ -8,6 +8,7 @@ import {
   postToolsPalletVisualizationIllustration,
   type PalletVisualizationBoardResponseDto,
 } from '../../api/client';
+import { palletVisualizationQueryKeys } from '../../api/queryKeys/palletVisualization';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 
@@ -21,7 +22,7 @@ export function PalletMachineIllustrationsPage() {
   const [message, setMessage] = useState<string | null>(null);
 
   const boardQuery = useQuery({
-    queryKey: ['tools-pallet-viz-board'],
+    queryKey: palletVisualizationQueryKeys.boardAll,
     queryFn: () => getToolsPalletVisualizationBoard(),
   });
 
@@ -30,7 +31,7 @@ export function PalletMachineIllustrationsPage() {
       postToolsPalletVisualizationIllustration(machineCd, file),
     onSuccess: () => {
       setMessage('アップロードしました');
-      void queryClient.invalidateQueries({ queryKey: ['tools-pallet-viz-board'] });
+      void queryClient.invalidateQueries({ queryKey: palletVisualizationQueryKeys.boardAll });
       setPendingMachineCd(null);
       if (fileRef.current) fileRef.current.value = '';
     },
@@ -41,7 +42,7 @@ export function PalletMachineIllustrationsPage() {
     mutationFn: (machineCd: string) => deleteToolsPalletVisualizationIllustration(machineCd),
     onSuccess: () => {
       setMessage('削除しました');
-      void queryClient.invalidateQueries({ queryKey: ['tools-pallet-viz-board'] });
+      void queryClient.invalidateQueries({ queryKey: palletVisualizationQueryKeys.boardAll });
     },
     onError: () => setMessage('削除に失敗しました'),
   });
@@ -51,7 +52,7 @@ export function PalletMachineIllustrationsPage() {
       patchToolsPalletMachinePalletCount(machineCd, palletCount),
     onSuccess: () => {
       setMessage('パレット台数を保存しました');
-      void queryClient.invalidateQueries({ queryKey: ['tools-pallet-viz-board'] });
+      void queryClient.invalidateQueries({ queryKey: palletVisualizationQueryKeys.boardAll });
     },
     onError: () => setMessage('台数の保存に失敗しました'),
   });

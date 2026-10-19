@@ -1,0 +1,122 @@
+---
+# Separate from the standard fleet deployment, like the Business Pi5 DR lane.
+# It only installs a runner on the Pi5; the Pi4 kiosks are read over SSH into a
+# restic repository on the Pi5 SSD, which is then copied to Google Drive, when
+# the (disabled-by-default) weekly timer or an operator starts a backup.
+- name: Configure the weekly Pi4 SD-card backup on the Business Pi5
+  hosts: raspberrypi5
+  gather_facts: false
+  become: true
+  serial: 1
+  vars:
+    pi4_sd_backup_install_root: /opt/raspi-pi4-sd-backup
+    pi4_sd_backup_config_root: /etc/raspi-pi4-sd-backup
+    pi4_sd_backup_env_file: /etc/raspi-pi4-sd-backup/backup.env
+    pi4_sd_backup_targets_file: /etc/raspi-pi4-sd-backup/targets.json
+    # Reuses the Business Pi5 DR credentials, which already have offline custody.
+    pi4_sd_backup_rclone_config: /etc/raspi-google-drive-dr/rclone.conf
+    pi4_sd_backup_password_file: /etc/raspi-google-drive-dr/restic-password
+    # Working copy on the Pi5 SSD for fast LAN restores, plus an off-site copy.
+    pi4_sd_backup_repository: /var/lib/raspi-pi4-sd-backup/repository
+    pi4_sd_backup_offsite_repository: rclone:google-drive:RaspberryPiSystem_002/pi4-sd
+    pi4_sd_backup_pi5_ssh_user: "{{ ansible_user }}"
+    pi4_sd_backup_timer_enabled: false
+    pi4_sd_backup_service_name: raspi-pi4-sd-backup.service
+    pi4_sd_backup_timer_name: raspi-pi4-sd-backup.timer
+
+  pre_tasks:
+    - name: Refuse any host other than the Business Pi5
+      ansible.builtin.assert:
+        that:
+          - inventory_hostname == 'raspberrypi5'
+          - "'server' in group_names"
+        fail_msg: The Pi4 SD backup runner is installed only on raspberrypi5.
+        quiet: true
+
+    - name: Check that the shared Google Drive credentials exist
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ pi4_sd_backup_rclone_config }}"
+        - "{{ pi4_sd_backup_password_file }}"
+      register: pi4_sd_backup_credential_stats
+
+    - name: Require root-owned 0600 credential files
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists | default(false)
+          - item.stat.isreg | default(false)
+          - item.stat.pw_name | default('') == 'root'
+          - item.stat.mode | default('') == '0600'
+        fail_msg: Provision the Business Pi5 Google Drive DR credentials first.
+      loop: "{{ pi4_sd_backup_credential_stats.results }}"
+      no_log: true
+
+  tasks:
+    - name: Install tools for backup (restic, rclone) and restore (sfdisk, mkfs, partprobe)
+      ansible.builtin.package:
+        name:
+          - python3
+          - restic
+          - rclone
+          - fdisk
+          - dosfstools
+          - e2fsprogs
+          - parted
+        state: present
+
+    - name: Create the install and config directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: "{{ pi4_sd_backup_install_root }}/pi4_sd_backup", mode: '0755' }
+        - { path: "{{ pi4_sd_backup_config_root }}", mode: '0700' }
+        - { path: "{{ pi4_sd_backup_repository | dirname }}", mode: '0700' }
+
+    - name: Copy the runner package
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../../scripts/pi4_sd_backup/{{ item }}"
+        dest: "{{ pi4_sd_backup_install_root }}/pi4_sd_backup/{{ item }}"
+        owner: root
+        group: root
+        mode: '0644'
+      loop:
+        - __init__.py
+        - plan.py
+        - runner.py
+
+    - name: Write the kiosk list the backup reads (host, address, SSH user; no secrets)
+      ansible.builtin.copy:
+        dest: "{{ pi4_sd_backup_targets_file }}"
+        owner: root
+        group: root
+        mode: '0600'
+        content: |
+          [
+          {% for kiosk in groups['kiosk'] %}
+            {"host": {{ kiosk | to_json }}, "address": {{ hostvars[kiosk].ansible_host | to_json }}, "user": {{ hostvars[kiosk].ansible_user | to_json }}}{{ "," if not loop.last else "" }}
+          {% endfor %}
+          ]
+
+    - name: Install the environment file and units
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: root
+        group: root
+        mode: '0644'
+      loop:
+        - { src: raspi-pi4-sd-backup.env.j2, dest: "{{ pi4_sd_backup_env_file }}" }
+        - { src: raspi-pi4-sd-backup.service.j2, dest: "/etc/systemd/system/{{ pi4_sd_backup_service_name }}" }
+        - { src: raspi-pi4-sd-backup.timer.j2, dest: "/etc/systemd/system/{{ pi4_sd_backup_timer_name }}" }
+
+    - name: Keep the timer disabled unless explicitly enabled
+      ansible.builtin.systemd:
+        name: "{{ pi4_sd_backup_timer_name }}"
+        enabled: "{{ pi4_sd_backup_timer_enabled | bool }}"
+        state: "{{ 'started' if (pi4_sd_backup_timer_enabled | bool) else 'stopped' }}"
+        daemon_reload: true

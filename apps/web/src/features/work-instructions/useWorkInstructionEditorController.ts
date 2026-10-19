@@ -38,6 +38,7 @@ import {
   effectiveWorkInstructionMemo,
   keepWorkInstructionMemo,
   memoOverrideForStep,
+  workInstructionMemoNeedsAttention,
   memoOverridesToArray,
   memoOverridesToMap,
   resetWorkInstructionMemo,
@@ -275,13 +276,13 @@ export function useWorkInstructionEditorController({
     if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
       setEditorAuthentication(null);
       setAuditItems([]);
-      setMessage('編集認証の有効期限が切れました。社員NFCタグを再度スキャンしてください。');
+      setMessage('認証の期限が切れました。社員タグをかざしてください。');
       return undefined;
     }
     const timer = window.setTimeout(() => {
       setEditorAuthentication(null);
       setAuditItems([]);
-      setMessage('編集認証の有効期限が切れました。社員NFCタグを再度スキャンしてください。');
+      setMessage('認証の期限が切れました。社員タグをかざしてください。');
     }, remainingMs);
     return () => window.clearTimeout(timer);
   }, [editorAuthentication]);
@@ -296,8 +297,8 @@ export function useWorkInstructionEditorController({
   useEffect(() => {
     if (!groupQuery.data) return;
     setGroup(groupQuery.data);
-    if (!selectedRowId) setSelectedRowId(groupQuery.data.rows[0]?.rowId ?? null);
-  }, [groupQuery.data, selectedRowId]);
+    setSelectedRowId((current) => current ?? groupQuery.data!.rows[0]?.rowId ?? null);
+  }, [groupQuery.data]);
 
   // Hydrate editor state only from server group changes. Local keystrokes only
   // change elementsByRevision, so they are not overwritten while editing.
@@ -354,6 +355,47 @@ export function useWorkInstructionEditorController({
   }).map((row) => row.draft!.id), [baselineByRevision, elementsByRevision, memoBaselineByRevision, memoOverridesByRevision, rows]);
   const isDirty = dirtyRevisionIds.length > 0;
   const hasUpdate = rows.some((row) => row.updateAvailable);
+  const reviewCursorRef = useRef<string | null>(null);
+  const reviewTargets = useMemo(() => rows.flatMap((row) => {
+    if (!row.draft) return [];
+    const steps = baseSteps(row);
+    const elements = elementsByRevision[row.draft.id] ?? rowRevisionElements(row);
+    const memos = memoOverridesToArray(memoOverridesByRevision[row.draft.id] ?? memoOverridesToMap(row.draft.memoOverrides));
+    const targetStep = (stepKey: string | null | undefined, pageIndex = 0) => steps.find((step) => stepKeyFor(step) === stepKey) ?? steps[pageIndex] ?? steps[0];
+    return [
+      ...elements.filter((element) => ['NEEDS_REVIEW', 'UNASSIGNED'].includes(String(element.migrationState).toUpperCase())).map((element) => ({
+        key: `${row.rowId}:annotation:${element.id}`,
+        rowId: row.rowId,
+        stepKey: targetStep(element.stepKey, element.pageIndex)?.stepKey ?? null,
+        overlayId: element.id,
+        memo: false
+      })),
+      ...memos.filter((memo) => workInstructionMemoNeedsAttention([memo])).map((memo, index) => ({
+        key: `${row.rowId}:memo:${memo.id ?? index}`,
+        rowId: row.rowId,
+        stepKey: targetStep(memo.stepKey)?.stepKey ?? null,
+        overlayId: null,
+        memo: true
+      }))
+    ];
+  }), [elementsByRevision, memoOverridesByRevision, rows]);
+  const nextReview = useCallback(() => {
+    if (reviewTargets.length === 0) return null;
+    const currentIndex = reviewTargets.findIndex((target) => target.key === reviewCursorRef.current);
+    const next = reviewTargets[(currentIndex + 1) % reviewTargets.length];
+    reviewCursorRef.current = next.key;
+    setSelectedRowId(next.rowId);
+    setSelectedStepKey(next.stepKey);
+    setSelectedOverlayId(next.overlayId);
+    setSelectionMode(false);
+    setPendingRange(null);
+    return next;
+  }, [reviewTargets]);
+  const unassignedMemoCount = useMemo(() => rows.reduce((count, row) => {
+    if (!row.draft) return count;
+    const memos = memoOverridesToArray(memoOverridesByRevision[row.draft.id] ?? memoOverridesToMap(row.draft.memoOverrides));
+    return count + memos.filter((memo) => memo.action !== 'USE_SOURCE' && memo.action !== 'use-source' && (memo.stepKey == null || memo.sourceStep === null || String(memo.migrationState).toUpperCase() === 'UNASSIGNED')).length;
+  }, 0), [memoOverridesByRevision, rows]);
   const recovery = useWorkInstructionEditorRecovery({
     groupKey: `${partNumber}:${shootingTarget}`,
     revisionId: activeRevisionId,
@@ -509,7 +551,7 @@ export function useWorkInstructionEditorController({
     if (!normalizedEmployeeTagUid || busy || !currentGroup || currentGroup.rows.length === 0) return;
     setBusy(true);
     setLoadingEditor(true);
-    setMessage('社員NFCタグを確認中です。');
+    setMessage('確認中…');
     try {
       const authentication = await createWorkInstructionEditorAuthentication({
         partNumber,
@@ -529,12 +571,12 @@ export function useWorkInstructionEditorController({
       const nextGroup = result.group ?? mergeCopyResult(currentGroup, result.revisions);
       setGroup(nextGroup);
       setEditorAuthentication(authentication);
-      setMessage(`${authentication.employee.displayName} さんの編集認証が完了しました。新しい原本の注記を確認して公開できます。`);
+      setMessage(`${authentication.employee.displayName} さんを確認しました`);
       await refreshAudit(authentication.id);
     } catch (error: unknown) {
       setEditorAuthentication(null);
       setAuditItems([]);
-      setMessage(readApiErrorMessage(error, '社員NFC認証または下書きの作成に失敗しました。'));
+      setMessage(readApiErrorMessage(error, '社員タグを確認できませんでした。'));
     } finally {
       setBusy(false);
       setLoadingEditor(false);
@@ -544,12 +586,12 @@ export function useWorkInstructionEditorController({
   const writeRevision = useCallback(async (row: WorkInstructionEditorRowDto, editVersionOverride?: number) => {
     const revision = row.draft;
     if (!revision) return revision;
-    if (!authenticationId) throw new Error('編集認証がありません。社員NFCタグを再度スキャンしてください。');
+    if (!authenticationId) throw new Error('社員タグをかざしてください。');
     const elements = elementsRef.current[revision.id] ?? [];
     const memoOverrides = memoOverridesRef.current[revision.id] ?? {};
     const payloadElements = savePayloadElements(revision, elements);
     const payloadMemoOverrides = savePayloadMemoOverrides(revision, memoOverrides);
-    if (!isWorkInstructionOverlayDraftSaveable(elements)) throw new Error('画像注記にはasset IDを指定し、文章を空にしないでください。');
+    if (!isWorkInstructionOverlayDraftSaveable(elements)) throw new Error('画像を選び、文章を入力してください。');
     const savedRevision = await saveWorkInstructionOverlayDraft({
       revisionId: revision.id,
       authenticationId,
@@ -590,16 +632,16 @@ export function useWorkInstructionEditorController({
       const nextGroup = { ...currentGroup, rows: savedRows };
       setGroup(nextGroup);
       await refreshAudit();
-      setMessage('オーバーレイを保存しました。');
+      setMessage('保存しました');
     } catch (error: unknown) {
       if (hasSavedRows) setGroup({ ...currentGroup, rows: savedRows });
       const currentEditVersion = editConflictVersion(error);
       if (currentEditVersion !== null) {
         setConflict({ revisionId: savingRevisionId, currentEditVersion });
-        setMessage('他の管理者が先に更新しました。保持中の内容を再保存するか、最新内容を読み込んでください。');
+        setMessage('別の社員が更新しました。未保存内容を保持しています。');
       } else {
         setConflict(null);
-        setMessage(readApiErrorMessage(error, 'オーバーレイの保存に失敗しました。'));
+        setMessage(readApiErrorMessage(error, '保存に失敗しました。'));
       }
     } finally {
       setBusy(false);
@@ -679,7 +721,7 @@ export function useWorkInstructionEditorController({
     } catch (error: unknown) {
       if (hasSavedRows) setGroup({ ...currentGroup, rows: savedRows });
       if (errorCode(error) === 'WORK_INSTRUCTION_MEMO_MIGRATION_RESOLUTION_REQUIRED') {
-        setMessage(readApiErrorMessage(error, '公開前にmemoの移植状態をKEEPまたはUSE_SOURCE、または割当で解決してください。'));
+        setMessage(readApiErrorMessage(error, '公開前に要確認のメモを確認してください。'));
       } else if (errorStatus(error) === 409) {
         setMessage('公開前に原本または下書きが更新されました。最新内容を確認して再度保存・公開してください。');
       } else setMessage(readApiErrorMessage(error, '加工要領書の公開に失敗しました。'));
@@ -696,13 +738,13 @@ export function useWorkInstructionEditorController({
       const nextRows: WorkInstructionEditorRowDto[] = [];
       for (const row of currentGroup.rows) {
         if (!row.draft) { nextRows.push(row); continue; }
-        if (!authenticationId) throw new Error('編集認証がありません。社員NFCタグを再度スキャンしてください。');
+        if (!authenticationId) throw new Error('社員タグをかざしてください。');
         await discardWorkInstructionOverlayDraft({ revisionId: row.draft.id, authenticationId, expectedEditVersion: row.draft.editVersion });
         nextRows.push({ ...row, draft: null });
       }
       setGroup({ ...currentGroup, rows: nextRows });
       await refreshAudit();
-      setMessage('下書きを破棄しました。公開中の注記は変更されていません。');
+      setMessage('下書きを捨てました');
     } catch (error: unknown) {
       setMessage(readApiErrorMessage(error, '下書きの破棄に失敗しました。'));
     } finally {
@@ -716,6 +758,31 @@ export function useWorkInstructionEditorController({
     setSelectedOverlayId(element.id);
   }, [activeRevisionId, updateElements]);
 
+  const addDefaultOverlay = useCallback((kind: 'TEXT' | 'SHAPE') => {
+    if (!activeRevisionId || !activeStep || busy || !accessGranted) return;
+    const element = createWorkInstructionOverlayForRange(kind, activeSteps.indexOf(activeStep), stepKeyFor(activeStep), { xRatio: 0.38, yRatio: 0.23, widthRatio: 0.28, heightRatio: 0.14 });
+    addElement(element.kind === 'TEXT'
+      ? { ...element, style: { ...element.style, fontSizeRatio: 0.025, color: '#161c22' } }
+      : { ...element, strokeWidthRatio: 0.008, strokeColor: '#e5484d' } as WorkInstructionOverlayElement);
+    setSelectionMode(false);
+    setPendingRange(null);
+    setMessage(kind === 'TEXT' ? '文章を追加しました' : '図形・記号を追加しました');
+  }, [accessGranted, activeRevisionId, activeStep, activeSteps, addElement, busy]);
+
+  const duplicateSelectedOverlay = useCallback(() => {
+    if (!selectedElement || !activeRevisionId || busy || !accessGranted) return;
+    const bbox = selectedElement.bbox;
+    const copy = updateWorkInstructionOverlayBBox(selectedElement, {
+      ...bbox,
+      xRatio: bbox.xRatio + Math.min(0.025, 1 - bbox.widthRatio - bbox.xRatio),
+      yRatio: bbox.yRatio + Math.min(0.025, 1 - bbox.heightRatio - bbox.yRatio)
+    });
+    const id = createWorkInstructionOverlayForRange(selectedElement.kind, selectedElement.pageIndex, selectedElement.stepKey ?? '', bbox).id;
+    addElement({ ...copy, id, zIndex: Math.max(0, ...activeElements.map((element) => element.zIndex)) + 1 });
+    setSelectionMode(false);
+    setPendingRange(null);
+  }, [accessGranted, activeElements, activeRevisionId, addElement, busy, selectedElement]);
+
   const createOverlay = useCallback(async (kind: 'TEXT' | 'IMAGE' | 'SHAPE') => {
     const revisionId = activeRevisionId;
     const stepKey = activeStep ? stepKeyFor(activeStep) : null;
@@ -725,7 +792,7 @@ export function useWorkInstructionEditorController({
     setSelectionMode(false);
     if (kind === 'SHAPE') {
       addElement(createWorkInstructionOverlayForRange(kind, activeSteps.indexOf(activeStep), stepKey, range));
-      setMessage('図形・記号オーバーレイを追加しました。保存してください。');
+      setMessage('図形・記号を追加しました');
       return;
     }
     setBusy(true);
@@ -738,13 +805,13 @@ export function useWorkInstructionEditorController({
           setMessage('文章候補を選択してください。');
         } else {
           addElement(createWorkInstructionOverlayForRange(kind, activeSteps.indexOf(activeStep), stepKey, range));
-          setMessage('文章候補が見つからないため、手入力の文章注記を追加しました。');
+          setMessage('文章を追加しました');
         }
       } else {
         const asset = await createWorkInstructionImageRegion({ revisionId, stepKey, authenticationId, bbox: range });
         registerAsset(revisionId, asset);
         addElement({ ...createWorkInstructionOverlayForRange(kind, activeSteps.indexOf(activeStep), stepKey, range), assetId: asset.assetId } as WorkInstructionOverlayElement);
-        setMessage('選択範囲を画像assetとして追加しました。');
+        setMessage('画像を追加しました');
         await refreshAudit();
       }
     } catch (error: unknown) {
@@ -770,7 +837,7 @@ export function useWorkInstructionEditorController({
     } else addElement({ ...createWorkInstructionOverlayForRange('TEXT', pageIndex, textCandidateRange.stepKey, bbox), text: candidate?.text || 'ここに文章を入力' } as WorkInstructionOverlayElement);
     setTextCandidates([]);
     setTextCandidateRange(null);
-    setMessage(candidate ? '文章注記を追加しました。保存してください。' : '文章候補をキャンセルしました。');
+    setMessage(candidate ? '文章を追加しました' : '文章候補をキャンセルしました。');
   }, [activeElements, activeRevisionId, activeStep, activeSteps, addElement, setActiveElement, textCandidateRange]);
 
   const refetchTextCandidates = useCallback(async () => {
@@ -800,9 +867,9 @@ export function useWorkInstructionEditorController({
       registerAsset(activeRevisionId, asset);
       setActiveElement({ ...selectedElement, assetId: asset.assetId });
       await refreshAudit();
-      setMessage('画像assetを登録しました。保存してください。');
+      setMessage('画像を登録しました');
     } catch (error: unknown) {
-      setMessage(readApiErrorMessage(error, '画像assetの登録に失敗しました。別の画像を選択してください。'));
+      setMessage(readApiErrorMessage(error, '画像を登録できませんでした。別の画像を選んでください。'));
     } finally {
       setBusy(false);
     }
@@ -940,6 +1007,11 @@ export function useWorkInstructionEditorController({
     authenticate,
     message,
     hasUpdate,
+    reviewCount: reviewTargets.length,
+    unassignedMemoCount,
+    nextReview,
+    addDefaultOverlay,
+    duplicateSelectedOverlay,
     activeRow,
     activeRevision,
     activeStep,

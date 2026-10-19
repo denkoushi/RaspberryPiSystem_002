@@ -13,6 +13,12 @@ describe('business Hermes environment shape', () => {
     expect(parsed.BUSINESS_HERMES_MODEL).toBeUndefined();
   });
 
+  it('treats a blank operation guide directory as unset and trims a configured path', () => {
+    expect(schema.parse({ KIOSK_OPERATION_GUIDE_DIR: '  ' }).KIOSK_OPERATION_GUIDE_DIR).toBeUndefined();
+    expect(schema.parse({ KIOSK_OPERATION_GUIDE_DIR: ' /app/docs/kiosk-operation-guide ' }).KIOSK_OPERATION_GUIDE_DIR)
+      .toBe('/app/docs/kiosk-operation-guide');
+  });
+
   it('requires an origin URL without a path', () => {
     expect(() => schema.parse({ BUSINESS_HERMES_BASE_URL: 'https://hermes.example/api' })).toThrow();
     expect(schema.parse({ BUSINESS_HERMES_BASE_URL: 'https://hermes.example' }).BUSINESS_HERMES_BASE_URL).toBe('https://hermes.example');

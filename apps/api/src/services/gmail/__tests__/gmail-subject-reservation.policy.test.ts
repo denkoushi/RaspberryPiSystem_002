@@ -6,6 +6,9 @@ import {
   assertCsvGmailSubjectPatternAllowed,
   canCsvSubjectPatternMatchReservedSubject,
   isItemInventoryGmailSubject,
+  isProcedureMaterialGmailSubject,
+  isProcedureMaterialAppGmailSubject,
+  getProcedureMaterialSubjectHint,
   isWorkInstructionGmailSubject,
 } from '../gmail-subject-reservation.policy.js';
 
@@ -25,6 +28,20 @@ describe('gmail-subject-reservation.policy', () => {
       })
     );
   });
+
+  it.each(['AirGridFlexSignal', 'airgridflexsignal', 'FlexSignal'])(
+    'rejects a CSV pattern that can match the machine signal subject: %s',
+    (pattern) => {
+      expect(() => assertCsvGmailSubjectPatternAllowed(pattern)).toThrowError(
+        expect.objectContaining({
+          statusCode: 400,
+          code: 'GMAIL_SUBJECT_PATTERN_RESERVED',
+          details: { pattern, reservedSubject: 'AirGridFlexSignal' },
+          message: expect.stringContaining('設備稼働ログ専用'),
+        })
+      );
+    }
+  );
 
   it.each([
     '計測機器持出状況',
@@ -93,5 +110,43 @@ describe('gmail-subject-reservation.policy', () => {
         subjectTokens: ['[WORK-INSTRUCTION]'],
       },
     })).toThrow();
+  });
+});
+
+describe('procedure-material subject reservation', () => {
+  it.each([
+    ['[Procedure-material]', null],
+    [' [Procedure-material] DFD1 組立 ', 'DFD1 組立'],
+    ['[Procedure-material]DFD2', 'DFD2'],
+    ['[Procedure-material]\tヒント', 'ヒント'],
+  ])('claims the leading token and saves the hint: %s', (subject, hint) => {
+    expect(isProcedureMaterialGmailSubject(subject!)).toBe(true);
+    expect(getProcedureMaterialSubjectHint(subject!)).toBe(hint);
+    expect(isItemInventoryGmailSubject(subject!)).toBe(false);
+    expect(isWorkInstructionGmailSubject(subject!)).toBe(false);
+  });
+  it.each(['Re: [Procedure-material]', 'prefix [Procedure-material]', '[Procedure-material-TEST]', '[procedure-material]', '[ItemlistRaspi-photo]', '[Kakou-Dandori-photo]', 'DocumentASM', 'AirGridFlexSignal'])('does not claim other mail: %s', (subject) => {
+    expect(isProcedureMaterialGmailSubject(subject)).toBe(false);
+    expect(getProcedureMaterialSubjectHint(subject)).toBeNull();
+  });
+  it.each(['[Procedure-material]', 'procedure-material', '/MATERIAL/'])('rejects CSV patterns claiming the material token: %s', (pattern) => {
+    expect(() => assertCsvGmailSubjectPatternAllowed(pattern)).toThrowError(expect.objectContaining({ statusCode: 400, code: 'GMAIL_SUBJECT_PATTERN_RESERVED' }));
+  });
+});
+
+describe('procedure-material app subject reservation', () => {
+  it.each(['ProcedureMaterial', 'ProcedureMaterial 1', 'ProcedureMaterial\t1'])('reserves %s without treating it as a legacy hint or another consumer', (subject) => {
+    expect(isProcedureMaterialAppGmailSubject(subject)).toBe(true);
+    expect(isProcedureMaterialGmailSubject(subject)).toBe(true);
+    expect(getProcedureMaterialSubjectHint(subject)).toBeNull();
+    expect(isItemInventoryGmailSubject(subject)).toBe(false);
+    expect(isWorkInstructionGmailSubject(subject)).toBe(false);
+  });
+  it.each(['ProcedureMaterials', 'ProcedureMaterial-1', 'ProcedureMaterial\n1', 'Re: ProcedureMaterial', 'prefix ProcedureMaterial', 'procedurematerial', '[Procedure-material]'])('does not classify %s as app mail', (subject) => {
+    expect(isProcedureMaterialAppGmailSubject(subject)).toBe(false);
+    if (subject !== '[Procedure-material]') expect(isProcedureMaterialGmailSubject(subject)).toBe(false);
+  });
+  it.each(['ProcedureMaterial', 'procedurematerial', '/ProcedureMaterial/'])('rejects CSV patterns matching %s', (pattern) => {
+    expect(() => assertCsvGmailSubjectPatternAllowed(pattern)).toThrowError(expect.objectContaining({ statusCode: 400, details: { pattern, reservedSubject: 'ProcedureMaterial' } }));
   });
 });

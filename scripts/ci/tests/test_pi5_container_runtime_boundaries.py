@@ -19,6 +19,11 @@ ADMIN_POLICY_MIGRATION = (
 ).read_text()
 LOCAL_CADDY = (ROOT / "infrastructure/docker/Caddyfile.local.template").read_text()
 PRODUCTION_CADDY = (ROOT / "infrastructure/docker/Caddyfile.production").read_text()
+GATEWAY_CADDY = (ROOT / "infrastructure/docker/Caddyfile.gateway.template").read_text()
+GATEWAY_HTTP_CADDY = (
+    ROOT / "infrastructure/docker/Caddyfile.gateway.http.template"
+).read_text()
+SLOT_CADDY = (ROOT / "infrastructure/docker/Caddyfile.slot.template").read_text()
 
 
 def service(compose: str, name: str) -> str:
@@ -50,7 +55,7 @@ class Pi5ContainerRuntimeBoundaryTest(unittest.TestCase):
         self.assertRegex(runtime, r"apt-get install -y --only-upgrade[^\n]* libexpat1")
         self.assertIn("dpkg-query -W -f='${Version}' libexpat1", runtime)
         self.assertIn(
-            'dpkg --compare-versions "${expat_version}" ge \'2.5.0-1+deb12u3\'',
+            'dpkg --compare-versions "${expat_version}" ge \'2.5.0-1+deb12u4\'',
             runtime,
         )
         self.assertIn(
@@ -84,6 +89,14 @@ class Pi5ContainerRuntimeBoundaryTest(unittest.TestCase):
         web = service(SERVER, "web")
         for path in ("/tmp:rw,nosuid,nodev", "/config:rw,nosuid,nodev", "/data:rw,nosuid,nodev", "/var/log/caddy"):
             self.assertIn(path, web)
+
+    def test_business_profile_intent_survives_restart_in_host_config(self):
+        expected = "INFERENCE_BUSINESS_PROFILE_INTENT_FILE_PATH: /app/config/business-profile-intent.json"
+        for compose, name in ((SERVER, "api"), (PHASE3, "api-blue")):
+            api = service(compose, name)
+            self.assertIn(expected, api)
+            self.assertIn("/config:/app/config", api)
+        self.assertIn("<<: *api-environment", service(PHASE3, "api-green"))
 
     def test_images_have_non_root_defaults_and_no_file_capability(self):
         self.assertRegex(API_DOCKERFILE, r"(?m)^USER node$")
@@ -120,6 +133,25 @@ class Pi5ContainerRuntimeBoundaryTest(unittest.TestCase):
             self.assertIn("not remote_ip {$ADMIN_ALLOW_NETS}", caddy)
             self.assertIn('respond @admin_protect "Forbidden" 403', caddy)
             self.assertNotIn("{$ADMIN_ALLOW_NETS:", caddy)
+
+    def test_blue_green_admin_routes_are_limited_at_the_gateway_only(self):
+        matcher = (
+            "  @admin_protect {\n"
+            "    path /admin*\n"
+            "    import /srv/bluegreen/admin-allow-nets.caddy\n"
+            "  }\n"
+        )
+        deny = '    respond @admin_protect "Forbidden" 403\n'
+        for caddy in (GATEWAY_CADDY, GATEWAY_HTTP_CADDY):
+            self.assertEqual(caddy.count(matcher), 1)
+            self.assertEqual(caddy.count(deny), 1)
+            self.assertLess(caddy.index(deny), caddy.index("reverse_proxy"))
+            self.assertNotIn("trusted_proxies", caddy)
+            self.assertNotIn("client_ip", caddy)
+        # The slot sees the gateway as its peer, and the API opens the same-color
+        # slot directly for signage page captures, so it must stay unrestricted.
+        for directive in ("admin_protect", "remote_ip", "client_ip", "/admin"):
+            self.assertNotIn(directive, SLOT_CADDY)
 
     def test_admin_policy_bootstrap_is_separately_approved_and_rollback_safe(self):
         self.assertIn(

@@ -57,6 +57,78 @@
     tasks_from: resolve-browser
   when: manage_kiosk_browser | default(false) | bool
 
+# The launcher template reads the kiosk role's browser flag defaults, but role
+# defaults are only in scope inside that role. Without this the release rendered
+# a Chromium launcher with no flags at all (2026-10-02, StoneBase01).
+- name: Read the kiosk role browser flag defaults for the launcher
+  ansible.builtin.set_fact:
+    release_kiosk_browser_defaults: >-
+      {{ lookup('ansible.builtin.file', role_path ~ '/../kiosk/defaults/main.yml') | from_yaml }}
+  when: manage_kiosk_browser | default(false) | bool
+
+# Chromium only: the Firefox kiosks have been released without the common
+# flags, and this fix must not change what they start with.
+- name: Apply the kiosk role common browser flags unless the host overrides them
+  ansible.builtin.set_fact:
+    kiosk_browser_flags_common: "{{ release_kiosk_browser_defaults.kiosk_browser_flags_common }}"
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved | default('') == 'chromium'
+    - kiosk_browser_flags_common is not defined
+
+- name: Apply the kiosk role Chromium flags unless the host overrides them
+  ansible.builtin.set_fact:
+    kiosk_browser_flags_chromium: "{{ release_kiosk_browser_defaults.kiosk_browser_flags_chromium }}"
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_flags_chromium is not defined
+
+- name: Refuse to stage a Chromium launcher without its required flags
+  ansible.builtin.assert:
+    that:
+      - "'--ozone-platform=x11' in kiosk_browser_flags_chromium"
+      - "'--gtk-version=3' in kiosk_browser_flags_chromium"
+      - "'--password-store=basic' in kiosk_browser_flags_chromium"
+    fail_msg: >-
+      The Chromium kiosk launcher would be rendered without the flags Japanese
+      input and the keyring-free start depend on. Fix kiosk_browser_flags_chromium
+      before releasing.
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved | default('') == 'chromium'
+
+# A wrong pin leaves the kiosk on a certificate error page while the browser
+# unit stays active, so compare it with the key the server presents first.
+- name: Read the server key the kiosk sees for the Chromium certificate pin
+  ansible.builtin.shell: |
+    set -o pipefail
+    openssl s_client -connect {{ (kiosk_url | urlsplit('hostname')) | quote }}:{{ kiosk_url | urlsplit('port') | default(443, true) }} </dev/null 2>/dev/null \
+      | openssl x509 -pubkey -noout \
+      | openssl pkey -pubin -outform der \
+      | openssl dgst -sha256 -binary \
+      | base64
+  args:
+    executable: /bin/bash
+  register: release_kiosk_server_spki
+  changed_when: false
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved | default('') == 'chromium'
+    - kiosk_server_cert_spki_sha256 | default('') | length > 0
+
+- name: Refuse to stage a Chromium launcher whose certificate pin does not match the server
+  ansible.builtin.assert:
+    that:
+      - release_kiosk_server_spki.stdout | trim == kiosk_server_cert_spki_sha256
+    fail_msg: >-
+      kiosk_server_cert_spki_sha256 does not match the key {{ kiosk_url | urlsplit('hostname') }}
+      presents ({{ release_kiosk_server_spki.stdout | default('') | trim }}). The kiosk would
+      show a certificate error. Update the pin before releasing.
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved | default('') == 'chromium'
+    - kiosk_server_cert_spki_sha256 | default('') | length > 0
+
 - name: Define files required by rollback runtime
   ansible.builtin.set_fact:
     release_kiosk_rollback_prerequisites: >-
@@ -174,6 +246,11 @@
       - "{{ release_kiosk_candidate_images[item] }}"
   loop: "{{ release_kiosk_services }}"
   register: release_kiosk_pull
+  # A reset connection to the registry is transient; without a retry it fails
+  # the kiosk and, with serial rollout, skips every kiosk after it.
+  retries: 3
+  delay: 15
+  until: release_kiosk_pull.rc == 0
   changed_when: >-
     'Downloaded newer image' in release_kiosk_pull.stdout
     or 'Pull complete' in release_kiosk_pull.stdout
@@ -253,6 +330,15 @@
     mode: '0644'
   when: release_kiosk_services | length > 0
 
+- name: Stage the status-agent network health module
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../clients/status-agent/network_health.py"
+    dest: "{{ release_kiosk_stage_dir }}/network_health.py"
+    owner: root
+    group: root
+    mode: '0644'
+  when: release_kiosk_services | length > 0
+
 - name: Stage the status-agent terminal health module
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../../../clients/status-agent/terminal_agent_health.py"
@@ -287,6 +373,27 @@
     owner: root
     group: root
     mode: '0644'
+  when: release_kiosk_services | length > 0
+
+- name: Stage the Pi4 storage maintenance script
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../scripts/client/pi4-storage-maintenance.sh"
+    dest: "{{ release_kiosk_stage_dir }}/pi4-storage-maintenance.sh"
+    owner: root
+    group: root
+    mode: '0755'
+  when: release_kiosk_services | length > 0
+
+- name: Stage the Pi4 storage maintenance units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ release_kiosk_stage_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - pi4-storage-maintenance.service
+    - pi4-storage-maintenance.timer
   when: release_kiosk_services | length > 0
 
 - name: Stage the SHA-bound kiosk launcher
@@ -339,6 +446,10 @@
   no_log: true
   when: "'torque-agent' in release_kiosk_services"
 
+- name: Prepare the kiosk hotcorner transaction
+  ansible.builtin.import_tasks: prepare_hotcorner.yml
+  when: manage_kiosk_browser | default(false) | bool
+
 - name: Define the Pi4 staged file transaction
   ansible.builtin.set_fact:
     release_kiosk_files: >-
@@ -348,16 +459,26 @@
             {'src': release_kiosk_stage_dir ~ '/status-agent.conf', 'dest': '/etc/raspi-status-agent.conf', 'mode': '0600'},
             {'src': release_kiosk_stage_dir ~ '/status-agent.py', 'dest': '/usr/local/lib/raspi-status-agent/status-agent.py', 'mode': '0755'},
             {'src': release_kiosk_stage_dir ~ '/storage_health.py', 'dest': '/usr/local/lib/raspi-status-agent/storage_health.py', 'mode': '0644'},
+            {'src': release_kiosk_stage_dir ~ '/network_health.py', 'dest': '/usr/local/lib/raspi-status-agent/network_health.py', 'mode': '0644'},
             {'src': release_kiosk_stage_dir ~ '/terminal_agent_health.py', 'dest': '/usr/local/lib/raspi-status-agent/terminal_agent_health.py', 'mode': '0644'},
             {'src': release_kiosk_stage_dir ~ '/terminal_device_maintenance.py', 'dest': '/usr/local/lib/raspi-status-agent/terminal_device_maintenance.py', 'mode': '0644'},
             {'src': release_kiosk_stage_dir ~ '/status-agent.service', 'dest': '/etc/systemd/system/status-agent.service', 'mode': '0644'},
             {'src': release_kiosk_stage_dir ~ '/status-agent.timer', 'dest': '/etc/systemd/system/status-agent.timer', 'mode': '0644'},
+            {'src': release_kiosk_stage_dir ~ '/pi4-storage-maintenance.sh', 'dest': '/usr/local/sbin/pi4-storage-maintenance.sh', 'mode': '0755'},
+            {'src': release_kiosk_stage_dir ~ '/pi4-storage-maintenance.service', 'dest': '/etc/systemd/system/pi4-storage-maintenance.service', 'mode': '0644'},
+            {'src': release_kiosk_stage_dir ~ '/pi4-storage-maintenance.timer', 'dest': '/etc/systemd/system/pi4-storage-maintenance.timer', 'mode': '0644'},
           ] if release_kiosk_services | length > 0 else []
         )
         + ([
           {'src': release_kiosk_stage_dir ~ '/kiosk-launch.sh', 'dest': '/usr/local/bin/kiosk-launch.sh', 'mode': '0755'},
           {'src': release_kiosk_stage_dir ~ '/kiosk-browser.service', 'dest': '/etc/systemd/system/kiosk-browser.service', 'mode': '0644'},
         ] if release_kiosk_services | length > 0 else [])
+        + ([
+          {'src': release_kiosk_stage_dir ~ '/kiosk-hotcorner.py', 'dest': '/usr/local/bin/kiosk-hotcorner.py', 'mode': '0755'},
+          {'src': release_kiosk_stage_dir ~ '/kiosk-labwc-config.py', 'dest': '/usr/local/bin/kiosk-labwc-config.py', 'mode': '0755'},
+          {'src': release_kiosk_stage_dir ~ '/kiosk-hotcorner.service', 'dest': '/etc/systemd/system/kiosk-hotcorner.service', 'mode': '0644'},
+          {'src': release_kiosk_stage_dir ~ '/show-kiosk-panel.sh', 'dest': '/usr/local/bin/show-kiosk-panel.sh', 'mode': '0755'},
+        ] if manage_kiosk_browser | default(false) | bool else [])
         + ([{'src': release_kiosk_candidate_compose, 'dest': '/etc/raspi-release/client-compose.yml', 'mode': '0600'}] if release_kiosk_services | length > 0 and not (release_torque_cutover | default(false) | bool) else [])
         + ([{'src': release_kiosk_stage_dir ~ '/nfc-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/nfc-agent/.env', 'mode': '0600'}] if 'nfc-agent' in release_kiosk_services else [])
         + ([{'src': release_kiosk_stage_dir ~ '/barcode-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/barcode-agent/.env', 'mode': '0600'}] if 'barcode-agent' in release_kiosk_services else [])

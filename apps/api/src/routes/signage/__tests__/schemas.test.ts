@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { scheduleSchema } from '../../../routes/signage/schemas.js';
+import { scheduleSchema, webCaptureSchema } from '../../../routes/signage/schemas.js';
 
 describe('signage scheduleSchema layoutConfig', () => {
   it('rejects self_inspection_machine_board on SPLIT LEFT pane', () => {
@@ -355,5 +355,58 @@ describe('signage scheduleSchema layoutConfig', () => {
     });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe('signage scheduleSchema web_page slot', () => {
+  const base = { name: 'kpi', contentType: 'TOOLS', dayOfWeek: [1], startTime: '13:00', endTime: '17:00', priority: 1 };
+  const slot = (overrides: Record<string, unknown>) => ({
+    position: 'FULL',
+    kind: 'web_page',
+    config: { webCaptureId: '11111111-1111-4111-8111-111111111111' },
+    ...overrides,
+  });
+
+  it('accepts a FULL web_page slot', () => {
+    const result = scheduleSchema.safeParse({ ...base, layoutConfig: { layout: 'FULL', slots: [slot({})] } });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects web_page on a SPLIT pane and a config without a valid id', () => {
+    const split = scheduleSchema.safeParse({
+      ...base,
+      layoutConfig: { layout: 'SPLIT', slots: [slot({ position: 'LEFT' }), { position: 'RIGHT', kind: 'loans', config: {} }] },
+    });
+    expect(split.success).toBe(false);
+    const badId = scheduleSchema.safeParse({
+      ...base,
+      layoutConfig: { layout: 'FULL', slots: [slot({ config: { webCaptureId: 'not-a-uuid' } })] },
+    });
+    expect(badId.success).toBe(false);
+  });
+});
+
+describe('webCaptureSchema', () => {
+  it('applies defaults and accepts generated child selectors', () => {
+    const parsed = webCaptureSchema.parse({
+      name: '自主検査KPI',
+      path: '/admin/self-inspection/kpi',
+      hideSelectors: ['body > div > header'],
+    });
+    expect(parsed).toMatchObject({
+      viewportWidth: 1920,
+      viewportHeight: 1080,
+      waitMode: 'network_idle',
+      refreshIntervalSeconds: 300,
+      clipSelector: null,
+      enabled: true,
+    });
+  });
+
+  it('rejects selectors that could escape a style rule, odd intervals and unknown keys', () => {
+    const base = { name: 'x', path: '/admin' };
+    expect(webCaptureSchema.safeParse({ ...base, hideSelectors: ['a{}b'] }).success).toBe(false);
+    expect(webCaptureSchema.safeParse({ ...base, refreshIntervalSeconds: 5 }).success).toBe(false);
+    expect(webCaptureSchema.safeParse({ ...base, lastStatus: 'success' }).success).toBe(false);
   });
 });

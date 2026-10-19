@@ -1,6 +1,7 @@
 import sharp from 'sharp';
 
 import { InventoryImportOutcome, Prisma } from '@prisma/client';
+import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { prisma as defaultPrisma } from '../../lib/prisma.js';
 import { PhotoStorage } from '../../lib/photo-storage.js';
@@ -10,6 +11,7 @@ import { isItemInventoryGmailSubject } from '../gmail/gmail-subject-reservation.
 import { getGmailMessageFrom, ItemInventoryManifestError, resolveItemInventoryGmailPacket } from './item-inventory-gmail-packet-resolver.js';
 import { buildItemInventoryGmailSearchQuery, extractEmail, ITEM_INVENTORY_BATCH_LIMIT, ITEM_INVENTORY_RETRY_DELAY_MS } from './item-inventory-ingestion.policy.js';
 import type { ItemInventoryAttachmentClient } from './item-inventory-gmail-packet-resolver.js';
+import { normalizeInventoryArea } from './inventory-area.js';
 
 export type ItemInventoryGmailPort = ItemInventoryAttachmentClient & {
   searchMessagesAll: (query: string) => Promise<string[]>;
@@ -70,6 +72,12 @@ function shouldSkipRecord(
   return !isRetryable(record, now);
 }
 
+export const ITEM_INVENTORY_INGEST_RUNNING = 'ITEM_INVENTORY_INGEST_RUNNING';
+
+function ingestRunningError(): ApiError {
+  return new ApiError(409, 'いま取込中です。少し待ってからもう一度押してください', undefined, ITEM_INVENTORY_INGEST_RUNNING);
+}
+
 export class ItemInventoryGmailIngestionService {
   private running = false;
 
@@ -79,7 +87,7 @@ export class ItemInventoryGmailIngestionService {
   ) {}
 
   async runOnce(options: { config: BackupConfig; allowWait: boolean; manual?: boolean; messageId?: string; forceRetry?: boolean }): Promise<ItemInventoryCycleSummary> {
-    if (this.running) throw new Error('item inventory ingest is already running');
+    if (this.running) throw ingestRunningError();
     if (!options.manual && !options.config.itemInventoryGmailIngest?.enabled) return emptySummary();
     this.running = true;
     const summary = emptySummary();
@@ -141,7 +149,8 @@ export class ItemInventoryGmailIngestionService {
 
   async retryRecord(recordId: string, options: { config: BackupConfig; allowWait: boolean }): Promise<ItemInventoryCycleSummary> {
     const record = await this.db.inventoryImportMessage.findUnique({ where: { id: recordId } });
-    if (!record) throw new Error('item inventory import message not found');
+    if (!record) throw new ApiError(404, '取込記録が見つかりません', undefined, 'ITEM_INVENTORY_IMPORT_MESSAGE_NOT_FOUND');
+    if (this.running) throw ingestRunningError();
     await this.db.inventoryImportMessage.update({ where: { id: recordId }, data: { nextRetryAt: null } });
     return this.runOnce({ ...options, manual: true, messageId: record.gmailMessageId, forceRetry: true });
   }
@@ -209,7 +218,8 @@ export class ItemInventoryGmailIngestionService {
           sourceList: packet.manifest.source.list,
           sourceItemId: packet.manifest.source.item_id,
           sourceModified: new Date(packet.manifest.source.modified),
-          area: packet.manifest.location,
+          // The content hash stays on the raw manifest; only the stored area is normalized.
+          area: normalizeInventoryArea(packet.manifest.location),
           category: packet.manifest.category,
           note: packet.manifest.note,
           manifest: packet.manifest as unknown as Prisma.InputJsonValue,

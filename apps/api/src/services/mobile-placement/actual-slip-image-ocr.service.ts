@@ -12,6 +12,7 @@ import { resolveGenpyoSlipFromRegionTexts } from './genpyo-slip/genpyo-slip-reso
 const log = logger.child({ component: 'actualSlipImageOcr' });
 
 export type ParseActualSlipImageResult = {
+  fseibanOcrTokens: string[];
   engine: string;
   /** ROI ごとの OCR 結合テキスト（ログ・デバッグ用） */
   ocrText: string;
@@ -105,6 +106,9 @@ export async function parseActualSlipImageFromUpload(params: {
   );
 
   return {
+    fseibanOcrTokens: [...(resolved.fseiban ? [resolved.fseiban] : []),
+      ...(regionTexts.fseibanMain.normalize('NFKC').toUpperCase().match(/[A-Z0-9]+/g) ?? [])
+        .filter((token) => token.length >= 6 && token.length <= 10)],
     engine,
     ocrText,
     ocrPreviewSafe,

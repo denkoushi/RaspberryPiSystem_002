@@ -11,19 +11,19 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 
 | Metric | Count |
 |--------|------:|
-| Documents | 639 |
-| Total lines | 174498 |
-| Total bytes | 13199875 |
-| With frontmatter | 293 |
-| With status | 148 |
-| source_of_truth declared | 107 |
-| References to EXEC_PLAN.md | 64 |
+| Documents | 724 |
+| Total lines | 179609 |
+| Total bytes | 14405344 |
+| With frontmatter | 348 |
+| With status | 169 |
+| source_of_truth declared | 115 |
+| References to EXEC_PLAN.md | 60 |
 | Question-mark corruption documents | 1 |
 | Replacement-character documents | 1 |
-| Long-line documents | 26 |
-| Local links | 5665 |
-| Broken local links | 88 |
-| Documents over 1,000 lines | 29 |
+| Long-line documents | 39 |
+| Local links | 5447 |
+| Broken local links | 127 |
+| Documents over 1,000 lines | 28 |
 | Documents over 3,000 lines | 6 |
 
 ## Largest Documents
@@ -31,32 +31,29 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Path | Lines | Bytes |
 |------|------:|------:|
 | `docs/plans/docs-canonicalization-roadmap.md` | 5580 | 232496 |
-| `docs/knowledge-base/api.md` | 4881 | 354637 |
+| `docs/knowledge-base/api.md` | 4899 | 356630 |
 | `EXEC_PLAN.md` | 4660 | 976722 |
 | `docs/knowledge-base/frontend.md` | 4643 | 277726 |
 | `docs/knowledge-base/infrastructure/ansible-deployment.md` | 4368 | 281621 |
-| `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` | 3195 | 433874 |
+| `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` | 3225 | 442254 |
 | `docs/archive/deployments/2026-05.md` | 2571 | 499357 |
 | `docs/archive/architecture/deployment-modules-legacy-through-2026-07.md` | 2522 | 128149 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2208 | 137917 |
 | `docs/knowledge-base/infrastructure/signage.md` | 2208 | 190029 |
-| `docs/INDEX.md` | 2022 | 350666 |
-| `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1949 | 215363 |
+| `docs/INDEX.md` | 2084 | 360087 |
+| `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1951 | 217024 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153539 |
 | `docs/archive/deployments/legacy-operator-guide-through-2026-07.md` | 1600 | 108031 |
-| `docs/runbooks/kiosk-part-measurement.md` | 1523 | 128624 |
+| `docs/runbooks/kiosk-part-measurement.md` | 1529 | 129686 |
 
 ## EXEC_PLAN References
 
-- `.cursor/rules/01-core-docs-and-knowledge.mdc`
-- `.cursor/rules/20-git-workflow.mdc`
 - `.cursor/rules/30-docs-maintenance.mdc`
 - `AGENTS.md`
 - `AI_HANDOFF_PROMPT.txt`
 - `EXEC_PLAN.md`
 - `README.md`
 - `docs/AI_HANDOFF_PROMPT.md`
-- `docs/AI_START_HERE.md`
 - `docs/INDEX.md`
 - `docs/REFACTORING_PLAN.md`
 - `docs/_meta/document-migration-ledger.md`
@@ -67,35 +64,77 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/decisions/ADR-20260306-lowlevel-observability.md`
 - `docs/decisions/ADR-20260502-dgx-resource-control-targets.md`
 - `docs/decisions/ADR-20260508-leaderboard-board-aggregate-api.md`
+- `docs/decisions/ADR-20260924-ai-agent-rules-context-slimming.md`
 - `docs/guides/ai-handoff.md`
+- `docs/guides/ci-troubleshooting.md`
+- `docs/guides/development.md`
 
 ## Long-Line Documents
 
 - `EXEC_PLAN.md` (23:1093, 31:1026, 44:1017)
-- `docs/INDEX.md` (302:1132, 318:1242, 322:1022)
+- `docs/INDEX.md` (343:1132, 359:1242, 363:1022)
 - `docs/archive/deployments/2026-04.md` (83:1066)
 - `docs/archive/deployments/2026-05.md` (815:25090, 1642:1257, 2471:1119)
-- `docs/decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md` (47:1010)
+- `docs/decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md` (47:1010, 48:1002, 53:1214)
+- `docs/decisions/ADR-20260930-pi4-sd-card-backup.md` (20:1251)
 - `docs/guides/phase3-token-refresh-test-results.md` (94:1437)
 - `docs/guides/verification-checklist.md` (623:1641)
-- `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` (214:1414, 216:1048, 225:1224)
+- `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` (218:1414, 220:1048, 229:1224)
 - `docs/knowledge-base/KB-313-kiosk-documents.md` (137:1274, 157:1178)
-- `docs/knowledge-base/KB-320-kiosk-part-measurement.md` (1806:1045, 1813:1213)
-- `docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md` (13:1164, 295:1220, 297:1290)
+- `docs/knowledge-base/KB-320-kiosk-part-measurement.md` (1808:1045, 1815:1213)
+- `docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md` (13:1164, 79:1101, 304:1220)
 - `docs/knowledge-base/infrastructure/signage.md` (23:1023, 29:1221, 361:1060)
 - `docs/plans/assembly-torque-wrench-traceability-execplan.md` (10:1434, 447:1055)
 - `docs/plans/deployment-foundation-refactor-execplan.md` (99:1226, 893:1025, 899:1002)
-- `docs/plans/dgx-spark-local-llm-migration-execplan.md` (38:1075)
-- `docs/plans/kiosk-assembly-torque-management-mvp.md` (135:1006)
-- `docs/plans/pi3-staged-source-transfer-execplan.md` (146:1108, 148:1132)
-- `docs/plans/pi5-minimal-downtime-phase2.md` (130:1083)
-- `docs/plans/solid-refactor-phase3-execplan-202607.md` (28:1154, 30:1151)
-- `docs/plans/solid-refactor-phase4-execplan-202607.md` (30:1179, 31:1213, 32:1328)
+- `docs/plans/dgx-night-preparation-execplan.md` (91:1086)
+- `docs/plans/dgx-spark-local-llm-migration-execplan.md` (36:1127)
+- `docs/plans/explicit-site-scope-execplan.md` (53:1024, 90:1114, 98:1282)
+- `docs/plans/hermes-background-worker.md` (28:1085)
+- `docs/plans/hermes-cross-source-foundation-execplan.md` (154:1029, 160:1019)
 
 ## Broken Local Links
 
 - `EXEC_PLAN.md` -> `../docs/guides/ssd-migration.md` (../docs/guides/ssd-migration.md)
 - `EXEC_PLAN.md` -> `../docs/knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-?15[question-mark-corruption]pi5[question-mark-corruption]` (../docs/knowledge-base/infrastructure/security.md)
+- `EXEC_PLAN.md` -> `./docs/knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md` (docs/knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md)
+- `EXEC_PLAN.md` -> `./docs/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md` (docs/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md)
+- `EXEC_PLAN.md` -> `./docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md` (docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md)
+- `EXEC_PLAN.md` -> `./docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md#デプロイ経路の注意surprises` (docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md)
+- `EXEC_PLAN.md` -> `./docs/knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md` (docs/knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md)
+- `EXEC_PLAN.md` -> `./docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md` (docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md)
+- `EXEC_PLAN.md` -> `./docs/knowledge-base/KB-private-pi5-hermes-life-pilot.md` (docs/knowledge-base/KB-private-pi5-hermes-life-pilot.md)
+- `EXEC_PLAN.md` -> `./docs/knowledge-base/KB-private-pi5-hermes-phase-d0-production.md` (docs/knowledge-base/KB-private-pi5-hermes-phase-d0-production.md)
+- `EXEC_PLAN.md` -> `./docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md` (docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md)
+- `EXEC_PLAN.md` -> `./docs/knowledge-base/KB-private-pi5-hermes-phase-d4-production.md` (docs/knowledge-base/KB-private-pi5-hermes-phase-d4-production.md)
+- `EXEC_PLAN.md` -> `./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md` (docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md)
+- `EXEC_PLAN.md` -> `./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo` (docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md)
+- `EXEC_PLAN.md` -> `./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイpoll-スレッド競合--tool-write-ipc--2026-05-26-jst` (docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md)
+- `EXEC_PLAN.md` -> `./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイ承認-relay-完結--2026-05-30-jst` (docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md)
+- `EXEC_PLAN.md` -> `./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05` (docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md)
+- `EXEC_PLAN.md` -> `./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結` (docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md)
+- `EXEC_PLAN.md` -> `./docs/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md` (docs/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md)
+- `EXEC_PLAN.md` -> `./docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md` (docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md)
+- `EXEC_PLAN.md` -> `./docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md` (docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md)
+- `EXEC_PLAN.md` -> `./docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-13-??-chatgpt_api_url-[question-mark-corruption]bridge-[question-mark-corruption]url-[question-mark-corruption]` (docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md)
+- `EXEC_PLAN.md` -> `./docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-23-??-pi5-utterance-??-api[question-mark-corruption]-overlay[question-mark-corruption]` (docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md)
+- `EXEC_PLAN.md` -> `./docs/plans/private-pi5-hermes-agent-plan.md` (docs/plans/private-pi5-hermes-agent-plan.md)
+- `EXEC_PLAN.md` -> `./docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md` (docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md)
+- `EXEC_PLAN.md` -> `./docs/plans/private-pi5-hermes-daily-pilot-execplan.md` (docs/plans/private-pi5-hermes-daily-pilot-execplan.md)
+- `EXEC_PLAN.md` -> `./docs/plans/private-pi5-hermes-life-pilot-execplan.md` (docs/plans/private-pi5-hermes-life-pilot-execplan.md)
+- `EXEC_PLAN.md` -> `./docs/plans/private-pi5-hermes-tools-security-phase-d0-execplan.md` (docs/plans/private-pi5-hermes-tools-security-phase-d0-execplan.md)
+- `EXEC_PLAN.md` -> `./docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md` (docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md)
+- `EXEC_PLAN.md` -> `./docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md#two-path-architecture-private-work-2026-05-10` (docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md)
+- `EXEC_PLAN.md` -> `./docs/runbooks/dgx-private-comfyui.md` (docs/runbooks/dgx-private-comfyui.md)
+- `EXEC_PLAN.md` -> `./docs/runbooks/private-pi5-hermes-deploy.md` (docs/runbooks/private-pi5-hermes-deploy.md)
+- `EXEC_PLAN.md` -> `./docs/runbooks/private-pi5-hermes-deploy.md#phase-d6-life--discord-life-pilot2026-06-06-私用-pi5--discord-e2e-完了` (docs/runbooks/private-pi5-hermes-deploy.md)
+- `EXEC_PLAN.md` -> `./docs/runbooks/private-pi5-hermes-deploy.md#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-06-実機検証完了` (docs/runbooks/private-pi5-hermes-deploy.md)
+- `EXEC_PLAN.md` -> `./docs/runbooks/private-pi5-stackchan-bridge-deploy.md` (docs/runbooks/private-pi5-stackchan-bridge-deploy.md)
+- `EXEC_PLAN.md` -> `./docs/runbooks/stackchan-community-text-only-e2e.md` (docs/runbooks/stackchan-community-text-only-e2e.md)
+- `EXEC_PLAN.md` -> `./docs/runbooks/stackchan-community-text-only-e2e.md#65-2026-05-23-post-apistackchanutterancepi5-[question-mark-corruption]` (docs/runbooks/stackchan-community-text-only-e2e.md)
+- `EXEC_PLAN.md` -> `./scripts/private-pi5-stackchan-bridge/README.md` (scripts/private-pi5-stackchan-bridge/README.md)
+- `EXEC_PLAN.md` -> `./scripts/stackchan-ai-stackchan-ex/README.md` (scripts/stackchan-ai-stackchan-ex/README.md)
+- `docs/INDEX.md` -> `plans/hermes-source-semantics-pilot.md` (docs/plans/hermes-source-semantics-pilot.md)
+- `docs/INDEX.md` -> `../scripts/dgx-private-comfyui/README.md` (scripts/dgx-private-comfyui/README.md)
 - `docs/api/overview.md` -> `./kiosk.md` (docs/api/kiosk.md)
 - `docs/api/overview.md` -> `./tools.md` (docs/api/tools.md)
 - `docs/architecture/overview.md` -> `./client-device-integration.md` (docs/architecture/client-device-integration.md)
@@ -105,42 +144,3 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/guides/ansible-best-practices.md` -> `../plans/ansible-hardening-stabilization-plan.md` (docs/plans/ansible-hardening-stabilization-plan.md)
 - `docs/guides/ansible-best-practices.md` -> `../plans/ansible-progress-summary.md` (docs/plans/ansible-progress-summary.md)
 - `docs/guides/ansible-managed-files.md` -> `../plans/ansible-hardening-stabilization-plan.md` (docs/plans/ansible-hardening-stabilization-plan.md)
-- `docs/guides/api-key-policy.md` -> `./kiosk-setup.md` (docs/guides/kiosk-setup.md)
-- `docs/guides/csv-import-export.md` -> `./knowledge-base/api.md#kb-114-csvインポート構造改善レジストリファクトリパターン` (docs/guides/knowledge-base/api.md)
-- `docs/guides/csv-import-export.md` -> `./knowledge-base/api.md#kb-115-gmail件名パターンの設定ファイル管理` (docs/guides/knowledge-base/api.md)
-- `docs/guides/csv-import-export.md` -> `./knowledge-base/frontend.md#kb-112-csvインポート構造改善と計測機器吊具対応` (docs/guides/knowledge-base/frontend.md)
-- `docs/guides/csv-import-export.md` -> `./knowledge-base/frontend.md#kb-113-gmail件名パターンの管理コンソール編集機能` (docs/guides/knowledge-base/frontend.md)
-- `docs/guides/csv-import-history-migration.md` -> `./prisma-migrations.md` (docs/guides/prisma-migrations.md)
-- `docs/guides/external-integration-ledger.md` -> `./api/backup.md` (docs/guides/api/backup.md)
-- `docs/guides/external-integration-ledger.md` -> `./knowledge-base/infrastructure/ansible-deployment.md#kb-142-ansibleでenv再生成時にslack-webhook-urlが消失する問題と恒久対策` (docs/guides/knowledge-base/infrastructure/ansible-deployment.md)
-- `docs/guides/external-integration-ledger.md` -> `./knowledge-base/infrastructure/ansible-deployment.md#kb-143-ansibleでenv再生成時にdropbox設定が消失する問題と恒久対策` (docs/guides/knowledge-base/infrastructure/ansible-deployment.md)
-- `docs/guides/external-integration-ledger.md` -> `./knowledge-base/infrastructure/ansible-deployment.md#kb-145-gmail設定の恒久対策backupjson存在保証と健全性チェック` (docs/guides/knowledge-base/infrastructure/ansible-deployment.md)
-- `docs/guides/external-integration-ledger.md` -> `./knowledge-base/infrastructure/backup-restore.md#kb-146-gmail-oauthがdropboxトークンを上書きしdropboxバックアップが失敗するトークン分離で恒久対策` (docs/guides/knowledge-base/infrastructure/backup-restore.md)
-- `docs/guides/external-integration-ledger.md` -> `./knowledge-base/infrastructure/backup-restore.md#kb-147-backupjsonのprovider別名前空間化構造的再発防止策` (docs/guides/knowledge-base/infrastructure/backup-restore.md)
-- `docs/guides/external-integration-ledger.md` -> `./knowledge-base/infrastructure/backup-restore.md#kb-148-バックアップ設定の衝突ドリフト検出の自動化p1実装` (docs/guides/knowledge-base/infrastructure/backup-restore.md)
-- `docs/guides/git-clean-safety.md` -> `../plans/ansible-hardening-stabilization-plan.md` (docs/plans/ansible-hardening-stabilization-plan.md)
-- `docs/guides/gmail-auto-protocol-phase1-verification.md` -> `../../.cursor/plans/gmail-auto-protocol-plan_e8cbbcb6.plan.md` (.cursor/plans/gmail-auto-protocol-plan_e8cbbcb6.plan.md)
-- `docs/guides/measuring-instrument-loan-events-verification.md` -> `../../.cursor/plans/measuring-instrument-events-retention_02349d3d.plan.md` (.cursor/plans/measuring-instrument-events-retention_02349d3d.plan.md)
-- `docs/guides/production-setup.md` -> `../architecture/client-device-integration.md` (docs/architecture/client-device-integration.md)
-- `docs/guides/verification-checklist.md` -> `./knowledge-base/api.md#kb-118-計測機器uid編集時の複数タグ問題の修正` (docs/guides/knowledge-base/api.md)
-- `docs/guides/verification-checklist.md` -> `./knowledge-base/frontend.md#kb-119-計測機器uid編集時の手動編集フラグ管理` (docs/guides/knowledge-base/frontend.md)
-- `docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md` -> `../EXEC_PLAN.md#キオスク順位ボード--shell-選定-sql-第3弾以降保留2026-05-22--後日参照` (docs/EXEC_PLAN.md)
-- `docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md` -> `../EXEC_PLAN.md#cursor-state-db-recovery-2026-06-06` (docs/EXEC_PLAN.md)
-- `docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md` -> `../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24` (docs/EXEC_PLAN.md)
-- `docs/knowledge-base/api.md` -> `../frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能` (docs/frontend.md)
-- `docs/knowledge-base/api.md` -> `../frontend.md#kb-268-生産スケジュールキオスク操作で間欠的に数秒待つ継続観察` (docs/frontend.md)
-- `docs/knowledge-base/api.md` -> `../frontend.md#kb-282-生産スケジュール登録製番ボタンの3段表示と機種名表示全角半角大文字化` (docs/frontend.md)
-- `docs/knowledge-base/api.md` -> `../frontend.md#kb-285-生産スケジュールアイテム一覧からshアイテムも除外し機種名表示にsh追加` (docs/frontend.md)
-- `docs/knowledge-base/frontend.md` -> `../api.md#kb-209-生産スケジュール検索状態の全キオスク間共有化` (docs/api.md)
-- `docs/knowledge-base/frontend.md` -> `../api.md#kb-269-生産スケジュールprogress別テーブル化csv取り込み時の上書きリスク回避` (docs/api.md)
-- `docs/knowledge-base/frontend.md` -> `../api.md#kb-282-生産スケジュールhistory-progressエンドポイントにmachinename追加` (docs/api.md)
-- `docs/knowledge-base/frontend.md` -> `../api.md#kb-285-生産スケジュールhistory-progressエンドポイントのmachinename取得にsh追加` (docs/api.md)
-- `docs/knowledge-base/frontend.md` -> `../infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる` (docs/infrastructure/ansible-deployment.md)
-- `docs/knowledge-base/index.md` -> `../EXEC_PLAN.md` (docs/EXEC_PLAN.md)
-- `docs/knowledge-base/infrastructure/ansible-deployment.md` -> `../guides/deployment.md` (docs/knowledge-base/guides/deployment.md)
-- `docs/knowledge-base/infrastructure/ansible-deployment.md` -> `../guides/deployment.md#本番セキュリティ設定2026-02-13追加` (docs/knowledge-base/guides/deployment.md)
-- `docs/knowledge-base/infrastructure/ansible-deployment.md` -> `../plans/security-hardening-execplan.md` (docs/knowledge-base/plans/security-hardening-execplan.md)
-- `docs/knowledge-base/infrastructure/ansible-deployment.md` -> `../runbooks/deploy-status-recovery.md` (docs/knowledge-base/runbooks/deploy-status-recovery.md)
-- `docs/knowledge-base/infrastructure/backup-restore.md` -> `../api/backup.md` (docs/knowledge-base/api/backup.md)
-- `docs/knowledge-base/infrastructure/backup-restore.md` -> `../guides/ansible-ssh-architecture.md` (docs/knowledge-base/guides/ansible-ssh-architecture.md)
-- `docs/knowledge-base/infrastructure/backup-restore.md` -> `../guides/backup-and-restore.md` (docs/knowledge-base/guides/backup-and-restore.md)

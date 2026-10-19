@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Knowledge Procedure View Preview</title>
+  <!-- Static preview for ExecPlan hermes-knowledge-procedures milestone 1. All content is fictional. -->
+  <style>
+    :root {
+      --page: #ffffff;
+      --ink: #0f172a;
+      --muted: #475569;
+      --line: #e2e8f0;
+      --soft: #f8fafc;
+      --accent: #0369a1;
+      --accent-soft: #e0f2fe;
+      --ok: #15803d;
+      --ok-soft: #dcfce7;
+      --ai: #7c3aed;
+      --ai-soft: #ede9fe;
+      --warn: #b45309;
+      --warn-soft: #fef3c7;
+      --draft: #334155;
+      --draft-soft: #e2e8f0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #cbd5e1;
+      color: var(--ink);
+      font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Segoe UI", sans-serif;
+    }
+    .preview-bar {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      padding: 10px 16px; background: #0f172a; color: #fff; font-size: 14px;
+    }
+    .preview-bar button {
+      border: 1px solid #94a3b8; background: transparent; color: #fff;
+      border-radius: 6px; padding: 6px 10px; font-size: 14px; cursor: pointer;
+    }
+    .preview-bar button[aria-pressed="true"] { background: #fff; color: #0f172a; }
+    .preview-bar .sep { width: 1px; height: 24px; background: #475569; margin: 0 6px; }
+
+    /* Dialog frame, as the existing size="lg" Dialog at kiosk width */
+    .dialog {
+      margin: 16px auto; max-width: 1100px; background: var(--page);
+      border-radius: 10px; box-shadow: 0 10px 30px rgba(15, 23, 42, .25);
+      display: flex; flex-direction: column; max-height: calc(100dvh - 90px);
+    }
+    .dialog-head {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 20px; border-bottom: 1px solid var(--line);
+    }
+    .dialog-head h2 { margin: 0; font-size: 18px; }
+    .close { border: 1px solid #94a3b8; background: #fff; border-radius: 6px; padding: 8px 14px; font-size: 16px; }
+    .dialog-body { overflow: auto; padding: 20px 28px 28px; }
+
+    header.proc { border-bottom: 1px solid var(--line); padding-bottom: 16px; }
+    .kicker { font-size: 14px; color: var(--muted); margin: 0; }
+    h1 { font-size: 26px; margin: 6px 0 10px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { font-size: 13px; padding: 3px 10px; border-radius: 999px; background: var(--soft); border: 1px solid var(--line); }
+
+    .status {
+      margin-top: 12px; border-radius: 8px; padding: 10px 14px; font-size: 15px;
+      display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+    }
+    .status strong { font-size: 15px; }
+    .status.approved { background: var(--ok-soft); color: var(--ok); }
+    .status.ai { background: var(--ai-soft); color: var(--ai); }
+    .status.draft { background: var(--draft-soft); color: var(--draft); }
+    .status .report { border: 1px solid currentColor; background: #fff; color: inherit; border-radius: 6px; padding: 6px 12px; font-size: 14px; }
+
+    .mode-switch { display: flex; gap: 6px; margin: 18px 0 6px; }
+    .mode-switch button {
+      border: 1px solid var(--accent); color: var(--accent); background: #fff;
+      border-radius: 6px; padding: 8px 14px; font-size: 15px;
+    }
+    .mode-switch button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+
+    ol.steps { list-style: none; padding: 0; margin: 0; }
+    .step { display: grid; grid-template-columns: 56px 1fr; gap: 16px; padding: 20px 0; border-bottom: 1px solid var(--line); }
+    .num {
+      width: 48px; height: 48px; border-radius: 50%; background: var(--accent); color: #fff;
+      display: grid; place-items: center; font-size: 22px; font-weight: 700;
+    }
+    .step h3 { margin: 4px 0 8px; font-size: 20px; }
+    .step p.body { margin: 0; font-size: 17px; line-height: 1.8; white-space: pre-wrap; }
+    .caution {
+      margin-top: 10px; border-left: 4px solid var(--warn); background: var(--warn-soft);
+      padding: 8px 12px; font-size: 15px; color: #78350f;
+    }
+    .needs-review {
+      margin-top: 10px; border: 1px dashed var(--warn); border-radius: 6px;
+      padding: 8px 12px; font-size: 15px; color: var(--warn); background: #fffbeb;
+    }
+    .photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-top: 12px; }
+    figure { margin: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+    figure svg { display: block; width: 100%; height: auto; background: #f1f5f9; }
+    figcaption { padding: 8px 10px; font-size: 14px; color: var(--muted); }
+    details.src { margin-top: 10px; font-size: 14px; }
+    details.src summary { cursor: pointer; color: var(--accent); }
+    details.src ul { margin: 8px 0 0; padding-left: 18px; color: var(--muted); }
+
+    /* one-step mode */
+    .single .step { border-bottom: 0; }
+    .pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
+    .pager button {
+      min-width: 160px; padding: 14px 20px; font-size: 18px; border-radius: 8px;
+      border: 1px solid var(--accent); background: #fff; color: var(--accent);
+    }
+    .pager button.next { background: var(--accent); color: #fff; }
+    .pager button:disabled { opacity: .4; }
+    .progress { font-size: 16px; color: var(--muted); }
+    .dots { display: flex; gap: 6px; justify-content: center; margin-top: 10px; }
+    .dots span { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+    .dots span.on { background: var(--accent); }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="preview-bar" role="toolbar" aria-label="プレビュー切替">
+    <span>状態:</span>
+    <button type="button" data-status="approved" aria-pressed="true">承認済み（品質に直結）</button>
+    <button type="button" data-status="ai" aria-pressed="false">AI作成（自動公開）</button>
+    <button type="button" data-status="draft" aria-pressed="false">下書き（承認待ち）</button>
+  </div>
+
+  <div class="dialog" role="dialog" aria-label="手順書">
+    <div class="dialog-head">
+      <h2>手順書</h2>
+      <button type="button" class="close">閉じる</button>
+    </div>
+    <div class="dialog-body">
+      <header class="proc">
+        <p class="kicker">段取り手順</p>
+        <h1>部品A（サンプル）の段取り</h1>
+        <div class="chips">
+          <span class="chip">品番 SAMPLE-0001</span>
+          <span class="chip">図番 DWG-SAMPLE-01</span>
+          <span class="chip">工程 研削</span>
+          <span class="chip">第3版・2026/09/27</span>
+        </div>
+        <div class="status approved" data-status-panel="approved">
+          <span><strong>承認済み</strong>　山田（班長相当）が 2026/09/27 に承認</span>
+        </div>
+        <div class="status ai hidden" data-status-panel="ai">
+          <span><strong>AI作成</strong>　AIが素材から作成しました。出典と照らし合わせて使ってください。</span>
+          <button type="button" class="report">誤りを報告</button>
+        </div>
+        <div class="status draft hidden" data-status-panel="draft">
+          <span><strong>下書き・承認待ち</strong>　品質に直結する手順のため、班長相当以上の承認後に公開されます。</span>
+        </div>
+      </header>
+
+      <div class="mode-switch" role="group" aria-label="表示方法">
+        <button type="button" data-mode="all" aria-pressed="true">全体を表示</button>
+        <button type="button" data-mode="single" aria-pressed="false">1手順ずつ</button>
+      </div>
+
+      <ol class="steps" id="steps">
+        <li class="step">
+          <div class="num" aria-hidden="true">1</div>
+          <div>
+            <h3>治具を準備する</h3>
+            <p class="body">治具Bと受け板を棚から出し、受け面の切粉を拭き取る。</p>
+            <div class="caution">注意：受け面に傷がある治具は使わない。</div>
+            <div class="photos">
+              <figure>
+                <svg viewBox="0 0 320 200" role="img" aria-label="治具の写真（サンプル）"><rect x="40" y="50" width="240" height="100" rx="8" fill="#cbd5e1"/><text x="160" y="108" text-anchor="middle" font-size="16" fill="#475569">写真（サンプル）</text></svg>
+                <figcaption>治具Bと受け板</figcaption>
+              </figure>
+            </div>
+            <details class="src"><summary>出典（2件）</summary>
+              <ul><li>メモ 2026/09/20 田中「治具Bは受け面を拭いてから…」</li><li>写真 2026/09/20 田中</li></ul>
+            </details>
+          </div>
+        </li>
+        <li class="step">
+          <div class="num" aria-hidden="true">2</div>
+          <div>
+            <h3>ワークを取り付ける</h3>
+            <p class="body">基準面を治具側に向けて置き、クランプを対角の順に締める。</p>
+            <div class="needs-review">要確認：締付トルクが素材によって「20 N·m」と「25 N·m」で食い違っています。</div>
+            <div class="photos">
+              <figure>
+                <svg viewBox="0 0 320 200" role="img" aria-label="取付の写真（サンプル）"><rect x="60" y="40" width="200" height="120" rx="8" fill="#cbd5e1"/><text x="160" y="106" text-anchor="middle" font-size="16" fill="#475569">写真（サンプル）</text></svg>
+                <figcaption>基準面の向き</figcaption>
+              </figure>
+              <figure>
+                <svg viewBox="0 0 320 200" role="img" aria-label="クランプ順の写真（サンプル）"><rect x="60" y="40" width="200" height="120" rx="8" fill="#cbd5e1"/><text x="160" y="106" text-anchor="middle" font-size="16" fill="#475569">写真（サンプル）</text></svg>
+                <figcaption>クランプを締める順</figcaption>
+              </figure>
+            </div>
+            <details class="src"><summary>出典（3件）</summary>
+              <ul><li>作業要領書PDF「SAMPLE-0001 OP-01」1ページ</li><li>メモ 2026/09/22 佐藤「トルクは25」</li><li>写真 2026/09/22 佐藤</li></ul>
+            </details>
+          </div>
+        </li>
+        <li class="step">
+          <div class="num" aria-hidden="true">3</div>
+          <div>
+            <h3>原点を確認する</h3>
+            <p class="body">テスト研削の前に、基準面で原点を取り直す。</p>
+            <details class="src"><summary>出典（1件）</summary>
+              <ul><li>要領書PDF「産1-SAMPLE」5ページ</li></ul>
+            </details>
+          </div>
+        </li>
+      </ol>
+
+      <div class="pager hidden" id="pager">
+        <button type="button" id="prev">◀ 前へ</button>
+        <span class="progress" id="progress" aria-live="polite">手順 1 / 3</span>
+        <button type="button" class="next" id="next">次へ ▶</button>
+      </div>
+      <div class="dots hidden" id="dots" aria-hidden="true"></div>
+    </div>
+  </div>
+
+  <script>
+    const panels = document.querySelectorAll('[data-status-panel]');
+    document.querySelectorAll('[data-status]').forEach(button => button.addEventListener('click', () => {
+      document.querySelectorAll('[data-status]').forEach(b => b.setAttribute('aria-pressed', String(b === button)));
+      panels.forEach(panel => panel.classList.toggle('hidden', panel.dataset.statusPanel !== button.dataset.status));
+    }));
+
+    const steps = [...document.querySelectorAll('.step')];
+    const list = document.getElementById('steps');
+    const pager = document.getElementById('pager');
+    const dots = document.getElementById('dots');
+    const progress = document.getElementById('progress');
+    let index = 0;
+    steps.forEach(() => dots.appendChild(document.createElement('span')));
+    function render(mode) {
+      const single = mode === 'single';
+      list.classList.toggle('single', single);
+      pager.classList.toggle('hidden', !single);
+      dots.classList.toggle('hidden', !single);
+      steps.forEach((step, i) => step.classList.toggle('hidden', single && i !== index));
+      progress.textContent = `手順 ${index + 1} / ${steps.length}`;
+      document.getElementById('prev').disabled = index === 0;
+      document.getElementById('next').disabled = index === steps.length - 1;
+      [...dots.children].forEach((dot, i) => dot.classList.toggle('on', i === index));
+    }
+    let mode = 'all';
+    document.querySelectorAll('[data-mode]').forEach(button => button.addEventListener('click', () => {
+      mode = button.dataset.mode;
+      document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-pressed', String(b === button)));
+      render(mode);
+    }));
+    document.getElementById('prev').addEventListener('click', () => { index = Math.max(0, index - 1); render(mode); });
+    document.getElementById('next').addEventListener('click', () => { index = Math.min(steps.length - 1, index + 1); render(mode); });
+    render(mode);
+  </script>
+</body>
+</html>

@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   KIOSK_ASSEMBLY_HOME_PATH,
   KIOSK_ASSEMBLY_LIBRARY_PATH,
+  KIOSK_ASSEMBLY_MANUALS_PATH,
+  KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH,
+  kioskAssemblyManualsPath,
+  kioskAssemblyManualsWorkshopPath,
   KIOSK_ASSEMBLY_PROCEDURE_ORDER_SETTINGS_PATH,
   kioskAssemblyLibraryPath,
   kioskAssemblyProcedureOrderSettingsPath,
@@ -15,6 +19,19 @@ import {
 } from './assemblyRoutes';
 
 describe('assemblyRoutes', () => {
+  it('builds manuals and workshop paths with encoded model/process context', () => {
+    expect(kioskAssemblyManualsPath()).toBe(KIOSK_ASSEMBLY_MANUALS_PATH);
+    expect(kioskAssemblyManualsWorkshopPath()).toBe(KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH);
+    expect(kioskAssemblyManualsPath({ model: ' DFD 1 ', process: 'a/b' })).toBe('/kiosk/assembly/manuals?model=DFD+1&process=a%2Fb');
+    expect(kioskAssemblyManualsWorkshopPath({ model: 'DFD1', process: 'inspection' })).toBe('/kiosk/assembly/manuals/workshop?model=DFD1&process=inspection');
+    expect(kioskAssemblyManualsWorkshopPath({ model: ' ', process: '' })).toBe(KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH);
+  });
+
+  it('builds part links while preserving model links', () => {
+    expect(kioskAssemblyManualsPath({ part: ' PART 1 ', process: 'cutting' })).toBe('/kiosk/assembly/manuals?part=PART+1&process=cutting');
+    expect(kioskAssemblyManualsWorkshopPath({ part: 'P1', process: 'grinding' })).toBe('/kiosk/assembly/manuals/workshop?part=P1&process=grinding');
+  });
+
   it('keeps start top and management library paths separate', () => {
     expect(KIOSK_ASSEMBLY_HOME_PATH).toBe('/kiosk/assembly');
     expect(KIOSK_ASSEMBLY_LIBRARY_PATH).toBe('/kiosk/assembly/library');

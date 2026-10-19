@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 
 import { ApiError } from '../../../lib/errors.js';
-import { resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
+import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 
 export type UnifiedOrderSlotExclusions = {
@@ -151,7 +151,7 @@ async function hasSplitOrderSlotConflictInTransaction(
 /** device 書き込み時は site fallback と直列化するため site lock も取る。 */
 export function resolveUnifiedOrderSlotLockScopeKeys(locationKey: string): string[] {
   const trimmed = locationKey.trim();
-  const siteKey = resolveSiteKeyFromScopeKey(trimmed);
+  const siteKey = resolveSiteKeyForScopeKey(trimmed);
   if (siteKey === trimmed) {
     return [trimmed];
   }

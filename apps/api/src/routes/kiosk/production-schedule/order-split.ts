@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 
 import { env } from '../../../config/env.js';
 import { ApiError } from '../../../lib/errors.js';
-import { resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
+import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
 import { assertRegisteredDeviceScopeKey } from '../../../lib/manual-order-device-scope.js';
 import {
   deleteProductionScheduleOrderSplits,
@@ -40,15 +40,17 @@ function assertSplitFeatureEnabled(): void {
 async function resolveSplitMutationLocation(params: {
   deviceScopeKey: string;
   actorLocation: string;
+  actorCanProxyOtherDevices: boolean;
   body: { targetDeviceScopeKey?: string; targetLocation?: string };
 }): Promise<string> {
   const { deviceScopeKey, actorLocation, body } = params;
+  const actor = { canProxyOtherDevices: params.actorCanProxyOtherDevices };
 
   if (env.KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED) {
     const requestedTargetDeviceScopeKey = body.targetDeviceScopeKey?.trim();
     const requestedTargetLocation = body.targetLocation?.trim();
 
-    if (canProxyTargetLocation(actorLocation)) {
+    if (canProxyTargetLocation(actor)) {
       if (!requestedTargetDeviceScopeKey) {
         throw new ApiError(
           400,
@@ -66,7 +68,7 @@ async function resolveSplitMutationLocation(params: {
         );
       }
       await assertRegisteredDeviceScopeKey(requestedTargetDeviceScopeKey);
-      return resolveSiteKeyFromScopeKey(requestedTargetDeviceScopeKey);
+      return resolveSiteKeyForScopeKey(requestedTargetDeviceScopeKey);
     }
 
     if (requestedTargetDeviceScopeKey) {
@@ -85,14 +87,14 @@ async function resolveSplitMutationLocation(params: {
         'TARGET_LOCATION_FORBIDDEN'
       );
     }
-    return resolveSiteKeyFromScopeKey(deviceScopeKey);
+    return resolveSiteKeyForScopeKey(deviceScopeKey);
   }
 
   const requestedTargetLocation = body.targetLocation?.trim();
   if (
     requestedTargetLocation &&
     requestedTargetLocation !== actorLocation &&
-    !canProxyTargetLocation(actorLocation)
+    !canProxyTargetLocation(actor)
   ) {
     throw new ApiError(
       403,
@@ -126,6 +128,7 @@ export async function registerProductionScheduleOrderSplitRoutes(
     const query = productionScheduleOrderSplitListQuerySchema.parse(request.query);
     const locationKey = await resolveProductionScheduleAssignmentLocationKey({
       actorDeviceScopeKey: actorLocation,
+      actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
       targetDeviceScopeKey: query.targetDeviceScopeKey
     });
 
@@ -147,6 +150,7 @@ export async function registerProductionScheduleOrderSplitRoutes(
     const locationKey = await resolveSplitMutationLocation({
       deviceScopeKey,
       actorLocation,
+      actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
       body
     });
 
@@ -159,7 +163,7 @@ export async function registerProductionScheduleOrderSplitRoutes(
         actorClientKey: clientKey,
         actorLocation,
         targetLocation: locationKey,
-        siteKey: resolveSiteKeyFromScopeKey(locationKey),
+        siteKey: resolveSiteKeyForScopeKey(locationKey),
         requestId: request.id
       }
     });
@@ -176,6 +180,7 @@ export async function registerProductionScheduleOrderSplitRoutes(
     const locationKey = await resolveSplitMutationLocation({
       deviceScopeKey,
       actorLocation,
+      actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
       body: query
     });
 
@@ -185,7 +190,7 @@ export async function registerProductionScheduleOrderSplitRoutes(
         actorClientKey: clientKey,
         actorLocation,
         targetLocation: locationKey,
-        siteKey: resolveSiteKeyFromScopeKey(locationKey),
+        siteKey: resolveSiteKeyForScopeKey(locationKey),
         requestId: request.id
       }
     });
@@ -202,6 +207,7 @@ export async function registerProductionScheduleOrderSplitRoutes(
     const locationKey = await resolveSplitMutationLocation({
       deviceScopeKey,
       actorLocation,
+      actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
       body
     });
 
@@ -215,7 +221,7 @@ export async function registerProductionScheduleOrderSplitRoutes(
         actorClientKey: clientKey,
         actorLocation,
         targetLocation: locationKey,
-        siteKey: resolveSiteKeyFromScopeKey(locationKey),
+        siteKey: resolveSiteKeyForScopeKey(locationKey),
         requestId: request.id
       }
     });
@@ -236,7 +242,7 @@ export async function registerProductionScheduleOrderSplitRoutes(
       audit: {
         actorClientKey: clientKey,
         actorLocation,
-        targetLocation: resolveSiteKeyFromScopeKey(deviceScopeKey),
+        targetLocation: resolveSiteKeyForScopeKey(deviceScopeKey),
         siteKey: locationScopeContext.siteKey,
         requestId: request.id
       }

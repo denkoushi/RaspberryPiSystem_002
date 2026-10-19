@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useKioskNavTabOrderSettings, useUpdateKioskNavTabOrderSettings } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { KioskInquiryReceiverSettings } from '../../features/kiosk/inquiry/KioskInquiryReceiverSettings';
 import { KIOSK_HEADER_TAB_LABELS } from '../../features/kiosk/kioskHeaderTabs/kioskHeaderTabLabels';
 
 function moveTabOrder(tabOrder: KioskReorderableHeaderTabId[], index: number, direction: -1 | 1) {
@@ -78,7 +79,7 @@ export function KioskSettingsPage() {
       <div>
         <h2 className="text-2xl font-bold">キオスク表示設定</h2>
         <p className="mt-1 text-sm text-white/70">
-          キオスクヘッダーの主要タブ順を全端末共通で設定します。サイネージ・管理・お問い合わせは固定です。
+          キオスクヘッダーの主要タブ順を全端末共通で設定します。サイネージ・管理は固定です。
         </p>
       </div>
 
@@ -134,6 +135,9 @@ export function KioskSettingsPage() {
             {message.text}
           </p>
         ) : null}
+      </Card>
+      <Card>
+        <KioskInquiryReceiverSettings />
       </Card>
     </div>
   );

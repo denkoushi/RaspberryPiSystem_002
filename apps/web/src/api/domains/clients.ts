@@ -12,8 +12,14 @@ export interface ClientDevice {
   haizenEdgeEnabled?: boolean;
   /** キオスク棚レイアウト編集を許可 */
   shelfLayoutEditEnabled?: boolean;
+  /** 明示拠点（Site.key）。未設定なら location 文字列から推測される */
+  siteKey?: string | null;
+  /** 他端末の代理操作（手動順番・負荷調整などで対象端末を指定）を許可 */
+  canProxyOtherDevices?: boolean;
   /** キオスクのサイネージプレビュー参照先（API が返す場合のみ） */
   signagePreviewTargetApiKey?: string | null;
+  /** 稼働状況（ClientStatusEntry.clientId）との紐づけ。status-agent 未報告なら null */
+  statusClientId?: string | null;
   lastSeenAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -32,13 +38,43 @@ export async function updateClient(
     kioskInitialRoute?: string | null;
     haizenEdgeEnabled?: boolean;
     shelfLayoutEditEnabled?: boolean;
+    siteKey?: string | null;
+    canProxyOtherDevices?: boolean;
   }
 ) {
   const { data } = await api.put<{ client: ClientDevice }>(`/clients/${id}`, payload);
   return data.client;
 }
 
+export interface Site {
+  key: string;
+  displayName: string;
+  sortOrder: number;
+}
+
+export async function getSites() {
+  const { data } = await api.get<{ sites: Site[] }>('/sites');
+  return data.sites;
+}
+
+export async function createSite(payload: { key: string }) {
+  const { data } = await api.post<{ site: Site }>('/sites', payload);
+  return data.site;
+}
+
 export type ClientLogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+
+export interface KioskSite {
+  key: string;
+  displayName: string;
+  sortOrder: number;
+}
+
+/** キオスク（x-client-key）向けの拠点一覧 */
+export async function getKioskSites() {
+  const { data } = await api.get<{ sites: KioskSite[] }>('/kiosk/sites');
+  return data.sites;
+}
 
 export interface ClientLogEntry {
   id?: string;
