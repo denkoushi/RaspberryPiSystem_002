@@ -11,6 +11,8 @@ import {
   type CsvDashboard,
   type CsvPreviewResult,
 } from '../../../api/client';
+import { csvVisualizationQueryKeys } from '../../../api/queryKeys/csvVisualization';
+import { signageQueryKeys } from '../../../api/queryKeys/signage';
 
 import {
   applyDisplayNameChange,
@@ -27,14 +29,14 @@ import {
 export function useCsvDashboardEditor() {
   const queryClient = useQueryClient();
   const dashboardsQuery = useQuery({
-    queryKey: ['csv-dashboards', { enabled: true }],
+    queryKey: csvVisualizationQueryKeys.csvDashboards({ enabled: true }),
     queryFn: () => getCsvDashboards({ enabled: true }),
   });
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const selectedDashboardQuery = useQuery({
-    queryKey: ['csv-dashboard', selectedId],
+    queryKey: csvVisualizationQueryKeys.csvDashboard(selectedId),
     queryFn: () => getCsvDashboard(selectedId!),
     enabled: Boolean(selectedId),
   });
@@ -118,8 +120,8 @@ export function useCsvDashboardEditor() {
       return updateCsvDashboard(selectedId, result.payload);
     },
     onSuccess: async (dashboard) => {
-      await queryClient.invalidateQueries({ queryKey: ['csv-dashboard', dashboard.id] });
-      await queryClient.invalidateQueries({ queryKey: ['csv-dashboards'] });
+      await queryClient.invalidateQueries({ queryKey: csvVisualizationQueryKeys.csvDashboard(dashboard.id) });
+      await queryClient.invalidateQueries({ queryKey: csvVisualizationQueryKeys.csvDashboardsAll });
     },
   });
 
@@ -133,7 +135,7 @@ export function useCsvDashboardEditor() {
       return await createCsvDashboard(buildMachineDailyInspectionPreset());
     },
     onSuccess: async (dashboard) => {
-      await queryClient.invalidateQueries({ queryKey: ['csv-dashboards'] });
+      await queryClient.invalidateQueries({ queryKey: csvVisualizationQueryKeys.csvDashboardsAll });
       setSelectedId(dashboard.id);
     },
   });
@@ -147,8 +149,8 @@ export function useCsvDashboardEditor() {
     },
     onSuccess: async () => {
       setUploadFile(null);
-      await queryClient.invalidateQueries({ queryKey: ['csv-dashboard', selectedId] });
-      await queryClient.invalidateQueries({ queryKey: ['signage-content'] });
+      await queryClient.invalidateQueries({ queryKey: csvVisualizationQueryKeys.csvDashboard(selectedId) });
+      await queryClient.invalidateQueries({ queryKey: signageQueryKeys.contentAll });
     },
   });
 

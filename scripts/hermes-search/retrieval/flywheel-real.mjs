@@ -33,8 +33,14 @@ export async function readReceiptQuestions({ receiptsDir, days }) {
       const receipt = row?.hermesReceipt;
       const question = receipt?.question;
       const semanticQuery = receipt?.plan?.semanticQuery;
+      const hasContent = typeof semanticQuery === 'string' && semanticQuery.trim();
+      // A question that only names a department or a period has no content condition but is
+      // scored on its filters at night (flywheel-filter-check.mjs), so it joins the set too.
+      const plan = receipt?.plan;
+      const hasFilters = Array.isArray(plan?.filters) && plan.filters.length > 0;
+      const recent = plan?.sort === 'recent' || plan?.sort?.direction === 'desc';
       if (typeof question !== 'string' || !question.trim()
-        || typeof semanticQuery !== 'string' || !semanticQuery.trim()
+        || !(hasContent || hasFilters || recent)
         || !['answer', 'no_result', 'no_other'].includes(receipt.outcome)) continue;
       const id = realId(question);
       if (questions.has(id)) continue;

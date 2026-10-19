@@ -486,6 +486,7 @@ docker run --rm \
 - CSVデータ（従業員・アイテム、API経由の場合）
 - 復旧必須の永続ディレクトリ（部品測定図面、計測機器ジャンル画像、パレット加工機イラスト）
 - PDF本体は中核機能の稼働に必須ではないため、2GB Dropboxの推奨対象外。必要に応じて再投入、ローカル媒体、または別ストレージで保護する
+- 大きくなり得る領域（Hermesナレッジの `knowledge-assets` / `knowledge-git`、組立手順書の `assembly-procedure-assets`、要領書の `procedure-materials` / `procedure-videos`）も2GB Dropboxの推奨対象外。Google Drive DR（[Runbook](../runbooks/google-drive-disaster-recovery.md)）だけで保護する。要領書の `work-instruction-assets`（約1GB）は推奨カタログには残すが、本番のDropbox対象では無効化し、同じくGoogle Drive DRで保護する（2026-10-07）
 
 **バックアップ先**:
 - **ローカルディレクトリ**: `/opt/backups/`（常に実行）

@@ -1,6 +1,15 @@
 import type { PlanningBoardAllocation } from './types';
-import type { GrindingPlanningBoardItem, GrindingPlanningBoardView } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardResponse, GrindingPlanningBoardView } from '@raspi-system/shared-types';
 
+
+export function sortPlanningBoardResources(
+  resources: readonly string[], category?: GrindingPlanningBoardCategory,
+  resourceCategories?: GrindingPlanningBoardResponse['resourceCategories']
+): string[] {
+  if (category !== 'all' || !resourceCategories) return [...resources];
+  const rank = (cd: string) => resourceCategories[cd] === 'grinding' ? 0 : resourceCategories[cd] === 'cutting' ? 1 : 2;
+  return [...resources].sort((a, b) => rank(a) - rank(b));
+}
 
 const UNKNOWN_ORDER = Number.MAX_SAFE_INTEGER;
 
@@ -14,7 +23,7 @@ function compareText(left: string, right: string): number {
   return left.localeCompare(right, 'ja');
 }
 
-function compareProcessOrder(left: string, right: string): number {
+export function compareProcessOrder(left: string, right: string): number {
   const leftNumber = Number(left);
   const rightNumber = Number(right);
   if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber) && leftNumber !== rightNumber) {

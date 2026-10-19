@@ -25,6 +25,9 @@ describe('useMobilePlacementPageState', () => {
   it('parseActualSlipImage の製造orderと製番を状態に反映する', async () => {
     vi.mocked(parseActualSlipImage).mockResolvedValue({
       engine: 'stub',
+      fseibanRaw: '8E1N9321',
+      fseibanMatch: 'corrected',
+      fseibanCandidates: ['BE1N9321'],
       ocrText: '製造 オー ダ No 0002178005\n製 番 BE1N9321\n注文 番号 0003507502',
       ocrPreviewSafe: '8440002178005 9321 0003507502 85E4-4No0002178005 8BETNO9321 EXES0003507502',
       manufacturingOrder10: '0002178005',
@@ -65,10 +68,13 @@ describe('useMobilePlacementPageState', () => {
 
     const { result } = renderHook(() => useMobilePlacementPageState(), { wrapper });
 
+    act(() => result.current.setTransferOrder('0002178005'));
     await act(async () => {
       await result.current.parseActualSlipImageFile(new File(['dummy'], 'slip.jpg', { type: 'image/jpeg' }));
     });
 
+    expect(parseActualSlipImage).toHaveBeenCalledWith(expect.any(File));
+    expect(result.current.actualSlipOcrFeedback.fseibanCandidates).toEqual(['BE1N9321']);
     expect(result.current.actualOrder).toBe('0002178005');
     expect(result.current.actualFseiban).toBe('BE1N9321');
     expect(result.current.actualSlipOcrFeedback.status).toBe('success');

@@ -8,7 +8,10 @@ all:
           ansible_user: denkon5sd02
           ansible_python_interpreter: /usr/bin/python3
           ansible_command_timeout: 900
+          unattended_upgrades_enabled: true
           tailscale_enabled: true
+          # 毎晩の DR。false にすると次の playbook 実行でタイマーが止まる
+          google_drive_dr_timer_enabled: true
           # キオスクお問い合わせ（Slack通知）
           # NOTE: vaultで管理し、Ansibleで /opt/RaspberryPiSystem_002/infrastructure/docker/.env に反映する
           slack_kiosk_support_webhook_url: "{{ vault_slack_kiosk_support_webhook_url | default('') }}"
@@ -39,6 +42,7 @@ all:
           # Server-side JEV credential for incremental classification of the
           # authorized nonconformity snapshot. It is never sent to browser assets.
           hermes_search_typesafe_api_key: "{{ vault_hermes_search_record_pilot_typesafe_api_key | default('') }}"
+          procedure_material_split_suggestion_enabled: true
           # Business Hermes runs as an independent container on this Pi5. Keep
           # both credentials in Vault; they are never shared with Private Pi5
           # Hermes or the ordinary API .env beyond the API-side bearer key.
@@ -67,6 +71,7 @@ all:
           hermes_knowledge_enabled: true
           # Nightly inspection-drawing dimension map on the DGX background lane (00:20-05:20 JST).
           part_measurement_drawing_dimension_map_enabled: true
+          procedure_speech_to_text_enabled: true
           # The answer-cache improvement batch (business-hermes-nightly) is stopped.
           # Chat answers moved to cross-source retrieval on 2026-09-24, which parked
           # the GPTCache answer cache; the cache had no hits after 2026-09-13, while
@@ -117,13 +122,9 @@ all:
           api_local_llm_runtime_warm_window_end_hour: "23"
           # DGXリソース管理（未設定時は監視/起停を自動有効化しない）
           api_dgx_resource_metrics_url: "{{ vault_api_dgx_resource_metrics_url | default('') }}"
-          api_dgx_resource_comfyui_health_url: "{{ vault_api_dgx_resource_comfyui_health_url | default('http://100.118.82.72:38081/private-comfyui/health') }}"
           api_dgx_resource_embedding_health_url: "{{ vault_api_dgx_resource_embedding_health_url | default('') }}"
           api_dgx_resource_spark_host_status_url: "{{ vault_api_dgx_resource_spark_host_status_url | default('') }}"
           api_dgx_resource_probe_timeout_ms: "{{ vault_api_dgx_resource_probe_timeout_ms | default('10000') }}"
-          api_dgx_resource_private_comfyui_runtime_start_url: "{{ vault_api_dgx_resource_private_comfyui_runtime_start_url | default('http://100.118.82.72:38081/private-comfyui/start') }}"
-          api_dgx_resource_private_comfyui_runtime_stop_url: "{{ vault_api_dgx_resource_private_comfyui_runtime_stop_url | default('http://100.118.82.72:38081/private-comfyui/stop') }}"
-          api_dgx_resource_private_comfyui_runtime_control_token: "{{ vault_api_dgx_resource_private_comfyui_runtime_control_token | default(vault_api_local_llm_runtime_control_token | default('')) }}"
           api_dgx_resource_experiment_lab_runtime_start_url: "{{ vault_api_dgx_resource_experiment_lab_runtime_start_url | default('http://100.118.82.72:38081/experiment-lab/start') }}"
           api_dgx_resource_experiment_lab_runtime_stop_url: "{{ vault_api_dgx_resource_experiment_lab_runtime_stop_url | default('http://100.118.82.72:38081/experiment-lab/stop') }}"
           api_dgx_resource_experiment_lab_runtime_control_token: "{{ vault_api_dgx_resource_experiment_lab_runtime_control_token | default(vault_api_local_llm_runtime_control_token | default('')) }}"
@@ -149,14 +150,15 @@ all:
           photo_tool_embedding_enabled: "{{ vault_photo_tool_embedding_enabled | default('false') }}"
           photo_tool_embedding_url: "{{ vault_photo_tool_embedding_url | default('') }}"
           photo_tool_embedding_api_key: "{{ vault_photo_tool_embedding_api_key | default('') }}"
-          photo_tool_embedding_model_id: "{{ vault_photo_tool_embedding_model_id | default('') }}"
+          # 秘密値ではないため inventory に置く。DGX の埋め込みサーバーのモデルと必ず一致させる（ADR-20261007）
+          photo_tool_embedding_model_id: "embeddinggemma-2-512d"
           photo_tool_embedding_timeout_ms: "{{ vault_photo_tool_embedding_timeout_ms | default('30000') }}"
           photo_tool_embedding_dimension: "{{ vault_photo_tool_embedding_dimension | default('512') }}"
           photo_tool_similarity_max_candidates: "{{ vault_photo_tool_similarity_max_candidates | default('5') }}"
-          photo_tool_similarity_max_cosine_distance: "{{ vault_photo_tool_similarity_max_cosine_distance | default('0.22') }}"
+          photo_tool_similarity_max_cosine_distance: "{{ vault_photo_tool_similarity_max_cosine_distance | default('0.14') }}"
           photo_tool_similarity_pipeline_version: "{{ vault_photo_tool_similarity_pipeline_version | default('vision_jpeg_v1') }}"
           photo_tool_label_assist_shadow_enabled: "{{ vault_photo_tool_label_assist_shadow_enabled | default('false') }}"
-          photo_tool_label_assist_max_cosine_distance: "{{ vault_photo_tool_label_assist_max_cosine_distance | default('0.14') }}"
+          photo_tool_label_assist_max_cosine_distance: "{{ vault_photo_tool_label_assist_max_cosine_distance | default('0.10') }}"
           photo_tool_label_assist_min_neighbors: "{{ vault_photo_tool_label_assist_min_neighbors | default('2') }}"
           photo_tool_label_assist_convergence_top_k: "{{ vault_photo_tool_label_assist_convergence_top_k | default('2') }}"
           photo_tool_label_assist_query_neighbor_limit: "{{ vault_photo_tool_label_assist_query_neighbor_limit | default('40') }}"
@@ -181,6 +183,7 @@ all:
           status_agent_client_id: raspberrypi5-server
           # Also set on every release by release_pi5/tasks/host-status-agent-storage.yml.
           status_agent_storage_health_enabled: "1"
+          status_agent_storage_health_write_warn_gb_per_day: "300"
           status_agent_location: "ラズパイ5 - サーバー"
           status_agent_tls_skip_verify: "1"
           status_agent_client_key: "{{ vault_status_agent_client_key }}"
@@ -194,6 +197,9 @@ all:
             status_agent_storage_health_enabled: "1"
             # Chromium は Pi5 証明書の公開鍵だけを許可する（KB-413）。証明書を作り直したら先に更新する
             kiosk_server_cert_spki_sha256: "r/YEhqMVoGQ+qmTUCn2lUq+a0XWS1IgGBbpunlszobE="
+          # Each kiosk's status agent, NFC agent, torque agent and browser start URL share one
+          # per-device credential from host_vars/<host>/vault.yml. A changed value reaches a
+          # kiosk only through a release of that host (docs/plans/security-client-key-rotation-phase-b.md).
           hosts:
             raspberrypi4:
               ansible_host: "{{ kiosk_ip }}"
@@ -514,6 +520,9 @@ all:
               device_type: "pi3"
               status_agent_client_id: raspberrypi3-signage1
               status_agent_client_key: "{{ vault_status_agent_client_key }}"
+              # Rendered into /etc/raspi-status-agent.conf by release_signage; matches
+              # the value release_signage/tasks/host-status-agent-storage.yml enforces.
+              status_agent_storage_health_enabled: "1"
               status_agent_location: "第2工場 - signageMakoRoom"
               # 低メモリ時のTLS handshake遅延を通常の10秒より長く許容する
               status_agent_request_timeout: "30"

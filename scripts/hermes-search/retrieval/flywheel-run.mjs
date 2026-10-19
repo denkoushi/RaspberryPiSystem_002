@@ -8,9 +8,12 @@
 // Usage: node retrieval/flywheel-run.mjs --snapshot snapshot.json --questions night.jsonl [more]
 //   --out run.json [--label name] [--split dev|heldout|all] [--enrichment store.jsonl|off]
 //   [--dense store.bin|off] [--learned learned-queries.jsonl|off] [--pool 30] [--limit N]
+import { isConversationalSource, recordSourceId } from '../hermes-source-definition.mjs';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { loadNonconformityCatalog } from './catalog.mjs';
+import { loadCauseById } from './worker.mjs';
+import { checkFilterAnswer } from './flywheel-filter-check.mjs';
 import { RUN_SCHEMA, questionSet } from './flywheel-gate.mjs';
 import { createLiveScorer } from './flywheel-live.mjs';
 import { readLearned } from './flywheel-learn.mjs';
@@ -49,6 +52,7 @@ export function scorerEnv(options, base = process.env) {
     HERMES_RETRIEVAL_DENSE_PROVIDER: options.dense === 'off' ? 'off' : 'dgx',
     HERMES_RETRIEVAL_ENRICHMENT_ENABLED: options.enrichment === 'off' ? 'false' : 'true',
     HERMES_FLYWHEEL_LEARNED_ENABLED: 'false',
+    ...(base.HERMES_RETRIEVAL_CAUSE_STORE ? { HERMES_RETRIEVAL_CAUSE_STORE: base.HERMES_RETRIEVAL_CAUSE_STORE } : {}),
   };
   if (options.dense !== 'off') {
     env.HERMES_RETRIEVAL_DENSE_STORE = options.dense;
@@ -67,7 +71,8 @@ export function scorerEnv(options, base = process.env) {
  * Answers the selected questions one by one. Questions whose anchor is not in the records are
  * skipped, so an older snapshot can still be used. Injectable scorer for tests.
  */
-export async function runCases({ questions, records, score, split = 'dev', limit = null, log = () => {} }) {
+export async function runCases({ questions, records, catalog = loadNonconformityCatalog(), score, causeById = null, split = 'dev', limit = null, log = () => {} }) {
+  questions = questions.filter((question) => question.kind !== 'filter' || question.source === 'real');
   const known = new Set(records.map((record) => bareId(record.id)));
   // Real kiosk questions carry a hashed id, not a record id; their relevant records were labelled already.
   const selected = questions.filter((question) => (split === 'all' || question.split === split) && (question.source === 'real' || known.has(question.id)));
@@ -76,7 +81,9 @@ export async function runCases({ questions, records, score, split = 'dev', limit
   const cases = [];
   for (const [index, question] of picked.entries()) {
     const live = await score({ a: question.id, b: null, question: question.question, grades: null, relevantIds: question.relevant });
-    cases.push({ id: question.id, split: question.split, outcome: live.outcome, shown: live.shown, candidates: live.candidates, loss: live.loss, vectorStatus: live.vectorStatus, ms: live.ms });
+    const filterCheck = question.kind === 'filter' ? checkFilterAnswer({ plan: live.plan, shown: live.shown, records, catalog, causeById }) : null;
+    cases.push({ id: question.id, split: question.split, outcome: live.outcome, shown: live.shown, candidates: live.candidates, loss: live.loss, vectorStatus: live.vectorStatus, ms: live.ms,
+      ...(filterCheck ? { filterCheck } : {}) });
     log(`${index + 1}/${picked.length} ${question.id} ${live.outcome} ${live.loss ?? 'shown'} ${live.ms}ms`);
   }
   return { cases, skipped };
@@ -85,15 +92,18 @@ export async function runCases({ questions, records, score, split = 'dev', limit
 export async function main(argv = process.argv.slice(2)) {
   const options = parseRunArgs(argv);
   const payload = JSON.parse(readFileSync(options.snapshot, 'utf8'));
-  const records = Array.isArray(payload) ? payload : payload.records;
+  let records = Array.isArray(payload) ? payload : payload.records;
   if (!Array.isArray(records)) throw new Error('snapshot records must be an array');
+  records = records.filter((record) => isConversationalSource(record.kind ?? recordSourceId(record)));
   const rows = options.questions.flatMap((file) => readNightRows(readFileSync(file, 'utf8')));
   const questions = questionSet(rows);
   const { createTypesafeDirectEvaluate } = await import('../hermes-jev-record-pilot.mjs');
   const learned = options.learned === 'off' ? null : (await readLearned(options.learned)).filter((row) => row.state === 'active');
-  const score = await createLiveScorer({ records, catalog: loadNonconformityCatalog(), evaluate: createTypesafeDirectEvaluate(), env: scorerEnv(options), learned });
+  const catalog = loadNonconformityCatalog();
+  const causeById = await loadCauseById(process.env, records);
+  const score = await createLiveScorer({ records, catalog, evaluate: createTypesafeDirectEvaluate(), env: scorerEnv(options), learned });
   const started = Date.now();
-  const { cases, skipped } = await runCases({ questions, records, score, split: options.split, limit: options.limit, log: (line) => console.error(line) });
+  const { cases, skipped } = await runCases({ questions, records, catalog, score, causeById, split: options.split, limit: options.limit, log: (line) => console.error(line) });
   const run = {
     schema: RUN_SCHEMA,
     config: { label: options.label ?? options.out, split: options.split, enrichment: options.enrichment, learned: options.learned, dense: options.dense, pool: options.pool, snapshot: options.snapshot },

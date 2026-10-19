@@ -9,7 +9,7 @@ import { invButtonGhost, invError, invKey, invKeyUtil, invPanel, invSurface } fr
 const PIN_LENGTH = 4;
 
 /** On-screen 4-digit unlock for inventory setup; the verified PIN is handed to the setup screen. */
-export function InventoryPinPad({ onUnlocked }: { onUnlocked: (password: string) => void }) {
+export function InventoryPinPad({ onUnlocked, onCancel }: { onUnlocked: (password: string) => void; onCancel?: () => void }) {
   const verify = useVerifyKioskDueManagementAccessPassword();
   const [digits, setDigits] = useState('');
   const [message, setMessage] = useState<string | null>(null);
@@ -55,7 +55,7 @@ export function InventoryPinPad({ onUnlocked }: { onUnlocked: (password: string)
             <span key={index} className={index < digits.length ? 'h-[18px] w-[18px] rounded-full bg-inv-cyan' : 'h-[18px] w-[18px] rounded-full border-2 border-inv-line2'} />
           ))}
         </div>
-        {message ? <p className={`rounded-xl border p-3 text-center text-base ${invError}`} role="alert">{message}</p> : null}
+        <div className="h-12 overflow-hidden">{message ? <p className={`line-clamp-2 rounded-xl border px-3 py-1 text-center text-sm leading-4 ${invError}`} role="alert">{message}</p> : null}</div>
         <KioskDigitTenkey
           value={digits}
           onChange={change}
@@ -67,7 +67,7 @@ export function InventoryPinPad({ onUnlocked }: { onUnlocked: (password: string)
           disabled={verify.isPending}
         />
         {verify.isPending ? <p className="text-center text-inv-muted">確認中…</p> : null}
-        <Link to="/kiosk/inventory" className={invButtonGhost}>やめる</Link>
+        <>{onCancel ? <button type="button" className={invButtonGhost} onClick={onCancel}>やめる</button> : <Link to="/kiosk/inventory" className={invButtonGhost}>やめる</Link>}</>
       </section>
     </div>
   );

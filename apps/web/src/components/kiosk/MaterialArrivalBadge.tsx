@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 
-import type { MaterialArrivalStatus } from '@raspi-system/shared-types';
+import type { MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
 
 const PRESENTATION: Record<MaterialArrivalStatus, { label: string; className: string }> = {
   received: { label: '材料入荷済', className: 'border-emerald-400/60 bg-emerald-500/20 text-emerald-200' },
@@ -11,12 +11,14 @@ const PRESENTATION: Record<MaterialArrivalStatus, { label: string; className: st
 
 type Props = {
   status: MaterialArrivalStatus | null | undefined;
+  basis?: MaterialArrivalBasis | null;
   className?: string;
 };
 
 /** 材料（鋳物・鋼材など）の入荷状況バッジ。材料の購買行が無い部品では何も描かない。 */
-export function MaterialArrivalBadge({ status, className }: Props) {
+export function MaterialArrivalBadge({ status, basis, className }: Props) {
   if (!status) return null;
+  if (!Object.prototype.hasOwnProperty.call(PRESENTATION, status)) return null;
   const presentation = PRESENTATION[status];
   return (
     <span
@@ -26,7 +28,7 @@ export function MaterialArrivalBadge({ status, className }: Props) {
         className
       )}
     >
-      {presentation.label}
+      {basis === 'part' ? presentation.label.replace('材料', '部品') : presentation.label}
     </span>
   );
 }

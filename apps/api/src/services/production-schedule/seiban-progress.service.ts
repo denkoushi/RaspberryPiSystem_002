@@ -4,6 +4,8 @@ import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { buildProductionScheduleEffectiveCompletedSql } from './production-schedule-effective-completion.sql.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
+import { findSupplementMachineNamesForMissing } from './seiban-machine-name-supplement-backfill.js';
+import { isMissingSeibanMachineName } from './seiban-machine-name-state.js';
 
 export type SeibanProgressRow = {
   fseiban: string;
@@ -29,7 +31,11 @@ const normalizeSeibanList = (values: string[]): string[] => {
 
 export async function fetchSeibanProgressRows(
   fseibans: string[],
-  csvDashboardId: string = PRODUCTION_SCHEDULE_DASHBOARD_ID
+  csvDashboardId: string = PRODUCTION_SCHEDULE_DASHBOARD_ID,
+  options: {
+    /** false にすると MH/SH 行の機種名だけを返す（補完の有無を呼び出し側で区別したいとき） */
+    supplementMachineName?: boolean;
+  } = {}
 ): Promise<SeibanProgressRow[]> {
   const normalized = normalizeSeibanList(fseibans);
   if (normalized.length === 0) {
@@ -78,5 +84,20 @@ export async function fetchSeibanProgressRows(
     ORDER BY ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC
   `;
 
-  return rows;
+  if (options.supplementMachineName === false) {
+    return rows;
+  }
+
+  // MH/SH 行に機種名が無い製番は補完テーブルで埋める（resolveSeibanMachineDisplayNames と同じ解決順）
+  const supplement = await findSupplementMachineNamesForMissing(
+    rows.map((row) => [row.fseiban, row.machineName] as const)
+  );
+  if (supplement.size === 0) {
+    return rows;
+  }
+  return rows.map((row) => {
+    if (!isMissingSeibanMachineName(row.machineName)) return row;
+    const filled = supplement.get(row.fseiban?.trim() ?? '');
+    return filled === undefined ? row : { ...row, machineName: filled };
+  });
 }

@@ -20,6 +20,13 @@ describe('WorkInstructionTargetChips', () => {
     expect(onSelect).toHaveBeenCalledWith('REAR');
   });
 
+  it('shows counts only when more than one item is openable', () => {
+    render(<WorkInstructionTargetChips targets={['研削', '切削']} counts={{ 研削: 3, 切削: 1 }} onSelect={vi.fn()} />);
+    expect(screen.getByLabelText('3件')).toBeInTheDocument();
+    expect(screen.queryByLabelText('1件')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '研削' })).toHaveTextContent('3');
+  });
+
   it('does not select a target while disabled', () => {
     const onSelect = vi.fn();
 

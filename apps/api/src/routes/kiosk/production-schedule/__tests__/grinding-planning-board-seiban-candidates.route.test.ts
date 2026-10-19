@@ -59,7 +59,7 @@ describe('grinding planning board seiban candidates route', () => {
     }
   });
 
-  it('accepts the cutting/all scope and rejects invalid filters before service access', async () => {
+  it.each(['cutting', 'all'])('accepts category=%s and rejects invalid filters before service access', async (category) => {
     const requireClientDevice = vi.fn(async () => ({
       id: 'device-1', apiKey: 'key-1', name: 'terminal-1', location: 'site-a', statusClientId: null
     }));
@@ -68,11 +68,11 @@ describe('grinding planning board seiban candidates route', () => {
     try {
       const valid = await app.inject({
         method: 'GET',
-        url: '/kiosk/production-schedule/grinding-planning-board/seiban-candidates?category=cutting&completionFilter=all',
+        url: `/kiosk/production-schedule/grinding-planning-board/seiban-candidates?category=${category}&completionFilter=all`,
         headers: { 'x-client-key': 'key-1' }
       });
       expect(valid.statusCode).toBe(200);
-      expect(mocks.get).toHaveBeenCalledWith({ siteKey: 'site-a', category: 'cutting', completionFilter: 'all' });
+      expect(mocks.get).toHaveBeenCalledWith({ siteKey: 'site-a', category, completionFilter: 'all' });
 
       mocks.get.mockClear();
       const invalid = await app.inject({

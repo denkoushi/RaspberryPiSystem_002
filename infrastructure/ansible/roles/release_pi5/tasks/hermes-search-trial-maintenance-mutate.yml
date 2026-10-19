@@ -78,6 +78,24 @@
     mode: '0600'
   when: release_pi5_trial_retrieval_v2_requested in ['true', 'false']
 
+- name: Apply retrieval cause classification gate when explicitly configured for maintenance
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_trial_maintenance_env_file }}"
+    regexp: '^HERMES_RETRIEVAL_CAUSE_ENABLED='
+    line: "HERMES_RETRIEVAL_CAUSE_ENABLED={{ release_pi5_trial_cause_requested }}"
+    create: false
+    mode: '0600'
+  when: release_pi5_trial_cause_requested in ['true', 'false']
+
+- name: Apply retrieval cause classification limit for maintenance
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_trial_maintenance_env_file }}"
+    regexp: '^HERMES_RETRIEVAL_CAUSE_MAX_TEXTS='
+    line: "HERMES_RETRIEVAL_CAUSE_MAX_TEXTS={{ release_pi5_trial_cause_max_texts }}"
+    create: false
+    mode: '0600'
+  when: release_pi5_trial_cause_max_texts | length > 0
+
 - name: Apply the explicitly requested retrieval enrichment gate for maintenance
   ansible.builtin.lineinfile:
     path: "{{ release_pi5_trial_maintenance_env_file }}"
@@ -171,6 +189,16 @@
     fail_msg: The finalized retrieval enrichment gate does not match the explicit or preserved setting; API startup stopped.
   when: release_pi5_trial_enrichment_effective in ['true', 'false']
 
+- name: Verify the final retrieval cause classification gate before API recreation
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((release_pi5_trial_maintenance_env_final.content | b64decode).splitlines()
+         | select('match', '^HERMES_RETRIEVAL_CAUSE_ENABLED=') | list)
+        == ['HERMES_RETRIEVAL_CAUSE_ENABLED=' ~ release_pi5_trial_cause_effective]
+    fail_msg: The finalized retrieval cause classification gate does not match the explicit or preserved setting; API startup stopped.
+  when: release_pi5_trial_cause_effective in ['true', 'false']
+
 - name: Verify the final dense retrieval provider before API recreation
   ansible.builtin.assert:
     that:
@@ -243,7 +271,7 @@
   register: release_pi5_trial_maintenance_api_env
   changed_when: false
   no_log: true
-  when: release_pi5_trial_maintenance == 'on' or release_pi5_trial_classification_requested != '' or release_pi5_trial_retrieval_v2_effective in ['true', 'false'] or release_pi5_trial_enrichment_effective in ['true', 'false'] or release_pi5_trial_dense_provider_effective in ['off', 'dgx'] or release_pi5_trial_dense_index_effective in ['true', 'false']
+  when: release_pi5_trial_maintenance == 'on' or release_pi5_trial_classification_requested != '' or release_pi5_trial_retrieval_v2_effective in ['true', 'false'] or release_pi5_trial_enrichment_effective in ['true', 'false'] or release_pi5_trial_cause_effective in ['true', 'false'] or release_pi5_trial_dense_provider_effective in ['off', 'dgx'] or release_pi5_trial_dense_index_effective in ['true', 'false']
 
 - name: Require the recreated API to inherit the verified classification gate
   ansible.builtin.assert:
@@ -274,6 +302,16 @@
         == ['HERMES_RETRIEVAL_ENRICHMENT_ENABLED=' ~ release_pi5_trial_enrichment_effective]
     fail_msg: The recreated API did not inherit the verified retrieval enrichment gate; trial maintenance cannot succeed.
   when: release_pi5_trial_enrichment_effective in ['true', 'false']
+
+- name: Require the recreated API to inherit the verified retrieval cause classification gate
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((release_pi5_trial_maintenance_api_env.stdout | from_json)
+         | select('match', '^HERMES_RETRIEVAL_CAUSE_ENABLED=') | list)
+        == ['HERMES_RETRIEVAL_CAUSE_ENABLED=' ~ release_pi5_trial_cause_effective]
+    fail_msg: The recreated API did not inherit the verified retrieval cause classification gate; trial maintenance cannot succeed.
+  when: release_pi5_trial_cause_effective in ['true', 'false']
 
 - name: Require the recreated API to inherit the verified dense retrieval provider
   ansible.builtin.assert:

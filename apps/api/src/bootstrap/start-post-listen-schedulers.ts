@@ -1,9 +1,11 @@
+import { getProcedureMaterialImageDescriptionScheduler } from '../services/assembly/procedure-material-image-description.scheduler.js';
+import { getSystemNoticeEvaluator } from '../services/kiosk-inquiry/system-notice-evaluator.js';
 import { getProcedureVideoScheduler } from '../services/assembly/procedure-video.scheduler.js';
 import type { FastifyInstance } from 'fastify';
 import { getKnowledgeRuntime } from '../services/knowledge/knowledge-runtime.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../config/env.js';
-import { getBusinessHermesNightlyScheduler } from '../services/assembly/business-hermes-nightly.scheduler.js';
+import { getBusinessHermesNightlyScheduler } from '../services/business-hermes/business-hermes-nightly.scheduler.js';
 import { getBackupScheduler } from '../services/backup/backup-scheduler.js';
 import { getCsvImportScheduler } from '../services/imports/csv-import-scheduler.js';
 import { getKioskDocumentGmailScheduler } from '../services/kiosk-documents/kiosk-document-gmail.scheduler.js';
@@ -15,6 +17,7 @@ import { getFkojunstMailSupersededPruneScheduler } from '../services/production-
 import { getAlertsDispatcher } from '../services/alerts/alerts-dispatcher.js';
 import { getAlertsDbDispatcher } from '../services/alerts/alerts-db-dispatcher.js';
 import { getAlertsIngestor } from '../services/alerts/alerts-ingestor.js';
+import { getClientNetworkLogRetentionScheduler } from '../services/clients/client-network-log-retention.scheduler.js';
 import { getClientHeartbeatMonitor } from '../services/clients/client-heartbeat-monitor.js';
 import { loadAlertsDispatcherConfig } from '../services/alerts/alerts-config.js';
 import { getPhotoToolLabelScheduler } from '../services/tools/photo-tool-label/photo-tool-label.scheduler.js';
@@ -247,6 +250,11 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
       },
     },
     {
+      name: 'client-network-log-retention',
+      start: () => getClientNetworkLogRetentionScheduler().start(),
+      stop: () => getClientNetworkLogRetentionScheduler().stop(),
+    },
+    {
       name: 'client-heartbeat-monitor',
       start: async () => {
         // Alerts are only delivered to Slack by the DB dispatcher.
@@ -258,6 +266,11 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
       stop: async () => {
         await getClientHeartbeatMonitor().stop();
       },
+    },
+    {
+      name: 'system-notice-evaluator',
+      start: () => getSystemNoticeEvaluator().start(),
+      stop: () => getSystemNoticeEvaluator().stop(),
     },
     {
       name: 'alerts-ingestor',
@@ -277,6 +290,11 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
       stop: () => {
         getPhotoToolLabelScheduler().stop();
       },
+    },
+    {
+      name: 'procedure-material-image-description',
+      start: () => { getProcedureMaterialImageDescriptionScheduler().start(); },
+      stop: () => { getProcedureMaterialImageDescriptionScheduler().stop(); },
     },
     {
       name: 'part-measurement-drawing-ocr',
@@ -309,9 +327,12 @@ export function listPostListenSchedulerNames(): string[] {
     'gmail-trash-cleanup',
     'due-management-tuning',
     'alerts-dispatcher',
+    'client-network-log-retention',
     'client-heartbeat-monitor',
+    'system-notice-evaluator',
     'alerts-ingestor',
     'photo-tool-label',
+    'procedure-material-image-description',
     'part-measurement-drawing-ocr',
   ];
 }

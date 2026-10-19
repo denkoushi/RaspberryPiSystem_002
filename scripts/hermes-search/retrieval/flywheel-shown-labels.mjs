@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Offline labels for shown records outside the synthetic question's known relevant set.
 // Only ids and grades are persisted; record text is passed to the grader in memory.
+import { isConversationalSource, recordSourceId } from '../hermes-source-definition.mjs';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -12,7 +13,7 @@ import { GRADE_BATCH, gradeBatch, recordText } from './graded-labels.mjs';
 
 /** Pool unique, unlabelled question-record pairs from the shown ids of every run. */
 export function collectShownPairs({ questions, runs, labels = {} }) {
-  const byId = new Map(questions.map((question) => [bareId(question.id), question]));
+  const byId = new Map(questions.filter((question) => question.kind !== 'filter').map((question) => [bareId(question.id), question]));
   const seen = new Map();
   const pairs = [];
   for (const run of runs) {
@@ -127,7 +128,7 @@ export async function main(argv = process.argv.slice(2)) {
   const snapshot = JSON.parse(readFileSync(options.snapshot, 'utf8'));
   const records = Array.isArray(snapshot) ? snapshot : snapshot.records;
   if (!Array.isArray(records)) throw new Error('snapshot records must be an array');
-  const recordsById = new Map(records.map((record) => [bareId(record.id), record]));
+  const recordsById = new Map(records.filter((record) => isConversationalSource(record.kind ?? recordSourceId(record))).map((record) => [bareId(record.id), record]));
   const catalog = loadNonconformityCatalog();
   const bodyFields = fieldsWithRole(catalog, 'body');
   const fieldLabels = Object.fromEntries(catalogEntries(catalog).flatMap((entry) => entry.fields.map((field) => [field.key, field.label])));

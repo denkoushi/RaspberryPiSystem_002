@@ -2,9 +2,111 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadCatalog, loadNonconformityCatalog } from './catalog.mjs';
 import { summarizeAnswers, createPlanner } from './planner-jev.mjs';
+import { CAUSE_CATEGORIES } from './cause-categories.mjs';
 import { buildValueIndex } from './value-index.mjs';
 
 const catalog = loadNonconformityCatalog();
+
+for (const [suffix, residualTokens] of [
+  [' 最近 不適合', []],
+  ['の先月の不適合', []],
+  ['の錆の不適合', ['錆']],
+]) {
+  test(`resolved department with ${suffix} overrides content only when the residual is empty`, async () => {
+    const value = '三島工場管理部生産管理課（製造）';
+    const question = `${value.normalize('NFKC')}${suffix}`;
+    const evaluate = async (input) => {
+      const field = Object.entries(input.questions).find(([key]) => key.startsWith('field_'));
+      const choice = Object.entries(field[1].criteria).find(([, description]) => description === value)[0];
+      return { answers: {
+        scope: { type: 'choice', choice: 'nonconformity' },
+        [field[0]]: { type: 'choice', choice },
+        content: { type: 'noul', noul: true },
+        sort: { type: 'choice', choice: 'relevance' },
+        limit: { type: 'choice', choice: '5' },
+      } };
+    };
+    const { plan } = await createPlanner({ evaluate }).plan({
+      question, catalog, now: '2026-10-10',
+      valueIndex: buildValueIndex([{ id: 'a', originDepartmentName: value }], catalog),
+    });
+    assert.deepEqual(plan.diagnostics.contentDecision.residualTokens, residualTokens);
+    assert.equal(plan.semanticQuery, residualTokens.length ? question : '');
+    assert.equal(plan.diagnostics.contentDecision.jev, residualTokens.length > 0);
+    assert.equal(plan.diagnostics.contentDecision.residualOverride === true, residualTokens.length === 0);
+    assert.deepEqual(plan.sort, residualTokens.length ? 'relevance' : { field: 'discoveredOn', direction: 'desc' });
+    assert.deepEqual(plan.filters[0], { source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: [value] });
+    if (suffix.includes('先月')) {
+      assert.deepEqual(plan.filters[1], { source: 'nonconformity', field: 'discoveredOn', op: 'between', values: ['2026-09-01', '2026-09-30'] });
+    }
+  });
+}
+
+for (const [question, residualTokens] of [
+  ['機構設計2課(製造) 最近 不適合', []],
+  ['機構設計2課 最近 不適合', []],
+  ['機構設計2課(製造)の錆の不適合', ['錆']],
+]) {
+  test(`short department form ${question} keeps only tokens outside the selected value`, async () => {
+    const value = '三島工場技術部機構設計２課（製造）';
+    const siblings = ['三島工場技術部機構設計１課（製造）', '三島工場品質保証課（製造）'];
+    const evaluate = async (input) => {
+      const field = Object.entries(input.questions).find(([key]) => key.startsWith('field_'));
+      const choice = Object.entries(field[1].criteria).find(([, description]) => description === value)[0];
+      return { answers: {
+        scope: { type: 'choice', choice: 'nonconformity' },
+        [field[0]]: { type: 'choice', choice },
+        content: { type: 'noul', noul: true },
+        sort: { type: 'choice', choice: 'relevance' },
+        limit: { type: 'choice', choice: '5' },
+      } };
+    };
+    const { plan } = await createPlanner({ evaluate }).plan({
+      question, catalog, now: '2026-10-14',
+      valueIndex: buildValueIndex([value, ...siblings].map((name, index) => ({ id: `r${index}`, originDepartmentName: name })), catalog),
+    });
+    assert.deepEqual(plan.filters[0], { source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: [value] });
+    assert.deepEqual(plan.diagnostics.contentDecision.residualTokens, residualTokens);
+    assert.equal(plan.semanticQuery, residualTokens.length ? question : '');
+    assert.deepEqual(plan.sort, residualTokens.length ? 'relevance' : { field: 'discoveredOn', direction: 'desc' });
+  });
+}
+
+test('residual removal uses both a resolved value and its matched question term', async () => {
+  const value = '三島工場管理部生産管理課（製造）';
+  const term = '三島生管';
+  for (const linked of [false, true]) {
+    const evaluate = async () => ({ answers: {
+      [linked ? 'field_0' : 'term_0']: { type: 'choice', choice: 'v0' },
+      content: { type: 'noul', noul: true },
+      sort: { type: 'choice', choice: 'relevance' },
+      limit: { type: 'choice', choice: '5' },
+    } });
+    const group = { source: 'nonconformity', field: 'originDepartmentName', term, values: [value] };
+    const { plan } = await createPlanner({ evaluate }).plan({
+      question: `${term} ${value}の不適合`, catalog,
+      ...(linked ? { choiceGroups: [group] } : { candidates: [group] }),
+    });
+    assert.equal(plan.semanticQuery, '');
+    assert.equal(plan.diagnostics.contentDecision.residualOverride, true);
+    assert.deepEqual(plan.diagnostics.contentDecision.residualTokens, []);
+  }
+});
+
+test('an empty residual without an applied hard filter does not override content', async () => {
+  const evaluate = async () => ({ answers: {
+    content: { type: 'noul', noul: true },
+    sort: { type: 'choice', choice: 'relevance' },
+    limit: { type: 'choice', choice: '5' },
+  } });
+  const { plan } = await createPlanner({ evaluate }).plan({ question: '最近 不適合', catalog });
+  assert.deepEqual(plan.filters, []);
+  assert.deepEqual(plan.diagnostics.contentDecision.residualTokens, []);
+  assert.equal(plan.diagnostics.contentDecision.jev, true);
+  assert.equal(plan.diagnostics.contentDecision.residualOverride, undefined);
+  assert.equal(plan.semanticQuery, '最近 不適合');
+});
+
 const fixedDescriptions = new Set([
   'この語は絞り込み条件にしない',
   '`request` だけで探す条件が完結している、または `previous_plan` の組織や範囲を外す・置き換える（例: 全部門で、〇〇課の最近の不適合N件、別の不具合の不適合）',
@@ -24,6 +126,10 @@ function assertChoicesFromCandidates(questions, candidateValues) {
     if (question.type === 'noul') continue;
     // Content span choices are parts of the request itself, cut by code.
     if (key === 'contentSpan') continue;
+    if (key === 'cause') {
+      assert.deepEqual(question.criteria, { ...Object.fromEntries(CAUSE_CATEGORIES.map(({ id, label, description }) => [id, `${label}: ${description}`])), none: '要因では絞らない' });
+      continue;
+    }
     // Carry questions have fixed keep/replace/add and same/new/none options, not values.
     if (key.startsWith('carry_') || key === 'contentCarry') continue;
     assert.equal(question.type, 'choice');
@@ -187,7 +293,7 @@ test('a content noul keeps one call and strips structural words from semanticQue
   assert.equal(calls, 1);
   assert.equal(plan.semanticQuery, 'North Shopのsurface scratchを最新3件見せて');
   assert.equal(plan.diagnostics.contentDecision.final, true);
-  assert.deepEqual(plan.diagnostics.contentDecision.residualTokens, []);
+  assert.deepEqual(plan.diagnostics.contentDecision.residualTokens, ['surface', 'scratch']);
   assert.equal(plan.limit, 3);
   assert.deepEqual(plan.sort, { field: 'discoveredOn', direction: 'desc' });
 });
@@ -215,7 +321,7 @@ test('a false content noul skips relevance and does not search residual tokens',
   assert.equal(plan.semanticQuery, '');
   assert.deepEqual(plan.diagnostics.contentDecision, {
     jev: false,
-    residualTokens: [],
+    residualTokens: ['qxrare'],
     final: false,
   });
 });
@@ -419,6 +525,47 @@ test('a content question without recency stays relevance even if JEV picks recen
   assert.equal(plan.sort, 'relevance');
 });
 
+for (const content of [true, false]) {
+  test(`a linked ambiguous department is dropped only for content questions (content=${content})`, async () => {
+    const field = 'originDepartmentName';
+    const values = ['第一設計課', '第二設計課', '第三設計課', '第四設計課'];
+    const question = '設計課 干渉見落とし 原因';
+    const evaluate = async () => ({ answers: {
+      sort: { type: 'choice', choice: 'relevance' },
+      limit: { type: 'choice', choice: '5' },
+      content: { type: 'noul', noul: content },
+    } });
+    const { plan } = await createPlanner({ evaluate }).plan({
+      question,
+      catalog,
+      choiceGroups: [{ source: 'nonconformity', field, term: '設計課', values, decision: 'clarify' }],
+    });
+    assert.equal(plan.filters.some((filter) => filter.field === field), false);
+    assert.deepEqual(plan.unresolved, content ? [] : [{ term: field, candidates: values }]);
+    assert.equal(plan.semanticQuery, content ? question : '');
+    if (content) {
+      assert.deepEqual(plan.diagnostics.ambiguousDropped, [{ field, candidates: values }]);
+      assert.equal(plan.diagnostics.contentDecision.residualTokens.includes('設計課'), true);
+    } else {
+      assert.equal(Object.hasOwn(plan.diagnostics, 'ambiguousDropped'), false);
+    }
+  });
+}
+
+test('a low-confidence department value is dropped for a content question', async () => {
+  const value = '北海工場製造部機械課';
+  const question = '北海の機戒課 干渉見落とし 原因';
+  const { plan } = await createPlanner({ evaluate: departmentAnswers({ value: 0.26, none: 0.29 }, true) }).plan({
+    question,
+    catalog,
+    valueIndex: buildValueIndex([{ id: 'a', originDepartmentName: value }], catalog),
+  });
+  assert.deepEqual(plan.unresolved, []);
+  assert.equal(plan.semanticQuery, question);
+  assert.deepEqual(plan.filters, []);
+  assert.deepEqual(plan.diagnostics.ambiguousDropped, [{ field: 'originDepartmentName', candidates: [value] }]);
+});
+
 test('a low-confidence department value asks for clarification instead of a content search', async () => {
   const records = [{ id: 'a', originDepartmentName: '北海工場製造部機械課' }];
   const valueIndex = buildValueIndex(records, catalog);
@@ -464,12 +611,14 @@ test('a follow-up that does not restate its content keeps the previous content c
   });
   const previousPlan = { sources: ['nonconformity'], filters: [], semanticQuery: 'rust on the table please', contentSpan: 'rust on the table', sort: 'relevance', limit: 5 };
   const candidates = [{ term: 'South Shop', source: 'nonconformity', field: 'originDepartmentName', values: ['South Shop'] }];
-  const refined = await createPlanner({ evaluate }).plan({ question: 'South Shopだけ', previousPlan, catalog, candidates });
+  const refined = await createPlanner({ evaluate }).plan({ question: 'South Shopの不適合', previousPlan, catalog, candidates });
   assert.equal(refined.plan.semanticQuery, 'rust on the table please');
+  assert.deepEqual(refined.plan.diagnostics.contentDecision.residualTokens, []);
+  assert.equal(refined.plan.diagnostics.contentDecision.residualOverride, undefined);
   // The judge reads the same content part as on the previous turn.
   assert.equal(refined.plan.diagnostics.contentSpan, 'rust on the table');
   assert.equal(refined.plan.filters.some((filter) => filter.values[0] === 'South Shop'), true);
-  const fresh = await createPlanner({ evaluate }).plan({ question: 'South Shopだけ', previousPlan: null, catalog, candidates });
+  const fresh = await createPlanner({ evaluate }).plan({ question: 'South Shopの不適合', previousPlan: null, catalog, candidates });
   assert.equal(fresh.plan.semanticQuery, '');
 });
 
@@ -513,7 +662,8 @@ test('each previous condition is kept, replaced, added to, or dropped on its own
   const added = (await run({ add0: 0.9, drop1: 0.9, content: 'new' })).plan;
   assert.deepEqual(values(added, 'originDepartmentName'), ['North Shop', 'South Shop']);
   assert.deepEqual(values(added, 'machineName'), []);
-  assert.equal(added.semanticQuery, 'South Shopでは');
+  assert.equal(added.semanticQuery, '');
+  assert.equal(added.diagnostics.contentDecision.residualOverride, true);
 
   // With no new value, the previous department stays unless the request drops it.
   const kept = (await run({ term: 'none' })).plan;
@@ -599,4 +749,76 @@ test('page context maps record numbers and drawing numbers, and procedure ids on
   }
   const unavailable = await planner.plan({ question: 'この手順書', catalog, valueIndex: buildValueIndex([], catalog), pageContext: { path: '/page', entity: { kind: 'procedureId', value: 'id' } } });
   assert.equal(unavailable.receipt.pageContext.used, false);
+});
+
+for (const [id, question, content] of [
+  ['drawing', '図面の誤りで先月の不適合', false],
+  ['assume', '思い込みが原因のやつ、今年', false],
+  ['drawing', '図面の誤りで寸法抜け', true],
+  ...CAUSE_CATEGORIES.map(({ id, label }) => [id, `${label}が原因の最近の不適合`, false]),
+]) {
+  test(`cause ${id} retains content=${content} with only one evaluation`, async () => {
+    let calls = 0;
+    const { plan } = await createPlanner({ evaluate: async input => {
+      calls += 1;
+      assert.equal(input.questions.cause.type, 'choice');
+      assert.equal(Object.keys(input.questions.cause.criteria).length, 11);
+      assert.match(input.questions.cause.instructions, /質問/u);
+      assert.equal(input.questions.drop_cause, undefined);
+      return { answers: {
+        cause: { type: 'choice', choice: id }, content: { type: 'noul', noul: true },
+        limit: { type: 'choice', choice: '5' },
+      } };
+    } }).plan({ question, catalog, now: '2026-10-19' });
+    assert.equal(calls, 1);
+    assert.equal(plan.causeCategory, id);
+    assert.equal(plan.semanticQuery, content ? question : '');
+    assert.equal(plan.diagnostics.contentDecision.jev, content);
+    assert.deepEqual(plan.diagnostics.contentDecision.residualTokens, content ? ['寸法抜け'] : []);
+    assert.deepEqual(plan.diagnostics.causeDecision, { chosen: id });
+    if (question.includes('先月')) assert.deepEqual(plan.filters[0].values, ['2026-09-01', '2026-09-30']);
+  });
+}
+
+for (const choice of ['none', undefined]) {
+  test(`cause ${choice ?? 'missing'} leaves the first plan unfiltered`, async () => {
+    const { plan } = await createPlanner({ evaluate: async () => ({ answers: {
+      ...(choice ? { cause: { type: 'choice', choice } } : {}),
+      content: { type: 'noul', noul: true }, limit: { type: 'choice', choice: '5' },
+    } }) }).plan({ question: '図面の不適合', catalog });
+    assert.equal(Object.hasOwn(plan, 'causeCategory'), false);
+    assert.equal(plan.semanticQuery, '図面の不適合');
+    assert.deepEqual(plan.diagnostics.causeDecision, { chosen: null });
+  });
+}
+
+for (const [choice, drop, expected] of [['none', false, 'drawing'], [undefined, false, 'drawing'], ['none', true, null], ['assume', false, 'assume'], ['assume', true, 'assume']]) {
+  test(`previous cause with choice=${choice ?? 'missing'} drop=${drop}`, async () => {
+    const { plan } = await createPlanner({ evaluate: async input => {
+      assert.equal(input.state.previous_plan.causeCategory, 'drawing');
+      assert.match(input.questions.cause.instructions, /`request`/u);
+      assert.match(input.questions.drop_cause.instructions, /要因が図面・設計の誤り/u);
+      return { answers: {
+        ...(choice ? { cause: { type: 'choice', choice } } : {}),
+        drop_cause: { type: 'noul', noul: drop ? 0.9 : 0.1 },
+        content: { type: 'noul', noul: false }, limit: { type: 'choice', choice: '5' },
+      } };
+    } }).plan({ question: '今年', catalog, now: '2026-10-19', previousPlan: { sources: ['nonconformity'], filters: [], semanticQuery: '', causeCategory: 'drawing' } });
+    assert.equal(plan.causeCategory ?? null, expected);
+    assert.equal(plan.semanticQuery, '');
+    assert.deepEqual(plan.diagnostics.causeDecision, { chosen: expected, ...(drop ? { dropped: true } : {}) });
+  });
+}
+
+test('a cause heard in a question scoped to another source does not become a filter', async () => {
+  const allCatalog = loadCatalog(['nonconformity', 'knowledge_procedure']);
+  const planner = createPlanner({ evaluate: async () => ({ answers: {
+    scope: { type: 'choice', choice: 'knowledge_procedure' }, cause: { type: 'choice', choice: 'drawing' },
+    content: { type: 'noul', noul: true }, limit: { type: 'choice', choice: 'unspecified' }, sort: { type: 'choice', choice: 'relevance' },
+  } }) });
+  const { plan } = await planner.plan({ question: '図面の誤りがあったときの手順', catalog: allCatalog, valueIndex: buildValueIndex([], allCatalog) });
+  assert.deepEqual(plan.sources, ['knowledge_procedure']);
+  assert.equal(Object.hasOwn(plan, 'causeCategory'), false);
+  assert.equal(plan.diagnostics.causeDecision.chosen, null);
+  assert.equal(plan.diagnostics.contentDecision.jev, true);
 });

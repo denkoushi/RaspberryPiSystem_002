@@ -45,7 +45,8 @@ export async function registerRiggingRoutes(app: FastifyInstance): Promise<void>
       try {
         await canView(request, reply);
         return;
-      } catch {
+      } catch (error) {
+        if (error instanceof ApiError && error.code === 'MFA_SETUP_REQUIRED') throw error;
         // fall back
       }
     }
@@ -60,7 +61,8 @@ export async function registerRiggingRoutes(app: FastifyInstance): Promise<void>
       try {
         await canWrite(request, reply);
         return;
-      } catch {
+      } catch (error) {
+        if (error instanceof ApiError && error.code === 'MFA_SETUP_REQUIRED') throw error;
         // fall back
       }
     }

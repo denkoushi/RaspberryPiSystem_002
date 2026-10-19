@@ -235,4 +235,12 @@ describe('leaderboardBoardCachePersistPolicy', () => {
       })
     ).toBe(true);
   });
+
+  it('changes the decoration fingerprint when only arrival basis changes', () => {
+    const acc = createEmptyAccumulatedLeaderboardDecorations();
+    acc.leaderboardMaterialArrivalByPartKey['part-1'] = 'ordered';
+    const material = fingerprintLeaderboardBoardDecorations(acc);
+    acc.leaderboardMaterialArrivalBasisByPartKey['part-1'] = 'part';
+    expect(fingerprintLeaderboardBoardDecorations(acc)).not.toBe(material);
+  });
 });

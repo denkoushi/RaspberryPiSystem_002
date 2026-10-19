@@ -34,7 +34,8 @@ const item = (itemId: string, partial: Partial<GrindingPlanningBoardItem> = {}):
 const items = [
   item('a', { materialArrivalStatus: 'received' }),
   item('b', { materialArrivalStatus: 'ordered' }),
-  item('c')
+  item('c'),
+  item('d', { materialArrivalStatus: 'ordered', materialArrivalBasis: 'part' })
 ];
 
 const renderTable = (props: { showRank?: boolean; showSeiban?: boolean }) =>
@@ -61,6 +62,7 @@ describe('PlanningBoardItemTable material arrival badge', () => {
     expect(within(screen.getByTestId('planning-board-item-a')).getByText('材料入荷済')).toBeInTheDocument();
     expect(within(screen.getByTestId('planning-board-item-b')).getByText('材料未入荷')).toBeInTheDocument();
     expect(within(screen.getByTestId('planning-board-item-c')).queryByText(/^材料/)).toBeNull();
+    expect(within(screen.getByTestId('planning-board-item-d')).getByText('部品未入荷')).toBeInTheDocument();
   });
 
   it('puts the badge under date, quantity and time in the seiban pane', () => {

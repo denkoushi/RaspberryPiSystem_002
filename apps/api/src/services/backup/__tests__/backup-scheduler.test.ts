@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BackupScheduler } from '../backup-scheduler';
 
+vi.mock('../../../config/env/load-dotenv.js', () => ({}));
+vi.mock('../../../lib/prisma.js', () => ({ prisma: {} }));
+
 type BackupListEntry = {
   path?: string | null;
   modifiedAt?: Date | string | null;

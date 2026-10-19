@@ -30,6 +30,7 @@ class SignageReleaseArtifactTest(unittest.TestCase):
             {
                 "clients/status-agent/status-agent.py",
                 "clients/status-agent/storage_health.py",
+                "clients/status-agent/network_health.py",
                 "clients/status-agent/terminal_agent_health.py",
                 "scripts/deploy/rolling_release/terminal_device_maintenance.py",
             },
@@ -72,6 +73,7 @@ class SignageReleaseArtifactTest(unittest.TestCase):
                         "SIGNAGE-RELEASE.json",
                         "status_agent.py",
                         "storage_health.py",
+                        "network_health.py",
                         "terminal_agent_health.py",
                         "terminal_device_maintenance.py",
                     },

@@ -1,3 +1,4 @@
+import { projectAssemblyProcedureOverlayBBoxToCrop } from '@raspi-system/shared-types';
 import { useCallback, useRef } from 'react';
 
 import {
@@ -10,11 +11,13 @@ import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
 import { createOverlayForRange, type OverlayCreationKind, type OverlayDraftAction } from './assemblyDocumentEditorDraft';
 
+import type { ProcedureMaterialDto } from '../procedure-manuals/procedure-material-types';
 import type {
   AssemblyProcedureDocumentDto,
   AssemblyProcedureTextCandidateDto
 } from '../types';
 import type {
+  OverlayRegionImage,
   AssemblyProcedureOverlayBBox,
   AssemblyProcedureOverlayElement
 } from '@raspi-system/shared-types';
@@ -40,6 +43,7 @@ export type AssemblyProcedureDocumentOverlayCommandSession = {
   setDocument: StateSetter<AssemblyProcedureDocumentDto | null>;
   setBusy: StateSetter<boolean>;
   setMessage: StateSetter<string | null>;
+  setErrorMessage?: StateSetter<string | null>;
   setPendingRange: StateSetter<AssemblyProcedureOverlayBBox | null>;
   setSelectionMode: StateSetter<boolean>;
   setSelectedOverlayId: StateSetter<string | null>;
@@ -50,6 +54,20 @@ export type AssemblyProcedureDocumentOverlayCommandSession = {
   holderToken?: string | null;
   onEditLeaseError?: (error: unknown) => boolean;
 };
+
+function regionOverlays(
+  elements: AssemblyProcedureOverlayElement[],
+  pageIndex: number,
+  bbox: AssemblyProcedureOverlayBBox
+): { overlays?: OverlayRegionImage[] } {
+  const overlays = elements
+    .filter((element): element is Extract<AssemblyProcedureOverlayElement, { kind: 'IMAGE' }> =>
+      element.kind === 'IMAGE' && element.pageIndex === pageIndex &&
+      Boolean(element.assetId) && projectAssemblyProcedureOverlayBBoxToCrop(element.bbox, bbox) !== null)
+    .sort((left, right) => left.zIndex - right.zIndex)
+    .map(({ assetId, bbox, zIndex, objectFit, opacity }) => ({ assetId, bbox, zIndex, objectFit, opacity }));
+  return overlays.length ? { overlays } : {};
+}
 
 export function useAssemblyProcedureDocumentOverlayCommands(
   session: AssemblyProcedureDocumentOverlayCommandSession
@@ -109,7 +127,8 @@ export function useAssemblyProcedureDocumentOverlayCommands(
           id: document.id,
           accessPassword: passwordInput,
           pageIndex: selectedPage.pageIndex,
-          bbox: range
+          bbox: range,
+          ...regionOverlays(session.elements, selectedPage.pageIndex, range)
         });
         if (candidates.length > 0) {
           setTextCandidates(candidates);
@@ -125,7 +144,8 @@ export function useAssemblyProcedureDocumentOverlayCommands(
           id: document.id,
           accessPassword: passwordInput,
           pageIndex: selectedPage.pageIndex,
-          bbox: range
+          bbox: range,
+          ...regionOverlays(session.elements, selectedPage.pageIndex, range)
         });
         setDocument((current) => current ? {
           ...current,
@@ -138,10 +158,10 @@ export function useAssemblyProcedureDocumentOverlayCommands(
       if (session.onEditLeaseError?.(error)) return;
       if (kind === 'TEXT') {
         addCreatedOverlay(kind, range);
-        setMessage(`文章抽出に失敗したため、手入力の文章オーバーレイを追加しました。${readAssemblyApiErrorMessage(error, '')}`);
+        (session.setErrorMessage ?? setMessage)(`文章抽出に失敗したため、手入力の文章オーバーレイを追加しました。${readAssemblyApiErrorMessage(error, '')}`);
       } else {
         addCreatedOverlay(kind, range);
-        setMessage(`画像切り出しに失敗しました。画像assetを指定して保存してください。${readAssemblyApiErrorMessage(error, '')}`);
+        (session.setErrorMessage ?? setMessage)(`画像切り出しに失敗しました。画像assetを指定して保存してください。${readAssemblyApiErrorMessage(error, '')}`);
       }
     } finally {
       setBusy(false);
@@ -223,7 +243,8 @@ export function useAssemblyProcedureDocumentOverlayCommands(
         id: document.id,
         accessPassword: passwordInput,
         pageIndex,
-        bbox
+        bbox,
+        ...regionOverlays(session.elements, pageIndex, bbox)
       });
       if (candidates.length > 0) {
         setTextCandidates(candidates);
@@ -234,7 +255,7 @@ export function useAssemblyProcedureDocumentOverlayCommands(
       }
     } catch (error: unknown) {
       if (session.onEditLeaseError?.(error)) return;
-      setMessage(readAssemblyApiErrorMessage(error, '文章候補の再取得に失敗しました。'));
+      (session.setErrorMessage ?? setMessage)(readAssemblyApiErrorMessage(error, '文章候補の再取得に失敗しました。'));
     } finally {
       setBusy(false);
     }
@@ -270,7 +291,7 @@ export function useAssemblyProcedureDocumentOverlayCommands(
       setMessage('画像assetを登録しました。保存してください。');
     } catch (error: unknown) {
       if (session.onEditLeaseError?.(error)) return;
-      setMessage(readAssemblyApiErrorMessage(error, '画像assetの登録に失敗しました。'));
+      (session.setErrorMessage ?? setMessage)(readAssemblyApiErrorMessage(error, '画像assetの登録に失敗しました。'));
     } finally {
       setBusy(false);
     }
@@ -293,8 +314,37 @@ export function useAssemblyProcedureDocumentOverlayCommands(
     } finally { session.setBusy(false); }
   }, [addCreatedOverlay, session]);
 
+  const replaceSelectedImageMaterial = useCallback(async (material: Pick<ProcedureMaterialDto, 'id' | 'kind'>) => {
+    const { document, selectedElement, busy, readOnly } = session;
+    if (!document || !selectedElement || selectedElement.kind !== 'IMAGE' || readOnly || busy) throw new Error('現在は画像を差し替えできません');
+    if (material.kind !== 'PHOTO') throw new Error('画像の素材を選んでください。');
+    session.setBusy(true);
+    try {
+      const { asset } = await placeProcedureMaterial({
+        ...(session.holderToken ? { holderToken: session.holderToken } : {}),
+        id: document.id,
+        materialId: material.id,
+        pageIndex: selectedElement.pageIndex,
+        accessPassword: session.passwordInput
+      });
+      if (!asset) throw new Error('画像素材を選択してください。');
+      session.setDocument((current) => current ? {
+        ...current,
+        assets: { ...current.assets, [asset.assetId]: asset }
+      } : current);
+      session.dispatch({ type: 'update', element: { ...selectedElement, assetId: asset.assetId } });
+      session.setMessage('画像を差し替えました。保存してください。');
+    } catch (error: unknown) {
+      session.onEditLeaseError?.(error);
+      throw error;
+    } finally {
+      session.setBusy(false);
+    }
+  }, [session]);
+
   return {
     placeMaterial,
+    replaceSelectedImageMaterial,
     createOverlay,
     chooseTextCandidate,
     cancelTextCandidates,

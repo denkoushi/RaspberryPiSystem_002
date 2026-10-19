@@ -1,19 +1,25 @@
-import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
+import { isAxiosError } from 'axios';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
-import { addBlankAssemblyProcedurePage } from '../../../api/client';
+import { addBlankAssemblyProcedurePage, createAssemblyProcedureDocumentRevision } from '../../../api/client';
 import { useUnsavedChangesGuard } from '../../navigation/useUnsavedChangesGuard';
-import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
+import { createAssemblyRequestId, readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
+import { clearProcedureEditorAccess, readProcedureEditorAccess, subscribeProcedureEditorAccess } from '../procedureEditorAccess';
 
 import {
+  createOverlayForRange,
+  createOverlayId,
   isOverlayDraftSaveable,
   overlayDraftReducer,
   overlayDraftSnapshot,
-  updateOverlayBBox
+  updateOverlayBBox,
+  type OverlayDraftAction
 } from './assemblyDocumentEditorDraft';
 import { readDocumentEditorConflict } from './documentEditorConflict';
 import {
   selectDocumentElement,
   selectDocumentPage,
+  selectDocumentOverlayElements,
   selectDocumentPageElements,
   selectDocumentPages
 } from './documentEditorSelectors';
@@ -21,26 +27,56 @@ import { useAssemblyDocumentEditorRecovery } from './useAssemblyDocumentEditorRe
 import { useAssemblyProcedureDocumentEditLease } from './useAssemblyProcedureDocumentEditLease';
 import { useAssemblyProcedureDocumentOverlayCommands } from './useAssemblyProcedureDocumentOverlayCommands';
 import { useAssemblyProcedureDocumentRevisionCommands } from './useAssemblyProcedureDocumentRevisionCommands';
+import { useAssemblyProcedureLayoutSuggestions } from './useAssemblyProcedureLayoutSuggestions';
 
 import type { AssemblyProcedureDocumentDto, AssemblyProcedureTextCandidateDto } from '../types';
 import type { AssemblyProcedureOverlayBBox, AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 
+type OverlayHistory = { past: AssemblyProcedureOverlayElement[][]; present: AssemblyProcedureOverlayElement[]; future: AssemblyProcedureOverlayElement[][]; dragStart: AssemblyProcedureOverlayElement[] | null };
+function historyReducer(state: OverlayHistory, action: OverlayDraftAction | { type: 'undo' } | { type: 'redo' } | { type: 'beginDrag' } | { type: 'endDrag' }): OverlayHistory {
+  if (action.type === 'beginDrag') return { ...state, dragStart: state.present };
+  if (action.type === 'endDrag') {
+    if (!state.dragStart) return state;
+    if (overlayDraftSnapshot(state.dragStart) === overlayDraftSnapshot(state.present)) return { ...state, dragStart: null };
+    return { dragStart: null, past: [...state.past.slice(-49), state.dragStart], present: state.present, future: [] };
+  }
+  if (action.type === 'undo') {
+    if (!state.past.length) return state;
+    return { dragStart: null, past: state.past.slice(0, -1), present: state.past[state.past.length - 1], future: [state.present, ...state.future] };
+  }
+  if (action.type === 'redo') {
+    if (!state.future.length) return state;
+    return { dragStart: null, past: [...state.past, state.present], present: state.future[0], future: state.future.slice(1) };
+  }
+  const present = overlayDraftReducer(state.present, action);
+  if (action.type === 'replace' && action.preserveHistory) return { ...state, present };
+  if (action.type === 'replace' || action.type === 'clear') return { dragStart: null, past: [], present, future: [] };
+  if (overlayDraftSnapshot(present) === overlayDraftSnapshot(state.present)) return state;
+  if (state.dragStart) return { ...state, present };
+  return { dragStart: null, past: [...state.past.slice(-49), state.present], present, future: [] };
+}
+
 type ControllerInput = {
   documentId: string;
   onNavigateBack?: () => void;
+  onNavigateAfterDelete?: () => void;
   onNavigateAfterDiscard?: () => void;
   onNavigateAfterPublish?: (document: AssemblyProcedureDocumentDto) => void;
 };
 
 export function useAssemblyProcedureDocumentEditorController(input: ControllerInput) {
   const [document, setDocument] = useState<AssemblyProcedureDocumentDto | null>(null);
-  const [elements, dispatch] = useReducer(overlayDraftReducer, []);
+  const [history, dispatch] = useReducer(historyReducer, { past: [], present: [], future: [], dragStart: null });
+  const elements = history.present;
   const [baselineSnapshot, setBaselineSnapshot] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [accessGranted, setAccessGranted] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessageState] = useState<string | null>(null);
+  const [messageIsError, setMessageIsError] = useState(false);
+  const setMessage = useCallback((value: import('react').SetStateAction<string | null>) => { setMessageIsError(false); setMessageState(value); }, []);
+  const setErrorMessage = useCallback((value: import('react').SetStateAction<string | null>) => { setMessageIsError(true); setMessageState(value); }, []);
   const [selectedPageIndex, setSelectedPageIndex] = useState(0);
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -69,8 +105,8 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   );
 
   const onStorageError = useCallback(() => {
-    setMessage('端末の下書き領域へ保存できませんでした。明示保存を行ってください。');
-  }, []);
+    setErrorMessage('端末の下書き領域へ保存できませんでした。明示保存を行ってください。');
+  }, [setErrorMessage]);
   const recovery = useAssemblyDocumentEditorRecovery({
     documentId: document?.id ?? input.documentId,
     baseUpdatedAt: document?.updatedAt ?? null,
@@ -89,15 +125,55 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
       setSelectionMode(false);
       setPendingRange(null);
       setTextCandidates([]);
-      setMessage(`${lease.holderLabel}に引き継がれました。未保存の内容は端末に保持しています`);
+      setErrorMessage(`${lease.holderLabel}に引き継がれました。未保存の内容は端末に保持しています`);
     }
   });
-  const { handleError: onEditLeaseError } = editLease;
-  const readOnly = !accessGranted || document?.status !== 'draft' || (!editLease.mine && !editLease.unavailable);
+  const expiryRecovery = useRef({ isDirty, document, saveRecoveryImmediately });
+  expiryRecovery.current = { isDirty, document, saveRecoveryImmediately };
+  const revokeAccess = useCallback(() => {
+    const current = expiryRecovery.current;
+    if (current.isDirty) current.saveRecoveryImmediately({ baseUpdatedAt: current.document?.updatedAt ?? null, editVersion: current.document?.editVersion ?? 0 });
+    dispatch({ type: 'endDrag' });
+    clearProcedureEditorAccess();
+    setAccessGranted(false);
+    setPasswordInput('');
+  }, []);
+  const handleLeaseError = editLease.handleError;
+  const onEditLeaseError = useCallback((error: unknown) => {
+    const status = isAxiosError(error) ? error.response?.status : undefined;
+    if (status === 401 || status === 403) {
+      revokeAccess();
+      setErrorMessage('認証の期限が切れました。');
+      return true;
+    }
+    return handleLeaseError(error);
+  }, [handleLeaseError, revokeAccess, setErrorMessage]);
+  useEffect(() => subscribeProcedureEditorAccess(() => {
+    if (!readProcedureEditorAccess()) {
+      revokeAccess();
+      setErrorMessage('認証の期限が切れました。');
+    }
+  }), [revokeAccess, setErrorMessage]);
+  const baseReadOnly = !accessGranted || document?.status !== 'draft' || (!editLease.mine && !editLease.unavailable);
+  const layoutSuggestions = useAssemblyProcedureLayoutSuggestions({
+    documentId: document?.id ?? null,
+    pageIndex: selectedPageIndex,
+    elements: selectedPageElements,
+    accessPassword: passwordInput,
+    holderToken: editLease.holderToken,
+    disabled: baseReadOnly || busy || conflict || !editLease.mine,
+    onStart: () => { setSelectedOverlayId(null); setSelectionMode(false); setMessage(null); },
+    onApply: proposed => { dispatch({ type: 'applyLayout', pageIndex: selectedPageIndex, elements: proposed }); setMessage('整えました。元に戻せます'); },
+    onEditLeaseError
+  });
+  const readOnly = baseReadOnly || layoutSuggestions.locked;
   const revisionSession = useMemo(() => ({
+    appliedCaptionElementIds: layoutSuggestions.appliedCaptionElementIds,
     document,
+    hasAuthenticated: baselineSnapshot != null,
     elements,
     passwordInput,
+    setPasswordInput,
     busy,
     isDirty,
     readOnly,
@@ -105,30 +181,39 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     onEditLeaseError,
     holderToken: editLease.holderToken,
     setAccessGranted,
+    revokeAccess,
     setBaselineSnapshot,
     setBusy,
     setConflict,
     setConflictEditVersion,
     setDocument,
     setMessage,
+    setErrorMessage,
     setSelectedOverlayId,
     dispatch,
     recovery,
+    onNavigateAfterDelete: input.onNavigateAfterDelete,
     onNavigateAfterDiscard: input.onNavigateAfterDiscard,
     onNavigateAfterPublish: input.onNavigateAfterPublish
   }), [
+    layoutSuggestions.appliedCaptionElementIds,
     busy,
+    baselineSnapshot,
     conflictEditVersion,
     document,
     onEditLeaseError,
+    revokeAccess,
     editLease.holderToken,
     elements,
     input.onNavigateAfterDiscard,
+    input.onNavigateAfterDelete,
     input.onNavigateAfterPublish,
     isDirty,
     passwordInput,
     readOnly,
-    recovery
+    recovery,
+    setMessage,
+    setErrorMessage
   ]);
   const revisionCommands = useAssemblyProcedureDocumentRevisionCommands(revisionSession);
   const { loadDocument } = revisionCommands;
@@ -144,6 +229,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     setDocument,
     setBusy,
     setMessage,
+    setErrorMessage,
     setPendingRange,
     setSelectionMode,
     setSelectedOverlayId,
@@ -164,7 +250,9 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     selectedElement,
     selectedPage,
     textCandidateRange,
-    elements
+    elements,
+    setMessage,
+    setErrorMessage
   ]);
   const overlayCommands = useAssemblyProcedureDocumentOverlayCommands(overlaySession);
   useEffect(() => {
@@ -177,13 +265,31 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     setBaselineSnapshot(null);
     setConflictEditVersion(null);
     void loadDocument(input.documentId)
-      .then((next) => {
+      .then(async (next) => {
         if (cancelled) return;
         setDocument(next);
         setSelectedPageIndex(next.pages[0]?.pageIndex ?? 0);
+        const access = readProcedureEditorAccess();
+        if (!access) return;
+        try {
+          const editable = await createAssemblyProcedureDocumentRevision(next.id, access.pin);
+          if (cancelled) return;
+          const currentAccess = readProcedureEditorAccess();
+          if (!currentAccess || currentAccess.expiresAt !== access.expiresAt || currentAccess.clientKey !== access.clientKey || currentAccess.pin !== access.pin) throw new Error('認証の期限が切れました。');
+          const nextElements = selectDocumentOverlayElements(editable);
+          setPasswordInput(access.pin);
+          setDocument(editable);
+          dispatch({ type: 'replace', elements: nextElements });
+          setBaselineSnapshot(overlayDraftSnapshot(nextElements));
+          setAccessGranted(true);
+        } catch (error) {
+          if (cancelled) return;
+          revokeAccess();
+          setErrorMessage(readAssemblyApiErrorMessage(error, '認証または改版の作成に失敗しました。'));
+        }
       })
       .catch((error: unknown) => {
-        if (!cancelled) setMessage(readAssemblyApiErrorMessage(error, '手順書を取得できませんでした。'));
+        if (!cancelled) setErrorMessage(readAssemblyApiErrorMessage(error, '手順書を取得できませんでした。'));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -191,20 +297,21 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     return () => {
       cancelled = true;
     };
-  }, [input.documentId, loadDocument]);
+  }, [input.documentId, loadDocument, revokeAccess, setMessage, setErrorMessage]);
 
   const restoreRecovery = useCallback(() => {
     const recovered = recovery.restore();
     if (!recovered) return;
     dispatch({ type: 'replace', elements: recovered });
     setMessage('端末に残っていた下書きを復元しました。保存して確定してください。');
-  }, [recovery]);
+  }, [recovery, setMessage]);
 
-  const { confirmNavigation } = useUnsavedChangesGuard(accessGranted && isDirty && !busy);
+  const { confirmNavigation } = useUnsavedChangesGuard(isDirty);
   const onNavigateBack = input.onNavigateBack;
   const navigateBack = useCallback(() => {
+    if (layoutSuggestions.locked) return;
     if (confirmNavigation()) onNavigateBack?.();
-  }, [confirmNavigation, onNavigateBack]);
+  }, [confirmNavigation, onNavigateBack, layoutSuggestions.locked]);
 
   const handleRangeSelected = useCallback((bbox: AssemblyProcedureOverlayBBox) => {
     setPendingRange(bbox);
@@ -215,10 +322,11 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     setSelectionMode(false);
   }, []);
   const setSelectedPage = useCallback((pageIndex: number) => {
+    if (layoutSuggestions.locked) return;
     setSelectedPageIndex(pageIndex);
     setSelectedOverlayId(null);
     setPendingRange(null);
-  }, []);
+  }, [layoutSuggestions.locked]);
 
   const updateElement = useCallback((element: AssemblyProcedureOverlayElement) => {
     if (!readOnly) dispatch({ type: 'update', element });
@@ -228,6 +336,12 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   }, [readOnly]);
   const sendBackward = useCallback((id: string) => {
     if (!readOnly) dispatch({ type: 'sendBackward', id });
+  }, [readOnly]);
+  const bringToFront = useCallback((id: string) => {
+    if (!readOnly) dispatch({ type: 'bringToFront', id });
+  }, [readOnly]);
+  const sendToBack = useCallback((id: string) => {
+    if (!readOnly) dispatch({ type: 'sendToBack', id });
   }, [readOnly]);
   const nudgeElement = useCallback((id: string, dxRatio: number, dyRatio: number) => {
     if (!readOnly) dispatch({ type: 'nudge', id, dxRatio, dyRatio });
@@ -259,19 +373,56 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
       if (onEditLeaseError(error)) return;
       const nextConflict = readDocumentEditorConflict(error);
       if (nextConflict) { setConflict(true); setConflictEditVersion(nextConflict.currentEditVersion); }
-      setMessage(readAssemblyApiErrorMessage(error, '白紙ページを追加できませんでした。'));
+      setErrorMessage(readAssemblyApiErrorMessage(error, '白紙ページを追加できませんでした。'));
     } finally { setBusy(false); }
-  }, [editLease.holderToken, busy, conflict, document, onEditLeaseError, isDirty, passwordInput, readOnly, saveRecoveryImmediately, setSelectedPage]);
+  }, [editLease.holderToken, busy, conflict, document, onEditLeaseError, isDirty, passwordInput, readOnly, saveRecoveryImmediately, setSelectedPage, setMessage, setErrorMessage]);
+
+  const duplicateOverlayToCurrentPage = useCallback((sourceId: string) => {
+    if (readOnly || busy || !selectedPage) return;
+    const source = elements.find((element) => element.id === sourceId);
+    if (!source || source.pageIndex === selectedPage.pageIndex) return;
+    const id = createOverlayId();
+    dispatch({ type: 'duplicate', sourceId, id, pageIndex: selectedPage.pageIndex });
+    setSelectedOverlayId(id);
+  }, [readOnly, busy, selectedPage, elements]);
+
+  const duplicateSelectedOverlay = useCallback(() => {
+    if (!selectedElement || readOnly) return;
+    const copy = { ...selectedElement, id: createAssemblyRequestId(), zIndex: Math.max(0, ...elements.map(element => element.zIndex)) + 1 };
+    dispatch({ type: 'add', element: copy });
+    setSelectedOverlayId(copy.id);
+  }, [selectedElement, elements, readOnly]);
+  const addOverlay = useCallback((kind: 'TEXT' | 'SHAPE') => {
+    if (readOnly || busy) return;
+    // Toolbar creation uses a visible starter box; range creation retains OCR/cropping.
+    const element = createOverlayForRange(kind, selectedPageIndex, { xRatio: 0.25, yRatio: 0.25, widthRatio: 0.3, heightRatio: 0.15 }, elements);
+    dispatch({ type: 'add', element });
+    setSelectedOverlayId(element.id);
+    setSelectionMode(false);
+  }, [busy, readOnly, selectedPageIndex, elements]);
 
   return {
+    layoutSuggestions,
+    onEditLeaseError,
+    beginOverlayDrag: () => { if (!readOnly) dispatch({ type: 'beginDrag' }); },
+    endOverlayDrag: () => dispatch({ type: 'endDrag' }),
+    canUndo: history.past.length > 0,
+    canRedo: history.future.length > 0,
+    undo: () => { if (!readOnly && !busy) dispatch({ type: 'undo' }); },
+    redo: () => { if (!readOnly && !busy) dispatch({ type: 'redo' }); },
+    addOverlay,
+    duplicateSelectedOverlay,
+    duplicateOverlayToCurrentPage,
     addBlankPage,
     placeMaterial: overlayCommands.placeMaterial,
+    replaceSelectedImageMaterial: overlayCommands.replaceSelectedImageMaterial,
     document,
     pages: selectDocumentPages(document),
     loading,
     accessGranted,
     busy,
     message,
+    messageIsError,
     conflict,
     conflictEditVersion,
     reloadConflict: revisionCommands.reloadConflict,
@@ -284,11 +435,11 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     selectedPage,
     selectedPageElements,
     selectedOverlayId,
-    setSelectedOverlayId,
+    setSelectedOverlayId: (id: string | null) => { if (!layoutSuggestions.locked) setSelectedOverlayId(id); },
     selectedElement,
     elements,
     selectionMode: selectionMode && !readOnly,
-    setSelectionMode,
+    setSelectionMode: (value: boolean) => { if (!layoutSuggestions.locked) setSelectionMode(value); },
     pendingRange,
     cancelPendingRange,
     createOverlay: overlayCommands.createOverlay,
@@ -298,6 +449,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     save: revisionCommands.save,
     publish: revisionCommands.publish,
     discard: revisionCommands.discard,
+    deleteDocument: revisionCommands.deleteDocument,
     navigateBack,
     isDirty,
     readOnly,
@@ -318,6 +470,8 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     uploadImage: overlayCommands.uploadImage,
     bringForward,
     sendBackward,
+    bringToFront,
+    sendToBack,
     nudgeElement,
     updateElementBBox,
     confirmNavigation,

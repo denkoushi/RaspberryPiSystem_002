@@ -29,8 +29,8 @@ business evidence before presenting a conclusion.
 
 The current route is a bounded classify -> API search -> chat flow:
 `apps/api/src/routes/assembly/business-hermes.ts` calls
-`apps/api/src/services/assembly/business-hermes-chat.service.ts`, which uses
-`apps/api/src/services/assembly/business-hermes.service.ts`. The current UI
+`apps/api/src/services/business-hermes/business-hermes-chat.service.ts`, which uses
+`apps/api/src/services/business-hermes/business-hermes.service.ts`. The current UI
 keeps a twelve-message request window and has no durable business consultation
 case. The policy must preserve existing JWT roles, `clientKey` authentication,
 imports, publication rules, active photo boundaries, lightweight Pi4 behavior,
@@ -188,6 +188,6 @@ RAG/MCPを先に決めず振る舞いを軸にする。ただしphase1の技術�
 - [Hermes business butler phase1 ExecPlan](../plans/business-hermes-butler-phase1-execplan.md)
 - [Hermes business butler technical gate plan](../plans/business-hermes-butler-gate-execplan.md)
 - [Current business Hermes route](../../apps/api/src/routes/assembly/business-hermes.ts)
-- [Current business Hermes chat service](../../apps/api/src/services/assembly/business-hermes-chat.service.ts)
-- [Current business Hermes upstream service](../../apps/api/src/services/assembly/business-hermes.service.ts)
+- [Current business Hermes chat service](../../apps/api/src/services/business-hermes/business-hermes-chat.service.ts)
+- [Current business Hermes upstream service](../../apps/api/src/services/business-hermes/business-hermes.service.ts)
 - [Work-instruction manifest](../../apps/api/src/services/work-instructions/domain/manifest.ts)

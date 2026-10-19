@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -79,9 +79,32 @@ export class FfmpegProcedureVideoTranscoderAdapter implements ProcedureVideoTran
     }
   }
 
+  async extractFrames(input: string, outDir: string, options: { intervalSeconds: 1; maxLongEdge: 640 }) {
+    const scale = `scale='if(gt(iw,ih),${options.maxLongEdge},-2)':'if(gt(iw,ih),-2,${options.maxLongEdge})'`;
+    // Start at the first frame, so timestamps correspond to 0, 1, ... seconds.
+    await this.run('ffmpeg', ['-nostdin', '-y', '-i', input, '-an', '-threads', '2', '-vf', `fps=1/${options.intervalSeconds}:start_time=0:round=up,${scale}`, '-frames:v', '61', '-q:v', '2', path.join(outDir, 'frame-%03d.jpg')], 120_000);
+    const files = (await readdir(outDir)).filter((name) => /^frame-\d+\.jpg$/.test(name)).sort();
+    return files.map((name, index) => ({ path: path.join(outDir, name), atSeconds: index * options.intervalSeconds }));
+  }
+
+  async posterAt(input: string, poster: string, startSeconds: number): Promise<void> {
+    if (!Number.isFinite(startSeconds) || startSeconds < 0) throw new ProcedureVideoTranscodeError('INVALID_VIDEO', '開始位置が不正です');
+    try {
+      await this.posterFrame(input, poster, String(startSeconds));
+      if ((await stat(poster)).size <= 0) throw new ProcedureVideoTranscodeError('TRANSCODE_FAILED', '動画のポスターを生成できません');
+    } catch (error) {
+      await rm(poster, { force: true });
+      throw error;
+    }
+  }
+
+  private posterFrame(input: string, poster: string, seek: string) {
+    return this.run('ffmpeg', ['-nostdin', '-y', '-ss', seek, '-i', input, '-an', '-threads', '2', '-frames:v', '1', '-vf', SCALE, poster], 30_000);
+  }
+
   private async createPoster(output: string, poster: string, firstFrame = false, onStepComplete?: () => Promise<void>): Promise<void> {
     const probe = await this.probe(output);
-    const createPoster = (seek: string) => this.run('ffmpeg', ['-nostdin', '-y', '-ss', seek, '-i', output, '-an', '-threads', '2', '-frames:v', '1', '-vf', SCALE, poster], 30_000);
+    const createPoster = (seek: string) => this.posterFrame(output, poster, seek);
     const hasPoster = async () => {
       try { return (await stat(poster)).size > 0; }
       catch (error) {

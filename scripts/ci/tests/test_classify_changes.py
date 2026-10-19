@@ -166,6 +166,12 @@ class ClassifyChangesTests(unittest.TestCase):
         self.assertFalse(deploy_test["releasePair"])
         self.assertFalse(deploy_test["runtimeRehearsal"])
 
+        for path in ('scripts/deploy/kiosk_release_notice.py',
+                     'scripts/deploy/tests/test_kiosk_release_notice.py'):
+            notice = self.classify(Change('A', path))
+            self.assertEqual(self.selected(notice), {'repo_policy', 'deploy_contract'})
+            self.assertEqual(notice['failClosedReasons'], [])
+
         client = self.classify(Change("M", "clients/nfc-agent/nfc_agent/main.py"))
         self.assertEqual(self.selected(client), {"repo_policy", "client"})
 
@@ -293,6 +299,7 @@ class ClassifyChangesTests(unittest.TestCase):
             "infrastructure/ansible/templates/kiosk-launch.sh.j2",
             "infrastructure/ansible/templates/kiosk-browser.service.j2",
             "infrastructure/ansible/roles/kiosk/tasks/resolve-browser.yml",
+            "infrastructure/ansible/roles/kiosk/templates/show-kiosk-panel.sh.j2",
             "infrastructure/ansible/roles/kiosk/defaults/main.yml",
             "infrastructure/ansible/inventory.yml",
             "infrastructure/ansible/templates/status-agent.conf.j2",

@@ -6,12 +6,15 @@ import {
 } from '../../part-measurement/inspection-drawing/inspectionDrawingCanvasPointer';
 import { formatResourceCdWithJapaneseNames } from '../leaderOrderBoard/formatResourceCdWithJapaneseNames';
 
+import { pageZoom } from './pageZoom';
 import { PlanningBoardItemTable } from './PlanningBoardItemTable';
-import { resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } from './sortGrindingPlanningBoardItems';
+import { resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems, sortPlanningBoardResources } from './sortGrindingPlanningBoardItems';
 import { usePlanningBoardPaneOrder } from './usePlanningBoardPaneOrder';
 
 import type { PlanningBoardAllocation } from './types';
 import type {
+  GrindingPlanningBoardCategory,
+  GrindingPlanningBoardResponse,
   GrindingPlanningBoardItem,
   GrindingPlanningBoardResourceOrderPlacement,
   GrindingPlanningBoardSpecialDueKind
@@ -19,13 +22,20 @@ import type {
 
 export type PlanningBoardResourceViewProps = {
   items: readonly GrindingPlanningBoardItem[];
+  focusedSeiban?: string | null;
+  scanFocusKey?: number;
   seibanOrder: readonly string[];
   resources: readonly string[];
+  category?: GrindingPlanningBoardCategory;
+  resourceCategories?: GrindingPlanningBoardResponse['resourceCategories'];
+  canMoveResource?: (item: GrindingPlanningBoardItem, target: string) => boolean;
   resourceNameMap: Record<string, string[]>;
   preferenceScope?: string;
   allocation: PlanningBoardAllocation;
   selectedItemIds: ReadonlySet<string>;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
+  onCompleteToggle?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
+  completionPendingRowIds?: ReadonlySet<string>;
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onResourceDrop?: (item: GrindingPlanningBoardItem, resourceCd: string) => void;
   onResourceReorder?: (
@@ -64,6 +74,10 @@ type PendingResourceDrag = {
   dropRowOriginalBorderTop: string;
   dropRowOriginalBorderBottom: string;
   originalButtonOpacity: string;
+  sourceRow: HTMLElement | null;
+  sourceOutline: string;
+  sourceOutlineOffset: string;
+  sourceBackground: string;
 };
 
 const RESOURCE_PANE_SELECTOR = '[data-planning-board-resource-pane]';
@@ -98,6 +112,15 @@ function restoreDropRow(drag: PendingResourceDrag): void {
   drag.dropRowElement = null;
 }
 
+function restoreSourceRow(drag: PendingResourceDrag): void {
+  if (!drag.sourceRow) return;
+  drag.sourceRow.style.outline = drag.sourceOutline;
+  drag.sourceRow.style.outlineOffset = drag.sourceOutlineOffset;
+  drag.sourceRow.style.backgroundColor = drag.sourceBackground;
+  delete drag.sourceRow.dataset.planningBoardDragSource;
+  drag.sourceRow = null;
+}
+
 function setDropRow(
   drag: PendingResourceDrag,
   row: HTMLElement | null,
@@ -128,13 +151,18 @@ function itemRowAtPoint(clientX: number, clientY: number, pane: HTMLElement): HT
 
 export function PlanningBoardResourceView({
   items,
+  focusedSeiban = null,
+  scanFocusKey = 0,
   seibanOrder,
   resources,
+  category, resourceCategories, canMoveResource,
   resourceNameMap,
   preferenceScope = 'default',
   allocation,
   selectedItemIds,
   onToggleItem,
+  onCompleteToggle,
+  completionPendingRowIds,
   onResourceClick,
   onResourceDrop,
   onResourceReorder,
@@ -175,18 +203,22 @@ export function PlanningBoardResourceView({
     pane.style.outlineOffset = '-2px';
   }, [restoreDropPane]);
 
+  const validTargets = useCallback((item: GrindingPlanningBoardItem) => canMoveResource
+    ? new Set(resources.filter((resource) => canMoveResource(item, resource))) : validResources,
+  [canMoveResource, resources, validResources]);
+
   const flushResourceDragFrame = useCallback(() => {
     const drag = pendingResourceDragRef.current;
     if (!drag) return;
     drag.frameId = null;
     if (!drag.ghostElement) return;
     drag.ghostElement.style.transform =
-      'translate3d(' + (drag.pendingClientX - drag.ghostOffsetX) + 'px, ' +
-      (drag.pendingClientY - drag.ghostOffsetY) + 'px, 0)';
+      'translate3d(' + ((drag.pendingClientX - drag.ghostOffsetX) / pageZoom()) + 'px, ' +
+      ((drag.pendingClientY - drag.ghostOffsetY) / pageZoom()) + 'px, 0)';
     const pane = resourcePaneAtPoint(
       drag.pendingClientX,
       drag.pendingClientY,
-      validResources
+      validTargets(drag.item)
     );
     setDropPane(drag, pane);
     if (pane?.dataset.resourceCode !== (drag.sourceResource ?? '未設定')) {
@@ -205,7 +237,7 @@ export function PlanningBoardResourceView({
         ? 'before'
         : 'after';
     setDropRow(drag, row, placement);
-  }, [items, setDropPane, validResources]);
+  }, [items, setDropPane, validTargets]);
 
   const scheduleResourceDragFrame = useCallback(() => {
     const drag = pendingResourceDragRef.current;
@@ -217,15 +249,20 @@ export function PlanningBoardResourceView({
     if (drag.ghostElement) return;
     const rect = drag.buttonElement.getBoundingClientRect();
     const ghost = document.createElement('div');
-    ghost.textContent = drag.sourceResource ?? '—';
+    const code = document.createElement('span');
+    code.className = 'font-mono text-[15px] font-bold';
+    code.textContent = drag.sourceResource ?? '—';
+    const name = document.createElement('span');
+    name.className = 'max-w-64 truncate text-[13px] font-normal';
+    name.textContent = drag.item.fhinmei || drag.item.fhincd;
+    ghost.append(code, name);
     ghost.setAttribute('aria-hidden', 'true');
-    ghost.className = 'pointer-events-none fixed z-[70] inline-flex min-h-11 items-center justify-center rounded-md border border-indigo-300 bg-slate-900 px-2 font-mono text-[15px] font-bold text-white shadow-lg';
+    ghost.className = 'pointer-events-none fixed z-[70] inline-flex min-h-11 items-center justify-center gap-2 rounded-md border-2 border-amber-400 bg-slate-900 px-2 text-white shadow-lg';
     ghost.style.pointerEvents = 'none';
     ghost.style.left = '0';
     ghost.style.top = '0';
-    ghost.style.width = rect.width + 'px';
-    ghost.style.minWidth = Math.max(rect.width, 44) + 'px';
-    ghost.style.height = Math.max(rect.height, 44) + 'px';
+    ghost.style.minWidth = Math.max(rect.width / pageZoom(), 44) + 'px';
+    ghost.style.minHeight = Math.max(rect.height / pageZoom(), 44) + 'px';
     ghost.style.opacity = '0.96';
     drag.ghostOffsetX = Math.min(Math.max(0, drag.startClientX - rect.left), rect.width);
     drag.ghostOffsetY = Math.min(Math.max(0, drag.startClientY - rect.top), rect.height);
@@ -233,6 +270,17 @@ export function PlanningBoardResourceView({
     drag.ghostElement = ghost;
     drag.originalButtonOpacity = drag.buttonElement.style.opacity;
     drag.buttonElement.style.opacity = '0.35';
+    const row = drag.buttonElement.closest('tr');
+    if (row) {
+      drag.sourceRow = row;
+      drag.sourceOutline = row.style.outline;
+      drag.sourceOutlineOffset = row.style.outlineOffset;
+      drag.sourceBackground = row.style.backgroundColor;
+      row.style.outline = '3px solid rgb(251 191 36)';
+      row.style.outlineOffset = '-3px';
+      row.style.backgroundColor = 'rgba(251,191,36,0.12)';
+      row.dataset.planningBoardDragSource = 'true';
+    }
   }, []);
 
   const clearResourceDrag = useCallback((pointerId: number) => {
@@ -240,6 +288,7 @@ export function PlanningBoardResourceView({
     if (!drag || drag.pointerId !== pointerId) return null;
     cancelResourceDragFrame(drag);
     restoreDropPane(drag);
+    restoreSourceRow(drag);
     drag.buttonElement.style.opacity = drag.originalButtonOpacity;
     drag.ghostElement?.remove();
     pendingResourceDragRef.current = null;
@@ -258,6 +307,7 @@ export function PlanningBoardResourceView({
     if (!drag) return;
     cancelResourceDragFrame(drag);
     restoreDropPane(drag);
+    restoreSourceRow(drag);
     drag.buttonElement.style.opacity = drag.originalButtonOpacity;
     drag.ghostElement?.remove();
     if (drag.buttonElement.hasPointerCapture?.(drag.pointerId)) {
@@ -314,7 +364,8 @@ export function PlanningBoardResourceView({
       dropRowElement: null,
       dropRowOriginalBorderTop: '',
       dropRowOriginalBorderBottom: '',
-      originalButtonOpacity: buttonElement.style.opacity
+      originalButtonOpacity: buttonElement.style.opacity,
+      sourceRow: null, sourceOutline: '', sourceOutlineOffset: '', sourceBackground: ''
     };
     buttonElement.setPointerCapture?.(event.pointerId);
     event.stopPropagation();
@@ -342,7 +393,7 @@ export function PlanningBoardResourceView({
     if (!drag || drag.pointerId !== event.pointerId) return;
     const isDrag = drag.dragging;
     const targetPane = isDrag
-      ? resourcePaneAtPoint(event.clientX, event.clientY, validResources)
+      ? resourcePaneAtPoint(event.clientX, event.clientY, validTargets(drag.item))
       : null;
     const targetResource = targetPane?.dataset.resourceCode ?? null;
     const item = drag.item;
@@ -369,7 +420,7 @@ export function PlanningBoardResourceView({
     }
     if (shouldDrop) onResourceDrop?.(item, targetResource);
     else if (shouldReorder && placement != null) onResourceReorder?.(item, targetItem, placement);
-  }, [clearResourceDrag, items, onResourceDrop, onResourceReorder, validResources]);
+  }, [clearResourceDrag, items, onResourceDrop, onResourceReorder, validTargets]);
 
   const handleResourcePointerCancel = useCallback((event: React.PointerEvent<HTMLElement>) => {
     const drag = pendingResourceDragRef.current;
@@ -419,8 +470,18 @@ export function PlanningBoardResourceView({
   const paneResourceSet = useMemo(() => new Set(paneResources), [paneResources]);
   const paneAtPoint = useCallback((x: number, y: number) => resourcePaneAtPoint(x, y, paneResourceSet), [paneResourceSet]);
   const paneOrder = usePlanningBoardPaneOrder(paneResources, preferenceScope, paneAtPoint, disabled);
+  const orderedResources = useMemo(() => sortPlanningBoardResources(paneOrder.order, category, resourceCategories), [paneOrder.order, category, resourceCategories]);
   const groupsByResource = useMemo(() => new Map(groups), [groups]);
   const gridRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    if (!focusedSeiban) return;
+    gridRef.current?.querySelectorAll<HTMLElement>('[data-resource-scroll]').forEach((scroll) => {
+      const row = scroll.querySelector<HTMLElement>('[data-seiban-focused="true"]');
+      if (row) scroll.scrollTop += (row.getBoundingClientRect().top - scroll.getBoundingClientRect().top) / pageZoom();
+    });
+    // Scroll only when a new scan lands, not on every data refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanFocusKey]);
   const [expanded, setExpanded] = useState<ReadonlyMap<string, { layer: number; height: number }>>(new Map());
   const topLayerRef = useRef(0);
   const [heights, setHeights] = useState({ normal: 361, expanded: 722 });
@@ -436,10 +497,10 @@ export function PlanningBoardResourceView({
       // Measure only the first seven rows, and leave short panes the same height.
       const bodyHeight = Math.max(315, ...tables.map((table) => {
         const rows = [...table.querySelectorAll<HTMLTableRowElement>('tbody tr')].slice(0, 7);
-        return rows.reduce((height, row) => height + row.getBoundingClientRect().height, 0) + (7 - rows.length) * 45;
+        return rows.reduce((height, row) => height + row.getBoundingClientRect().height / pageZoom(), 0) + (7 - rows.length) * 45;
       }));
       const normal = Math.ceil(bodyHeight) + 46;
-      const expandedHeight = Math.max(normal, (scrollParent?.clientHeight || window.innerHeight) - 20);
+      const expandedHeight = Math.max(normal, (scrollParent?.clientHeight || window.innerHeight / pageZoom()) - 20);
       setHeights((current) => current.normal === normal && current.expanded === expandedHeight
         ? current : { normal, expanded: expandedHeight });
     };
@@ -462,7 +523,7 @@ export function PlanningBoardResourceView({
     const overflow = [...grid.children].reduce((space, slot) => {
       const resource = (slot as HTMLElement).dataset.resourceSlot;
       return resource && expanded.has(resource)
-        ? Math.max(space, slot.getBoundingClientRect().top - gridRect.bottom + Math.max(normalHeight, Math.min(expanded.get(resource)!.height, expandedHeight)))
+        ? Math.max(space, (slot.getBoundingClientRect().top - gridRect.bottom) / pageZoom() + Math.max(normalHeight, Math.min(expanded.get(resource)!.height, expandedHeight)))
         : space;
     }, 0);
     setBottomSpace(Math.ceil(overflow));
@@ -473,7 +534,7 @@ export function PlanningBoardResourceView({
     const opening = !expanded.has(resource);
     const layer = ++topLayerRef.current;
     const paneTop = button.closest('article')?.getBoundingClientRect().top ?? 0;
-    const available = Math.min(heights.expanded, window.innerHeight - Math.max(0, paneTop) - 20);
+    const available = Math.min(heights.expanded, (window.innerHeight - Math.max(0, paneTop)) / pageZoom() - 20);
     const needsScroll = available <= heights.normal;
     const height = needsScroll ? heights.expanded : available;
     setExpanded((current) => {
@@ -492,7 +553,7 @@ export function PlanningBoardResourceView({
   return (
     <div className="relative isolate min-w-0" style={{ paddingBottom: bottomSpace }}>
       <div ref={gridRef} className="relative grid min-w-0 grid-cols-1 items-start gap-2.5 lg:grid-cols-2 xl:grid-cols-4" data-testid="planning-board-resource-view">
-        {paneOrder.order.map((resource) => {
+        {orderedResources.map((resource) => {
           const resourceItems = groupsByResource.get(resource) ?? [];
           const isExpanded = expanded.has(resource);
           return (
@@ -546,9 +607,12 @@ export function PlanningBoardResourceView({
                 <div className="min-h-0 flex-1 overflow-y-auto" style={{ scrollbarGutter: 'stable' }} data-resource-scroll>
                   <PlanningBoardItemTable
                     items={resourceItems}
+                    focusedSeiban={focusedSeiban}
                     allocation={allocation}
                     selectedItemIds={selectedItemIds}
                     onToggleItem={onToggleItem}
+                    onCompleteToggle={onCompleteToggle}
+                    completionPendingRowIds={completionPendingRowIds}
                     onResourceClick={handleResourceClick}
                     onResourcePointerDown={handleResourcePointerDown}
                     resourceDragDisabled={resourceDragDisabled}

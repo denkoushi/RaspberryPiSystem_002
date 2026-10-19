@@ -6,9 +6,9 @@ import { Dialog } from '../../../components/ui/Dialog';
 import { Input } from '../../../components/ui/Input';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
-import type { ProcedureVideoSummaryDto } from './procedure-video-types';
+import type { ProcedureVideoDto } from './procedure-video-types';
 
-export function ProcedureVideoConcatDialog({ videos, onClose, onSaved }: { videos: ProcedureVideoSummaryDto[]; onClose: () => void; onSaved: () => void }) {
+export function ProcedureVideoConcatDialog({ videos, onClose, onSaved }: { videos: ProcedureVideoDto[]; onClose: () => void; onSaved: () => void }) {
   const [ordered, setOrdered] = useState(videos);
   const [title, setTitle] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -34,7 +34,6 @@ export function ProcedureVideoConcatDialog({ videos, onClose, onSaved }: { video
       </div>)}
     </section>
     <p role="status" aria-label="合計の長さ" className="mt-2 font-semibold">合計 {total == null ? '長さ未確認' : `${total.toFixed(1)}秒`}</p>
-    {total != null && total > 10 ? <p className="text-sm text-red-700">紐づけにはトリミングが必要</p> : null}
     <label className="mt-3 block">題名（任意）<Input aria-label="接続動画の題名" maxLength={200} disabled={busy} value={title ?? defaultTitle} placeholder={defaultTitle} onChange={(e) => setTitle(e.target.value)} /></label>
     <p className="mt-1 text-sm">空欄の場合: {defaultTitle}</p>
     {error ? <p role="alert" className="mt-2 text-red-700">{error}</p> : null}

@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { getRTCConfiguration } from '../rtcConfiguration';
 import { getAudioStream, getAudioVideoStream, getVideoStream } from '../utils/media';
 
 import { useWebRTCSignaling } from './useWebRTCSignaling';
@@ -237,17 +238,6 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
   });
   signalingRef.current = signaling;
 
-  // WebRTC設定（Pi4向けに最適化）
-  const getRTCConfiguration = useCallback((): RTCConfiguration => {
-    return {
-      iceServers: [
-        // STUNサーバー（NAT越え用、ローカルLANでは不要だが互換性のため）
-        { urls: 'stun:stun.l.google.com:19302' }
-      ],
-      iceCandidatePoolSize: 0 // ローカルLANなのでプール不要
-    };
-  }, []);
-
   const renegotiate = useCallback(async (reason: 'enableVideo' | 'iceRestart') => {
     const pc = peerConnectionRef.current;
     const callId = currentCallIdRef.current;
@@ -359,7 +349,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     };
 
     return pc;
-  }, [cleanup, getRTCConfiguration, onRemoteStreamRef, scheduleIceRestart, toUiStream]);
+  }, [cleanup, onRemoteStreamRef, scheduleIceRestart, toUiStream]);
 
   // 通話開始（音声のみ）
   const startCall = useCallback(async (callId: string, withVideo: boolean = false) => {

@@ -739,6 +739,41 @@ def make_handler(
             self.end_headers()
             self.wfile.write(body)
 
+        def _proxy_stream(self, url: str, body: bytes, headers: dict[str, str]) -> None:
+            req = urllib.request.Request(url, data=body, method="POST", headers=headers)
+            self.close_connection = True
+            response_started = False
+            try:
+                try:
+                    with urllib.request.urlopen(req, timeout=120) as response:
+                        # Read before committing headers so an initial timeout can still return 502.
+                        chunk = response.read1(65536)
+                        self.send_response(response.status)
+                        self.send_header(
+                            "Content-Type", response.headers.get("Content-Type", "application/octet-stream")
+                        )
+                        self.send_header("Cache-Control", "no-cache")
+                        self.send_header("Connection", "close")
+                        response_started = True
+                        self.end_headers()
+                        while chunk:
+                            self.wfile.write(chunk)
+                            self.wfile.flush()
+                            chunk = response.read1(65536)
+                except urllib.error.HTTPError as exc:
+                    with exc:
+                        if not response_started:
+                            self._send(
+                                exc.code, exc.read(), exc.headers.get("Content-Type", "text/plain; charset=utf-8")
+                            )
+                except Exception as exc:
+                    if not response_started:
+                        reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+                        self._send_text(502, f"bad gateway: {reason}")
+            except (BrokenPipeError, ConnectionResetError):
+                # The client may also disconnect while an error response is being sent.
+                pass
+
         def _send_text(self, status: int, text: str) -> None:
             self._send(status, text.encode("utf-8"), "text/plain; charset=utf-8")
 
@@ -1250,6 +1285,16 @@ def make_handler(
                 upstream_body = inject_blue_chat_completions_defaults(
                     self.path, body, active_backend
                 )
+                if (
+                    self.path.rstrip("/").endswith("/completions")
+                    and json_body_object(body).get("stream") is True
+                ):
+                    self._proxy_stream(
+                        f"{resolve_backend_base_url(config)}{self.path}",
+                        upstream_body,
+                        headers,
+                    )
+                    return
                 status, resp_body, content_type = proxy_impl(
                     "POST",
                     f"{resolve_backend_base_url(config)}{self.path}",

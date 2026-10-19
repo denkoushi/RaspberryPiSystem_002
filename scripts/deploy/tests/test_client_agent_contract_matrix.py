@@ -2,11 +2,16 @@
 from __future__ import annotations
 
 import importlib.util
+import itertools
+import json
 import re
 import sys
 import unittest
 from pathlib import Path
 from types import ModuleType
+
+import yaml
+from jinja2 import Environment, StrictUndefined
 
 from scripts.deploy.terminal_profile_registry import load_registry
 
@@ -56,6 +61,137 @@ class ClientAgentContractMatrixTest(unittest.TestCase):
         cls.client_main = (
             ROOT / "infrastructure/ansible/roles/client/tasks/main.yml"
         ).read_text(encoding="utf-8")
+
+    def test_client_agent_hardening_defaults_to_false_in_both_roles(self) -> None:
+        for role in ("client", "release_kiosk"):
+            with self.subTest(role=role):
+                defaults = yaml.safe_load((
+                    ROOT / f"infrastructure/ansible/roles/{role}/defaults/main.yml"
+                ).read_text())
+                self.assertIs(defaults["client_agents_hardened"], False)
+
+    def test_client_compose_legacy_and_least_privilege_contracts(self) -> None:
+        static = yaml.safe_load(self.compose)
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["to_json"] = json.dumps
+        environment.filters["bool"] = lambda value: str(value).lower() in {"1", "true", "yes", "on"}
+        template = environment.from_string((
+            ROOT / "infrastructure/ansible/roles/release_kiosk/templates/client-compose.yml.j2"
+        ).read_text(encoding="utf-8"))
+        legacy_mounts = {
+            "nfc-agent": ["nfc-agent-data:/data", "/run/pcscd:/run/pcscd:ro"],
+            "barcode-agent": None,
+            "torque-agent": ["torque-agent-data:/data", "/dev/input:/dev/input",
+                             "/run/torque-bluetooth-guard:/run/torque-bluetooth-guard"],
+        }
+        hardened_contract = {
+            "nfc-agent": (["46", "104"], ["c 189:* rw", "c 13:* rw"],
+                          ["nfc-agent-data:/data", "nfc-agent-data:/app/nfc-agent/data",
+                           "/run/pcscd:/run/pcscd:ro",
+                           "/dev/bus/usb:/dev/bus/usb:ro", "/dev/input:/dev/input:ro"]),
+            "barcode-agent": (["20"], ["c 166:* rw", "c 188:* rw"], ["/dev:/dev:ro"]),
+            "torque-agent": (["104"], ["c 13:* rw"],
+                             ["torque-agent-data:/data", "/dev/input:/dev/input:ro",
+                              "/run/torque-bluetooth-guard:/run/torque-bluetooth-guard"]),
+        }
+        # Every service selection in both modes, including a missing inventory
+        # variable and string booleans as Ansible accepts them.
+        for size in range(1, 4):
+            for selected in itertools.combinations(hardened_contract, size):
+                for value in (None, False, True, "false", "true"):
+                    variables = {} if value is None else {"client_agents_hardened": value}
+                    hardened = value is True or value == "true"
+                    rendered = yaml.safe_load(template.render(
+                        release_kiosk_services=selected,
+                        release_kiosk_project_dir=TERMINAL_REPOSITORY,
+                        release_kiosk_compose_images={name: f"fixture/{name}:test" for name in selected},
+                        **variables,
+                    ))
+                    self.assertEqual(set(rendered["services"]), set(selected))
+                    expected_volumes = {
+                        name: None for name in ("nfc-agent-data", "torque-agent-data")
+                        if name.removesuffix("-data") in selected
+                    }
+                    self.assertEqual(rendered["volumes"], expected_volumes or None)
+                    for name in selected:
+                        with self.subTest(service=name, selected=selected, mode=value):
+                            service = rendered["services"][name]
+                            reference = dict(static["services"][name])
+                            reference.pop("build")
+                            reference.pop("profiles", None)
+                            reference["image"] = f"fixture/{name}:test"
+                            reference["env_file"] = [f"{TERMINAL_REPOSITORY}/clients/{name}/.env"]
+                            for key in ("image", "env_file", "network_mode", "restart", "healthcheck"):
+                                self.assertEqual(service.get(key), reference.get(key))
+                            self.assertNotIn("cap_add", service)
+                            if hardened:
+                                groups, rules, mounts = hardened_contract[name]
+                                self.assertNotIn("privileged", service)
+                                self.assertNotIn("devices", service)
+                                self.assertEqual(service["user"], "10001:10001")
+                                self.assertEqual(service["security_opt"], ["no-new-privileges:true"])
+                                self.assertEqual(service["cap_drop"], ["ALL"])
+                                self.assertEqual(service["group_add"], groups)
+                                self.assertEqual(service["device_cgroup_rules"], rules)
+                                self.assertEqual(service["volumes"], mounts)
+                            else:
+                                self.assertEqual(service, reference)
+                                self.assertIs(service["privileged"], True)
+                                self.assertEqual(service["user"], "0:0")
+                                self.assertEqual(service.get("volumes"), legacy_mounts[name])
+                                if name == "nfc-agent":
+                                    self.assertEqual(service["devices"], ["/dev/bus/usb:/dev/bus/usb"])
+                                else:
+                                    self.assertNotIn("devices", service)
+                                for key in ("cap_drop", "security_opt", "group_add", "device_cgroup_rules"):
+                                    self.assertNotIn(key, service)
+
+    def test_default_mode_matches_the_pre_hardening_stanzas_plus_root_user(self) -> None:
+        """The static compose default must equal the previous device contract
+        except for the explicit ``user: "0:0"`` that the USER 10001 images need."""
+        static = yaml.safe_load(self.compose)
+        previous = {
+            "nfc-agent": {
+                "network_mode": "host", "privileged": True,
+                "devices": ["/dev/bus/usb:/dev/bus/usb"],
+                "env_file": ["../../clients/nfc-agent/.env"],
+                "volumes": ["nfc-agent-data:/data", "/run/pcscd:/run/pcscd:ro"],
+                "restart": "unless-stopped",
+            },
+            "barcode-agent": {
+                "network_mode": "host", "privileged": True,
+                "env_file": ["../../clients/barcode-agent/.env"],
+                "restart": "unless-stopped",
+            },
+            "torque-agent": {
+                "network_mode": "host", "privileged": True,
+                "env_file": ["../../clients/torque-agent/.env"],
+                "volumes": ["torque-agent-data:/data", "/dev/input:/dev/input",
+                            "/run/torque-bluetooth-guard:/run/torque-bluetooth-guard"],
+                "restart": "unless-stopped",
+            },
+        }
+        for name, expected in previous.items():
+            with self.subTest(service=name):
+                service = dict(static["services"][name])
+                service.pop("build")
+                service.pop("profiles", None)
+                service.pop("healthcheck", None)
+                self.assertEqual(service.pop("user"), "0:0")
+                self.assertEqual(service, expected)
+
+    def test_client_agent_images_run_as_dedicated_users_with_writable_data(self) -> None:
+        for name in ("nfc-agent", "barcode-agent", "torque-agent"):
+            with self.subTest(service=name):
+                dockerfile = (ROOT / f"infrastructure/docker/Dockerfile.{name}").read_text()
+                runtime = dockerfile.split("AS runtime\n", 1)[1]
+                self.assertIn("groupadd --gid 10001 agent", runtime)
+                self.assertIn("useradd --uid 10001 --gid 10001", runtime)
+                self.assertIn("chown 10001:10001 /data", runtime)
+                self.assertIn("chmod 0750 /data", runtime)
+                self.assertIn("USER 10001:10001\n", runtime)
+        nfc = (ROOT / "infrastructure/docker/Dockerfile.nfc-agent").read_text()
+        self.assertIn("chown 10001:10001 /app/nfc-agent/data", nfc)
 
     def test_client_agent_contract_matrix(self) -> None:
         """Report every missing/extra integration in one actionable failure."""

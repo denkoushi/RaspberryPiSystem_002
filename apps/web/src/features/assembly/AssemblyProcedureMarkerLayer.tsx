@@ -341,7 +341,7 @@ export function AssemblyMarkerOverlay({
           onPointerMove={onMoveBolt ? handleMarkerPointerMove : undefined}
           onPointerUp={onMoveBolt ? (event) => endMarkerPointerInteraction(event, false) : undefined}
           onPointerCancel={onMoveBolt ? (event) => endMarkerPointerInteraction(event, true) : undefined}
-          className={clsx(
+          className={clsx('pointer-events-auto',
             'absolute z-10 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-sm font-bold shadow-lg',
             boltMarkerClass(bolt.status, selectedBoltId === bolt.id, bolt.accentClass),
             kioskMarkerInputTargetOutlineClass(inputTargetBoltId === bolt.id),
@@ -371,7 +371,7 @@ export function AssemblyMarkerOverlay({
           onPointerMove={onMoveCheckItem ? handleMarkerPointerMove : undefined}
           onPointerUp={onMoveCheckItem ? (event) => endMarkerPointerInteraction(event, false) : undefined}
           onPointerCancel={onMoveCheckItem ? (event) => endMarkerPointerInteraction(event, true) : undefined}
-          className={clsx(
+          className={clsx('pointer-events-auto',
             'absolute z-10 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-xs font-bold shadow-lg',
             checkMarkerClass(item, selectedCheckItemId === item.id),
             onMoveCheckItem && 'touch-none cursor-move'
@@ -393,7 +393,7 @@ export function AssemblyMarkerOverlay({
           onPointerMove={handleMarkerPointerMove}
           onPointerUp={(event) => endMarkerPointerInteraction(event, false)}
           onPointerCancel={(event) => endMarkerPointerInteraction(event, true)}
-          className="absolute z-20 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 cursor-grab touch-none items-center justify-center rounded-full border-2 border-dashed border-slate-900 bg-white/90 text-slate-900 shadow-lg"
+          className="pointer-events-auto absolute z-20 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 cursor-grab touch-none items-center justify-center rounded-full border-2 border-dashed border-slate-900 bg-white/90 text-slate-900 shadow-lg"
           style={calloutHandleStyle(calloutHandle.marker)}
         >
           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -454,7 +454,8 @@ export function AssemblyProcedureMarkerLayer({
   return (
     <div
       ref={rootRef}
-      className="absolute inset-0"
+      // The root must not swallow taps meant for the overlay layer beneath it; only the markers are interactive.
+      className="pointer-events-none absolute inset-0"
       data-testid={`assembly-procedure-marker-layer-${density}`}
     >
       {calloutLayout ? (

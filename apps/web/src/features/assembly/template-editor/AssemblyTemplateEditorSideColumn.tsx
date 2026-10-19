@@ -3,40 +3,20 @@ import { AssemblyBoltConditionStrip } from '../AssemblyBoltConditionStrip';
 import { useAssemblyTemplateEditor } from './AssemblyTemplateEditorContext';
 import { AssemblyTemplateEditorInspectorPane } from './AssemblyTemplateEditorInspectorPane';
 
-/** 広い画面で常に出す右の列。上に締付条件、下に選択中の丸数字・手順の設定を置く。 */
-export function AssemblyTemplateEditorSideColumn() {
+export function AssemblyTemplateEditorSideColumn({ floating }: { floating: boolean }) {
   const {
-    activeBoltConditionKey,
-    addBoltCondition,
-    boltConditionPalette,
-    readOnly,
-    selectBoltCondition,
-    selectedBolt,
-    settingsPaneOpen
+    activeBoltConditionKey, addBoltCondition, boltConditionPalette,
+    boltConditionPaneOpen, readOnly, selectBoltCondition, selectedBolt,
+    setBoltConditionPaneOpen, settingsPaneOpen
   } = useAssemblyTemplateEditor();
+  if (!boltConditionPaneOpen && !settingsPaneOpen) return null;
   return (
-    <aside
-      data-testid="assembly-editor-side-column"
-      className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded border border-[#27313b] bg-[#161c22]"
-    >
-      <div className="shrink-0 border-b border-[#27313b] p-2.5">
-        <AssemblyBoltConditionStrip
-          orientation="column"
-          entries={boltConditionPalette}
-          activeKey={activeBoltConditionKey}
-          selectedMarkerNo={selectedBolt?.markerNo ?? null}
-          readOnly={readOnly}
-          onSelect={selectBoltCondition}
-          onAdd={addBoltCondition}
-        />
-      </div>
-      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-        {settingsPaneOpen ? (
-          <AssemblyTemplateEditorInspectorPane embedded />
-        ) : (
-          <p className="p-3 text-xs text-white/50">丸数字／手順を選ぶと設定が出ます</p>
-        )}
-      </div>
+    <aside data-testid="assembly-editor-side-column" aria-label="テンプレート設定" className={`flex min-h-0 min-w-0 flex-col overflow-y-auto border border-[#344252] bg-[#161c22] ${floating ? 'absolute bottom-4 right-20 top-14 z-30 w-80 rounded-lg shadow-xl' : 'w-[320px]'}`}>
+      {boltConditionPaneOpen ? <div className="border-b border-[#27313b] p-2.5">
+        <button type="button" aria-label="締付条件を閉じる" className="mb-2 block min-h-8 w-full text-right text-sm" onClick={() => setBoltConditionPaneOpen(false)}>×</button>
+        <AssemblyBoltConditionStrip orientation="column" entries={boltConditionPalette} activeKey={activeBoltConditionKey} selectedMarkerNo={selectedBolt?.markerNo ?? null} readOnly={readOnly} onSelect={selectBoltCondition} onAdd={addBoltCondition} />
+      </div> : null}
+      {settingsPaneOpen ? <AssemblyTemplateEditorInspectorPane embedded /> : null}
     </aside>
   );
 }

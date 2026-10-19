@@ -3,32 +3,87 @@ import { z } from 'zod';
 
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../../services/backup/backup-config.js';
+import { HermesSearchTrialService } from '../../services/business-hermes/hermes-search-trial.service.js';
 import { ProcedureMaterialService } from '../../services/assembly/procedure-material.service.js';
 import { getProcedureMaterialGmailIngestionService, type ProcedureMaterialGmailIngestionService } from '../../services/assembly/procedure-material-gmail-ingestion.service.js';
 
 import { ProcedureMaterialKnowledgeService } from '../../services/assembly/procedure-material-knowledge.service.js';
+import { ProcedureMaterialWorkInstructionService } from '../../services/assembly/procedure-material-work-instruction.service.js';
 
 import { ProcedureMaterialGcService } from '../../services/assembly/procedure-material-gc.service.js';
+import { ProcedureMaterialThumbnailService } from '../../services/assembly/procedure-material-thumbnail.service.js';
+import { ProcedureMaterialPdfTextService } from '../../services/assembly/procedure-material-pdf-text.service.js';
+
+import { getProcedureMaterialSplitSuggestionService, type ProcedureMaterialSplitSuggestionService } from '../../services/assembly/procedure-material-split-suggestion.service.js';
 
 const querySchema = z.object({
   state: z.enum(['unplaced', 'placed', 'discarded', 'all']).default('unplaced'),
+  origin: z.enum(['GMAIL', 'KNOWLEDGE', 'WORK_INSTRUCTION', 'APP']).optional(),
   q: z.string().trim().max(200).optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
 });
 const paramsSchema = z.object({ id: z.string().uuid() });
 const ingestSchema = z.object({ messageId: z.string().min(1).max(200).optional(), forceRetry: z.boolean().optional() });
+const pdfTextBackfillSchema = z.object({ dryRun: z.boolean().default(true), limit: z.number().int().min(1).max(200).default(50) }).strict();
 
 export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
   allowView: preHandlerHookHandler; allowWriteKiosk: preHandlerHookHandler;
   service?: ProcedureMaterialService;
+  splitSuggestions?: Pick<ProcedureMaterialSplitSuggestionService, 'suggest'>;
+  semanticSearch?: Pick<HermesSearchTrialService, 'rank'>;
   gc?: ProcedureMaterialGcService;
+  pdfText?: Pick<ProcedureMaterialPdfTextService, 'backfill'>;
   knowledge?: ProcedureMaterialKnowledgeService;
+  workInstructions?: ProcedureMaterialWorkInstructionService;
   ingestion?: Pick<ProcedureMaterialGmailIngestionService, 'runOnce'>;
   loadConfig?: () => Promise<BackupConfig>;
 }) {
   const service = options.service ?? new ProcedureMaterialService();
+  const semanticSearch = options.semanticSearch ?? new HermesSearchTrialService();
+  if (semanticSearch instanceof HermesSearchTrialService && !options.semanticSearch) app.addHook('onClose', async () => { semanticSearch.close(); });
   const path = '/assembly/procedure-materials';
+  app.post(`${path}/split-suggestions`, { preHandler: options.allowView, config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request) => {
+    const { ids } = z.object({ ids: z.array(z.string().uuid()).min(2).max(60) }).strict().parse(request.body);
+    return (options.splitSuggestions ?? getProcedureMaterialSplitSuggestionService()).suggest(ids);
+  });
+  app.post(`${path}/semantic-search`, { preHandler: options.allowView, config: { rateLimit: { max: 12, timeWindow: '1 minute' } } }, async (request) => {
+    const { q, state, limit } = z.object({
+      q: z.string().trim().min(1).max(200), state: z.enum(['unplaced', 'placed']),
+      limit: z.number().int().min(1).max(100).default(50),
+    }).strict().parse(request.body);
+    const allowedRecordIds = await service.listRankRecordIds(state);
+    if (!allowedRecordIds.length) return { available: true, mode: 'lexical', items: [] };
+    const ranked = await semanticSearch.rank('procedure_material', q, 100, allowedRecordIds);
+    if (ranked.available && ranked.rankingStats) request.log.info(ranked.rankingStats, 'Procedure material hybrid ranking');
+    if (!ranked.available) return { available: false, mode: 'unavailable', items: [] };
+    return { available: true, mode: ranked.mode, items: await service.listRanked(ranked.recordIds, { state, limit }) };
+  });
   const knowledge = options.knowledge ?? new ProcedureMaterialKnowledgeService();
+  const workInstructions = options.workInstructions ?? new ProcedureMaterialWorkInstructionService();
+  const thumbnails = new ProcedureMaterialThumbnailService();
+  const thumbnailOptions = { preHandler: options.allowView, config: { rateLimit: { max: 600, timeWindow: '1 minute' } } };
+  app.get(`${path}/:id/thumbnail`, thumbnailOptions, async (request, reply) => {
+    const file = await service.readFile(paramsSchema.parse(request.params).id);
+    return reply.header('Cache-Control', 'private, max-age=3600').header('X-Content-Type-Options', 'nosniff').type('image/webp').send(await thumbnails.read(file.bytes));
+  });
+  app.get(`${path}/knowledge-candidates/images/:imageId/thumbnail`, thumbnailOptions, async (request, reply) => {
+    const { imageId } = z.object({ imageId: z.string().regex(/^[a-f0-9]{64}$/) }).parse(request.params);
+    return reply.header('Cache-Control', 'private, max-age=3600').header('X-Content-Type-Options', 'nosniff').type('image/webp').send(await thumbnails.read(await knowledge.readImage(imageId)));
+  });
+  app.get(`${path}/work-instruction-candidates/images/:assetId/thumbnail`, thumbnailOptions, async (request, reply) => {
+    const { assetId } = z.object({ assetId: z.string().uuid() }).parse(request.params);
+    return reply.header('Cache-Control', 'private, max-age=3600').header('X-Content-Type-Options', 'nosniff').type('image/webp').send(await thumbnails.read(await workInstructions.readImage(assetId)));
+  });
+  app.get(`${path}/work-instruction-candidates`, { preHandler: options.allowView }, async (request) =>
+    workInstructions.list(querySchema.pick({ q: true, limit: true }).extend({ limit: z.coerce.number().int().min(1).max(1000).default(60) }).parse(request.query)));
+  app.post(`${path}/import-work-instructions`, { preHandler: options.allowWriteKiosk }, async (request) => {
+    const { items } = z.object({ items: z.array(z.object({
+      candidateKey: z.string().min(1).max(500),
+      partNumber: z.string().trim().min(1).max(200),
+      shootingTarget: z.string().trim().min(1).max(200),
+    }).strict()).min(1).max(50) }).strict().parse(request.body);
+    return workInstructions.import(items);
+  });
   app.get(`${path}/knowledge-candidates`, { preHandler: options.allowView }, async (request) =>
     knowledge.list(querySchema.pick({ q: true, limit: true }).extend({ limit: z.coerce.number().int().min(1).max(300).default(100) }).parse(request.query)));
   app.get(`${path}/knowledge-candidates/images/:imageId`, { preHandler: options.allowView, config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
@@ -46,10 +101,15 @@ export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
   });
   app.post(`${path}/ingest-gmail`, { preHandler: options.allowWriteKiosk }, async (request) => {
     const body = ingestSchema.parse(request.body ?? {});
-    const config = await (options.loadConfig ?? BackupConfigLoader.load)();
+    // Call the static loader as a method; a detached reference loses `this` and throws.
+    const config = options.loadConfig ? await options.loadConfig() : await BackupConfigLoader.load();
     return (options.ingestion ?? getProcedureMaterialGmailIngestionService()).runOnce({ config, allowWait: true, manual: true, ...body });
   });
   app.post(`${path}/gc`, { preHandler: options.allowWriteKiosk, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async () => (options.gc ?? new ProcedureMaterialGcService()).collect());
+  app.post(`${path}/pdf-text-backfill`, { preHandler: options.allowWriteKiosk, config: { rateLimit: { max: 2, timeWindow: '1 minute' } } }, async (request) =>
+    (options.pdfText ?? new ProcedureMaterialPdfTextService()).backfill(pdfTextBackfillSchema.parse(request.body === undefined ? {} : request.body)));
+  app.post(`${path}/:id/create-document`, { preHandler: options.allowWriteKiosk }, async (request) =>
+    service.createDocument(paramsSchema.parse(request.params).id));
   app.post(`${path}/:id/unplace`, { preHandler: options.allowWriteKiosk }, async (request) => {
     await service.unplace(paramsSchema.parse(request.params).id);
     return { saved: true };

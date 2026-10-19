@@ -77,7 +77,8 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
       try {
         await canView(request, reply);
         return;
-      } catch {
+      } catch (error) {
+        if (error instanceof ApiError && error.code === 'MFA_SETUP_REQUIRED') throw error;
         // JWT認証失敗時はx-client-keyへフォールバック
       }
     }
@@ -95,7 +96,8 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
       try {
         await canWrite(request, reply);
         return;
-      } catch {
+      } catch (error) {
+        if (error instanceof ApiError && error.code === 'MFA_SETUP_REQUIRED') throw error;
         // JWT認証失敗時はx-client-keyへフォールバック
       }
     }

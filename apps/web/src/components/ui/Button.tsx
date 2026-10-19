@@ -6,6 +6,7 @@ import type { ButtonHTMLAttributes } from 'react';
 export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'ghostOnDark';
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  busy?: boolean;
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'ghostOnDark';
 };
 
@@ -28,13 +29,16 @@ export function buttonClassName(variant: ButtonVariant = 'primary', className?: 
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  function Button({ variant = 'primary', className, children, ...rest }, ref) {
+  function Button({ variant = 'primary', className, children, busy, disabled, ...rest }, ref) {
     return (
       <button
         ref={ref}
         className={buttonClassName(variant, className)}
         {...rest}
+        disabled={busy || disabled}
+        aria-busy={busy ? true : rest['aria-busy']}
       >
+        {busy !== undefined ? <span aria-hidden="true" className={clsx('mr-2 inline-block h-3 w-3 rounded-full border-2 border-current border-t-transparent align-middle', busy ? 'animate-spin motion-reduce:animate-none' : 'invisible')} /> : null}
         {children}
       </button>
     );

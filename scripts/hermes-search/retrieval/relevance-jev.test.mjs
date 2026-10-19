@@ -8,6 +8,92 @@ import { RELEVANCE_ACCEPT_AT, RELEVANCE_CANDIDATE_LIMIT, candidateBody, createRe
 const display = ['condition', 'remarks', 'correctiveContent', 'disposition'];
 const body = display;
 
+function diagnosticError(failureCode, httpStatus) {
+  return Object.assign(new Error('API key, request body, response body must stay private'), {
+    hermesDiagnostic: { provider: 'typesafe-direct', failureCode, ...(httpStatus ? { httpStatus } : {}) },
+  });
+}
+
+const judgeInput = { semanticQuery: 'scratch', candidates: [{ id: 'a', record: { condition: 'scratch' } }], bodyFields: ['condition'] };
+
+test('transient judge failures retry once after 2000 ms, including 429 then success', async (t) => {
+  for (const [code, status] of [['upstream_http', 429], ['upstream_http', 500], ['upstream_http', 502], ['upstream_http', 503], ['upstream_http', 504], ['timeout'], ['connection_failed']]) {
+    await t.test(`${code} ${status ?? ''}`, async () => {
+      const calls = [];
+      const delays = [];
+      const judge = createRelevanceJudge({
+        sleep: async (ms) => { delays.push(ms); },
+        evaluate: async (input) => {
+          calls.push(input);
+          assert.equal(input.maxRetries, 0);
+          if (calls.length === 1) throw diagnosticError(code, status);
+          return { answers: { candidate_0: { type: 'noul', noul: 0.9 } } };
+        },
+      });
+      const result = await judge.judge(judgeInput);
+      assert.equal(calls.length, 2);
+      assert.deepEqual(calls[0], calls[1]);
+      assert.deepEqual(delays, [2000]);
+      assert.equal(result.attempts, 2);
+      assert.deepEqual(result.ranked, [{ id: 'a', probability: 0.9 }]);
+      assert.ok(result.relevanceMs >= 0);
+    });
+  }
+});
+
+test('timeout then failure exposes attempts 2 and only the second diagnostic', async () => {
+  let calls = 0;
+  const second = diagnosticError('upstream_http', 503);
+  const judge = createRelevanceJudge({
+    sleep: async () => {},
+    evaluate: async () => { throw ++calls === 1 ? diagnosticError('timeout') : second; },
+  });
+  await assert.rejects(judge.judge(judgeInput), (error) => {
+    assert.equal(error.attempts, 2);
+    assert.deepEqual(error.hermesDiagnostic, second.hermesDiagnostic);
+    assert.equal(error.message, 'relevance judgment failed: upstream_http 503');
+    assert.ok(error.relevanceMs >= 0);
+    return true;
+  });
+  assert.equal(calls, 2);
+});
+
+test('permanent diagnostics and unlisted HTTP statuses never retry', async (t) => {
+  for (const [code, status] of [['invalid_answers'], ['invalid_json'], ['missing_credentials'], ['transport_unavailable'], ['upstream_http', 400], ['upstream_http', 401], ['upstream_http', 408], ['upstream_http', 501], ['upstream_http']]) {
+    await t.test(`${code} ${status ?? ''}`, async () => {
+      let calls = 0;
+      const judge = createRelevanceJudge({
+        sleep: async () => assert.fail('permanent failures must not wait'),
+        evaluate: async () => { calls += 1; throw diagnosticError(code, status); },
+      });
+      await assert.rejects(judge.judge(judgeInput), (error) => {
+        assert.equal(error.attempts, 1);
+        assert.equal(error.message, `relevance judgment failed: ${code}${status ? ` ${status}` : ''}`);
+        return true;
+      });
+      assert.equal(calls, 1);
+    });
+  }
+});
+
+test('a parallel judge retries only the failed batch', async () => {
+  const calls = [0, 0];
+  const candidates = Array.from({ length: 30 }, (_, index) => ({ id: `r${index}`, record: { condition: index < 15 ? 'first' : 'second' } }));
+  const judge = createRelevanceJudge({
+    sleep: async () => {},
+    evaluate: async ({ questions }) => {
+      const batch = questions.candidate_0.instructions.endsWith('first') ? 0 : 1;
+      calls[batch] += 1;
+      if (batch === 0 && calls[batch] === 1) throw diagnosticError('upstream_http', 429);
+      return { answers: Object.fromEntries(Object.keys(questions).map((key) => [key, { type: 'noul', noul: 0.9 }])) };
+    },
+  });
+  const result = await judge.judge({ ...judgeInput, candidates, poolLimit: 30 });
+  assert.deepEqual(calls, [2, 1]);
+  assert.equal(result.attempts, 2);
+  assert.equal(result.ranked.length, 30);
+});
+
 function plan(overrides = {}) {
   return {
     schema: QUERY_PLAN_SCHEMA,
@@ -101,7 +187,7 @@ test('a failed relevance judgment returns unavailable instead of unjudged rows',
     relevance: (input) => judge.judge(input),
   });
   assert.equal(executed.status, 'unavailable');
-  assert.match(executed.reason, /relevance down/);
+  assert.equal(executed.reason, 'relevance judgment failed: relevance down');
   assert.deepEqual(executed.results, []);
 });
 

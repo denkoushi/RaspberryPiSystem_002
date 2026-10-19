@@ -49,6 +49,7 @@ export type AssemblyProcedureDocumentRecord = Prisma.AssemblyProcedureDocumentGe
 export type AssemblyProcedureDocumentSummary = Omit<AssemblyProcedureDocumentRecord, 'overlayElements' | 'ownedAssets' | 'procedureVideoLinks'> & {
   activeTemplateCount: number;
   totalTemplateCount: number;
+  manualAssignments: { modelCode: string; modelCodeKey: string; processId: string; processName: string }[];
 };
 
 export type AssemblyProcedureDocumentReferenceUsage = {
@@ -134,6 +135,37 @@ export class AssemblyProcedureDocumentService {
     const documentIds = documents.map((document) => document.id);
     if (documentIds.length === 0) return [];
 
+    // Match getReferenceUsage: direct references always count, root references
+    // also belong to the latest active published revision (not a revision draft).
+    const rootIds = [...new Set(documents.flatMap(document => document.revisionMetadata ? [document.revisionMetadata.revisionRootId] : []))];
+    const [manualAssignments, publishedRevisions] = await Promise.all([
+      prisma.procedureManualAssignment.findMany({
+        where: { assemblyProcedureDocumentId: { in: [...new Set([...documentIds, ...rootIds])] } },
+        include: { process: { select: { name: true } } },
+        orderBy: [{ modelCodeKey: 'asc' }, { processId: 'asc' }, { sortOrder: 'asc' }]
+      }),
+      rootIds.length ? prisma.assemblyProcedureDocumentRevision.findMany({
+        where: { revisionRootId: { in: rootIds }, document: { status: 'PUBLISHED', isActive: true } },
+        orderBy: { revisionNumber: 'desc' },
+        select: { revisionRootId: true, documentId: true }
+      }) : Promise.resolve([])
+    ]);
+    const latestPublishedByRoot = new Map<string, string>();
+    for (const revision of publishedRevisions) {
+      if (!latestPublishedByRoot.has(revision.revisionRootId)) latestPublishedByRoot.set(revision.revisionRootId, revision.documentId);
+    }
+    const assignmentsByDocument = new Map<string, typeof manualAssignments>();
+    for (const assignment of manualAssignments) {
+      const directId = assignment.assemblyProcedureDocumentId!;
+      const ids = new Set([directId, latestPublishedByRoot.get(directId)]);
+      for (const id of ids) {
+        if (!id) continue;
+        const assignments = assignmentsByDocument.get(id) ?? [];
+        assignments.push(assignment);
+        assignmentsByDocument.set(id, assignments);
+      }
+    }
+
     const templateReferences = await prisma.assemblyTemplate.findMany({
       where: {
         OR: [
@@ -191,6 +223,10 @@ export class AssemblyProcedureDocumentService {
 
     return documents.map((document) => ({
       ...document,
+      manualAssignments: (assignmentsByDocument.get(document.id) ?? []).map(assignment => ({
+        modelCode: assignment.modelCode, modelCodeKey: assignment.modelCodeKey,
+        processId: assignment.processId, processName: assignment.process.name
+      })),
       activeTemplateCount: activeTemplateIdsByDocument.get(document.id)?.size ?? 0,
       totalTemplateCount: totalTemplateIdsByDocument.get(document.id)?.size ?? 0
     }));
@@ -217,8 +253,8 @@ export class AssemblyProcedureDocumentService {
       sourceAttachmentName: string;
       gmailInternalDateMs: number;
       gmailDedupeKey: string;
-    };
-  }): Promise<AssemblyProcedureDocumentRecord> {
+    } | { sourceType: 'MANUAL'; sourceAttachmentName: string };
+  }, transaction?: Prisma.TransactionClient): Promise<AssemblyProcedureDocumentRecord> {
     const name = params.name.trim();
     if (!name) {
       throw new ApiError(400, '手順書名が必要です');
@@ -238,7 +274,7 @@ export class AssemblyProcedureDocumentService {
       throw new ApiError(400, '元assetサイズが不正です');
     }
 
-    return runAssemblyTransaction(async (tx) => {
+    const create = async (tx: Prisma.TransactionClient) => {
       let savedName = name.slice(0, 200);
       if (params.avoidDuplicateName) {
         // Serialize blank naming across API instances, including the first creation.
@@ -274,10 +310,12 @@ export class AssemblyProcedureDocumentService {
                 source: {
                   create: {
                     sourceType: params.source.sourceType,
-                    gmailMessageId: params.source.gmailMessageId,
                     sourceAttachmentName: params.source.sourceAttachmentName,
-                    gmailInternalDateMs: BigInt(params.source.gmailInternalDateMs),
-                    gmailDedupeKey: params.source.gmailDedupeKey
+                    ...(params.source.sourceType === 'GMAIL' ? {
+                      gmailMessageId: params.source.gmailMessageId,
+                      gmailInternalDateMs: BigInt(params.source.gmailInternalDateMs),
+                      gmailDedupeKey: params.source.gmailDedupeKey
+                    } : {})
                   }
                 }
               }
@@ -306,7 +344,8 @@ export class AssemblyProcedureDocumentService {
       });
       if (!result) throw new ApiError(500, '手順書を取得できませんでした');
       return result;
-    });
+    };
+    return transaction ? create(transaction) : runAssemblyTransaction(create);
   }
 
   async findByGmailDedupeKey(gmailDedupeKey: string): Promise<AssemblyProcedureDocumentRecord | null> {
@@ -321,19 +360,20 @@ export class AssemblyProcedureDocumentService {
     return source?.document ?? null;
   }
 
-  async rename(id: string, name: string, actor: AssemblyProcedureEditActor = {}): Promise<AssemblyProcedureDocumentRecord> {
+  async rename(id: string, name: string, actor: AssemblyProcedureEditActor = {}, transaction?: Prisma.TransactionClient): Promise<AssemblyProcedureDocumentRecord> {
     const trimmed = name.trim();
     if (!trimmed) {
       throw new ApiError(400, '手順書名が必要です');
     }
-    return runAssemblyTransaction(async (tx) => {
+    const rename = async (tx: Prisma.TransactionClient) => {
       const documents = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${id} FOR UPDATE`;
       if (!documents.length) throw new ApiError(404, '手順書が見つかりません');
       await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(id, actor.holderKey ?? null, tx, actor.holderToken ?? null);
       return tx.assemblyProcedureDocument.update({
         where: { id }, data: { name: trimmed.slice(0, 200) }, include: this.includePages
       });
-    });
+    };
+    return transaction ? rename(transaction) : runAssemblyTransaction(rename);
   }
 
   async resolveApprover(tagUid: string): Promise<KnowledgeReviewEmployee> {

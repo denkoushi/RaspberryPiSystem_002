@@ -38,6 +38,8 @@ services:
       ALERTS_DIR: /app/alerts
       POWER_ACTIONS_DIR: /app/power-actions
       BACKUP_STORAGE_DIR: /opt/backups
+      # 大容量バックアップはRAM上の/tmp tmpfsを避け、ディスクへ保存する
+      BACKUP_TEMP_DIR: ${BACKUP_TEMP_DIR:-/opt/backups/.tmp}
       DROPBOX_ACCESS_TOKEN: ${DROPBOX_ACCESS_TOKEN:-}
       DROPBOX_APP_KEY: ${DROPBOX_APP_KEY:-}
       DROPBOX_APP_SECRET: ${DROPBOX_APP_SECRET:-}
@@ -46,8 +48,12 @@ services:
       SLACK_KIOSK_SUPPORT_WEBHOOK_URL: ${SLACK_KIOSK_SUPPORT_WEBHOOK_URL:-}
       WEBRTC_ENABLED: ${WEBRTC_ENABLED:-true}
       PI5_SCHEDULER_LEADER_ENABLED: "1"
+      # Operation guide copied into the API image; unset disables the Hermes source.
+      KIOSK_OPERATION_GUIDE_DIR: /app/docs/kiosk-operation-guide
       PI5_SCHEDULER_LEASE_FILE: /app/alerts/.pi5-scheduler-leader
       PI5_SCHEDULER_LEASE_INTERVAL_MS: "2000"
+      # DGXリソースの「PI5 業務意図」を再起動・スロット切替後も残す（ホストの config/ に保存）
+      INFERENCE_BUSINESS_PROFILE_INTENT_FILE_PATH: /app/config/business-profile-intent.json
       # ページ撮影（サイネージ）は同じスロットの Web の内部入口を開く。ホストへは公開されない。
       SIGNAGE_WEB_CAPTURE_BASE_URL: http://web-blue
     volumes: &api-volumes

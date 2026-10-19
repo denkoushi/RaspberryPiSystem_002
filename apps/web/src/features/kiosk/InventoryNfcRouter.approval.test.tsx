@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
@@ -16,6 +17,8 @@ vi.mock('../../api/client', () => ({
 type TestSocket = { close: ReturnType<typeof vi.fn>; onmessage?: (message: MessageEvent) => void };
 const sockets: TestSocket[] = [];
 const editorPath = '/kiosk/assembly/procedure-documents/document-1/edit';
+
+vi.mock('../../api/hooks/item-inventory', () => ({ useInventoryTags: vi.fn() }));
 
 function Driver() {
   const location = useLocation();
@@ -64,7 +67,7 @@ describe('InventoryNfcRouter with procedure document approval', () => {
   });
 
   it('reads the approver tag without calling the inventory classification API', async () => {
-    render(<MemoryRouter initialEntries={[editorPath]}><Driver /></MemoryRouter>);
+    render(<QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={[editorPath]}><Driver /></MemoryRouter></QueryClientProvider>);
 
     await act(async () => { scan('employee-private-uid', 100); });
 
@@ -75,7 +78,7 @@ describe('InventoryNfcRouter with procedure document approval', () => {
   });
 
   it('resumes inventory classification after closing the approval dialog', async () => {
-    render(<MemoryRouter initialEntries={[editorPath]}><Driver /></MemoryRouter>);
+    render(<QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={[editorPath]}><Driver /></MemoryRouter></QueryClientProvider>);
 
     // Closing before the queued scan is processed must not expose the employee UID.
     await act(async () => {

@@ -19,8 +19,11 @@ export const PinIcon = ({ size = 13 }: { size?: number }) => (
 );
 export const BackIcon = () => <Icon><path d="M15 18l-6-6 6-6" /></Icon>;
 export const UndoIcon = () => <Icon><path d="M9 14 4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></Icon>;
-export const GridIcon = () => (
-  <Icon><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></Icon>
+export const GridIcon = ({ size }: { size?: number }) => (
+  <Icon size={size}><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></Icon>
+);
+export const ListIcon = ({ size }: { size?: number }) => (
+  <Icon size={size}><rect x="3" y="4" width="4" height="4" rx="1" /><path d="M10 6h11" /><rect x="3" y="10" width="4" height="4" rx="1" /><path d="M10 12h11" /><rect x="3" y="16" width="4" height="4" rx="1" /><path d="M10 18h11" /></Icon>
 );
 export const ResetIcon = () => <Icon><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" /></Icon>;
 export const EditIcon = ({ size = 15 }: { size?: number }) => <Icon size={size}><path d="M4 20h4L19 9l-4-4L4 16v4z" /></Icon>;
@@ -32,3 +35,12 @@ export const ChevronUpIcon = ({ size = 14 }: { size?: number }) => <Icon size={s
 export const ArrowRightIcon = ({ size = 44 }: { size?: number }) => <Icon size={size} width={2}><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></Icon>;
 export const ArrowLeftIcon = ({ size = 16 }: { size?: number }) => <Icon size={size}><path d="M19 12H5" /><path d="M11 6l-6 6 6 6" /></Icon>;
 export const PlusIcon = ({ size = 14 }: { size?: number }) => <Icon size={size} width={2.6}><path d="M12 5v14M5 12h14" /></Icon>;
+
+export const ChartIcon = ({ size }: { size?: number }) => (
+  <Icon size={size}><path d="M4 3v18h17M8 17v-5M13 17V8M18 17V4" /></Icon>
+);
+
+// A photo with an arrow turning around its corner, so it does not read as reload.
+export const RotateRightIcon = ({ size = 20 }: { size?: number }) => (
+  <Icon size={size} width={2}><rect x="3" y="8" width="13" height="13" rx="1.5" /><path d="M3 18l4-4 3 3 2-2 4 4" /><path d="M12 3h4a5 5 0 0 1 5 5v2" /><path d="M18.5 8l2.5 2.5L23.5 8" /></Icon>
+);

@@ -260,7 +260,7 @@ type ApiEvidence = {
 async function installMockNfcWebSocket(page: Page): Promise<void> {
   await page.addInitScript(() => {
     type TestWindow = Window & {
-      __emitAssemblyNfc?: (uid: string) => void;
+      __emitAssemblyNfc?: (uid: string) => number;
     };
     type MockSocket = {
       readyState: number;
@@ -306,22 +306,31 @@ async function installMockNfcWebSocket(page: Page): Promise<void> {
         uid,
         timestamp: new Date(Date.now() + 1_000).toISOString()
       });
+      let delivered = 0;
       for (const socket of sockets) {
-        if (socket.readyState === MockWebSocket.OPEN) {
-          socket.onmessage?.(new MessageEvent('message', { data: payload }));
+        if (socket.readyState === MockWebSocket.OPEN && socket.onmessage) {
+          socket.onmessage(new MessageEvent('message', { data: payload }));
+          delivered += 1;
         }
       }
+      return delivered;
     };
   });
 }
 
 async function emitNfc(page: Page, uid: string): Promise<void> {
-  await page.evaluate((value) => {
-    const testWindow = window as Window & {
-      __emitAssemblyNfc?: (nextUid: string) => void;
-    };
-    testWindow.__emitAssemblyNfc?.(value);
-  }, uid);
+  // 遅い CI では画面が NFC を待ち受ける前に送ると読み取りが失われるため、確認ダイアログを待ち、受け手に届くまで送り直す。
+  await expect(page.getByRole('dialog', { name: '作業者確認' })).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate((value) => {
+        const testWindow = window as Window & {
+          __emitAssemblyNfc?: (nextUid: string) => number;
+        };
+        return testWindow.__emitAssemblyNfc?.(value) ?? 0;
+      }, uid)
+    )
+    .toBeGreaterThan(0);
 }
 
 async function mockAssemblyApis(
@@ -335,6 +344,14 @@ async function mockAssemblyApis(
 
     if (path.startsWith('/src/api/')) {
       await route.continue();
+      return;
+    }
+    if (path === '/api/kiosk/inquiries/summary') {
+      await route.fulfill({ json: { isReceiver: false, unreadCount: 0 } });
+      return;
+    }
+    if (path === '/api/system/local-llm/availability') {
+      await route.fulfill({ json: { available: true } });
       return;
     }
     if (path === '/api/kiosk/config') {

@@ -81,8 +81,43 @@ validation:
 - Japanese input on Chromium 147 and 149 was not tested before the rollout; check each kiosk with its physical keyboard.
 - To take one kiosk back to Firefox, set its `kiosk_browser_engine` to `"firefox"`, merge, and release with `--limit <host>` once the plan shows `pi4ReleaseFiles: staged`.
 
+## Typing still felt slow (2026-10-13): idle drawing load from the floating Chat button
+
+- Complaint: keyboard input still feels slow, on more than one kiosk. No keystroke timing was taken; the numbers below are the idle load only.
+- Read on all seven kiosks with nobody touching them (`top`, 8 to 10 s average): Chromium GPU process 33 to 56 %, renderer 20 to 33 %, labwc 7 to 14 %, Xwayland 5 to 8 %, load average 1.8 to 3.4. No undervoltage or throttling, 46 to 58 °C, no swap, one `ibus-daemon`.
+- Read on StoneBase01 through the existing debugging port (attached to the running page, no new browser): the only running animations were the eight `hermes-matrix-stream` streaks on the floating Chat button. With them running the page recalculated style about 320 times per 10 s; with them paused for 16 s, once. `top` over the same windows: GPU process 56 % to 7 %, renderer 32 % to 6 %, labwc 11 % to 2 %, Xwayland 8 % to 1 %.
+- The streaks were paused during interaction on the planning board only (commit `590282d2`). They are now paused during pointer, wheel, scroll and key activity on every screen and resume 1.2 s after the last activity.
+- Not settled: whether this removes the typing lag (to be checked on a device after deploy), and whether `--disable-renderer-accessibility` wins over the `--force-renderer-accessibility` that Raspberry Pi OS adds (both are on the command line). StoneBase01 moved from Chromium 142 to 154 by an OS update on 2026-10-02 21:08, after the check recorded above.
+- Measuring a live kiosk: read `/proc`, `top` and the debugging port over SSH. Do not inject keys and do not start a second browser.
+
 ## Rollback
 
 Revert this change's commit (PR #1621) and run the standard release for the host (`scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspi4-kensaku-stonebase01`, after `--print-plan` shows `pi4ReleaseFiles: staged`). The Firefox profile `kiosk-system` is left untouched by this change.
 
 Since 2026-10-02 an `inventory.yml` change is classified as a Pi4 kiosk release file, so setting a kiosk's `kiosk_browser_engine` back to `"firefox"` is delivered by the standard release as well. Always confirm `pi4ReleaseFiles: staged` in the plan and read the launcher on the device afterwards.
+
+## Floating Chat button streaks: one step per second (2026-10-13)
+
+- Follow-up to the idle drawing load found the same day (the eight `hermes-matrix-stream` streaks on the floating Chat button). The user asked for a much lighter motion instead of none.
+- Candidates were applied to the running page on StoneBase01 for 14 s each through the debugging port (a temporary `<style>`, removed afterwards) and read with `top` (8 s average, GPU process / renderer):
+
+| Variant | GPU process | Renderer |
+|---|---|---|
+| As shipped (60 fps, linear, 1.8 s) | 48 to 62 % | 27 to 31 % |
+| Only 2 of 8 streaks | 55 % | 37 % |
+| No `text-shadow` | 51 % | 30 % |
+| `step-end`, one step per second (8 s cycle) | 9 to 18 % | 3 to 7 % |
+| `step-end`, two steps per second (4 s cycle) | 9 to 13 % | 5 to 8 % |
+| No animation | 0 to 4 % | 0 to 1 % |
+
+- The cost follows the number of frames drawn, not the number of streaks or the shadow. Chosen: `step-end`, 8 s cycle, delays in whole seconds so all eight streaks change in the same frame.
+- The readings are noisy (the kiosk was in use and its browser restarted once during the session); two rounds with another page or `apt-get` active were discarded. Treat the table as "about one fifth of the load", not as exact figures.
+- Still running an animation costs more than none. If the idle load matters again, remove the motion entirely.
+
+## Deploy and device check of the two streak changes (2026-10-13)
+
+- Merged: #1987 (pause during interaction on every screen) as `e3583ac6`, #1988 (one step per second) as `cf73213f`. Both went to Pi5 in one release, run `20261013-085005-4eb4fe`, finished 17:55 JST, failed=0. Rollback floor: `fa1ec1d8`. Pi4 and Pi3 were not redeployed; the kiosks pick the change up from the web app served by Pi5.
+- Read after the deploy through the debugging port (no new browser): StoneBase01, assembly-01 and raspberrypi4 had the new stylesheet loaded and the streaks computed as `steps(1)`, 8 s. The other four kiosks were not read.
+- StoneBase01 idle after the deploy (`top`, 8 s): heaviest Chromium process about 5 %. The page open at that moment (`/kiosk/assembly/manuals/workshop`) reported no running animations, so the load with the stepped streaks moving was not re-read after the deploy.
+- Device check by the user (reported through the tracker session): the streaks step about once per second, they stop while typing and resume about one second later, and typing is no longer slow. All three OK.
+- Keystroke timing in milliseconds was never taken, before or after. The result rests on the idle-load readings and the user's check. Whether `--disable-renderer-accessibility` wins over `--force-renderer-accessibility` remains unchecked.

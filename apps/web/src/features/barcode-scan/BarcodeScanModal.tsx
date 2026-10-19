@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { useBarcodeScanSession } from './useBarcodeScanSession';
 
 import type { BarcodeStabilityConfig } from './barcodeReadStability';
+import type { UseBarcodeScanSessionOptions } from './useBarcodeScanSession';
 import type { BarcodeReaderTimingOptions } from './zxingVideoReader';
 import type { BarcodeFormat } from '@zxing/library';
 
@@ -13,6 +14,8 @@ export type BarcodeScanModalProps = {
   open: boolean;
   formats: BarcodeFormat[];
   readerOptions?: BarcodeReaderTimingOptions;
+  engine?: UseBarcodeScanSessionOptions['engine'];
+  nativeCameraResolution?: UseBarcodeScanSessionOptions['nativeCameraResolution'];
   stabilityConfig?: BarcodeStabilityConfig;
   /** 未検出打ち切り ms（既定 30s） */
   idleTimeoutMs?: number;
@@ -28,6 +31,8 @@ export function BarcodeScanModal({
   open,
   formats,
   readerOptions,
+  engine,
+  nativeCameraResolution,
   stabilityConfig,
   idleTimeoutMs = 30_000,
   onSuccess,
@@ -52,6 +57,8 @@ export function BarcodeScanModal({
     videoRef,
     formats,
     readerOptions,
+    engine,
+    nativeCameraResolution,
     stabilityConfig,
     idleTimeoutMs,
     onSuccess,

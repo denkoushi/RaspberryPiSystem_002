@@ -89,7 +89,8 @@ export class AssemblySeibanStartService {
 
   private async resolveMachineNames(fseibans: string[]): Promise<Map<string, MachineNameResolution>> {
     const result = new Map<string, MachineNameResolution>();
-    const progressRows = await fetchSeibanProgressRows(fseibans);
+    // 補完テーブル由来かどうかを machineNameSource で返すため、補完はここで行う
+    const progressRows = await fetchSeibanProgressRows(fseibans, undefined, { supplementMachineName: false });
     const progressByFseiban = new Map(progressRows.map((row) => [row.fseiban, row.machineName] as const));
 
     const needSupplement: string[] = [];

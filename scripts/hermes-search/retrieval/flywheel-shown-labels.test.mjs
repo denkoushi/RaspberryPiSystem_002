@@ -15,6 +15,11 @@ const evaluate = async ({ questions }) => ({
   }])),
 });
 
+test('shown-pair labeling excludes filter questions', () => {
+  assert.deepEqual(collectShownPairs({ questions: [{ id: 'f-a', kind: 'filter', question: 'recent', relevant: [] }],
+    runs: [{ cases: [{ id: 'f-a', shown: ['a'] }] }] }), []);
+});
+
 test('collectShownPairs excludes relevant and labelled pairs, deduplicates across runs, and normalizes ids', () => {
   const questions = [
     { id: 'a', question: 'question a', relevant: ['a', 'nonconformity:b'] },

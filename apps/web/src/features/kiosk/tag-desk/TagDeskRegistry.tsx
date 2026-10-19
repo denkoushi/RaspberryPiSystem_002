@@ -2,6 +2,7 @@
 
 import { KindIcon, NfcIcon, PlusIcon, SearchIcon } from './TagDeskIcons';
 import { KIND_META, TAG_DESK_KINDS, shortUid, statusLabel, statusTone } from './tagDeskModel';
+import { PositionApprovalChip } from './TagDeskParts';
 import { tagDesk } from './tagDeskTheme';
 
 import type { TagDeskState } from './useTagDesk';
@@ -9,10 +10,11 @@ import type { TagDeskKind, TagDeskRow } from '../../../api/domains/tag-desk';
 import type { Ref } from 'react';
 
 const COLUMNS = 'grid grid-cols-[210px_130px_minmax(0,1.2fr)_minmax(0,1fr)_110px] items-center gap-4 px-[22px]';
-const EMPLOYEE_COLUMNS = 'grid grid-cols-[210px_130px_minmax(0,1.2fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_110px] items-center gap-4 px-[22px]';
+const EMPLOYEE_COLUMNS = 'grid grid-cols-[170px_84px_minmax(0,1.2fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_minmax(0,1.6fr)_70px] items-center gap-3.5 px-[22px]';
 
 type Props = {
   state: TagDeskState;
+  onPositionRanks: () => void;
   /** Kinds (tabs) where the scanned tag is bound, marked with a dot. */
   hitKinds: Set<TagDeskKind>;
   /** Rows bound to the scanned tag. */
@@ -21,7 +23,7 @@ type Props = {
   listRef: Ref<HTMLDivElement>;
 };
 
-export function TagDeskRegistry({ state, hitKinds, hitIds, releasing, listRef }: Props) {
+export function TagDeskRegistry({ state, hitKinds, hitIds, releasing, listRef, onPositionRanks }: Props) {
   const meta = KIND_META[state.kind];
   const tagged = state.rows.filter((row) => row.tags.length > 0).length;
   const untagged = state.rows.length - tagged;
@@ -68,7 +70,8 @@ export function TagDeskRegistry({ state, hitKinds, hitIds, releasing, listRef }:
           タグなし
           <span className="font-mono text-[13px]">{untagged}</span>
         </button>
-        <button type="button" className={`${tagDesk.btn} ${tagDesk.ghost} ml-auto`} onClick={() => state.openForm({ kind: state.kind, id: null })}>
+        {state.kind === 'employee' ? <button type="button" className={`${tagDesk.btn} ${tagDesk.ghost} ml-auto`} onClick={onPositionRanks}>職位の対応表</button> : null}
+        <button type="button" className={`${tagDesk.btn} ${tagDesk.ghost} ${state.kind === 'employee' ? '' : 'ml-auto'}`} onClick={() => state.openForm({ kind: state.kind, id: null })}>
           <PlusIcon />
           {meta.label}を追加
         </button>
@@ -79,6 +82,7 @@ export function TagDeskRegistry({ state, hitKinds, hitIds, releasing, listRef }:
         <span>{state.kind === 'employee' ? '氏名' : '名称'}</span>
         <span>{meta.subLabel}</span>
         {state.kind === 'employee' ? <span>{meta.sub2Label}</span> : null}
+        {state.kind === 'employee' ? <span>職位</span> : null}
         <span>状態</span>
       </div>
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto" data-tag-desk-list>
@@ -101,6 +105,7 @@ export function TagDeskRegistry({ state, hitKinds, hitIds, releasing, listRef }:
         <span>{meta.label} {state.rows.length}件</span>
         <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-[3px] bg-[#152032]" />タグあり {tagged}</span>
         <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-[3px] border border-dashed border-[#334359]" />タグなし {untagged}</span>
+        {state.kind === 'employee' ? <span>承認可 {state.rows.filter((row) => row.positionApproval === 'approver').length}人</span> : null}
         <span className="ml-auto">在庫の棚・数量タグは「在庫の準備」で付けます</span>
       </div>
     </section>
@@ -137,6 +142,12 @@ function RegistryRow({ row, hit, selected, releasing, onSelect }: { row: TagDesk
       <span className="truncate font-medium text-white">{row.name}</span>
       <span className="truncate text-[15px] text-[#8494a8]">{row.sub ?? ''}</span>
       {row.kind === 'employee' ? <span className="truncate text-[15px] text-[#8494a8]">{row.sub2 ?? ''}</span> : null}
+      {row.kind === 'employee' ? (
+        <span className="flex min-w-0 items-center gap-2 text-[15px] text-[#aebbd0]">
+          <span className={`truncate ${row.positionName ? '' : 'text-[#5c6d83]'}`} title={row.positionName ?? undefined}>{row.positionName || '未設定'}</span>
+          <PositionApprovalChip approval={row.positionApproval} />
+        </span>
+      ) : null}
       <span className="text-sm">
         {tone ? <span className={tagDesk.chipWarn}>{statusLabel(row.kind, row.status)}</span> : <span className="text-white">{statusLabel(row.kind, row.status)}</span>}
       </span>

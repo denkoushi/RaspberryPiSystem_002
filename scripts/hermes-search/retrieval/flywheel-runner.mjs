@@ -7,14 +7,18 @@
 // After generation and grading finish, kept questions without live results are answered by the
 // kiosk's own pipeline, recording the shown and judged ids and the loss stage (flywheel-live.mjs).
 // A nightly budget caps the questions, and a busy guard stops calling the model when it is slow.
-import { appendFile, mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { isConversationalSource, recordSourceId } from '../hermes-source-definition.mjs';
+import { appendFile, mkdir, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { catalogEntries, fieldsWithRole, loadNonconformityCatalog } from './catalog.mjs';
 import { denseSettings, readDenseStore } from './dense-dgx.mjs';
 import { enrichmentSettings, withinWindow } from './enrichment-dgx.mjs';
 import { createDgxGrader, createJevPairGrader, filterAndLabel } from './flywheel-filter.mjs';
-import { createDgxChat, generateForPairs, guardChat } from './flywheel-generate.mjs';
+import { checkFilterAnswer, filterOutcome, isFilterOnlyPlan } from './flywheel-filter-check.mjs';
+import { loadCauseById } from './worker.mjs';
+import { sampleFilterQuestions } from './flywheel-filter-questions.mjs';
+import { createDgxChat, generateForPairs, guardChat, probeChat } from './flywheel-generate.mjs';
 import { createLiveScorer, lossStage, relevantIds } from './flywheel-live.mjs';
 import { questionSet, splitOf } from './flywheel-gate.mjs';
 import { DEFAULT_LEARN_BUDGET, LEARN_BUDGET_CAP, LEARN_EVAL_NIGHTS, activationDecision, evaluateCandidates, learnedPath, proposeLearnedQueries, readLearned, writeLearned } from './flywheel-learn.mjs';
@@ -30,12 +34,15 @@ export const DEFAULT_LABEL_BUDGET = 60;
 export const LABEL_BUDGET_CAP = 300;
 export const DEFAULT_REAL_BUDGET = 20;
 export const REAL_BUDGET_CAP = 100;
+export const DEFAULT_FILTER_BUDGET = 10;
+export const FILTER_BUDGET_CAP = 30;
 export const REAL_LABEL_DEPTH = 5;
 
 export function flywheelSettings(env = process.env) {
   const requested = Number.parseInt(env.HERMES_FLYWHEEL_MAX_QUESTIONS ?? '', 10);
   const labelBudget = Number(env.HERMES_FLYWHEEL_LABEL_BUDGET ?? NaN);
   const realBudget = Number(env.HERMES_FLYWHEEL_REAL_BUDGET ?? NaN);
+  const filterBudget = Number(env.HERMES_FLYWHEEL_FILTER_BUDGET ?? NaN);
   const learnBudget = Number(env.HERMES_FLYWHEEL_LEARN_BUDGET ?? NaN);
   const inference = enrichmentSettings(env);
   return {
@@ -43,6 +50,7 @@ export function flywheelSettings(env = process.env) {
     maxQuestions: Number.isInteger(requested) && requested > 0 ? Math.min(requested, MAX_QUESTIONS_CAP) : DEFAULT_MAX_QUESTIONS,
     labelBudget: Number.isInteger(labelBudget) && labelBudget >= 0 && env.HERMES_FLYWHEEL_LABEL_BUDGET?.trim() !== '' ? Math.min(labelBudget, LABEL_BUDGET_CAP) : DEFAULT_LABEL_BUDGET,
     realBudget: Number.isInteger(realBudget) && realBudget >= 0 && env.HERMES_FLYWHEEL_REAL_BUDGET?.trim() !== '' ? Math.min(realBudget, REAL_BUDGET_CAP) : DEFAULT_REAL_BUDGET,
+    filterBudget: Number.isInteger(filterBudget) && filterBudget >= 0 && env.HERMES_FLYWHEEL_FILTER_BUDGET?.trim() !== '' ? Math.min(filterBudget, FILTER_BUDGET_CAP) : DEFAULT_FILTER_BUDGET,
     learnBudget: Number.isInteger(learnBudget) && learnBudget >= 0 && env.HERMES_FLYWHEEL_LEARN_BUDGET?.trim() !== '' ? Math.min(learnBudget, LEARN_BUDGET_CAP) : DEFAULT_LEARN_BUDGET,
     window: env.HERMES_RETRIEVAL_ENRICHMENT_WINDOW || '',
     dir: env.HERMES_FLYWHEEL_DIR || DEFAULT_FLYWHEEL_DIR,
@@ -96,7 +104,7 @@ export async function usedAnchors(dir) {
     return used;
   }
   for (const name of names.filter((item) => /^questions-\d{4}-\d{2}-\d{2}\.jsonl$/u.test(item))) {
-    for (const row of await readLines(path.join(dir, name))) if (row?.a) used.add(row.a);
+    for (const row of await readLines(path.join(dir, name))) if (row?.kind !== 'filter' && row?.a) used.add(row.a);
   }
   return used;
 }
@@ -120,6 +128,7 @@ function countLine(status) {
     `labelled=${status.labelled}`,
     `labelPending=${status.labelPending}`,
     `real=${status.real}`,
+    `filter=${Object.entries(status.filter).map(([key, value]) => `${key}:${value}`).join(',')}`,
     `learned=${status.learned?.proposed ?? 0}/${status.learned?.decision ?? 'pending'}`,
   ].join(' ');
 }
@@ -132,7 +141,7 @@ function shownRelevantWithLabels(row, labels) {
 function unlabelledShownPairs(rows, labels) {
   const groups = new Map();
   for (const row of rows) {
-    if (row.kept !== true || !row.question || row.live?.loss !== 'other_shown') continue;
+    if (row.kind === 'filter' || row.kept !== true || !row.question || row.live?.loss !== 'other_shown') continue;
     const anchor = bareId(row.a);
     const relevant = new Set(relevantIds(row));
     for (const id of (row.live.shown ?? []).map(bareId)) {
@@ -145,7 +154,7 @@ function unlabelledShownPairs(rows, labels) {
 }
 
 /**
- * One night pass. Injectable: now, readDense, chat (the raw DGX chat), jevEvaluate, live (the
+ * One night pass. Injectable: now, readDense, chat (the raw DGX chat), probe, jevEvaluate, live (the
  * scorer from createLiveScorer), liveFactory, and the random seed. Returns the status that is also written to
  * flywheel-status.json.
  */
@@ -155,21 +164,50 @@ export async function runFlywheelNight({
   now = () => new Date(),
   readDense = readDenseStore,
   chat = null,
+  probe = probeChat,
   jevEvaluate = null,
   live = null,
   liveFactory = null,
   seed = null,
   log = (line) => console.info(line),
 }) {
-  const status = { schema: 'hermes-flywheel-status/v1', reason: 'started', night: null, generated: 0, kept: 0, shown: 0, dropped: 0, dropReasons: {}, lossStages: {}, pendingLive: 0, labelled: 0, labelPending: 0, real: 0, realPending: 0, updatedAt: null };
+  const status = { schema: 'hermes-flywheel-status/v1', reason: 'started', night: null, generated: 0, kept: 0, shown: 0, dropped: 0, dropReasons: {}, lossStages: {}, pendingLive: 0, labelled: 0, labelPending: 0, real: 0, realPending: 0, filter: { generated: 0, ok: 0, mismatch: 0, unsupported: 0, clarified: 0, failed: 0 }, updatedAt: null };
+  let previousLine = null;
+  let previousNight = null;
+  if (settings.dir) {
+    try {
+      const previous = JSON.parse(await readFile(path.join(settings.dir, 'flywheel-status.json'), 'utf8'));
+      previousLine = previous?.lastLine ?? null;
+      previousNight = previous?.night ?? (previous?.updatedAt ? nightOf(new Date(previous.updatedAt)) : null);
+    } catch {
+      // Missing or unreadable status means the next final line must be written.
+    }
+  }
+  const nightLog = async (line, final = false) => {
+    if (!settings.dir) return;
+    if (final && line === previousLine && (status.night ?? nightOf(now())) === previousNight) return;
+    try {
+      const at = now();
+      await appendFile(path.join(settings.dir, `runner-${status.night ?? nightOf(at)}.log`),
+        `${at.toISOString()} ${String(line).replace(/[\r\n]/gu, ' ')}\n`, { mode: 0o600 });
+    } catch {
+      // Diagnostics must never interrupt generation or scoring.
+    }
+  };
+  const writeLog = async (line, final = false) => {
+    log(line);
+    await nightLog(line, final);
+  };
+  const logLive = (id, result) => nightLog(`hermes retrieval flywheel live id=${id} outcome=${result.outcome} loss=${result.loss ?? 'none'} reason=${JSON.stringify(result.reason ?? null)}${result.unresolved?.length ? ` unresolved=${JSON.stringify(result.unresolved)}` : ''} ms=${result.ms}`);
   const finish = async (reason) => {
     status.reason = reason;
     status.updatedAt = now().toISOString();
+    status.lastLine = countLine(status);
     if (settings.dir) {
       await mkdir(settings.dir, { recursive: true, mode: 0o700 });
       await writeJson(path.join(settings.dir, 'flywheel-status.json'), status);
     }
-    log(countLine(status));
+    await writeLog(status.lastLine, true);
     return status;
   };
   if (!settings.enabled) return finish('disabled');
@@ -178,13 +216,15 @@ export async function runFlywheelNight({
   status.night = nightOf(now());
   await mkdir(settings.dir, { recursive: true, mode: 0o700 });
   const filePath = questionsPath(settings.dir, status.night);
-  const done = (await readLines(filePath)).length;
+  const done = (await readLines(filePath)).filter((row) => row.kind !== 'filter').length;
   const budget = settings.maxQuestions - done;
 
   const catalog = loadNonconformityCatalog();
   const bodyFields = fieldsWithRole(catalog, 'body');
   const fieldLabels = Object.fromEntries(catalogEntries(catalog).flatMap((entry) => entry.fields.map((field) => [field.key, field.label])));
-  const corpus = (records ?? []).map((record) => ({ ...record, id: bareId(record.id) }));
+  records = (records ?? []).filter((record) => isConversationalSource(record.kind ?? recordSourceId(record)));
+  const corpus = records.map((record) => ({ ...record, id: bareId(record.id) }));
+  const causeById = await loadCauseById(process.env, corpus);
   const recordsById = new Map(corpus.map((record) => [record.id, record]));
   let denseEntries = [];
   try {
@@ -198,7 +238,8 @@ export async function runFlywheelNight({
     evaluate = createTypesafeDirectEvaluate();
   }
   let reason = budget <= 0 ? 'budget_reached' : 'completed';
-  const guarded = guardChat(chat ?? createDgxChat({ origin: settings.origin, token: settings.token, egress: settings.egress, model: settings.model }));
+  const rawChat = chat ?? createDgxChat({ origin: settings.origin, token: settings.token, egress: settings.egress, model: settings.model });
+  const guarded = guardChat(rawChat);
   const gradeDgx = createDgxGrader(guarded);
 
   // Both phases use the same consensus rule and persist each finished JEV batch.
@@ -237,9 +278,20 @@ export async function runFlywheelNight({
   }
   if (budget > 0) {
     const random = createRandom(seed ?? Number(status.night.replaceAll('-', '')) + done);
-    const pairs = samplePairs({ records: corpus, denseEntries, count: budget, random, exclude: await usedAnchors(settings.dir) });
-    if (!pairs.length) reason = 'no_pairs';
-    else {
+    const exclude = await usedAnchors(settings.dir);
+    const denseIds = new Set(denseEntries.map((entry) => bareId(entry.id)));
+    const pool = corpus.filter((record) => bodyText(record) && denseIds.has(record.id));
+    if (pool.length > 1 && pool.some((record) => !exclude.has(record.id))) {
+      status.probe = await probe(rawChat);
+      if (!status.probe.ok) {
+        reason = 'dgx_not_ready';
+        await writeLog(`hermes retrieval flywheel dgx not ready reason=${status.probe.reason}`);
+      }
+    }
+    const pairs = reason === 'dgx_not_ready' ? [] : samplePairs({ records: corpus, denseEntries, count: budget, random, exclude });
+    if (!pairs.length) {
+      if (reason !== 'dgx_not_ready') reason = 'no_pairs';
+    } else {
       const gradeJevPair = createJevPairGrader(evaluate);
       for (const pair of pairs) {
         if (!withinWindow(settings.window, now())) {
@@ -285,10 +337,12 @@ export async function runFlywheelNight({
   const rows = await readLines(filePath);
   let scored = false;
   for (const row of rows) {
-    if (row.kept !== true || !row.question || row.live) continue;
+    if (row.kind === 'filter' || row.kept !== true || !row.question || row.live) continue;
     if (!withinWindow(settings.window, now())) break;
     score ??= await makeLive({ records, catalog, evaluate });
-    row.live = await score(row);
+    row.live = { ...await score(row) };
+    row.live.reason ??= null;
+    await logLive(row.a, row.live);
     scored = true;
   }
   if (scored) {
@@ -305,7 +359,7 @@ export async function runFlywheelNight({
     if (!labels || typeof labels !== 'object' || Array.isArray(labels)) labels = {};
   } catch (error) {
     // A missing file starts empty; an unreadable one is replaced rather than stopping the night.
-    if (error.code !== 'ENOENT') log('hermes retrieval flywheel labels unreadable, starting empty');
+    if (error.code !== 'ENOENT') await writeLog('hermes retrieval flywheel labels unreadable, starting empty');
     labels = {};
   }
   // Real-question labels have their own question budget, including partially graded questions.
@@ -334,7 +388,7 @@ export async function runFlywheelNight({
   }
   let relabelled = false;
   for (const row of rows) {
-    if (row.kept !== true || row.live?.loss !== 'other_shown' || !shownRelevantWithLabels(row, labels)) continue;
+    if (row.kind === 'filter' || row.kept !== true || row.live?.loss !== 'other_shown' || !shownRelevantWithLabels(row, labels)) continue;
     row.live.loss = null;
     row.live.labelled = true;
     relabelled = true;
@@ -345,10 +399,34 @@ export async function runFlywheelNight({
     await rename(temporary, filePath);
   }
   for (const row of rows) {
-    if (row.kept !== true) continue;
+    if (row.kind === 'filter' || row.kept !== true) continue;
     if (!row.live) status.pendingLive += 1;
     else if (row.live.loss == null) status.shown += 1;
     else status.lossStages[row.live.loss] = (status.lossStages[row.live.loss] ?? 0) + 1;
+  }
+  // Filter rows have their own nightly budget and never enter content grading or learning.
+  const filterDone = rows.filter((row) => row.kind === 'filter');
+  const filterIds = new Set(filterDone.map((row) => row.id));
+  const filterTexts = new Set(filterDone.map((row) => row.question));
+  const filterBudget = settings.filterBudget ?? DEFAULT_FILTER_BUDGET;
+  const filterQuestions = sampleFilterQuestions({ records: corpus, catalog, causeById, count: filterBudget,
+    random: createRandom(seed ?? Number(status.night.replaceAll('-', ''))), now: now() });
+  let filterRemaining = Math.max(0, filterBudget - filterDone.length);
+  for (const question of filterQuestions) {
+    if (filterRemaining <= 0 || !withinWindow(settings.window, now())) break;
+    if (filterIds.has(question.id) || filterTexts.has(question.question)) continue;
+    score ??= await makeLive({ records, catalog, evaluate });
+    const live = { ...await score({ ...question, kind: 'filter', relevant: [] }) };
+    live.reason ??= null;
+    const filterCheck = checkFilterAnswer({ plan: live.plan, shown: live.shown, records: corpus, catalog, causeById });
+    live.loss = filterCheck.ok === true ? null : filterCheck.ok === false ? 'filter_mismatch' : 'filter_unsupported';
+    await logLive(question.id, live);
+    const row = { at: now().toISOString(), source: 'synthetic', kind: 'filter', ...question,
+      relevant: [], labels: {}, live, filterCheck };
+    await appendFile(filePath, `${JSON.stringify(row)}\n`, { mode: 0o600 });
+    filterRemaining -= 1;
+    status.filter.generated += 1;
+    status.filter[filterOutcome(row)] += 1;
   }
   const realFile = realPath(settings.dir, status.night);
   const realDone = (await readLines(realFile)).length;
@@ -367,6 +445,18 @@ export async function runFlywheelNight({
     if (!withinWindow(settings.window, now())) break;
     score ??= await makeLive({ records, catalog, evaluate });
     const live = await score({ a: null, b: null, question: question.question, grades: null });
+    await logLive(question.id, live);
+    if (isFilterOnlyPlan(live.plan)) {
+      const filterCheck = checkFilterAnswer({ plan: live.plan, shown: live.shown, records: corpus, catalog, causeById });
+      live.loss = filterCheck.ok === true ? null : filterCheck.ok === false ? 'filter_mismatch' : 'filter_unsupported';
+      await appendFile(realFile, `${JSON.stringify({
+        at: now().toISOString(), source: 'real', ...question, split: splitOf(question.id),
+        kind: 'filter', relevant: [], labels: {}, live, filterCheck,
+      })}\n`, { mode: 0o600 });
+      status.real += 1;
+      status.realPending -= 1;
+      continue;
+    }
     const ids = [...new Set([
       ...(live.candidates ?? []).slice(0, REAL_LABEL_DEPTH), ...(live.shown ?? []), ...question.dayShown,
     ].map(bareId))].filter((id) => recordsById.has(id));
@@ -389,7 +479,7 @@ export async function runFlywheelNight({
     live.loss = lossStage({ relevant, outcome: live.outcome, shown: live.shown, candidates: live.candidates, judged: live.judged });
     await writeJson(labelsPath, { schema: 'hermes-flywheel-labels/v1', labels });
     await appendFile(realFile, `${JSON.stringify({
-      at: now().toISOString(), source: 'real', ...question, split: splitOf(question.id), relevant, labels: questionLabels, live,
+      at: now().toISOString(), source: 'real', ...question, split: splitOf(question.id), kind: 'content', relevant, labels: questionLabels, live,
     })}\n`, { mode: 0o600 });
     status.real += 1;
     status.realPending -= 1;
@@ -414,15 +504,17 @@ export async function runFlywheelNight({
     score ??= await makeLive({ records, catalog, evaluate });
     const candidateScore = await makeLive({ records, catalog, evaluate, learned: candidates });
     let expired = false;
-    const inWindow = (scorer) => async (row) => {
+    const inWindow = (scorer, mode) => async (row) => {
       if (!withinWindow(settings.window, now())) {
         expired = true;
         throw new Error('learn_window_expired');
       }
-      return scorer(row);
+      const result = await scorer(row);
+      await logLive(`${mode}:${row.id ?? row.a}`, result);
+      return result;
     };
     try {
-      const check = await evaluateCandidates({ questions, scoreBaseline: inWindow(score), scoreCandidate: inWindow(candidateScore) });
+      const check = await evaluateCandidates({ questions, scoreBaseline: inWindow(score, 'baseline'), scoreCandidate: inWindow(candidateScore, 'candidate') });
       if (withinWindow(settings.window, now())) {
         const decision = activationDecision(check);
         const decidedAt = now().toISOString();
@@ -446,12 +538,66 @@ async function readStdin() {
   return Array.isArray(payload) ? payload : payload.records;
 }
 
-export async function main() {
+export const RUNNER_LOCK_STALE_MS = 2 * 3600 * 1000;
+
+function processAlive(pid) {
   try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === 'EPERM';
+  }
+}
+
+/**
+ * One runner per night directory. The API starts a runner every few minutes and, during a
+ * blue/green swap, from two containers at once; on 2026-10-06 two runners overlapped and the learn
+ * phase ran while generation was still writing. The lock names the holder's pid and time; a lock
+ * whose process is gone, or older than RUNNER_LOCK_STALE_MS, is taken over.
+ */
+export async function acquireRunnerLock(dir, { pid = process.pid, now = () => new Date(), staleMs = RUNNER_LOCK_STALE_MS, alive = processAlive } = {}) {
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const lockPath = path.join(dir, 'runner.lock');
+  const body = `${JSON.stringify({ pid, at: now().toISOString() })}\n`;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const handle = await open(lockPath, 'wx', 0o600);
+      await handle.writeFile(body);
+      await handle.close();
+      return { path: lockPath, release: () => rm(lockPath, { force: true }) };
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+    }
+    let holder = null;
+    try {
+      holder = JSON.parse(await readFile(lockPath, 'utf8'));
+    } catch {
+      holder = null;
+    }
+    const age = holder?.at ? now().getTime() - Date.parse(holder.at) : Number.POSITIVE_INFINITY;
+    const held = Number.isInteger(holder?.pid) && holder.pid !== pid && alive(holder.pid) && age < staleMs;
+    if (held) return null;
+    await rm(lockPath, { force: true });
+  }
+  return null;
+}
+
+export async function main() {
+  let lock = null;
+  try {
+    const settings = flywheelSettings();
+    lock = await acquireRunnerLock(settings.dir);
+    if (!lock) {
+      console.info('hermes retrieval flywheel reason=already_running');
+      process.exitCode = 0;
+      return;
+    }
     const records = await readStdin();
-    await runFlywheelNight({ records, settings: flywheelSettings() });
+    await runFlywheelNight({ records, settings });
   } catch {
     console.info('hermes retrieval flywheel reason=runner_failed');
+  } finally {
+    if (lock) await lock.release().catch(() => {});
   }
   process.exitCode = 0;
 }

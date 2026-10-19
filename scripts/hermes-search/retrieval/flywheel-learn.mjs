@@ -68,7 +68,7 @@ export function proposeLearnedQueries({ rows, existing = [], night, budget = DEF
   for (const row of rows) {
     if (proposed.length >= budget) break;
     const real = row?.source === 'real';
-    if (!row || (!real && row.kept !== true) || typeof row.question !== 'string' || !row.question.trim()) continue;
+    if (!row || row.kind === 'filter' || (!real && row.kept !== true) || typeof row.question !== 'string' || !row.question.trim()) continue;
     if ((real ? row.split : syntheticSplit(row.a)) !== 'dev') continue;
     if (!['not_in_pool', 'judge_rejected'].includes(row.live?.loss)) continue;
     const relevant = (real ? row.relevant ?? [] : syntheticRelevant(row)).map(bareId).filter(Boolean);
@@ -116,6 +116,7 @@ export function mergeLearnedQueries(enrichmentById, learned, { states = ['active
 export async function evaluateCandidates({ questions, scoreBaseline, scoreCandidate }) {
   const check = { heldout: { n: 0, gained: 0, lost: 0 }, real: { n: 0, gained: 0, lost: 0 } };
   for (const question of questions) {
+    if (question.kind === 'filter' && question.source !== 'real') continue;
     const row = { a: null, b: null, question: question.question, grades: null };
     const wanted = new Set(question.relevant.map(bareId));
     const hit = (result) => (result.shown ?? []).map(bareId).some((id) => wanted.has(id));

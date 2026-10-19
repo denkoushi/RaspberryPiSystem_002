@@ -19,7 +19,7 @@ export type SlipPairMatchInput = {
   transferOrderBarcodeRaw: string;
   transferPartBarcodeRaw: string;
   /**
-   * 現品票の製造order（ProductNo）。印字のみの場合は空でよい。
+   * 現品票の注文番号（FKOBAINO）または製造order（ProductNo）。印字のみの場合は空でよい。
    * `actualFseibanRaw` と併せて少なくとも一方が必要（ルートで検証）。
    */
   actualOrderBarcodeRaw: string;
@@ -30,7 +30,9 @@ export type SlipPairMatchInput = {
   actualPartBarcodeRaw: string;
 };
 
-export type SlipPairMatchResult =
+export type SlipPairMatchResult = {
+  actualResolvedBy?: 'productNo' | 'purchaseOrder' | 'fseiban';
+} & (
   | { ok: true }
   | {
       ok: false;
@@ -40,7 +42,7 @@ export type SlipPairMatchResult =
         | 'TRANSFER_PART_MISMATCH'
         | 'ACTUAL_PART_MISMATCH'
         | 'FSEIBAN_OR_PART_PAIR_MISMATCH';
-    };
+    });
 
 /**
  * 移動票・現品票の (FSEIBAN, FHINCD) ペア一致を判定する（純関数）。

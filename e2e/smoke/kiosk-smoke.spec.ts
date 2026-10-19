@@ -8,7 +8,7 @@ test.describe('キオスク画面スモーク', () => {
     // 端末設定の初期画面へ遷移していることを確認
     await expect(page).toHaveURL(/\/kiosk(?:\/tag|\/photo|\/production-schedule|\/assembly)?(?:[?#].*)?$/);
     await revealKioskHeader(page);
-    await expect(page.getByText(/キオスク端末/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('navigation', { name: '画面の切替' })).toBeVisible({ timeout: 5000 });
     await expect(page.locator('a[href="/kiosk/tag"], a[href="/kiosk/photo"]').filter({ hasText: '持出' }).first()).toBeVisible();
     await expect(page.locator('a[href="/kiosk/rigging/borrow"]').filter({ hasText: '吊具 持出' }).first()).toBeVisible();
   });

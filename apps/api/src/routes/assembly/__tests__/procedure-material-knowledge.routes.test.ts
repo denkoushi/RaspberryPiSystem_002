@@ -1,3 +1,4 @@
+vi.mock('../../../config/env/load-dotenv.js', () => ({}));
 import { createHash } from 'node:crypto';
 
 import { Prisma } from '@prisma/client';
@@ -107,8 +108,16 @@ describe('procedure-material knowledge routes', () => {
     expect(store.write).toHaveBeenCalledTimes(2);
     expect(runtime.assets.readOriginal).toHaveBeenCalledWith(originalId); expect(runtime.assets.readDisplay).not.toHaveBeenCalled();
     expect(db.procedureMaterial.create).toHaveBeenCalledWith({ data: expect.objectContaining({ kind: 'PHOTO', origin: 'KNOWLEDGE', sha256, width: 2, height: 3,
-      contentType: 'image/png', byteSize: bytes.length, knowledgeRef: { kind: 'source', sourceId: 'source-1', imageId } }) });
+      imageDescription: '工具の写真', imageDescribedAt: expect.any(Date), contentType: 'image/png', byteSize: bytes.length, knowledgeRef: { kind: 'source', sourceId: 'source-1', imageId } }) });
     Object.values(writes).forEach((write) => expect(write).not.toHaveBeenCalled());
+  });
+  it('leaves photos without a stored VLM description pending, including step captions', async () => {
+    const { source, db } = await harness();
+    source.organized.photos = [];
+    await app.inject({ method: 'POST', url: `${base}/import-knowledge`, payload: { candidateKeys: [photoKey, stepPhotoKey] } });
+    for (const [{ data }] of db.procedureMaterial.create.mock.calls as any) {
+      expect(data.imageDescription).toBeUndefined(); expect(data.imageDescribedAt).toBeUndefined();
+    }
   });
   it('falls back to display only for a missing original', async () => {
     const { runtime, db } = await harness(); runtime.assets.readOriginal.mockRejectedValueOnce(missing());

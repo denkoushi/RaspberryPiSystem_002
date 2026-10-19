@@ -2,11 +2,17 @@
   "name": "hermes-search-runtime",
   "private": true,
   "type": "module",
+  "scripts": {
+    "test": "node --test *.test.mjs retrieval/*.test.mjs"
+  },
   "dependencies": {
     "@tobilu/qmd": "git+https://github.com/tobi/qmd.git#04e4dbd8245c527a88f1a8f0bda547aef9ca81fb",
     "ai": "7.0.105"
   },
   "devDependencies": {
-    "@huggingface/transformers": "^3.7.6"
+    "@huggingface/transformers": "^4.3.1"
+  },
+  "overrides": {
+    "simple-git": "4.0.2"
   }
 }

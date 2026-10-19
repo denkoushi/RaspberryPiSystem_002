@@ -435,8 +435,8 @@ export class BackupConfigLoader {
             details: {
               legacyKey: 'storage.options.accessToken',
               newKey: 'storage.options.dropbox.accessToken',
-              legacyValue: opts.accessToken.substring(0, 20) + '...',
-              newValue: dropbox.accessToken.substring(0, 20) + '...'
+              legacyValue: '[REDACTED]',
+              newValue: '[REDACTED]'
             }
           });
         }
@@ -539,8 +539,8 @@ export class BackupConfigLoader {
                 message: `${key}: 環境変数参照（${resolvedEnvVarName}）と直接値の両方が設定されています`,
                 details: {
                   envVarName: resolvedEnvVarName,
-                  envValue: envValue.substring(0, 20) + '...',
-                  directValue: directValue.substring(0, 20) + '...'
+                  envValue: '[REDACTED]',
+                  directValue: '[REDACTED]'
                 }
               });
             }

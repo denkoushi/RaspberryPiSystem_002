@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getCameraStream, stopCameraStream } from '../../utils/camera';
 
+import { createNativeBarcodeDetector } from './barcodeDetector';
 import { reduceBarcodeStability } from './barcodeReadStability';
 import { createBrowserMultiFormatReader } from './zxingVideoReader';
 
@@ -16,6 +17,8 @@ export type UseBarcodeScanSessionOptions = {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   formats: BarcodeFormat[];
   readerOptions?: BarcodeReaderTimingOptions;
+  engine?: 'zxing' | 'auto-native';
+  nativeCameraResolution?: { width: number; height: number };
   stabilityConfig?: BarcodeStabilityConfig;
   /** 未検出のままこの時間で打ち切り */
   idleTimeoutMs: number;
@@ -25,13 +28,15 @@ export type UseBarcodeScanSessionOptions = {
 };
 
 /**
- * getUserMedia で取得したストリームを ZXing で連続デコードする。
+ * 既定は ZXing。opt-in 時は対応形式を確認してネイティブ読取を優先する。
  */
 export function useBarcodeScanSession({
   active,
   videoRef,
   formats,
   readerOptions,
+  engine = 'zxing',
+  nativeCameraResolution,
   stabilityConfig,
   idleTimeoutMs,
   onSuccess,
@@ -45,6 +50,7 @@ export function useBarcodeScanSession({
   const onSuccessRef = useRef(onSuccess);
   const onAbortRef = useRef(onAbort);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
+  const stopNativeRef = useRef<(() => void) | null>(null);
   const disposedRef = useRef(true);
   const timeoutIdRef = useRef<ReturnType<typeof window.setTimeout> | undefined>();
   const acquiredStreamRef = useRef<MediaStream | null>(null);
@@ -55,6 +61,8 @@ export function useBarcodeScanSession({
   const clearCameraError = useCallback(() => setCameraError(null), []);
 
   const teardownReader = useCallback(() => {
+    stopNativeRef.current?.();
+    stopNativeRef.current = null;
     if (timeoutIdRef.current !== undefined) {
       window.clearTimeout(timeoutIdRef.current);
       timeoutIdRef.current = undefined;
@@ -111,13 +119,13 @@ export function useBarcodeScanSession({
     disposedRef.current = false;
     setCameraError(null);
 
-    const reader = createBrowserMultiFormatReader(formats, readerOptions);
-    readerRef.current = reader;
+    let cancelled = false;
+    const isDisposed = () => cancelled || disposedRef.current;
 
     let stabilityState: BarcodeStabilityState | null = null;
 
     const finishSuccess = (text: string) => {
-      if (disposedRef.current) {
+      if (isDisposed()) {
         return;
       }
       disposedRef.current = true;
@@ -127,7 +135,7 @@ export function useBarcodeScanSession({
     };
 
     const finishAbort = () => {
-      if (disposedRef.current) {
+      if (isDisposed()) {
         return;
       }
       disposedRef.current = true;
@@ -136,45 +144,68 @@ export function useBarcodeScanSession({
       onAbortRef.current();
     };
 
+    const onDecoded = (raw: string | undefined) => {
+      if (isDisposed()) return;
+      const text = raw?.trim() ?? '';
+      if (!text) return;
+      if (stabilityConfig == null) {
+        finishSuccess(text);
+        return;
+      }
+      const { next, shouldConfirm } = reduceBarcodeStability(stabilityState, text, Date.now(), stabilityConfig);
+      stabilityState = next;
+      if (shouldConfirm && next != null) finishSuccess(next.value);
+    };
+
     void (async () => {
       try {
-        const stream = await getCameraStream();
-        if (disposedRef.current) {
+        const detector = engine === 'auto-native' ? await createNativeBarcodeDetector(formats) : null;
+        if (isDisposed()) return;
+        const stream = detector
+          ? await navigator.mediaDevices.getUserMedia({
+              audio: false,
+              video: {
+                facingMode: 'environment',
+                width: { ideal: nativeCameraResolution?.width ?? 1280 },
+                height: { ideal: nativeCameraResolution?.height ?? 720 },
+              },
+            })
+          : await getCameraStream();
+        if (isDisposed()) {
           stopCameraStream(stream);
           return;
         }
         acquiredStreamRef.current = stream;
+        timeoutIdRef.current = window.setTimeout(finishAbort, idleTimeoutMs);
 
-        timeoutIdRef.current = window.setTimeout(() => {
-          finishAbort();
-        }, idleTimeoutMs);
-
-        await reader.decodeFromStream(stream, video, (result) => {
-          if (disposedRef.current) {
-            return;
-          }
-          const raw = result?.getText();
-          const text = raw?.trim() ?? '';
-          if (text.length === 0) {
-            return;
-          }
-          if (stabilityConfig == null) {
-            finishSuccess(text);
-            return;
-          }
-          const { next, shouldConfirm } = reduceBarcodeStability(
-            stabilityState,
-            text,
-            Date.now(),
-            stabilityConfig
-          );
-          stabilityState = next;
-          if (shouldConfirm && next != null) {
-            finishSuccess(next.value);
-          }
-        });
+        if (detector) {
+          let frameId: number | undefined;
+          stopNativeRef.current = () => {
+            if (frameId !== undefined) window.cancelAnimationFrame(frameId);
+            video.srcObject = null;
+          };
+          video.srcObject = stream;
+          await video.play();
+          const decodeFrame = async () => {
+            if (isDisposed()) return;
+            if (video.readyState >= 2) {
+              try {
+                const results = await detector.detect(video);
+                onDecoded(results[0]?.rawValue);
+              } catch {
+                // A frame may be temporarily unavailable; try the next frame.
+              }
+            }
+            if (!isDisposed()) frameId = window.requestAnimationFrame(() => { void decodeFrame(); });
+          };
+          if (!isDisposed()) void decodeFrame();
+        } else {
+          const reader = createBrowserMultiFormatReader(formats, readerOptions);
+          readerRef.current = reader;
+          await reader.decodeFromStream(stream, video, (result) => onDecoded(result?.getText()));
+        }
       } catch {
-        if (disposedRef.current) {
+        if (isDisposed()) {
           return;
         }
         disposedRef.current = true;
@@ -185,12 +216,15 @@ export function useBarcodeScanSession({
     })();
 
     return () => {
+      cancelled = true;
       disposedRef.current = true;
       stopAcquiredStream();
       teardownReader();
     };
   }, [
     active,
+    engine,
+    nativeCameraResolution,
     formats,
     idleTimeoutMs,
     readerOptions,

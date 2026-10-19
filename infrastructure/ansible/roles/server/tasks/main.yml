@@ -651,41 +651,6 @@
   when: server_release_mode == 'full'
 
 
-- name: Deploy Pi5 power dispatcher script
-  ansible.builtin.template:
-    src: "{{ playbook_dir }}/../templates/pi5-power-dispatcher.sh.j2"
-    dest: /usr/local/bin/pi5-power-dispatcher.sh
-    owner: root
-    group: root
-    mode: '0755'
-  when: server_release_mode == 'full'
-
-- name: Deploy Pi5 power dispatcher systemd service
-  ansible.builtin.template:
-    src: "{{ playbook_dir }}/../templates/pi5-power-dispatcher.service.j2"
-    dest: /etc/systemd/system/pi5-power-dispatcher.service
-    owner: root
-    group: root
-    mode: '0644'
-  when: server_release_mode == 'full'
-
-- name: Deploy Pi5 power dispatcher systemd path
-  ansible.builtin.template:
-    src: "{{ playbook_dir }}/../templates/pi5-power-dispatcher.path.j2"
-    dest: /etc/systemd/system/pi5-power-dispatcher.path
-    owner: root
-    group: root
-    mode: '0644'
-  when: server_release_mode == 'full'
-
-- name: Reload systemd for power dispatcher units
-  ansible.builtin.systemd:
-    daemon_reload: true
-  when: server_release_mode == 'full'
-
-- name: Enable and start power dispatcher path
-  ansible.builtin.systemd:
-    name: pi5-power-dispatcher.path
-    enabled: true
-    state: started
+- name: Deploy Pi5 power dispatcher
+  ansible.builtin.import_tasks: power-dispatcher.yml
   when: server_release_mode == 'full'

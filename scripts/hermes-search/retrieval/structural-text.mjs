@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { sourceDefinitions } from '../hermes-source-definition.mjs';
 import { periodSpans } from './period-parse.mjs';
 
 const raw = JSON.parse(readFileSync(new URL('./query-structural-words.json', import.meta.url), 'utf8'));
@@ -12,9 +13,8 @@ if (!Array.isArray(rawParticles) || rawParticles.some((word) => typeof word !== 
 }
 
 export const structuralWords = Object.freeze([...rawWords].sort((left, right) => right.length - left.length));
-const sourceLabels = JSON.parse(readFileSync(new URL('./source-labels.json', import.meta.url), 'utf8'));
 // Source names such as 不適合 appear in every record of that source, so they never narrow a search.
-export const sourceLabelWords = Object.freeze(Object.values(sourceLabels).filter((label) => typeof label === 'string' && label));
+export const sourceLabelWords = Object.freeze(Object.values(sourceDefinitions).map((definition) => definition.label).filter((label) => typeof label === 'string' && label));
 export const functionParticles = Object.freeze([...rawParticles].sort((left, right) => right.length - left.length));
 
 const COUNT_EXPRESSION = /[0-9０-９]+件|[〇零一二三四五六七八九十百千万]+件/gu;

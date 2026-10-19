@@ -1,10 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { registerProductionScheduleRoutes } from './kiosk/production-schedule/index.js';
 import { registerKioskEmployeesRoute } from './kiosk/employees.js';
+import { registerKioskPortalCardsRoute } from './kiosk/portal-cards.js';
+import { registerKioskInitialRoute } from './kiosk/initial-route.js';
 import { registerKioskConfigRoute } from './kiosk/config.js';
 import { registerKioskSitesRoute } from './kiosk/sites.js';
 import { registerKioskCallTargetsRoute } from './kiosk/call-targets.js';
 import { registerKioskSupportRoute } from './kiosk/support.js';
+import { registerKioskInquiryRoutes } from './kiosk/inquiries.js';
 import { registerKioskPowerRoute } from './kiosk/power.js';
 import { registerKioskSignagePreviewRoutes } from './kiosk/signage-preview.js';
 import { registerPurchaseOrderLookupRoute } from './kiosk/purchase-order-lookup.js';
@@ -60,6 +63,9 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     normalizeClientKey
   });
 
+  await registerKioskInitialRoute(app, { requireClientDevice });
+  await registerKioskPortalCardsRoute(app, { requireClientDevice });
+
   await registerKioskSitesRoute(app, {
     requireClientDevice
   });
@@ -74,6 +80,8 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     checkRateLimit,
     resolveLocationScopeContext
   });
+
+  await registerKioskInquiryRoutes(app);
 
   await registerKioskPowerRoute(app, {
     requireClientDevice,

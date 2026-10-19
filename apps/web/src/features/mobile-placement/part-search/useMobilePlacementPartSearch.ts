@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { getMobilePlacementPartSearchSuggest } from '../../../api/client';
+import { mobilePlacementQueryKeys } from '../mobilePlacementQueryKeys';
 
 import { partSearchHitIdentity } from './partSearchIdentity';
 import { PART_SEARCH_PALETTE_KEYS } from './partSearchPaletteDefinition';
@@ -27,7 +28,7 @@ export function useMobilePlacementPartSearch() {
   const machineQueryTrimmed = useMemo(() => machineQuery.trim(), [machineQuery]);
 
   const suggestQuery = useQuery({
-    queryKey: ['mobile-placement-part-search', normalizedPartQuery, machineQueryTrimmed],
+    queryKey: mobilePlacementQueryKeys.partSearch(normalizedPartQuery, machineQueryTrimmed),
     queryFn: () =>
       getMobilePlacementPartSearchSuggest(
         normalizedPartQuery,

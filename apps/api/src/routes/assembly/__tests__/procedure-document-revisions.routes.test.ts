@@ -151,6 +151,15 @@ describe('assembly procedure revision routes', () => {
     expect(harness.service.addBlankPage).not.toHaveBeenCalled();
   });
 
+  it('returns 409 and the placement error for discarded materials', async () => {
+    const harness = buildHarness(); app = harness.app;
+    vi.spyOn(ProcedureMaterialPlacementService.prototype, 'place').mockRejectedValue(new ApiError(409, '捨てた素材は配置できません'));
+    registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk: async () => {} }, harness.service as never, harness.assetsService as never);
+    const response = await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/materials/${documentId}/place`, payload: { pageIndex: 0 } });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().message).toBe('捨てた素材は配置できません');
+  });
+
   it('registers history/create/save/discard routes and forwards passwords and edit versions', async () => {
     const harness = buildHarness();
     app = harness.app;
@@ -193,6 +202,7 @@ describe('assembly procedure revision routes', () => {
       payload: {
         accessPassword: '2520',
         expectedEditVersion: 4,
+        appliedCaptionElementIds: ['caption-id'],
         elements: [
           {
             kind: 'TEXT',
@@ -209,7 +219,8 @@ describe('assembly procedure revision routes', () => {
         documentId,
         accessPassword: '2520',
         expectedEditVersion: 4,
-        elements: [expect.objectContaining({ kind: 'TEXT', text: '確認' })]
+        elements: [expect.objectContaining({ kind: 'TEXT', text: '確認' })],
+        appliedCaptionElementIds: ['caption-id']
       })
     );
 
@@ -266,7 +277,8 @@ describe('assembly procedure revision routes', () => {
     const region = {
       accessPassword: '2520',
       pageIndex: 0,
-      bbox: { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.4 }
+      bbox: { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.4 },
+      overlays: [{ assetId: 'material', bbox: { xRatio: 0, yRatio: 0, widthRatio: 1, heightRatio: 1 }, zIndex: 1, objectFit: 'fill', opacity: 0.5 }]
     };
     const imageRegion = await app.inject({
       method: 'POST',

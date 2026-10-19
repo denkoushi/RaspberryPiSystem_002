@@ -1,0 +1,12 @@
+@keyframes inventory-hover-pop {
+  from { transform: translateY(6px) scale(.98); }
+  to { transform: none; }
+}
+
+.inventory-hover-card {
+  animation: inventory-hover-pop 160ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inventory-hover-card { animation: none; }
+}

@@ -27,17 +27,23 @@ type LeaderboardMaterialArrivalByPartKey = NonNullable<
   ProductionScheduleListResponse['leaderboardMaterialArrivalByPartKey']
 >;
 
+type LeaderboardMaterialArrivalBasisByPartKey = NonNullable<
+  ProductionScheduleListResponse['leaderboardMaterialArrivalBasisByPartKey']
+>;
+
 export type AccumulatedLeaderboardDecorations = {
   rowDecorationsById: Map<string, LeaderboardRowDecoration>;
   leaderboardFooterChipsByPartKey: LeaderboardFooterChipsByPartKey;
   leaderboardMaterialArrivalByPartKey: LeaderboardMaterialArrivalByPartKey;
+  leaderboardMaterialArrivalBasisByPartKey: LeaderboardMaterialArrivalBasisByPartKey;
 };
 
 export function createEmptyAccumulatedLeaderboardDecorations(): AccumulatedLeaderboardDecorations {
   return {
     rowDecorationsById: new Map(),
     leaderboardFooterChipsByPartKey: {},
-    leaderboardMaterialArrivalByPartKey: {}
+    leaderboardMaterialArrivalByPartKey: {},
+    leaderboardMaterialArrivalBasisByPartKey: {}
   };
 }
 
@@ -66,7 +72,8 @@ export function mergeLeaderboardDecorationsIntoAccumulator(
   return {
     rowDecorationsById,
     leaderboardFooterChipsByPartKey,
-    leaderboardMaterialArrivalByPartKey: mergeLeaderboardMaterialArrivalByPartKey(prev, response)
+    leaderboardMaterialArrivalByPartKey: mergeLeaderboardMaterialArrivalByPartKey(prev, response),
+    leaderboardMaterialArrivalBasisByPartKey: mergeLeaderboardMaterialArrivalBasisByPartKey(prev, response)
   };
 }
 
@@ -86,6 +93,17 @@ function mergeLeaderboardMaterialArrivalByPartKey(
   return { ...next, ...(response.leaderboardMaterialArrivalByPartKey ?? {}) };
 }
 
+function mergeLeaderboardMaterialArrivalBasisByPartKey(
+  prev: AccumulatedLeaderboardDecorations,
+  response: ProductionScheduleLeaderboardDecorationsResponse
+): LeaderboardMaterialArrivalBasisByPartKey {
+  const next = { ...prev.leaderboardMaterialArrivalBasisByPartKey };
+  for (const partKey of Object.keys(response.leaderboardFooterChipsByPartKey ?? {})) {
+    delete next[partKey];
+  }
+  return { ...next, ...(response.leaderboardMaterialArrivalBasisByPartKey ?? {}) };
+}
+
 export function mergeLeaderboardBoardWithDecorations(
   board: ProductionScheduleLeaderboardBoardResponse,
   decorations: AccumulatedLeaderboardDecorations
@@ -102,8 +120,10 @@ export function mergeLeaderboardBoardWithDecorations(
     const deco = decorations.rowDecorationsById.get(row.id);
     const materialArrivalStatus =
       decorations.leaderboardMaterialArrivalByPartKey?.[buildLeaderboardPartKeyFromScheduleRow(row)] ?? null;
+    const materialArrivalBasis =
+      decorations.leaderboardMaterialArrivalBasisByPartKey?.[buildLeaderboardPartKeyFromScheduleRow(row)] ?? null;
     if (!deco && materialArrivalStatus == null) return row;
-    return { ...row, ...deco, materialArrivalStatus };
+    return { ...row, ...deco, materialArrivalStatus, materialArrivalBasis };
   });
   const footerKeys = Object.keys(decorations.leaderboardFooterChipsByPartKey);
   return {

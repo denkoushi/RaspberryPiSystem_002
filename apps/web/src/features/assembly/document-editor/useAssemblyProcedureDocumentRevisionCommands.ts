@@ -4,12 +4,15 @@ import {
   approvePublishAssemblyProcedureDocument,
   createAssemblyProcedureDocumentRevision,
   discardAssemblyProcedureDocumentRevision,
+  deleteAssemblyProcedureDocument,
   getAssemblyProcedureDocument,
   publishAssemblyProcedureDocument,
   saveAssemblyProcedureDocumentOverlays,
   verifyAssemblyTemplateAccessPassword
 } from '../../../api/client';
+import { kioskPinErrorResult, type KioskPinSubmitResult } from '../../kiosk/KioskPinDialog';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
+import { clearProcedureEditorAccess, saveProcedureEditorAccess } from '../procedureEditorAccess';
 
 import {
   canDiscardAssemblyProcedureDocumentRevision,
@@ -39,13 +42,17 @@ type StateSetter<T> = Dispatch<SetStateAction<T>>;
 export type AssemblyProcedureDocumentRevisionCommandSession = {
   document: AssemblyProcedureDocumentDto | null;
   elements: AssemblyProcedureOverlayElement[];
+  appliedCaptionElementIds?: string[];
   passwordInput: string;
+  setPasswordInput: StateSetter<string>;
   busy: boolean;
   isDirty: boolean;
   readOnly: boolean;
   conflictEditVersion: number | null;
   holderToken?: string | null;
   onEditLeaseError?: (error: unknown) => boolean;
+  hasAuthenticated?: boolean;
+  revokeAccess?: () => void;
   setAccessGranted: StateSetter<boolean>;
   setBaselineSnapshot: StateSetter<string | null>;
   setBusy: StateSetter<boolean>;
@@ -53,9 +60,11 @@ export type AssemblyProcedureDocumentRevisionCommandSession = {
   setConflictEditVersion: StateSetter<number | null>;
   setDocument: StateSetter<AssemblyProcedureDocumentDto | null>;
   setMessage: StateSetter<string | null>;
+  setErrorMessage?: StateSetter<string | null>;
   setSelectedOverlayId: StateSetter<string | null>;
   dispatch: Dispatch<OverlayDraftAction>;
-  recovery: { clear: () => void };
+  recovery: { clear: () => void; saveImmediately?: (next: { baseUpdatedAt: string | null; editVersion: number }) => void };
+  onNavigateAfterDelete?: () => void;
   onNavigateAfterDiscard?: () => void;
   onNavigateAfterPublish?: (document: AssemblyProcedureDocumentDto) => void;
 };
@@ -68,11 +77,11 @@ export function useAssemblyProcedureDocumentRevisionCommands(
     []
   );
 
-  const verifyEditorPassword = useCallback(async () => {
+  const verifyEditorPassword = useCallback(async (pin: string): Promise<KioskPinSubmitResult> => {
     const {
       busy,
       document,
-      passwordInput,
+      setPasswordInput,
       setAccessGranted,
       setBaselineSnapshot,
       setBusy,
@@ -82,22 +91,42 @@ export function useAssemblyProcedureDocumentRevisionCommands(
       setMessage,
       dispatch
     } = session;
-    if (!passwordInput.trim() || !document || busy) return;
+    if (!pin.trim()) return 'mismatch';
+    if (!document || busy) return 'network';
     setBusy(true);
-    setMessage(null);
     setConflict(false);
     setConflictEditVersion(null);
     try {
-      const result = await verifyAssemblyTemplateAccessPassword({ password: passwordInput });
-      if (!result.success) throw new Error('パスワードが正しくありません。');
-      const editableDocument = await createAssemblyProcedureDocumentRevision(document.id, passwordInput);
+      const result = await verifyAssemblyTemplateAccessPassword({ password: pin });
+      if (!result.success) return 'mismatch';
+      const editableDocument = await createAssemblyProcedureDocumentRevision(document.id, pin);
       const nextElements = selectDocumentOverlayElements(editableDocument);
+      setMessage(null);
       setDocument(editableDocument);
-      dispatch({ type: 'replace', elements: nextElements });
-      setBaselineSnapshot(overlayDraftSnapshot(nextElements));
+      if (editableDocument.id === document.id && document.status === 'draft' && session.hasAuthenticated) {
+        // Reauthentication keeps this document's edits and undo history.
+        if ((editableDocument.editVersion ?? 0) !== (document.editVersion ?? 0)) {
+          setConflict(true);
+          setConflictEditVersion(editableDocument.editVersion ?? 0);
+          (session.setErrorMessage ?? setMessage)(DOCUMENT_EDITOR_CONFLICT_MESSAGES.save);
+        }
+      } else {
+        dispatch({ type: 'replace', elements: nextElements });
+        setBaselineSnapshot(overlayDraftSnapshot(nextElements));
+      }
+      saveProcedureEditorAccess(pin);
+      setPasswordInput(pin);
       setAccessGranted(true);
+      return true;
     } catch (error: unknown) {
-      setMessage(readAssemblyApiErrorMessage(error, '認証または改版の作成に失敗しました。'));
+      if (session.revokeAccess) session.revokeAccess();
+      else {
+        if (session.isDirty) session.recovery.saveImmediately?.({ baseUpdatedAt: document.updatedAt, editVersion: document.editVersion ?? 0 });
+        clearProcedureEditorAccess();
+        setAccessGranted(false);
+      }
+      (session.setErrorMessage ?? setMessage)(readAssemblyApiErrorMessage(error, '認証または改版の作成に失敗しました。'));
+      return kioskPinErrorResult(error);
     } finally {
       setBusy(false);
     }
@@ -122,7 +151,7 @@ export function useAssemblyProcedureDocumentRevisionCommands(
     } = session;
     if (!document || readOnly || busy || !isDirty) return;
     if (!isOverlayDraftSaveable(elements)) {
-      setMessage('画像オーバーレイにはasset IDを指定し、文章を空にしないでください。');
+      (session.setErrorMessage ?? setMessage)('画像オーバーレイにはasset IDを指定し、文章を空にしないでください。');
       return;
     }
     setBusy(true);
@@ -134,11 +163,12 @@ export function useAssemblyProcedureDocumentRevisionCommands(
         id: document.id,
         accessPassword: passwordInput,
         expectedEditVersion: document.editVersion ?? 0,
-        elements
+        elements,
+        ...(session.appliedCaptionElementIds ? { appliedCaptionElementIds: session.appliedCaptionElementIds.slice(-200) } : {})
       });
       const nextElements = selectDocumentOverlayElements(saved);
       setDocument(saved);
-      dispatch({ type: 'replace', elements: nextElements });
+      dispatch({ type: 'replace', elements: nextElements, preserveHistory: true });
       setBaselineSnapshot(overlayDraftSnapshot(nextElements));
       recovery.clear();
       setMessage('オーバーレイを保存しました。');
@@ -148,9 +178,9 @@ export function useAssemblyProcedureDocumentRevisionCommands(
       if (conflict) {
         setConflict(true);
         setConflictEditVersion(conflict.currentEditVersion);
-        setMessage(DOCUMENT_EDITOR_CONFLICT_MESSAGES.save);
+        (session.setErrorMessage ?? setMessage)(DOCUMENT_EDITOR_CONFLICT_MESSAGES.save);
       } else {
-        setMessage(readAssemblyApiErrorMessage(error, 'オーバーレイの保存に失敗しました。'));
+        (session.setErrorMessage ?? setMessage)(readAssemblyApiErrorMessage(error, 'オーバーレイの保存に失敗しました。'));
       }
     } finally {
       setBusy(false);
@@ -183,11 +213,12 @@ export function useAssemblyProcedureDocumentRevisionCommands(
         id: document.id,
         accessPassword: passwordInput,
         expectedEditVersion: conflictEditVersion,
-        elements
+        elements,
+        ...(session.appliedCaptionElementIds ? { appliedCaptionElementIds: session.appliedCaptionElementIds.slice(-200) } : {})
       });
       const nextElements = selectDocumentOverlayElements(saved);
       setDocument(saved);
-      dispatch({ type: 'replace', elements: nextElements });
+      dispatch({ type: 'replace', elements: nextElements, preserveHistory: true });
       setBaselineSnapshot(overlayDraftSnapshot(nextElements));
       setConflict(false);
       setConflictEditVersion(null);
@@ -199,9 +230,9 @@ export function useAssemblyProcedureDocumentRevisionCommands(
       if (conflict) {
         setConflict(true);
         setConflictEditVersion(conflict.currentEditVersion);
-        setMessage(DOCUMENT_EDITOR_CONFLICT_MESSAGES.retry);
+        (session.setErrorMessage ?? setMessage)(DOCUMENT_EDITOR_CONFLICT_MESSAGES.retry);
       } else {
-        setMessage(readAssemblyApiErrorMessage(error, '保持中の内容の再保存に失敗しました。'));
+        (session.setErrorMessage ?? setMessage)(readAssemblyApiErrorMessage(error, '保持中の内容の再保存に失敗しました。'));
       }
     } finally {
       setBusy(false);
@@ -237,7 +268,7 @@ export function useAssemblyProcedureDocumentRevisionCommands(
       recovery.clear();
       setMessage('最新内容へ置き換えました。');
     } catch (error: unknown) {
-      setMessage(readAssemblyApiErrorMessage(error, '最新内容の再読込に失敗しました。'));
+      (session.setErrorMessage ?? setMessage)(readAssemblyApiErrorMessage(error, '最新内容の再読込に失敗しました。'));
     } finally {
       setBusy(false);
     }
@@ -289,9 +320,9 @@ export function useAssemblyProcedureDocumentRevisionCommands(
       if (conflict) {
         setConflict(true);
         setConflictEditVersion(conflict.currentEditVersion);
-        setMessage(DOCUMENT_EDITOR_CONFLICT_MESSAGES.publish);
+        (session.setErrorMessage ?? setMessage)(DOCUMENT_EDITOR_CONFLICT_MESSAGES.publish);
       } else {
-        setMessage(readAssemblyApiErrorMessage(error, '手順書の公開に失敗しました。'));
+        (session.setErrorMessage ?? setMessage)(readAssemblyApiErrorMessage(error, '手順書の公開に失敗しました。'));
       }
       return false;
     } finally {
@@ -330,17 +361,37 @@ export function useAssemblyProcedureDocumentRevisionCommands(
       if (conflict) {
         setConflict(true);
         setConflictEditVersion(conflict.currentEditVersion);
-        setMessage(DOCUMENT_EDITOR_CONFLICT_MESSAGES.discard);
+        (session.setErrorMessage ?? setMessage)(DOCUMENT_EDITOR_CONFLICT_MESSAGES.discard);
       } else {
-        setMessage(readAssemblyApiErrorMessage(error, '改版の破棄に失敗しました。'));
+        (session.setErrorMessage ?? setMessage)(readAssemblyApiErrorMessage(error, '改版の破棄に失敗しました。'));
       }
     } finally {
       setBusy(false);
     }
   }, [session]);
 
+  const deleteDocument = useCallback(async () => {
+    if (!session.document || session.document.status !== 'draft' || session.document.supersedesDocumentId || session.readOnly || session.busy) return;
+    session.setBusy(true);
+    session.setMessage(null);
+    try {
+      await deleteAssemblyProcedureDocument(session.document.id, session.holderToken);
+      session.recovery.clear();
+      session.onNavigateAfterDelete?.();
+    } catch (error: unknown) {
+      if (session.onEditLeaseError?.(error)) return;
+      const status = typeof error === 'object' && error !== null && 'response' in error
+        ? (error as { response?: { status?: number } }).response?.status : undefined;
+      const apiMessage = readAssemblyApiErrorMessage(error, '');
+      (session.setErrorMessage ?? session.setMessage)(status === 409 && (!apiMessage || apiMessage.includes('割り当て')) ? '先に割り当てを外してください' : apiMessage || '要領書を削除できません');
+    } finally {
+      session.setBusy(false);
+    }
+  }, [session]);
+
   return {
     loadDocument,
+    deleteDocument,
     verifyEditorPassword,
     save,
     retryConflictSave,

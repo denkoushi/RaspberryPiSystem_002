@@ -183,8 +183,16 @@ trivy_alert_ignore_patterns:
   - "/certs/"
   - "/backups/"
 
+# Nightly scans run in a systemd scope with this disk bandwidth cap (path resolves to its backing disk)
+security_scan_io_device: "/"
+security_scan_io_bandwidth_max: "30M"
+
 rkhunter_server_enabled: true
 rkhunter_server_cron: "0 4 * * *"
+rkhunter_server_allow_dev_files:
+  - "/dev/shm/lttng-ust-wait-*"
+rkhunter_server_allow_hidden_files:
+  - "/etc/.updated"
 rkhunter_log_dir: "/var/log/rkhunter"
 rkhunter_log_file: "rkhunter-scan.log"
 rkhunter_ignore_patterns:
@@ -229,6 +237,25 @@ rkhunter:
     minute: "30"
     hour: "4"
     weekday: "0"
+
+# OS security updates: opt in only on Pi5; host variables may override the
+# Python-regex blacklist. Docker, remote access, kernel/firmware and Chromium
+# remain manually maintained. Only Debian's security origin is allowed.
+unattended_upgrades_enabled: false
+unattended_upgrades_package_blacklist:
+  - '^docker-ce$'
+  - '^docker-ce-cli$'
+  - '^containerd[.]io$'
+  - '^docker-buildx-plugin$'
+  - '^docker-compose-plugin$'
+  - '^tailscale$'
+  - '^linux-image'
+  - '^linux-headers'
+  - '^raspi-firmware$'
+  - '^raspberrypi-(kernel|bootloader)'
+  - '^rpi-eeprom'
+  - '^firmware-'
+  - '^chromium'
 
 # 監視・アラート設定（Phase6）
 security_monitor_enabled: true

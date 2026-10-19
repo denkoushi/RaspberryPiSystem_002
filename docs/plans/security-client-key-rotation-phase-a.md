@@ -13,7 +13,7 @@ related_docs:
   - docs/runbooks/security-hardening-remediation.md
   - docs/guides/api-key-policy.md
 validation: focused API/Web/script tests, docs audit, diff check, branch-range Gitleaks, and redacted full-history Gitleaks
-open_items: Phase B production rotation and Phase C historical fingerprint suppression require separate approval.
+open_items: none for the Pi3 (Phase B rotation and Phase C suppression completed on 2026-10-06, see the revision note); other devices are tracked in docs/plans/security-client-key-rotation-phase-b.md.
 supersedes: none
 superseded_by: none
 ---
@@ -168,3 +168,5 @@ The script interface remains the existing shell commands and curl calls. The onl
 ## Plan revision note
 
 2026-08-09: Updated after comparing the local Docker scan with official scheduled run `31270755886`. The official event-native scan reproduced only the five supplied findings, so the NFC fixture remains unchanged and no extra allowlist or test cleanup was added. The Phase 12 script keeps all existing non-Pi3 client-key definitions; only `PI3_SIGNAGE_CLIENT_KEY` is newly required. The read-only rotation handoff is limited to the three existing database fields and one transaction; no API or helper is planned.
+
+2026-10-06: Pi3 Phase B and Phase C completed. The historical fingerprint was suppressed in #1727 (history-only finding, old key still active at that time). The new key was placed in the encrypted Pi3 vault in #1736 (`ec82f19e`); #1738 (`0d03337f`) made `release_signage` render `/etc/raspi-status-agent.conf` on every Pi3 release, because the status-agent reads its `CLIENT_KEY` there and the release had only rendered `runtime.env`. The production DB was switched in one transaction at 10:48 JST (`ClientDevice.apiKey` 1 row, `signagePreviewTargetApiKey` 3 rows, `SignageSchedule.targetClientKeys` 4 rows, old key left 0), followed by the standard `--limit raspberrypi3` release run `20261006-015022-f5eddd` (recap ok=53 changed=18 failed=0). A first attempt, run `20261006-014830-0b169b`, failed before touching the Pi3 because `scripts/security/` in the Pi5 `/opt` checkout was root-owned and `git checkout` could not create `rotate-client-key.sh`; the directory owner was corrected and the file restored. Verification: `GET /api/signage/current-image` answers 200 with the new key and 401 with the old key; the Pi3 configuration was re-rendered with the new key and `status-agent.service` completes every minute. Device-wide rotation of the remaining client keys continues in `docs/plans/security-client-key-rotation-phase-b.md`.

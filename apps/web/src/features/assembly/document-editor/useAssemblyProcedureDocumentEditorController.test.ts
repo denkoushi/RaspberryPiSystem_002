@@ -12,6 +12,7 @@ const apiMocks = vi.hoisted(() => ({
   publishDocument: vi.fn(),
   discardRevision: vi.fn(),
   addBlankPage: vi.fn(),
+  suggestLayout: vi.fn(),
   placeMaterial: vi.fn()
 }));
 
@@ -24,6 +25,7 @@ vi.mock('../../../api/domains/assembly-edit-lease', async (importOriginal) => ({
 
 vi.mock('../../../api/client', () => ({
   addBlankAssemblyProcedurePage: apiMocks.addBlankPage,
+  suggestAssemblyProcedureLayout: apiMocks.suggestLayout,
   placeProcedureMaterial: apiMocks.placeMaterial,
   verifyAssemblyTemplateAccessPassword: apiMocks.verifyPassword,
   getAssemblyProcedureDocument: apiMocks.getDocument,
@@ -36,10 +38,14 @@ vi.mock('../../../api/client', () => ({
   discardAssemblyProcedureDocumentRevision: apiMocks.discardRevision
 }));
 
+import { clearProcedureEditorAccess, readProcedureEditorAccess, saveProcedureEditorAccess } from '../procedureEditorAccess';
+
+import { createOverlayForRange } from './assemblyDocumentEditorDraft';
 import { readAssemblyDocumentEditorRecovery } from './assemblyDocumentEditorRecovery';
 import { useAssemblyProcedureDocumentEditorController } from './useAssemblyProcedureDocumentEditorController';
 
 import type { AssemblyProcedureDocumentDto } from '../types';
+import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 
 const range = { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.2 };
 
@@ -62,9 +68,8 @@ function makeDocument(overrides: Partial<AssemblyProcedureDocumentDto> = {}): As
 
 async function authenticate(result: { current: ReturnType<typeof useAssemblyProcedureDocumentEditorController> }) {
   await waitFor(() => expect(result.current.loading).toBe(false));
-  act(() => result.current.setPasswordInput('1234'));
   await act(async () => {
-    await result.current.verifyEditorPassword();
+    await result.current.verifyEditorPassword('1234');
   });
   expect(result.current.accessGranted).toBe(true);
 }
@@ -81,7 +86,367 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     vi.resetAllMocks();
     leaseMocks.acquire.mockResolvedValue({ mine: true, holderToken: 'session-token', lease: { holderLabel: '自分の端末', acquiredAt: '2026-10-06T03:00:00Z', heartbeatAt: '2026-10-06T03:00:00Z' } });
     leaseMocks.release.mockResolvedValue(undefined);
-    window.localStorage.clear();
+    window.localStorage.clear(); clearProcedureEditorAccess();
+  });
+
+  it('previews the unsaved current page, applies one history change, and undoes it once', async () => {
+    const text = { ...createOverlayForRange('TEXT', 0, range), id: 'text' };
+    const image = { ...createOverlayForRange('IMAGE', 0, range), id: 'image', assetId: 'photo' };
+    const other = { ...text, id: 'other', pageIndex: 1 };
+    const hook = renderEditor(makeDocument({ pages: [
+      { pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [text, image] },
+      { pageIndex: 1, imageRelativePath: '/pages/2.png', overlays: [other] }
+    ] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.layoutSuggestions.canSuggest).toBe(true));
+    const draftText = { ...text, text: '未保存の文章' } as AssemblyProcedureOverlayElement;
+    act(() => hook.result.current.updateElement(draftText));
+    const initial = hook.result.current.elements;
+    const standard = [draftText, image].map(element => ({ ...element, bbox: { ...range, xRatio: 0.4 } }));
+    const added = { ...draftText, id: 'added', text: 'ワークを固定する' } as AssemblyProcedureOverlayElement;
+    const proposal = [...standard.map(element => element.kind === 'TEXT' ? { ...element, text: '書き直した文章' } : element), added];
+    apiMocks.suggestLayout.mockResolvedValue({ elements: proposal, addedElementIds: ['added'], changes: ['写真を読んで 1 行足した'] });
+    await act(async () => hook.result.current.layoutSuggestions.start());
+    expect(apiMocks.suggestLayout).toHaveBeenCalledWith(expect.objectContaining({ pageIndex: 0, elements: [draftText, image], accessPassword: '1234', holderToken: 'session-token', signal: expect.any(AbortSignal) }));
+    expect(hook.result.current.elements).toEqual(initial);
+    expect(hook.result.current.layoutSuggestions.previewElements).toEqual(proposal.map(element => element.id === 'added' ? { ...element, mask: { enabled: true, color: '#fff2c6' } } : element));
+    expect(hook.result.current.readOnly).toBe(true);
+    act(() => { hook.result.current.setSelectedPageIndex(1); hook.result.current.addOverlay('TEXT'); hook.result.current.updateElement(text); hook.result.current.undo(); });
+    expect(hook.result.current.selectedPageIndex).toBe(0);
+    expect(hook.result.current.elements).toEqual(initial);
+    act(() => hook.result.current.layoutSuggestions.showBefore(true));
+    expect(hook.result.current.layoutSuggestions.previewElements).toBeNull();
+    act(() => hook.result.current.layoutSuggestions.apply());
+    expect(hook.result.current.selectedPageElements).toEqual(proposal);
+    expect(hook.result.current.elements.find(element => element.id === 'other')).toEqual(other);
+    expect(hook.result.current.message).toBe('整えました。元に戻せます');
+    expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
+    act(() => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual(initial);
+    expect(hook.result.current.layoutSuggestions.appliedCaptionElementIds).toEqual(['added']);
+    apiMocks.saveOverlays.mockResolvedValue(makeDocument({ editVersion: 1, pages: [
+      { pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [draftText, image] },
+      { pageIndex: 1, imageRelativePath: '/pages/2.png', overlays: [other] }
+    ] }));
+    await act(async () => { await hook.result.current.save(); });
+    expect(apiMocks.saveOverlays).toHaveBeenLastCalledWith(expect.objectContaining({ appliedCaptionElementIds: ['added'], elements: initial }));
+    expect(hook.result.current.layoutSuggestions.appliedCaptionElementIds).toEqual(['added']);
+  });
+
+  it('cancels preview and pending requests without draft or history changes, including late responses', async () => {
+    const text = { ...createOverlayForRange('TEXT', 0, range), id: 'text' };
+    const image = { ...createOverlayForRange('IMAGE', 0, range), id: 'image', assetId: 'photo' };
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [text, image] }] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.layoutSuggestions.canSuggest).toBe(true));
+    const initial = hook.result.current.elements;
+    const response = { elements: [text, image], addedElementIds: [], changes: ['直すところはありません'] };
+    apiMocks.suggestLayout.mockResolvedValueOnce(response);
+    await act(async () => hook.result.current.layoutSuggestions.start());
+    act(() => hook.result.current.layoutSuggestions.cancel());
+    expect(hook.result.current.elements).toEqual(initial);
+    expect(hook.result.current.canUndo).toBe(false);
+    let finish!: () => void;
+    apiMocks.suggestLayout.mockImplementationOnce(() => new Promise(resolve => { finish = () => resolve(response); }));
+    let pending!: Promise<void>;
+    act(() => { pending = hook.result.current.layoutSuggestions.start(); });
+    expect(hook.result.current.layoutSuggestions.state.status).toBe('pending');
+    const signal = apiMocks.suggestLayout.mock.calls[1][0].signal as AbortSignal;
+    act(() => hook.result.current.layoutSuggestions.cancel());
+    expect(signal.aborted).toBe(true);
+    await act(async () => { finish(); await pending; });
+    expect(hook.result.current.layoutSuggestions.state.status).toBe('idle');
+    expect(hook.result.current.elements).toEqual(initial);
+    expect(hook.result.current.canUndo).toBe(false);
+  });
+
+  it.each([
+    ['ASSEMBLY_PROCEDURE_LAYOUT_DOES_NOT_FIT', 422, 'このページは1枚に収まりません'],
+    ['ASSEMBLY_PROCEDURE_LAYOUT_INFERENCE_FAILED', 502, 'いまは提案できません']
+  ] as const)('displays the friendly layout failure message for %s without changing the draft', async (errorCode, status, message) => {
+    const text = { ...createOverlayForRange('TEXT', 0, range), id: 'text' };
+    const image = { ...createOverlayForRange('IMAGE', 0, range), id: 'image', assetId: 'photo' };
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [text, image] }] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.layoutSuggestions.canSuggest).toBe(true));
+    const initial = hook.result.current.elements;
+    apiMocks.suggestLayout.mockRejectedValueOnce({ isAxiosError: true, response: { status, data: { errorCode } } });
+    await act(async () => hook.result.current.layoutSuggestions.start());
+    expect(hook.result.current.layoutSuggestions.state).toEqual({ status: 'error', message });
+    expect(hook.result.current.readOnly).toBe(false);
+    expect(hook.result.current.elements).toEqual(initial);
+    expect(hook.result.current.canUndo).toBe(false);
+    act(() => hook.result.current.layoutSuggestions.cancel());
+    expect(hook.result.current.layoutSuggestions.state.status).toBe('idle');
+  });
+
+  it('disables arranging a page with fewer than two text or image elements', async () => {
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [createOverlayForRange('TEXT', 0, range), createOverlayForRange('SHAPE', 0, range)] }] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
+    expect(hook.result.current.layoutSuggestions.canSuggest).toBe(false);
+    await act(async () => hook.result.current.layoutSuggestions.start());
+    expect(apiMocks.suggestLayout).not.toHaveBeenCalled();
+  });
+
+  it('places toolbar and range additions above the current page without using other pages z-indices', async () => {
+    const front: AssemblyProcedureOverlayElement = { id: 'front', kind: 'SHAPE', shape: 'RECTANGLE', pageIndex: 0, bbox: range, zIndex: 8 };
+    const hook = renderEditor(makeDocument({ pages: [
+      { pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [front] },
+      { pageIndex: 1, imageRelativePath: '/pages/2.png', overlays: [{ ...front, id: 'other', pageIndex: 1, zIndex: 100 }] }
+    ] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
+    act(() => hook.result.current.addOverlay('TEXT'));
+    expect(hook.result.current.selectedElement?.zIndex).toBe(9);
+    act(() => hook.result.current.handleRangeSelected(range));
+    await act(async () => hook.result.current.createOverlay('SHAPE'));
+    expect(hook.result.current.selectedElement?.zIndex).toBe(10);
+    act(() => hook.result.current.setSelectedPageIndex(1));
+    act(() => hook.result.current.addOverlay('SHAPE'));
+    expect(hook.result.current.selectedElement?.zIndex).toBe(101);
+  });
+
+  it.each(['TEXT', 'IMAGE', 'SHAPE'] as const)('copies another page’s %s, selects it, keeps its source and undoes in one step', async kind => {
+    const created = createOverlayForRange(kind, 1, range);
+    const source = { ...created, ...(created.kind === 'IMAGE' ? { assetId: 'shared-asset' } : {}), id: 'source', zIndex: 100 };
+    const front = { ...createOverlayForRange('SHAPE', 0, range), id: 'front', zIndex: 5 };
+    const hook = renderEditor(makeDocument({ pages: [
+      { pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [front] },
+      { pageIndex: 1, imageRelativePath: '/pages/2.png', overlays: [source] }
+    ] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
+    const initial = hook.result.current.elements;
+    act(() => hook.result.current.duplicateOverlayToCurrentPage('source'));
+    const copy = hook.result.current.selectedElement!;
+    expect(copy.id).not.toBe('source');
+    expect(copy).toEqual({ ...source, id: copy.id, pageIndex: 0, zIndex: 6 });
+    expect(copy.bbox).not.toBe(source.bbox);
+    expect(hook.result.current.selectedPageElements).toEqual([front, copy]);
+    expect(hook.result.current.elements.find(element => element.id === 'source')).toEqual(source);
+    expect(hook.result.current.isDirty).toBe(true);
+    act(() => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual(initial);
+    expect(hook.result.current.isDirty).toBe(false);
+    expect(hook.result.current.canUndo).toBe(false);
+    act(() => hook.result.current.redo());
+    expect(hook.result.current.selectedElement).toEqual(copy);
+    act(() => hook.result.current.updateElement({ ...copy, bbox: { ...copy.bbox, xRatio: 0.5 } }));
+    expect(hook.result.current.elements.find(element => element.id === 'source')).toEqual(source);
+    act(() => hook.result.current.setSelectedPageIndex(1));
+    act(() => hook.result.current.duplicateOverlayToCurrentPage('front'));
+    expect(hook.result.current.selectedElement).toMatchObject({ pageIndex: 1, zIndex: 101 });
+  });
+
+  it('guards reuse when read-only, busy, missing or already on the current page', async () => {
+    const source = { ...createOverlayForRange('SHAPE', 1, range), id: 'source' };
+    const hook = renderEditor(makeDocument({ pages: [
+      { pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [] },
+      { pageIndex: 1, imageRelativePath: '/pages/2.png', overlays: [source] }
+    ] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
+    act(() => hook.result.current.duplicateOverlayToCurrentPage('missing'));
+    act(() => hook.result.current.setSelectedPageIndex(1));
+    act(() => hook.result.current.duplicateOverlayToCurrentPage('source'));
+    act(() => hook.result.current.setSelectedPageIndex(0));
+    let finish: (document: AssemblyProcedureDocumentDto) => void = () => undefined;
+    apiMocks.addBlankPage.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    let pending: Promise<void>;
+    act(() => { pending = hook.result.current.addBlankPage(); });
+    expect(hook.result.current.busy).toBe(true);
+    act(() => hook.result.current.duplicateOverlayToCurrentPage('source'));
+    expect(hook.result.current.elements).toEqual([source]);
+    await act(async () => { finish(hook.result.current.document!); await pending; });
+    act(() => hook.result.current.setSelectedPageIndex(0));
+    act(() => clearProcedureEditorAccess());
+    expect(hook.result.current.readOnly).toBe(true);
+    act(() => hook.result.current.duplicateOverlayToCurrentPage('source'));
+    expect(hook.result.current.elements).toEqual([source]);
+    expect(hook.result.current.canUndo).toBe(false);
+  });
+
+  it('uses valid entrance access without asking or verifying again', async () => {
+    saveProcedureEditorAccess('2520');
+    const doc = makeDocument(); apiMocks.getDocument.mockResolvedValue(doc); apiMocks.createRevision.mockResolvedValue(doc);
+    const { result } = renderHook(() => useAssemblyProcedureDocumentEditorController({ documentId: doc.id }));
+    await waitFor(() => expect(result.current.accessGranted).toBe(true));
+    expect(result.current.passwordInput).toBe('2520');
+    expect(apiMocks.verifyPassword).not.toHaveBeenCalled();
+    expect(apiMocks.createRevision).toHaveBeenCalledWith(doc.id, '2520');
+  });
+  it('falls back to the gate and clears stored access when revision authentication fails', async () => {
+    saveProcedureEditorAccess('2520');
+    apiMocks.getDocument.mockResolvedValue(makeDocument()); apiMocks.createRevision.mockRejectedValue(new Error('認証失敗'));
+    const { result } = renderHook(() => useAssemblyProcedureDocumentEditorController({ documentId: 'source-draft' }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.accessGranted).toBe(false); expect(result.current.passwordInput).toBe('');
+    expect(readProcedureEditorAccess()).toBeNull();
+  });
+  it.each([401, 403])('revokes entrance access on an authenticated save returning %s', async status => {
+    saveProcedureEditorAccess('2520');
+    const doc = makeDocument(); apiMocks.getDocument.mockResolvedValue(doc); apiMocks.createRevision.mockResolvedValue(doc);
+    const { result } = renderHook(() => useAssemblyProcedureDocumentEditorController({ documentId: doc.id }));
+    await waitFor(() => expect(result.current.accessGranted).toBe(true));
+    await waitFor(() => expect(result.current.readOnly).toBe(false));
+    act(() => result.current.addOverlay('TEXT'));
+    apiMocks.saveOverlays.mockRejectedValue({ isAxiosError: true, response: { status, data: { message: '組立テンプレート編集パスワードが違います' } } });
+    await act(async () => { await result.current.save(); });
+    expect(result.current.accessGranted).toBe(false); expect(result.current.passwordInput).toBe('');
+    expect(readProcedureEditorAccess()).toBeNull();
+  });
+  it('returns to the gate when the eight-hour deadline arrives', async () => {
+    vi.useFakeTimers();
+    try {
+      saveProcedureEditorAccess('2520');
+      const doc = makeDocument(); apiMocks.getDocument.mockResolvedValue(doc); apiMocks.createRevision.mockResolvedValue(doc);
+      const { result } = renderHook(() => useAssemblyProcedureDocumentEditorController({ documentId: doc.id }));
+      await act(async () => {});
+      expect(result.current.accessGranted).toBe(true);
+      await act(async () => { vi.advanceTimersByTime(8 * 60 * 60 * 1000); });
+      expect(result.current.accessGranted).toBe(false);
+      expect(readProcedureEditorAccess()).toBeNull();
+    } finally { vi.useRealTimers(); }
+  });
+  it('saves the last edit immediately before expiry and retains it and the navigation guard after reauthentication', async () => {
+    vi.useFakeTimers();
+    try {
+      saveProcedureEditorAccess('2520');
+      const hook = renderEditor(makeDocument());
+      await act(async () => {});
+      expect(hook.result.current.readOnly).toBe(false);
+      act(() => vi.advanceTimersByTime(8 * 3600000 - 100));
+      act(() => hook.result.current.addOverlay('TEXT'));
+      const element = hook.result.current.elements[0];
+      const beforeEdit = hook.result.current.elements;
+      act(() => hook.result.current.updateElement({ ...element, kind: 'TEXT', text: '失効直前の編集' }));
+      act(() => vi.advanceTimersByTime(100));
+      expect(hook.result.current.accessGranted).toBe(false);
+      expect(readAssemblyDocumentEditorRecovery(localStorage, 'source-draft', { baseUpdatedAt: makeDocument().updatedAt, editVersion: 0 })?.elements).toEqual(hook.result.current.elements);
+      const unload = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(unload);
+      expect(unload.defaultPrevented).toBe(true);
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      expect(hook.result.current.confirmNavigation()).toBe(false);
+      expect(confirm).toHaveBeenCalled(); confirm.mockRestore();
+      await act(async () => { await hook.result.current.verifyEditorPassword('2520'); });
+      expect(hook.result.current.accessGranted).toBe(true);
+      expect(hook.result.current.elements[0]).toMatchObject({ text: '失効直前の編集' });
+      expect(hook.result.current.isDirty).toBe(true);
+      expect(hook.result.current.conflict).toBe(false);
+      expect(hook.result.current.recoveryPending).toBeNull();
+      expect(hook.result.current.passwordInput).toBe('2520');
+      act(() => hook.result.current.undo());
+      expect(hook.result.current.elements).toEqual(beforeEdit);
+      act(() => hook.result.current.redo());
+      expect(hook.result.current.elements[0]).toMatchObject({ text: '失効直前の編集' });
+    } finally { vi.useRealTimers(); }
+  });
+  it('keeps edits after reauthentication and enters conflict handling only when the server version changed', async () => {
+    const hook = renderEditor(makeDocument()); await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
+    act(() => hook.result.current.addOverlay('TEXT'));
+    const localElements = hook.result.current.elements;
+    act(() => { hook.result.current.onEditLeaseError({ isAxiosError: true, response: { status: 401 } }); });
+    apiMocks.createRevision.mockResolvedValue(makeDocument({ editVersion: 2 }));
+    await act(async () => { await hook.result.current.verifyEditorPassword('2520'); });
+    expect(hook.result.current.elements).toEqual(localElements);
+    expect(hook.result.current.conflict).toBe(true);
+    expect(hook.result.current.conflictEditVersion).toBe(2);
+  });
+  it('groups a long drag into one undo operation without recording intermediate positions', async () => {
+    const hook = renderEditor(makeDocument()); await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
+    act(() => hook.result.current.addOverlay('SHAPE'));
+    const initial = hook.result.current.elements;
+    act(() => hook.result.current.beginOverlayDrag());
+    for (let index = 1; index <= 100; index++) {
+      act(() => hook.result.current.updateElementBBox(initial[0].id, { ...initial[0].bbox, xRatio: 0.25 + index / 1000 }));
+    }
+    act(() => hook.result.current.endOverlayDrag());
+    const dragged = hook.result.current.elements;
+    act(() => hook.result.current.undo()); expect(hook.result.current.elements).toEqual(initial);
+    act(() => hook.result.current.redo()); expect(hook.result.current.elements).toEqual(dragged);
+    act(() => hook.result.current.undo()); act(() => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual([]); expect(hook.result.current.canUndo).toBe(false);
+  });
+  it.each([
+    ['bringForward', 'first', ['middle', 'first', 'last']],
+    ['sendBackward', 'last', ['first', 'last', 'middle']],
+    ['bringToFront', 'first', ['middle', 'last', 'first']],
+    ['sendToBack', 'last', ['last', 'first', 'middle']]
+  ] as const)('guards %s while read-only and records one undo step', async (command, id, order) => {
+    const elements: AssemblyProcedureOverlayElement[] = ['first', 'middle', 'last'].map((elementId) => ({
+      id: elementId, kind: 'SHAPE', shape: 'RECTANGLE', pageIndex: 0, bbox: range, zIndex: 5
+    }));
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: elements }] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
+    act(() => hook.result.current[command](id));
+    const reordered = hook.result.current.elements;
+    expect([...reordered].sort((a, b) => a.zIndex - b.zIndex).map((element) => element.id)).toEqual(order);
+    act(() => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual(elements);
+    expect(hook.result.current.canUndo).toBe(false);
+    act(() => hook.result.current.redo());
+    expect(hook.result.current.elements).toEqual(reordered);
+    act(() => hook.result.current.onEditLeaseError({ isAxiosError: true, response: { status: 401 } }));
+    expect(hook.result.current.readOnly).toBe(true);
+    act(() => hook.result.current[command](id));
+    expect(hook.result.current.elements).toEqual(reordered);
+  });
+
+  it('records endpoint reversal through updateElement in undo history', async () => {
+    const arrow: AssemblyProcedureOverlayElement = {
+      id: 'arrow', kind: 'SHAPE', shape: 'ARROW', pageIndex: 0, bbox: range, zIndex: 0,
+      start: { xRatio: 0.1, yRatio: 0.2 }, end: { xRatio: 0.4, yRatio: 0.4 }
+    };
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [arrow] }] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
+    const reversed = { ...arrow, start: arrow.end, end: arrow.start };
+    act(() => hook.result.current.updateElement(reversed));
+    expect(hook.result.current.elements).toEqual([reversed]);
+    act(() => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual([arrow]);
+    act(() => hook.result.current.redo());
+    expect(hook.result.current.elements).toEqual([reversed]);
+  });
+
+  it('drops the oldest history entry after 51 operations', async () => {
+    const hook = renderEditor(makeDocument()); await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
+    for (let index = 0; index < 51; index++) act(() => hook.result.current.addOverlay('SHAPE'));
+    for (let index = 0; index < 50; index++) act(() => hook.result.current.undo());
+    expect(hook.result.current.elements).toHaveLength(1);
+    expect(hook.result.current.canUndo).toBe(false);
+  });
+  it('retains history on save and clears it on conflict reload even for identical content', async () => {
+    const hook = renderEditor(makeDocument()); await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
+    act(() => hook.result.current.addOverlay('SHAPE'));
+    const saved = makeDocument({ editVersion: 1, pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: hook.result.current.elements }] });
+    apiMocks.saveOverlays.mockResolvedValue(saved);
+    await act(async () => { await hook.result.current.save(); });
+    expect(hook.result.current.canUndo).toBe(true);
+    act(() => hook.result.current.undo()); expect(hook.result.current.isDirty).toBe(true);
+    act(() => hook.result.current.redo()); expect(hook.result.current.isDirty).toBe(false);
+    apiMocks.getDocument.mockResolvedValue(saved);
+    await act(async () => { await hook.result.current.reloadConflict(); });
+    expect(hook.result.current.elements).toEqual(saved.pages[0].overlays);
+    expect(hook.result.current.canUndo).toBe(false); expect(hook.result.current.canRedo).toBe(false);
+  });
+  it('creates text and shape, duplicates and restores overlay edits with undo/redo', async () => {
+    const doc = makeDocument(); const { result } = renderEditor(doc);
+    await authenticate(result); await waitFor(() => expect(result.current.readOnly).toBe(false));
+    act(() => result.current.addOverlay('TEXT'));
+    expect(result.current.selectedElement?.kind).toBe('TEXT');
+    act(() => result.current.duplicateSelectedOverlay()); expect(result.current.elements).toHaveLength(2);
+    act(() => result.current.undo()); expect(result.current.elements).toHaveLength(1);
+    act(() => result.current.redo()); expect(result.current.elements).toHaveLength(2);
+    act(() => result.current.addOverlay('SHAPE')); expect(result.current.selectedElement?.kind).toBe('SHAPE');
+    act(() => result.current.undo());
+    act(() => result.current.addOverlay('TEXT')); expect(result.current.canRedo).toBe(false);
   });
 
   it('appends a blank page and retains unsaved overlays while advancing editVersion', async () => {
@@ -128,8 +493,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     const hook = renderEditor(source);
     await act(async () => undefined);
     expect(hook.result.current.loading).toBe(false);
-    act(() => hook.result.current.setPasswordInput('1234'));
-    await act(async () => hook.result.current.verifyEditorPassword());
+    await act(async () => hook.result.current.verifyEditorPassword('1234'));
     expect(hook.result.current.accessGranted).toBe(true);
     try {
       act(() => hook.result.current.handleRangeSelected(range));
@@ -183,6 +547,118 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(hook.result.current.document?.assets?.asset).toMatchObject({ assetId: 'asset' });
     expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
   });
+  it('replaces only the selected image asset, preserves all other properties and supports undo/redo', async () => {
+    const image: AssemblyProcedureOverlayElement = {
+      id: 'selected-image', kind: 'IMAGE', assetId: 'old-asset', pageIndex: 0,
+      bbox: range, zIndex: 7, opacity: 0.6, objectFit: 'cover',
+      mask: { enabled: true, color: '#eeeeee' }
+    };
+    const other: AssemblyProcedureOverlayElement = { ...image, id: 'other-image', zIndex: 6 };
+    const oldAsset = { assetId: 'old-asset', relativeUrl: '/old.png', storageKey: 'old', sha256: 'a', byteSize: 3, contentType: 'image/png', kind: 'OVERLAY_IMAGE' as const };
+    const asset = { ...oldAsset, assetId: 'new-asset', relativeUrl: '/new.png', storageKey: 'new' };
+    const hook = renderEditor(makeDocument({
+      assets: { [oldAsset.assetId]: oldAsset },
+      pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [image, other] }]
+    }));
+    await authenticate(hook.result);
+    act(() => hook.result.current.setSelectedOverlayId(image.id));
+    apiMocks.placeMaterial.mockResolvedValue({ element: { ...image, id: 'unused-new-overlay', bbox: { ...range, widthRatio: 0.8 } }, asset });
+
+    await act(async () => { await hook.result.current.replaceSelectedImageMaterial({ id: 'material-photo', kind: 'PHOTO' }); });
+
+    expect(apiMocks.placeMaterial).toHaveBeenCalledWith({ holderToken: 'session-token', id: 'source-draft', materialId: 'material-photo', pageIndex: 0, accessPassword: '1234' });
+    expect(hook.result.current.elements).toEqual([{ ...image, assetId: asset.assetId }, other]);
+    expect(hook.result.current.selectedElement?.bbox).toEqual(range);
+    expect(hook.result.current.selectedOverlayId).toBe(image.id);
+    expect(hook.result.current.document?.assets).toEqual({ [oldAsset.assetId]: oldAsset, [asset.assetId]: asset });
+    expect(hook.result.current.message).toBe('画像を差し替えました。保存してください。');
+    expect(hook.result.current.isDirty).toBe(true);
+    expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
+    act(() => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual([image, other]);
+    act(() => hook.result.current.redo());
+    expect(hook.result.current.elements).toEqual([{ ...image, assetId: asset.assetId }, other]);
+  });
+
+  it.each(['TEXT', 'SHAPE', null] as const)('does not call the material API when the selected kind is %s', async (kind) => {
+    const element: AssemblyProcedureOverlayElement = kind === 'SHAPE'
+      ? { id: 'selected', kind, shape: 'RECTANGLE', pageIndex: 0, bbox: range, zIndex: 0 }
+      : { id: 'selected', kind: 'TEXT', text: '手順', pageIndex: 0, bbox: range, zIndex: 0 };
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [element] }] }));
+    await authenticate(hook.result);
+    if (kind) act(() => hook.result.current.setSelectedOverlayId(element.id));
+    await act(async () => {
+      await expect(hook.result.current.replaceSelectedImageMaterial({ id: 'material', kind: 'PHOTO' })).rejects.toThrow('現在は画像を差し替えできません');
+    });
+    expect(apiMocks.placeMaterial).not.toHaveBeenCalled();
+    expect(hook.result.current.elements).toEqual([element]);
+    expect(hook.result.current.canUndo).toBe(false);
+  });
+
+  it('rejects text materials before calling the material API', async () => {
+    const image: AssemblyProcedureOverlayElement = { id: 'image', kind: 'IMAGE', assetId: 'old', pageIndex: 0, bbox: range, zIndex: 0 };
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [image] }] }));
+    await authenticate(hook.result);
+    act(() => hook.result.current.setSelectedOverlayId(image.id));
+    await act(async () => {
+      await expect(hook.result.current.replaceSelectedImageMaterial({ id: 'text-material', kind: 'TEXT' })).rejects.toThrow('画像の素材を選んでください。');
+    });
+    expect(apiMocks.placeMaterial).not.toHaveBeenCalled();
+    expect(hook.result.current.elements).toEqual([image]);
+    expect(hook.result.current.canUndo).toBe(false);
+    expect(hook.result.current.busy).toBe(false);
+  });
+
+  it('rejects image replacement in read-only mode', async () => {
+    const image: AssemblyProcedureOverlayElement = { id: 'image', kind: 'IMAGE', assetId: 'old', pageIndex: 0, bbox: range, zIndex: 0 };
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [image] }] }));
+    await authenticate(hook.result);
+    act(() => hook.result.current.setSelectedOverlayId(image.id));
+    act(() => { hook.result.current.onEditLeaseError({ isAxiosError: true, response: { status: 401 } }); });
+    expect(hook.result.current.readOnly).toBe(true);
+    expect(hook.result.current.selectedElement).toEqual(image);
+    await act(async () => {
+      await expect(hook.result.current.replaceSelectedImageMaterial({ id: 'photo', kind: 'PHOTO' })).rejects.toThrow('現在は画像を差し替えできません');
+    });
+    expect(apiMocks.placeMaterial).not.toHaveBeenCalled();
+    expect(hook.result.current.elements).toEqual([image]);
+    expect(hook.result.current.canUndo).toBe(false);
+  });
+
+  it('rejects another replacement while an image replacement is busy', async () => {
+    const image: AssemblyProcedureOverlayElement = { id: 'image', kind: 'IMAGE', assetId: 'old', pageIndex: 0, bbox: range, zIndex: 0 };
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [image] }] }));
+    await authenticate(hook.result);
+    act(() => hook.result.current.setSelectedOverlayId(image.id));
+    const asset = { assetId: 'new', relativeUrl: '/new.png' };
+    let finish: () => void = () => undefined;
+    apiMocks.placeMaterial.mockImplementationOnce(() => new Promise((resolve) => { finish = () => resolve({ element: image, asset }); }));
+    let replacement: Promise<void>;
+    act(() => { replacement = hook.result.current.replaceSelectedImageMaterial({ id: 'first', kind: 'PHOTO' }); });
+    expect(hook.result.current.busy).toBe(true);
+    await act(async () => {
+      await expect(hook.result.current.replaceSelectedImageMaterial({ id: 'second', kind: 'PHOTO' })).rejects.toThrow('現在は画像を差し替えできません');
+    });
+    expect(apiMocks.placeMaterial).toHaveBeenCalledOnce();
+    expect(hook.result.current.elements).toEqual([image]);
+    await act(async () => { finish(); await replacement; });
+    expect(hook.result.current.busy).toBe(false);
+  });
+
+  it('does not change the selected image when a photo response has no image asset', async () => {
+    const image: AssemblyProcedureOverlayElement = { id: 'image', kind: 'IMAGE', assetId: 'old', pageIndex: 0, bbox: range, zIndex: 0 };
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [image] }] }));
+    await authenticate(hook.result);
+    act(() => hook.result.current.setSelectedOverlayId(image.id));
+    apiMocks.placeMaterial.mockResolvedValue({ element: { id: 'text', kind: 'TEXT', text: '手順', pageIndex: 0, bbox: range, zIndex: 0 } });
+    await act(async () => {
+      await expect(hook.result.current.replaceSelectedImageMaterial({ id: 'photo-material', kind: 'PHOTO' })).rejects.toThrow('画像素材を選択してください。');
+    });
+    expect(hook.result.current.elements).toEqual([image]);
+    expect(hook.result.current.canUndo).toBe(false);
+    expect(hook.result.current.busy).toBe(false);
+  });
+
   it('appends sequential shelf selections to the draft with distinct assets and increasing z-order', async () => {
     const hook = renderEditor(makeDocument());
     await authenticate(hook.result);
@@ -365,6 +841,33 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     act(() => hook.result.current.cancelTextCandidates());
     expect(hook.result.current.selectedElement).toMatchObject({ text: manualText, bbox: editedBBox });
     expect(hook.result.current.elements).toHaveLength(1);
+  });
+
+  it('sends intersecting images from the current unsaved draft in z order for both region kinds', async () => {
+    const image: AssemblyProcedureOverlayElement = { id: 'low', kind: 'IMAGE', assetId: 'low-asset', pageIndex: 0, bbox: range, zIndex: 1, objectFit: 'cover', opacity: 0.5 };
+    const high: AssemblyProcedureOverlayElement = { ...image, id: 'high', assetId: 'high-asset', zIndex: 5 };
+    const outside: AssemblyProcedureOverlayElement = { ...image, id: 'outside', bbox: { ...range, xRatio: 0.6 } };
+    const boundary: AssemblyProcedureOverlayElement = { ...image, id: 'boundary', bbox: { ...range, yRatio: 0.4 } };
+    const otherPage: AssemblyProcedureOverlayElement = { ...image, id: 'page-1', pageIndex: 1 };
+    const shape: AssemblyProcedureOverlayElement = { id: 'shape', kind: 'SHAPE', shape: 'RECTANGLE', pageIndex: 0, bbox: range, zIndex: 3 };
+    const hook = renderEditor(makeDocument({ pages: [
+      { pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [high, outside, boundary, shape, image] },
+      { pageIndex: 1, imageRelativePath: '/pages/2.png', overlays: [otherPage] }
+    ] }));
+    await authenticate(hook.result);
+    const edited = { ...image, assetId: 'unsaved-asset', bbox: { ...range, widthRatio: 0.2 } };
+    act(() => hook.result.current.updateElement(edited));
+    apiMocks.findTextCandidates.mockResolvedValue([{ text: '素材文章', confidence: 0.9, bounds: range, pageIndex: 0, source: 'ocr' }]);
+    const overlays = [edited, high].map(({ assetId, bbox, zIndex, objectFit, opacity }) => ({ assetId, bbox, zIndex, objectFit, opacity }));
+    act(() => hook.result.current.handleRangeSelected(range));
+    await act(async () => hook.result.current.createOverlay('TEXT'));
+    expect(apiMocks.findTextCandidates).toHaveBeenLastCalledWith({ id: 'source-draft', accessPassword: '1234', pageIndex: 0, bbox: range, overlays });
+    act(() => hook.result.current.cancelTextCandidates());
+    apiMocks.createImageRegion.mockResolvedValue({ assetId: 'cropped', relativeUrl: '/crop.jpg', contentType: 'image/jpeg' });
+    act(() => hook.result.current.handleRangeSelected(range));
+    await act(async () => hook.result.current.createOverlay('IMAGE'));
+    expect(apiMocks.createImageRegion).toHaveBeenLastCalledWith({ holderToken: 'session-token', id: 'source-draft', accessPassword: '1234', pageIndex: 0, bbox: range, overlays });
+    expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
   });
 
   it('creates an image from an ROI and replaces its asset through upload', async () => {

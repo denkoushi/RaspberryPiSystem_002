@@ -76,4 +76,14 @@ describe('assembly procedure overlay schemas', () => {
       })
     ).toMatchObject({ expectedEditVersion: 2, accessPassword: '' });
   });
+  it('accepts optional applied caption ids with bounded count and length', () => {
+    const body = { expectedEditVersion: 0, elements: [] };
+    expect(assemblyProcedureOverlaySaveInputSchema.parse(body)).not.toHaveProperty('appliedCaptionElementIds');
+    const appliedCaptionElementIds = Array.from({ length: 200 }, (_, i) => String(i).padEnd(120, 'a'));
+    expect(assemblyProcedureOverlaySaveInputSchema.parse({ ...body, appliedCaptionElementIds }).appliedCaptionElementIds).toEqual(appliedCaptionElementIds);
+    for (const ids of [[''], ['a'.repeat(121)], [...appliedCaptionElementIds, 'extra']]) {
+      expect(assemblyProcedureOverlaySaveInputSchema.safeParse({ ...body, appliedCaptionElementIds: ids }).success).toBe(false);
+    }
+  });
+
 });

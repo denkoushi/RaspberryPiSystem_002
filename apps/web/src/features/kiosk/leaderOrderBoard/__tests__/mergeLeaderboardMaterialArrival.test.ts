@@ -33,17 +33,20 @@ describe('material arrival status on leaderboard rows', () => {
     const decorations = mergeLeaderboardDecorationsIntoAccumulator(createEmptyAccumulatedLeaderboardDecorations(), {
       rowDecorations: [],
       leaderboardFooterChipsByPartKey: { [partKey]: [] },
-      leaderboardMaterialArrivalByPartKey: { [partKey]: 'ordered' }
+      leaderboardMaterialArrivalByPartKey: { [partKey]: 'ordered' },
+      leaderboardMaterialArrivalBasisByPartKey: { [partKey]: 'part' }
     });
     const merged = mergeLeaderboardBoardWithDecorations(board, decorations);
     expect(merged.rows.map((r) => r.materialArrivalStatus ?? null)).toEqual(['ordered', 'ordered', null]);
+    expect(merged.rows.map((r) => r.materialArrivalBasis ?? null)).toEqual(['part', 'part', null]);
   });
 
   it('drops a stale status when a refetched part no longer has a material row', () => {
     const first = mergeLeaderboardDecorationsIntoAccumulator(createEmptyAccumulatedLeaderboardDecorations(), {
       rowDecorations: [],
       leaderboardFooterChipsByPartKey: { [partKey]: [] },
-      leaderboardMaterialArrivalByPartKey: { [partKey]: 'ordered' }
+      leaderboardMaterialArrivalByPartKey: { [partKey]: 'ordered' },
+      leaderboardMaterialArrivalBasisByPartKey: { [partKey]: 'part' }
     });
     const second = mergeLeaderboardDecorationsIntoAccumulator(first, {
       rowDecorations: [],
@@ -51,15 +54,35 @@ describe('material arrival status on leaderboard rows', () => {
       leaderboardMaterialArrivalByPartKey: {}
     });
     expect(second.leaderboardMaterialArrivalByPartKey[partKey]).toBeUndefined();
+    expect(second.leaderboardMaterialArrivalBasisByPartKey[partKey]).toBeUndefined();
   });
 
   it('keeps the status of parts that were not part of the refetch', () => {
     const first = mergeLeaderboardDecorationsIntoAccumulator(createEmptyAccumulatedLeaderboardDecorations(), {
       rowDecorations: [],
       leaderboardFooterChipsByPartKey: { [partKey]: [] },
-      leaderboardMaterialArrivalByPartKey: { [partKey]: 'received' }
+      leaderboardMaterialArrivalByPartKey: { [partKey]: 'received' },
+      leaderboardMaterialArrivalBasisByPartKey: { [partKey]: 'part' }
     });
     const second = mergeLeaderboardDecorationsIntoAccumulator(first, { rowDecorations: [] });
     expect(second.leaderboardMaterialArrivalByPartKey[partKey]).toBe('received');
+    expect(second.leaderboardMaterialArrivalBasisByPartKey[partKey]).toBe('part');
+  });
+
+  it('clears a stale part basis when refetched status comes from material', () => {
+    const first = mergeLeaderboardDecorationsIntoAccumulator(createEmptyAccumulatedLeaderboardDecorations(), {
+      rowDecorations: [],
+      leaderboardMaterialArrivalByPartKey: { [partKey]: 'ordered' },
+      leaderboardMaterialArrivalBasisByPartKey: { [partKey]: 'part' }
+    });
+    const next = mergeLeaderboardDecorationsIntoAccumulator(first, {
+      rowDecorations: [],
+      leaderboardFooterChipsByPartKey: { [partKey]: [] },
+      leaderboardMaterialArrivalByPartKey: { [partKey]: 'received' }
+    });
+    expect(next.leaderboardMaterialArrivalBasisByPartKey).toEqual({});
+    expect(mergeLeaderboardBoardWithDecorations(board, next).rows[0]).toMatchObject({
+      materialArrivalStatus: 'received', materialArrivalBasis: null
+    });
   });
 });

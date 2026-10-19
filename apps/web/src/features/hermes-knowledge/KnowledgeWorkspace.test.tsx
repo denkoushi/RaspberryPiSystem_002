@@ -46,7 +46,7 @@ beforeEach(() => {
 });
 
 describe('Knowledge chat approval and reading', () => {
-  it.each(['leader', 'section_chief', 'manager'])('shows the pending count for %s', async rank => {
+  it.each(['leader', 'section_chief', 'manager', 'general_manager', 'executive'])('shows the pending count for %s', async rank => {
     api.post.mockResolvedValue({ data: { reviewer: { rank }, reviews: [pending] } });
     render(<Harness />);
     expect(await screen.findByRole('button', { name: '✅ 承認待ち 1' })).toBeInTheDocument();

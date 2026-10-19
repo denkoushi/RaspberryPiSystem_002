@@ -196,14 +196,52 @@ describe('KioskAssemblyHomePage', () => {
     );
   });
 
+  it('shows six text-only menu links in order with unchanged destinations and grouped separators', async () => {
+    renderPage();
+    const nav = screen.getByRole('navigation', { name: '組立メニュー' });
+    const links = within(nav).getAllByRole('link');
+    expect(links.map(link => link.getAttribute('aria-label') || link.textContent?.trim())).toEqual([
+      '見る', '作る・直す', '使う', '記録確認', '製品構成', '訓練'
+    ]);
+    expect(links.map(link => link.getAttribute('href'))).toEqual([
+      '/kiosk/assembly/manuals',
+      '/kiosk/assembly/manuals/workshop',
+      '/kiosk/assembly/library?focus=templates',
+      '/kiosk/assembly/record-approvals',
+      '/kiosk/assembly/traceability',
+      '/kiosk/assembly/training'
+    ]);
+    expect(nav.querySelector('svg')).toBeNull();
+    expect(within(nav).queryByText('手順書')).not.toBeInTheDocument();
+    expect(within(nav).queryByText('手順を作る')).not.toBeInTheDocument();
+    for (const index of [1, 3]) {
+      const separator = links[index].nextElementSibling;
+      expect(separator).toHaveAttribute('aria-hidden', 'true');
+      expect(separator).toHaveClass('w-px', 'h-7');
+      expect(separator?.nextElementSibling).toBe(links[index + 1]);
+    }
+    await waitFor(() => expect(within(links[3]).getByText('1')).toHaveClass('bg-[#f6b93b]'));
+    expect(within(links[3]).getByText('1')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('places lot registration before the work board in the left column', async () => {
+    renderPage();
+
+    const main = screen.getByRole('main');
+    const rail = screen.getByRole('complementary', { name: 'ロット登録' });
+    expect(main).toHaveClass('xl:grid-cols-[22rem_minmax(0,1fr)]');
+    expect(main.firstElementChild).toBe(rail);
+    expect(rail).toHaveClass('border-r');
+    expect(rail).not.toHaveClass('border-l');
+    expect(await screen.findByRole('link', { name: 'ASM-START-001・S002 を再開' })).toBeInTheDocument();
+  });
+
   it('selects a seiban candidate and registers a lot with exact serial count', async () => {
     renderPage();
 
-    expect(screen.getByRole('link', { name: '手順書' })).toHaveAttribute(
-      'href',
-      '/kiosk/assembly/library?focus=procedures'
-    );
-    expect(screen.getByRole('link', { name: '手順を作る' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: '見る' })).toHaveAttribute('href', '/kiosk/assembly/manuals');
+    expect(screen.getByRole('link', { name: '作る・直す' })).toHaveAttribute('href', '/kiosk/assembly/manuals/workshop');
+    expect(screen.getByRole('link', { name: '使う' })).toHaveAttribute(
       'href',
       '/kiosk/assembly/library?focus=templates'
     );

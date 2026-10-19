@@ -15,6 +15,30 @@ node scripts/hermes-search/retrieval/prototypes/pg-trgm-recall.mjs \
   --out /tmp/hermes-pg-trgm-recall-20261004.json
 ```
 
+flywheel 質問と consensus labels の例:
+
+```sh
+node scripts/hermes-search/retrieval/prototypes/pg-trgm-recall.mjs \
+  --questions "$HOME/Documents/hermes-retrieval-private/work/flywheel/questions-2026-10-07.jsonl" \
+  --questions "$HOME/Documents/hermes-retrieval-private/work/flywheel/questions-2026-10-08.jsonl" \
+  --labels "$HOME/Documents/hermes-retrieval-private/work/flywheel/labels.json" \
+  --snapshot "$HOME/Documents/hermes-retrieval-private/snapshots/nonconformity-snapshot-pi5-20261004.json" \
+  --pg 'postgres://postgres:proto@127.0.0.1:55432/postgres' \
+  --out /tmp/hermes-pg-trgm-recall-flywheel.json
+```
+
+- `--gold` / `--questions` はそれぞれ繰り返し指定でき、少なくとも1つ必要。
+  `--labels` は従来の `graded-v1.json` の caseKey 別マップと、
+  `schema: "hermes-flywheel-labels/v1"` の `labels` マップを自動判別する。
+  上の `labels.json` は consensus labels ファイルの配置例。
+- flywheel は `kept === true` かつ `kind !== 'filter'` の行のみ使用。
+  `flywheel-run.mjs` と同じ exported `readNightRows` / `questionSet` を再利用し、
+  synthetic の質問IDは `a` の先頭の `/^[a-z_]+:/` を除いた値。
+  全質問ファイルを通じ、同一IDは最初の行を採用する。caseKey は `flywheel/<questionId>`。
+  synthetic の split はそのIDの FNV-1a hash の `% 100 < 70` が `dev`、それ以外が `heldout`。
+  real content 行は reader の条件（質問IDと `relevant` が必要）に従い、行の `id` / `split` を使う。
+  関連性の採点には question 行の `grades` / `relevant` ではなく consensus の `g === 3` を使う。
+
 - 質問文をそのまま両方式へ入力。gold の `expect` / `judge` は
   `readGold` の形式検証以外には使わない。body はカタログ指定欄を改行で連結。
   BM25 の既存の正規化・token化は維持し、pg_trgm は原文を使用。
@@ -25,8 +49,9 @@ node scripts/hermes-search/retrieval/prototypes/pg-trgm-recall.mjs \
   接続終了で一時テーブルと索引は消える。extension はDBに残る。
 - `cases` の top30/top200 は「既知の `g=3` が1件以上ある」の真偽。
   false は不適合判定ではない。未採点は別計数し、関連あり／なしに加算しない。
-  `summary` は全入力質問、`bySet` はセット別、`knownRelevantOnly` は
+  `summary` は全入力質問、`bySet` はセット別、`bySplit` は split がある質問の split 別、`knownRelevantOnly` は
   `g=3` ラベルがある質問のみ。`unlabeled200` は質問×候補の延べ件数。
+  `cases` には reader が返す `split` も保存する（gold には追加しない）。
 - `ms` は1巡の計測。BM25 は索引構築・採点・整列、PG はサーバー内の
   計画・採点・整列・ID集約を含む。PGの接続・COPY・索引構築は別計測。
   p50/p95 は nearest-rank。ウォームアップ・反復なしで、本番の応答時間ではない。

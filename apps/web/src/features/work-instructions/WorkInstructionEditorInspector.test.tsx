@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createWorkInstructionOverlayForRange } from './workInstructionEditorDraft';
@@ -27,61 +27,61 @@ const step: WorkInstructionEditorStepDto = {
   overlays: []
 };
 
-describe('WorkInstructionEditorInspector select styling', () => {
-  it.each(['TEXT', 'IMAGE', 'SHAPE'] as const)('keeps %s select controls readable on the dark inspector', (kind) => {
-    render(
-      <WorkInstructionEditorInspector
-        element={createWorkInstructionOverlayForRange(kind, 0, step.stepKey, bbox)}
-        onUpdate={vi.fn()}
-        onDelete={vi.fn()}
-        onBringForward={vi.fn()}
-        onSendBackward={vi.fn()}
-        onUploadImage={vi.fn()}
-        onRefetchTextCandidates={vi.fn()}
-        steps={[step]}
-        onAssignStep={vi.fn()}
-      />
-    );
+function renderInspector(kind: 'TEXT' | 'IMAGE' | 'SHAPE', extra = {}) {
+  const onUpdate = vi.fn();
+  const onDelete = vi.fn();
+  const onDuplicate = vi.fn();
+  const onUploadImage = vi.fn();
+  render(<WorkInstructionEditorInspector element={createWorkInstructionOverlayForRange(kind, 0, step.stepKey, bbox)} onUpdate={onUpdate} onDelete={onDelete} onDuplicate={onDuplicate} onBringForward={vi.fn()} onSendBackward={vi.fn()} onUploadImage={onUploadImage} onRefetchTextCandidates={vi.fn()} steps={[step]} onAssignStep={vi.fn()} {...extra} />);
+  return { onUpdate, onDelete, onDuplicate, onUploadImage };
+}
 
-    const inspector = screen.getByRole('complementary', { name: '加工要領書オーバーレイ編集' });
-    const selects = within(inspector).getAllByRole('combobox');
-    expect(selects.length).toBeGreaterThan(0);
-    for (const select of selects) {
-      expect(select).toHaveClass('text-sm', 'text-white', 'bg-slate-950', '[color-scheme:dark]');
-      const relatedLabel = select.closest('label');
-      if (relatedLabel) expect(relatedLabel).toHaveClass('text-sm');
-      const options = within(select).getAllByRole('option');
-      expect(options.length).toBeGreaterThan(0);
-      for (const option of options) {
-        expect(option).toHaveClass('text-sm', 'text-white', 'bg-slate-950', '[color-scheme:dark]');
-      }
+describe('WorkInstructionEditorInspector', () => {
+  it.each(['TEXT', 'IMAGE', 'SHAPE'] as const)('uses white, readable controls for %s and keeps status and step at the end', (kind) => {
+    renderInspector(kind);
+    const inspector = screen.getByRole('complementary', { name: '注釈の編集' });
+    for (const control of inspector.querySelectorAll('input:not([type=checkbox]):not([type=file]),textarea,select')) {
+      expect(control).toHaveClass('!bg-white', '!text-lg', '!text-[#161c22]');
     }
+    expect(within(inspector).getByLabelText('状態')).toHaveValue('MIGRATED');
+    expect(within(inspector).getByLabelText('手順')).toHaveValue(step.stepKey);
+    expect(inspector).not.toHaveTextContent(/オーバーレイ|比率|asset|移植|KEEP|fingerprint/);
   });
 
-  it.each(['TEXT', 'IMAGE', 'SHAPE'] as const)('keeps every %s value control on the dark editor palette', (kind) => {
-    render(
-      <WorkInstructionEditorInspector
-        element={createWorkInstructionOverlayForRange(kind, 0, step.stepKey, bbox)}
-        onUpdate={vi.fn()}
-        onDelete={vi.fn()}
-        onBringForward={vi.fn()}
-        onSendBackward={vi.fn()}
-        onUploadImage={vi.fn()}
-        onRefetchTextCandidates={vi.fn()}
-        steps={[step]}
-        onAssignStep={vi.fn()}
-      />
-    );
+  it('shows ratios as percentages and stores percentages as ratios', () => {
+    const { onUpdate } = renderInspector('TEXT');
+    expect(screen.getByLabelText('左 (%)')).toHaveValue(10);
+    expect(screen.getByLabelText('不透明度 (%)')).toHaveValue(100);
+    fireEvent.change(screen.getByLabelText('左 (%)'), { target: { value: '25' } });
+    expect(onUpdate.mock.lastCall?.[0].bbox.xRatio).toBe(0.25);
+    fireEvent.change(screen.getByLabelText('文字サイズ (%)'), { target: { value: '2.5' } });
+    expect(onUpdate.mock.lastCall?.[0].style.fontSizeRatio).toBe(0.025);
+    fireEvent.change(screen.getByLabelText('不透明度 (%)'), { target: { value: '50' } });
+    expect(onUpdate.mock.lastCall?.[0].opacity).toBe(0.5);
+  });
 
-    const inspector = screen.getByRole('complementary', { name: '加工要領書オーバーレイ編集' });
-    const controls = Array.from(inspector.querySelectorAll('input, textarea, select'));
-    expect(controls.length).toBeGreaterThan(0);
+  it('duplicates immediately and confirms deletion', () => {
+    const { onDelete, onDuplicate } = renderInspector('SHAPE');
+    fireEvent.click(screen.getByRole('button', { name: '複製' }));
+    expect(onDuplicate).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: '削除', exact: true }));
+    expect(onDelete).not.toHaveBeenCalled();
+    fireEvent.click(within(screen.getByRole('dialog', { name: '注釈を削除' })).getByRole('button', { name: '削除' }));
+    expect(onDelete).toHaveBeenCalledOnce();
+  });
 
-    for (const control of controls) {
-      expect(control).toHaveClass('bg-slate-950', '!bg-slate-950');
-      if (control instanceof HTMLInputElement && control.type === 'checkbox') continue;
-      if (control instanceof HTMLInputElement && control.type === 'color') continue;
-      expect(control).toHaveClass('text-white', '!text-white');
-    }
+  it('uploads image files without exposing an ID input', () => {
+    const { onUploadImage } = renderInspector('IMAGE');
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    const file = new File(['image'], 'photo.png', { type: 'image/png' });
+    fireEvent.change(screen.getByLabelText('画像を選ぶ', { selector: 'input' }), { target: { files: [file] } });
+    expect(onUploadImage).toHaveBeenCalledWith(file);
+    expect(screen.getByTestId('work-instruction-editor-image-asset')).toHaveTextContent('画像を選ぶ');
+  });
+
+  it('preserves and displays an unassigned state', () => {
+    renderInspector('TEXT', { element: { ...createWorkInstructionOverlayForRange('TEXT', 0, step.stepKey, bbox), migrationState: 'UNASSIGNED' } });
+    expect(screen.getByLabelText('状態')).toHaveValue('UNASSIGNED');
+    expect(within(screen.getByLabelText('状態')).getByRole('option', { name: '未割当' })).toBeInTheDocument();
   });
 });

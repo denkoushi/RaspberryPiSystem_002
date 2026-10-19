@@ -1,9 +1,11 @@
 import Fastify from 'fastify';
+import rateLimit from '@fastify/rate-limit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../../../lib/errors.js';
 import { registerErrorHandler } from '../../../plugins/error-handler.js';
 import { defaultBackupConfig } from '../../../services/backup/backup-config.js';
+import { BackupConfigLoader } from '../../../services/backup/backup-config.loader.js';
 import { ProcedureMaterialService } from '../../../services/assembly/procedure-material.service.js';
 import { registerProcedureMaterialRoutes } from '../procedure-materials.js';
 
@@ -13,38 +15,133 @@ describe('procedure-material routes with mocked Prisma', () => {
   let app: ReturnType<typeof Fastify>;
   afterEach(async () => { await app?.close(); });
   function harness(deny: 'view' | 'write' | null = null) {
-    const material = { id, kind: 'TEXT', text: '手順', documentId: null, placedAt: null, discardedAt: null, storageKey: null };
-    const db = { procedureMaterial: {
+    const material = { id, kind: 'TEXT', text: '手順', documentId: null, placedAt: null, discardedAt: null, storageKey: null, gmailMessageId: null };
+    const db = { employee: { findMany: vi.fn().mockResolvedValue([]) }, $queryRaw: vi.fn().mockResolvedValue([]), $transaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(db)), procedureMaterial: {
       findMany: vi.fn().mockResolvedValue([material]), findUnique: vi.fn().mockResolvedValue(material),
+      update: vi.fn(async ({ data }: { data: object }) => Object.assign(material, data)),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     } };
+    const importer = { importDraft: vi.fn().mockResolvedValue({ id: 'document-1', name: 'DFD1 組立' }) };
     const store = { read: vi.fn().mockResolvedValue(Buffer.from('photo-original')) };
     const gc = { collect: vi.fn().mockResolvedValue({ scanned: 3, deleted: 1 }) };
-    const ingestion = { runOnce: vi.fn().mockResolvedValue({ scanned: 1, saved: 1, messages: [{ messageId: 'gmail-1', status: 'saved', trashed: true }] }) };
+    const pdfText = { backfill: vi.fn().mockResolvedValue({ dryRun: true, candidates: 3, updated: 0, withoutText: 1, failed: 0 }) };
+    const ingestion = { runOnce: vi.fn().mockResolvedValue({ scanned: 1, deferred: 0, saved: 1, messages: [{ messageId: 'gmail-1', status: 'saved', trashed: true }] }) };
     const loadConfig = vi.fn().mockResolvedValue(defaultBackupConfig);
     app = Fastify(); registerErrorHandler(app);
-    registerProcedureMaterialRoutes(app, {
-      service: new ProcedureMaterialService(db as never, store as never), ingestion, loadConfig, gc: gc as never,
-      allowView: async () => { if (deny === 'view') throw new ApiError(403, '権限がありません'); },
-      allowWriteKiosk: async () => { if (deny === 'write') throw new ApiError(403, '権限がありません'); },
+    app.register(async (scope) => {
+      await scope.register(rateLimit, { global: false });
+      registerProcedureMaterialRoutes(scope, {
+        service: new ProcedureMaterialService(db as never, store as never, importer as never), ingestion, loadConfig, gc: gc as never, pdfText,
+        allowView: async () => { if (deny === 'view') throw new ApiError(403, '権限がありません'); },
+        allowWriteKiosk: async () => { if (deny === 'write') throw new ApiError(403, '権限がありません'); },
+      });
     });
-    return { db, store, ingestion, loadConfig, material, gc };
+    return { db, store, importer, ingestion, loadConfig, material, gc, pdfText };
   }
+  it('keeps PDF and page text out of the list payload', async () => {
+    const { db, material } = harness();
+    db.procedureMaterial.findMany.mockResolvedValue([material, { ...material, id: 'pdf', kind: 'PDF', text: 'PDF の文字' }, { ...material, id: 'page', kind: 'PHOTO', text: 'ページの文字' }]);
+    const response = await app.inject({ method: 'GET', url: `${base}?state=unplaced&limit=12` });
+    expect(response.json().materials.map((row: { text: string | null }) => row.text)).toEqual(['手順', null, null]);
+  });
   it.each([
-    ['unplaced', { documentId: null, placedAt: null, discardedAt: null }],
+    ['unplaced', { origin: { not: 'APP' }, documentId: null, placedAt: null, discardedAt: null }],
     ['placed', { discardedAt: null, OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] }],
     ['discarded', { discardedAt: { not: null } }], ['all', {}],
-  ])('filters state=%s and hint with a newest-first limit', async (state, where) => {
+  ])('filters state=%s and hint, filename or text with a newest-first limit', async (state, where) => {
     const { db } = harness();
     const response = await app.inject({ method: 'GET', url: `${base}?state=${state}&q=DFD1&limit=12` });
     expect(response.statusCode).toBe(200); expect(response.json().materials[0].text).toBe('手順');
-    expect(db.procedureMaterial.findMany).toHaveBeenCalledWith({ where: { ...where, subjectHint: { contains: 'DFD1', mode: 'insensitive' } }, orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }], take: 12 });
+    expect(db.procedureMaterial.findMany).toHaveBeenCalledWith({ where: { ...where, AND: [{ OR: [{ subjectHint: { contains: 'DFD1', mode: 'insensitive' } }, { originalFileName: { contains: 'DFD1', mode: 'insensitive' } }, { text: { contains: 'DFD1', mode: 'insensitive' } }] }] }, orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }], take: 12 });
+  });
+  it('also searches the NFKC form of a full-width query', async () => {
+    const { db } = harness();
+    await app.inject({ method: 'GET', url: `${base}?state=all&q=${encodeURIComponent('ＤＦＤ１')}` });
+    const [{ where }] = vi.mocked(db.procedureMaterial.findMany).mock.calls[1] as [{ where: { AND: [{ OR: Array<Record<string, { contains: string }>> }] } }];
+    expect(where.AND[0].OR.map((item) => Object.values(item)[0].contains)).toEqual(['ＤＦＤ１', 'ＤＦＤ１', 'DFD1', 'DFD1', 'ＤＦＤ１', 'DFD1']);
+  });
+  it.each(['mh-4521', 'ＭＨ－４５２１'])('matches body text and its email attachments without including unrelated or null email IDs for %s', async (q) => {
+    const { db, material } = harness();
+    const rows = [
+      { ...material, id: 'body', text: '前文 MH-4521 の手順', gmailMessageId: 'mail-1' },
+      { ...material, id: 'photo', kind: 'PHOTO', text: null, gmailMessageId: 'mail-1', originalFileName: 'IMG_0001.jpg' },
+      { ...material, id: 'pdf', kind: 'PDF', text: null, gmailMessageId: 'mail-1', originalFileName: 'scan.pdf' },
+      { ...material, id: 'other', kind: 'PHOTO', text: null, gmailMessageId: 'mail-2' },
+      { ...material, id: 'null-body', text: 'MH-4521', gmailMessageId: null },
+      { ...material, id: 'null-photo', kind: 'PHOTO', text: null, gmailMessageId: null },
+      { ...material, id: 'discarded-body', kind: 'PHOTO', text: 'MH-4521', gmailMessageId: 'mail-3', discardedAt: new Date() },
+      { ...material, id: 'discarded-email-photo', kind: 'PHOTO', text: null, gmailMessageId: 'mail-3' },
+    ];
+    type Condition = Record<string, { contains?: string; mode?: string; in?: string[] }>;
+    const matches = (row: typeof rows[number], conditions: Condition[]) => conditions.some((condition) => Object.entries(condition).some(([field, filter]) => {
+      const value = row[field as keyof typeof row];
+      return filter.in ? typeof value === 'string' && filter.in.includes(value) : typeof value === 'string' && filter.mode === 'insensitive' && value.toLowerCase().includes(filter.contains!.toLowerCase());
+    }));
+    db.procedureMaterial.findMany.mockImplementation(async ({ where, select }: { where: { OR?: Condition[]; AND?: [{ OR: Condition[] }] }; select?: object }) => select
+      ? [...new Set(rows.filter((row) => row.gmailMessageId !== null && matches(row, where.OR!)).map((row) => row.gmailMessageId))].map((gmailMessageId) => ({ gmailMessageId }))
+      : rows.filter((row) => !row.discardedAt && matches(row, where.AND![0].OR)));
+    const response = await app.inject({ method: 'GET', url: `${base}?q=${encodeURIComponent(q)}` });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().materials.map((row: { id: string }) => row.id)).toEqual(['body', 'photo', 'pdf', 'null-body', 'discarded-email-photo']);
+    expect(db.procedureMaterial.findMany).toHaveBeenCalledTimes(2);
+    expect(db.procedureMaterial.findMany).toHaveBeenNthCalledWith(1, { where: { gmailMessageId: { not: null }, OR: [...new Set([q, q.normalize('NFKC')])].map((value) => ({ text: { contains: value, mode: 'insensitive' } })) }, select: { gmailMessageId: true }, distinct: ['gmailMessageId'], take: 500 });
+    expect(db.procedureMaterial.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { origin: { not: 'APP' }, documentId: null, placedAt: null, discardedAt: null, AND: [{ OR: expect.arrayContaining([{ gmailMessageId: { in: ['mail-1', 'mail-3'] } }]) }] } }));
+  });
+  it('joins matching material IDs once and names snapshot and matching mail materials', async () => {
+    const { db, material } = harness();
+    const work = { ...material, id: 'work', kind: 'PHOTO', workInstructionRef: { partNumber: 'DFD1' }, subjectHint: null };
+    const mail = { ...material, id: 'mail', subjectHint: 'DFD1 の資料', workInstructionRef: null };
+    db.$queryRaw.mockResolvedValueOnce([{ id: 'work', partNumber: 'DFD1' }, { id: 'mail', partNumber: 'DFD1' }])
+      .mockResolvedValueOnce([{ partNumber: 'DFD1', partName: '軸受ホルダー' }]);
+    db.procedureMaterial.findMany.mockResolvedValueOnce([]).mockImplementationOnce(async ({ where }) => {
+      expect(where.AND[0].OR).toContainEqual({ id: { in: ['work', 'mail'] } });
+      return [work, mail];
+    });
+    const response = await app.inject(`${base}?q=${encodeURIComponent('ホル')}`);
+    expect(response.statusCode).toBe(200);
+    expect(response.json().materials.map(({ id, partName }: { id: string; partName: string | null }) => [id, partName]))
+      .toEqual([['work', '軸受ホルダー'], ['mail', '軸受ホルダー']]);
+    expect(db.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(db.$queryRaw.mock.calls[0][0].sql).toContain('LIMIT 2000');
+  });
+  it.each(['unplaced', 'placed'])('skips reverse lookup for one normalized character in %s', async (state) => {
+    const { db } = harness();
+    expect((await app.inject(`${base}?state=${state}&q=${encodeURIComponent('　Ａ　')}`)).statusCode).toBe(200);
+    expect(db.$queryRaw).not.toHaveBeenCalled();
+  });
+  it('looks up all snapshot names once without reverse lookup when q is absent', async () => {
+    const { db, material } = harness();
+    db.procedureMaterial.findMany.mockResolvedValue([{ ...material, workInstructionRef: { partNumber: 'DFD1' } }, { ...material, workInstructionRef: { partNumber: 'OTHER' } }]);
+    db.$queryRaw.mockResolvedValue([{ partNumber: 'DFD1', partName: 'ホルダー' }]);
+    expect((await app.inject(base)).json().materials.map(({ partName }: { partName: string | null }) => partName)).toEqual(['ホルダー', null]);
+    expect(db.$queryRaw).toHaveBeenCalledOnce();
+    expect(db.$queryRaw.mock.calls[0][0].values).toEqual(expect.arrayContaining(['DFD1', 'OTHER']));
   });
   it('defaults to 100 unplaced materials and rejects invalid filters', async () => {
     const { db } = harness();
     expect((await app.inject({ method: 'GET', url: base })).statusCode).toBe(200);
-    expect(db.procedureMaterial.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { documentId: null, placedAt: null, discardedAt: null }, take: 100 }));
-    for (const query of ['state=invalid', 'limit=0', 'limit=501']) expect((await app.inject({ method: 'GET', url: `${base}?${query}` })).statusCode).toBe(400);
+    expect(db.procedureMaterial.findMany).toHaveBeenCalledOnce();
+    expect(db.$queryRaw).not.toHaveBeenCalled();
+    expect(db.procedureMaterial.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { origin: { not: 'APP' }, documentId: null, placedAt: null, discardedAt: null }, take: 100 }));
+    for (const query of ['state=invalid', 'origin=invalid', 'limit=0', 'limit=501']) expect((await app.inject({ method: 'GET', url: `${base}?${query}` })).statusCode).toBe(400);
+  });
+  it.each(['APP', 'GMAIL', 'KNOWLEDGE', 'WORK_INSTRUCTION'])('filters explicit origin %s without the implicit APP exclusion', async (origin) => {
+    const { db } = harness();
+    expect((await app.inject(`${base}?origin=${origin}`)).statusCode).toBe(200);
+    expect(db.procedureMaterial.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { origin, documentId: null, placedAt: null, discardedAt: null } }));
+  });
+  it('returns app metadata and resolves employee names once, preserving unknown and null numbers', async () => {
+    const { db, material } = harness();
+    db.procedureMaterial.findMany.mockResolvedValue(['007125', 'unknown', null].map((nameId) => ({ ...material, origin: 'APP',
+      appRef: { category: '保守', note: '7125 test', location: '工場', nameId } })));
+    db.employee.findMany.mockResolvedValue([{ employeeCode: '007125', displayName: '津田' }]);
+    const response = await app.inject(`${base}?origin=APP`);
+    expect(response.statusCode).toBe(200);
+    expect(response.json().materials).toEqual([
+      expect.objectContaining({ category: '保守', note: '7125 test', location: '工場', nameId: '007125', employeeName: '津田' }),
+      expect.objectContaining({ nameId: 'unknown', employeeName: null }), expect.objectContaining({ nameId: null, employeeName: null }),
+    ]);
+    expect(db.employee.findMany).toHaveBeenCalledExactlyOnceWith({ where: { employeeCode: { in: ['007125', 'unknown'] } }, select: { employeeCode: true, displayName: true } });
   });
   it('returns 404 for TEXT, missing materials, or a PHOTO without a storage key', async () => {
     const { db, store } = harness();
@@ -74,6 +171,58 @@ describe('procedure-material routes with mocked Prisma', () => {
     db.procedureMaterial.findUnique.mockResolvedValue(null);
     expect((await app.inject({ method: 'POST', url: `${base}/${id}/restore` })).statusCode).toBe(404);
   });
+  it('creates a document from original PDF bytes and rejects a second request', async () => {
+    const { material, db, store, importer } = harness();
+    Object.assign(material, { kind: 'PDF', storageKey: 'procedure-materials/pdf/original', originalFileName: '素材.pdf', subjectHint: 'DFD1 組立' });
+    const response = await app.inject({ method: 'POST', url: `${base}/${id}/create-document` });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ document: { id: 'document-1', name: 'DFD1 組立' } });
+    expect(store.read).toHaveBeenCalledWith('procedure-materials/pdf/original', { verifyIntegrity: true });
+    expect(importer.importDraft).toHaveBeenCalledExactlyOnceWith({
+      name: 'DFD1 組立', avoidDuplicateName: true, buffer: Buffer.from('photo-original'),
+      mimetype: 'application/pdf', filename: '素材.pdf', transaction: db,
+      source: { sourceType: 'MANUAL', sourceAttachmentName: '素材.pdf' },
+    });
+    expect(material).toMatchObject({ documentId: 'document-1', placedAt: expect.any(Date) });
+    db.procedureMaterial.updateMany.mockResolvedValueOnce({ count: 0 });
+    const unplace = await app.inject({ method: 'POST', url: `${base}/${id}/unplace` });
+    expect(unplace.statusCode).toBe(409);
+    expect(unplace.json().message).toBe('要領書を作成済みの PDF は配置を取り消せません');
+    expect(db.procedureMaterial.updateMany).toHaveBeenCalledWith({
+      where: { id, OR: [{ kind: { not: 'PDF' } }, { documentId: null }] },
+      data: { documentId: null, placedAt: null },
+    });
+    expect(material).toMatchObject({ documentId: 'document-1', placedAt: expect.any(Date) });
+    const second = await app.inject({ method: 'POST', url: `${base}/${id}/create-document` });
+    expect(second.statusCode).toBe(409);
+    expect(second.json().message).toBe('この PDF からは作成済みです');
+    expect(importer.importDraft).toHaveBeenCalledOnce();
+  });
+  it('uses the PDF filename without its extension when the hint is absent', async () => {
+    const { material, importer } = harness();
+    Object.assign(material, { kind: 'PDF', storageKey: 'pdf', originalFileName: '組立.v1.pdf' });
+    expect((await app.inject({ method: 'POST', url: `${base}/${id}/create-document` })).statusCode).toBe(200);
+    expect(importer.importDraft).toHaveBeenCalledWith(expect.objectContaining({ name: '組立.v1' }));
+  });
+  it.each(['TEXT', 'PHOTO'])('rejects creating a document from %s', async (kind) => {
+    const { material, importer } = harness();
+    material.kind = kind;
+    expect((await app.inject({ method: 'POST', url: `${base}/${id}/create-document` })).statusCode).toBe(400);
+    expect(importer.importDraft).not.toHaveBeenCalled();
+  });
+  it('rejects discarded or missing PDFs and preserves the shelf when import fails', async () => {
+    const { material, db, importer } = harness();
+    Object.assign(material, { kind: 'PDF', storageKey: 'pdf', discardedAt: new Date() });
+    expect((await app.inject({ method: 'POST', url: `${base}/${id}/create-document` })).statusCode).toBe(409);
+    expect(importer.importDraft).not.toHaveBeenCalled();
+    Object.assign(material, { discardedAt: null });
+    importer.importDraft.mockRejectedValueOnce(new Error('import failed'));
+    expect((await app.inject({ method: 'POST', url: `${base}/${id}/create-document` })).statusCode).toBe(500);
+    expect(db.procedureMaterial.update).not.toHaveBeenCalled();
+    expect(material.documentId).toBeNull();
+    db.procedureMaterial.findUnique.mockResolvedValueOnce(null);
+    expect((await app.inject({ method: 'POST', url: `${base}/${id}/create-document` })).statusCode).toBe(404);
+  });
   it('manually collects unreferenced original files', async () => {
     const { gc } = harness();
     const response = await app.inject({ method: 'POST', url: `${base}/gc` });
@@ -81,23 +230,59 @@ describe('procedure-material routes with mocked Prisma', () => {
     expect(response.json()).toEqual({ scanned: 3, deleted: 1 });
     expect(gc.collect).toHaveBeenCalledOnce();
   });
-  it('returns a material to the shelf and handles missing materials', async () => {
-    const { db } = harness();
+  it.each(['TEXT', 'PHOTO', 'PDF'])('returns %s to the shelf and handles missing materials (PDF without a document)', async (kind) => {
+    const { db, material } = harness();
+    Object.assign(material, { kind, documentId: kind === 'PDF' ? null : 'document-1', placedAt: new Date() });
     expect((await app.inject({ method: 'POST', url: `${base}/${id}/unplace` })).statusCode).toBe(200);
-    expect(db.procedureMaterial.updateMany).toHaveBeenCalledWith({ where: { id }, data: { documentId: null, placedAt: null } });
+    expect(db.procedureMaterial.updateMany).toHaveBeenCalledWith({ where: { id, OR: [{ kind: { not: 'PDF' } }, { documentId: null }] }, data: { documentId: null, placedAt: null } });
     db.procedureMaterial.updateMany.mockResolvedValueOnce({ count: 0 });
+    db.procedureMaterial.findUnique.mockResolvedValueOnce(null);
     expect((await app.inject({ method: 'POST', url: `${base}/${id}/unplace` })).statusCode).toBe(404);
+  });
+  it('loads the backup config as a method when no loader is injected', async () => {
+    const { ingestion } = harness();
+    app = Fastify(); registerErrorHandler(app);
+    registerProcedureMaterialRoutes(app, {
+      service: new ProcedureMaterialService({ procedureMaterial: {} } as never, {} as never), ingestion, gc: { collect: vi.fn() } as never,
+      allowView: async () => {}, allowWriteKiosk: async () => {},
+    });
+    const load = vi.spyOn(BackupConfigLoader, 'load').mockImplementation(async function (this: unknown) {
+      if (this !== BackupConfigLoader) throw new TypeError("Cannot read properties of undefined (reading 'configPath')");
+      return defaultBackupConfig;
+    });
+    const response = await app.inject({ method: 'POST', url: `${base}/ingest-gmail`, payload: {} });
+    expect(response.statusCode).toBe(200);
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(ingestion.runOnce).toHaveBeenCalledWith({ config: defaultBackupConfig, allowWait: true, manual: true });
+    load.mockRestore();
   });
   it('manually ingests while disabled and returns per-message status/counts', async () => {
     const { ingestion } = harness();
     const response = await app.inject({ method: 'POST', url: `${base}/ingest-gmail`, payload: { messageId: 'gmail-1', forceRetry: true } });
-    expect(response.statusCode).toBe(200); expect(response.json()).toMatchObject({ saved: 1, messages: [{ status: 'saved', trashed: true }] });
+    expect(response.statusCode).toBe(200); expect(response.json()).toMatchObject({ scanned: 1, deferred: 0, saved: 1, messages: [{ status: 'saved', trashed: true }] });
     expect(ingestion.runOnce).toHaveBeenCalledWith({ config: defaultBackupConfig, allowWait: true, manual: true, messageId: 'gmail-1', forceRetry: true });
   });
-  it.each([['GET', base], ['GET', `${base}/${id}/file`], ['POST', `${base}/ingest-gmail`], ['POST', `${base}/${id}/discard`], ['POST', `${base}/${id}/restore`], ['POST', `${base}/${id}/unplace`], ['POST', `${base}/gc`]] as const)('rejects unauthorized %s %s before touching materials', async (method, url) => {
-    const { db, ingestion, loadConfig } = harness(method === 'GET' ? 'view' : 'write');
+  it.each([['POST', base + '/pdf-text-backfill'], ['GET', base], ['GET', `${base}/${id}/file`], ['POST', `${base}/ingest-gmail`], ['POST', `${base}/${id}/discard`], ['POST', `${base}/${id}/restore`], ['POST', `${base}/${id}/unplace`], ['POST', `${base}/gc`], ['POST', `${base}/${id}/create-document`]] as const)('rejects unauthorized %s %s before touching materials', async (method, url) => {
+    const { db, ingestion, loadConfig, pdfText } = harness(method === 'GET' ? 'view' : 'write');
     expect((await app.inject({ method, url })).statusCode).toBe(403);
     expect(db.procedureMaterial.findMany).not.toHaveBeenCalled(); expect(db.procedureMaterial.findUnique).not.toHaveBeenCalled(); expect(db.procedureMaterial.updateMany).not.toHaveBeenCalled();
     expect(loadConfig).not.toHaveBeenCalled(); expect(ingestion.runOnce).not.toHaveBeenCalled();
+    expect(pdfText.backfill).not.toHaveBeenCalled();
+  });
+  it('defaults PDF text backfill to dry run and passes validated options with counts only', async () => {
+    const { pdfText } = harness();
+    const response = await app.inject({ method: 'POST', url: `${base}/pdf-text-backfill` });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ dryRun: true, candidates: 3, updated: 0, withoutText: 1, failed: 0 });
+    expect(pdfText.backfill).toHaveBeenLastCalledWith({ dryRun: true, limit: 50 });
+    expect((await app.inject({ method: 'POST', url: `${base}/pdf-text-backfill`, payload: { dryRun: false, limit: 200 } })).statusCode).toBe(200);
+    expect(pdfText.backfill).toHaveBeenLastCalledWith({ dryRun: false, limit: 200 });
+    expect((await app.inject({ method: 'POST', url: `${base}/pdf-text-backfill` })).statusCode).toBe(429);
+    expect(pdfText.backfill).toHaveBeenCalledTimes(2);
+  });
+  it.each([{ dryRun: 'false' }, { limit: '50' }, { limit: 0 }, { limit: 201 }, { limit: 1.5 }, { limit: null }, { dryRun: null }, { unknown: true }, null])('rejects invalid PDF text backfill body %j', async (payload) => {
+    const { pdfText } = harness();
+    const response = await app.inject({ method: 'POST', url: `${base}/pdf-text-backfill`, payload: JSON.stringify(payload), headers: { 'content-type': 'application/json' } });
+    expect(response.statusCode).toBe(400); expect(pdfText.backfill).not.toHaveBeenCalled();
   });
 });

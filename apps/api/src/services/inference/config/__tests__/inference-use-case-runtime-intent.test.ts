@@ -92,7 +92,6 @@ describe('inference-use-case-runtime-intent', () => {
         business_hermes: { providerId: 'dgx_primary' },
         document_summary: { providerId: 'dgx_primary' },
         admin_console_chat: { providerId: 'dgx_primary' },
-        stackchan_chat: { providerId: 'dgx_primary' },
       },
     });
     expect(() =>
@@ -130,7 +129,6 @@ describe('inference-use-case-runtime-intent', () => {
         business_hermes: { providerId: 'dgx_primary' },
         document_summary: { providerId: 'ubuntu_vlm' },
         admin_console_chat: { providerId: 'dgx_primary' },
-        stackchan_chat: { providerId: 'dgx_primary' },
       },
     });
     expect(() =>

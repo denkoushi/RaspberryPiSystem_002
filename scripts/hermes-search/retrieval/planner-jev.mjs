@@ -1,9 +1,11 @@
 // One JEV call per turn. Choice options come only from code-found candidates.
 // evaluate is injectable; the default transport follows hermes-jev-record-pilot.
+import { defaultEvaluate } from './jev-evaluate.mjs';
 import { performance } from 'node:perf_hooks';
-import { catalogEntries } from './catalog.mjs';
+import { catalogEntries, definitionForCatalog } from './catalog.mjs';
+import { CAUSE_CATEGORIES, CAUSE_CATEGORY_IDS } from './cause-categories.mjs';
 import { QUERY_PLAN_SCHEMA, hasAppliedHardFilter, shouldSkipRelevance } from './query-plan.mjs';
-import { contentSpans } from './structural-text.mjs';
+import { contentSpans, contentTokens, relevanceQuery, stripListedTerms } from './structural-text.mjs';
 import { enumeratedChoiceGroups } from './value-index.mjs';
 import { nextIsoDay, parsePeriods, previousIsoDay, referenceDate } from './period-parse.mjs';
 
@@ -40,6 +42,7 @@ function previousPlanSummary(previousPlan) {
   const summary = {
     sources: previousPlan.sources ?? [],
     filters: previousPlan.filters ?? [],
+    ...(previousPlan.causeCategory !== undefined ? { causeCategory: previousPlan.causeCategory } : {}),
     semanticQuery: typeof previousPlan.semanticQuery === 'string' ? previousPlan.semanticQuery : '',
     sort: previousPlan.sort ?? null,
     limit: previousPlan.limit ?? null,
@@ -87,7 +90,10 @@ function answersOf(result) {
 // Decision receipt: which option each question chose, with its confidence and the top
 // alternatives. Choice ids are mapped to their option text so a field answer reads as the
 // chosen value. The receipt holds no record text.
-export const PLANNER_QUESTION_VERSION = 'planner-questions-2026-09-30';
+// The only source with a saved cause classification (see worker.mjs loadCauseById).
+const CAUSE_SOURCE = 'nonconformity';
+
+export const PLANNER_QUESTION_VERSION = 'planner-questions-2026-10-19';
 
 // Choice ids that read on their own in a receipt; other choices map to their option text.
 const PLAIN_CHOICE = /^(?:sort|scope|limit|period|contentCarry)$/u;
@@ -200,20 +206,6 @@ function conditionText(entries, filter) {
   return `${label}が${values.join('、')}`;
 }
 
-async function defaultEvaluate(input) {
-  const provider = process.env.HERMES_JEV_PROVIDER;
-  const payload = { ...input, model: 'typesafe-ai/jev', maxRetries: 0 };
-  if (provider === 'typesafe-direct' || (provider == null && process.env.TYPESAFE_API_KEY)) {
-    const { createTypesafeDirectEvaluate } = await import('../hermes-jev-record-pilot.mjs');
-    return createTypesafeDirectEvaluate()(payload);
-  }
-  if (provider && provider !== 'vercel-ai-gateway') {
-    throw new Error(`unsupported HERMES_JEV_PROVIDER: ${provider}`);
-  }
-  const { experimental_evaluate: evaluate } = await import('ai');
-  return evaluate(payload);
-}
-
 export function createPlanner({ evaluate = defaultEvaluate } = {}) {
   if (typeof evaluate !== 'function') throw new TypeError('evaluate must be a function');
   return {
@@ -240,6 +232,17 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
           && group.values.every((value) => typeof value === 'string'));
       const asked = fromIndex ? usable : usable.slice(0, Math.max(enumeratedFields, 1));
       const questions = {};
+      questions.cause = choiceQuestion(
+        `${said('質問', '`request`')}が不適合の要因・原因の区分を指定しているときだけ、その区分を一つ選ぶ。現象や部品の説明だけで要因の区分を言っていなければ none。`,
+        [...CAUSE_CATEGORIES.map(({ id, label, description }) => ({ id, description: `${label}: ${description}` })),
+          { id: NONE, description: '要因では絞らない' }],
+      );
+      const previousCause = CAUSE_CATEGORIES.find(({ id }) => id === previousPlan?.causeCategory);
+      if (previousCause) questions.drop_cause = {
+        type: 'noul',
+        instructions: `\`request\` は前の条件「要因が${previousCause.label}」を外す、または要因を問わないことを求めているか。`,
+        criteria: { true: '要因の条件を外す、または要因を問わない。', false: 'この条件に触れていない、または別の要因を指定している。' },
+      };
       const optionMap = new Map();
       if (fromIndex) {
         const sourceOptions = entries.map((entry) => ({
@@ -371,12 +374,16 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       const scopeIds = entries.map((entry) => entry.id);
       const scopeChoice = fromIndex ? scopeChoiceOf(answers.scope, scopeIds) : scopeIds[0];
       const outOfScope = fromIndex && scopeChoice === OUT_OF_SCOPE;
+      const causeChoice = chosen(answers.cause, [...CAUSE_CATEGORY_IDS, NONE]);
+      const causeDropped = Boolean(previousCause && chosen(answers.drop_cause, ['true', 'false']) === 'true');
+      const chosenCause = outOfScope ? null : (causeChoice && causeChoice !== NONE ? causeChoice : (!causeDropped ? previousCause?.id : null));
       const selected = [];
       const resolvedTerms = [];
+      const ambiguous = [];
       if (!outOfScope) {
         for (const [key, mapped] of optionMap) {
           if (mapped.clarify) {
-            unresolved.push({ term: mapped.group.field, candidates: [...mapped.group.values] });
+            ambiguous.push({ term: mapped.group.field, candidates: [...mapped.group.values] });
             continue;
           }
           const picked = fromIndex || linked
@@ -384,9 +391,9 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
             : null;
           if (fromIndex || linked) {
             if (picked.kind === 'clarify') {
-              unresolved.push({ term: mapped.group.field, candidates: picked.values });
+              ambiguous.push({ term: mapped.group.field, candidates: picked.values });
             } else if (picked.kind === 'low') {
-              unresolved.push({ term: mapped.group.field, candidates: picked.values.slice(0, 5) });
+              ambiguous.push({ term: mapped.group.field, candidates: picked.values.slice(0, 5) });
             } else if (picked.kind === 'values' && picked.values.length) {
               selected.push({
                 source: mapped.group.source,
@@ -395,6 +402,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
                 values: picked.values,
               });
               resolvedTerms.push(...picked.values);
+              if (mapped.group.term !== mapped.group.field) resolvedTerms.push(mapped.group.term);
             }
             continue;
           }
@@ -411,7 +419,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
             continue;
           }
           selected.push({ source: mapped.group.source, field: mapped.group.field, op: 'eq', values: [value] });
-          resolvedTerms.push(mapped.group.term);
+          resolvedTerms.push(value, mapped.group.term);
         }
       }
       const sortChoice = chosen(answers.sort, ['recent', 'relevance']);
@@ -428,6 +436,10 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       const contentSpan = spanChoice ? spans[Number(spanChoice.slice(1))] : null;
       const excludeShown = questions.excludeShown ? chosen(answers.excludeShown, ['true', 'false'], EXCLUDE_SHOWN_ACCEPT_AT) === 'true' : false;
       if (!contentChoice) unresolved.push({ term: 'content', candidates: ['true', 'false'] });
+      const ambiguousDropped = contentChoice === 'true'
+        ? ambiguous.map(({ term, candidates }) => ({ field: term, candidates }))
+        : [];
+      if (contentChoice !== 'true') unresolved.push(...ambiguous);
 
       let plannedSources = outOfScope ? [] : (fromIndex && scopeIds.includes(scopeChoice) ? [scopeChoice] : entries.map((entry) => entry.id));
       // Page identifiers are already known by the screen; their use is gated in code,
@@ -435,27 +447,33 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       const pageFilters = [];
       let pageContextUsed = false;
       if (currentEntity && !outOfScope) {
-        if (currentEntity.kind === 'procedureId') {
-          if (entries.some((entry) => entry.id === 'knowledge_procedure')) {
-            plannedSources = ['knowledge_procedure'];
-            pageContextUsed = true;
-          }
+        const sourceOwners = entries.filter((entry) => {
+          const attributes = definitionForCatalog(entry).pageContextAttributes;
+          return attributes && Object.hasOwn(attributes, currentEntity.kind) && attributes[currentEntity.kind] === null;
+        });
+        if (sourceOwners.length) {
+          plannedSources = sourceOwners.map((entry) => entry.id);
+          pageContextUsed = true;
         } else {
-          const owners = entries.filter((entry) => entry.fields.some((field) => field.key === currentEntity.kind && field.filterable)
-            && (currentEntity.kind !== 'drawingNumber' || entry.id === 'knowledge_procedure'));
+          const fieldFor = (entry) => {
+            const attributes = definitionForCatalog(entry).pageContextAttributes;
+            return attributes ? (attributes[currentEntity.kind] ?? null) : currentEntity.kind;
+          };
+          const owners = entries.filter((entry) => entry.fields.some((field) => field.key === fieldFor(entry) && field.filterable));
           const selectedOwners = owners.filter((entry) => plannedSources.includes(entry.id));
           const targets = selectedOwners.length ? selectedOwners : owners.slice(0, 1);
           if (targets.length) {
             plannedSources = targets.map((entry) => entry.id);
-            pageFilters.push(...targets.map((entry) => ({ source: entry.id, field: currentEntity.kind, op: 'eq', values: [currentEntity.value] })));
+            pageFilters.push(...targets.map((entry) => ({ source: entry.id, field: fieldFor(entry), op: 'eq', values: [currentEntity.value] })));
             pageContextUsed = true;
           }
         }
       }
+
       const dateOwner = entries.find((entry) => plannedSources.includes(entry.id) && entry.fields.some((field) => field.role === 'date'));
       const dateKey = dateOwner?.fields.find((field) => field.role === 'date')?.key ?? null;
       const dated = [];
-      const recentField = dateField(entries);
+      const recentField = dateField(entries.filter(entry => plannedSources.includes(entry.id)));
       if (dateOwner && dateKey && periodChoices.length) {
         let picked = periodChoices.length === 1 ? periodChoices[0] : null;
         if (periodAmbiguous) {
@@ -479,8 +497,9 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         return decision ? [{ source: filter.source, field: filter.field, op: filter.op, values: [...filter.values] }] : [];
       });
       const pageFields = new Set(pageFilters.map((filter) => `${filter.source}\u0000${filter.field}`));
+      // Shared facet values can be selected in several sources; only the chosen scope applies.
       const filters = mergeFilters([
-        ...[...carried, ...selected, ...dated].filter((filter) => (!pageContextUsed || plannedSources.includes(filter.source)) && !pageFields.has(`${filter.source}\u0000${filter.field}`)),
+        ...[...carried, ...selected, ...dated].filter((filter) => plannedSources.includes(filter.source) && !pageFields.has(`${filter.source}\u0000${filter.field}`)),
         ...pageFilters,
       ]);
       const judged = contentChoice === 'true' ? true : contentChoice === 'false' ? false : null;
@@ -488,9 +507,24 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       // for example "そのうち三島工場資材課の" after "錆の不適合".
       const carriedQuery = contentCarry === 'same' ? previousQuery : '';
       const previousSpan = carriedQuery && typeof previousPlan?.contentSpan === 'string' ? previousPlan.contentSpan : null;
-      const jev = judged;
+      // A short department form such as 「機構設計2課(製造)」 is not a listed term, so its pieces
+      // would survive as content tokens; any token inside a selected value is part of the filter.
+      const selectedValues = selected.flatMap((filter) => filter.values)
+        .map((value) => String(value).normalize('NFKC').replace(/\s+/gu, '').toLowerCase());
+      // The cause store classifies only the source that owns it; a cause heard in a question about
+      // another source is not a filter there (it would match nothing).
+      const causeCategory = chosenCause && plannedSources.includes(CAUSE_SOURCE) ? chosenCause : null;
+      // Strip only the selected label's tokens, not a hand-maintained list of cause synonyms.
+      const causeTerms = causeCategory ? contentTokens(relevanceQuery(CAUSE_CATEGORIES.find(({ id }) => id === causeCategory).label)) : [];
+      // The causal predicate is request structure once JEV has selected a category.
+      const residualQuestion = causeCategory ? question.replace(/が原因(?:のやつ)?/gu, ' ') : question;
+      const residualTokens = contentTokens(relevanceQuery(stripListedTerms(residualQuestion, [...resolvedTerms, ...causeTerms])))
+        .filter((token) => !selectedValues.some((value) => value.includes(token)));
+      const hardFilter = hasAppliedHardFilter({ filters, causeCategory }, catalog);
+      const residualOverride = judged === true && contentCarry !== 'same' && hardFilter && residualTokens.length === 0;
+      const jev = residualOverride ? false : judged;
       const finalContent = jev === true && unresolved.length === 0;
-      const sortMode = resolveSort(question, jev, hasAppliedHardFilter({ filters }, catalog));
+      const sortMode = resolveSort(question, jev, hardFilter);
       const sort = sortMode === 'recent' && recentField
         ? { field: recentField, direction: 'desc' }
         : 'relevance';
@@ -498,8 +532,10 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         schema: QUERY_PLAN_SCHEMA,
         sources: plannedSources,
         filters: outOfScope ? [] : filters,
+        ...(causeCategory ? { causeCategory } : {}),
         semanticQuery: outOfScope || unresolved.length || shouldSkipRelevance({
           filters,
+          causeCategory,
           diagnostics: { contentDecision: { jev } },
         }, catalog) ? '' : (carriedQuery || question.trim()),
         sort,
@@ -507,7 +543,9 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         display: entries.flatMap((entry) => entry.fields.map((field) => field.key)),
         unresolved: outOfScope ? [] : unresolved,
         diagnostics: {
-          contentDecision: { jev, residualTokens: [], final: finalContent },
+          causeDecision: { chosen: causeCategory ?? null, ...(causeDropped ? { dropped: true } : {}) },
+          contentDecision: { jev, residualTokens, ...(residualOverride ? { residualOverride: true } : {}), final: finalContent },
+          ...(ambiguousDropped.length ? { ambiguousDropped } : {}),
           scope: outOfScope ? 'out_of_scope' : 'records',
           limitExplicit,
           ...(carriedQuery ? (previousSpan ? { contentSpan: previousSpan } : {}) : (contentSpan ? { contentSpan } : {})),

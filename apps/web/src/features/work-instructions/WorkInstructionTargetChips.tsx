@@ -1,5 +1,6 @@
 export type WorkInstructionTargetChipsProps = {
   targets: readonly string[];
+  counts?: Record<string, number>;
   onSelect: (target: string) => void;
   disabled?: boolean;
   similarMatch?: { scannedPartNumber: string; canonicalPartNumber: string } | null;
@@ -11,6 +12,7 @@ export type WorkInstructionTargetChipsProps = {
  */
 export function WorkInstructionTargetChips({
   targets,
+  counts,
   onSelect,
   disabled = false,
   similarMatch = null
@@ -40,6 +42,7 @@ export function WorkInstructionTargetChips({
             : undefined}
         >
           {similarMatch ? `類似・${target}` : target}
+          {(counts?.[target] ?? 0) > 1 ? <span aria-label={`${counts![target]}件`} className="ml-1.5 rounded-full bg-white/15 px-1.5 text-xs">{counts![target]}</span> : null}
         </button>
       ))}
     </div>

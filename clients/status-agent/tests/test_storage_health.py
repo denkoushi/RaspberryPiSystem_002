@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Sequence
+from unittest.mock import patch
 
 STATUS_AGENT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(STATUS_AGENT_DIR))
@@ -17,6 +18,37 @@ OBSERVED_AT = dt.datetime(2026, 6, 29, 0, 0, tzinfo=dt.timezone.utc)
 
 
 class StorageHealthTest(unittest.TestCase):
+    def test_ext4_errors_count(self) -> None:
+        mounts = "/dev/mmcblk0p2 / ext4 rw 0 0\n"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            sys_root = Path(temp_dir)
+            count_path = sys_root / "fs/ext4/mmcblk0p2/errors_count"
+            count_path.parent.mkdir(parents=True)
+            self.assertEqual(storage_health.evaluate_ext4_errors(mounts, sys_root), [])
+            for raw in ("0", "-1", "invalid", "", "1.5"):
+                with self.subTest(raw=raw):
+                    count_path.write_text(raw, encoding="utf-8")
+                    self.assertEqual(storage_health.evaluate_ext4_errors(mounts, sys_root), [])
+            count_path.write_bytes(b"\xff")
+            self.assertEqual(storage_health.evaluate_ext4_errors(mounts, sys_root), [])
+            count_path.write_text("3\n", encoding="utf-8")
+            logs = storage_health.evaluate_ext4_errors(mounts, sys_root, OBSERVED_AT)
+            self.assertEqual(logs, [{
+                "level": "ERROR",
+                "message": "Root ext4 filesystem has recorded errors",
+                "context": {
+                    "category": "storage_health", "signal": "ext4_errors_recorded",
+                    "rootSource": "/dev/mmcblk0p2", "raw": "3",
+                    "observedAt": OBSERVED_AT.isoformat(),
+                },
+            }])
+            for other_mounts in (mounts.replace("ext4", "xfs"), mounts.replace(" / ", " /data "),
+                                 mounts.replace("/dev/mmcblk0p2", "/dev/root"), ""):
+                with self.subTest(mounts=other_mounts):
+                    self.assertEqual(storage_health.evaluate_ext4_errors(other_mounts, sys_root), [])
+            with patch.object(Path, "read_text", side_effect=PermissionError):
+                self.assertEqual(storage_health.evaluate_ext4_errors(mounts, sys_root), [])
+
     def test_root_filesystem_read_only_is_error(self) -> None:
         mounts = "/dev/mmcblk0p2 / ext4 ro,relatime 0 0\n"
 
@@ -211,6 +243,12 @@ class StorageWearTest(unittest.TestCase):
     @staticmethod
     def signals(logs: list) -> list:
         return [log["context"]["signal"] for log in logs]
+
+    def test_collect_includes_recorded_ext4_errors_without_kernel_errors(self) -> None:
+        (self.sys_root / "fs/ext4/mmcblk0p2/errors_count").write_text("2\n", encoding="utf-8")
+        logs = self.collect(HOUR, 0)
+        self.assertEqual(self.signals(logs), ["ext4_errors_recorded"])
+        self.assertLessEqual(len(logs), storage_health.MAX_STORAGE_HEALTH_LOGS)
 
     def test_undervoltage_since_boot_is_reported_once_per_boot_after_delivery(self) -> None:
         self.throttled = "throttled=0x50000"

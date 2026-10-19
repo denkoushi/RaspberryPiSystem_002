@@ -11,6 +11,7 @@ import { LEARNED_SCHEMA, learnedPath, learnedQueriesById, writeLearned } from '.
 const kept = { a: 'nonconformity:a1', b: 'nonconformity:b1', grades: { dgx: { a: 3, b: 1 }, jev: { a: 3, b: 2 } } };
 
 test('relevant ids are the anchor, plus the near miss only when both graders confirm it', () => {
+  assert.deepEqual(relevantIds({ ...kept, kind: 'filter' }), []);
   assert.deepEqual(relevantIds(kept), ['a1']);
   assert.deepEqual(relevantIds({ ...kept, grades: { dgx: { a: 3, b: 3 }, jev: { a: 3, b: 3 } } }), ['a1', 'b1']);
   assert.deepEqual(relevantIds({ ...kept, grades: { dgx: { a: 3, b: 3 }, jev: { a: 3, b: null } } }), ['a1']);
@@ -48,6 +49,10 @@ test('live scoring sends candidate query maps to lexical ranking and loads activ
   assert.equal(candidate.candidates.length, 4);
   assert.equal(candidate.candidates[0], 'rec-gamma');
   assert.equal(candidate.outcome, 'answer');
+  assert.equal(candidate.reason, null);
+  assert.equal(candidate.plan.semanticQuery, query);
+  assert.equal(candidate.plan.limit, 5);
+  assert.ok(Array.isArray(candidate.plan.filters));
   assert.deepEqual(learned, snapshot);
   const empty = await (await createLiveScorer({ ...options, learned: [] }))(row);
   assert.deepEqual(empty.candidates, baseline.candidates);
@@ -56,4 +61,99 @@ test('live scoring sends candidate query maps to lexical ranking and loads activ
   await writeLearned(file, [{ ...learned[0], state: 'active' }, { ...learned[0], recordId: 'rec-beta' }]);
   const active = await (await createLiveScorer({ ...options, env: { HERMES_FLYWHEEL_LEARNED_PATH: file } }))(row);
   assert.deepEqual(active.candidates, candidate.candidates);
+});
+
+test('live scoring returns the compact recent plan for a filter-only answer', async () => {
+  const catalog = loadNonconformityCatalog();
+  const evaluate = async ({ questions }) => ({ answers: Object.fromEntries(Object.keys(questions).map((key) => [key,
+    key === 'content' ? { type: 'noul', noul: 0.05 }
+      : { type: 'choice', choice: key === 'scope' ? 'nonconformity' : key === 'sort' ? 'recent' : key === 'limit' ? '2'
+        : Object.entries(questions[key].criteria ?? {}).find(([, description]) => description === 'North Shop')?.[0] ?? 'none' },
+  ])) });
+  const corpus = records.map((record) => ({ ...record, originDepartmentName: 'North Shop' }));
+  const score = await createLiveScorer({ records: corpus, catalog, evaluate, env: { HERMES_RETRIEVAL_DENSE_PROVIDER: 'off', HERMES_FLYWHEEL_LEARNED_ENABLED: 'false' } });
+  const live = await score({ question: 'North Shopの不適合を２件' });
+  assert.equal(live.outcome, 'answer');
+  assert.equal(live.plan.semanticQuery, '');
+  assert.deepEqual(live.plan.sort, { field: 'discoveredOn', direction: 'desc' });
+  assert.equal(live.plan.limit, 2);
+  assert.equal(live.shown.length, 2);
+  assert.equal(live.vectorStatus, 'not_requested');
+});
+
+test('live scoring records the executor reason from the unavailable receipt', async () => {
+  const evaluate = async ({ questions }) => {
+    if (Object.keys(questions).some((key) => key.startsWith('candidate_'))) {
+      throw Object.assign(new Error('private request and response bodies'), {
+        hermesDiagnostic: { provider: 'typesafe-direct', failureCode: 'upstream_http', httpStatus: 403 },
+      });
+    }
+    return { answers: Object.fromEntries(Object.keys(questions).map((key) => [key,
+      key === 'content' ? { type: 'noul', noul: 0.95 }
+        : { type: 'choice', choice: key === 'scope' ? 'nonconformity' : key === 'sort' ? 'relevance' : key === 'limit' ? 'unspecified' : 'none' },
+    ])) };
+  };
+  const score = await createLiveScorer({ records, catalog: loadNonconformityCatalog(), evaluate,
+    env: { HERMES_RETRIEVAL_DENSE_PROVIDER: 'off', HERMES_FLYWHEEL_LEARNED_ENABLED: 'false' } });
+  const live = await score({ a: 'rec-alpha', question: 'surface scratch' });
+  assert.equal(live.outcome, 'unavailable');
+  assert.equal(live.reason, 'relevance judgment failed: upstream_http 403');
+  assert.equal(live.loss, 'status');
+});
+
+test('live scoring sanitizes and truncates thrown errors, retaining their diagnostic', async () => {
+  const error = Object.assign(new Error(`Bearer private-key\n${'x'.repeat(250)}`), {
+    hermesDiagnostic: { provider: 'typesafe-direct', failureCode: 'upstream_http', httpStatus: 429 },
+  });
+  const score = await createLiveScorer({ records, catalog: loadNonconformityCatalog(), evaluate: async () => { throw error; },
+    env: { HERMES_RETRIEVAL_DENSE_PROVIDER: 'off', HERMES_FLYWHEEL_LEARNED_ENABLED: 'false' } });
+  const live = await score({ a: 'rec-alpha', question: 'surface scratch' });
+  assert.equal(live.outcome, 'failed');
+  assert.equal(live.reason, `${('[redacted] ' + 'x'.repeat(250)).slice(0, 200)} (upstream_http 429)`);
+  assert.equal(live.loss, 'failed');
+  assert.equal(live.reason.includes('private-key'), false);
+  assert.equal(live.reason.includes('\n'), false);
+});
+
+test('live scoring records the unresolved terms behind an ask-back', async () => {
+  const evaluate = async ({ questions }) => ({ answers: Object.fromEntries(Object.keys(questions).map((key) => [key,
+    key === 'content' ? { type: 'choice', choice: 'maybe' }
+      : { type: 'choice', choice: key === 'scope' ? 'nonconformity' : key === 'sort' ? 'relevance' : key === 'limit' ? 'unspecified' : 'none' },
+  ])) });
+  const score = await createLiveScorer({ records, catalog: loadNonconformityCatalog(), evaluate,
+    env: { HERMES_RETRIEVAL_DENSE_PROVIDER: 'off', HERMES_FLYWHEEL_LEARNED_ENABLED: 'false' } });
+  const live = await score({ a: 'rec-alpha', question: 'surface scratch' });
+  assert.equal(live.outcome, 'clarification');
+  assert.equal(live.loss, 'status');
+  assert.deepEqual(live.unresolved, ['content']);
+});
+
+test('live scoring loads cause mappings and skips relevance for cause-only requests', async () => {
+  const { buildCauseQuestions, conditionSha256 } = await import('./cause-categories.mjs');
+  const { CAUSE_STORE_SCHEMA, writeCauseStore } = await import('./cause-store.mjs');
+  const dir = await mkdtemp(path.join(tmpdir(), 'live-cause-'));
+  const file = path.join(dir, 'cause.jsonl');
+  const textSha256 = conditionSha256(records[0].condition);
+  await writeCauseStore(file, new Map([[textSha256, {
+    schema: CAUSE_STORE_SCHEMA, textSha256, categoryId: 'drawing',
+    promptSha256: buildCauseQuestions([]).promptSha256, classifiedAt: '2026-10-19T00:00:00Z',
+  }]]));
+  let calls = 0;
+  const score = await createLiveScorer({ records, catalog: loadNonconformityCatalog(),
+    env: { HERMES_RETRIEVAL_DENSE_PROVIDER: 'off', HERMES_FLYWHEEL_LEARNED_ENABLED: 'false', HERMES_RETRIEVAL_CAUSE_STORE: file },
+    evaluate: async input => {
+      calls += 1;
+      assert.ok(input.questions.cause);
+      return { answers: {
+        scope: { type: 'choice', choice: 'nonconformity' }, cause: { type: 'choice', choice: 'drawing' },
+        content: { type: 'noul', noul: true }, limit: { type: 'choice', choice: 'unspecified' },
+      } };
+    },
+  });
+  const live = await score({ question: '図面の誤りの不適合' });
+  assert.equal(live.outcome, 'answer');
+  assert.equal(live.plan.causeCategory, 'drawing');
+  assert.equal(live.plan.semanticQuery, '');
+  assert.deepEqual(live.shown, [records[0].id]);
+  assert.equal(calls, 1);
 });

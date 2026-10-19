@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useMatch, useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useMatch, useNavigate, useParams } from 'react-router-dom';
 
 import {
   cancelPartMeasurementSheet,
@@ -10,6 +10,7 @@ import {
   patchPartMeasurementSheet,
   transferPartMeasurementEditLock
 } from '../../api/client';
+import { useHermesPageContext } from '../../components/hermes/HermesPageContext';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
@@ -35,6 +36,8 @@ function resultKey(pieceIndex: number, templateItemId: string) {
 export function KioskPartMeasurementEditPage() {
   const { sheetId } = useParams<{ sheetId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { setPageContext, clearPageContext } = useHermesPageContext();
   const clientKey = getResolvedClientKey();
   const isActiveRoute = useMatch('/kiosk/part-measurement/edit/:sheetId');
   const nfcEvent = useNfcStream(Boolean(isActiveRoute));
@@ -50,6 +53,16 @@ export function KioskPartMeasurementEditPage() {
   const [lockPrompt, setLockPrompt] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+
+  useEffect(() => {
+    const value = sheet?.fhincd?.trim();
+    if (value) {
+      setPageContext({ path: location.pathname, entity: { kind: 'partNumber', value } });
+    } else {
+      clearPageContext();
+    }
+    return clearPageContext;
+  }, [sheet?.fhincd, location.pathname, setPageContext, clearPageContext]);
 
   const syncCellsFromSheet = useCallback((s: PartMeasurementSheetDto) => {
     const next: Record<string, string> = {};
@@ -370,11 +383,11 @@ export function KioskPartMeasurementEditPage() {
         <Card title="別端末が編集中">
           <p className="mb-2 text-sm text-slate-700">この端末で編集を引き継ぎますか？</p>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="primary" onClick={() => void handleTransferLock()} disabled={busy}>
-              引き継ぐ
-            </Button>
-            <Button type="button" variant="secondary" onClick={() => setLockPrompt(false)}>
+            <Button type="button" variant="secondary" className="min-h-11" onClick={() => setLockPrompt(false)}>
               閉じる
+            </Button>
+            <Button type="button" variant="primary" className="min-h-11" onClick={() => void handleTransferLock()} disabled={busy}>
+              引き継ぐ
             </Button>
           </div>
         </Card>
@@ -391,11 +404,11 @@ export function KioskPartMeasurementEditPage() {
             />
           </label>
           <div className="mt-2 flex gap-2">
-            <Button type="button" variant="primary" onClick={() => void handleCancel()} disabled={busy}>
-              取消する
-            </Button>
-            <Button type="button" variant="secondary" onClick={() => setCancelOpen(false)}>
+            <Button type="button" variant="secondary" className="min-h-11" onClick={() => setCancelOpen(false)}>
               戻る
+            </Button>
+            <Button type="button" variant="primary" className="min-h-11" onClick={() => void handleCancel()} disabled={busy}>
+              取消する
             </Button>
           </div>
         </Card>
@@ -414,6 +427,11 @@ export function KioskPartMeasurementEditPage() {
       <KioskPartMeasurementEditTopStrip
         actions={
           <>
+            {sheet?.status === 'DRAFT' ? (
+              <Button type="button" variant="ghostOnDark" className="mr-6 min-h-11 !border-[#e5484d] !text-[#e5484d] hover:!bg-[#e5484d]/10" onClick={() => setCancelOpen(true)} disabled={busy}>
+                下書き取消
+              </Button>
+            ) : null}
             <Button type="button" variant="secondary" onClick={() => void navigate('/kiosk/part-measurement')}>
               一覧へ
             </Button>
@@ -428,14 +446,9 @@ export function KioskPartMeasurementEditPage() {
               </Button>
             ) : null}
             {sheet?.status === 'DRAFT' ? (
-              <>
-                <Button type="button" variant="secondary" onClick={() => void handleManualSave()} disabled={busy}>
-                  手動保存
-                </Button>
-                <Button type="button" variant="secondary" onClick={() => setCancelOpen(true)} disabled={busy}>
-                  下書き取消
-                </Button>
-              </>
+              <Button type="button" variant="secondary" className="min-h-11" onClick={() => void handleManualSave()} disabled={busy}>
+                手動保存
+              </Button>
             ) : null}
             {sheet?.status === 'FINALIZED' ? (
               <Button

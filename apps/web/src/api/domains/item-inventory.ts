@@ -1,11 +1,13 @@
 import { api } from '../http';
 
+import type { InventoryDashboard, InventoryValueVariants, InventoryVariantField, OverlayBBox } from '@raspi-system/shared-types';
+
 function inventorySettingsHeaders(accessPassword?: string) {
   return accessPassword ? { 'x-kiosk-access-password': accessPassword } : undefined;
 }
 
 export type InventoryTagKind = 'ITEM' | 'QUANTITY' | 'RESTOCK';
-export type InventoryPhoto = { id: string; photoIndex: number; photoUrl: string; originalFilename: string; sha256?: string };
+export type InventoryPhoto = { id: string; photoIndex: number; photoUrl: string; originalFilename: string };
 export type InventoryImportPhoto = { id: string; photoIndex: number; filename: string; photoUrl: string; sha256: string };
 type InventoryItemFields = {
   id: string;
@@ -18,6 +20,7 @@ type InventoryItemFields = {
   note: string | null;
   /** Unit the item is counted in; null means 個. */
   unit: string | null;
+  unitPrice?: number | null;
   maker?: string | null;
   toolName?: string | null;
   workMaterial?: string | null;
@@ -30,6 +33,7 @@ export type InventoryItem = InventoryItemFields & {
 };
 export type InventoryCompartment = {
   id: string;
+  labelNumber: number;
   stockQuantity: number;
   area: string;
   shelfNumber: number;
@@ -93,9 +97,35 @@ export type InventoryHistoryEntry = {
   compartment: { drawer: { shelf: { area: string; shelfNumber: number }; drawerNumber: number } } | null;
 };
 
+// Older APIs return movement rows without the relations included by history.
+export type InventoryMovementTransaction = Omit<InventoryHistoryEntry, 'inventoryItem' | 'compartment'>
+  & Partial<Pick<InventoryHistoryEntry, 'inventoryItem' | 'compartment'>>;
+
 export async function resolveInventoryTag(uid: string) {
   const { data } = await api.get<{ tag: InventoryTag | null }>('/item-inventory/tags/resolve', { params: { uid } });
   return data.tag;
+}
+
+export async function resolveInventoryLabelNumber(labelNumber: string) {
+  const { data } = await api.get<{ tag: InventoryTag }>(`/item-inventory/compartments/by-label/${labelNumber}`);
+  return data.tag;
+}
+
+export type InventoryToolFieldSuggestion = { model: string[]; maker: string[]; status: 'ok' | 'unavailable' };
+export async function suggestInventoryToolFields(input: { source: 'import'; payloadId: string; photoId: string } | { source: 'item'; itemId: string; photoId: string }, accessPassword?: string) {
+  const { data } = await api.post<InventoryToolFieldSuggestion>('/item-inventory/import-photos/suggest-tool-fields', input, {
+    headers: inventorySettingsHeaders(accessPassword), timeout: 35000,
+  });
+  return data;
+}
+
+export type InventoryPhotoSource = { source: 'import'; payloadId: string } | { source: 'item'; itemId: string };
+export type InventoryPhotoRegionResult = { candidates: string[]; status: 'ok' | 'unavailable' };
+export async function readInventoryPhotoRegion(input: InventoryPhotoSource & { photoId: string; bbox: OverlayBBox }, accessPassword?: string, signal?: AbortSignal) {
+  const { data } = await api.post<InventoryPhotoRegionResult>('/item-inventory/photos/read-region', input, {
+    headers: inventorySettingsHeaders(accessPassword), timeout: 35000, signal,
+  });
+  return data;
 }
 
 export async function getInventoryItems() {
@@ -175,7 +205,7 @@ export async function setInventoryItemUnit(itemId: string, unit: string | null, 
 }
 
 /** Changes one item's name and tool information; fields left out stay as they are. */
-export async function updateInventoryItemDetails(itemId: string, details: Partial<Record<InventoryOptionField, string>>, accessPassword?: string) {
+export async function updateInventoryItemDetails(itemId: string, details: Partial<Record<InventoryOptionField, string>> & { unitPrice?: number | null }, accessPassword?: string) {
   const { data } = await api.put(`/item-inventory/items/${itemId}/details`, details, {
     headers: inventorySettingsHeaders(accessPassword)
   });
@@ -277,7 +307,7 @@ export async function registerInventoryImport(id: string, input: {
   workMaterial?: string;
   toolSize?: string;
 }, accessPassword?: string) {
-  const { data } = await api.post<{ result: unknown }>(`/item-inventory/imports/${id}/register`, input, {
+  const { data } = await api.post<{ result: { mode: 'NEW_ITEM' | 'EXISTING_ITEM'; item: Omit<InventoryItemSummary, 'photos'>; compartment?: { id: string; labelNumber: number } } }>(`/item-inventory/imports/${id}/register`, input, {
     headers: inventorySettingsHeaders(accessPassword)
   });
   return data.result;
@@ -333,17 +363,64 @@ export async function registerInventoryRestockTag(uid: string, accessPassword?: 
 
 export async function processInventoryTransaction(input: {
   itemTagUid: string;
+  expectedCompartmentId?: string;
   quantityTagUid: string;
   restockTagUid?: string;
   restock: boolean;
   idempotencyKey: string;
 }) {
-  const { data } = await api.post<{ transaction: InventoryHistoryEntry; replayed?: boolean }>('/item-inventory/transactions', input);
+  const { data } = await api.post<{ transaction: InventoryMovementTransaction; replayed?: boolean }>('/item-inventory/transactions', input);
   return data;
 }
 
+export async function processInventoryTouchTransaction(input: {
+  compartmentId: string;
+  quantity: number;
+  restock?: boolean;
+  expectedBeforeQuantity?: number;
+  idempotencyKey?: string;
+}) {
+  const { data } = await api.post<{ transaction: InventoryMovementTransaction; replayed: boolean }>('/item-inventory/touch-transactions', input);
+  return data;
+}
+
+export async function deleteInventoryDrawer(id: string, accessPassword?: string) {
+  const { data } = await api.delete<{ result: { id: string } }>(`/item-inventory/drawers/${id}`, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data.result;
+}
+
+export async function deleteInventoryShelf(id: string, accessPassword?: string) {
+  const { data } = await api.delete<{ result: { id: string } }>(`/item-inventory/shelves/${id}`, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data.result;
+}
+
+export async function deleteInventoryTag(id: string, accessPassword?: string) {
+  const { data } = await api.delete<{ result: { id: string } }>(`/item-inventory/tags/${id}`, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data.result;
+}
+
+export async function dismissInventoryImport(id: string, accessPassword?: string) {
+  const { data } = await api.post<{ result: { id: string; status: 'DISMISSED' } }>(`/item-inventory/imports/${id}/dismiss`, undefined, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data.result;
+}
+
+export async function restoreInventoryImport(id: string, accessPassword?: string) {
+  const { data } = await api.post<{ result: { id: string; status: 'PENDING' } }>(`/item-inventory/imports/${id}/restore`, undefined, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data.result;
+}
+
 export async function cancelInventoryTransaction(id: string, accessPassword?: string) {
-  const { data } = await api.post<{ transaction: InventoryHistoryEntry }>(`/item-inventory/transactions/${id}/cancel`, undefined, {
+  const { data } = await api.post<{ transaction: InventoryMovementTransaction }>(`/item-inventory/transactions/${id}/cancel`, undefined, {
     headers: inventorySettingsHeaders(accessPassword)
   });
   return data;
@@ -376,4 +453,35 @@ export async function replaceInventoryItemTag(id: string, uid: string, accessPas
 export function inventoryThumbnailUrl(photoUrl: string): string {
   if (!photoUrl.startsWith('/api/storage/photos/')) return photoUrl;
   return photoUrl.replace('/api/storage/photos/', '/storage/thumbnails/').replace(/\.jpg$/i, '_thumb.jpg');
+}
+
+export async function getInventoryDashboard(weeks: number, machine: string | undefined, accessPassword?: string) {
+  const { data } = await api.get<InventoryDashboard>('/item-inventory/dashboard', { params: { weeks, machine }, headers: inventorySettingsHeaders(accessPassword) });
+  return data;
+}
+export async function getInventoryValueVariants(accessPassword?: string) {
+  const { data } = await api.get<InventoryValueVariants>('/item-inventory/tool-value-variants', { headers: inventorySettingsHeaders(accessPassword) });
+  return data;
+}
+export async function mergeInventoryValueVariants(input: { field: InventoryVariantField; to: string; from: string[] }, accessPassword: string) {
+  const { data } = await api.post('/item-inventory/tool-value-variants/merge', input, { headers: inventorySettingsHeaders(accessPassword) });
+  return data;
+}
+export async function dismissInventoryValueVariants(input: { field: InventoryVariantField; values: string[] }, accessPassword: string) {
+  const { data } = await api.post('/item-inventory/tool-value-variants/dismiss', input, { headers: inventorySettingsHeaders(accessPassword) });
+  return data;
+}
+
+export async function rotateInventoryImportPhoto(payloadId: string, photoId: string, accessPassword?: string) {
+  const { data } = await api.post<{ result: { photoId: string; photoUrl: string } }>(`/item-inventory/imports/${payloadId}/photos/${photoId}/rotate`, undefined, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data.result;
+}
+
+export async function rotateInventoryItemPhoto(itemId: string, photoId: string, accessPassword?: string) {
+  const { data } = await api.post<{ result: { photoId: string; photoUrl: string } }>(`/item-inventory/items/${itemId}/photos/${photoId}/rotate`, undefined, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data.result;
 }

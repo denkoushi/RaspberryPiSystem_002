@@ -1,3 +1,4 @@
+import { createDeviceReadRateLimit } from '../../lib/device-read-rate-limit.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authorizeRoles } from '../../lib/auth.js';
 import { findClientDeviceByApiKey } from '../../services/clients/client-device-auth.service.js';
@@ -27,7 +28,7 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
     }
   });
 
-  app.get('/render/status', async (request: FastifyRequest, reply: FastifyReply) => {
+  app.get('/render/status', { config: { rateLimit: createDeviceReadRateLimit() } }, async (request: FastifyRequest, reply: FastifyReply) => {
     // クライアントキー認証をサポート
     const headerKey = request.headers['x-client-key'];
     if (!headerKey) {
@@ -48,7 +49,7 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
     });
   });
 
-  app.get('/current-image', async (request: FastifyRequest, reply: FastifyReply) => {
+  app.get('/current-image', { config: { rateLimit: createDeviceReadRateLimit({ queryKey: true }) } }, async (request: FastifyRequest, reply: FastifyReply) => {
     // クライアントキーをヘッダーまたはクエリパラメータから取得（ブラウザ直接アクセス対応）
     const headerKey = request.headers['x-client-key'];
     const headerKeyStr =

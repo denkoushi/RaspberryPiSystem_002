@@ -28,6 +28,8 @@ import {
   returnMeasuringInstrument,
   type MeasuringInstrumentInput
 } from '../client';
+import { measuringInstrumentsQueryKeys } from '../queryKeys/measuringInstruments';
+import { toolsQueryKeys } from '../queryKeys/tools';
 
 import type {
   MeasuringInstrumentStatus,
@@ -40,7 +42,7 @@ import type {
 
 export function useMeasuringInstruments(filters?: { search?: string; status?: MeasuringInstrumentStatus }) {
   return useQuery({
-    queryKey: ['measuring-instruments', filters],
+    queryKey: measuringInstrumentsQueryKeys.instruments(filters),
     queryFn: () => getMeasuringInstruments(filters),
     placeholderData: (previous) => previous
   });
@@ -48,7 +50,7 @@ export function useMeasuringInstruments(filters?: { search?: string; status?: Me
 
 export function useMeasuringInstrument(id?: string) {
   return useQuery({
-    queryKey: ['measuring-instrument', id],
+    queryKey: measuringInstrumentsQueryKeys.instrument(id),
     queryFn: () => getMeasuringInstrument(id!),
     enabled: !!id
   });
@@ -56,7 +58,7 @@ export function useMeasuringInstrument(id?: string) {
 
 export function useMeasuringInstrumentGenres() {
   return useQuery({
-    queryKey: ['measuring-instrument-genres'],
+    queryKey: measuringInstrumentsQueryKeys.genresAll,
     queryFn: () => getMeasuringInstrumentGenres()
   });
 }
@@ -64,8 +66,8 @@ export function useMeasuringInstrumentGenres() {
 export function useMeasuringInstrumentGenreMutations() {
   const queryClient = useQueryClient();
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['measuring-instrument-genres'] });
-    queryClient.invalidateQueries({ queryKey: ['measuring-instruments'] });
+    queryClient.invalidateQueries({ queryKey: measuringInstrumentsQueryKeys.genresAll });
+    queryClient.invalidateQueries({ queryKey: measuringInstrumentsQueryKeys.instrumentsAll });
   };
   const create = useMutation({
     mutationFn: (payload: { name: string }) => createMeasuringInstrumentGenre(payload),
@@ -102,21 +104,21 @@ export function useMeasuringInstrumentMutations() {
   const queryClient = useQueryClient();
   const create = useMutation({
     mutationFn: (payload: MeasuringInstrumentInput) => createMeasuringInstrument(payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['measuring-instruments'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: measuringInstrumentsQueryKeys.instrumentsAll })
   });
   const update = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: MeasuringInstrumentInput }) =>
       updateMeasuringInstrument(id, payload),
     onSuccess: (_, vars) => {
-      queryClient.invalidateQueries({ queryKey: ['measuring-instruments'] });
-      queryClient.invalidateQueries({ queryKey: ['measuring-instrument', vars.id] });
+      queryClient.invalidateQueries({ queryKey: measuringInstrumentsQueryKeys.instrumentsAll });
+      queryClient.invalidateQueries({ queryKey: measuringInstrumentsQueryKeys.instrument(vars.id) });
       // rfidTagUid はタグテーブル側で管理されるため、タグ一覧も更新する
-      queryClient.invalidateQueries({ queryKey: ['instrument-tags', vars.id] });
+      queryClient.invalidateQueries({ queryKey: measuringInstrumentsQueryKeys.instrumentTags(vars.id) });
     }
   });
   const remove = useMutation({
     mutationFn: (id: string) => deleteMeasuringInstrument(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['measuring-instruments'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: measuringInstrumentsQueryKeys.instrumentsAll })
   });
   return { create, update, remove };
 }
@@ -125,7 +127,7 @@ export function useMeasuringInstrumentMutations() {
 
 export function useInspectionItems(measuringInstrumentId?: string) {
   return useQuery({
-    queryKey: ['inspection-items', measuringInstrumentId],
+    queryKey: measuringInstrumentsQueryKeys.inspectionItems(measuringInstrumentId),
     queryFn: () => getInspectionItems(measuringInstrumentId!),
     enabled: !!measuringInstrumentId
   });
@@ -135,23 +137,23 @@ export function useInspectionItemMutations(measuringInstrumentId: string) {
   const queryClient = useQueryClient();
   const create = useMutation({
     mutationFn: (payload: Partial<InspectionItem>) => createInspectionItem(measuringInstrumentId, payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inspection-items', measuringInstrumentId] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: measuringInstrumentsQueryKeys.inspectionItems(measuringInstrumentId) })
   });
   const update = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Partial<InspectionItem> }) =>
       updateInspectionItem(id, payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inspection-items', measuringInstrumentId] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: measuringInstrumentsQueryKeys.inspectionItems(measuringInstrumentId) })
   });
   const remove = useMutation({
     mutationFn: (id: string) => deleteInspectionItem(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inspection-items', measuringInstrumentId] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: measuringInstrumentsQueryKeys.inspectionItems(measuringInstrumentId) })
   });
   return { create, update, remove };
 }
 
 export function useGenreInspectionItems(genreId?: string) {
   return useQuery({
-    queryKey: ['genre-inspection-items', genreId],
+    queryKey: measuringInstrumentsQueryKeys.genreInspectionItems(genreId),
     queryFn: () => getGenreInspectionItems(genreId!),
     enabled: !!genreId
   });
@@ -161,23 +163,23 @@ export function useGenreInspectionItemMutations(genreId: string) {
   const queryClient = useQueryClient();
   const create = useMutation({
     mutationFn: (payload: Partial<InspectionItem>) => createGenreInspectionItem(genreId, payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['genre-inspection-items', genreId] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: measuringInstrumentsQueryKeys.genreInspectionItems(genreId) })
   });
   const update = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Partial<InspectionItem> }) =>
       updateInspectionItem(id, payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['genre-inspection-items', genreId] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: measuringInstrumentsQueryKeys.genreInspectionItems(genreId) })
   });
   const remove = useMutation({
     mutationFn: (id: string) => deleteInspectionItem(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['genre-inspection-items', genreId] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: measuringInstrumentsQueryKeys.genreInspectionItems(genreId) })
   });
   return { create, update, remove };
 }
 
 export function useMeasuringInstrumentInspectionProfile(measuringInstrumentId?: string) {
   return useQuery({
-    queryKey: ['measuring-instrument-inspection-profile', measuringInstrumentId],
+    queryKey: measuringInstrumentsQueryKeys.inspectionProfile(measuringInstrumentId),
     queryFn: () => getMeasuringInstrumentInspectionProfile(measuringInstrumentId!),
     enabled: !!measuringInstrumentId
   });
@@ -187,7 +189,7 @@ export function useMeasuringInstrumentInspectionProfile(measuringInstrumentId?: 
 
 export function useInstrumentTags(measuringInstrumentId?: string) {
   return useQuery({
-    queryKey: ['instrument-tags', measuringInstrumentId],
+    queryKey: measuringInstrumentsQueryKeys.instrumentTags(measuringInstrumentId),
     queryFn: () => getInstrumentTags(measuringInstrumentId!),
     enabled: !!measuringInstrumentId
   });
@@ -197,11 +199,11 @@ export function useInstrumentTagMutations(measuringInstrumentId: string) {
   const queryClient = useQueryClient();
   const create = useMutation({
     mutationFn: (rfidTagUid: string) => createInstrumentTag(measuringInstrumentId, rfidTagUid),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['instrument-tags', measuringInstrumentId] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: measuringInstrumentsQueryKeys.instrumentTags(measuringInstrumentId) })
   });
   const remove = useMutation({
     mutationFn: (tagId: string) => deleteInstrumentTag(tagId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['instrument-tags', measuringInstrumentId] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: measuringInstrumentsQueryKeys.instrumentTags(measuringInstrumentId) })
   });
   return { create, remove };
 }
@@ -213,7 +215,7 @@ export function useInspectionRecords(
   filters?: { startDate?: string; endDate?: string; employeeId?: string; result?: string }
 ) {
   return useQuery({
-    queryKey: ['inspection-records', measuringInstrumentId, filters],
+    queryKey: measuringInstrumentsQueryKeys.inspectionRecords(measuringInstrumentId, filters),
     queryFn: () => getInspectionRecords(measuringInstrumentId!, filters),
     enabled: !!measuringInstrumentId
   });
@@ -224,7 +226,7 @@ export function useInspectionRecordCreate() {
   return useMutation({
     mutationFn: (payload: InspectionRecordCreatePayload) => createInspectionRecord(payload),
     onSuccess: (_, vars) => {
-      queryClient.invalidateQueries({ queryKey: ['inspection-records', vars.measuringInstrumentId] });
+      queryClient.invalidateQueries({ queryKey: measuringInstrumentsQueryKeys.inspectionRecordsForInstrument(vars.measuringInstrumentId) });
     }
   });
 }
@@ -235,7 +237,7 @@ export function useBorrowMeasuringInstrument(clientKey?: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: MeasuringInstrumentBorrowPayload) => borrowMeasuringInstrument(payload, clientKey),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['loans'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.loansAll })
   });
 }
 
@@ -243,6 +245,6 @@ export function useReturnMeasuringInstrument(clientKey?: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: MeasuringInstrumentReturnPayload) => returnMeasuringInstrument(payload, clientKey),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['loans'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.loansAll })
   });
 }

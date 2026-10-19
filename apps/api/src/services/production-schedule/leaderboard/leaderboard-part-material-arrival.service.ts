@@ -1,4 +1,4 @@
-import type { MaterialArrivalStatus } from '@raspi-system/shared-types';
+import type { MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
 
 import {
   findMaterialArrivalStatusByPart,
@@ -16,7 +16,10 @@ import {
  */
 export async function buildLeaderboardMaterialArrivalByPartKeyForScheduleRows(
   rows: ReadonlyArray<{ seibanJoinKey: string | null | undefined; rowData: unknown }>
-): Promise<Record<string, MaterialArrivalStatus>> {
+): Promise<{
+  leaderboardMaterialArrivalByPartKey: Record<string, MaterialArrivalStatus>;
+  leaderboardMaterialArrivalBasisByPartKey: Record<string, MaterialArrivalBasis>;
+}> {
   const partByPartKey = new Map<string, { fseiban: string; fhincd: string }>();
   for (const row of rows) {
     const seibanJoinKey = resolveLeaderboardRowSeibanJoinKeyForFooter(row);
@@ -30,13 +33,17 @@ export async function buildLeaderboardMaterialArrivalByPartKeyForScheduleRows(
     });
     if (!partByPartKey.has(partKey)) partByPartKey.set(partKey, { fseiban, fhincd });
   }
-  if (partByPartKey.size === 0) return {};
+  const leaderboardMaterialArrivalByPartKey: Record<string, MaterialArrivalStatus> = {};
+  const leaderboardMaterialArrivalBasisByPartKey: Record<string, MaterialArrivalBasis> = {};
+  if (partByPartKey.size === 0) return { leaderboardMaterialArrivalByPartKey, leaderboardMaterialArrivalBasisByPartKey };
 
   const statusByLookupKey = await findMaterialArrivalStatusByPart([...partByPartKey.values()]);
-  const result: Record<string, MaterialArrivalStatus> = {};
   for (const [partKey, part] of partByPartKey) {
     const status = statusByLookupKey.get(materialArrivalLookupKey(part.fseiban, part.fhincd));
-    if (status != null) result[partKey] = status;
+    if (status != null) {
+      leaderboardMaterialArrivalByPartKey[partKey] = status.status;
+      if (status.basis === 'part') leaderboardMaterialArrivalBasisByPartKey[partKey] = 'part';
+    }
   }
-  return result;
+  return { leaderboardMaterialArrivalByPartKey, leaderboardMaterialArrivalBasisByPartKey };
 }

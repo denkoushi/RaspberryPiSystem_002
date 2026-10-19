@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
 
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../production-schedule/constants.js';
+import { matchingPartNumbersByNameSql } from './prisma-work-instruction-part-names.js';
 
 import {
   normalizeWorkInstructionGroupKey,
@@ -494,6 +495,36 @@ export async function readPublishedWorkInstructionGroups(
   return rows.slice(input.offset, input.offset + input.limit);
 }
 
+/** Join all matching part numbers to the same public projection used by readPublishedGroups. */
+export async function readPublishedWorkInstructionGroupsByPartName(
+  db: PrismaClient, query: string
+): Promise<ReadonlyArray<WorkInstructionGroupSummaryView>> {
+  const parts = matchingPartNumbersByNameSql(query);
+  if (!parts) return [];
+  return db.$queryRaw<GroupSummaryRecord[]>(Prisma.sql`
+    WITH matching_parts AS MATERIALIZED (${parts}), public_steps AS (
+      SELECT publication."rowId", version."partNumber", version."shootingTarget",
+             version."sourceModified", step."id" AS "stepId"
+      FROM "WorkInstructionSourcePublication" AS publication
+      JOIN "WorkInstructionSourceVersion" AS version ON version."id" = publication."publishedVersionId"
+      JOIN matching_parts AS parts ON parts."partNumber" = UPPER(TRIM(NORMALIZE(version."partNumber", NFKC)))
+      LEFT JOIN "WorkInstructionSourceVersionStep" AS step ON step."sourceVersionId" = version."id"
+      UNION ALL
+      SELECT row."id", row."partNumber", row."shootingTarget", row."sourceModified", step."id"
+      FROM "WorkInstructionRow" AS row
+      JOIN matching_parts AS parts ON parts."partNumber" = UPPER(TRIM(NORMALIZE(row."partNumber", NFKC)))
+      LEFT JOIN "WorkInstructionStep" AS step ON step."rowId" = row."id"
+      WHERE NOT EXISTS (SELECT 1 FROM "WorkInstructionSourcePublication" AS publication WHERE publication."rowId" = row."id")
+    )
+    SELECT "partNumber", "shootingTarget", COUNT(DISTINCT "rowId")::int AS "rowCount",
+           COUNT("stepId")::int AS "stepCount", MAX("sourceModified") AS "latestModified"
+    FROM public_steps
+    WHERE "partNumber" IS NOT NULL AND "shootingTarget" IS NOT NULL
+    GROUP BY "partNumber", "shootingTarget"
+    ORDER BY "partNumber" COLLATE "C" ASC, "shootingTarget" COLLATE "C" ASC
+  `);
+}
+
 /**
  * Search the public source pointer and the existing publication-null legacy
  * fallback. The effective text expression keeps
@@ -514,7 +545,8 @@ export async function searchPublishedWorkInstructionGroups(
   const shootingTarget = input.shootingTarget === undefined ? undefined : normalizeWorkInstructionShootingTarget(input.shootingTarget);
   if (input.partNumber !== undefined && !partNumber) return { groups: [], total: 0, hasMore: false };
   if (input.shootingTarget !== undefined && !shootingTarget) return { groups: [], total: 0, hasMore: false };
-  const pattern = `%${escapeLikePrefix(query)}%`;
+  const pattern = `%${escapeLikePrefix(input.normalizeText ? query.toLowerCase() : query)}%`;
+  const searchable = (column: Prisma.Sql) => input.normalizeText ? Prisma.sql`LOWER(NORMALIZE(${column}, NFKC))` : column;
   const records = await db.$queryRaw<Array<Partial<GroupSummaryRecord> & { total: number }>>(Prisma.sql`
     WITH public_steps AS (
       SELECT publication."rowId", version."partNumber", version."shootingTarget",
@@ -546,9 +578,9 @@ export async function searchPublishedWorkInstructionGroups(
         ${partNumber ? Prisma.sql`AND source."partNumber" = ${partNumber}` : Prisma.empty}
         ${shootingTarget ? Prisma.sql`AND source."shootingTarget" = ${shootingTarget}` : Prisma.empty}
         AND (
-          source."partNumber" ILIKE ${pattern} ESCAPE '\\'
-          OR source."shootingTarget" ILIKE ${pattern} ESCAPE '\\'
-          OR source."text" ILIKE ${pattern} ESCAPE '\\'
+          ${searchable(Prisma.sql`source."partNumber"`)} ILIKE ${pattern} ESCAPE '\\'
+          OR ${searchable(Prisma.sql`source."shootingTarget"`)} ILIKE ${pattern} ESCAPE '\\'
+          OR ${searchable(Prisma.sql`source."text"`)} ILIKE ${pattern} ESCAPE '\\'
         )
     ), matching_groups AS (
       SELECT source."partNumber", source."shootingTarget",

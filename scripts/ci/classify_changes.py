@@ -127,6 +127,7 @@ PI4_KIOSK_RELEASE_FILES = frozenset(
         # Inputs the launcher is rendered from: release_kiosk includes the
         # resolver, and the role defaults carry the browser flags.
         "infrastructure/ansible/roles/kiosk/tasks/resolve-browser.yml",
+        "infrastructure/ansible/roles/kiosk/templates/show-kiosk-panel.sh.j2",
         "infrastructure/ansible/roles/kiosk/defaults/main.yml",
         # Host and group variables decide the browser engine, its flags and
         # the agent env files. An inventory-only commit named no agent, so
@@ -139,6 +140,7 @@ PI4_KIOSK_RELEASE_FILES = frozenset(
         "scripts/deploy/rolling_release/terminal_device_maintenance.py",
         "clients/status-agent/status-agent.py",
         "clients/status-agent/storage_health.py",
+        "clients/status-agent/network_health.py",
         "clients/status-agent/terminal_agent_health.py",
         "clients/status-agent/status-agent.timer",
         "scripts/client/pi4-storage-maintenance.sh",
@@ -429,6 +431,7 @@ def signage_artifact_for_path(path: str) -> bool:
         in {
             "clients/status-agent/status-agent.py",
             "clients/status-agent/storage_health.py",
+            "clients/status-agent/network_health.py",
             "clients/status-agent/terminal_agent_health.py",
             "clients/status-agent/status-agent.service",
             "clients/status-agent/status-agent.timer",

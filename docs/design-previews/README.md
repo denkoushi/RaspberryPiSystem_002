@@ -5,6 +5,11 @@
 | ファイル | 説明 |
 |----------|------|
 | [signage-admin-unification/Main.html](./signage-admin-unification/Main.html) | **サイネージ管理・データボード統合（実装前・静的）** — 暗色の1画面ハブ（端末・放映中・週間予定・素材）、[ページ撮影追加](./signage-admin-unification/WebCapture.html)、[予定編集](./signage-admin-unification/ScheduleEdit.html)、[緊急表示](./signage-admin-unification/Emergency.html)、データボード（[グラフ](./signage-admin-unification/Boards.html)・[CSV表](./signage-admin-unification/BoardsCsv.html)・[新規](./signage-admin-unification/BoardsNew.html)）。1440×900。[ExecPlan](../plans/signage-admin-unification-execplan.md) |
+| [kiosk-manual-name-columns-mock.html](./kiosk-manual-name-columns-mock.html) | **要領書一覧: 名前を列に分けて表示(2026-10-13 採用)** — 見る・作る直す・使うで、つながった名前を 品名 / 品番 / 工程 / 作業 / 補足 の列に置く。画面内も操作可。[Plan](../plans/procedure-manuals-execplan.md) |
+| [kiosk-inventory-read-ui-round2-mock.html](./kiosk-inventory-read-ui-round2-mock.html) | **在庫: 読み取り画面・リスト・カード(中)の改良(2026-10-13 採用)** — 写真を画面いっぱいに、右ペイン 480px、候補は入れても残る。リストに型式・メーカーほかの列。カード(中)は同じ高さで情報 2 行。追加: 入れ先はキーボードで直せる入力欄、候補は閉じるまで蓄積、候補は水色・入力欄は灰色。画面内も操作可。[Plan](../plans/kiosk-inventory-ux-execplan.md) |
+| [kiosk-inventory-hover-tray-mock.html](./kiosk-inventory-hover-tray-mock.html) | **在庫: ホバーの全情報・1〜20 の数量ボタン・登録待ちの一覧トレイ(2026-10-13 採用)** — 在庫トップはカード(小・中)にマウスを載せると全情報、大きさと表示の切替と「番号で開く」は 1 行目へ。スキャン後は 1〜20 を 1 タップで確定、最近の動きは細い列。在庫の準備は下辺の「登録待ち N」で一覧が上に開く。写真枠だけは実装が正(2 枚を縦に並べ、3 枚目以降は＜＞)。画面内も操作可。[Plan](../plans/kiosk-inventory-ux-execplan.md) |
+| [kiosk-inventory-region-ocr-mock.html](./kiosk-inventory-region-ocr-mock.html) | **在庫: 枠で囲んで読む・アイテムカード・エリアの記憶(2026-10-13 採用)** — 拡大表示で文字を枠で囲んで項目へ入れる、写真の中に在庫数・型式・置き場所を載せたカード、エリアの複数選択と記憶。画面内も操作可。[Plan](../plans/kiosk-inventory-ux-execplan.md) |
+| [kiosk-work-instruction-editor-uiux-preview.html](./kiosk-work-instruction-editor-uiux-preview.html) | **加工要領書を編集(2026-10-07 採用)** — 写真を見る・注釈を付けるための画面。組立手順書エディタと骨格・配色・記号レール・編集パネルを統一。実寸 1920×1080、13 状態を切替可、画面内も操作可。[Plan](../plans/self-inspection-work-instruction-uiux.md) |
 | [kiosk-self-inspection-work-instruction-viewer-preview.html](./kiosk-self-inspection-work-instruction-viewer-preview.html) | **自主検査・作業要領書閲覧** — 60px上辺のFHINCD独立スキャン、タイトルなし撮影対象チップ、1280px 3列／1920px 4列のカード一覧、画像全面表示＋下部memo。**実装前・クリック可** |
 | [assembly-torque-wrench-traceability-preview.html](./assembly-torque-wrench-traceability-preview.html) | **組立・トルクレンチ締付トレーサビリティ実装前案** — トルクレンチ管理、テンプレート条件引継ぎ／範囲反映、作業確認／未接続／誤レンチ／校正切れ／管理者例外を切替可能。API・DB・実機には非接続。[ExecPlan](../plans/assembly-torque-wrench-traceability-execplan.md)・[ADR](../decisions/ADR-20260717-assembly-torque-wrench-traceability.md) |
 | [manual-order-leader-overview-preview.html](./manual-order-leader-overview-preview.html) | 手動順番プレビュー：上部＝**閲覧（高密度グリッド）**、下部＝**編集モード**（太い行・つかみ・↑↓並べ替えデモ・保存はアラートのみ） |
@@ -39,6 +44,7 @@
 | [loan-report-gap-bottleneck-preview.html](./loan-report-gap-bottleneck-preview.html) | **過不足ペイン案** — 余力vs需要圧の二段＋**アイテム単位ボトルネック5件**（同一ペイン・静的モック） |
 | [loan-report-group-timeseries-preview.html](./loan-report-group-timeseries-preview.html) | **過不足ペイン内・グループ経時** — A4 1枚想定、本番と同スケールのカード幅に<strong>薄型経時SVG＋ボトルネック2行</strong>を収めたモック |
 | [loan-report-item-surplus-preview.html](./loan-report-item-surplus-preview.html) | **貸出レポート・アイテム軸パネル** — 需要バー＋即時在庫ラインに **機械的な短文** を右列に足す案（本番と同面積想定） |
+| [mobile-placement-redesign-mock.html](./mobile-placement-redesign-mock.html) | 配膳スマホ 全6画面の見本、2026-10-16 採用 |
 | [mobile-placement-shelf-register-layout-preview.html](./mobile-placement-shelf-register-layout-preview.html) | **配膳スマホ・棚番登録** — 現状 vs 改善案（**確定をヘッダー「棚番を登録」**・選択中を右・見出し省略・番号拡大）。**実装は未反映** |
 | [mobile-placement-register-section-stack-preview.html](./mobile-placement-register-section-stack-preview.html) | **配膳スマホ・下半（登録済み棚番 + 製造order）** — エリア／列ボタンと製造order行の**重なり問題** vs **縦積み修正案**（`flex-1` 見直しのイメージ） |
 | [mobile-placement-verify-collapsible-preview.html](./mobile-placement-verify-collapsible-preview.html) | **配膳スマホ・照合の折りたたみ** — **既定は閉じる**・「展開」で移動票/現品票・閉じるで下半を広く。下半は棚6・QR・＋・製造order・**新規/既存/登録を1行**（登録は既存の右・見出し・ヒント文なし） |

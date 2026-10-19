@@ -19,7 +19,7 @@ export class EncryptedStorageProvider implements StorageProvider, LargeFileUploa
   constructor(
     private readonly inner: StorageProvider,
     private readonly key: Buffer,
-    private readonly tempDir: string = os.tmpdir()
+    private readonly tempDir: string = process.env.BACKUP_TEMP_DIR || os.tmpdir()
   ) {}
 
   async upload(file: Buffer, filePath: string, options?: UploadOptions): Promise<void> {
@@ -29,6 +29,7 @@ export class EncryptedStorageProvider implements StorageProvider, LargeFileUploa
   async uploadFromFile(sourcePath: string, filePath: string, options?: UploadOptions): Promise<void> {
     const encryptedPath = path.join(this.tempDir, `backup-encrypted-${randomUUID()}`);
     try {
+      await fs.mkdir(this.tempDir, { recursive: true });
       await encryptBackupFile(this.key, sourcePath, encryptedPath);
       if (isLargeFileUploadProvider(this.inner)) {
         await this.inner.uploadFromFile(encryptedPath, filePath, options);

@@ -15,7 +15,7 @@ export function parseReceiptLines(text) {
     if (!line.trim()) continue;
     try {
       const row = JSON.parse(line);
-      if (row && typeof row === 'object' && row.hermesReceipt) rows.push(row);
+      if (row && typeof row === 'object' && (row.hermesReceipt || row.consultationRoute)) rows.push(row);
     } catch {
       // A torn last line from a copy in progress is skipped.
     }
@@ -24,9 +24,20 @@ export function parseReceiptLines(text) {
 }
 
 export function summarizeReceipts(rows) {
-  const summary = { total: rows.length, outcome: {}, vectorStatus: {}, turn: {}, byDay: {}, review: [] };
+  const summary = { total: 0, outcome: {}, vectorStatus: {}, turn: {}, byDay: {}, review: [], routes: {}, guideMiss: [] };
+  const routes = new Map();
   for (const row of rows) {
+    const consultation = row.consultationRoute;
+    if (typeof consultation?.route === 'string') {
+      const { route, guideMiss, question } = consultation;
+      routes.set(route, (routes.get(route) ?? 0) + 1);
+      if (guideMiss === true && (route === 'operation_guide' || route === 'trouble_report')) {
+        summary.guideMiss.push({ at: row.at ?? null, route, question: question ?? null });
+      }
+    }
     const receipt = row.hermesReceipt;
+    if (!receipt) continue;
+    summary.total += 1;
     const vectorStatus = receipt.timings?.vectorStatus;
     count(summary.outcome, receipt.outcome);
     count(summary.vectorStatus, vectorStatus);
@@ -45,7 +56,22 @@ export function summarizeReceipts(rows) {
       });
     }
   }
+  summary.routes = Object.fromEntries(routes);
   return summary;
+}
+
+export function formatRouteReport(day, summary) {
+  const labels = { record_search: '記録検索', operation_guide: '操作説明', trouble_report: '不具合受付', handoff: '人へ引き継ぎ' };
+  const parts = Object.entries(summary.routes).map(([route, count]) => {
+    const label = Object.hasOwn(labels, route) ? labels[route] : route;
+    let part = `${label} ${count} 件`;
+    if (route === 'operation_guide' || route === 'trouble_report') {
+      const misses = summary.guideMiss.filter((row) => row.route === route);
+      part += `(知識なし ${misses.length} 件${misses.length ? `: ${misses.map((row) => `『${row.question}』`).join(', ')}` : ''})`;
+    }
+    return part;
+  });
+  return `routes ${day}: ${parts.length ? parts.join(', ') : 'none'}`;
 }
 
 async function main() {

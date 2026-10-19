@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { isAxiosError } from 'axios';
+import { useCallback, useEffect, useState } from 'react';
 
 import { getRoleAuditLogs, mfaActivate, mfaDisable, mfaInitiate } from '../../api/client';
+import { getApiErrorMessage } from '../../api/errors';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useAuth } from '../../contexts/AuthContext';
@@ -10,7 +12,7 @@ import type { RoleAuditLog } from '../../api/types';
 type Status = { message: string; tone: 'info' | 'error' | 'success' } | null;
 
 export function SecurityPage() {
-  const { user } = useAuth();
+  const { user, updateSession } = useAuth();
   const [status, setStatus] = useState<Status>(null);
   const [loading, setLoading] = useState(false);
 
@@ -18,12 +20,16 @@ export function SecurityPage() {
   const [otpauthUrl, setOtpauthUrl] = useState<string | null>(null);
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
   const [codeInput, setCodeInput] = useState('');
+  const [activatePassword, setActivatePassword] = useState('');
+  const [currentCode, setCurrentCode] = useState('');
+  const [currentBackupCode, setCurrentBackupCode] = useState('');
   const [disablePassword, setDisablePassword] = useState('');
 
   const [auditLogs, setAuditLogs] = useState<RoleAuditLog[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
 
-  const loadAuditLogs = async () => {
+  const loadAuditLogs = useCallback(async () => {
+    if (user?.mfaSetupRequired) return;
     setAuditLoading(true);
     try {
       const logs = await getRoleAuditLogs(100);
@@ -33,11 +39,11 @@ export function SecurityPage() {
     } finally {
       setAuditLoading(false);
     }
-  };
+  }, [user?.mfaSetupRequired]);
 
   useEffect(() => {
     void loadAuditLogs();
-  }, []);
+  }, [loadAuditLogs]);
 
   const handleInitiate = async () => {
     setLoading(true);
@@ -47,6 +53,10 @@ export function SecurityPage() {
       setMfaSecret(res.secret);
       setOtpauthUrl(res.otpauthUrl);
       setBackupCodes(res.backupCodes);
+      setCodeInput('');
+      setActivatePassword('');
+      setCurrentCode('');
+      setCurrentBackupCode('');
       setStatus({ message: 'MFAのセットアップ情報を生成しました。認証アプリに登録してください。', tone: 'info' });
     } catch (error) {
       setStatus({ message: 'MFAセットアップの初期化に失敗しました', tone: 'error' });
@@ -64,13 +74,31 @@ export function SecurityPage() {
       setStatus({ message: '6桁のコードを入力してください', tone: 'error' });
       return;
     }
+    if (!activatePassword) {
+      setStatus({ message: 'パスワードを入力してください', tone: 'error' });
+      return;
+    }
     setLoading(true);
     try {
-      const res = await mfaActivate({ secret: mfaSecret, code: codeInput, backupCodes });
+      const res = await mfaActivate({
+        secret: mfaSecret, code: codeInput, backupCodes, password: activatePassword,
+        ...(user?.mfaEnabled ? {
+          currentCode: currentCode || undefined,
+          currentBackupCode: currentBackupCode || undefined
+        } : {})
+      });
+      updateSession(res);
       setBackupCodes(res.backupCodes);
+      setActivatePassword('');
+      setCurrentCode('');
+      setCurrentBackupCode('');
       setStatus({ message: 'MFAを有効化しました。バックアップコードを安全な場所に保管してください。', tone: 'success' });
     } catch (error) {
-      setStatus({ message: 'MFAの有効化に失敗しました。コードを確認してください。', tone: 'error' });
+      const fallback = 'MFAの有効化に失敗しました。コードを確認してください。';
+      setStatus({
+        message: isAxiosError(error) && error.response?.status === 401 ? getApiErrorMessage(error, fallback) : fallback,
+        tone: 'error'
+      });
     } finally {
       setLoading(false);
     }
@@ -104,6 +132,11 @@ export function SecurityPage() {
         <p className="text-sm font-semibold text-slate-700">
           管理画面ログインにワンタイムコードを追加します。TOTPアプリ（例: Google Authenticator）に登録し、バックアップコードを保管してください。
         </p>
+        {user?.mfaSetupRequired && (
+          <p role="alert" className="mt-4 text-sm font-semibold text-orange-800">
+            管理者アカウントは MFA の設定が必須です。設定が終わるまで他の画面は使えません。
+          </p>
+        )}
         <div className="mt-4 grid gap-4 rounded-xl border-2 border-slate-500 bg-slate-100 p-4 shadow-lg">
           <div className="flex gap-3">
             <Button onClick={handleInitiate} disabled={loading}>
@@ -137,6 +170,39 @@ export function SecurityPage() {
               )}
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-semibold text-slate-700">
+                  MFA設定の確認用パスワード
+                  <Input
+                    type="password"
+                    autoComplete="current-password"
+                    value={activatePassword}
+                    onChange={(e) => setActivatePassword(e.target.value)}
+                    placeholder="ログインパスワード"
+                  />
+                </label>
+                {user?.mfaEnabled && (
+                  <>
+                    <p>再設定には、現在の認証アプリのコードまたはバックアップコードが必要です。</p>
+                    <label className="text-sm font-semibold text-slate-700">
+                      現在のMFAコード
+                      <Input
+                        value={currentCode}
+                        onChange={(e) => setCurrentCode(e.target.value)}
+                        placeholder="現在の6桁コード"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                      />
+                    </label>
+                    <label className="text-sm font-semibold text-slate-700">
+                      現在のバックアップコード（MFAコードの代わりに使用）
+                      <Input
+                        value={currentBackupCode}
+                        onChange={(e) => setCurrentBackupCode(e.target.value)}
+                        placeholder="現在のバックアップコード"
+                      />
+                    </label>
+                  </>
+                )}
+                <label className="text-sm font-semibold text-slate-700">
                   認証アプリに表示された6桁コード
                   <Input
                     value={codeInput}
@@ -151,27 +217,46 @@ export function SecurityPage() {
               </div>
             </div>
           ) : null}
-          <div className="space-y-2 text-sm font-semibold text-slate-700">
-            <label className="text-sm font-semibold text-slate-700">
-              MFA無効化（パスワード確認）
-              <Input
-                type="password"
-                value={disablePassword}
-                onChange={(e) => setDisablePassword(e.target.value)}
-                placeholder="パスワード"
-              />
-            </label>
-            <Button variant="secondary" onClick={handleDisable} disabled={loading}>
-              MFAを無効化
-            </Button>
-          </div>
+          {user?.mfaRequired ? (
+            <p className="text-sm font-semibold text-slate-700">
+              管理者アカウントの MFA は無効化できません。端末の入れ替えは、有効なままセットアップ情報を生成し直してください。
+            </p>
+          ) : (
+            <div className="space-y-2 text-sm font-semibold text-slate-700">
+              <label className="text-sm font-semibold text-slate-700">
+                MFA無効化（パスワード確認）
+                <Input
+                  type="password"
+                  value={disablePassword}
+                  onChange={(e) => setDisablePassword(e.target.value)}
+                  placeholder="パスワード"
+                />
+              </label>
+              <Button variant="secondary" onClick={handleDisable} disabled={loading}>
+                MFAを無効化
+              </Button>
+            </div>
+          )}
+          {status ? (
+            <div
+              className={`rounded-xl p-3 text-sm ${
+                status.tone === 'error'
+                  ? 'bg-red-900/50 text-red-200'
+                  : status.tone === 'success'
+                  ? 'bg-emerald-900/40 text-emerald-200'
+                  : 'bg-slate-800 text-white'
+              }`}
+            >
+              {status.message}
+            </div>
+          ) : null}
         </div>
       </div>
 
       <div>
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold text-slate-900">権限変更の監査ログ</h2>
-          <Button variant="secondary" onClick={() => void loadAuditLogs()} disabled={auditLoading}>
+          <Button variant="secondary" onClick={() => void loadAuditLogs()} disabled={auditLoading || user?.mfaSetupRequired}>
             再読込
           </Button>
         </div>
@@ -207,20 +292,6 @@ export function SecurityPage() {
           </table>
         </div>
       </div>
-
-      {status ? (
-        <div
-          className={`rounded-xl p-3 text-sm ${
-            status.tone === 'error'
-              ? 'bg-red-900/50 text-red-200'
-              : status.tone === 'success'
-              ? 'bg-emerald-900/40 text-emerald-200'
-              : 'bg-slate-800 text-white'
-          }`}
-        >
-          {status.message}
-        </div>
-      ) : null}
     </div>
   );
 }

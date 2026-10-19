@@ -18,7 +18,7 @@ class AgentConfig:
     def load(cls) -> AgentConfig:
         load_dotenv()
         return cls(
-            rest_host=os.environ.get("REST_HOST", "0.0.0.0"),
+            rest_host=os.environ.get("REST_HOST", "127.0.0.1"),
             rest_port=int(os.environ.get("REST_PORT", "7072")),
             serial_device=os.environ.get("SERIAL_DEVICE", "/dev/ttyACM0"),
             serial_baud=int(os.environ.get("SERIAL_BAUD", "9600")),

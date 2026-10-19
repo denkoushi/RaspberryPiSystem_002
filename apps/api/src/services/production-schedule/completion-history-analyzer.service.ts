@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { normalizeFseibanList } from './fseiban-list.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
 type HistoryResourceRow = {
@@ -23,18 +24,6 @@ export type CompletionHistorySignal = {
   throughputPenaltyScore: number;
 };
 
-const normalizeFseibans = (items: string[]): string[] => {
-  const seen = new Set<string>();
-  const next: string[] = [];
-  for (const item of items) {
-    const normalized = item.trim();
-    if (!normalized || seen.has(normalized)) continue;
-    seen.add(normalized);
-    next.push(normalized);
-  }
-  return next.slice(0, 2000);
-};
-
 const emptySignal = (): CompletionHistorySignal => ({
   delayRiskScore: 0,
   estimationGapScore: 0,
@@ -44,7 +33,7 @@ const emptySignal = (): CompletionHistorySignal => ({
 export async function analyzeCompletionHistorySignals(params: {
   candidateFseibans: string[];
 }): Promise<Map<string, CompletionHistorySignal>> {
-  const candidates = normalizeFseibans(params.candidateFseibans);
+  const candidates = normalizeFseibanList(params.candidateFseibans);
   const result = new Map<string, CompletionHistorySignal>();
   if (candidates.length === 0) return result;
 

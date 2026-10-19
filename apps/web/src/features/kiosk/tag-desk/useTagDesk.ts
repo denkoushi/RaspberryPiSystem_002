@@ -15,18 +15,17 @@ import {
   type TagDeskRow
 } from '../../../api/domains/tag-desk';
 import { getApiErrorMessage } from '../../../api/errors';
+import { tagDeskQueryKeys } from '../../../api/queryKeys/tagDesk';
 import { useArmedNfcRead } from '../inventory/setup/useArmedNfcRead';
 
 export type FormState = { kind: TagDeskKind; id: string | null };
 export type Selection = { kind: TagDeskKind; id: string };
 
-const KEY = ['kiosk-tag-desk'] as const;
-
 /**
  * All state of the tag desk screen. The reader is live whenever no form is open: a read
  * replaces the current tag. A selected list row stays selected so a free tag can be bound to it.
  */
-export function useTagDesk(pin: string) {
+export function useTagDesk(pin: string, active = true) {
   const queryClient = useQueryClient();
   const [kind, setKind] = useState<TagDeskKind>('employee');
   const [search, setSearch] = useState('');
@@ -37,7 +36,7 @@ export function useTagDesk(pin: string) {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const read = useArmedNfcRead(form === null);
+  const read = useArmedNfcRead(active && form === null);
   useEffect(() => {
     if (!read?.uid) return;
     setUid(read.uid.trim());
@@ -52,14 +51,14 @@ export function useTagDesk(pin: string) {
   }, [notice]);
 
   const registries = useQuery({
-    queryKey: [...KEY, 'registry', kind],
+    queryKey: tagDeskQueryKeys.registry(kind),
     queryFn: () => getTagDeskRegistry(pin, kind),
     staleTime: 30_000
   });
-  const options = useQuery({ queryKey: [...KEY, 'options'], queryFn: () => getTagDeskOptions(pin), staleTime: 300_000 });
-  const events = useQuery({ queryKey: [...KEY, 'events'], queryFn: () => getTagDeskEvents(pin), staleTime: 15_000 });
+  const options = useQuery({ queryKey: tagDeskQueryKeys.optionsAll, queryFn: () => getTagDeskOptions(pin), staleTime: 300_000 });
+  const events = useQuery({ queryKey: tagDeskQueryKeys.eventsAll, queryFn: () => getTagDeskEvents(pin), staleTime: 15_000 });
   const bindings = useQuery({
-    queryKey: [...KEY, 'tag', uid],
+    queryKey: tagDeskQueryKeys.tag(uid),
     queryFn: () => resolveTagDeskUid(pin, uid ?? ''),
     enabled: uid !== null
   });
@@ -78,9 +77,9 @@ export function useTagDesk(pin: string) {
 
   const refresh = async () => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: [...KEY, 'registry'] }),
-      queryClient.invalidateQueries({ queryKey: [...KEY, 'tag'] }),
-      queryClient.invalidateQueries({ queryKey: [...KEY, 'events'] })
+      queryClient.invalidateQueries({ queryKey: tagDeskQueryKeys.registryAll }),
+      queryClient.invalidateQueries({ queryKey: tagDeskQueryKeys.tagAll }),
+      queryClient.invalidateQueries({ queryKey: tagDeskQueryKeys.eventsAll })
     ]);
   };
   const onFail = (fallback: string) => (err: unknown) => setError(getApiErrorMessage(err, fallback));
@@ -144,7 +143,7 @@ export function useTagDesk(pin: string) {
     rows,
     visibleRows,
     registryLoading: registries.isLoading,
-    options: options.data ?? { divisions: [], sections: [], departments: [], genres: [] },
+    options: options.data ?? { divisions: [], sections: [], departments: [], genres: [], positions: [] },
     events: events.data ?? [],
     uid,
     clearUid: () => {

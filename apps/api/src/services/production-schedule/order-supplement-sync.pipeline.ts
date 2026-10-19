@@ -4,6 +4,7 @@
  */
 import { Prisma, type PrismaClient } from '@prisma/client';
 
+import { toTrimmedString as normalizeToken } from '../../lib/string-normalize.js';
 import {
   PRODUCTION_SCHEDULE_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
@@ -54,8 +55,6 @@ export type OrderSupplementSyncResult = {
   upserted: number;
   pruned: number;
 };
-
-const normalizeToken = (value: unknown): string => String(value ?? '').trim();
 
 const firstNonBlankToken = (...values: unknown[]): string => {
   for (const value of values) {

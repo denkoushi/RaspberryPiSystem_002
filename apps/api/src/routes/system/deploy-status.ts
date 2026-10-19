@@ -9,6 +9,9 @@ function deployStatusFilePath(): string {
   return process.env.DEPLOY_STATUS_FILE_PATH ?? '/app/config/deploy-status.json';
 }
 
+const DEPLOY_STATUS_ENTRY_TTL_MS = 30 * 60 * 1000;
+const EXPIRING_DEPLOY_PHASES = new Set(['notice', 'preparing', 'deploying', 'failed']);
+
 const DEPLOY_STATUS_HELPER_TIMEOUT_MS = 15_000;
 const DEPLOY_STATUS_HELPER_OUTPUT_LIMIT = 64 * 1024;
 const FULL_RELEASE_SHA_PATTERN = /^[0-9a-f]{40}$/;
@@ -114,6 +117,7 @@ interface DeployStatusRawV2 {
   kioskByClient?: Record<string, {
     maintenance?: boolean;
     startedAt?: string;
+    noticeStartedAt?: string;
     updatedAt?: string;
     runId?: string;
     phase?: string;
@@ -232,6 +236,13 @@ export function normalizeDeployStatusResponse(raw: DeployStatusRawV2 | null, sta
   if (!statusClientId || !raw?.kioskByClient) return { isMaintenance: false };
   const entry = raw.kioskByClient[statusClientId];
   if (!entry) return { isMaintenance: false };
+  const start = entry.phase === 'notice' ? entry.noticeStartedAt : entry.startedAt;
+  const startedAtMs = typeof start === 'string' ? Date.parse(start) : Number.NaN;
+  if (EXPIRING_DEPLOY_PHASES.has(entry.phase ?? '')
+    && Number.isFinite(startedAtMs)
+    && Date.now() - startedAtMs > DEPLOY_STATUS_ENTRY_TTL_MS) {
+    return { isMaintenance: false };
+  }
   if (entry.maintenance === false && entry.phase === 'notice') {
     return {
       isMaintenance: false,

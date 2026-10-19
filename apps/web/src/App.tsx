@@ -1,6 +1,7 @@
 import { Suspense, lazy, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
+import { useDeployStatus } from './api/hooks';
 import { HermesFloatingChat } from './components/hermes/HermesFloatingChat';
 import { HermesPageContextProvider } from './components/hermes/HermesPageContext';
 import { KioskRedirect } from './components/KioskRedirect';
@@ -8,6 +9,10 @@ import { RequireAuth } from './components/RequireAuth';
 import { RouteLoadingScreen } from './components/RouteLoadingScreen';
 import { readProductionBuildConfig } from './config/productionBuildConfig';
 import { kioskAssemblyLibraryPath, parseAssemblyProcedureOrderSettingsSearch } from './features/assembly';
+import { KIOSK_ASSEMBLY_MANUALS_PATH, KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH } from './features/assembly/assemblyRoutes';
+import { kioskLazy } from './features/kiosk/kioskLazyPreload';
+import { KioskScreenWatchHost } from './features/kiosk/screen-watch/KioskScreenWatchHost';
+import { useKioskSeamlessWebUpdate } from './features/kiosk/useKioskSeamlessWebUpdate';
 import { INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED } from './features/part-measurement/inspection-drawing/inspectionDrawingPrintConstants';
 import { CallAutoSwitchLayout } from './features/webrtc/components/CallAutoSwitchLayout';
 import { AdminLayout } from './layouts/AdminLayout';
@@ -24,7 +29,6 @@ import { DgxResourceAdminPage } from './pages/admin/DgxResourceAdminPage';
 import { GmailConfigPage } from './pages/admin/GmailConfigPage';
 import { KioskDocumentsAdminPage } from './pages/admin/KioskDocumentsAdminPage';
 import { KioskSettingsPage } from './pages/admin/KioskSettingsPage';
-import { KnowledgePositionRanksPage } from './pages/admin/KnowledgePositionRanksPage';
 import { LoanReportPage } from './pages/admin/LoanReportPage';
 import { LocalLlmAdminPage } from './pages/admin/LocalLlmAdminPage';
 import { MachineSignalAdminPage } from './pages/admin/MachineSignalAdminPage';
@@ -39,6 +43,7 @@ import { SelfInspectionOutOfToleranceReviewsPage } from './pages/admin/SelfInspe
 import { SignageHubPage } from './pages/admin/SignageHubPage';
 import { KioskAssemblyHomePage } from './pages/kiosk/KioskAssemblyHomePage';
 import { KioskAssemblyManualsPage } from './pages/kiosk/KioskAssemblyManualsPage';
+import { KioskAssemblyManualsWorkshopPage } from './pages/kiosk/KioskAssemblyManualsWorkshopPage';
 import { KioskAssemblyPage } from './pages/kiosk/KioskAssemblyPage';
 import { KioskAssemblyRecordApprovalPage } from './pages/kiosk/KioskAssemblyRecordApprovalPage';
 import { KioskAssemblyTraceabilityPage } from './pages/kiosk/KioskAssemblyTraceabilityPage';
@@ -46,6 +51,7 @@ import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskCallPage } from './pages/kiosk/KioskCallPage';
 import { KioskDocumentsPage } from './pages/kiosk/KioskDocumentsPage';
 import { KioskInstrumentBorrowPage } from './pages/kiosk/KioskInstrumentBorrowPage';
+import { KioskItemInventoryDashboardPage } from './pages/kiosk/KioskItemInventoryDashboardPage';
 import { KioskItemInventoryPage } from './pages/kiosk/KioskItemInventoryPage';
 import { KioskItemInventorySettingsPage } from './pages/kiosk/KioskItemInventorySettingsPage';
 import { KioskMachineSignalPage } from './pages/kiosk/KioskMachineSignalPage';
@@ -59,6 +65,7 @@ import { KioskPartMeasurementPage } from './pages/kiosk/KioskPartMeasurementPage
 import { KioskPartMeasurementTemplatePage } from './pages/kiosk/KioskPartMeasurementTemplatePage';
 import { KioskPartMeasurementTemplatePickPage } from './pages/kiosk/KioskPartMeasurementTemplatePickPage';
 import { KioskPhotoBorrowPage } from './pages/kiosk/KioskPhotoBorrowPage';
+import { KioskPortalPage } from './pages/kiosk/KioskPortalPage';
 import { KioskRiggingAnalyticsPage } from './pages/kiosk/KioskRiggingAnalyticsPage';
 import { KioskRiggingBorrowPage } from './pages/kiosk/KioskRiggingBorrowPage';
 import { KioskSelfInspectionPage } from './pages/kiosk/KioskSelfInspectionPage';
@@ -118,55 +125,59 @@ const KioskInspectionDrawingPrintPreviewPage = lazy(() =>
     default: module.KioskInspectionDrawingPrintPreviewPage
   }))
 );
-const KioskInspectionDrawingCreatePage = lazy(() =>
+const KioskInspectionDrawingCreatePage = kioskLazy(() =>
   import('./pages/kiosk/KioskInspectionDrawingCreatePage').then((module) => ({
     default: module.KioskInspectionDrawingCreatePage
   }))
 );
-const KioskInspectionDrawingEditPage = lazy(() =>
+const KioskInspectionDrawingEditPage = kioskLazy(() =>
   import('./pages/kiosk/KioskInspectionDrawingEditPage').then((module) => ({
     default: module.KioskInspectionDrawingEditPage
   }))
 );
-const KioskInspectionDrawingLibraryPage = lazy(() =>
+const KioskInspectionDrawingLibraryPage = kioskLazy(() =>
   import('./pages/kiosk/KioskInspectionDrawingLibraryPage').then((module) => ({
     default: module.KioskInspectionDrawingLibraryPage
   }))
 );
-const KioskInspectionDrawingPrintPage = lazy(() =>
+const KioskInspectionDrawingPrintPage = kioskLazy(() =>
   import('./pages/kiosk/KioskInspectionDrawingPrintPage').then((module) => ({
     default: module.KioskInspectionDrawingPrintPage
   }))
 );
-const KioskAssemblyTemplateEditorPage = lazy(() =>
+const KioskAssemblyTemplateEditorPage = kioskLazy(() =>
   import('./pages/kiosk/KioskAssemblyTemplateEditorPage').then((module) => ({
     default: module.KioskAssemblyTemplateEditorPage
   }))
 );
-const KioskAssemblyProcedureDocumentEditorPage = lazy(() =>
+const KioskAssemblyProcedureDocumentEditorPage = kioskLazy(() =>
   import('./pages/kiosk/KioskAssemblyProcedureDocumentEditorPage').then((module) => ({
     default: module.KioskAssemblyProcedureDocumentEditorPage
   }))
 );
-const KioskAssemblyWorkSessionPage = lazy(() =>
+const KioskAssemblyWorkSessionPage = kioskLazy(() =>
   import('./pages/kiosk/KioskAssemblyWorkSessionPage').then((module) => ({
     default: module.KioskAssemblyWorkSessionPage
   }))
 );
-const KioskAssemblyTrainingPage = lazy(() =>
+const KioskAssemblyTrainingPage = kioskLazy(() =>
   import('./pages/kiosk/KioskAssemblyTrainingPage').then((module) => ({
     default: module.KioskAssemblyTrainingPage
   }))
 );
-const KioskSelfInspectionSessionPage = lazy(() =>
+const KioskSelfInspectionSessionPage = kioskLazy(() =>
   import('./pages/kiosk/KioskSelfInspectionSessionPage').then((module) => ({
     default: module.KioskSelfInspectionSessionPage
   }))
 );
-const KioskWorkInstructionEditorPage = lazy(() =>
+const KioskWorkInstructionEditorPage = kioskLazy(() =>
   import('./pages/kiosk/KioskWorkInstructionEditorPage').then((module) => ({
     default: module.KioskWorkInstructionEditorPage
   }))
+);
+
+const MobileScanBenchPage = lazy(() =>
+  import('./pages/kiosk/MobileScanBenchPage').then((module) => ({ default: module.MobileScanBenchPage }))
 );
 
 function lazyRouteElement(element: ReactNode) {
@@ -178,6 +189,7 @@ function App() {
   return (
     <HermesPageContextProvider>
       <Routes>
+      <Route path="/kiosk/mobile-placement/scan-bench" element={lazyRouteElement(<MobileScanBenchPage />)} />
       <Route path="/" element={<KioskRedirect />} />
       <Route path="/login" element={<LoginPage />} />
       <Route element={<CallAutoSwitchLayout />}>
@@ -185,8 +197,10 @@ function App() {
         <Route path="/signage-lite" element={<SignageLiteDisplayPage />} />
         <Route element={<KioskLayout />}>
           <Route path="/kiosk" element={<KioskRedirect />} />
+          <Route path="/kiosk/portal" element={<KioskPortalPage />} />
           <Route path="/kiosk/tag" element={<KioskBorrowPage />} />
           <Route path="/kiosk/inventory" element={<KioskItemInventoryPage />} />
+          <Route path="/kiosk/inventory/dashboard" element={<KioskItemInventoryDashboardPage />} />
           <Route path="/kiosk/inventory/settings" element={<KioskItemInventorySettingsPage />} />
           <Route path="/kiosk/tag-desk" element={<KioskTagDeskPage />} />
           <Route path="/kiosk/photo" element={<KioskPhotoBorrowPage />} />
@@ -221,7 +235,8 @@ function App() {
           <Route path="/kiosk/pallet-visualization" element={<KioskPalletVisualizationPage />} />
           <Route path="/kiosk/documents" element={<KioskDocumentsPage />} />
           <Route path="/kiosk/assembly" element={<KioskAssemblyHomePage />} />
-          <Route path="/kiosk/assembly/manuals" element={<KioskAssemblyManualsPage />} />
+          <Route path={KIOSK_ASSEMBLY_MANUALS_PATH} element={<KioskAssemblyManualsPage />} />
+          <Route path={KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH} element={<KioskAssemblyManualsWorkshopPage />} />
           <Route path="/kiosk/assembly/training" element={lazyRouteElement(<KioskAssemblyTrainingPage />)} />
           <Route path="/kiosk/assembly/library" element={<KioskAssemblyPage />} />
           <Route
@@ -332,11 +347,11 @@ function App() {
         <>
           <Route
             path="/kiosk/part-measurement/inspection/templates/:templateId/print"
-            element={lazyRouteElement(<KioskInspectionDrawingPrintPage />)}
+            element={<KioskPrintWebUpdate>{lazyRouteElement(<KioskInspectionDrawingPrintPage />)}</KioskPrintWebUpdate>}
           />
           <Route
             path="/kiosk/part-measurement/inspection/paper-reports/:reportId/print"
-            element={lazyRouteElement(<KioskInspectionDrawingPrintPage />)}
+            element={<KioskPrintWebUpdate>{lazyRouteElement(<KioskInspectionDrawingPrintPage />)}</KioskPrintWebUpdate>}
           />
         </>
       ) : null}
@@ -404,9 +419,9 @@ function App() {
         <Route path="reports">
           <Route path="loan-report" element={<LoanReportPage />} />
         </Route>
-        <Route path="knowledge-position-ranks" element={<KnowledgePositionRanksPage />} />
+        <Route path="knowledge-position-ranks" element={<MovedToKioskTagDeskPage positionRanks />} />
         <Route path="local-llm" element={<LocalLlmAdminPage />} />
-        <Route path="dgx-resource" element={<DgxResourceAdminPage />} />
+        <Route path="dgx-resource" element={<Navigate to="/admin/tools/dgx-resource" replace />} />
         <Route path="photo-loan-label-reviews" element={<PhotoLoanLabelReviewsPage />} />
         <Route path="photo-gallery-seed" element={<PhotoGallerySeedPage />} />
         <Route path="kiosk-documents" element={<KioskDocumentsAdminPage />} />
@@ -434,11 +449,21 @@ function App() {
       <Route path="*" element={<Navigate to="/kiosk" replace />} />
       </Routes>
       <HermesFloatingChat />
+      <KioskScreenWatchHost />
     </HermesPageContextProvider>
   );
 }
 
 export default App;
+
+// Print routes intentionally live outside KioskLayout, but share its update policy.
+function KioskPrintWebUpdate({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  const { data: deployStatus } = useDeployStatus();
+  useKioskSeamlessWebUpdate(location.pathname, deployStatus === undefined || deployStatus.isMaintenance);
+  return <>{children}</>;
+}
+
 function AssemblyProcedureOrderRedirect() {
   const location = useLocation();
   const { machineName } = parseAssemblyProcedureOrderSettingsSearch(location.search);

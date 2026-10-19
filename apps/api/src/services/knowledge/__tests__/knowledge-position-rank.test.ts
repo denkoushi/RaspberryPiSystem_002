@@ -11,11 +11,12 @@ function database(positionName: string | null = '主任', rank: string | null = 
 }
 
 describe('knowledge approval ranks and NFC identity', () => {
-  it('orders the four ranks and defaults unknown ranks to general', () => {
-    expect(KNOWLEDGE_POSITION_RANKS).toEqual(['general', 'leader', 'section_chief', 'manager']);
+  it('orders the six ranks and defaults unknown ranks to general', () => {
+    expect(KNOWLEDGE_POSITION_RANKS).toEqual(['general', 'leader', 'section_chief', 'manager', 'general_manager', 'executive']);
     expect(canApprove('general')).toBe(false); expect(positionRank('unexpected')).toBe('general');
   });
-  it.each(['leader', 'section_chief', 'manager'])('permits %s and returns roster snapshots', async rank => {
+  it.each(['leader', 'section_chief', 'manager', 'general_manager', 'executive'])('permits %s and returns roster snapshots', async rank => {
+    expect(canApprove(positionRank(rank))).toBe(true);
     const employee = await resolveKnowledgeEmployee(database('主任', rank) as unknown as PrismaClient, ' tag ', true);
     expect(employee).toEqual({ id: 'e1', employeeCode: '0001', displayName: '社員A', nfcTagUid: 'tag', positionName: '主任', rank });
   });

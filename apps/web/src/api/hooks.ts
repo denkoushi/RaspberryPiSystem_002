@@ -8,6 +8,7 @@ export * from './hooks/production-schedule';
 export * from './hooks/measuring-instruments';
 export * from './hooks/clients';
 export * from './hooks/system';
+export * from './hooks/local-llm';
 export * from './hooks/signage';
 export * from './hooks/kiosk-documents';
 export * from './hooks/work-instructions';

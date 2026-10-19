@@ -1,14 +1,21 @@
-import { KindIcon } from './TagDeskIcons';
+import { CheckIcon, KindIcon } from './TagDeskIcons';
 import { KIND_META } from './tagDeskModel';
 import { tagDesk } from './tagDeskTheme';
 
-import type { TagBindingEvent, TagBindingKind, TagUse } from '../../../api/domains/tag-desk';
+import type { PositionApproval, TagBindingEvent, TagBindingKind, TagUse } from '../../../api/domains/tag-desk';
 import type { ReactNode } from 'react';
 
 
 
 const timeFormat = new Intl.DateTimeFormat('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 export const formatWhen = (iso: string) => timeFormat.format(new Date(iso)).replace(/\s/, ' ');
+
+export function PositionApprovalChip({ approval, showNone = false }: { approval?: PositionApproval | null; showNone?: boolean }) {
+  if (approval === 'approver') return <span className={`${tagDesk.chipOk} flex-none whitespace-nowrap`}><CheckIcon className="h-3.5 w-3.5" />承認可</span>;
+  if (approval === 'unmapped') return <span className={`${tagDesk.chipWarn} flex-none whitespace-nowrap`}>対応表なし</span>;
+  if (approval === 'none' && showNone) return <span className={`${tagDesk.chipInfo} whitespace-nowrap`}>承認不可</span>;
+  return null;
+}
 
 export function Section({ title, children }: { title: string; children: ReactNode }) {
   return (

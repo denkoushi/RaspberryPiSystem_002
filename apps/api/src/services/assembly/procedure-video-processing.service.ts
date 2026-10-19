@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -69,7 +70,7 @@ export class ProcedureVideoProcessingService {
             if (!source || source.status !== 'READY' || source.discardedAt || !source.storageKey) throw new ProcedureVideoTranscodeError('SOURCE_MISSING', '接続元の動画がないか、完了していないか、捨てられています');
             const sourceInput = path.join(directory, `${index}.mp4`);
             // eslint-disable-next-line no-await-in-loop
-            await writeFile(sourceInput, await this.store.read(source.storageKey, { verifyIntegrity: true }));
+            await this.store.copyToFile(source.storageKey, sourceInput, { verifyIntegrity: true });
             // eslint-disable-next-line no-await-in-loop
             const probe = await this.transcoder.probe(sourceInput);
             concatSources.push({ id, storageKey: source.storageKey, durationSeconds: probe.durationSeconds });
@@ -80,7 +81,7 @@ export class ProcedureVideoProcessingService {
         } else {
           const inputKey = isTrim ? video.storageKey : video.sourceStorageKey;
           if (!inputKey) throw new ProcedureVideoTranscodeError('SOURCE_MISSING', '動画の原本がありません');
-          await writeFile(input, await this.store.read(inputKey, { verifyIntegrity: true }));
+          await this.store.copyToFile(inputKey, input, { verifyIntegrity: true });
           const probe = await this.transcoder.probe(input);
           sourceDurationSeconds = probe.durationSeconds;
           if (!isTrim && probe.durationSeconds > 60) throw new ProcedureVideoTranscodeError('TOO_LONG', '動画は60秒までです');
@@ -88,14 +89,16 @@ export class ProcedureVideoProcessingService {
           else await this.transcoder.transcode(input, output, poster, heartbeat);
         }
         const { durationSeconds, width, height } = await this.transcoder.probe(output);
-        const bytes = await readFile(output);
-        const sha256 = createHash('sha256').update(bytes).digest('hex');
+        const { size } = await stat(output);
+        const digest = createHash('sha256');
+        for await (const chunk of createReadStream(output)) digest.update(chunk);
+        const sha256 = digest.digest('hex');
         const storageKey = `procedure-videos/${sha256}/video.mp4`;
         const posterStorageKey = `procedure-videos/${sha256}/poster.jpg`;
         const posterBytes = await readFile(poster);
         const published = await runAssemblyTransaction(async (tx) => {
           const result = await tx.procedureVideo.updateMany({ where: processingWhere, data: {
-            status: 'READY', storageKey, posterStorageKey, sha256, byteSize: bytes.length, durationSeconds, width, height,
+            status: 'READY', storageKey, posterStorageKey, sha256, byteSize: size, durationSeconds, width, height,
             errorCode: null, errorMessage: null, processedAt: new Date(),
             ...(isTrim ? { trimmedAt: new Date(), trimRequest: Prisma.DbNull } : { sourceDurationSeconds }),
             ...(concat ? { concatRequest: Prisma.DbNull } : {}),
@@ -125,8 +128,13 @@ export class ProcedureVideoProcessingService {
             if (comments.length) await tx.procedureVideoComment.createMany({ data: comments });
           }
           // Writers and old-output cleanup share the same lock. Keep encoding outside it.
-          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${storageKey}))`;
-          await this.save(storageKey, bytes);
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${storageKey}))`;
+          try {
+            await this.store.writeStream({ key: storageKey, source: createReadStream(output), integrity: true, sizeHint: size });
+          } catch (error) {
+            if (!(error instanceof FileStorageAlreadyExistsError)) throw error;
+            if ((await this.store.hash(storageKey)).sha256 !== sha256) throw new Error('Procedure video identity conflict');
+          }
           await this.save(posterStorageKey, posterBytes);
           if (isTrim && trim) {
             const comments = await tx.procedureVideoComment.findMany({ where: { videoId: video.id }, orderBy: { sortOrder: 'asc' } });
@@ -137,6 +145,11 @@ export class ProcedureVideoProcessingService {
           return true;
         }, this.db);
         if (!published) return;
+        try {
+          const { enqueueProcedureVideoAutoEdit } = await import('./procedure-video-auto-edit.service.js');
+          await enqueueProcedureVideoAutoEdit(video.id, this.db);
+        }
+        catch { logger.warn({ videoId: video.id }, 'Procedure video auto edit enqueue failed after READY'); }
         if (isTrim && video.storageKey && video.storageKey !== storageKey) await this.cleanupOutput(video.id, video.storageKey, video.posterStorageKey);
         if (video.sourceStorageKey) await this.cleanupOriginal(video.id, video.sourceStorageKey);
       } catch (error) {
@@ -159,7 +172,7 @@ export class ProcedureVideoProcessingService {
   private async cleanupOriginal(videoId: string, sourceStorageKey: string): Promise<void> {
     try {
       const deleteOriginal = await runAssemblyTransaction(async (tx) => {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${sourceStorageKey}))`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${sourceStorageKey}))`;
         const video = await tx.procedureVideo.findUnique({ where: { id: videoId }, select: { status: true, sourceStorageKey: true } });
         if (video?.status !== 'READY' || video.sourceStorageKey !== sourceStorageKey) return false;
         const references = await tx.procedureVideo.count({ where: { sourceStorageKey } });
@@ -178,7 +191,7 @@ export class ProcedureVideoProcessingService {
       // READY is already committed. Hold the lock through deletion so another
       // conversion cannot publish this hash between the reference check and delete.
       await runAssemblyTransaction(async (tx) => {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${storageKey}))`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${storageKey}))`;
         if (await tx.procedureVideo.count({ where: { storageKey } })) return;
         await this.store.delete(storageKey, { integrity: true });
         if (posterStorageKey) await this.store.delete(posterStorageKey, { integrity: true });

@@ -1,26 +1,45 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { formatInventoryLabelNumber } from '@raspi-system/shared-types';
+import { useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import {
   resolveInventoryTag,
+  resolveInventoryLabelNumber,
   type InventoryCompartment,
-  type InventoryHistoryEntry,
+  type InventoryMovementTransaction,
+  type InventoryImportSummary,
   type InventoryTag,
 } from '../../api/client';
 import { useInventoryImportSummaries, useInventoryItems, useInventoryMutations } from '../../api/hooks';
+import { inventoryKeys } from '../../api/queryKeys/itemInventory';
+import { KioskHomeIcon } from '../../components/kiosk/KioskHomeIcon';
 import { InventoryCorrectionPanel } from '../../features/kiosk/inventory/InventoryCorrectionPanel';
 import {
   correctionResultMessage,
+  formatSignedDelta,
   pickedCompartmentTag,
   unitLabel,
 } from '../../features/kiosk/inventory/inventoryDailyFlow';
-import { BackIcon, EditIcon, GridIcon, LockIcon, ResetIcon, UndoIcon } from '../../features/kiosk/inventory/InventoryIcons';
-import { InventoryItemGrid } from '../../features/kiosk/inventory/InventoryItemGrid';
-import { InventoryLocationBlocks } from '../../features/kiosk/inventory/InventoryLocationBlocks';
-import { InventoryLocationPicker } from '../../features/kiosk/inventory/InventoryLocationPicker';
+import { BackIcon, ChartIcon, EditIcon, GridIcon, ListIcon, LockIcon, UndoIcon } from '../../features/kiosk/inventory/InventoryIcons';
+import { detailLabels, InventoryItemGrid, type InventoryThumbnailSize, type InventoryViewMode } from '../../features/kiosk/inventory/InventoryItemGrid';
+import {
+  defaultAreasKey,
+  EMPTY_COMPARTMENTS,
+  EMPTY_IMPORTS,
+  isClientError,
+  messageFromError,
+  playInventoryTone,
+  readDefaultAreas,
+  thumbnailSizeKey,
+  viewModeKey,
+  type InventoryRouteState,
+} from '../../features/kiosk/inventory/inventoryPageModel';
 import { InventoryPhotoPane } from '../../features/kiosk/inventory/InventoryPhotoPane';
+import { InventoryQuantityPanel } from '../../features/kiosk/inventory/InventoryQuantityPanel';
 import { InventoryRecentHistory } from '../../features/kiosk/inventory/InventoryRecentHistory';
 import {
+  invLabelNumber,
   invButton,
   invButtonDanger,
   invButtonGhost,
@@ -32,78 +51,162 @@ import {
   invTitle,
 } from '../../features/kiosk/inventory/inventoryUi';
 import { NfcPrompt } from '../../features/kiosk/inventory/NfcPrompt';
+import { useInventoryNfcQueue } from '../../features/kiosk/inventory/useInventoryNfcQueue';
 
 import type { NfcEvent } from '../../hooks/useNfcStream';
 
-type InventoryRouteState = { inventoryNfcEvent?: NfcEvent };
-
-const TOOL_INFO = [
-  ['maker', 'メーカー'],
-  ['toolName', '工具名'],
-  ['workMaterial', '被削材'],
-  ['toolSize', '工具寸法'],
-  ['model', '型式'],
-  ['usage', '用途'],
-] as const;
-
-function messageFromError(error: unknown): string {
-  if (error && typeof error === 'object' && 'response' in error) {
-    const response = (error as { response?: { data?: { message?: string } } }).response;
-    if (response?.data?.message) return response.data.message;
-  }
-  return error instanceof Error ? error.message : '処理に失敗しました';
-}
-
-function playInventoryTone(kind: 'success' | 'restock' | 'error') {
-  if (typeof window === 'undefined' || !window.AudioContext) return;
-  const context = new window.AudioContext();
-  const oscillator = context.createOscillator();
-  const gain = context.createGain();
-  const frequency = kind === 'success' ? 880 : kind === 'restock' ? 660 : 180;
-  oscillator.frequency.value = frequency;
-  oscillator.type = kind === 'error' ? 'sawtooth' : 'sine';
-  gain.gain.setValueAtTime(0.0001, context.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.18);
-  oscillator.connect(gain).connect(context.destination);
-  oscillator.start();
-  oscillator.stop(context.currentTime + 0.2);
-  window.setTimeout(() => { void context.close(); }, 400);
-}
+// Scans read during a failed operation are dropped even when they arrive after this page was left and reopened.
+let failedOperationAt = -Infinity;
 
 export function KioskItemInventoryPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const mutations = useInventoryMutations();
+  const queryClient = useQueryClient();
   const routeState = location.state as InventoryRouteState | null;
+  const [numberOpen, setNumberOpen] = useState(false);
+  const [numberInput, setNumberInput] = useState('');
+  const [numberError, setNumberError] = useState<string | null>(null);
+  const [numberBusy, setNumberBusy] = useState(false);
+  const numberLookupRef = useRef(0);
   const [restockMode, setRestockMode] = useState(false);
   const [selectedTag, setSelectedTag] = useState<InventoryTag | null>(null);
   const [message, setMessage] = useState('アイテムNFCタグを読み取ってください');
   const [messageKind, setMessageKind] = useState<'info' | 'success' | 'error'>('info');
-  const [lastTransaction, setLastTransaction] = useState<InventoryHistoryEntry | null>(null);
+  const [lastTransaction, setLastTransaction] = useState<InventoryMovementTransaction | null>(null);
+  const [lastTransactionUnit, setLastTransactionUnit] = useState('個');
+  const [resultTransaction, setResultTransaction] = useState<InventoryMovementTransaction | null>(null);
+  const [activity, setActivity] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [panel, setPanel] = useState<'none' | 'correct' | 'pick'>('none');
+  const [panel, setPanel] = useState<'none' | 'correct' | 'quantity'>('none');
+  const [quantityError, setQuantityError] = useState<string | null>(null);
+  const [savedAreas, setSavedAreas] = useState<string[]>(readDefaultAreas);
+  const [areaFilters, setAreaFilters] = useState<string[]>(readDefaultAreas);
+  const [thumbnailSize, setThumbnailSize] = useState<InventoryThumbnailSize>(() => {
+    try { const saved = localStorage.getItem(thumbnailSizeKey); if (saved === 'small' || saved === 'medium' || saved === 'large') return saved; } catch { /* Storage is optional. */ }
+    return 'medium';
+  });
+  const [viewMode, setViewMode] = useState<InventoryViewMode>(() => {
+    try { const saved = localStorage.getItem(viewModeKey); if (saved === 'card' || saved === 'list') return saved; } catch { /* Storage is optional. */ }
+    return 'card';
+  });
+  const [areaNotice, setAreaNotice] = useState<{ message: string; undo?: { areas: string[] } } | null>(null);
+  useEffect(() => {
+    if (!areaNotice) return;
+    const timer = window.setTimeout(() => setAreaNotice(null), areaNotice.undo ? 6000 : 3000);
+    return () => window.clearTimeout(timer);
+  }, [areaNotice]);
+  const changeSize = (size: InventoryThumbnailSize) => {
+    setThumbnailSize(size);
+    try { localStorage.setItem(thumbnailSizeKey, size); } catch { /* Keep the in-memory choice. */ }
+  };
+  const changeView = (view: InventoryViewMode) => {
+    setViewMode(view);
+    try { localStorage.setItem(viewModeKey, view); } catch { /* Keep the in-memory choice. */ }
+  };
+  const saveAreas = (selection: string[], undo = false) => {
+    try {
+      localStorage.setItem(defaultAreasKey, JSON.stringify(selection));
+      setSavedAreas(selection);
+      setAreaNotice(undo ? { message: '最初の表示を元に戻しました' } : { message: `${selection.join('・') || 'すべて'} を最初の表示にした`, undo: { areas: defaultAreas } });
+    } catch { setAreaNotice({ message: '最初の表示を保存できませんでした' }); }
+  };
+  const [shelfFilter, setShelfFilter] = useState<number | null>(null);
+  /** Mailed candidates stay out of the list until the 未登録 chip is pressed. */
+  const [showPending, setShowPending] = useState(false);
+  const [refreshingTag, setRefreshingTag] = useState(false);
   const [correctionError, setCorrectionError] = useState<string | null>(null);
   const itemsQuery = useInventoryItems();
   const pendingQuery = useInventoryImportSummaries();
-  const pendingImports = pendingQuery.data ?? [];
+  const pendingImports = pendingQuery.data ?? EMPTY_IMPORTS;
+  const pendingShown = showPending && pendingImports.length > 0;
   const itemCompartments = useMemo(() => (itemsQuery.data ?? []).flatMap((item) => item.compartments.map((compartment) => ({ ...compartment, item }))), [itemsQuery.data]);
+  const areas = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const entry of itemCompartments) counts.set(entry.area, (counts.get(entry.area) ?? 0) + 1);
+    return [...counts].map(([area, count]) => ({ area, count }));
+  }, [itemCompartments]);
+  const effectiveAreas = useMemo(() => areaFilters.filter(area => areas.some(entry => entry.area === area)), [areaFilters, areas]);
+  const defaultAreas = savedAreas.filter(area => areas.some(entry => entry.area === area));
+  const isDefaultArea = effectiveAreas.length === defaultAreas.length && effectiveAreas.every(area => defaultAreas.includes(area));
+  const homeLabel = 'この選択を最初の表示にする';
+  const singleArea = effectiveAreas.length === 1 ? effectiveAreas[0] : null;
+  useEffect(() => { setShelfFilter(null); }, [singleArea]);
+  const inArea = useMemo(() => itemCompartments.filter(entry => effectiveAreas.length === 0 || effectiveAreas.includes(entry.area)), [itemCompartments, effectiveAreas]);
+  const shelves = useMemo(() => singleArea === null ? [] : [...new Set(inArea.map((entry) => entry.shelfNumber))].sort((a, b) => a - b), [inArea, singleArea]);
+  const filteredCompartments = useMemo(() => inArea.filter((entry) => singleArea === null || shelfFilter === null || entry.shelfNumber === shelfFilter), [inArea, shelfFilter, singleArea]);
   const flowRef = useRef({ restockMode: false, restockTagUid: null as string | null, selectedTag: null as InventoryTag | null, processing: false });
   const mountedRef = useRef(true);
+  const verificationGenerationRef = useRef(0);
+  const selectedTagRef = useRef<InventoryTag | null>(null);
+  const selectionVerificationRef = useRef<Promise<boolean> | null>(null);
   const eventQueueRef = useRef<NfcEvent[]>([]);
   const queuedEventKeyRef = useRef<string | null>(null);
   const drainingRef = useRef(false);
   const drainEventsRef = useRef<() => Promise<void>>(async () => undefined);
-  const transactionMutateRef = useRef(mutations.transaction.mutateAsync);
+  const selectTag = useCallback((tag: InventoryTag | null) => {
+    const current = selectedTagRef.current;
+    if (current?.uid !== tag?.uid || current?.compartment?.id !== tag?.compartment?.id) {
+      verificationGenerationRef.current += 1;
+      selectionVerificationRef.current = null;
+      setRefreshingTag(false);
+    }
+    setNumberOpen(false);
+    numberLookupRef.current += 1;
+    selectedTagRef.current = tag;
+    flowRef.current.selectedTag = tag;
+    setSelectedTag(tag);
+  }, []);
 
-  useEffect(() => {
-    transactionMutateRef.current = mutations.transaction.mutateAsync;
-  }, [mutations.transaction.mutateAsync]);
+  const refreshDisplayedStock = async () => {
+    const id = selectedTagRef.current?.compartment?.id;
+    const refreshed = await itemsQuery.refetch().catch(() => null);
+    const item = refreshed?.data?.find((entry) => entry.compartments.some((drawer) => drawer.id === id));
+    const drawer = item?.compartments.find((entry) => entry.id === id);
+    if (item && drawer && mountedRef.current) selectTag(pickedCompartmentTag({ ...drawer, item }));
+  };
 
-  const updateDisplayedStock = (transaction: Pick<InventoryHistoryEntry, 'compartmentId' | 'afterQuantity'>) => {
-    setSelectedTag((current) => current?.compartment?.id === transaction.compartmentId
-      ? { ...current, compartment: { ...current.compartment, stockQuantity: transaction.afterQuantity } }
-      : current);
+  const applyTransactionStock = async (transaction: InventoryMovementTransaction) => {
+    let tag = selectedTagRef.current;
+    if (tag?.compartment?.id !== transaction.compartmentId) {
+      const findTag = (items: typeof itemsQuery.data) => {
+        const item = items?.find((entry) => entry.compartments.some((drawer) => drawer.id === transaction.compartmentId));
+        const drawer = item?.compartments.find((entry) => entry.id === transaction.compartmentId);
+        return item && drawer ? pickedCompartmentTag({ ...drawer, item }) : null;
+      };
+      tag = findTag(queryClient.getQueryData(inventoryKeys.itemsAll) ?? itemsQuery.data);
+      if (!tag) tag = findTag((await itemsQuery.refetch().catch(() => null))?.data);
+    }
+    if (tag?.compartment) tag = { ...tag, compartment: { ...tag.compartment, stockQuantity: transaction.afterQuantity } };
+    selectTag(tag);
+    return unitLabel(tag?.compartment?.item);
+  };
+
+  // All stock writes hold this lock, including the wait for the selected ITEM verification.
+  const runOperation = async (operation: () => Promise<boolean>, onError: (error: unknown) => Promise<void> | void) => {
+    const flow = flowRef.current;
+    if (flow.processing) return;
+    flow.processing = true;
+    setBusy(true);
+    let succeeded = false;
+    try {
+      const generation = verificationGenerationRef.current;
+      const verification = selectionVerificationRef.current;
+      if (verification && !await verification) return;
+      if (!mountedRef.current || generation !== verificationGenerationRef.current) return;
+      succeeded = await operation();
+    } catch (error) {
+      if (isClientError(error)) void queryClient.invalidateQueries({ queryKey: inventoryKeys.tagsAll });
+      await onError(error);
+    } finally {
+      if (!succeeded) {
+        failedOperationAt = performance.now();
+        eventQueueRef.current = [];
+      }
+      flow.processing = false;
+      setBusy(false);
+      void drainEventsRef.current();
+    }
   };
 
   useEffect(() => {
@@ -111,130 +214,72 @@ export function KioskItemInventoryPage() {
     return () => { mountedRef.current = false; };
   }, []);
 
-  const reset = () => {
+  const reset = useCallback(() => {
+    selectTag(null);
     const flow = flowRef.current;
     flow.restockMode = false;
     flow.restockTagUid = null;
-    flow.selectedTag = null;
     setRestockMode(false);
-    setSelectedTag(null);
+    setLastTransaction(null);
+    setResultTransaction(null);
     setPanel('none');
     setCorrectionError(null);
+    setQuantityError(null);
     setMessage('アイテムNFCタグを読み取ってください');
     setMessageKind('info');
+  }, [selectTag]);
+
+  const completeMovement = async (transaction: InventoryMovementTransaction, restock: boolean) => {
+    const unit = await applyTransactionStock(transaction);
+    setLastTransaction(transaction);
+    setResultTransaction(transaction);
+    setLastTransactionUnit(unit);
+    setMessage(restock ? `補充しました（${transaction.delta}${unit}）` : `払い出しました（${Math.abs(transaction.delta)}${unit}）`);
+    setMessageKind('success');
+    setQuantityError(null);
+    playInventoryTone(restock ? 'restock' : 'success');
+    const flow = flowRef.current;
+    flow.restockMode = false;
+    flow.restockTagUid = null;
+    setRestockMode(false);
   };
 
-  useEffect(() => {
-    drainEventsRef.current = async () => {
-      if (drainingRef.current) return;
-      drainingRef.current = true;
-      try {
-        while (eventQueueRef.current.length > 0) {
-          const event = eventQueueRef.current.shift();
-          if (!event) continue;
-          let tag: InventoryTag | null;
-          try {
-            tag = event.inventoryTag ?? await resolveInventoryTag(event.uid);
-          } catch (error) {
-            if (mountedRef.current) {
-              setMessage(messageFromError(error));
-              setMessageKind('error');
-              playInventoryTone('error');
-            }
-            continue;
-          }
-          if (!tag || !mountedRef.current) continue;
-          const flow = flowRef.current;
-          if (tag.kind === 'RESTOCK') {
-            flow.restockMode = true;
-            flow.restockTagUid = tag.uid;
-            flow.selectedTag = null;
-            setRestockMode(true);
-            setSelectedTag(null);
-            setMessage('補充モードです。アイテムNFCタグを読み取ってください');
-            setMessageKind('info');
-            continue;
-          }
-          if (tag.kind === 'ITEM') {
-            if (!tag.compartment) {
-              setMessage('アイテムNFCタグに区画が割り当てられていません');
-              setMessageKind('error');
-              playInventoryTone('error');
-              continue;
-            }
-            flow.selectedTag = tag;
-            setSelectedTag(tag);
-            setMessage(flow.restockMode ? '数量NFCタグを読み取って補充してください' : '数量NFCタグを読み取ってください');
-            setMessageKind('info');
-            continue;
-          }
-          if (!flow.selectedTag?.compartment) {
-            setMessage('先にアイテムNFCタグを読み取ってください');
-            setMessageKind('error');
-            playInventoryTone('error');
-            continue;
-          }
-          if (!flow.selectedTag.uid) {
-            setMessage('この引き出しにはアイテムタグがないため、数量タグでは操作できません');
-            setMessageKind('error');
-            playInventoryTone('error');
-            continue;
-          }
-          if (flow.processing) continue;
-          flow.processing = true;
-          setBusy(true);
-          const restock = flow.restockMode;
-          try {
-            const result = await transactionMutateRef.current({
-              itemTagUid: flow.selectedTag.uid,
-              quantityTagUid: tag.uid,
-              restockTagUid: flow.restockTagUid ?? undefined,
-              restock,
-              idempotencyKey: `nfc-${event.eventId ?? `${event.uid}-${event.timestamp}`}`,
-            });
-            setLastTransaction(result.transaction);
-            updateDisplayedStock(result.transaction);
-            const unit = unitLabel(flow.selectedTag?.compartment?.item);
-            setMessage(restock ? `補充しました（${result.transaction.delta}${unit}）` : `払い出しました（${Math.abs(result.transaction.delta)}${unit}）`);
-            setMessageKind('success');
-            playInventoryTone(restock ? 'restock' : 'success');
-            flow.restockMode = false;
-            flow.restockTagUid = null;
-            flow.selectedTag = null;
-            setRestockMode(false);
-          } catch (error) {
-            setMessage(messageFromError(error));
-            setMessageKind('error');
-            playInventoryTone('error');
-          } finally {
-            flow.processing = false;
-            setBusy(false);
-          }
-        }
-      } finally {
-        drainingRef.current = false;
-      }
-    };
+  const handleTouchError = async (error: unknown) => {
+    const data = (error as { response?: { data?: { code?: string; errorCode?: string } } })?.response?.data;
+    const code = data?.errorCode ?? data?.code;
+    const uncertain = !isClientError(error);
+    setQuantityError(uncertain ? '通信できませんでした。在庫数を確かめてください'
+      : code === 'INVENTORY_INSUFFICIENT_STOCK' ? '在庫が足りません'
+        : code === 'INVENTORY_CONFLICT' ? '数が変わりました' : messageFromError(error));
+    playInventoryTone('error');
+    if (uncertain || code === 'INVENTORY_CONFLICT') await refreshDisplayedStock();
+  };
+
+  useInventoryNfcQueue({
+    drainEventsRef, drainingRef, flowRef, eventQueueRef, queryClient,
+    setMessage, setMessageKind, mountedRef, setPanel, selectTag,
+    setRestockMode, setQuantityError, setLastTransaction, selectionVerificationRef,
+    verificationGenerationRef, setRefreshingTag, setCorrectionError,
+    runOperation, mutations, completeMovement, handleTouchError,
   });
 
   useEffect(() => {
     const event = routeState?.inventoryNfcEvent;
     if (!event) return;
+    if (event.receivedAt !== undefined && event.receivedAt <= failedOperationAt) return;
     const eventKey = event.eventId != null ? String(event.eventId) : `${event.uid}:${event.timestamp}`;
     if (queuedEventKeyRef.current === eventKey) return;
     queuedEventKeyRef.current = eventKey;
-    // A tag read always wins over an open touch panel.
-    setPanel('none');
     eventQueueRef.current.push(event);
     void drainEventsRef.current();
   }, [routeState?.inventoryNfcEvent]);
 
   useEffect(() => {
     // Counting or picking by touch can take a while; do not reset under the worker's hands.
-    if (panel !== 'none') return;
+    if (panel !== 'none' || busy || refreshingTag || numberOpen) return;
     const timer = window.setTimeout(reset, 30000);
     return () => window.clearTimeout(timer);
-  }, [restockMode, selectedTag, message, panel]);
+  }, [restockMode, selectedTag, message, panel, activity, reset, busy, refreshingTag, numberOpen]);
 
   useEffect(() => {
     if (messageKind === 'info') return;
@@ -251,156 +296,193 @@ export function KioskItemInventoryPage() {
   }, [message, messageKind]);
 
   const cancelLast = async () => {
-    if (!lastTransaction || busy) return;
-    setBusy(true);
-    try {
-      const result = await mutations.cancel.mutateAsync(lastTransaction.id);
-      updateDisplayedStock(result.transaction);
-      setLastTransaction(null);
+    if (!lastTransaction) return;
+    const transactionId = lastTransaction.id;
+    await runOperation(async () => {
+      const result = await mutations.cancel.mutateAsync(transactionId);
+      await applyTransactionStock(result.transaction);
+      setResultTransaction(result.transaction);
+      setLastTransaction((current) => current?.id === transactionId ? null : current);
       setMessage('直前の取引を取り消しました');
       setMessageKind('success');
       playInventoryTone('success');
-    } catch (error) {
+      return true;
+    }, (error) => {
       setMessage(messageFromError(error));
       setMessageKind('error');
       playInventoryTone('error');
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
-  const pickCompartment = (compartment: InventoryCompartment) => {
-    const tag = pickedCompartmentTag(compartment);
-    const flow = flowRef.current;
-    flow.selectedTag = tag;
-    setSelectedTag(tag);
+  const pickCompartment = useCallback((compartment: InventoryCompartment) => {
+    if (flowRef.current.processing) return;
+    selectTag(pickedCompartmentTag(compartment));
+    setLastTransaction((current) => current?.compartmentId === compartment.id ? current : null);
     setPanel('none');
-    setMessage(!tag.uid
-      ? 'この引き出しにはアイテムタグがありません（確認と数の修正だけできます）'
-      : flow.restockMode ? '数量NFCタグを読み取って補充してください' : '数量NFCタグを読み取ってください');
+    setQuantityError(null);
+    setMessage('数を押す か 数量タグ');
     setMessageKind('info');
+  }, [selectTag]);
+  const openNumber = async () => {
+    if (numberBusy || !numberInput || flowRef.current.processing) return;
+    const generation = ++numberLookupRef.current;
+    setNumberBusy(true);
+    setNumberError(null);
+    try {
+      const tag = await resolveInventoryLabelNumber(numberInput);
+      if (!mountedRef.current || generation !== numberLookupRef.current) return;
+      if (!tag?.compartment) { setNumberError('この番号の品物はありません'); return; }
+      // Feed the resolved ITEM through exactly the same queue as an item-tag scan.
+      eventQueueRef.current.push({ uid: tag.uid, timestamp: new Date().toISOString(), inventoryTag: tag });
+      await drainEventsRef.current();
+    } catch (error) {
+      if (mountedRef.current && generation === numberLookupRef.current) setNumberError((error as { response?: { status?: number } })?.response?.status === 404 ? 'この番号の品物はありません' : '通信できませんでした');
+    } finally { if (mountedRef.current) setNumberBusy(false); }
   };
+  const pickPending = useCallback((candidate: InventoryImportSummary) => navigate('/kiosk/inventory/settings', { state: { importId: candidate.id } }), [navigate]);
 
   const submitCorrection = async (desiredQuantity: number) => {
-    const compartment = selectedTag?.compartment;
-    if (!compartment || busy) return;
-    setBusy(true);
+    const transactionId = lastTransaction?.id;
     setCorrectionError(null);
-    try {
+    await runOperation(async () => {
+      const compartment = selectedTagRef.current?.compartment;
+      if (!compartment || !Number.isFinite(compartment.stockQuantity)) return false;
       const result = await mutations.correction.mutateAsync({
-        compartmentId: compartment.id,
-        desiredQuantity,
-        expectedBeforeQuantity: compartment.stockQuantity,
+        compartmentId: compartment.id, desiredQuantity, expectedBeforeQuantity: compartment.stockQuantity,
       });
-      setLastTransaction(result.transaction);
-      updateDisplayedStock(result.transaction);
+      const unit = await applyTransactionStock(result.transaction);
+      setLastTransaction((current) => current?.id === transactionId ? result.transaction : current);
+      setLastTransactionUnit(unit);
+      setResultTransaction(result.transaction);
       setPanel('none');
-      setMessage(correctionResultMessage(result.transaction.beforeQuantity, result.transaction.afterQuantity, unitLabel(compartment.item)));
+      setMessage(correctionResultMessage(result.transaction.beforeQuantity, result.transaction.afterQuantity, unit));
       setMessageKind('success');
       playInventoryTone('success');
-    } catch (error) {
+      return true;
+    }, async (error) => {
       setCorrectionError(messageFromError(error));
       playInventoryTone('error');
-      const uid = selectedTag?.uid;
-      if (uid) {
-        // Show the stock another terminal just wrote so the worker can recount against it.
-        const latest = await resolveInventoryTag(uid).catch(() => null);
-        if (latest?.compartment?.id === compartment.id && mountedRef.current) {
-          if (flowRef.current.selectedTag?.compartment?.id === compartment.id) flowRef.current.selectedTag = latest;
-          setSelectedTag(latest);
-        }
-      }
-    } finally {
-      setBusy(false);
-    }
+      const tag = selectedTagRef.current;
+      if (tag?.uid) {
+        const latest = await resolveInventoryTag(tag.uid).catch(() => null);
+        if (latest?.compartment?.id === tag.compartment?.id && mountedRef.current) selectTag(latest);
+      } else await refreshDisplayedStock();
+    });
+  };
+
+  const switchMode = (restock: boolean) => {
+    if (flowRef.current.processing || refreshingTag) return;
+    flowRef.current.restockMode = restock;
+    flowRef.current.restockTagUid = null;
+    setRestockMode(restock);
+    setQuantityError(null);
+  };
+
+  const submitQuantity = async (quantity: number) => {
+    setQuantityError(null);
+    await runOperation(async () => {
+      const compartment = selectedTagRef.current?.compartment;
+      if (!compartment || !Number.isFinite(compartment.stockQuantity)) return false;
+      const restock = flowRef.current.restockMode;
+      const result = await mutations.touchTransaction.mutateAsync({
+        compartmentId: compartment.id, quantity, restock,
+        expectedBeforeQuantity: compartment.stockQuantity, idempotencyKey: crypto.randomUUID(),
+      });
+      await completeMovement(result.transaction, restock);
+      setPanel('none');
+      return true;
+    }, handleTouchError);
   };
 
   const selectedPhotos = selectedTag?.compartment?.item.photos ?? [];
   const selectedCompartment = selectedTag?.compartment ?? null;
+  const lastTransactionItemName = lastTransaction?.inventoryItem?.name
+    ?? (selectedCompartment?.id === lastTransaction?.compartmentId ? selectedCompartment?.item.name : undefined)
+    ?? itemCompartments.find((entry) => entry.id === lastTransaction?.compartmentId)?.item.name;
 
   // What the worker should do next, as a mark + short word; results replace it for a few seconds.
   const resultBadge = (
     <p role="status" aria-live="polite" className={`inline-flex h-11 items-center rounded-full border-[1.5px] px-5 text-base font-bold ${messageKind === 'success' ? invSuccess : invError}`}>{message}</p>
   );
-  const prompt = messageKind !== 'info' ? resultBadge : selectedCompartment && !selectedTag?.uid ? (
-    <p role="status" className="inline-flex h-11 items-center rounded-full border border-inv-line2 px-4 text-[15px] text-inv-muted">タグなし（確認と数の修正のみ）</p>
-  ) : selectedCompartment ? (
-    <NfcPrompt size="small" label="数量タグ" tone={restockMode ? 'green' : 'amber'} sub={restockMode ? '補充' : undefined} />
+  const prompt = messageKind !== 'info' ? resultBadge : selectedTag?.compartment ? (
+    <NfcPrompt size="small" label="数を押す か 数量タグ" tone={restockMode ? 'green' : 'amber'} />
   ) : (
     <NfcPrompt size="small" label="アイテムタグ" tone={restockMode ? 'green' : 'sky'} sub={restockMode ? '補充' : undefined} />
   );
-
-  // The waiting screen keeps its prompt in the title row so the item cards get the space.
-  const waiting = panel !== 'pick' && !selectedCompartment;
-  const toolInfo = selectedCompartment ? TOOL_INFO.flatMap(([key, label]) => {
-    const value = selectedCompartment.item[key];
-    return value ? [{ label, value }] : [];
-  }) : [];
+  const chipClass = (selected: boolean) => `inline-flex h-11 items-center gap-1.5 rounded-full border px-4 text-base font-bold ${selected ? 'border-inv-cyan bg-inv-cyan text-inv-cyan-ink' : 'border-inv-line2 bg-inv-s1'}`;
+  const pendingChipClass = `inline-flex h-11 items-center gap-1.5 rounded-full border px-4 text-base font-bold disabled:border-inv-line2 disabled:bg-inv-s1 disabled:text-inv-faint ${pendingShown ? 'border-inv-amber bg-inv-amber text-inv-amber-ink' : 'border-inv-amber bg-inv-s1 text-inv-amber'}`;
 
   return (
-    <section className={invSurface}>
+    <section className={`${invSurface} relative`} onPointerDownCapture={() => setActivity((current) => current + 1)} onClickCapture={() => setActivity((current) => current + 1)} onKeyDownCapture={() => setActivity((current) => current + 1)}>
       <div className="flex shrink-0 flex-wrap items-center gap-3">
-        {selectedCompartment ? <button type="button" className={invButtonGhost} onClick={reset} disabled={busy}><BackIcon />一覧へ</button> : null}
+        {selectedCompartment ? <button type="button" className={`${invButtonGhost} h-12 rounded-xl`} onClick={reset} disabled={busy || refreshingTag}><BackIcon />一覧へ</button> : null}
         <h1 className={invTitle}>在庫操作</h1>
-        {restockMode ? <span className="rounded-full bg-inv-green px-3 py-1 text-sm font-black text-inv-green-ink">補充モード</span> : null}
-        {waiting ? (
-          <>
-            <span className="w-2" />
-            {prompt}
-            <span className="inline-flex h-7 items-center gap-1.5 rounded-full border border-inv-line bg-inv-s1 px-2.5 text-xs text-inv-muted"><b className="text-inv-text">持出</b>アイテム → 数量</span>
-            <span className="inline-flex h-7 items-center gap-1.5 rounded-full border border-inv-line bg-inv-s1 px-2.5 text-xs text-inv-muted"><b className="text-inv-text">補充</b>補充 → アイテム → 数量</span>
-          </>
-        ) : null}
+        {prompt}
         <span className="flex-1" />
-        {panel === 'none' ? <button type="button" className={invButtonGhost} onClick={() => setPanel('pick')} disabled={busy}><GridIcon />置き場所から選ぶ</button> : null}
-        <button type="button" className={invButtonGhost} onClick={reset} disabled={busy}><ResetIcon />選択をリセット</button>
-        <button type="button" className={invButtonDanger} onClick={() => void cancelLast()} disabled={!lastTransaction || busy}><UndoIcon />直前の取引を取消</button>
+        {!selectedCompartment ? <>
+          <button type="button" className={invButton} aria-expanded={numberOpen} onClick={() => { numberLookupRef.current += 1; setNumberOpen((open) => !open); setNumberInput(''); setNumberError(null); }}>番号で開く</button>
+          {viewMode === 'card' ? <>
+            <div role="group" aria-label="写真の大きさ" className="inline-flex shrink-0 overflow-hidden rounded-xl border border-inv-line2">
+              {([['small', '小'], ['medium', '中'], ['large', '大']] as const).map(([size, label]) => <button key={size} type="button" aria-pressed={thumbnailSize === size} className={`h-12 min-w-14 px-4 font-bold ${thumbnailSize === size ? 'bg-inv-cyan text-inv-cyan-ink' : 'text-inv-muted'}`} onClick={() => changeSize(size)}>{label}</button>)}
+            </div>
+          </> : null}
+          <div role="group" aria-label="表示" className="inline-flex shrink-0 overflow-hidden rounded-xl border border-inv-line2">
+            {([['card', 'カード表示', GridIcon], ['list', 'リスト表示', ListIcon]] as const).map(([view, label, ViewIcon]) => <button key={view} type="button" aria-label={label} title={label} aria-pressed={viewMode === view} className={`flex h-12 min-w-14 items-center justify-center px-4 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-inv-cyan ${viewMode === view ? 'bg-inv-cyan text-inv-cyan-ink' : 'text-inv-muted hover:bg-inv-s2'}`} onClick={() => changeView(view)}><ViewIcon size={24} /></button>)}
+          </div>
+        </> : null}
+        <div role="group" aria-label="払い出しか補充か" className="inline-flex overflow-hidden rounded-xl border border-inv-line2">
+          <button type="button" aria-pressed={!restockMode} disabled={busy || refreshingTag} onClick={() => switchMode(false)} className={`h-12 px-[18px] font-bold disabled:opacity-40 ${!restockMode ? 'bg-inv-amber text-inv-amber-ink' : 'text-inv-muted'}`}>払い出し</button>
+          <button type="button" aria-pressed={restockMode} disabled={busy || refreshingTag} onClick={() => switchMode(true)} className={`h-12 px-[18px] font-bold disabled:opacity-40 ${restockMode ? 'bg-inv-green text-inv-green-ink' : 'text-inv-muted'}`}>補充</button>
+        </div>
+        {lastTransaction ? <button type="button" className={`${invButtonDanger} h-12 max-w-[340px] border-inv-red text-inv-red`} onClick={() => void cancelLast()} disabled={busy}><UndoIcon /><span className="min-w-0 truncate">取消{lastTransactionItemName ? `：${lastTransactionItemName}` : ''}</span><span className="shrink-0">{formatSignedDelta(lastTransaction.delta)}{lastTransactionUnit}</span></button> : null}
         <span className="mx-1 h-7 w-px bg-inv-line" />
-        <Link to="/kiosk/inventory/settings" className={invButton}><LockIcon />在庫の準備</Link>
+        <Link to="/kiosk/inventory/dashboard" className={`${invButton} h-12 rounded-xl`}><ChartIcon />集計</Link>
+        <Link to="/kiosk/inventory/settings" className={`${invButton} h-12 rounded-xl`}><LockIcon />在庫の準備</Link>
       </div>
 
-      {panel === 'pick' ? (
-        <InventoryLocationPicker
-          items={itemsQuery.data ?? []}
-          loading={itemsQuery.isLoading}
-          onPick={pickCompartment}
-          onClose={() => setPanel('none')}
-        />
-      ) : selectedCompartment ? (
-        // Photo pane (left 2/3) and information pane (right 1/3) stay on screen together.
-        <div className="relative grid min-h-0 flex-1 grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-5">
-          <div className="min-h-[24rem]">
+      {selectedCompartment ? (
+        <div className="relative grid min-h-0 flex-1 grid-cols-[minmax(0,5fr)_minmax(0,6fr)] gap-4">
+          <div className="min-h-0">
             <InventoryPhotoPane key={selectedCompartment.id} photos={selectedPhotos} />
           </div>
-          <div className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto">
-            <div>{prompt}</div>
-            <div>
-              <p className={invEyebrow}>ITEM</p>
-              <p className="mt-1 break-all text-[28px] font-black leading-tight">{selectedCompartment.item.name}</p>
-              <p className="font-mono text-[13px] text-inv-faint">{selectedCompartment.item.itemCode}</p>
+          <div className="flex min-h-0 min-w-0 flex-col gap-3.5 overflow-y-auto">
+            <div className="shrink-0">
+              <h2 title={selectedCompartment.item.name} className="line-clamp-3 break-all text-[30px] font-black leading-tight">{selectedCompartment.item.name}</h2>
+              <p className="min-w-0 break-all text-[17px] text-inv-muted"><span className={`${invLabelNumber} mr-2`}>{formatInventoryLabelNumber(selectedCompartment.labelNumber)}</span>{selectedCompartment.area}・棚{selectedCompartment.shelfNumber}・引き出し{selectedCompartment.drawerNumber}</p>
             </div>
-            <dl className={`${invCard} flex items-end gap-2.5 px-5 py-4`}>
-              <div>
-                <dt className={invEyebrow}>在庫</dt>
-                <dd aria-label="現在庫" className="flex items-end gap-2.5">
-                  <span className="text-8xl font-black leading-[0.95] tracking-[-0.02em] tabular-nums">{selectedCompartment.stockQuantity}</span>
-                  <span className="pb-2.5 text-[22px] font-bold text-inv-muted">{unitLabel(selectedCompartment.item)}</span>
-                </dd>
+            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,432px)] items-start gap-5">
+              <div className="flex min-w-0 flex-col gap-4">
+                <dl aria-label="アイテムの情報" className="flex flex-col">
+                  {(Object.keys(detailLabels) as (keyof typeof detailLabels)[]).map((field) => selectedCompartment.item[field]?.trim() ? <div key={field} className="grid grid-cols-[72px_minmax(0,1fr)] items-baseline gap-3 border-t border-inv-line py-[9px] last:border-b"><dt className="text-base text-inv-faint">{detailLabels[field]}</dt><dd className="min-w-0 break-all text-[21px] font-bold leading-snug">{selectedCompartment.item[field]}</dd></div> : null)}
+                </dl>
+                <div className="w-[250px] max-w-full">
+                  <InventoryRecentHistory key={selectedCompartment.id} compartmentId={selectedCompartment.id} />
+                </div>
               </div>
-              <dd className="ml-auto self-center">
-                <button type="button" className={invButton} disabled={busy} onClick={() => { setCorrectionError(null); setPanel('correct'); }}><EditIcon />数を直す</button>
-              </dd>
-            </dl>
-            <InventoryLocationBlocks compartment={selectedCompartment} />
-            {toolInfo.length > 0 ? (
-              <ul className="flex flex-wrap gap-1.5" aria-label="工具情報">
-                {toolInfo.map((entry) => (
-                  <li key={entry.label} className="rounded-md bg-inv-s3 px-2.5 py-1 text-xs"><span className="text-inv-faint">{entry.label}</span>&nbsp;&nbsp;<span className="break-all">{entry.value}</span></li>
-                ))}
-              </ul>
-            ) : null}
-            <InventoryRecentHistory compartmentId={selectedCompartment.id} />
+              <div className={`${invCard} flex min-w-0 flex-col gap-2.5 rounded-[18px] p-4`}>
+                <dl className="flex items-baseline gap-2 border-b border-inv-line pb-3">
+                  <dt className={`${invEyebrow} mr-auto self-center`}>現在庫</dt>
+                  <dd aria-label="現在庫" className="flex min-w-0 flex-wrap items-baseline justify-end gap-2">
+                    <span className="max-w-full shrink-0 break-all text-5xl font-black leading-none tracking-[-0.02em] tabular-nums">{Number.isFinite(selectedCompartment.stockQuantity) ? selectedCompartment.stockQuantity : '—'}</span>
+                    <span className="min-w-0 break-all text-lg font-bold text-inv-muted">{unitLabel(selectedCompartment.item)}</span>
+                    {messageKind === 'success' && resultTransaction?.compartmentId === selectedCompartment.id ? <span className={`text-2xl font-black tabular-nums ${resultTransaction.action === 'ISSUE' ? 'text-inv-amber' : resultTransaction.action === 'RESTOCK' ? 'text-inv-green' : 'text-inv-muted'}`}>{formatSignedDelta(resultTransaction.delta)}</span> : null}
+                  </dd>
+                </dl>
+                <p className={invEyebrow}>{restockMode ? '補充する数' : '払い出す数'}</p>
+                <div className="grid grid-cols-5 gap-2" role="group" aria-label={restockMode ? '補充する数' : '払い出す数'}>
+                  {Array.from({ length: 20 }, (_, index) => index + 1).map((quantity) => <button key={quantity} type="button" aria-label={`${quantity}${unitLabel(selectedCompartment.item)}を${restockMode ? '補充' : '払い出す'}`} className={`h-[70px] rounded-xl border-[1.5px] text-[28px] font-black tabular-nums disabled:opacity-40 ${restockMode ? 'border-inv-green bg-inv-green/10' : 'border-inv-amber bg-inv-amber/10'}`} disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment.stockQuantity) || (!restockMode && quantity > selectedCompartment.stockQuantity)} onClick={() => void submitQuantity(quantity)}>{quantity}</button>)}
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <button type="button" className="h-12 shrink-0 rounded-xl border border-inv-line2 bg-inv-s2 px-4 text-[15px] font-bold disabled:opacity-40" disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment.stockQuantity)} onClick={() => { setQuantityError(null); setPanel('quantity'); }}>ほかの数</button>
+                  <button type="button" className={`${invButtonGhost} ml-auto min-h-11 min-w-0 !whitespace-normal border-transparent px-1 text-[15px] text-inv-muted underline underline-offset-4`} disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment?.stockQuantity)} onClick={() => { setCorrectionError(null); setPanel('correct'); }}><EditIcon />数が合わないときは直す</button>
+                </div>
+                <div className="h-11 shrink-0" aria-live="polite">{quantityError && panel !== 'quantity' ? <p role="alert" className="text-inv-red">{quantityError}</p> : null}</div>
+              </div>
+            </div>
           </div>
+          {panel === 'quantity' ? <div className="absolute inset-0 z-10 flex items-center justify-center rounded-[18px] bg-[#05080d]/80">
+            <InventoryQuantityPanel unit={unitLabel(selectedCompartment.item)} restock={restockMode} pending={busy} error={quantityError} onConfirm={(quantity) => void submitQuantity(quantity)} onCancel={() => { setPanel('none'); setQuantityError(null); }} />
+          </div> : null}
           {panel === 'correct' ? (
             // Counting happens over the item screen, so the worker never leaves it.
             <div className="absolute inset-0 z-10 flex items-center justify-center rounded-[18px] bg-[#05080d]/80">
@@ -416,17 +498,46 @@ export function KioskItemInventoryPage() {
         </div>
       ) : (
         <>
-          <p className="flex shrink-0 items-baseline gap-2.5"><span className={invEyebrow}>登録済み</span><span className="font-black tabular-nums">{itemCompartments.length}</span><span className="text-[13px] text-inv-faint">件 ・ 最近持ち出した順</span>
-            {pendingImports.length > 0 ? <><span className={`${invEyebrow} ml-3 text-inv-amber`}>未登録</span><span className="font-black tabular-nums text-inv-amber">{pendingImports.length}</span><span className="text-[13px] text-inv-faint">件</span></> : null}
-          </p>
-          <InventoryItemGrid
-            compartments={itemCompartments}
+          <div className="flex shrink-0 items-center gap-3">
+            <div className="flex max-h-28 min-w-0 flex-1 flex-wrap items-center gap-2 overflow-y-auto" role="group" aria-label="エリアで絞る">
+              <button type="button" className={pendingChipClass} aria-pressed={pendingShown} disabled={pendingImports.length === 0} onClick={() => setShowPending(!pendingShown)}>未登録 <small className="font-normal opacity-75">{pendingImports.length}</small></button>
+              <span aria-hidden="true" className="h-7 w-px bg-inv-line" />
+              <button type="button" className={chipClass(!pendingShown && effectiveAreas.length === 0)} aria-pressed={!pendingShown && effectiveAreas.length === 0} onClick={() => { setShowPending(false); setAreaFilters([]); setShelfFilter(null); }}>{defaultAreas.length === 0 ? <KioskHomeIcon filled className="h-4 w-4" /> : null}すべて <small className="font-normal opacity-75">{itemCompartments.length}</small></button>
+              {areas.map(({ area, count }) => <button key={area} type="button" className={chipClass(!pendingShown && effectiveAreas.includes(area))} aria-pressed={!pendingShown && effectiveAreas.includes(area)} onClick={() => { setShowPending(false); setAreaFilters(!pendingShown && effectiveAreas.includes(area) ? effectiveAreas.filter(value => value !== area) : [...effectiveAreas, area]); setShelfFilter(null); }}>{defaultAreas.includes(area) ? <KioskHomeIcon filled className="h-4 w-4" /> : null}{area} <small className="font-normal opacity-75">{count}</small></button>)}
+            </div>
+            <button type="button" aria-label={homeLabel} title={homeLabel} aria-pressed={isDefaultArea} className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border hover:bg-inv-s2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inv-cyan ${isDefaultArea ? 'border-inv-cyan text-inv-cyan' : 'border-inv-line2 text-inv-text'}`} onClick={() => saveAreas(effectiveAreas)}><KioskHomeIcon filled={isDefaultArea} /></button>
+          </div>
+          {!pendingShown && singleArea !== null ? <div className="flex max-h-28 shrink-0 flex-wrap items-center gap-2 overflow-y-auto" role="group" aria-label="棚で絞る">
+            <span className={`${invEyebrow} w-[3.2em]`}>棚</span>
+            <button type="button" className={chipClass(shelfFilter === null)} aria-pressed={shelfFilter === null} onClick={() => setShelfFilter(null)}>すべて</button>
+            {shelves.map((shelf) => <button key={shelf} type="button" className={chipClass(shelfFilter === shelf)} aria-pressed={shelfFilter === shelf} onClick={() => setShelfFilter(shelfFilter === shelf ? null : shelf)}>棚{shelf}</button>)}
+          </div> : null}
+          {itemsQuery.isLoading ? <p className="text-inv-muted">読み込み中…</p> : itemsQuery.isError ? <div className="flex items-center gap-3"><p role="alert" className="text-inv-red">一覧を取得できませんでした</p><button type="button" className={invButtonGhost} onClick={() => void itemsQuery.refetch()}>もう一度</button></div> : <InventoryItemGrid
+            view={viewMode}
+            size={thumbnailSize}
+            compartments={pendingShown ? EMPTY_COMPARTMENTS : filteredCompartments}
             onPick={pickCompartment}
-            pending={pendingImports}
-            onPickPending={(candidate) => navigate('/kiosk/inventory/settings', { state: { importId: candidate.id } })}
-          />
+            pending={pendingShown ? pendingImports : EMPTY_IMPORTS}
+            onPickPending={pickPending}
+          />}
         </>
       )}
+      {areaNotice ? <div role="status" aria-label="最初のエリア" className="fixed bottom-36 right-5 z-50 flex items-center gap-4 rounded-xl border border-inv-line2 bg-inv-s3 px-5 py-3 text-lg font-semibold shadow-lg">
+        <span>{areaNotice.message}</span>
+        {areaNotice.undo ? <button type="button" className={`${invButtonGhost} text-inv-cyan`} onClick={() => saveAreas(areaNotice.undo!.areas, true)}>元に戻す</button> : null}
+      </div> : null}
+      {numberOpen ? <section aria-label="番号入力" className={`${invCard} absolute right-7 top-24 z-20 flex w-[280px] flex-col gap-3 p-4 shadow-xl`}>
+        <div className="flex items-center justify-between gap-2"><h2 className="font-bold">番号で開く</h2><button type="button" className={invButtonGhost} onClick={() => { numberLookupRef.current += 1; setNumberOpen(false); }}>閉じる</button></div>
+        <output aria-label="入力した番号" className={`text-center font-mono font-bold tabular-nums tracking-[0.14em] text-inv-amber ${numberInput.length > 6 ? 'text-[24px]' : 'text-[36px]'}`}>{numberInput.padEnd(4, '_')}</output>
+        <div role="group" aria-label="番号のテンキー" className="grid grid-cols-3 gap-2">
+          {['1', '2', '3', '4', '5', '6', '7', '8', '9', '消', '0', '←'].map((key) => <button key={key} type="button" className={`${invButton} h-14 px-0 text-xl`} disabled={numberBusy} onClick={() => {
+            setNumberError(null);
+            setNumberInput((value) => key === '消' ? '' : key === '←' ? value.slice(0, -1) : value.length < 10 && Number(value + key) <= 2147483647 ? value + key : value);
+          }}>{key}</button>)}
+        </div>
+        {numberError ? <p role="alert" className="text-sm text-inv-red">{numberError}</p> : null}
+        <button type="button" className={invButton} disabled={numberBusy || numberInput.length === 0} onClick={() => void openNumber()}>{numberBusy ? '確認中…' : '開く'}</button>
+      </section> : null}
     </section>
   );
 }

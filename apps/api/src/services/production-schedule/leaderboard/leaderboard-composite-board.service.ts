@@ -2,7 +2,7 @@
  * 順位ボード（複数資源スロット）向け集約取得。
  * 単一資源の shell / continue / COUNT / 装飾を既存サービスに委譲し、HTTP 層とクエリ実装の間に置くオーケストレーションのみを担当する。
  */
-import type { MaterialArrivalStatus } from '@raspi-system/shared-types';
+import type { MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
 import { performance } from 'node:perf_hooks';
 import {
   countProductionScheduleDashboardVisibleRowsFromListFilters,
@@ -14,8 +14,7 @@ import {
 } from '../production-schedule-query.service.js';
 import type { Prisma } from '@prisma/client';
 import {
-  buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProductNoWinner,
-  resolveLeaderboardMaterializedBaseWhere
+  buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProductNoWinner
 } from '../row-resolver/index.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { prisma } from '../../../lib/prisma.js';
@@ -40,6 +39,7 @@ import {
   type ProcessChangeResidualStrongEvidenceMaterialization,
   type ProcessChangeResidualStrongEvidenceMaterializationTelemetryEvent
 } from './leaderboard-process-change-residual.materialization.js';
+import { resolveLeaderboardMaterializedBaseWhereWithGenerationCache } from './leaderboard-materialized-winner-cache.js';
 import { readLeaderboardShellSnapshotGenerationTokenDetails } from './leaderboard-shell-snapshot-generation.js';
 import { buildLeaderboardShellFilterFingerprint } from './leaderboard-shell-snapshot-fingerprint.js';
 import {
@@ -301,6 +301,7 @@ export type LeaderboardBoardReadResult = {
   snapshotExpired?: boolean;
   leaderboardFooterChipsByPartKey?: Record<string, unknown>;
   leaderboardMaterialArrivalByPartKey?: Record<string, MaterialArrivalStatus>;
+  leaderboardMaterialArrivalBasisByPartKey?: Record<string, MaterialArrivalBasis>;
   processChangeResidualTotal?: number;
   processChangeResidualRows?: Array<
     LightShellRow & {
@@ -398,7 +399,7 @@ export async function fetchLeaderboardCompositeBoardShell(
         phase: 'materializedBaseWhere',
         resourceCount: params.boardResourceCds.length
       },
-      () => resolveLeaderboardMaterializedBaseWhere(prisma)
+      () => resolveLeaderboardMaterializedBaseWhereWithGenerationCache(prisma, { generationToken })
     );
     return leaderboardMaterializedBaseWherePromise;
   };
@@ -619,7 +620,7 @@ export async function fetchLeaderboardCompositeBoardShell(
     };
   }
 
-  const { rowsWithDeco, leaderboardFooterChipsByPartKey, leaderboardMaterialArrivalByPartKey } = await measureLeaderboardBoardPhase(
+  const { rowsWithDeco, leaderboardFooterChipsByPartKey, leaderboardMaterialArrivalByPartKey, leaderboardMaterialArrivalBasisByPartKey } = await measureLeaderboardBoardPhase(
     sink,
     {
       endpoint: 'shell',
@@ -661,6 +662,7 @@ export async function fetchLeaderboardCompositeBoardShell(
     ...(totalsDeferred ? { totalsDeferred: true } : {}),
     leaderboardFooterChipsByPartKey,
     leaderboardMaterialArrivalByPartKey,
+    leaderboardMaterialArrivalBasisByPartKey,
     ...processChangeResidualPayload
   };
 }
@@ -714,7 +716,7 @@ export async function continueLeaderboardCompositeBoard(
       resourceCount: params.boardResourceCds.length,
       chunkSize
     },
-    () => resolveLeaderboardMaterializedBaseWhere(prisma)
+    () => resolveLeaderboardMaterializedBaseWhereWithGenerationCache(prisma, { generationToken })
   );
 
   const [totals, contOutputs] = await Promise.all([
@@ -1016,7 +1018,7 @@ export async function continueLeaderboardCompositeBoard(
     };
   }
 
-  const { rowsWithDeco, deltaRowsWithDeco, leaderboardFooterChipsByPartKey, leaderboardMaterialArrivalByPartKey } =
+  const { rowsWithDeco, deltaRowsWithDeco, leaderboardFooterChipsByPartKey, leaderboardMaterialArrivalByPartKey, leaderboardMaterialArrivalBasisByPartKey } =
     await measureLeaderboardBoardPhase(
       sink,
       {
@@ -1066,6 +1068,7 @@ export async function continueLeaderboardCompositeBoard(
     resources,
     ...processChangeResidualPayload,
     leaderboardFooterChipsByPartKey,
-    leaderboardMaterialArrivalByPartKey
+    leaderboardMaterialArrivalByPartKey,
+    leaderboardMaterialArrivalBasisByPartKey
   };
 }

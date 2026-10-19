@@ -1,0 +1,14 @@
+[Unit]
+Description=Queue backup verification failure alert for %i
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+Environment=WEBHOOK_URL=
+ExecStart=/bin/bash {{ project_root }}/scripts/generate-alert.sh storage-backup-verify-failed "バックアップ点検が失敗しました" "service=%i;failureType=service-failed"
+TimeoutStartSec=30s
+NoNewPrivileges=true
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal

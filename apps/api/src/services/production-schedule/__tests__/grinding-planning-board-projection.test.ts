@@ -1,3 +1,4 @@
+import type { GrindingPlanningBoardCategory } from '@raspi-system/shared-types';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -48,12 +49,53 @@ const baseParams = (overrides: Partial<Parameters<typeof projectGrindingPlanning
   category: 'grinding' as const,
   seibanOrder: ['S-001'],
   machineNameBySeiban: new Map([['S-001', '機種A']]),
-  isResourceInCategory: (resourceCd: string, category: 'grinding' | 'cutting') =>
+  isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) =>
     category === 'grinding' && resourceCd.startsWith('G-'),
   ...overrides
 });
 
 describe('grinding-planning-board-projection', () => {
+  it.each([
+    [false, false, null], [true, false, 'manual'], [false, true, 'import'], [true, true, 'import']
+  ] as const)('projects manual=%s external=%s as %s for rows and splits', (manual, external, completionSource) => {
+    const updatedAt = new Date('2026-09-01');
+    const sourceDetail = detail({
+      productionScheduleProgress: { isCompleted: manual, updatedAt },
+      productionScheduleExternalCompletion: { isExternallyCompleted: external, updatedAt }
+    });
+    const project = (value: GrindingPlanningBoardProjectionRowDetail) => projectGrindingPlanningBoard(baseParams({
+      details: new Map([['row-1', value]])
+    })).items;
+    expect(project(sourceDetail)[0]).toMatchObject({ kind: 'row', isCompleted: manual || external, completionSource });
+    const splits = project({ ...sourceDetail, orderSplits: [
+      { id: 'split-1', splitQuantity: 1, dueDate: null, updatedAt },
+      { id: 'split-2', splitQuantity: 2, dueDate: null, updatedAt }
+    ] });
+    expect(splits).toHaveLength(2);
+    for (const split of splits) expect(split).toMatchObject({ kind: 'split', isCompleted: manual || external, completionSource });
+  });
+
+  it('changes the item revision when manual completion becomes import completion', () => {
+    const updatedAt = new Date('2026-09-01');
+    const manual = detail({ productionScheduleProgress: { isCompleted: true, updatedAt } });
+    const project = (value: GrindingPlanningBoardProjectionRowDetail) => projectGrindingPlanningBoard(baseParams({
+      details: new Map([['row-1', value]])
+    })).items[0]!;
+    expect(project({ ...manual, productionScheduleExternalCompletion: { isExternallyCompleted: true, updatedAt } }).itemRevision)
+      .not.toBe(project(manual).itemRevision);
+  });
+
+  it('exposes a pin without changing original resource, due or rank semantics', () => {
+    const input = baseParams();
+    const original = projectGrindingPlanningBoard(input).items[0]!;
+    const pinned = projectGrindingPlanningBoard({ ...input, overrides: new Map([[original.itemId, {
+      overrideResourceCd: null, overrideDueDate: null, dueDateCleared: null, alternateRank: null, orderPinned: true, version: 1
+    }]]) }).items[0]!;
+    expect(original.orderPinned).toBe(false);
+    expect(pinned).toMatchObject({ orderPinned: true, effectiveResourceCd: original.effectiveResourceCd,
+      effectiveDueDate: original.effectiveDueDate, originalRank: original.originalRank, alternateRank: original.alternateRank });
+    expect(pinned.itemRevision).not.toBe(original.itemRevision);
+  });
   it('distinguishes CSV fallback clears from explicit original restores and keeps direct split dates first', () => {
     const originalParentDueDate = new Date('2026-09-21T00:00:00.000Z');
     const plannedEndDate = new Date('2026-09-30T00:00:00.000Z');

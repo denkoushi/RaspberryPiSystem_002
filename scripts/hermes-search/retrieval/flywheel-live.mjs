@@ -2,13 +2,15 @@
 // Milestone 3). Each kept question is answered by the pipeline the kiosk uses (planner, hybrid
 // retrieval, relevance judge) inside the runner process, and the outcome is reduced to record ids
 // and a loss stage. The stage says where a question that should have shown its anchor was lost.
+import { isConversationalSource, recordSourceId } from '../hermes-source-definition.mjs';
 import { authorizedRecords } from './corpus.mjs';
 import { DGX_INDEX_TIMEOUT_MS, createDenseRuntime, createDgxEmbedder, denseSettings } from './dense-dgx.mjs';
 import { relevancePoolLimit } from './executor.mjs';
 import { RELEVANT } from './flywheel-filter.mjs';
 import { bareId } from './flywheel-pairs.mjs';
 import { learnedQueriesById } from './flywheel-learn.mjs';
-import { createRetrievalAnswering, loadEnrichmentById, loadLearnedQueriesById } from './worker.mjs';
+import { relevanceFailureReason } from './relevance-jev.mjs';
+import { createRetrievalAnswering, loadCauseById, loadEnrichmentById, loadLearnedQueriesById } from './worker.mjs';
 
 export const LOSS_STAGES = ['status', 'not_in_pool', 'judge_rejected', 'other_shown', 'failed'];
 // The day budget (1.5 s) is a kiosk latency limit, not a retrieval-quality one. At night the Pi 5
@@ -19,6 +21,7 @@ export const NIGHT_VECTOR_BUDGET_MS = 10_000;
 
 /** Ids a kept question may legitimately show: A, and B when both graders also gave it grade 3. */
 export function relevantIds(row) {
+  if (row.kind === 'filter') return [];
   const ids = [bareId(row.a)];
   if (row.b && row.grades?.dgx?.b === RELEVANT && row.grades?.jev?.b === RELEVANT) ids.push(bareId(row.b));
   return ids;
@@ -58,8 +61,11 @@ export async function createLiveScorer({ records, catalog, evaluate, env = proce
   }
   const enrichmentById = await loadEnrichmentById(env);
   const learnedById = learned ? learnedQueriesById(learned, { states: null }) : await loadLearnedQueriesById(env);
+  const visibleRecords = authorizedRecords(records).filter((record) => isConversationalSource(record.kind ?? recordSourceId(record)));
+  const causeById = await loadCauseById(env, visibleRecords);
   const answering = createRetrievalAnswering({
-    records: authorizedRecords(records),
+    records: visibleRecords,
+    causeById,
     catalog,
     evaluate,
     dense,
@@ -77,15 +83,25 @@ export async function createLiveScorer({ records, catalog, evaluate, env = proce
       const candidates = (result.candidateIds ?? []).slice(0, judged).map(bareId);
       return {
         outcome,
+        reason: outcome === 'unavailable' || outcome === 'failed' ? result.receipt?.reason ?? result.reason ?? null : null,
         shown,
         candidates,
         judged,
         loss: lossStage({ relevant: relevantIds(row), outcome, shown, candidates, judged }),
         vectorStatus: result.receipt?.timings?.vectorStatus ?? null,
+        plan: result.receipt?.plan ?? null,
+        // The terms the planner could not resolve (field names, or its own questions such as
+        // content, limit, period), so an ask-back can be diagnosed from the row the next morning.
+        unresolved: Array.isArray(result.receipt?.unresolved) ? result.receipt.unresolved.filter((term) => typeof term === 'string' && term) : [],
         ms: ms(),
       };
-    } catch {
-      return { outcome: 'failed', shown: [], candidates: [], judged, loss: 'failed', vectorStatus: null, ms: ms() };
+    } catch (error) {
+      const message = String(error?.message ?? 'live scoring failed')
+        .replace(/Bearer\s+\S+|(?:api[_-]?key|token|authorization)\s*[:=]\s*\S+/giu, '[redacted]')
+        .replace(/[\u0000-\u001f\u007f]/gu, ' ').slice(0, 200);
+      const diagnostic = relevanceFailureReason(error).replace(/^relevance judgment failed:?\s*/u, '');
+      const reason = diagnostic ? `${message} (${diagnostic})` : message;
+      return { outcome: 'failed', reason, shown: [], candidates: [], judged, loss: 'failed', vectorStatus: null, plan: null, unresolved: [], ms: ms() };
     }
   };
 }

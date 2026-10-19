@@ -55,7 +55,7 @@ export function AssemblyWorkSessionHeader({
           to={KIOSK_ASSEMBLY_HOME_PATH}
           className={buttonClassName('ghostOnDark', 'inline-flex min-h-8 items-center !px-2.5 !py-0 text-xs')}
         >
-          組立トップ
+          組立へ戻る
         </Link>
       </div>
     </header>

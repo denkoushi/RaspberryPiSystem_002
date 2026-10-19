@@ -7,16 +7,97 @@ import { spawnSync } from 'node:child_process';
 import { formatRealReport, formatReport, nightOfFile, readNightRows, summarizeLearned, summarizeNight, summarizeReal } from './flywheel-report.mjs';
 
 const live = (loss, extra = {}) => ({ outcome: loss == null ? 'answer' : 'no_result', shown: [], candidates: [], judged: 30, loss, vectorStatus: 'ok', ms: 10, ...extra });
+
+test('receipt report CLI prints route counts alongside unchanged synthetic and real reports', (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-report-receipts-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const receiptFile = path.join(dir, 'receipts-2026-10-14.jsonl');
+  const emptyFile = path.join(dir, 'receipts-2026-10-13.jsonl');
+  const syntheticFile = path.join(dir, 'questions-2026-10-14.jsonl');
+  const realFile = path.join(dir, 'real-2026-10-14.jsonl');
+  writeFileSync(receiptFile, [
+    { consultationRoute: { route: 'operation_guide', guideMiss: true, direct: true, question: '印刷の紙が出ない' } },
+    { hermesReceipt: { outcome: 'answer' } },
+  ].map(JSON.stringify).join('\n') + '\n{"torn');
+  for (const file of [emptyFile, syntheticFile, realFile]) writeFileSync(file, '');
+  const cli = spawnSync(process.execPath, [new URL('./flywheel-report.mjs', import.meta.url).pathname,
+    syntheticFile, receiptFile, realFile, emptyFile], { encoding: 'utf8' });
+  assert.equal(cli.status, 0, cli.stderr);
+  assert.equal(nightOfFile('receipts-2026-10-14.jsonl'), '2026-10-14');
+  assert.equal(cli.stdout, [
+    formatReport('2026-10-14', summarizeNight([])),
+    'routes 2026-10-14: 操作説明 1 件(知識なし 1 件: 『印刷の紙が出ない』)',
+    formatRealReport('2026-10-14', summarizeReal([])),
+    'routes 2026-10-13: none', ''
+  ].join('\n'));
+});
+
 const rows = [
   { a: 'a1', b: 'b1', seed: { style: 'terse' }, question: 'キズ 傷', kept: true, reason: null, overlap: 0.3, live: live(null) },
   { a: 'a2', b: 'b2', seed: { style: 'terse' }, question: 'テーブルの傷', kept: true, reason: null, live: live('not_in_pool', { vectorStatus: 'timeout' }) },
   { a: 'a3', b: 'b3', seed: { style: 'colloquial' }, question: 'テーブルに傷ついたことある？', kept: true, reason: null, live: live('judge_rejected') },
-  { a: 'a4', b: 'b4', seed: { style: 'kana' }, question: 'きず', kept: true, reason: null, live: live('status', { outcome: 'clarification' }) },
-  { a: 'a5', b: 'b5', seed: { style: 'terse' }, question: '塗装 はがれ', kept: true, reason: null, live: live('other_shown', { outcome: 'answer' }) },
+  { a: 'a4', b: 'b4', seed: { style: 'kana' }, question: 'きず', kept: true, reason: null, live: live('status', { outcome: 'clarification', unresolved: ['content'] }) },
+  { a: 'a5', b: 'b5', seed: { style: 'terse' }, question: '塗装 はがれ', kept: true, reason: null, live: live('other_shown', { outcome: 'answer', plan: { ambiguousDropped: [{ field: 'partName', candidates: ['台A', '台B'] }] } }) },
   { a: 'a6', b: 'b6', seed: { style: 'terse' }, question: '昨夜の質問', kept: true, reason: null },
   { a: 'a7', b: 'b7', seed: { style: 'terse' }, question: 'そのまま写した文', kept: false, reason: 'copied_run' },
   { a: 'a8', b: 'b8', seed: { style: 'typo' }, question: null, kept: false, reason: 'ungraded' },
 ];
+
+test('synthetic filter reporting leaves content statistics unchanged and lists only ids, templates and values', () => {
+  const outcomes = ['ok', 'mismatch', 'unsupported', 'clarified', 'failed', 'unavailable'];
+  const filters = outcomes.map((outcome, index) => ({
+    id: `f-${index}`, source: 'synthetic', kind: 'filter', kept: true, a: 'hostile-anchor',
+    question: 'QUESTION TEXT MUST NOT BE REPORTED', seed: { template: 'count3', value: 'North Shop' },
+    live: { outcome: outcome === 'clarified' ? 'clarification' : ['failed', 'unavailable'].includes(outcome) ? outcome : 'answer', loss: 'other_shown' },
+    filterCheck: { supported: outcome !== 'unsupported', ok: outcome === 'ok' },
+  }));
+  const { filter, ...content } = summarizeNight([...rows, ...filters]);
+  const { filter: empty, ...baseline } = summarizeNight(rows);
+  assert.deepEqual(content, baseline);
+  assert.equal(empty.questions, 0);
+  assert.deepEqual(filter, { questions: 6, supported: 5, ok: 1, mismatch: 1, unsupported: 1, clarified: 1, failed: 2,
+    issues: [{ id: 'f-1', template: 'count3', value: 'North Shop' }, { id: 'f-2', template: 'count3', value: 'North Shop' }] });
+  for (const input of [[...rows, ...filters], filters]) {
+    const report = formatReport('2026-10-03', summarizeNight(input));
+    assert.match(report, /synthetic filter: questions 6, supported 5, ok 1, mismatch 1, unsupported 1, clarified 1, failed 2/u);
+    assert.match(report, /f-1: template="count3" value="North Shop"/u);
+    assert.match(report, /f-2: template="count3" value="North Shop"/u);
+    assert.doesNotMatch(report, /QUESTION TEXT|hostile-anchor/u);
+  }
+});
+
+test('report counts unavailable and failed reasons while supporting older live lines', () => {
+  const failures = [
+    live('status', { outcome: 'unavailable', reason: 'relevance judgment failed: upstream_http 429' }),
+    live('status', { outcome: 'unavailable', reason: 'relevance judgment failed: upstream_http 429' }),
+    live('failed', { outcome: 'failed', reason: 'timeout' }),
+    live('status', { outcome: 'unavailable' }),
+    live(null, { outcome: 'answer', reason: 'ignored' }),
+  ];
+  const summary = summarizeNight(failures.map((live) => ({ question: 'キズ', kept: true, live })));
+  assert.deepEqual(summary.unavailableReasons, { 'upstream_http 429': 2, timeout: 1, unknown: 1 });
+  assert.match(formatReport('2026-10-03', summary), /unavailable reasons: upstream_http 429=2, timeout=1, unknown=1/u);
+  assert.deepEqual(summarizeNight(rows).unavailableReasons, {});
+  assert.doesNotMatch(formatReport('2026-10-03', summarizeNight(rows)), /unavailable reasons/u);
+});
+
+test('real reports count correct, mismatched and unsupported filter questions separately', () => {
+  const rows = [
+    { source: 'real', kind: 'filter', relevant: [], dayOutcome: 'answer', filterCheck: { supported: true, ok: true }, live: live(null) },
+    { source: 'real', kind: 'filter', relevant: [], dayOutcome: 'answer', filterCheck: { supported: true, ok: false }, live: live('filter_mismatch') },
+    { source: 'real', kind: 'filter', relevant: [], dayOutcome: 'answer', filterCheck: { supported: false, ok: null }, live: live('filter_unsupported') },
+    { source: 'real', kind: 'filter', relevant: [], dayOutcome: 'answer' },
+    { source: 'real', relevant: ['a'], dayOutcome: 'answer', live: live(null) },
+    { source: 'synthetic', kind: 'filter', filterCheck: { supported: true, ok: true } },
+  ];
+  const summary = summarizeReal(rows);
+  assert.deepEqual(summary.filter, { questions: 4, supported: 2, ok: 1, mismatch: 1 });
+  assert.equal(summary.questions, 5);
+  assert.equal(summary.withRelevant, 1);
+  assert.equal(summary.shown, 1);
+  assert.deepEqual(summary.lossStages, {});
+  assert.match(formatRealReport('2026-10-03', summary), /filter questions 4, correct 1, mismatch 1, unsupported 2/u);
+});
 
 test('a night summary counts generation, keep decisions, and live loss stages', () => {
   const summary = summarizeNight(rows);
@@ -27,6 +108,10 @@ test('a night summary counts generation, keep decisions, and live loss stages', 
   assert.equal(summary.medianLength, 6);
   assert.equal(summary.medianOverlap, 0.3);
   assert.deepEqual(summary.live, { scored: 5, shown: 1, otherShown: 1, notInPool: 1, judgeRejected: 1, status: 1, failed: 0, notRun: 1, denseFallbacks: 1, labelled: 0 });
+  assert.deepEqual(summary.askedBackTerms, { content: 1 });
+  assert.deepEqual(summary.ambiguousDroppedTerms, { partName: 1 });
+  assert.match(formatReport('2026-10-03', summary), /asked back on: content 1/u);
+  assert.match(formatReport('2026-10-03', summary), /ambiguous filter dropped for content search: partName 1/u);
 });
 
 test('labels count relevant shown records alongside rows already corrected by the runner', () => {
@@ -91,9 +176,10 @@ test('real summaries count only known relevance in shown and loss totals', () =>
   assert.deepEqual(summarizeReal(realRows), {
     questions: 6, withRelevant: 4, shown: 1, lossStages: { not_in_pool: 1, judge_rejected: 1, other_shown: 1 },
     dayOutcomes: { answer: 3, no_result: 2, no_other: 1 },
+    filter: { questions: 0, supported: 0, ok: 0, mismatch: 0 },
   });
   const formatted = formatRealReport('2026-10-03', summarizeReal(realRows));
-  assert.match(formatted, /^real 2026-10-03: questions 6, with relevant 4, relevant shown 1, nothing shown 2 \(outside judged candidates 1, rejected by judge 1, asked back or out of scope 0\), other records shown 1, day outcomes answer 3, no_result 2, no_other 1$/u);
+  assert.match(formatted, /^real 2026-10-03: questions 6, with relevant 4, relevant shown 1, nothing shown 2 \(outside judged candidates 1, rejected by judge 1, asked back or out of scope 0\), other records shown 1, day outcomes answer 3, no_result 2, no_other 1\n  filter questions 0, correct 0, mismatch 0, unsupported 0$/u);
   assert.match(formatRealReport('2026-10-03', summarizeReal([])), /questions 0, with relevant 0, relevant shown 0.*day outcomes none/u);
 });
 

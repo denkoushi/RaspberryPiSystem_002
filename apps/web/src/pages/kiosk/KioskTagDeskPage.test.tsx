@@ -29,6 +29,8 @@ vi.mock('../../api/domains/tag-desk', () => ({
   verifyTagDeskPin: vi.fn(),
   getTagDeskRegistry: vi.fn(),
   getTagDeskOptions: vi.fn(),
+  getTagDeskPositionRanks: vi.fn(),
+  saveTagDeskPositionRanks: vi.fn(),
   getTagDeskEvents: vi.fn(),
   resolveTagDeskUid: vi.fn(),
   linkTagDeskTag: vi.fn(),
@@ -72,7 +74,9 @@ describe('KioskTagDeskPage', () => {
     nfc.listeners.clear();
     api.verifyTagDeskPin.mockResolvedValue({ success: true });
     api.getTagDeskRegistry.mockResolvedValue(employees);
-    api.getTagDeskOptions.mockResolvedValue({ divisions: [], sections: [], departments: [], genres: [] });
+    api.getTagDeskPositionRanks.mockResolvedValue({ ranks: [], unmappedPositions: [{ positionName: '班長', employeeCount: 1 }] });
+    api.saveTagDeskPositionRanks.mockResolvedValue(undefined);
+    api.getTagDeskOptions.mockResolvedValue({ divisions: [], sections: [], departments: [], genres: [], positions: [] });
     api.getTagDeskEvents.mockResolvedValue([]);
     api.unlinkTagDeskTag.mockResolvedValue(undefined);
     api.linkTagDeskTag.mockResolvedValue([]);
@@ -89,6 +93,64 @@ describe('KioskTagDeskPage', () => {
     for (const digit of ['1', '1', '1', '1']) fireEvent.click(within(pad).getByRole('button', { name: digit }));
     expect(await screen.findByRole('alert')).toHaveTextContent('パスワードが違います');
     expect(api.getTagDeskRegistry).not.toHaveBeenCalled();
+  });
+
+  it('shows employee position chips and counts approvers across all rows, and hides them on asset tabs', async () => {
+    api.getTagDeskRegistry.mockResolvedValue([
+      { ...employees[0], positionName: '班長', positionApproval: 'approver' },
+      { ...employees[1], positionName: '一般', positionApproval: 'none' },
+      { ...employees[1], id: 'emp-3', name: '未対応 社員', positionName: '主事', positionApproval: 'unmapped' },
+      { ...employees[1], id: 'emp-4', name: '未設定 社員', positionName: null, positionApproval: null }
+    ]);
+    await unlock();
+    const registry = screen.getByRole('region', { name: '紐づけ先の一覧' });
+    expect(within(registry).getByText('職位')).toBeInTheDocument();
+    expect(within(registry).getByRole('button', { name: '職位の対応表' })).toBeInTheDocument();
+    const approver = within(registry).getByRole('button', { name: /山本 健太/ });
+    expect(within(approver).getByText('班長')).toBeInTheDocument();
+    expect(within(approver).getByText('承認可')).toHaveClass('text-[#34d399]');
+    expect(within(approver).getByText('承認可').querySelector('svg')).not.toBeNull();
+    const general = within(registry).getByRole('button', { name: /岡本 由香/ });
+    expect(within(general).getByText('一般')).toBeInTheDocument();
+    expect(within(general).queryByText(/承認/)).not.toBeInTheDocument();
+    expect(within(registry).getByText('対応表なし')).toHaveClass('text-[#ffb547]');
+    expect(within(registry).getByText('未設定')).toHaveClass('text-[#5c6d83]');
+    expect(within(registry).getByText('承認可 1人')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('名前・コードで探す'), { target: { value: '未設定' } });
+    expect(within(registry).getByText('承認可 1人')).toBeInTheDocument();
+    api.getTagDeskRegistry.mockResolvedValue([]);
+    for (const tab of ['工具', '計測機器', '吊具']) {
+      fireEvent.click(screen.getByRole('tab', { name: tab }));
+      expect(within(registry).queryByText('職位')).not.toBeInTheDocument();
+      expect(within(registry).queryByRole('button', { name: '職位の対応表' })).not.toBeInTheDocument();
+      expect(within(registry).queryByText(/承認可/)).not.toBeInTheDocument();
+    }
+  });
+
+  it('opens the ladder without re-entering the PIN and refreshes registry and options after saving', async () => {
+    api.getTagDeskRegistry.mockResolvedValue([{ ...employees[0], positionName: '班長', positionApproval: 'unmapped' }]);
+    await unlock();
+    const optionsBefore = api.getTagDeskOptions.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: '職位の対応表' }));
+    const chip = await screen.findByRole('button', { name: '班長 1人' });
+    expect(api.getTagDeskPositionRanks).toHaveBeenCalledWith('4821');
+    fireEvent.click(chip);
+    fireEvent.click(screen.getByRole('button', { name: '部長相当に置く' }));
+    api.getTagDeskRegistry.mockResolvedValue([{ ...employees[0], positionName: '班長', positionApproval: 'approver' }]);
+    api.getTagDeskOptions.mockResolvedValue({ divisions: [], sections: [], departments: [], genres: [], positions: [{ name: '班長', approval: 'approver' }] });
+    fireEvent.click(screen.getByRole('button', { name: '保存（1件）' }));
+    await screen.findByText('保存しました');
+    expect(api.saveTagDeskPositionRanks).toHaveBeenCalledWith('4821', { ranks: [{ positionName: '班長', rank: 'general_manager' }] });
+    expect(api.getTagDeskOptions.mock.calls.length).toBeGreaterThan(optionsBefore);
+    fireEvent.click(screen.getByRole('button', { name: '戻る' }));
+    const registry = await screen.findByRole('region', { name: '紐づけ先の一覧' });
+    expect(within(registry).getByText('承認可')).toBeInTheDocument();
+    expect(within(registry).queryByText('対応表なし')).not.toBeInTheDocument();
+    expect(api.verifyTagDeskPin).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: '社員を追加' }));
+    fireEvent.change(screen.getByRole('combobox', { name: '職位' }), { target: { value: '班長' } });
+    expect(screen.getByRole('combobox', { name: '職位' })).toHaveValue('班長');
+    expect(screen.getAllByText('承認可')).toHaveLength(2);
   });
 
   it('shows where a read tag is bound and releases it only after the second press', async () => {

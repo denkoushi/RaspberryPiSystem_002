@@ -14,14 +14,23 @@ export type TimedHoverRevealHandlers = {
 
 type TimedHoverRevealInternal = TimedHoverRevealHandlers & {
   open: () => void;
+  close: () => void;
 };
 
 /**
  * ホットゾーン／パネル hover で開き、leave 後に遅延で閉じる（マウス前提）。
  * ウィンドウ端の mousemove は含めない（Kiosk ヘッダー用は useKioskEdgeHeaderReveal で追加）。
  */
-export function useTimedHoverReveal(enabled: boolean): TimedHoverRevealInternal {
+/** 'timer' は leave 後の自動クローズ、'manual' は Esc や外側クリックなどの明示クローズ。 */
+export type TimedHoverRevealCloseReason = 'timer' | 'manual';
+
+export function useTimedHoverReveal(
+  enabled: boolean,
+  canClose?: (reason: TimedHoverRevealCloseReason) => boolean
+): TimedHoverRevealInternal {
   const [isVisible, setIsVisible] = useState(false);
+  const canCloseRef = useRef(canClose);
+  canCloseRef.current = canClose;
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearCloseTimer = useCallback(() => {
@@ -36,12 +45,24 @@ export function useTimedHoverReveal(enabled: boolean): TimedHoverRevealInternal 
     setIsVisible(true);
   }, [clearCloseTimer]);
 
+  const close = useCallback(() => {
+    clearCloseTimer();
+    if (canCloseRef.current?.('manual') === false) return;
+    setIsVisible(false);
+  }, [clearCloseTimer]);
+
   const scheduleClose = useCallback(() => {
     clearCloseTimer();
-    closeTimerRef.current = setTimeout(() => {
+    const tick = () => {
       closeTimerRef.current = null;
+      // 閉じられない間（モーダル表示中など）は待ち続け、解消後に閉じる。再入時は open が予約を消す。
+      if (canCloseRef.current?.('timer') === false) {
+        closeTimerRef.current = setTimeout(tick, KIOSK_REVEAL_CLOSE_DELAY_MS);
+        return;
+      }
       setIsVisible(false);
-    }, KIOSK_REVEAL_CLOSE_DELAY_MS);
+    };
+    closeTimerRef.current = setTimeout(tick, KIOSK_REVEAL_CLOSE_DELAY_MS);
   }, [clearCloseTimer]);
 
   useEffect(() => {
@@ -75,6 +96,7 @@ export function useTimedHoverReveal(enabled: boolean): TimedHoverRevealInternal 
     onHotZoneEnter,
     onHeaderMouseEnter,
     onHeaderMouseLeave,
-    open
+    open,
+    close
   };
 }

@@ -7,7 +7,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { referenceDate } from './period-parse.mjs';
 import { createPlanner } from './planner-jev.mjs';
-import { findCandidateValues } from './value-index.mjs';
+import { conversationalEntries } from './catalog.mjs';
+import { buildValueIndex, findCandidateValues } from './value-index.mjs';
 import { compactPlan, loadRetrievalResources } from './worker.mjs';
 
 function filterMap(plan) {
@@ -146,6 +147,8 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const dialogues = JSON.parse(fs.readFileSync(args.gold, 'utf8'));
   const resources = await loadRetrievalResources({ ...process.env, HERMES_TRIAL_SNAPSHOT_PATH: args.snapshot });
+  resources.catalog = conversationalEntries(resources.catalog);
+  resources.valueIndex = buildValueIndex(resources.records, resources.catalog);
   const planner = createPlanner();
   const now = args.now ? referenceDate(args.now) : null;
   const report = await evaluateDialogues({

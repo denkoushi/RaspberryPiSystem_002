@@ -9,6 +9,7 @@ import type { DurableFileStorePort } from '../file-storage/durable-file-store.po
 import { FileStorageAlreadyExistsError } from '../file-storage/file-storage-errors.js';
 import { getFileStorageRuntime } from '../file-storage/file-storage-runtime.js';
 import { getKnowledgeRuntime } from '../knowledge/knowledge-runtime.js';
+import { normalizeProcedureMaterialPdfText } from './procedure-material-pdf-text.service.js';
 import { procedureContentSchema } from '../knowledge/procedure-content.js';
 
 type KnowledgeRuntime = ReturnType<typeof getKnowledgeRuntime>;
@@ -19,7 +20,7 @@ type ReadonlyKnowledge = {
 type KnowledgeRef = { kind: 'source' | 'procedure_step'; sourceId?: string; imageId?: string; procedureId?: string; revisionNumber?: number; stepId?: string; fromDisplay?: true };
 type Candidate = {
   candidateKey: string; kind: 'TEXT' | 'PHOTO'; title: string; summary?: string; preview: string; sourceLabel: string;
-  text: string; imageId?: string; originalKey?: string; knowledgeRef: KnowledgeRef; subjectHint: string; receivedAt: Date; searchText: string;
+  text: string; imageDescription?: string; imageId?: string; originalKey?: string; knowledgeRef: KnowledgeRef; subjectHint: string; receivedAt: Date; searchText: string;
 };
 type CandidateSnapshot = { items: Candidate[]; imageIds: Set<string> };
 const textLimit = 10_000;
@@ -77,6 +78,7 @@ export class ProcedureMaterialKnowledgeService {
     // Runtime source DTOs omit the chosen procedure; read its headers in one query.
     const materials = await this.db.knowledgeProcedureMaterial.findMany({ where: { sourceId: { in: sources.map(({ source }) => source.id) } }, select: { sourceId: true, procedure: { select: headerSelect } } });
     const originals = new Map(sources.flatMap(({ source }) => source.images.map((image) => [image.id, image.originalKey] as const)));
+    const descriptions = new Map(sources.flatMap(({ organized }) => organized.photos.map((photo) => [photo.id, photo.description] as const)));
     const result: Candidate[] = [];
     for (const { source, organized } of sources) {
       const header = materials.find((m) => m.sourceId === source.id)?.procedure;
@@ -86,6 +88,7 @@ export class ProcedureMaterialKnowledgeService {
       if (source.text.trim()) result.push({ ...common, candidateKey: `knowledge:source:${source.id}:text`, kind: 'TEXT', text: source.text, summary: organized.summary,
         preview: source.text.slice(0, 200), knowledgeRef: { kind: 'source', sourceId: source.id } });
       for (const image of source.images) result.push({ ...common, candidateKey: `knowledge:source:${source.id}:image:${image.id}`, kind: 'PHOTO', text: '', imageId: image.id, originalKey: image.originalKey,
+        imageDescription: organized.photos.find((p) => p.id === image.id)?.description,
         preview: organized.photos.find((p) => p.id === image.id)?.description ?? '', knowledgeRef: { kind: 'source', sourceId: source.id, imageId: image.id } });
     }
     for (const document of documents) {
@@ -100,7 +103,7 @@ export class ProcedureMaterialKnowledgeService {
           searchText: [subjectHint, document.target, document.workType, text].filter(Boolean).join('\n') };
         result.push({ ...common, candidateKey: `${prefix}:text`, kind: 'TEXT', text, preview: text.slice(0, 200), knowledgeRef });
         for (const photo of step.photos) result.push({ ...common, candidateKey: `${prefix}:image:${photo.imageId}`, kind: 'PHOTO', text: '', imageId: photo.imageId, originalKey: originals.get(photo.imageId),
-          preview: photo.caption, knowledgeRef: { ...knowledgeRef, imageId: photo.imageId } });
+          imageDescription: descriptions.get(photo.imageId), preview: photo.caption, knowledgeRef: { ...knowledgeRef, imageId: photo.imageId } });
       }
     }
     return result;
@@ -108,8 +111,8 @@ export class ProcedureMaterialKnowledgeService {
 
   async list(options: { q?: string; limit?: number } = {}) {
     if (!this.enabled()) return { enabled: false, items: [] };
-    const q = options.q?.toLowerCase();
-    const candidates = (await this.candidates()).items.filter((c) => !q || c.searchText.toLowerCase().includes(q)).slice(0, Math.min(options.limit ?? 100, 300));
+    const q = options.q?.normalize('NFKC').toLowerCase();
+    const candidates = (await this.candidates()).items.filter((c) => !q || c.searchText.normalize('NFKC').toLowerCase().includes(q)).slice(0, Math.min(options.limit ?? 100, 300));
     const imported = await this.db.procedureMaterial.findMany({ where: { gmailDedupeKey: { in: candidates.map(firstDedupeKey) } }, select: { gmailDedupeKey: true } });
     const keys = new Set(imported.map((m) => m.gmailDedupeKey));
     return { enabled: true, items: candidates.map((candidate) => {
@@ -139,6 +142,10 @@ export class ProcedureMaterialKnowledgeService {
     let bytes: Buffer | undefined;
     if (candidate.kind === 'TEXT') data.text = candidate.text;
     else {
+      if (candidate.imageDescription !== undefined) {
+        data.imageDescription = normalizeProcedureMaterialPdfText(candidate.imageDescription, 1000) ?? '';
+        data.imageDescribedAt = new Date();
+      }
       const assets = this.runtime().assets;
       if (candidate.originalKey) {
         // readOriginal takes the original hash, while imageId is the display JPEG hash.

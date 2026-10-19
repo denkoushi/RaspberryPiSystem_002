@@ -3,7 +3,11 @@ import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import pkg from '@prisma/client';
 import { z } from 'zod';
 
+import { prisma } from '../../lib/prisma.js';
+import { PrismaKnowledgeReviewerRepository } from '../../services/knowledge/prisma-knowledge-reviewer.repository.js';
+import { positionRanksRequestSchema } from '../../services/knowledge/procedure-review-input.js';
 import { ApiError } from '../../lib/errors.js';
+import { throwIfPrismaNotFound } from '../../lib/prisma-errors.js';
 import { createKioskSettingsPinGuard } from '../../lib/kiosk-settings-pin.js';
 import { MeasuringInstrumentService } from '../../services/measuring-instruments/index.js';
 import { RiggingGearService } from '../../services/rigging/index.js';
@@ -49,6 +53,7 @@ const employeeCreateBody = z.object({
   firstName: z.string().trim().min(1, '名前は必須です'),
   department: optionalText,
   section: optionalText,
+  positionName: z.string().trim().max(200).nullable().transform((v) => v || null).optional(),
   status: z.nativeEnum(EmployeeStatus).optional()
 });
 const employeeUpdateBody = employeeCreateBody.partial();
@@ -61,7 +66,7 @@ const riggingUpdateBody = riggingCreateBody.partial();
 
 function notFoundAs(message: string) {
   return (error: unknown): never => {
-    if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') throw new ApiError(404, message);
+    throwIfPrismaNotFound(error, message);
     if (error instanceof PrismaClientKnownRequestError && error.code === 'P2002') {
       throw new ApiError(409, '同じコード・管理番号がすでに登録されています', undefined, 'DUPLICATE_CODE');
     }
@@ -76,6 +81,7 @@ export async function registerKioskTagDeskRoutes(app: FastifyInstance): Promise<
     rateLimitedCode: 'TAG_DESK_ACCESS_RATE_LIMITED'
   });
   const desk = new TagDeskService();
+  const reviewers = new PrismaKnowledgeReviewerRepository(prisma);
   const employees = new EmployeeService();
   const items = new ItemService();
   const instruments = new MeasuringInstrumentService();
@@ -93,6 +99,13 @@ export async function registerKioskTagDeskRoutes(app: FastifyInstance): Promise<
   app.get('/kiosk/tag-desk/registry', { ...withPin, config: { rateLimit: false } }, async (request) => {
     const { kind } = kindQuery.parse(request.query ?? {});
     return { rows: await desk.listRegistry(kind) };
+  });
+
+  app.get('/kiosk/tag-desk/position-ranks', withPin, async () => reviewers.listRanks());
+  app.put('/kiosk/tag-desk/position-ranks', withPin, async (request) => {
+    const { ranks } = positionRanksRequestSchema.parse(request.body ?? {});
+    await reviewers.replaceRanks(ranks);
+    return { ok: true };
   });
 
   app.get('/kiosk/tag-desk/options', withPin, async () => desk.listOptions());

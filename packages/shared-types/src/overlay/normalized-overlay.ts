@@ -154,11 +154,22 @@ export const overlaySaveInputSchema = z.object({
   elements: z.array(overlayElementInputSchema)
 });
 
+export const overlayRegionImageSchema = z.object({
+  assetId: z.string().trim().min(1).max(120),
+  bbox: overlayBBoxSchema,
+  zIndex: z.coerce.number().int(),
+  objectFit: z.enum(['contain', 'cover', 'fill']).optional(),
+  opacity: z.coerce.number().finite().min(0).max(1).optional()
+});
+
+export type OverlayRegionImage = z.infer<typeof overlayRegionImageSchema>;
+
 /** Shared body contract for image/text extraction from a page ROI. */
 export const overlayRegionInputSchema = z.object({
   accessPassword: z.string().max(128).default(''),
   pageIndex: z.coerce.number().int().min(0),
-  bbox: overlayRegionBBoxSchema
+  bbox: overlayRegionBBoxSchema,
+  overlays: z.array(overlayRegionImageSchema).max(20).optional()
 });
 
 type OverlayElementBase = {

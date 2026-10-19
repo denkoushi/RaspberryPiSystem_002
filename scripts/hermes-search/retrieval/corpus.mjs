@@ -1,3 +1,4 @@
+import { recordSourceId } from '../hermes-source-definition.mjs';
 // Authorized rows become catalog records. Merge and stamp stay free of log text.
 import { catalogEntries, fieldsWithRole, loadNonconformityCatalog } from './catalog.mjs';
 import { prepareLexicalCorpus } from './executor.mjs';
@@ -18,7 +19,7 @@ export function recordFromAuthorizedRow(row, catalog = loadNonconformityCatalog(
 
 export function mergeRecords(previous, incoming) {
   const byId = new Map();
-  const key = (record) => `${record.sourceId ?? 'nonconformity'}\0${record.id}`;
+  const key = (record) => `${recordSourceId(record)}\0${record.id}`;
   for (const record of previous ?? []) {
     if (record && typeof record.id === 'string') byId.set(key(record), record);
   }
@@ -54,7 +55,7 @@ export function stampAnswer(answer, dataAsOf) {
 export function buildCorpusView(records, catalog, dataAsOf) {
   const entries = catalogEntries(catalog);
   const bySource = Object.fromEntries(entries.map((entry) => {
-    const sourceRecords = records.filter((record) => (record.sourceId ?? 'nonconformity') === entry.id);
+    const sourceRecords = records.filter((record) => (recordSourceId(record)) === entry.id);
     return [entry.id, {
       records: sourceRecords,
       lexicalCorpus: prepareLexicalCorpus(sourceRecords, fieldsWithRole(entry, 'body')),

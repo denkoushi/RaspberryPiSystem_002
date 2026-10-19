@@ -16,7 +16,7 @@ import {
   getResourceCategoryPolicy,
   resolvePartMeasurementProcessGroupForApi,
 } from '../policies/resource-category-policy.service.js';
-import type { MaterialArrivalStatus } from '@raspi-system/shared-types';
+import type { MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
 import type {
   ProductionScheduleListResult,
   ProductionScheduleRow,
@@ -45,7 +45,8 @@ export async function decorateLeaderboardShellRowsForKioskFromHydratedRows(param
     return {
       rowDecorations: [],
       leaderboardFooterChipsByPartKey: {},
-      leaderboardMaterialArrivalByPartKey: {}
+      leaderboardMaterialArrivalByPartKey: {},
+      leaderboardMaterialArrivalBasisByPartKey: {}
     };
   }
 
@@ -69,7 +70,7 @@ export async function decorateLeaderboardShellRowsForKioskFromHydratedRows(param
     siteKey,
     preferredDisplayRowIds: preferredFooterScope
   });
-  const leaderboardMaterialArrivalByPartKey =
+  const { leaderboardMaterialArrivalByPartKey, leaderboardMaterialArrivalBasisByPartKey } =
     await buildLeaderboardMaterialArrivalByPartKeyForScheduleRows(enrichedRows);
 
   return {
@@ -85,7 +86,8 @@ export async function decorateLeaderboardShellRowsForKioskFromHydratedRows(param
       selfInspectionResourceCd: selfInspectionById.get(r.id)?.selfInspectionResourceCd ?? null
     })),
     leaderboardFooterChipsByPartKey: leaderboardFooterChipsByPartKey ?? {},
-    leaderboardMaterialArrivalByPartKey
+    leaderboardMaterialArrivalByPartKey,
+    leaderboardMaterialArrivalBasisByPartKey
   };
 }
 
@@ -103,7 +105,8 @@ export async function decorateLeaderboardShellRowsForKiosk(params: {
     return {
       rowDecorations: [],
       leaderboardFooterChipsByPartKey: {},
-      leaderboardMaterialArrivalByPartKey: {}
+      leaderboardMaterialArrivalByPartKey: {},
+      leaderboardMaterialArrivalBasisByPartKey: {}
     };
   }
 
@@ -146,6 +149,7 @@ export type ProductionScheduleLeaderboardDecorationPayload = {
   leaderboardFooterChipsByPartKey: Record<string, LeaderboardPartFooterProcessItem[]>;
   /** 部品キー → 材料の入荷状況（材料の購買行が無い部品は含めない） */
   leaderboardMaterialArrivalByPartKey: Record<string, MaterialArrivalStatus>;
+  leaderboardMaterialArrivalBasisByPartKey: Record<string, MaterialArrivalBasis>;
 };
 
 export async function enrichLeaderboardListRowsAndFooter(params: {
@@ -209,7 +213,7 @@ export async function enrichLeaderboardListRowsAndFooter(params: {
     siteKey,
     preferredDisplayRowIds: normalizeLeaderboardDisplayRowIdScope(rowsWithSelfInspection.map((r) => r.id))
   });
-  const leaderboardMaterialArrivalByPartKey =
+  const { leaderboardMaterialArrivalByPartKey, leaderboardMaterialArrivalBasisByPartKey } =
     await buildLeaderboardMaterialArrivalByPartKeyForScheduleRows(rowsWithSelfInspection);
 
   return {
@@ -218,6 +222,7 @@ export async function enrichLeaderboardListRowsAndFooter(params: {
     total,
     rows: rowsWithSelfInspection,
     ...(leaderboardFooterChipsByPartKey ? { leaderboardFooterChipsByPartKey } : {}),
-    leaderboardMaterialArrivalByPartKey
+    leaderboardMaterialArrivalByPartKey,
+    leaderboardMaterialArrivalBasisByPartKey
   };
 }

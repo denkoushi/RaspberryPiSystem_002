@@ -1,3 +1,4 @@
+import { selfInspectionQueryKeys } from '../../api/queryKeys/selfInspection';
 
 import { areRequiredSelfInspectionSlotsFilled } from './selfInspectionEntrySlots';
 import { isSelfInspectionSessionSeedPending } from './selfInspectionSessionPlaceholder';
@@ -108,7 +109,7 @@ export function patchSelfInspectionSessionCachesAfterEntrySave(
   savedEntry: SelfInspectionLotEntryDto
 ): void {
   const queries = queryClient.getQueryCache().findAll({
-    queryKey: ['self-inspection-session', sessionId]
+    queryKey: selfInspectionQueryKeys.sessionEntriesAll(sessionId)
   });
 
   for (const query of queries) {
@@ -124,7 +125,7 @@ export function patchSelfInspectionSessionCachesAfterEntrySave(
 
   if (queries.length === 0) {
     queryClient.setQueryData<SelfInspectionSessionDetailDto>(
-      ['self-inspection-session', sessionId, savedEntry.entryIndex],
+      selfInspectionQueryKeys.session(sessionId, savedEntry.entryIndex),
       (previous) => applySelfInspectionEntrySaveToSessionCache(previous, savedEntry, savedEntry.entryIndex)
     );
   }

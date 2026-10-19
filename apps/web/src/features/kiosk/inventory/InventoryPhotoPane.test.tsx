@@ -44,3 +44,9 @@ describe('InventoryLocationBlocks', () => {
     expect(within(location).getByText('引出し').nextSibling).toHaveTextContent('3');
   });
 });
+
+it('renders a single photo without an enlargement button', () => {
+  render(<InventoryPhotoPane photos={photos.slice(0, 1)} />);
+  expect(screen.getByAltText('a.jpg')).toBeInTheDocument();
+  expect(screen.queryByRole('button')).not.toBeInTheDocument();
+});

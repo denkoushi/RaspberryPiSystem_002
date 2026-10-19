@@ -13,6 +13,13 @@ const heldout = ids.find((id) => splitOf(id) === 'heldout');
 const synthetic = (extra = {}) => ({ a: `nonconformity:${dev}`, question: '工具がぐらぐら', kept: true, live: { loss: 'not_in_pool' }, ...extra });
 const real = (extra = {}) => ({ source: 'real', id: 'r-abc', split: 'dev', relevant: ['nonconformity:real-target', 'other'], question: '机ががたつく', live: { loss: 'judge_rejected' }, ...extra });
 
+test('filter rows cannot propose learned queries or enter synthetic held-out comparisons', async () => {
+  assert.deepEqual(proposeLearnedQueries({ rows: [synthetic({ kind: 'filter' }), real({ kind: 'filter' })], night }), []);
+  const check = await evaluateCandidates({ questions: [{ kind: 'filter', source: 'synthetic', split: 'heldout', relevant: ['a'], question: 'department' }],
+    scoreBaseline: async () => assert.fail('filter excluded'), scoreCandidate: async () => assert.fail('filter excluded') });
+  assert.deepEqual(check, { heldout: { n: 0, gained: 0, lost: 0 }, real: { n: 0, gained: 0, lost: 0 } });
+});
+
 test('proposals use dev failures, the first relevant id, and only the two learnable losses', () => {
   const rows = [synthetic(), real(), synthetic({ kept: false }), synthetic({ a: heldout }), real({ split: 'heldout' }), real({ relevant: [] }),
     synthetic({ a: null }), synthetic({ question: ' ' }), ...[null, 'other_shown', 'status', 'failed'].map((loss) => synthetic({ live: { loss } }))];

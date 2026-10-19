@@ -162,7 +162,7 @@ describe('Knowledge review API', () => {
     expect(mocks.listPendingApproval).not.toHaveBeenCalled(); expect(mocks.getForReview).not.toHaveBeenCalled();
     expect(mocks.approve).not.toHaveBeenCalled(); expect(mocks.returnRevision).not.toHaveBeenCalled(); await app.close();
   });
-  it.each(['leader', 'section_chief', 'manager'])('lets %s list, read, approve and return using the device actor', async rank => {
+  it.each(['leader', 'section_chief', 'manager', 'general_manager', 'executive'])('lets %s list, read, approve and return using the device actor', async rank => {
     const app = server(); const employee = { ...reviewer, rank };
     mocks.resolveReviewer.mockResolvedValue(employee); mocks.listPendingApproval.mockResolvedValue([{ revisionId: id }]);
     mocks.getForReview.mockResolvedValue({ revisionId: id, state: 'pending_approval' }); mocks.approve.mockResolvedValue(undefined); mocks.returnRevision.mockResolvedValue(undefined);
@@ -221,8 +221,8 @@ describe('Knowledge review API', () => {
   it.each(['ADMIN', 'MANAGER'])('allows JWT %s to read and replace mappings', async role => {
     const app = server(); const table = { ranks: [], unmappedPositions: [{ positionName: '主事', employeeCount: 2 }] }; mocks.listRanks.mockResolvedValue(table);
     expect((await app.inject({ url: '/hermes-knowledge/position-ranks', headers: jwtHeaders(role) })).json()).toEqual(table);
-    expect((await app.inject({ method: 'PUT', url: '/hermes-knowledge/position-ranks', headers: jwtHeaders(role), payload: { ranks: [{ positionName: '主任', rank: 'leader' }] } })).statusCode).toBe(200);
-    expect(mocks.replaceRanks).toHaveBeenCalledWith([{ positionName: '主任', rank: 'leader' }]); await app.close();
+    expect((await app.inject({ method: 'PUT', url: '/hermes-knowledge/position-ranks', headers: jwtHeaders(role), payload: { ranks: [{ positionName: '部長', rank: 'general_manager' }, { positionName: '役員', rank: 'executive' }] } })).statusCode).toBe(200);
+    expect(mocks.replaceRanks).toHaveBeenCalledWith([{ positionName: '部長', rank: 'general_manager' }, { positionName: '役員', rank: 'executive' }]); await app.close();
   });
   it('denies device keys and VIEWER JWT for mapping reads and writes', async () => {
     const app = server();

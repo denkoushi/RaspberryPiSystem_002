@@ -1,118 +1,157 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
-import { getProcedureManualAssignments, listProcedureManualModels, listProcedureManualProcesses, listProcedureMaterials } from '../../../api/client';
-import { Input } from '../../../components/ui/Input';
+import { getProcedureManualAssignments, getProcedureManualOverview, listProcedureManualCommon, listProcedureManualModels, listProcedureManualParts, listProcedureManualProcesses } from '../../../api/client';
+import { normalizeWorkInstructionPartNumber } from '../../../lib/workInstructionRules';
 import { AssemblyProcedureSequenceViewer } from '../AssemblyProcedureSequenceViewer';
+import { kioskAssemblyManualsWorkshopPath } from '../assemblyRoutes';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
-import { ProcedureManualAssignmentDialog, procedureManualModelKey } from './ProcedureManualAssignmentDialog';
-import { ProcedureManualBlankDialog } from './ProcedureManualBlankDialog';
-import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
+import { ManualThumbnail } from './ManualThumbnail';
+import { splitProcedureManualName } from './procedure-manual-name';
+import { procedureManualModelKey } from './ProcedureManualAssignmentDialog';
+import { ProcedureManualCommonList, filterProcedureManualCommonItems } from './ProcedureManualCommonList';
+import { ProcedureManualFilterPane } from './ProcedureManualFilterPane';
+import { ProcedureManualPageRail } from './ProcedureManualPageRail';
 import { ProcedurePageVideoStrip } from './ProcedurePageVideoStrip';
-import { ProcedureVideoShelfDialog } from './ProcedureVideoShelfDialog';
 
-import type { AssemblyProcedureSequencePageDto, ProcedureManualDetailDto, ProcedureManualModelDto, ProcedureManualProcessDto, AssemblyProcedureSequenceStepDto } from '../types';
+import type { AssemblyProcedureSequencePageDto, ProcedureManualDetailDto, ProcedureManualAssignmentOverviewItemDto, ProcedureManualModelDto, ProcedureManualProcessDto } from '../types';
+
+const shortName = (process?: ProcedureManualProcessDto) => process?.name.replace(/工程/g, '') ?? '';
 
 export function ProcedureManualBrowser() {
-  const [blankOpen, setBlankOpen] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const [listOpen, setListOpen] = useState(() => {
+    // 対象と工程が決まっていないと右側に何も出ないので、一覧を開いて始める
+    if (params.has('common') || !(params.get('model') || params.get('part')) || !params.get('process')) return true;
+    try { return localStorage.getItem('procedure-manuals-list-open') === 'true'; } catch { return false; }
+  });
+  const [twoPages, setTwoPages] = useState(false);
+  const toggleList = () => {
+    const next = !listOpen;
+    setListOpen(next);
+    if (next) { setTwoPages(false); if (subjectKind === 'COMMON') setModelCodeKey(''); }
+    try { localStorage.setItem('procedure-manuals-list-open', String(next)); } catch { /* Storage is optional on kiosk devices. */ }
+  };
   const [models, setModels] = useState<ProcedureManualModelDto[]>([]);
   const [processes, setProcesses] = useState<ProcedureManualProcessDto[]>([]);
-  const [modelCodeKey, setModelCodeKey] = useState('');
-  const [processId, setProcessId] = useState('');
+  const [allKind, setAllKind] = useState<'MODEL' | 'PART' | 'COMMON'>(() => params.has('common') ? 'COMMON' : params.has('part') ? 'PART' : 'MODEL');
+  const [modelCodeKey, setModelCodeKey] = useState(() => params.has('common') ? '' : params.has('part') ? normalizeWorkInstructionPartNumber(params.get('part')) : procedureManualModelKey(params.get('model') ?? ''));
+  const [processId, setProcessId] = useState(() => params.get('process') ?? '');
+  const subjectKind = processes.find(row => row.id === processId)?.subjectKind ?? allKind;
+  const [kanaRow, setKanaRow] = useState('');
+  const [partCandidates, setPartCandidates] = useState<ProcedureManualModelDto[]>([]);
+  const [userSelectedModel, setUserSelectedModel] = useState(false);
+  const [initialDocumentId, setInitialDocumentId] = useState<string>();
+  const [items, setItems] = useState<ProcedureManualAssignmentOverviewItemDto[]>([]);
   const [search, setSearch] = useState('');
+  const [partDigits, setPartDigits] = useState('');
   const [detail, setDetail] = useState<ProcedureManualDetailDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [videoShelfOpen, setVideoShelfOpen] = useState(false);
-  const [shelfOpen, setShelfOpen] = useState(false);
-  const [materialCount, setMaterialCount] = useState(0);
-  useEffect(() => {
-    let cancelled = false;
-    void listProcedureMaterials({ state: 'unplaced', limit: 500 }).then((items) => { if (!cancelled) setMaterialCount(items.length); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [shelfOpen]);
-  const [stepInfo, setStepInfo] = useState<{ step: AssemblyProcedureSequenceStepDto | null; index: number; total: number } | null>(null);
-  const onStepChange = useCallback((step: AssemblyProcedureSequenceStepDto | null, index: number, total: number) => setStepInfo({ step, index, total }), []);
-  const [editing, setEditing] = useState(false);
-  const [version, setVersion] = useState(0);
   const [currentPage, setCurrentPage] = useState<AssemblyProcedureSequencePageDto | null>(null);
   const onPageChange = useCallback((page: AssemblyProcedureSequencePageDto | null) => setCurrentPage(page), []);
   const approval = detail?.sequence.documents.find(document => (document.assemblyProcedureDocumentId ?? document.kioskDocumentId) === currentPage?.documentId)?.lastApproval;
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([listProcedureManualModels(), listProcedureManualProcesses()]).then(([nextModels, nextProcesses]) => {
-      if (!cancelled) { setModels(nextModels); setProcesses(nextProcesses); }
+    void Promise.all([listProcedureManualModels(), allKind === 'COMMON' ? listProcedureManualCommon(true).then(() => listProcedureManualProcesses()) : listProcedureManualProcesses(), getProcedureManualOverview(undefined, true), listProcedureManualParts()]).then(([nextModels, nextProcesses, nextOverview, nextParts]) => {
+      if (!cancelled) { setModels(nextModels); setProcesses(nextProcesses); setItems(nextOverview.processes.flatMap(process => process.items)); setPartCandidates(nextParts.map(part => ({ modelCode: part.partNumber, modelCodeKey: part.partNumberKey }))); }
     }).catch((e: unknown) => { if (!cancelled) setError(readAssemblyApiErrorMessage(e, '一覧を取得できません')); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [version]);
+  }, [allKind]);
+
+  useEffect(() => {
+    if (!modelCodeKey || !userSelectedModel) return;
+    const available = [...new Set(items.filter(item => item.modelCodeKey === modelCodeKey && (processes.find(process => process.id === item.processId)?.subjectKind ?? 'MODEL') === subjectKind).map(item => item.processId))];
+    if (available.length === 1) setProcessId(current => current || available[0]);
+  }, [items, modelCodeKey, userSelectedModel, processes, subjectKind]);
 
   useEffect(() => {
     let cancelled = false;
     setDetail(null);
     setCurrentPage(null);
-    setStepInfo(null);
     setError(null);
     if (!modelCodeKey || !processId) return;
     void getProcedureManualAssignments(modelCodeKey, processId).then((next) => { if (!cancelled) setDetail(next); })
       .catch((e: unknown) => { if (!cancelled) setError(readAssemblyApiErrorMessage(e, '要領書を取得できません')); });
     return () => { cancelled = true; };
-  }, [modelCodeKey, processId, version]);
+  }, [modelCodeKey, processId]);
 
   const visibleModels = models.filter((m) => m.modelCodeKey.includes(procedureManualModelKey(search)));
-  const currentProcess = processes.find((process) => process.id === processId);
-  const navButtonClass = 'min-h-12 w-full rounded-lg px-3 py-2 text-left text-[21px] font-bold hover:bg-[#27313b]';
-  const toolClass = 'inline-flex h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-[#344252] px-3.5 text-[19px] font-bold disabled:opacity-40';
+  const visibleItems = subjectKind === 'COMMON' ? filterProcedureManualCommonItems(items, processes, processId, kanaRow, search) : items.filter(item => item.subjectKind !== 'COMMON' && processes.find(row => row.id === item.processId)?.subjectKind !== 'COMMON' && (!modelCodeKey || item.modelCodeKey === modelCodeKey)
+    && (!processId || item.processId === processId) && (!modelCodeKey || (processes.find(process => process.id === item.processId)?.subjectKind ?? 'MODEL') === subjectKind));
+  const showOverview = listOpen && (subjectKind === 'COMMON' ? !modelCodeKey : !modelCodeKey || !processId);
+  const commonReturnTo = kioskAssemblyManualsWorkshopPath({ common: '1', process: processId });
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (subjectKind === 'COMMON') next.set('common', '1');
+    else if (modelCodeKey) next.set(subjectKind === 'PART' ? 'part' : 'model', modelCodeKey);
+    if (processId) next.set('process', processId);
+    setParams(next, { replace: true });
+  }, [subjectKind, modelCodeKey, processId, setParams]);
+  const railLinkClass = 'grid h-12 w-12 shrink-0 place-items-center rounded-[10px] border border-[#344252] text-[#eef3f6]';
+  const railNav = <>
+    <Link to="/kiosk/assembly" aria-label="組立へ戻る" title="組立へ戻る" className={railLinkClass}><svg aria-hidden="true" className="h-[26px] w-[26px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2}><path d="M3 11l9-7 9 7M5 10v10h14V10" /></svg></Link>
+    <Link to={subjectKind === 'COMMON' ? commonReturnTo : kioskAssemblyManualsWorkshopPath({ [subjectKind === 'PART' ? 'part' : 'model']: modelCodeKey, process: processId })} aria-label="作る・直す" title="作る・直す" className={railLinkClass}><svg aria-hidden="true" className="h-[26px] w-[26px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2}><path d="M4 20h4L19 9l-4-4L4 16z" /><path d="M13 7l4 4" /></svg></Link>
+  </>;
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-[600px_minmax(0,1fr)] bg-[#0f1317] text-[#eef3f6]" data-testid="procedure-manuals-split">
-      <div className="flex min-h-0 flex-col border-r border-[#27313b] bg-[#161c22]" data-testid="procedure-manuals-left">
-        <header className="grid shrink-0 gap-2 border-b border-[#27313b] px-3.5 py-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="mr-2.5 text-2xl font-black tracking-widest">要領書</h1>
-            <button className={`${toolClass} border-[#3ba776] bg-[#3ba776] text-[#0b1a12]`} onClick={() => { setBlankOpen(true); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>白紙から作る</button>
-            <button className={toolClass} onClick={() => setShelfOpen(true)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 15l5-5 4 4 3-3 6 6" /></svg>素材 <span className="font-mono font-medium">{materialCount}{materialCount === 500 ? '+' : ''}</span></button>
-            <button className={toolClass} onClick={() => setVideoShelfOpen(true)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="6" width="14" height="12" rx="2" /><path d="M17 10l4-2v8l-4-2" /></svg>動画</button>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button className={`${toolClass} border-transparent text-[#9fadb9]`} disabled={loading || processes.length === 0} onClick={() => setEditing(true)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h16M4 12h16M4 17h10" /></svg>割り当て</button>
-            <Link to="/kiosk/assembly" className={`${toolClass} border-transparent text-[#9fadb9]`}>組立へ戻る</Link>
-            <span className="ml-auto min-w-0 text-right text-lg text-[#9fadb9]"><b className="text-[#eef3f6]">{modelCodeKey}</b>{currentProcess ? ` › ${processes.find((process) => process.id === currentProcess.parentId)?.name ?? ''} › ${currentProcess.name}` : ''}</span>
-          </div>
-        </header>
-        {error ? <p role="alert" className="px-3 py-2 text-sm text-red-400">{error}</p> : null}
-        <div className="grid min-h-0 flex-1 grid-cols-2">
-          <section aria-label="機種一覧" className="min-h-0 overflow-auto border-r border-[#27313b] p-3.5">
-            <h2 className="mb-3 text-base font-bold tracking-widest text-[#9fadb9]">機種</h2>
-            <Input type="search" aria-label="機種検索" placeholder="型番で検索" className="mb-2 h-11 text-xl" value={search} onChange={(e) => setSearch(e.target.value)} />
-            {loading ? <p role="status" className="mt-2 text-sm">読込中…</p> : visibleModels.length === 0 ? <p className="mt-2 text-sm text-[#9fadb9]">機種がありません</p> : null}
-            {visibleModels.map((model) => <button key={model.modelCodeKey} className={`${navButtonClass} break-words ${modelCodeKey === model.modelCodeKey ? 'bg-[#27313b]' : ''}`} aria-pressed={modelCodeKey === model.modelCodeKey} onClick={() => { setModelCodeKey(model.modelCodeKey); setProcessId(''); }}>{model.modelCodeKey}</button>)}
-          </section>
-          <section aria-label="工程一覧" className="min-h-0 overflow-auto p-3.5">
-            <h2 className="mb-3 text-base font-bold tracking-widest text-[#9fadb9]">工程</h2>
-            {!modelCodeKey ? <p className="text-sm text-[#9fadb9]">機種を選択</p> : processes.filter((p) => p.parentId).map((process) => <button key={process.id} className={`${navButtonClass} ${processId === process.id ? 'bg-[#27313b]' : ''}`} aria-pressed={processId === process.id} onClick={() => setProcessId(process.id)}>{processes.find((p) => p.id === process.parentId)?.name} › {process.name}</button>)}
-        {detail?.assignments.filter((a) => a.unavailableReason).map((item) => <p key={item.id} role="status" className="p-2 text-sm text-[#f6b93b]">{item.label || `${item.sortOrder + 1}番目の文書`}: {item.unavailableReason === 'no_published_revision' ? '公開版なし' : '文書は無効です'}</p>)}
-            {currentPage && stepInfo ? <section aria-label="このページ" className="mt-3.5 space-y-2 text-[17px] text-[#9fadb9]">
-              <h2 className="text-base font-bold tracking-widest">このページ</h2>
-              <p>手順 {stepInfo.index + 1}/{stepInfo.total} ・ {stepInfo.step?.title || stepInfo.step?.documentTitle}</p>
-              <progress aria-label="手順の進捗" value={stepInfo.index + 1} max={stepInfo.total} className="h-2.5 w-[220px] max-w-full overflow-hidden rounded [&::-webkit-progress-bar]:bg-[#27313b] [&::-webkit-progress-value]:bg-[#5fc3e8]" />
-              {stepInfo.step?.instructionText ? <p className="whitespace-pre-wrap">{stepInfo.step.emphasis === 'caution' ? '⚠ 注意: ' : stepInfo.step.emphasis === 'important' ? '◆ 重要: ' : ''}{stepInfo.step.instructionText}</p> : null}
-              {approval ? <p className="truncate">承認: {approval.employeeName}{approval.positionName ? `(${approval.positionName})` : ''} {new Date(approval.approvedAt).toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p> : null}
-              <ProcedurePageVideoStrip key={`${currentPage.documentId}:${currentPage.pageIndex}`} videos={currentPage.videos ?? []} layout="manuals" />
-            </section> : null}
-          </section>
+    <div className="flex min-h-0 flex-1 flex-col bg-[#0b0f13] text-[#eef3f6]">
+      <h1 className="sr-only">要領書 見る</h1>
+    <div className={`grid min-h-0 flex-1 ${listOpen ? 'grid-cols-[460px_minmax(0,1fr)]' : 'grid-cols-[minmax(0,1fr)]'} bg-[#0f1317] text-[#eef3f6]`} data-open={listOpen} data-pages={twoPages ? 2 : 1} data-testid="procedure-manuals-split">
+      <div hidden={!listOpen} className={`${listOpen ? 'flex' : 'hidden'} min-h-0 flex-col border-r border-[#27313b] bg-[#161c22]`} data-testid="procedure-manuals-left">
+        <ProcedureManualFilterPane subjectKind={subjectKind} partCandidates={partCandidates} onKindChange={kind => { setAllKind(kind); setModelCodeKey(''); setSearch(''); setPartDigits(''); setUserSelectedModel(false); setKanaRow(''); if (kind === 'COMMON' || subjectKind === 'COMMON') setProcessId(''); }} processes={processes} items={items} models={visibleModels}
+          modelCodeKey={modelCodeKey} processId={processId} search={search} digitQuery={subjectKind === 'PART' ? partDigits : search}
+          onSearchChange={setSearch} onDigitQueryChange={subjectKind === 'PART' ? setPartDigits : setSearch}
+          onModelSelect={(key) => {
+            setInitialDocumentId(undefined);
+            const next = key === modelCodeKey ? '' : key;
+            setUserSelectedModel(Boolean(next)); setModelCodeKey(next);
+            if (modelCodeKey && next && subjectKind === 'MODEL') { setAllKind(subjectKind); setProcessId(''); }
+          }}
+          onProcessSelect={(id) => { if (subjectKind === 'COMMON') setModelCodeKey(''); setInitialDocumentId(undefined); const kind = processes.find(row => row.id === id)?.subjectKind ?? subjectKind; if (kind !== subjectKind) { setModelCodeKey(''); setSearch(''); setPartDigits(''); setUserSelectedModel(false); } setAllKind(kind); setProcessId(id); }} kanaRow={kanaRow} onKanaRowChange={setKanaRow} loading={loading} error={error} />
+        <div className="max-h-[40%] shrink-0 overflow-auto px-4">
+          {detail?.assignments.filter((a) => a.unavailableReason).map((item) => <p key={item.id} role="status" className="shrink-0 border-t border-[#27313b] p-2 text-sm text-[#f6b93b]">{item.label || `${item.sortOrder + 1}番目の文書`}: {item.unavailableReason === 'no_published_revision' ? '公開版なし' : '文書は無効です'}</p>)}
+          {currentPage ? <section aria-label="承認・動画" className="shrink-0 space-y-2 border-t border-[#27313b] py-2.5 text-[17px] text-[#9fadb9]">
+            <h2 className="text-base font-bold tracking-widest">承認・動画</h2>
+            {approval ? <p className="truncate">承認: {approval.employeeName}{approval.positionName ? `(${approval.positionName})` : ''} {new Date(approval.approvedAt).toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p> : null}
+            <ProcedurePageVideoStrip key={`${currentPage.documentId}:${currentPage.pageIndex}`} videos={currentPage.videos ?? []} layout="manuals" />
+          </section> : null}
         </div>
       </div>
-      <section aria-label="要領書" className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[#0a0d10]">
-        {!processId ? <p className="p-2 text-sm text-[#9fadb9]">工程を選択</p> : !detail && !error ? <p role="status">読込中…</p> : null}
+      <section aria-label="要領書" className="relative flex min-h-0 min-w-0 flex-col overflow-hidden bg-[#0a0d10]">
+        {error && !listOpen ? <p role="alert" className="p-2 text-red-400">{error}</p> : null}
+        {showOverview && subjectKind === 'COMMON' ? <div className="flex min-h-0 min-w-0 flex-1 flex-col pr-16"><ProcedureManualCommonList items={visibleItems} processes={processes} categoryId={processId} kanaRow={kanaRow} onView={item => {
+          setInitialDocumentId(item.documentId); setModelCodeKey(item.modelCodeKey); setProcessId(item.processId); setListOpen(false);
+        }} /></div> : showOverview ? <section aria-label="要領書一覧" className="min-h-0 flex-1 overflow-auto pr-16">
+          <div className="grid grid-cols-[64px_minmax(0,1.5fr)_minmax(0,1.5fr)_minmax(0,1.1fr)_minmax(0,1.3fr)_minmax(0,1fr)_70px] items-center gap-3 border-b border-[#27313b] px-5 py-3 text-[17px] font-bold text-[#9fadb9]">
+            <span aria-hidden="true" /><span>品名</span><span>品番</span><span>工程</span><span>作業</span><span>補足</span><span>ページ数</span>
+          </div>
+          {visibleItems.map(item => {
+            const child = processes.find(process => process.id === item.processId);
+            const name = splitProcedureManualName(item.title) ?? {
+              partName: item.title, subjectKey: item.modelCode,
+              process: shortName(processes.find(process => process.id === child?.parentId)), work: shortName(child), supplement: ''
+            };
+            return <button type="button" key={item.assignmentId} aria-label={item.title} title={item.title}
+            className="grid min-h-[72px] w-full grid-cols-[64px_minmax(0,1.5fr)_minmax(0,1.5fr)_minmax(0,1.1fr)_minmax(0,1.3fr)_minmax(0,1fr)_70px] items-center gap-3 border-b border-[#27313b] px-5 py-3 text-left text-[19px] hover:bg-[#1b222a]"
+            onClick={() => { setAllKind(processes.find(row => row.id === item.processId)?.subjectKind ?? 'MODEL'); setInitialDocumentId(item.documentId); setUserSelectedModel(true); setModelCodeKey(item.modelCodeKey); setProcessId(item.processId); }}>
+            <ManualThumbnail url={item.thumbnailPageUrl} />
+            <span className="min-w-0 truncate font-bold">{name.partName}</span>
+            <span className="min-w-0 truncate font-mono font-bold">{name.subjectKey}</span>
+            <span className="min-w-0 truncate">{name.process}</span>
+            <span className="min-w-0 truncate">{name.work}</span>
+            <span className="min-w-0 truncate text-[#9fadb9]">{name.supplement || '—'}</span>
+            <span className="text-center font-mono">{item.pageCount ?? '—'}</span>
+          </button>; })}
+          {loading ? <p role="status" className="p-5 text-[17px] text-[#9fadb9]">読込中…</p> : visibleItems.length === 0 ? <p className="p-5 text-[17px] text-[#9fadb9]">該当する要領書がありません</p> : null}
+        </section> : !processId ? <p className="p-2 text-sm text-[#9fadb9]">工程を選択</p> : !detail && !error ? <p role="status">読込中…</p> : null}
 
-        {detail && detail.sequence.documents.length > 0 ? <AssemblyProcedureSequenceViewer key={`${modelCodeKey}:${processId}:${version}`} sequence={detail.sequence} layout="manuals" showCurrentMarkerButton={false} onCurrentPageChange={onPageChange} onCurrentStepChange={onStepChange} className="min-h-0 flex-1" /> : detail ? <p className="p-2 text-sm text-[#9fadb9]">表示できる文書がありません</p> : null}
+        {!showOverview && detail && detail.sequence.documents.length > 0 ? <AssemblyProcedureSequenceViewer key={`${modelCodeKey}:${processId}`} sequence={detail.sequence} initialDocumentId={initialDocumentId} layout="manuals" showCurrentMarkerButton={false} onCurrentPageChange={onPageChange} listOpen={listOpen} onToggleList={toggleList} twoPages={twoPages} onToggleTwoPages={() => setTwoPages(!twoPages)} railNav={railNav} className="min-h-0 flex-1" /> : !showOverview && detail ? <p className="p-2 text-sm text-[#9fadb9]">表示できる文書がありません</p> : null}
+        {subjectKind === 'COMMON' && showOverview ? <ProcedureManualPageRail nav={railNav} /> : showOverview || !detail || detail.sequence.documents.length === 0 ? <ProcedureManualPageRail listOpen={listOpen} onToggleList={toggleList} nav={railNav} /> : null}
       </section>
-      {blankOpen ? <ProcedureManualBlankDialog models={models} processes={processes} modelCode={modelCodeKey} processId={processId} onClose={() => setBlankOpen(false)} /> : null}
-      {videoShelfOpen ? <ProcedureVideoShelfDialog onClose={() => setVideoShelfOpen(false)} /> : null}
-      {shelfOpen ? <ProcedureMaterialShelfDialog onClose={() => setShelfOpen(false)} /> : null}
-      {editing ? <ProcedureManualAssignmentDialog modelCode={models.find((m) => m.modelCodeKey === modelCodeKey)?.modelCode ?? ''} processId={processId} processes={processes} onClose={() => setEditing(false)} onSaved={(key, id) => { setEditing(false); setModelCodeKey(key); setProcessId(id); setVersion((v) => v + 1); }} /> : null}
+    </div>
     </div>
   );
 }

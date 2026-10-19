@@ -1,3 +1,4 @@
+import { createDeviceReadRateLimit } from '../../../lib/device-read-rate-limit.js';
 import { toLoanResponse } from '../../../lib/loan-response.js';
 import type { FastifyInstance } from 'fastify';
 import { authorizeRoles } from '../../../lib/auth.js';
@@ -7,19 +8,18 @@ import { activeLoanQuerySchema } from './schemas.js';
 export function registerActiveLoansRoute(app: FastifyInstance, loanService: LoanService): void {
   const canView = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
 
-  app.get('/active', { config: { rateLimit: false } }, async (request, reply) => {
+  app.get('/active', { config: { rateLimit: createDeviceReadRateLimit() } }, async (request, reply) => {
     const query = activeLoanQuerySchema.parse(request.query);
-    let resolvedClientId = query.clientId;
 
     // クライアントキーがあれば優先的にデバイス認証とみなす
     const headerKey = request.headers['x-client-key'];
     if (headerKey) {
-      // clientIdがクエリパラメータで指定されていない場合のみ、クライアントキーから解決
-      if (!resolvedClientId) {
-        resolvedClientId = await loanService.resolveClientId(undefined, headerKey);
-      } else {
-        // clientIdが指定されている場合は検証のみ
-        await loanService.resolveClientId(resolvedClientId, headerKey);
+      try {
+        await loanService.resolveClientId(query.clientId, headerKey);
+      } catch (error) {
+        // 管理画面は既定キーとJWTを同時に送るため、キーが通らなければJWTで判定する
+        if (!request.headers.authorization) throw error;
+        await canView(request, reply);
       }
     } else {
       await canView(request, reply);

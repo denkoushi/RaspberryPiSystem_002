@@ -9,6 +9,7 @@ import {
   ShelfRegisterHeader,
   ShelfRegisterSlotGrid
 } from '../../features/mobile-placement/components/shelf-register';
+import { mobilePlacementQueryKeys } from '../../features/mobile-placement/mobilePlacementQueryKeys';
 import {
   SHELF_AREA_OPTIONS,
   SHELF_LINE_OPTIONS,
@@ -106,7 +107,7 @@ export function KioskMobileShelfRegisterPage() {
     setSubmitError(null);
     try {
       await postMobilePlacementShelfRegister({ shelfCodeRaw: shelfCode });
-      await queryClient.invalidateQueries({ queryKey: ['mobile-placement', 'registered-shelves'] });
+      await queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.registeredShelves });
       navigate('/kiosk/mobile-placement', { state: { ...routeState, shelfCode } });
     } catch (e) {
       setSubmitError(extractApiErrorMessage(e));

@@ -113,11 +113,13 @@ Android スマホ等から、**移動票・現品票の照合**および **製�
 
 ### `POST /api/mobile-placement/verify-slip-match`
 
-移動票・現品票それぞれについて、日程行を解決し、**同一の `FSEIBAN` + `FHINCD` ペア**か判定する（副作用なし）。
+移動票・現品票それぞれについて、日程行または購買照会の行を解決し、**同一の `FSEIBAN` + `FHINCD` ペア**か判定する（副作用なし）。
 
 - **移動票**: `transferOrderBarcodeRaw` を **ProductNo** として `listScheduleRowsByProductNo` と同系で解決。
 - **現品票**:  
-  - `actualOrderBarcodeRaw` が **空でない**ときは **ProductNo**（製造order番号）で解決。  
+  - `actualOrderBarcodeRaw` が **空でない**ときは **ProductNo**（製造order番号）で先に解決。未解決で前後空白を除いた値が10桁数字なら、購買照会と共通の読取で `PurchaseOrderLookupRow.purchaseOrderNo` を検索する。
+  - 注文番号の候補のうち、製番が移動票の `FSEIBAN` と一致（前後空白・大文字小文字を無視）し、`purchasePartCodeMatchKey` が移動票の `FHINCD` の照合キーと一致する行が必要。キーは購買照会と同じ括弧内表記・末尾数値枝番の除去を使う。単一候補でも一致検査を省略しない。
+  - 注文番号に行があってもペアが一致しなければ `FSEIBAN_OR_PART_PAIR_MISMATCH`、どちらの検索でも見つからなければ `ACTUAL_ORDER_UNRESOLVED`。
   - **空**のときは `actualFseibanRaw` を **FSEIBAN** として `listScheduleRowsByFseiban` と同系で解決。  
   - **`actualOrderBarcodeRaw` と `actualFseibanRaw` の少なくとも一方が必須**（両方空は 400）。
 - 部品側のスキャンは **`actualPartBarcodeRaw`**（FHINBAN バーコード等。日程行の `FHINCD` と照合）。
@@ -128,20 +130,20 @@ JSON:
 {
   "transferOrderBarcodeRaw": "移動票の製造order番号（1次元）",
   "transferPartBarcodeRaw": "移動票のFHINBAN/FHINCD（1次元）",
-  "actualOrderBarcodeRaw": "現品票の製造order番号（1次元または空）",
+  "actualOrderBarcodeRaw": "現品票の注文番号または製造order番号（1次元または空）",
   "actualFseibanRaw": "現品票の製番 FSEIBAN（任意。製造orderが空のときに使用）",
   "actualPartBarcodeRaw": "現品票のFHINBAN/FHINCD（1次元）"
 }
 ```
 
-応答: `{ "ok": true }` または `{ "ok": false, "reason": "..." }`（`reason` はサーバ内部コード文字列）。
+応答: `{ "ok": true }` または `{ "ok": false, "reason": "..." }`（`reason` はサーバ内部コード文字列）。解決経路が判明した場合は成功・失敗とも任意フィールド `actualResolvedBy: "productNo" | "purchaseOrder" | "fseiban"` を返す。注文番号経由でも、両票の部品バーコード検査は従来どおり行う。
 
 ### `POST /api/mobile-placement/parse-actual-slip-image`
 
 現品票の**撮影画像**を OCR し、製造order（10桁）と製番（FSEIBAN）の**候補**を返す（副作用なし）。UI は候補を確認し、必要に応じて手修正してから `verify-slip-match` を呼ぶ。
 
 - **Content-Type**: `multipart/form-data`
-- **フィールド名**: `image`（JPEG / PNG / WebP）
+- **フィールド名**: `image`（JPEG / PNG / WebP）。
 - **OCR 実装（V12・2026-04-12）**: `tesseract.js`（`ImageOcrPort`）。**紙現品票の固定レイアウト前提**で、前処理後画像を **正規化座標 ROI**（`genpyo-slip/genpyo-slip-template.ts` の `DEFAULT_GENPYO_SLIP_ROIS`）で切り出し、**領域ごとに** `actualSlipLabels` プロファイルで OCR する。**製造order**は **右上ヘッダ ROI（`moHeader`）を優先**し、欠落時のみ **下段 ROI（`moFooter`）** を参照。**製番（FSEIBAN）**は **左中盤 ROI（`fseibanMain`）** のみから抽出。フィールド確定は `genpyo-slip-resolver.ts` が `parseManufacturingOrder10Extraction` / `extractFseiban`（実装は `genpyo-slip/*`・`actual-slip-identifier-parser` は再エクスポートで互換）を呼ぶ。**V10**: 製造ラベル近傍の **10文字トークン**で **`O`/`I`/`l`/`|` と数字の誤認**を限定補正。**V11**: 同一行に **注文番号**と**枝番**がある行の 10 桁除外・**global-filter** 選別は **ROI 内テキスト**に対して従来どおり適用。**旧パイプライン（labels 早期終了・3 パス直列・二値化 `preprocessBytesBinary`）は V12 で置換**（履歴として V7〜V11 の説明は KB-339 を参照）。テスト用に `IMAGE_OCR_STUB_TEXT` を設定すると **各 ROI で同一固定テキスト**を返すスタブに切り替え可能。
 
 応答例:
@@ -152,12 +154,22 @@ JSON:
   "ocrText": "…",
   "ocrPreviewSafe": "0002178005 BE1N9321",
   "manufacturingOrder10": "0002178005",
-  "fseiban": "BE1N9321"
+  "fseiban": "BE1N9321",
+  "fseibanRaw": "8E1N9321",
+  "fseibanMatch": "corrected",
+  "fseibanCandidates": ["BE1N9321"]
 }
 ```
 
 - **`ocrText`**: **ROI ごとの OCR 結果**を `[moHeader]` / `[fseibanMain]` / `[moFooter]` 見出しで連結（デバッグ・後追い用。ログは文字数のみ）。
 - **`ocrPreviewSafe`**: **確定した** `manufacturingOrder10` と `fseiban` を短く結合したプレビュー（いずれか欠ける場合は片方のみ）。クライアントは表示にこれを優先し、無い場合は `ocrText` にフォールバック可能。
+- **`fseibanRaw`**: 補正前の既存OCR抽出値（string | null）。`ocrPreviewSafe` も補正前の抽出値を維持する。
+- **`fseibanMatch`**: `exact` / `corrected` / `ambiguous` / `none`。`fseibanCandidates` は近い順に最大3件。`exact` / `corrected` のとき `fseiban` は日程の製番、それ以外は従来の抽出値を返す。
+- **補正規則**: 既存抽出値と `fseibanMain` ROI の6〜10文字英数字トークンを正規化（全角→半角、大文字化、空白・ハイフン・アンダースコア除去）。同一ダッシュボード・max ProductNo勝者条件の非空製番を重複除去して取得し、5分キャッシュする。
+  完全一致を最優先。最良距離0.6以内（類似文字の置換2文字まで、挿入・削除なし）かつ次点との差0.5以上で自動補正。
+  移動票の製番は補正のヒントに**使わない**（別の製番を移動票側へ寄せて誤ってOKにしないため。照合は `verify-slip-match` が行う）。最良距離2.0以内なら `ambiguous` として2.0以内の候補を最大3件提示し、UIで選択する。それ以外は `none`。
+  距離は重み付きLevenshtein（挿入・削除・通常置換1、類似文字置換0.3）。類似群は `0ODQ / 1IL / 2Z / 5S / 8B / 6G / UV`（7・3・4・M/N/H など実在製番どうしで取り違えると危険な組は含めない）。長さ差2超は除外する。
+- **取得失敗**: 警告ログを記録し、`fseibanMatch: none`・候補空配列で従来のOCR値を返す。追加ログは判定種別・候補件数のみで、OCR本文を記録しない。
 - **`manufacturingOrder10` / `fseiban`**: OCR 品質により **null** になり得る。
 
 - **観測性**: 処理完了時に API ログへ構造化出力（`inputBytes` / `preprocessBytes` / `ocrTextChars` / `hasManufacturingOrder10` / `hasFseiban` / `durationMs` / `engine` 等。**V8 以降**: `mo10Candidate10Count` / `mo10AfterOrderBlockFilterCount` / `mo10ParseSource`。**V12**: `mo10ResolvedFromRoi`（`moHeader` | `moFooter` | 欠落時は付かない）で製造order採用元を識別。**V12 では `preprocessBytesBinary` は出力しない**（二値化パス廃止）。OCR 全文はログに出さない（後追いは文字数・候補有無・パーサ経路で切り分け）。ルート層でも `parse-actual-slip-image completed` を記録する。

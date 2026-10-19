@@ -1,3 +1,4 @@
+import { toTrimmedString as normalizeToken } from '../../../lib/string-normalize.js';
 import type { NormalizedRowData } from '../../csv-dashboard/csv-dashboard.types.js';
 import { buildFkojunstMailStatusKey } from '../fkojunst-mail-status-key.js';
 import type { FkojunstMailNormalizedRow } from '../fkojunst-status-mail-sync.pipeline.js';
@@ -5,8 +6,6 @@ import { normalizeProductionScheduleResourceCd } from '../policies/resource-cate
 import { buildProductionScheduleExternalCompletionKeyFromRowData } from './production-schedule-external-completion-key.js';
 
 export type ScheduleDedupRowForDisappearance = Readonly<{ data: NormalizedRowData }>;
-
-const normalizeToken = (value: unknown): string => String(value ?? '').trim();
 
 /**
  * 本体 winner 行の rowData から `FKOJUNST_Status` 照合3キー（ADR-20260509 と同系）を構築する。

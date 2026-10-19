@@ -13,6 +13,7 @@ import type {
 } from './assemblyTemplateReadiness';
 
 type Props = {
+  vertical?: boolean;
   readiness: AssemblyTemplateReadiness;
   readOnly: boolean;
   onStageClick: (stage: AssemblyTemplateReadinessStage) => void;
@@ -22,6 +23,7 @@ type Props = {
 
 export function AssemblyTemplateHeaderGuide({
   readiness,
+  vertical = false,
   readOnly,
   onStageClick,
   onIssueClick,
@@ -89,11 +91,11 @@ export function AssemblyTemplateHeaderGuide({
 
   return (
     <section
-      className="col-span-2 row-start-2 min-w-0 xl:col-span-1 xl:col-start-2 xl:row-start-1"
+      className={vertical ? 'min-w-0' : 'col-span-2 row-start-2 min-w-0 xl:col-span-1 xl:col-start-2 xl:row-start-1'}
       aria-label="テンプレート作成ガイド"
       data-testid="assembly-template-header-guide"
     >
-      <div ref={rootRef} className="flex min-w-0 items-center gap-1 overflow-x-auto">
+      <div ref={rootRef} className={vertical ? 'grid gap-1' : 'flex min-w-0 items-center gap-1 overflow-x-auto'}>
         {presentation.stages.map((stage) => {
           const status = stage.status;
           return (
@@ -102,22 +104,24 @@ export function AssemblyTemplateHeaderGuide({
               type="button"
               className={clsx(
                 'flex min-h-8 shrink-0 items-center gap-1 rounded border px-1.5 text-left',
+                vertical && 'h-9 rounded-lg !border-[#344252] !bg-transparent px-3 text-base aria-[current=step]:!border-white',
                 status === 'complete'
                   ? 'border-emerald-300/35 bg-emerald-950/35'
                   : status === 'checking'
                     ? 'border-sky-300/35 bg-sky-950/35'
                     : 'border-amber-300/35 bg-amber-950/35'
               )}
+              aria-current={vertical && stage.id === (presentation.stages.find((item) => item.status !== 'complete')?.id ?? 'review') ? 'step' : undefined}
               onClick={() => handleStageClick(stage.id)}
             >
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10 text-[0.68rem] font-black">
-                {stage.step}
+              <span className={clsx("flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10 text-[0.68rem] font-black", vertical && status === 'complete' && '!bg-[#3ba776] text-[#0b1a12]')}>
+                {vertical && status === 'complete' ? '✓' : stage.step}
               </span>
               <span className="min-w-0">
-                <span className="block whitespace-nowrap text-[0.7rem] font-bold">{stage.label}</span>
+                <span className={vertical ? 'block whitespace-nowrap text-base font-bold' : 'block whitespace-nowrap text-[0.7rem] font-bold'}>{stage.label}</span>
                 <span
                   className={clsx(
-                    'block text-[0.62rem] font-semibold leading-tight',
+                    vertical ? 'sr-only' : 'block text-[0.62rem] font-semibold leading-tight',
                     status === 'complete'
                       ? 'text-emerald-200'
                       : status === 'checking'

@@ -3,13 +3,12 @@ import { useMemo } from 'react';
 
 import { normalizeMachineName } from '../productionSchedule/machineName';
 
+import { formatPlanningBoardDate as formatDate } from './planningBoardDateLabel';
 import { PlanningBoardItemTable } from './PlanningBoardItemTable';
 import { resolveGrindingPlanningBoardDueDate } from './sortGrindingPlanningBoardItems';
 
 import type { PlanningBoardAllocation } from './types';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
-
-const formatDate = (date: string | null): string => (date ? date.slice(5).replace('-', '/') : '未定');
 
 export type PlanningBoardFocusViewProps = {
   fseiban: string;
@@ -20,6 +19,8 @@ export type PlanningBoardFocusViewProps = {
   onBack: () => void;
   onToggleAll: (selected: boolean) => void;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
+  onCompleteToggle?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
+  completionPendingRowIds?: ReadonlySet<string>;
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
   disabled?: boolean;
@@ -36,6 +37,8 @@ export function PlanningBoardFocusView({
   onBack,
   onToggleAll,
   onToggleItem,
+  onCompleteToggle,
+  completionPendingRowIds,
   onResourceClick,
   onRankChange,
   disabled = false,
@@ -99,6 +102,8 @@ export function PlanningBoardFocusView({
             allocation={allocation}
             selectedItemIds={selectedItemIds}
             onToggleItem={onToggleItem}
+            onCompleteToggle={onCompleteToggle}
+            completionPendingRowIds={completionPendingRowIds}
             onResourceClick={onResourceClick}
             onRankChange={onRankChange}
             disabled={disabled}

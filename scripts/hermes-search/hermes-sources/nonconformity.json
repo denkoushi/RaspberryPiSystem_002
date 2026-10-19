@@ -1,6 +1,10 @@
 {
   "schema": "hermes-source-definition/v1",
   "id": "nonconformity",
+  "label": "不適合",
+  "retrieval": {"semanticSearch": true, "enrichment": true, "learnedQueries": true, "denseStoreSuffix": ""},
+  "pageContextAttributes": {"partNumber": "partNumber", "nonconformityNo": "nonconformityNo"},
+  "outOfScopeAnswer": "不適合情報の検索に関する質問として解釈できませんでした。",
   "visibility": ["kiosk", "viewer", "manager", "admin"],
   "description": "不適合として記録された事象",
   "valueChoiceCap": 300,

@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+vi.mock('../../config/env/load-dotenv.js', () => ({}));
+import { describe, expect, it, vi } from 'vitest';
 import {
   SchedulerStartupCleanupError,
   SchedulerStepStateAmbiguousError,
@@ -48,6 +49,7 @@ describe('start-post-listen-schedulers fail-closed group', () => {
   it('includes backup and csv-import in the registered scheduler group', () => {
     const names = listPostListenSchedulerNames();
     expect(names).toContain('backup');
+    expect(names).toContain('client-network-log-retention');
     expect(names).toContain('csv-import');
   });
 
@@ -143,9 +145,12 @@ describe('start-post-listen-schedulers naming contract', () => {
       'gmail-trash-cleanup',
       'due-management-tuning',
       'alerts-dispatcher',
+      'client-network-log-retention',
       'client-heartbeat-monitor',
+      'system-notice-evaluator',
       'alerts-ingestor',
       'photo-tool-label',
+      'procedure-material-image-description',
       'part-measurement-drawing-ocr',
     ]);
   });

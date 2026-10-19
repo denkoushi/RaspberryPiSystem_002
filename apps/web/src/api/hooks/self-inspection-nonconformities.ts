@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { normalizeWorkInstructionPartNumber } from '../../lib/workInstructionRules';
 import { getSelfInspectionNonconformities } from '../client';
+import { selfInspectionQueryKeys } from '../queryKeys/selfInspection';
 
 export function useSelfInspectionNonconformities(
   partNumber: string | null | undefined,
@@ -11,7 +12,7 @@ export function useSelfInspectionNonconformities(
   const enabled = Boolean(normalizedPartNumber) && (options.enabled ?? true);
 
   return useQuery({
-    queryKey: ['self-inspection', 'nonconformities', normalizedPartNumber],
+    queryKey: selfInspectionQueryKeys.nonconformities(normalizedPartNumber),
     queryFn: ({ signal }) => getSelfInspectionNonconformities(normalizedPartNumber, signal),
     enabled,
     staleTime: 0,

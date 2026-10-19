@@ -13,10 +13,12 @@ type Props = {
   onCancel: () => void;
   /** Big target with rings, for a screen whose only job is reading one tag. */
   large?: boolean;
+  cancelLabel?: string;
+  cancelWhilePending?: boolean;
 };
 
 /** One-row "hold the tag" prompt. Reading starts as soon as it is shown; the ID can be typed as a fallback. */
-export function NfcScanPanel({ label, sub, pending, error, onManualUid, onCancel, large = false }: Props) {
+export function NfcScanPanel({ label, sub, pending, error, onManualUid, onCancel, large = false, cancelLabel = 'やめる', cancelWhilePending = false }: Props) {
   const [manualOpen, setManualOpen] = useState(false);
   const [manualUid, setManualUid] = useState('');
   const manual = manualOpen ? (
@@ -25,7 +27,7 @@ export function NfcScanPanel({ label, sub, pending, error, onManualUid, onCancel
       <button type="button" className={invButtonSm} disabled={pending || !manualUid.trim()} onClick={() => onManualUid(manualUid.trim())}>使う</button>
     </span>
   ) : (
-    <button type="button" className="text-[13px] text-inv-cyan underline underline-offset-2" onClick={() => setManualOpen(true)}>IDを手で入れる</button>
+    <button type="button" className="inline-flex min-h-11 min-w-11 items-center text-[13px] text-inv-cyan underline underline-offset-2" onClick={() => setManualOpen(true)}>IDを手で入れる</button>
   );
   if (large) {
     return (
@@ -38,10 +40,10 @@ export function NfcScanPanel({ label, sub, pending, error, onManualUid, onCancel
         <p role="status" className="text-center text-[28px] font-black">{pending ? '登録中…' : label}</p>
         {sub ? <p className="-mt-3 text-center text-sm text-inv-muted">{sub}</p> : null}
         <div className="flex flex-wrap items-center justify-center gap-3">
-          <button type="button" className={invButtonSmGhost} disabled={pending} onClick={onCancel}>やめる</button>
+          <button type="button" className={invButtonSmGhost} disabled={pending && !cancelWhilePending} onClick={onCancel}>{cancelLabel}</button>
           {manual}
         </div>
-        {error ? <p className={`rounded-lg border px-3 py-2 text-sm ${invError}`} role="alert">{error}</p> : null}
+        <div className="h-10 w-full overflow-hidden">{error ? <p className={`line-clamp-2 rounded-lg border px-3 py-0.5 text-sm leading-4 ${invError}`} role="alert">{error}</p> : null}</div>
       </section>
     );
   }
@@ -49,10 +51,10 @@ export function NfcScanPanel({ label, sub, pending, error, onManualUid, onCancel
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-3">
         {pending ? <span role="status" className="inline-flex h-11 items-center px-2 text-base font-bold">登録中…</span> : <NfcPrompt size="small" tone="amber" label={label} sub={sub} />}
-        <button type="button" className={invButtonSmGhost} disabled={pending} onClick={onCancel}>やめる</button>
+        <button type="button" className={invButtonSmGhost} disabled={pending && !cancelWhilePending} onClick={onCancel}>{cancelLabel}</button>
         {manual}
       </div>
-      {error ? <p className={`rounded-lg border px-3 py-2 text-sm ${invError}`} role="alert">{error}</p> : null}
+      <div className="h-10 w-full overflow-hidden">{error ? <p className={`line-clamp-2 rounded-lg border px-3 py-0.5 text-sm leading-4 ${invError}`} role="alert">{error}</p> : null}</div>
     </div>
   );
 }

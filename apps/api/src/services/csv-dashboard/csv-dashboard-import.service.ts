@@ -1,6 +1,7 @@
 import type { StorageProvider } from '../backup/storage/storage-provider.interface.js';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
+import { isEmptyCsvBuffer } from './csv-empty-content.js';
 import { CsvDashboardIngestor } from './csv-dashboard-ingestor.js';
 import { CsvDashboardStorage } from '../../lib/csv-dashboard-storage.js';
 import { CsvDashboardSourceService } from './csv-dashboard-source.service.js';
@@ -50,8 +51,9 @@ export type CsvDashboardIngestResult = {
     failedMessageIdSuffixes: string[];
     postProcessErrorByMessageIdSuffix?: Record<string, { step: 'markAsRead' | 'trashMessage'; error: string }>;
     disposedMessageIdSuffixes?: string[];
+    skippedEmptyMessageIdSuffixes?: string[];
     disposeReasonByMessageIdSuffix?: Record<string, string>;
-    postProcessStateByMessageIdSuffix?: Record<string, 'completed' | 'disposed_non_retriable' | 'failed'>;
+    postProcessStateByMessageIdSuffix?: Record<string, 'completed' | 'skipped_empty' | 'disposed_non_retriable' | 'failed'>;
     canPostProcessGmail: boolean;
   };
 };
@@ -107,7 +109,7 @@ export class CsvDashboardImportService {
   private async appendIngestRunAudit(params: {
     dashboardId: string;
     messageId?: string;
-    postProcessState: 'completed' | 'disposed_non_retriable' | 'failed';
+    postProcessState: 'completed' | 'skipped_empty' | 'disposed_non_retriable' | 'failed';
     reason?: string;
   }): Promise<void> {
     if (!params.messageId) return;
@@ -128,6 +130,33 @@ export class CsvDashboardImportService {
     await prisma.csvDashboardIngestRun.update({
       where: { id: latestRun.id },
       data: { errorMessage: nextMessage },
+    });
+  }
+
+  private async recordEmptyCsvIngestRun(params: {
+    dashboardId: string;
+    messageId?: string;
+    messageSubject?: string;
+    receivedAt?: Date | null;
+  }): Promise<void> {
+    await prisma.csvDashboardIngestRun.create({
+      data: {
+        csvDashboardId: params.dashboardId,
+        status: 'COMPLETED',
+        messageId: params.messageId ?? null,
+        messageSubject: params.messageSubject ?? null,
+        csvFilePath: null,
+        sourceReceivedAt: params.receivedAt ?? null,
+        rowsProcessed: 0,
+        rowsAdded: 0,
+        rowsSkipped: 0,
+        completedAt: new Date(),
+        errorMessage: CsvDashboardImportService.mergeAuditMessage({
+          currentErrorMessage: null,
+          postProcessState: 'skipped_empty',
+          reason: 'empty CSV (no header row, no data rows)',
+        }),
+      },
     });
   }
 
@@ -169,7 +198,7 @@ export class CsvDashboardImportService {
 
   private static mergeAuditMessage(params: {
     currentErrorMessage: string | null;
-    postProcessState: 'completed' | 'disposed_non_retriable' | 'failed';
+    postProcessState: 'completed' | 'skipped_empty' | 'disposed_non_retriable' | 'failed';
     reason?: string;
   }): string {
     const auditLine = `${CsvDashboardImportService.INGEST_AUDIT_PREFIX} postProcessState=${params.postProcessState}${
@@ -315,10 +344,11 @@ export class CsvDashboardImportService {
       const downloadedMessageIdSuffixes: string[] = [];
       const postProcessedMessageIdSuffixes: string[] = [];
       const disposedMessageIdSuffixes: string[] = [];
+      const skippedEmptyMessageIdSuffixes: string[] = [];
       const failedMessageIdSuffixes: string[] = [];
       const postProcessStateByMessageIdSuffix: Record<
         string,
-        'completed' | 'disposed_non_retriable' | 'failed'
+        'completed' | 'skipped_empty' | 'disposed_non_retriable' | 'failed'
       > = {};
       const postProcessErrorByMessageIdSuffix: Record<
         string,
@@ -348,41 +378,51 @@ export class CsvDashboardImportService {
         const csvContent = buffer.toString('utf-8');
 
         try {
-          // CSVファイルを原本として保存
-          const csvFilePath = await CsvDashboardStorage.saveRawCsv(dashboardId, buffer, messageId);
-
-          const result = await withCsvDashboardIngestLock(dashboardId, async () => {
-            // 取り込み処理と post-ingest 投影は同一 dashboard 内で直列化する
-            const ingestResult = await this.ingestor.ingestFromGmail(
-              dashboardId,
-              csvContent,
-              messageId,
-              messageSubject,
-              csvFilePath,
-              receivedAt
+          const isEmpty = isEmptyCsvBuffer(buffer);
+          if (isEmpty) {
+            await this.recordEmptyCsvIngestRun({ dashboardId, messageId, messageSubject, receivedAt });
+            if (safeMessageId) skippedEmptyMessageIdSuffixes.push(safeMessageId);
+            logger?.info(
+              { dashboardId, messageId, sizeBytes: buffer.length, postProcessState: 'skipped_empty' },
+              '[CsvDashboardImportService] Empty CSV skipped (no header row, no data rows)'
             );
+          } else {
+            // CSVファイルを原本として保存
+            const csvFilePath = await CsvDashboardStorage.saveRawCsv(dashboardId, buffer, messageId);
 
-            await this.postIngestService.runAfterSuccessfulIngest({
-              dashboardId,
-              ingestSource: 'gmail',
-              ingestRunId: ingestResult.ingestRunId,
+            const result = await withCsvDashboardIngestLock(dashboardId, async () => {
+              // 取り込み処理と post-ingest 投影は同一 dashboard 内で直列化する
+              const ingestResult = await this.ingestor.ingestFromGmail(
+                dashboardId,
+                csvContent,
+                messageId,
+                messageSubject,
+                csvFilePath,
+                receivedAt
+              );
+
+              await this.postIngestService.runAfterSuccessfulIngest({
+                dashboardId,
+                ingestSource: 'gmail',
+                ingestRunId: ingestResult.ingestRunId,
+              });
+
+              return ingestResult;
             });
 
-            return ingestResult;
-          });
+            totalProcessed += result.rowsProcessed;
+            totalAdded += result.rowsAdded;
+            totalSkipped += result.rowsSkipped;
 
-          totalProcessed += result.rowsProcessed;
-          totalAdded += result.rowsAdded;
-          totalSkipped += result.rowsSkipped;
-
-          // 計測機器持出返却のイベント投影
-          if (dashboardId === CsvDashboardImportService.MEASURING_INSTRUMENT_LOANS_DASHBOARD_ID) {
-            await this.measuringInstrumentLoanEventService.projectEventsFromCsv({
-              dashboardId,
-              csvContent,
-              messageId,
-              messageSubject,
-            });
+            // 計測機器持出返却のイベント投影
+            if (dashboardId === CsvDashboardImportService.MEASURING_INSTRUMENT_LOANS_DASHBOARD_ID) {
+              await this.measuringInstrumentLoanEventService.projectEventsFromCsv({
+                dashboardId,
+                csvContent,
+                messageId,
+                messageSubject,
+              });
+            }
           }
 
           // Gmail後処理（成功時のみ）
@@ -417,12 +457,14 @@ export class CsvDashboardImportService {
             }
 
             if (safeMessageId) postProcessedMessageIdSuffixes.push(safeMessageId);
-            if (safeMessageId) postProcessStateByMessageIdSuffix[safeMessageId] = 'completed';
-            await this.appendIngestRunAudit({
-              dashboardId,
-              messageId,
-              postProcessState: 'completed',
-            });
+            if (safeMessageId) postProcessStateByMessageIdSuffix[safeMessageId] = isEmpty ? 'skipped_empty' : 'completed';
+            if (!isEmpty) {
+              await this.appendIngestRunAudit({
+                dashboardId,
+                messageId,
+                postProcessState: 'completed',
+              });
+            }
           }
         } catch (error) {
           lastError = error;
@@ -518,6 +560,8 @@ export class CsvDashboardImportService {
           downloadedMessageIdSuffixes,
           postProcessedMessageIdSuffixes,
           disposedMessageIdSuffixes,
+          skippedEmptyMessageIdSuffixes:
+            skippedEmptyMessageIdSuffixes.length > 0 ? skippedEmptyMessageIdSuffixes : undefined,
           postProcessStateByMessageIdSuffix:
             Object.keys(postProcessStateByMessageIdSuffix).length > 0
               ? postProcessStateByMessageIdSuffix

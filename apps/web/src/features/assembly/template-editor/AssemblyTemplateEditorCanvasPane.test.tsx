@@ -69,6 +69,9 @@ const crop = {
 function createController(overrides: Record<string, unknown> = {}) {
   return {
     activeBoltConditionKey: null,
+    procedureItems: [],
+    pageOptions: [],
+    setBoltConditionPaneOpen: vi.fn(),
     addArea: vi.fn(),
     areas: [],
     incompleteAreaIds: new Set<string>(),
@@ -99,6 +102,8 @@ function createController(overrides: Record<string, unknown> = {}) {
       assets: {}
     },
     selectedPage: {
+      key: 'item-1:0',
+      label: '1. 手順書名 / 1ページ',
       source: 'assembly_procedure_document',
       documentId: 'document-1',
       pageIndex: 0,
@@ -136,6 +141,27 @@ describe('AssemblyTemplateEditorCanvasPane bolt movement wiring', () => {
       xRatio: 0.35,
       yRatio: 0.625
     });
+  });
+
+  it('overlays the page heading and switches processes without taking height from the paper', () => {
+    mocks.controller = createController({
+      procedureItems: [{ localId: 'item-1' }],
+      pageOptions: [0, 1, 2].map((pageIndex) => ({ documentId: 'document-1', source: 'assembly_procedure_document', pageIndex })),
+      areas: [
+        { id: 'area-1', processNo: '', areaCode: '', areaName: '', bolts: [] },
+        { id: 'area-2', processNo: '', areaCode: '', areaName: '', bolts: [] }
+      ],
+      selectedAreaId: 'area-1',
+      activeBoltConditionKey: 'm8',
+      boltConditionPalette: [{ key: 'm8', condition: { nominalDiameter: 'M8', nominalTorque: 24, unit: 'N·m' }, markerNos: [] }]
+    });
+    render(<AssemblyTemplateEditorCanvasPane />);
+    expect(screen.getByTestId('assembly-template-page-heading')).toHaveTextContent('1. 手順書名 · 1 / 3 ページ');
+    expect(screen.getByRole('button', { name: '工程 1' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '工程 2' }));
+    expect(mocks.controller.selectArea).toHaveBeenCalledWith('area-2');
+    fireEvent.click(screen.getByRole('button', { name: '締付条件 M8 24 N·m' }));
+    expect(mocks.controller.setBoltConditionPaneOpen).toHaveBeenCalledWith(true);
   });
 
   it('does not expose a bolt movement callback in readonly mode', () => {

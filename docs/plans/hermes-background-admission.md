@@ -16,7 +16,7 @@ The user wants document preparation to progress without waiting for 03:00, with 
 
 ## Context and Orientation
 
-`apps/api/src/services/assembly/business-hermes-nightly.scheduler.ts` starts preparation, while `business-hermes-nightly.service.ts` reads sources, prepares bounded candidates and invokes the existing answer-cache evaluator. `document-attempts.json` is the scheduling checkpoint, saved only after preparation finishes. `apps/api/src/services/inference/adapters/openai-compatible-text.adapter.ts` sends model calls. This feature needs the companion Control Plane branch `feat/dgx-background-admission`; that repository's `docs/exec-plans/35-background-admission.md` describes central admission.
+`apps/api/src/services/business-hermes/business-hermes-nightly.scheduler.ts` starts preparation, while `business-hermes-nightly.service.ts` reads sources, prepares bounded candidates and invokes the existing answer-cache evaluator. `document-attempts.json` is the scheduling checkpoint, saved only after preparation finishes. `apps/api/src/services/inference/adapters/openai-compatible-text.adapter.ts` sends model calls. This feature needs the companion Control Plane branch `feat/dgx-background-admission`; that repository's `docs/exec-plans/35-background-admission.md` describes central admission.
 
 ## Decision Log
 

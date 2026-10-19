@@ -151,6 +151,7 @@ def parser() -> Parser:
     value.add_argument("--print-plan", action="store_true")
     value.add_argument("--detach", action="store_true")
     value.add_argument("--torque-cutover", action="store_true")
+    value.add_argument("--skip-kiosk-notice", action="store_true", help="emergency: restart Pi4 kiosk browsers without the save-work notice")
     value.add_argument("--hermes-search-trial-maintenance", choices=("on", "off"))
     value.add_argument("--status")
     value.add_argument("--execute-standard-route", action="store_true", help=argparse.SUPPRESS)
@@ -181,7 +182,7 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     if args.print_plan and args.detach:
         raise UsageError("--print-plan cannot be combined with --detach")
     if args.status:
-        if any((args.branch, args.limit, args.full_fleet, args.print_plan, args.detach, args.torque_cutover, args.hermes_search_trial_maintenance, args.execute_standard_route)):
+        if any((args.branch, args.limit, args.full_fleet, args.print_plan, args.detach, args.torque_cutover, args.skip_kiosk_notice, args.hermes_search_trial_maintenance, args.execute_standard_route)):
             raise UsageError("--status accepts only RUN_ID and optional --inventory")
         if not RUN_ID.fullmatch(args.status):
             raise UsageError("run ID must use YYYYMMDD-HHMMSS-<6 lowercase hex>")
@@ -645,6 +646,8 @@ def remote_script(
     internal = ["python3", "scripts/deploy/standard-ansible-release.py", "--execute-standard-route", "--branch", args.branch, "--inventory", relative, "--sha", sha, "--run-id", run_id, "--profiles", ",".join(profiles)]
     if getattr(args, "torque_cutover", False):
         internal.append("--torque-cutover")
+    if getattr(args, "skip_kiosk_notice", False):
+        internal.append("--skip-kiosk-notice")
     internal.extend(["--limit", args.limit] if args.limit else ["--full-fleet"])
     return "\n".join(("set -euo pipefail", f"cd {shlex.quote(str(remote_root))}", "mkdir -p logs/deploy", "exec 9>>logs/deploy/fleet-release-state.lock", "/usr/bin/flock -n 9 || { echo 'another fleet release is running' >&2; exit 75; }", "test -z \"$(git status --porcelain)\"", f"git fetch --no-tags origin {shlex.quote(args.branch)}", f"test \"$(git rev-parse FETCH_HEAD)\" = {shlex.quote(sha)}", f"git checkout --detach {shlex.quote(sha)}", f"test \"$(git rev-parse HEAD)\" = {shlex.quote(sha)}", "test -z \"$(git status --porcelain)\"", f"exec {shlex.join(internal)}"))
 
@@ -700,12 +703,33 @@ def enrichment_id_source() -> Path | None:
     return source.resolve()
 
 
+RETRIEVAL_SOURCE_DEFINITIONS = ROOT / "scripts" / "hermes-search" / "hermes-sources"
+
+
+def retrieval_source_ids(directory: Path = RETRIEVAL_SOURCE_DEFINITIONS) -> frozenset[str]:
+    """Ids the retrieval worker of this checkout can load; other JSON contracts in the directory are skipped."""
+    ids: set[str] = set()
+    for path in sorted(directory.glob("*.json")):
+        try:
+            definition = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            raise UsageError(f"retrieval source definition is unreadable: {path.name}") from error
+        if not isinstance(definition, dict) or definition.get("schema") != "hermes-source-definition/v1":
+            continue
+        source_id = definition.get("id")
+        if not isinstance(source_id, str) or re.fullmatch(r"[a-z_]+", source_id) is None:
+            raise UsageError(f"retrieval source definition has an invalid id: {path.name}")
+        ids.add(source_id)
+    return frozenset(ids)
+
+
 def optional_retrieval_sources_setting(name: str = "HERMES_RETRIEVAL_SOURCES") -> str:
     sources = list(dict.fromkeys(
         source.strip() for source in os.environ.get(name, "").split(",") if source.strip()
     ))
+    known = retrieval_source_ids() if sources else frozenset()
     for source in sources:
-        if source not in {"nonconformity", "knowledge_procedure"}:
+        if source not in known:
             raise UsageError(f"{name} contains an unknown source: {source}")
     return ",".join(sources)
 
@@ -755,6 +779,17 @@ def enrichment_environment() -> dict[str, str]:
     return environment
 
 
+def cause_environment() -> dict[str, str]:
+    environment: dict[str, str] = {}
+    enabled = optional_bool_setting("HERMES_RETRIEVAL_CAUSE_ENABLED")
+    max_texts = optional_cap_setting("HERMES_RETRIEVAL_CAUSE_MAX_TEXTS")
+    if enabled:
+        environment["HERMES_RETRIEVAL_CAUSE_ENABLED"] = enabled
+    if max_texts:
+        environment["HERMES_RETRIEVAL_CAUSE_MAX_TEXTS"] = max_texts
+    return environment
+
+
 def flywheel_environment() -> dict[str, str]:
     # Nightly synthetic question flywheel (docs/plans/hermes-synthetic-question-flywheel-execplan.md).
     # Omitted values keep the current line on the Pi 5; the runner defaults to off.
@@ -799,6 +834,7 @@ def hermes_trial_configuration(
     if retrieval_v2_enabled:
         environment["HERMES_RETRIEVAL_V2_ENABLED"] = retrieval_v2_enabled
     environment.update(enrichment)
+    environment.update(cause_environment())
     environment.update(flywheel_environment())
     environment.update(dense_environment())
     environment.update(retrieval_sources_environment())
@@ -854,6 +890,7 @@ def hermes_trial_maintenance_configuration(
             raise UsageError("HERMES_RETRIEVAL_V2_ENABLED must be true or false")
         environment["HERMES_RETRIEVAL_V2_ENABLED"] = retrieval_v2_enabled
     environment.update(enrichment_environment())
+    environment.update(cause_environment())
     environment.update(flywheel_environment())
     environment.update(dense_environment())
     environment.update(retrieval_sources_environment())
@@ -869,6 +906,8 @@ HERMES_FLAG_SETTINGS = (
     "HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY",
     "HERMES_RETRIEVAL_ENRICHMENT_WINDOW",
     "HERMES_RETRIEVAL_ENRICHMENT_IDS",
+    "HERMES_RETRIEVAL_CAUSE_ENABLED",
+    "HERMES_RETRIEVAL_CAUSE_MAX_TEXTS",
     "HERMES_FLYWHEEL_ENABLED",
     "HERMES_FLYWHEEL_MAX_QUESTIONS",
     "HERMES_RETRIEVAL_DENSE_PROVIDER",
@@ -966,6 +1005,12 @@ def stage_enrichment_ids(inventory: Path, source: Path, destination: Path, user:
 
 def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str, profiles: tuple[str, ...], user: str, remote_root: Path = REMOTE_ROOT, *, hermes_environment: dict[str, str] | None = None) -> list[str]:
     command = ["/usr/bin/sudo", "-n", "/usr/bin/systemd-run", "--quiet", f"--unit={unit_name(run_id)}", f"--uid={user}", f"--setenv=HOME=/home/{user}", f"--setenv=USER={user}", f"--setenv=LOGNAME={user}", "--setenv=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "--property=Type=exec", f"--property=WorkingDirectory={remote_root}", "--property=KillMode=control-group", "--property=Restart=no", "--property=UMask=0077", "--property=StandardOutput=journal", "--property=StandardError=journal"]
+    # Stop/failure cleanup also runs after SIGTERM/SIGKILL. Ignore its exit status
+    # so the Ansible result remains authoritative; User= is inherited by this hook.
+    cleanup = ["/usr/bin/python3", str(remote_root / "scripts/deploy/deploy-status-state.py"),
+               "--file", str(remote_root / "config/deploy-status.json"),
+               "remove-run", "--run-id", run_id]
+    command.append("--property=ExecStopPost=-" + " ".join(cleanup))
     if args.detach:
         command.append("--property=RemainAfterExit=yes")
     else:
@@ -980,6 +1025,8 @@ def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str,
                        "HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY",
                        "HERMES_RETRIEVAL_ENRICHMENT_WINDOW",
                        "HERMES_RETRIEVAL_ENRICHMENT_IDS",
+                       "HERMES_RETRIEVAL_CAUSE_ENABLED",
+                       "HERMES_RETRIEVAL_CAUSE_MAX_TEXTS",
                        "HERMES_FLYWHEEL_ENABLED",
                        "HERMES_FLYWHEEL_MAX_QUESTIONS",
                        "HERMES_RETRIEVAL_DENSE_PROVIDER",
@@ -1294,6 +1341,9 @@ def execute_standard_route(args: argparse.Namespace) -> int:
         if maintenance not in {"on", "off"} or args.limit != "raspberrypi5" or requested_selection != (("pi5", ("raspberrypi5",)),):
             raise RuntimeError("Hermes search trial maintenance launch is not Pi5-only")
         variables["release_pi5_trial_maintenance"] = maintenance
+    if getattr(args, "skip_kiosk_notice", False):
+        print("WARNING: --skip-kiosk-notice: Pi4 kiosk browsers restart without the save-work notice", flush=True)
+        variables["release_kiosk_notice_enabled"] = False
     cache_enabled = selected.get('_meta', {}).get('hostvars', {}).get('raspberrypi5', {}).get('business_hermes_answer_cache_enabled', False)
     if 'pi5' in profiles and cache_enabled in (True, 'true'):
         reference = f'ghcr.io/denkoushi/raspisys-hermes-answer-cache:{args.sha}'
@@ -1311,8 +1361,22 @@ def execute_standard_route(args: argparse.Namespace) -> int:
             flush=True,
         )
     command = ansible_argv(relative, effective_limit, profiles, variables, torque_cutover=torque_cutover)
-    os.execvpe(command[0], command, ansible_environment())
-    return 1
+    return execute_ansible_with_cleanup(command, args.run_id)
+
+
+def execute_ansible_with_cleanup(command: list[str], run_id: str) -> int:
+    # Detached units remain active/exited on success, so ExecStopPost alone
+    # would leave unreachable kiosks in maintenance until the unit is stopped.
+    try:
+        result = subprocess.run(command, env=ansible_environment())
+        return result.returncode if result.returncode >= 0 else 128 - result.returncode
+    finally:
+        try:
+            subprocess.run(["/usr/bin/python3", str(ROOT / "scripts/deploy/deploy-status-state.py"),
+                            "--file", str(ROOT / "config/deploy-status.json"),
+                            "remove-run", "--run-id", run_id], check=True, timeout=15)
+        except (OSError, subprocess.SubprocessError) as error:
+            print(f"WARNING: deploy-status remove-run failed: {error}", file=sys.stderr, flush=True)
 
 
 def status(args: argparse.Namespace) -> int:

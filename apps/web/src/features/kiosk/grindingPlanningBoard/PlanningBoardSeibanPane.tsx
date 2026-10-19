@@ -1,15 +1,14 @@
 import clsx from 'clsx';
-import { memo, useMemo } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 
 import { normalizeMachineName } from '../productionSchedule/machineName';
 
+import { formatPlanningBoardDate as formatDate } from './planningBoardDateLabel';
 import { PlanningBoardItemTable } from './PlanningBoardItemTable';
 import { resolveGrindingPlanningBoardDueDate } from './sortGrindingPlanningBoardItems';
 
 import type { PlanningBoardAllocation } from './types';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
-
-const formatDate = (date: string | null): string => (date ? date.slice(5).replace('-', '/') : '未定');
 
 export type PlanningBoardSeibanPaneProps = {
   fseiban: string;
@@ -19,10 +18,14 @@ export type PlanningBoardSeibanPaneProps = {
   selectedItemIds: ReadonlySet<string>;
   isOpen: boolean;
   isFocused: boolean;
+  highlighted?: boolean;
+  scanFocusKey?: number;
   onToggleOpen: () => void;
   onFocus: () => void;
   onToggleAll: (selected: boolean) => void;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
+  onCompleteToggle?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
+  completionPendingRowIds?: ReadonlySet<string>;
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
   disabled?: boolean;
@@ -49,10 +52,14 @@ function arePanePropsEqual(
     previous.allocation === next.allocation &&
     previous.isOpen === next.isOpen &&
     previous.isFocused === next.isFocused &&
+    previous.highlighted === next.highlighted &&
+    previous.scanFocusKey === next.scanFocusKey &&
     previous.onToggleOpen === next.onToggleOpen &&
     previous.onFocus === next.onFocus &&
     previous.onToggleAll === next.onToggleAll &&
     previous.onToggleItem === next.onToggleItem &&
+    previous.onCompleteToggle === next.onCompleteToggle &&
+    previous.completionPendingRowIds === next.completionPendingRowIds &&
     previous.onResourceClick === next.onResourceClick &&
     previous.onRankChange === next.onRankChange &&
     previous.disabled === next.disabled &&
@@ -69,16 +76,24 @@ export const PlanningBoardSeibanPane = memo(function PlanningBoardSeibanPane({
   selectedItemIds,
   isOpen,
   isFocused,
+  highlighted = false,
+  scanFocusKey = 0,
   onToggleOpen,
   onFocus,
   onToggleAll,
   onToggleItem,
+  onCompleteToggle,
+  completionPendingRowIds,
   onResourceClick,
   onRankChange,
   disabled = false,
   rankDisabled = false,
   bulkDisabled = false
 }: PlanningBoardSeibanPaneProps) {
+  const paneRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (highlighted && isOpen) paneRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [highlighted, isOpen, scanFocusKey]);
   const selectableItems = useMemo(() => items.filter((item) => !item.isCompleted), [items]);
   const selectedSelectableCount = useMemo(
     () => selectableItems.filter((item) => selectedItemIds.has(item.itemId)).length,
@@ -94,8 +109,10 @@ export const PlanningBoardSeibanPane = memo(function PlanningBoardSeibanPane({
 
   return (
     <article
+      ref={paneRef}
       className={clsx(
         'min-w-0 overflow-hidden rounded-lg border bg-slate-900/85',
+        highlighted && 'ring-2 ring-white',
         isFocused ? 'border-emerald-400/70 shadow-lg shadow-emerald-950/30' : 'border-slate-800'
       )}
       data-testid={`planning-board-seiban-${fseiban}`}
@@ -146,6 +163,8 @@ export const PlanningBoardSeibanPane = memo(function PlanningBoardSeibanPane({
           allocation={allocation}
           selectedItemIds={selectedItemIds}
           onToggleItem={onToggleItem}
+          onCompleteToggle={onCompleteToggle}
+          completionPendingRowIds={completionPendingRowIds}
           onResourceClick={onResourceClick}
           onRankChange={onRankChange}
           disabled={disabled}

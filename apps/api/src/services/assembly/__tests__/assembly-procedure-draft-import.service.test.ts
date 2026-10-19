@@ -104,6 +104,7 @@ describe('AssemblyProcedureDraftImportService', () => {
           kind: 'SOURCE',
         }),
       }),
+      undefined,
     );
     expect(storage.delete).toHaveBeenCalledWith(sourceAsset);
     const imageDir = path.join(TEST_STORAGE_DIR, 'assembly-procedure-images');

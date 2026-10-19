@@ -26,7 +26,7 @@ export function InventoryPhotoPane({ photos }: Props) {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3.5" aria-label="品物写真">
-      <button
+      {photos.length > 1 ? <button
         type="button"
         className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-[18px] border border-inv-line bg-inv-s1 focus:outline-none focus-visible:border-inv-cyan"
         aria-label={zoomed ? '写真を元の大きさに戻す' : '写真を拡大'}
@@ -34,7 +34,7 @@ export function InventoryPhotoPane({ photos }: Props) {
         onClick={() => setZoomed((current) => !current)}
       >
         <img src={src} alt={photo.originalFilename} className="h-full w-full object-contain" />
-      </button>
+      </button> : <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-[18px] border border-inv-line bg-inv-s1"><img src={src} alt={photo.originalFilename} className="h-full w-full object-contain" /></div>}
       {!zoomed && photos.length > 1 ? (
         <div className="flex shrink-0 gap-3 overflow-x-auto">
           {photos.map((entry, entryIndex) => (

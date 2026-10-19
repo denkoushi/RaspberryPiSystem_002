@@ -53,7 +53,7 @@ export async function registerKioskSupportRoute(
     const clientId = (request.body as { clientId?: string })?.clientId || clientDevice.id;
 
     // クライアントログとして保存
-    await recordKioskSupportMessage({
+    const threadId = await recordKioskSupportMessage({
       clientId,
       userMessage: body.message,
       page: body.page,
@@ -77,6 +77,6 @@ export async function registerKioskSupportRoute(
       );
     });
 
-    return { requestId: request.id };
+    return { requestId: request.id, threadId };
   });
 }

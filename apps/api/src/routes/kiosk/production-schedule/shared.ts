@@ -6,6 +6,8 @@ import { displayItemIdSchema } from '../../../services/production-schedule/order
 import type { LeaderboardShellSnapshotStore } from '../../../services/production-schedule/leaderboard/leaderboard-shell-snapshot.store.js';
 import type { ClientDeviceForScopeResolution, LocationScopeContext } from '../shared.js';
 
+export const grindingPlanningBoardCategorySchema = z.enum(['grinding', 'cutting', 'all']).default('grinding');
+
 export const ORDER_NUMBER_MIN = 1;
 export const ORDER_NUMBER_MAX = 10;
 export const PROCESSING_TYPES = ['塗装', 'カニゼン', 'LSLH', 'その他01', 'その他02'] as const;

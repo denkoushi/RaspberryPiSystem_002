@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { DEFAULT_CLIENT_KEY, getResolvedClientKey } from '../../../api/client';
+import { publishSignaling, registerSignalingSender } from '../signalingBus';
 import { playRingtone } from '../utils/ringtone';
 
 import type { IncomingCallPayload, SignalingMessage } from '../types';
@@ -42,6 +43,7 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
+  const releaseBridgeRef = useRef<(() => void) | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const isPlayingRingtoneRef = useRef(false);
@@ -105,6 +107,12 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
       const wsUrl = `${protocol}//${window.location.host}/api/webrtc/signaling?clientKey=${encodeURIComponent(clientKey)}`;
       const socket = new WebSocket(wsUrl);
 
+      const releaseBridge = registerSignalingSender(message => {
+        if (socket.readyState !== WebSocket.OPEN) return false;
+        try { socket.send(JSON.stringify(message)); return true; } catch { return false; }
+      });
+      releaseBridgeRef.current = releaseBridge;
+
       socket.onopen = () => {
         setIsConnected(true);
         setIsConnecting(false);
@@ -127,6 +135,12 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
       socket.onmessage = (event) => {
         try {
           const message: SignalingMessage = JSON.parse(event.data);
+
+          if (message.type.startsWith('watch.') ||
+              (message.type === 'error' && typeof (message.payload as { watchId?: unknown })?.watchId === 'string')) {
+            publishSignaling(message);
+            return;
+          }
 
           switch (message.type) {
             case 'incoming': {
@@ -223,6 +237,7 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
       };
 
       socket.onclose = (event) => {
+        releaseBridge();
         const wasManualDisconnect = isManualDisconnectRef.current;
         isManualDisconnectRef.current = false;
 
@@ -272,6 +287,8 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
   }, [connect]);
 
   const disconnect = useCallback(() => {
+    releaseBridgeRef.current?.();
+    releaseBridgeRef.current = null;
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;

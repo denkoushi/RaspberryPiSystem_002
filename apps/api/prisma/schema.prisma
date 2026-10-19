@@ -8,6 +8,17 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum KioskInquiryKind {
+  INQUIRY
+  SYSTEM_NOTICE
+}
+
+enum KioskInquirySide {
+  SYSTEM
+  SENDER
+  RECEIVER
+}
+
 enum EmployeeStatus {
   ACTIVE
   INACTIVE
@@ -86,6 +97,7 @@ enum InventoryImportOutcome {
 
 enum InventoryImportPayloadStatus {
   PENDING
+  DISMISSED
   REGISTERED
   INVALID
   DUPLICATE
@@ -167,6 +179,9 @@ model Employee {
   status                                        EmployeeStatus                                 @default(ACTIVE)
   createdAt                                     DateTime                                       @default(now())
   updatedAt                                     DateTime                                       @updatedAt
+  screenWatchSessions                           KioskScreenWatchSession[]
+  kioskInquiryReceiver                          KioskInquiryReceiverEmployee?
+  kioskInquiryMessages                          KioskInquiryMessage[]
   loans                                         Loan[]
   inspectionRecords                             InspectionRecord[]
   riggingInspectionRecords                      RiggingInspectionRecord[]
@@ -476,7 +491,8 @@ model ClientDevice {
   apiKey                                        String                                         @unique
   statusClientId                                String? // ClientStatus.clientId への紐づけ（x-client-key → statusClientId）
   defaultMode                                   String?                                        @default("TAG") // 'PHOTO' | 'TAG'（デフォルト: 'TAG'）
-  kioskInitialRoute                             String? // 端末ごとのキオスク起動先（borrow_tag | borrow_photo | leader_order_board | assembly。production_schedule は旧互換）
+  kioskInitialRoute                             String? // 端末ごとのキオスク開始ページ（shared-types の KIOSK_INITIAL_ROUTE_IDS。未設定は defaultMode、PIN画面は対象外）
+  kioskPortalHiddenTabIds                        String[] @default([])
   /// キオスクのサイネージプレビューで参照する `ClientDevice.apiKey`（サイネージ用途端末のみ許可。未設定時は自端末キーでプレビュー）
   signagePreviewTargetApiKey                    String?
   /// Zero2W 棚番エッジ等: 端末に固定する棚番（`西-北-01` 形式・trim 保存）
@@ -490,6 +506,12 @@ model ClientDevice {
   site                                          Site?                                          @relation(fields: [siteKey], references: [key], onDelete: Restrict, onUpdate: Cascade)
   /// 他端末の代理操作（手動順番・負荷調整などで対象端末を指定）を許可する端末
   canProxyOtherDevices                          Boolean                                        @default(false)
+  inquiryReceiverEnabled                        Boolean                                        @default(false)
+  systemNoticeReceiverEnabled                   Boolean                                        @default(false)
+  screenWatchViewerSessions                     KioskScreenWatchSession[] @relation("ScreenWatchViewer")
+  screenWatchTargetSessions                     KioskScreenWatchSession[] @relation("ScreenWatchTarget")
+  kioskInquiryThreads                           KioskInquiryThread[]
+  kioskInquiryMessages                          KioskInquiryMessage[]
   lastSeenAt                                    DateTime?
   createdAt                                     DateTime                                       @default(now())
   updatedAt                                     DateTime                                       @updatedAt
@@ -961,6 +983,7 @@ model InventoryItem {
   note           String?
   /// Unit name the item is counted in; null means 個.
   unit           String?
+  unitPrice      Int?
   maker          String?
   toolName       String?
   workMaterial   String?
@@ -986,6 +1009,16 @@ model InventoryToolFieldPreset {
   createdAt DateTime @default(now())
 
   @@unique([field, value])
+}
+
+model InventoryToolValueDistinct {
+  id        String   @id @default(uuid())
+  field     String
+  valueA    String
+  valueB    String
+  createdAt DateTime @default(now())
+
+  @@unique([field, valueA, valueB])
 }
 
 /// Units offered when setting an item's unit (個, ケース, ...). Items store the name.
@@ -1095,9 +1128,11 @@ model InventoryDrawer {
 
 model InventoryCompartment {
   id              String                 @id @default(uuid())
+  labelNumber     Int                    @unique @default(autoincrement())
   drawerId        String
   inventoryItemId String
   stockQuantity   Int                    @default(0)
+  lastIssuedAt    DateTime?
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
   drawer          InventoryDrawer        @relation(fields: [drawerId], references: [id], onDelete: Cascade)
@@ -1417,6 +1452,7 @@ model CsvDashboard {
   updatedAt                      DateTime                                          @updatedAt
   ingestRuns                     CsvDashboardIngestRun[]
   rows                           CsvDashboardRow[]
+  grindingPlanningBoardResourceCapacities ProductionScheduleGrindingPlanningBoardResourceCapacity[]
   grindingPlanningBoardStates    ProductionScheduleGrindingPlanningBoardState[]
   grindingPlanningBoardOverrides ProductionScheduleGrindingPlanningBoardOverride[]
   grindingPlanningBoardDueScopes ProductionScheduleGrindingPlanningBoardDueScope[]
@@ -1870,6 +1906,21 @@ model ProductionScheduleGrindingPlanningBoardState {
   @@index([csvDashboardId, updatedAt], map: "PSGrindingPlanningState_dashboard_updated_idx")
 }
 
+model ProductionScheduleGrindingPlanningBoardResourceCapacity {
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  siteKey        String   @db.VarChar(100)
+  resourceCd     String   @db.VarChar(20)
+  dailyHours     Int
+  runsThroughBreaks Boolean @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  csvDashboard CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade, map: "PSGrindingPlanningCapacity_dashboard_fkey")
+
+  @@unique([csvDashboardId, siteKey, resourceCd], map: "PSGrindingPlanningCapacity_dashboard_site_resource_key")
+}
+
 /// 研削順位ボードの行/分割片 override。元CSV・元順位は保存せず、常に正本から再解決する。
 model ProductionScheduleGrindingPlanningBoardOverride {
   id                  String    @id @default(uuid())
@@ -1882,6 +1933,7 @@ model ProductionScheduleGrindingPlanningBoardOverride {
   /// an explicit processing clear falls back to the CSV planned end date.
   dueDateCleared      Boolean?
   alternateRank       Int?
+  orderPinned         Boolean   @default(false)
   specialDueKind      String?   @db.VarChar(20)
   specialDueExpiresAt DateTime?
   version             Int       @default(1)
@@ -2825,6 +2877,13 @@ enum AssemblyProcedureOverlayShapeKind {
   ARROW
 }
 
+enum AssemblyProcedureCaptionFeedbackOutcome {
+  PROPOSED
+  KEPT
+  EDITED
+  DELETED
+}
+
 enum AssemblyProcedureAssetKind {
   SOURCE
   OVERLAY_IMAGE
@@ -3231,10 +3290,30 @@ model AssemblyProcedureAsset {
   createdAt        DateTime                            @default(now())
   overlayElements  AssemblyProcedureOverlayElement[]
   sourceRevisions  AssemblyProcedureDocumentRevision[]
+  captionFeedback  AssemblyProcedureCaptionFeedback[]
   ownerDocument    AssemblyProcedureDocument?          @relation("AssemblyProcedureAssetOwnerDocument", fields: [ownerDocumentId], references: [id], onDelete: SetNull)
 
   @@index([sha256], map: "AssemblyProcedureAsset_idx_sha256")
   @@index([ownerDocumentId, createdAt], map: "AssemblyProcedureAsset_idx_owner_created")
+}
+
+model AssemblyProcedureCaptionFeedback {
+  id           String                                  @id @default(uuid())
+  documentId   String
+  pageIndex    Int
+  elementId    String
+  assetId      String
+  documentName String
+  contextText  String?
+  aiText       String
+  finalText    String?
+  outcome      AssemblyProcedureCaptionFeedbackOutcome @default(PROPOSED)
+  createdAt    DateTime                                @default(now())
+  resolvedAt   DateTime?
+  asset        AssemblyProcedureAsset                  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, elementId])
+  @@index([assetId])
 }
 
 /// Editable elements owned by one document revision. Coordinates are source
@@ -5252,7 +5331,7 @@ model MachineSignalImportRun {
 
 model KnowledgePositionRank {
   positionName String   @id
-  /// general | leader | section_chief | manager (DB CHECK)
+  /// general | leader | section_chief | manager | general_manager | executive (DB CHECK)
   rank         String
   updatedAt    DateTime @updatedAt
 }
@@ -5279,8 +5358,15 @@ model KnowledgeProcedureReview {
   @@index([revisionId, createdAt])
 }
 
+enum ProcedureManualSubjectKind {
+  MODEL
+  PART
+  COMMON
+}
+
 /// Two-level process list for standalone procedure manual browsing.
 model ProcedureManualProcess {
+  subjectKind ProcedureManualSubjectKind @default(MODEL)
   id          String                      @id @default(uuid())
   parentId    String?
   name        String
@@ -5294,6 +5380,7 @@ model ProcedureManualProcess {
   @@index([parentId, sortOrder])
 }
 
+/// For PART processes, modelCode/modelCodeKey store the part number/normalized part key.
 model ProcedureManualAssignment {
   id                          String                     @id @default(uuid())
   modelCode                   String
@@ -5318,19 +5405,28 @@ model ProcedureManualAssignment {
 enum ProcedureMaterialKind {
   TEXT
   PHOTO
+  PDF
 }
 
 enum ProcedureMaterialOrigin {
+  APP
   GMAIL
   KNOWLEDGE
+  WORK_INSTRUCTION
 }
 
 model ProcedureMaterial {
   id               String @id @default(uuid())
   origin           ProcedureMaterialOrigin @default(GMAIL)
   knowledgeRef     Json?
+  workInstructionRef Json?
+  appRef           Json?
   kind             ProcedureMaterialKind
   text             String?
+  imageDescription String?
+  imageDescribedAt DateTime?
+  imageDescribeAttempts Int @default(0)
+  imageDescribeNextAttemptAt DateTime?
   storageKey       String?
   sha256           String?
   contentType      String?
@@ -5414,23 +5510,80 @@ model ProcedureVideo {
   updatedAt         DateTime @updatedAt
   links             ProcedureVideoLink[]
   comments          ProcedureVideoComment[]
+  scenes            ProcedureVideoScene[]
+  autoEditSuggestions ProcedureVideoAutoEditSuggestion[]
 
   @@index([status, updatedAt])
   @@index([discardedAt, receivedAt])
 }
 
+enum ProcedureVideoAutoEditStatus {
+  PENDING
+  RUNNING
+  READY
+  FAILED
+  SKIPPED
+}
+
+enum ProcedureVideoAutoEditDecision {
+  APPLIED
+  DISMISSED
+}
+
+model ProcedureVideoAutoEditSuggestion {
+  id              String @id @default(uuid())
+  videoId         String
+  status          ProcedureVideoAutoEditStatus @default(PENDING)
+  decision        ProcedureVideoAutoEditDecision?
+  attempts        Int @default(0)
+  processingToken String?
+  modelRoute      String?
+  modelName       String?
+  promptVersion   String
+  suggestion      Json @default("{}")
+  verification    Json?
+  confirmed       Json?
+  decidedAt       DateTime?
+  errorCode       String?
+  errorMessage    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  video           ProcedureVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@index([videoId, createdAt])
+  @@index([status, createdAt])
+}
+
+model ProcedureVideoScene {
+  id           String @id @default(uuid())
+  videoId      String
+  title        String
+  startSeconds Float
+  endSeconds   Float
+  posterStorageKey String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  video        ProcedureVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  links        ProcedureVideoLink[]
+
+  @@index([videoId, startSeconds])
+}
+
 model ProcedureVideoLink {
   id                          String @id @default(uuid())
   videoId                     String
+  sceneId                     String?
   assemblyProcedureDocumentId String
   pageIndex                   Int
   sortOrder                   Int
   createdAt                   DateTime @default(now())
   video                       ProcedureVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  scene                       ProcedureVideoScene? @relation(fields: [sceneId], references: [id], onDelete: Restrict)
   document                    AssemblyProcedureDocument @relation(fields: [assemblyProcedureDocumentId], references: [id], onDelete: Restrict)
 
   @@unique([assemblyProcedureDocumentId, pageIndex, sortOrder])
   @@index([videoId])
+  @@index([sceneId])
 }
 
 model ProcedureVideoComment {
@@ -5443,4 +5596,93 @@ model ProcedureVideoComment {
   video     ProcedureVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
 
   @@index([videoId, sortOrder])
+}
+
+model KioskInquiryReceiverEmployee {
+  id            String   @id @default(uuid())
+  employeeId    String   @unique
+  canViewScreen Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model KioskInquiryThread {
+  id                   String                @id @default(uuid())
+  senderClientDeviceId String?
+  kind                 KioskInquiryKind      @default(INQUIRY)
+  noticeKey            String?
+  noticeTitle          String?
+  noticeResolvedAt     DateTime?
+  page                 String
+  receiverUnread       Boolean               @default(true)
+  senderUnread         Boolean               @default(false)
+  lastMessageAt        DateTime
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  senderClientDevice   ClientDevice?         @relation(fields: [senderClientDeviceId], references: [id], onDelete: Cascade)
+  messages             KioskInquiryMessage[]
+  screenWatchSessions  KioskScreenWatchSession[]
+
+  @@index([kind, noticeKey])
+  @@index([receiverUnread])
+  @@index([senderClientDeviceId, senderUnread])
+  @@index([lastMessageAt])
+}
+
+model KioskInquiryMessage {
+  id                   String           @id @default(uuid())
+  threadId             String
+  side                 KioskInquirySide
+  body                 String
+  authorClientDeviceId String?
+  authorEmployeeId     String?
+  createdAt            DateTime         @default(now())
+  thread               KioskInquiryThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  authorClientDevice   ClientDevice?    @relation(fields: [authorClientDeviceId], references: [id], onDelete: SetNull)
+  authorEmployee       Employee?        @relation(fields: [authorEmployeeId], references: [id], onDelete: SetNull)
+
+  @@index([threadId, createdAt])
+}
+
+model ProcedureManualCommonAction {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ProcedureManualCommonSubject {
+  key     String @id
+  name    String
+  kanaRow String?
+}
+
+enum KioskScreenWatchStatus {
+  REQUESTED
+  ACTIVE
+  DENIED
+  ENDED
+  EXPIRED
+  FAILED
+}
+
+model KioskScreenWatchSession {
+  id                   String                 @id @default(uuid())
+  threadId             String
+  viewerEmployeeId     String?
+  viewerClientDeviceId String
+  targetClientDeviceId String
+  status               KioskScreenWatchStatus @default(REQUESTED)
+  requestedAt          DateTime               @default(now())
+  acceptedAt           DateTime?
+  endedAt              DateTime?
+  endReason            String?
+  thread               KioskInquiryThread     @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  viewerEmployee       Employee?              @relation(fields: [viewerEmployeeId], references: [id], onDelete: SetNull)
+  viewerClientDevice   ClientDevice           @relation("ScreenWatchViewer", fields: [viewerClientDeviceId], references: [id])
+  targetClientDevice   ClientDevice           @relation("ScreenWatchTarget", fields: [targetClientDeviceId], references: [id])
+
+  @@index([threadId])
+  @@index([targetClientDeviceId, status])
 }

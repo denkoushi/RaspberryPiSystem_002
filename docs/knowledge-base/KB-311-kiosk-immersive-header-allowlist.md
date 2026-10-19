@@ -1,16 +1,18 @@
 ---
-title: KB-311 キオスク沉浸式レイアウト（右下ヘッダーリビール）の URL allowlist
+title: KB-311 キオスク下辺ドックと画面高さ固定の URL allowlist
 tags: [キオスク, フロントエンド, KioskLayout, Ansible]
 audience: [開発者, 運用者]
-last-verified: 2026-07-26
+last-verified: 2026-10-07
 category: knowledge-base
 ---
 
-# KB-311: キオスク沉浸式レイアウト（右下ヘッダーリビール）の URL allowlist
+# KB-311: キオスク下辺ドックと画面高さ固定の URL allowlist
 
 ## Context
 
-`KioskLayout` では、特定ルートのみキオスクナビ（`KioskHeader`）を既定で隠し、**画面右下の24×24px**へマウスを寄せるとヘッダーが**下から上へ**スライド表示する「沉浸式」レイアウトを使う。
+`KioskLayout` のメニューは**全ルートで下辺ドック**に統一し、既定非表示。右下24×24pxのホバー、または右下のつまみへのホバー／クリックで下から表示する。
+
+`usesKioskImmersiveLayout(pathname)` と既存 allowlist は、画面高さを `h-dvh` に固定するか、`min-h-dvh` でページスクロールにするかの判定だけに使う。メニューの出し方には使わない。
 
 - **判定の単一情報源**: [`kioskImmersiveLayoutPolicy.ts`](../../apps/web/src/features/kiosk/kioskImmersiveLayoutPolicy.ts) の `usesKioskImmersiveLayout(pathname)`
 - **ホットゾーン幾何**: [`kioskHeaderRevealHotZone.ts`](../../apps/web/src/features/kiosk/kioskHeaderRevealHotZone.ts)（Vitest: [`kioskHeaderRevealHotZone.test.ts`](../../apps/web/src/features/kiosk/kioskHeaderRevealHotZone.test.ts)）
@@ -23,7 +25,8 @@ category: knowledge-base
 |------|------|
 | 〜2026-03-21 | 上端全幅ホバー（`useKioskTopEdgeHeaderReveal`） |
 | 2026-05-22〜2026-07-25 | **下端・中央 1/3**・14px 帯（`feat/kiosk-bottom-center-header-reveal`） |
-| 2026-07-26 以降（コード正本） | **右下24×24px**（`feat/assembly-auto-id-nfc-invalidation`） |
+| 2026-07-26〜2026-10-06 | **右下24×24px**（`feat/assembly-auto-id-nfc-invalidation`） |
+| 2026-10-07 | **全ルートで下辺ドック**。つまみ・状態チップを追加、allowlist は画面高さ固定の判定だけ |
 
 **持出タブ**（`/kiosk/tag`・`/kiosk/photo`・計測/吊具持出）は下端リビールに統一（2026-05-22 以前は `/kiosk/photo` のみ上辺常時表示）。
 
@@ -38,21 +41,23 @@ category: knowledge-base
 |------|-----|
 | ホットゾーン高さ | **24px**（右下隅） |
 | ホットゾーン幅 | **24px**（`x ∈ [width-24, width]`、`y ∈ [height-24, height]`） |
-| 非表示 | `translate-y-full` + **`pointer-events-none`** + **`invisible`**（下辺全域の誤 `mouseenter` 防止） |
+| 非表示 | `translate-y-full` + **`pointer-events-none`** + **`invisible`** + **`inert`**（フォーカス進入と下辺全域の誤 `mouseenter` 防止） |
 | 表示 | `translate-y-0`（下から出る） |
-| 開くトリガ | (1) 右下 DOM ホットゾーン `onMouseEnter` (2) `window` `mousemove` で純関数命中時のみ `open()` |
-| 閉じる | ヘッダー `mouseleave` 後 **200ms**（`KIOSK_REVEAL_CLOSE_DELAY_MS`） |
+| 開くトリガ | (1) 右下 DOM ホットゾーン `onMouseEnter` (2) `window` `mousemove` の右下判定 (3) つまみのホバー／クリック |
+| 閉じる | ドック `mouseleave` 後 **200ms**、Esc、外側 `pointerdown`。モーダル／ポップオーバーが開いている間はドックを維持し、Esc はそちらを先に閉じる |
 | タッチ | 未対応（マウス前提） |
-| 視覚ガイド | なし |
+| 視覚ガイド | 右端から16px、56×24pxのつまみ（ドック表示中は非表示） |
+
+**状態チップ**: 温度（小数1桁）と負荷（整数）を表示。温度≥70／負荷≥80は赤、温度≥60／負荷≥60は黄、それ以外は緑。クリックで端末・APIキー・通話ID・CPU情報をポップオーバー表示し、外側クリック／Escで閉じる。状態未取得時は「端末」ボタンでAPIキー／通話IDを確認できる。保守情報はドックへ常時表示しない。
 
 **実装メモ（保守）**:
 
-- ヘッダー全幅の `mouseenter` では**開かない**（`useKioskEdgeHeaderReveal`）。開くのはホットゾーン命中時のみ。
+- ヘッダー全幅の `mouseenter` では**開かない**（`useKioskEdgeHeaderReveal`）。開くのはホットゾーンまたはつまみの操作。
 - E2E は [`revealKioskHeader`](../../e2e/helpers.ts) が **`(width-2, height-2)`**へ `mouse.move` し、ヘッダーがビューポート内に入るまで `waitForFunction`。
 
 ## Symptoms / 運用上の問い
 
-- 新しいキオスク画面を追加したとき、同じヘッダー挙動にしたいが、どこを直せばよいか分からない。
+- 新しいキオスク画面を追加したとき、画面高さを固定したいが、どこを直せばよいか分からない（ドックは全ルート共通）。
 - なぜ `/kiosk/production-schedule` だけ完全一致で、子パスは別扱いなのか。
 - 手動順番の下ペイン（右端スライダーホバー）とナビが競合しないか → **右下24×24pxだけ**がホットゾーン。
 - Pi5 で新 UI・Pi4 だけ旧 UI（上端リビール・ナビ常時表示）に見える。
@@ -68,8 +73,9 @@ category: knowledge-base
 | `e9a860e1` | `/kiosk/photo` を沉浸式 allowlist に追加 |
 | `cbeb6bbc` | E2E: `revealKioskHeader` **後**にナビ可視性 assert（CI 回帰修正） |
 | 2026-07-26 実装 | DOM・純関数・E2Eを右下24×24pxへ統一し、中央1/3の反応を廃止 |
+| 2026-10-07 実装 | 全ルートの下辺ドック・つまみ・状態チップ。タブの選択色を共通化し、折り返し表示 |
 
-### 対象（true）
+### 画面高さ固定の対象（true）
 
 | 種別 | パス |
 |------|------|
@@ -78,7 +84,7 @@ category: knowledge-base
 
 定数 **`KIOSK_BORROW_IMMERSIVE_PATH_EXACT`** に持出系 4 パスを集約（`e9a860e1`）。
 
-### 除外例（false）
+### ページスクロールの対象例（false）
 
 - `/kiosk/call`, `/kiosk/production-schedule/due-management`, `/kiosk/production-schedule/other`
 
@@ -110,12 +116,13 @@ category: knowledge-base
 - **CI**: `26262397906` success（E2E 修正後。初回 `26261933696` は `kiosk.spec.ts` が沉浸式前に assert で失敗）
 - **実機 UI**: StoneBase01 **OK**（下端中央リビール・`/kiosk/photo` 沉浸式）。他 3 台は同チェックリストで spot 確認推奨。
 
-### 2026-07-26以降の実機 UI チェックリスト
+### 2026-10-07以降の実機 UI チェックリスト
 
-1. 画面中央・右辺上部・下辺の右下以外にマウス → ナビが**出ない**
+1. 画面中央・右辺上部・下辺の右下／つまみ以外にマウス → ナビが**出ない**
 2. 右下24×24px → ナビが**下から**スライド表示
 3. `/kiosk/photo` 等の沉浸式ルートでも (1)(2) と同様
-4. `/kiosk/production-schedule/due-management` → ヘッダー**常時表示**（沉浸式 OFF）
+4. `/kiosk/call`・`/kiosk/production-schedule/due-management` → 同じ下辺ドック（ページスクロールは維持）
+5. つまみで開き、状態チップでAPIキー／通話IDを確認。モーダル内クリックで閉じず、Escはモーダルを先に閉じる
 
 2026-05-22の本番反映記録にある「下端中央1/3」は当時の履歴であり、現行コードの受入基準ではない。
 
@@ -126,7 +133,7 @@ category: knowledge-base
 
 ## Troubleshooting
 
-### 沉浸式にならない / 想定外の画面で隠れる
+### 画面高さが固定されない
 
 - `normalizeKioskPathname` の末尾 `/` と、`IMMERSIVE_PATH_EXACT` vs `startsWith` を確認（`/kiosk/production-schedule` は **子パスを含まない** 完全一致）。
 
@@ -136,7 +143,7 @@ category: knowledge-base
 
 ### ナビが出ない（仕様どおりの可能性）
 
-- 下辺中央や右辺上部では開かない。**右下24×24px**を確認。
+- 下辺中央や右辺上部では開かない。**右下24×24px**またはつまみを確認。
 
 ### Pi5/Mac は新 UI・Pi4 だけ旧挙動
 
@@ -151,7 +158,7 @@ category: knowledge-base
 
 ### E2E / CI でキオスクナビが不可視
 
-- 沉浸式ではヘッダー既定非表示。**`revealKioskHeader()` の後**に `toBeVisible` する（`cbeb6bbc`）。順序逆だと `hidden` で失敗（CI `kiosk.spec.ts` サイネージモーダルテスト等）。
+- 全キオスクルートでドック既定非表示。**`revealKioskHeader()` の後**に `toBeVisible` する（`cbeb6bbc`）。順序逆だと `hidden` で失敗（CI `kiosk.spec.ts` サイネージモーダルテスト等）。
 - ローカル smoke: `CI=true` + Postgres migrate/seed — [KB-025](./ci-cd.md#kb-025-e2eスモークkioskがナビゲーション不可視で失敗する)
 
 ### パレット可視化でページ全体が縦スクロール

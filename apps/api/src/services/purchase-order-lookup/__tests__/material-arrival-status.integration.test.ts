@@ -33,6 +33,19 @@ describe('findMaterialArrivalStatusByPart', () => {
         purchaseRow('9900000006', 'MD900000003', 'C'),
         // ステイタス未取込の材料行
         purchaseRow('9900000007', 'MD900000004-001', null),
+        purchaseRow('9900000008', 'MD900000004', 'C'),
+        purchaseRow('9900000009', 'MD900000006-001', 'X'),
+        purchaseRow('9900000010', 'MD900000006(A)', 'X'),
+        purchaseRow('9900000011', 'MD900000006', 'C'),
+        purchaseRow('9900000012', 'MD900000006', 'R'),
+        purchaseRow('9900000013', 'MD900000007-001', 'X'),
+        purchaseRow('9900000014', 'MD900000007(A)', 'C'),
+        purchaseRow('9900000015', 'MD900000007', 'R'),
+        purchaseRow('9900000016', 'MD900000008-001', 'X'),
+        purchaseRow('9900000017', 'MD900000009-001', 'X'),
+        purchaseRow('9900000018', 'MD900000009', 'X'),
+        purchaseRow('9900000019', 'MD900000010-001', 'X'),
+        purchaseRow('9900000020', 'MD900000010-003', 'C'),
       ],
     });
   });
@@ -48,11 +61,22 @@ describe('findMaterialArrivalStatusByPart', () => {
     }));
     const result = await findMaterialArrivalStatusByPart(parts);
 
-    expect(result.get(materialArrivalLookupKey(SEIBAN, 'MD900000001'))).toBe('received');
-    expect(result.get(materialArrivalLookupKey(SEIBAN, 'MD900000002'))).toBe('ordered');
+    expect(result.get(materialArrivalLookupKey(SEIBAN, 'MD900000001'))).toEqual({ status: 'received', basis: 'material' });
+    expect(result.get(materialArrivalLookupKey(SEIBAN, 'MD900000002'))).toEqual({ status: 'ordered', basis: 'material' });
     expect(result.has(materialArrivalLookupKey(SEIBAN, 'MD900000003'))).toBe(false);
     expect(result.has(materialArrivalLookupKey(SEIBAN, 'MD900000004'))).toBe(false);
     expect(result.has(materialArrivalLookupKey(SEIBAN, 'MD900000005'))).toBe(false);
+  });
+
+  it('substitutes only deleted, unresolved material with undecorated part orders', async () => {
+    const result = await findMaterialArrivalStatusByPart(
+      ['MD900000006', 'MD900000007', 'MD900000008', 'MD900000009', 'MD900000010'].map((fhincd) => ({ fseiban: SEIBAN, fhincd }))
+    );
+    expect(result.get(materialArrivalLookupKey(SEIBAN, 'MD900000006'))).toEqual({ status: 'ordered', basis: 'part' });
+    expect(result.get(materialArrivalLookupKey(SEIBAN, 'MD900000007'))).toEqual({ status: 'received', basis: 'material' });
+    for (const fhincd of ['MD900000008', 'MD900000009', 'MD900000010']) {
+      expect(result.has(materialArrivalLookupKey(SEIBAN, fhincd))).toBe(false);
+    }
   });
 
   it('does not match the same part under another seiban', async () => {

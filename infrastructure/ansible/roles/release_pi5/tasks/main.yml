@@ -63,5 +63,36 @@
 - name: Keep the Pi5 system journal across reboots
   ansible.builtin.import_tasks: host-journald.yml
 
+# Host configuration stays outside the API rollback boundary. A render or
+# heartbeat failure must still fail the release rather than hide a bad key.
+- name: Render the Pi5 status-agent configuration outside the immutable release tree
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/status-agent.conf.j2"
+    dest: /etc/raspi-status-agent.conf
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+
 - name: Warn before the Pi5 disk fills
   ansible.builtin.import_tasks: host-status-agent-storage.yml
+
+# The oneshot service reads the file on each invocation. Run it even on an
+# unchanged retry so a previous authentication failure cannot become success.
+- name: Run the Pi5 status-agent once with the rendered configuration
+  ansible.builtin.systemd:
+    name: status-agent.service
+    state: restarted
+
+# Host policy converges even on settled releases, outside API rollback. Like
+# host-journald.yml, a failure here (for example an unreachable package
+# mirror) only reports; it never fails or rolls back the application release.
+- name: Converge the Pi5 unattended security update policy
+  when: "'server' in group_names"
+  block:
+    - name: Apply the Pi5 unattended security update policy
+      ansible.builtin.import_tasks: host-unattended-upgrades.yml
+  rescue:
+    - name: Report that the Pi5 unattended security update policy was not applied
+      ansible.builtin.debug:
+        msg: "The unattended security update policy was not applied on {{ inventory_hostname }}; the release continues."

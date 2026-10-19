@@ -381,3 +381,263 @@ Both were answered offline on the Mac with the night scorer (dense on through th
 The first was the proposed remedy for the 切粉 failure of 2026-10-05 (the whole question as the lexical query buried 切粉 under 両工場 and ２件); it fixes that case but loses three development questions on each night, so the remedy stays with moving the DGX backup and keeping dense retrieval available.
 
 The second came from a code reading during Milestone 7: `applyEnrichment` in `worker.mjs` attaches the enrichment to the records but keeps the lexical passages prepared before, so in production the enrichment reaches the dense index and the judge, not the BM25 ranking. The offline harness (`evaluate.mjs`) attaches the enrichment before preparing the corpus, so the 2026-10-02 enrichment measurements included a lexical effect that production never had. Putting the enrichment text into BM25 loses questions on both nights; the summaries and tags dilute the record's own terms. Production stays as it is, now on purpose. Consequence for Milestone 7: learned queries must reach the lexical ranking on their own, as a short list per record, not through the enrichment text.
+
+### 2026-10-07: fourth night, the first with every loop stage and the backup moved (measurement basis)
+
+Night of 2026-10-06 (22:05 to 22:33), the first with the second grader, the real questions, the learned queries (#1717, #1720, #1721) and the DGX backup moved to 00:00 (Control Plane #353):
+
+- Synthetic: 100 pairs, 77 valid, 73 kept, median anchor overlap 0.35. Dense retrieval answered 72 of 73 live runs (one clarification); on the two nights before, 47 of 60 had fallen back to lexical. Production showed a relevant record for 65 of 73 (89%; 12 of them known only through the second grader's labels), other records for 4, nothing for 4 (outside judged candidates 2, rejected by judge 1, asked back 1). Harder questions (overlap below 0.35) were answered 32 of 36 times, easier ones 33 of 37, so the dense path has closed the gap seen on 2026-10-05.
+- Real: 8 kiosk questions from the receipts of 2026-10-05 and 10-06. Five are content questions and got consensus-relevant records (2 to 5 each); production showed a relevant record for all five at night, including the two 切粉 questions that returned nothing on 2026-10-05 22:44 under the backup congestion. The other three name only a department or a period (「仙台工場FA組立課の不適合２件」, 「最近の不適合を２件」), have no content condition, and stay unscored; they are the filter-only cases still to be scored on filters.
+- Learned queries: 14 candidates from development failures of the last three nights were checked on 41 held-out questions (0 gained, 0 lost; no real held-out rows existed yet at that moment) and activated. Their effect can only show on later nights' development questions and real questions; the morning report lists them.
+
+Caveats: the learn phase ran at 22:08 to 22:11 while generation was still writing until 22:22, which points to two runner processes during the evening API swap; the files are consistent, but the runner should hold a lock. Live scoring took a median 2.6 s per question at night against 0.6 s on the Mac by day.
+
+Private files: `work/flywheel/questions-2026-10-06.jsonl`, `real-2026-10-06.jsonl`, `learned-queries.jsonl`, `labels.json`.
+
+### 2026-10-07: EmbeddingGemma 2 as the dense model (no change)
+
+Trigger: Google released EmbeddingGemma 2 (`google/embeddinggemma-2`, Apache 2.0, 768 dimensions with Matryoshka truncation, 8,192-token context, text, image, audio and video in one space; the card reports MTEB multilingual 61.36 and no Japanese score).
+
+Method: offline on the owner's Mac, no production change, the same arrangement as the first-stage comparison of 2026-10-02: 73 content questions, 7,864 records, whole corpus, the question as the query, character-bigram BM25, RRF with k=60, the stored Qwen3 ranks and the 2026-10-02 ruri-v3-310m lists. EmbeddingGemma 2 ran text-only with sentence-transformers 6.1.0, documents with the `Document` prompt and no truncation (records are a median of 97 tokens), questions with the `SearchQuery` prompt and, as a second arm, the `QuestionAnswering` prompt. The recomputed current arm matched the 2026-10-02 lists on all 73 questions.
+
+| Arm | Gold target in the top 15 / 30 / 50 (73) | Grade-3 record in the top 15 / 30 (73) | Held-out paraphrase (24), top 15 / 30 |
+| --- | --- | --- | --- |
+| Qwen3 only | 36 / 49 / 53 | 59 / 63 | 20 / 22 |
+| ruri-v3-310m only | 39 / 42 / 51 | 62 / 65 | 21 / 21 |
+| EmbeddingGemma 2 only, SearchQuery | 27 / 32 / 40 | 55 / 61 | 18 / 22 |
+| EmbeddingGemma 2 only, QuestionAnswering | 35 / 41 / 48 | 59 / 63 | 21 / 21 |
+| bigram + Qwen3 (current) | 48 / 53 / 57 | 65 / 68 | 22 / 23 |
+| bigram + EmbeddingGemma 2, SearchQuery | 44 / 54 / 57 | 67 / 68 | 22 / 23 |
+| bigram + EmbeddingGemma 2, QuestionAnswering | 48 / 58 / 58 | 68 / 69 | 22 / 23 |
+| bigram + EmbeddingGemma 2 at 512 / 256 dimensions, SearchQuery | 43 / 52 / 57 and 42 / 49 / 56 | 67 / 68 and 67 / 67 | 22 / 23 and 22 / 22 |
+
+On its own the model is behind Qwen3 on the gold targets with either prompt. Fused with bigrams the best arm (QuestionAnswering) gains 5 targets at rank 30 and 3 questions with a grade-3 record in the top 15; the SearchQuery arm loses 4 targets at rank 15. Paired on a grade-3 record in the top 15, the SearchQuery fusion gains 4 questions and loses 2 against the current pair. These are the size of the differences that the ruri-v3-310m swap showed and that were read as noise. The prompt was chosen after seeing both results, which favours the better arm.
+
+nDCG@10 is not comparable for the new arms: the graded labels were pooled from the earlier arms, and 48% (SearchQuery) or 39% (QuestionAnswering) of the model's own top 10 are unjudged and count as zero; in the fusions 9% are unjudged (0.455 and 0.461 against 0.472 for the current pair, a lower bound).
+
+Cost on the Mac (MPS): 296 s for the 7,864 records, 9 ms per question. On the DGX the model would need a new service, because the card lists only sentence-transformers and transformers and the present embedding service is a llama-server; every stored vector would be recomputed.
+
+Decision: no swap of the DGX embedding model. Three embedding models now land within a few questions of each other on these records, so the first-stage model is not where the remaining losses are. The multimodal side of the model (image and text in one space) is a separate question for the photo-loan similarity gallery, which still uses CLIP ViT-B/32, and is not measured here.
+
+Private files: `work/eg2/text-bench.py`, `work/eg2/lists-eg2.json`, `work/eg2/summary-eg2.json`, `work/eg2/eg2-docs.npy`, `models/embeddinggemma-2`.
+### 2026-10-08: fifth night, the first with the runner lock and filter scoring (measurement basis)
+
+Night of 2026-10-07 (22:00 to 22:25, learn decision 22:33), the first after the runner lock, the deterministic filter scoring of department and period questions, and the ten-second wait for the dense index (#1748 and the 2026-10-07 changes):
+
+- Synthetic: 100 pairs, 67 valid, 56 kept, median anchor overlap 0.33 (the hardest set so far). Dropped: 20 copies of the record text, 11 anchors not confirmed by the graders, 6 `http_503` from the business LLM in the first three minutes (22:00:58 to 22:03:07, while the DGX model was still loading), 4 copied words, 2 too similar, 1 busy-guard trip at 22:15. Dense retrieval was available on 54 of 56 live runs (one `failed`, one unrecorded status), so the night fell back to lexical once. Production showed a relevant record for 53 of 56 (95%; 12 of them known only through the second grader's labels), other records for 0, nothing for 3: two targets outside the judged candidates (「M10 誤手配 不適合」, 「ロボット 架台 銘板取付穴 欠落 不適合」) and one asked back (the 軸の窓 drawing question, overlap 0.28). Live scoring took a median 2.3 s per question.
+- Real: 3 kiosk questions from the receipts of 2026-10-07, all filter-only (one department and a count, one department, one department with two records). All three were scored on their filters for the first time and passed: filters, recent order and count correct, 123 and 201 matching records behind the one and two shown. No content question arrived that day, so the real content rule did not fire.
+- Learned queries: 1 candidate from the night's development failures (「ロボット 架台 銘板取付穴 欠落 不適合」) was checked on 62 held-out and 1 real row and rejected (held-out 0 gained, 1 lost). The 14 queries activated on 2026-10-06 stay active; their effect on this night cannot be separated from the harder set without the offline comparison planned for a later morning.
+
+Caveats: the API container was replaced by the morning release at 09:55, so the night's API log (and with it the `already_running` check of the new lock) is gone; the files show one runner only (generation 22:00 to 22:25, learn decision at 22:33, no overlap as on 2026-10-06). The status file reports `outside_window` for the day, as designed. The 95% on 56 questions and the 89% on 73 the night before are within a few questions of each other and should not be read as a gain; the set was smaller and harder.
+
+Private files: `work/flywheel/questions-2026-10-07.jsonl`, `real-2026-10-07.jsonl`, `learned-queries.jsonl`, `labels.json`, `flywheel-status.json`.
+
+### 2026-10-09: sixth night, a drop explained by the planner and judge service, not by retrieval (measurement basis)
+
+Night of 2026-10-08 (22:02 to 22:16, labels 22:19, learn decision 22:21), the first after the rank-only request and the procedure material source (#1846) and the structured cards (#1858) reached the worker. Neither change touched the planner, the judge, the dense path or the flywheel files.
+
+- Synthetic: 114 pairs tried, 82 valid, 69 kept, median anchor overlap 0.38. Dropped: 21 copies, 10 anchors not confirmed, 6 copied words, 3 ungraded, 3 too similar, 2 `http_429` (rate limited). Dense retrieval was available on 64 of 69 (5 unrecorded). Production showed a relevant record for 50 of 69 (72%; 11 known only through the second grader), other records for 8 (all graded not relevant by both graders), nothing for 10, and one run failed outright. The 10 break down as: 3 `unavailable` (the relevance judge returned an error or timed out; this outcome exists only on that path, `executor.mjs` `unavailableResult`), 4 clarifications whose plan has an empty semantic query with a content span (the planner's shape when JEV left a term unresolved), 2 targets outside the judged candidates, 1 rejected by the judge. Live scoring took a median 1.2 s, the fastest night so far.
+- The three new outcome kinds (`unavailable`, `failed`, clarification with an unresolved term) had not appeared on 2026-10-05 to 10-07 apart from one clarification each night. Together with the two `http_429` drops in generation they point to the JEV planner and judge service answering slowly or with errors for part of the 14-minute window, not to retrieval: the two targets outside the candidates and the one judge rejection are in line with earlier nights.
+- Real: 4 kiosk questions of 2026-10-08. Three content questions got consensus-relevant records (1, 2 and 2) and production showed a relevant record for all three. The fourth (「川上さんの最近の訓練結果」) asks for training results, which is a different source, and was answered out of scope by day and at night; it has no relevant records and does not count.
+- Learned queries: no candidate (the two `not_in_pool` failures were not repeated across nights). 15 active after the 2026-10-08 decision, 1 rejected.
+
+Caveats: the API container was replaced by the 23:32 release of #1879, so the night's API log is gone for the second night running; the flywheel's live scoring writes no receipts, so the judge errors behind `unavailable` cannot be read back. If the API log is wanted after a release night, the runner should write its own per-night log file. Not a measured change in retrieval; nothing accepted or rejected.
+
+Private files: `work/flywheel/questions-2026-10-08.jsonl`, `real-2026-10-08.jsonl`, `learned-queries.jsonl`, `labels.json`.
+
+### 2026-10-10: seventh night, back to 93% with the judge service answering normally (measurement basis)
+
+Night of 2026-10-09 (22:03 to 22:18, learn decision in the same run), the first after #1889 (judge failure reasons recorded, one retry on 429/5xx/timeout, a per-night runner log). The retry path had nothing to retry: no `unavailable` or `failed` outcome, no batch needed a second attempt, and `reason` is null on all 54 live rows.
+
+- Synthetic: 100 pairs tried, 64 valid, 54 kept, median anchor overlap 0.33. Dropped: 30 copies, 10 anchors not confirmed, 3 too similar, 2 copied words, 1 `dgx_busy` (two short pauses at 22:04 and 22:09). Dense retrieval was available on 54 of 54. Production showed a relevant record for 50 of 54 (93%; 12 known only through the second grader), other records for 3 (all graded not relevant by both graders), nothing for 1 (target outside the judged candidates). Live scoring took a median 1.2 s, max 1.8 s.
+- Against the sixth night (72%), the whole gap was the JEV planner and judge path: no judge error, no clarification with an unresolved term, no failed run. Retrieval-stage losses (1 outside candidates, 3 other records shown) are in line with 2026-10-05 to 10-08.
+- Real: 1 kiosk question of 2026-10-09, a filter question (department and period). Day and night both answered with the same record; the filter check passed.
+- Learned queries: no candidate. 15 active, 1 rejected.
+
+Caveats: the first night with the runner's own log file, so the API-container log no longer matters for this check. The runner writes one status line every 5 minutes while idle (about 350 lines a night); the log should only record state changes. Not a measured change in retrieval; nothing accepted or rejected.
+
+Private files: `work/flywheel/questions-2026-10-09.jsonl`, `real-2026-10-09.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-09.log`.
+
+### 2026-10-10: learned queries on versus off, offline over three nights (kept, no change)
+
+Question: the 15 active learned queries (phrasings proposed from development failures and activated when the held-out and real checks showed no loss, see 2026-10-07) have been on in production since 2026-10-07. Do they still earn their place? Offline run of the kiosk pipeline (`flywheel-run.mjs`, snapshot and dense store of 2026-10-04, enrichment store on, pool 30, JEV through TypeSafe, embeddings through the DGX tunnel) over the kept synthetic questions of the nights of 2026-10-07, 10-08 and 10-09 (179 questions: 134 development, 45 held-out), once with `--learned off` and once with the active rows, then `flywheel-gate.mjs` with the consensus labels.
+
+| Split | n | relevant shown, off | relevant shown, on | gained | lost | p |
+| --- | --- | --- | --- | --- | --- | --- |
+| development | 134 | 115 | 117 | 3 | 1 | 0.625 |
+| held-out | 45 | 36 | 36 | 0 | 0 | 1.000 |
+
+Reading: a small positive effect on development questions and none on held-out, so the learned queries neither help nor harm in a measurable way. As a new change the gate would reject it (development net gain 2 is below the threshold of 3), but the criterion for keeping something already on is no loss on held-out and real questions, and that holds. Decision: keep the 15 active rows and the nightly proposal path; measure again after more nights with questions that postdate the last activation. The absolute rates here (66% offline) are not comparable with the nightly report's rates, because the offline run counts only consensus-labelled records and uses the 2026-10-04 snapshot.
+
+Private files: `runs/flywheel/n1007-09-all-hybrid-learned-{off,on}-20261010.json` and `.log`, `work/flywheel/learned-queries.jsonl`.
+
+### 2026-10-10: pg_trgm candidate recall on the flywheel questions with consensus labels (rejected)
+
+Follow-up to 2026-10-04, where the pg_trgm replacement of the in-process bigram BM25 was held because most candidates were unlabelled. The prototype (`prototypes/pg-trgm-recall.mjs`) now reads the nightly question files and the consensus labels (`--questions`, labels schema `hermes-flywheel-labels/v1`; the anchor record counts as relevant with the grade-3 pooled records). Same snapshot (2026-10-04, 8,209 records), same queries (question text only), PostgreSQL 15 with pg_trgm 1.6 in a throwaway container on the Mac.
+
+| Method | top30 (179) | top200 (179) | dev top30 (134) | held-out top30 (45) | p50 ms | p95 ms |
+| --- | --- | --- | --- | --- | ---: | ---: |
+| bigram BM25 (current) | 139 (77.7%) | 170 (95.0%) | 104 | 35 | 44 | 58 |
+| pg_trgm similarity | 83 (46.4%) | 140 (78.2%) | 63 | 20 | 99 | 113 |
+| pg_trgm word_similarity | 82 (45.8%) | 132 (73.7%) | 58 | 24 | 115 | 137 |
+
+Paired against BM25 at top30: similarity gained 13 questions and lost 69; word_similarity gained 6 and lost 63. Both plans stay `Seq Scan` (the GIN index is not used by a full `ORDER BY`), as on 2026-10-04.
+
+Reading: on the hand-written questions of 2026-10-04 the three methods were within a few questions of each other; on the synthetic questions pg_trgm loses by about 30 points. The generator rejects questions that copy the record (no 8-character run, bigram share at most 0.5), so character-trigram set similarity has little to match, while the IDF-weighted bigram BM25 still finds the rare terms. Real kiosk questions are short and paraphrased in the same way. Decision: pg_trgm as the first-stage candidate source is rejected; the cross-source plan keeps candidate generation in process. Private files: `runs/pg-trgm-recall-flywheel-20261010.json`; draft `prototypes/pg-trgm-recall-20261010.md`.
+
+### 2026-10-11: eighth night, 79% with five ask-backs, and the first ten synthetic filter questions (measurement basis)
+
+Night of 2026-10-10 (22:04 to 22:18), the first with #1920 (synthetic filter questions) and the first full night with #1918 (readiness probe, quiet idle log). The Pi5 release of #1920 finished at 22:00:19, and the runner used the new code from its first pass.
+
+- Synthetic content: 100 pairs tried, 71 generated, 66 kept (median 16 chars, anchor overlap 0.33). Dropped: 25 copied runs, 4 anchors not confirmed, 3 copied words, 1 ungraded, 1 too similar; one `dgx_busy` pause at 22:04. Production showed a relevant record for 52 of 66 (79%; 14 known only through the second grader), other records for 5, nothing for 9: 3 outside the judged candidates, 1 rejected by the judge, 5 ask-backs. All five ask-backs came back in about 0.3 s with no filter and no content query, spread over the night (22:09 to 22:14), four of them terse questions ending in 「不適合」 (「設計漏れ ターミナル 穴あけ 不適合」, 「変更部 継手 数え漏れ 不適合」, 「モータ取付面 ス 発生」, 「外注側 付帯部材 発注忘 不適合」) and one colloquial. The live row does not record which term the planner could not resolve, so the cause (value linking that asked for a choice, or an unanswered planner question) is open; the seventh night had none. Without the ask-backs the rate is 52 of 61 (85%), still below the seventh night's 93%.
+- Synthetic filter: 10 questions (3 `count5`/`count3`, 4 `last_month`, 1 `short`, 1 `colloquial`), 7 ok, 1 mismatch, 2 unsupported, no ask-back, no failure.
+  - Mismatch 「三島工場管理部生産管理課(製造) 最近 不適合」: the planner kept a content query although nothing but the department and generic words remained, so the executor ran the relevance judge, which dropped the fifth-newest record and showed the sixth. Filters and count were right.
+  - Unsupported 「…の先月の不適合」 ×2: same cause, the planner kept the question as a content query with relevance sort, while the other two `last_month` questions were planned as filter-only with the date sort. Both answers were in fact right (no record of September 2026 for those departments), but the checker cannot confirm a relevance-sorted plan.
+- Real: no kiosk question on 2026-10-10.
+- Learned queries: 3 proposals from the three `not_in_pool` losses, activated (held-out and real checks had nothing to lose); 18 active, 1 rejected.
+- Runner log: `outside_window` passes are quiet since #1918 (1 line after the night), but `budget_reached` passes still wrote 92 identical lines, because the quiet rule counts the night's totals rebuilt from the files as work done.
+
+Follow-ups in the same PR as this entry: a deterministic planner guard that turns a question into filter-only when only resolved filter values and generic words remain, the checker accepting a filter-only plan with relevance sort (the executor orders it by date), and the quiet rule comparing the final line with the previous one. Not a measured change in retrieval; the planner guard is measured on the next nights' filter questions.
+
+Private files: `work/flywheel/questions-2026-10-10.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-10.log`.
+
+### 2026-10-12: ninth night, 86% with one ask-back, synthetic filter questions 10 of 10 (measurement basis)
+
+Night of 2026-10-11 (22:02 to 22:13), the first with #1922 (planner residual guard, relevance-sort filter check, quiet repeated runner lines; Pi5 release at 06:37 that morning).
+
+- Synthetic content: 100 pairs tried, 77 generated, 65 kept (median 17 chars, anchor overlap 0.33). Dropped: 18 copied runs, 12 anchors not confirmed, 4 copied words, 1 too similar. The business LLM answered 503 at 22:02 (`dgx_not_ready`), so generation started at 22:12. Production showed a relevant record for 56 of 65 (86%; 13 known only through the second grader), other records for 5, nothing for 4: 2 outside the judged candidates, 1 rejected by the judge, 1 ask-back. The eighth night's five ask-backs did not repeat (one this night), so they were not a lasting regression; the cause stays open until the live row records the unresolved term.
+- Synthetic filter: 10 questions, 10 ok, no mismatch, no unsupported, no ask-back, no failure (eighth night 7 ok, 1 mismatch, 2 unsupported). The planner guard did not fire (`residualOverride` absent in all rows): the LLM planned all ten as filter-only itself, so the guard is still unmeasured on a case it would change.
+- Real: no kiosk question on 2026-10-11.
+- Learned queries: no new proposal; 20 active, 1 rejected.
+- Runner log: 5 final lines for the night instead of the eighth night's 367 (2 `budget_reached`, the rest `outside_window` and `dgx_not_ready`); the quiet rule works.
+
+No change to retrieval. Private files: `work/flywheel/questions-2026-10-11.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-11.log`.
+
+### 2026-10-13: tenth night, 76% with four ask-backs now explained, and a placeholder department in the filter questions (measurement basis)
+
+Night of 2026-10-12 (22:07 to 22:22), the first with #1930 (unresolved terms recorded on ask-backs; Pi5 release at 08:43 that morning).
+
+- Synthetic content: 100 pairs tried, 69 generated, 62 kept (median 17 chars, anchor overlap 0.33). Dropped: 21 copied runs, 7 anchors not confirmed, 6 copied words, 4 too similar. One `dgx_not_ready` pass at 22:02. Production showed a relevant record for 47 of 62 (76%; 12 known only through the second grader), other records for 5, nothing for 10: 3 outside the judged candidates, 3 rejected by the judge, 4 ask-backs.
+- Ask-backs, now with the unresolved term in the row: 3 on `originDepartmentName` (「設計課 干渉見落とし 原因」, 「設計課が図面書き写す時、継手の型番を修正し忘れて…」, 「マニホールド 設計ミス 穴 過剰」) and 1 on `partName` (「台乗せ落下 傷 作り直し」). The entity linker matched 「設計課」 and 「設計」 to several department values and 「台」 to several part names, and the planner asked for a choice instead of searching. This is the same mechanism as the eighth night's five ask-backs (four of them terse questions with a department-like word). A content question that names a department which exists in several factories should search with the content rather than ask; that is the next change to measure.
+- Synthetic filter: 10 questions, 9 ok, 1 mismatch: 「門 最近 不適合」, the `short` template applied to the placeholder value 「*未設定部門」 (short form 「門」). Not a retrieval failure; the generator now skips placeholder values and one-character short forms (this PR).
+- Real: no kiosk question on 2026-10-12.
+- Learned queries: 3 activated (held-out 1/1, real none); 23 active, 1 rejected.
+- Runner log: 5 final lines.
+
+No change to retrieval. Private files: `work/flywheel/questions-2026-10-12.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-12.log`.
+
+### 2026-10-14: eleventh night, 86% with four ask-backs of the same kind; ambiguous linked terms now give way to the content search (change)
+
+Night of 2026-10-13 (22:0x to 22:18), the first with #1958 (placeholder department values skipped in the filter questions; Pi5 release at 09:08 that morning).
+
+- Synthetic content: 100 pairs tried, 70 generated, 63 kept (median 19 chars, anchor overlap 0.33). Dropped: 19 copied runs, 7 anchors not confirmed, 6 too similar, 5 copied words. Production showed a relevant record for 54 of 63 (86%; 11 known only through the second grader), other records for 0, nothing for 9: 4 outside the judged candidates, 1 rejected by the judge, 4 ask-backs.
+- Ask-backs: 3 on `partName` (「Y軸LMガイドの傷、組立時の違和感から発見した類似事例ありますか？」, 「キーブラケットの穴がなかったやつって前にもあった？」, 「ベース面 厚み 削り過ぎ 不適合」) and 1 on `machineName` (「ヘリサート 奥行き 誤り 不適合」). Same mechanism as the eighth and tenth nights (13 ask-backs over three nights): a word in a content question links to several enumerated values and the planner asks for a choice. Three of the four carried a content span; the fourth (「キーブラケットの穴が…」) had no content decision recorded, so it would still ask back under the change below.
+- Synthetic filter: 10 questions, 10 ok (no placeholder values after #1958).
+- Real: one kiosk question on 2026-10-13, 「タグをかざしても反応しない」, no result. It is about the kiosk tag reader, not a nonconformity record; the judge rejecting every candidate is the right outcome.
+- Learned queries: 1 activated (held-out 1/1); 24 active, 1 rejected.
+- Runner log: 5 final lines.
+
+Change in this PR (planner): when the content decision is true and a linked field (department, part, machine) has an ambiguous value (entity-link `clarify`, or the planner's `clarify` / `low` answer), the planner no longer puts the field into `unresolved`. It drops that filter, keeps the whole question as the content query, and records the field and its candidates in `diagnostics.ambiguousDropped`; the worker's compact plan carries it and the morning report prints `ambiguous filter dropped for content search: partName n`. With the content decision false or missing, the field stays unresolved and the ask-back is unchanged, so pure filter questions still ask. Expected effect: the 3 of 4 ask-backs on this night and the 4 on the tenth night become content searches; whether they then show the relevant record is measured from the night of 2026-10-14 (Codex `gpt-6-astra` / `high` for the planner change and its three tests; Claude for the plan, report and log).
+
+Private files: `work/flywheel/questions-2026-10-13.jsonl`, `real-2026-10-13.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-13.log`.
+
+### 2026-10-15: twelfth night, 89% and no ask-back; a short department name no longer keeps a content search (change)
+
+Night of 2026-10-14 (22:0x), the first with #1996 (ambiguous linked terms give way to the content search; Pi5 release the evening before).
+
+- Synthetic content: 100 pairs tried, 61 generated, 56 kept (median 18 chars, anchor overlap 0.38). Dropped: 22 copied runs, 13 too similar, 4 copied words, 4 anchors not confirmed, 1 ungraded. Production showed a relevant record for 50 of 56 (89%; 9 known only through the second grader), other records for 1, nothing for 4 (all outside the judged candidates, none rejected by the judge), and 1 failed (TypeSafe API HTTP 400, one dense fallback).
+- Ask-backs: 0, the first night without one. No row carried `ambiguousDropped`, so the change in #1996 was not exercised on this night; the four ask-back terms of the previous nights did not recur in the sample. Its effect is still to be measured.
+- Synthetic filter: 10 questions, 9 ok, 1 mismatch: 「機構設計2課(製造) 最近 不適合」 (template `short`). The filter resolved to the right department and the sort was recent, but the planner kept the content search: the short name is not a listed term, so 「機構設計2課」 and 「製造」 survived as residual tokens, the content judge dropped two of the newest records, and two older ones filled the five. The same department asked with its full name (「…機構設計2課(製造)の不適合を3件」, one second later) went filter-only and matched. Every `short` question of the previous night was a department without 「部」, so this was the first real short form since #1958.
+- Real: 0 questions; receipts of 2026-10-14 and 2026-10-15 empty, so no operation-inquiry route yet.
+- Learned queries: 2 activated (held-out 1/0 each); 26 active, 1 rejected.
+- Runner log: 178 lines, 6 final lines (completed, budget_reached, 2 dgx_busy, 2 outside_window).
+
+Change in this PR (planner): a residual token that is contained in a selected filter value no longer counts as content. 「機構設計2課(製造) 最近 不適合」 now has an empty residual and becomes filter-only with the recent sort, like the full name; 「機構設計2課(製造)の錆の不適合」 keeps 「錆」 and stays a content search. Three tests in `planner-jev.test.mjs` (Claude directly; 344 tests pass). Measured on the next nights' `short` filter questions.
+
+Private files: `work/flywheel/questions-2026-10-14.jsonl`, `real-2026-10-14.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-14.log`, `receipts-2026-10-14.jsonl`, `receipts-2026-10-15.jsonl`.
+
+### 2026-10-16: thirteenth night, 88% and no ask-back; the short department name went filter-only, and ambiguous linked terms gave way for the first time (measurement basis)
+
+Night of 2026-10-15 (22:0x), the first with #2023 (a residual token contained in a selected filter value is not content; Pi5 release the morning before).
+
+- Synthetic content: 100 pairs tried, 74 generated, 69 kept (median 17 chars, anchor overlap 0.38). Dropped: 16 copied runs, 6 copied words, 5 anchors not confirmed, 4 too similar. Production showed a relevant record for 61 of 69 (88%; 10 known only through the second grader), other records for 10 (12 of the night's shown lists still await the second grader's label, so this count may fall), nothing for 8 (all outside the judged candidates, none rejected by the judge), and 0 failed. The "outside the judged candidates" share doubled from 4 to 8; the misses are terse part-and-process queries (「万力サイズ選定 指導」, 「架台 一体加工 不適合」, 「サドル 分解 破損 不適合」) and two colloquial sentences.
+- Ask-backs: 0, the second night in a row. `ambiguousDropped` appeared for the first time, on 6 rows (department name 4, part name 2): 5 of them showed a relevant record and 1 showed other records, so #1996 turned what would have been six ask-backs into five hits. Measured.
+- Synthetic filter: 10 questions, 9 ok, 0 mismatch, 1 unsupported (「営業部 営業2課(販管)」 with `count5`, a department with no record in the period). The one `short` question (「…課 最近 不適合」 form) went filter-only with the recent sort and matched all five expected records (203 matched), so the change in #2023 did what it was meant to on its first live case. More `short` nights are needed before calling it settled.
+- Real: 0 questions; receipts of 2026-10-15 and 2026-10-16 empty, so no operation-inquiry route.
+- Learned queries: 7 activated (held-out 1/0 on the last decision); 33 active, 1 rejected.
+- Runner log: 195 lines, 4 final lines (completed, budget_reached, 2 outside_window); no dgx_busy.
+
+No code change. Next candidate: the misses outside the judged candidates (4 to 8 per night) are now the largest loss; options are a larger candidate pool for terse queries or learned terms for the recurring part names, to be compared through the gate before any change.
+
+Private files: `work/flywheel/questions-2026-10-15.jsonl`, `real-2026-10-15.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-15.log`, `receipts-2026-10-15.jsonl`, `receipts-2026-10-16.jsonl`.
+
+### 2026-10-17: fourteenth night, 90% and no ask-back; three short department names all filter-only, and the first real follow-up asking for "all 43" (measurement basis)
+
+Night of 2026-10-16 (22:0x), the second with #2023.
+
+- Synthetic content: 100 pairs tried, 77 generated, 68 kept (median 20 chars, anchor overlap 0.35). Dropped: 17 copied runs, 9 anchors not confirmed, 5 copied words, 1 too similar. Production showed a relevant record for 61 of 68 (90%; 10 known only through the second grader), other records for 10 (25 shown lists still await the second grader's label, more than usual, so this count may fall), nothing for 7 (all outside the judged candidates, none rejected by the judge), and 0 failed. The misses are again terse part-and-process queries (「看板 取付部 穴数 不足」, 「ワーク 固定 甘く 増圧弁 追加」) and colloquial sentences about a specific incident (sensor dog, panel mounted without a base).
+- Ask-backs: 0, the third night in a row. `ambiguousDropped` on 4 rows (department name 3, part name 1): 3 showed a relevant record, 1 fell outside the candidates (「台なしでパネル直付けしたの、設計側のミス？」), so #1996 again turned ask-backs into hits.
+- Synthetic filter: 10 of 10 ok, the three `short` questions included (first night with more than one short form; all filter-only with the right sort), so #2023 holds.
+- Real: 3 questions. 「今年の機械課での不適合を教えて」 was a filter question, scored correct (5 shown). The follow-up 「４３件すべて」 (the answer had said 43 records) showed 20 other records: the kiosk caps a list at 20, so "show me all" cannot be satisfied today; this is the first real request for the whole set and is recorded as an open item, not a retrieval loss. 「(個人名)の最近の訓練結果」 was out of scope (training results are not nonconformity records), correctly refused. Receipts of 2026-10-16 (3 rows, the same three) carried no operation-inquiry route; 2026-10-17 empty.
+- Learned queries: 1 activated, 4 rejected (held-out 0/1), 34 active, 5 rejected in all. The rejected candidates are the night's not-in-pool queries, as designed.
+- Runner log: 275 lines, 6 final lines (completed, budget_reached, 2 dgx_busy after a DGX HTTP 503 at 22:02, 2 outside_window); the night completed at 22:29.
+
+No code change. Three nights at 88 to 90% with no ask-back; the remaining loss is the 7 or 8 queries a night outside the judged candidates, and the learned-term path rejects them (they do not generalise to the held-out set). The next candidate is therefore the candidate pool for terse queries, measured through the gate. Separate open item: a real "show all N" follow-up meets the 20-record cap.
+
+Private files: `work/flywheel/questions-2026-10-16.jsonl`, `real-2026-10-16.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-16.log`, `receipts-2026-10-16.jsonl`, `receipts-2026-10-17.jsonl`.
+
+### 2026-10-17: the "all 43" follow-up answered by a breakdown instead of a longer list (change, not a measurement)
+
+Decision on the open item of the fourteenth night. The 20-record cap stays. When the total exceeds the records shown, the kiosk answer now leads with the count, offers a breakdown by department and by month (buckets with counts, computed over every matching record, not only the 20 shown), shows each record as one line that expands on tap, and ends with 「他にも N 件あります。○で絞ってください。」 plus the chips of the other axis. A chip sends a structured `refine` (axis, field, value) to the same endpoint; the worker adds that filter to the stored plan and re-executes without calling the planner, so the step costs no JEV call and cannot be misread. An expired session falls back to normal planning on the chip text. Five records or fewer keep the card layout.
+
+Not changed: the plain-text answer and `formatCoverageNotice` wording that the nightly evaluation reads; the receipt records `refine` so chip turns can be told apart. Groups are emitted only when the total is known (filter-only or counted paths); relevance-capped answers keep today's notice.
+
+Second step, not in this PR: a 「要因で分ける」 axis. The cause lives in the existing 不適合内容 column (`condition`), free text with about 5,200 distinct values over 8,209 rows, so it needs JEV to sort each record into a small fixed set of cause categories, computed off the query path and cached by content hash. 処置内容 (`disposition`) has 4,583 distinct values and 2,233 empty rows; it is not near-categorical, so the proposed 処置内容 axis is dropped.
+
+### 2026-10-17: 「要因で分ける」 axis from JEV classification of 不適合内容 (change, not a measurement)
+
+Phase 2 adds a third breakdown axis, 「要因」, from the free-text `condition` field: 8,209 records, 5,839 non-empty, about 5,230 distinct texts, p50 40 characters, p90 95, maximum 395. JEV classifies normalized text off the query path, ten texts per call with one choice question per text. Results are cached by text SHA-256 with a prompt hash, never as searchable record fields. Prompt wording changes trigger reclassification. Empty or not-yet-classified records appear as 「未分類」; the axis is absent when none of the matching records has a classification. Cause chips stack with department/month filters; a natural-language follow-up drops the cause filter.
+
+Fixed taxonomy, in order: 確認・検査の漏れ、思い込み・勘違い、図面・設計の誤り、加工・組立・段取りのミス、測定・検査方法の誤り、手配・発注・出図の漏れ、材料・外注・支給品の不良、取扱い・保管・運搬での破損、手順・教育・情報伝達の不足、不明・記載なし。
+
+The pilot covered 120 sampled texts, ten per call, about 250 ms per call, with 100% answered and sensible assignments. This is a pilot result, not a new retrieval accuracy measurement. While `HERMES_RETRIEVAL_CAUSE_ENABLED=true`, the runner starts on each corpus refresh, at most 600 distinct texts per run by default; the first full pass takes about ten refreshes. Content failures stop retrying after three attempts per text; transport failures stop the run with backoff and do not consume attempts. The saved store remains usable with the runner disabled.
+
+Unchanged: planner prompt and catalog, lexical/dense text, plain answer text and `formatCoverageNotice`, the 20-record cap, and nightly evaluation. Runtime settings are listed in [the enrichment operations reference](hermes-dgx-retrieval-enrichment.md#cause-classification-runtime).
+
+### 2026-10-18: fifteenth night, 93% and no ask-back for the fourth night; the cause axis is live and fully classified (measurement basis)
+
+Night of 2026-10-17 (22:0x), the first with #2076 (count and breakdown chips) and #2078 (cause axis) in production. Neither changes the plain answer text that the night reads, so the numbers are comparable.
+
+- Synthetic content: 100 pairs tried, 71 generated, 61 kept (median 22 chars, anchor overlap 0.33). Dropped: 23 copied runs, 9 anchors not confirmed, 4 too similar, 2 copied words, 1 ungraded. Production showed a relevant record for 57 of 61 (93%), other records for 1 (「凸凹部品 見間違い 不適合」), nothing for 3 (1 outside the judged candidates, 2 rejected by the judge: 「測定治具取付穴 未展開 不適合」 and a colloquial question about an appearance standard), and 0 failed. The two judge rejections are the first in several nights; both had candidates, so the loss moved one stage later than the usual terse-query miss.
+- Ask-backs: 0, the fourth night in a row. `ambiguousDropped` on 2 rows (part name 1, department name 1), both answered.
+- Synthetic filter: 10 of 10 ok.
+- Real: 2 questions, both answered. One filter question (correct), one content question with a relevant record shown. Receipts of 2026-10-17: 2 rows, no review items; 2026-10-18 empty by noon.
+- Learned queries: 3 activated on 2026-10-17, 37 active, 5 rejected in all.
+- Runner log: 190 lines, 5 final lines (dgx_busy at 22:07 after a DGX 503, completed, budget_reached, 2 outside_window); the night completed at 22:24.
+
+Cause classification (#2078), rollout result: the Pi 5 release of 896f9861 needed three runs. The first (20261017-043810-86b783) failed because the new version and `--hermes-search-trial-maintenance on` were sent together; the maintenance path requires the same version to be running already, so the release rolled back by itself and production stayed healthy. The second run (20261017-044447-39a851) was a plain release and the third (20261017-045105-4ed2f4) applied the maintenance path with `HERMES_RETRIEVAL_CAUSE_ENABLED=true`. The first runner pass started 04:53 UTC and classified 600 of 5,299 distinct texts in 26 seconds (60 calls, mean 374 ms, 0 failed). By 2026-10-18 03:49 UTC every text was classified: 5,299 classified, 0 pending, 0 failed, and the runner now reports `nothing_to_do` on each refresh. This is a coverage result, not an accuracy measurement; the kiosk check of the 「要因で分ける」 chips is still open.
+
+Operating note: when a release both ships a new version and changes a Hermes flag, run it as two releases, a plain one first and the maintenance one second. Recorded in [the enrichment operations reference](hermes-dgx-retrieval-enrichment.md#cause-classification-runtime).
+
+No retrieval change. Next candidates stay as before: the planner using cause categories as a filter condition, and answering count questions (「今年多い要因は？」) from the saved classification without a model call.
+
+Private files: `work/flywheel/questions-2026-10-17.jsonl`, `real-2026-10-17.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-17.log`, `runner-2026-10-18.log`, `receipts-2026-10-17.jsonl`.
+
+### 2026-10-19: sixteenth night, 85%; the first user-reported retrieval bug, a chip refining the wrong answer, fixed the same day (measurement and fix)
+
+Night of 2026-10-18 (22:0x–22:14), the first with cause classification fully populated. Neither #2123 nor #2125 (below) changes the plain answer text that the night reads, and both landed after the night ran.
+
+- Synthetic content: 100 pairs tried, 70 generated, 61 kept (median 20 chars, anchor overlap 0.35). Dropped: 22 copied runs, 9 anchors not confirmed, 6 copied words, 2 too similar. Production showed a relevant record for 52 of 61 (85%, down from 93%), other records for 4, nothing for 4 (all 4 outside the judged candidates, 0 rejected by the judge, 0 ask-backs), and 1 failed (TypeSafe HTTP 422 on one question). The four misses and four other-record rows are the usual terse-query shape (「軸数変更に伴う封止材未配」, 「コマの押付け力 ベースの動き 過大 理由」) plus two long colloquial questions about a casting shape and a lifting-hole plug; no single new failure mode. One night at 85 after four at 90–93 is within the range seen before the learned-query change (nights 7–11); it is a watch item, not a regression call.
+- Ask-backs: 0, the fifth night in a row. `ambiguousDropped` on 3 rows (machine 1, part 1, department 1), all answered.
+- Synthetic filter: 10 of 10 ok.
+- Real: 0 questions in the night window (no `real-2026-10-18.jsonl`). Receipts 2026-10-18 and 2026-10-19 (11 rows up to 09:26 JST): 9 answer, 2 no_result, no review items; the no_result rows are the chip bug below.
+- Learned queries: 3 candidates on 2026-10-18, all rejected (the held-out check lost 2 of 55 and gained 0); 37 active, 8 rejected in all.
+- Runner log: 187 lines; completed at 22:14 JST, then budget_reached and outside_window.
+
+Chip scoping bug, found by the user on the kiosk (2026-10-19 08:19 JST): on a 「要因で分ける」 breakdown of an older answer (department, all periods), the chip 「図面・設計の誤り 1」 returned 「見つかりませんでした」 although the count said 1. Receipts show why: the chip refined `session.previousPlan`, which by then was the latest answer (same department, July, 確認・検査の漏れ), so the cause filter was stacked on the July plan and the real count for that plan was 0. Fix (#2123, main 147fb627, Pi 5 release 20261018-235022-4e0ba5, rollback floor 0c7d6eaa): every executed plan gets a `planId`, the session keeps the last 8 plans, each answer carries its `planId` to the kiosk, and a chip sends it back so the refine applies to the plan the chip was counted against. Unknown or expired ids fall back to the latest plan; restricted principals cannot refine a plan they could not see. Receipts now record `refine` (axis, field, value, planId) on all outcomes including no_result. Verified on the kiosk by the user: the same chip now shows the 1 record. The same PR removed the yellow JEV記録 notice at the top of the tab at the user's request.
+
+Answer text: 「見つかった件数は、指定された件数より少ないです。」 (shown when results < plan limit) is removed from answers in #2125 (open at the time of writing; merge and release are recorded in the next entry). The user read it as unintelligible without context; the `insufficient` flag stays in receipts and coverage. `formatCoverageNotice` is unchanged.
+
+No retrieval ranking change. Next candidates: the planner using cause categories as a filter condition (「図面の誤りで先月」 in one turn), and answering count questions (「今年多い要因は？」) from the saved classification without a model call.
+
+Private files: `work/flywheel/questions-2026-10-18.jsonl`, `runner-2026-10-18.log`, `learned-queries.jsonl`, `receipts-2026-10-19.jsonl`.

@@ -66,7 +66,7 @@ h1{font-size:18px;margin:0;font-weight:900;letter-spacing:.04em}
 .step{display:grid;gap:8px}
 .step .lbl{font-size:16px;color:var(--muted);letter-spacing:.08em;font-weight:700}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
-.chip{min-height:48px;padding:0 16px;border-radius:999px;border:1px solid var(--line-2);background:var(--panel);color:var(--fg);font:inherit;font-size:20px;font-weight:700;cursor:pointer}
+.chip{min-height:48px;padding:0 16px;border-radius:999px;border:1px solid #6b7c8d;background:#27313b;color:#eef3f6;font:inherit;font-size:20px;font-weight:700;cursor:pointer}
 .chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
 .chip.ghost{border-style:dashed;color:var(--muted)}
 .mlist{display:grid;gap:6px;max-height:220px;overflow:auto;padding-right:4px}
@@ -124,6 +124,32 @@ h1{font-size:18px;margin:0;font-weight:900;letter-spacing:.04em}
 .seg .ib{border:0;border-radius:0;height:42px}
 .seg .ib[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg)}
 .pill{font-family:var(--mono);font-size:19px;color:var(--fg);padding:0 8px}
+
+/* A v2 */
+.split2{display:grid;grid-template-columns:760px minmax(0,1fr);height:100%}
+.split2 .cols{grid-template-columns:440px 1fr}
+.split2 .col .row{font-family:var(--mono);font-size:20px;white-space:normal;word-break:break-all;line-height:1.25;align-items:flex-start;padding-top:8px;padding-bottom:8px}
+.split2 .col .row .n{flex:none;margin-left:auto;padding-left:10px;align-self:center}
+.split2[data-open="false"]{grid-template-columns:0 minmax(0,1fr)}
+.split2[data-open="false"] .left{display:none}
+.viewer.full{padding-right:64px}
+.rail{position:absolute;right:0;top:0;bottom:0;width:64px;display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 0;background:var(--bar);border-left:1px solid var(--line)}
+.rb{width:48px;height:48px;border-radius:10px;border:1px solid var(--line-2);background:transparent;color:var(--fg);display:grid;place-items:center;cursor:pointer}
+.rb svg{width:26px;height:26px}
+.rb[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.rb.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.rb:disabled{opacity:.35}
+.rsep{height:1px;width:36px;background:var(--line-2);margin:4px 0}
+.pill.v{text-align:center;line-height:1.1;font-size:17px}
+.page.pages{display:flex;justify-content:center;align-items:center;gap:16px;height:100%;overflow:auto}
+.page.pages .second{display:none}
+.split2[data-pages="2"] .page.pages .second{display:grid}
+.split2[data-pages="2"] .sheet.tall{height:1040px}
+.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:6px 0 8px}
+.keypad button{height:52px;border-radius:8px;border:1px solid var(--line-2);background:var(--panel);color:var(--fg);font:inherit;font-size:24px;font-weight:700}
+.keypad .wide{grid-column:span 2}
+.keypad .del{color:var(--muted)}
+mark{background:#f6b93b66;color:inherit;border-radius:3px}
 /* annotations */
 .ann{position:absolute;background:var(--warn);color:#1a1200;font-size:16px;font-weight:700;padding:4px 10px;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.4);pointer-events:none}
 .ann::before{content:"";position:absolute;width:10px;height:10px;background:var(--warn);transform:rotate(45deg);left:14px;top:-5px}
@@ -137,7 +163,7 @@ h1{font-size:18px;margin:0;font-weight:900;letter-spacing:.04em}
     <p class="lead">実機の 1920×1080 を縮小表示。3 つの改善を切り替えて確認できます。文言と寸法は実装時にそのまま使う前提です。</p>
   </div>
   <div class="tabs" role="tablist" aria-label="モック切替">
-    <button class="tab" role="tab" id="t-a" aria-selected="true" aria-controls="s-a">A 表示領域を全高に</button>
+    <button class="tab" role="tab" id="t-a" aria-selected="true" aria-controls="s-a">A 一覧の開閉と記号列</button>
     <button class="tab" role="tab" id="t-b" aria-selected="false" aria-controls="s-b">B 白紙から作る(名前の組み立て)</button>
     <button class="tab" role="tab" id="t-c" aria-selected="false" aria-controls="s-c">C 素材棚(大きなサムネイル)</button>
   </div>
@@ -146,10 +172,10 @@ h1{font-size:18px;margin:0;font-weight:900;letter-spacing:.04em}
   <div class="stage" id="stage">
     <div class="screen" id="screen">
 
-      <!-- A: manuals page: viewer takes the full height, controls live at the top of the left half -->
+      <!-- A (v2): left pane collapsible, icon rail at the right edge, two-page mode -->
       <section class="scr" id="s-a" data-active="true" aria-labelledby="t-a">
-        <div class="split">
-          <div class="left">
+        <div class="split2" id="a-split" data-open="true" data-pages="1">
+          <div class="left" id="a-left">
             <div class="tools">
               <div class="tools-row">
                 <h2>要領書</h2>
@@ -161,50 +187,57 @@ h1{font-size:18px;margin:0;font-weight:900;letter-spacing:.04em}
                 <button class="ib quiet" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h10"/></svg>割り当て</button>
                 <button class="ib quiet" type="button">組立へ戻る</button>
                 <div class="spacer"></div>
-                <span class="where"><b>6362</b> › 組立工程 › 組立工程</span>
+                <span class="where"><b>6362</b> › 組立 › 組立</span>
               </div>
             </div>
             <div class="cols">
               <aside class="col" aria-label="機種">
                 <h3>機種</h3>
-                <input class="search" type="search" placeholder="型番で検索" aria-label="型番で検索" id="a-search">
+                <input class="search" type="search" placeholder="型番で検索" aria-label="型番で検索" id="a-search" value="63">
+                <div class="keypad" aria-label="テンキー">
+                  <button type="button">7</button><button type="button">8</button><button type="button">9</button>
+                  <button type="button">4</button><button type="button">5</button><button type="button">6</button>
+                  <button type="button">1</button><button type="button">2</button><button type="button">3</button>
+                  <button type="button" class="wide">0</button><button type="button" class="del">⌫</button>
+                </div>
                 <div class="row" aria-current="true">6362 <span class="n">3</span></div>
-                <div class="row">DFD6362XYZ-3943173 <span class="n">1</span></div>
-                <div class="row">MD005189371 <span class="n">2</span></div>
+                <div class="row"><span>DFD<mark>63</mark>62XYZ-3943173</span><span class="n">1</span></div>
+                <div class="row"><span>MD005189371_7161_BASE-LONG-NAME</span><span class="n">2</span></div>
               </aside>
               <aside class="col" aria-label="工程">
                 <h3>工程</h3>
-                <div class="row" aria-current="true">組立工程 › 組立工程 <span class="n">2</span></div>
-                <div class="row">組立工程 › 検査工程 <span class="n">1</span></div>
-                <h3 style="margin-top:14px">このページ</h3>
-                <div class="side-meta">手順 1/21 ・ 産1-G291AMK<span class="prog"><i></i></span></div>
+                <div class="row" aria-current="true">組立 › 組立 <span class="n">2</span></div>
+                <div class="row">組立 › 検査 <span class="n">1</span></div>
+                <div class="row">加工 › 切削 <span class="n">0</span></div>
+                <div class="row">加工 › 研削 <span class="n">0</span></div>
+                <h3 style="margin-top:14px">承認・動画</h3>
                 <div class="side-meta">承認: 承認太郎(班長) 10/05 15:12</div>
-                <div class="side-meta">動画</div>
                 <div style="display:flex;gap:8px"><div class="thumb">0:08</div><div class="thumb">0:10</div></div>
               </aside>
             </div>
           </div>
-          <main class="viewer full">
-            <div class="page">
-              <div class="sheet tall">
-                <div class="hd"><span>機械課</span><span>文書番号 産1-G291AMK-0</span><span>表題</span><span>8000番台ベアリングホルダー</span></div>
-                <div class="grid"></div>
-              </div>
+          <main class="viewer full" id="a-viewer">
+            <div class="page pages" id="a-pages">
+              <div class="sheet tall"><div class="hd"><span>機械課</span><span>文書番号 産1-G291AMK-0</span><span>表題</span><span>8000番台ベアリングホルダー</span></div><div class="grid"></div></div>
+              <div class="sheet tall second"><div class="hd"><span>機械課</span><span>産1-G291AMK-0 p.2</span><span>表題</span><span>8000番台ベアリングホルダー</span></div><div class="grid"></div></div>
             </div>
-            <div class="float-nav">
-              <div class="seg" role="group" aria-label="表示サイズ">
-                <button class="ib" type="button" id="a-fit-all" aria-pressed="true">全体</button>
-                <button class="ib" type="button" id="a-fit-w" aria-pressed="false">幅いっぱい</button>
-              </div>
-              <button class="ib" type="button">全手順</button>
-              <button class="ib" type="button">前手順</button>
-              <span class="pill">1 / 21</span>
-              <button class="ib primary" type="button">次手順</button>
+            <div class="rail" role="toolbar" aria-label="ページ操作">
+              <button class="rb" type="button" id="a-toggle" aria-pressed="true" aria-label="一覧を開閉"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
+              <button class="rb" type="button" id="a-two" aria-pressed="false" aria-label="2 ページ表示" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="5" width="8" height="14" rx="1"/><rect x="13" y="5" width="8" height="14" rx="1"/></svg></button>
+              <span class="rsep"></span>
+              <button class="rb" type="button" aria-label="全手順"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><rect x="14" y="14" width="6" height="6"/></svg></button>
+              <button class="rb" type="button" id="a-fit-all" aria-pressed="true" aria-label="全体"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+              <button class="rb" type="button" id="a-fit-w" aria-pressed="false" aria-label="幅いっぱい"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4"/></svg></button>
+              <span class="rsep"></span>
+              <button class="rb" type="button" aria-label="前手順"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M15 5l-7 7 7 7"/></svg></button>
+              <span class="pill v">1<br>/21</span>
+              <button class="rb primary" type="button" aria-label="次手順"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 5l7 7-7 7"/></svg></button>
             </div>
           </main>
         </div>
-        <div class="ann" style="left:16px;top:116px">操作は左半分の上 2 行にまとめる(内容幅)。ページ名・パンくずもここ</div>
-        <div class="ann" style="left:700px;top:40px">表示領域は高さ 1080px 全部。送りボタンは紙の上に浮かせる(半透明)</div>
+        <div class="ann" style="left:16px;top:116px">左の一覧(760px、機種列 440px)は既定で閉じる。型番は折り返して全部見せる。「このページ」は削除</div>
+        <div class="ann" style="left:1240px;top:40px">右端に記号だけの縦並び 1 列(64px)。紙にかぶらない。一覧を閉じると 2 ページ表示が選べる</div>
+        <div class="ann" style="left:16px;top:540px">機種はテンキーで数字を打つと即時に絞り込み(一致部分を強調)</div>
       </section>
 
       <!-- B: blank dialog with name builder -->
@@ -217,6 +250,7 @@ h1{font-size:18px;margin:0;font-weight:900;letter-spacing:.04em}
               <div class="step">
                 <div class="lbl">機種</div>
                 <input class="inline-in" type="search" placeholder="型番で検索" aria-label="型番で検索" id="b-model" value="6362">
+                <div class="keypad" aria-label="テンキー"><button type="button">7</button><button type="button">8</button><button type="button">9</button><button type="button">4</button><button type="button">5</button><button type="button">6</button><button type="button">1</button><button type="button">2</button><button type="button">3</button><button type="button" class="wide">0</button><button type="button" class="del">⌫</button></div>
                 <div class="mlist">
                   <div class="row" aria-current="true">6362</div>
                   <div class="row">DFD6362XYZ-3943173</div>
@@ -304,8 +338,8 @@ h1{font-size:18px;margin:0;font-weight:900;letter-spacing:.04em}
 <script>
 (function(){
   var notes={
-    'a':['<b>A 表示領域を全高に</b>: 右側のビューアは高さ 1080px を全部使う(A4 縦なら約 735×1040px、現状より約 300px 大きい)。送りボタンは紙の上に半透明で浮かせ、「幅いっぱい」で紙をペインの幅まで拡大して上下スクロールで読む(縦長は既定「全体」、横長は既定「幅いっぱい」)。','操作(白紙から作る、素材、動画、割り当て、組立へ戻る)とページ名・パンくずは左半分(600px)の上 2 行にまとめる。機種・工程の列はその下。承認と動画のサムネイルも左側に移す。'],
-    'b':['<b>B 白紙から作る</b>: 機種(検索付き一覧)→ 工程(加工/組立)→ 細分(組立/検査/切削/研削)→ 補足(任意)の順に選ぶと、下に名前が組み上がる。','自由入力は「名前を直接入力」でいつでも切り替え可能。工程と細分の候補は Phase 1 の工程マスタから出す。保存名は `型番_工程_細分(_補足)`。'],
+    'a':['<b>A v2</b>: 左の一覧(760px。型番 18 文字が 1 行に収まり、長ければ 2 行に折り返す)は既定で閉じ、右端の縦の記号列で開閉。閉じているときは「2 ページ表示」を選べる(手動)。','右端の縦列(64px)は上から: 一覧の開閉、2 ページ表示、全手順、全体、幅いっぱい、前手順、ページ番号、次手順。すべて記号で紙にかぶらない。左ペインの「このページ」(手順 n/N と進捗バー)は削除し、承認と動画だけ残す。機種はテンキーで即時絞り込み。'],
+    'b':['<b>B 白紙から作る</b>: 機種は型番の検索欄 + テンキー(数字で即時絞り込み)→ 工程(加工/組立)→ 細分(組立/検査、切削/研削)→ 補足(任意)。','工程・細分のチップは未選択でも読める明るい枠と文字(現状の真っ黒を修正)、選択は緑。名前は下に組み上がり、保存名は `型番_工程_細分(_補足)`。'],
     'c':['<b>C 素材棚</b>: ダイアログを画面の 92% に広げ、4 列のカードで写真を約 400px 幅で見せる。表示 小/中/大 で 6 列/4 列/3 列に切替。','カードは複数選択してまとめて配置。写真の ⤢ で原寸を重ねて確認。文の素材は冒頭を白地に大きめの文字で表示。由来(メール/ナレッジ)を小さく表示。']
   };
   var tabs=document.querySelectorAll('.tab');
@@ -321,6 +355,7 @@ h1{font-size:18px;margin:0;font-weight:900;letter-spacing:.04em}
   var initial='a'; try{initial=localStorage.getItem('manual-ux-mock-tab')||'a';}catch(e){}
   show(initial);
   var fa=document.getElementById('a-fit-all'),fw=document.getElementById('a-fit-w');function setFit(on){fa.setAttribute('aria-pressed',String(!on));fw.setAttribute('aria-pressed',String(on));document.querySelector('#s-a .page').classList.toggle('fitw',on);}if(fa&&fw){fa.addEventListener('click',function(){setFit(false);});fw.addEventListener('click',function(){setFit(true);});}
+  var split=document.getElementById('a-split'),tg=document.getElementById('a-toggle'),two=document.getElementById('a-two');function setOpen(open){split.dataset.open=String(open);tg.setAttribute('aria-pressed',String(open));two.disabled=open;if(open){split.dataset.pages='1';two.setAttribute('aria-pressed','false');}}if(tg){tg.addEventListener('click',function(){setOpen(split.dataset.open!=='true');});two.addEventListener('click',function(){var on=two.getAttribute('aria-pressed')!=='true';two.setAttribute('aria-pressed',String(on));split.dataset.pages=on?'2':'1';});setOpen(false);}
   function fit(){var st=document.getElementById('stage');var s=st.clientWidth/1920;document.getElementById('screen').style.transform='scale('+s+')';}
   window.addEventListener('resize',fit); fit();
   /* B: chips drive the name preview */

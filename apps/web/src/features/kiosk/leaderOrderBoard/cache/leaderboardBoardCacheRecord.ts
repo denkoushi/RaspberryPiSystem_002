@@ -61,6 +61,7 @@ export type PersistedLeaderboardBoardCacheRecord = {
     leaderboardFooterChipsByPartKey: Record<string, unknown>;
     /** 追加前に保存されたレコードには無い */
     leaderboardMaterialArrivalByPartKey?: AccumulatedLeaderboardDecorations['leaderboardMaterialArrivalByPartKey'];
+    leaderboardMaterialArrivalBasisByPartKey?: AccumulatedLeaderboardDecorations['leaderboardMaterialArrivalBasisByPartKey'];
   };
 };
 
@@ -110,7 +111,8 @@ export function serializeAccumulatedDecorations(
   return {
     rowDecorationsById,
     leaderboardFooterChipsByPartKey: { ...decorations.leaderboardFooterChipsByPartKey },
-    leaderboardMaterialArrivalByPartKey: { ...decorations.leaderboardMaterialArrivalByPartKey }
+    leaderboardMaterialArrivalByPartKey: { ...decorations.leaderboardMaterialArrivalByPartKey },
+    leaderboardMaterialArrivalBasisByPartKey: { ...decorations.leaderboardMaterialArrivalBasisByPartKey }
   };
 }
 
@@ -124,7 +126,8 @@ export function deserializeAccumulatedDecorations(
   return {
     rowDecorationsById,
     leaderboardFooterChipsByPartKey: persisted.leaderboardFooterChipsByPartKey as AccumulatedLeaderboardDecorations['leaderboardFooterChipsByPartKey'],
-    leaderboardMaterialArrivalByPartKey: { ...(persisted.leaderboardMaterialArrivalByPartKey ?? {}) }
+    leaderboardMaterialArrivalByPartKey: { ...(persisted.leaderboardMaterialArrivalByPartKey ?? {}) },
+    leaderboardMaterialArrivalBasisByPartKey: { ...(persisted.leaderboardMaterialArrivalBasisByPartKey ?? {}) }
   };
 }
 

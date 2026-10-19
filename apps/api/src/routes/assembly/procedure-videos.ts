@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { ProcedureVideoService } from '../../services/assembly/procedure-video.service.js';
 
 const idParams = z.object({ id: z.string().uuid() });
+const commentBody = z.array(z.object({ atSeconds: z.number().finite().min(0), text: z.string().trim().min(1).max(80) }).strict()).max(5);
 const pageParams = idParams.extend({ pageIndex: z.coerce.number().int().min(0) });
 
 export function registerProcedureVideoRoutes(app: FastifyInstance, options: {
@@ -19,19 +20,24 @@ export function registerProcedureVideoRoutes(app: FastifyInstance, options: {
   app.get(path, { preHandler: options.allowView }, async (request) => ({ videos: await service.list(z.object({ state: z.enum(['active', 'discarded', 'all']).default('active'), q: z.string().trim().max(200).optional(), limit: z.coerce.number().int().min(1).max(500).default(100) }).parse(request.query)) }));
   for (const type of ['file', 'poster'] as const) {
     app.get(`${path}/:id/${type}`, { preHandler: options.allowView, config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
-      const bytes = await service.readFile(idParams.parse(request.params).id, type === 'poster');
+      const { id } = idParams.parse(request.params);
       reply.header('Cache-Control', 'private, no-store').header('X-Content-Type-Options', 'nosniff').type(type === 'file' ? 'video/mp4' : 'image/jpeg');
-      if (type === 'poster') return reply.send(bytes);
+      if (type === 'poster') return reply.send(await service.readFile(id, true));
+      const { size } = await service.statFile(id);
       reply.header('Accept-Ranges', 'bytes');
       const range = request.headers.range;
-      if (!range) return reply.header('Content-Length', bytes.length).send(bytes);
+      if (!range) {
+        const file = await service.openFileStream(id);
+        return reply.header('Content-Length', file.size).send(file.stream);
+      }
       const match = /^bytes=(\d*)-(\d*)$/.exec(range);
-      const invalid = () => reply.code(416).header('Content-Range', `bytes */${bytes.length}`).send();
+      const invalid = () => reply.code(416).header('Content-Range', `bytes */${size}`).send();
       if (!match || (!match[1] && !match[2])) return invalid();
-      const start = match[1] ? Number(match[1]) : Math.max(0, bytes.length - Number(match[2]));
-      const end = match[1] && match[2] ? Math.min(Number(match[2]), bytes.length - 1) : bytes.length - 1;
-      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end || start >= bytes.length || (!match[1] && Number(match[2]) === 0)) return invalid();
-      return reply.code(206).header('Content-Range', `bytes ${start}-${end}/${bytes.length}`).header('Content-Length', end - start + 1).send(bytes.subarray(start, end + 1));
+      const start = match[1] ? Number(match[1]) : Math.max(0, size - Number(match[2]));
+      const end = match[1] && match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end || start >= size || (!match[1] && Number(match[2]) === 0)) return invalid();
+      const { stream } = await service.openFileStream(id, { start, end });
+      return reply.code(206).header('Content-Range', `bytes ${start}-${end}/${size}`).header('Content-Length', end - start + 1).send(stream);
     });
   }
   for (const action of ['retry', 'discard', 'restore'] as const) {
@@ -47,11 +53,42 @@ export function registerProcedureVideoRoutes(app: FastifyInstance, options: {
     await service.requestTrim(idParams.parse(request.params).id, startSeconds, endSeconds);
     return { saved: true };
   });
+  const sceneParams = idParams.extend({ sceneId: z.string().uuid() });
+  app.get(`${path}/:id/scenes/:sceneId/poster`, { preHandler: options.allowView, config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const { id, sceneId } = sceneParams.parse(request.params);
+    const bytes = await service.readScenePoster(id, sceneId);
+    return reply.header('Cache-Control', 'private, no-store').header('X-Content-Type-Options', 'nosniff').type('image/jpeg').send(bytes);
+  });
+  const sceneBody = z.object({ title: z.string().trim().max(80).optional(), startSeconds: z.number().finite(), endSeconds: z.number().finite() }).strict();
+  app.get(`${path}/:id/scenes`, { preHandler: options.allowView }, async (request) => ({ scenes: await service.listScenes(idParams.parse(request.params).id) }));
+  app.post(`${path}/:id/scenes`, { preHandler: options.allowWriteKiosk }, async (request) => service.createScene(idParams.parse(request.params).id, sceneBody.parse(request.body)));
+  app.patch(`${path}/:id/scenes/:sceneId`, { preHandler: options.allowWriteKiosk }, async (request) => {
+    const { id, sceneId } = sceneParams.parse(request.params);
+    return service.updateScene(id, sceneId, sceneBody.partial().parse(request.body));
+  });
+  app.delete(`${path}/:id/scenes/:sceneId`, { preHandler: options.allowWriteKiosk }, async (request) => {
+    const { id, sceneId } = sceneParams.parse(request.params);
+    await service.deleteScene(id, sceneId);
+    return { saved: true };
+  });
   app.get(`${path}/:id/comments`, { preHandler: options.allowView }, async (request) => ({ comments: await service.listComments(idParams.parse(request.params).id) }));
   app.put(`${path}/:id/comments`, { preHandler: options.allowWriteKiosk }, async (request) => {
-    const { comments } = z.object({ comments: z.array(z.object({ atSeconds: z.number().finite().min(0), text: z.string().trim().min(1).max(80) }).strict()).max(5) }).strict().parse(request.body);
+    const { comments } = z.object({ comments: commentBody }).strict().parse(request.body);
     return { comments: await service.replaceComments(idParams.parse(request.params).id, comments) };
   });
+  app.get(`${path}/auto-edit/stats`, { preHandler: options.allowView }, async () => service.autoEditStats());
+  app.get(`${path}/:id/auto-edit`, { preHandler: options.allowView }, async (request) => service.getAutoEdit(idParams.parse(request.params).id));
+  app.post(`${path}/:id/auto-edit/apply`, { preHandler: options.allowWriteKiosk }, async (request) => {
+    const input = z.object({ suggestionId: z.string().uuid(), comments: commentBody, scenes: z.array(sceneBody.required()).max(20).optional() }).strict().parse(request.body);
+    await service.applyAutoEdit(idParams.parse(request.params).id, input);
+    return { saved: true };
+  });
+  app.post(`${path}/:id/auto-edit/dismiss`, { preHandler: options.allowWriteKiosk }, async (request) => {
+    const input = z.object({ suggestionId: z.string().uuid() }).strict().parse(request.body);
+    await service.dismissAutoEdit(idParams.parse(request.params).id, input);
+    return { saved: true };
+  });
+  app.post(`${path}/:id/auto-edit/regenerate`, { preHandler: options.allowWriteKiosk }, async (request) => service.regenerateAutoEdit(idParams.parse(request.params).id));
   const pagesPath = '/assembly/procedure-documents/:id/pages/:pageIndex/videos';
   app.get(pagesPath, { preHandler: options.allowView }, async (request) => {
     const { id, pageIndex } = pageParams.parse(request.params);
@@ -59,7 +96,7 @@ export function registerProcedureVideoRoutes(app: FastifyInstance, options: {
   });
   app.put(pagesPath, { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request) => {
     const { id, pageIndex } = pageParams.parse(request.params);
-    const body = z.object({ videoIds: z.array(z.string().uuid()).max(50), accessPassword: z.string().max(128).default('') }).strict().parse(request.body);
+    const body = z.object({ videoIds: z.array(z.string().uuid()).max(50).optional(), items: z.array(z.object({ videoId: z.string().uuid(), sceneId: z.string().uuid().nullable().optional() }).strict()).max(50).optional(), accessPassword: z.string().max(128).default('') }).strict().refine((body) => (body.videoIds == null) !== (body.items == null), 'videoIdsかitemsのどちらかを指定してください').parse(request.body);
     return { videos: await service.replacePage({ documentId: id, pageIndex, ...body, ...await resolveAssemblyProcedureEditWriter(request) }) };
   });
 }
