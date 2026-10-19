@@ -226,9 +226,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   const writePause =
     mutationPauseRefetch || orderPending || dueDatePending || completePending || notePending;
 
-  const invalidateScheduleQueries = useCallback(() =>
+  const invalidateRelatedQueries = useCallback(() =>
     Promise.all([
-      queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll }),
       queryClient.invalidateQueries({
         queryKey: productionScheduleQueryKeys.dueManagementManualOrderOverviewAll
       }),
@@ -253,7 +252,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         note,
         onSettled: () => {
           onSettled();
-          void invalidateScheduleQueries().catch(() => {});
+          void invalidateRelatedQueries().catch(() => {});
         }
       });
     },
@@ -263,7 +262,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         dueDate,
         onSettled: () => {
           onSettled();
-          void invalidateScheduleQueries().catch(() => {});
+          void invalidateRelatedQueries().catch(() => {});
         }
       });
     }
@@ -527,9 +526,9 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   }, []);
 
   const handleSplitSaved = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.leaderboardBoardAll });
-    void invalidateScheduleQueries();
-  }, [invalidateScheduleQueries, queryClient]);
+    void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
+    void invalidateRelatedQueries();
+  }, [invalidateRelatedQueries, queryClient]);
 
   const handleOpenInspectionDigitalInput = useCallback(
     (row: LeaderBoardRow, selectedResourceCd: string) => {
