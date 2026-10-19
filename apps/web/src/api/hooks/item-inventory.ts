@@ -39,6 +39,8 @@ import {
   registerInventoryImport,
   registerInventoryQuantityTag,
   registerInventoryRestockTag,
+  rotateInventoryImportPhoto,
+  rotateInventoryItemPhoto,
   reorderInventoryImportPhotos,
   reorderInventoryItemPhotos,
   retryInventoryImportMessage,
@@ -142,6 +144,10 @@ export function useInventoryMutations(accessPassword?: string, setup = false) {
       },
       onSettled: () => { void queryClient.invalidateQueries({ queryKey: importsKey }); },
     }),
+    rotateImportPhoto: useMutation({
+      mutationFn: ({ payloadId, photoId }: { payloadId: string; photoId: string }) => send(() => rotateInventoryImportPhoto(payloadId, photoId, accessPassword)),
+      onSettled: () => { void queryClient.invalidateQueries({ queryKey: importsKey }); },
+    }),
     reorderImportPhotos: useMutation({
       mutationFn: ({ payloadId, photoIds }: { payloadId: string; photoIds: string[] }) => send(() => reorderInventoryImportPhotos(payloadId, photoIds, accessPassword)),
       onMutate: async ({ payloadId, photoIds }) => {
@@ -176,6 +182,10 @@ export function useInventoryMutations(accessPassword?: string, setup = false) {
       onSettled: () => { void queryClient.invalidateQueries({ queryKey: inventoryKeys.itemsAll }); },
     }),
     deleteItem: useMutation({ mutationFn: (itemId: string) => send(() => deleteInventoryItem(itemId, accessPassword)), onSuccess: invalidate }),
+    rotateItemPhoto: useMutation({
+      mutationFn: ({ itemId, photoId }: { itemId: string; photoId: string }) => send(() => rotateInventoryItemPhoto(itemId, photoId, accessPassword)),
+      onSettled: () => { void queryClient.invalidateQueries({ queryKey: inventoryKeys.itemsAll }); },
+    }),
     reorderItemPhotos: useMutation({
       mutationFn: ({ itemId, photoIds }: { itemId: string; photoIds: string[] }) => send(() => reorderInventoryItemPhotos(itemId, photoIds, accessPassword)),
       onMutate: async ({ itemId, photoIds }) => {

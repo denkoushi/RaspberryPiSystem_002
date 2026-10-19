@@ -1,13 +1,14 @@
 import Fastify from 'fastify';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { db, suggest, verify } = vi.hoisted(() => ({
+const { db, suggest, verify, inventory } = vi.hoisted(() => ({
   db: { clientDevice: { findUnique: vi.fn() }, inventoryImportPhoto: { findFirst: vi.fn() }, inventoryItemPhoto: { findFirst: vi.fn() } },
   suggest: vi.fn(), verify: vi.fn(),
+  inventory: { rotateImportPhoto: vi.fn(), rotateInventoryItemPhoto: vi.fn() },
 }));
 vi.mock('../../config/env/load-dotenv.js', () => ({}));
 vi.mock('../../lib/prisma.js', () => ({ prisma: db }));
-vi.mock('../../services/item-inventory/item-inventory-service.factory.js', () => ({ getItemInventoryServices: () => ({}) }));
+vi.mock('../../services/item-inventory/item-inventory-service.factory.js', () => ({ getItemInventoryServices: () => ({ inventory }) }));
 vi.mock('../../services/item-inventory/photo-region-read.service.js', () => ({ PhotoRegionReadService: class { read = suggest; } }));
 vi.mock('../../services/production-schedule/production-schedule-settings.service.js', () => ({ SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION: 'shared', verifyDueManagementAccessPassword: verify }));
 
@@ -34,6 +35,27 @@ describe('inventory photo region route', () => {
     db.inventoryImportPhoto.findFirst.mockResolvedValue({ photoUrl: '/api/storage/photos/import.jpg' });
     db.inventoryItemPhoto.findFirst.mockResolvedValue({ photoUrl: '/api/storage/photos/item.jpg' });
     suggest.mockResolvedValue({ candidates: ['M1'], status: 'ok' });
+  });
+
+  it.each(['imports', 'items'] as const)('rotates %s photos with setup authorization and validated IDs', async segment => {
+    const rotate = segment === 'imports' ? inventory.rotateImportPhoto : inventory.rotateInventoryItemPhoto;
+    rotate.mockResolvedValue({ photoId: id, photoUrl: '/new.jpg' });
+    const app = Fastify();
+    registerErrorHandler(app);
+    registerItemInventoryRoutes(app);
+    const url = `/item-inventory/${segment}/${id}/photos/${id}/rotate`;
+    try {
+      for (const credentials of [{}, { 'x-client-key': 'kiosk-key' }, { ...headers, 'x-client-key': 'wrong' }, { ...headers, 'x-kiosk-access-password': 'wrong' }]) {
+        expect((await app.inject({ method: 'POST', url, headers: credentials })).statusCode).toBe(credentials['x-kiosk-access-password'] === 'wrong' ? 403 : 401);
+      }
+      expect(rotate).not.toHaveBeenCalled();
+      expect((await app.inject({ method: 'POST', url: url.replace(`/photos/${id}`, '/photos/bad'), headers })).statusCode).toBe(400);
+      expect(rotate).not.toHaveBeenCalled();
+      const response = await app.inject({ method: 'POST', url, headers });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ result: { photoId: id, photoUrl: '/new.jpg' } });
+      expect(rotate).toHaveBeenCalledExactlyOnceWith(id, id);
+    } finally { await app.close(); }
   });
 
   it('requires setup credentials and does not run inference on denied requests', async () => {

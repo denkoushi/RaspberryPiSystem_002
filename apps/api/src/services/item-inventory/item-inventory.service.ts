@@ -1,3 +1,4 @@
+import { rotateInventoryPhoto } from './inventory-photo-rotation.js';
 import { aggregateInventoryDashboard, dashboardPeriod } from './inventory-dashboard.js';
 import { normalizeToolValue, sortedValuePair, suggestVariantGroups, VARIANT_FIELDS } from './tool-value-variants.js';
 import type { InventoryVariantField } from '@raspi-system/shared-types';
@@ -369,6 +370,34 @@ export class ItemInventoryService {
       photoUrl: photos[0]?.photoUrl ?? null,
       photoCount: _count.photos,
     }));
+  }
+
+  async rotateImportPhoto(payloadId: string, photoId: string) {
+    const payload = await this.db.inventoryImportPayload.findUnique({ where: { id: payloadId }, select: { status: true } });
+    if (!payload) throw new ApiError(404, 'インポート候補が見つかりません');
+    if (payload.status !== InventoryImportPayloadStatus.PENDING) throw new ApiError(409, '登録済みの候補は編集できません');
+    const photo = await this.db.inventoryImportPhoto.findFirst({ where: { id: photoId, payloadId } });
+    if (!photo) throw new ApiError(404, '写真が見つかりません');
+    const photoUrl = await rotateInventoryPhoto(this.db, photo.photoUrl, (newUrl) => this.serializable(async (tx) => {
+      const payload = await tx.inventoryImportPayload.findUnique({ where: { id: payloadId }, select: { status: true } });
+      if (!payload) throw new ApiError(404, 'インポート候補が見つかりません');
+      if (payload.status !== InventoryImportPayloadStatus.PENDING) throw new ApiError(409, '登録済みの候補は編集できません');
+      const current = await tx.inventoryImportPhoto.findFirst({ where: { id: photoId, payloadId } });
+      if (!current || current.photoUrl !== photo.photoUrl) throw new ApiError(409, '写真が更新されています。もう一度お試しください');
+      await tx.inventoryImportPhoto.update({ where: { id: photoId }, data: { photoUrl: newUrl } });
+    }));
+    return { photoId, photoUrl };
+  }
+
+  async rotateInventoryItemPhoto(itemId: string, photoId: string) {
+    const photo = await this.db.inventoryItemPhoto.findFirst({ where: { id: photoId, inventoryItemId: itemId } });
+    if (!photo) throw new ApiError(404, '登録済み写真が見つかりません');
+    const photoUrl = await rotateInventoryPhoto(this.db, photo.photoUrl, (newUrl) => this.serializable(async (tx) => {
+      const current = await tx.inventoryItemPhoto.findFirst({ where: { id: photoId, inventoryItemId: itemId } });
+      if (!current || current.photoUrl !== photo.photoUrl) throw new ApiError(409, '写真が更新されています。もう一度お試しください');
+      await tx.inventoryItemPhoto.update({ where: { id: photoId }, data: { photoUrl: newUrl } });
+    }));
+    return { photoId, photoUrl };
   }
 
   async deleteImportPhoto(payloadId: string, photoId: string) {

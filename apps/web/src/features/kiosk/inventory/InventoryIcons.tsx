@@ -39,3 +39,5 @@ export const PlusIcon = ({ size = 14 }: { size?: number }) => <Icon size={size} 
 export const ChartIcon = ({ size }: { size?: number }) => (
   <Icon size={size}><path d="M4 3v18h17M8 17v-5M13 17V8M18 17V4" /></Icon>
 );
+
+export const RotateRightIcon = ({ size = 16 }: { size?: number }) => <Icon size={size}><path d="M21 11a9 9 0 1 0-3 8" /><path d="M21 4v7h-7" /></Icon>;
