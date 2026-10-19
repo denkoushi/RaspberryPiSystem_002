@@ -127,3 +127,33 @@ test('live scoring records the unresolved terms behind an ask-back', async () =>
   assert.equal(live.loss, 'status');
   assert.deepEqual(live.unresolved, ['content']);
 });
+
+test('live scoring loads cause mappings and skips relevance for cause-only requests', async () => {
+  const { buildCauseQuestions, conditionSha256 } = await import('./cause-categories.mjs');
+  const { CAUSE_STORE_SCHEMA, writeCauseStore } = await import('./cause-store.mjs');
+  const dir = await mkdtemp(path.join(tmpdir(), 'live-cause-'));
+  const file = path.join(dir, 'cause.jsonl');
+  const textSha256 = conditionSha256(records[0].condition);
+  await writeCauseStore(file, new Map([[textSha256, {
+    schema: CAUSE_STORE_SCHEMA, textSha256, categoryId: 'drawing',
+    promptSha256: buildCauseQuestions([]).promptSha256, classifiedAt: '2026-10-19T00:00:00Z',
+  }]]));
+  let calls = 0;
+  const score = await createLiveScorer({ records, catalog: loadNonconformityCatalog(),
+    env: { HERMES_RETRIEVAL_DENSE_PROVIDER: 'off', HERMES_FLYWHEEL_LEARNED_ENABLED: 'false', HERMES_RETRIEVAL_CAUSE_STORE: file },
+    evaluate: async input => {
+      calls += 1;
+      assert.ok(input.questions.cause);
+      return { answers: {
+        scope: { type: 'choice', choice: 'nonconformity' }, cause: { type: 'choice', choice: 'drawing' },
+        content: { type: 'noul', noul: true }, limit: { type: 'choice', choice: 'unspecified' },
+      } };
+    },
+  });
+  const live = await score({ question: '図面の誤りの不適合' });
+  assert.equal(live.outcome, 'answer');
+  assert.equal(live.plan.causeCategory, 'drawing');
+  assert.equal(live.plan.semanticQuery, '');
+  assert.deepEqual(live.shown, [records[0].id]);
+  assert.equal(calls, 1);
+});

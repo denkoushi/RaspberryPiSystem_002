@@ -16,6 +16,7 @@ import { denseSettings, readDenseStore } from './dense-dgx.mjs';
 import { enrichmentSettings, withinWindow } from './enrichment-dgx.mjs';
 import { createDgxGrader, createJevPairGrader, filterAndLabel } from './flywheel-filter.mjs';
 import { checkFilterAnswer, filterOutcome, isFilterOnlyPlan } from './flywheel-filter-check.mjs';
+import { loadCauseById } from './worker.mjs';
 import { sampleFilterQuestions } from './flywheel-filter-questions.mjs';
 import { createDgxChat, generateForPairs, guardChat, probeChat } from './flywheel-generate.mjs';
 import { createLiveScorer, lossStage, relevantIds } from './flywheel-live.mjs';
@@ -223,6 +224,7 @@ export async function runFlywheelNight({
   const fieldLabels = Object.fromEntries(catalogEntries(catalog).flatMap((entry) => entry.fields.map((field) => [field.key, field.label])));
   records = (records ?? []).filter((record) => isConversationalSource(record.kind ?? recordSourceId(record)));
   const corpus = records.map((record) => ({ ...record, id: bareId(record.id) }));
+  const causeById = await loadCauseById(process.env, corpus);
   const recordsById = new Map(corpus.map((record) => [record.id, record]));
   let denseEntries = [];
   try {
@@ -407,7 +409,7 @@ export async function runFlywheelNight({
   const filterIds = new Set(filterDone.map((row) => row.id));
   const filterTexts = new Set(filterDone.map((row) => row.question));
   const filterBudget = settings.filterBudget ?? DEFAULT_FILTER_BUDGET;
-  const filterQuestions = sampleFilterQuestions({ records: corpus, catalog, count: filterBudget,
+  const filterQuestions = sampleFilterQuestions({ records: corpus, catalog, causeById, count: filterBudget,
     random: createRandom(seed ?? Number(status.night.replaceAll('-', ''))), now: now() });
   let filterRemaining = Math.max(0, filterBudget - filterDone.length);
   for (const question of filterQuestions) {
@@ -416,7 +418,7 @@ export async function runFlywheelNight({
     score ??= await makeLive({ records, catalog, evaluate });
     const live = { ...await score({ ...question, kind: 'filter', relevant: [] }) };
     live.reason ??= null;
-    const filterCheck = checkFilterAnswer({ plan: live.plan, shown: live.shown, records: corpus, catalog });
+    const filterCheck = checkFilterAnswer({ plan: live.plan, shown: live.shown, records: corpus, catalog, causeById });
     live.loss = filterCheck.ok === true ? null : filterCheck.ok === false ? 'filter_mismatch' : 'filter_unsupported';
     await logLive(question.id, live);
     const row = { at: now().toISOString(), source: 'synthetic', kind: 'filter', ...question,
@@ -445,7 +447,7 @@ export async function runFlywheelNight({
     const live = await score({ a: null, b: null, question: question.question, grades: null });
     await logLive(question.id, live);
     if (isFilterOnlyPlan(live.plan)) {
-      const filterCheck = checkFilterAnswer({ plan: live.plan, shown: live.shown, records: corpus, catalog });
+      const filterCheck = checkFilterAnswer({ plan: live.plan, shown: live.shown, records: corpus, catalog, causeById });
       live.loss = filterCheck.ok === true ? null : filterCheck.ok === false ? 'filter_mismatch' : 'filter_unsupported';
       await appendFile(realFile, `${JSON.stringify({
         at: now().toISOString(), source: 'real', ...question, split: splitOf(question.id),

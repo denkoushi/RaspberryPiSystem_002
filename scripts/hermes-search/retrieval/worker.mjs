@@ -512,7 +512,7 @@ export function createRetrievalAnswering({
       }
       const refinePlan = refinedPlan(refineBase, options.refine, visibleCatalog, visibleValueIndex);
       if (refinePlan) previouslyShown = [];
-      // Planner-made plans never set causeCategory: a natural-language follow-up drops the cause filter.
+      // Natural-language turns decide whether to keep, replace, or drop the previous cause.
       const planned = refinePlan ? { plan: refinePlan, timings: { planMs: 0 } } : await planner.plan({
         question,
         previousPlan,
@@ -528,7 +528,12 @@ export function createRetrievalAnswering({
         return trialResult({ status: 'completed', answer: outOfScopeAnswer, recordIds: [], elapsedMs: elapsed(),
           previousPlan: null, plans, shownIds: previouslyShown, dataAsOf: view.dataAsOf });
       }
-      const searchPlan = selectedSourcePlan(planned.plan, visibleEntries);
+      let searchPlan = selectedSourcePlan(planned.plan, visibleEntries);
+      const causeFilterDropped = !refinePlan && searchPlan?.causeCategory !== undefined && !view.causeById?.size;
+      if (causeFilterDropped) {
+        searchPlan = { ...searchPlan };
+        delete searchPlan.causeCategory;
+      }
       const compact = compactPlan(searchPlan);
       // A screen-derived condition belongs to this turn only. Do not carry its
       // value into the next question through previous_plan when no pointer is used.
@@ -546,6 +551,8 @@ export function createRetrievalAnswering({
         schema: 'hermes-search-receipt/v1',
         outcome,
         plan: compact,
+        ...(planned.plan?.diagnostics?.causeDecision ? { causeDecision: planned.plan.diagnostics.causeDecision } : {}),
+        ...(causeFilterDropped ? { causeFilterDropped: 'store_empty' } : {}),
         unresolved: Array.isArray(planned.plan?.unresolved) ? planned.plan.unresolved.map((item) => item?.term ?? null) : [],
         jev: planned.receipt ?? null,
         planMs: planned.timings?.planMs ?? null,

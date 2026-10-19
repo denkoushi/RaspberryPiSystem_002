@@ -10,7 +10,7 @@ import { RELEVANT } from './flywheel-filter.mjs';
 import { bareId } from './flywheel-pairs.mjs';
 import { learnedQueriesById } from './flywheel-learn.mjs';
 import { relevanceFailureReason } from './relevance-jev.mjs';
-import { createRetrievalAnswering, loadEnrichmentById, loadLearnedQueriesById } from './worker.mjs';
+import { createRetrievalAnswering, loadCauseById, loadEnrichmentById, loadLearnedQueriesById } from './worker.mjs';
 
 export const LOSS_STAGES = ['status', 'not_in_pool', 'judge_rejected', 'other_shown', 'failed'];
 // The day budget (1.5 s) is a kiosk latency limit, not a retrieval-quality one. At night the Pi 5
@@ -61,8 +61,11 @@ export async function createLiveScorer({ records, catalog, evaluate, env = proce
   }
   const enrichmentById = await loadEnrichmentById(env);
   const learnedById = learned ? learnedQueriesById(learned, { states: null }) : await loadLearnedQueriesById(env);
+  const visibleRecords = authorizedRecords(records).filter((record) => isConversationalSource(record.kind ?? recordSourceId(record)));
+  const causeById = await loadCauseById(env, visibleRecords);
   const answering = createRetrievalAnswering({
-    records: authorizedRecords(records).filter((record) => isConversationalSource(record.kind ?? recordSourceId(record))),
+    records: visibleRecords,
+    causeById,
     catalog,
     evaluate,
     dense,

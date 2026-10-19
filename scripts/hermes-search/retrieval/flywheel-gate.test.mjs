@@ -308,3 +308,16 @@ test('gate CLI accepts real and synthetic JSONL files together', () => {
   assert.match(cli.stdout, /questions 2 /u);
   assert.match(cli.stdout, /real: n 1, relevant shown 1 -> 1/u);
 });
+
+test('offline filter checks receive cause mappings and the scorer keeps the store setting', async () => {
+  const causeById = new Map([['a', 'drawing'], ['b', 'check']]);
+  const { cases } = await runCases({
+    questions: [{ id: 'r-cause', source: 'real', kind: 'filter', split: 'dev', relevant: [], question: '図面・設計の誤り' }],
+    records: [{ id: 'a', discoveredOn: '2026-10-01' }, { id: 'b', discoveredOn: '2026-10-02' }], causeById,
+    score: async () => ({ outcome: 'answer', plan: { causeCategory: 'drawing', semanticQuery: '', filters: [], sort: 'recent' }, shown: ['a'] }),
+  });
+  assert.equal(cases[0].filterCheck.ok, true);
+  assert.deepEqual(cases[0].filterCheck.expectedIds, ['a']);
+  const options = parseRunArgs(['--snapshot', 's', '--questions', 'q', '--out', 'o']);
+  assert.equal(scorerEnv(options, { HERMES_RETRIEVAL_CAUSE_STORE: '/tmp/cause-test.jsonl' }).HERMES_RETRIEVAL_CAUSE_STORE, '/tmp/cause-test.jsonl');
+});
