@@ -8,8 +8,8 @@ import { materialSource } from './procedure-material-grouping';
 
 import type { ProcedureKnowledgeCandidate, ProcedureKnowledgeCandidatesResult, ProcedureMaterialDto, ProcedureMaterialState, ProcedureWorkInstructionCandidate, ProcedureWorkInstructionCandidatesResult } from './procedure-material-types';
 
-export type ShelfTab = ProcedureMaterialState | 'knowledge' | 'workInstruction';
-export const shelfTabs = [['unplaced', '未配置'], ['placed', '配置済み'], ['knowledge', 'ナレッジから'], ['workInstruction', '加工の写真']] as const;
+export type ShelfTab = ProcedureMaterialState | 'app' | 'knowledge' | 'workInstruction';
+export const shelfTabs = [['unplaced', '未配置'], ['app', 'アプリから'], ['placed', '配置済み'], ['knowledge', 'ナレッジから'], ['workInstruction', '加工の写真']] as const;
 type ShelfData = { materials?: ProcedureMaterialDto[]; knowledge?: ProcedureKnowledgeCandidatesResult; workInstructions?: ProcedureWorkInstructionCandidatesResult };
 type ShelfEntry = { data?: ShelfData; error?: string; promise: Promise<void> };
 export type ShelfFilters = { sources: string[]; kinds: string[]; days: number | null };
@@ -57,7 +57,7 @@ export function useShelfLists(tab: ShelfTab, query: string, filtered: boolean, v
         const next: ShelfEntry = { promise: Promise.resolve() };
         next.promise = (value === 'knowledge' ? listProcedureKnowledgeCandidates({ q: query, limit: 100 }).then((knowledge) => ({ knowledge }))
           : value === 'workInstruction' ? listProcedureWorkInstructionCandidates({ q: query, limit: 1000 }).then((workInstructions) => ({ workInstructions }))
-            : listProcedureMaterials({ state: value, q: query, limit: 500 }).then((materials) => ({ materials })))
+            : listProcedureMaterials({ state: value === 'app' ? 'unplaced' : value, ...(value === 'app' ? { origin: 'APP' as const } : {}), q: query, limit: 500 }).then((materials) => ({ materials })))
           .then((data) => { next.data = data; }).catch((e: unknown) => { next.error = isAxiosError(e) && e.response?.status === 403 ? '権限がありません' : readAssemblyApiErrorMessage(e, value === 'knowledge' || value === 'workInstruction' ? '候補を取得できません' : '素材を取得できません'); });
         cache.set(entryKey, next); entry = next;
       }
@@ -68,7 +68,7 @@ export function useShelfLists(tab: ShelfTab, query: string, filtered: boolean, v
   const current = cache.get(key(tab));
   return { data: current?.data, loading: !current?.data && !current?.error, error: current?.error, getData: (value: ShelfTab) => cache.get(key(value))?.data, removeUnplaced: (id: string) => {
     for (const [entryKey, entry] of cache) {
-      if (JSON.parse(entryKey)[0] !== 'unplaced') cache.delete(entryKey);
+      if (!['unplaced', 'app'].includes(JSON.parse(entryKey)[0])) cache.delete(entryKey);
       else if (entry.data?.materials) entry.data.materials = entry.data.materials.filter((item) => item.id !== id);
     }
     setStale((n) => n + 1);
@@ -94,7 +94,7 @@ export const filterShelfWorkInstructions = (items: ProcedureWorkInstructionCandi
 };
 
 export function ShelfFilterChips({ tab, hasWorkDates, filters, disabled, onChange }: { tab: ShelfTab; hasWorkDates: boolean; filters: ShelfFilters; disabled: boolean; onChange: (next: ShelfFilters) => void }) {
-  const sources = tab === 'knowledge' ? ['ナレッジ'] : tab === 'workInstruction' ? ['加工'] : ['メール', '加工', 'ナレッジ'];
+  const sources = tab === 'knowledge' ? ['ナレッジ'] : tab === 'workInstruction' ? ['加工'] : tab === 'app' ? ['アプリ'] : tab === 'unplaced' ? ['メール', '加工', 'ナレッジ'] : ['メール', 'アプリ', '加工', 'ナレッジ'];
   const kinds = tab === 'workInstruction' ? [['PHOTO', '写真']] : tab === 'knowledge' ? [['PHOTO', '写真'], ['TEXT', '文章']] : [['PHOTO', '写真'], ['PDF', 'PDF'], ['TEXT', '文章']];
   const chipClass = 'h-11 shrink-0 whitespace-nowrap rounded-full border px-3.5 text-[17px] disabled:opacity-40';
   const chip = (label: string, active: boolean, action: () => void) => <button key={label} disabled={disabled} aria-pressed={active} className={`${chipClass} ${active ? 'border-[#3ba776] bg-[#1f3a2e] text-[#eef3f6]' : 'border-[#344252] text-[#9fadb9]'}`} onClick={action}>{label}</button>;

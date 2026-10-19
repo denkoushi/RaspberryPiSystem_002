@@ -1,3 +1,4 @@
+import { sendStorageReadError } from './shared.js';
 import { createDeviceReadRateLimit } from '../../lib/device-read-rate-limit.js';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { PhotoStorage } from '../../lib/photo-storage.js';
@@ -57,14 +58,11 @@ export function registerPhotoStorageRoutes(app: FastifyInstance): void {
     } catch (error) {
       if (error instanceof ApiError) throw error;
       const err = error instanceof Error ? error : new Error(String(error));
-      
-      // ファイルが存在しない場合
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        return reply.status(404).send({ message: '写真が見つかりません' });
-      }
-
-      request.log.error({ err, photoUrl: `/api/storage/photos/${urlPath}` }, '写真の読み込みに失敗しました');
-      return reply.status(500).send({ message: '写真の読み込みに失敗しました' });
+      return sendStorageReadError(request, reply, err, {
+        notFoundMessage: '写真が見つかりません',
+        failedMessage: '写真の読み込みに失敗しました',
+        logContext: { err, photoUrl: `/api/storage/photos/${urlPath}` },
+      });
     }
   });
 }

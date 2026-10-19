@@ -8,6 +8,8 @@ import {
   getDeployStatus,
   getNetworkModeStatus
 } from '../client';
+import { measuringInstrumentsQueryKeys } from '../queryKeys/measuringInstruments';
+import { riggingQueryKeys } from '../queryKeys/rigging';
 import { systemQueryKeys } from '../queryKeys/system';
 import { toolsQueryKeys } from '../queryKeys/tools';
 
@@ -17,8 +19,8 @@ export function useImportMaster() {
     mutationFn: importMaster,
     onSuccess: () => {
       // インポート成功後、employeesとitemsのクエリを無効化して最新データを取得
-      queryClient.invalidateQueries({ queryKey: ['employees'] });
-      queryClient.invalidateQueries({ queryKey: ['items'] });
+      queryClient.invalidateQueries({ queryKey: toolsQueryKeys.employeesAll });
+      queryClient.invalidateQueries({ queryKey: toolsQueryKeys.itemsAll });
     }
   });
 }
@@ -30,13 +32,13 @@ export function useImportMasterSingle() {
     onSuccess: (_, variables) => {
       // インポート成功後、該当するデータタイプのクエリを無効化して最新データを取得
       if (variables.type === 'employees') {
-        queryClient.invalidateQueries({ queryKey: ['employees'] });
+        queryClient.invalidateQueries({ queryKey: toolsQueryKeys.employeesAll });
       } else if (variables.type === 'items') {
-        queryClient.invalidateQueries({ queryKey: ['items'] });
+        queryClient.invalidateQueries({ queryKey: toolsQueryKeys.itemsAll });
       } else if (variables.type === 'measuringInstruments') {
-        queryClient.invalidateQueries({ queryKey: ['measuringInstruments'] });
+        queryClient.invalidateQueries({ queryKey: measuringInstrumentsQueryKeys.instrumentsAll });
       } else if (variables.type === 'riggingGears') {
-        queryClient.invalidateQueries({ queryKey: ['riggingGears'] });
+        queryClient.invalidateQueries({ queryKey: riggingQueryKeys.gearsAll });
       } else if (variables.type === 'machines') {
         queryClient.invalidateQueries({ queryKey: toolsQueryKeys.machinesAll });
         queryClient.invalidateQueries({ queryKey: toolsQueryKeys.uninspectedMachinesAll });

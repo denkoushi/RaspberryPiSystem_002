@@ -12,6 +12,7 @@ import {
   type InventoryTag,
 } from '../../api/client';
 import { useInventoryImportSummaries, useInventoryItems, useInventoryMutations } from '../../api/hooks';
+import { inventoryKeys } from '../../api/queryKeys/itemInventory';
 import { KioskHomeIcon } from '../../components/kiosk/KioskHomeIcon';
 import { InventoryCorrectionPanel } from '../../features/kiosk/inventory/InventoryCorrectionPanel';
 import {
@@ -22,6 +23,18 @@ import {
 } from '../../features/kiosk/inventory/inventoryDailyFlow';
 import { BackIcon, ChartIcon, EditIcon, GridIcon, ListIcon, LockIcon, UndoIcon } from '../../features/kiosk/inventory/InventoryIcons';
 import { detailLabels, InventoryItemGrid, type InventoryThumbnailSize, type InventoryViewMode } from '../../features/kiosk/inventory/InventoryItemGrid';
+import {
+  defaultAreasKey,
+  EMPTY_COMPARTMENTS,
+  EMPTY_IMPORTS,
+  isClientError,
+  messageFromError,
+  playInventoryTone,
+  readDefaultAreas,
+  thumbnailSizeKey,
+  viewModeKey,
+  type InventoryRouteState,
+} from '../../features/kiosk/inventory/inventoryPageModel';
 import { InventoryPhotoPane } from '../../features/kiosk/inventory/InventoryPhotoPane';
 import { InventoryQuantityPanel } from '../../features/kiosk/inventory/InventoryQuantityPanel';
 import { InventoryRecentHistory } from '../../features/kiosk/inventory/InventoryRecentHistory';
@@ -38,58 +51,9 @@ import {
   invTitle,
 } from '../../features/kiosk/inventory/inventoryUi';
 import { NfcPrompt } from '../../features/kiosk/inventory/NfcPrompt';
+import { useInventoryNfcQueue } from '../../features/kiosk/inventory/useInventoryNfcQueue';
 
 import type { NfcEvent } from '../../hooks/useNfcStream';
-
-type InventoryRouteState = { inventoryNfcEvent?: NfcEvent };
-
-function messageFromError(error: unknown): string {
-  if (error && typeof error === 'object' && 'response' in error) {
-    const response = (error as { response?: { data?: { message?: string } } }).response;
-    if (response?.data?.message) return response.data.message;
-  }
-  return error instanceof Error ? error.message : '処理に失敗しました';
-}
-
-function isClientError(error: unknown): boolean {
-  const status = (error as { response?: { status?: number } })?.response?.status;
-  return status !== undefined && status >= 400 && status < 500;
-}
-
-const thumbnailSizeKey = 'kiosk-inventory-thumbnail-size';
-const viewModeKey = 'kiosk-inventory-view-mode';
-const defaultAreasKey = 'kiosk-inventory-default-areas';
-function readDefaultAreas(): string[] {
-  try {
-    const saved = localStorage.getItem(defaultAreasKey);
-    if (saved !== null) {
-      const parsed: unknown = JSON.parse(saved);
-      return Array.isArray(parsed) ? [...new Set(parsed.filter((area): area is string => typeof area === 'string' && area.trim().length > 0))] : [];
-    }
-    const legacy = localStorage.getItem('kiosk-inventory-default-area')?.trim();
-    return legacy ? [legacy] : [];
-  } catch { return []; }
-}
-const EMPTY_IMPORTS: InventoryImportSummary[] = [];
-const EMPTY_COMPARTMENTS: InventoryCompartment[] = [];
-let inventoryAudioContext: AudioContext | null = null;
-
-function playInventoryTone(kind: 'success' | 'restock' | 'error') {
-  if (typeof window === 'undefined' || !window.AudioContext) return;
-  const context = inventoryAudioContext ??= new window.AudioContext();
-  if (context.state === 'suspended') void context.resume();
-  const oscillator = context.createOscillator();
-  const gain = context.createGain();
-  const frequency = kind === 'success' ? 880 : kind === 'restock' ? 660 : 180;
-  oscillator.frequency.value = frequency;
-  oscillator.type = kind === 'error' ? 'sawtooth' : 'sine';
-  gain.gain.setValueAtTime(0.0001, context.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.18);
-  oscillator.connect(gain).connect(context.destination);
-  oscillator.start();
-  oscillator.stop(context.currentTime + 0.2);
-}
 
 // Scans read during a failed operation are dropped even when they arrive after this page was left and reopened.
 let failedOperationAt = -Infinity;
@@ -210,7 +174,7 @@ export function KioskItemInventoryPage() {
         const drawer = item?.compartments.find((entry) => entry.id === transaction.compartmentId);
         return item && drawer ? pickedCompartmentTag({ ...drawer, item }) : null;
       };
-      tag = findTag(queryClient.getQueryData(['inventory-items']) ?? itemsQuery.data);
+      tag = findTag(queryClient.getQueryData(inventoryKeys.itemsAll) ?? itemsQuery.data);
       if (!tag) tag = findTag((await itemsQuery.refetch().catch(() => null))?.data);
     }
     if (tag?.compartment) tag = { ...tag, compartment: { ...tag.compartment, stockQuantity: transaction.afterQuantity } };
@@ -232,7 +196,7 @@ export function KioskItemInventoryPage() {
       if (!mountedRef.current || generation !== verificationGenerationRef.current) return;
       succeeded = await operation();
     } catch (error) {
-      if (isClientError(error)) void queryClient.invalidateQueries({ queryKey: ['inventory-tags'] });
+      if (isClientError(error)) void queryClient.invalidateQueries({ queryKey: inventoryKeys.tagsAll });
       await onError(error);
     } finally {
       if (!succeeded) {
@@ -291,154 +255,12 @@ export function KioskItemInventoryPage() {
     if (uncertain || code === 'INVENTORY_CONFLICT') await refreshDisplayedStock();
   };
 
-  useEffect(() => {
-    drainEventsRef.current = async () => {
-      if (drainingRef.current || flowRef.current.processing) return;
-      drainingRef.current = true;
-      try {
-        while (eventQueueRef.current.length > 0 && !flowRef.current.processing) {
-          const event = eventQueueRef.current[0];
-          if (!event) continue;
-          let tag: InventoryTag | null;
-          try {
-            tag = event.inventoryTag ?? await resolveInventoryTag(event.uid);
-          } catch (error) {
-            if (eventQueueRef.current[0] !== event) continue;
-            eventQueueRef.current.shift();
-            if (isClientError(error)) void queryClient.invalidateQueries({ queryKey: ['inventory-tags'] });
-            setMessage(messageFromError(error));
-            setMessageKind('error');
-            playInventoryTone('error');
-            continue;
-          }
-          if (!mountedRef.current) return;
-          if (eventQueueRef.current[0] !== event) continue;
-          // A touch operation may have acquired the lock during an uncached lookup.
-          if (flowRef.current.processing) {
-            eventQueueRef.current[0] = { ...event, inventoryTag: tag ?? undefined };
-            break;
-          }
-          eventQueueRef.current.shift();
-          if (!tag) continue;
-          const flow = flowRef.current;
-          setPanel('none');
-          if (tag.kind === 'RESTOCK') {
-            selectTag(null);
-            flow.restockMode = true;
-            flow.restockTagUid = tag.uid;
-            setRestockMode(true);
-            setMessage('補充モードです。アイテムNFCタグを読み取ってください');
-            setMessageKind('info');
-            continue;
-          }
-          if (tag.kind === 'ITEM') {
-            if (!tag.compartment) {
-              selectTag(null);
-              if (event.inventoryTagFromCache) void queryClient.invalidateQueries({ queryKey: ['inventory-tags'] });
-              setMessage('アイテムNFCタグに区画が割り当てられていません');
-              setMessageKind('error');
-              playInventoryTone('error');
-              continue;
-            }
-            selectTag(tag);
-            setQuantityError(null);
-            setLastTransaction((current) => current?.compartmentId === tag.compartment?.id ? current : null);
-            setMessage(flow.restockMode ? '数量NFCタグを読み取って補充してください' : '数量NFCタグを読み取ってください');
-            setMessageKind('info');
-            if ((event.inventoryTagFromCache || event.inventoryTagNeedsRefresh) && !selectionVerificationRef.current) {
-              const cachedTag = tag;
-              const generation = verificationGenerationRef.current;
-              setRefreshingTag(Boolean(event.inventoryTagNeedsRefresh));
-              const verification = resolveInventoryTag(event.uid).then((latest) => {
-                if (!mountedRef.current || generation !== verificationGenerationRef.current) return false;
-                const unchanged = latest?.kind === 'ITEM' && Boolean(latest.compartment) && latest.compartment?.id === cachedTag.compartment?.id;
-                selectTag(latest?.kind === 'ITEM' && latest.compartment ? latest : null);
-                setLastTransaction((current) => current?.compartmentId === latest?.compartment?.id ? current : null);
-                if (!unchanged) {
-                  void queryClient.invalidateQueries({ queryKey: ['inventory-tags'] });
-                  setPanel('none');
-                  setQuantityError(null);
-                  setCorrectionError(null);
-                  if (!latest || latest.kind !== 'ITEM' || !latest.compartment) {
-                    setMessage('タグの登録が変わりました');
-                    setMessageKind('error');
-                    playInventoryTone('error');
-                  }
-                }
-                return unchanged;
-              }).catch(() => {
-                if (!mountedRef.current || generation !== verificationGenerationRef.current) return false;
-                if (!Number.isFinite(cachedTag.compartment!.stockQuantity)) {
-                  selectTag(null);
-                  setMessage('通信できませんでした');
-                  setMessageKind('error');
-                  playInventoryTone('error');
-                  return false;
-                }
-                return true;
-              }).finally(() => {
-                if (selectionVerificationRef.current === verification) selectionVerificationRef.current = null;
-                if (mountedRef.current && generation === verificationGenerationRef.current) setRefreshingTag(false);
-              });
-              selectionVerificationRef.current = verification;
-            }
-            continue;
-          }
-          let touchRoute = false;
-          await runOperation(async () => {
-            const generation = verificationGenerationRef.current;
-            const selected = flow.selectedTag;
-            const compartment = selected?.compartment;
-            if (!compartment || !Number.isFinite(compartment.stockQuantity)) {
-              setMessage('先にアイテムNFCタグを読み取ってください');
-              setMessageKind('error');
-              playInventoryTone('error');
-              return false;
-            }
-            const restock = flow.restockMode;
-            touchRoute = !selected.uid || (restock && !flow.restockTagUid);
-            const idempotencyKey = `nfc-${event.eventId ?? `${event.uid}-${event.timestamp}`}`;
-            let result;
-            if (touchRoute) {
-              const latestQuantity = await resolveInventoryTag(tag.uid);
-              if (!mountedRef.current || generation !== verificationGenerationRef.current) return false;
-              if (latestQuantity?.kind !== 'QUANTITY' || !latestQuantity.quantity || latestQuantity.quantity <= 0) {
-                void queryClient.invalidateQueries({ queryKey: ['inventory-tags'] });
-                setMessage('タグの登録が変わりました');
-                setMessageKind('error');
-                return false;
-              }
-              result = await mutations.touchTransaction.mutateAsync({
-                compartmentId: compartment.id, quantity: latestQuantity.quantity, restock,
-                expectedBeforeQuantity: compartment.stockQuantity, idempotencyKey,
-              });
-            } else {
-              result = await mutations.transaction.mutateAsync({
-                itemTagUid: selected.uid, expectedCompartmentId: compartment.id, quantityTagUid: tag.uid,
-                restockTagUid: flow.restockTagUid ?? undefined, restock, idempotencyKey,
-              });
-            }
-            await completeMovement(result.transaction, restock);
-            return true;
-          }, async (error) => {
-            if (touchRoute) await handleTouchError(error);
-            else {
-              const response = (error as { response?: { status?: number; data?: { code?: string; errorCode?: string } } })?.response;
-              if (response?.status === 409 && (response.data?.errorCode ?? response.data?.code) === 'INVENTORY_CONFLICT') {
-                selectTag(null);
-                void queryClient.invalidateQueries({ queryKey: ['inventory-tags'] });
-                void queryClient.invalidateQueries({ queryKey: ['inventory-items'] });
-                setMessage('タグの登録が変わりました');
-              } else setMessage(messageFromError(error));
-              setMessageKind('error');
-              playInventoryTone('error');
-            }
-          });
-        }
-      } finally {
-        drainingRef.current = false;
-      }
-    };
+  useInventoryNfcQueue({
+    drainEventsRef, drainingRef, flowRef, eventQueueRef, queryClient,
+    setMessage, setMessageKind, mountedRef, setPanel, selectTag,
+    setRestockMode, setQuantityError, setLastTransaction, selectionVerificationRef,
+    verificationGenerationRef, setRefreshingTag, setCorrectionError,
+    runOperation, mutations, completeMovement, handleTouchError,
   });
 
   useEffect(() => {

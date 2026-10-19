@@ -16,6 +16,7 @@ import {
   type ClientLogLevel
 } from '../client';
 import { clientsQueryKeys } from '../queryKeys/clients';
+import { kioskQueryKeys } from '../queryKeys/kiosk';
 
 export function useClients() {
   return useQuery({
@@ -55,7 +56,7 @@ export function useClientMutations() {
     }) => updateClient(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: clientsQueryKeys.clientsAll });
-      queryClient.invalidateQueries({ queryKey: ['kiosk-config'] });
+      queryClient.invalidateQueries({ queryKey: kioskQueryKeys.configAll });
       queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.haizenTargetDevices });
     }
   });

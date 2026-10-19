@@ -93,7 +93,7 @@ describe('InventoryRegistrationTab', () => {
       dismissImport: { mutateAsync: dismissImport, isPending: false },
       restoreImport: { mutateAsync: restoreImport, isPending: false },
       registerImport: { mutateAsync: registerImport, isPending: false },
-      reorderImportPhotos: { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false },
+      rotateImportPhoto: { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false }, reorderImportPhotos: { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false },
       deleteImportPhoto: { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false },
       retryImport: { mutateAsync: vi.fn(), isPending: false },
       createShelf: { mutateAsync: createShelf, isPending: false },
@@ -107,6 +107,13 @@ describe('InventoryRegistrationTab', () => {
   });
 
   afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+  it('rotates the selected photo with its parent and photo IDs', async () => {
+    render(<InventoryRegistrationTab accessPassword="2520" initialImportId="import-1" />);
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '写真1を右に回す' })); });
+    expect(vi.mocked(useInventoryMutations)().rotateImportPhoto.mutateAsync).toHaveBeenCalledWith({ payloadId: 'import-1', photoId: 'photo-1' });
+  });
 
   it.each([false, true])('keeps region text in the form without saving automatically (edited: %s)', async edited => {
     render(<InventoryRegistrationTab accessPassword="2520" />);
