@@ -8,6 +8,7 @@ import {
   getDeployStatus,
   getNetworkModeStatus
 } from '../client';
+import { systemQueryKeys } from '../queryKeys/system';
 import { toolsQueryKeys } from '../queryKeys/tools';
 
 export function useImportMaster() {
@@ -51,7 +52,7 @@ export function useImportMasterSingle() {
 
 export function useSystemInfo() {
   return useQuery({
-    queryKey: ['system-info'],
+    queryKey: systemQueryKeys.infoAll,
     queryFn: getSystemInfo,
     refetchInterval: POLL_MS.systemInfo, // 負荷軽減のため既定を緩和（管理画面中心）
     staleTime: 3000, // 3秒間はキャッシュを使用
@@ -61,7 +62,7 @@ export function useSystemInfo() {
 
 export function useNetworkModeStatus() {
   return useQuery({
-    queryKey: ['network-mode-status'],
+    queryKey: systemQueryKeys.networkModeStatusAll,
     queryFn: getNetworkModeStatus,
     refetchInterval: 30_000,
     staleTime: 10_000,
@@ -71,7 +72,7 @@ export function useNetworkModeStatus() {
 
 export function useDeployStatus() {
   return useQuery({
-    queryKey: ['deploy-status'],
+    queryKey: systemQueryKeys.deployStatusAll,
     queryFn: getDeployStatus,
     refetchInterval: (query) => (
       query.state.data?.isMaintenance || query.state.data?.preNotice
