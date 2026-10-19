@@ -140,9 +140,14 @@ function fixture() {
   };
 }
 
-// The board opens on 資源CD; most cases here exercise the 製番 view.
+function openListView() {
+  fireEvent.click(screen.getByRole('button', { name: 'ガント', exact: true }));
+}
+
+// The board opens in Gantt on 資源CD; most cases here exercise the 製番 list view.
 function renderSeibanBoard() {
   const result = render(<ProductionScheduleGrindingPlanningBoardPage />);
+  openListView();
   const seiban = screen.queryByRole('button', { name: '製番', exact: true });
   if (seiban) fireEvent.click(seiban);
   return result;
@@ -228,6 +233,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   it('completes the source row, removes its selection and undoes from the notice', async () => {
     const invalidate = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
     render(<ProductionScheduleGrindingPlanningBoardPage />);
+    openListView();
     const row = screen.getByTestId('planning-board-item-a');
     fireEvent.click(within(row).getByRole('checkbox'));
     fireEvent.click(within(row).getByRole('button', { name: '完了にする' }));
@@ -244,6 +250,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   it('replaces the undo notice and expires it five seconds after the latest completion', async () => {
     vi.useFakeTimers();
     const page = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    openListView();
     const complete = async (id: string) => {
       await act(async () => {
         fireEvent.click(within(screen.getByTestId(`planning-board-item-${id}`)).getByRole('button', { name: '完了にする' }));
@@ -269,6 +276,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     let reject!: (error: Error) => void;
     mocks.completion.mockImplementation(() => new Promise((_resolve, rejectPromise) => { reject = rejectPromise; }));
     render(<ProductionScheduleGrindingPlanningBoardPage />);
+    openListView();
     fireEvent.click(screen.getByRole('button', { name: '両方', exact: true }));
     const row = screen.getByTestId('planning-board-item-a');
     fireEvent.click(within(row).getByRole('button', { name: '完了にする' }));
@@ -292,6 +300,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     let reject!: (error: Error) => void;
     mocks.completion.mockImplementation(() => new Promise((_resolve, rejectPromise) => { reject = rejectPromise; }));
     render(<ProductionScheduleGrindingPlanningBoardPage />);
+    openListView();
     fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '完了にする' }));
     expect(screen.queryByTestId('planning-board-item-a')).not.toBeInTheDocument();
     await waitFor(() => expect(mocks.completion).toHaveBeenCalledTimes(1));
@@ -306,6 +315,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     let resolve!: (value: unknown) => void;
     mocks.completion.mockImplementationOnce(() => new Promise((resolvePromise) => { resolve = resolvePromise; }));
     render(<ProductionScheduleGrindingPlanningBoardPage />);
+    openListView();
     fireEvent.click(screen.getByRole('button', { name: '完了', exact: true }));
     fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '未完了に戻す' }));
     expect(screen.queryByTestId('planning-board-item-a')).not.toBeInTheDocument();
@@ -315,6 +325,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
   it('restores a row instantly on undo after the server omitted it from the incomplete filter', async () => {
     const page = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    openListView();
     fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '完了にする' }));
     await screen.findByText('完了にしました');
     const refreshed = fixture();
@@ -331,6 +342,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
   it('keeps the overlay until a matching refresh, then allows import completion to take over', async () => {
     const page = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    openListView();
     fireEvent.click(screen.getByRole('button', { name: '両方', exact: true }));
     fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '完了にする' }));
     await screen.findByText('完了にしました');
@@ -356,7 +368,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     data.items[0]!.productNo = '1234567890';
     mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
     render(<ProductionScheduleGrindingPlanningBoardPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'ガント', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '製番ごとに色分け' }));
     fireEvent.click(screen.getByRole('button', { name: '移動票で製番を探す' }));
     scanOrder('1234567890');
     expect(screen.queryByRole('dialog', { name: '製造オーダー番号を読み取る' })).not.toBeInTheDocument();
@@ -379,6 +391,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     data.items[0]!.originalDueDate = null as unknown as string;
     mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
     render(<ProductionScheduleGrindingPlanningBoardPage />);
+    openListView();
     fireEvent.click(screen.getByRole('button', { name: '移動票で製番を探す' }));
     scanOrder('12345');
     expect(screen.getByRole('alert')).toHaveTextContent('製造オーダー番号は数字10桁です（読取値: 12345）。読み直してください。');
@@ -401,6 +414,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     data.items[1]!.originalResourceCd = '584';
     mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
     render(<ProductionScheduleGrindingPlanningBoardPage />);
+    openListView();
     const getStyle = window.getComputedStyle;
     const computed = vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
       const style = getStyle(element, pseudo);
@@ -517,6 +531,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     data.resourceCategories = hasMap ? { ...data.resourceCategories, '100': 'cutting' } : {};
     mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
     render(<ProductionScheduleGrindingPlanningBoardPage />);
+    openListView();
     fireEvent.click(screen.getByRole('button', { name: '切削' }));
     const panes = [...screen.getByTestId('planning-board-resource-view').querySelectorAll<HTMLElement>('[data-resource-code]')];
     if (hasMap) expect(panes.map((pane) => pane.dataset.resourceCode)).toEqual(['584', '305', '100']);
@@ -543,9 +558,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
         ...data.items.find((item) => item.itemId === request.itemId), alternateRank: index + 1,
         version: request.overrideVersion + 1, itemRevision: `saved-${request.itemId}-${request.overrideVersion + 1}`
       })) }));
-    renderSeibanBoard();
-    fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
-    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
     expect(screen.getByRole('button', { name: '今日から' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: action }));
@@ -597,7 +610,6 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
         server.set(saved.itemId, saved); return saved;
       }) }));
     render(<ProductionScheduleGrindingPlanningBoardPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
     const bar = screen.getByTestId('planning-gantt-bar-a');
     const target = screen.getByTestId('planning-gantt-bar-d');
     Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => [target]) });
@@ -647,7 +659,6 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     if (scenario === 'override failure') mocks.overrides.mockRejectedValueOnce(new Error('move failed'));
     if (scenario === 'order failure') mocks.resourceOrderBulk.mockRejectedValueOnce(new Error('order failed'));
     render(<ProductionScheduleGrindingPlanningBoardPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
     const target = screen.getByTestId('planning-forward-lane-584');
     Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => [target]) });
     const bar = screen.getByTestId('planning-gantt-bar-a');
@@ -686,7 +697,6 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     let resolvePin!: (value: unknown) => void;
     mocks.pins.mockImplementationOnce(() => new Promise((resolve) => { resolvePin = resolve; }));
     render(<ProductionScheduleGrindingPlanningBoardPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
     fireEvent.click(screen.getByRole('button', { name: '固定', exact: true }));
     fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
     expect(screen.getByTestId('planning-gantt-bar-a')).toHaveAttribute('data-gantt-pinned', 'true');
@@ -714,7 +724,6 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.resourceOrderBulk.mockImplementation(async (payload) => ({ sourceRevision: data.sourceRevision,
       items: payload.items.map((request: { itemId: string }, index: number) => ({ ...data.items.find((item) => item.itemId === request.itemId), alternateRank: index + 1, version: 3, itemRevision: `saved-${request.itemId}` })) }));
     render(<ProductionScheduleGrindingPlanningBoardPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
     fireEvent.click(screen.getByRole('button', { name: '並べ替え' }));
     expect(mocks.resourceOrderBulk).not.toHaveBeenCalled();
     expect(screen.getByTestId('planning-gantt-bar-a')).toBeDisabled();
@@ -743,7 +752,6 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.resourceOrderBulk.mockImplementation(async (payload) => ({ sourceRevision: data.sourceRevision,
       items: payload.items.map((request: { itemId: string }, index: number) => ({ ...data.items.find((item) => item.itemId === request.itemId), alternateRank: index + 1, version: 3, itemRevision: `saved-${request.itemId}` })) }));
     render(<ProductionScheduleGrindingPlanningBoardPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
     const pinnedLeft = screen.getByTestId('planning-gantt-bar-a').style.left;
     fireEvent.click(screen.getByRole('button', { name: '並べ替え' }));
     expect(screen.getByTestId('planning-gantt-bar-a').style.left).toBe(pinnedLeft);
@@ -767,14 +775,12 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       return { sourceRevision: data.sourceRevision, items: saved };
     });
     const rendered = render(<ProductionScheduleGrindingPlanningBoardPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
     fireEvent.click(screen.getByRole('button', { name: '並べ替え' }));
     fireEvent.click(screen.getByRole('button', { name: '適用', exact: true }));
     await waitFor(() => expect(screen.getByRole('button', { name: '並べ替え' })).toBeEnabled());
     expect(mocks.resourceOrderBulk.mock.calls[0]![0].items.map((item: { itemId: string }) => item.itemId)).toEqual(['a', 'c', 'b']);
     rendered.unmount();
     const remounted = render(<ProductionScheduleGrindingPlanningBoardPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
     expect(parseFloat(screen.getByTestId('planning-gantt-bar-a').style.left)).toBeLessThan(parseFloat(screen.getByTestId('planning-gantt-bar-c').style.left));
     expect(parseFloat(screen.getByTestId('planning-gantt-bar-c').style.left)).toBeLessThan(parseFloat(screen.getByTestId('planning-gantt-bar-b').style.left));
     fireEvent.click(screen.getByRole('button', { name: '並べ替え' }));
@@ -782,7 +788,6 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     remounted.unmount();
     data.items.find((item) => item.itemId === 'b')!.specialDue = { kind: 'overnight', expiresAt: '2099-11-20T00:00:00Z' };
     render(<ProductionScheduleGrindingPlanningBoardPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
     expect(parseFloat(screen.getByTestId('planning-gantt-bar-b').style.left)).toBeLessThan(parseFloat(screen.getByTestId('planning-gantt-bar-a').style.left));
 
   });
@@ -791,25 +796,34 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
     expect(screen.getByRole('button', { name: '資源CD', exact: true })).toHaveAttribute('aria-pressed', 'true');
   });
-  it('製番の色分けを切り替えて凡例を表示し、再マウント時はOFFに戻る', () => {
-    const first = renderSeibanBoard();
-    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
+  it('ガントと製番の色分けがONで開き、切り替えても再マウント時は両方ONに戻る', () => {
+    const first = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.getByTestId('planning-board-gantt')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'ガント' })).toHaveAttribute('aria-pressed', 'true');
     const toggle = screen.getByRole('button', { name: '製番ごとに色分け' });
     const bar = screen.getByTestId('planning-gantt-bar-a');
-    const originalClass = bar.className;
-    expect(toggle).toHaveAttribute('aria-pressed', 'false');
-    fireEvent.click(toggle);
+    const coloredClass = bar.className;
     expect(toggle).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('group', { name: '製番の色分け凡例' })).toBeVisible();
-    expect(bar.className).not.toBe(originalClass);
     fireEvent.click(toggle);
-    expect(bar.className).toBe(originalClass);
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect(bar.className).not.toBe(coloredClass);
     expect(screen.queryByRole('group', { name: '製番の色分け凡例' })).not.toBeInTheDocument();
     fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(bar.className).toBe(coloredClass);
+    expect(screen.getByRole('group', { name: '製番の色分け凡例' })).toBeVisible();
+    fireEvent.click(toggle);
+    openListView();
+    expect(screen.getByRole('button', { name: 'ガント' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByTestId('planning-board-gantt')).not.toBeInTheDocument();
     first.unmount();
-    renderSeibanBoard();
-    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
-    expect(screen.getByRole('button', { name: '製番ごとに色分け' })).toHaveAttribute('aria-pressed', 'false');
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.getByTestId('planning-board-gantt')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'ガント' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '製番ごとに色分け' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('group', { name: '製番の色分け凡例' })).toBeVisible();
+    expect(screen.getByTestId('planning-gantt-bar-a').className).toBe(coloredClass);
   });
   it('ガント切替と縮尺変更でボード取得条件が変わらず、通常表示へ戻る', () => {
     renderSeibanBoard();
@@ -836,8 +850,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
   it('ガントで選択し、離した時だけ指定納期をキュー保存し楽観反映する', async () => {
     mocks.overrides.mockImplementation(() => new Promise(() => {}));
-    renderSeibanBoard();
-    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
     fireEvent.click(screen.getByRole('button', { name: '納期から' }));
     fireEvent.click(screen.getByRole('button', { name: '他の幅' }));
     fireEvent.click(screen.getByRole('button', { name: '2週' }));
@@ -856,9 +869,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   });
 
   it('元割当はガントのドラッグを無効にし、選択は維持する', () => {
-    renderSeibanBoard();
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
     fireEvent.click(screen.getByRole('button', { name: '元割当' }));
-    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
     const bar = screen.getByTestId('planning-gantt-bar-a');
     expect(bar).toHaveAttribute('data-drag-disabled', 'true');
     fireEvent.pointerDown(bar, { pointerId: 1, button: 0, clientX: 100 });
@@ -877,8 +889,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   });
 
   it('同日へのドロップとキャンセルでは保存しない', () => {
-    renderSeibanBoard();
-    fireEvent.click(screen.getByRole('button', { name: 'ガント' }));
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
     const bar = screen.getByTestId('planning-gantt-bar-a');
     fireEvent.pointerDown(bar, { pointerId: 1, button: 0, clientX: 100 });
     fireEvent.pointerUp(bar, { pointerId: 1, clientX: 110 });

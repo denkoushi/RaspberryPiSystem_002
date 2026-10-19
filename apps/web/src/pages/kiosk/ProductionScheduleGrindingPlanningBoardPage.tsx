@@ -67,9 +67,9 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     document.addEventListener('keydown', clear);
     return () => document.removeEventListener('keydown', clear);
   }, [focusedSeiban]);
-  const [colorBySeiban, setColorBySeiban] = useState(false);
+  const [colorBySeiban, setColorBySeiban] = useState(true);
   const { largeScreen, changeLargeScreen } = usePlanningBoardLargeScreen();
-  const [ganttEnabled, setGanttEnabled] = useState(false);
+  const [ganttEnabled, setGanttEnabled] = useState(true);
   const [view, setView] = useState<'seiban' | 'resource'>('resource');
   const [status, setStatus] = useState<PlanningBoardStatus>('incomplete');
   const [allocation, setAllocation] = useState<PlanningBoardAllocation>('alternate');
