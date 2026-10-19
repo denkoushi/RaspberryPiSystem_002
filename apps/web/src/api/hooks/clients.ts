@@ -15,10 +15,11 @@ import {
   updateClient,
   type ClientLogLevel
 } from '../client';
+import { clientsQueryKeys } from '../queryKeys/clients';
 
 export function useClients() {
   return useQuery({
-    queryKey: ['clients'],
+    queryKey: clientsQueryKeys.clientsAll,
     queryFn: getClients
   });
 }
@@ -53,7 +54,7 @@ export function useClientMutations() {
       };
     }) => updateClient(id, payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      queryClient.invalidateQueries({ queryKey: clientsQueryKeys.clientsAll });
       queryClient.invalidateQueries({ queryKey: ['kiosk-config'] });
       queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.haizenTargetDevices });
     }
@@ -63,7 +64,7 @@ export function useClientMutations() {
 
 export function useSites() {
   return useQuery({
-    queryKey: ['sites'],
+    queryKey: clientsQueryKeys.sitesAll,
     queryFn: getSites
   });
 }
@@ -73,7 +74,7 @@ export function useCreateSite() {
   return useMutation({
     mutationFn: createSite,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sites'] });
+      queryClient.invalidateQueries({ queryKey: clientsQueryKeys.sitesAll });
     }
   });
 }
@@ -81,7 +82,7 @@ export function useCreateSite() {
 /** キオスクの拠点選択肢（管理画面で登録した拠点） */
 export function useKioskSites(options?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: ['kiosk-sites'],
+    queryKey: clientsQueryKeys.kioskSitesAll,
     queryFn: getKioskSites,
     staleTime: 5 * 60_000,
     // 開いたままの画面にも、管理画面で追加した拠点を反映する（アプリ全体で focus 時の再取得は無効）。
@@ -92,7 +93,7 @@ export function useKioskSites(options?: { enabled?: boolean }) {
 
 export function useClientStatuses() {
   return useQuery({
-    queryKey: ['client-status'],
+    queryKey: clientsQueryKeys.statusAll,
     queryFn: getClientStatuses,
     refetchInterval: 60_000
   });
@@ -100,14 +101,14 @@ export function useClientStatuses() {
 
 export function useClientLogs(filters: { clientId?: string; level?: ClientLogLevel; limit?: number; since?: string }) {
   return useQuery({
-    queryKey: ['client-logs', filters],
+    queryKey: clientsQueryKeys.logs(filters),
     queryFn: () => getClientLogs(filters)
   });
 }
 
 export function useClientAlerts() {
   return useQuery({
-    queryKey: ['client-alerts'],
+    queryKey: clientsQueryKeys.alertsAll,
     queryFn: getClientAlerts,
     refetchInterval: 60_000 // 1分ごとに更新
   });
@@ -118,7 +119,7 @@ export function useAcknowledgeAlert() {
   return useMutation({
     mutationFn: acknowledgeAlert,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['client-alerts'] });
+      queryClient.invalidateQueries({ queryKey: clientsQueryKeys.alertsAll });
     }
   });
 }

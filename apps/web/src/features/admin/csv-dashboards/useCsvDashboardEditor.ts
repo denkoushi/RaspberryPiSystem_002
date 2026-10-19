@@ -11,6 +11,7 @@ import {
   type CsvDashboard,
   type CsvPreviewResult,
 } from '../../../api/client';
+import { signageQueryKeys } from '../../../api/queryKeys/signage';
 
 import {
   applyDisplayNameChange,
@@ -148,7 +149,7 @@ export function useCsvDashboardEditor() {
     onSuccess: async () => {
       setUploadFile(null);
       await queryClient.invalidateQueries({ queryKey: ['csv-dashboard', selectedId] });
-      await queryClient.invalidateQueries({ queryKey: ['signage-content'] });
+      await queryClient.invalidateQueries({ queryKey: signageQueryKeys.contentAll });
     },
   });
 
