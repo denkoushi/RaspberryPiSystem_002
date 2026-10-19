@@ -14,8 +14,14 @@
 
 ## Progress
 
-- [ ] 段階1: 生産スケジュール設定の更新時に何も無効化していない鍵 2 つを消す。
+- [x] 段階1: 生産スケジュール設定の更新時に何も無効化していない鍵 2 つを消す。（2026-10-19 #2129、CI 通過・反映待ち）
 - [ ] 段階2: 画面側の queryKey の直書き（285 か所）を領域ごとの定義へ集める。部品測定、バックアップ、計測機器と工具、サイネージとクライアント端末、残りの順。
+  - [x] 自主検査と部品測定（#2131、285 → 231）
+  - [x] バックアップと CSV 取込設定（#2132、285 → 237）
+  - [x] 計測機器・吊具・工具（#2133、285 → 236）
+  - [x] サイネージ・端末管理・システム状態（#2134、285 → 254）
+  - [x] キオスク・要領書・稼働信号・可視化ダッシュボード（#2135、285 → 243）
+  - [ ] 残り（各画面に散らばった鍵と、上の PR の定義を使う箇所）。上の PR のマージ後に進める。数字はいずれも main 比で、PR ごとの減り分は重ならない。
 - [ ] 段階3: ファイル配信ルートの 400/404/500 応答（9 ファイル 30 か所）を共通の小関数へ集め、部品測定の図面テンプレートの 4 か所を DomainHttpError へ移す。
 - [ ] 段階4: テストがあり変更の多い大きいファイルを分ける（在庫の service、製番ボードの画面、在庫の登録タブ、在庫の画面、組立の作業画面、組立の型定義）。
 - [ ] 段階5: テストのない大きいファイル 6 本に、今の動きを固定するテストを足す。足し終えたものから分割を検討する。
@@ -30,6 +36,11 @@
   Evidence: `rg -c ':\s*any\b|as any\b|<any>' apps/api/src apps/web/src`（テストと生成物を除く）。
 - Observation: lint の例外指定は apps/api に 99 か所あり、うち 73 か所が `no-await-in-loop`（順番に待つ必要がある DB 処理）、apps/web は 22 か所のうち 19 か所が `react-hooks/exhaustive-deps` だった。後者は画面の再描画の条件に関わり、外すと動きが変わり得るので、本計画では数えるだけにする。
   Evidence: `rg -o 'eslint-disable(-next-line|-line)?\s+[@a-z/-]+' apps/*/src` の集計。
+
+- Observation: `apps/web/src/api/hooks/system.ts` の `useImportMasterSingle` は、計測機器と吊具の CSV 取込の後に `['measuringInstruments']` と `['riggingGears']` を無効化しているが、実在の鍵は `'measuring-instruments'` と `'rigging-gears'` なので何も無効化しておらず、取込後に一覧が自動で更新されない。直すと動きが変わるため段階2では値をそのまま残し、別の PR で扱う。
+  Evidence: `rg -n "'measuringInstruments'\]|'riggingGears'\]|'measuring-instruments'|'rigging-gears'" apps/web/src`。
+- Observation: 段階2の PR は互いに別のファイルを触るように分けたが、`clients.ts` の `['kiosk-config']` や `system.ts` の `employees` / `items` のように、別の PR の定義を使う箇所は、その PR のマージ後に残りの組で扱う。
+  Evidence: #2133〜#2135 の本文。
 
 ## Decision Log
 
