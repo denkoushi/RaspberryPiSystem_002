@@ -18,6 +18,7 @@ import { getProcedureMaterialSplitSuggestionService, type ProcedureMaterialSplit
 
 const querySchema = z.object({
   state: z.enum(['unplaced', 'placed', 'discarded', 'all']).default('unplaced'),
+  origin: z.enum(['GMAIL', 'KNOWLEDGE', 'WORK_INSTRUCTION', 'APP']).optional(),
   q: z.string().trim().max(200).optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
 });
