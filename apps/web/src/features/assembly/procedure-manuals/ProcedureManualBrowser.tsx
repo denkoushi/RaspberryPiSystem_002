@@ -22,7 +22,8 @@ const shortName = (process?: ProcedureManualProcessDto) => process?.name.replace
 export function ProcedureManualBrowser() {
   const [params, setParams] = useSearchParams();
   const [listOpen, setListOpen] = useState(() => {
-    if (params.has('common')) return true;
+    // 対象と工程が決まっていないと右側に何も出ないので、一覧を開いて始める
+    if (params.has('common') || !(params.get('model') || params.get('part')) || !params.get('process')) return true;
     try { return localStorage.getItem('procedure-manuals-list-open') === 'true'; } catch { return false; }
   });
   const [twoPages, setTwoPages] = useState(false);
