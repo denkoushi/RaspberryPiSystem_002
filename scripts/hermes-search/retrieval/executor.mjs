@@ -571,7 +571,9 @@ async function prepareCandidateRanking(plan, options, records) {
   const filterStarted = performance.now();
   const filters = Array.isArray(plan?.filters) ? plan.filters : [];
   const filtered = records.filter((record) => filters.every((filter) => matchesFilter(record, filter))
-    && (!plan.causeCategory || options.causeById?.get(record.id) === plan.causeCategory));
+    // Sources without a cause store (causeById null) are not narrowed by the cause: the condition
+    // belongs to the classified source only.
+    && (!plan.causeCategory || !(options.causeById instanceof Map) || options.causeById.get(record.id) === plan.causeCategory));
   const filterMs = Math.round(performance.now() - filterStarted);
   const semanticQuery = typeof plan?.semanticQuery === 'string' ? plan.semanticQuery.trim() : '';
   const bodyFields = bodyFieldsFor(plan, options);

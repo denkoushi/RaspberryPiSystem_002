@@ -1169,3 +1169,27 @@ test('restricted principals cannot refine stored plans with hidden sources or fi
   }
   assert.equal(inputs.length, 2);
 });
+
+for (const causeById of [null, new Map(), new Map([['rec-alpha', 'drawing'], ['rec-beta', 'check']])]) {
+  test(`planner cause guard with store size=${causeById?.size ?? 'null'}`, async () => {
+    const inputs = [];
+    const plan = listPlan({ causeCategory: 'drawing', diagnostics: {
+      ...listPlan().diagnostics, causeDecision: { chosen: 'drawing' },
+    } });
+    const answering = createRetrievalAnswering({ records, catalog, causeById,
+      evaluate: async () => assert.fail('filter-only plans must skip relevance'),
+      planner: { plan: async input => { inputs.push(input); return { plan }; } },
+    });
+    const result = await answering.answer('図面・設計の誤り');
+    const available = Boolean(causeById?.size);
+    assert.equal(result.session.previousPlan.causeCategory, available ? 'drawing' : undefined);
+    assert.equal(result.receipt.plan.causeCategory, available ? 'drawing' : undefined);
+    assert.equal(result.receipt.causeFilterDropped, available ? undefined : 'store_empty');
+    assert.deepEqual(result.receipt.causeDecision, { chosen: 'drawing' });
+    if (available) assert.deepEqual(result.recordIds, ['nonconformity:rec-alpha']);
+    else assert.equal(result.recordIds.length, records.length);
+    assert.equal(plan.causeCategory, 'drawing');
+    await answering.answer('今年', result.session);
+    assert.equal(inputs[1].previousPlan.causeCategory, available ? 'drawing' : undefined);
+  });
+}

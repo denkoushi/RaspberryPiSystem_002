@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadCatalog, loadNonconformityCatalog } from './catalog.mjs';
 import { summarizeAnswers, createPlanner } from './planner-jev.mjs';
+import { CAUSE_CATEGORIES } from './cause-categories.mjs';
 import { buildValueIndex } from './value-index.mjs';
 
 const catalog = loadNonconformityCatalog();
@@ -125,6 +126,10 @@ function assertChoicesFromCandidates(questions, candidateValues) {
     if (question.type === 'noul') continue;
     // Content span choices are parts of the request itself, cut by code.
     if (key === 'contentSpan') continue;
+    if (key === 'cause') {
+      assert.deepEqual(question.criteria, { ...Object.fromEntries(CAUSE_CATEGORIES.map(({ id, label, description }) => [id, `${label}: ${description}`])), none: '要因では絞らない' });
+      continue;
+    }
     // Carry questions have fixed keep/replace/add and same/new/none options, not values.
     if (key.startsWith('carry_') || key === 'contentCarry') continue;
     assert.equal(question.type, 'choice');
@@ -744,4 +749,76 @@ test('page context maps record numbers and drawing numbers, and procedure ids on
   }
   const unavailable = await planner.plan({ question: 'この手順書', catalog, valueIndex: buildValueIndex([], catalog), pageContext: { path: '/page', entity: { kind: 'procedureId', value: 'id' } } });
   assert.equal(unavailable.receipt.pageContext.used, false);
+});
+
+for (const [id, question, content] of [
+  ['drawing', '図面の誤りで先月の不適合', false],
+  ['assume', '思い込みが原因のやつ、今年', false],
+  ['drawing', '図面の誤りで寸法抜け', true],
+  ...CAUSE_CATEGORIES.map(({ id, label }) => [id, `${label}が原因の最近の不適合`, false]),
+]) {
+  test(`cause ${id} retains content=${content} with only one evaluation`, async () => {
+    let calls = 0;
+    const { plan } = await createPlanner({ evaluate: async input => {
+      calls += 1;
+      assert.equal(input.questions.cause.type, 'choice');
+      assert.equal(Object.keys(input.questions.cause.criteria).length, 11);
+      assert.match(input.questions.cause.instructions, /質問/u);
+      assert.equal(input.questions.drop_cause, undefined);
+      return { answers: {
+        cause: { type: 'choice', choice: id }, content: { type: 'noul', noul: true },
+        limit: { type: 'choice', choice: '5' },
+      } };
+    } }).plan({ question, catalog, now: '2026-10-19' });
+    assert.equal(calls, 1);
+    assert.equal(plan.causeCategory, id);
+    assert.equal(plan.semanticQuery, content ? question : '');
+    assert.equal(plan.diagnostics.contentDecision.jev, content);
+    assert.deepEqual(plan.diagnostics.contentDecision.residualTokens, content ? ['寸法抜け'] : []);
+    assert.deepEqual(plan.diagnostics.causeDecision, { chosen: id });
+    if (question.includes('先月')) assert.deepEqual(plan.filters[0].values, ['2026-09-01', '2026-09-30']);
+  });
+}
+
+for (const choice of ['none', undefined]) {
+  test(`cause ${choice ?? 'missing'} leaves the first plan unfiltered`, async () => {
+    const { plan } = await createPlanner({ evaluate: async () => ({ answers: {
+      ...(choice ? { cause: { type: 'choice', choice } } : {}),
+      content: { type: 'noul', noul: true }, limit: { type: 'choice', choice: '5' },
+    } }) }).plan({ question: '図面の不適合', catalog });
+    assert.equal(Object.hasOwn(plan, 'causeCategory'), false);
+    assert.equal(plan.semanticQuery, '図面の不適合');
+    assert.deepEqual(plan.diagnostics.causeDecision, { chosen: null });
+  });
+}
+
+for (const [choice, drop, expected] of [['none', false, 'drawing'], [undefined, false, 'drawing'], ['none', true, null], ['assume', false, 'assume'], ['assume', true, 'assume']]) {
+  test(`previous cause with choice=${choice ?? 'missing'} drop=${drop}`, async () => {
+    const { plan } = await createPlanner({ evaluate: async input => {
+      assert.equal(input.state.previous_plan.causeCategory, 'drawing');
+      assert.match(input.questions.cause.instructions, /`request`/u);
+      assert.match(input.questions.drop_cause.instructions, /要因が図面・設計の誤り/u);
+      return { answers: {
+        ...(choice ? { cause: { type: 'choice', choice } } : {}),
+        drop_cause: { type: 'noul', noul: drop ? 0.9 : 0.1 },
+        content: { type: 'noul', noul: false }, limit: { type: 'choice', choice: '5' },
+      } };
+    } }).plan({ question: '今年', catalog, now: '2026-10-19', previousPlan: { sources: ['nonconformity'], filters: [], semanticQuery: '', causeCategory: 'drawing' } });
+    assert.equal(plan.causeCategory ?? null, expected);
+    assert.equal(plan.semanticQuery, '');
+    assert.deepEqual(plan.diagnostics.causeDecision, { chosen: expected, ...(drop ? { dropped: true } : {}) });
+  });
+}
+
+test('a cause heard in a question scoped to another source does not become a filter', async () => {
+  const allCatalog = loadCatalog(['nonconformity', 'knowledge_procedure']);
+  const planner = createPlanner({ evaluate: async () => ({ answers: {
+    scope: { type: 'choice', choice: 'knowledge_procedure' }, cause: { type: 'choice', choice: 'drawing' },
+    content: { type: 'noul', noul: true }, limit: { type: 'choice', choice: 'unspecified' }, sort: { type: 'choice', choice: 'relevance' },
+  } }) });
+  const { plan } = await planner.plan({ question: '図面の誤りがあったときの手順', catalog: allCatalog, valueIndex: buildValueIndex([], allCatalog) });
+  assert.deepEqual(plan.sources, ['knowledge_procedure']);
+  assert.equal(Object.hasOwn(plan, 'causeCategory'), false);
+  assert.equal(plan.diagnostics.causeDecision.chosen, null);
+  assert.equal(plan.diagnostics.contentDecision.jev, true);
 });

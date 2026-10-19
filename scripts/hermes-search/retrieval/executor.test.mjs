@@ -694,6 +694,16 @@ test('cause grouping uses executor ids, taxonomy tie order and unclassified coun
     const result = await execute(list, { records: rows, catalog, causeById: map });
     assert.equal(result.groups.some(group => group.axis === 'cause'), false);
   }
-  const missing = await execute({ ...list, causeCategory: 'check' }, { records: rows, catalog });
+  // An empty store keeps the cause condition closed; a source without a store (null) is not narrowed.
+  const missing = await execute({ ...list, causeCategory: 'check' }, { records: rows, catalog, causeById: new Map() });
   assert.equal(missing.timings.filteredCount, 0);
+});
+
+test('a cause condition does not narrow a source that has no cause store', async () => {
+  const rows = Array.from({ length: 4 }, (_, index) => ({ id: `plain-${index}`, partNumber: 'included', discoveredOn: '2026-01-01' }));
+  const list = plan({ filters: [{ source: 'nonconformity', field: 'partNumber', op: 'eq', values: ['included'] }], limit: 20, causeCategory: 'drawing' });
+  const withoutStore = await execute(list, { records: rows, catalog, causeById: null });
+  assert.equal(withoutStore.results.length, 4);
+  const withStore = await execute(list, { records: rows, catalog, causeById: new Map([['plain-0', 'drawing']]) });
+  assert.deepEqual(withStore.results.map(row => row.recordId), ['plain-0']);
 });
