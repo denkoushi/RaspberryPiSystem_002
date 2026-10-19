@@ -204,7 +204,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     order: data?.registeredFseibans ?? EMPTY_ORDER,
     sourceRevision,
     refresh: async () => {
-      const result = await boardQuery.refetch();
+      const [result] = await Promise.all([
+        boardQuery.refetch(),
+        queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoadAll }, { cancelRefetch: false })
+      ]);
       await queryClient.invalidateQueries({
         queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll,
         refetchType: 'none'
