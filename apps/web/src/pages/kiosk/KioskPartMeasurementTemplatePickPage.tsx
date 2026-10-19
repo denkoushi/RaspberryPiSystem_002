@@ -8,6 +8,7 @@ import {
   getResolvedClientKey,
   listPartMeasurementTemplateCandidates
 } from '../../api/client';
+import { selfInspectionQueryKeys } from '../../api/queryKeys/selfInspection';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { resolveKioskPartMeasurementSheetEditPathAfterCreate } from '../../features/part-measurement/kioskPartMeasurementSheetNavigation';
@@ -54,7 +55,7 @@ export function KioskPartMeasurementTemplatePickPage() {
   }, [ctx, filterQ]);
 
   const candidatesQuery = useQuery({
-    queryKey: ['part-measurement-template-candidates', queryParams],
+    queryKey: selfInspectionQueryKeys.partMeasurementTemplateCandidates(queryParams),
     enabled: queryParams != null,
     queryFn: async () => listPartMeasurementTemplateCandidates(queryParams!, clientKey)
   });
