@@ -6,6 +6,7 @@ import { useKioskInquiries, useKioskInquiryActions } from '../../../api/hooks/ki
 import { kioskQueryKeys } from '../../../api/queryKeys/kiosk';
 import { Button } from '../../../components/ui/Button';
 import { useArmedNfcRead } from '../inventory/setup/useArmedNfcRead';
+import { startWatch } from '../screen-watch/startWatch';
 
 import { inquiryErrorMessage, isInquiryAccessError } from './inquiryErrors';
 import { KioskInquiryCompose } from './KioskInquiryCompose';
@@ -110,7 +111,7 @@ export function KioskInquiryInbox({ clientKey, isReceiver, loginUnlock = false, 
     setError(null);
     try {
       const result = await actions.reply.mutateAsync({ threadId: detail.thread.id, body: text });
-      if (access.current.active) { setDetail(result); setDraft(''); }
+      if (access.current.active) { setDetail({ ...result, canViewScreen: detail.canViewScreen }); setDraft(''); }
     } catch (failure) { handleFailure(failure, '返信を送信できません'); }
   };
 
@@ -160,6 +161,12 @@ export function KioskInquiryInbox({ clientKey, isReceiver, loginUnlock = false, 
         {detailReceiver ? <div className="kiosk-inquiry__who">{detail.thread.kind === 'SYSTEM_NOTICE' ? detail.thread.noticeTitle : detail.thread.senderClientDeviceName}
           <NoticeTag thread={detail.thread} />
           <small>{detail.thread.senderLocation}</small></div> : null}
+        {detail.canViewScreen && detailReceiver && detail.thread.kind === 'INQUIRY' && detail.thread.senderClientDeviceName ? (
+          <Button type="button" variant="ghostOnDark" onClick={() => {
+            const uid = access.current.employeeTagUid;
+            if (uid) void startWatch(detail.thread.id, uid, detail.thread.senderClientDeviceName!);
+          }}>画面を見る</Button>
+        ) : null}
       </div>
       <div className="kiosk-inquiry__messages" ref={messagesRef}>
         {detail.messages.map(message => (

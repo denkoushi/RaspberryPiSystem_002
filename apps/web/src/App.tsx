@@ -11,6 +11,7 @@ import { readProductionBuildConfig } from './config/productionBuildConfig';
 import { kioskAssemblyLibraryPath, parseAssemblyProcedureOrderSettingsSearch } from './features/assembly';
 import { KIOSK_ASSEMBLY_MANUALS_PATH, KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH } from './features/assembly/assemblyRoutes';
 import { kioskLazy } from './features/kiosk/kioskLazyPreload';
+import { KioskScreenWatchHost } from './features/kiosk/screen-watch/KioskScreenWatchHost';
 import { useKioskSeamlessWebUpdate } from './features/kiosk/useKioskSeamlessWebUpdate';
 import { INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED } from './features/part-measurement/inspection-drawing/inspectionDrawingPrintConstants';
 import { CallAutoSwitchLayout } from './features/webrtc/components/CallAutoSwitchLayout';
@@ -448,6 +449,7 @@ function App() {
       <Route path="*" element={<Navigate to="/kiosk" replace />} />
       </Routes>
       <HermesFloatingChat />
+      <KioskScreenWatchHost />
     </HermesPageContextProvider>
   );
 }
