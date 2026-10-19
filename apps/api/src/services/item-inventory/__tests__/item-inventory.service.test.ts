@@ -1,7 +1,8 @@
+import sharp from 'sharp';
 import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../../lib/photo-storage.js', () => ({ PhotoStorage: { deletePhoto: vi.fn().mockResolvedValue(undefined) } }));
+vi.mock('../../../lib/photo-storage.js', () => ({ PhotoStorage: { readPhoto: vi.fn(), savePhoto: vi.fn(), deletePhoto: vi.fn().mockResolvedValue(undefined) } }));
 
 import { normalizeInventoryArea } from '../inventory-area.js';
 import { InventoryConflictError, ItemInventoryService } from '../item-inventory.service.js';
@@ -998,5 +999,64 @@ describe('ItemInventoryService setup deletion and candidate status', () => {
     expect((await service.listPendingImportSummaries()).map((candidate) => candidate.id)).toEqual(['p']);
     expect(findMany).toHaveBeenCalledTimes(2);
     for (const [args] of findMany.mock.calls) expect(args.where).toEqual({ status: 'PENDING' });
+  });
+});
+
+
+describe('inventory photo rotation', () => {
+  function setup() {
+    vi.mocked(PhotoStorage.deletePhoto).mockClear();
+    vi.mocked(PhotoStorage.savePhoto).mockReset().mockResolvedValue({ relativePath: '/new.jpg' } as never);
+    const photos = () => ({ findFirst: vi.fn().mockResolvedValue({ id: 'photo', photoUrl: '/old.jpg' }), update: vi.fn(), count: vi.fn().mockResolvedValue(0) });
+    const rows = {
+      inventoryImportPayload: { findUnique: vi.fn().mockResolvedValue({ status: 'PENDING' }) },
+      inventoryImportPhoto: photos(), inventoryItemPhoto: photos(),
+    };
+    const { db } = transactionDb(rows);
+    return { rows, service: new ItemInventoryService({ ...db, ...rows } as never) };
+  }
+
+  it.each(['import', 'item'] as const)('rotates %s JPEG pixels, replaces the URL and deletes unreferenced originals', async kind => {
+    const { rows, service } = setup();
+    for (const orientation of [1, 6]) {
+      const input = await sharp({ create: { width: 40, height: 20, channels: 3, background: 'red' } }).jpeg().withMetadata({ orientation }).toBuffer();
+      vi.mocked(PhotoStorage.readPhoto).mockResolvedValue(input);
+      const result = kind === 'import' ? await service.rotateImportPhoto('parent', 'photo') : await service.rotateInventoryItemPhoto('parent', 'photo');
+      expect(result).toEqual({ photoId: 'photo', photoUrl: '/new.jpg' });
+      const [, original, thumbnail] = vi.mocked(PhotoStorage.savePhoto).mock.lastCall!;
+      const dimensions = orientation === 6 ? { width: 40, height: 20 } : { width: 20, height: 40 };
+      expect(await sharp(original).metadata()).toMatchObject({ ...dimensions, format: 'jpeg' });
+      expect(await sharp(thumbnail!).metadata()).toMatchObject({ ...dimensions, format: 'jpeg' });
+      expect(await sharp(original).metadata()).not.toHaveProperty('orientation');
+      expect((kind === 'import' ? rows.inventoryImportPhoto : rows.inventoryItemPhoto).update).toHaveBeenCalledWith({ where: { id: 'photo' }, data: { photoUrl: '/new.jpg' } });
+      expect(PhotoStorage.deletePhoto).toHaveBeenCalledWith('/old.jpg');
+    }
+  });
+
+  it.each(['inventoryItemPhoto', 'inventoryImportPhoto'] as const)('keeps an original referenced by %s', async model => {
+    const { rows, service } = setup();
+    rows[model].count.mockResolvedValue(1);
+    vi.mocked(PhotoStorage.readPhoto).mockResolvedValue(await sharp({ create: { width: 40, height: 20, channels: 3, background: 'red' } }).jpeg().toBuffer());
+    await service.rotateImportPhoto('parent', 'photo');
+    expect(PhotoStorage.deletePhoto).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-PENDING imports before writing a file', async () => {
+    const { rows, service } = setup();
+    rows.inventoryImportPayload.findUnique.mockResolvedValue({ status: 'REGISTERED' });
+    await expect(service.rotateImportPhoto('parent', 'photo')).rejects.toMatchObject({ statusCode: 409 });
+    expect(PhotoStorage.savePhoto).not.toHaveBeenCalled();
+  });
+
+  it.each(['import', 'item'] as const)('cleans up the new %s file on concurrent replacement or deletion', async kind => {
+    for (const current of [null, { id: 'photo', photoUrl: '/concurrent.jpg' }]) {
+      const { rows, service } = setup();
+      const model = kind === 'import' ? rows.inventoryImportPhoto : rows.inventoryItemPhoto;
+      model.findFirst.mockResolvedValueOnce({ id: 'photo', photoUrl: '/old.jpg' }).mockResolvedValueOnce(current);
+      vi.mocked(PhotoStorage.readPhoto).mockResolvedValue(await sharp({ create: { width: 40, height: 20, channels: 3, background: 'red' } }).jpeg().toBuffer());
+      await expect(kind === 'import' ? service.rotateImportPhoto('parent', 'photo') : service.rotateInventoryItemPhoto('parent', 'photo')).rejects.toMatchObject({ statusCode: 409 });
+      expect(model.update).not.toHaveBeenCalled();
+      expect(PhotoStorage.deletePhoto).toHaveBeenCalledExactlyOnceWith('/new.jpg');
+    }
   });
 });

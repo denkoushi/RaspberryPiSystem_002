@@ -471,3 +471,17 @@ export async function dismissInventoryValueVariants(input: { field: InventoryVar
   const { data } = await api.post('/item-inventory/tool-value-variants/dismiss', input, { headers: inventorySettingsHeaders(accessPassword) });
   return data;
 }
+
+export async function rotateInventoryImportPhoto(payloadId: string, photoId: string, accessPassword?: string) {
+  const { data } = await api.post<{ result: { photoId: string; photoUrl: string } }>(`/item-inventory/imports/${payloadId}/photos/${photoId}/rotate`, undefined, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data.result;
+}
+
+export async function rotateInventoryItemPhoto(itemId: string, photoId: string, accessPassword?: string) {
+  const { data } = await api.post<{ result: { photoId: string; photoUrl: string } }>(`/item-inventory/items/${itemId}/photos/${photoId}/rotate`, undefined, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data.result;
+}

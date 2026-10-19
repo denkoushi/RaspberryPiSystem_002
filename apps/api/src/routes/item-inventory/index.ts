@@ -387,6 +387,11 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     return { result: await services.inventory.registerImport({ ...body, payloadId: id, actor: await actor(request) }) };
   });
 
+  app.post('/item-inventory/imports/:payloadId/photos/:photoId/rotate', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const { payloadId, photoId } = importPhotoParams.parse(request.params);
+    return { result: await services.inventory.rotateImportPhoto(payloadId, photoId) };
+  });
+
   app.delete('/item-inventory/imports/:payloadId/photos/:photoId', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const { payloadId, photoId } = importPhotoParams.parse(request.params);
     return { result: await services.inventory.deleteImportPhoto(payloadId, photoId) };
@@ -396,6 +401,11 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     const { id } = idParams.parse(request.params);
     const body = z.object({ photoIds: z.array(z.string().uuid()) }).parse(request.body ?? {});
     return { result: await services.inventory.reorderImportPhotos(id, body.photoIds) };
+  });
+
+  app.post('/item-inventory/items/:itemId/photos/:photoId/rotate', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const { itemId, photoId } = itemPhotoParams.parse(request.params);
+    return { result: await services.inventory.rotateInventoryItemPhoto(itemId, photoId) };
   });
 
   app.delete('/item-inventory/items/:itemId/photos/:photoId', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
