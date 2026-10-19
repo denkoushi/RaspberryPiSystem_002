@@ -9,7 +9,7 @@ import { buildGrindingPlanningBoardLogicalKey as buildProjectionLogicalKey, buil
 
 
 export const DEFAULT_PAGE_SIZE = 160;
-export const MAX_PAGE_SIZE = 160;
+export const MAX_PAGE_SIZE = 640;
 export const MAX_ALTERNATE_RANK = 2_147_483_647;
 export const SPLIT_PREFIX = 'split:';
 export type ReusablePlanningPayload = {

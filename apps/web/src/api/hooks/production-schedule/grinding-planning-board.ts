@@ -178,7 +178,7 @@ export function useKioskGrindingPlanningBoardProgressive(
           const page = await getKioskGrindingPlanningBoard({
             ...stableParams!,
             cursor: nextCursor,
-            pageSize: 160,
+            pageSize: 640,
             snapshotId: initial.snapshotId
           });
           if (cancelled || runId !== runIdRef.current) return;

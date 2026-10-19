@@ -28,7 +28,7 @@ const querySchema = z.object({
   fseibans: z.string().max(4000).optional(),
   cursor: z.coerce.number().int().min(0).optional(),
   snapshotId: z.string().min(1).max(200).optional(),
-  pageSize: z.coerce.number().int().min(1).max(160).optional(),
+  pageSize: z.coerce.number().int().min(1).max(640).optional(),
   completionFilter: z.enum(['all', 'complete', 'incomplete']).default('all')
 }).superRefine((value, context) => {
   if (value.snapshotId && value.cursor == null) {

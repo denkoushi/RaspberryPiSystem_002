@@ -120,7 +120,7 @@ describe('useKioskGrindingPlanningBoardProgressive', () => {
     expect(mocks.getLoad).toHaveBeenCalledWith('grinding');
   });
 
-  it('初回ページを先にreadyにし、続き400件を順次追加する', async () => {
+  it('初回ページを先にreadyにし、続きは640件ずつ順次要求する', async () => {
     const first = response([item('1')], '160');
     const second = response([item('2')], '320');
     const third = response([item('3')], null);
@@ -138,10 +138,13 @@ describe('useKioskGrindingPlanningBoardProgressive', () => {
     await waitFor(() => expect(result.result.current.scopeReady).toBe(true));
     expect(result.result.current.data?.items).toHaveLength(1);
     expect(result.result.current.isComplete).toBe(false);
+    expect(mocks.getBoard).toHaveBeenCalledTimes(2);
     releaseContinue?.();
     await waitFor(() => expect(result.result.current.isComplete).toBe(true));
     expect(result.result.current.data?.items.map((entry) => entry.itemId)).toEqual(['1', '2', '3']);
     expect(mocks.getBoard).toHaveBeenCalledTimes(3);
+    expect(mocks.getBoard.mock.calls[0][0].pageSize ?? 160).toBe(160);
+    expect(mocks.getBoard.mock.calls.slice(1).map(([params]) => params.pageSize)).toEqual([640, 640]);
   });
 
   it('追補の重複cursor/itemとscope不一致を表示データへ混ぜない', async () => {
@@ -193,7 +196,7 @@ describe('useKioskGrindingPlanningBoardProgressive', () => {
     expect(hook.result.current.isAppending).toBe(false);
     expect(errors.every((error) => error === null)).toBe(true);
     expect(mocks.getBoard).toHaveBeenNthCalledWith(4, {
-      category: 'grinding', view: 'seiban', cursor: 160, pageSize: 160, snapshotId: 'snapshot-2'
+      category: 'grinding', view: 'seiban', cursor: 160, pageSize: 640, snapshotId: 'snapshot-2'
     });
     expect(mocks.getBoard).toHaveBeenCalledTimes(4);
   });
