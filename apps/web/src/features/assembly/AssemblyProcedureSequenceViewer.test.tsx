@@ -241,6 +241,11 @@ describe('AssemblyProcedureSequenceViewer', () => {
     fireEvent.click(screen.getByRole('button', { name: '2 ページ表示' }));
     expect(screen.getByTestId('procedure-page-spread')).toHaveAttribute('data-pages', '2');
     expect(within(screen.getByTestId('procedure-second-page')).getByText('ページ本文1')).toBeInTheDocument();
+    // ページ同士を中央で突き合わせ、あいだに大きな余白を作らない
+    const spread = screen.getByTestId('procedure-page-spread');
+    expect(spread).toHaveClass('gap-1.5');
+    expect(within(spread.firstElementChild as HTMLElement).getByTestId('assembly-procedure-image-with-markers')).toHaveClass('!justify-end');
+    expect(within(screen.getByTestId('procedure-second-page')).getByTestId('assembly-procedure-image-with-markers')).toHaveClass('!justify-start');
     fireEvent.click(screen.getByRole('button', { name: '次手順' }));
     expect(screen.getByLabelText('ページ番号')).toHaveTextContent('3/5');
     expect(screen.getByText('ページ本文2')).toBeInTheDocument();
