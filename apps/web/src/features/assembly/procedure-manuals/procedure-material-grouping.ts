@@ -3,7 +3,7 @@ import type { ProcedureMaterialDto, ProcedureWorkInstructionCandidate } from './
 export type MaterialGroup<T> = { key: string; title: string; subtitle: string; items: T[] };
 
 export function materialSource(material: ProcedureMaterialDto): string {
-  return material.origin === 'WORK_INSTRUCTION' ? '加工' : material.origin === 'KNOWLEDGE' ? 'ナレッジ' : 'メール';
+  return material.origin === 'APP' ? 'アプリ' : material.origin === 'WORK_INSTRUCTION' ? '加工' : material.origin === 'KNOWLEDGE' ? 'ナレッジ' : 'メール';
 }
 
 function dateRange(items: ProcedureMaterialDto[]): string {
@@ -28,8 +28,8 @@ export function groupMaterials(materials: ProcedureMaterialDto[], q = ''): Mater
     const hint = stripPartSuffix(normalizedHint);
     const fileBase = (material.originalFileName ?? '').replace(/\.[^.]+$/, '').replace(/\s+p\d+\s*$/, '');
     const normalizedFileBase = normalizeHint(fileBase);
-    const key = hint ? `hint:${hint}` : normalizedFileBase ? `file:${normalizedFileBase}` : '__no_hint__';
-    const title = hint ? (hint === normalizedHint ? material.subjectHint! : stripPartSuffix(material.subjectHint!)) : normalizedFileBase ? fileBase : 'ヒントなし';
+    const key = material.origin === 'APP' ? `app:${material.gmailMessageId ?? material.id}` : hint ? `hint:${hint}` : normalizedFileBase ? `file:${normalizedFileBase}` : '__no_hint__';
+    const title = material.origin === 'APP' ? [material.category, material.note].filter(Boolean).join('・') || 'アプリの素材' : hint ? (hint === normalizedHint ? material.subjectHint! : stripPartSuffix(material.subjectHint!)) : normalizedFileBase ? fileBase : 'ヒントなし';
     const group = groups.get(key) ?? { title, items: [] };
     group.items.push(material);
     groups.set(key, group);
@@ -54,9 +54,11 @@ export function groupMaterials(materials: ProcedureMaterialDto[], q = ''): Mater
     }
     units.sort((a, b) => b.receivedAt - a.receivedAt);
     const sortedItems = units.flatMap((unit) => unit.items.sort((a, b) => a.number - b.number).map(({ material }) => material));
+    if (sortedItems[0].origin === 'APP') sortedItems.sort((a, b) => (a.appRef?.photoIndex ?? 0) - (b.appRef?.photoIndex ?? 0));
     const sources = new Set(sortedItems.map(materialSource));
     const byReceipt = [...items].sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt));
-    return { key, title, subtitle: `${materialSource(sortedItems[0])}${sources.size > 1 ? ' ほか' : ''} · ${dateRange(byReceipt)}`, items: sortedItems };
+    const appDetail = sortedItems[0].origin === 'APP' ? [sortedItems[0].location, sortedItems[0].employeeName || sortedItems[0].nameId].filter(Boolean).join(' · ') : '';
+    return { key, title, subtitle: `${appDetail ? `${appDetail} · ` : ''}${materialSource(sortedItems[0])}${sources.size > 1 ? ' ほか' : ''} · ${dateRange(byReceipt)}`, items: sortedItems };
   }).sort((a, b) => a.key === '__no_hint__' ? 1 : b.key === '__no_hint__' ? -1 : newest(b.items) - newest(a.items));
 }
 

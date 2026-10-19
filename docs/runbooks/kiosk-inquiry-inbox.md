@@ -78,6 +78,17 @@ update-frequency: medium
 
 止めるときは `/admin/kiosk-settings` の対象端末の「システム通知」を外して「保存」する。すべて外せば通知の表示を停止できる。通常のお問い合わせ受信、元のAlert、DB上の通知履歴は残る。既存Slack配送の変更はない。
 
+## 画面を見る(受信端末から現場の画面を見る)
+
+受信端末(例: StoneBase01)で、お問い合わせを送った現場キオスクの画面をその場で見ながらフローティングChat で返信できる。計画と判断の記録は `docs/plans/kiosk-remote-screen-view-execplan.md`。
+
+- 使える人: 「開ける人(社員番号)」で「画面を見る」にチェックした社員だけ。社員証で受信箱を開いたときに、スレッドの上に「画面を見る」が出る。管理コンソールのログインで開いた場合は出ない。
+- 同意: 現場の画面に「{受信端末名} が この画面を見ます」と「見せる」「断る」が出る。60 秒応答が無ければ取り消す。見せている間は右上に「{受信端末名} が見ています」と「止める」が出る。
+- 見る側: 現場の画面が全画面で出て、フローティングChat はその上に重なる。左下に相手名、「遅れ」(往復の遅れ)、「指さし」、「■ 止める」。「指さし」を押してから映像をタップすると、現場の画面に赤い丸が約 2.5 秒出る。
+- 終わり方: どちらかの「止める」、相手の断り、60 秒の無応答、接続切れ、映像が届かないとき。始まりと終わりはスレッドに「画面を見ています」「見るのを止めました」として残る。
+- 通信: 映像は端末どうしの WebRTC(最大 5 コマ/秒、1.5Mbps)。サーバーは既存の `/api/webrtc/signaling` で取り次ぐだけで映像は通らない。1 台の現場端末を同時に見られるのは 1 か所だけ。
+- 現場側は自分のタブを `getDisplayMedia`(`preferCurrentTab`)で取る。Chromium の設定によっては画面選択が出るか、取れずに「画面を見せられませんでした」になる。
+
 ## 確認手順(実機)
 
 1. 現場のキオスクで丸ボタン→「お問い合わせ」→「＋ 新規」を開き、送信者を選んで送る。
@@ -103,6 +114,7 @@ update-frequency: medium
 
 - DB: `ClientDevice.inquiryReceiverEnabled` / `systemNoticeReceiverEnabled`、`KioskInquiryReceiverEmployee`、`KioskInquiryThread`、`KioskInquiryMessage`(migration `20261009090100_add_kiosk_inquiry_inbox`。追加だけで既存の列と行は変えない)
 - API: `apps/api/src/routes/kiosk/inquiries.ts`、`apps/api/src/routes/kiosk-settings.ts`、`apps/api/src/services/kiosk-inquiry/`。スレッドは `POST /kiosk/support` の `ClientLog` 保存と同じトランザクションで作り、応答は既存の `requestId` に `threadId` を追加して返す
+- 画面を見る: DB `KioskInquiryReceiverEmployee.canViewScreen`、`KioskScreenWatchSession`(migration `20261019120000_*`、`20261019130000_*`)。API `POST /kiosk/inquiries/:threadId/watch`、`apps/api/src/services/kiosk-screen-watch/`、`apps/api/src/routes/webrtc/signaling.ts` の `watch.*`。Web `apps/web/src/features/kiosk/screen-watch/`(`App.tsx` で `KioskScreenWatchHost` を常駐)、`apps/web/src/features/webrtc/signalingBus.ts`
 - Web: `apps/web/src/features/kiosk/inquiry/`、入口は `apps/web/src/components/hermes/HermesFloatingChat.tsx`。送信フォームは `apps/web/src/features/kiosk/inquiry/KioskInquiryCompose.tsx`
 
 ## うまくいかないとき
@@ -110,4 +122,6 @@ update-frequency: medium
 - オレンジにならない: その端末で対象種別の受信チェック（通常のお問い合わせ / システム通知）が有効か、画面が `/kiosk` 配下かを確認する。API は `GET /api/kiosk/inquiries/summary`(`x-client-key` 付き)で `isReceiver` と `unreadCount` を返す。
 - Mac などカードリーダーのない受信端末で社員証を求められたら、同じブラウザで管理コンソールに ADMIN または MANAGER としてログインし直し、`/kiosk` 配下の画面を開く。社員証なしで開いて返信した場合、社員名は表示されない。
 - 社員証で開けない: 社員番号が「開ける人」にあるか、その社員が在籍(ACTIVE)か、社員証のタグがその社員に登録されているかを確認する。
+- 「画面を見る」が出ない: その社員に「画面を見る」のチェックがあるか、社員証で開いたか、スレッドが現場から送られたお問い合わせかを確認する。
+- 「相手の端末が つながっていません」: 現場端末の `/kiosk` 画面が開いていて通話用の接続(`/api/webrtc/signaling`)がつながっているかを確認する。「ほかの人が見ています」は同じ端末を別の受信端末が見ている。
 - 元へ戻す: Web と API を前の版へ戻せば受信箱は消える。追加したテーブルと列は残しても既存の動作に影響しない。

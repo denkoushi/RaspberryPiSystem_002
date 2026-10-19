@@ -1,3 +1,4 @@
+import { sendStorageReadError } from './shared.js';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -77,14 +78,11 @@ export function registerPdfPageRoutes(app: FastifyInstance): void {
       return reply.send(imageBuffer);
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-
-      // ファイルが存在しない場合
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        return reply.status(404).send({ message: '画像が見つかりません' });
-      }
-
-      request.log.error({ err, filePath }, '画像の読み込みに失敗しました');
-      return reply.status(500).send({ message: '画像の読み込みに失敗しました' });
+      return sendStorageReadError(request, reply, err, {
+        notFoundMessage: '画像が見つかりません',
+        failedMessage: '画像の読み込みに失敗しました',
+        logContext: { err, filePath },
+      });
     }
   });
 }

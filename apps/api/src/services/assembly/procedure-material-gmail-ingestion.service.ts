@@ -13,7 +13,7 @@ import type { DurableFileStorePort } from '../file-storage/durable-file-store.po
 import { FileStorageAlreadyExistsError } from '../file-storage/file-storage-errors.js';
 import { getFileStorageRuntime } from '../file-storage/file-storage-runtime.js';
 import { resolveGmailApiClientFromBackupConfig } from '../gmail/gmail-api-client.factory.js';
-import { getProcedureMaterialSubjectHint, isProcedureMaterialGmailSubject, PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS } from '../gmail/gmail-subject-reservation.policy.js';
+import { getProcedureMaterialSubjectHint, isProcedureMaterialGmailSubject, isProcedureMaterialAppGmailSubject, PROCEDURE_MATERIAL_APP_GMAIL_SUBJECT, PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS } from '../gmail/gmail-subject-reservation.policy.js';
 import { escapeGmailQuotedSearchValue, extractEmail } from '../item-inventory/item-inventory-ingestion.policy.js';
 import type { PdfPagesPort } from '../knowledge/pdf-pages.port.js';
 import { PdfPageCountError, PopplerPdfPagesAdapter } from '../knowledge/poppler-pdf-pages.adapter.js';
@@ -38,7 +38,7 @@ const BATCH_LIMIT = 20;
 
 export function buildProcedureMaterialGmailSearchQuery(config?: BackupConfig['procedureMaterialGmailIngest']): string {
   const tokens = config?.subjectTokens.filter((token) => (PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS as readonly string[]).includes(token)) ?? [];
-  const effective = tokens.length ? tokens : PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS;
+  const effective = [...(tokens.length ? tokens : PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS), PROCEDURE_MATERIAL_APP_GMAIL_SUBJECT];
   return `(${effective.map((token) => `subject:"${escapeGmailQuotedSearchValue(token)}"`).join(' OR ')}) in:inbox is:unread`;
 }
 
@@ -115,12 +115,13 @@ export class ProcedureMaterialGmailIngestionService {
       if (!senderDomain || senderDomain.length !== 2 || !senderDomain[0] || !allowedDomains.includes(senderDomain[1]!)) {
         return { ...result, reason: '送信元のドメインが許可されていません' };
       }
+      const app = isProcedureMaterialAppGmailSubject(subject);
       const expectedFrom = extractEmail(config.procedureMaterialGmailIngest?.fromEmail);
-      if (expectedFrom && fromEmail !== expectedFrom) return { ...result, reason: '送信元が設定と一致しません' };
+      if (!app && expectedFrom && fromEmail !== expectedFrom) return { ...result, reason: '送信元が設定と一致しません' };
       const existing = await this.db.procedureMaterial.findMany({ where: { gmailMessageId: messageId }, select: { gmailDedupeKey: true } });
       const existingVideos = await this.db.procedureVideo.findMany({ where: { gmailMessageId: messageId }, select: { gmailDedupeKey: true } });
       const savedKeys = new Set([...existing, ...existingVideos].map((row) => row.gmailDedupeKey));
-      const packet = await resolveProcedureMaterialGmailPacket({ message, client: gmail, savedKeys });
+      const packet = await resolveProcedureMaterialGmailPacket({ message, client: gmail, savedKeys, app });
       result.duplicate = packet.duplicate;
       result.skippedAttachments = packet.skippedAttachments;
       result.warnings = packet.warnings;
@@ -163,7 +164,8 @@ export class ProcedureMaterialGmailIngestionService {
         }
       };
       const savePhoto = (photo: ProcedureMaterialPhoto, subjectHint = common.subjectHint, text: string | null = null) => saveFile(photo, {
-        ...common, subjectHint, kind: 'PHOTO', gmailDedupeKey: photo.gmailDedupeKey, contentType: photo.contentType,
+        ...common, subjectHint: photo.appRef ? [photo.appRef.category, photo.appRef.note].filter(Boolean).join('・') || null : subjectHint,
+        ...(photo.appRef ? { origin: 'APP', appRef: photo.appRef } : {}), kind: 'PHOTO', gmailDedupeKey: photo.gmailDedupeKey, contentType: photo.contentType,
         originalFileName: photo.filename, width: photo.width, height: photo.height, text,
       });
       if (packet.text) await save({ ...common, kind: 'TEXT', text: packet.text, gmailDedupeKey: `${messageId}:body` });

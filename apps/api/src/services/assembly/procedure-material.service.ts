@@ -1,6 +1,6 @@
 import { AssemblyProcedureDraftImportService } from './assembly-procedure-draft-import.service.js';
 
-import { Prisma, type ProcedureMaterial } from '@prisma/client';
+import { Prisma, type ProcedureMaterialOrigin, type ProcedureMaterial } from '@prisma/client';
 
 import { ApiError } from '../../lib/errors.js';
 import { prisma as defaultPrisma } from '../../lib/prisma.js';
@@ -28,11 +28,14 @@ export class ProcedureMaterialService {
     private readonly importer: Pick<AssemblyProcedureDraftImportService, 'importDraft'> = new AssemblyProcedureDraftImportService(),
   ) {}
 
-  async list(options: { state: ProcedureMaterialState; q?: string; limit: number }) {
+  async list(options: { state: ProcedureMaterialState; origin?: ProcedureMaterialOrigin; q?: string; limit: number }) {
     const where: Prisma.ProcedureMaterialWhereInput = {};
     if (options.state === 'unplaced') Object.assign(where, { documentId: null, placedAt: null, discardedAt: null });
     if (options.state === 'placed') Object.assign(where, { discardedAt: null, OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] });
     if (options.state === 'discarded') where.discardedAt = { not: null };
+    // This shelf exclusion applies only to the ordinary list, never semantic search.
+    if (options.origin) where.origin = options.origin;
+    else if (options.state === 'unplaced') where.origin = { not: 'APP' };
     const matchedParts = new Map<string, string>();
     if (options.q) {
       const queries = [...new Set([options.q, options.q.normalize('NFKC')])];
@@ -50,7 +53,18 @@ export class ProcedureMaterialService {
     // PDF and page text exists for search only; keep it out of the list payload.
     const partNumberFor = (material: typeof materials[number]) => materialPartNumber(material.workInstructionRef) ?? matchedParts.get(material.id);
     const partNames = await readPartNamesByPartNumbers(this.db, materials.flatMap((material) => partNumberFor(material) ?? []));
+    const appText = (material: ProcedureMaterial, key: string): string | null => {
+      const ref = material.origin === 'APP' ? material.appRef : null;
+      return ref && typeof ref === 'object' && !Array.isArray(ref) && typeof ref[key] === 'string' ? ref[key] as string : null;
+    };
+    const nameIds = [...new Set(materials.flatMap((material) => appText(material, 'nameId') ?? []))];
+    const employees = nameIds.length ? await this.db.employee.findMany({
+      where: { employeeCode: { in: nameIds } }, select: { employeeCode: true, displayName: true },
+    }) : [];
+    const employeeNames = new Map(employees.map((employee) => [employee.employeeCode, employee.displayName]));
     return materials.map((material) => ({ ...publicMaterial(material),
+      category: appText(material, 'category'), note: appText(material, 'note'), location: appText(material, 'location'),
+      nameId: appText(material, 'nameId'), employeeName: employeeNames.get(appText(material, 'nameId') ?? '') ?? null,
       partName: partNames.get(partNumberFor(material) ?? '') ?? null }));
   }
 

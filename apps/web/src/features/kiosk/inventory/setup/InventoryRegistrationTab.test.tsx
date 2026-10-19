@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { readInventoryPhotoRegion } from '../../../../api/client';
-import { useInventoryImports, useInventoryItems, useInventoryLocations, useInventoryMutations, useInventoryToolFieldOptions } from '../../../../api/hooks';
+import { useInventoryImportMessages, useInventoryImports, useInventoryItems, useInventoryLocations, useInventoryMutations, useInventoryToolFieldOptions } from '../../../../api/hooks';
 
 import { InventoryRegistrationTab as RegistrationTab, type RegistrationState } from './InventoryRegistrationTab';
 
@@ -93,7 +93,7 @@ describe('InventoryRegistrationTab', () => {
       dismissImport: { mutateAsync: dismissImport, isPending: false },
       restoreImport: { mutateAsync: restoreImport, isPending: false },
       registerImport: { mutateAsync: registerImport, isPending: false },
-      reorderImportPhotos: { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false },
+      rotateImportPhoto: { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false }, reorderImportPhotos: { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false },
       deleteImportPhoto: { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false },
       retryImport: { mutateAsync: vi.fn(), isPending: false },
       createShelf: { mutateAsync: createShelf, isPending: false },
@@ -107,6 +107,13 @@ describe('InventoryRegistrationTab', () => {
   });
 
   afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+  it('rotates the selected photo with its parent and photo IDs', async () => {
+    render(<InventoryRegistrationTab accessPassword="2520" initialImportId="import-1" />);
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '写真1を右に回す' })); });
+    expect(vi.mocked(useInventoryMutations)().rotateImportPhoto.mutateAsync).toHaveBeenCalledWith({ payloadId: 'import-1', photoId: 'photo-1' });
+  });
 
   it.each([false, true])('keeps region text in the form without saving automatically (edited: %s)', async edited => {
     render(<InventoryRegistrationTab accessPassword="2520" />);
@@ -850,6 +857,19 @@ describe('InventoryRegistrationTab', () => {
     expect(screen.getByText('登録待ちの候補はありません')).toBeInTheDocument();
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '元に戻す' })); });
     expect(candidateButton('候補 #1')).toBeInTheDocument();
+  });
+
+  it('shows a short wait message beside もう一度取り込む when the scheduled import is running', async () => {
+    vi.mocked(useInventoryImportMessages).mockReturnValue({ data: [{ id: 'message-1', outcome: 'RETRYABLE', errorMessage: '添付を修正して再試行できます' }] } as never);
+    const retryImport = vi.fn().mockRejectedValue({ response: { status: 409, data: { errorCode: 'ITEM_INVENTORY_INGEST_RUNNING', message: 'いま取込中です。少し待ってからもう一度押してください' } } });
+    vi.mocked(useInventoryMutations).mockReturnValue({ ...vi.mocked(useInventoryMutations)(), retryImport: { mutateAsync: retryImport, isPending: false } } as never);
+    render(<InventoryRegistrationTab accessPassword="2520" />);
+    const retry = screen.getByRole('button', { name: 'もう一度取り込む' });
+    await act(async () => { fireEvent.click(retry); });
+    expect(retryImport).toHaveBeenCalledWith('message-1');
+    expect(retry.parentElement).toContainElement(screen.getByRole('alert'));
+    expect(screen.getByRole('alert')).toHaveTextContent('いま取込中です。少し待ってからもう一度押してください');
+    expect(retry).toBeEnabled();
   });
 
   it('reports a failed dismissal beside its button without losing the draft', async () => {

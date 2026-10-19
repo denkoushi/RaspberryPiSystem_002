@@ -48,8 +48,9 @@ describe('procedure material semantic search route', () => {
     return { rank, findMany, rows };
   }
 
-  it('expands mail and standalone ids, preserving rank and existing order within mail', async () => {
+  it('expands mail and standalone ids including APP, preserving rank and existing order within mail', async () => {
     const { rank, findMany, rows } = await harness();
+    Object.assign(rows[0], { origin: 'APP' });
     const response = await app.inject({ method: 'POST', url, payload });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ available: true, mode: 'semantic', items: [rows[1], { ...rows[0], text: null }, { ...rows[3], text: null }, { ...rows[2], text: null }] });

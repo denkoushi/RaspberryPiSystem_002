@@ -1,5 +1,7 @@
 from pathlib import Path
 import re
+import subprocess
+import tempfile
 import unittest
 
 from jinja2 import Environment, StrictUndefined
@@ -43,6 +45,28 @@ class Pi5SecurityScansDeliveryTest(unittest.TestCase):
                 self.assertEqual([line for line in template.render(**variables).splitlines() if line and not line.startswith('#')], [
                     'ALLOWDEVFILE=/dev/shm/lttng-ust-wait-*', 'ALLOWHIDDENFILE=/etc/.updated'
                 ])
+
+    def test_rkhunter_alerts_only_on_warnings_from_the_current_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / 'warn').write_text('Warning: Hidden file found: /etc/evil\n')
+            rkhunter = tmp / 'rkhunter'
+            rkhunter.write_text(f'#!/bin/bash\n[[ "$1" == --check ]] && cat "{tmp}/warn"\nexit 0\n')
+            alert = tmp / 'alert'
+            alert.write_text(f'#!/bin/bash\necho "$1" >> "{tmp}/alerts"\n')
+            for script in (rkhunter, alert):
+                script.chmod(0o755)
+            script = Environment(undefined=StrictUndefined).from_string(
+                (ROOT / 'infrastructure/ansible/templates/rkhunter-scan.sh.j2').read_text()).render(
+                rkhunter_log_dir=str(tmp / 'log'), rkhunter_log_file='scan.log',
+                rkhunter_ignore_patterns=[], alert_script_path=str(alert))
+            script = script.replace('/usr/bin/rkhunter', str(rkhunter)).replace('command -v systemd-run', 'false')
+            run = tmp / 'scan.sh'
+            run.write_text(script)
+            subprocess.run(['bash', str(run)], check=True)
+            (tmp / 'warn').write_text('')
+            subprocess.run(['bash', str(run)], check=True)
+            self.assertEqual((tmp / 'alerts').read_text().splitlines(), ['rkhunter-warning'])
 
 
 if __name__ == '__main__':

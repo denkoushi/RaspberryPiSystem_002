@@ -157,7 +157,7 @@ export function useKioskInquiryReceiverSettings() {
 export function useUpdateKioskInquiryReceiverSettings() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { receiverClientDeviceIds: string[]; systemNoticeReceiverClientDeviceIds: string[]; employeeCodes: string[] }) => updateKioskInquiryReceiverSettings(payload),
+    mutationFn: (payload: { receiverClientDeviceIds: string[]; systemNoticeReceiverClientDeviceIds: string[]; employees: { employeeCode: string; canViewScreen: boolean }[] }) => updateKioskInquiryReceiverSettings(payload),
     onSuccess: data => {
       queryClient.setQueryData(kioskQueryKeys.inquiryReceiverSettingsAll, data);
       void queryClient.invalidateQueries({ queryKey: kioskQueryKeys.inquiryReceiverSettingsAll });

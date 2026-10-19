@@ -390,12 +390,81 @@ describe('Kiosk inquiry inbox API', () => {
     expect(settings.devices.map((device: { name: string }) => device.name)).toEqual(devicesByName.map(device => device.name));
     expect(settings.employees).toEqual([allowedEmployee, deniedEmployee]
       .sort((a, b) => a.employeeCode.localeCompare(b.employeeCode))
-      .map((employee) => ({ employeeId: employee.id, employeeCode: employee.employeeCode, displayName: employee.displayName })));
+      .map((employee) => ({ employeeId: employee.id, employeeCode: employee.employeeCode, displayName: employee.displayName, canViewScreen: false })));
     expect((await getSettings()).json()).toEqual(response.json());
     const cleared = await putSettings({ receiverClientDeviceIds: [], employeeCodes: [] });
     expect(cleared.statusCode).toBe(200);
     expect(cleared.json().settings.employees).toEqual([]);
     expect(cleared.json().settings.devices.every((device: { inquiryReceiverEnabled: boolean }) => !device.inquiryReceiverEnabled)).toBe(true);
+  });
+
+  it.each([true, false])('persists canViewScreen=%s and exposes it only to badge-authorized receivers', async canViewScreen => {
+    const saved = await putSettings({
+      receiverClientDeviceIds: [receiver.id],
+      employees: [{ employeeCode: allowedEmployee.employeeCode, canViewScreen }]
+    });
+    expect(saved.statusCode).toBe(200);
+    const fetched = await getSettings();
+    expect(fetched.statusCode).toBe(200);
+    expect(fetched.json().settings.employees).toEqual([{
+      employeeId: allowedEmployee.id, employeeCode: allowedEmployee.employeeCode,
+      displayName: allowedEmployee.displayName, canViewScreen
+    }]);
+    const thread = await sendSupport();
+    for (const [device, payload, token, expected] of [
+      [receiver, tag(), undefined, canViewScreen],
+      [receiver, {}, admin.token, false],
+      [receiver, {}, manager.token, false],
+      [sender, {}, undefined, false],
+      [sender, tag(), undefined, false]
+    ] as const) {
+      const listed = await list(device, payload, token);
+      const opened = await open(device, thread.id, payload, token);
+      expect(listed.statusCode).toBe(200);
+      expect(opened.statusCode).toBe(200);
+      expect(listed.json().canViewScreen).toBe(expected);
+      expect(opened.json().canViewScreen).toBe(expected);
+      for (const presented of [listed.json().threads.find((entry: { id: string }) => entry.id === thread.id), opened.json().thread]) {
+        expect(presented).not.toHaveProperty('senderClientDeviceId');
+        expect(presented).not.toHaveProperty('canViewScreen');
+      }
+    }
+    // A legacy save must revoke any previously enabled screen-view permission.
+    const legacy = await putSettings({ receiverClientDeviceIds: [receiver.id], employeeCodes: [allowedEmployee.employeeCode] });
+    expect(legacy.statusCode).toBe(200);
+    expect((await getSettings()).json().settings.employees[0].canViewScreen).toBe(false);
+  });
+
+  it.each([true, false])('prefers employees over employeeCodes and the last duplicate permission (%s)', async canViewScreen => {
+    const response = await putSettings({
+      receiverClientDeviceIds: [receiver.id],
+      employeeCodes: [deniedEmployee.employeeCode],
+      employees: [
+        { employeeCode: allowedEmployee.employeeCode, canViewScreen: !canViewScreen },
+        { employeeCode: allowedEmployee.employeeCode, canViewScreen }
+      ]
+    });
+    expect(response.statusCode).toBe(200);
+    expect((await getSettings()).json().settings.employees).toEqual([{
+      employeeId: allowedEmployee.id, employeeCode: allowedEmployee.employeeCode,
+      displayName: allowedEmployee.displayName, canViewScreen
+    }]);
+    const cleared = await putSettings({
+      receiverClientDeviceIds: [receiver.id], employeeCodes: [allowedEmployee.employeeCode], employees: []
+    });
+    expect(cleared.statusCode).toBe(200);
+    expect((await getSettings()).json().settings.employees).toEqual([]);
+  });
+
+  it.each([
+    {},
+    { employees: [{ employeeCode: '0012' }] },
+    { employees: [{ employeeCode: '0012', canViewScreen: 'true' }] },
+    { employees: [{ employeeCode: '0012', canViewScreen: true, extra: true }] }
+  ])('rejects invalid employee permissions: %j', async payload => {
+    const before = (await getSettings()).json();
+    expect((await putSettings({ receiverClientDeviceIds: [], ...payload })).statusCode).toBe(400);
+    expect((await getSettings()).json()).toEqual(before);
   });
 
   it.each(['employee', 'device'] as const)('unknown %s settings values return 400 and leave everything unchanged', async (kind) => {
@@ -414,7 +483,7 @@ describe('Kiosk inquiry inbox API', () => {
   it('employee lookup resolves codes to employee IDs and names, or returns 404', async () => {
     const found = await app.inject({ method: 'GET', url: `${settingsUrl}/employee-lookup?employeeCode=${allowedEmployee.employeeCode}`, headers: createAuthHeader(admin.token) });
     expect(found.statusCode).toBe(200);
-    expect(found.json()).toEqual({ employee: { employeeId: allowedEmployee.id, employeeCode: allowedEmployee.employeeCode, displayName: allowedEmployee.displayName } });
+    expect(found.json()).toEqual({ employee: { employeeId: allowedEmployee.id, employeeCode: allowedEmployee.employeeCode, displayName: allowedEmployee.displayName, canViewScreen: false } });
     const missing = await app.inject({ method: 'GET', url: `${settingsUrl}/employee-lookup?employeeCode=missing-code`, headers: createAuthHeader(admin.token) });
     expect(missing.statusCode).toBe(404);
     expect(missing.json().errorCode).toBe('KIOSK_INQUIRY_EMPLOYEE_CODE_NOT_FOUND');

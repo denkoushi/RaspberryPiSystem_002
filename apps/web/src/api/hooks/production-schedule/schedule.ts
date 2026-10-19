@@ -416,12 +416,12 @@ export function useUpdateKioskProductionScheduleNote() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: ['kiosk-production-schedule', 'write', 'note'],
-    mutationFn: ({ rowId, note }: { rowId: string; note: string }) =>
+    mutationFn: ({ rowId, note }: { rowId: string; note: string; cachePolicy?: KioskProductionScheduleOrderCachePolicy }) =>
       updateKioskProductionScheduleNote(rowId, { note }),
     onMutate: () => {
       void queryClient.cancelQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
     },
-    onSuccess: async (data, { rowId }) => {
+    onSuccess: async (data, { rowId, cachePolicy }) => {
       queryClient.setQueriesData<{
         page: number;
         pageSize: number;
@@ -443,6 +443,7 @@ export function useUpdateKioskProductionScheduleNote() {
           )
         };
       });
+      if (cachePolicy === 'leaderBoardFastPath') return;
       void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
     }
   });
@@ -452,12 +453,12 @@ export function useUpdateKioskProductionScheduleDueDate() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: ['kiosk-production-schedule', 'write', 'due-date'],
-    mutationFn: ({ rowId, dueDate }: { rowId: string; dueDate: string }) =>
+    mutationFn: ({ rowId, dueDate }: { rowId: string; dueDate: string; cachePolicy?: KioskProductionScheduleOrderCachePolicy }) =>
       updateKioskProductionScheduleDueDate(rowId, { dueDate }),
     onMutate: () => {
       void queryClient.cancelQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
     },
-    onSuccess: async (data, { rowId }) => {
+    onSuccess: async (data, { rowId, cachePolicy }) => {
       queryClient.setQueriesData<{
         page: number;
         pageSize: number;
@@ -479,6 +480,7 @@ export function useUpdateKioskProductionScheduleDueDate() {
           )
         };
       });
+      if (cachePolicy === 'leaderBoardFastPath') return;
       void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
     }
   });

@@ -2,7 +2,7 @@ import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { deleteInventoryDrawer, deleteInventoryShelf, deleteInventoryTag, dismissInventoryImport, restoreInventoryImport, getInventoryImports, getInventoryImportMessages, getInventoryToolFieldValues } from '../../../../api/client';
+import { rotateInventoryImportPhoto, rotateInventoryItemPhoto, deleteInventoryDrawer, deleteInventoryShelf, deleteInventoryTag, dismissInventoryImport, restoreInventoryImport, getInventoryImports, getInventoryImportMessages, getInventoryToolFieldValues } from '../../../../api/client';
 import { useInventoryImports, useInventoryImportMessages, useInventoryToolFieldValues, useInventoryMutations } from '../../../../api/hooks/item-inventory';
 
 import { captureSetupPinSession, clearSetupPin, readSetupPin, rememberSetupPin, sendSetupRequest } from './setupPinSession';
@@ -11,6 +11,7 @@ import type { ReactNode } from 'react';
 
 vi.mock('../../../../api/client', async (original) => ({
   ...await original<typeof import('../../../../api/client')>(),
+  rotateInventoryImportPhoto: vi.fn(), rotateInventoryItemPhoto: vi.fn(),
   deleteInventoryDrawer: vi.fn(), deleteInventoryShelf: vi.fn(), deleteInventoryTag: vi.fn(),
   dismissInventoryImport: vi.fn(), restoreInventoryImport: vi.fn(),
   getInventoryImports: vi.fn(), getInventoryImportMessages: vi.fn(), getInventoryToolFieldValues: vi.fn(),
@@ -19,6 +20,20 @@ vi.mock('../../../../api/client', async (original) => ({
 describe('inventory setup mutations', () => {
   beforeEach(() => { vi.resetAllMocks(); clearSetupPin(); rememberSetupPin('2520'); });
   afterEach(() => { onlineManager.setOnline(true); clearSetupPin(); vi.useRealTimers(); });
+  it.each(['import', 'item'] as const)('rotates a %s photo with the PIN and invalidates its query', async kind => {
+    const client = new QueryClient();
+    const key = kind === 'import' ? ['inventory-imports', 'setup', expect.any(Number)] : ['inventory-items'];
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    const { result } = renderHook(() => useInventoryMutations('2520', true), {
+      wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+    });
+    await act(async () => {
+      if (kind === 'import') await result.current.rotateImportPhoto.mutateAsync({ payloadId: 'parent', photoId: 'photo' });
+      else await result.current.rotateItemPhoto.mutateAsync({ itemId: 'parent', photoId: 'photo' });
+    });
+    expect(kind === 'import' ? rotateInventoryImportPhoto : rotateInventoryItemPhoto).toHaveBeenCalledWith('parent', 'photo', '2520');
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: key });
+  });
   it.each([
     ['deleteDrawer', deleteInventoryDrawer], ['deleteShelf', deleteInventoryShelf], ['deleteTag', deleteInventoryTag],
     ['dismissImport', dismissInventoryImport], ['restoreImport', restoreInventoryImport],
