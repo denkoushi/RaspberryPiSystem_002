@@ -799,3 +799,10 @@ UX 改善(2 回目)の変更・追加ファイル一覧(34ファイル。各migr
 場面サムネイル追記の検証(2026-10-08): Prisma generate、API/Web lint、Web `pnpm exec tsc --noEmit`が成功。APIの`pnpm exec vitest run procedure-video ffmpeg-procedure-video backup-recommended`は7ファイル189件成功。Webの`pnpm exec vitest run procedure-manuals document-editor`は23ファイル469件成功、追加のposter URLテスト2件も成功。作成/範囲変更後の生成、失敗時の成功応答、競合時の公開抑止と掃除、配信200/404、DTOの存在フラグ、動画ポスターへのフォールバック、範囲更新後の画像再取得を確認した。実Postgresへのmigration適用・実機目視は未実施。既存WIPを保持し、gitの変更操作・生成ソース変更・本番反映は行っていない。
 
 追加のブラウザ目視確認は未完了: ローカルChromiumはsandboxのMachPort権限で起動できず、Browser Useのローカルfile URLもURLポリシーで拒否された。回避操作は行わず、1920×1080の目視/タッチ確認は上のオーナー実機確認に残す。
+
+### アプリからの素材 (2026-10-19)
+
+- 件名 `ProcedureMaterial`（完全一致または直後が空白・タブ）を予約し、受信箱の未読を既存の5分スケジュール／「今すぐ取り込む」で取得する。旧トークンのみの設定でも検索対象に含む。
+- JSON manifestは1つ必須。`schema_version: 1`、`source.system: sharepoint`、`source.list: ProcedureMaterialList` と写真の添付名を検証し、欠落・不正時は保存せず未読で残す。写真は既存の縮小・サイズ制限とmessage単位dedupeでPHOTO／origin APP／appRefへ保存し、本文は素材化しない。動画は既存ProcedureVideoへ渡す。
+- 許可ドメインは両件名に適用し、`fromEmail` 一致は旧 `[Procedure-material]` のみ。成功時は既存のラベル付きごみ箱処理を使う。
+- 「未配置」の右隣に「アプリから」を置き、APPの未配置をメール単位で表示する。見出しはcategory・note、補足はlocationと社員名（未登録ならname_id）。配置・破棄は既存操作と共通。「未配置」のAPP除外は通常一覧のstate=unplacedかつorigin未指定だけで、配置済み・捨てた素材・semantic-searchは従来の状態条件を保つ。

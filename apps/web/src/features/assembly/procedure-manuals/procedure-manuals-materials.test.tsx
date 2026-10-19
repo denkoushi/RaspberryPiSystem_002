@@ -48,6 +48,52 @@ describe('procedure-manuals material shelf', () => {
     await waitFor(() => expect(mocks.list).toHaveBeenCalledWith({ state: 'unplaced', q: value.trim(), limit: 500 }));
     await waitFor(() => expect(screen.getByRole('button', { name: '意味で探す' })).toBeEnabled());
   };
+  it('places app photos from their dedicated mail bundle and moves them to placed results', async () => {
+    const appPhoto = { ...photo, id: 'app-photo', origin: 'APP', category: '保守', note: '7125 test', location: '工場',
+      nameId: '007125', employeeName: '津田', gmailMessageId: 'app-mail', subjectHint: '保守・7125 test' };
+    let placed = false;
+    mocks.list.mockImplementation(async ({ state, origin }) => state === 'placed' ? placed ? [{ ...appPhoto, placedAt: '2026-10-19T04:00:00Z' }] : []
+      : origin === 'APP' ? placed ? [] : [appPhoto] : []);
+    const onSelect = vi.fn(async () => { placed = true; });
+    const onClose = vi.fn();
+    render(<ProcedureMaterialShelfDialog onClose={onClose} onSelect={onSelect} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'アプリから' }));
+    const bundle = await screen.findByRole('button', { name: /保守・7125 test 工場 · 津田 · アプリ/ });
+    expect(mocks.list).toHaveBeenCalledWith({ state: 'unplaced', origin: 'APP', q: '', limit: 500 });
+    expect(mocks.splits).not.toHaveBeenCalled();
+    fireEvent.click(within(bundle).getByRole('button', { name: '束を全部選ぶ' }));
+    fireEvent.click(screen.getByRole('button', { name: '現在ページに配置' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(appPhoto);
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: '配置済み' }));
+    expect(await screen.findByRole('checkbox', { name: '保守・7125 test' })).toBeInTheDocument();
+  });
+  it('discards and restores app photos while preserving mail bundles with photo filters', async () => {
+    const appPhoto = { ...photo, id: 'app-photo', origin: 'APP', category: '保守', note: '7125 test', gmailMessageId: 'app-mail', subjectHint: '保守・7125 test' };
+    let discarded = false;
+    mocks.list.mockImplementation(async ({ state, origin }) => state === 'discarded' ? discarded ? [{ ...appPhoto, discardedAt: '2026-10-19T04:00:00Z' }] : []
+      : origin === 'APP' ? discarded ? [] : [appPhoto] : []);
+    mocks.discard.mockImplementation(async () => { discarded = true; });
+    mocks.restore.mockImplementation(async () => { discarded = false; });
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'アプリから' }));
+    await screen.findByRole('checkbox');
+    fireEvent.click(within(screen.getByLabelText('素材の絞り込み')).getByRole('button', { name: '写真' }));
+    expect(screen.getByRole('button', { name: /保守・7125 test アプリ/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: '捨てる' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: '素材を捨てる' })).getByRole('button', { name: '捨てる' }));
+    await screen.findByText('1 件を捨てました');
+    expect(mocks.discard).toHaveBeenCalledExactlyOnceWith('app-photo');
+    await waitFor(() => expect(screen.queryByRole('checkbox')).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: '捨てた素材' }));
+    fireEvent.click(await screen.findByRole('button', { name: '戻す' }));
+    await waitFor(() => expect(mocks.restore).toHaveBeenCalledExactlyOnceWith('app-photo'));
+    await waitFor(() => expect(screen.getByRole('tab', { name: /^アプリから/ })).toBeEnabled());
+    fireEvent.click(screen.getByRole('tab', { name: /^アプリから/ }));
+    expect(await screen.findByRole('checkbox')).toBeEnabled();
+  });
   const splitPages = () => Array.from({ length: 4 }, (_, index) => ({ ...photo, id: `p${index + 1}`,
     subjectHint: `ページ (p${index + 1}/4)`, gmailMessageId: 'same-mail', gmailDedupeKey: `pdf:p${index + 1}` }));
   const splitResult = { status: 'ok', boundaries: [{ beforeId: 'p3', afterId: 'p2', probability: 0.9 }] };
@@ -342,14 +388,14 @@ describe('procedure-manuals material shelf', () => {
       fireEvent.click(screen.getByRole('tab', { name })); expect(input).toHaveValue('DFD1');
     }
     expect(screen.getAllByRole('searchbox')).toHaveLength(1);
-    expect(mocks.list).toHaveBeenCalledTimes(3); expect(mocks.knowledge).toHaveBeenCalledOnce(); expect(mocks.workInstructions).toHaveBeenCalledOnce();
+    expect(mocks.list).toHaveBeenCalledTimes(4); expect(mocks.knowledge).toHaveBeenCalledOnce(); expect(mocks.workInstructions).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole('button', { name: '検索語を消す' }));
     await waitFor(() => expect(screen.getByRole('button', { name: /^DFD1 組立/ })).toBeInTheDocument());
     fireEvent.change(input, { target: { value: 'DFD1' } });
     await waitFor(() => expect(screen.queryByRole('button', { name: /^DFD1 組立/ })).not.toBeInTheDocument());
-    expect(mocks.list).toHaveBeenCalledTimes(3);
+    expect(mocks.list).toHaveBeenCalledTimes(4);
     fireEvent.click(screen.getByRole('button', { name: '今すぐ取り込む' }));
-    await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(5));
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(7));
     expect(mocks.knowledge).toHaveBeenCalledTimes(2); expect(mocks.workInstructions).toHaveBeenCalledTimes(2);
   });
   it('filters loaded lists and tab counts with multiple sources and kinds, and shows only supported chips', async () => {
@@ -383,7 +429,7 @@ describe('procedure-manuals material shelf', () => {
     expect(within(chips).queryByRole('button', { name: '絞り込みを外す' })).not.toBeInTheDocument();
     fireEvent.click(within(chips).getByRole('button', { name: '7日' }));
     expect(screen.getByRole('status', { name: '一致件数' })).toHaveTextContent('3 件');
-    expect(mocks.list).toHaveBeenCalledTimes(2); expect(mocks.knowledge).toHaveBeenCalledOnce(); expect(mocks.workInstructions).toHaveBeenCalledOnce();
+    expect(mocks.list).toHaveBeenCalledTimes(3); expect(mocks.knowledge).toHaveBeenCalledOnce(); expect(mocks.workInstructions).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole('tab', { name: /^ナレッジから/ }));
     expect(within(chips).queryByRole('button', { name: '7日' })).not.toBeInTheDocument();
     expect(within(chips).queryByRole('button', { name: 'PDF' })).not.toBeInTheDocument();
@@ -567,7 +613,7 @@ describe('procedure-manuals material shelf', () => {
     fireEvent.click(screen.getByRole('button', { name: '今すぐ取り込む' }));
     expect(await screen.findByText('見つけた 2 通・取込 2件・保存済み 0件・スキップ 1通・再試行 0通・再試行待ち 0通・除外添付 1件')).toBeInTheDocument(); expect(screen.getByText('本文が空で、対応する写真がありません')).toBeInTheDocument();
     expect(screen.queryByText('受信トレイに未読の対象メールがありません')).not.toBeInTheDocument();
-    expect(mocks.ingest).toHaveBeenCalledOnce(); await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(5));
+    expect(mocks.ingest).toHaveBeenCalledOnce(); await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(7));
     expect(screen.queryByRole('button', { name: '現在ページに配置' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '閉じる' })); expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:photo');
@@ -1302,7 +1348,7 @@ describe('procedure-manuals material shelf', () => {
       expect(list).not.toHaveBeenCalled();
     }
     await act(async () => { await vi.advanceTimersByTimeAsync(200); });
-    expect(list).toHaveBeenCalledTimes(source === 'material' ? 2 : 1); expect(list).toHaveBeenCalledWith(expect.objectContaining({ q: 'DFD1' }));
+    expect(list).toHaveBeenCalledTimes(source === 'material' ? 3 : 1); expect(list).toHaveBeenCalledWith(expect.objectContaining({ q: 'DFD1' }));
     list.mockClear(); fireEvent.compositionStart(input);
     fireEvent.change(input, { target: { value: '組' } });
     await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
@@ -1310,7 +1356,7 @@ describe('procedure-manuals material shelf', () => {
     fireEvent.compositionEnd(input);
     await act(async () => { await vi.advanceTimersByTimeAsync(299); }); expect(list).not.toHaveBeenCalled();
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-    expect(list).toHaveBeenCalledTimes(source === 'material' ? 2 : 1); expect(list).toHaveBeenCalledWith(expect.objectContaining({ q: '組' }));
+    expect(list).toHaveBeenCalledTimes(source === 'material' ? 3 : 1); expect(list).toHaveBeenCalledWith(expect.objectContaining({ q: '組' }));
     vi.useRealTimers(); view.unmount();
   });
   it('shows original-image failures and ignores a response after closing the lightbox', async () => {

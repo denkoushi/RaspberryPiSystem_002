@@ -5406,6 +5406,7 @@ enum ProcedureMaterialKind {
 }
 
 enum ProcedureMaterialOrigin {
+  APP
   GMAIL
   KNOWLEDGE
   WORK_INSTRUCTION
@@ -5416,6 +5417,7 @@ model ProcedureMaterial {
   origin           ProcedureMaterialOrigin @default(GMAIL)
   knowledgeRef     Json?
   workInstructionRef Json?
+  appRef           Json?
   kind             ProcedureMaterialKind
   text             String?
   imageDescription String?
