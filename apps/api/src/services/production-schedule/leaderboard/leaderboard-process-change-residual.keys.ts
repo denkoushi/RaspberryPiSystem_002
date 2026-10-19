@@ -31,7 +31,9 @@ export function buildProcessChangeResidualSqlTextKey(parts: {
   resourceCd: string;
 }): string {
   const resourceCd = parts.resourceCd.toUpperCase();
-  return `${parts.productNo.length}:${parts.productNo}|${parts.fkojun.length}:${parts.fkojun}|${resourceCd.length}:${resourceCd}`;
+  // PostgreSQL の length() は文字数なので、UTF-16 の .length ではなくコードポイント数で揃える。
+  const len = (value: string) => Array.from(value).length;
+  return `${len(parts.productNo)}:${parts.productNo}|${len(parts.fkojun)}:${parts.fkojun}|${len(resourceCd)}:${resourceCd}`;
 }
 
 export function parseProcessChangeResidualStrongEvidenceKey(
