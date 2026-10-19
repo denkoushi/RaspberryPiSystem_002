@@ -45,6 +45,8 @@
   Evidence: `rg -n "'measuringInstruments'\]|'riggingGears'\]|'measuring-instruments'|'rigging-gears'" apps/web/src`。
 - Observation: 段階2の PR は互いに別のファイルを触るように分けたが、`clients.ts` の `['kiosk-config']` や `system.ts` の `employees` / `items` のように、別の PR の定義を使う箇所は、その PR のマージ後に残りの組で扱う。
   Evidence: #2133〜#2135 の本文。
+- Observation: 鍵の名前を変える PR（#2142 で `inventoryKeys.items` → `itemsAll`）と、古い名前を使う別の PR（#2140）が前後してマージされると、両方とも単独では CI が通るのに main で `queryKey: undefined` になる。#2147 で直した（2026-10-19）。名前を変える PR は、同じ鍵を触る作業中の PR がないかをマージ前に確かめる。
+  Evidence: main 966fe7f0 の CI（`inventorySetupMutations.test.tsx`）の失敗と #2147。
 
 ## Decision Log
 
