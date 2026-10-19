@@ -9,7 +9,6 @@
   "src/pages/admin/ClientsPage.tsx": 951,
   "src/pages/admin/PartMeasurementTemplatesPage.tsx": 758,
   "src/pages/kiosk/KioskAssemblyTrainingPage.tsx": 653,
-  "src/pages/kiosk/KioskAssemblyWorkSessionPage.tsx": 795,
   "src/pages/kiosk/KioskInspectionDrawingCreatePage.tsx": 1632,
   "src/pages/kiosk/KioskSelfInspectionPage.tsx": 914,
   "src/pages/kiosk/KioskSelfInspectionSessionPage.tsx": 1451,
