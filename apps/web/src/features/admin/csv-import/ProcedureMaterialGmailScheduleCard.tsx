@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 
 import { ingestProcedureMaterialsGmail } from '../../../api/client';
 import { useBackupConfig, useBackupConfigMutations, useCsvImportSchedules, useCsvImportScheduleMutations } from '../../../api/hooks';
+import { backupQueryKeys } from '../../../api/queryKeys/backup';
 import { Button } from '../../../components/ui/Button';
 
 const DEFAULT_SUBJECT_TOKEN = '[Procedure-material]';
@@ -49,8 +50,8 @@ export function ProcedureMaterialGmailScheduleCard() {
     try {
       await scheduleMutations.update.mutateAsync({ id: schedule.id, schedule: { enabled } });
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['backup-config'] }),
-        queryClient.invalidateQueries({ queryKey: ['backup-config-health'] }),
+        queryClient.invalidateQueries({ queryKey: backupQueryKeys.configAll }),
+        queryClient.invalidateQueries({ queryKey: backupQueryKeys.configHealthAll }),
       ]);
       setSaveMessage(`保存しました（${enabled ? '有効' : '無効'}）`);
     } catch (error) {
@@ -90,9 +91,9 @@ export function ProcedureMaterialGmailScheduleCard() {
         },
       });
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['csv-import-schedules'] }),
-        queryClient.invalidateQueries({ queryKey: ['backup-config'] }),
-        queryClient.invalidateQueries({ queryKey: ['backup-config-health'] }),
+        queryClient.invalidateQueries({ queryKey: backupQueryKeys.csvImportSchedulesAll }),
+        queryClient.invalidateQueries({ queryKey: backupQueryKeys.configAll }),
+        queryClient.invalidateQueries({ queryKey: backupQueryKeys.configHealthAll }),
       ]);
       if (!remove) setDomainInput('');
       setDomainMessage('保存しました');
