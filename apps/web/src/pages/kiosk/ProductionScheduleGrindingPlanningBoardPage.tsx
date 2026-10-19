@@ -203,6 +203,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     sourceRevision,
     refresh: async () => {
       const result = await boardQuery.refetch();
+      await queryClient.invalidateQueries({
+        queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll,
+        refetchType: 'none'
+      });
       if (dueDetailIdentityRef.current) await dueDetailQuery.refetch();
       return result;
     },

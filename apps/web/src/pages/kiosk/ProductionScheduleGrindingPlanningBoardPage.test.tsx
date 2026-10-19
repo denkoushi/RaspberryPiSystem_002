@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider, useMutation } from '@tanstack/react-q
 import { act, fireEvent, render as renderComponent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { productionScheduleQueryKeys } from '../../api/queryKeys/productionSchedule';
 import * as planningBoardSorting from '../../features/kiosk/grindingPlanningBoard/sortGrindingPlanningBoardItems';
 import { LARGE_SCREEN_STORAGE_KEY } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardLargeScreen';
 
@@ -1563,6 +1564,25 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.snapshot.mockReturnValue({ data: fixture(), isLoading: false, isError: false, isPlaceholderData: false, refetch: mocks.refetch });
     view.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
     expect(screen.getAllByRole('button', { name: '資源CD 584を変更' })).toHaveLength(4);
+  });
+
+  it('保存後は別表示のキャッシュを再取得せずstaleにする', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 300_000 } } });
+    const otherKey = productionScheduleQueryKeys.grindingPlanningBoard({ category: 'grinding', view: 'seiban' });
+    const fetchOther = vi.fn().mockResolvedValue(fixture());
+    await client.fetchQuery({ queryKey: otherKey, queryFn: fetchOther });
+    const otherQuery = client.getQueryCache().find({ queryKey: otherKey, exact: true })!;
+    expect(otherQuery.isStale()).toBe(false);
+    renderComponent(<ProductionScheduleGrindingPlanningBoardPage />, {
+      wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    });
+
+    chooseResourceRank('部品b', 1);
+
+    await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(otherQuery.isStale()).toBe(true));
+    expect(otherQuery.state.isInvalidated).toBe(true);
+    expect(fetchOther).toHaveBeenCalledTimes(1);
   });
 
   it('資源CD表示の個別順位は保存中に即時反映し、再取得後にserver値へ収束する', async () => {

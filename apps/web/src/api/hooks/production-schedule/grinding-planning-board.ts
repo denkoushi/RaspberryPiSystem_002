@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import {
   useEffect,
   useMemo,
@@ -114,6 +115,7 @@ export function useKioskGrindingPlanningBoardProgressive(
   const [appendError, setAppendError] = useState<unknown>(null);
   const runIdRef = useRef(0);
   const syncedSignatureRef = useRef<string | null>(null);
+  const staleRefetchCountRef = useRef(0);
   const stableParams = useMemo(
     () => paramsKey === 'null' ? undefined : JSON.parse(paramsKey) as KioskGrindingPlanningBoardQuery,
     [paramsKey]
@@ -122,6 +124,7 @@ export function useKioskGrindingPlanningBoardProgressive(
   useEffect(() => {
     runIdRef.current += 1;
     syncedSignatureRef.current = null;
+    staleRefetchCountRef.current = 0;
     setMergedData(undefined);
     setIsAppending(false);
     setIsComplete(false);
@@ -129,6 +132,7 @@ export function useKioskGrindingPlanningBoardProgressive(
   }, [paramsKey]);
 
   const firstData = query.data;
+  const refetch = query.refetch;
   const firstDataIsFresh = Boolean(firstData && !query.isPlaceholderData);
   const firstSignature = firstData
     ? `${query.dataUpdatedAt}:${firstData.snapshotId}:${firstData.sourceRevision}`
@@ -148,7 +152,11 @@ export function useKioskGrindingPlanningBoardProgressive(
     setMergedData({ ...initial, items, nextCursor: cursor });
     setAppendError(null);
     setIsComplete(cursor == null);
-    if (cursor == null) return;
+    if (cursor == null) {
+      staleRefetchCountRef.current = 0;
+      setIsAppending(false);
+      return;
+    }
 
     setIsAppending(true);
     void (async () => {
@@ -187,9 +195,19 @@ export function useKioskGrindingPlanningBoardProgressive(
             ? { ...initial, items, nextCursor: cursor }
             : current);
           setIsComplete(cursor == null);
+          if (cursor == null) staleRefetchCountRef.current = 0;
         }
       } catch (error) {
         if (!cancelled && runId === runIdRef.current) {
+          if (
+            isAxiosError(error) && error.response?.status === 409 &&
+            error.response.data?.errorCode === 'STALE_PLANNING_BOARD_SNAPSHOT' &&
+            staleRefetchCountRef.current < 2
+          ) {
+            staleRefetchCountRef.current += 1;
+            void refetch();
+            return;
+          }
           setAppendError(normalizeLeaderboardContinueFailure(error));
           setIsComplete(false);
         }
@@ -202,7 +220,7 @@ export function useKioskGrindingPlanningBoardProgressive(
       syncedSignatureRef.current = null;
       if (runId === runIdRef.current) setIsAppending(false);
     };
-  }, [firstData, firstDataIsFresh, firstSignature, query.isFetching, stableParams]);
+  }, [firstData, firstDataIsFresh, firstSignature, query.isFetching, refetch, stableParams]);
 
   const displayData = mergedData ?? firstData;
   const hasStableData = Boolean(
