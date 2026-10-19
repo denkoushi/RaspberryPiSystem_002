@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 
 import { KioskKeyboardModal } from '../../../components/kiosk/KioskKeyboardModal';
+import { useSingleFlight } from '../../../hooks/useSingleFlight';
 
 import { useSeibanVoiceInput } from './useSeibanVoiceInput';
 
@@ -45,6 +46,7 @@ export function SeibanSearchRegister({
   keyboardButtonClassName,
   registerButtonClassName
 }: SeibanSearchRegisterProps) {
+  const { run, pending } = useSingleFlight();
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [keyboardValue, setKeyboardValue] = useState('');
   const currentValueRef = useRef(value);
@@ -58,14 +60,10 @@ export function SeibanSearchRegister({
   const register = () => {
     const trimmed = value.trim();
     if (!trimmed || registerDisabled) return;
-    const result = onRegister(trimmed);
-    if (result && typeof result.then === 'function') {
-      void result.then((saved) => {
-        if (clearOnSuccess && saved !== false && currentValueRef.current === trimmed) onChange('');
-      });
-    } else if (clearOnSuccess) {
-      onChange('');
-    }
+    void run(async () => {
+      const saved = await onRegister(trimmed);
+      if (clearOnSuccess && saved !== false && currentValueRef.current === trimmed) onChange('');
+    });
   };
 
   return (
@@ -122,7 +120,8 @@ export function SeibanSearchRegister({
         <button
           type="button"
           onClick={register}
-          disabled={registerDisabled}
+          disabled={registerDisabled || pending}
+          aria-busy={pending}
           className={registerButtonClassName}
         >
           登録

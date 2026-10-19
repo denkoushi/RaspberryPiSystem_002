@@ -11,6 +11,7 @@ import type { GrindingPlanningBoardItem, GrindingPlanningBoardLoadResponse, Grin
 
 type Props = {
   editorOpen: boolean;
+  editorPending: boolean;
   setEditorOpen: (open: boolean) => void;
   editorItems: GrindingPlanningBoardItem[];
   editorError: string | null;
@@ -34,7 +35,7 @@ type Props = {
 };
 
 export function PlanningBoardBulkEditDialog({
-  editorOpen, setEditorOpen, editorItems, editorError, editorConflict, refreshAfterConflict,
+  editorOpen, editorPending, setEditorOpen, editorItems, editorError, editorConflict, refreshAfterConflict,
   allocation, writeBlocked, editorSnapshot, canMoveResource, data, resourceChoice, setResourceChoice,
   loadQuery, dueMode, setDueMode, dueDate, setDueDate, offsetDays, setOffsetDays, applyEditor
 }: Props) {
@@ -132,7 +133,7 @@ export function PlanningBoardBulkEditDialog({
           </div>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => setEditorOpen(false)}>キャンセル</Button>
-            <Button type="button" variant="primary" disabled={allocation === 'original' || writeBlocked || (resourceChoice === 'unchanged' && dueMode === 'none')} onClick={() => void applyEditor()}>{writeBlocked ? '適用中…' : '適用'}</Button>
+            <Button type="button" variant="primary" busy={editorPending} disabled={allocation === 'original' || writeBlocked || (resourceChoice === 'unchanged' && dueMode === 'none')} onClick={() => void applyEditor()}>{writeBlocked ? '適用中…' : '適用'}</Button>
           </div>
         </div>
       </Dialog>

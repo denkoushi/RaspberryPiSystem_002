@@ -1185,9 +1185,10 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByLabelText('CAND-1を登録候補に選択')).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('CAND-1を登録候補に選択'));
     fireEvent.click(screen.getByLabelText('CAND-2を登録候補に選択'));
-    fireEvent.click(screen.getByRole('button', { name: '選択した製番を登録' }));
+    const register = screen.getByRole('button', { name: '選択した製番を登録' });
+    await act(async () => { fireEvent.click(register); fireEvent.click(register); });
 
-    await waitFor(() => expect(mocks.order).toHaveBeenCalledTimes(1));
+    expect(mocks.order).toHaveBeenCalledTimes(1);
     expect(mocks.order.mock.calls[0]?.[0]).toMatchObject({
       sourceRevision: 'board-1',
       fseibans: ['CAND-1', 'CAND-2', '26-1041', '26-1042']
@@ -1343,7 +1344,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByLabelText('今日中のアイテム件数')).toHaveTextContent('0件');
   });
 
-  it('特別納期を保存前に表示し、連打を確定版で順番に保存する', async () => {
+  it('特別納期の保存中は同じ製番の連打を無視し、他の製番と保存後の切替を許可する', async () => {
     const item = fixture().items[0]!;
     let resolveFirst: ((value: unknown) => void) | undefined;
     mocks.overrides.mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }));
@@ -1357,14 +1358,19 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByLabelText('今日中のアイテム件数')).toHaveTextContent('1件');
     fireEvent.click(screen.getByRole('button', { name: '朝まで', exact: true }));
     fireEvent.click(row);
-    expect(within(row).getByText('朝まで')).toBeInTheDocument();
-    expect(within(row).queryByText('今日中')).not.toBeInTheDocument();
+    expect(within(row).getByText('今日中')).toBeInTheDocument();
+    expect(within(row).queryByText('朝まで')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('planning-board-item-c'));
+    expect(within(screen.getByTestId('planning-board-item-c')).getByText('朝まで')).toBeInTheDocument();
     expect(mocks.overrides).toHaveBeenCalledTimes(1);
     await act(async () => resolveFirst?.({ sourceRevision: 'board-2', items: [{ ...item,
       itemRevision: 'saved-special-1', version: 7,
       specialDue: { kind: 'today', expiresAt: '2099-09-12T00:00:00.000Z' } }] }));
     expect(mocks.overrides).toHaveBeenCalledTimes(2);
-    expect(mocks.overrides.mock.calls[1]?.[0]).toMatchObject({ sourceRevision: 'board-2',
+    expect(mocks.overrides.mock.calls[1]?.[0]).toMatchObject({ items: [{ itemId: 'c', specialDue: 'overnight' }] });
+    fireEvent.click(row);
+    await waitFor(() => expect(mocks.overrides).toHaveBeenCalledTimes(3));
+    expect(mocks.overrides.mock.calls[2]?.[0]).toMatchObject({
       items: [{ itemId: item.itemId, itemRevision: 'saved-special-1', overrideVersion: 7, specialDue: 'overnight' }] });
   });
 
@@ -1477,6 +1483,46 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getAllByRole('button', { name: '資源CD 305を変更' })).toHaveLength(4);
   });
 
+  it('+暦日の同期連打は1回だけ保存し、適用ボタンを保存完了までbusyにする', async () => {
+    let resolve!: (value: unknown) => void;
+    mocks.overrides.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    renderSeibanBoard();
+    selectAllBoardItems();
+    fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
+    const dialog = screen.getByRole('dialog', { name: '一括変更' });
+    fireEvent.click(within(dialog).getByRole('button', { name: '+暦日' }));
+    const apply = within(dialog).getByRole('button', { name: '適用' });
+    act(() => { fireEvent.click(apply); fireEvent.click(apply); });
+    expect(apply).toBeDisabled();
+    expect(apply).toHaveAttribute('aria-busy', 'true');
+    expect(mocks.overrides).toHaveBeenCalledTimes(1);
+    expect(mocks.overrides.mock.calls[0]?.[0].items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ due: { kind: 'offsetDays', days: 1 } })
+    ]));
+    await act(async () => resolve({ sourceRevision: 'board-2' }));
+    expect(mocks.overrides).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog', { name: '一括変更' })).not.toBeInTheDocument();
+  });
+
+  it('製番登録のクリックとEnter連打を無視し、自分で登録済みの製番にもエラーを出さない', async () => {
+    let resolve!: (value: unknown) => void;
+    mocks.order.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    renderSeibanBoard();
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    const input = within(drawer).getByRole('searchbox', { name: '製番を検索' });
+    fireEvent.change(input, { target: { value: '26-1043' } });
+    const register = within(drawer).getByRole('button', { name: '登録' });
+    act(() => { fireEvent.click(register); fireEvent.keyDown(input, { key: 'Enter' }); fireEvent.click(register); });
+    expect(mocks.order).toHaveBeenCalledTimes(1);
+    expect(within(drawer).queryByRole('alert')).not.toBeInTheDocument();
+    await act(async () => resolve({ sourceRevision: 'board-2', seibanOrder: ['26-1043', '26-1041', '26-1042'] }));
+    fireEvent.change(input, { target: { value: '26-1043' } });
+    await act(async () => { fireEvent.click(register); });
+    expect(mocks.order).toHaveBeenCalledTimes(1);
+    expect(within(drawer).queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('資源CD変更はPUT完了前に表示し、保存失敗時は元へ戻す', async () => {
     let resolveOverrides: ((value: { sourceRevision: string }) => void) | undefined;
     mocks.overrides.mockImplementationOnce(() => new Promise((resolve) => {
@@ -1506,7 +1552,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     const editor = screen.getByRole('dialog', { name: '一括変更' });
     fireEvent.click(within(editor).getByRole('button', { name: '資源CD 584へ変更' }));
     fireEvent.click(within(editor).getByRole('button', { name: '適用' }));
-    expect(screen.queryByRole('dialog', { name: '一括変更' })).not.toBeInTheDocument();
+    expect(within(editor).getByRole('button', { name: '適用' })).toHaveAttribute('aria-busy', 'true');
+    fireEvent.click(within(editor).getByRole('button', { name: 'キャンセル' }));
     expect(within(screen.getByTestId('planning-board-item-b')).getByRole('button', { name: '資源CD 584を変更' })).toBeInTheDocument();
     chooseResourceRank('部品b', 2);
     expect(screen.getByRole('button', { name: '部品bの個別指定' })).toHaveTextContent('2');

@@ -95,7 +95,7 @@ export function createPlanningBoardSeibanActions({
     });
   };
   const addSeiban = async (fseiban: string): Promise<boolean> => {
-    if (!fseiban.trim() || registeredFseibans.includes(fseiban.trim())) return false;
+    if (!fseiban.trim()) return false;
     return addSeibans([fseiban]);
   };
   const moveSeiban = (fseiban: string, direction: 'up' | 'down') => {
