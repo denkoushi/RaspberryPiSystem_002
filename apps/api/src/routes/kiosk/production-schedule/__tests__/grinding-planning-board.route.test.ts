@@ -5,6 +5,9 @@ import { ZodError } from 'zod';
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   getLoad: vi.fn(),
+  rewarm: vi.fn(),
+  getDueScope: vi.fn(),
+  updateDueScope: vi.fn(),
   getCapacity: vi.fn(),
   updateCapacity: vi.fn(),
   updateOverrides: vi.fn(),
@@ -18,12 +21,18 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../../../services/production-schedule/grinding-planning-board.service.js', () => ({
   getGrindingPlanningBoard: mocks.get,
   getGrindingPlanningBoardLoad: mocks.getLoad,
+  scheduleGrindingPlanningBoardRewarm: mocks.rewarm,
   updateGrindingPlanningBoardOverrides: mocks.updateOverrides,
   updateGrindingPlanningBoardPins: mocks.updatePins,
   updateGrindingPlanningBoardRank: mocks.updateRank,
   updateGrindingPlanningBoardResourceOrder: mocks.updateResourceOrder,
   updateGrindingPlanningBoardResourceOrderBulk: mocks.updateResourceOrderBulk,
   updateGrindingPlanningBoardSeibanOrder: mocks.updateOrder
+}));
+
+vi.mock('../../../../services/production-schedule/grinding-planning-board-due-scope.service.js', () => ({
+  getGrindingPlanningBoardDueScope: mocks.getDueScope,
+  updateGrindingPlanningBoardDueScope: mocks.updateDueScope
 }));
 
 vi.mock('../../../../services/production-schedule/grinding-planning-board-resource-capacity.service.js', () => ({
@@ -66,6 +75,45 @@ function createApp(requireClientDevice: (rawClientKey: unknown) => Promise<unkno
 describe('grinding planning board route scope', () => {
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  const item = { itemId: 'item-1', itemRevision: 'revision-1' };
+  const writes = [
+    { path: 'overrides', write: mocks.updateOverrides, payload: { sourceRevision: 'revision', items: [item] } },
+    { path: 'pins', write: mocks.updatePins, payload: { sourceRevision: 'revision', items: [item], pinned: true } },
+    { path: 'rank', write: mocks.updateRank, payload: { sourceRevision: 'revision', ...item, alternateRank: 1 } },
+    { path: 'resource-order', write: mocks.updateResourceOrder, payload: { sourceRevision: 'revision', ...item, targetItemId: 'item-2', targetItemRevision: 'revision-2', placement: 'before' } },
+    { path: 'resource-order/bulk', write: mocks.updateResourceOrderBulk, payload: { sourceRevision: 'revision', resourceCd: '305', items: [item] } },
+    { path: 'seiban-order', write: mocks.updateOrder, payload: { sourceRevision: 'revision', fseibans: ['ORDER-A'] } },
+    { path: 'seiban/ORDER-A/due-scope', write: mocks.updateDueScope, payload: { sourceGenerationToken: 'generation', scopeRevision: 'a'.repeat(64), scope: { kind: 'seiban' }, dueDate: '2026-10-20' } }
+  ];
+
+  it.each(writes)('schedules rewarm after a successful $path write and preserves the response', async ({ path, write, payload }) => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    const result = { updated: true };
+    write.mockImplementationOnce(async () => {
+      expect(mocks.rewarm).not.toHaveBeenCalled();
+      return result;
+    });
+    // An unfinished background run must not delay the write response.
+    mocks.rewarm.mockReturnValueOnce(new Promise<void>(() => {}));
+    try {
+      const response = await app.inject({ method: 'PUT', url: `/kiosk/production-schedule/grinding-planning-board/${path}`, payload });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual(result);
+      expect(mocks.rewarm).toHaveBeenCalledTimes(1);
+      expect(mocks.rewarm).toHaveBeenCalledWith({ siteKey: 'site-a', snapshotStore: expect.objectContaining({ create: expect.any(Function) }) });
+    } finally { await app.close(); }
+  });
+
+  it.each(writes)('does not schedule rewarm after a failed $path write', async ({ path, write, payload }) => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    write.mockRejectedValueOnce(Object.assign(new Error('stale write'), { statusCode: 409 }));
+    try {
+      const response = await app.inject({ method: 'PUT', url: `/kiosk/production-schedule/grinding-planning-board/${path}`, payload });
+      expect(response.statusCode).toBe(409);
+      expect(mocks.rewarm).not.toHaveBeenCalled();
+    } finally { await app.close(); }
   });
 
   it.each(['', '/load'])('accepts category=all for %s', async (suffix) => {
@@ -237,6 +285,7 @@ describe('grinding planning board route scope', () => {
       expect(response.json()).toEqual(result);
       expect(requireClientDevice).toHaveBeenCalledWith('key-1');
       expect(mocks.updateCapacity).toHaveBeenCalledWith({ siteKey: 'site-a', resourceCd: '305', dailyHours });
+      expect(mocks.rewarm).not.toHaveBeenCalled();
     } finally { await app.close(); }
   });
 

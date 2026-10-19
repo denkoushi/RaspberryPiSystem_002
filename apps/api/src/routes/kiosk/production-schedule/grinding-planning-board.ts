@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   getGrindingPlanningBoard,
   getGrindingPlanningBoardLoad,
+  scheduleGrindingPlanningBoardRewarm,
   updateGrindingPlanningBoardOverrides,
   updateGrindingPlanningBoardPins,
   updateGrindingPlanningBoardRank,
@@ -188,48 +189,62 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const params = seibanParamSchema.parse(request.params);
     const body = dueScopeRequestSchema.parse(request.body);
-    return updateGrindingPlanningBoardDueScope({ siteKey: scope.siteKey, fseiban: params.fseiban, request: body });
+    const result = await updateGrindingPlanningBoardDueScope({ siteKey: scope.siteKey, fseiban: params.fseiban, request: body });
+    void scheduleGrindingPlanningBoardRewarm({ siteKey: scope.siteKey, snapshotStore: deps.leaderboardShellSnapshotStore });
+    return result;
   });
 
   app.put('/kiosk/production-schedule/grinding-planning-board/overrides', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = overridesBodySchema.parse(request.body);
-    return updateGrindingPlanningBoardOverrides({ siteKey: scope.siteKey, ...body });
+    const result = await updateGrindingPlanningBoardOverrides({ siteKey: scope.siteKey, ...body });
+    void scheduleGrindingPlanningBoardRewarm({ siteKey: scope.siteKey, snapshotStore: deps.leaderboardShellSnapshotStore });
+    return result;
   });
 
   app.put('/kiosk/production-schedule/grinding-planning-board/pins', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = pinsBodySchema.parse(request.body);
-    return updateGrindingPlanningBoardPins({ siteKey: scope.siteKey, ...body });
+    const result = await updateGrindingPlanningBoardPins({ siteKey: scope.siteKey, ...body });
+    void scheduleGrindingPlanningBoardRewarm({ siteKey: scope.siteKey, snapshotStore: deps.leaderboardShellSnapshotStore });
+    return result;
   });
 
   app.put('/kiosk/production-schedule/grinding-planning-board/rank', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = rankBodySchema.parse(request.body);
-    return updateGrindingPlanningBoardRank({ siteKey: scope.siteKey, ...body });
+    const result = await updateGrindingPlanningBoardRank({ siteKey: scope.siteKey, ...body });
+    void scheduleGrindingPlanningBoardRewarm({ siteKey: scope.siteKey, snapshotStore: deps.leaderboardShellSnapshotStore });
+    return result;
   });
 
   app.put('/kiosk/production-schedule/grinding-planning-board/resource-order', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = resourceOrderBodySchema.parse(request.body);
-    return updateGrindingPlanningBoardResourceOrder({ siteKey: scope.siteKey, ...body });
+    const result = await updateGrindingPlanningBoardResourceOrder({ siteKey: scope.siteKey, ...body });
+    void scheduleGrindingPlanningBoardRewarm({ siteKey: scope.siteKey, snapshotStore: deps.leaderboardShellSnapshotStore });
+    return result;
   });
 
   app.put('/kiosk/production-schedule/grinding-planning-board/resource-order/bulk', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = resourceOrderBulkBodySchema.parse(request.body);
-    return updateGrindingPlanningBoardResourceOrderBulk({ siteKey: scope.siteKey, ...body });
+    const result = await updateGrindingPlanningBoardResourceOrderBulk({ siteKey: scope.siteKey, ...body });
+    void scheduleGrindingPlanningBoardRewarm({ siteKey: scope.siteKey, snapshotStore: deps.leaderboardShellSnapshotStore });
+    return result;
   });
 
   app.put('/kiosk/production-schedule/grinding-planning-board/seiban-order', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = orderBodySchema.parse(request.body);
-    return updateGrindingPlanningBoardSeibanOrder({ siteKey: scope.siteKey, ...body });
+    const result = await updateGrindingPlanningBoardSeibanOrder({ siteKey: scope.siteKey, ...body });
+    void scheduleGrindingPlanningBoardRewarm({ siteKey: scope.siteKey, snapshotStore: deps.leaderboardShellSnapshotStore });
+    return result;
   });
 }

@@ -43,7 +43,15 @@ All caches are in process memory and disappear when the API container restarts. 
 
 Behaviour change in #1909: when the token changes during the reuse check of a first page, the API rebuilds instead of returning 409 at once; the final token check still returns `STALE_PLANNING_BOARD_SNAPSHOT` if the data keeps changing.
 
+### Rewarm after board writes (2026-10-19)
+
+Successful kiosk PUTs for overrides, pins, rank, resource-order (including bulk), seiban-order and due-scope schedule a background rewarm; resource-capacity does not. The per-store/site scheduler debounces for 200 ms and collapses writes during a run into one pending follow-up. Each run rebuilds at most three unexpired entries with the newest `lastUsedAtMs`, sequentially, using the normal first-page preparation and cold-build path.
+
+The generation token remains unchanged. Rewarm stores the original deduplicated `requestedFseibans`, so a seiban-order write recomputes the selected list against the latest registered order. Builds share a per-store promise keyed by filter fingerprint and generation; a real first-page read can join it and still creates its own cursor snapshot. Successful background builds populate the existing 12-hour/16-entry cache without cursor creation, material-arrival lookup or the normal request performance flush. Reuse updates recency without extending expiry. Background errors are logged at debug and never affect the write response.
+
 ## Validation
+
+Local rewarm validation (2026-10-19): the grinding-planning-board service test group and route tests passed (178 tests; 37 database integration tests skipped without `TEST_DATABASE_URL`). Coverage includes cold-build equality, recomputed seiban selection, concurrent reads, joining rewarm, failed-build retry, debounce/follow-up, site/store isolation and the three-entry limit. Changed TypeScript files passed ESLint, and `tsc --noEmit -p tsconfig.build.json` passed. The requested `tsc --noEmit -p .` remains blocked by the existing `rootDir: src` configuration including files outside `src` (TS6059); no config changes were made for this task.
 
 Production Pi5, 2026-10-13, main `86dd89ef` (includes all four PRs), same kiosk:
 
@@ -62,7 +70,7 @@ Production Pi5, 2026-10-13, main `86dd89ef` (includes all four PRs), same kiosk:
 
 ## Open Items
 
-- The first open after each generation change still costs 4 s + 8 s. Reordering or overriding on the board changes the planning generation and rebuilds `/load`, although the aggregate does not depend on `seibanOrder` or the state version.
+- The first open after CSV imports, process restart, cache expiry or a filter outside the three rewarm candidates still requires a cold build. Board writes now schedule rewarm, but the Pi5 latency benefit has not yet been measured in production. The `/load` generation contract is unchanged.
 - `leaderboard-board` (`processChangeResidualSummary`, about 12 s) was not addressed.
 - `shared_buffers` and retention / VACUUM of `CsvDashboardRow` were not changed; they need a separate decision.
 
