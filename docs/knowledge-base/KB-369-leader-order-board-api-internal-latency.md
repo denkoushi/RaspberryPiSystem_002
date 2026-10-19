@@ -340,6 +340,17 @@ category: knowledge-base
 
 **Resource-first winner shell follow-up（PR #464 deployed）**: Pi5 pre-investigation for the real 6-slot board (`581,305,589,584,588,586`) showed the next bottleneck is per-resource shell row selection. The target resource candidate sets are small (`584` max ~3,495 raw rows) compared with the materialized winner id array (~54k ids). A sampled `584` EXPLAIN favored filtering the resource first and then applying the correlated winner predicate (~0.66s) over applying full winner membership first (~1.23s). The PR #464 follow-up makes `leaderboard-board` shell `resourceShell` calls opt into `leaderboardWinnerBaseStrategy: 'correlated'` and lazily resolves the global materialized winner base: the first-usable request shape (`deferTotals=true`, `includeLabor=false`) uses correlated winner for `processChangeResidualSummary` and skips residual summary entirely when evidence keys are empty, so `phase=materializedBaseWhere` should not appear unless exact totals or labor lookup require it. For future measurement, validate with `[leaderboard-board-performance] phase=resourceShell winnerBaseStrategy=correlated`, `phase=processChangeResidualSummary winnerBaseStrategy=correlated`, absence of `phase=materializedBaseWhere` on the machine-only deferred shell, and exact 6-slot client perf. If logs still show `pageSize=80` or missing `includeLabor`, force-reload the kiosk tab because that indicates an old bundle/request path.
 
+## 手動行 SQL の先絞り（2026-10-19 · continue の resourceContinue 3〜4 秒）
+
+- **症状**: 本番（main `a0184b81`・6 資源）で shell 2.1 s のあと continue が 4.2 / 3.8 / 2.6 s。`[leaderboard-board-performance]` の `resourceContinue` が資源ごとに 2.4〜4.1 s（並列でも 1 資源単独でも同程度なので、競合ではなく 1 文ごとの重さ）。
+- **計測（Pi5・読み取り専用 psql・資源 587・約 5,800 行）**: continue の 1 回で重い SQL は「手動行」「フィラー（LIMIT 320）」「hydrate」。手動行とフィラーはそれぞれ約 0.5 s。
+  - **手動行 SQL**: 結果 0 件なのに約 0.5 s。資源索引の見積りが `rows=1` のため、約 5,800 行へ表示用 JOIN（p / ext / n / pp / supplement / fkmail / 順位 LATERAL）を全部済ませてから、最後に `EXISTS (ord_m)` の半結合で絞っていた。
+  - **winner 集合**: 78,360 件 = ダッシュボード全行（絞り込み効果なし）。continue は materialized winner を `text[]`（約 2.9 MB）で毎文送る。psql では送信・解析・計画で 1 文あたり約 0.1 s。correlated に切り替えても実行は速くならない（0.47→0.53 s 程度）ので採用しない。
+  - **pp（加工種別）JOIN**: 見積り `rows=1` のため 140 行の表を行ごとに seq scan し、`rowData->>'FHINCD'` を約 51 万回評価（約 0.2 s / 文）。LATERAL 化で約 0.07 s 改善するのみ。今回は未対応。
+- **修正**: 手動行 WHERE を `leaderboard-shell-manual-where.sql.ts` に分け、`EXISTS` の前に `"CsvDashboardRow"."id" = ANY(ARRAY(SELECT 割当表の行 id [UNION ALL 分割割当の親行 id]))` を追加。InitPlan 1 回 + 主キー索引で引く。`EXISTS` は意味の正本として残すので結果は同じ。
+- **効果（Pi5・同じ SQL を前後で 3 回ずつ）**: continue の形（materialized）**約 0.48 s → 約 0.12 s**、shell の形（correlated）**約 0.50 s → 約 0.004 s**。件数は前後とも同じ（0 件）。資源ごとの continue で約 0.36 s、shell で約 0.5 s の削減見込み。本番の API 計測（デプロイ後）は未実施。
+- **残り**: フィラー SQL（約 0.5 s・並べ替えに必要な JOIN を全候補行に実施）、winner 配列 2.9 MB の毎文送信、pp JOIN の見積り違い。
+
 ## Troubleshooting
 
 - **まだ遅い／反映されない**: Pi5 の **`api` コンテナ**が当該コミット以降か（detach ログの **`Git: changed`**・リモート `git log -1`）。**Mac 側 `--follow` が途中で途切れても**、**`PLAY RECAP` / `summary.json` / `*.exit`** を正本とする（[deployment.md](../guides/deployment.md) の detach 運用どおり）。

@@ -2,9 +2,6 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../../lib/prisma.js';
 
 import {
-  PRODUCTION_SCHEDULE_DASHBOARD_ID,
-} from '../constants.js';
-import {
   buildFkojunstProductionScheduleListVisibilityWhereSql,
 } from '../policies/fkojunst-production-schedule-list-visibility.policy.js';
 import {
@@ -22,6 +19,7 @@ import {
   trimLeaderboardShellManualProbeRows,
 } from './leaderboard-shell-priority-fetch-policy.js';
 import { buildLeaderboardShellRankJoinContext } from './leaderboard-shell-rank-join.sql.js';
+import { buildLeaderboardShellManualPriorityWhereSql } from './leaderboard-shell-manual-where.sql.js';
 import { isProductionScheduleOrderSplitEnabled } from '../order-split/production-schedule-order-split-feature.js';
 import {
   buildLeaderboardShellFillerOrderBy,
@@ -110,37 +108,11 @@ async function buildLeaderboardShellPriorityContext(params: {
       ? Prisma.sql`LIMIT ${fetchPlan.manualSqlLimit}`
       : Prisma.empty;
 
-  const manualWhere = Prisma.sql`${commonWhere}
-      AND (
-        EXISTS (
-          SELECT 1
-          FROM "ProductionScheduleOrderAssignment" AS "ord_m"
-          WHERE "ord_m"."csvDashboardRowId" = "CsvDashboardRow"."id"
-            AND "ord_m"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-            AND (
-              "ord_m"."location" = ${locationKey}
-              OR "ord_m"."siteKey" = ${locationKey}
-            )
-        )
-        ${
-          isProductionScheduleOrderSplitEnabled()
-            ? Prisma.sql`
-        OR EXISTS (
-          SELECT 1
-          FROM "ProductionScheduleOrderSplitAssignment" AS "sa_m"
-          INNER JOIN "ProductionScheduleOrderSplit" AS "s_m"
-            ON "s_m"."id" = "sa_m"."splitId"
-            AND "s_m"."parentCsvDashboardRowId" = "CsvDashboardRow"."id"
-            AND "s_m"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-          WHERE "sa_m"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-            AND (
-              "sa_m"."location" = ${locationKey}
-              OR "sa_m"."siteKey" = ${locationKey}
-            )
-        )`
-            : Prisma.empty
-        }
-      )`;
+  const manualWhere = buildLeaderboardShellManualPriorityWhereSql({
+    commonWhere,
+    locationKey,
+    splitEnabled: isProductionScheduleOrderSplitEnabled()
+  });
 
   const manualRowsRaw = await queryLeaderboardShellScheduleRows({
     rankJoins,
