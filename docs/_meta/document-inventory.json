@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 724,
-    "totalLines": 179608,
-    "totalBytes": 14405075,
+    "totalLines": 179609,
+    "totalBytes": 14405344,
     "withFrontmatter": 348,
     "withStatus": 169,
     "sourceOfTruthDeclared": 115,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 39,
-    "localLinkCount": 5446,
+    "localLinkCount": 5447,
     "brokenLocalLinkCount": 127,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -6109,8 +6109,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 2083,
-      "byteSize": 359818,
+      "lineCount": 2084,
+      "byteSize": 360087,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -10464,6 +10464,11 @@
         {
           "href": "./plans/business-hermes-signage-live-data.md",
           "targetPath": "docs/plans/business-hermes-signage-live-data.md",
+          "exists": true
+        },
+        {
+          "href": "plans/code-health-phase2-execplan.md",
+          "targetPath": "docs/plans/code-health-phase2-execplan.md",
           "exists": true
         },
         {
