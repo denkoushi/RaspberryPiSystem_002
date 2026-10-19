@@ -55,7 +55,7 @@ describe('InventoryItemEditTab', () => {
     vi.mocked(readInventoryPhotoRegion).mockReset().mockResolvedValue({ candidates: ['OCR-MODEL'], status: 'ok' });
     vi.mocked(resolveInventoryTag).mockReset().mockResolvedValue(null);
     mutations = {
-      replaceTag: mutation(), move: mutation(), bindCompartment: mutation(), deleteItemPhoto: mutation(), reorderItemPhotos: mutation(), deleteItem: mutation(),
+      replaceTag: mutation(), move: mutation(), bindCompartment: mutation(), deleteItemPhoto: mutation(), rotateItemPhoto: { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false }, reorderItemPhotos: mutation(), deleteItem: mutation(),
       setItemUnit: mutation(), createUnit: mutation(), updateItemDetails: mutation(),
       renameToolFieldValue: mutation(), addToolFieldValue: mutation(), deleteToolFieldValue: mutation(),
     };
@@ -63,6 +63,13 @@ describe('InventoryItemEditTab', () => {
   });
 
   afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+  it('rotates the selected photo with its parent and photo IDs', async () => {
+    render(<InventoryItemEditTab accessPassword="2520" />);
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '写真1を右に回す' })); });
+    expect(vi.mocked(useInventoryMutations)().rotateItemPhoto.mutateAsync).toHaveBeenCalledWith({ itemId: 'item-1', photoId: 'photo-1' });
+  });
 
   it.each([['250', 250], ['0', 0], ['', null]])('saves the unit price %s using item details', async (value, expected) => {
     const current = vi.mocked(useInventoryItems)();

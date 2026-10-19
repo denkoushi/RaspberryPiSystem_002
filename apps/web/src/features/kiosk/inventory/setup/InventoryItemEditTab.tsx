@@ -6,7 +6,7 @@ import { useInventoryItems, useInventoryLocations, useInventoryMutations } from 
 import { InventoryPhotoReadDialog } from '../../../../components/kiosk/InventoryPhotoReadDialog';
 import { KioskDigitTenkey } from '../../KioskDigitTenkey';
 import { compartmentLocationText, unitLabel } from '../inventoryDailyFlow';
-import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, PinIcon, PlusIcon, TrashIcon } from '../InventoryIcons';
+import { ArrowLeftIcon, ArrowRightIcon, RotateRightIcon, CheckIcon, PinIcon, PlusIcon, TrashIcon } from '../InventoryIcons';
 import {
   invSetupTargets,
   invButtonDanger,
@@ -99,7 +99,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
   const read = useArmedNfcRead(scanMode !== null && !scanPending);
   const handledRef = useRef<NfcEvent | null>(null);
   const pending = scanPending || mutations.setItemUnit.isPending || mutations.move.isPending || mutations.bindCompartment.isPending || mutations.deleteItemPhoto.isPending
-    || mutations.reorderItemPhotos.isPending || mutations.deleteItem.isPending;
+    || mutations.rotateItemPhoto.isPending || mutations.reorderItemPhotos.isPending || mutations.deleteItem.isPending;
 
   useEffect(() => {
     if (!read || !scanMode || handledRef.current === read || scanBusy.current) return;
@@ -350,6 +350,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
                 <span className={invEyebrow}>写真</span>
                 <button type="button" className={iconSm} aria-label={`写真${index + 1}を前へ`} disabled={index === 0 || pending} onClick={() => movePhoto(index, -1)}><ArrowLeftIcon /></button>
                 <button type="button" className={iconSm} aria-label={`写真${index + 1}を後ろへ`} disabled={index === item.photos.length - 1 || pending} onClick={() => movePhoto(index, 1)}><ArrowRightIcon size={16} /></button>
+                <button type="button" className={iconSm} aria-label={`写真${index + 1}を右に回す`} title={`写真${index + 1}を右に回す`} disabled={pending} onClick={() => void run(() => mutations.rotateItemPhoto.mutateAsync({ itemId: item.id, photoId: photo.id }), '写真を回しました', { kind: 'none' }, 'photos')}><RotateRightIcon /></button>
                 <button type="button" className={`${iconSm} border-inv-red/45 text-[#ffb3b3]`} aria-label={`写真${index + 1}を削除`} disabled={pending} onClick={() => setConfirmPhotoId(photo.id)}><TrashIcon /></button>
                 {confirmPhotoId === photo.id ? <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 rounded-xl border border-inv-red/40 bg-inv-bg p-6">
                   <div className="flex items-center gap-3">
