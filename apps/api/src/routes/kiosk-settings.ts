@@ -19,8 +19,14 @@ const navTabOrderBodySchema = z.object({
 const inquiryReceiversBodySchema = z.object({
   receiverClientDeviceIds: z.array(z.string().min(1)),
   systemNoticeReceiverClientDeviceIds: z.array(z.string().min(1)).default([]),
-  employeeCodes: z.array(z.string().min(1))
-}).strict();
+  employeeCodes: z.array(z.string().min(1)).optional(),
+  employees: z.array(z.object({
+    employeeCode: z.string().min(1),
+    canViewScreen: z.boolean()
+  }).strict()).optional()
+}).strict().refine(body => body.employees !== undefined || body.employeeCodes !== undefined, {
+  message: 'employees or employeeCodes is required'
+});
 const employeeLookupQuerySchema = z.object({ employeeCode: z.string().min(1) }).strict();
 
 export function registerKioskSettingsRoutes(app: FastifyInstance): void {
@@ -32,7 +38,8 @@ export function registerKioskSettingsRoutes(app: FastifyInstance): void {
 
   app.put('/kiosk-settings/inquiry-receivers', { preHandler: canManage }, async (request) => {
     const body = inquiryReceiversBodySchema.parse(request.body);
-    return { settings: await replaceInquiryReceiverSettings(body.receiverClientDeviceIds, body.employeeCodes, body.systemNoticeReceiverClientDeviceIds) };
+    const employees = body.employees ?? body.employeeCodes!.map(employeeCode => ({ employeeCode, canViewScreen: false }));
+    return { settings: await replaceInquiryReceiverSettings(body.receiverClientDeviceIds, employees, body.systemNoticeReceiverClientDeviceIds) };
   });
 
   app.get('/kiosk-settings/inquiry-receivers/employee-lookup', { preHandler: canManage }, async (request) => {

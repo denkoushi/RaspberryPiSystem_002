@@ -17,14 +17,16 @@ export async function getInquiryReceiverSettings(tx: Prisma.TransactionClient = 
     orderBy: { employee: { employeeCode: 'asc' } },
     include: { employee: { select: employeeSelect } }
   });
-  return { devices, employees: receivers.map(({ employee }) => presentEmployee(employee)) };
+  return { devices, employees: receivers.map(({ employee, canViewScreen }) => ({ ...presentEmployee(employee), canViewScreen })) };
 }
 
-export async function replaceInquiryReceiverSettings(receiverClientDeviceIds: string[], employeeCodes: string[], systemNoticeReceiverClientDeviceIds: string[] = []) {
+export async function replaceInquiryReceiverSettings(receiverClientDeviceIds: string[], receiverEmployees: { employeeCode: string; canViewScreen: boolean }[], systemNoticeReceiverClientDeviceIds: string[] = []) {
   const deviceIds = [...new Set(receiverClientDeviceIds)];
   const noticeDeviceIds = [...new Set(systemNoticeReceiverClientDeviceIds)];
   const allDeviceIds = [...new Set([...deviceIds, ...noticeDeviceIds])];
-  const codes = [...new Set(employeeCodes)];
+  // The last entry for an employee code wins, including an explicit revocation.
+  const permissions = new Map(receiverEmployees.map(({ employeeCode, canViewScreen }) => [employeeCode, canViewScreen]));
+  const codes = [...permissions.keys()];
   return prisma.$transaction(async (tx) => {
     const devices = await tx.clientDevice.findMany({ where: { id: { in: allDeviceIds } }, select: { id: true } });
     const employees = await tx.employee.findMany({ where: { employeeCode: { in: codes } }, select: employeeSelect });
@@ -41,7 +43,9 @@ export async function replaceInquiryReceiverSettings(receiverClientDeviceIds: st
     await tx.clientDevice.updateMany({ where: { id: { in: noticeDeviceIds } }, data: { systemNoticeReceiverEnabled: true } });
     await tx.kioskInquiryReceiverEmployee.deleteMany();
     if (employees.length) {
-      await tx.kioskInquiryReceiverEmployee.createMany({ data: employees.map(({ id }) => ({ employeeId: id })) });
+      await tx.kioskInquiryReceiverEmployee.createMany({ data: employees.map(({ id, employeeCode }) => ({
+        employeeId: id, canViewScreen: permissions.get(employeeCode) ?? false
+      })) });
     }
     return getInquiryReceiverSettings(tx);
   });
@@ -52,5 +56,5 @@ export async function lookupInquiryReceiverEmployee(employeeCode: string) {
   if (!employee) {
     throw new ApiError(404, '社員番号が見つかりません', undefined, 'KIOSK_INQUIRY_EMPLOYEE_CODE_NOT_FOUND');
   }
-  return presentEmployee(employee);
+  return { ...presentEmployee(employee), canViewScreen: false };
 }

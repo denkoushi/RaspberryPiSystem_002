@@ -1623,6 +1623,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     renderComponent(<ProductionScheduleGrindingPlanningBoardPage />, {
       wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
     });
+    openListView();
 
     chooseResourceRank('部品b', 1);
 

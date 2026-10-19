@@ -24,9 +24,10 @@ export function KioskInquiryReceiverSettings() {
   const savedNoticeIds = settings?.devices.filter(device => device.systemNoticeReceiverEnabled).map(device => device.id) ?? [];
   const current = draft ?? { receiverClientDeviceIds: savedIds, systemNoticeReceiverClientDeviceIds: savedNoticeIds, employees: settings?.employees ?? [] };
   const signature = (values: string[]) => [...values].sort().join('\0');
+  const employeeSignature = (employees: KioskInquiryEmployee[]) => signature(employees.map(({ employeeCode, canViewScreen }) => JSON.stringify([employeeCode, canViewScreen])));
   const isDirty = !!settings && (signature(current.receiverClientDeviceIds) !== signature(savedIds)
     || signature(current.systemNoticeReceiverClientDeviceIds) !== signature(savedNoticeIds)
-    || signature(current.employees.map(employee => employee.employeeCode)) !== signature(settings.employees.map(employee => employee.employeeCode)));
+    || employeeSignature(current.employees) !== employeeSignature(settings.employees));
   const busy = update.isPending || lookup.isPending;
 
   const add = async () => {
@@ -38,7 +39,7 @@ export function KioskInquiryReceiverSettings() {
     }
     try {
       const { employee } = await lookup.mutateAsync(code);
-      setDraft({ ...current, employees: [...current.employees, employee] });
+      setDraft({ ...current, employees: [...current.employees, { ...employee, canViewScreen: false }] });
       setEmployeeCode('');
     } catch (failure) {
       setAddError(inquiryErrorCode(failure) === 'KIOSK_INQUIRY_EMPLOYEE_CODE_NOT_FOUND'
@@ -51,7 +52,7 @@ export function KioskInquiryReceiverSettings() {
     try {
       await update.mutateAsync({ receiverClientDeviceIds: current.receiverClientDeviceIds,
         systemNoticeReceiverClientDeviceIds: current.systemNoticeReceiverClientDeviceIds,
-        employeeCodes: current.employees.map(employee => employee.employeeCode) });
+        employees: current.employees.map(({ employeeCode, canViewScreen }) => ({ employeeCode, canViewScreen })) });
       setDraft(null);
       setMessage({ text: 'お問い合わせの受信設定を保存しました。', tone: 'success' });
     } catch { setMessage({ text: '保存に失敗しました。', tone: 'error' }); }
@@ -95,6 +96,14 @@ export function KioskInquiryReceiverSettings() {
             {current.employees.map(employee => (
               <li key={employee.employeeCode} className="inline-flex items-center gap-2 rounded-lg border border-emerald-600 py-1 pl-3 pr-1 text-sm">
                 <b>{employee.employeeCode}</b><span>{employee.displayName}</span>
+                <label className="inline-flex cursor-pointer items-center gap-1 text-xs">
+                  <input type="checkbox" className="h-4 w-4 accent-emerald-600" checked={employee.canViewScreen}
+                    onChange={event => {
+                      setMessage(null);
+                      setDraft({ ...current, employees: current.employees.map(item => item.employeeCode === employee.employeeCode
+                        ? { ...item, canViewScreen: event.target.checked } : item) });
+                    }} />画面を見る
+                </label>
                 <Button type="button" variant="ghost" className="px-2 py-1" aria-label={`${employee.employeeCode} を外す`}
                   onClick={() => {
                     setDraft({ ...current, employees: current.employees.filter(item => item.employeeCode !== employee.employeeCode) });
