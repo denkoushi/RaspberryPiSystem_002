@@ -53,14 +53,9 @@ export function useKioskGrindingPlanningBoard(
     staleTime?: number;
   }
 ) {
-  const queryClient = useQueryClient();
   return useQuery({
     queryKey: productionScheduleQueryKeys.grindingPlanningBoard(params),
-    queryFn: async () => {
-      const board = await getKioskGrindingPlanningBoard(params!);
-      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoadAll });
-      return board;
-    },
+    queryFn: () => getKioskGrindingPlanningBoard(params!),
     enabled: (options?.enabled ?? true) && Boolean(params),
     refetchInterval: options?.refetchIntervalMs ?? 30000,
     staleTime: options?.staleTime,
@@ -108,6 +103,8 @@ export function useKioskGrindingPlanningBoardProgressive(
     refetchOnWindowFocus: false,
     staleTime: LEADER_BOARD_LEADER_PHASED_STALE_MS
   });
+  const queryClient = useQueryClient();
+  const previousRevisionRef = useRef<{ paramsKey: string; revision: string }>();
   const paramsKey = useMemo(() => JSON.stringify(params ?? null), [params]);
   const [mergedData, setMergedData] = useState<GrindingPlanningBoardResponse>();
   const [isAppending, setIsAppending] = useState(false);
@@ -137,6 +134,18 @@ export function useKioskGrindingPlanningBoardProgressive(
   const firstSignature = firstData
     ? `${query.dataUpdatedAt}:${firstData.snapshotId}:${firstData.sourceRevision}`
     : null;
+
+  useEffect(() => {
+    if (!firstDataIsFresh || !firstData || query.isFetching) return;
+    const previous = previousRevisionRef.current;
+    previousRevisionRef.current = { paramsKey, revision: firstData.sourceRevision };
+    if (previous?.paramsKey === paramsKey && previous.revision !== firstData.sourceRevision) {
+      void queryClient.invalidateQueries(
+        { queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoadAll },
+        { cancelRefetch: false }
+      );
+    }
+  }, [firstData, firstDataIsFresh, paramsKey, query.isFetching, queryClient]);
 
   useEffect(() => {
     if (!firstDataIsFresh || !firstData || firstSignature == null || query.isFetching) return;
@@ -249,14 +258,9 @@ export function useKioskGrindingPlanningBoardSnapshot(
   params: KioskGrindingPlanningBoardQuery | undefined,
   options?: { enabled?: boolean; refetchIntervalMs?: number | false; refetchOnWindowFocus?: boolean }
 ) {
-  const queryClient = useQueryClient();
   return useQuery({
     queryKey: productionScheduleQueryKeys.grindingPlanningBoardSnapshot(params),
-    queryFn: async () => {
-      const board = await getKioskGrindingPlanningBoardSnapshot(params!);
-      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoadAll });
-      return board;
-    },
+    queryFn: () => getKioskGrindingPlanningBoardSnapshot(params!),
     enabled: (options?.enabled ?? true) && Boolean(params),
     refetchInterval: options?.refetchIntervalMs ?? 30000,
     refetchOnWindowFocus: options?.refetchOnWindowFocus ?? true

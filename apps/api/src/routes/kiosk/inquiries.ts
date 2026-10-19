@@ -8,6 +8,7 @@ import {
   openKioskInquiry,
   replyToKioskInquiry
 } from '../../services/kiosk-inquiry/kiosk-inquiry.service.js';
+import { kioskScreenWatchService } from '../../services/kiosk-screen-watch/kiosk-screen-watch.service.js';
 import { sendSlackNotification } from '../../services/notifications/slack-webhook.js';
 import { requireClientDevice, resolveLocationScopeContext } from './shared.js';
 
@@ -49,6 +50,13 @@ export async function registerKioskInquiryRoutes(app: FastifyInstance): Promise<
     const body = employeeTagSchema.parse(request.body === undefined ? {} : request.body);
     const loginUser = body.employeeTagUid ? undefined : await resolveLoginUser(request, reply);
     return openKioskInquiry(clientDevice, threadId, body.employeeTagUid, loginUser);
+  });
+
+  app.post('/kiosk/inquiries/:threadId/watch', { config: { rateLimit: inquiryRateLimit } }, async request => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const { threadId } = threadParamsSchema.parse(request.params);
+    const { employeeTagUid } = employeeTagSchema.required().parse(request.body);
+    return kioskScreenWatchService.request(clientDevice, threadId, employeeTagUid);
   });
 
   app.post('/kiosk/inquiries/:threadId/reply', { config: { rateLimit: inquiryRateLimit } }, async (request, reply) => {

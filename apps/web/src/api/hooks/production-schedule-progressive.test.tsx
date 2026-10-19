@@ -85,7 +85,7 @@ describe('useKioskGrindingPlanningBoardProgressive', () => {
     mocks.updateOrder.mockReset();
   });
 
-  it('負荷未着でも一覧を表示し、refetchと書き込み後の無効化で負荷も取り直す', async () => {
+  it('負荷未着でも一覧を表示し、revision変更と書き込み後だけ負荷を取り直す', async () => {
     let releaseLoad: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => { releaseLoad = resolve; });
     mocks.getBoard.mockResolvedValue(response([item('1')], null, { loadDeferred: true }));
@@ -105,8 +105,15 @@ describe('useKioskGrindingPlanningBoardProgressive', () => {
     expect(hook.result.current.load.data).toBeUndefined();
     await act(async () => { releaseLoad?.(); });
     await waitFor(() => expect(hook.result.current.load.data?.unknownRequiredMinutesCount).toBe(1));
+    expect(mocks.getLoad).toHaveBeenCalledTimes(1);
+    mocks.getBoard.mockResolvedValue(response([item('1')], null, { snapshotId: 'snapshot-2', loadDeferred: true }));
+    await act(async () => { await hook.result.current.board.refetch(); });
+    await waitFor(() => expect(hook.result.current.board.data?.snapshotId).toBe('snapshot-2'));
+    expect(mocks.getLoad).toHaveBeenCalledTimes(1);
+    mocks.getBoard.mockResolvedValue(response([item('1')], null, { snapshotId: 'snapshot-3', sourceRevision: 'revision-2', loadDeferred: true }));
     await act(async () => { await hook.result.current.board.refetch(); });
     await waitFor(() => expect(hook.result.current.load.data?.unknownRequiredMinutesCount).toBe(2));
+    expect(mocks.getLoad).toHaveBeenCalledTimes(2);
     const beforeMutation = mocks.getLoad.mock.calls.length;
     await act(async () => { await hook.result.current.mutation.mutateAsync({ sourceRevision: 'revision-1', fseibans: ['26-1041'] }); });
     await waitFor(() => expect(mocks.getLoad.mock.calls.length).toBeGreaterThan(beforeMutation));

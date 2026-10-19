@@ -1613,6 +1613,19 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getAllByRole('button', { name: '資源CD 584を変更' })).toHaveLength(4);
   });
 
+  it('write-queue refresh explicitly revalidates load even when the board revision is unchanged', async () => {
+    const invalidate = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+    renderSeibanBoard();
+    fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
+    chooseResourceRank('部品b', 1);
+
+    await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
+    expect(invalidate).toHaveBeenCalledWith(
+      { queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoadAll },
+      { cancelRefetch: false }
+    );
+  });
+
   it('保存後は別表示のキャッシュを再取得せずstaleにする', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 300_000 } } });
     const otherKey = productionScheduleQueryKeys.grindingPlanningBoard({ category: 'grinding', view: 'seiban' });
@@ -1623,6 +1636,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     renderComponent(<ProductionScheduleGrindingPlanningBoardPage />, {
       wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
     });
+    openListView();
 
     chooseResourceRank('部品b', 1);
 

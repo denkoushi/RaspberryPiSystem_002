@@ -14,6 +14,10 @@ vi.mock('../inventory/setup/useArmedNfcRead', () => ({
   useArmedNfcRead: (armed: boolean) => { mocks.armed(armed); if (!armed) mocks.read = null; return armed ? mocks.read : null; }
 }));
 
+vi.mock('../screen-watch/startWatch', () => ({ startWatch: vi.fn() }));
+
+import { startWatch } from '../screen-watch/startWatch';
+
 import { KioskInquiryInbox } from './KioskInquiryInbox';
 
 const thread = {
@@ -50,6 +54,28 @@ beforeEach(() => {
 });
 
 describe('KioskInquiryInbox', () => {
+  it.each([
+    [true, 'INQUIRY', '加工キオスク', true],
+    [false, 'INQUIRY', '加工キオスク', false],
+    [true, 'SYSTEM_NOTICE', '加工キオスク', false],
+    [true, 'INQUIRY', null, false]
+  ])('gates watch button by permission and sender (%s, %s, %s)', async (canViewScreen, kind, senderClientDeviceName, visible) => {
+    mocks.open.mockResolvedValue({ ...detail, canViewScreen, thread: { ...detail.thread, isReceiver: true, kind, senderClientDeviceName } });
+    mocks.reply.mockResolvedValue({ ...detail, thread: { ...detail.thread, isReceiver: true, kind, senderClientDeviceName } });
+    const view = renderInbox(); view.touch();
+    fireEvent.click(await screen.findByRole('button', { name: /加工キオスク/ }));
+    await screen.findByRole('textbox', { name: '返信' });
+    const button = screen.queryByRole('button', { name: '画面を見る' });
+    expect(Boolean(button)).toBe(visible);
+    if (button) {
+      fireEvent.click(button);
+      expect(startWatch).toHaveBeenCalledWith('thread-1', 'allowed', '加工キオスク');
+      fireEvent.click(screen.getByRole('button', { name: '行きます' }));
+      await waitFor(() => expect(mocks.reply).toHaveBeenCalled());
+      expect(screen.getByRole('button', { name: '画面を見る' })).toBeInTheDocument();
+    }
+  });
+
   it.each([null, '2026-10-13T00:00:00Z'])('shows the system notice title and status tag (%s)', async (noticeResolvedAt) => {
     const notice = { ...thread, kind: 'SYSTEM_NOTICE', noticeTitle: 'StoneBase01 バーコードリーダー', noticeResolvedAt,
       senderClientDeviceName: null, senderLocation: null, isReceiver: true };
