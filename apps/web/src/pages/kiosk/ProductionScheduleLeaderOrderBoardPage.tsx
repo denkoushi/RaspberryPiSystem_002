@@ -757,7 +757,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         onSaved={handleSplitSaved}
       />
       <KioskNoteModal
-        isOpen={isNoteModalOpen}
+        isOpen={isNoteModalOpen} pending={notePending}
         value={editingNoteValue}
         maxLength={100}
         onCancel={closeNoteModal}
@@ -770,7 +770,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         }}
       />
       <KioskDatePickerModal
-        isOpen={isDueDatePickerOpen}
+        isOpen={isDueDatePickerOpen} pending={dueDatePending}
         value={editingDueDateValue}
         onCancel={closeDueDatePicker}
         onCommit={commitDueDate}
@@ -784,7 +784,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         />
       ) : null}
       <KioskDatePickerModal
-        isOpen={dueAssist.isDatePickerOpen}
+        isOpen={dueAssist.isDatePickerOpen} pending={dueAssist.dueUpdatePending}
         value={dueAssist.editingDueDate}
         onCancel={dueAssist.closeDatePicker}
         onCommit={(next) => void dueAssist.commitDueDate(next)}

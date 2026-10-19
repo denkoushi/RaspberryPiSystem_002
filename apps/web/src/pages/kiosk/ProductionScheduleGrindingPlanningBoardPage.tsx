@@ -37,6 +37,7 @@ import { usePlanningBoardPageGantt } from '../../features/kiosk/grindingPlanning
 import { usePlanningBoardPageItems } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardPageItems';
 import { usePlanningBoardWriteQueue } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue';
 import { useUnsavedChangesGuard } from '../../features/navigation/useUnsavedChangesGuard';
+import { useSingleFlight } from '../../hooks/useSingleFlight';
 
 import type { CompletionOverlay, OrderPreview, ResourceOrderSnapshot, ResourceOrderHistory, DueMode, ResourceChoice, FeedbackKind, DuePickerState, PendingDueScopeUpdate } from '../../features/kiosk/grindingPlanningBoard/planningBoardPageModel';
 import type { PlanningBoardAllocation, PlanningBoardStatus } from '../../features/kiosk/grindingPlanningBoard/types';
@@ -87,6 +88,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     sourceRevision: string;
     resources: string[];
   } | null>(null);
+  const { run: runEditor, pending: editorPending } = useSingleFlight();
   const [editorOpen, setEditorOpen] = useState(false);
   const editorGenerationRef = useRef(0);
   const [resourceChoice, setResourceChoice] = useState<ResourceChoice>('unchanged');
@@ -203,6 +205,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     sourceRevision,
     refresh: async () => {
       const result = await boardQuery.refetch();
+      await queryClient.invalidateQueries({
+        queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll,
+        refetchType: 'none'
+      });
       if (dueDetailIdentityRef.current) await dueDetailQuery.refetch();
       return result;
     },
@@ -392,7 +398,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
 
   const enqueueOverrides = useCallback((
     originals: readonly GrindingPlanningBoardItem[], requests: GrindingPlanningBoardOverrideItemRequest[],
-    label: string, onFailed?: (error: unknown) => void, capturedSourceRevision?: string, orderAction?: { onSaved: () => void }
+    label: string, onFailed?: (error: unknown) => void, capturedSourceRevision?: string, orderAction?: { onSaved: () => void }, onSaved?: () => void
   ) => {
     if (writeBlocked || originals.some((item) => hasPendingSeiban(item.fseiban, true))) return false;
     if (requests.some((request) => {
@@ -403,7 +409,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     const patches = new Map(requests.map((request) => [request.itemId, request]));
     return enqueueWrite({
       label, itemIds: originals.map((item) => item.itemId), seibans: [...new Set(originals.map((item) => item.fseiban))],
-      order: Boolean(orderAction), onSaved: orderAction?.onSaved,
+      order: Boolean(orderAction), onSaved: onSaved ?? orderAction?.onSaved,
       apply: (display) => ({ ...display, items: display.items.map((item) => {
         const request = patches.get(item.itemId);
         return request ? applyOptimisticOverride(item, request) : item;
@@ -420,13 +426,13 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const updateSpecialDue = useCallback((original: GrindingPlanningBoardItem) => {
     const item = currentItemsRef.current.find((candidate) => candidate.itemId === original.itemId) ?? original;
     const mode = specialDueModeRef.current;
-    if (!scopeReady || !rankMutationReady || allocation === 'original' || !mode || item.isCompleted) return;
+    if (!scopeReady || !rankMutationReady || allocation === 'original' || !mode || item.isCompleted || hasPendingSeiban(item.fseiban)) return;
     const preview = item as PlanningBoardDisplayItem;
     const kind = preview.pendingSpecialDue !== undefined ? preview.pendingSpecialDue : item.specialDue?.kind;
     const next = kind === mode ? null : mode;
     enqueueOverrides([item], [{ itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version, specialDue: next }],
       next === null ? '特別納期の解除' : next === 'today' ? '今日中' : '朝まで');
-  }, [allocation, enqueueOverrides, rankMutationReady, scopeReady]);
+  }, [allocation, enqueueOverrides, hasPendingSeiban, rankMutationReady, scopeReady]);
 
   const openEditor = useCallback((items: readonly GrindingPlanningBoardItem[]) => {
     if (!scopeReady || writeBlocked || items.some((item) => hasPendingSeiban(item.fseiban, true))) return;
@@ -456,7 +462,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     duePickerState, writeBlocked, enqueueWrite, updateDueScope, setPendingDueScope
   });
 
-  const applyEditor = async () => {
+  const applyEditor = () => runEditor(async () => {
     if (!editorSnapshot || allocation === 'original' || editorItems.length === 0) return;
     const offset = Number(offsetDays);
     if (dueMode === 'offsetDays' && (!Number.isInteger(offset) || offset < 1)) {
@@ -481,15 +487,19 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       return;
     }
     const editorGeneration = editorGenerationRef.current;
-    const accepted = enqueueOverrides(editorItems, items, `${items.length}件の変更`, (error) => {
-      if (editorGenerationRef.current !== editorGeneration) return;
-      const conflict = isAxiosError(error) && error.response?.status === 409;
-      setEditorConflict(conflict);
-      setEditorError(conflict ? '表示中のデータが更新されています。最新状態を取得してから対象を選び直してください。' : '保存できませんでした。入力内容と通信状態を確認してください。');
-      setEditorOpen(true);
-    }, editorSnapshot?.sourceRevision);
-    if (accepted) setEditorOpen(false);
-  };
+    const saved = await new Promise<boolean>((resolve) => {
+      const accepted = enqueueOverrides(editorItems, items, `${items.length}件の変更`, (error) => {
+        resolve(false);
+        if (editorGenerationRef.current !== editorGeneration) return;
+        const conflict = isAxiosError(error) && error.response?.status === 409;
+        setEditorConflict(conflict);
+        setEditorError(conflict ? '表示中のデータが更新されています。最新状態を取得してから対象を選び直してください。' : '保存できませんでした。入力内容と通信状態を確認してください。');
+        setEditorOpen(true);
+      }, editorSnapshot.sourceRevision, undefined, () => resolve(true));
+      if (!accepted) resolve(false);
+    });
+    if (saved && editorGenerationRef.current === editorGeneration) setEditorOpen(false);
+  });
 
   const moveResourceByDrag = useCallback((item: GrindingPlanningBoardItem, targetResource: string) => {
     if (!data || !scopeReady || !rankMutationReady || allocation === 'original' || item.isCompleted ||
@@ -769,7 +779,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         setDuePickerState={setDuePickerState} commitDueDate={commitDueDate}
       />
       <PlanningBoardBulkEditDialog
-        editorOpen={editorOpen} setEditorOpen={setEditorOpen} editorItems={editorItems}
+        editorOpen={editorOpen} editorPending={editorPending} setEditorOpen={setEditorOpen} editorItems={editorItems}
         editorError={editorError} editorConflict={editorConflict} refreshAfterConflict={refreshAfterConflict}
         allocation={allocation} writeBlocked={writeBlocked} editorSnapshot={editorSnapshot}
         canMoveResource={canMoveResource} data={data} resourceChoice={resourceChoice} setResourceChoice={setResourceChoice}
