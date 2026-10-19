@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { listKioskInquiries } from '../../../api/client';
 import { useKioskInquiries, useKioskInquiryActions } from '../../../api/hooks/kiosk';
+import { kioskQueryKeys } from '../../../api/queryKeys/kiosk';
 import { Button } from '../../../components/ui/Button';
 import { useArmedNfcRead } from '../inventory/setup/useArmedNfcRead';
 
@@ -50,7 +51,7 @@ export function KioskInquiryInbox({ clientKey, isReceiver, loginUnlock = false, 
       session.active = false;
       session.employeeTagUid = undefined;
       controller.abort();
-      const queryKey = ['kiosk-inquiries', clientKey, sessionId];
+      const queryKey = kioskQueryKeys.inquiries(clientKey, sessionId);
       void queryClient.cancelQueries({ queryKey });
       queryClient.removeQueries({ queryKey });
     };
@@ -64,7 +65,7 @@ export function KioskInquiryInbox({ clientKey, isReceiver, loginUnlock = false, 
     void listKioskInquiries(read.uid, controllerSignal).then(result => {
       if (controllerSignal?.aborted) return;
       access.current.employeeTagUid = read.uid;
-      queryClient.setQueryData(['kiosk-inquiries', clientKey, sessionId], result);
+      queryClient.setQueryData(kioskQueryKeys.inquiries(clientKey, sessionId), result);
       setUnlocked(true);
     }).catch(failure => {
       if (!controllerSignal?.aborted) setError(inquiryErrorMessage(failure, '社員証を確認できません'));
@@ -85,7 +86,7 @@ export function KioskInquiryInbox({ clientKey, isReceiver, loginUnlock = false, 
       setUnlocked(false);
       setDetail(null);
       setDraft('');
-      queryClient.removeQueries({ queryKey: ['kiosk-inquiries', clientKey, sessionId] });
+      queryClient.removeQueries({ queryKey: kioskQueryKeys.inquiries(clientKey, sessionId) });
     }
     setError(loginExpired ? 'ログインし直してください' : inquiryErrorMessage(failure, fallback));
   }, [clientKey, isReceiver, loginUnlock, queryClient, sessionId]);
@@ -118,9 +119,9 @@ export function KioskInquiryInbox({ clientKey, isReceiver, loginUnlock = false, 
     setComposing(false);
     setSent(true);
     setError(null);
-    void queryClient.invalidateQueries({ queryKey: ['kiosk-inquiry-summary', clientKey] });
+    void queryClient.invalidateQueries({ queryKey: kioskQueryKeys.inquirySummary(clientKey) });
     if (unlocked) {
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-inquiries', clientKey, sessionId] });
+      void queryClient.invalidateQueries({ queryKey: kioskQueryKeys.inquiries(clientKey, sessionId) });
       if (!isReceiver && threadId) void openThread(threadId);
     }
   };

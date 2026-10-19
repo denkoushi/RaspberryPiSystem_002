@@ -16,13 +16,14 @@ import {
   getKioskEmployees,
   getKioskCallTargets
 } from '../client';
+import { kioskQueryKeys } from '../queryKeys/kiosk';
 
 import type { KioskConfig, KioskInquiryDetail, KioskInquirySummary, KioskInquiryThread } from '../domains/kiosk';
 import type { KioskInitialRouteId, KioskReorderableHeaderTabId } from '@raspi-system/shared-types';
 
 export function useKioskEmployees(clientKey?: string) {
   return useQuery({
-    queryKey: ['kiosk-employees', clientKey],
+    queryKey: kioskQueryKeys.employees(clientKey),
     queryFn: () => getKioskEmployees(clientKey),
     enabled: !!clientKey
   });
@@ -30,7 +31,7 @@ export function useKioskEmployees(clientKey?: string) {
 
 export function useKioskNavTabOrderSettings() {
   return useQuery({
-    queryKey: ['kiosk-nav-tab-order-settings'],
+    queryKey: kioskQueryKeys.navTabOrderSettingsAll,
     queryFn: getKioskNavTabOrderSettings
   });
 }
@@ -40,9 +41,9 @@ export function useUpdateKioskNavTabOrderSettings() {
   return useMutation({
     mutationFn: (payload: { tabOrder: string[] }) => updateKioskNavTabOrderSettings(payload),
     onSuccess: (data) => {
-      queryClient.setQueryData(['kiosk-nav-tab-order-settings'], data);
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-nav-tab-order-settings'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-config'] });
+      queryClient.setQueryData(kioskQueryKeys.navTabOrderSettingsAll, data);
+      void queryClient.invalidateQueries({ queryKey: kioskQueryKeys.navTabOrderSettingsAll });
+      void queryClient.invalidateQueries({ queryKey: kioskQueryKeys.configAll });
     }
   });
 }
@@ -53,13 +54,13 @@ export function useUpdateKioskInitialRoute(clientKey: string) {
     mutationFn: (initialRoute: KioskInitialRouteId | null) =>
       putKioskInitialRoute(initialRoute, clientKey),
     onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: ['kiosk-config'] });
+      await queryClient.cancelQueries({ queryKey: kioskQueryKeys.configAll });
     },
     onSuccess: (data) => {
-      queryClient.setQueryData<KioskConfig>(['kiosk-config'], (current) =>
+      queryClient.setQueryData<KioskConfig>(kioskQueryKeys.configAll, (current) =>
         current ? { ...current, initialKioskRoute: data.initialKioskRoute, initialKioskPath: data.initialKioskPath } : current
       );
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-config'] });
+      void queryClient.invalidateQueries({ queryKey: kioskQueryKeys.configAll });
     }
   });
 }
@@ -69,20 +70,20 @@ export function useUpdateKioskPortalCards(clientKey: string) {
   return useMutation({
     mutationFn: (hiddenTabIds: KioskReorderableHeaderTabId[]) => putKioskPortalCards(hiddenTabIds, clientKey),
     onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: ['kiosk-config'] });
+      await queryClient.cancelQueries({ queryKey: kioskQueryKeys.configAll });
     },
     onSuccess: (data) => {
-      queryClient.setQueryData<KioskConfig>(['kiosk-config'], (current) =>
+      queryClient.setQueryData<KioskConfig>(kioskQueryKeys.configAll, (current) =>
         current ? { ...current, portalHiddenTabIds: data.portalHiddenTabIds } : current
       );
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-config'] });
+      void queryClient.invalidateQueries({ queryKey: kioskQueryKeys.configAll });
     }
   });
 }
 
 export function useKioskConfig() {
   return useQuery({
-    queryKey: ['kiosk-config'],
+    queryKey: kioskQueryKeys.configAll,
     queryFn: getKioskConfig,
     staleTime: 0, // キャッシュを無効化して常に最新データを取得（設定変更時に即座に反映されるように）
     refetchInterval: 60000, // 60秒ごとにポーリング（温度表示用、Pi3/Pi4のリソースを浪費しない）
@@ -92,7 +93,7 @@ export function useKioskConfig() {
 
 export function useKioskCallTargets() {
   return useQuery({
-    queryKey: ['kiosk-call-targets'],
+    queryKey: kioskQueryKeys.callTargetsAll,
     queryFn: getKioskCallTargets,
     refetchInterval: 60_000
   });
@@ -100,7 +101,7 @@ export function useKioskCallTargets() {
 
 export function useKioskInquirySummary(clientKey: string | undefined, enabled: boolean) {
   return useQuery({
-    queryKey: ['kiosk-inquiry-summary', clientKey],
+    queryKey: kioskQueryKeys.inquirySummary(clientKey),
     queryFn: ({ signal }) => getKioskInquirySummary(signal),
     enabled: enabled && !!clientKey,
     refetchInterval: 30000
@@ -112,7 +113,7 @@ export type KioskInquiryAccess = { employeeTagUid?: string; signal?: AbortSignal
 
 export function useKioskInquiries(clientKey: string, sessionId: string, access: KioskInquiryAccess, enabled: boolean) {
   return useQuery({
-    queryKey: ['kiosk-inquiries', clientKey, sessionId],
+    queryKey: kioskQueryKeys.inquiries(clientKey, sessionId),
     queryFn: ({ signal }) => listKioskInquiries(access.employeeTagUid, signal),
     enabled,
     retry: false,
@@ -124,14 +125,14 @@ export function useKioskInquiryActions(clientKey: string, sessionId: string, acc
   const queryClient = useQueryClient();
   const onSuccess = (data: KioskInquiryDetail) => {
     if (!access.active) return;
-    const listKey = ['kiosk-inquiries', clientKey, sessionId];
+    const listKey = kioskQueryKeys.inquiries(clientKey, sessionId);
     const previous = queryClient.getQueryData<{ threads: KioskInquiryThread[] }>(listKey);
     const wasUnread = previous?.threads.find(thread => thread.id === data.thread.id)?.unread;
     queryClient.setQueryData(listKey, previous ? {
       threads: [data.thread, ...previous.threads.filter(thread => thread.id !== data.thread.id)]
         .sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt))
     } : { threads: [data.thread] });
-    const summaryKey = ['kiosk-inquiry-summary', clientKey];
+    const summaryKey = kioskQueryKeys.inquirySummary(clientKey);
     queryClient.setQueryData<KioskInquirySummary>(summaryKey, current => current && wasUnread && !data.thread.unread
       ? { ...current, unreadCount: Math.max(0, current.unreadCount - 1) } : current);
     void queryClient.invalidateQueries({ queryKey: summaryKey });
@@ -150,7 +151,7 @@ export function useKioskInquiryActions(clientKey: string, sessionId: string, acc
 }
 
 export function useKioskInquiryReceiverSettings() {
-  return useQuery({ queryKey: ['kiosk-inquiry-receiver-settings'], queryFn: getKioskInquiryReceiverSettings });
+  return useQuery({ queryKey: kioskQueryKeys.inquiryReceiverSettingsAll, queryFn: getKioskInquiryReceiverSettings });
 }
 
 export function useUpdateKioskInquiryReceiverSettings() {
@@ -158,9 +159,9 @@ export function useUpdateKioskInquiryReceiverSettings() {
   return useMutation({
     mutationFn: (payload: { receiverClientDeviceIds: string[]; systemNoticeReceiverClientDeviceIds: string[]; employeeCodes: string[] }) => updateKioskInquiryReceiverSettings(payload),
     onSuccess: data => {
-      queryClient.setQueryData(['kiosk-inquiry-receiver-settings'], data);
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-inquiry-receiver-settings'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-inquiry-summary'] });
+      queryClient.setQueryData(kioskQueryKeys.inquiryReceiverSettingsAll, data);
+      void queryClient.invalidateQueries({ queryKey: kioskQueryKeys.inquiryReceiverSettingsAll });
+      void queryClient.invalidateQueries({ queryKey: kioskQueryKeys.inquirySummaryAll });
     }
   });
 }
