@@ -59,7 +59,7 @@
     "@raspi-system/shared-types": "workspace:*",
     "@raspi-system/shelf-layout-core": "workspace:*",
     "bcryptjs": "^2.4.3",
-    "csv-parse": "^5.5.6",
+    "csv-parse": "^7.0.2",
     "csv-stringify": "^6.6.0",
     "dotenv": "^16.4.5",
     "dropbox": "^10.34.0",
