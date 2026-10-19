@@ -184,7 +184,7 @@ export function useInventoryMutations(accessPassword?: string, setup = false) {
     deleteItem: useMutation({ mutationFn: (itemId: string) => send(() => deleteInventoryItem(itemId, accessPassword)), onSuccess: invalidate }),
     rotateItemPhoto: useMutation({
       mutationFn: ({ itemId, photoId }: { itemId: string; photoId: string }) => send(() => rotateInventoryItemPhoto(itemId, photoId, accessPassword)),
-      onSettled: () => { void queryClient.invalidateQueries({ queryKey: inventoryKeys.items }); },
+      onSettled: () => { void queryClient.invalidateQueries({ queryKey: inventoryKeys.itemsAll }); },
     }),
     reorderItemPhotos: useMutation({
       mutationFn: ({ itemId, photoIds }: { itemId: string; photoIds: string[] }) => send(() => reorderInventoryItemPhotos(itemId, photoIds, accessPassword)),
