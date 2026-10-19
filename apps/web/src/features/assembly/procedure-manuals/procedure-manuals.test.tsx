@@ -103,9 +103,17 @@ describe('procedure-manuals', () => {
     }
   });
 
-  it('defaults to a closed list, remembers the toggle and tolerates unavailable storage', async () => {
+  it('opens the list while nothing is selected, otherwise remembers the toggle and tolerates unavailable storage', async () => {
+    localStorage.setItem('procedure-manuals-list-open', 'false');
+    const unselected = render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
+    expect(screen.getByTestId('procedure-manuals-left')).toBeVisible();
+    unselected.unmount();
+    const modelOnly = render(<MemoryRouter initialEntries={['/?model=DFD1']}><ProcedureManualBrowser /></MemoryRouter>);
+    expect(screen.getByTestId('procedure-manuals-left')).toBeVisible();
+    modelOnly.unmount();
     localStorage.clear();
-    const view = render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
+    const selected = ['/?model=DFD1&process=assembly'];
+    const view = render(<MemoryRouter initialEntries={selected}><ProcedureManualBrowser /></MemoryRouter>);
     expect(screen.getByTestId('procedure-manuals-left')).not.toBeVisible();
     expect(screen.getByTestId('procedure-manuals-split').className).toContain('grid-cols-[minmax(0,1fr)]');
     fireEvent.click(screen.getByRole('button', { name: '一覧を開閉' }));
@@ -113,14 +121,14 @@ describe('procedure-manuals', () => {
     expect(screen.getByTestId('procedure-manuals-split').className).toContain('grid-cols-[460px_minmax(0,1fr)]');
     expect(localStorage.getItem('procedure-manuals-list-open')).toBe('true');
     view.unmount();
-    const reopened = render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
+    const reopened = render(<MemoryRouter initialEntries={selected}><ProcedureManualBrowser /></MemoryRouter>);
     expect(screen.getByTestId('procedure-manuals-left')).toBeVisible();
     reopened.unmount();
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
-    render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={selected}><ProcedureManualBrowser /></MemoryRouter>);
     expect(screen.getByTestId('procedure-manuals-left')).not.toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: '一覧を開閉' }));
+    fireEvent.click(screen.getAllByRole('button', { name: '一覧を開閉' })[0]!);
     expect(screen.getByTestId('procedure-manuals-left')).toBeVisible();
     await waitFor(() => expect(mocks.models).toHaveBeenCalled());
   });
