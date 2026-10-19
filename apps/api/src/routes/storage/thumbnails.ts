@@ -1,3 +1,4 @@
+import { sendStorageReadError } from './shared.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { ApiError } from '../../lib/errors.js';
 import { PhotoStorage } from '../../lib/photo-storage.js';
@@ -19,11 +20,11 @@ export function registerThumbnailStorageRoutes(app: FastifyInstance): void {
         return reply.send(buffer);
       } catch (error) {
         if (error instanceof ApiError) throw error;
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-          return reply.status(404).send({ message: 'サムネイルが見つかりません' });
-        }
-        request.log.error({ err: error }, 'サムネイルの読み込みに失敗しました');
-        return reply.status(500).send({ message: 'サムネイルの読み込みに失敗しました' });
+        return sendStorageReadError(request, reply, error, {
+          notFoundMessage: 'サムネイルが見つかりません',
+          failedMessage: 'サムネイルの読み込みに失敗しました',
+          logContext: { err: error },
+        });
       }
     }
   );
